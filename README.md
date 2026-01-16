@@ -19,7 +19,7 @@ Create and edit 20×20 pixel patterns for G6 panels with:
 - Modern dark theme UI
 - Version 6 (last updated 2025-01-12)
 
-**[Launch G6 Panel Editor →](g6_panel_editor.html)**
+**[Launch G6 Panel Editor →](https://reiserlab.github.io/webDisplayTools/g6_panel_editor.html)**
 
 ### Arena Layout Editor 🚧 Coming Soon
 Configure arena geometry, panel layout, and display parameters. Export configuration files for MATLAB.
