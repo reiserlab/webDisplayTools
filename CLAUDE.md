@@ -39,13 +39,55 @@ Web calculations are validated against MATLAB reference data:
 ## Panel Specifications
 
 Standard panel generations:
-- G3: 32mm width, 8x8 pixels
-- G4: 40.45mm width, 16x16 pixels
-- G4.1: 40mm width, 16x16 pixels
-- G5: 40mm width, 20x20 pixels
-- G6: 45.4mm width, 20x20 pixels
+- G3: 32mm width, 8x8 pixels (circle LEDs)
+- G4: 40.45mm width, 16x16 pixels (circle LEDs)
+- G4.1: 40mm width, 16x16 pixels (rotated rectangle LEDs)
+- G5: 40mm width, 20x20 pixels (rotated rectangle LEDs)
+- G6: 45.4mm width, 20x20 pixels (rotated rectangle LEDs)
 
 Arena radius formula: `cRadius = panelWidth / (tan(alpha/2)) / 2` where `alpha = 2*PI/numPanels`
+
+### LED Specifications
+- G4.1, G5, G6 use 0604 LED package: 0.6mm × 0.4mm = 1.5:1 aspect ratio
+- LEDs are rectangles rotated 45° on the panel (not diamonds)
+- G3, G4 use circular LED visualization
+
+## Arena 3D Viewer (`arena_3d_viewer.html`)
+
+### Key Implementation Details
+- Uses Three.js r128 with OrbitControls
+- Renderer requires `preserveDrawingBuffer: true` for screenshot functionality
+- LED meshes stored in `ledMeshes[]` array for efficient animation (color-only updates)
+- Pattern rotation uses `state.phaseOffset` to shift pattern, not world rotation
+- Controls disabled during auto-rotate for performance
+
+### State Object
+```javascript
+state = {
+    panelType: 'G6',      // G3, G4, G4.1, G5, G6
+    numCols: 12,          // panels around (from 2D editor URL params)
+    numRows: 3,           // panels vertically
+    activePanels: null,   // array of active column indices, null = all
+    pattern: 'allOn',     // 'allOn', 'grating', 'sine'
+    gratingPixels: 20,    // pixels on/off (must be integer divisor)
+    sineWavelength: 120,  // wavelength in pixels (must be integer divisor)
+    phaseOffset: 0        // current phase for rotation animation
+}
+```
+
+### Pattern Constraints
+- Grating and sine wavelengths must be integer divisors of total azimuth pixels
+- This ensures patterns tile seamlessly around the arena
+- Use `getIntegerDivisors()` to populate valid options
+
+### Screenshot Filenames
+Format: `arena_{gen}_{cols}c{rows}r_{pattern}[_stats]_{timestamp}.png`
+Example: `arena_G6_12c3r_sine120_stats_2026-01-17T10-30-45.png`
+
+### URL Parameters (from Arena Editor)
+- `gen`: Panel generation (G3, G4, G4.1, G5, G6)
+- `cols`: Number of columns (panels around)
+- `active`: Comma-separated 0-based indices of active panels (omitted if all active)
 
 ## TODO / Future Improvements
 
@@ -59,3 +101,6 @@ A proper implementation should:
 - Consider both azimuth (constant) and vertical (varies with elevation) components
 
 The azimuth resolution is constant (360° / total_azimuth_pixels), but vertical resolution varies based on viewing angle from center - pixels near the vertical center subtend smaller angles than those at the top/bottom edges.
+
+### Load Pattern Feature
+The "Load Pattern (Coming Soon)" button is a placeholder for future functionality to load custom patterns from files or the pattern editor.

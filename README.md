@@ -34,6 +34,19 @@ Configure arena geometry and panel layout for G3-G6 display systems with:
 
 **[Launch Arena Layout Editor →](https://reiserlab.github.io/webDisplayTools/arena_editor.html)**
 
+### Arena 3D Viewer ✅ Ready
+Interactive 3D visualization of arena configurations with:
+- Three.js-based 3D rendering with orbit controls
+- Accurate LED visualization (rotated rectangles for G4.1/G5/G6, circles for G3/G4)
+- Pattern visualization: All On, Grating (square wave), Sine wave
+- Animated pattern rotation with efficient color-only updates
+- Standard view presets (top-down, cardinal directions, fly view from center)
+- Zoom controls and screenshot export with descriptive filenames
+- Linked from Arena Layout Editor with configuration pass-through
+- v3 (2026-01-17)
+
+**[Launch Arena 3D Viewer →](https://reiserlab.github.io/webDisplayTools/arena_3d_viewer.html)**
+
 ### G4.1 Pattern Editor 🚧 Coming Soon
 Design patterns for G4.1 display systems with support for multiple panel configurations.
 
@@ -73,6 +86,7 @@ webDisplayTools/
 ├── index.html                # Main landing page
 ├── g6_panel_editor.html      # G6 Panel Pattern Editor (ready)
 ├── arena_editor.html         # Arena Layout Editor (ready)
+├── arena_3d_viewer.html      # Arena 3D Viewer (ready)
 ├── g41_pattern_editor.html   # G4.1 pattern editor (placeholder)
 ├── g6_pattern_editor.html    # G6 pattern editor (placeholder)
 ├── experiment_designer.html  # Experiment Designer (placeholder)
