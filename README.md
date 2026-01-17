@@ -21,8 +21,18 @@ Create and edit 20×20 pixel patterns for G6 panels with:
 
 **[Launch G6 Panel Editor →](https://reiserlab.github.io/webDisplayTools/g6_panel_editor.html)**
 
-### Arena Layout Editor 🚧 Coming Soon
-Configure arena geometry, panel layout, and display parameters. Export configuration files for MATLAB.
+### Arena Layout Editor ✅ Ready
+Configure arena geometry and panel layout for G3-G6 display systems with:
+- SVG-based visualization with labeled dimensions
+- Support for all panel generations (G3, G4, G4.1, G5, G6, Custom)
+- Click-to-toggle panels for partial arena designs
+- Angle offset control for arena rotation
+- Export PDF for documentation
+- Export JSON with geometry and pin coordinates
+- CI/CD validation against MATLAB reference
+- Version 1.0.0 (2026-01-16)
+
+**[Launch Arena Layout Editor →](https://reiserlab.github.io/webDisplayTools/arena_editor.html)**
 
 ### G4.1 Pattern Editor 🚧 Coming Soon
 Design patterns for G4.1 display systems with support for multiple panel configurations.
@@ -61,12 +71,31 @@ All tools can be tested locally by opening the HTML files directly in a web brow
 ```
 webDisplayTools/
 ├── index.html                # Main landing page
-├── g6_panel_editor.html      # G6 Panel Pattern Editor
-├── experiment_designer.html  # Experiment Designer (placeholder)
-├── arena_editor.html         # Arena layout configurator (placeholder)
+├── g6_panel_editor.html      # G6 Panel Pattern Editor (ready)
+├── arena_editor.html         # Arena Layout Editor (ready)
 ├── g41_pattern_editor.html   # G4.1 pattern editor (placeholder)
-└── g6_pattern_editor.html    # G6 pattern editor (placeholder)
+├── g6_pattern_editor.html    # G6 pattern editor (placeholder)
+├── experiment_designer.html  # Experiment Designer (placeholder)
+├── js/                       # Shared JavaScript modules
+│   └── arena-calculations.js # Arena geometry calculations
+├── data/                     # Reference data
+│   └── reference_data.json   # MATLAB-generated validation data
+├── tests/                    # Validation tests
+│   └── validate-arena-calculations.js
+└── .github/workflows/        # CI/CD workflows
+    └── validate-calculations.yml
 ```
+
+## CI/CD Validation
+
+Web tools are validated against MATLAB reference implementations:
+
+1. MATLAB generates reference data (e.g., `generate_web_reference_data.m`)
+2. Reference JSON is copied to `data/` directory
+3. GitHub Actions runs validation tests on push/PR
+4. Tests compare JavaScript calculations against MATLAB with tolerance of 0.0001
+
+Run tests locally: `npm test`
 
 ## About
 
