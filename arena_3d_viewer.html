@@ -371,6 +371,71 @@
             font-size: 0.7rem;
             padding: 0.5rem;
         }
+
+        /* View Controls Panel (lower right) */
+        .view-controls-panel {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            z-index: 100;
+            width: 200px;
+        }
+
+        .view-controls-panel h3 {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent);
+            font-size: 0.85rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .view-controls-panel .btn {
+            margin-top: 0.4rem;
+            font-size: 0.75rem;
+            padding: 0.5rem;
+        }
+
+        .view-controls-panel .btn:first-of-type {
+            margin-top: 0;
+        }
+
+        /* Zoom buttons row */
+        .zoom-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .zoom-row .btn {
+            flex: 1;
+            margin-top: 0;
+        }
+
+        /* View select dropdown */
+        .view-select {
+            width: 100%;
+            padding: 0.5rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            cursor: pointer;
+            margin-bottom: 0.5rem;
+        }
+
+        .view-select:hover {
+            border-color: var(--accent);
+        }
+
+        .view-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
     </style>
 </head>
 <body>
@@ -457,12 +522,10 @@
         </div>
 
         <button class="btn disabled" id="load-pattern" style="margin-top: 1rem;" title="Coming Soon">Load Pattern (Coming Soon)</button>
-        <button class="btn" id="reset-view">Reset Camera View</button>
-        <button class="btn" id="fly-view">Fly View (From Center)</button>
         <button class="btn secondary" id="toggle-rotation">Rotate Pattern</button>
 
         <div class="control-group" style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem;">
-            <label>Export</label>
+            <label>Export Screenshot</label>
             <div class="screenshot-group">
                 <button class="btn secondary" id="screenshot-arena">Arena Only</button>
                 <button class="btn secondary" id="screenshot-full">With Stats</button>
@@ -495,6 +558,25 @@
             <span class="label">Vertical px</span>
             <span class="value" id="vertical-pixels">60</span>
         </div>
+    </div>
+
+    <!-- View Controls Panel (lower right) -->
+    <div class="view-controls-panel">
+        <h3>View Controls</h3>
+        <div class="zoom-row">
+            <button class="btn secondary" id="zoom-closer">Closer</button>
+            <button class="btn secondary" id="zoom-farther">Farther</button>
+        </div>
+        <select class="view-select" id="view-select">
+            <option value="top-down">Top Down</option>
+            <option value="side">Side View</option>
+            <option value="fly">Fly View (Center)</option>
+            <option value="north">From North (+Z)</option>
+            <option value="south">From South (-Z)</option>
+            <option value="east">From East (+X)</option>
+            <option value="west">From West (-X)</option>
+        </select>
+        <button class="btn" id="apply-view">Apply View</button>
     </div>
 
     <!-- Help Panel -->
@@ -791,6 +873,56 @@
             controls.update();
         }
 
+        // Apply a standard view preset
+        function applyStandardView(viewType) {
+            const specs = PANEL_SPECS[state.panelType];
+            const panelWidth = specs.panel_width_mm / 25.4;
+            const alpha = (2 * Math.PI) / state.numCols;
+            const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+            const panelHeight = specs.panel_height_mm / 25.4;
+            const arenaHeight = panelHeight * state.numRows;
+
+            // Distance for outside views - far enough to see entire arena
+            const viewDistance = cRadius * 3;
+
+            switch (viewType) {
+                case 'top-down':
+                    camera.position.set(0, viewDistance, 0.01);
+                    controls.target.set(0, 0, 0);
+                    break;
+                case 'side':
+                    camera.position.set(viewDistance, arenaHeight / 2, 0);
+                    controls.target.set(0, 0, 0);
+                    break;
+                case 'fly':
+                    // Camera at center, looking outward
+                    camera.position.set(0, 0, 0);
+                    controls.target.set(0, 0, cRadius);
+                    break;
+                case 'north':
+                    // Looking from +Z toward center
+                    camera.position.set(0, arenaHeight / 2, viewDistance);
+                    controls.target.set(0, 0, 0);
+                    break;
+                case 'south':
+                    // Looking from -Z toward center
+                    camera.position.set(0, arenaHeight / 2, -viewDistance);
+                    controls.target.set(0, 0, 0);
+                    break;
+                case 'east':
+                    // Looking from +X toward center
+                    camera.position.set(viewDistance, arenaHeight / 2, 0);
+                    controls.target.set(0, 0, 0);
+                    break;
+                case 'west':
+                    // Looking from -X toward center
+                    camera.position.set(-viewDistance, arenaHeight / 2, 0);
+                    controls.target.set(0, 0, 0);
+                    break;
+            }
+            controls.update();
+        }
+
         function setupEventListeners() {
             // Back to 2D Editor with loading indicator
             document.getElementById('back-to-2d').addEventListener('click', (e) => {
@@ -879,28 +1011,43 @@
                 buildArenaWithLoading();
             });
 
-            // Camera reset
-            document.getElementById('reset-view').addEventListener('click', () => {
-                camera.position.set(0, 5, 12);
-                controls.target.set(0, 0, 0);
-                controls.update();
-            });
-
-            // Fly view - camera at center looking outward
-            document.getElementById('fly-view').addEventListener('click', () => {
-                // Position camera at center of arena, slightly elevated
-                camera.position.set(0, 0, 0);
-                // Look outward toward a panel (along positive Z)
-                controls.target.set(0, 0, 5);
-                controls.update();
-            });
-
             // Auto-rotate toggle (phase shift pattern, not spin world)
             // Disable pan/zoom during rotation for better performance
             document.getElementById('toggle-rotation').addEventListener('click', () => {
                 autoRotate = !autoRotate;
                 controls.enabled = !autoRotate; // Disable controls during rotation
                 document.getElementById('toggle-rotation').textContent = autoRotate ? 'Stop Pattern Rotation' : 'Rotate Pattern';
+            });
+
+            // View controls - zoom buttons
+            document.getElementById('zoom-closer').addEventListener('click', () => {
+                // Move camera closer to target by 20%
+                const direction = new THREE.Vector3();
+                direction.subVectors(camera.position, controls.target);
+                direction.multiplyScalar(0.8); // 80% of current distance
+                camera.position.copy(controls.target).add(direction);
+                controls.update();
+            });
+
+            document.getElementById('zoom-farther').addEventListener('click', () => {
+                // Move camera farther from target by 25%
+                const direction = new THREE.Vector3();
+                direction.subVectors(camera.position, controls.target);
+                direction.multiplyScalar(1.25); // 125% of current distance
+                camera.position.copy(controls.target).add(direction);
+                controls.update();
+            });
+
+            // View controls - view selector
+            document.getElementById('apply-view').addEventListener('click', () => {
+                const viewType = document.getElementById('view-select').value;
+                applyStandardView(viewType);
+            });
+
+            // Also allow double-click on select to apply immediately
+            document.getElementById('view-select').addEventListener('change', () => {
+                const viewType = document.getElementById('view-select').value;
+                applyStandardView(viewType);
             });
 
             // Window resize
@@ -915,80 +1062,116 @@
             });
         }
 
+        // Generate descriptive filename with timestamp
+        function generateFilename(includeUI) {
+            const now = new Date();
+            const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const pattern = state.pattern === 'allOn' ? 'all' :
+                           state.pattern === 'grating' ? `grat${state.gratingPixels}` :
+                           `sine${state.sineWavelength}`;
+            const suffix = includeUI ? '_stats' : '';
+            return `arena_${state.panelType}_${state.numCols}c${state.numRows}r_${pattern}${suffix}_${timestamp}.png`;
+        }
+
         // Take screenshot of the arena view
         function takeScreenshot(includeUI) {
             // Render one frame to ensure latest state
             renderer.render(scene, camera);
 
+            const filename = generateFilename(includeUI);
+
             if (includeUI) {
-                // Use html2canvas-like approach: capture entire viewport
-                // For simplicity, we'll use a canvas composite approach
+                // Use canvas composite approach
+                const canvasWidth = renderer.domElement.width;
+                const canvasHeight = renderer.domElement.height;
+
                 const finalCanvas = document.createElement('canvas');
-                finalCanvas.width = window.innerWidth;
-                finalCanvas.height = window.innerHeight;
+                finalCanvas.width = canvasWidth;
+                finalCanvas.height = canvasHeight;
                 const ctx = finalCanvas.getContext('2d');
 
                 // Draw the 3D canvas
                 ctx.drawImage(renderer.domElement, 0, 0);
 
-                // Draw UI overlays on top using html2canvas or manual drawing
-                // For now, we'll capture UI elements manually
-                drawUIToCanvas(ctx);
+                // Draw UI overlays on top
+                drawUIToCanvas(ctx, canvasWidth, canvasHeight);
 
                 // Download the composite image
-                downloadCanvas(finalCanvas, 'arena_with_stats.png');
+                downloadCanvas(finalCanvas, filename);
             } else {
                 // Just the arena - direct canvas download
-                downloadCanvas(renderer.domElement, 'arena_view.png');
+                downloadCanvas(renderer.domElement, filename);
             }
         }
 
         // Draw UI elements to canvas (simplified version)
-        function drawUIToCanvas(ctx) {
-            // Draw semi-transparent background for controls panel area
-            ctx.fillStyle = 'rgba(26, 31, 38, 0.9)';
-            ctx.fillRect(16, 16, 280, 500);
+        function drawUIToCanvas(ctx, canvasWidth, canvasHeight) {
+            const padding = 16;
+            const panelWidth = 260;
+            const lineHeight = 22;
 
-            // Draw border
+            // Left panel - Configuration info
+            const leftPanelHeight = 220;
+            ctx.fillStyle = 'rgba(26, 31, 38, 0.95)';
+            ctx.fillRect(padding, padding, panelWidth, leftPanelHeight);
             ctx.strokeStyle = '#2d3640';
             ctx.lineWidth = 1;
-            ctx.strokeRect(16, 16, 280, 500);
+            ctx.strokeRect(padding, padding, panelWidth, leftPanelHeight);
 
-            // Draw title
+            // Title
             ctx.font = 'bold 16px JetBrains Mono, monospace';
             ctx.fillStyle = '#00e676';
-            ctx.fillText('Arena 3D Viewer', 36, 50);
+            ctx.fillText('Arena 3D Viewer', padding + 16, padding + 30);
 
-            // Draw stats
-            ctx.font = '12px IBM Plex Mono, monospace';
-            ctx.fillStyle = '#8b949e';
+            // Stats
+            ctx.font = '13px IBM Plex Mono, monospace';
             const stats = [
-                `Panel Type: ${state.panelType}`,
-                `Columns: ${state.numCols}`,
-                `Rows: ${state.numRows}`,
-                `Pattern: ${state.pattern}`,
-                `Azimuth: ${document.getElementById('azimuth-res').textContent}`,
-                `Vertical: ${document.getElementById('vertical-res').textContent}`,
-                `Total LEDs: ${document.getElementById('total-leds').textContent}`
+                { label: 'Panel Type:', value: state.panelType, color: '#e6edf3' },
+                { label: 'Columns:', value: state.numCols, color: '#e6edf3' },
+                { label: 'Rows:', value: state.numRows, color: '#e6edf3' },
+                { label: 'Pattern:', value: state.pattern, color: '#e6edf3' },
+                { label: 'Total LEDs:', value: document.getElementById('total-leds').textContent, color: '#00e676' },
+                { label: 'Azimuth:', value: document.getElementById('azimuth-res').textContent, color: '#e6edf3' },
+                { label: 'Vertical:', value: document.getElementById('vertical-res').textContent, color: '#e6edf3' }
             ];
-            stats.forEach((stat, i) => {
-                ctx.fillText(stat, 36, 80 + i * 20);
+
+            let y = padding + 60;
+            stats.forEach((stat) => {
+                ctx.fillStyle = '#8b949e';
+                ctx.fillText(stat.label, padding + 16, y);
+                ctx.fillStyle = stat.color;
+                ctx.fillText(stat.value, padding + 120, y);
+                y += lineHeight;
             });
 
-            // Draw info overlay on right side
-            ctx.fillStyle = 'rgba(26, 31, 38, 0.9)';
-            ctx.fillRect(window.innerWidth - 200, 16, 184, 140);
-            ctx.strokeRect(window.innerWidth - 200, 16, 184, 140);
+            // Right panel - Angular Resolution (top right)
+            const rightPanelWidth = 200;
+            const rightPanelHeight = 130;
+            const rightX = canvasWidth - rightPanelWidth - padding;
+
+            ctx.fillStyle = 'rgba(26, 31, 38, 0.95)';
+            ctx.fillRect(rightX, padding, rightPanelWidth, rightPanelHeight);
+            ctx.strokeRect(rightX, padding, rightPanelWidth, rightPanelHeight);
 
             ctx.font = 'bold 14px JetBrains Mono, monospace';
             ctx.fillStyle = '#00e676';
-            ctx.fillText('Angular Resolution', window.innerWidth - 184, 40);
+            ctx.fillText('Angular Resolution', rightX + 16, padding + 28);
 
-            ctx.font = '12px IBM Plex Mono, monospace';
+            ctx.font = '13px IBM Plex Mono, monospace';
+            ctx.fillStyle = '#8b949e';
+            ctx.fillText('Azimuth:', rightX + 16, padding + 55);
             ctx.fillStyle = '#e6edf3';
-            ctx.fillText(`Azimuth: ${document.getElementById('azimuth-res').textContent}`, window.innerWidth - 184, 65);
-            ctx.fillText(`Vertical: ${document.getElementById('vertical-res').textContent}`, window.innerWidth - 184, 85);
-            ctx.fillText(`${document.getElementById('azimuth-pixels').textContent} × ${document.getElementById('vertical-pixels').textContent} px`, window.innerWidth - 184, 110);
+            ctx.fillText(document.getElementById('azimuth-res').textContent, rightX + 100, padding + 55);
+
+            ctx.fillStyle = '#8b949e';
+            ctx.fillText('Vertical:', rightX + 16, padding + 77);
+            ctx.fillStyle = '#e6edf3';
+            ctx.fillText(document.getElementById('vertical-res').textContent, rightX + 100, padding + 77);
+
+            ctx.fillStyle = '#8b949e';
+            ctx.fillText('Pixels:', rightX + 16, padding + 105);
+            ctx.fillStyle = '#00e676';
+            ctx.fillText(`${document.getElementById('azimuth-pixels').textContent} × ${document.getElementById('vertical-pixels').textContent}`, rightX + 100, padding + 105);
         }
 
         // Download canvas as PNG
