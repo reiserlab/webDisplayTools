@@ -523,14 +523,6 @@
 
         <button class="btn disabled" id="load-pattern" style="margin-top: 1rem;" title="Coming Soon">Load Pattern (Coming Soon)</button>
         <button class="btn secondary" id="toggle-rotation">Rotate Pattern</button>
-
-        <div class="control-group" style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem;">
-            <label>Export Screenshot</label>
-            <div class="screenshot-group">
-                <button class="btn secondary" id="screenshot-arena">Arena Only</button>
-                <button class="btn secondary" id="screenshot-full">With Stats</button>
-            </div>
-        </div>
     </div>
 
     <!-- Loading Overlay -->
@@ -576,7 +568,14 @@
             <option value="east">From East (+X)</option>
             <option value="west">From West (-X)</option>
         </select>
-        <button class="btn" id="apply-view">Apply View</button>
+
+        <div style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.75rem;">
+            <label style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Screenshot</label>
+            <div class="screenshot-group" style="margin-top: 0.4rem;">
+                <button class="btn secondary" id="screenshot-arena">Arena</button>
+                <button class="btn secondary" id="screenshot-full">+ Stats</button>
+            </div>
+        </div>
     </div>
 
     <!-- Help Panel -->
