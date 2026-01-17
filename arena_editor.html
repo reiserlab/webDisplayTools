@@ -498,7 +498,7 @@
                     </div>
                 </div>
 
-                <button class="export-btn" id="view-3d" onclick="window.location.href='arena_3d_viewer.html'">View in 3D</button>
+                <button class="export-btn" id="view-3d">View in 3D</button>
                 <button class="export-btn secondary" id="export-pdf">Export PDF</button>
                 <button class="export-btn secondary" id="export-data">Export Data (JSON)</button>
 
@@ -746,6 +746,20 @@
             // Export buttons
             document.getElementById('export-pdf').addEventListener('click', exportPDF);
             document.getElementById('export-data').addEventListener('click', exportData);
+
+            // View in 3D - pass current state as URL parameters
+            document.getElementById('view-3d').addEventListener('click', () => {
+                const params = new URLSearchParams();
+                params.set('gen', state.panelType);
+                params.set('cols', state.numPanels);
+                // Convert 1-based panelsInstalled to 0-based indices for 3D viewer
+                const activeIndices = Array.from(state.panelsInstalled).map(i => i - 1).sort((a, b) => a - b);
+                // Only pass active if not all panels are installed
+                if (activeIndices.length < state.numPanels) {
+                    params.set('active', activeIndices.join(','));
+                }
+                window.location.href = 'arena_3d_viewer.html?' + params.toString();
+            });
 
             // Custom panel modal
             document.getElementById('custom-cancel').addEventListener('click', hideCustomModal);

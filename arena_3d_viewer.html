@@ -322,15 +322,22 @@
 
     <!-- Info Overlay -->
     <div class="info-overlay">
-        <h3>Resolution</h3>
-        <div class="resolution-display" id="resolution-display">1.50°/px</div>
+        <h3>Angular Resolution</h3>
         <div class="metric">
-            <span class="label">Azimuthal</span>
-            <span class="value" id="azimuth-pixels">240 px</span>
+            <span class="label">Azimuth</span>
+            <span class="value" id="azimuth-res">1.50°/px</span>
         </div>
         <div class="metric">
             <span class="label">Vertical</span>
-            <span class="value" id="vertical-pixels">80 px</span>
+            <span class="value" id="vertical-res">2.50°/px</span>
+        </div>
+        <div class="metric" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border);">
+            <span class="label">Azimuth px</span>
+            <span class="value" id="azimuth-pixels">240</span>
+        </div>
+        <div class="metric">
+            <span class="label">Vertical px</span>
+            <span class="value" id="vertical-pixels">60</span>
         </div>
     </div>
 
@@ -383,8 +390,24 @@
         let state = {
             panelType: 'G6',
             numCols: 12,  // panels around
-            numRows: 4    // panels vertically
+            numRows: 3,   // panels vertically (default 3)
+            activePanels: null  // array of active column indices, null = all active
         };
+
+        // Parse URL parameters (from 2D editor)
+        function parseUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('gen')) state.panelType = params.get('gen');
+            if (params.has('cols')) state.numCols = parseInt(params.get('cols'));
+            if (params.has('rows')) state.numRows = parseInt(params.get('rows'));
+            if (params.has('active')) {
+                // active is comma-separated list of column indices (0-based)
+                const activeStr = params.get('active');
+                if (activeStr) {
+                    state.activePanels = activeStr.split(',').map(n => parseInt(n));
+                }
+            }
+        }
 
         // Three.js objects
         let scene, camera, renderer, controls;
@@ -399,14 +422,14 @@
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0f1419);
 
-            // Camera
+            // Camera - default to top-down view
             camera = new THREE.PerspectiveCamera(
                 60,
                 window.innerWidth / window.innerHeight,
                 0.1,
                 1000
             );
-            camera.position.set(0, 5, 12);
+            // Will be positioned after arena is built to fit the view
 
             // Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -438,14 +461,46 @@
             arenaGroup = new THREE.Group();
             scene.add(arenaGroup);
 
+            // Parse URL params and update UI
+            parseUrlParams();
+            updateUIFromState();
+
             // Build initial arena
             buildArena();
+
+            // Set initial camera to top-down view, zoomed to fit
+            setTopDownView();
 
             // Event listeners
             setupEventListeners();
 
             // Start animation
             animate();
+        }
+
+        function updateUIFromState() {
+            // Update generation tabs
+            document.querySelectorAll('.gen-tab').forEach(t => t.classList.remove('active'));
+            const activeTab = document.querySelector(`.gen-tab[data-gen="${state.panelType}"]`);
+            if (activeTab) activeTab.classList.add('active');
+
+            // Update number inputs
+            document.getElementById('num-cols').value = state.numCols;
+            document.getElementById('num-rows').value = state.numRows;
+        }
+
+        function setTopDownView() {
+            // Calculate arena radius for zoom
+            const specs = PANEL_SPECS[state.panelType];
+            const panelWidth = specs.panel_width_mm / 25.4;
+            const alpha = (2 * Math.PI) / state.numCols;
+            const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+
+            // Position camera directly above, looking down
+            const viewHeight = cRadius * 2.5; // enough to see the whole arena
+            camera.position.set(0, viewHeight, 0.01); // tiny Z offset to avoid gimbal lock
+            controls.target.set(0, 0, 0);
+            controls.update();
         }
 
         function setupEventListeners() {
@@ -568,8 +623,16 @@
             // Total column height = panel height × number of rows
             const columnHeight = panelHeight * numRows;
 
-            // Create one column (rectangle) per position around the arena
+            // Create one column (rectangle) per active position around the arena
+            // If activePanels is null, all columns are active
+            const activeCount = state.activePanels ? state.activePanels.length : numCols;
+
             for (let col = 0; col < numCols; col++) {
+                // Skip inactive columns
+                if (state.activePanels && !state.activePanels.includes(col)) {
+                    continue;
+                }
+
                 const angle = col * alpha;
 
                 // Column position at radius
@@ -601,61 +664,72 @@
             const column = new THREE.Mesh(columnGeom, columnMat);
             group.add(column);
 
-            // Column border (outer rectangle)
-            const borderMat = new THREE.LineBasicMaterial({ color: 0x4a5568 });
+            // Border material - white, thicker lines
+            const borderMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
             const halfW = width / 2;
             const halfH = height / 2;
-            const borderZ = depth * 0.06;
+            const panelThickness = depth * 0.05;
 
-            const borderGeom = new THREE.BufferGeometry();
-            const borderVertices = new Float32Array([
-                -halfW, -halfH, borderZ,
-                 halfW, -halfH, borderZ,
-                 halfW, -halfH, borderZ,
-                 halfW,  halfH, borderZ,
-                 halfW,  halfH, borderZ,
-                -halfW,  halfH, borderZ,
-                -halfW,  halfH, borderZ,
-                -halfW, -halfH, borderZ
-            ]);
-            borderGeom.setAttribute('position', new THREE.BufferAttribute(borderVertices, 3));
-            const border = new THREE.LineSegments(borderGeom, borderMat);
-            group.add(border);
+            // Create borders on BOTH sides (front +Z and back -Z)
+            const borderOffsets = [panelThickness, -panelThickness];
 
-            // Horizontal lines between panel rows (if multiple rows)
-            if (numRows > 1) {
-                const panelH = height / numRows;
-                for (let r = 1; r < numRows; r++) {
-                    const lineY = -halfH + r * panelH;
-                    const lineGeom = new THREE.BufferGeometry();
-                    const lineVerts = new Float32Array([
-                        -halfW, lineY, borderZ,
-                         halfW, lineY, borderZ
-                    ]);
-                    lineGeom.setAttribute('position', new THREE.BufferAttribute(lineVerts, 3));
-                    const line = new THREE.Line(lineGeom, borderMat);
-                    group.add(line);
+            for (const borderZ of borderOffsets) {
+                // Outer rectangle border
+                const borderGeom = new THREE.BufferGeometry();
+                const borderVertices = new Float32Array([
+                    -halfW, -halfH, borderZ,
+                     halfW, -halfH, borderZ,
+                     halfW, -halfH, borderZ,
+                     halfW,  halfH, borderZ,
+                     halfW,  halfH, borderZ,
+                    -halfW,  halfH, borderZ,
+                    -halfW,  halfH, borderZ,
+                    -halfW, -halfH, borderZ
+                ]);
+                borderGeom.setAttribute('position', new THREE.BufferAttribute(borderVertices, 3));
+                const border = new THREE.LineSegments(borderGeom, borderMat);
+                group.add(border);
+
+                // Horizontal lines between panel rows (if multiple rows)
+                if (numRows > 1) {
+                    const panelH = height / numRows;
+                    for (let r = 1; r < numRows; r++) {
+                        const lineY = -halfH + r * panelH;
+                        const lineGeom = new THREE.BufferGeometry();
+                        const lineVerts = new Float32Array([
+                            -halfW, lineY, borderZ,
+                             halfW, lineY, borderZ
+                        ]);
+                        lineGeom.setAttribute('position', new THREE.BufferAttribute(lineVerts, 3));
+                        const line = new THREE.Line(lineGeom, borderMat);
+                        group.add(line);
+                    }
                 }
             }
 
-            // LED dots on the inner face
-            // Total pixels: horizontal per panel, vertical = pixels_vertical × numRows
+            // LED dots on the inner face (+Z side, facing center)
+            // LEDs should be evenly spaced with half-spacing inset from edges
+            // This creates a regular grid that would tile continuously
             const totalPixelsV = specs.pixels_vertical * numRows;
-            const ledRadius = Math.min(width, height / numRows) / (specs.pixels_horizontal * 3);
-            const ledSpacingX = width / specs.pixels_horizontal;
+            const totalPixelsH = specs.pixels_horizontal;
+
+            // Spacing is width/numPixels, first LED is at half-spacing from edge
+            const ledSpacingX = width / totalPixelsH;
             const ledSpacingY = height / totalPixelsV;
+            const ledRadius = Math.min(ledSpacingX, ledSpacingY) * 0.35; // LED size relative to spacing
 
             const ledMat = new THREE.MeshBasicMaterial({ color: 0x00e676 });
 
             for (let py = 0; py < totalPixelsV; py++) {
-                for (let px = 0; px < specs.pixels_horizontal; px++) {
+                for (let px = 0; px < totalPixelsH; px++) {
                     const ledGeom = new THREE.CircleGeometry(ledRadius, 8);
                     const led = new THREE.Mesh(ledGeom, ledMat);
 
-                    // Position in column's local XY plane
-                    const localX = (px - (specs.pixels_horizontal - 1) / 2) * ledSpacingX;
-                    const localY = (py - (totalPixelsV - 1) / 2) * ledSpacingY;
-                    const localZ = depth * 0.06;
+                    // Position: start at -halfW + halfSpacing, then increment by spacing
+                    // This gives proper half-spacing inset from edges
+                    const localX = -halfW + ledSpacingX / 2 + px * ledSpacingX;
+                    const localY = -halfH + ledSpacingY / 2 + py * ledSpacingY;
+                    const localZ = panelThickness + 0.001; // just in front of border
 
                     led.position.set(localX, localY, localZ);
                     group.add(led);
@@ -666,9 +740,24 @@
         }
 
         function updateMetrics(specs, numCols, numRows, cRadius, arenaHeight) {
-            const totalPanels = numCols * numRows;
+            const activeCount = state.activePanels ? state.activePanels.length : numCols;
+            const totalPanels = activeCount * numRows;
             const totalLEDs = totalPanels * specs.pixels_horizontal * specs.pixels_vertical;
-            const degsPerPixel = 360 / (numCols * specs.pixels_horizontal);
+
+            // Azimuth resolution: angular distance between horizontal pixels
+            // Each panel spans (360/numCols) degrees, divided by pixels_horizontal
+            const azimuthRes = 360 / (numCols * specs.pixels_horizontal);
+
+            // Vertical resolution: angular distance between vertical pixels as seen from center
+            // This depends on the viewing angle from center to the panel
+            // For a fly at center, the vertical angle subtended by the panel height
+            // tan(verticalAngle/2) = (arenaHeight/2) / cRadius
+            // Convert to degrees per pixel
+            const panelHeight = specs.panel_height_mm / 25.4;
+            const halfAngleRad = Math.atan((arenaHeight / 2) / cRadius);
+            const totalVerticalDegrees = 2 * halfAngleRad * (180 / Math.PI);
+            const verticalRes = totalVerticalDegrees / (numRows * specs.pixels_vertical);
+
             const azimuthPixels = numCols * specs.pixels_horizontal;
             const verticalPixels = numRows * specs.pixels_vertical;
 
@@ -676,9 +765,10 @@
             document.getElementById('inner-radius').textContent = cRadius.toFixed(2) + ' in';
             document.getElementById('arena-height').textContent = arenaHeight.toFixed(2) + ' in';
             document.getElementById('total-leds').textContent = totalLEDs.toLocaleString();
-            document.getElementById('resolution-display').textContent = degsPerPixel.toFixed(2) + '°/px';
-            document.getElementById('azimuth-pixels').textContent = azimuthPixels + ' px';
-            document.getElementById('vertical-pixels').textContent = verticalPixels + ' px';
+            document.getElementById('azimuth-res').textContent = azimuthRes.toFixed(2) + '°/px';
+            document.getElementById('vertical-res').textContent = verticalRes.toFixed(2) + '°/px';
+            document.getElementById('azimuth-pixels').textContent = azimuthPixels;
+            document.getElementById('vertical-pixels').textContent = verticalPixels;
         }
 
         function onWindowResize() {
