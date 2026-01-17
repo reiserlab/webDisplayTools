@@ -30,7 +30,7 @@ Configure arena geometry and panel layout for G3-G6 display systems with:
 - Export PDF for documentation
 - Export JSON with geometry and pin coordinates
 - CI/CD validation against MATLAB reference
-- Version 1.0.0 (2026-01-16)
+- v2 (2026-01-16)
 
 **[Launch Arena Layout Editor →](https://reiserlab.github.io/webDisplayTools/arena_editor.html)**
 
