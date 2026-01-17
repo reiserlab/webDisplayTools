@@ -557,64 +557,55 @@
             const numRows = state.numRows;
 
             // Convert mm to inches (working units)
-            const panelWidth = specs.panel_width_mm / 25.4;
-            const panelHeight = specs.panel_height_mm / 25.4;
+            const panelWidth = specs.panel_width_mm / 25.4;  // width of one panel
+            const panelHeight = specs.panel_height_mm / 25.4; // height of one panel (square)
             const panelDepth = specs.panel_depth_mm / 25.4;
 
-            // Calculate radius
+            // Calculate radius based on panel width
             const alpha = (2 * Math.PI) / numCols;
             const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
 
-            // Total arena height
-            const arenaHeight = panelHeight * numRows;
+            // Total column height = panel height × number of rows
+            const columnHeight = panelHeight * numRows;
 
-            // Create panels
-            for (let row = 0; row < numRows; row++) {
-                for (let col = 0; col < numCols; col++) {
-                    const angle = col * alpha;
+            // Create one column (rectangle) per position around the arena
+            for (let col = 0; col < numCols; col++) {
+                const angle = col * alpha;
 
-                    // Panel position (center of panel front face)
-                    const x = cRadius * Math.cos(angle);
-                    const z = cRadius * Math.sin(angle);
-                    const y = (row - (numRows - 1) / 2) * panelHeight;
+                // Column position at radius
+                const x = cRadius * Math.cos(angle);
+                const z = cRadius * Math.sin(angle);
 
-                    // Create panel with LEDs
-                    const panelGroup = createPanelWithLEDs(specs, panelWidth, panelHeight, panelDepth, angle);
-                    panelGroup.position.set(x, y, z);
+                // Create column with all LEDs (rectangle: panelWidth × columnHeight)
+                const columnGroup = createColumnWithLEDs(specs, panelWidth, columnHeight, panelDepth, angle, numRows);
+                columnGroup.position.set(x, 0, z);
 
-                    arenaGroup.add(panelGroup);
-                }
+                arenaGroup.add(columnGroup);
             }
 
             // Update metrics
-            updateMetrics(specs, numCols, numRows, cRadius, arenaHeight);
+            updateMetrics(specs, numCols, numRows, cRadius, columnHeight);
         }
 
-        function createPanelWithLEDs(specs, width, height, depth, angle) {
+        function createColumnWithLEDs(specs, width, height, depth, angle, numRows) {
             const group = new THREE.Group();
 
-            // The group is positioned at (cRadius*cos(angle), y, cRadius*sin(angle))
-            // We need to rotate the entire group so the panel face points toward center (origin)
-            // The panel's local coordinates: X = along panel width (tangent), Y = up, Z = depth
-
-            // Rotate entire group to face center
-            // angle=0 means panel is at +X axis, needs to face -X (toward center)
-            // So we rotate by (angle + PI/2) to make the panel tangent face inward
+            // Rotate entire group so the column face points toward center
+            // angle=0 means column is at +X axis, needs to face -X (toward center)
             group.rotation.y = -angle - Math.PI / 2;
 
-            // Panel background (black) - thin box representing the panel PCB
-            // In local coords: width along X, height along Y, thin depth along Z
-            const panelGeom = new THREE.BoxGeometry(width, height, depth * 0.1);
-            const panelMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
-            const panel = new THREE.Mesh(panelGeom, panelMat);
-            // Panel sits at origin of group, no additional rotation needed
-            group.add(panel);
+            // Column background (black rectangle) - thin box
+            // width = panel width, height = total column height (panels stacked)
+            const columnGeom = new THREE.BoxGeometry(width, height, depth * 0.1);
+            const columnMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+            const column = new THREE.Mesh(columnGeom, columnMat);
+            group.add(column);
 
-            // Panel border lines (thin grey) on the inner face (+Z side, facing center)
+            // Column border (outer rectangle)
             const borderMat = new THREE.LineBasicMaterial({ color: 0x4a5568 });
             const halfW = width / 2;
             const halfH = height / 2;
-            const borderZ = depth * 0.06; // slightly in front of panel surface
+            const borderZ = depth * 0.06;
 
             const borderGeom = new THREE.BufferGeometry();
             const borderVertices = new Float32Array([
@@ -631,30 +622,42 @@
             const border = new THREE.LineSegments(borderGeom, borderMat);
             group.add(border);
 
-            // LED dots on the inner face of the panel
-            // LEDs are circles lying on the panel surface (in XY plane, at Z offset)
-            const ledRadius = Math.min(width, height) / (specs.pixels_horizontal * 3);
+            // Horizontal lines between panel rows (if multiple rows)
+            if (numRows > 1) {
+                const panelH = height / numRows;
+                for (let r = 1; r < numRows; r++) {
+                    const lineY = -halfH + r * panelH;
+                    const lineGeom = new THREE.BufferGeometry();
+                    const lineVerts = new Float32Array([
+                        -halfW, lineY, borderZ,
+                         halfW, lineY, borderZ
+                    ]);
+                    lineGeom.setAttribute('position', new THREE.BufferAttribute(lineVerts, 3));
+                    const line = new THREE.Line(lineGeom, borderMat);
+                    group.add(line);
+                }
+            }
+
+            // LED dots on the inner face
+            // Total pixels: horizontal per panel, vertical = pixels_vertical × numRows
+            const totalPixelsV = specs.pixels_vertical * numRows;
+            const ledRadius = Math.min(width, height / numRows) / (specs.pixels_horizontal * 3);
             const ledSpacingX = width / specs.pixels_horizontal;
-            const ledSpacingY = height / specs.pixels_vertical;
+            const ledSpacingY = height / totalPixelsV;
 
             const ledMat = new THREE.MeshBasicMaterial({ color: 0x00e676 });
 
-            for (let py = 0; py < specs.pixels_vertical; py++) {
+            for (let py = 0; py < totalPixelsV; py++) {
                 for (let px = 0; px < specs.pixels_horizontal; px++) {
                     const ledGeom = new THREE.CircleGeometry(ledRadius, 8);
                     const led = new THREE.Mesh(ledGeom, ledMat);
 
-                    // Position in panel's local XY plane
+                    // Position in column's local XY plane
                     const localX = (px - (specs.pixels_horizontal - 1) / 2) * ledSpacingX;
-                    const localY = (py - (specs.pixels_vertical - 1) / 2) * ledSpacingY;
-                    const localZ = depth * 0.06; // on inner face
+                    const localY = (py - (totalPixelsV - 1) / 2) * ledSpacingY;
+                    const localZ = depth * 0.06;
 
                     led.position.set(localX, localY, localZ);
-
-                    // CircleGeometry is in XY plane by default, facing +Z
-                    // That's exactly what we want - facing toward center
-                    // No rotation needed
-
                     group.add(led);
                 }
             }
