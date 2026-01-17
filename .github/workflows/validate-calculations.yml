@@ -1,0 +1,46 @@
+name: Validate Arena Calculations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'js/arena-calculations.js'
+      - 'arena_editor.html'
+      - 'data/reference_data.json'
+      - 'tests/**'
+      - '.github/workflows/validate-calculations.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'js/arena-calculations.js'
+      - 'arena_editor.html'
+      - 'data/reference_data.json'
+      - 'tests/**'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run validation tests
+        run: node tests/validate-arena-calculations.js
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Arena Calculation Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ $? -eq 0 ]; then
+            echo "✅ All calculations match MATLAB reference" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Some calculations differ from MATLAB reference" >> $GITHUB_STEP_SUMMARY
+          fi
