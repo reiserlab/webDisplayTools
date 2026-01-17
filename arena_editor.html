@@ -314,6 +314,12 @@
             background: rgba(0, 230, 118, 0.1);
         }
 
+        .export-btn.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
         /* Custom Panel Modal */
         .modal-overlay {
             display: none;
@@ -501,6 +507,7 @@
                 <button class="export-btn" id="view-3d">View in 3D</button>
                 <button class="export-btn secondary" id="export-pdf">Export PDF</button>
                 <button class="export-btn secondary" id="export-data">Export Data (JSON)</button>
+                <div style="font-size: 0.7rem; color: var(--text-dim); margin-top: 0.5rem; text-align: center; display: none;" id="custom-3d-warning">3D view not available for custom panels</div>
 
                 <div class="validation-status" id="validation-status"></div>
             </div>
@@ -1121,6 +1128,17 @@
             document.getElementById('active-panels').textContent = `${state.panelsInstalled.size} / ${state.numPanels}`;
             document.getElementById('title-info').textContent =
                 `${state.panelsInstalled.size} of ${state.numPanels} Panel (${state.panelType}) Arena Layout`;
+
+            // Disable 3D view button for custom panels
+            const view3dBtn = document.getElementById('view-3d');
+            const customWarning = document.getElementById('custom-3d-warning');
+            if (state.panelType === 'Custom') {
+                view3dBtn.classList.add('disabled');
+                customWarning.style.display = 'block';
+            } else {
+                view3dBtn.classList.remove('disabled');
+                customWarning.style.display = 'none';
+            }
         }
 
         function exportPDF() {

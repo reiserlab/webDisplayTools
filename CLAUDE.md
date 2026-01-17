@@ -84,10 +84,13 @@ state = {
 Format: `arena_{gen}_{cols}c{rows}r_{pattern}[_stats]_{timestamp}.png`
 Example: `arena_G6_12c3r_sine120_stats_2026-01-17T10-30-45.png`
 
-### URL Parameters (from Arena Editor)
-- `gen`: Panel generation (G3, G4, G4.1, G5, G6)
-- `cols`: Number of columns (panels around)
+### URL Parameters
+- `gen`: Panel generation (G3, G4, G4.1, G5, G6) - defaults to G6
+- `cols`: Number of columns (panels around) - defaults to 10
+- `rows`: Number of rows (panels vertically) - defaults to 3
 - `active`: Comma-separated 0-based indices of active panels (omitted if all active)
+
+When accessed from the Arena Layout Editor, all parameters are passed through. When accessed directly from the index page, defaults are used (G6, 10 columns, 3 rows, all active).
 
 ## TODO / Future Improvements
 

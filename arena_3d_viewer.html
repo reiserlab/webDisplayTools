@@ -443,7 +443,7 @@
 
     <!-- Controls Panel -->
     <div class="controls-panel">
-        <a href="#" class="nav-link" id="back-to-2d">← Back to 2D Editor</a>
+        <a href="#" class="nav-link" id="back-to-2d">← Back</a>
         <h1>Arena 3D Viewer</h1>
         <p class="subtitle">Configure cylindrical arena with LED panels</p>
 
@@ -658,7 +658,8 @@
             }, 50);
         }
 
-        // Parse URL parameters (from 2D editor)
+        // Parse URL parameters (from 2D editor or direct access)
+        // Defaults: G6, 10 columns, 3 rows, all panels active
         function parseUrlParams() {
             const params = new URLSearchParams(window.location.search);
             if (params.has('gen')) state.panelType = params.get('gen');
@@ -670,6 +671,10 @@
                 if (activeStr) {
                     state.activePanels = activeStr.split(',').map(n => parseInt(n));
                 }
+            }
+            // If no cols parameter (direct access from index), default to 10
+            if (!params.has('cols')) {
+                state.numCols = 10;
             }
         }
 
@@ -923,13 +928,23 @@
         }
 
         function setupEventListeners() {
-            // Back to 2D Editor with loading indicator
+            // Back navigation - detect if we came from 2D editor or index
             document.getElementById('back-to-2d').addEventListener('click', (e) => {
                 e.preventDefault();
-                showLoading('Loading 2D Editor...');
-                setTimeout(() => {
-                    window.location.href = 'arena_editor.html';
-                }, 100);
+                const params = new URLSearchParams(window.location.search);
+                // If we have URL params, we came from 2D editor
+                if (params.has('gen') || params.has('cols')) {
+                    showLoading('Loading 2D Editor...');
+                    setTimeout(() => {
+                        window.location.href = 'arena_editor.html';
+                    }, 100);
+                } else {
+                    // Direct access from index
+                    showLoading('Loading...');
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 100);
+                }
             });
 
             // Generation tabs (change panel type, but numCols comes from 2D editor)
@@ -1037,13 +1052,7 @@
                 controls.update();
             });
 
-            // View controls - view selector
-            document.getElementById('apply-view').addEventListener('click', () => {
-                const viewType = document.getElementById('view-select').value;
-                applyStandardView(viewType);
-            });
-
-            // Also allow double-click on select to apply immediately
+            // View controls - view selector (auto-apply on change)
             document.getElementById('view-select').addEventListener('change', () => {
                 const viewType = document.getElementById('view-select').value;
                 applyStandardView(viewType);
