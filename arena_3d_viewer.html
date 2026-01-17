@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arena 3D Viewer - PanelDisplayTools</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0f1419;
+            --surface: #1a1f26;
+            --border: #2d3640;
+            --text: #e6edf3;
+            --text-dim: #8b949e;
+            --accent: #00e676;
+            --hover: #00c853;
+        }
+
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        /* Controls Panel */
+        .controls-panel {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+            width: 280px;
+            z-index: 100;
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
+        }
+
+        .controls-panel h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.1rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .controls-panel .subtitle {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .control-group {
+            margin-bottom: 1rem;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-bottom: 0.3rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Generation Tabs */
+        .gen-tabs {
+            display: flex;
+            gap: 0.3rem;
+            flex-wrap: wrap;
+        }
+
+        .gen-tab {
+            padding: 0.4rem 0.7rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .gen-tab:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .gen-tab.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: var(--bg);
+            font-weight: 700;
+        }
+
+        /* Number Input */
+        .number-input {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .number-input button {
+            width: 32px;
+            height: 32px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .number-input button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .number-input input {
+            width: 50px;
+            height: 32px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        .number-input span {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            margin-left: 0.3rem;
+        }
+
+        /* Metrics */
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.4rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+        }
+
+        .metric:last-child { border-bottom: none; }
+        .metric .label { color: var(--text-dim); }
+        .metric .value {
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Buttons */
+        .btn {
+            width: 100%;
+            padding: 0.6rem;
+            background: var(--accent);
+            border: none;
+            border-radius: 6px;
+            color: var(--bg);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 0.5rem;
+        }
+
+        .btn:hover {
+            background: var(--hover);
+            transform: translateY(-1px);
+        }
+
+        .btn.secondary {
+            background: var(--surface);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+        }
+
+        .btn.secondary:hover {
+            background: rgba(0, 230, 118, 0.1);
+        }
+
+        /* 3D Canvas */
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Help Panel */
+        .help-panel {
+            position: fixed;
+            bottom: 1rem;
+            left: 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            z-index: 100;
+        }
+
+        .help-panel strong { color: var(--text); }
+
+        /* Navigation */
+        .nav-link {
+            display: inline-block;
+            color: var(--text-dim);
+            text-decoration: none;
+            margin-bottom: 0.75rem;
+            font-size: 0.8rem;
+            transition: color 0.2s;
+        }
+
+        .nav-link:hover { color: var(--accent); }
+
+        /* Info overlay */
+        .info-overlay {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            z-index: 100;
+            font-size: 0.8rem;
+        }
+
+        .info-overlay h3 {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent);
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .resolution-display {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--accent);
+            text-align: center;
+            padding: 0.5rem;
+            background: rgba(0, 230, 118, 0.1);
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <!-- Controls Panel -->
+    <div class="controls-panel">
+        <a href="arena_editor.html" class="nav-link">← Back to 2D Editor</a>
+        <h1>Arena 3D Viewer</h1>
+        <p class="subtitle">Configure cylindrical arena with LED panels</p>
+
+        <div class="control-group">
+            <label>Panel Generation</label>
+            <div class="gen-tabs">
+                <button class="gen-tab" data-gen="G3">G3</button>
+                <button class="gen-tab" data-gen="G4">G4</button>
+                <button class="gen-tab" data-gen="G4.1">G4.1</button>
+                <button class="gen-tab" data-gen="G5">G5</button>
+                <button class="gen-tab active" data-gen="G6">G6</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Panels Around (Columns)</label>
+            <div class="number-input">
+                <button id="cols-dec">−</button>
+                <input type="number" id="num-cols" value="12" min="4" max="36">
+                <button id="cols-inc">+</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Panel Rows (Height)</label>
+            <div class="number-input">
+                <button id="rows-dec">−</button>
+                <input type="number" id="num-rows" value="4" min="1" max="8">
+                <button id="rows-inc">+</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Arena Statistics</label>
+            <div class="metric">
+                <span class="label">Total Panels</span>
+                <span class="value" id="total-panels">48</span>
+            </div>
+            <div class="metric">
+                <span class="label">Inner Radius</span>
+                <span class="value" id="inner-radius">3.52 in</span>
+            </div>
+            <div class="metric">
+                <span class="label">Arena Height</span>
+                <span class="value" id="arena-height">7.15 in</span>
+            </div>
+            <div class="metric">
+                <span class="label">Total LEDs</span>
+                <span class="value" id="total-leds">19,200</span>
+            </div>
+        </div>
+
+        <button class="btn" id="reset-view">Reset Camera View</button>
+        <button class="btn secondary" id="toggle-rotation">Toggle Auto-Rotate</button>
+    </div>
+
+    <!-- Info Overlay -->
+    <div class="info-overlay">
+        <h3>Resolution</h3>
+        <div class="resolution-display" id="resolution-display">1.50°/px</div>
+        <div class="metric">
+            <span class="label">Azimuthal</span>
+            <span class="value" id="azimuth-pixels">240 px</span>
+        </div>
+        <div class="metric">
+            <span class="label">Vertical</span>
+            <span class="value" id="vertical-pixels">80 px</span>
+        </div>
+    </div>
+
+    <!-- Help Panel -->
+    <div class="help-panel">
+        <strong>Controls:</strong> Drag to rotate | Scroll to zoom | Right-drag to pan
+    </div>
+
+    <script>
+        // Panel specifications (same as arena_editor.html)
+        const PANEL_SPECS = {
+            'G3': {
+                panel_width_mm: 32,
+                panel_height_mm: 32,
+                panel_depth_mm: 18,
+                pixels_horizontal: 8,
+                pixels_vertical: 8
+            },
+            'G4': {
+                panel_width_mm: 40.45,
+                panel_height_mm: 40.45,
+                panel_depth_mm: 18,
+                pixels_horizontal: 16,
+                pixels_vertical: 16
+            },
+            'G4.1': {
+                panel_width_mm: 40,
+                panel_height_mm: 40,
+                panel_depth_mm: 6.35,
+                pixels_horizontal: 16,
+                pixels_vertical: 16
+            },
+            'G5': {
+                panel_width_mm: 40,
+                panel_height_mm: 40,
+                panel_depth_mm: 6.35,
+                pixels_horizontal: 20,
+                pixels_vertical: 20
+            },
+            'G6': {
+                panel_width_mm: 45.4,
+                panel_height_mm: 45.4,
+                panel_depth_mm: 3.45,
+                pixels_horizontal: 20,
+                pixels_vertical: 20
+            }
+        };
+
+        // State
+        let state = {
+            panelType: 'G6',
+            numCols: 12,  // panels around
+            numRows: 4    // panels vertically
+        };
+
+        // Three.js objects
+        let scene, camera, renderer, controls;
+        let arenaGroup;
+        let autoRotate = false;
+
+        // Initialize
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f1419);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(
+                60,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            camera.position.set(0, 5, 12);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 3;
+            controls.maxDistance = 50;
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.3);
+            directionalLight.position.set(5, 10, 5);
+            scene.add(directionalLight);
+
+            // Grid helper (floor reference)
+            const gridHelper = new THREE.GridHelper(20, 20, 0x2d3640, 0x1a1f26);
+            gridHelper.position.y = -5;
+            scene.add(gridHelper);
+
+            // Arena group
+            arenaGroup = new THREE.Group();
+            scene.add(arenaGroup);
+
+            // Build initial arena
+            buildArena();
+
+            // Event listeners
+            setupEventListeners();
+
+            // Start animation
+            animate();
+        }
+
+        function setupEventListeners() {
+            // Generation tabs
+            document.querySelectorAll('.gen-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.gen-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    state.panelType = tab.dataset.gen;
+                    buildArena();
+                });
+            });
+
+            // Column controls
+            const numColsInput = document.getElementById('num-cols');
+            document.getElementById('cols-dec').addEventListener('click', () => {
+                if (state.numCols > 4) {
+                    state.numCols--;
+                    numColsInput.value = state.numCols;
+                    buildArena();
+                }
+            });
+            document.getElementById('cols-inc').addEventListener('click', () => {
+                if (state.numCols < 36) {
+                    state.numCols++;
+                    numColsInput.value = state.numCols;
+                    buildArena();
+                }
+            });
+            numColsInput.addEventListener('change', () => {
+                const val = parseInt(numColsInput.value);
+                if (val >= 4 && val <= 36) {
+                    state.numCols = val;
+                    buildArena();
+                } else {
+                    numColsInput.value = state.numCols;
+                }
+            });
+
+            // Row controls
+            const numRowsInput = document.getElementById('num-rows');
+            document.getElementById('rows-dec').addEventListener('click', () => {
+                if (state.numRows > 1) {
+                    state.numRows--;
+                    numRowsInput.value = state.numRows;
+                    buildArena();
+                }
+            });
+            document.getElementById('rows-inc').addEventListener('click', () => {
+                if (state.numRows < 8) {
+                    state.numRows++;
+                    numRowsInput.value = state.numRows;
+                    buildArena();
+                }
+            });
+            numRowsInput.addEventListener('change', () => {
+                const val = parseInt(numRowsInput.value);
+                if (val >= 1 && val <= 8) {
+                    state.numRows = val;
+                    buildArena();
+                } else {
+                    numRowsInput.value = state.numRows;
+                }
+            });
+
+            // Camera reset
+            document.getElementById('reset-view').addEventListener('click', () => {
+                camera.position.set(0, 5, 12);
+                controls.target.set(0, 0, 0);
+                controls.update();
+            });
+
+            // Auto-rotate toggle
+            document.getElementById('toggle-rotation').addEventListener('click', () => {
+                autoRotate = !autoRotate;
+                controls.autoRotate = autoRotate;
+            });
+
+            // Window resize
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function buildArena() {
+            // Clear existing arena
+            while (arenaGroup.children.length > 0) {
+                const child = arenaGroup.children[0];
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(m => m.dispose());
+                    } else {
+                        child.material.dispose();
+                    }
+                }
+                arenaGroup.remove(child);
+            }
+
+            const specs = PANEL_SPECS[state.panelType];
+            const numCols = state.numCols;
+            const numRows = state.numRows;
+
+            // Convert mm to inches (working units)
+            const panelWidth = specs.panel_width_mm / 25.4;
+            const panelHeight = specs.panel_height_mm / 25.4;
+            const panelDepth = specs.panel_depth_mm / 25.4;
+
+            // Calculate radius
+            const alpha = (2 * Math.PI) / numCols;
+            const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+
+            // Total arena height
+            const arenaHeight = panelHeight * numRows;
+
+            // Create panels
+            for (let row = 0; row < numRows; row++) {
+                for (let col = 0; col < numCols; col++) {
+                    const angle = col * alpha;
+
+                    // Panel position (center of panel front face)
+                    const x = cRadius * Math.cos(angle);
+                    const z = cRadius * Math.sin(angle);
+                    const y = (row - (numRows - 1) / 2) * panelHeight;
+
+                    // Create panel with LEDs
+                    const panelGroup = createPanelWithLEDs(specs, panelWidth, panelHeight, panelDepth, angle);
+                    panelGroup.position.set(x, y, z);
+
+                    arenaGroup.add(panelGroup);
+                }
+            }
+
+            // Update metrics
+            updateMetrics(specs, numCols, numRows, cRadius, arenaHeight);
+        }
+
+        function createPanelWithLEDs(specs, width, height, depth, angle) {
+            const group = new THREE.Group();
+
+            // Panel background (black)
+            const panelGeom = new THREE.BoxGeometry(width, height, depth * 0.1);
+            const panelMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+            const panel = new THREE.Mesh(panelGeom, panelMat);
+            panel.rotation.y = -angle + Math.PI / 2;
+            group.add(panel);
+
+            // LED dots
+            const ledRadius = Math.min(width, height) / (specs.pixels_horizontal * 3);
+            const ledSpacingX = width / specs.pixels_horizontal;
+            const ledSpacingY = height / specs.pixels_vertical;
+
+            // LED material (emissive green)
+            const ledMat = new THREE.MeshBasicMaterial({ color: 0x00e676 });
+
+            for (let py = 0; py < specs.pixels_vertical; py++) {
+                for (let px = 0; px < specs.pixels_horizontal; px++) {
+                    const ledGeom = new THREE.CircleGeometry(ledRadius, 8);
+                    const led = new THREE.Mesh(ledGeom, ledMat);
+
+                    // Position LED on panel face
+                    const localX = (px - (specs.pixels_horizontal - 1) / 2) * ledSpacingX;
+                    const localY = (py - (specs.pixels_vertical - 1) / 2) * ledSpacingY;
+
+                    // Rotate and offset to face inward
+                    const offsetDist = depth * 0.06;
+                    led.position.set(
+                        -Math.sin(angle) * offsetDist + localX * Math.cos(angle),
+                        localY,
+                        Math.cos(angle) * offsetDist + localX * Math.sin(angle)
+                    );
+                    led.rotation.y = -angle + Math.PI / 2;
+
+                    group.add(led);
+                }
+            }
+
+            return group;
+        }
+
+        function updateMetrics(specs, numCols, numRows, cRadius, arenaHeight) {
+            const totalPanels = numCols * numRows;
+            const totalLEDs = totalPanels * specs.pixels_horizontal * specs.pixels_vertical;
+            const degsPerPixel = 360 / (numCols * specs.pixels_horizontal);
+            const azimuthPixels = numCols * specs.pixels_horizontal;
+            const verticalPixels = numRows * specs.pixels_vertical;
+
+            document.getElementById('total-panels').textContent = totalPanels;
+            document.getElementById('inner-radius').textContent = cRadius.toFixed(2) + ' in';
+            document.getElementById('arena-height').textContent = arenaHeight.toFixed(2) + ' in';
+            document.getElementById('total-leds').textContent = totalLEDs.toLocaleString();
+            document.getElementById('resolution-display').textContent = degsPerPixel.toFixed(2) + '°/px';
+            document.getElementById('azimuth-pixels').textContent = azimuthPixels + ' px';
+            document.getElementById('vertical-pixels').textContent = verticalPixels + ' px';
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+</html>
