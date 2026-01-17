@@ -278,19 +278,10 @@
         </div>
 
         <div class="control-group">
-            <label>Panels Around (Columns)</label>
-            <div class="number-input">
-                <button id="cols-dec">−</button>
-                <input type="number" id="num-cols" value="12" min="4" max="36">
-                <button id="cols-inc">+</button>
-            </div>
-        </div>
-
-        <div class="control-group">
             <label>Panel Rows (Height)</label>
             <div class="number-input">
                 <button id="rows-dec">−</button>
-                <input type="number" id="num-rows" value="4" min="1" max="8">
+                <input type="number" id="num-rows" value="3" min="1" max="8">
                 <button id="rows-inc">+</button>
             </div>
         </div>
@@ -298,8 +289,12 @@
         <div class="control-group">
             <label>Arena Statistics</label>
             <div class="metric">
+                <span class="label">Columns</span>
+                <span class="value" id="num-cols-display">12</span>
+            </div>
+            <div class="metric">
                 <span class="label">Total Panels</span>
-                <span class="value" id="total-panels">48</span>
+                <span class="value" id="total-panels">36</span>
             </div>
             <div class="metric">
                 <span class="label">Inner Radius</span>
@@ -307,22 +302,41 @@
             </div>
             <div class="metric">
                 <span class="label">Arena Height</span>
-                <span class="value" id="arena-height">7.15 in</span>
+                <span class="value" id="arena-height">5.36 in</span>
             </div>
             <div class="metric">
                 <span class="label">Total LEDs</span>
-                <span class="value" id="total-leds">19,200</span>
+                <span class="value" id="total-leds">14,400</span>
             </div>
         </div>
 
-        <button class="btn" id="reset-view">Reset Camera View</button>
+        <div class="control-group" style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 0.5rem;">
+            <label>Pattern</label>
+            <button class="btn" id="pattern-all-on" style="margin-top: 0.3rem;">All On</button>
+            <div class="number-input" style="margin-top: 0.5rem;">
+                <span style="font-size: 0.75rem; color: var(--text-dim); min-width: 50px;">Grating</span>
+                <button id="grating-dec">−</button>
+                <input type="number" id="grating-cols" value="2" min="1" max="20" style="width: 40px;">
+                <button id="grating-inc">+</button>
+                <span style="font-size: 0.7rem; color: var(--text-dim);">cols</span>
+            </div>
+            <div class="number-input" style="margin-top: 0.5rem;">
+                <span style="font-size: 0.75rem; color: var(--text-dim); min-width: 50px;">Sine</span>
+                <button id="sine-dec">−</button>
+                <input type="number" id="sine-wavelength" value="4" min="2" max="40" style="width: 40px;">
+                <button id="sine-inc">+</button>
+                <span style="font-size: 0.7rem; color: var(--text-dim);">λ cols</span>
+            </div>
+        </div>
+
+        <button class="btn" id="reset-view" style="margin-top: 1rem;">Reset Camera View</button>
         <button class="btn" id="fly-view">Fly View (From Center)</button>
         <button class="btn secondary" id="toggle-rotation">Toggle Auto-Rotate</button>
     </div>
 
     <!-- Info Overlay -->
     <div class="info-overlay">
-        <h3>Angular Resolution</h3>
+        <h3>Avg Angular Resolution</h3>
         <div class="metric">
             <span class="label">Azimuth</span>
             <span class="value" id="azimuth-res">1.50°/px</span>
@@ -389,10 +403,16 @@
         // State
         let state = {
             panelType: 'G6',
-            numCols: 12,  // panels around
+            numCols: 12,  // panels around (from 2D editor, not editable here)
             numRows: 3,   // panels vertically (default 3)
-            activePanels: null  // array of active column indices, null = all active
+            activePanels: null,  // array of active column indices, null = all active
+            pattern: 'allOn',    // 'allOn', 'grating', 'sine'
+            gratingCols: 2,      // columns on/off for grating
+            sineWavelength: 4    // wavelength in columns for sine
         };
+
+        // 16 grayscale levels (matching panel pattern editor)
+        const GRAYSCALE_LEVELS = 16;
 
         // Parse URL parameters (from 2D editor)
         function parseUrlParams() {
@@ -484,9 +504,10 @@
             const activeTab = document.querySelector(`.gen-tab[data-gen="${state.panelType}"]`);
             if (activeTab) activeTab.classList.add('active');
 
-            // Update number inputs
-            document.getElementById('num-cols').value = state.numCols;
+            // Update number inputs (rows only, cols is read-only from 2D editor)
             document.getElementById('num-rows').value = state.numRows;
+            document.getElementById('grating-cols').value = state.gratingCols;
+            document.getElementById('sine-wavelength').value = state.sineWavelength;
         }
 
         function setTopDownView() {
@@ -504,7 +525,7 @@
         }
 
         function setupEventListeners() {
-            // Generation tabs
+            // Generation tabs (change panel type, but numCols comes from 2D editor)
             document.querySelectorAll('.gen-tab').forEach(tab => {
                 tab.addEventListener('click', () => {
                     document.querySelectorAll('.gen-tab').forEach(t => t.classList.remove('active'));
@@ -514,33 +535,7 @@
                 });
             });
 
-            // Column controls
-            const numColsInput = document.getElementById('num-cols');
-            document.getElementById('cols-dec').addEventListener('click', () => {
-                if (state.numCols > 4) {
-                    state.numCols--;
-                    numColsInput.value = state.numCols;
-                    buildArena();
-                }
-            });
-            document.getElementById('cols-inc').addEventListener('click', () => {
-                if (state.numCols < 36) {
-                    state.numCols++;
-                    numColsInput.value = state.numCols;
-                    buildArena();
-                }
-            });
-            numColsInput.addEventListener('change', () => {
-                const val = parseInt(numColsInput.value);
-                if (val >= 4 && val <= 36) {
-                    state.numCols = val;
-                    buildArena();
-                } else {
-                    numColsInput.value = state.numCols;
-                }
-            });
-
-            // Row controls
+            // Row controls (columns are fixed from 2D editor)
             const numRowsInput = document.getElementById('num-rows');
             document.getElementById('rows-dec').addEventListener('click', () => {
                 if (state.numRows > 1) {
@@ -563,6 +558,70 @@
                     buildArena();
                 } else {
                     numRowsInput.value = state.numRows;
+                }
+            });
+
+            // Pattern controls
+            document.getElementById('pattern-all-on').addEventListener('click', () => {
+                state.pattern = 'allOn';
+                buildArena();
+            });
+
+            // Grating controls
+            const gratingInput = document.getElementById('grating-cols');
+            document.getElementById('grating-dec').addEventListener('click', () => {
+                if (state.gratingCols > 1) {
+                    state.gratingCols--;
+                    gratingInput.value = state.gratingCols;
+                    state.pattern = 'grating';
+                    buildArena();
+                }
+            });
+            document.getElementById('grating-inc').addEventListener('click', () => {
+                if (state.gratingCols < 20) {
+                    state.gratingCols++;
+                    gratingInput.value = state.gratingCols;
+                    state.pattern = 'grating';
+                    buildArena();
+                }
+            });
+            gratingInput.addEventListener('change', () => {
+                const val = parseInt(gratingInput.value);
+                if (val >= 1 && val <= 20) {
+                    state.gratingCols = val;
+                    state.pattern = 'grating';
+                    buildArena();
+                } else {
+                    gratingInput.value = state.gratingCols;
+                }
+            });
+
+            // Sine wave controls
+            const sineInput = document.getElementById('sine-wavelength');
+            document.getElementById('sine-dec').addEventListener('click', () => {
+                if (state.sineWavelength > 2) {
+                    state.sineWavelength--;
+                    sineInput.value = state.sineWavelength;
+                    state.pattern = 'sine';
+                    buildArena();
+                }
+            });
+            document.getElementById('sine-inc').addEventListener('click', () => {
+                if (state.sineWavelength < 40) {
+                    state.sineWavelength++;
+                    sineInput.value = state.sineWavelength;
+                    state.pattern = 'sine';
+                    buildArena();
+                }
+            });
+            sineInput.addEventListener('change', () => {
+                const val = parseInt(sineInput.value);
+                if (val >= 2 && val <= 40) {
+                    state.sineWavelength = val;
+                    state.pattern = 'sine';
+                    buildArena();
+                } else {
+                    sineInput.value = state.sineWavelength;
                 }
             });
 
@@ -640,7 +699,8 @@
                 const z = cRadius * Math.sin(angle);
 
                 // Create column with all LEDs (rectangle: panelWidth × columnHeight)
-                const columnGroup = createColumnWithLEDs(specs, panelWidth, columnHeight, panelDepth, angle, numRows);
+                // Pass column index for pattern calculation
+                const columnGroup = createColumnWithLEDs(specs, panelWidth, columnHeight, panelDepth, angle, numRows, col, numCols);
                 columnGroup.position.set(x, 0, z);
 
                 arenaGroup.add(columnGroup);
@@ -650,7 +710,32 @@
             updateMetrics(specs, numCols, numRows, cRadius, columnHeight);
         }
 
-        function createColumnWithLEDs(specs, width, height, depth, angle, numRows) {
+        // Calculate LED brightness based on pattern
+        function getLEDBrightness(px, py, colIndex, numCols, totalPixelsH) {
+            // Global pixel X position across the entire arena
+            const globalPixelX = colIndex * totalPixelsH + px;
+            const totalAzimuthPixels = numCols * totalPixelsH;
+
+            if (state.pattern === 'allOn') {
+                return 1.0; // Full brightness
+            } else if (state.pattern === 'grating') {
+                // Square wave grating: gratingCols pixels on, gratingCols pixels off
+                const period = state.gratingCols * 2;
+                const phase = globalPixelX % period;
+                return phase < state.gratingCols ? 1.0 : 0.0;
+            } else if (state.pattern === 'sine') {
+                // Sine wave: wavelength in columns (convert to pixels)
+                const wavelengthPixels = state.sineWavelength * totalPixelsH;
+                const phase = (globalPixelX / wavelengthPixels) * 2 * Math.PI;
+                // Map sine [-1, 1] to [0, 1], then quantize to 16 levels
+                const normalized = (Math.sin(phase) + 1) / 2;
+                const quantized = Math.floor(normalized * (GRAYSCALE_LEVELS - 1)) / (GRAYSCALE_LEVELS - 1);
+                return quantized;
+            }
+            return 1.0;
+        }
+
+        function createColumnWithLEDs(specs, width, height, depth, angle, numRows, colIndex, numCols) {
             const group = new THREE.Group();
 
             // Rotate entire group so the column face points toward center
@@ -718,11 +803,19 @@
             const ledSpacingY = height / totalPixelsV;
             const ledRadius = Math.min(ledSpacingX, ledSpacingY) * 0.35; // LED size relative to spacing
 
-            const ledMat = new THREE.MeshBasicMaterial({ color: 0x00e676 });
-
             for (let py = 0; py < totalPixelsV; py++) {
                 for (let px = 0; px < totalPixelsH; px++) {
+                    // Calculate brightness based on pattern
+                    const brightness = getLEDBrightness(px, py, colIndex, numCols, totalPixelsH);
+
+                    // Skip LEDs that are off (brightness = 0)
+                    if (brightness === 0) continue;
+
+                    // Create LED with brightness-adjusted color
                     const ledGeom = new THREE.CircleGeometry(ledRadius, 8);
+                    const green = Math.floor(0xe6 * brightness);
+                    const ledColor = (green << 8); // Green channel only
+                    const ledMat = new THREE.MeshBasicMaterial({ color: ledColor });
                     const led = new THREE.Mesh(ledGeom, ledMat);
 
                     // Position: start at -halfW + halfSpacing, then increment by spacing
@@ -761,6 +854,7 @@
             const azimuthPixels = numCols * specs.pixels_horizontal;
             const verticalPixels = numRows * specs.pixels_vertical;
 
+            document.getElementById('num-cols-display').textContent = activeCount;
             document.getElementById('total-panels').textContent = totalPanels;
             document.getElementById('inner-radius').textContent = cRadius.toFixed(2) + ' in';
             document.getElementById('arena-height').textContent = arenaHeight.toFixed(2) + ' in';

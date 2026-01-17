@@ -46,3 +46,16 @@ Standard panel generations:
 - G6: 45.4mm width, 20x20 pixels
 
 Arena radius formula: `cRadius = panelWidth / (tan(alpha/2)) / 2` where `alpha = 2*PI/numPanels`
+
+## TODO / Future Improvements
+
+### Angular Resolution Display
+The current 3D viewer shows "average" angular resolution, which is simply total field of view divided by number of pixels. This is not accurate because each pixel subtends a different angle depending on its position.
+
+A proper implementation should:
+- Calculate per-pixel angular resolution
+- Show a histogram of resolution values
+- Display min, max, and median resolution
+- Consider both azimuth (constant) and vertical (varies with elevation) components
+
+The azimuth resolution is constant (360° / total_azimuth_pixels), but vertical resolution varies based on viewing angle from center - pixels near the vertical center subtend smaller angles than those at the top/bottom edges.
