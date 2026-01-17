@@ -593,48 +593,50 @@
         function createPanelWithLEDs(specs, width, height, depth, angle) {
             const group = new THREE.Group();
 
-            // Panel is positioned at radius, facing inward (toward center)
-            // The panel's local +Z axis should point toward center (inward)
+            // The group is positioned at (cRadius*cos(angle), y, cRadius*sin(angle))
+            // We need to rotate the entire group so the panel face points toward center (origin)
+            // The panel's local coordinates: X = along panel width (tangent), Y = up, Z = depth
+
+            // Rotate entire group to face center
+            // angle=0 means panel is at +X axis, needs to face -X (toward center)
+            // So we rotate by (angle + PI/2) to make the panel tangent face inward
+            group.rotation.y = -angle - Math.PI / 2;
 
             // Panel background (black) - thin box representing the panel PCB
+            // In local coords: width along X, height along Y, thin depth along Z
             const panelGeom = new THREE.BoxGeometry(width, height, depth * 0.1);
             const panelMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
             const panel = new THREE.Mesh(panelGeom, panelMat);
-            // Rotate panel so its front face points toward center
-            // Panel is at angle, needs to face inward (toward origin)
-            panel.rotation.y = angle + Math.PI;
+            // Panel sits at origin of group, no additional rotation needed
             group.add(panel);
 
-            // Panel border lines (thin grey)
+            // Panel border lines (thin grey) on the inner face (+Z side, facing center)
             const borderMat = new THREE.LineBasicMaterial({ color: 0x4a5568 });
             const halfW = width / 2;
             const halfH = height / 2;
-            const borderOffset = depth * 0.06; // slightly in front of panel
+            const borderZ = depth * 0.06; // slightly in front of panel surface
 
-            // Create border as line segments on the inner face
             const borderGeom = new THREE.BufferGeometry();
             const borderVertices = new Float32Array([
-                // Rectangle on the panel face (in local coords before rotation)
-                -halfW, -halfH, borderOffset,
-                 halfW, -halfH, borderOffset,
-                 halfW, -halfH, borderOffset,
-                 halfW,  halfH, borderOffset,
-                 halfW,  halfH, borderOffset,
-                -halfW,  halfH, borderOffset,
-                -halfW,  halfH, borderOffset,
-                -halfW, -halfH, borderOffset
+                -halfW, -halfH, borderZ,
+                 halfW, -halfH, borderZ,
+                 halfW, -halfH, borderZ,
+                 halfW,  halfH, borderZ,
+                 halfW,  halfH, borderZ,
+                -halfW,  halfH, borderZ,
+                -halfW,  halfH, borderZ,
+                -halfW, -halfH, borderZ
             ]);
             borderGeom.setAttribute('position', new THREE.BufferAttribute(borderVertices, 3));
             const border = new THREE.LineSegments(borderGeom, borderMat);
-            border.rotation.y = angle + Math.PI;
             group.add(border);
 
-            // LED dots - positioned on the inner face of the panel
+            // LED dots on the inner face of the panel
+            // LEDs are circles lying on the panel surface (in XY plane, at Z offset)
             const ledRadius = Math.min(width, height) / (specs.pixels_horizontal * 3);
             const ledSpacingX = width / specs.pixels_horizontal;
             const ledSpacingY = height / specs.pixels_vertical;
 
-            // LED material (emissive green)
             const ledMat = new THREE.MeshBasicMaterial({ color: 0x00e676 });
 
             for (let py = 0; py < specs.pixels_vertical; py++) {
@@ -642,16 +644,16 @@
                     const ledGeom = new THREE.CircleGeometry(ledRadius, 8);
                     const led = new THREE.Mesh(ledGeom, ledMat);
 
-                    // LED position in panel's local coordinate space
-                    // Center the grid of LEDs, offset slightly toward center (inner face)
+                    // Position in panel's local XY plane
                     const localX = (px - (specs.pixels_horizontal - 1) / 2) * ledSpacingX;
                     const localY = (py - (specs.pixels_vertical - 1) / 2) * ledSpacingY;
-                    const localZ = depth * 0.06; // small offset toward center
+                    const localZ = depth * 0.06; // on inner face
 
                     led.position.set(localX, localY, localZ);
 
-                    // LED circle faces inward (toward center) - same as panel rotation
-                    led.rotation.y = angle + Math.PI;
+                    // CircleGeometry is in XY plane by default, facing +Z
+                    // That's exactly what we want - facing toward center
+                    // No rotation needed
 
                     group.add(led);
                 }
