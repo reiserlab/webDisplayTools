@@ -255,6 +255,122 @@
             border-radius: 4px;
             margin-bottom: 0.5rem;
         }
+
+        /* Pattern Radio Buttons */
+        .pattern-radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        .pattern-radio {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .pattern-radio:hover {
+            border-color: var(--accent);
+        }
+
+        .pattern-radio.active {
+            border-color: var(--accent);
+            background: rgba(0, 230, 118, 0.1);
+        }
+
+        .pattern-radio input[type="radio"] {
+            display: none;
+        }
+
+        .pattern-radio .radio-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .pattern-radio.active .radio-label {
+            color: var(--accent);
+        }
+
+        .pattern-radio .pattern-value {
+            margin-left: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+
+        .pattern-radio.active .pattern-value {
+            color: var(--accent);
+        }
+
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(15, 20, 25, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .loading-overlay.visible {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            color: var(--accent);
+        }
+
+        /* Disabled button state */
+        .btn.disabled, .gen-tab.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        /* Screenshot buttons */
+        .screenshot-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .screenshot-group .btn {
+            flex: 1;
+            font-size: 0.7rem;
+            padding: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -262,7 +378,7 @@
 
     <!-- Controls Panel -->
     <div class="controls-panel">
-        <a href="arena_editor.html" class="nav-link">← Back to 2D Editor</a>
+        <a href="#" class="nav-link" id="back-to-2d">← Back to 2D Editor</a>
         <h1>Arena 3D Viewer</h1>
         <p class="subtitle">Configure cylindrical arena with LED panels</p>
 
@@ -312,26 +428,52 @@
 
         <div class="control-group" style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 0.5rem;">
             <label>Pattern</label>
-            <button class="btn" id="pattern-all-on" style="margin-top: 0.3rem;">All On</button>
-            <div class="number-input" style="margin-top: 0.5rem;">
-                <span style="font-size: 0.75rem; color: var(--text-dim); min-width: 50px;">Grating</span>
-                <button id="grating-dec">−</button>
-                <input type="number" id="grating-cols" value="2" min="1" max="20" style="width: 40px;">
-                <button id="grating-inc">+</button>
-                <span style="font-size: 0.7rem; color: var(--text-dim);">cols</span>
+            <div class="pattern-radio-group" style="margin-top: 0.5rem;">
+                <label class="pattern-radio active" id="pattern-allon-label">
+                    <input type="radio" name="pattern" value="allOn" checked>
+                    <span class="radio-label">All On</span>
+                </label>
+                <label class="pattern-radio" id="pattern-grating-label">
+                    <input type="radio" name="pattern" value="grating">
+                    <span class="radio-label">Grating</span>
+                    <span class="pattern-value" id="grating-value-display">20 px</span>
+                </label>
+                <label class="pattern-radio" id="pattern-sine-label">
+                    <input type="radio" name="pattern" value="sine">
+                    <span class="radio-label">Sine</span>
+                    <span class="pattern-value" id="sine-value-display">λ = 120 px</span>
+                </label>
             </div>
-            <div class="number-input" style="margin-top: 0.5rem;">
-                <span style="font-size: 0.75rem; color: var(--text-dim); min-width: 50px;">Sine</span>
-                <button id="sine-dec">−</button>
-                <input type="number" id="sine-wavelength" value="4" min="2" max="40" style="width: 40px;">
-                <button id="sine-inc">+</button>
-                <span style="font-size: 0.7rem; color: var(--text-dim);">λ cols</span>
+            <div id="grating-controls" class="pattern-controls" style="display: none; margin-top: 0.5rem;">
+                <label style="font-size: 0.7rem; color: var(--text-dim);">Grating Width (pixels on/off)</label>
+                <select id="grating-select" style="width: 100%; margin-top: 0.3rem; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
+                </select>
+            </div>
+            <div id="sine-controls" class="pattern-controls" style="display: none; margin-top: 0.5rem;">
+                <label style="font-size: 0.7rem; color: var(--text-dim);">Sine Wavelength (pixels)</label>
+                <select id="sine-select" style="width: 100%; margin-top: 0.3rem; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
+                </select>
             </div>
         </div>
 
-        <button class="btn" id="reset-view" style="margin-top: 1rem;">Reset Camera View</button>
+        <button class="btn disabled" id="load-pattern" style="margin-top: 1rem;" title="Coming Soon">Load Pattern (Coming Soon)</button>
+        <button class="btn" id="reset-view">Reset Camera View</button>
         <button class="btn" id="fly-view">Fly View (From Center)</button>
-        <button class="btn secondary" id="toggle-rotation">Toggle Auto-Rotate</button>
+        <button class="btn secondary" id="toggle-rotation">Rotate Pattern</button>
+
+        <div class="control-group" style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem;">
+            <label>Export</label>
+            <div class="screenshot-group">
+                <button class="btn secondary" id="screenshot-arena">Arena Only</button>
+                <button class="btn secondary" id="screenshot-full">With Stats</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loading-text">Updating...</div>
     </div>
 
     <!-- Info Overlay -->
@@ -407,12 +549,33 @@
             numRows: 3,   // panels vertically (default 3)
             activePanels: null,  // array of active column indices, null = all active
             pattern: 'allOn',    // 'allOn', 'grating', 'sine'
-            gratingCols: 2,      // columns on/off for grating
-            sineWavelength: 4    // wavelength in columns for sine
+            gratingPixels: 20,   // pixels on/off for grating (integer divisor of total)
+            sineWavelength: 120, // wavelength in pixels for sine (integer divisor of total)
+            phaseOffset: 0       // current phase offset in pixels for auto-rotate
         };
 
         // 16 grayscale levels (matching panel pattern editor)
         const GRAYSCALE_LEVELS = 16;
+
+        // Loading indicator functions
+        function showLoading(message = 'Updating...') {
+            document.getElementById('loading-text').textContent = message;
+            document.getElementById('loading-overlay').classList.add('visible');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading-overlay').classList.remove('visible');
+        }
+
+        // Wrap buildArena with loading indicator
+        function buildArenaWithLoading() {
+            showLoading('Building arena...');
+            // Use setTimeout to allow the loading overlay to render before heavy computation
+            setTimeout(() => {
+                buildArena();
+                hideLoading();
+            }, 50);
+        }
 
         // Parse URL parameters (from 2D editor)
         function parseUrlParams() {
@@ -434,6 +597,9 @@
         let arenaGroup;
         let autoRotate = false;
 
+        // LED mesh references for efficient animation (update colors without rebuilding)
+        let ledMeshes = []; // Array of {mesh, colIndex, px, py} for updating brightness
+
         // Initialize
         function init() {
             const container = document.getElementById('canvas-container');
@@ -451,8 +617,8 @@
             );
             // Will be positioned after arena is built to fit the view
 
-            // Renderer
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            // Renderer (preserveDrawingBuffer needed for screenshots)
+            renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             container.appendChild(renderer.domElement);
@@ -483,6 +649,7 @@
 
             // Parse URL params and update UI
             parseUrlParams();
+            populatePatternSelects(); // Populate dropdowns with valid divisors
             updateUIFromState();
 
             // Build initial arena
@@ -506,8 +673,108 @@
 
             // Update number inputs (rows only, cols is read-only from 2D editor)
             document.getElementById('num-rows').value = state.numRows;
-            document.getElementById('grating-cols').value = state.gratingCols;
-            document.getElementById('sine-wavelength').value = state.sineWavelength;
+
+            // Update pattern radio selection
+            updatePatternUI();
+        }
+
+        // Get integer divisors of a number
+        function getIntegerDivisors(n) {
+            const divisors = [];
+            for (let i = 1; i <= n; i++) {
+                if (n % i === 0) {
+                    divisors.push(i);
+                }
+            }
+            return divisors;
+        }
+
+        // Get total azimuth pixels
+        function getTotalAzimuthPixels() {
+            const specs = PANEL_SPECS[state.panelType];
+            return state.numCols * specs.pixels_horizontal;
+        }
+
+        // Populate grating and sine select dropdowns with valid divisors
+        function populatePatternSelects() {
+            const totalPixels = getTotalAzimuthPixels();
+            const divisors = getIntegerDivisors(totalPixels);
+
+            // Populate grating select (grating width = pixels on = pixels off)
+            // Valid values: divisors that make sense for gratings (not too large)
+            const gratingSelect = document.getElementById('grating-select');
+            gratingSelect.innerHTML = '';
+            // For grating, the period is 2x the width, so we want divisors where period divides total
+            // Period = 2 * gratingWidth, so gratingWidth can be any divisor/2 where divisor is even
+            // Or simpler: any value where totalPixels % (2*value) === 0
+            const validGratings = divisors.filter(d => d <= totalPixels / 2 && totalPixels % (2 * d) === 0);
+            validGratings.forEach(d => {
+                const option = document.createElement('option');
+                option.value = d;
+                const numBars = totalPixels / (2 * d);
+                option.textContent = `${d} px (${numBars} cycles)`;
+                if (d === state.gratingPixels) option.selected = true;
+                gratingSelect.appendChild(option);
+            });
+
+            // If current value not in list, select closest valid one
+            if (!validGratings.includes(state.gratingPixels)) {
+                state.gratingPixels = validGratings.length > 0 ? validGratings[Math.floor(validGratings.length / 2)] : 1;
+                gratingSelect.value = state.gratingPixels;
+            }
+
+            // Populate sine select (wavelength in pixels)
+            const sineSelect = document.getElementById('sine-select');
+            sineSelect.innerHTML = '';
+            // For sine, wavelength should divide total pixels evenly
+            // Use divisors that are at least 2 pixels (need 2+ pixels per wavelength for a sine)
+            const validSines = divisors.filter(d => d >= 4); // need at least 4 pixels for visible sine
+            validSines.forEach(d => {
+                const option = document.createElement('option');
+                option.value = d;
+                const numCycles = totalPixels / d;
+                option.textContent = `λ = ${d} px (${numCycles} cycles)`;
+                if (d === state.sineWavelength) option.selected = true;
+                sineSelect.appendChild(option);
+            });
+
+            // If current value not in list, select a sensible default
+            if (!validSines.includes(state.sineWavelength)) {
+                // Pick something around 1/2 to 1/4 of total pixels
+                const target = Math.floor(totalPixels / 4);
+                state.sineWavelength = validSines.reduce((prev, curr) =>
+                    Math.abs(curr - target) < Math.abs(prev - target) ? curr : prev, validSines[0]);
+                sineSelect.value = state.sineWavelength;
+            }
+
+            // Update display values
+            updatePatternDisplayValues();
+        }
+
+        function updatePatternDisplayValues() {
+            document.getElementById('grating-value-display').textContent = `${state.gratingPixels} px`;
+            document.getElementById('sine-value-display').textContent = `λ = ${state.sineWavelength} px`;
+        }
+
+        function updatePatternUI() {
+            // Update radio button active states
+            document.querySelectorAll('.pattern-radio').forEach(r => r.classList.remove('active'));
+
+            if (state.pattern === 'allOn') {
+                document.getElementById('pattern-allon-label').classList.add('active');
+                document.getElementById('grating-controls').style.display = 'none';
+                document.getElementById('sine-controls').style.display = 'none';
+            } else if (state.pattern === 'grating') {
+                document.getElementById('pattern-grating-label').classList.add('active');
+                document.getElementById('grating-controls').style.display = 'block';
+                document.getElementById('sine-controls').style.display = 'none';
+            } else if (state.pattern === 'sine') {
+                document.getElementById('pattern-sine-label').classList.add('active');
+                document.getElementById('grating-controls').style.display = 'none';
+                document.getElementById('sine-controls').style.display = 'block';
+            }
+
+            updatePatternDisplayValues();
         }
 
         function setTopDownView() {
@@ -525,13 +792,24 @@
         }
 
         function setupEventListeners() {
+            // Back to 2D Editor with loading indicator
+            document.getElementById('back-to-2d').addEventListener('click', (e) => {
+                e.preventDefault();
+                showLoading('Loading 2D Editor...');
+                setTimeout(() => {
+                    window.location.href = 'arena_editor.html';
+                }, 100);
+            });
+
             // Generation tabs (change panel type, but numCols comes from 2D editor)
             document.querySelectorAll('.gen-tab').forEach(tab => {
                 tab.addEventListener('click', () => {
                     document.querySelectorAll('.gen-tab').forEach(t => t.classList.remove('active'));
                     tab.classList.add('active');
                     state.panelType = tab.dataset.gen;
-                    buildArena();
+                    state.phaseOffset = 0;
+                    populatePatternSelects(); // Repopulate with new total pixels
+                    buildArenaWithLoading();
                 });
             });
 
@@ -541,88 +819,64 @@
                 if (state.numRows > 1) {
                     state.numRows--;
                     numRowsInput.value = state.numRows;
-                    buildArena();
+                    buildArenaWithLoading();
                 }
             });
             document.getElementById('rows-inc').addEventListener('click', () => {
                 if (state.numRows < 8) {
                     state.numRows++;
                     numRowsInput.value = state.numRows;
-                    buildArena();
+                    buildArenaWithLoading();
                 }
             });
             numRowsInput.addEventListener('change', () => {
                 const val = parseInt(numRowsInput.value);
                 if (val >= 1 && val <= 8) {
                     state.numRows = val;
-                    buildArena();
+                    buildArenaWithLoading();
                 } else {
                     numRowsInput.value = state.numRows;
                 }
             });
 
-            // Pattern controls
-            document.getElementById('pattern-all-on').addEventListener('click', () => {
-                state.pattern = 'allOn';
-                buildArena();
+            // Pattern radio controls
+            document.querySelectorAll('.pattern-radio input[type="radio"]').forEach(radio => {
+                radio.addEventListener('change', () => {
+                    state.pattern = radio.value;
+                    state.phaseOffset = 0; // Reset phase when changing pattern
+                    updatePatternUI();
+                    buildArenaWithLoading();
+                });
             });
 
-            // Grating controls
-            const gratingInput = document.getElementById('grating-cols');
-            document.getElementById('grating-dec').addEventListener('click', () => {
-                if (state.gratingCols > 1) {
-                    state.gratingCols--;
-                    gratingInput.value = state.gratingCols;
-                    state.pattern = 'grating';
-                    buildArena();
-                }
-            });
-            document.getElementById('grating-inc').addEventListener('click', () => {
-                if (state.gratingCols < 20) {
-                    state.gratingCols++;
-                    gratingInput.value = state.gratingCols;
-                    state.pattern = 'grating';
-                    buildArena();
-                }
-            });
-            gratingInput.addEventListener('change', () => {
-                const val = parseInt(gratingInput.value);
-                if (val >= 1 && val <= 20) {
-                    state.gratingCols = val;
-                    state.pattern = 'grating';
-                    buildArena();
-                } else {
-                    gratingInput.value = state.gratingCols;
-                }
+            // Also allow clicking on the label to select
+            document.querySelectorAll('.pattern-radio').forEach(label => {
+                label.addEventListener('click', () => {
+                    const radio = label.querySelector('input[type="radio"]');
+                    if (radio && !radio.checked) {
+                        radio.checked = true;
+                        state.pattern = radio.value;
+                        state.phaseOffset = 0;
+                        updatePatternUI();
+                        buildArenaWithLoading();
+                    }
+                });
             });
 
-            // Sine wave controls
-            const sineInput = document.getElementById('sine-wavelength');
-            document.getElementById('sine-dec').addEventListener('click', () => {
-                if (state.sineWavelength > 2) {
-                    state.sineWavelength--;
-                    sineInput.value = state.sineWavelength;
-                    state.pattern = 'sine';
-                    buildArena();
-                }
+            // Grating select dropdown
+            document.getElementById('grating-select').addEventListener('change', (e) => {
+                state.gratingPixels = parseInt(e.target.value);
+                state.phaseOffset = 0;
+                updatePatternDisplayValues();
+                buildArenaWithLoading();
             });
-            document.getElementById('sine-inc').addEventListener('click', () => {
-                if (state.sineWavelength < 40) {
-                    state.sineWavelength++;
-                    sineInput.value = state.sineWavelength;
-                    state.pattern = 'sine';
-                    buildArena();
-                }
-            });
-            sineInput.addEventListener('change', () => {
-                const val = parseInt(sineInput.value);
-                if (val >= 2 && val <= 40) {
-                    state.sineWavelength = val;
-                    state.pattern = 'sine';
-                    buildArena();
-                } else {
-                    sineInput.value = state.sineWavelength;
-                }
+
+            // Sine select dropdown
+            document.getElementById('sine-select').addEventListener('change', (e) => {
+                state.sineWavelength = parseInt(e.target.value);
+                state.phaseOffset = 0;
+                updatePatternDisplayValues();
+                buildArenaWithLoading();
             });
 
             // Camera reset
@@ -641,14 +895,108 @@
                 controls.update();
             });
 
-            // Auto-rotate toggle
+            // Auto-rotate toggle (phase shift pattern, not spin world)
+            // Disable pan/zoom during rotation for better performance
             document.getElementById('toggle-rotation').addEventListener('click', () => {
                 autoRotate = !autoRotate;
-                controls.autoRotate = autoRotate;
+                controls.enabled = !autoRotate; // Disable controls during rotation
+                document.getElementById('toggle-rotation').textContent = autoRotate ? 'Stop Pattern Rotation' : 'Rotate Pattern';
             });
 
             // Window resize
             window.addEventListener('resize', onWindowResize);
+
+            // Screenshot buttons
+            document.getElementById('screenshot-arena').addEventListener('click', () => {
+                takeScreenshot(false);
+            });
+            document.getElementById('screenshot-full').addEventListener('click', () => {
+                takeScreenshot(true);
+            });
+        }
+
+        // Take screenshot of the arena view
+        function takeScreenshot(includeUI) {
+            // Render one frame to ensure latest state
+            renderer.render(scene, camera);
+
+            if (includeUI) {
+                // Use html2canvas-like approach: capture entire viewport
+                // For simplicity, we'll use a canvas composite approach
+                const finalCanvas = document.createElement('canvas');
+                finalCanvas.width = window.innerWidth;
+                finalCanvas.height = window.innerHeight;
+                const ctx = finalCanvas.getContext('2d');
+
+                // Draw the 3D canvas
+                ctx.drawImage(renderer.domElement, 0, 0);
+
+                // Draw UI overlays on top using html2canvas or manual drawing
+                // For now, we'll capture UI elements manually
+                drawUIToCanvas(ctx);
+
+                // Download the composite image
+                downloadCanvas(finalCanvas, 'arena_with_stats.png');
+            } else {
+                // Just the arena - direct canvas download
+                downloadCanvas(renderer.domElement, 'arena_view.png');
+            }
+        }
+
+        // Draw UI elements to canvas (simplified version)
+        function drawUIToCanvas(ctx) {
+            // Draw semi-transparent background for controls panel area
+            ctx.fillStyle = 'rgba(26, 31, 38, 0.9)';
+            ctx.fillRect(16, 16, 280, 500);
+
+            // Draw border
+            ctx.strokeStyle = '#2d3640';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(16, 16, 280, 500);
+
+            // Draw title
+            ctx.font = 'bold 16px JetBrains Mono, monospace';
+            ctx.fillStyle = '#00e676';
+            ctx.fillText('Arena 3D Viewer', 36, 50);
+
+            // Draw stats
+            ctx.font = '12px IBM Plex Mono, monospace';
+            ctx.fillStyle = '#8b949e';
+            const stats = [
+                `Panel Type: ${state.panelType}`,
+                `Columns: ${state.numCols}`,
+                `Rows: ${state.numRows}`,
+                `Pattern: ${state.pattern}`,
+                `Azimuth: ${document.getElementById('azimuth-res').textContent}`,
+                `Vertical: ${document.getElementById('vertical-res').textContent}`,
+                `Total LEDs: ${document.getElementById('total-leds').textContent}`
+            ];
+            stats.forEach((stat, i) => {
+                ctx.fillText(stat, 36, 80 + i * 20);
+            });
+
+            // Draw info overlay on right side
+            ctx.fillStyle = 'rgba(26, 31, 38, 0.9)';
+            ctx.fillRect(window.innerWidth - 200, 16, 184, 140);
+            ctx.strokeRect(window.innerWidth - 200, 16, 184, 140);
+
+            ctx.font = 'bold 14px JetBrains Mono, monospace';
+            ctx.fillStyle = '#00e676';
+            ctx.fillText('Angular Resolution', window.innerWidth - 184, 40);
+
+            ctx.font = '12px IBM Plex Mono, monospace';
+            ctx.fillStyle = '#e6edf3';
+            ctx.fillText(`Azimuth: ${document.getElementById('azimuth-res').textContent}`, window.innerWidth - 184, 65);
+            ctx.fillText(`Vertical: ${document.getElementById('vertical-res').textContent}`, window.innerWidth - 184, 85);
+            ctx.fillText(`${document.getElementById('azimuth-pixels').textContent} × ${document.getElementById('vertical-pixels').textContent} px`, window.innerWidth - 184, 110);
+        }
+
+        // Download canvas as PNG
+        function downloadCanvas(canvas, filename) {
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
         }
 
         function buildArena() {
@@ -665,6 +1013,9 @@
                 }
                 arenaGroup.remove(child);
             }
+
+            // Clear LED mesh references
+            ledMeshes = [];
 
             const specs = PANEL_SPECS[state.panelType];
             const numCols = state.numCols;
@@ -711,28 +1062,40 @@
         }
 
         // Calculate LED brightness based on pattern
+        // Returns value from 0 to 1, quantized to 16 levels (0, 1/15, 2/15, ..., 15/15)
         function getLEDBrightness(px, py, colIndex, numCols, totalPixelsH) {
-            // Global pixel X position across the entire arena
-            const globalPixelX = colIndex * totalPixelsH + px;
+            // Global pixel X position across the entire arena, with phase offset for rotation
             const totalAzimuthPixels = numCols * totalPixelsH;
+            // Apply phase offset (wrapping around)
+            const globalPixelX = ((colIndex * totalPixelsH + px) + state.phaseOffset + totalAzimuthPixels) % totalAzimuthPixels;
 
             if (state.pattern === 'allOn') {
                 return 1.0; // Full brightness
             } else if (state.pattern === 'grating') {
-                // Square wave grating: gratingCols pixels on, gratingCols pixels off
-                const period = state.gratingCols * 2;
+                // Square wave grating: gratingPixels pixels on, gratingPixels pixels off
+                const period = state.gratingPixels * 2;
                 const phase = globalPixelX % period;
-                return phase < state.gratingCols ? 1.0 : 0.0;
+                return phase < state.gratingPixels ? 1.0 : 0.0;
             } else if (state.pattern === 'sine') {
-                // Sine wave: wavelength in columns (convert to pixels)
-                const wavelengthPixels = state.sineWavelength * totalPixelsH;
+                // Sine wave: wavelength in pixels
+                const wavelengthPixels = state.sineWavelength;
                 const phase = (globalPixelX / wavelengthPixels) * 2 * Math.PI;
-                // Map sine [-1, 1] to [0, 1], then quantize to 16 levels
+                // Map sine [-1, 1] to [0, 1]
                 const normalized = (Math.sin(phase) + 1) / 2;
-                const quantized = Math.floor(normalized * (GRAYSCALE_LEVELS - 1)) / (GRAYSCALE_LEVELS - 1);
-                return quantized;
+                // Quantize to 16 levels: 0, 1, 2, ..., 15 -> 0/15, 1/15, ..., 15/15
+                // Use round instead of floor to better distribute across all levels
+                const level = Math.round(normalized * (GRAYSCALE_LEVELS - 1));
+                return level / (GRAYSCALE_LEVELS - 1);
             }
             return 1.0;
+        }
+
+        // Convert brightness (0-1) to green LED color
+        function brightnessToColor(brightness) {
+            // Use a slight minimum brightness so "off" LEDs still show faintly
+            // This helps visualize the sine wave better
+            const green = Math.floor(0xe6 * brightness);
+            return (green << 8); // Green channel only
         }
 
         function createColumnWithLEDs(specs, width, height, depth, angle, numRows, colIndex, numCols) {
@@ -801,35 +1164,146 @@
             // Spacing is width/numPixels, first LED is at half-spacing from edge
             const ledSpacingX = width / totalPixelsH;
             const ledSpacingY = height / totalPixelsV;
-            const ledRadius = Math.min(ledSpacingX, ledSpacingY) * 0.35; // LED size relative to spacing
+            const ledSize = Math.min(ledSpacingX, ledSpacingY) * 0.35; // LED size relative to spacing
+
+            // Check if this panel type uses rotated rectangle LEDs (G4.1, G5, G6)
+            const useRotatedRectLEDs = ['G4.1', 'G5', 'G6'].includes(state.panelType);
+
+            // 0604 LED package: 0.6mm x 0.4mm = 1.5:1 aspect ratio
+            // The LED is a rectangle rotated 45 degrees on the panel
+            const ledAspectRatio = 1.5; // length/width ratio for 0604 LEDs
 
             for (let py = 0; py < totalPixelsV; py++) {
                 for (let px = 0; px < totalPixelsH; px++) {
                     // Calculate brightness based on pattern
                     const brightness = getLEDBrightness(px, py, colIndex, numCols, totalPixelsH);
 
-                    // Skip LEDs that are off (brightness = 0)
-                    if (brightness === 0) continue;
-
-                    // Create LED with brightness-adjusted color
-                    const ledGeom = new THREE.CircleGeometry(ledRadius, 8);
-                    const green = Math.floor(0xe6 * brightness);
-                    const ledColor = (green << 8); // Green channel only
-                    const ledMat = new THREE.MeshBasicMaterial({ color: ledColor });
-                    const led = new THREE.Mesh(ledGeom, ledMat);
-
                     // Position: start at -halfW + halfSpacing, then increment by spacing
-                    // This gives proper half-spacing inset from edges
                     const localX = -halfW + ledSpacingX / 2 + px * ledSpacingX;
                     const localY = -halfH + ledSpacingY / 2 + py * ledSpacingY;
                     const localZ = panelThickness + 0.001; // just in front of border
 
-                    led.position.set(localX, localY, localZ);
-                    group.add(led);
+                    if (useRotatedRectLEDs) {
+                        // Create rectangle rotated 45 degrees for G4.1, G5, G6
+                        // 0604 package: 0.6mm x 0.4mm = 1.5:1 aspect ratio
+                        const baseSize = ledSize * 0.5;
+                        const rectW = baseSize;                      // half-width of rectangle
+                        const rectH = baseSize * ledAspectRatio;     // half-height of rectangle (longer)
+
+                        // Create rectangle shape (before rotation)
+                        // Rectangle vertices at corners: (-w,-h), (w,-h), (w,h), (-w,h)
+                        // Then rotate 45 degrees: x' = x*cos - y*sin, y' = x*sin + y*cos
+                        const cos45 = Math.SQRT1_2; // cos(45°) = sin(45°) = √2/2
+                        const sin45 = Math.SQRT1_2;
+
+                        // Transform rectangle corners by 45-degree rotation
+                        // Corner 1: (-w, -h) -> rotated
+                        const c1x = (-rectW) * cos45 - (-rectH) * sin45;
+                        const c1y = (-rectW) * sin45 + (-rectH) * cos45;
+                        // Corner 2: (w, -h) -> rotated
+                        const c2x = (rectW) * cos45 - (-rectH) * sin45;
+                        const c2y = (rectW) * sin45 + (-rectH) * cos45;
+                        // Corner 3: (w, h) -> rotated
+                        const c3x = (rectW) * cos45 - (rectH) * sin45;
+                        const c3y = (rectW) * sin45 + (rectH) * cos45;
+                        // Corner 4: (-w, h) -> rotated
+                        const c4x = (-rectW) * cos45 - (rectH) * sin45;
+                        const c4y = (-rectW) * sin45 + (rectH) * cos45;
+
+                        // Create filled rectangle shape
+                        const rectShape = new THREE.Shape();
+                        rectShape.moveTo(c1x, c1y);
+                        rectShape.lineTo(c2x, c2y);
+                        rectShape.lineTo(c3x, c3y);
+                        rectShape.lineTo(c4x, c4y);
+                        rectShape.lineTo(c1x, c1y);
+
+                        const rectGeom = new THREE.ShapeGeometry(rectShape);
+                        const ledColor = brightnessToColor(brightness);
+                        const rectMat = new THREE.MeshBasicMaterial({ color: ledColor });
+                        const rect = new THREE.Mesh(rectGeom, rectMat);
+                        rect.position.set(localX, localY, localZ);
+                        group.add(rect);
+
+                        // Store reference for efficient animation updates
+                        ledMeshes.push({
+                            mesh: rect,
+                            colIndex: colIndex,
+                            px: px,
+                            py: py,
+                            totalPixelsH: totalPixelsH,
+                            numCols: numCols
+                        });
+
+                        // Add outline for all LEDs (visible when LED is dim/off)
+                        const outlineGeom = new THREE.BufferGeometry();
+                        const outlineVerts = new Float32Array([
+                            c1x, c1y, 0,
+                            c2x, c2y, 0,
+                            c2x, c2y, 0,
+                            c3x, c3y, 0,
+                            c3x, c3y, 0,
+                            c4x, c4y, 0,
+                            c4x, c4y, 0,
+                            c1x, c1y, 0
+                        ]);
+                        outlineGeom.setAttribute('position', new THREE.BufferAttribute(outlineVerts, 3));
+                        const outlineMat = new THREE.LineBasicMaterial({ color: 0x333333 });
+                        const outline = new THREE.LineSegments(outlineGeom, outlineMat);
+                        outline.position.set(localX, localY, localZ + 0.0001);
+                        group.add(outline);
+                    } else {
+                        // Circle LEDs for G3, G4
+                        const ledGeom = new THREE.CircleGeometry(ledSize, 8);
+                        const ledColor = brightnessToColor(brightness);
+                        const ledMat = new THREE.MeshBasicMaterial({ color: ledColor });
+                        const led = new THREE.Mesh(ledGeom, ledMat);
+                        led.position.set(localX, localY, localZ);
+                        group.add(led);
+
+                        // Store reference for efficient animation updates
+                        ledMeshes.push({
+                            mesh: led,
+                            colIndex: colIndex,
+                            px: px,
+                            py: py,
+                            totalPixelsH: totalPixelsH,
+                            numCols: numCols
+                        });
+
+                        // Add circle outline
+                        const circlePoints = [];
+                        const segments = 16;
+                        for (let i = 0; i <= segments; i++) {
+                            const theta = (i / segments) * Math.PI * 2;
+                            circlePoints.push(new THREE.Vector3(
+                                Math.cos(theta) * ledSize,
+                                Math.sin(theta) * ledSize,
+                                0
+                            ));
+                        }
+                        const circleGeom = new THREE.BufferGeometry().setFromPoints(circlePoints);
+                        const circleMat = new THREE.LineBasicMaterial({ color: 0x333333 });
+                        const circle = new THREE.Line(circleGeom, circleMat);
+                        circle.position.set(localX, localY, localZ + 0.0001);
+                        group.add(circle);
+                    }
                 }
             }
 
             return group;
+        }
+
+        // Update all LED colors without rebuilding geometry (efficient animation)
+        function updateLEDColors() {
+            for (const ledRef of ledMeshes) {
+                const brightness = getLEDBrightness(
+                    ledRef.px, ledRef.py, ledRef.colIndex,
+                    ledRef.numCols, ledRef.totalPixelsH
+                );
+                const newColor = brightnessToColor(brightness);
+                ledRef.mesh.material.color.setHex(newColor);
+            }
         }
 
         function updateMetrics(specs, numCols, numRows, cRadius, arenaHeight) {
@@ -871,8 +1345,27 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        function animate() {
+        // Animation timing
+        let lastPhaseTime = 0;
+        const phaseInterval = 50; // ms between phase shifts (faster now that it's efficient)
+
+        function animate(currentTime) {
             requestAnimationFrame(animate);
+
+            // Phase shift pattern when auto-rotate is active
+            if (autoRotate && state.pattern !== 'allOn') {
+                if (currentTime - lastPhaseTime > phaseInterval) {
+                    lastPhaseTime = currentTime;
+                    state.phaseOffset++;
+                    const totalPixels = getTotalAzimuthPixels();
+                    if (state.phaseOffset >= totalPixels) {
+                        state.phaseOffset = 0;
+                    }
+                    // Efficient update: just change LED colors, don't rebuild geometry
+                    updateLEDColors();
+                }
+            }
+
             controls.update();
             renderer.render(scene, camera);
         }
