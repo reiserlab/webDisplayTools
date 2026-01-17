@@ -17,7 +17,7 @@ Create and edit 20×20 pixel patterns for G6 panels with:
 - Multiple modes: GS2, GS16, 4-Char, LED Map Reference
 - Pattern export capabilities
 - Modern dark theme UI
-- Version 6 (last updated 2025-01-12)
+- Version 6 (last updated 2026-01-12)
 
 **[Launch G6 Panel Editor →](https://reiserlab.github.io/webDisplayTools/g6_panel_editor.html)**
 
