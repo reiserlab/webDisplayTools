@@ -453,7 +453,6 @@
                 <button class="gen-tab" data-gen="G3">G3</button>
                 <button class="gen-tab" data-gen="G4">G4</button>
                 <button class="gen-tab" data-gen="G4.1">G4.1</button>
-                <button class="gen-tab" data-gen="G5">G5</button>
                 <button class="gen-tab active" data-gen="G6">G6</button>
             </div>
         </div>
@@ -607,13 +606,7 @@
                 pixels_horizontal: 16,
                 pixels_vertical: 16
             },
-            'G5': {
-                panel_width_mm: 40,
-                panel_height_mm: 40,
-                panel_depth_mm: 6.35,
-                pixels_horizontal: 20,
-                pixels_vertical: 20
-            },
+
             'G6': {
                 panel_width_mm: 45.4,
                 panel_height_mm: 45.4,
@@ -1357,8 +1350,8 @@
             const ledSpacingY = height / totalPixelsV;
             const ledSize = Math.min(ledSpacingX, ledSpacingY) * 0.35; // LED size relative to spacing
 
-            // Check if this panel type uses rotated rectangle LEDs (G4.1, G5, G6)
-            const useRotatedRectLEDs = ['G4.1', 'G5', 'G6'].includes(state.panelType);
+            // Check if this panel type uses rotated rectangle LEDs (G4.1, G6)
+            const useRotatedRectLEDs = ['G4.1', 'G6'].includes(state.panelType);
 
             // 0604 LED package: 0.6mm x 0.4mm = 1.5:1 aspect ratio
             // The LED is a rectangle rotated 45 degrees on the panel
@@ -1375,7 +1368,7 @@
                     const localZ = panelThickness + 0.001; // just in front of border
 
                     if (useRotatedRectLEDs) {
-                        // Create rectangle rotated 45 degrees for G4.1, G5, G6
+                        // Create rectangle rotated 45 degrees for G4.1, G6
                         // 0604 package: 0.6mm x 0.4mm = 1.5:1 aspect ratio
                         const baseSize = ledSize * 0.5;
                         const rectW = baseSize;                      // half-width of rectangle

@@ -24,7 +24,7 @@ Create and edit 20×20 pixel patterns for G6 panels with:
 ### Arena Layout Editor ✅ Ready
 Configure arena geometry and panel layout for G3-G6 display systems with:
 - SVG-based visualization with labeled dimensions
-- Support for all panel generations (G3, G4, G4.1, G5, G6, Custom)
+- Support for all panel generations (G3, G4, G4.1, G6, Custom)
 - Click-to-toggle panels for partial arena designs
 - Angle offset control for arena rotation
 - Export PDF for documentation
@@ -37,7 +37,7 @@ Configure arena geometry and panel layout for G3-G6 display systems with:
 ### Arena 3D Viewer ✅ Ready
 Interactive 3D visualization of arena configurations with:
 - Three.js-based 3D rendering with orbit controls
-- Accurate LED visualization (rotated rectangles for G4.1/G5/G6, circles for G3/G4)
+- Accurate LED visualization (rotated rectangles for G4.1/G6, circles for G3/G4)
 - Pattern visualization: All On, Grating (square wave), Sine wave
 - Animated pattern rotation with efficient color-only updates
 - Standard view presets (top-down, cardinal directions, fly view from center)
