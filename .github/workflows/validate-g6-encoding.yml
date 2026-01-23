@@ -1,0 +1,46 @@
+name: Validate G6 Encoding
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'g6_panel_editor.html'
+      - 'js/g6-encoding.js'
+      - 'data/g6_encoding_reference.json'
+      - 'tests/validate-g6-encoding.js'
+      - '.github/workflows/validate-g6-encoding.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'g6_panel_editor.html'
+      - 'js/g6-encoding.js'
+      - 'data/g6_encoding_reference.json'
+      - 'tests/validate-g6-encoding.js'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run G6 encoding validation tests
+        run: node tests/validate-g6-encoding.js
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## G6 Encoding Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ $? -eq 0 ]; then
+            echo "✅ All G6 encoding tests match MATLAB reference" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Some G6 encoding tests differ from MATLAB reference" >> $GITHUB_STEP_SUMMARY
+          fi

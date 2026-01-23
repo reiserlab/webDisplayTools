@@ -810,15 +810,16 @@
             </div>
         </div>
 
-        <!-- LED Mapping Reference Tab -->
+        <!-- Encoding Reference Tab -->
         <div id="tabRef" class="tab-content">
             <div class="panel" style="max-width: 1200px; margin: 0 auto;">
-                <div class="panel-title">G6 Panel LED Mapping Reference</div>
-                
+                <div class="panel-title">G6 Panel Encoding Reference</div>
+
                 <div style="margin-bottom: 2rem; line-height: 1.8; color: var(--text-dim); font-size: 0.85rem;">
-                    <p style="margin-bottom: 1rem;">This table shows the mapping between <strong style="color: var(--accent);">logical pixel coordinates [row, col]</strong> and <strong style="color: var(--accent);">physical LED positions (D1-D400)</strong> on the G6 Panel v0.1 PCB.</p>
+                    <p style="margin-bottom: 1rem;">This table shows the <strong style="color: var(--accent);">pixel number</strong> (0-399) for each <strong style="color: var(--accent);">[row, col]</strong> coordinate using row-major encoding.</p>
                     <p style="margin-bottom: 1rem;"><strong style="color: var(--text);">Row 0</strong> is at the <strong>bottom</strong>, <strong style="color: var(--text);">Row 19</strong> is at the <strong>top</strong>.</p>
-                    <p><strong style="color: var(--text);">Column 0</strong> is on the <strong>left</strong>, <strong style="color: var(--text);">Column 19</strong> is on the <strong>right</strong>.</p>
+                    <p style="margin-bottom: 1rem;"><strong style="color: var(--text);">Column 0</strong> is on the <strong>left</strong>, <strong style="color: var(--text);">Column 19</strong> is on the <strong>right</strong>.</p>
+                    <p><strong style="color: var(--accent);">Formula:</strong> pixel_num = row * 20 + col</p>
                 </div>
 
                 <div style="overflow-x: auto;">
@@ -859,10 +860,10 @@
                 <div style="margin-top: 2rem; padding: 1.25rem; background: var(--bg); border-radius: 6px; border-left: 3px solid var(--accent);">
                     <div style="font-size: 0.8rem; font-weight: 600; color: var(--accent); margin-bottom: 0.75rem;">Encoding Details</div>
                     <div style="font-size: 0.75rem; line-height: 1.9; color: var(--text-dim);">
-                        <p style="margin-bottom: 0.5rem;"><strong style="color: var(--text);">GS2 (1-bit):</strong> 400 pixels → 50 bytes | 8 pixels per byte, MSB-first</p>
-                        <p style="margin-bottom: 0.5rem;"><strong style="color: var(--text);">GS16 (4-bit):</strong> 400 pixels → 200 bytes | 2 pixels per byte (high/low nibble)</p>
-                        <p style="margin-bottom: 0.5rem;"><strong style="color: var(--text);">Pixel Index:</strong> LED D<em>N</em> → Pixel index = <em>N</em> - 1 (range: 0-399)</p>
-                        <p><strong style="color: var(--text);">Transmission:</strong> Row-major order, pixels packed per LED mapping table above</p>
+                        <p style="margin-bottom: 0.5rem;"><strong style="color: var(--text);">Row-Major Formula:</strong> pixel_num = row * 20 + col (origin at bottom-left)</p>
+                        <p style="margin-bottom: 0.5rem;"><strong style="color: var(--text);">GS2 (1-bit):</strong> 400 pixels → 50 bytes | 8 pixels per byte, MSB-first | byte = floor(pixel_num / 8), bit = 7 - (pixel_num % 8)</p>
+                        <p style="margin-bottom: 0.5rem;"><strong style="color: var(--text);">GS16 (4-bit):</strong> 400 pixels → 200 bytes | 2 pixels per byte | Even pixels → high nibble, odd → low nibble</p>
+                        <p><strong style="color: var(--text);">Compatibility:</strong> Matches MATLAB g6_encode_panel.m encoding convention</p>
                     </div>
                 </div>
             </div>
@@ -870,28 +871,10 @@
     </div>
 
     <script>
-        const LED_MAP = [
-            [50,70,51,71,130,150,131,151,210,230,211,231,290,310,291,311,370,390,371,391],
-            [10,30,11,31,90,110,91,111,170,190,171,191,250,270,251,271,330,350,331,351],
-            [49,69,52,72,129,149,132,152,209,229,212,232,289,309,292,312,369,389,372,392],
-            [9,29,12,32,89,109,92,112,169,189,172,192,249,269,252,272,329,349,332,352],
-            [48,68,53,73,128,148,133,153,208,228,213,233,288,308,293,313,368,388,373,393],
-            [8,28,13,33,88,108,93,113,168,188,173,193,248,268,253,273,328,348,333,353],
-            [47,67,54,74,127,147,134,154,207,227,214,234,287,307,294,314,367,387,374,394],
-            [7,27,14,34,87,107,94,114,167,187,174,194,247,267,254,274,327,347,334,354],
-            [46,66,55,75,126,146,135,155,206,226,215,235,286,306,295,315,366,386,375,395],
-            [6,26,15,35,86,106,95,115,166,186,175,195,246,266,255,275,326,346,335,355],
-            [45,65,56,76,125,145,136,156,205,225,216,236,285,305,296,316,365,385,376,396],
-            [5,25,16,36,85,105,96,116,165,185,176,196,245,265,256,276,325,345,336,356],
-            [44,64,57,77,124,144,137,157,204,224,217,237,284,304,297,317,364,384,377,397],
-            [4,24,17,37,84,104,97,117,164,184,177,197,244,264,257,277,324,344,337,357],
-            [43,63,58,78,123,143,138,158,203,223,218,238,283,303,298,318,363,383,378,398],
-            [3,23,18,38,83,103,98,118,163,183,178,198,243,263,258,278,323,343,338,358],
-            [42,62,59,79,122,142,139,159,202,222,219,239,282,302,299,319,362,382,379,399],
-            [2,22,19,39,82,102,99,119,162,182,179,199,242,262,259,279,322,342,339,359],
-            [41,61,60,80,121,141,140,160,201,221,220,240,281,301,300,320,361,381,380,400],
-            [1,21,20,40,81,101,100,120,161,181,180,200,241,261,260,280,321,341,340,360]
-        ];
+        // G6 Panel Encoding - Row-Major Convention
+        // Origin (0,0) at bottom-left, row-major ordering
+        // pixel_num = row_from_bottom * 20 + col
+        // This matches MATLAB g6_encode_panel.m
 
         let currentMode = 'GS2';
         let pixelState = Array(20).fill(null).map(() => Array(20).fill(0));
@@ -950,7 +933,7 @@
                 'GS2': '2-Level Binary | 50 Bytes | Click to Toggle',
                 'GS16': '16-Level Grayscale | 200 Bytes | Paint with Palette',
                 '4CHAR': '4-Character Messages | GS2 Binary | 50 Bytes',
-                'REF': 'LED Mapping Reference | Logical [row,col] ↔ Physical LED (D1-D400)'
+                'REF': 'Row-Major Encoding Reference | pixel_num = row * 20 + col'
             };
             document.getElementById('modeSubtitle').textContent = subtitles[mode];
             
@@ -1247,23 +1230,34 @@
         }
 
         function packPixelsGS2(state) {
+            // Row-major encoding: pixel_num = row * 20 + col
+            // state[r][c] where r=0 is BOTTOM of panel (panel row 0)
+            // MSB-first: bit_pos = 7 - (pixel_num % 8)
             const bytes = new Uint8Array(50);
             for (let r = 0; r < 20; r++) for (let c = 0; c < 20; c++) {
                 if (state[r][c] > 0) {
-                    const k = LED_MAP[r][c] - 1;
-                    bytes[Math.floor(k/8)] |= (1 << (7 - (k%8)));
+                    const pixelNum = r * 20 + c;
+                    const byteIdx = Math.floor(pixelNum / 8);
+                    const bitPos = 7 - (pixelNum % 8);
+                    bytes[byteIdx] |= (1 << bitPos);
                 }
             }
             return bytes;
         }
 
         function packPixelsGS16(state) {
+            // Row-major encoding: pixel_num = row * 20 + col
+            // Even pixels -> high nibble, odd pixels -> low nibble
             const bytes = new Uint8Array(200);
             for (let r = 0; r < 20; r++) for (let c = 0; c < 20; c++) {
                 const val = state[r][c];
-                const k = LED_MAP[r][c] - 1;
-                const byteIdx = Math.floor(k / 2);
-                bytes[byteIdx] |= k % 2 === 0 ? (val << 4) : val;
+                const pixelNum = r * 20 + c;
+                const byteIdx = Math.floor(pixelNum / 2);
+                if (pixelNum % 2 === 0) {
+                    bytes[byteIdx] |= (val << 4);  // Even -> high nibble
+                } else {
+                    bytes[byteIdx] |= val;          // Odd -> low nibble
+                }
             }
             return bytes;
         }
@@ -1410,12 +1404,12 @@
         function populateLEDMapTable() {
             const table = document.getElementById('ledMapTable');
             if (table.children.length > 0) return; // Already populated
-            
+
             // Create table from row 19 (top) down to row 0 (bottom) for visual clarity
-            for (let displayRow = 19; displayRow >= 0; displayRow--) {
+            for (let panelRow = 19; panelRow >= 0; panelRow--) {
                 const tr = document.createElement('tr');
                 tr.style.borderBottom = '1px solid var(--border)';
-                
+
                 // Row label
                 const th = document.createElement('th');
                 th.style.padding = '0.5rem';
@@ -1424,19 +1418,20 @@
                 th.style.color = 'var(--accent)';
                 th.style.fontWeight = '600';
                 th.style.borderRight = '1px solid var(--border)';
-                th.textContent = displayRow;
+                th.textContent = panelRow;
                 tr.appendChild(th);
-                
-                // LED values for each column
+
+                // Pixel numbers for each column (row-major encoding)
                 for (let col = 0; col < 20; col++) {
+                    const pixelNum = panelRow * 20 + col;
                     const td = document.createElement('td');
                     td.style.padding = '0.5rem';
                     td.style.textAlign = 'center';
                     td.style.color = 'var(--text)';
-                    td.textContent = 'D' + LED_MAP[displayRow][col];
+                    td.textContent = pixelNum;
                     tr.appendChild(td);
                 }
-                
+
                 table.appendChild(tr);
             }
         }
@@ -1559,7 +1554,7 @@
 
     <footer style="text-align: center; margin-top: 3rem; padding-top: 2rem; border-top: 2px solid var(--border); color: var(--text-dim); font-size: 0.85rem;">
         <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank" style="color: var(--accent); text-decoration: none;">Reiser Lab</a> | PanelDisplayTools</p>
-        <p style="font-size: 0.75rem; margin-top: 0.5rem; color: var(--text-dim);">Version 6 | Last updated: 2026-01-12</p>
+        <p style="font-size: 0.75rem; margin-top: 0.5rem; color: var(--text-dim);">Version 7 | Last updated: 2026-01-23 | Row-major encoding (matches MATLAB)</p>
     </footer>
 </body>
 </html>
