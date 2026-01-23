@@ -1470,12 +1470,15 @@
         }
 
         function copyMatrix() {
+            // Output matrix in MATLAB display order so imagesc() matches web preview
+            // Web: row 0 = bottom, MATLAB imagesc: row 1 = top
+            // Reverse rows so MATLAB display matches web visual
             let text = 'pattern = [\n';
-            
+
             if (currentMode === '4CHAR') {
                 // Build pattern from 4-char selections
                 const pattern = Array(20).fill(null).map(() => Array(20).fill(0));
-                
+
                 const place = (charBitmap, quadrant) => {
                     if (!charBitmap) return;
                     let sr, sc;
@@ -1483,10 +1486,10 @@
                     else if (quadrant === 'TR') { sr = 10; sc = 10; }
                     else if (quadrant === 'BL') { sr = 0; sc = 0; }
                     else { sr = 0; sc = 10; }
-                    
+
                     const flipped = charBitmap.slice().reverse();
                     const or = Math.floor((10 - 9) / 2), oc = Math.floor((10 - 7) / 2);
-                    
+
                     for (let i = 0; i < flipped.length; i++) {
                         for (let j = 0; j < flipped[i].length; j++) {
                             if (flipped[i][j] && sr+or+i<20 && sc+oc+j<20) {
@@ -1495,18 +1498,20 @@
                         }
                     }
                 };
-                
+
                 place(CHAR_7X9[document.getElementById('charTL').value], 'TL');
                 place(CHAR_7X9[document.getElementById('charTR').value], 'TR');
                 place(CHAR_7X9[document.getElementById('charBL').value], 'BL');
                 place(CHAR_7X9[document.getElementById('charBR').value], 'BR');
-                
-                for (let row = 0; row < 20; row++) {
-                    text += pattern[row].join(' ') + (row < 19 ? ';\n' : '];\n');
+
+                // Reverse rows for MATLAB display orientation
+                for (let row = 19; row >= 0; row--) {
+                    text += pattern[row].join(' ') + (row > 0 ? ';\n' : '];\n');
                 }
             } else {
-                for (let row = 0; row < 20; row++) {
-                    text += pixelState[row].join(' ') + (row < 19 ? ';\n' : '];\n');
+                // Reverse rows for MATLAB display orientation
+                for (let row = 19; row >= 0; row--) {
+                    text += pixelState[row].join(' ') + (row > 0 ? ';\n' : '];\n');
                 }
             }
             
