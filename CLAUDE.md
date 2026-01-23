@@ -55,7 +55,7 @@ Arena radius formula: `cRadius = panelWidth / (tan(alpha/2)) / 2` where `alpha =
 ## Arena 3D Viewer (`arena_3d_viewer.html`)
 
 ### Key Implementation Details
-- Uses Three.js r128 with OrbitControls
+- Uses Three.js r182 with OrbitControls (ES6 modules)
 - Renderer requires `preserveDrawingBuffer: true` for screenshot functionality
 - LED meshes stored in `ledMeshes[]` array for efficient animation (color-only updates)
 - Pattern rotation uses `state.phaseOffset` to shift pattern, not world rotation
