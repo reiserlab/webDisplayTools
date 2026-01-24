@@ -8,6 +8,17 @@ Web-based tools for configuring and editing display patterns for modular arena s
 
 Open `index.html` in your web browser to access all tools, or visit the live demo above.
 
+## Supported Panel Generations
+
+| Generation | Status | Notes |
+|------------|--------|-------|
+| **G6** | ✅ Actively tested | Current generation, 20×20 pixels, 0402 SMD LEDs |
+| **G4.1** | ✅ Actively tested | Production systems, 16×16 pixels, 0603 SMD LEDs |
+| **G4** | 📋 Comparison only | Legacy systems, included for reference |
+| **G3** | 📋 Comparison only | Legacy systems, included for reference |
+
+> **Note**: G3 and G4 configurations are included for comparison and backward compatibility, but are not actively tested or validated. For new installations, use G4.1 or G6 panels.
+
 ## Tools
 
 ### G6 Panel Pattern Editor ✅ Ready
@@ -91,13 +102,17 @@ webDisplayTools/
 ├── g6_pattern_editor.html    # G6 pattern editor (placeholder)
 ├── experiment_designer.html  # Experiment Designer (placeholder)
 ├── js/                       # Shared JavaScript modules
-│   └── arena-calculations.js # Arena geometry calculations
+│   ├── arena-calculations.js # Arena geometry calculations
+│   └── arena-configs.js      # Standard arena configurations (auto-generated)
+├── scripts/                  # Build/generation scripts
+│   └── generate-arena-configs.js  # Syncs configs from maDisplayTools
 ├── data/                     # Reference data
 │   └── reference_data.json   # MATLAB-generated validation data
 ├── tests/                    # Validation tests
 │   └── validate-arena-calculations.js
 └── .github/workflows/        # CI/CD workflows
-    └── validate-calculations.yml
+    ├── validate-calculations.yml
+    └── sync-arena-configs.yml  # Syncs arena configs from maDisplayTools
 ```
 
 ## CI/CD Validation

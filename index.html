@@ -167,6 +167,21 @@
             color: var(--hover);
         }
 
+        .info-box {
+            background: rgba(0, 230, 118, 0.08);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 4px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 2rem;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+
+        .info-box strong {
+            color: var(--accent);
+        }
+
         @media (max-width: 768px) {
             h1 {
                 font-size: 2rem;
@@ -184,6 +199,11 @@
             <h1>PanelDisplayTools</h1>
             <p class="subtitle">Web-based tools for configuring and editing display patterns for modular arena systems</p>
         </header>
+
+        <div class="info-box">
+            <strong>Note:</strong> G4.1 and G6 panel generations are actively tested and validated.
+            G3 and G4 configurations are included for comparison and backward compatibility only.
+        </div>
 
         <div class="tools-grid">
             <a href="g6_panel_editor.html" class="tool-card">
