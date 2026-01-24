@@ -5,8 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arena 3D Viewer - PanelDisplayTools</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/"
+            }
+        }
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -583,7 +589,10 @@
         <strong>Controls:</strong> Drag to rotate | Scroll to zoom | Right-drag to pan
     </div>
 
-    <script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
         // Panel specifications (same as arena_editor.html)
         const PANEL_SPECS = {
             'G3': {
@@ -705,12 +714,13 @@
 
             // Renderer (preserveDrawingBuffer needed for screenshots)
             renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             container.appendChild(renderer.domElement);
 
             // Controls
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
             controls.minDistance = 0.1; // Allow getting close to center for fly view
@@ -1325,7 +1335,7 @@
                     -halfW,  halfH, borderZ,
                     -halfW, -halfH, borderZ
                 ]);
-                borderGeom.setAttribute('position', new THREE.BufferAttribute(borderVertices, 3));
+                borderGeom.setAttribute('position', new THREE.Float32BufferAttribute(borderVertices, 3));
                 const border = new THREE.LineSegments(borderGeom, borderMat);
                 group.add(border);
 
@@ -1339,7 +1349,7 @@
                             -halfW, lineY, borderZ,
                              halfW, lineY, borderZ
                         ]);
-                        lineGeom.setAttribute('position', new THREE.BufferAttribute(lineVerts, 3));
+                        lineGeom.setAttribute('position', new THREE.Float32BufferAttribute(lineVerts, 3));
                         const line = new THREE.Line(lineGeom, borderMat);
                         group.add(line);
                     }
@@ -1438,7 +1448,7 @@
                             c4x, c4y, 0,
                             c1x, c1y, 0
                         ]);
-                        outlineGeom.setAttribute('position', new THREE.BufferAttribute(outlineVerts, 3));
+                        outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlineVerts, 3));
                         const outlineMat = new THREE.LineBasicMaterial({ color: 0x333333 });
                         const outline = new THREE.LineSegments(outlineGeom, outlineMat);
                         outline.position.set(localX, localY, localZ + 0.0001);
@@ -1484,6 +1494,7 @@
 
             return group;
         }
+    
 
         // Update all LED colors without rebuilding geometry (efficient animation)
         function updateLEDColors() {
@@ -1561,8 +1572,12 @@
             renderer.render(scene, camera);
         }
 
-        // Start
-        init();
+        // Start - Initialize when module loads
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
     </script>
 </body>
 </html>
