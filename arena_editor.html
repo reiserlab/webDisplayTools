@@ -818,6 +818,12 @@
             document.getElementById('active-panels').textContent = `${installed} / ${state.arena.num_cols}`;
         }
 
+        // Column numbering convention:
+        // - c0/cN-1 boundary is at SOUTH (bottom of screen, -Y in SVG coords)
+        // - CW order: c0 just LEFT of south, columns increase counter-clockwise
+        // - CCW order: c0 just RIGHT of south, columns increase clockwise (mirror)
+        const BASE_OFFSET_RAD = -Math.PI / 2;  // Baseline at south instead of east
+
         // Calculate geometry
         function calculateGeometry() {
             const specs = PANEL_SPECS[state.arena.generation];
@@ -830,6 +836,7 @@
 
             // Calculate geometry
             const alpha = (2 * Math.PI) / numCols;
+            const halfPanel = alpha / 2;  // Offset so c0 starts at boundary, not centered
             const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
             const backCRadius = cRadius + panelDepth;
 
@@ -847,6 +854,7 @@
                 panelWidth,
                 panelDepth,
                 alpha,
+                halfPanel,
                 cRadius,
                 backCRadius,
                 degsPerPixel,
@@ -860,7 +868,7 @@
         // Update the SVG arena visualization
         function updateArena() {
             const geom = calculateGeometry();
-            const { specs, panelWidth, panelDepth, cRadius, backCRadius, alpha, angleOffsetRad } = geom;
+            const { specs, panelWidth, panelDepth, cRadius, backCRadius, alpha, halfPanel, angleOffsetRad } = geom;
             const installedSet = getInstalledColumnsSet();
 
             // Clear canvas
@@ -875,12 +883,28 @@
             addLine(-axisLen, 0, axisLen, 0, '#ccc', 0.015);
             addLine(0, -axisLen, 0, axisLen, '#ccc', 0.015);
 
+            // Draw compass indicators
+            const compassRadius = viewSize * 0.92;
+            const compassFontSize = viewSize * 0.08;
+            addText(0, -compassRadius, 'N', '#666', compassFontSize, 'middle', 'auto');
+            addText(0, compassRadius, 'S', '#666', compassFontSize, 'middle', 'hanging');
+
             // Draw inner radius dimension line
             drawDimensionLine(geom, viewSize);
 
-            // Draw panels
+            // Draw panels with proper CW/CCW column ordering
+            // CW: c0 just LEFT of south, columns increase counter-clockwise
+            // CCW: c0 just RIGHT of south, columns increase clockwise (mirror)
             for (let j = 1; j <= state.arena.num_cols; j++) {
-                const alphaJ = (j - 1) * alpha + angleOffsetRad;
+                const colIndex = j - 1;  // 0-indexed column number
+                let alphaJ;
+                if (state.arena.column_order === 'cw') {
+                    // CW: start left of south, go counter-clockwise (decreasing angle)
+                    alphaJ = BASE_OFFSET_RAD - halfPanel - colIndex * alpha + angleOffsetRad;
+                } else {
+                    // CCW: start right of south, go clockwise (increasing angle)
+                    alphaJ = BASE_OFFSET_RAD + halfPanel + colIndex * alpha + angleOffsetRad;
+                }
                 const pAngle = alphaJ + Math.PI / 2;
                 const isInstalled = installedSet.has(j);
 
@@ -978,32 +1002,27 @@
         }
 
         function drawColumnNumbers(geom, installedSet) {
-            const { alpha, backCRadius, angleOffsetRad } = geom;
+            const { alpha, backCRadius, halfPanel, angleOffsetRad } = geom;
             const viewSize = backCRadius * 1.5;
             const labelRadius = backCRadius * 1.15;
             const fontSize = viewSize * 0.06;
 
             for (let j = 1; j <= state.arena.num_cols; j++) {
-                // Physical angle for this column position
-                const physicalIndex = j - 1;
-                const alphaJ = physicalIndex * alpha + angleOffsetRad;
-
-                // Display column number based on column order
-                // For CW: column numbers increase clockwise (which is decreasing angle in math coords)
-                // For CCW: column numbers increase counter-clockwise (increasing angle)
-                let displayCol;
-                if (state.arena.column_order === 'ccw') {
-                    displayCol = physicalIndex;
-                } else {
-                    // CW: same display number but physical layout is interpreted differently
-                    displayCol = physicalIndex;
-                }
-
+                const colIndex = j - 1;  // 0-indexed column number
                 const isInstalled = installedSet.has(j);
+
+                // Calculate label position using same logic as panel drawing
+                let alphaJ;
+                if (state.arena.column_order === 'cw') {
+                    alphaJ = BASE_OFFSET_RAD - halfPanel - colIndex * alpha + angleOffsetRad;
+                } else {
+                    alphaJ = BASE_OFFSET_RAD + halfPanel + colIndex * alpha + angleOffsetRad;
+                }
 
                 const labelX = labelRadius * Math.cos(alphaJ);
                 const labelY = -labelRadius * Math.sin(alphaJ);
 
+                // Create label with "c#" format matching MATLAB
                 const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 text.setAttribute('x', labelX);
                 text.setAttribute('y', labelY);
@@ -1012,9 +1031,9 @@
                 text.setAttribute('font-size', fontSize);
                 text.setAttribute('font-family', 'JetBrains Mono, monospace');
                 text.setAttribute('font-weight', 'bold');
-                text.setAttribute('fill', isInstalled ? '#00c853' : '#666');
+                text.setAttribute('fill', isInstalled ? '#00897b' : '#666');  // Teal for installed
                 text.setAttribute('opacity', isInstalled ? 1 : 0.5);
-                text.textContent = displayCol.toString();
+                text.textContent = `c${colIndex}`;  // "c0", "c1", etc.
 
                 canvas.appendChild(text);
             }
@@ -1034,6 +1053,20 @@
 
         function addLine(x1, y1, x2, y2, color, width) {
             canvas.appendChild(createLine(x1, y1, x2, y2, color, width));
+        }
+
+        function addText(x, y, content, color, fontSize, anchor, baseline) {
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', x);
+            text.setAttribute('y', y);
+            text.setAttribute('text-anchor', anchor || 'middle');
+            text.setAttribute('dominant-baseline', baseline || 'middle');
+            text.setAttribute('font-size', fontSize);
+            text.setAttribute('font-family', 'JetBrains Mono, monospace');
+            text.setAttribute('font-weight', 'bold');
+            text.setAttribute('fill', color);
+            text.textContent = content;
+            canvas.appendChild(text);
         }
 
         function updateMetrics(geom) {

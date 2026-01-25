@@ -393,6 +393,27 @@
             padding: 0.5rem;
         }
 
+        /* Statistics Panel (upper right) */
+        .stats-panel {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            z-index: 100;
+            width: 180px;
+            font-size: 0.8rem;
+        }
+
+        .stats-panel h3 {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent);
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+
         /* View Controls Panel (lower right) */
         .view-controls-panel {
             position: fixed;
@@ -498,30 +519,6 @@
             </div>
         </div>
 
-        <div class="control-group">
-            <label>Statistics</label>
-            <div class="metric">
-                <span class="label">Columns</span>
-                <span class="value" id="num-cols-display">10</span>
-            </div>
-            <div class="metric">
-                <span class="label">Total Panels</span>
-                <span class="value" id="total-panels">20</span>
-            </div>
-            <div class="metric">
-                <span class="label">Inner Radius</span>
-                <span class="value" id="inner-radius">70.0 mm</span>
-            </div>
-            <div class="metric">
-                <span class="label">Arena Height</span>
-                <span class="value" id="arena-height">90.8 mm</span>
-            </div>
-            <div class="metric">
-                <span class="label">Total LEDs</span>
-                <span class="value" id="total-leds">8,000</span>
-            </div>
-        </div>
-
         <div class="divider"></div>
 
         <div class="control-group">
@@ -564,24 +561,46 @@
         <div class="loading-text" id="loading-text">Updating...</div>
     </div>
 
-    <!-- Info Overlay -->
-    <div class="info-overlay">
-        <h3>Avg Angular Resolution</h3>
+    <!-- Statistics Panel (upper right) -->
+    <div class="stats-panel">
+        <h3>Statistics</h3>
         <div class="metric">
-            <span class="label">Azimuth</span>
-            <span class="value" id="azimuth-res">1.80°/px</span>
+            <span class="label">Columns</span>
+            <span class="value" id="num-cols-display">10</span>
         </div>
         <div class="metric">
-            <span class="label">Vertical</span>
-            <span class="value" id="vertical-res">3.72°/px</span>
-        </div>
-        <div class="metric" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border);">
-            <span class="label">Azimuth px</span>
-            <span class="value" id="azimuth-pixels">200</span>
+            <span class="label">Total Panels</span>
+            <span class="value" id="total-panels">20</span>
         </div>
         <div class="metric">
-            <span class="label">Vertical px</span>
-            <span class="value" id="vertical-pixels">40</span>
+            <span class="label">Inner Radius</span>
+            <span class="value" id="inner-radius">70.0 mm</span>
+        </div>
+        <div class="metric">
+            <span class="label">Arena Height</span>
+            <span class="value" id="arena-height">90.8 mm</span>
+        </div>
+        <div class="metric">
+            <span class="label">Total LEDs</span>
+            <span class="value" id="total-leds">8,000</span>
+        </div>
+        <div style="border-top: 1px solid var(--border); margin-top: 0.5rem; padding-top: 0.5rem;">
+            <div class="metric">
+                <span class="label">Azimuth Res</span>
+                <span class="value" id="azimuth-res">1.80°/px</span>
+            </div>
+            <div class="metric">
+                <span class="label">Vertical Res</span>
+                <span class="value" id="vertical-res">3.72°/px</span>
+            </div>
+            <div class="metric">
+                <span class="label">Azimuth px</span>
+                <span class="value" id="azimuth-pixels">200</span>
+            </div>
+            <div class="metric">
+                <span class="label">Vertical px</span>
+                <span class="value" id="vertical-pixels">40</span>
+            </div>
         </div>
     </div>
 
@@ -596,10 +615,10 @@
             <option value="top-down">Top Down</option>
             <option value="side">Side View</option>
             <option value="fly">Fly View (Center)</option>
-            <option value="north">From North (+Z)</option>
-            <option value="south">From South (-Z)</option>
-            <option value="east">From East (+X)</option>
-            <option value="west">From West (-X)</option>
+            <option value="north">From North</option>
+            <option value="south">From South</option>
+            <option value="east">From East</option>
+            <option value="west">From West</option>
         </select>
 
         <div style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.75rem;">
@@ -645,6 +664,13 @@
 
         // 16 grayscale levels
         const GRAYSCALE_LEVELS = 16;
+
+        // Column numbering convention:
+        // - c0/cN-1 boundary is at SOUTH (-Z in Three.js coords)
+        // - CW order: c0 just LEFT of south, columns increase counter-clockwise
+        // - CCW order: c0 just RIGHT of south, columns increase clockwise (mirror)
+        // In Three.js: +Z is north, -Z is south, angle 0 is +X (east)
+        const BASE_OFFSET_RAD = -Math.PI / 2;  // Rotate baseline from +X to -Z (south)
 
         // Loading indicator functions
         function showLoading(message = 'Updating...') {
@@ -848,7 +874,7 @@
             buildArena();
 
             // Set initial view
-            setTopDownView();
+            setInitialView();
 
             // Event listeners
             setupEventListeners();
@@ -945,55 +971,64 @@
             updatePatternDisplayValues();
         }
 
-        function setTopDownView() {
+        function setInitialView() {
             const specs = PANEL_SPECS[state.arena.generation];
             const panelWidth = specs.panel_width_mm / 25.4;
             const alpha = (2 * Math.PI) / state.arena.num_cols;
             const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+            // Arena geometry is centered at Y=0
+            const midlineY = 0;
 
-            const viewHeight = cRadius * 2.5;
-            camera.position.set(0, viewHeight, 0.01);
-            controls.target.set(0, 0, 0);
+            // Initial view: top-down (matches dropdown default)
+            const viewDistance = cRadius * 3;
+            camera.position.set(0, viewDistance, 0.01);
+            controls.target.set(0, midlineY, 0);
             controls.update();
         }
 
         function applyStandardView(viewType) {
             const specs = PANEL_SPECS[state.arena.generation];
             const panelWidth = specs.panel_width_mm / 25.4;
-            const panelHeight = specs.panel_height_mm / 25.4;
             const alpha = (2 * Math.PI) / state.arena.num_cols;
             const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
-            const arenaHeight = panelHeight * state.arena.num_rows;
             const viewDistance = cRadius * 3;
+            // Arena geometry is centered at Y=0 (columns go from -halfH to +halfH)
+            // So arena midline is at Y=0
+            const midlineY = 0;
 
             switch (viewType) {
                 case 'top-down':
+                    // Top-down with north at top of screen (camera looking down -Y)
                     camera.position.set(0, viewDistance, 0.01);
-                    controls.target.set(0, 0, 0);
+                    controls.target.set(0, midlineY, 0);
                     break;
                 case 'side':
-                    camera.position.set(viewDistance, arenaHeight / 2, 0);
-                    controls.target.set(0, 0, 0);
+                    camera.position.set(viewDistance, midlineY, 0);
+                    controls.target.set(0, midlineY, 0);
                     break;
                 case 'fly':
-                    camera.position.set(0, 0, 0);
-                    controls.target.set(0, 0, cRadius);
+                    // Fly view: inside arena at midline, looking toward north
+                    // In our coords: north = -Z (since we negated Z to match MATLAB)
+                    camera.position.set(0, midlineY, 0);
+                    controls.target.set(0, midlineY, -cRadius);
                     break;
                 case 'north':
-                    camera.position.set(0, arenaHeight / 2, viewDistance);
-                    controls.target.set(0, 0, 0);
+                    // From North: camera at north (-Z), looking toward south (+Z)
+                    camera.position.set(0, midlineY, -viewDistance);
+                    controls.target.set(0, midlineY, 0);
                     break;
                 case 'south':
-                    camera.position.set(0, arenaHeight / 2, -viewDistance);
-                    controls.target.set(0, 0, 0);
+                    // From South: camera at south (+Z), looking toward north (-Z)
+                    camera.position.set(0, midlineY, viewDistance);
+                    controls.target.set(0, midlineY, 0);
                     break;
                 case 'east':
-                    camera.position.set(viewDistance, arenaHeight / 2, 0);
-                    controls.target.set(0, 0, 0);
+                    camera.position.set(viewDistance, midlineY, 0);
+                    controls.target.set(0, midlineY, 0);
                     break;
                 case 'west':
-                    camera.position.set(-viewDistance, arenaHeight / 2, 0);
-                    controls.target.set(0, 0, 0);
+                    camera.position.set(-viewDistance, midlineY, 0);
+                    controls.target.set(0, midlineY, 0);
                     break;
             }
             controls.update();
@@ -1342,18 +1377,33 @@
 
             // Calculate radius
             const alpha = (2 * Math.PI) / numCols;
+            const halfPanel = alpha / 2;  // Offset so c0 starts at boundary, not centered
             const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+            const angleOffsetRad = (state.arena.angle_offset_deg * Math.PI) / 180;
 
             const columnHeight = panelHeight * numRows;
 
+            // Place columns with proper CW/CCW ordering
+            // CW: c0 just LEFT of south (looking from above), columns increase counter-clockwise
+            // CCW: c0 just RIGHT of south, columns increase clockwise (mirror)
+            // Note: Three.js uses right-handed coords but top-down view has +Z toward viewer,
+            // so we negate Z to match MATLAB's top-down appearance
             for (let col = 0; col < numCols; col++) {
                 if (!installedSet.has(col)) continue;
 
-                const angle = col * alpha;
-                const x = cRadius * Math.cos(angle);
-                const z = cRadius * Math.sin(angle);
+                let angle;
+                if (state.arena.column_order === 'cw') {
+                    // CW: start left of south, go counter-clockwise
+                    angle = BASE_OFFSET_RAD - halfPanel - col * alpha + angleOffsetRad;
+                } else {
+                    // CCW: start right of south, go clockwise
+                    angle = BASE_OFFSET_RAD + halfPanel + col * alpha + angleOffsetRad;
+                }
 
-                const columnGroup = createColumnWithLEDs(specs, panelWidth, columnHeight, panelDepth, angle, numRows, col, numCols);
+                const x = cRadius * Math.cos(angle);
+                const z = -cRadius * Math.sin(angle);  // Negate Z to match MATLAB top-down view
+
+                const columnGroup = createColumnWithLEDs(specs, panelWidth, columnHeight, panelDepth, -angle, numRows, col, numCols);
                 columnGroup.position.set(x, 0, z);
 
                 arenaGroup.add(columnGroup);
@@ -1596,7 +1646,7 @@
 
             // Add column label on ground (if enabled)
             if (state.showColumnLabels) {
-                const colLabel = createLabel(colIndex.toString(), '#00e676', 'bold');
+                const colLabel = createLabel(`c${colIndex}`, '#00897b', 'bold');
                 // Position on ground, slightly outside the column
                 colLabel.position.set(0, -halfH - 0.1, -panelThickness - 0.05);
                 group.add(colLabel);

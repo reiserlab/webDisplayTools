@@ -210,25 +210,35 @@ const PANEL_SPECS = {
         panel_width_mm: 32,
         panel_height_mm: 32,
         panel_depth_mm: 18,
-        pixels_per_panel: 8
+        pixels_per_panel: 8,
+        led_type: 'round',
+        led_diameter_mm: 3.0  // 3mm diameter round (4mm pitch)
     },
     'G4': {
         panel_width_mm: 40.45,
         panel_height_mm: 40.45,
         panel_depth_mm: 18,
-        pixels_per_panel: 16
+        pixels_per_panel: 16,
+        led_type: 'round',
+        led_diameter_mm: 1.9  // 1.9mm diameter round
     },
     'G4.1': {
         panel_width_mm: 40,
         panel_height_mm: 40,
         panel_depth_mm: 6.35,
-        pixels_per_panel: 16
+        pixels_per_panel: 16,
+        led_type: 'rect',      // 0603 SMD at 45 degrees
+        led_width_mm: 1.6,
+        led_height_mm: 0.8
     },
     'G6': {
         panel_width_mm: 45.4,
         panel_height_mm: 45.4,
         panel_depth_mm: 3.45,
-        pixels_per_panel: 20
+        pixels_per_panel: 20,
+        led_type: 'rect',      // 0402 SMD at 45 degrees
+        led_width_mm: 1.0,
+        led_height_mm: 0.5
     }
 };
 

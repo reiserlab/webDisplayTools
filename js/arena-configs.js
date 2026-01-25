@@ -1,7 +1,7 @@
 /**
  * Arena Configurations
  * Auto-generated from maDisplayTools/configs/arenas/
- * Last updated: 2026-01-24T15:01:28.810Z
+ * Last updated: 2026-01-25T18:19:09.604Z
  *
  * DO NOT EDIT MANUALLY - regenerate with: node scripts/generate-arena-configs.js
  */
@@ -47,7 +47,33 @@ const STANDARD_CONFIGS = {
       ],
       "orientation": "normal",
       "column_order": "cw",
-      "angle_offset_deg": -72
+      "angle_offset_deg": 0
+    }
+  },
+  "G6_3x18_partial": {
+    "label": "G6 (3×18) - 240°",
+    "description": "G6 arena, 3 rows × 18 columns, 12 columns installed",
+    "arena": {
+      "generation": "G6",
+      "num_rows": 3,
+      "num_cols": 18,
+      "panels_installed": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "orientation": "normal",
+      "column_order": "cw",
+      "angle_offset_deg": -60
     }
   },
   "G41_2x12_ccw": {
@@ -112,7 +138,7 @@ const STANDARD_CONFIGS = {
       ],
       "orientation": "normal",
       "column_order": "cw",
-      "angle_offset_deg": -20
+      "angle_offset_deg": -60
     }
   },
   "G4_4x12_full": {
@@ -163,42 +189,34 @@ const PANEL_SPECS = {
         panel_height_mm: 32,
         panel_depth_mm: 18,
         pixels_per_panel: 8,
-        // 4mm pitch, 3mm diameter round LEDs (~1mm gap)
         led_type: 'round',
-        led_diameter_mm: 3.0,
-        led_pitch_mm: 4.0
+        led_diameter_mm: 3.0  // 3mm diameter round (4mm pitch)
     },
     'G4': {
         panel_width_mm: 40.45,
         panel_height_mm: 40.45,
         panel_depth_mm: 18,
         pixels_per_panel: 16,
-        // 1.9mm diameter round LEDs
         led_type: 'round',
-        led_diameter_mm: 1.9,
-        led_pitch_mm: 2.53  // 40.45mm / 16 pixels
+        led_diameter_mm: 1.9  // 1.9mm diameter round
     },
     'G4.1': {
         panel_width_mm: 40,
         panel_height_mm: 40,
         panel_depth_mm: 6.35,
         pixels_per_panel: 16,
-        // 0603 SMD LEDs: 1.6mm x 0.8mm, mounted at 45°
-        led_type: 'rect',
+        led_type: 'rect',      // 0603 SMD at 45 degrees
         led_width_mm: 1.6,
-        led_height_mm: 0.8,
-        led_pitch_mm: 2.5  // 40mm / 16 pixels
+        led_height_mm: 0.8
     },
     'G6': {
         panel_width_mm: 45.4,
         panel_height_mm: 45.4,
         panel_depth_mm: 3.45,
         pixels_per_panel: 20,
-        // 0402 SMD LEDs: 1.0mm x 0.5mm, mounted at 45°
-        led_type: 'rect',
+        led_type: 'rect',      // 0402 SMD at 45 degrees
         led_width_mm: 1.0,
-        led_height_mm: 0.5,
-        led_pitch_mm: 2.27  // 45.4mm / 20 pixels
+        led_height_mm: 0.5
     }
 };
 
