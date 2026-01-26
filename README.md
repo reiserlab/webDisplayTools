@@ -21,51 +21,39 @@ Open `index.html` in your web browser to access all tools, or visit the live dem
 
 ## Tools
 
-### G6 Panel Pattern Editor ✅ Ready
-Create and edit 20×20 pixel patterns for G6 panels with:
-- Real-time preview
-- Draw and erase modes
+### G6 Panel Patterns ✅ Ready
+Create and preview 20×20 pixel patterns for individual G6 panels:
+- Real-time preview with draw/erase modes
 - Multiple modes: GS2, GS16, 4-Char, LED Map Reference
 - Pattern export capabilities
-- Modern dark theme UI
-- Version 6 (last updated 2026-01-12)
+- CI/CD validated against MATLAB
 
-**[Launch G6 Panel Editor →](https://reiserlab.github.io/webDisplayTools/g6_panel_editor.html)**
+**[Launch G6 Panel Patterns →](https://reiserlab.github.io/webDisplayTools/g6_panel_editor.html)**
 
-### Arena Layout Editor ✅ Ready
-Configure arena geometry and panel layout for G3-G6 display systems with:
-- SVG-based visualization with labeled dimensions
-- Support for all panel generations (G3, G4, G4.1, G5, G6, Custom)
-- Click-to-toggle panels for partial arena designs
-- Angle offset control for arena rotation
-- Export PDF for documentation
-- Export JSON with geometry and pin coordinates
-- CI/CD validation against MATLAB reference
-- v2 (2026-01-16)
+### Arena Layout ✅ Ready
+Configure arena geometry from standard configs or create custom layouts:
+- SVG-based 2D visualization
+- 10 standard arena configurations (G3, G4, G4.1, G6)
+- Click-to-toggle panels for partial arenas
+- PDF and YAML export
+- CI/CD validation against MATLAB
 
-**[Launch Arena Layout Editor →](https://reiserlab.github.io/webDisplayTools/arena_editor.html)**
+**[Launch Arena Layout →](https://reiserlab.github.io/webDisplayTools/arena_editor.html)**
 
-### Arena 3D Viewer ✅ Ready
-Interactive 3D visualization of arena configurations with:
-- Three.js-based 3D rendering with orbit controls
-- Accurate LED visualization (rotated rectangles for G4.1/G5/G6, circles for G3/G4)
-- Pattern visualization: All On, Grating (square wave), Sine wave
-- Animated pattern rotation with efficient color-only updates
-- Standard view presets (top-down, cardinal directions, fly view from center)
-- Zoom controls and screenshot export with descriptive filenames
-- Linked from Arena Layout Editor with configuration pass-through
-- v3 (2026-01-17)
+### Arena 3D View ✅ Ready
+Interactive 3D visualization of cylindrical arenas:
+- Three.js rendering with orbit controls
+- Test pattern preview (all-on, grating, sine)
+- Angular resolution analysis
+- Screenshot export
 
-**[Launch Arena 3D Viewer →](https://reiserlab.github.io/webDisplayTools/arena_3d_viewer.html)**
+**[Launch Arena 3D View →](https://reiserlab.github.io/webDisplayTools/arena_3d_viewer.html)**
 
-### G4.1 Pattern Editor 🚧 Coming Soon
-Design patterns for G4.1 display systems with support for multiple panel configurations.
-
-### G6 Pattern Editor 🚧 Coming Soon
-Advanced pattern editor for G6 display systems with multi-panel support and animation tools.
+### Multi-Panel Patterns 🚧 Coming Soon
+Full-arena pattern design with animation support. Export to GIF/video for documentation.
 
 ### Experiment Designer 🚧 Coming Soon
-Design and configure experiments with visual stimuli sequences and parameter management.
+Design experiment protocols with stimulus sequences and trial parameters. YAML export for MATLAB execution.
 
 ## Design System
 

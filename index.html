@@ -168,18 +168,17 @@
         }
 
         .info-box {
-            background: rgba(0, 230, 118, 0.08);
+            background: rgba(139, 148, 158, 0.08);
             border: 1px solid var(--border);
-            border-left: 3px solid var(--accent);
             border-radius: 4px;
             padding: 1rem 1.25rem;
-            margin-bottom: 2rem;
+            margin-top: 2rem;
             font-size: 0.85rem;
             color: var(--text-dim);
         }
 
         .info-box strong {
-            color: var(--accent);
+            color: var(--text);
         }
 
         @media (max-width: 768px) {
@@ -197,54 +196,51 @@
     <div class="container">
         <header>
             <h1>PanelDisplayTools</h1>
-            <p class="subtitle">Web-based tools for configuring and editing display patterns for modular arena systems</p>
+            <p class="subtitle">Web-based tools for LED panel arena design and pattern creation</p>
         </header>
-
-        <div class="info-box">
-            <strong>Note:</strong> G4.1 and G6 panel generations are actively tested and validated.
-            G3 and G4 configurations are included for comparison and backward compatibility only.
-        </div>
 
         <div class="tools-grid">
             <a href="g6_panel_editor.html" class="tool-card">
-                <h2>G6 Panel Pattern Editor</h2>
-                <p>Create and edit 20×20 pixel patterns for G6 panels with real-time preview and export capabilities.</p>
+                <h2>G6 Panel Patterns</h2>
+                <p>Create and preview 20×20 pixel patterns for individual G6 panels. Supports GS2 and GS16 modes with real-time preview.</p>
                 <span class="status ready">Ready</span>
             </a>
 
             <a href="arena_editor.html" class="tool-card">
-                <h2>Arena Layout Editor</h2>
-                <p>Configure arena geometry and panel layout with 2D visualization. Export configuration files for MATLAB.</p>
+                <h2>Arena Layout</h2>
+                <p>Configure arena geometry from standard configs or create custom layouts. 2D visualization with PDF export.</p>
                 <span class="status ready">Ready</span>
             </a>
 
             <a href="arena_3d_viewer.html" class="tool-card">
-                <h2>Arena 3D Viewer</h2>
-                <p>Visualize cylindrical LED arenas in 3D with interactive controls, pattern preview, and angular resolution analysis.</p>
+                <h2>Arena 3D View</h2>
+                <p>Interactive 3D visualization of cylindrical arenas. Preview test patterns and explore angular resolution.</p>
                 <span class="status ready">Ready</span>
             </a>
 
-            <a href="g41_pattern_editor.html" class="tool-card disabled">
-                <h2>G4.1 Pattern Editor</h2>
-                <p>Design patterns for G4.1 display systems with support for multiple panel configurations.</p>
+            <div class="tool-card disabled">
+                <h2>Multi-Panel Patterns</h2>
+                <p>Full-arena pattern design with animation support. Export to GIF/video for documentation.</p>
                 <span class="status coming-soon">Coming Soon</span>
-            </a>
+            </div>
 
-            <a href="g6_pattern_editor.html" class="tool-card disabled">
-                <h2>G6 Pattern Editor</h2>
-                <p>Advanced pattern editor for G6 display systems with multi-panel support and animation tools.</p>
-                <span class="status coming-soon">Coming Soon</span>
-            </a>
-
-            <a href="experiment_designer.html" class="tool-card disabled">
+            <div class="tool-card disabled">
                 <h2>Experiment Designer</h2>
-                <p>Design and configure experiments with visual stimuli sequences and parameter management.</p>
+                <p>Design experiment protocols with stimulus sequences and trial parameters. YAML export for MATLAB execution.</p>
                 <span class="status coming-soon">Coming Soon</span>
-            </a>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <strong>Panel Generations:</strong> G4.1 and G6 are actively tested. G3 and G4 configurations are included for comparison and backward compatibility.
         </div>
 
         <footer>
-            <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | PanelDisplayTools</p>
+            <p>
+                <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">GitHub</a> |
+                <a href="https://github.com/reiserlab/maDisplayTools/blob/main/docs/G4G6_ROADMAP.md" target="_blank">Roadmap</a> |
+                <a href="https://github.com/reiserlab" target="_blank">Reiser Lab</a>
+            </p>
         </footer>
     </div>
 </body>

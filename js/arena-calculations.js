@@ -32,14 +32,7 @@ const PANEL_SPECS = {
         pin_dist_mm: 4.57,
         pin_config: 'single'
     },
-    'G5': {
-        panel_width_mm: 40,
-        panel_depth_mm: 6.35,
-        pixels_per_panel: 20,
-        num_pins: 10,
-        pin_dist_mm: 4.57,
-        pin_config: 'single'
-    },
+    // Note: G5 is deprecated and no longer supported
     'G6': {
         panel_width_mm: 45.4,
         panel_depth_mm: 3.45,
@@ -53,7 +46,7 @@ const PANEL_SPECS = {
 
 /**
  * Calculate arena geometry for a given panel type and number of panels
- * @param {string} panelType - Panel generation (G3, G4, G4.1, G5, G6)
+ * @param {string} panelType - Panel generation (G3, G4, G4.1, G6)
  * @param {number} numPanels - Number of panels in the arena
  * @param {number[]} panelsInstalled - Array of installed panel indices (1-based)
  * @returns {object} Geometry calculations

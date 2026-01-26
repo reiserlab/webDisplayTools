@@ -42,14 +42,13 @@ Standard panel generations:
 - G3: 32mm width, 8x8 pixels (circle LEDs)
 - G4: 40.45mm width, 16x16 pixels (circle LEDs)
 - G4.1: 40mm width, 16x16 pixels (rotated rectangle LEDs)
-- G5: 40mm width, 20x20 pixels (rotated rectangle LEDs)
 - G6: 45.4mm width, 20x20 pixels (rotated rectangle LEDs)
+Note: G5 is deprecated and no longer supported.
 
 Arena radius formula: `cRadius = panelWidth / (tan(alpha/2)) / 2` where `alpha = 2*PI/numPanels`
 
 ### LED Specifications
-- G4.1, G5, G6 use 0604 LED package: 0.6mm × 0.4mm = 1.5:1 aspect ratio
-- LEDs are rectangles rotated 45° on the panel (not diamonds)
+- G4.1, G6 use SMD LED packages with rectangular shapes rotated 45° on the panel
 - G3, G4 use circular LED visualization
 
 ## Arena 3D Viewer (`arena_3d_viewer.html`)
@@ -64,7 +63,7 @@ Arena radius formula: `cRadius = panelWidth / (tan(alpha/2)) / 2` where `alpha =
 ### State Object
 ```javascript
 state = {
-    panelType: 'G6',      // G3, G4, G4.1, G5, G6
+    panelType: 'G6',      // G3, G4, G4.1, G6
     numCols: 12,          // panels around (from 2D editor URL params)
     numRows: 3,           // panels vertically
     activePanels: null,   // array of active column indices, null = all
@@ -85,7 +84,7 @@ Format: `arena_{gen}_{cols}c{rows}r_{pattern}[_stats]_{timestamp}.png`
 Example: `arena_G6_12c3r_sine120_stats_2026-01-17T10-30-45.png`
 
 ### URL Parameters
-- `gen`: Panel generation (G3, G4, G4.1, G5, G6) - defaults to G6
+- `gen`: Panel generation (G3, G4, G4.1, G6) - defaults to G6
 - `cols`: Number of columns (panels around) - defaults to 10
 - `rows`: Number of rows (panels vertically) - defaults to 3
 - `active`: Comma-separated 0-based indices of active panels (omitted if all active)
