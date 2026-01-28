@@ -1437,7 +1437,12 @@
 
         function getLEDBrightness(px, py, colIndex, numCols, totalPixelsH) {
             const totalAzimuthPixels = numCols * totalPixelsH;
-            const globalPixelX = ((colIndex * totalPixelsH + px) + state.phaseOffset + totalAzimuthPixels) % totalAzimuthPixels;
+            // For CCW mode, mirror the pixel index within each panel
+            // to ensure grating tiles correctly when columns are placed clockwise
+            const effectivePx = (state.arena && state.arena.column_order === 'ccw')
+                ? (totalPixelsH - 1 - px)
+                : px;
+            const globalPixelX = ((colIndex * totalPixelsH + effectivePx) + state.phaseOffset + totalAzimuthPixels) % totalAzimuthPixels;
 
             if (state.pattern === 'allOn') {
                 return 1.0;
