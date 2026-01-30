@@ -235,7 +235,8 @@ When the user says **"close session"**, enter plan mode and prepare documentatio
    - New utility functions that should be documented
    - Any corrections to existing documentation
 
-3. **Review docs/ROADMAP.md for updates** (if exists)
+3. **Review maDisplayTools docs/G4G6_ROADMAP.md for updates**
+   - This is the unified roadmap for both MATLAB and web tools
    - Mark completed tasks as done
    - Add any new issues discovered during the session
    - Note deferred items or future improvements identified
