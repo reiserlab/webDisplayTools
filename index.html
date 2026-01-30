@@ -136,6 +136,12 @@
             border: 1px solid var(--border);
         }
 
+        .status.in-dev {
+            background: rgba(255, 152, 0, 0.15);
+            color: #ff9800;
+            border: 1px solid #ff9800;
+        }
+
         .tool-card.disabled {
             opacity: 0.6;
             cursor: not-allowed;
@@ -218,11 +224,11 @@
                 <span class="status ready">Ready</span>
             </a>
 
-            <div class="tool-card disabled">
-                <h2>Multi-Panel Patterns</h2>
-                <p>Full-arena pattern design with animation support. Export to GIF/video for documentation.</p>
-                <span class="status coming-soon">Coming Soon</span>
-            </div>
+            <a href="pattern_editor.html" class="tool-card">
+                <h2>Pattern Editor</h2>
+                <p>Create, edit, and combine full-arena patterns. Generate gratings, starfields, and more with 2D/3D preview.</p>
+                <span class="status in-dev">In Development</span>
+            </a>
 
             <div class="tool-card disabled">
                 <h2>Experiment Designer</h2>

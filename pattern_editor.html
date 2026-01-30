@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pattern Editor - PanelDisplayTools</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="js/arena-configs.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0f1419;
+            --surface: #1a1f26;
+            --border: #2d3640;
+            --text: #e6edf3;
+            --text-dim: #8b949e;
+            --accent: #00e676;
+            --hover: #00c853;
+            --warning: #ff9800;
+            --led-off: #1e2329;
+        }
+
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Development Banner */
+        .dev-banner {
+            background: linear-gradient(90deg, var(--warning), #f57c00);
+            color: var(--bg);
+            text-align: center;
+            padding: 0.5rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .dev-banner a {
+            color: var(--bg);
+            text-decoration: underline;
+        }
+
+        /* Main Layout */
+        .app-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Left Panel - Tools */
+        .tools-panel {
+            width: 320px;
+            min-width: 320px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tools-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tools-header h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.1rem;
+            color: var(--accent);
+            margin-bottom: 0.25rem;
+        }
+
+        .tools-header .subtitle {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+
+        /* Tool Tabs */
+        .tool-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+
+        .tool-tab {
+            flex: 1;
+            padding: 0.7rem 0.5rem;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .tool-tab:hover {
+            color: var(--text);
+            background: var(--surface);
+        }
+
+        .tool-tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+            background: var(--surface);
+        }
+
+        /* Tool Content */
+        .tool-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 1.25rem;
+        }
+
+        .tool-pane {
+            display: none;
+        }
+
+        .tool-pane.active {
+            display: block;
+        }
+
+        .section-title {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+
+        .control-group {
+            margin-bottom: 1rem;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            margin-bottom: 0.3rem;
+        }
+
+        .control-group select,
+        .control-group input[type="number"] {
+            width: 100%;
+            padding: 0.5rem 0.6rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+        }
+
+        .control-group select:focus,
+        .control-group input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* Frame Clipboard */
+        .clipboard-section {
+            border-top: 1px solid var(--border);
+            padding: 1rem 1.25rem;
+            background: var(--bg);
+        }
+
+        .clipboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .clipboard-header h3 {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+
+        .clipboard-count {
+            font-size: 0.7rem;
+            color: var(--accent);
+        }
+
+        .clipboard-frames {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .clipboard-scroll-btn {
+            width: 24px;
+            height: 40px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+        }
+
+        .clipboard-scroll-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .clipboard-scroll-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .clipboard-thumbnails {
+            display: flex;
+            gap: 0.4rem;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .clipboard-thumb {
+            width: 40px;
+            height: 40px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6rem;
+            color: var(--text-dim);
+        }
+
+        .clipboard-thumb:hover {
+            border-color: var(--accent);
+        }
+
+        .clipboard-thumb.selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 8px rgba(0, 230, 118, 0.3);
+        }
+
+        .clipboard-empty {
+            flex: 1;
+            text-align: center;
+            padding: 0.75rem;
+            color: var(--text-dim);
+            font-size: 0.7rem;
+            font-style: italic;
+        }
+
+        /* File Operations */
+        .file-operations {
+            padding: 1rem 1.25rem;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .arena-select-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .arena-select-row label {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            align-self: center;
+            white-space: nowrap;
+        }
+
+        .arena-select-row select {
+            flex: 1;
+            padding: 0.4rem 0.5rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+        }
+
+        .file-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 0.6rem;
+            background: var(--accent);
+            border: none;
+            border-radius: 4px;
+            color: var(--bg);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--hover);
+        }
+
+        .btn.secondary {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .btn.secondary:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Right Panel - Viewer */
+        .viewer-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Viewer Tabs */
+        .viewer-tabs {
+            display: flex;
+            padding: 0.75rem 1rem;
+            gap: 0.5rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .viewer-tab {
+            padding: 0.5rem 1rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .viewer-tab:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .viewer-tab.active {
+            background: rgba(0, 230, 118, 0.1);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .viewer-tab.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .viewer-options {
+            margin-left: auto;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .viewer-options label {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            cursor: pointer;
+        }
+
+        .viewer-options input[type="checkbox"] {
+            accent-color: var(--accent);
+        }
+
+        /* Viewer Content */
+        .viewer-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .viewer-pane {
+            display: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        .viewer-pane.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Grid Viewer */
+        #gridViewer {
+            position: relative;
+        }
+
+        .grid-canvas-container {
+            position: relative;
+        }
+
+        #gridCanvas {
+            border: 1px solid var(--border);
+            cursor: crosshair;
+        }
+
+        /* Placeholder content */
+        .placeholder {
+            text-align: center;
+            color: var(--text-dim);
+        }
+
+        .placeholder-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        .placeholder h2 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.2rem;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .placeholder p {
+            font-size: 0.85rem;
+            max-width: 400px;
+            line-height: 1.5;
+        }
+
+        /* Playback Controls */
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 1rem;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .frame-nav {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .frame-btn {
+            width: 28px;
+            height: 28px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+        }
+
+        .frame-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .frame-info {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text);
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .play-btn {
+            width: 36px;
+            height: 36px;
+            background: var(--accent);
+            border: none;
+            border-radius: 50%;
+            color: var(--bg);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+        }
+
+        .play-btn:hover {
+            background: var(--hover);
+        }
+
+        .fps-select {
+            padding: 0.4rem 0.6rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+        }
+
+        .capture-btn {
+            margin-left: auto;
+            padding: 0.5rem 1rem;
+            background: var(--bg);
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .capture-btn:hover {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        /* Status Bar */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 1rem;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+
+        .status-bar .pattern-info {
+            display: flex;
+            gap: 1.5rem;
+        }
+
+        .status-bar .unsaved {
+            color: var(--warning);
+            font-weight: 600;
+        }
+
+        /* Coming Soon overlay for disabled features */
+        .coming-soon-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 20, 25, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .coming-soon-badge {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .coming-soon-badge h3 {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .coming-soon-badge p {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+    </style>
+</head>
+<body>
+    <!-- Development Banner -->
+    <div class="dev-banner">
+        🚧 In Development — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+    </div>
+
+    <div class="app-container">
+        <!-- Left Panel: Tools -->
+        <div class="tools-panel">
+            <div class="tools-header">
+                <h1>Pattern Editor</h1>
+                <div class="subtitle">Create and edit arena patterns</div>
+            </div>
+
+            <!-- Tool Tabs -->
+            <div class="tool-tabs">
+                <button class="tool-tab active" data-tab="generate">Generate</button>
+                <button class="tool-tab" data-tab="frame">Frame</button>
+                <button class="tool-tab" data-tab="combine">Combine</button>
+            </div>
+
+            <!-- Tool Content -->
+            <div class="tool-content">
+                <!-- Generate Tab -->
+                <div class="tool-pane active" id="generatePane">
+                    <div class="section-title">Pattern Type</div>
+                    <div class="control-group">
+                        <select id="patternType">
+                            <option value="grating">Square Grating</option>
+                            <option value="sine">Sine Grating</option>
+                            <option value="starfield">Starfield</option>
+                            <option value="edge">Edge</option>
+                            <option value="off-on">Off/On</option>
+                            <option value="looming" disabled>Looming (coming soon)</option>
+                        </select>
+                    </div>
+
+                    <div class="section-title">Parameters</div>
+                    <div class="control-group">
+                        <label>Spatial Frequency (pixels)</label>
+                        <input type="number" id="spatialFreq" value="20" min="2" max="200">
+                    </div>
+                    <div class="control-group">
+                        <label>Step Size (pixels/frame)</label>
+                        <input type="number" id="stepSize" value="1" min="1" max="20">
+                    </div>
+                    <div class="control-group">
+                        <label>Direction</label>
+                        <select id="direction">
+                            <option value="cw">Clockwise</option>
+                            <option value="ccw">Counter-clockwise</option>
+                        </select>
+                    </div>
+
+                    <div class="section-title">Brightness</div>
+                    <div class="control-group">
+                        <label>Grayscale Mode</label>
+                        <select id="gsMode">
+                            <option value="16">GS16 (4-bit, 0-15)</option>
+                            <option value="2">GS2 (binary, 0-1)</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>High Level</label>
+                        <input type="number" id="highLevel" value="15" min="0" max="15">
+                    </div>
+                    <div class="control-group">
+                        <label>Low Level</label>
+                        <input type="number" id="lowLevel" value="0" min="0" max="15">
+                    </div>
+
+                    <button class="btn" id="generateBtn" style="margin-top: 1rem;">Generate Pattern</button>
+                </div>
+
+                <!-- Frame to Pattern Tab -->
+                <div class="tool-pane" id="framePane">
+                    <div class="section-title">Sequence Builder</div>
+                    <p style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 1rem;">
+                        Select frame(s) from the clipboard below, then configure rotation to generate a pattern.
+                    </p>
+
+                    <div class="control-group">
+                        <label>Step Size (pixels/frame)</label>
+                        <input type="number" id="rotateStep" value="1" min="1" max="20">
+                    </div>
+                    <div class="control-group">
+                        <label>Direction</label>
+                        <select id="rotateDirection">
+                            <option value="cw">Clockwise</option>
+                            <option value="ccw">Counter-clockwise</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>Total Frames</label>
+                        <input type="number" id="totalFrames" value="360" min="1" max="1000">
+                    </div>
+
+                    <button class="btn" id="buildSequenceBtn" style="margin-top: 1rem;">Generate Sequence</button>
+                </div>
+
+                <!-- Combine Tab -->
+                <div class="tool-pane" id="combinePane">
+                    <div class="section-title">Pattern A (Current)</div>
+                    <div class="control-group">
+                        <div style="padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.75rem; color: var(--text-dim);">
+                            <span id="patternAInfo">No pattern loaded</span>
+                        </div>
+                    </div>
+
+                    <div class="section-title">Pattern B</div>
+                    <div class="control-group">
+                        <button class="btn secondary" id="loadPatternB">Load Pattern B...</button>
+                    </div>
+
+                    <div style="text-align: center; margin: 1rem 0;">
+                        <button class="btn secondary" id="swapBtn" style="width: auto; padding: 0.4rem 1rem;">
+                            ↕ Swap A ↔ B
+                        </button>
+                    </div>
+
+                    <div class="section-title">Combination Mode</div>
+                    <div class="control-group">
+                        <select id="combineMode">
+                            <option value="sequential">Sequential (concatenate)</option>
+                            <option value="mask">Mask/Blend</option>
+                            <option value="split">Left/Right Split</option>
+                        </select>
+                    </div>
+
+                    <button class="btn" id="combineBtn" style="margin-top: 1rem;">Combine Patterns</button>
+                </div>
+            </div>
+
+            <!-- Frame Clipboard -->
+            <div class="clipboard-section">
+                <div class="clipboard-header">
+                    <h3>Frame Clipboard</h3>
+                    <span class="clipboard-count" id="clipboardCount">0 frames</span>
+                </div>
+                <div class="clipboard-frames">
+                    <button class="clipboard-scroll-btn" id="clipboardPrev" disabled>◀</button>
+                    <div class="clipboard-thumbnails" id="clipboardThumbnails">
+                        <div class="clipboard-empty">Capture frames to build sequences</div>
+                    </div>
+                    <button class="clipboard-scroll-btn" id="clipboardNext" disabled>▶</button>
+                </div>
+            </div>
+
+            <!-- File Operations -->
+            <div class="file-operations">
+                <div class="arena-select-row">
+                    <label>Arena:</label>
+                    <select id="arenaConfig"></select>
+                </div>
+                <div class="file-buttons">
+                    <button class="btn secondary" id="loadBtn">Load</button>
+                    <button class="btn secondary" id="saveBtn">Save</button>
+                    <button class="btn secondary" id="newBtn">New</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Viewer -->
+        <div class="viewer-panel">
+            <!-- Viewer Tabs -->
+            <div class="viewer-tabs">
+                <button class="viewer-tab active" data-viewer="grid">Grid/Edit</button>
+                <button class="viewer-tab" data-viewer="3d">3D</button>
+                <button class="viewer-tab disabled" data-viewer="mercator">Mercator</button>
+                <button class="viewer-tab disabled" data-viewer="mollweide">Mollweide</button>
+
+                <div class="viewer-options">
+                    <label>
+                        <input type="checkbox" id="showBoundaries" checked>
+                        Panel boundaries
+                    </label>
+                    <label>
+                        <input type="checkbox" id="showNumbers">
+                        Panel numbers
+                    </label>
+                </div>
+            </div>
+
+            <!-- Viewer Content -->
+            <div class="viewer-content">
+                <!-- Grid Viewer -->
+                <div class="viewer-pane active" id="gridViewer">
+                    <div class="placeholder">
+                        <div class="placeholder-icon">⬚</div>
+                        <h2>No Pattern Loaded</h2>
+                        <p>Load a .pat file or generate a new pattern to view it here.</p>
+                    </div>
+                </div>
+
+                <!-- 3D Viewer -->
+                <div class="viewer-pane" id="3dViewer">
+                    <div class="coming-soon-overlay">
+                        <div class="coming-soon-badge">
+                            <h3>3D Viewer</h3>
+                            <p>Coming in Phase 5</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mercator Viewer -->
+                <div class="viewer-pane" id="mercatorViewer">
+                    <div class="coming-soon-overlay">
+                        <div class="coming-soon-badge">
+                            <h3>Mercator Projection</h3>
+                            <p>Optional enhancement</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mollweide Viewer -->
+                <div class="viewer-pane" id="mollweideViewer">
+                    <div class="coming-soon-overlay">
+                        <div class="coming-soon-badge">
+                            <h3>Mollweide Projection</h3>
+                            <p>Optional enhancement</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Playback Controls -->
+            <div class="playback-controls">
+                <div class="frame-nav">
+                    <button class="frame-btn" id="firstFrameBtn" title="First frame">⏮</button>
+                    <button class="frame-btn" id="prevFrameBtn" title="Previous frame">◀</button>
+                    <span class="frame-info" id="frameInfo">1 / 1</span>
+                    <button class="frame-btn" id="nextFrameBtn" title="Next frame">▶</button>
+                    <button class="frame-btn" id="lastFrameBtn" title="Last frame">⏭</button>
+                </div>
+
+                <button class="play-btn" id="playBtn" title="Play/Pause">▶</button>
+
+                <select class="fps-select" id="fpsSelect">
+                    <option value="1">1 FPS</option>
+                    <option value="5">5 FPS</option>
+                    <option value="10" selected>10 FPS</option>
+                    <option value="20">20 FPS</option>
+                    <option value="30">30 FPS</option>
+                </select>
+
+                <button class="capture-btn" id="captureBtn">Capture Frame</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <div class="pattern-info">
+            <span id="statusFilename">No pattern</span>
+            <span id="statusDimensions">—</span>
+            <span id="statusFrames">—</span>
+            <span id="statusGsMode">—</span>
+        </div>
+        <span id="statusUnsaved"></span>
+    </div>
+
+    <!-- Hidden file input -->
+    <input type="file" id="fileInput" accept=".pat" style="display: none;">
+    <input type="file" id="fileInputB" accept=".pat" style="display: none;">
+
+    <script type="module">
+        import PatParser from './js/pat-parser.js';
+
+        // ============================================
+        // State Management
+        // ============================================
+        const state = {
+            pattern: null,          // Current loaded/generated pattern
+            patternB: null,         // Pattern B for combining
+            clipboard: [],          // Array of captured frames
+            clipboardOffset: 0,     // Scroll offset for clipboard display
+            editor: {
+                activeTool: 'generate',
+                activeViewer: 'grid',
+                editMode: false,
+                editingClipboardId: null,
+                showPanelBoundaries: true,
+                showPanelNumbers: false,
+                currentFrame: 0,
+                drawColor: 15
+            },
+            playback: {
+                isPlaying: false,
+                fps: 10,
+                intervalId: null
+            },
+            arena: {
+                configName: 'G6_2x10',
+                config: null
+            },
+            isDirty: false,
+            filename: null,
+            listeners: new Map()
+        };
+
+        // Event emitter
+        function emit(event, data) {
+            const callbacks = state.listeners.get(event) || [];
+            callbacks.forEach(cb => cb(data));
+        }
+
+        function on(event, callback) {
+            if (!state.listeners.has(event)) {
+                state.listeners.set(event, []);
+            }
+            state.listeners.get(event).push(callback);
+        }
+
+        // ============================================
+        // UI Initialization
+        // ============================================
+        function initUI() {
+            // Populate arena config dropdown
+            const arenaSelect = document.getElementById('arenaConfig');
+            const configsByGen = getConfigsByGeneration();
+
+            for (const [gen, configs] of Object.entries(configsByGen)) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = gen;
+                configs.forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name;
+                    if (name === state.arena.configName) {
+                        option.selected = true;
+                    }
+                    optgroup.appendChild(option);
+                });
+                arenaSelect.appendChild(optgroup);
+            }
+
+            // Load initial config
+            state.arena.config = getConfig(state.arena.configName);
+
+            // Tool tabs
+            document.querySelectorAll('.tool-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const tabName = tab.dataset.tab;
+                    setActiveTool(tabName);
+                });
+            });
+
+            // Viewer tabs
+            document.querySelectorAll('.viewer-tab:not(.disabled)').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const viewerName = tab.dataset.viewer;
+                    setActiveViewer(viewerName);
+                });
+            });
+
+            // View options
+            document.getElementById('showBoundaries').addEventListener('change', (e) => {
+                state.editor.showPanelBoundaries = e.target.checked;
+                renderCurrentViewer();
+            });
+
+            document.getElementById('showNumbers').addEventListener('change', (e) => {
+                state.editor.showPanelNumbers = e.target.checked;
+                renderCurrentViewer();
+            });
+
+            // File operations
+            document.getElementById('loadBtn').addEventListener('click', () => {
+                document.getElementById('fileInput').click();
+            });
+
+            document.getElementById('fileInput').addEventListener('change', handleFileLoad);
+
+            document.getElementById('saveBtn').addEventListener('click', handleSave);
+            document.getElementById('newBtn').addEventListener('click', handleNew);
+
+            document.getElementById('arenaConfig').addEventListener('change', (e) => {
+                state.arena.configName = e.target.value;
+                state.arena.config = getConfig(e.target.value);
+                updateStatus();
+            });
+
+            // Playback controls
+            document.getElementById('playBtn').addEventListener('click', togglePlayback);
+            document.getElementById('prevFrameBtn').addEventListener('click', () => navigateFrame(-1));
+            document.getElementById('nextFrameBtn').addEventListener('click', () => navigateFrame(1));
+            document.getElementById('firstFrameBtn').addEventListener('click', () => goToFrame(0));
+            document.getElementById('lastFrameBtn').addEventListener('click', () => {
+                if (state.pattern) goToFrame(state.pattern.numFrames - 1);
+            });
+
+            document.getElementById('fpsSelect').addEventListener('change', (e) => {
+                state.playback.fps = parseInt(e.target.value);
+                if (state.playback.isPlaying) {
+                    stopPlayback();
+                    startPlayback();
+                }
+            });
+
+            // Capture button
+            document.getElementById('captureBtn').addEventListener('click', captureFrame);
+
+            // Generate button
+            document.getElementById('generateBtn').addEventListener('click', handleGenerate);
+
+            // Combine operations
+            document.getElementById('loadPatternB').addEventListener('click', () => {
+                document.getElementById('fileInputB').click();
+            });
+            document.getElementById('fileInputB').addEventListener('change', handleLoadPatternB);
+            document.getElementById('swapBtn').addEventListener('click', handleSwap);
+            document.getElementById('combineBtn').addEventListener('click', handleCombine);
+            document.getElementById('buildSequenceBtn').addEventListener('click', handleBuildSequence);
+
+            // Initial status
+            updateStatus();
+        }
+
+        function setActiveTool(tabName) {
+            state.editor.activeTool = tabName;
+
+            document.querySelectorAll('.tool-tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.tab === tabName);
+            });
+
+            document.querySelectorAll('.tool-pane').forEach(p => {
+                p.classList.toggle('active', p.id === tabName + 'Pane');
+            });
+        }
+
+        function setActiveViewer(viewerName) {
+            state.editor.activeViewer = viewerName;
+
+            document.querySelectorAll('.viewer-tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.viewer === viewerName);
+            });
+
+            document.querySelectorAll('.viewer-pane').forEach(p => {
+                p.classList.toggle('active', p.id === viewerName + 'Viewer');
+            });
+
+            renderCurrentViewer();
+        }
+
+        // ============================================
+        // Pattern Loading/Saving
+        // ============================================
+        async function handleFileLoad(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const buffer = await file.arrayBuffer();
+                const pattern = PatParser.parsePatFile(buffer);
+
+                state.pattern = pattern;
+                state.filename = file.name;
+                state.isDirty = false;
+                state.editor.currentFrame = 0;
+
+                // Try to find matching arena config
+                const matchingConfig = PatParser.findMatchingConfig(pattern, STANDARD_CONFIGS);
+                if (matchingConfig) {
+                    state.arena.configName = matchingConfig;
+                    state.arena.config = getConfig(matchingConfig);
+                    document.getElementById('arenaConfig').value = matchingConfig;
+                }
+
+                updateStatus();
+                renderCurrentViewer();
+                updateFrameInfo();
+
+                console.log('Loaded pattern:', pattern);
+            } catch (err) {
+                console.error('Failed to load pattern:', err);
+                alert('Failed to load pattern file: ' + err.message);
+            }
+
+            e.target.value = ''; // Reset input
+        }
+
+        async function handleLoadPatternB(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const buffer = await file.arrayBuffer();
+                state.patternB = PatParser.parsePatFile(buffer);
+                state.patternB.filename = file.name;
+
+                document.getElementById('patternAInfo').textContent =
+                    state.pattern ? `${state.filename} (${state.pattern.numFrames} frames)` : 'No pattern loaded';
+
+                console.log('Loaded pattern B:', state.patternB);
+                alert(`Loaded Pattern B: ${file.name}`);
+            } catch (err) {
+                console.error('Failed to load pattern B:', err);
+                alert('Failed to load pattern file: ' + err.message);
+            }
+
+            e.target.value = '';
+        }
+
+        function handleSave() {
+            if (!state.pattern) {
+                alert('No pattern to save');
+                return;
+            }
+
+            // TODO: Implement pat-encoder.js
+            alert('Save functionality coming soon (requires pat-encoder.js)');
+        }
+
+        function handleNew() {
+            if (state.isDirty) {
+                if (!confirm('Discard unsaved changes?')) return;
+            }
+
+            const config = state.arena.config;
+            if (!config) {
+                alert('Please select an arena configuration first');
+                return;
+            }
+
+            // Create empty single-frame pattern
+            const pixelRows = config.arena.num_rows * PANEL_SPECS[config.arena.generation].pixels_per_panel;
+            const pixelCols = config.arena.num_cols * PANEL_SPECS[config.arena.generation].pixels_per_panel;
+
+            state.pattern = {
+                generation: config.arena.generation,
+                gsMode: 16,
+                numFrames: 1,
+                pixelRows: pixelRows,
+                pixelCols: pixelCols,
+                frames: [new Uint8Array(pixelRows * pixelCols)],
+                stretchValues: [1]
+            };
+
+            state.filename = 'untitled.pat';
+            state.isDirty = true;
+            state.editor.currentFrame = 0;
+
+            updateStatus();
+            renderCurrentViewer();
+            updateFrameInfo();
+        }
+
+        // ============================================
+        // Pattern Generation (placeholder)
+        // ============================================
+        function handleGenerate() {
+            const config = state.arena.config;
+            if (!config) {
+                alert('Please select an arena configuration first');
+                return;
+            }
+
+            const patternType = document.getElementById('patternType').value;
+            const spatialFreq = parseInt(document.getElementById('spatialFreq').value);
+            const stepSize = parseInt(document.getElementById('stepSize').value);
+            const direction = document.getElementById('direction').value;
+            const gsMode = parseInt(document.getElementById('gsMode').value);
+            const highLevel = parseInt(document.getElementById('highLevel').value);
+            const lowLevel = parseInt(document.getElementById('lowLevel').value);
+
+            const pixelsPerPanel = PANEL_SPECS[config.arena.generation].pixels_per_panel;
+            const pixelRows = config.arena.num_rows * pixelsPerPanel;
+            const pixelCols = config.arena.num_cols * pixelsPerPanel;
+            const numFrames = Math.ceil(spatialFreq / stepSize);
+
+            // Generate simple grating pattern
+            const frames = [];
+            for (let f = 0; f < numFrames; f++) {
+                const frame = new Uint8Array(pixelRows * pixelCols);
+                const offset = (direction === 'cw' ? f : -f) * stepSize;
+
+                for (let row = 0; row < pixelRows; row++) {
+                    for (let col = 0; col < pixelCols; col++) {
+                        let value;
+                        if (patternType === 'grating') {
+                            const phase = (col + offset) % spatialFreq;
+                            value = phase < spatialFreq / 2 ? highLevel : lowLevel;
+                        } else if (patternType === 'sine') {
+                            const phase = ((col + offset) / spatialFreq) * 2 * Math.PI;
+                            const normalized = (Math.sin(phase) + 1) / 2;
+                            value = Math.round(lowLevel + normalized * (highLevel - lowLevel));
+                        } else {
+                            value = highLevel; // Default: all on
+                        }
+                        frame[row * pixelCols + col] = value;
+                    }
+                }
+                frames.push(frame);
+            }
+
+            state.pattern = {
+                generation: config.arena.generation,
+                gsMode: gsMode,
+                numFrames: numFrames,
+                pixelRows: pixelRows,
+                pixelCols: pixelCols,
+                frames: frames,
+                stretchValues: new Array(numFrames).fill(1)
+            };
+
+            state.filename = `${patternType}_${spatialFreq}px.pat`;
+            state.isDirty = true;
+            state.editor.currentFrame = 0;
+
+            updateStatus();
+            renderCurrentViewer();
+            updateFrameInfo();
+
+            console.log('Generated pattern:', state.pattern);
+        }
+
+        // ============================================
+        // Frame Operations
+        // ============================================
+        function captureFrame() {
+            if (!state.pattern) {
+                alert('No pattern loaded');
+                return;
+            }
+
+            const frameData = state.pattern.frames[state.editor.currentFrame];
+            const frameCopy = new Uint8Array(frameData);
+
+            const clipboardEntry = {
+                id: Date.now(),
+                frame: frameCopy,
+                timestamp: new Date(),
+                name: `Frame ${state.clipboard.length + 1}`,
+                pixelRows: state.pattern.pixelRows,
+                pixelCols: state.pattern.pixelCols,
+                gsMode: state.pattern.gsMode
+            };
+
+            state.clipboard.push(clipboardEntry);
+            updateClipboardUI();
+
+            console.log('Captured frame to clipboard:', clipboardEntry.name);
+        }
+
+        function updateClipboardUI() {
+            const container = document.getElementById('clipboardThumbnails');
+            const countEl = document.getElementById('clipboardCount');
+            const prevBtn = document.getElementById('clipboardPrev');
+            const nextBtn = document.getElementById('clipboardNext');
+
+            countEl.textContent = `${state.clipboard.length} frame${state.clipboard.length !== 1 ? 's' : ''}`;
+
+            if (state.clipboard.length === 0) {
+                container.innerHTML = '<div class="clipboard-empty">Capture frames to build sequences</div>';
+                prevBtn.disabled = true;
+                nextBtn.disabled = true;
+                return;
+            }
+
+            const maxVisible = 5;
+            const startIdx = state.clipboardOffset;
+            const endIdx = Math.min(startIdx + maxVisible, state.clipboard.length);
+
+            prevBtn.disabled = startIdx === 0;
+            nextBtn.disabled = endIdx >= state.clipboard.length;
+
+            container.innerHTML = '';
+            for (let i = startIdx; i < endIdx; i++) {
+                const entry = state.clipboard[i];
+                const thumb = document.createElement('div');
+                thumb.className = 'clipboard-thumb';
+                thumb.title = `${entry.name}\n${formatTimestamp(entry.timestamp)}`;
+                thumb.textContent = (i + 1).toString();
+                thumb.addEventListener('click', () => {
+                    // TODO: Select frame for sequence building
+                    console.log('Selected clipboard frame:', entry.name);
+                });
+                container.appendChild(thumb);
+            }
+        }
+
+        function formatTimestamp(date) {
+            const diff = Date.now() - date.getTime();
+            const minutes = Math.floor(diff / 60000);
+            if (minutes < 1) return 'just now';
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            return date.toLocaleDateString();
+        }
+
+        // ============================================
+        // Playback
+        // ============================================
+        function togglePlayback() {
+            if (state.playback.isPlaying) {
+                stopPlayback();
+            } else {
+                startPlayback();
+            }
+        }
+
+        function startPlayback() {
+            if (!state.pattern || state.pattern.numFrames <= 1) return;
+
+            state.playback.isPlaying = true;
+            document.getElementById('playBtn').textContent = '⏸';
+
+            const interval = 1000 / state.playback.fps;
+            state.playback.intervalId = setInterval(() => {
+                navigateFrame(1);
+            }, interval);
+        }
+
+        function stopPlayback() {
+            state.playback.isPlaying = false;
+            document.getElementById('playBtn').textContent = '▶';
+
+            if (state.playback.intervalId) {
+                clearInterval(state.playback.intervalId);
+                state.playback.intervalId = null;
+            }
+        }
+
+        function navigateFrame(delta) {
+            if (!state.pattern) return;
+
+            let newFrame = state.editor.currentFrame + delta;
+            if (newFrame >= state.pattern.numFrames) newFrame = 0;
+            if (newFrame < 0) newFrame = state.pattern.numFrames - 1;
+
+            goToFrame(newFrame);
+        }
+
+        function goToFrame(frameIndex) {
+            if (!state.pattern) return;
+
+            state.editor.currentFrame = frameIndex;
+            updateFrameInfo();
+            renderCurrentViewer();
+        }
+
+        function updateFrameInfo() {
+            const frameInfo = document.getElementById('frameInfo');
+            if (state.pattern) {
+                frameInfo.textContent = `${state.editor.currentFrame + 1} / ${state.pattern.numFrames}`;
+            } else {
+                frameInfo.textContent = '— / —';
+            }
+        }
+
+        // ============================================
+        // Combine Operations (placeholders)
+        // ============================================
+        function handleSwap() {
+            const temp = state.pattern;
+            state.pattern = state.patternB;
+            state.patternB = temp;
+
+            const tempName = state.filename;
+            state.filename = state.patternB?.filename || null;
+            if (state.patternB) state.patternB.filename = tempName;
+
+            updateStatus();
+            renderCurrentViewer();
+            updateFrameInfo();
+        }
+
+        function handleCombine() {
+            alert('Combine functionality coming in Phase 6');
+        }
+
+        function handleBuildSequence() {
+            if (state.clipboard.length === 0) {
+                alert('Capture some frames first');
+                return;
+            }
+            alert('Sequence building coming in Phase 3');
+        }
+
+        // ============================================
+        // Rendering
+        // ============================================
+        function renderCurrentViewer() {
+            if (state.editor.activeViewer === 'grid') {
+                renderGridViewer();
+            }
+            // Other viewers will be added in later phases
+        }
+
+        function renderGridViewer() {
+            const container = document.getElementById('gridViewer');
+
+            if (!state.pattern) {
+                container.innerHTML = `
+                    <div class="placeholder">
+                        <div class="placeholder-icon">⬚</div>
+                        <h2>No Pattern Loaded</h2>
+                        <p>Load a .pat file or generate a new pattern to view it here.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Create or get canvas
+            let canvasContainer = container.querySelector('.grid-canvas-container');
+            if (!canvasContainer) {
+                container.innerHTML = '<div class="grid-canvas-container"><canvas id="gridCanvas"></canvas></div>';
+                canvasContainer = container.querySelector('.grid-canvas-container');
+            }
+
+            const canvas = document.getElementById('gridCanvas');
+            const ctx = canvas.getContext('2d');
+
+            const { pixelRows, pixelCols, frames, gsMode } = state.pattern;
+            const frame = frames[state.editor.currentFrame];
+
+            // Calculate pixel size to fit in viewer
+            const maxWidth = container.clientWidth - 40;
+            const maxHeight = container.clientHeight - 40;
+            const pixelSize = Math.max(1, Math.min(
+                Math.floor(maxWidth / pixelCols),
+                Math.floor(maxHeight / pixelRows)
+            ));
+
+            canvas.width = pixelCols * pixelSize;
+            canvas.height = pixelRows * pixelSize;
+
+            // Draw pixels (row 0 = bottom)
+            const maxVal = gsMode === 2 ? 1 : 15;
+            for (let row = 0; row < pixelRows; row++) {
+                for (let col = 0; col < pixelCols; col++) {
+                    const value = frame[row * pixelCols + col];
+                    const brightness = value / maxVal;
+
+                    // Green phosphor color
+                    const r = Math.round(brightness * 0.6 * 255);
+                    const g = Math.round(brightness * 255);
+                    const b = Math.round(brightness * 0.2 * 255);
+
+                    ctx.fillStyle = brightness > 0 ? `rgb(${r},${g},${b})` : '#1e2329';
+
+                    // Flip Y so row 0 is at bottom
+                    const canvasY = (pixelRows - 1 - row) * pixelSize;
+                    ctx.fillRect(col * pixelSize, canvasY, pixelSize, pixelSize);
+                }
+            }
+
+            // Draw panel boundaries
+            if (state.editor.showPanelBoundaries && state.arena.config) {
+                const pixelsPerPanel = PANEL_SPECS[state.arena.config.arena.generation].pixels_per_panel;
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 1;
+
+                // Vertical lines
+                for (let col = pixelsPerPanel; col < pixelCols; col += pixelsPerPanel) {
+                    ctx.beginPath();
+                    ctx.moveTo(col * pixelSize, 0);
+                    ctx.lineTo(col * pixelSize, canvas.height);
+                    ctx.stroke();
+                }
+
+                // Horizontal lines
+                for (let row = pixelsPerPanel; row < pixelRows; row += pixelsPerPanel) {
+                    const canvasY = (pixelRows - row) * pixelSize;
+                    ctx.beginPath();
+                    ctx.moveTo(0, canvasY);
+                    ctx.lineTo(canvas.width, canvasY);
+                    ctx.stroke();
+                }
+            }
+
+            // Draw panel numbers
+            if (state.editor.showPanelNumbers && state.arena.config) {
+                const pixelsPerPanel = PANEL_SPECS[state.arena.config.arena.generation].pixels_per_panel;
+                const panelCols = state.arena.config.arena.num_cols;
+                const panelRows = state.arena.config.arena.num_rows;
+
+                ctx.fillStyle = 'rgba(255, 100, 100, 0.8)';
+                ctx.font = `${Math.max(10, pixelSize * 2)}px JetBrains Mono`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                let panelNum = 1;
+                for (let pc = 0; pc < panelCols; pc++) {
+                    for (let pr = 0; pr < panelRows; pr++) {
+                        const centerX = (pc + 0.5) * pixelsPerPanel * pixelSize;
+                        const centerY = (panelRows - pr - 0.5) * pixelsPerPanel * pixelSize;
+                        ctx.fillText(panelNum.toString(), centerX, centerY);
+                        panelNum++;
+                    }
+                }
+            }
+        }
+
+        // ============================================
+        // Status Updates
+        // ============================================
+        function updateStatus() {
+            document.getElementById('statusFilename').textContent = state.filename || 'No pattern';
+
+            if (state.pattern) {
+                document.getElementById('statusDimensions').textContent =
+                    `${state.pattern.pixelCols} × ${state.pattern.pixelRows} px`;
+                document.getElementById('statusFrames').textContent =
+                    `${state.pattern.numFrames} frame${state.pattern.numFrames !== 1 ? 's' : ''}`;
+                document.getElementById('statusGsMode').textContent =
+                    state.pattern.gsMode === 2 ? 'GS2' : 'GS16';
+
+                // Update pattern A info for combine tab
+                document.getElementById('patternAInfo').textContent =
+                    `${state.filename} (${state.pattern.numFrames} frames)`;
+            } else {
+                document.getElementById('statusDimensions').textContent = '—';
+                document.getElementById('statusFrames').textContent = '—';
+                document.getElementById('statusGsMode').textContent = '—';
+                document.getElementById('patternAInfo').textContent = 'No pattern loaded';
+            }
+
+            document.getElementById('statusUnsaved').textContent = state.isDirty ? 'Unsaved*' : '';
+        }
+
+        // ============================================
+        // Helper: Get configs grouped by generation
+        // ============================================
+        function getConfigsByGeneration() {
+            const grouped = {};
+            for (const name of Object.keys(STANDARD_CONFIGS)) {
+                const config = STANDARD_CONFIGS[name];
+                const gen = config.arena.generation;
+                if (!grouped[gen]) grouped[gen] = [];
+                grouped[gen].push(name);
+            }
+            return grouped;
+        }
+
+        function getConfig(name) {
+            return STANDARD_CONFIGS[name] || null;
+        }
+
+        // ============================================
+        // Initialize
+        // ============================================
+        document.addEventListener('DOMContentLoaded', () => {
+            initUI();
+            updateClipboardUI();
+        });
+    </script>
+</body>
+</html>
