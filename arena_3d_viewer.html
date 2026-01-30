@@ -484,6 +484,172 @@
             border-top: 1px solid var(--border);
             margin: 0.75rem 0;
         }
+
+        /* Pattern Loading Section */
+        .pattern-info {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+            font-size: 0.7rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .pattern-info .filename {
+            color: var(--accent);
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            word-break: break-all;
+        }
+
+        .pattern-info .details {
+            color: var(--text-dim);
+        }
+
+        .pattern-info .details span {
+            display: inline-block;
+            margin-right: 0.75rem;
+        }
+
+        /* Frame Controls */
+        .frame-controls {
+            margin-top: 0.75rem;
+        }
+
+        .frame-slider-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .frame-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        .frame-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .frame-slider::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .frame-display {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            min-width: 60px;
+            text-align: right;
+        }
+
+        .playback-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .playback-row .btn {
+            flex: 1;
+        }
+
+        .fps-select {
+            width: 80px;
+            padding: 0.4rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+        }
+
+        /* FOV Controls */
+        .fov-controls {
+            margin-top: 0.5rem;
+        }
+
+        .fov-slider-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .fov-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        .fov-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .fov-slider::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .fov-display {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            min-width: 40px;
+            text-align: right;
+        }
+
+        .fov-presets {
+            display: flex;
+            gap: 0.3rem;
+            margin-top: 0.4rem;
+        }
+
+        .fov-presets .btn {
+            flex: 1;
+            font-size: 0.65rem;
+            padding: 0.3rem 0.4rem;
+        }
+
+        /* Unsaved indicator */
+        .unsaved-badge {
+            display: inline-block;
+            background: #f59e0b;
+            color: #000;
+            font-size: 0.6rem;
+            font-weight: bold;
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            margin-left: 0.3rem;
+            vertical-align: middle;
+        }
     </style>
 </head>
 <body>
@@ -551,8 +717,40 @@
             </div>
         </div>
 
-        <button class="btn disabled" id="load-pattern" style="margin-top: 1rem;" title="Coming Soon">Load Pattern (Coming Soon)</button>
-        <button class="btn secondary" id="toggle-rotation">Rotate Pattern</button>
+        <div class="divider"></div>
+
+        <div class="control-group">
+            <label>Load Pattern File</label>
+            <button class="btn" id="load-pattern" style="margin-top: 0.5rem;">Load .pat File</button>
+            <div class="pattern-info" id="pattern-info" style="display: none;">
+                <div class="filename" id="pattern-filename">pattern.pat</div>
+                <div class="details">
+                    <span id="pattern-gen">G6</span>
+                    <span id="pattern-dims">40×200</span>
+                    <span id="pattern-frames">1 frame</span>
+                    <span id="pattern-gs">GS16</span>
+                </div>
+            </div>
+            <div class="frame-controls" id="frame-controls" style="display: none;">
+                <div class="frame-slider-row">
+                    <input type="range" class="frame-slider" id="frame-slider" min="1" max="1" value="1">
+                    <span class="frame-display" id="frame-display">1 / 1</span>
+                </div>
+                <div class="playback-row">
+                    <button class="btn secondary" id="play-pause-btn">▶ Play</button>
+                    <select class="fps-select" id="fps-select">
+                        <option value="1">1 FPS</option>
+                        <option value="5">5 FPS</option>
+                        <option value="10" selected>10 FPS</option>
+                        <option value="20">20 FPS</option>
+                        <option value="30">30 FPS</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn secondary" id="clear-pattern" style="display: none; margin-top: 0.5rem;">Clear Pattern</button>
+        </div>
+
+        <button class="btn secondary" id="toggle-rotation" style="margin-top: 0.5rem;">Rotate Pattern</button>
     </div>
 
     <!-- Loading Overlay -->
@@ -621,6 +819,19 @@
             <option value="west">From West</option>
         </select>
 
+        <div class="fov-controls">
+            <label style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Field of View</label>
+            <div class="fov-slider-row">
+                <input type="range" class="fov-slider" id="fov-slider" min="30" max="170" value="60">
+                <span class="fov-display" id="fov-display">60°</span>
+            </div>
+            <div class="fov-presets">
+                <button class="btn secondary" data-fov="60">Normal</button>
+                <button class="btn secondary" data-fov="120">Wide</button>
+                <button class="btn secondary" data-fov="170">Fly Eye</button>
+            </div>
+        </div>
+
         <div style="border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.75rem;">
             <label style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Screenshot</label>
             <div class="screenshot-group" style="margin-top: 0.4rem;">
@@ -639,6 +850,7 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+        import { parsePatFile, verifyPatternOrientation, findMatchingConfig } from './js/pat-parser.js';
 
         // State
         let state = {
@@ -654,12 +866,18 @@
                 column_order: 'cw',
                 angle_offset_deg: 0
             },
-            pattern: 'allOn',    // 'allOn', 'grating', 'sine'
+            pattern: 'allOn',    // 'allOn', 'grating', 'sine', 'custom'
             gratingPixels: 20,   // pixels on/off for grating
             sineWavelength: 120, // wavelength in pixels
             phaseOffset: 0,      // current phase offset for auto-rotate
             showColumnLabels: false,
-            showPanelLabels: false
+            showPanelLabels: false,
+            // Custom pattern state
+            customPattern: null,     // Loaded pattern data from pat-parser
+            currentFrame: 0,         // 0-indexed frame number
+            isPlaying: false,        // Playback state
+            playbackFPS: 10,         // Frames per second
+            playbackIntervalId: null // setInterval ID for playback
         };
 
         // 16 grayscale levels
@@ -876,6 +1094,10 @@
             // Set initial view
             setInitialView();
 
+            // Initialize FOV display
+            const initialFOV = parseInt(document.getElementById('fov-slider').value);
+            document.getElementById('fov-display').textContent = `${initialFOV}°`;
+
             // Event listeners
             setupEventListeners();
 
@@ -1078,6 +1300,160 @@
             return config;
         }
 
+        // Load .pat pattern file
+        function loadPatternFile() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.pat';
+
+            input.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                try {
+                    showLoading('Parsing pattern...');
+                    const arrayBuffer = await file.arrayBuffer();
+                    const patternData = parsePatFile(arrayBuffer);
+
+                    // Run verification and log to console
+                    const checks = verifyPatternOrientation(patternData);
+                    const allPassed = checks.every(c => c.pass);
+                    if (!allPassed) {
+                        console.warn('Pattern orientation verification found issues - check console output');
+                    }
+
+                    // Log pattern details to console (duplicate logging since parser also logs)
+                    console.log('Pattern parsing complete. See details above.');
+
+                    // Store pattern data
+                    state.customPattern = patternData;
+                    state.currentFrame = 0;
+                    state.pattern = 'custom';
+
+                    // Auto-detect matching arena config
+                    const matchingConfig = findMatchingConfig(patternData, STANDARD_CONFIGS);
+                    if (matchingConfig) {
+                        console.log(`Auto-detected arena config: ${matchingConfig}`);
+                        loadStandardConfig(matchingConfig);
+                    } else {
+                        console.log('No matching arena config found - using current config');
+                        // Update arena to match pattern dimensions
+                        state.arena.generation = patternData.generation;
+                        state.arena.num_rows = patternData.rowCount;
+                        state.arena.num_cols = patternData.colCount;
+                        updateConfigInfo();
+                        buildArenaWithLoading();
+                    }
+
+                    // Update UI
+                    updatePatternInfoDisplay(file.name, patternData);
+                    updateFrameControls();
+
+                    // Deselect built-in patterns
+                    document.querySelectorAll('.pattern-radio').forEach(r => r.classList.remove('active'));
+                    document.getElementById('grating-controls').style.display = 'none';
+                    document.getElementById('sine-controls').style.display = 'none';
+
+                    hideLoading();
+
+                } catch (err) {
+                    hideLoading();
+                    console.error('Error loading pattern:', err);
+                    alert('Error loading pattern: ' + err.message);
+                }
+            });
+
+            input.click();
+        }
+
+        // Update pattern info display
+        function updatePatternInfoDisplay(filename, patternData) {
+            document.getElementById('pattern-info').style.display = 'block';
+            document.getElementById('pattern-filename').textContent = filename;
+            document.getElementById('pattern-gen').textContent = patternData.generation;
+            document.getElementById('pattern-dims').textContent = `${patternData.pixelRows}×${patternData.pixelCols}`;
+            document.getElementById('pattern-frames').textContent = patternData.numFrames === 1 ? '1 frame' : `${patternData.numFrames} frames`;
+            document.getElementById('pattern-gs').textContent = patternData.gs_val === 2 ? 'GS2' : 'GS16';
+            document.getElementById('clear-pattern').style.display = 'block';
+        }
+
+        // Update frame controls visibility and range
+        function updateFrameControls() {
+            const frameControls = document.getElementById('frame-controls');
+            if (state.customPattern && state.customPattern.numFrames > 1) {
+                frameControls.style.display = 'block';
+                const slider = document.getElementById('frame-slider');
+                slider.max = state.customPattern.numFrames;
+                slider.value = state.currentFrame + 1;
+                updateFrameDisplay();
+            } else {
+                frameControls.style.display = 'none';
+            }
+        }
+
+        // Update frame display text
+        function updateFrameDisplay() {
+            const total = state.customPattern ? state.customPattern.numFrames : 1;
+            document.getElementById('frame-display').textContent = `${state.currentFrame + 1} / ${total}`;
+            document.getElementById('frame-slider').value = state.currentFrame + 1;
+        }
+
+        // Start playback
+        function startPlayback() {
+            if (state.playbackIntervalId) return;
+
+            state.isPlaying = true;
+            document.getElementById('play-pause-btn').textContent = '⏸ Pause';
+
+            const intervalMs = 1000 / state.playbackFPS;
+            state.playbackIntervalId = setInterval(() => {
+                if (!state.customPattern) {
+                    stopPlayback();
+                    return;
+                }
+
+                state.currentFrame = (state.currentFrame + 1) % state.customPattern.numFrames;
+                updateFrameDisplay();
+                updateLEDColors();
+            }, intervalMs);
+        }
+
+        // Stop playback
+        function stopPlayback() {
+            if (state.playbackIntervalId) {
+                clearInterval(state.playbackIntervalId);
+                state.playbackIntervalId = null;
+            }
+            state.isPlaying = false;
+            document.getElementById('play-pause-btn').textContent = '▶ Play';
+        }
+
+        // Clear loaded pattern
+        function clearPattern() {
+            stopPlayback();
+            state.customPattern = null;
+            state.currentFrame = 0;
+            state.pattern = 'allOn';
+
+            document.getElementById('pattern-info').style.display = 'none';
+            document.getElementById('frame-controls').style.display = 'none';
+            document.getElementById('clear-pattern').style.display = 'none';
+
+            // Re-select "All On" pattern
+            document.getElementById('pattern-allon-label').classList.add('active');
+            document.querySelector('input[value="allOn"]').checked = true;
+
+            buildArenaWithLoading();
+        }
+
+        // Update camera FOV
+        function updateCameraFOV(fov) {
+            camera.fov = fov;
+            camera.updateProjectionMatrix();
+            document.getElementById('fov-display').textContent = `${fov}°`;
+            document.getElementById('fov-slider').value = fov;
+        }
+
         // Load config from file
         function loadConfigFromFile() {
             const input = document.createElement('input');
@@ -1156,6 +1532,15 @@
             // Pattern radio controls
             document.querySelectorAll('.pattern-radio input[type="radio"]').forEach(radio => {
                 radio.addEventListener('change', () => {
+                    // Clear custom pattern when selecting built-in pattern
+                    if (state.customPattern) {
+                        stopPlayback();
+                        state.customPattern = null;
+                        state.currentFrame = 0;
+                        document.getElementById('pattern-info').style.display = 'none';
+                        document.getElementById('frame-controls').style.display = 'none';
+                        document.getElementById('clear-pattern').style.display = 'none';
+                    }
                     state.pattern = radio.value;
                     state.phaseOffset = 0;
                     updatePatternUI();
@@ -1167,6 +1552,15 @@
                 label.addEventListener('click', () => {
                     const radio = label.querySelector('input[type="radio"]');
                     if (radio && !radio.checked) {
+                        // Clear custom pattern when selecting built-in pattern
+                        if (state.customPattern) {
+                            stopPlayback();
+                            state.customPattern = null;
+                            state.currentFrame = 0;
+                            document.getElementById('pattern-info').style.display = 'none';
+                            document.getElementById('frame-controls').style.display = 'none';
+                            document.getElementById('clear-pattern').style.display = 'none';
+                        }
                         radio.checked = true;
                         state.pattern = radio.value;
                         state.phaseOffset = 0;
@@ -1231,6 +1625,47 @@
             });
             document.getElementById('screenshot-full').addEventListener('click', () => {
                 takeScreenshot(true);
+            });
+
+            // Pattern loading
+            document.getElementById('load-pattern').addEventListener('click', loadPatternFile);
+            document.getElementById('clear-pattern').addEventListener('click', clearPattern);
+
+            // Frame controls
+            document.getElementById('frame-slider').addEventListener('input', (e) => {
+                state.currentFrame = parseInt(e.target.value) - 1;
+                updateFrameDisplay();
+                updateLEDColors();
+            });
+
+            document.getElementById('play-pause-btn').addEventListener('click', () => {
+                if (state.isPlaying) {
+                    stopPlayback();
+                } else {
+                    startPlayback();
+                }
+            });
+
+            document.getElementById('fps-select').addEventListener('change', (e) => {
+                state.playbackFPS = parseInt(e.target.value);
+                // If currently playing, restart with new FPS
+                if (state.isPlaying) {
+                    stopPlayback();
+                    startPlayback();
+                }
+            });
+
+            // FOV controls
+            document.getElementById('fov-slider').addEventListener('input', (e) => {
+                updateCameraFOV(parseInt(e.target.value));
+            });
+
+            // FOV preset buttons
+            document.querySelectorAll('.fov-presets .btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fov = parseInt(btn.dataset.fov);
+                    updateCameraFOV(fov);
+                });
             });
         }
 
@@ -1449,7 +1884,10 @@
                 : px;
             const globalPixelX = ((colIndex * totalPixelsH + effectivePx) + state.phaseOffset + totalAzimuthPixels) % totalAzimuthPixels;
 
-            if (state.pattern === 'allOn') {
+            if (state.pattern === 'custom' && state.customPattern) {
+                // Custom pattern from .pat file
+                return getCustomPatternBrightness(px, py, colIndex);
+            } else if (state.pattern === 'allOn') {
                 return 1.0;
             } else if (state.pattern === 'grating') {
                 const period = state.gratingPixels * 2;
@@ -1463,6 +1901,49 @@
                 return level / (GRAYSCALE_LEVELS - 1);
             }
             return 1.0;
+        }
+
+        // Get brightness from custom loaded pattern
+        function getCustomPatternBrightness(px, py, colIndex) {
+            const pat = state.customPattern;
+            if (!pat || !pat.frames || pat.frames.length === 0) {
+                return 1.0;
+            }
+
+            const frame = pat.frames[state.currentFrame];
+            if (!frame) {
+                return 1.0;
+            }
+
+            // Get panel pixel size (panelSize from parser)
+            const pixelsPerPanel = pat.panelSize;
+
+            // Calculate which row of panels this py falls into
+            const panelRow = Math.floor(py / pixelsPerPanel);
+            const localPy = py % pixelsPerPanel;
+
+            // Global pixel coordinates
+            // px is local to the panel (0 to pixelsPerPanel-1)
+            // colIndex is the column index
+            // Pattern data is stored row-major: row 0 = bottom, higher rows go up
+            // globalX = col * pixelsPerPanel + px
+            // globalY = panelRow * pixelsPerPanel + localPy
+
+            const globalX = colIndex * pixelsPerPanel + px;
+            const globalY = panelRow * pixelsPerPanel + localPy;
+
+            // Index into flattened frame array (row-major)
+            const pixelIndex = globalY * pat.pixelCols + globalX;
+
+            if (pixelIndex < 0 || pixelIndex >= frame.length) {
+                return 0.0;  // Out of bounds
+            }
+
+            const value = frame[pixelIndex];
+
+            // Normalize based on grayscale mode
+            const maxValue = pat.gs_val === 2 ? 1 : 15;
+            return value / maxValue;
         }
 
         function brightnessToColor(brightness) {
@@ -1735,6 +2216,55 @@
             renderer.render(scene, camera);
             labelRenderer.render(scene, camera);
         }
+
+        // Expose test function for debugging (can load pattern from URL)
+        window.testLoadPattern = async function(url) {
+            try {
+                const response = await fetch(url);
+                const buffer = await response.arrayBuffer();
+                const patternData = parsePatFile(buffer);
+
+                // Run verification
+                const checks = verifyPatternOrientation(patternData);
+                const allPassed = checks.every(c => c.pass);
+                if (!allPassed) {
+                    console.warn('Pattern orientation verification found issues');
+                }
+
+                // Store pattern data
+                state.customPattern = patternData;
+                state.currentFrame = 0;
+                state.pattern = 'custom';
+
+                // Auto-detect matching arena config
+                const matchingConfig = findMatchingConfig(patternData, STANDARD_CONFIGS);
+                if (matchingConfig) {
+                    console.log(`Auto-detected arena config: ${matchingConfig}`);
+                    loadStandardConfig(matchingConfig);
+                } else {
+                    state.arena.generation = patternData.generation;
+                    state.arena.num_rows = patternData.rowCount;
+                    state.arena.num_cols = patternData.colCount;
+                    updateConfigInfo();
+                    buildArenaWithLoading();
+                }
+
+                // Update UI
+                const filename = url.split('/').pop();
+                updatePatternInfoDisplay(filename, patternData);
+                updateFrameControls();
+
+                // Deselect built-in patterns
+                document.querySelectorAll('.pattern-radio').forEach(r => r.classList.remove('active'));
+                document.getElementById('grating-controls').style.display = 'none';
+                document.getElementById('sine-controls').style.display = 'none';
+
+                return { success: true, pattern: patternData };
+            } catch (e) {
+                console.error('Error loading pattern:', e);
+                return { success: false, error: e.message };
+            }
+        };
 
         // Start
         if (document.readyState === 'loading') {

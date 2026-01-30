@@ -105,4 +105,145 @@ A proper implementation should:
 The azimuth resolution is constant (360° / total_azimuth_pixels), but vertical resolution varies based on viewing angle from center - pixels near the vertical center subtend smaller angles than those at the top/bottom edges.
 
 ### Load Pattern Feature
-The "Load Pattern (Coming Soon)" button is a placeholder for future functionality to load custom patterns from files or the pattern editor.
+The 3D viewer supports loading `.pat` files directly:
+
+**Supported Formats:**
+- G6: 17-byte header with "G6PT" magic, 20x20 panels, GS2 (binary) and GS16 (4-bit grayscale)
+- G4: 7-byte header, 16x16 panels, subpanel addressing
+
+**UI Controls:**
+- "Load .pat File" button opens file picker
+- Pattern info displays filename, dimensions, frames, grayscale mode
+- Frame slider scrubs through multi-frame patterns
+- Play/Pause button with FPS dropdown (5, 10, 15, 20, 30 FPS)
+- "Clear Pattern" button returns to synthetic patterns
+
+**Implementation Files:**
+- `js/pat-parser.js` - Pattern file parser module
+- Pattern loading integrated into `arena_3d_viewer.html`
+
+## Pattern Validation
+
+### Programmatic Testing
+Use `window.testLoadPattern(url)` for automated pattern validation:
+
+```javascript
+// In browser console or via Claude Chrome extension
+await testLoadPattern('/test_patterns/grating_G6.pat');
+// Logs: Generation, dimensions, frames, grayscale mode
+// Returns true if load succeeded
+```
+
+### Verification Checklist
+After loading a pattern, verify in console output:
+- ✓ Generation detected correctly (G6 vs G4)
+- ✓ Panel dimensions match expected (20×20 for G6, 16×16 for G4)
+- ✓ Total pixels = rows × cols × panelSize²
+- ✓ Frame count matches expected
+- ✓ Pixel values in valid range (0-1 for GS2, 0-15 for GS16)
+
+### Orientation Verification
+Patterns should display with:
+- Row 0 at bottom (not flipped vertically)
+- Column 0 at correct azimuth position
+- Gratings aligned properly (vertical stripes appear vertical)
+
+Use corner marker test patterns to verify:
+```javascript
+// Bottom-left corner should be brightest
+console.log('Pixel (0,0):', patternData.frames[0][0]);
+console.log('Pixel (0,max):', patternData.frames[0][totalCols-1]);
+```
+
+## Browser Testing with Claude Chrome Extension
+
+The Claude in Chrome extension enables automated browser testing without manual interaction.
+
+### Setup
+1. Start local HTTP server: `python -m http.server 8080`
+2. Use Chrome extension tools to navigate and interact
+
+### Available Tools
+| Tool | Purpose |
+|------|---------|
+| `tabs_context_mcp` | List open tabs |
+| `navigate` | Go to URL |
+| `read_page` | Get page content |
+| `javascript_tool` | Execute JS in page context |
+| `read_console_messages` | Get console output |
+| `computer` (screenshot) | Capture visual state |
+
+### Testing Workflow
+
+**1. Navigate to test page:**
+```
+navigate to http://localhost:8080/arena_3d_viewer.html
+```
+
+**2. Execute test JavaScript:**
+```javascript
+// Load pattern
+await testLoadPattern('/test_patterns/grating_G6.pat');
+
+// Verify playback controls
+document.getElementById('frameSlider').max;
+document.getElementById('playPauseButton').textContent;
+```
+
+**3. Capture and verify screenshot:**
+- Take screenshot with `computer` tool (action: screenshot)
+- Use Read tool to view screenshot image
+- Verify UI elements render correctly
+
+**4. Check console for errors:**
+- Use `read_console_messages` to check for JavaScript errors
+- Verify pattern validation output
+
+### Example Test Session
+```
+1. Start server: python -m http.server 8080
+2. navigate → http://localhost:8080/arena_3d_viewer.html
+3. javascript_tool → await testLoadPattern('/test_patterns/grating_G6.pat')
+4. read_console_messages → verify no errors, check pattern info
+5. computer screenshot → capture visual state
+6. Read screenshot → verify pattern displays correctly
+```
+
+### UI Element IDs for Testing
+| Element | ID | Purpose |
+|---------|-----|---------|
+| Pattern load button | `loadPatternBtn` | Trigger file picker |
+| Pattern info display | `patternInfo` | Shows loaded pattern details |
+| Frame slider | `frameSlider` | Multi-frame navigation |
+| Frame label | `frameLabel` | Current frame display |
+| Play/Pause button | `playPauseButton` | Playback control |
+| FPS dropdown | `fpsSelect` | Playback speed |
+| FOV slider | `fovSlider` | Camera field of view |
+| Clear button | `clearPatternBtn` | Reset to synthetic patterns |
+
+## Close Session Protocol
+
+When the user says **"close session"**, enter plan mode and prepare documentation updates:
+
+1. **Summarize session work**
+   - List files modified/created
+   - Describe features added, bugs fixed, or refactors completed
+
+2. **Review CLAUDE.md for updates**
+   - New testing patterns or best practices discovered
+   - Browser quirks or gotchas encountered
+   - New utility functions that should be documented
+   - Any corrections to existing documentation
+
+3. **Review docs/ROADMAP.md for updates** (if exists)
+   - Mark completed tasks as done
+   - Add any new issues discovered during the session
+   - Note deferred items or future improvements identified
+
+4. **Present plan for approval**
+   - Show all proposed documentation changes
+   - Wait for user approval before making edits
+
+5. **After approval**
+   - Make the documentation updates
+   - Optionally offer to create a git commit summarizing the session
