@@ -389,8 +389,8 @@
 
         .screenshot-group .btn {
             flex: 1;
-            font-size: 0.75rem;
-            padding: 0.5rem;
+            font-size: 0.7rem;
+            padding: 0.35rem 0.3rem;
         }
 
         /* Statistics Panel (upper right) */
@@ -634,8 +634,9 @@
 
         .fov-presets .btn {
             flex: 1;
-            font-size: 0.75rem;
-            padding: 0.4rem 0.5rem;
+            font-size: 0.7rem;
+            padding: 0.35rem 0.3rem;
+            white-space: nowrap;
         }
 
         /* Unsaved indicator */
@@ -719,6 +720,34 @@
 
         <div class="divider"></div>
 
+        <!-- Playback Controls (always visible) -->
+        <div class="control-group">
+            <label>Playback</label>
+            <div class="playback-row" style="margin-top: 0.5rem;">
+                <button class="btn secondary" id="play-pause-btn">▶ Play</button>
+                <select class="fps-select" id="fps-select">
+                    <option value="-30">-30 FPS</option>
+                    <option value="-20">-20 FPS</option>
+                    <option value="-10">-10 FPS</option>
+                    <option value="-5">-5 FPS</option>
+                    <option value="5">5 FPS</option>
+                    <option value="10" selected>10 FPS</option>
+                    <option value="20">20 FPS</option>
+                    <option value="30">30 FPS</option>
+                </select>
+            </div>
+            <!-- Frame slider (only visible for multi-frame patterns) -->
+            <div class="frame-controls" id="frame-controls" style="display: none;">
+                <div class="frame-slider-row">
+                    <input type="range" class="frame-slider" id="frame-slider" min="1" max="1" value="1">
+                    <span class="frame-display" id="frame-display">1 / 1</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Load Pattern File -->
         <div class="control-group">
             <label>Load Pattern File</label>
             <button class="btn" id="load-pattern" style="margin-top: 0.5rem;">Load .pat File</button>
@@ -729,25 +758,6 @@
                     <span id="pattern-dims">40×200</span>
                     <span id="pattern-frames">1 frame</span>
                     <span id="pattern-gs">GS16</span>
-                </div>
-            </div>
-            <div class="frame-controls" id="frame-controls" style="display: none;">
-                <div class="frame-slider-row">
-                    <input type="range" class="frame-slider" id="frame-slider" min="1" max="1" value="1">
-                    <span class="frame-display" id="frame-display">1 / 1</span>
-                </div>
-                <div class="playback-row">
-                    <button class="btn secondary" id="play-pause-btn">▶ Play</button>
-                    <select class="fps-select" id="fps-select">
-                        <option value="-30">-30 FPS</option>
-                        <option value="-20">-20 FPS</option>
-                        <option value="-10">-10 FPS</option>
-                        <option value="-5">-5 FPS</option>
-                        <option value="5">5 FPS</option>
-                        <option value="10" selected>10 FPS</option>
-                        <option value="20">20 FPS</option>
-                        <option value="30">30 FPS</option>
-                    </select>
                 </div>
             </div>
             <button class="btn secondary" id="clear-pattern" style="display: none; margin-top: 0.5rem;">Clear Pattern</button>
@@ -1417,6 +1427,11 @@
         function startPlayback() {
             if (state.playbackIntervalId) return;
 
+            // Don't start playback for "All On" pattern (nothing to animate)
+            if (state.pattern === 'allOn') {
+                return;
+            }
+
             state.isPlaying = true;
             document.getElementById('play-pause-btn').textContent = '⏸ Pause';
             setControlsEnabled(false);
@@ -1424,14 +1439,17 @@
             const direction = state.playbackFPS > 0 ? 1 : -1;
             const intervalMs = 1000 / Math.abs(state.playbackFPS);
             state.playbackIntervalId = setInterval(() => {
-                if (!state.customPattern) {
-                    stopPlayback();
-                    return;
+                if (state.customPattern) {
+                    // Loaded .pat file: cycle through frames
+                    state.currentFrame = (state.currentFrame + direction + state.customPattern.numFrames) % state.customPattern.numFrames;
+                    updateFrameDisplay();
+                    updateLEDColors();
+                } else if (state.pattern === 'grating' || state.pattern === 'sine') {
+                    // Test pattern: rotate phase
+                    const totalPixels = getTotalAzimuthPixels();
+                    state.phaseOffset = (state.phaseOffset + direction + totalPixels) % totalPixels;
+                    updateLEDColors();
                 }
-
-                state.currentFrame = (state.currentFrame + direction + state.customPattern.numFrames) % state.customPattern.numFrames;
-                updateFrameDisplay();
-                updateLEDColors();
             }, intervalMs);
         }
 
