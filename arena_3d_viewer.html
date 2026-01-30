@@ -162,7 +162,7 @@
         .metric {
             display: flex;
             justify-content: space-between;
-            padding: 0.4rem 0;
+            padding: 0.6rem 0;
             border-bottom: 1px solid var(--border);
             font-size: 0.8rem;
         }
@@ -389,7 +389,7 @@
 
         .screenshot-group .btn {
             flex: 1;
-            font-size: 0.7rem;
+            font-size: 0.75rem;
             padding: 0.5rem;
         }
 
@@ -403,7 +403,7 @@
             border-radius: 8px;
             padding: 1rem;
             z-index: 100;
-            width: 180px;
+            width: 200px;
             font-size: 0.8rem;
         }
 
@@ -634,8 +634,8 @@
 
         .fov-presets .btn {
             flex: 1;
-            font-size: 0.65rem;
-            padding: 0.3rem 0.4rem;
+            font-size: 0.75rem;
+            padding: 0.4rem 0.5rem;
         }
 
         /* Unsaved indicator */
@@ -688,7 +688,7 @@
         <div class="divider"></div>
 
         <div class="control-group">
-            <label>Pattern</label>
+            <label>Test Patterns</label>
             <div class="pattern-radio-group" style="margin-top: 0.5rem;">
                 <label class="pattern-radio active" id="pattern-allon-label">
                     <input type="radio" name="pattern" value="allOn" checked>
@@ -739,7 +739,10 @@
                 <div class="playback-row">
                     <button class="btn secondary" id="play-pause-btn">▶ Play</button>
                     <select class="fps-select" id="fps-select">
-                        <option value="1">1 FPS</option>
+                        <option value="-30">-30 FPS</option>
+                        <option value="-20">-20 FPS</option>
+                        <option value="-10">-10 FPS</option>
+                        <option value="-5">-5 FPS</option>
                         <option value="5">5 FPS</option>
                         <option value="10" selected>10 FPS</option>
                         <option value="20">20 FPS</option>
@@ -750,7 +753,6 @@
             <button class="btn secondary" id="clear-pattern" style="display: none; margin-top: 0.5rem;">Clear Pattern</button>
         </div>
 
-        <button class="btn secondary" id="toggle-rotation" style="margin-top: 0.5rem;">Rotate Pattern</button>
     </div>
 
     <!-- Loading Overlay -->
@@ -1020,7 +1022,6 @@
         // Three.js objects
         let scene, camera, renderer, labelRenderer, controls;
         let arenaGroup;
-        let autoRotate = false;
         let ledMeshes = [];
 
         // Initialize
@@ -1398,21 +1399,37 @@
             document.getElementById('frame-slider').value = state.currentFrame + 1;
         }
 
+        // Enable/disable controls during playback
+        function setControlsEnabled(enabled) {
+            // Disable arena config dropdown
+            document.getElementById('config-select').disabled = !enabled;
+            // Disable test pattern radio buttons
+            document.querySelectorAll('input[name="pattern"]').forEach(el => el.disabled = !enabled);
+            // Disable pattern-specific controls
+            document.getElementById('grating-select').disabled = !enabled;
+            document.getElementById('sine-select').disabled = !enabled;
+            // Disable Load/Clear Pattern buttons
+            document.getElementById('load-pattern').disabled = !enabled;
+            document.getElementById('clear-pattern').disabled = !enabled;
+        }
+
         // Start playback
         function startPlayback() {
             if (state.playbackIntervalId) return;
 
             state.isPlaying = true;
             document.getElementById('play-pause-btn').textContent = '⏸ Pause';
+            setControlsEnabled(false);
 
-            const intervalMs = 1000 / state.playbackFPS;
+            const direction = state.playbackFPS > 0 ? 1 : -1;
+            const intervalMs = 1000 / Math.abs(state.playbackFPS);
             state.playbackIntervalId = setInterval(() => {
                 if (!state.customPattern) {
                     stopPlayback();
                     return;
                 }
 
-                state.currentFrame = (state.currentFrame + 1) % state.customPattern.numFrames;
+                state.currentFrame = (state.currentFrame + direction + state.customPattern.numFrames) % state.customPattern.numFrames;
                 updateFrameDisplay();
                 updateLEDColors();
             }, intervalMs);
@@ -1426,6 +1443,7 @@
             }
             state.isPlaying = false;
             document.getElementById('play-pause-btn').textContent = '▶ Play';
+            setControlsEnabled(true);
         }
 
         // Clear loaded pattern
@@ -1508,8 +1526,9 @@
                 }
             });
 
-            // Config dropdown change
+            // Config dropdown change - clear any loaded pattern before switching arenas
             document.getElementById('config-select').addEventListener('change', (e) => {
+                clearPattern();
                 loadStandardConfig(e.target.value);
             });
 
@@ -1584,13 +1603,6 @@
                 state.phaseOffset = 0;
                 updatePatternDisplayValues();
                 buildArenaWithLoading();
-            });
-
-            // Auto-rotate toggle
-            document.getElementById('toggle-rotation').addEventListener('click', () => {
-                autoRotate = !autoRotate;
-                controls.enabled = !autoRotate;
-                document.getElementById('toggle-rotation').textContent = autoRotate ? 'Stop Pattern Rotation' : 'Rotate Pattern';
             });
 
             // Zoom buttons
@@ -2194,24 +2206,8 @@
             labelRenderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        let lastPhaseTime = 0;
-        const phaseInterval = 50;
-
         function animate(currentTime) {
             requestAnimationFrame(animate);
-
-            if (autoRotate && state.pattern !== 'allOn') {
-                if (currentTime - lastPhaseTime > phaseInterval) {
-                    lastPhaseTime = currentTime;
-                    state.phaseOffset++;
-                    const totalPixels = getTotalAzimuthPixels();
-                    if (state.phaseOffset >= totalPixels) {
-                        state.phaseOffset = 0;
-                    }
-                    updateLEDColors();
-                }
-            }
-
             controls.update();
             renderer.render(scene, camera);
             labelRenderer.render(scene, camera);
