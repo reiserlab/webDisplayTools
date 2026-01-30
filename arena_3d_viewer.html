@@ -277,57 +277,40 @@
             margin-bottom: 0.5rem;
         }
 
-        /* Pattern Radio Buttons */
-        .pattern-radio-group {
+        /* Pattern Buttons (inline row) */
+        .pattern-btn-group {
             display: flex;
-            flex-direction: column;
-            gap: 0.4rem;
+            gap: 0.3rem;
+            margin-top: 0.5rem;
         }
 
-        .pattern-radio {
-            display: flex;
-            align-items: center;
-            padding: 0.5rem 0.75rem;
+        .pattern-btn {
+            flex: 1;
+            padding: 0.4rem 0.3rem;
             background: var(--bg);
             border: 1px solid var(--border);
-            border-radius: 6px;
+            border-radius: 4px;
             cursor: pointer;
             transition: all 0.2s;
-        }
-
-        .pattern-radio:hover {
-            border-color: var(--accent);
-        }
-
-        .pattern-radio.active {
-            border-color: var(--accent);
-            background: rgba(0, 230, 118, 0.1);
-        }
-
-        .pattern-radio input[type="radio"] {
-            display: none;
-        }
-
-        .pattern-radio .radio-label {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: var(--text);
-        }
-
-        .pattern-radio.active .radio-label {
-            color: var(--accent);
-        }
-
-        .pattern-radio .pattern-value {
-            margin-left: auto;
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.7rem;
-            color: var(--text-dim);
+            font-weight: 600;
+            color: var(--text);
+            text-align: center;
         }
 
-        .pattern-radio.active .pattern-value {
+        .pattern-btn:hover {
+            border-color: var(--accent);
+        }
+
+        .pattern-btn.active {
+            border-color: var(--accent);
+            background: rgba(0, 230, 118, 0.1);
             color: var(--accent);
+        }
+
+        .pattern-btn input[type="radio"] {
+            display: none;
         }
 
         /* Loading Overlay */
@@ -688,39 +671,55 @@
 
         <div class="divider"></div>
 
+        <!-- Test Patterns: 3 inline buttons -->
         <div class="control-group">
             <label>Test Patterns</label>
-            <div class="pattern-radio-group" style="margin-top: 0.5rem;">
-                <label class="pattern-radio active" id="pattern-allon-label">
+            <div class="pattern-btn-group">
+                <label class="pattern-btn active" id="pattern-allon-label">
                     <input type="radio" name="pattern" value="allOn" checked>
-                    <span class="radio-label">All On</span>
+                    All On
                 </label>
-                <label class="pattern-radio" id="pattern-grating-label">
+                <label class="pattern-btn" id="pattern-grating-label">
                     <input type="radio" name="pattern" value="grating">
-                    <span class="radio-label">Grating</span>
-                    <span class="pattern-value" id="grating-value-display">20 px</span>
+                    Grating
                 </label>
-                <label class="pattern-radio" id="pattern-sine-label">
+                <label class="pattern-btn" id="pattern-sine-label">
                     <input type="radio" name="pattern" value="sine">
-                    <span class="radio-label">Sine</span>
-                    <span class="pattern-value" id="sine-value-display">λ = 120 px</span>
+                    Sine
                 </label>
             </div>
+            <!-- Pattern parameter controls (shown when grating or sine selected) -->
             <div id="grating-controls" class="pattern-controls" style="display: none; margin-top: 0.5rem;">
-                <label style="font-size: 0.7rem; color: var(--text-dim);">Grating Width (pixels on/off)</label>
-                <select id="grating-select" style="width: 100%; margin-top: 0.3rem; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
+                <select id="grating-select" style="width: 100%; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;">
                 </select>
             </div>
             <div id="sine-controls" class="pattern-controls" style="display: none; margin-top: 0.5rem;">
-                <label style="font-size: 0.7rem; color: var(--text-dim);">Sine Wavelength (pixels)</label>
-                <select id="sine-select" style="width: 100%; margin-top: 0.3rem; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
+                <select id="sine-select" style="width: 100%; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;">
                 </select>
             </div>
         </div>
 
         <div class="divider"></div>
 
-        <!-- Playback Controls (always visible) -->
+        <!-- Load Pattern File -->
+        <div class="control-group">
+            <label>Load Pattern File</label>
+            <button class="btn" id="load-pattern" style="margin-top: 0.5rem;">Load .pat File</button>
+            <div class="pattern-info" id="pattern-info" style="display: none;">
+                <div class="filename" id="pattern-filename">pattern.pat</div>
+                <div class="details">
+                    <span id="pattern-gen">G6</span>
+                    <span id="pattern-dims">40×200</span>
+                    <span id="pattern-frames">1 frame</span>
+                    <span id="pattern-gs">GS16</span>
+                </div>
+            </div>
+            <button class="btn secondary" id="clear-pattern" style="display: none; margin-top: 0.5rem;">Clear Pattern</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Playback Controls (at bottom) -->
         <div class="control-group">
             <label>Playback</label>
             <div class="playback-row" style="margin-top: 0.5rem;">
@@ -743,24 +742,6 @@
                     <span class="frame-display" id="frame-display">1 / 1</span>
                 </div>
             </div>
-        </div>
-
-        <div class="divider"></div>
-
-        <!-- Load Pattern File -->
-        <div class="control-group">
-            <label>Load Pattern File</label>
-            <button class="btn" id="load-pattern" style="margin-top: 0.5rem;">Load .pat File</button>
-            <div class="pattern-info" id="pattern-info" style="display: none;">
-                <div class="filename" id="pattern-filename">pattern.pat</div>
-                <div class="details">
-                    <span id="pattern-gen">G6</span>
-                    <span id="pattern-dims">40×200</span>
-                    <span id="pattern-frames">1 frame</span>
-                    <span id="pattern-gs">GS16</span>
-                </div>
-            </div>
-            <button class="btn secondary" id="clear-pattern" style="display: none; margin-top: 0.5rem;">Clear Pattern</button>
         </div>
 
     </div>
@@ -834,13 +815,12 @@
         <div class="fov-controls">
             <label style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Field of View</label>
             <div class="fov-slider-row">
-                <input type="range" class="fov-slider" id="fov-slider" min="30" max="170" value="60">
+                <input type="range" class="fov-slider" id="fov-slider" min="30" max="120" value="60">
                 <span class="fov-display" id="fov-display">60°</span>
             </div>
             <div class="fov-presets">
                 <button class="btn secondary" data-fov="60">Normal</button>
                 <button class="btn secondary" data-fov="120">Wide</button>
-                <button class="btn secondary" data-fov="170">Fly Eye</button>
             </div>
         </div>
 
@@ -1176,16 +1156,10 @@
                 sineSelect.value = state.sineWavelength;
             }
 
-            updatePatternDisplayValues();
-        }
-
-        function updatePatternDisplayValues() {
-            document.getElementById('grating-value-display').textContent = `${state.gratingPixels} px`;
-            document.getElementById('sine-value-display').textContent = `λ = ${state.sineWavelength} px`;
         }
 
         function updatePatternUI() {
-            document.querySelectorAll('.pattern-radio').forEach(r => r.classList.remove('active'));
+            document.querySelectorAll('.pattern-btn').forEach(r => r.classList.remove('active'));
 
             if (state.pattern === 'allOn') {
                 document.getElementById('pattern-allon-label').classList.add('active');
@@ -1200,8 +1174,6 @@
                 document.getElementById('grating-controls').style.display = 'none';
                 document.getElementById('sine-controls').style.display = 'block';
             }
-
-            updatePatternDisplayValues();
         }
 
         function setInitialView() {
@@ -1361,7 +1333,7 @@
                     updateFrameControls();
 
                     // Deselect built-in patterns
-                    document.querySelectorAll('.pattern-radio').forEach(r => r.classList.remove('active'));
+                    document.querySelectorAll('.pattern-btn').forEach(r => r.classList.remove('active'));
                     document.getElementById('grating-controls').style.display = 'none';
                     document.getElementById('sine-controls').style.display = 'none';
 
@@ -1483,11 +1455,26 @@
         }
 
         // Update camera FOV
-        function updateCameraFOV(fov) {
+        function updateCameraFOV(fov, compensateDistance = false) {
+            const oldFOV = camera.fov;
             camera.fov = fov;
             camera.updateProjectionMatrix();
             document.getElementById('fov-display').textContent = `${fov}°`;
             document.getElementById('fov-slider').value = fov;
+
+            // Optionally compensate camera distance to maintain apparent scene size
+            // Scale factor based on ratio of tan(fov/2): larger FOV needs closer camera
+            if (compensateDistance && oldFOV !== fov) {
+                const oldTan = Math.tan((oldFOV / 2) * Math.PI / 180);
+                const newTan = Math.tan((fov / 2) * Math.PI / 180);
+                const scale = oldTan / newTan;
+
+                const direction = new THREE.Vector3();
+                direction.subVectors(camera.position, controls.target);
+                direction.multiplyScalar(scale);
+                camera.position.copy(controls.target).add(direction);
+                controls.update();
+            }
         }
 
         // Load config from file
@@ -1567,7 +1554,7 @@
             });
 
             // Pattern radio controls
-            document.querySelectorAll('.pattern-radio input[type="radio"]').forEach(radio => {
+            document.querySelectorAll('.pattern-btn input[type="radio"]').forEach(radio => {
                 radio.addEventListener('change', () => {
                     // Clear custom pattern when selecting built-in pattern
                     if (state.customPattern) {
@@ -1585,7 +1572,7 @@
                 });
             });
 
-            document.querySelectorAll('.pattern-radio').forEach(label => {
+            document.querySelectorAll('.pattern-btn').forEach(label => {
                 label.addEventListener('click', () => {
                     const radio = label.querySelector('input[type="radio"]');
                     if (radio && !radio.checked) {
@@ -1611,7 +1598,6 @@
             document.getElementById('grating-select').addEventListener('change', (e) => {
                 state.gratingPixels = parseInt(e.target.value);
                 state.phaseOffset = 0;
-                updatePatternDisplayValues();
                 buildArenaWithLoading();
             });
 
@@ -1619,7 +1605,6 @@
             document.getElementById('sine-select').addEventListener('change', (e) => {
                 state.sineWavelength = parseInt(e.target.value);
                 state.phaseOffset = 0;
-                updatePatternDisplayValues();
                 buildArenaWithLoading();
             });
 
@@ -1694,7 +1679,7 @@
             document.querySelectorAll('.fov-presets .btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const fov = parseInt(btn.dataset.fov);
-                    updateCameraFOV(fov);
+                    updateCameraFOV(fov, true);  // Compensate distance when using presets
                 });
             });
         }
@@ -2269,7 +2254,7 @@
                 updateFrameControls();
 
                 // Deselect built-in patterns
-                document.querySelectorAll('.pattern-radio').forEach(r => r.classList.remove('active'));
+                document.querySelectorAll('.pattern-btn').forEach(r => r.classList.remove('active'));
                 document.getElementById('grating-controls').style.display = 'none';
                 document.getElementById('sine-controls').style.display = 'none';
 
