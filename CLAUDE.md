@@ -221,6 +221,23 @@ document.getElementById('playPauseButton').textContent;
 | FOV slider | `fovSlider` | Camera field of view |
 | Clear button | `clearPatternBtn` | Reset to synthetic patterns |
 
+## Pattern Editor Migration Plan
+
+The Pattern Editor is being developed in phases. The full migration plan is saved at:
+
+**Plan file:** `~/.claude/plans/linear-fluttering-lerdorf.md`
+
+This plan covers:
+- Two-pane layout (tools left, viewer right)
+- Tool tabs: Generate, Frame to Pattern, Combine
+- Viewer tabs: Grid/Edit, 3D, Mercator, Mollweide
+- Frame clipboard for capturing and sequencing frames
+- 7 implementation phases over ~6-7 weeks
+
+**Current status:** Phase 1 (Foundation) - skeleton created with basic pattern loading/generation.
+
+**GitHub Issue:** [#6 - additional web tools for making patterns](https://github.com/reiserlab/webDisplayTools/issues/6)
+
 ## Close Session Protocol
 
 When the user says **"close session"**, enter plan mode and prepare documentation updates:
