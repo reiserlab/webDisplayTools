@@ -644,13 +644,13 @@
         let state = {
             configSource: {
                 type: 'standard',  // 'standard', 'file', 'custom'
-                name: 'G6_2x10_full'
+                name: 'G6_2x10'
             },
             arena: {
                 generation: 'G6',
                 num_rows: 2,
                 num_cols: 10,
-                panels_installed: null,
+                columns_installed: null,
                 column_order: 'cw',
                 angle_offset_deg: 0
             },
@@ -727,7 +727,7 @@
 
         // Update config info display
         function updateConfigInfo() {
-            const { generation, num_rows, num_cols, panels_installed } = state.arena;
+            const { generation, num_rows, num_cols, columns_installed } = state.arena;
             const installedCols = getInstalledColumnCount();
             const coverage = Math.round(360 * installedCols / num_cols);
             document.getElementById('config-info').textContent =
@@ -736,28 +736,28 @@
 
         // Get installed column count
         function getInstalledColumnCount() {
-            if (state.arena.panels_installed === null) {
+            if (state.arena.columns_installed === null) {
                 return state.arena.num_cols;
             }
-            const maxIndex = Math.max(...state.arena.panels_installed);
+            const maxIndex = Math.max(...state.arena.columns_installed);
             if (maxIndex < state.arena.num_cols) {
-                return state.arena.panels_installed.length;
+                return state.arena.columns_installed.length;
             } else {
-                const uniqueCols = new Set(state.arena.panels_installed.map(p => p % state.arena.num_cols));
+                const uniqueCols = new Set(state.arena.columns_installed.map(p => p % state.arena.num_cols));
                 return uniqueCols.size;
             }
         }
 
         // Get set of installed column indices (0-indexed)
         function getInstalledColumnsSet() {
-            if (state.arena.panels_installed === null) {
+            if (state.arena.columns_installed === null) {
                 return new Set([...Array(state.arena.num_cols).keys()]);
             }
-            const maxIndex = Math.max(...state.arena.panels_installed);
+            const maxIndex = Math.max(...state.arena.columns_installed);
             if (maxIndex < state.arena.num_cols) {
-                return new Set(state.arena.panels_installed);
+                return new Set(state.arena.columns_installed);
             } else {
-                return new Set(state.arena.panels_installed.map(p => p % state.arena.num_cols));
+                return new Set(state.arena.columns_installed.map(p => p % state.arena.num_cols));
             }
         }
 
@@ -787,16 +787,16 @@
                 if (params.has('active')) {
                     const activeStr = params.get('active');
                     if (activeStr) {
-                        state.arena.panels_installed = activeStr.split(',').map(n => parseInt(n));
+                        state.arena.columns_installed = activeStr.split(',').map(n => parseInt(n));
                     }
                 } else {
-                    state.arena.panels_installed = null;
+                    state.arena.columns_installed = null;
                 }
                 return;
             }
 
-            // Default: G6_2x10_full
-            loadStandardConfig('G6_2x10_full');
+            // Default: G6_2x10
+            loadStandardConfig('G6_2x10');
         }
 
         // Three.js objects
@@ -1095,6 +1095,11 @@
                     if (config.arena) {
                         state.configSource = { type: 'file', name: file.name };
                         state.arena = { ...config.arena };
+                        // Backward compatibility: accept old field name panels_installed
+                        if (state.arena.panels_installed !== undefined && state.arena.columns_installed === undefined) {
+                            state.arena.columns_installed = state.arena.panels_installed;
+                            delete state.arena.panels_installed;
+                        }
                         state.phaseOffset = 0;
 
                         updateConfigInfo();

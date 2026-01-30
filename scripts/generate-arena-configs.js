@@ -95,24 +95,12 @@ function generateLabel(parsed) {
     const cols = arena.num_cols || 1;
 
     // Calculate coverage
+    // Support both new field name (columns_installed) and old field name (panels_installed) for backward compatibility
     let coverage = '360°';
-    if (arena.panels_installed && Array.isArray(arena.panels_installed)) {
-        // Detect if panels_installed uses column indices or panel indices
-        // Column indices: all values < num_cols
-        // Panel indices: some values >= num_cols (include row offsets)
-        const maxIndex = Math.max(...arena.panels_installed);
-        const isColumnIndices = maxIndex < cols;
-
-        let installedCols;
-        if (isColumnIndices) {
-            // panels_installed is column indices (0-indexed)
-            installedCols = arena.panels_installed.length;
-        } else {
-            // panels_installed is panel indices - count unique columns
-            const uniqueCols = new Set(arena.panels_installed.map(p => p % cols));
-            installedCols = uniqueCols.size;
-        }
-
+    const columnsInstalled = arena.columns_installed || arena.panels_installed;
+    if (columnsInstalled && Array.isArray(columnsInstalled)) {
+        // columns_installed is always column indices (0-indexed)
+        const installedCols = columnsInstalled.length;
         const coverageDeg = Math.round(360 * installedCols / cols);
         coverage = `${coverageDeg}°`;
     }

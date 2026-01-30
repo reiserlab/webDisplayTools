@@ -1,33 +1,33 @@
 /**
  * Arena Configurations
  * Auto-generated from maDisplayTools/configs/arenas/
- * Last updated: 2026-01-25T18:19:09.604Z
+ * Last updated: 2026-01-30T15:23:37.594Z
  *
  * DO NOT EDIT MANUALLY - regenerate with: node scripts/generate-arena-configs.js
  */
 
 const STANDARD_CONFIGS = {
-  "G6_2x10_full": {
+  "G6_2x10": {
     "label": "G6 (2×10) - 360°",
-    "description": "Full G6 arena, 2 rows × 10 columns, 360° coverage",
+    "description": "Full G6 arena, 2 rows x 10 columns, 360 degree coverage",
     "arena": {
       "generation": "G6",
       "num_rows": 2,
       "num_cols": 10,
-      "panels_installed": null,
+      "columns_installed": null,
       "orientation": "normal",
       "column_order": "cw",
       "angle_offset_deg": 0
     }
   },
-  "G6_2x8_walking": {
+  "G6_2x8of10": {
     "label": "G6 (2×10) - 288°",
-    "description": "G6 walking arena, 2 rows × 10-column grid, 8 columns installed (288° coverage)",
+    "description": "G6 walking arena, 2 rows, 8 of 10 columns installed (288 degree coverage)",
     "arena": {
       "generation": "G6",
       "num_rows": 2,
       "num_cols": 10,
-      "panels_installed": [
+      "columns_installed": [
         1,
         2,
         3,
@@ -35,29 +35,21 @@ const STANDARD_CONFIGS = {
         5,
         6,
         7,
-        8,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        17,
-        18
+        8
       ],
       "orientation": "normal",
       "column_order": "cw",
       "angle_offset_deg": 0
     }
   },
-  "G6_3x18_partial": {
+  "G6_3x12of18": {
     "label": "G6 (3×18) - 240°",
-    "description": "G6 arena, 3 rows × 18 columns, 12 columns installed",
+    "description": "G6 arena, 3 rows, 12 of 18 columns installed (240 degree coverage)",
     "arena": {
       "generation": "G6",
       "num_rows": 3,
       "num_cols": 18,
-      "panels_installed": [
+      "columns_installed": [
         0,
         1,
         2,
@@ -78,12 +70,12 @@ const STANDARD_CONFIGS = {
   },
   "G41_2x12_ccw": {
     "label": "G4.1 CCW (2×12) - 360°",
-    "description": "Standard G4.1 arena, 2 rows × 12 columns, 360° coverage, CCW column order",
+    "description": "Standard G4.1 arena, 2 rows x 12 columns, 360 degree coverage, CCW column order",
     "arena": {
       "generation": "G4.1",
       "num_rows": 2,
       "num_cols": 12,
-      "panels_installed": null,
+      "columns_installed": null,
       "orientation": "normal",
       "column_order": "ccw",
       "angle_offset_deg": 0
@@ -91,38 +83,38 @@ const STANDARD_CONFIGS = {
   },
   "G41_2x12_cw": {
     "label": "G4.1 (2×12) - 360°",
-    "description": "G4.1 arena, 2 rows × 12 columns, 360° coverage, CW column order",
+    "description": "G4.1 arena, 2 rows x 12 columns, 360 degree coverage, CW column order",
     "arena": {
       "generation": "G4.1",
       "num_rows": 2,
       "num_cols": 12,
-      "panels_installed": null,
+      "columns_installed": null,
       "orientation": "normal",
       "column_order": "cw",
       "angle_offset_deg": 0
     }
   },
-  "G4_3x12_full": {
+  "G4_3x12": {
     "label": "G4 (3×12) - 360°",
-    "description": "G4 arena, 3 rows × 12 columns, 360° coverage",
+    "description": "G4 arena, 3 rows x 12 columns, 360 degree coverage",
     "arena": {
       "generation": "G4",
       "num_rows": 3,
       "num_cols": 12,
-      "panels_installed": null,
+      "columns_installed": null,
       "orientation": "normal",
       "column_order": "cw",
       "angle_offset_deg": 0
     }
   },
-  "G4_3x18_partial": {
+  "G4_3x12of18": {
     "label": "G4 (3×18) - 240°",
-    "description": "G4 arena, 3 rows × 18-column grid, 12 columns installed (240° coverage)",
+    "description": "G4 arena, 3 rows, 12 of 18 columns installed (240 degree coverage)",
     "arena": {
       "generation": "G4",
       "num_rows": 3,
       "num_cols": 18,
-      "panels_installed": [
+      "columns_installed": [
         0,
         1,
         2,
@@ -141,40 +133,40 @@ const STANDARD_CONFIGS = {
       "angle_offset_deg": -60
     }
   },
-  "G4_4x12_full": {
+  "G4_4x12": {
     "label": "G4 (4×12) - 360°",
-    "description": "G4 arena, 4 rows × 12 columns, 360° coverage",
+    "description": "G4 arena, 4 rows x 12 columns, 360 degree coverage",
     "arena": {
       "generation": "G4",
       "num_rows": 4,
       "num_cols": 12,
-      "panels_installed": null,
+      "columns_installed": null,
       "orientation": "normal",
       "column_order": "cw",
       "angle_offset_deg": 0
     }
   },
-  "G3_3x24_full": {
+  "G3_3x24": {
     "label": "G3 (3×24) - 360°",
     "description": "Full G3 arena, 3 rows x 24 columns, 360 degree coverage",
     "arena": {
       "generation": "G3",
       "num_rows": 3,
       "num_cols": 24,
-      "panels_installed": null,
+      "columns_installed": null,
       "orientation": "normal",
       "column_order": "cw",
       "angle_offset_deg": 0
     }
   },
-  "G3_4x12_full": {
+  "G3_4x12": {
     "label": "G3 (4×12) - 360°",
-    "description": "Legacy G3 arena, 4 rows × 12 columns, 360° coverage",
+    "description": "Legacy G3 arena, 4 rows x 12 columns, 360 degree coverage",
     "arena": {
       "generation": "G3",
       "num_rows": 4,
       "num_cols": 12,
-      "panels_installed": null,
+      "columns_installed": null,
       "orientation": "normal",
       "column_order": "cw",
       "angle_offset_deg": 0

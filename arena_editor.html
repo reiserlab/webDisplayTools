@@ -673,7 +673,7 @@
 
         <footer>
             <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | PanelDisplayTools</p>
-            <p class="version">Arena Editor v3 | 2026-01-24</p>
+            <p class="version">Arena Editor v3.1 | 2026-01-30</p>
         </footer>
     </div>
 
@@ -683,13 +683,13 @@
             mode: 'view',  // 'view' or 'create'
             configSource: {
                 type: 'standard',  // 'standard', 'file', 'custom'
-                name: 'G6_2x10_full'
+                name: 'G6_2x10'
             },
             arena: {
                 generation: 'G6',
                 num_rows: 2,
                 num_cols: 10,
-                panels_installed: null,  // null = all installed
+                columns_installed: null,  // null = all installed
                 column_order: 'cw',
                 angle_offset_deg: 0
             },
@@ -782,32 +782,32 @@
 
         // Get installed column count
         function getInstalledColumnCount() {
-            if (state.arena.panels_installed === null) {
+            if (state.arena.columns_installed === null) {
                 return state.arena.num_cols;
             }
             // Handle both column indices and panel indices
-            const maxIndex = Math.max(...state.arena.panels_installed);
+            const maxIndex = Math.max(...state.arena.columns_installed);
             if (maxIndex < state.arena.num_cols) {
-                return state.arena.panels_installed.length;
+                return state.arena.columns_installed.length;
             } else {
-                const uniqueCols = new Set(state.arena.panels_installed.map(p => p % state.arena.num_cols));
+                const uniqueCols = new Set(state.arena.columns_installed.map(p => p % state.arena.num_cols));
                 return uniqueCols.size;
             }
         }
 
         // Get set of installed column indices (1-indexed for internal use)
         function getInstalledColumnsSet() {
-            if (state.arena.panels_installed === null) {
+            if (state.arena.columns_installed === null) {
                 return new Set([...Array(state.arena.num_cols).keys()].map(i => i + 1));
             }
             // Handle both column indices and panel indices
-            const maxIndex = Math.max(...state.arena.panels_installed);
+            const maxIndex = Math.max(...state.arena.columns_installed);
             if (maxIndex < state.arena.num_cols) {
                 // Column indices (0-indexed in config, convert to 1-indexed)
-                return new Set(state.arena.panels_installed.map(i => i + 1));
+                return new Set(state.arena.columns_installed.map(i => i + 1));
             } else {
                 // Panel indices - extract unique columns (convert to 1-indexed)
-                const uniqueCols = new Set(state.arena.panels_installed.map(p => (p % state.arena.num_cols) + 1));
+                const uniqueCols = new Set(state.arena.columns_installed.map(p => (p % state.arena.num_cols) + 1));
                 return uniqueCols;
             }
         }
@@ -1101,12 +1101,12 @@
         function togglePanel(colIndex) {
             if (state.mode !== 'create') return;
 
-            // Convert panels_installed to column indices set if needed
+            // Convert columns_installed to column indices set if needed
             let installedCols;
-            if (state.arena.panels_installed === null) {
+            if (state.arena.columns_installed === null) {
                 installedCols = new Set([...Array(state.arena.num_cols).keys()]);
             } else {
-                installedCols = new Set(state.arena.panels_installed);
+                installedCols = new Set(state.arena.columns_installed);
             }
 
             const colIdx = colIndex - 1;  // Convert to 0-indexed
@@ -1118,9 +1118,9 @@
 
             // Update state
             if (installedCols.size === state.arena.num_cols) {
-                state.arena.panels_installed = null;
+                state.arena.columns_installed = null;
             } else {
-                state.arena.panels_installed = Array.from(installedCols).sort((a, b) => a - b);
+                state.arena.columns_installed = Array.from(installedCols).sort((a, b) => a - b);
             }
 
             updateActivePanelsDisplay();
@@ -1129,7 +1129,7 @@
 
         // Reset panels to all installed
         function resetPanels() {
-            state.arena.panels_installed = null;
+            state.arena.columns_installed = null;
             updateActivePanelsDisplay();
         }
 
@@ -1161,10 +1161,10 @@
             yaml += `  num_cols: ${totalCols}\n`;
 
             if (isFull) {
-                yaml += `  panels_installed: null  # null = all columns installed\n`;
+                yaml += `  columns_installed: null  # null = all columns installed\n`;
             } else {
-                const panels = state.arena.panels_installed || [];
-                yaml += `  panels_installed: [${panels.join(', ')}]  # 0-indexed column indices\n`;
+                const panels = state.arena.columns_installed || [];
+                yaml += `  columns_installed: [${panels.join(', ')}]  # 0-indexed column indices\n`;
             }
 
             yaml += `  orientation: "normal"\n`;
@@ -1200,6 +1200,11 @@
                     if (config.arena) {
                         state.configSource = { type: 'file', name: file.name };
                         state.arena = { ...config.arena };
+                        // Backward compatibility: accept old field name panels_installed
+                        if (state.arena.panels_installed !== undefined && state.arena.columns_installed === undefined) {
+                            state.arena.columns_installed = state.arena.panels_installed;
+                            delete state.arena.panels_installed;
+                        }
                         state.mode = 'view';
                         updateUIForViewMode();
                         updatePropertiesDisplay();
@@ -1313,7 +1318,7 @@
                     generation: 'G6',
                     num_rows: 2,
                     num_cols: 10,
-                    panels_installed: null,
+                    columns_installed: null,
                     column_order: 'cw',
                     angle_offset_deg: 0
                 };
@@ -1467,8 +1472,8 @@
                     params.set('gen', state.arena.generation);
                     params.set('cols', state.arena.num_cols);
                     params.set('rows', state.arena.num_rows);
-                    if (state.arena.panels_installed) {
-                        params.set('active', state.arena.panels_installed.join(','));
+                    if (state.arena.columns_installed) {
+                        params.set('active', state.arena.columns_installed.join(','));
                     }
                     params.set('order', state.arena.column_order);
                     params.set('offset', state.arena.angle_offset_deg);
@@ -1484,7 +1489,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             populateConfigDropdown();
             setupEventListeners();
-            loadStandardConfig('G6_2x10_full');
+            loadStandardConfig('G6_2x10');
         });
     </script>
 </body>
