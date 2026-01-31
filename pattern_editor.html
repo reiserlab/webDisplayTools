@@ -15,6 +15,7 @@
     </script>
     <script src="js/arena-configs.js"></script>
     <script src="js/pat-encoder.js"></script>
+    <script src="js/pattern-editor/tools/generator.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -894,20 +895,67 @@
                     </div>
 
                     <div class="section-title">Parameters</div>
-                    <div class="control-group">
-                        <label>Spatial Frequency (pixels)</label>
-                        <input type="number" id="spatialFreq" value="20" min="2" max="200">
+
+                    <!-- Common grating/sine params -->
+                    <div id="gratingParams">
+                        <div class="control-group">
+                            <label>Wavelength (pixels)</label>
+                            <input type="number" id="spatialFreq" value="20" min="2" max="200">
+                        </div>
+                        <div class="control-group" id="dutyCycleGroup">
+                            <label>Duty Cycle (%)</label>
+                            <input type="number" id="dutyCycle" value="50" min="1" max="99">
+                        </div>
                     </div>
-                    <div class="control-group">
-                        <label>Step Size (pixels/frame)</label>
-                        <input type="number" id="stepSize" value="1" min="1" max="20">
+
+                    <!-- Starfield params -->
+                    <div id="starfieldParams" style="display: none;">
+                        <div class="control-group">
+                            <label>Dot Count</label>
+                            <input type="number" id="dotCount" value="100" min="1" max="1000">
+                        </div>
+                        <div class="control-group">
+                            <label>Dot Size (pixels)</label>
+                            <input type="number" id="dotSize" value="1" min="1" max="10">
+                        </div>
+                        <div class="control-group">
+                            <label>Random Seed</label>
+                            <input type="number" id="starfieldSeed" value="12345" min="1">
+                        </div>
                     </div>
-                    <div class="control-group">
-                        <label>Direction</label>
-                        <select id="direction">
-                            <option value="cw">Clockwise</option>
-                            <option value="ccw">Counter-clockwise</option>
-                        </select>
+
+                    <!-- Edge params -->
+                    <div id="edgeParams" style="display: none;">
+                        <div class="control-group">
+                            <label>Edge Position (0-1)</label>
+                            <input type="number" id="edgePosition" value="0.5" min="0" max="1" step="0.1">
+                        </div>
+                        <div class="control-group">
+                            <label>Polarity</label>
+                            <select id="edgePolarity">
+                                <option value="light-to-dark">Light → Dark</option>
+                                <option value="dark-to-light">Dark → Light</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Motion params (hidden for off/on) -->
+                    <div id="motionParams">
+                        <div class="control-group">
+                            <label>Step Size (pixels/frame)</label>
+                            <input type="number" id="stepSize" value="1" min="1" max="20">
+                        </div>
+                        <div class="control-group">
+                            <label>Direction</label>
+                            <select id="direction">
+                                <option value="cw">Clockwise</option>
+                                <option value="ccw">Counter-clockwise</option>
+                            </select>
+                        </div>
+                        <div class="control-group" id="numFramesGroup">
+                            <label>Number of Frames <span id="numFramesHint" style="color: var(--text-dim); font-size: 0.7rem;"></span></label>
+                            <input type="number" id="numFramesInput" value="200" min="1" max="10000">
+                        </div>
                     </div>
 
                     <div class="section-title">Brightness</div>
@@ -938,19 +986,21 @@
                     </p>
 
                     <div class="control-group">
+                        <label>Motion Direction</label>
+                        <select id="rotateDirection">
+                            <option value="h-cw">Horizontal CW</option>
+                            <option value="h-ccw">Horizontal CCW</option>
+                            <option value="v-up">Vertical Up</option>
+                            <option value="v-down">Vertical Down</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
                         <label>Step Size (pixels/frame)</label>
                         <input type="number" id="rotateStep" value="1" min="1" max="20">
                     </div>
                     <div class="control-group">
-                        <label>Direction</label>
-                        <select id="rotateDirection">
-                            <option value="cw">Clockwise</option>
-                            <option value="ccw">Counter-clockwise</option>
-                        </select>
-                    </div>
-                    <div class="control-group">
-                        <label>Total Frames</label>
-                        <input type="number" id="totalFrames" value="360" min="1" max="1000">
+                        <label>Total Frames <span id="framesHint" style="color: var(--text-dim); font-size: 0.7rem;"></span></label>
+                        <input type="number" id="totalFrames" value="200" min="1" max="10000">
                     </div>
 
                     <button class="btn" id="buildSequenceBtn" style="margin-top: 1rem;">Generate Sequence</button>
@@ -1296,6 +1346,7 @@
                 state.arena.configName = e.target.value;
                 state.arena.config = getConfig(e.target.value);
                 updateStatus();
+                updateG3ButtonStates();  // Disable save/load for G3
             });
 
             // Playback controls
@@ -1318,8 +1369,9 @@
             // Capture button
             document.getElementById('captureBtn').addEventListener('click', captureFrame);
 
-            // Generate button
+            // Generate button and pattern type change
             document.getElementById('generateBtn').addEventListener('click', handleGenerate);
+            document.getElementById('patternType').addEventListener('change', updatePatternTypeUI);
 
             // Combine operations
             document.getElementById('loadPatternB').addEventListener('click', () => {
@@ -1329,6 +1381,9 @@
             document.getElementById('swapBtn').addEventListener('click', handleSwap);
             document.getElementById('combineBtn').addEventListener('click', handleCombine);
             document.getElementById('buildSequenceBtn').addEventListener('click', handleBuildSequence);
+
+            // Direction change updates default frames
+            document.getElementById('rotateDirection').addEventListener('change', updateDefaultFrames);
 
             // Clipboard scroll buttons
             document.getElementById('clipboardPrev').addEventListener('click', () => scrollClipboard(-1));
@@ -1522,8 +1577,69 @@
         }
 
         // ============================================
-        // Pattern Generation (placeholder)
+        // Pattern Generation
         // ============================================
+
+        /**
+         * Update UI visibility based on pattern type
+         */
+        function updatePatternTypeUI() {
+            const patternType = document.getElementById('patternType').value;
+
+            // Show/hide parameter sections
+            const gratingParams = document.getElementById('gratingParams');
+            const starfieldParams = document.getElementById('starfieldParams');
+            const edgeParams = document.getElementById('edgeParams');
+            const motionParams = document.getElementById('motionParams');
+            const dutyCycleGroup = document.getElementById('dutyCycleGroup');
+            const numFramesGroup = document.getElementById('numFramesGroup');
+
+            // Reset visibility
+            gratingParams.style.display = 'none';
+            starfieldParams.style.display = 'none';
+            edgeParams.style.display = 'none';
+            motionParams.style.display = 'block';
+
+            switch (patternType) {
+                case 'grating':
+                    gratingParams.style.display = 'block';
+                    dutyCycleGroup.style.display = 'block';
+                    numFramesGroup.style.display = 'none';  // Auto-calculated from wavelength
+                    break;
+                case 'sine':
+                    gratingParams.style.display = 'block';
+                    dutyCycleGroup.style.display = 'none';  // No duty cycle for sine
+                    numFramesGroup.style.display = 'none';  // Auto-calculated from wavelength
+                    break;
+                case 'starfield':
+                    starfieldParams.style.display = 'block';
+                    numFramesGroup.style.display = 'block';
+                    updateNumFramesDefault();
+                    break;
+                case 'edge':
+                    edgeParams.style.display = 'block';
+                    numFramesGroup.style.display = 'block';
+                    updateNumFramesDefault();
+                    break;
+                case 'off-on':
+                    motionParams.style.display = 'none';  // No motion for off/on
+                    break;
+            }
+        }
+
+        /**
+         * Update the default number of frames hint based on arena config
+         */
+        function updateNumFramesDefault() {
+            const hint = document.getElementById('numFramesHint');
+            if (state.arena.config) {
+                const specs = PANEL_SPECS[state.arena.config.arena.generation];
+                const pixelCols = state.arena.config.arena.num_cols * specs.pixels_per_panel;
+                hint.textContent = `(360° = ${pixelCols})`;
+                document.getElementById('numFramesInput').value = pixelCols;
+            }
+        }
+
         function handleGenerate() {
             const config = state.arena.config;
             if (!config) {
@@ -1532,62 +1648,114 @@
             }
 
             const patternType = document.getElementById('patternType').value;
-            const spatialFreq = parseInt(document.getElementById('spatialFreq').value);
-            const stepSize = parseInt(document.getElementById('stepSize').value);
-            const direction = document.getElementById('direction').value;
             const gsMode = parseInt(document.getElementById('gsMode').value);
             const highLevel = parseInt(document.getElementById('highLevel').value);
             const lowLevel = parseInt(document.getElementById('lowLevel').value);
 
-            const pixelsPerPanel = PANEL_SPECS[config.arena.generation].pixels_per_panel;
-            const pixelRows = config.arena.num_rows * pixelsPerPanel;
-            const pixelCols = config.arena.num_cols * pixelsPerPanel;
-            const numFrames = Math.ceil(spatialFreq / stepSize);
-
-            // Generate simple grating pattern
-            const frames = [];
-            for (let f = 0; f < numFrames; f++) {
-                const frame = new Uint8Array(pixelRows * pixelCols);
-                const offset = (direction === 'cw' ? f : -f) * stepSize;
-
-                for (let row = 0; row < pixelRows; row++) {
-                    for (let col = 0; col < pixelCols; col++) {
-                        let value;
-                        if (patternType === 'grating') {
-                            const phase = (col + offset) % spatialFreq;
-                            value = phase < spatialFreq / 2 ? highLevel : lowLevel;
-                        } else if (patternType === 'sine') {
-                            const phase = ((col + offset) / spatialFreq) * 2 * Math.PI;
-                            const normalized = (Math.sin(phase) + 1) / 2;
-                            value = Math.round(lowLevel + normalized * (highLevel - lowLevel));
-                        } else {
-                            value = highLevel; // Default: all on
-                        }
-                        frame[row * pixelCols + col] = value;
-                    }
-                }
-                frames.push(frame);
-            }
-
-            state.pattern = {
+            // Build arena object for generator
+            const arena = {
                 generation: config.arena.generation,
-                gsMode: gsMode,
-                numFrames: numFrames,
-                pixelRows: pixelRows,
-                pixelCols: pixelCols,
-                frames: frames,
-                stretchValues: new Array(numFrames).fill(1)
+                rows: config.arena.num_rows,
+                cols: config.arena.num_cols
             };
 
-            state.filename = `${patternType}_${spatialFreq}px.pat`;
-            state.isDirty = true;
-            state.editor.currentFrame = 0;
+            let params = {
+                high: highLevel,
+                low: lowLevel,
+                gsMode: gsMode
+            };
 
-            updateStatus();
-            renderCurrentViewer();
-            updateFrameInfo();
+            let pattern;
+            let filename;
 
-            console.log('Generated pattern:', state.pattern);
+            try {
+                switch (patternType) {
+                    case 'grating':
+                        params.wavelength = parseInt(document.getElementById('spatialFreq').value);
+                        params.dutyCycle = parseInt(document.getElementById('dutyCycle').value);
+                        params.direction = document.getElementById('direction').value;
+                        params.stepSize = parseInt(document.getElementById('stepSize').value);
+                        pattern = PatternGenerator.generateGrating(params, arena);
+                        filename = `grating_${params.wavelength}px_${params.dutyCycle}pct.pat`;
+                        break;
+
+                    case 'sine':
+                        params.wavelength = parseInt(document.getElementById('spatialFreq').value);
+                        params.direction = document.getElementById('direction').value;
+                        params.stepSize = parseInt(document.getElementById('stepSize').value);
+                        pattern = PatternGenerator.generateSine(params, arena);
+                        filename = `sine_${params.wavelength}px.pat`;
+                        break;
+
+                    case 'starfield':
+                        params.dotCount = parseInt(document.getElementById('dotCount').value);
+                        params.dotSize = parseInt(document.getElementById('dotSize').value);
+                        params.seed = parseInt(document.getElementById('starfieldSeed').value);
+                        params.brightness = highLevel;
+                        params.background = lowLevel;
+                        params.direction = document.getElementById('direction').value;
+                        params.stepSize = parseInt(document.getElementById('stepSize').value);
+                        params.numFrames = parseInt(document.getElementById('numFramesInput').value);
+                        pattern = PatternGenerator.generateStarfield(params, arena);
+                        filename = `starfield_${params.dotCount}dots_${params.numFrames}f.pat`;
+                        break;
+
+                    case 'edge':
+                        params.edgePosition = parseFloat(document.getElementById('edgePosition').value);
+                        params.polarity = document.getElementById('edgePolarity').value;
+                        params.direction = document.getElementById('direction').value;
+                        params.stepSize = parseInt(document.getElementById('stepSize').value);
+                        params.numFrames = parseInt(document.getElementById('numFramesInput').value);
+                        pattern = PatternGenerator.generateEdge(params, arena);
+                        filename = `edge_${params.polarity}_${params.numFrames}f.pat`;
+                        break;
+
+                    case 'off-on':
+                        pattern = PatternGenerator.generateOffOn(params, arena);
+                        filename = `off_on_${highLevel}.pat`;
+                        break;
+
+                    default:
+                        alert(`Pattern type "${patternType}" not implemented yet`);
+                        return;
+                }
+
+                // Validate generated pattern
+                const validation = PatternGenerator.validate(pattern);
+                if (!validation.valid) {
+                    console.error('Pattern validation errors:', validation.errors);
+                    alert('Generated pattern has errors:\n' + validation.errors.join('\n'));
+                    return;
+                }
+                if (validation.warnings.length > 0) {
+                    console.warn('Pattern validation warnings:', validation.warnings);
+                }
+
+                // Convert to state.pattern format
+                state.pattern = {
+                    generation: pattern.generation,
+                    gsMode: pattern.gs_val,
+                    numFrames: pattern.numFrames,
+                    pixelRows: pattern.pixelRows,
+                    pixelCols: pattern.pixelCols,
+                    frames: pattern.frames,
+                    stretchValues: pattern.stretchValues
+                };
+
+                state.filename = filename;
+                state.isDirty = true;
+                state.editor.currentFrame = 0;
+
+                updateStatus();
+                renderCurrentViewer();
+                updateFrameInfo();
+
+                console.log('Generated pattern:', patternType, params, state.pattern);
+
+            } catch (err) {
+                console.error('Pattern generation error:', err);
+                alert('Failed to generate pattern: ' + err.message);
+            }
         }
 
         // ============================================
@@ -2284,6 +2452,44 @@
             }
         }
 
+        /**
+         * Update the default total frames based on direction and arena config
+         */
+        function updateDefaultFrames() {
+            const direction = document.getElementById('rotateDirection').value;
+            const framesInput = document.getElementById('totalFrames');
+            const framesHint = document.getElementById('framesHint');
+
+            // Get pixel dimensions from arena config or clipboard entry
+            let pixelCols = 200;  // Default
+            let pixelRows = 60;   // Default
+
+            if (state.arena.config) {
+                const specs = PANEL_SPECS[state.arena.config.arena.generation];
+                pixelCols = state.arena.config.arena.num_cols * specs.pixels_per_panel;
+                pixelRows = state.arena.config.arena.num_rows * specs.pixels_per_panel;
+            } else if (state.clipboard.length > 0) {
+                // Fallback to clipboard entry dimensions
+                pixelCols = state.clipboard[0].pixelCols;
+                pixelRows = state.clipboard[0].pixelRows;
+            }
+
+            let defaultFrames;
+            let hint;
+            if (direction.startsWith('h-')) {
+                // Horizontal motion: full 360° loop
+                defaultFrames = pixelCols;
+                hint = `(360° = ${pixelCols} px)`;
+            } else {
+                // Vertical motion: full vertical traverse
+                defaultFrames = pixelRows;
+                hint = `(full height = ${pixelRows} px)`;
+            }
+
+            framesInput.value = defaultFrames;
+            framesHint.textContent = hint;
+        }
+
         function handleBuildSequence() {
             if (state.clipboard.length === 0) {
                 alert('Capture some frames first');
@@ -2306,21 +2512,29 @@
                 return;
             }
 
-            // Get rotation parameters from UI
+            // Get motion parameters from UI
             const stepSize = parseInt(document.getElementById('rotateStep').value) || 1;
             const direction = document.getElementById('rotateDirection').value;
-            const totalFrames = parseInt(document.getElementById('totalFrames').value) || 360;
+            const totalFrames = parseInt(document.getElementById('totalFrames').value) || 200;
 
             // Use the first selected frame as the base
             const baseEntry = selectedEntries[0];
             const { pixelRows, pixelCols, gsMode, generation } = baseEntry;
 
-            // Build rotation sequence
+            // Build motion sequence based on direction
             const frames = [];
+            const isHorizontal = direction.startsWith('h-');
+            const isPositive = direction === 'h-cw' || direction === 'v-up';
+
             for (let f = 0; f < totalFrames; f++) {
-                const offset = (direction === 'cw' ? f : -f) * stepSize;
-                const rotatedFrame = rotateFrameHorizontally(baseEntry.frame, pixelCols, pixelRows, offset);
-                frames.push(rotatedFrame);
+                const offset = (isPositive ? f : -f) * stepSize;
+                let shiftedFrame;
+                if (isHorizontal) {
+                    shiftedFrame = shiftFrameHorizontally(baseEntry.frame, pixelCols, pixelRows, offset);
+                } else {
+                    shiftedFrame = shiftFrameVertically(baseEntry.frame, pixelCols, pixelRows, offset);
+                }
+                frames.push(shiftedFrame);
             }
 
             // Create new pattern from sequence
@@ -2334,7 +2548,9 @@
                 stretchValues: new Array(totalFrames).fill(1)
             };
 
-            state.filename = `${baseEntry.name}_rotation_${totalFrames}f.pat`;
+            // Generate filename based on motion type
+            const dirLabel = direction.replace('-', '_');
+            state.filename = `${baseEntry.name}_${dirLabel}_${totalFrames}f.pat`;
             state.isDirty = true;
             state.editor.currentFrame = 0;
             state.editor.editingClipboardId = null;
@@ -2343,15 +2559,25 @@
             state.selectedClipboardIds = [];
             updateClipboardUI();
 
+            // Exit edit mode if active
+            if (state.editor.editMode) {
+                state.editor.editMode = false;
+                document.getElementById('editModeBtn').textContent = 'Edit Mode';
+                document.getElementById('editModeBtn').classList.remove('active');
+            }
+
             updateStatus();
             renderCurrentViewer();
             updateFrameInfo();
 
-            console.log(`Generated rotation sequence: ${totalFrames} frames, step=${stepSize}px, direction=${direction}`);
+            console.log(`Generated motion sequence: ${totalFrames} frames, step=${stepSize}px, direction=${direction}`);
         }
 
-        function rotateFrameHorizontally(frameData, pixelCols, pixelRows, offset) {
-            const rotated = new Uint8Array(frameData.length);
+        /**
+         * Shift frame horizontally (wrap around)
+         */
+        function shiftFrameHorizontally(frameData, pixelCols, pixelRows, offset) {
+            const shifted = new Uint8Array(frameData.length);
 
             // Normalize offset to be positive and within bounds
             offset = ((offset % pixelCols) + pixelCols) % pixelCols;
@@ -2359,11 +2585,36 @@
             for (let row = 0; row < pixelRows; row++) {
                 for (let col = 0; col < pixelCols; col++) {
                     const srcCol = (col + offset) % pixelCols;
-                    rotated[row * pixelCols + col] = frameData[row * pixelCols + srcCol];
+                    shifted[row * pixelCols + col] = frameData[row * pixelCols + srcCol];
                 }
             }
 
-            return rotated;
+            return shifted;
+        }
+
+        /**
+         * Shift frame vertically (wrap around)
+         * Positive offset = pattern shifts upward on screen
+         */
+        function shiftFrameVertically(frameData, pixelCols, pixelRows, offset) {
+            const shifted = new Uint8Array(frameData.length);
+
+            // Normalize offset to be positive and within bounds
+            offset = ((offset % pixelRows) + pixelRows) % pixelRows;
+
+            for (let row = 0; row < pixelRows; row++) {
+                const srcRow = (row + offset) % pixelRows;
+                for (let col = 0; col < pixelCols; col++) {
+                    shifted[row * pixelCols + col] = frameData[srcRow * pixelCols + col];
+                }
+            }
+
+            return shifted;
+        }
+
+        // Legacy alias for backwards compatibility
+        function rotateFrameHorizontally(frameData, pixelCols, pixelRows, offset) {
+            return shiftFrameHorizontally(frameData, pixelCols, pixelRows, offset);
         }
 
         // ============================================
@@ -2384,9 +2635,45 @@
             }
 
             if (state.pattern) {
+                // Ensure arena config matches pattern dimensions
+                const patternGen = state.pattern.generation;
+                const patternSpecs = PANEL_SPECS[patternGen];
+                const patternCols = state.pattern.pixelCols / patternSpecs.pixels_per_panel;
+                const patternRows = state.pattern.pixelRows / patternSpecs.pixels_per_panel;
+
+                // Check if current arena config matches pattern
+                const currentConfig = state.arena.config;
+                const needsReinit = !currentConfig ||
+                    currentConfig.arena.generation !== patternGen ||
+                    currentConfig.arena.num_cols !== patternCols ||
+                    currentConfig.arena.num_rows !== patternRows;
+
+                if (needsReinit) {
+                    // Try to find matching config
+                    const matchingConfig = findMatchingArenaConfig(patternGen, patternCols, patternRows);
+                    if (matchingConfig) {
+                        state.arena.configName = matchingConfig;
+                        state.arena.config = getConfig(matchingConfig);
+                        document.getElementById('arenaConfig').value = matchingConfig;
+                        threeViewer.reinit(state.arena.config, patternSpecs);
+                    }
+                }
+
                 threeViewer.setPattern(state.pattern);
                 threeViewer.setFrame(state.editor.currentFrame);
             }
+        }
+
+        // Find arena config that matches pattern dimensions
+        function findMatchingArenaConfig(generation, numCols, numRows) {
+            for (const [name, config] of Object.entries(ARENA_CONFIGS)) {
+                if (config.arena.generation === generation &&
+                    config.arena.num_cols === numCols &&
+                    config.arena.num_rows === numRows) {
+                    return name;
+                }
+            }
+            return null;
         }
 
         function renderGridViewer() {
@@ -2611,6 +2898,35 @@
             }
         }
 
+        /**
+         * Update Save/Load button states based on arena generation
+         * G3 format is not supported for .pat files
+         */
+        function updateG3ButtonStates() {
+            const loadBtn = document.getElementById('loadBtn');
+            const saveBtn = document.getElementById('saveBtn');
+
+            // Check if current arena or pattern is G3
+            const isG3Arena = state.arena.config && state.arena.config.arena.generation === 'G3';
+            const isG3Pattern = state.pattern && state.pattern.generation === 'G3';
+
+            if (isG3Arena || isG3Pattern) {
+                loadBtn.disabled = true;
+                saveBtn.disabled = true;
+                loadBtn.title = 'G3 .pat format not supported';
+                saveBtn.title = 'G3 .pat format not supported';
+                loadBtn.style.opacity = '0.5';
+                saveBtn.style.opacity = '0.5';
+            } else {
+                loadBtn.disabled = false;
+                saveBtn.disabled = false;
+                loadBtn.title = 'Load .pat file';
+                saveBtn.title = 'Save as .pat file';
+                loadBtn.style.opacity = '1';
+                saveBtn.style.opacity = '1';
+            }
+        }
+
         // ============================================
         // Helper: Get configs grouped by generation
         // ============================================
@@ -2635,6 +2951,9 @@
         document.addEventListener('DOMContentLoaded', () => {
             initUI();
             updateClipboardUI();
+            updateDefaultFrames();  // Set initial frames based on default arena
+            updatePatternTypeUI();  // Set initial pattern type UI visibility
+            updateG3ButtonStates(); // Disable save/load for G3 arenas
         });
     </script>
 </body>

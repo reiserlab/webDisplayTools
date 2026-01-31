@@ -550,3 +550,7 @@ const PatternGenerator = {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = PatternGenerator;
 }
+// Make available globally in browser
+if (typeof window !== 'undefined') {
+    window.PatternGenerator = PatternGenerator;
+}

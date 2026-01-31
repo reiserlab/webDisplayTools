@@ -122,6 +122,18 @@ class ThreeViewer {
     }
 
     /**
+     * Reinitialize the viewer with a new arena configuration
+     * @param {Object} arenaConfig - Arena configuration from arena-configs.js
+     * @param {Object} panelSpecs - Panel specifications from arena-configs.js
+     */
+    reinit(arenaConfig, panelSpecs) {
+        this.arenaConfig = arenaConfig;
+        this.panelSpecs = panelSpecs;
+        this._buildArena();
+        this._updateLEDColors();
+    }
+
+    /**
      * Set the current frame to display
      * @param {number} frameIndex - 0-indexed frame number
      */
@@ -259,29 +271,42 @@ class ThreeViewer {
         const arena = config.arena;
         const numCols = arena.num_cols;
         const numRows = arena.num_rows;
+        const columnOrder = arena.column_order || 'cw';
+        const angleOffsetDeg = arena.angle_offset_deg || 0;
+        const angleOffsetRad = (angleOffsetDeg * Math.PI) / 180;
 
-        // Calculate arena geometry
-        const panelWidthInches = specs.panel_width_mm / 25.4;
-        const panelHeightInches = panelWidthInches; // Square panels
-        const totalHeight = panelHeightInches * numRows;
+        // Convert mm to inches (working units)
+        const panelWidth = specs.panel_width_mm / 25.4;
+        const panelHeight = specs.panel_height_mm / 25.4;
+        const panelDepth = specs.panel_depth_mm / 25.4;
 
         // Calculate radius using the formula from MATLAB
         const alpha = (2 * Math.PI) / numCols;
-        const cRadius = panelWidthInches / (Math.tan(alpha / 2)) / 2;
+        const halfPanel = alpha / 2;  // Offset so c0 starts at boundary, not centered
+        const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
 
-        // Create columns (panels)
+        const columnHeight = panelHeight * numRows;
+
+        // Place columns with proper CW/CCW ordering
+        // CW: c0 just LEFT of south (looking from above), columns increase counter-clockwise
+        // CCW: c0 just RIGHT of south, columns increase clockwise (mirror)
+        // Note: Three.js uses right-handed coords but top-down view has +Z toward viewer,
+        // so we negate Z to match MATLAB's top-down appearance
         for (let col = 0; col < numCols; col++) {
-            const angle = BASE_OFFSET_RAD + (col + 0.5) * alpha;
+            let angle;
+            if (columnOrder === 'cw') {
+                // CW: start left of south, go counter-clockwise
+                angle = BASE_OFFSET_RAD - halfPanel - col * alpha + angleOffsetRad;
+            } else {
+                // CCW: start right of south, go clockwise
+                angle = BASE_OFFSET_RAD + halfPanel + col * alpha + angleOffsetRad;
+            }
 
-            const columnGroup = this._createColumn(specs, panelWidthInches, totalHeight, col, numCols, numRows);
+            const x = cRadius * Math.cos(angle);
+            const z = -cRadius * Math.sin(angle);  // Negate Z to match MATLAB top-down view
 
-            // Position column on cylinder (centered at Y=0)
-            columnGroup.position.x = cRadius * Math.cos(angle);
-            columnGroup.position.z = -cRadius * Math.sin(angle);
-            columnGroup.position.y = 0;
-
-            // Rotate to face center
-            columnGroup.rotation.y = -angle + Math.PI / 2;
+            const columnGroup = this._createColumn(specs, panelWidth, columnHeight, panelDepth, -angle, numRows, col, numCols, columnOrder);
+            columnGroup.position.set(x, 0, z);
 
             this.arenaGroup.add(columnGroup);
         }
@@ -293,61 +318,179 @@ class ThreeViewer {
         this.controls.update();
     }
 
-    _createColumn(specs, width, height, colIndex, numCols, numRows) {
+    _createColumn(specs, width, height, depth, angle, numRows, colIndex, numCols, columnOrder) {
         const group = new THREE.Group();
 
+        // Apply rotation to face center (matches standalone viewer exactly)
+        group.rotation.y = -angle - Math.PI / 2;
+
         // Column background
-        const depth = 0.1;
-        const columnGeom = new THREE.BoxGeometry(width, height, depth);
+        const columnGeom = new THREE.BoxGeometry(width, height, depth * 0.1);
         const columnMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
         const column = new THREE.Mesh(columnGeom, columnMat);
         group.add(column);
 
-        // Create LEDs
-        const pixelsPerPanel = specs.pixels_per_panel;
-        const totalPixelsV = pixelsPerPanel * numRows;
-        const totalPixelsH = pixelsPerPanel;
+        // Border
+        const borderMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+        const halfW = width / 2;
+        const halfH = height / 2;
+        const panelThickness = depth * 0.05;
+
+        const borderOffsets = [panelThickness, -panelThickness];
+
+        for (const borderZ of borderOffsets) {
+            const borderGeom = new THREE.BufferGeometry();
+            const borderVertices = new Float32Array([
+                -halfW, -halfH, borderZ,
+                 halfW, -halfH, borderZ,
+                 halfW, -halfH, borderZ,
+                 halfW,  halfH, borderZ,
+                 halfW,  halfH, borderZ,
+                -halfW,  halfH, borderZ,
+                -halfW,  halfH, borderZ,
+                -halfW, -halfH, borderZ
+            ]);
+            borderGeom.setAttribute('position', new THREE.Float32BufferAttribute(borderVertices, 3));
+            const border = new THREE.LineSegments(borderGeom, borderMat);
+            group.add(border);
+
+            // Panel separators for multi-row columns
+            if (numRows > 1) {
+                const panelH = height / numRows;
+                for (let r = 1; r < numRows; r++) {
+                    const lineY = -halfH + r * panelH;
+                    const lineGeom = new THREE.BufferGeometry();
+                    const lineVerts = new Float32Array([
+                        -halfW, lineY, borderZ,
+                         halfW, lineY, borderZ
+                    ]);
+                    lineGeom.setAttribute('position', new THREE.Float32BufferAttribute(lineVerts, 3));
+                    const line = new THREE.Line(lineGeom, borderMat);
+                    group.add(line);
+                }
+            }
+        }
+
+        // LEDs - use accurate dimensions from specs
+        const totalPixelsV = specs.pixels_per_panel * numRows;
+        const totalPixelsH = specs.pixels_per_panel;
 
         const ledSpacingX = width / totalPixelsH;
         const ledSpacingY = height / totalPixelsV;
-        const ledSize = Math.min(ledSpacingX, ledSpacingY) * 0.8;
 
+        // Use actual LED dimensions from specs (convert mm to inches)
         const isRectLED = specs.led_type === 'rect';
+        let ledW, ledH, ledRadius;
+
+        if (isRectLED) {
+            // Rectangular SMD LEDs (G4.1, G6) - mounted at 45°
+            ledW = (specs.led_width_mm || 1.0) / 25.4;
+            ledH = (specs.led_height_mm || 0.5) / 25.4;
+        } else {
+            // Round LEDs (G3, G4)
+            ledRadius = (specs.led_diameter_mm || 2.0) / 25.4 / 2;
+        }
 
         for (let py = 0; py < totalPixelsV; py++) {
             for (let px = 0; px < totalPixelsH; px++) {
-                let ledMesh;
+                const localX = -halfW + ledSpacingX / 2 + px * ledSpacingX;
+                const localY = -halfH + ledSpacingY / 2 + py * ledSpacingY;
+                const localZ = panelThickness + 0.001;
 
                 if (isRectLED) {
-                    // Rotated rectangle LED (45 degrees)
-                    const rectGeom = new THREE.PlaneGeometry(ledSize * 0.7, ledSize * 0.5);
-                    const ledMat = new THREE.MeshBasicMaterial({ color: 0x00e676 });
-                    ledMesh = new THREE.Mesh(rectGeom, ledMat);
-                    ledMesh.rotation.z = Math.PI / 4;
+                    // Rectangular LED rotated 45°
+                    const rectW = ledW / 2;
+                    const rectH = ledH / 2;
+
+                    const cos45 = Math.SQRT1_2;
+                    const sin45 = Math.SQRT1_2;
+
+                    const c1x = (-rectW) * cos45 - (-rectH) * sin45;
+                    const c1y = (-rectW) * sin45 + (-rectH) * cos45;
+                    const c2x = (rectW) * cos45 - (-rectH) * sin45;
+                    const c2y = (rectW) * sin45 + (-rectH) * cos45;
+                    const c3x = (rectW) * cos45 - (rectH) * sin45;
+                    const c3y = (rectW) * sin45 + (rectH) * cos45;
+                    const c4x = (-rectW) * cos45 - (rectH) * sin45;
+                    const c4y = (-rectW) * sin45 + (rectH) * cos45;
+
+                    const rectShape = new THREE.Shape();
+                    rectShape.moveTo(c1x, c1y);
+                    rectShape.lineTo(c2x, c2y);
+                    rectShape.lineTo(c3x, c3y);
+                    rectShape.lineTo(c4x, c4y);
+                    rectShape.lineTo(c1x, c1y);
+
+                    const rectGeom = new THREE.ShapeGeometry(rectShape);
+                    const rectMat = new THREE.MeshBasicMaterial({ color: 0x00e600 });
+                    const rect = new THREE.Mesh(rectGeom, rectMat);
+                    rect.position.set(localX, localY, localZ);
+                    group.add(rect);
+
+                    this.ledMeshes.push({
+                        mesh: rect,
+                        colIndex: colIndex,
+                        px: px,
+                        py: py,
+                        totalPixelsH: totalPixelsH,
+                        numCols: numCols,
+                        numRows: numRows,
+                        columnOrder: columnOrder
+                    });
+
+                    // LED outline
+                    const outlineGeom = new THREE.BufferGeometry();
+                    const outlineVerts = new Float32Array([
+                        c1x, c1y, 0,
+                        c2x, c2y, 0,
+                        c2x, c2y, 0,
+                        c3x, c3y, 0,
+                        c3x, c3y, 0,
+                        c4x, c4y, 0,
+                        c4x, c4y, 0,
+                        c1x, c1y, 0
+                    ]);
+                    outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlineVerts, 3));
+                    const outlineMat = new THREE.LineBasicMaterial({ color: 0x333333 });
+                    const outline = new THREE.LineSegments(outlineGeom, outlineMat);
+                    outline.position.set(localX, localY, localZ + 0.0001);
+                    group.add(outline);
                 } else {
-                    // Circle LED
-                    const ledGeom = new THREE.CircleGeometry(ledSize / 2, 16);
-                    const ledMat = new THREE.MeshBasicMaterial({ color: 0x00e676 });
-                    ledMesh = new THREE.Mesh(ledGeom, ledMat);
+                    // Round LED
+                    const ledGeom = new THREE.CircleGeometry(ledRadius, 16);
+                    const ledMat = new THREE.MeshBasicMaterial({ color: 0x00e600 });
+                    const led = new THREE.Mesh(ledGeom, ledMat);
+                    led.position.set(localX, localY, localZ);
+                    group.add(led);
+
+                    this.ledMeshes.push({
+                        mesh: led,
+                        colIndex: colIndex,
+                        px: px,
+                        py: py,
+                        totalPixelsH: totalPixelsH,
+                        numCols: numCols,
+                        numRows: numRows,
+                        columnOrder: columnOrder
+                    });
+
+                    // LED outline circle
+                    const circlePoints = [];
+                    const segments = 16;
+                    for (let i = 0; i <= segments; i++) {
+                        const theta = (i / segments) * Math.PI * 2;
+                        circlePoints.push(new THREE.Vector3(
+                            Math.cos(theta) * ledRadius,
+                            Math.sin(theta) * ledRadius,
+                            0
+                        ));
+                    }
+                    const circleGeom = new THREE.BufferGeometry().setFromPoints(circlePoints);
+                    const circleMat = new THREE.LineBasicMaterial({ color: 0x333333 });
+                    const circle = new THREE.Line(circleGeom, circleMat);
+                    circle.position.set(localX, localY, localZ + 0.0001);
+                    group.add(circle);
                 }
-
-                // Position LED
-                const x = (px - totalPixelsH / 2 + 0.5) * ledSpacingX;
-                const y = (py - totalPixelsV / 2 + 0.5) * ledSpacingY;
-                ledMesh.position.set(x, y, depth / 2 + 0.01);
-
-                group.add(ledMesh);
-
-                // Store reference for color updates
-                this.ledMeshes.push({
-                    mesh: ledMesh,
-                    colIndex,
-                    px,
-                    py,
-                    totalPixelsH,
-                    numCols,
-                    numRows
-                });
             }
         }
 
@@ -365,7 +508,7 @@ class ThreeViewer {
     }
 
     _getLEDBrightness(ledRef) {
-        const { px, py, colIndex, totalPixelsH, numRows } = ledRef;
+        const { px, py, colIndex, totalPixelsH, numCols, columnOrder } = ledRef;
         const pattern = this.state.pattern;
 
         if (!pattern || !pattern.frames || pattern.frames.length === 0) {
@@ -376,9 +519,17 @@ class ThreeViewer {
         if (!frame) return 0.0;
 
         const pixelsPerPanel = totalPixelsH;
+        const totalAzimuthPixels = numCols * totalPixelsH;
 
-        // Calculate global coordinates
-        const globalX = colIndex * pixelsPerPanel + px;
+        // For CCW mode, mirror the pixel index within each panel
+        // to ensure grating tiles correctly when columns are placed clockwise
+        const effectivePx = (columnOrder === 'ccw')
+            ? (totalPixelsH - 1 - px)
+            : px;
+
+        // Calculate global X with phase offset support
+        const phaseOffset = this.state.phaseOffset || 0;
+        const globalX = ((colIndex * pixelsPerPanel + effectivePx) + phaseOffset + totalAzimuthPixels) % totalAzimuthPixels;
         const globalY = py;
 
         // Row-major index: row * numCols + col
