@@ -860,7 +860,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 In Development — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.3 | 2026-01-31 — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1020,7 +1020,10 @@
                         <div style="padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.5rem;">
                             <span id="patternBInfo">No pattern loaded</span>
                         </div>
-                        <button class="btn secondary" id="loadPatternB">Load Pattern B...</button>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn secondary" id="loadPatternB" style="flex: 1;">Load Pattern B...</button>
+                            <button class="btn secondary" id="clearPatternB" style="width: auto; padding: 0.4rem 0.8rem;" title="Clear Pattern B">✕</button>
+                        </div>
                     </div>
 
                     <div style="text-align: center; margin: 1rem 0;">
@@ -1033,8 +1036,32 @@
                     <div class="control-group">
                         <select id="combineMode">
                             <option value="sequential">Sequential (concatenate)</option>
-                            <option value="mask">Mask/Blend</option>
-                            <option value="split">Left/Right Split</option>
+                            <option value="mask">Mask (threshold)</option>
+                            <option value="blend">Blend (50%)</option>
+                            <option value="split-h">Horizontal Split (left/right)</option>
+                            <option value="split-v">Vertical Split (top/bottom)</option>
+                        </select>
+                    </div>
+
+                    <!-- Mode-specific options -->
+                    <div id="combineMaskOptions" class="control-group" style="display: none;">
+                        <label>Threshold (0-15):</label>
+                        <input type="number" id="maskThreshold" value="7" min="0" max="15" step="1">
+                        <span style="font-size: 0.7rem; color: var(--text-dim);">Pixels above threshold show B</span>
+                    </div>
+
+                    <div id="combineSplitOptions" class="control-group" style="display: none;">
+                        <label>Split Position (0-100%):</label>
+                        <input type="range" id="splitPosition" value="50" min="0" max="100" step="1" style="width: 100%;">
+                        <span id="splitPositionLabel" style="font-size: 0.7rem; color: var(--text-dim);">50%</span>
+                    </div>
+
+                    <div id="combineLengthOptions" class="control-group" style="display: none; margin-top: 0.5rem; padding: 0.5rem; background: var(--bg); border-radius: 4px;">
+                        <label style="font-size: 0.75rem; color: var(--text-dim);">Different frame counts:</label>
+                        <select id="lengthHandling" style="margin-top: 0.25rem;">
+                            <option value="loop">Loop shorter pattern</option>
+                            <option value="truncate">Truncate to shorter</option>
+                            <option value="extend">Extend shorter (hold last frame)</option>
                         </select>
                     </div>
 
@@ -1158,6 +1185,11 @@
                     <button class="frame-btn" id="lastFrameBtn" title="Last frame">⏭</button>
                 </div>
 
+                <div class="stretch-control" style="display: flex; align-items: center; gap: 0.25rem; padding: 0 0.5rem; border-left: 1px solid var(--border);">
+                    <label style="font-size: 0.75rem; color: var(--text-dim);">Stretch:</label>
+                    <input type="number" id="stretchValue" value="1" min="1" max="255" step="1" style="width: 50px; padding: 0.2rem 0.4rem; font-size: 0.75rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                </div>
+
                 <button class="play-btn" id="playBtn" title="Play/Pause">▶</button>
 
                 <select class="fps-select" id="fpsSelect">
@@ -1181,7 +1213,7 @@
             <span id="statusFrames">—</span>
             <span id="statusGsMode">—</span>
         </div>
-        <span id="statusUnsaved"></span>
+        <span id="statusUnsaved" style="color: #ff4444; font-weight: bold;"></span>
     </div>
 
     <!-- Hidden file input -->
@@ -1380,6 +1412,11 @@
             document.getElementById('fileInputB').addEventListener('change', handleLoadPatternB);
             document.getElementById('swapBtn').addEventListener('click', handleSwap);
             document.getElementById('combineBtn').addEventListener('click', handleCombine);
+            document.getElementById('clearPatternB').addEventListener('click', handleClearPatternB);
+            document.getElementById('combineMode').addEventListener('change', updateCombineModeUI);
+            document.getElementById('splitPosition').addEventListener('input', (e) => {
+                document.getElementById('splitPositionLabel').textContent = e.target.value + '%';
+            });
             document.getElementById('buildSequenceBtn').addEventListener('click', handleBuildSequence);
 
             // Direction change updates default frames
@@ -1388,6 +1425,9 @@
             // Clipboard scroll buttons
             document.getElementById('clipboardPrev').addEventListener('click', () => scrollClipboard(-1));
             document.getElementById('clipboardNext').addEventListener('click', () => scrollClipboard(1));
+
+            // Stretch value input
+            document.getElementById('stretchValue').addEventListener('change', handleStretchChange);
 
             // Initial status
             updateStatus();
@@ -1460,13 +1500,27 @@
         // ============================================
         // Pattern Loading/Saving
         // ============================================
+
+        /**
+         * Normalize pattern properties to use consistent naming
+         * Parser returns gs_val, internal code uses gsMode
+         */
+        function normalizePattern(pattern) {
+            return {
+                ...pattern,
+                gsMode: pattern.gs_val || pattern.gsMode || 16,
+                // Keep gs_val for compatibility with encoder
+                gs_val: pattern.gs_val || pattern.gsMode || 16
+            };
+        }
+
         async function handleFileLoad(e) {
             const file = e.target.files[0];
             if (!file) return;
 
             try {
                 const buffer = await file.arrayBuffer();
-                const pattern = PatParser.parsePatFile(buffer);
+                const pattern = normalizePattern(PatParser.parsePatFile(buffer));
 
                 state.pattern = pattern;
                 state.filename = file.name;
@@ -1500,7 +1554,7 @@
 
             try {
                 const buffer = await file.arrayBuffer();
-                state.patternB = PatParser.parsePatFile(buffer);
+                state.patternB = normalizePattern(PatParser.parsePatFile(buffer));
                 state.patternB.filename = file.name;
 
                 updateCombineInfo();
@@ -2136,11 +2190,36 @@
 
         function updateFrameInfo() {
             const frameInfo = document.getElementById('frameInfo');
+            const stretchInput = document.getElementById('stretchValue');
             if (state.pattern) {
                 frameInfo.textContent = `${state.editor.currentFrame + 1} / ${state.pattern.numFrames}`;
+                // Update stretch value display
+                const stretch = state.pattern.stretchValues?.[state.editor.currentFrame] || 1;
+                stretchInput.value = stretch;
             } else {
                 frameInfo.textContent = '— / —';
+                stretchInput.value = 1;
             }
+        }
+
+        function handleStretchChange(e) {
+            if (!state.pattern) return;
+
+            const newStretch = parseInt(e.target.value);
+            if (isNaN(newStretch) || newStretch < 1) {
+                e.target.value = 1;
+                return;
+            }
+
+            // Initialize stretchValues if not present
+            if (!state.pattern.stretchValues) {
+                state.pattern.stretchValues = new Array(state.pattern.numFrames).fill(1);
+            }
+
+            state.pattern.stretchValues[state.editor.currentFrame] = newStretch;
+            state.isDirty = true;
+            updateStatus();
+            console.log(`Set frame ${state.editor.currentFrame} stretch to ${newStretch}`);
         }
 
         // ============================================
@@ -2391,7 +2470,7 @@
         }
 
         // ============================================
-        // Combine Operations (placeholders)
+        // Combine Operations
         // ============================================
         function handleSwap() {
             const temp = state.pattern;
@@ -2405,6 +2484,36 @@
             updateStatus();
             renderCurrentViewer();
             updateFrameInfo();
+            updateCombineInfo();
+        }
+
+        function handleClearPatternB() {
+            state.patternB = null;
+            updateCombineInfo();
+            console.log('Cleared Pattern B');
+        }
+
+        function updateCombineModeUI() {
+            const mode = document.getElementById('combineMode').value;
+
+            // Hide all mode-specific options
+            document.getElementById('combineMaskOptions').style.display = 'none';
+            document.getElementById('combineSplitOptions').style.display = 'none';
+
+            // Show length options for non-sequential modes
+            const lengthOptions = document.getElementById('combineLengthOptions');
+            if (mode !== 'sequential') {
+                lengthOptions.style.display = 'block';
+            } else {
+                lengthOptions.style.display = 'none';
+            }
+
+            // Show mode-specific options
+            if (mode === 'mask') {
+                document.getElementById('combineMaskOptions').style.display = 'block';
+            } else if (mode === 'split-h' || mode === 'split-v') {
+                document.getElementById('combineSplitOptions').style.display = 'block';
+            }
         }
 
         function handleCombine() {
@@ -2418,22 +2527,51 @@
             }
 
             const mode = document.getElementById('combineMode').value;
+            const lengthHandling = document.getElementById('lengthHandling').value;
 
             try {
                 let options = {};
-
-                // For split mode, use default 50% position
-                if (mode === 'split') {
-                    options = { direction: 'horizontal', splitPosition: 0.5 };
-                }
-
-                // Map dropdown values to combiner modes
                 let combineMode = mode;
+
+                // Parse mode-specific options
                 if (mode === 'mask') {
-                    combineMode = 'blend'; // Default to 50% blend for mask mode
+                    options.mode = 'threshold';
+                    options.threshold = parseInt(document.getElementById('maskThreshold').value);
+                    combineMode = 'mask';
+                } else if (mode === 'blend') {
+                    options.mode = 'blend';
+                    combineMode = 'blend';
+                } else if (mode === 'split-h') {
+                    options.direction = 'horizontal';
+                    options.splitPosition = parseInt(document.getElementById('splitPosition').value) / 100;
+                    combineMode = 'split';
+                } else if (mode === 'split-v') {
+                    options.direction = 'vertical';
+                    options.splitPosition = parseInt(document.getElementById('splitPosition').value) / 100;
+                    combineMode = 'split';
                 }
 
-                const combined = combinePatterns(state.pattern, state.patternB, combineMode, options);
+                // Handle different frame counts
+                let patternA = state.pattern;
+                let patternB = state.patternB;
+
+                if (combineMode !== 'sequential' && patternA.numFrames !== patternB.numFrames) {
+                    const maxFrames = Math.max(patternA.numFrames, patternB.numFrames);
+                    const minFrames = Math.min(patternA.numFrames, patternB.numFrames);
+
+                    if (lengthHandling === 'truncate') {
+                        // Truncate both to shorter length
+                        patternA = truncatePattern(patternA, minFrames);
+                        patternB = truncatePattern(patternB, minFrames);
+                    } else if (lengthHandling === 'extend') {
+                        // Extend shorter pattern by repeating last frame
+                        patternA = extendPattern(patternA, maxFrames);
+                        patternB = extendPattern(patternB, maxFrames);
+                    }
+                    // 'loop' is the default behavior in combiner.js
+                }
+
+                const combined = combinePatterns(patternA, patternB, combineMode, options);
 
                 state.pattern = combined;
                 state.isDirty = true;
@@ -2450,6 +2588,35 @@
                 alert('Combine failed: ' + err.message);
                 console.error('Combine error:', err);
             }
+        }
+
+        /**
+         * Truncate a pattern to specified number of frames
+         */
+        function truncatePattern(pattern, numFrames) {
+            if (pattern.numFrames <= numFrames) return pattern;
+            return {
+                ...pattern,
+                frames: pattern.frames.slice(0, numFrames),
+                numFrames: numFrames
+            };
+        }
+
+        /**
+         * Extend a pattern by repeating last frame
+         */
+        function extendPattern(pattern, numFrames) {
+            if (pattern.numFrames >= numFrames) return pattern;
+            const newFrames = [...pattern.frames];
+            const lastFrame = pattern.frames[pattern.frames.length - 1];
+            while (newFrames.length < numFrames) {
+                newFrames.push(new Uint8Array(lastFrame)); // Copy last frame
+            }
+            return {
+                ...pattern,
+                frames: newFrames,
+                numFrames: numFrames
+            };
         }
 
         /**
@@ -2834,8 +3001,12 @@
                 const panelCols = state.arena.config.arena.num_cols;
                 const panelRows = state.arena.config.arena.num_rows;
 
-                ctx.fillStyle = 'rgba(255, 100, 100, 0.8)';
-                ctx.font = `${Math.max(10, pixelSize * 2)}px JetBrains Mono`;
+                // Calculate font size based on panel size in pixels
+                const panelPixelWidth = pixelsPerPanel * pixelSize;
+                const fontSize = Math.max(14, Math.floor(panelPixelWidth * 0.4)); // Larger font
+
+                ctx.fillStyle = '#ff0000'; // Pure red for visibility
+                ctx.font = `bold ${fontSize}px JetBrains Mono`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
 
