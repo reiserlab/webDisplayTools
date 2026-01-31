@@ -1057,9 +1057,12 @@
                     </div>
 
                     <div id="combineSplitOptions" class="control-group" style="display: none;">
-                        <label>Split Position (0-100%):</label>
+                        <label>Split Position:</label>
                         <input type="range" id="splitPosition" value="50" min="0" max="100" step="1" style="width: 100%;">
-                        <span id="splitPositionLabel" style="font-size: 0.7rem; color: var(--text-dim);">50%</span>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-dim);">
+                            <span id="splitPositionPercent">50%</span>
+                            <span id="splitPositionPixel">pixel —</span>
+                        </div>
                     </div>
 
                     <div id="combineLengthOptions" class="control-group" style="display: none; margin-top: 0.5rem; padding: 0.5rem; background: var(--bg); border-radius: 4px;">
@@ -1432,9 +1435,7 @@
             document.getElementById('swapBtn').addEventListener('click', handleSwap);
             document.getElementById('combineBtn').addEventListener('click', handleCombine);
             document.getElementById('combineMode').addEventListener('change', updateCombineModeUI);
-            document.getElementById('splitPosition').addEventListener('input', (e) => {
-                document.getElementById('splitPositionLabel').textContent = e.target.value + '%';
-            });
+            document.getElementById('splitPosition').addEventListener('input', updateSplitPositionDisplay);
             document.getElementById('buildSequenceBtn').addEventListener('click', handleBuildSequence);
 
             // Direction change updates default frames
@@ -2576,7 +2577,31 @@
                 document.getElementById('combineMaskOptions').style.display = 'block';
             } else if (mode === 'split-h' || mode === 'split-v') {
                 document.getElementById('combineSplitOptions').style.display = 'block';
+                updateSplitPositionDisplay();
             }
+        }
+
+        function updateSplitPositionDisplay() {
+            const percent = parseInt(document.getElementById('splitPosition').value);
+            document.getElementById('splitPositionPercent').textContent = percent + '%';
+
+            // Calculate pixel position based on pattern dimensions and split direction
+            const mode = document.getElementById('combineMode').value;
+            let pixelText = 'pixel —';
+
+            if (state.combinePatternA) {
+                if (mode === 'split-h') {
+                    const totalPixels = state.combinePatternA.pixelCols;
+                    const pixelPos = Math.floor(totalPixels * percent / 100);
+                    pixelText = `pixel ${pixelPos} / ${totalPixels}`;
+                } else if (mode === 'split-v') {
+                    const totalPixels = state.combinePatternA.pixelRows;
+                    const pixelPos = Math.floor(totalPixels * percent / 100);
+                    pixelText = `pixel ${pixelPos} / ${totalPixels}`;
+                }
+            }
+
+            document.getElementById('splitPositionPixel').textContent = pixelText;
         }
 
         function handleCombine() {
