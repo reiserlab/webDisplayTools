@@ -5,7 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pattern Editor - PanelDisplayTools</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/"
+            }
+        }
+    </script>
     <script src="js/arena-configs.js"></script>
+    <script src="js/pat-encoder.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -257,6 +266,12 @@
             box-shadow: 0 0 8px rgba(0, 230, 118, 0.3);
         }
 
+        .clipboard-thumb canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 3px;
+        }
+
         .clipboard-empty {
             flex: 1;
             text-align: center;
@@ -432,6 +447,246 @@
         #gridCanvas {
             border: 1px solid var(--border);
             cursor: crosshair;
+        }
+
+        /* Edit Mode Toggle */
+        .edit-mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .edit-toggle-btn {
+            padding: 0.4rem 0.8rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .edit-toggle-btn:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .edit-toggle-btn.active {
+            background: rgba(0, 230, 118, 0.15);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Edit Toolbar */
+        .edit-toolbar {
+            display: none;
+            padding: 0.5rem 1rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .edit-toolbar.visible {
+            display: flex;
+        }
+
+        .toolbar-section {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .toolbar-label {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Palette in Edit Mode */
+        .edit-palette {
+            display: flex;
+            gap: 2px;
+        }
+
+        .palette-swatch {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-radius: 2px;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.55rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .palette-swatch:hover {
+            transform: scale(1.15);
+            border-color: var(--accent);
+        }
+
+        .palette-swatch.selected {
+            border: 2px solid var(--accent);
+            box-shadow: 0 0 8px var(--accent);
+        }
+
+        .current-color-display {
+            font-size: 0.75rem;
+            color: var(--accent);
+            font-weight: 600;
+            min-width: 30px;
+        }
+
+        /* Edit Operations */
+        .edit-ops-btn {
+            padding: 0.35rem 0.6rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .edit-ops-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Find/Replace Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.visible {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            min-width: 300px;
+        }
+
+        .modal-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            color: var(--accent);
+            margin-bottom: 1rem;
+        }
+
+        .modal-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .modal-row label {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            min-width: 60px;
+        }
+
+        .modal-row input {
+            flex: 1;
+            padding: 0.4rem 0.6rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+        }
+
+        .modal-row input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            justify-content: flex-end;
+        }
+
+        .modal-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .modal-btn.primary {
+            background: var(--accent);
+            border: none;
+            color: var(--bg);
+        }
+
+        .modal-btn.primary:hover {
+            background: var(--hover);
+        }
+
+        .modal-btn.secondary {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .modal-btn.secondary:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Row/Column Headers for Edit Mode */
+        .grid-with-headers {
+            display: grid;
+            grid-template-columns: 24px 1fr;
+            grid-template-rows: 24px 1fr;
+            gap: 2px;
+        }
+
+        .row-header, .col-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--surface);
+            cursor: pointer;
+            font-size: 0.5rem;
+            color: var(--text-dim);
+            transition: all 0.15s;
+        }
+
+        .row-header:hover, .col-header:hover {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .corner-spacer {
+            background: var(--surface);
         }
 
         /* Placeholder content */
@@ -712,6 +967,9 @@
 
                     <div class="section-title">Pattern B</div>
                     <div class="control-group">
+                        <div style="padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.5rem;">
+                            <span id="patternBInfo">No pattern loaded</span>
+                        </div>
                         <button class="btn secondary" id="loadPatternB">Load Pattern B...</button>
                     </div>
 
@@ -773,6 +1031,9 @@
                 <button class="viewer-tab disabled" data-viewer="mollweide">Mollweide</button>
 
                 <div class="viewer-options">
+                    <div class="edit-mode-toggle">
+                        <button class="edit-toggle-btn" id="editModeBtn">Edit Mode</button>
+                    </div>
                     <label>
                         <input type="checkbox" id="showBoundaries" checked>
                         Panel boundaries
@@ -781,6 +1042,22 @@
                         <input type="checkbox" id="showNumbers">
                         Panel numbers
                     </label>
+                </div>
+            </div>
+
+            <!-- Edit Toolbar (visible in edit mode) -->
+            <div class="edit-toolbar" id="editToolbar">
+                <div class="toolbar-section">
+                    <span class="toolbar-label">Color:</span>
+                    <div class="edit-palette" id="editPalette"></div>
+                    <span class="current-color-display" id="currentColorDisplay">15</span>
+                </div>
+                <div class="toolbar-section">
+                    <span class="toolbar-label">Transform:</span>
+                    <button class="edit-ops-btn" id="flipHBtn" title="Flip Horizontal">Flip H</button>
+                    <button class="edit-ops-btn" id="flipVBtn" title="Flip Vertical">Flip V</button>
+                    <button class="edit-ops-btn" id="invertBtn" title="Invert Brightness">Invert</button>
+                    <button class="edit-ops-btn" id="findReplaceBtn" title="Find and Replace">Find/Replace</button>
                 </div>
             </div>
 
@@ -797,12 +1074,7 @@
 
                 <!-- 3D Viewer -->
                 <div class="viewer-pane" id="3dViewer">
-                    <div class="coming-soon-overlay">
-                        <div class="coming-soon-badge">
-                            <h3>3D Viewer</h3>
-                            <p>Coming in Phase 5</p>
-                        </div>
-                    </div>
+                    <div id="threeContainer" style="width: 100%; height: 100%;"></div>
                 </div>
 
                 <!-- Mercator Viewer -->
@@ -866,8 +1138,29 @@
     <input type="file" id="fileInput" accept=".pat" style="display: none;">
     <input type="file" id="fileInputB" accept=".pat" style="display: none;">
 
+    <!-- Find/Replace Modal -->
+    <div class="modal-overlay" id="findReplaceModal">
+        <div class="modal-content">
+            <h3 class="modal-title">Find and Replace</h3>
+            <div class="modal-row">
+                <label>Find:</label>
+                <input type="number" id="findValue" min="0" max="15" value="0">
+            </div>
+            <div class="modal-row">
+                <label>Replace:</label>
+                <input type="number" id="replaceValue" min="0" max="15" value="15">
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn secondary" id="cancelFindReplace">Cancel</button>
+                <button class="modal-btn primary" id="applyFindReplace">Replace All</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import PatParser from './js/pat-parser.js';
+        import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js';
+        import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
 
         // ============================================
         // State Management
@@ -877,6 +1170,7 @@
             patternB: null,         // Pattern B for combining
             clipboard: [],          // Array of captured frames
             clipboardOffset: 0,     // Scroll offset for clipboard display
+            selectedClipboardIds: [], // Selected clipboard entries for sequence building
             editor: {
                 activeTool: 'generate',
                 activeViewer: 'grid',
@@ -900,6 +1194,9 @@
             filename: null,
             listeners: new Map()
         };
+
+        // 3D Viewer instance
+        let threeViewer = null;
 
         // Event emitter
         function emit(event, data) {
@@ -967,6 +1264,24 @@
                 renderCurrentViewer();
             });
 
+            // Edit mode toggle
+            document.getElementById('editModeBtn').addEventListener('click', toggleEditMode);
+
+            // Edit operations
+            document.getElementById('flipHBtn').addEventListener('click', flipHorizontal);
+            document.getElementById('flipVBtn').addEventListener('click', flipVertical);
+            document.getElementById('invertBtn').addEventListener('click', invertBrightness);
+            document.getElementById('findReplaceBtn').addEventListener('click', () => {
+                document.getElementById('findReplaceModal').classList.add('visible');
+            });
+            document.getElementById('cancelFindReplace').addEventListener('click', () => {
+                document.getElementById('findReplaceModal').classList.remove('visible');
+            });
+            document.getElementById('applyFindReplace').addEventListener('click', applyFindReplace);
+
+            // Initialize edit palette
+            initEditPalette();
+
             // File operations
             document.getElementById('loadBtn').addEventListener('click', () => {
                 document.getElementById('fileInput').click();
@@ -1015,6 +1330,10 @@
             document.getElementById('combineBtn').addEventListener('click', handleCombine);
             document.getElementById('buildSequenceBtn').addEventListener('click', handleBuildSequence);
 
+            // Clipboard scroll buttons
+            document.getElementById('clipboardPrev').addEventListener('click', () => scrollClipboard(-1));
+            document.getElementById('clipboardNext').addEventListener('click', () => scrollClipboard(1));
+
             // Initial status
             updateStatus();
         }
@@ -1029,6 +1348,11 @@
             document.querySelectorAll('.tool-pane').forEach(p => {
                 p.classList.toggle('active', p.id === tabName + 'Pane');
             });
+
+            // Update combine info when switching to combine tab
+            if (tabName === 'combine') {
+                updateCombineInfo();
+            }
         }
 
         function setActiveViewer(viewerName) {
@@ -1042,7 +1366,40 @@
                 p.classList.toggle('active', p.id === viewerName + 'Viewer');
             });
 
+            // Initialize or update 3D viewer when switching to it
+            if (viewerName === '3d') {
+                init3DViewer();
+            }
+
             renderCurrentViewer();
+        }
+
+        function init3DViewer() {
+            const container = document.getElementById('threeContainer');
+            if (!container) return;
+
+            // Create viewer if it doesn't exist
+            if (!threeViewer) {
+                threeViewer = new ThreeViewer(container);
+
+                const config = state.arena.config;
+                if (config) {
+                    const specs = PANEL_SPECS[config.arena.generation];
+                    threeViewer.init(config, specs);
+
+                    // Set up frame change callback to sync with playback controls
+                    threeViewer.onFrameChange((frameIndex) => {
+                        state.editor.currentFrame = frameIndex;
+                        updateFrameInfo();
+                    });
+                }
+            }
+
+            // Update pattern if one is loaded
+            if (state.pattern && threeViewer) {
+                threeViewer.setPattern(state.pattern);
+                threeViewer.setFrame(state.editor.currentFrame);
+            }
         }
 
         // ============================================
@@ -1091,11 +1448,8 @@
                 state.patternB = PatParser.parsePatFile(buffer);
                 state.patternB.filename = file.name;
 
-                document.getElementById('patternAInfo').textContent =
-                    state.pattern ? `${state.filename} (${state.pattern.numFrames} frames)` : 'No pattern loaded';
-
+                updateCombineInfo();
                 console.log('Loaded pattern B:', state.patternB);
-                alert(`Loaded Pattern B: ${file.name}`);
             } catch (err) {
                 console.error('Failed to load pattern B:', err);
                 alert('Failed to load pattern file: ' + err.message);
@@ -1110,8 +1464,27 @@
                 return;
             }
 
-            // TODO: Implement pat-encoder.js
-            alert('Save functionality coming soon (requires pat-encoder.js)');
+            // Convert state.pattern to format expected by PatEncoder
+            const patternData = {
+                generation: state.pattern.generation,
+                gs_val: state.pattern.gsMode,
+                numFrames: state.pattern.numFrames,
+                rowCount: Math.floor(state.pattern.pixelRows / PANEL_SPECS[state.pattern.generation].pixels_per_panel),
+                colCount: Math.floor(state.pattern.pixelCols / PANEL_SPECS[state.pattern.generation].pixels_per_panel),
+                pixelRows: state.pattern.pixelRows,
+                pixelCols: state.pattern.pixelCols,
+                frames: state.pattern.frames,
+                stretchValues: state.pattern.stretchValues || new Array(state.pattern.numFrames).fill(1)
+            };
+
+            // Download the pattern
+            const filename = state.filename || 'pattern.pat';
+            PatEncoder.downloadPattern(patternData, filename);
+
+            state.isDirty = false;
+            updateStatus();
+
+            console.log('Saved pattern:', filename);
         }
 
         function handleNew() {
@@ -1229,20 +1602,63 @@
             const frameData = state.pattern.frames[state.editor.currentFrame];
             const frameCopy = new Uint8Array(frameData);
 
+            // Generate thumbnail canvas
+            const thumbnail = generateThumbnail(
+                frameCopy,
+                state.pattern.pixelRows,
+                state.pattern.pixelCols,
+                state.pattern.gsMode
+            );
+
             const clipboardEntry = {
                 id: Date.now(),
                 frame: frameCopy,
+                thumbnail: thumbnail,
                 timestamp: new Date(),
                 name: `Frame ${state.clipboard.length + 1}`,
                 pixelRows: state.pattern.pixelRows,
                 pixelCols: state.pattern.pixelCols,
-                gsMode: state.pattern.gsMode
+                gsMode: state.pattern.gsMode,
+                generation: state.pattern.generation
             };
 
             state.clipboard.push(clipboardEntry);
             updateClipboardUI();
 
             console.log('Captured frame to clipboard:', clipboardEntry.name);
+        }
+
+        function generateThumbnail(frameData, pixelRows, pixelCols, gsMode) {
+            const canvas = document.createElement('canvas');
+            const thumbSize = 40;
+            canvas.width = thumbSize;
+            canvas.height = thumbSize;
+            const ctx = canvas.getContext('2d');
+
+            // Calculate scaling
+            const scaleX = thumbSize / pixelCols;
+            const scaleY = thumbSize / pixelRows;
+            const maxVal = gsMode === 2 ? 1 : 15;
+
+            // Draw pixels
+            for (let row = 0; row < pixelRows; row++) {
+                for (let col = 0; col < pixelCols; col++) {
+                    const value = frameData[row * pixelCols + col];
+                    const brightness = value / maxVal;
+
+                    const r = Math.round(brightness * 0.6 * 255);
+                    const g = Math.round(brightness * 255);
+                    const b = Math.round(brightness * 0.2 * 255);
+
+                    ctx.fillStyle = brightness > 0 ? `rgb(${r},${g},${b})` : '#1e2329';
+
+                    // Flip Y so row 0 is at bottom
+                    const canvasY = (pixelRows - 1 - row) * scaleY;
+                    ctx.fillRect(col * scaleX, canvasY, Math.ceil(scaleX), Math.ceil(scaleY));
+                }
+            }
+
+            return canvas;
         }
 
         function updateClipboardUI() {
@@ -1257,6 +1673,7 @@
                 container.innerHTML = '<div class="clipboard-empty">Capture frames to build sequences</div>';
                 prevBtn.disabled = true;
                 nextBtn.disabled = true;
+                state.selectedClipboardIds = [];
                 return;
             }
 
@@ -1272,14 +1689,220 @@
                 const entry = state.clipboard[i];
                 const thumb = document.createElement('div');
                 thumb.className = 'clipboard-thumb';
-                thumb.title = `${entry.name}\n${formatTimestamp(entry.timestamp)}`;
-                thumb.textContent = (i + 1).toString();
-                thumb.addEventListener('click', () => {
-                    // TODO: Select frame for sequence building
-                    console.log('Selected clipboard frame:', entry.name);
+                if (state.selectedClipboardIds && state.selectedClipboardIds.includes(entry.id)) {
+                    thumb.classList.add('selected');
+                }
+                thumb.title = `${entry.name}\n${formatTimestamp(entry.timestamp)}\nClick to select, double-click to edit`;
+
+                // Use actual thumbnail if available
+                if (entry.thumbnail) {
+                    thumb.appendChild(entry.thumbnail.cloneNode(true));
+                    thumb.style.padding = '0';
+                } else {
+                    thumb.textContent = (i + 1).toString();
+                }
+
+                // Single click: toggle selection for sequence building
+                thumb.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleClipboardSelection(entry.id);
                 });
+
+                // Double click: send to editor
+                thumb.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    sendClipboardFrameToEditor(entry.id);
+                });
+
+                // Right-click context menu
+                thumb.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    showClipboardContextMenu(e, entry);
+                });
+
                 container.appendChild(thumb);
             }
+        }
+
+        function toggleClipboardSelection(id) {
+            if (!state.selectedClipboardIds) {
+                state.selectedClipboardIds = [];
+            }
+
+            const idx = state.selectedClipboardIds.indexOf(id);
+            if (idx >= 0) {
+                state.selectedClipboardIds.splice(idx, 1);
+            } else {
+                state.selectedClipboardIds.push(id);
+            }
+
+            updateClipboardUI();
+            console.log('Selected clipboard frames:', state.selectedClipboardIds.length);
+        }
+
+        function sendClipboardFrameToEditor(id) {
+            const entry = state.clipboard.find(e => e.id === id);
+            if (!entry) return;
+
+            // Create a single-frame pattern from this clipboard entry
+            state.pattern = {
+                generation: entry.generation || 'G6',
+                gsMode: entry.gsMode,
+                numFrames: 1,
+                pixelRows: entry.pixelRows,
+                pixelCols: entry.pixelCols,
+                frames: [new Uint8Array(entry.frame)],
+                stretchValues: [1]
+            };
+
+            state.editor.editingClipboardId = id;
+            state.editor.currentFrame = 0;
+            state.filename = `${entry.name}.pat`;
+            state.isDirty = false;
+
+            // Enable edit mode
+            if (!state.editor.editMode) {
+                toggleEditMode();
+            }
+
+            updateStatus();
+            renderCurrentViewer();
+            updateFrameInfo();
+
+            console.log('Loaded clipboard frame for editing:', entry.name);
+        }
+
+        function updateClipboardFromEditor() {
+            if (!state.editor.editingClipboardId || !state.pattern) {
+                alert('No clipboard frame is currently being edited');
+                return;
+            }
+
+            const entry = state.clipboard.find(e => e.id === state.editor.editingClipboardId);
+            if (!entry) {
+                alert('Original clipboard entry not found');
+                return;
+            }
+
+            // Update the clipboard entry with edited frame data
+            entry.frame = new Uint8Array(state.pattern.frames[state.editor.currentFrame]);
+            entry.thumbnail = generateThumbnail(
+                entry.frame,
+                entry.pixelRows,
+                entry.pixelCols,
+                entry.gsMode
+            );
+            entry.timestamp = new Date();
+
+            updateClipboardUI();
+            console.log('Updated clipboard frame:', entry.name);
+        }
+
+        function deleteClipboardEntry(id) {
+            const idx = state.clipboard.findIndex(e => e.id === id);
+            if (idx >= 0) {
+                state.clipboard.splice(idx, 1);
+
+                // Clear editing reference if we deleted the one being edited
+                if (state.editor.editingClipboardId === id) {
+                    state.editor.editingClipboardId = null;
+                }
+
+                // Remove from selection
+                if (state.selectedClipboardIds) {
+                    const selIdx = state.selectedClipboardIds.indexOf(id);
+                    if (selIdx >= 0) {
+                        state.selectedClipboardIds.splice(selIdx, 1);
+                    }
+                }
+
+                // Adjust scroll offset if needed
+                if (state.clipboardOffset > 0 && state.clipboardOffset >= state.clipboard.length) {
+                    state.clipboardOffset = Math.max(0, state.clipboard.length - 5);
+                }
+
+                updateClipboardUI();
+            }
+        }
+
+        function showClipboardContextMenu(e, entry) {
+            // Remove existing context menu
+            const existingMenu = document.getElementById('clipboardContextMenu');
+            if (existingMenu) existingMenu.remove();
+
+            const menu = document.createElement('div');
+            menu.id = 'clipboardContextMenu';
+            menu.style.cssText = `
+                position: fixed;
+                left: ${e.clientX}px;
+                top: ${e.clientY}px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                padding: 0.25rem 0;
+                z-index: 1000;
+                min-width: 120px;
+            `;
+
+            const menuItems = [
+                { label: 'Edit', action: () => sendClipboardFrameToEditor(entry.id) },
+                { label: 'Rename...', action: () => renameClipboardEntry(entry) },
+                { label: 'Delete', action: () => deleteClipboardEntry(entry.id) }
+            ];
+
+            menuItems.forEach(item => {
+                const menuItem = document.createElement('div');
+                menuItem.textContent = item.label;
+                menuItem.style.cssText = `
+                    padding: 0.4rem 0.75rem;
+                    cursor: pointer;
+                    font-size: 0.75rem;
+                    color: var(--text);
+                `;
+                menuItem.addEventListener('mouseenter', () => {
+                    menuItem.style.background = 'var(--accent)';
+                    menuItem.style.color = 'var(--bg)';
+                });
+                menuItem.addEventListener('mouseleave', () => {
+                    menuItem.style.background = 'transparent';
+                    menuItem.style.color = 'var(--text)';
+                });
+                menuItem.addEventListener('click', () => {
+                    menu.remove();
+                    item.action();
+                });
+                menu.appendChild(menuItem);
+            });
+
+            document.body.appendChild(menu);
+
+            // Close menu when clicking elsewhere
+            const closeMenu = () => {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            };
+            setTimeout(() => document.addEventListener('click', closeMenu), 0);
+        }
+
+        function renameClipboardEntry(entry) {
+            const newName = prompt('Enter new name:', entry.name);
+            if (newName && newName.trim()) {
+                entry.name = newName.trim();
+                updateClipboardUI();
+            }
+        }
+
+        function scrollClipboard(direction) {
+            const maxVisible = 5;
+            if (direction < 0) {
+                state.clipboardOffset = Math.max(0, state.clipboardOffset - 1);
+            } else {
+                state.clipboardOffset = Math.min(
+                    Math.max(0, state.clipboard.length - maxVisible),
+                    state.clipboardOffset + 1
+                );
+            }
+            updateClipboardUI();
         }
 
         function formatTimestamp(date) {
@@ -1353,6 +1976,253 @@
         }
 
         // ============================================
+        // Edit Mode Functions
+        // ============================================
+        function toggleEditMode() {
+            state.editor.editMode = !state.editor.editMode;
+            const btn = document.getElementById('editModeBtn');
+            const toolbar = document.getElementById('editToolbar');
+
+            btn.classList.toggle('active', state.editor.editMode);
+            toolbar.classList.toggle('visible', state.editor.editMode);
+
+            // Update palette based on current pattern
+            if (state.editor.editMode && state.pattern) {
+                updateEditPalette(state.pattern.gsMode);
+            }
+
+            renderCurrentViewer();
+        }
+
+        function initEditPalette() {
+            const palette = document.getElementById('editPalette');
+            palette.innerHTML = '';
+
+            // Default to GS16 (0-15)
+            for (let i = 0; i <= 15; i++) {
+                const swatch = document.createElement('div');
+                swatch.className = 'palette-swatch';
+                swatch.dataset.value = i;
+
+                const brightness = i / 15;
+                const r = Math.round(brightness * 0.6 * 255);
+                const g = Math.round(brightness * 255);
+                const b = Math.round(brightness * 0.2 * 255);
+                swatch.style.background = brightness > 0 ? `rgb(${r},${g},${b})` : '#1e2329';
+                swatch.style.color = i < 8 ? '#888' : '#000';
+                swatch.textContent = i;
+
+                if (i === 15) swatch.classList.add('selected');
+
+                swatch.addEventListener('click', () => selectDrawColor(i));
+                palette.appendChild(swatch);
+            }
+        }
+
+        function updateEditPalette(gsMode) {
+            const palette = document.getElementById('editPalette');
+            const maxVal = gsMode === 2 ? 1 : 15;
+
+            palette.innerHTML = '';
+
+            for (let i = 0; i <= maxVal; i++) {
+                const swatch = document.createElement('div');
+                swatch.className = 'palette-swatch';
+                swatch.dataset.value = i;
+
+                const brightness = i / maxVal;
+                const r = Math.round(brightness * 0.6 * 255);
+                const g = Math.round(brightness * 255);
+                const b = Math.round(brightness * 0.2 * 255);
+                swatch.style.background = brightness > 0 ? `rgb(${r},${g},${b})` : '#1e2329';
+
+                if (gsMode === 2) {
+                    swatch.textContent = i === 0 ? 'Off' : 'On';
+                    swatch.style.width = '40px';
+                    swatch.style.fontSize = '0.6rem';
+                } else {
+                    swatch.textContent = i;
+                    swatch.style.color = i < 8 ? '#888' : '#000';
+                }
+
+                if (i === maxVal) swatch.classList.add('selected');
+
+                swatch.addEventListener('click', () => selectDrawColor(i));
+                palette.appendChild(swatch);
+            }
+
+            // Adjust current color if needed
+            if (state.editor.drawColor > maxVal) {
+                state.editor.drawColor = maxVal;
+            }
+            document.getElementById('currentColorDisplay').textContent = state.editor.drawColor;
+        }
+
+        function selectDrawColor(value) {
+            state.editor.drawColor = value;
+
+            document.querySelectorAll('.edit-palette .palette-swatch').forEach(s => {
+                s.classList.toggle('selected', parseInt(s.dataset.value) === value);
+            });
+
+            document.getElementById('currentColorDisplay').textContent = value;
+        }
+
+        function handleCanvasClick(e) {
+            if (!state.editor.editMode || !state.pattern) return;
+
+            const canvas = document.getElementById('gridCanvas');
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            const { pixelRows, pixelCols } = state.pattern;
+            const pixelSize = canvas.width / pixelCols;
+
+            const col = Math.floor(x / pixelSize);
+            // Flip Y: canvas Y=0 is top, but row 0 is bottom
+            const row = pixelRows - 1 - Math.floor(y / pixelSize);
+
+            if (col >= 0 && col < pixelCols && row >= 0 && row < pixelRows) {
+                setPixel(row, col, state.editor.drawColor);
+            }
+        }
+
+        function handleCanvasMouseMove(e) {
+            if (!state.editor.editMode || !state.pattern || e.buttons !== 1) return;
+            handleCanvasClick(e);
+        }
+
+        function setPixel(row, col, value) {
+            if (!state.pattern) return;
+
+            const { pixelCols, frames } = state.pattern;
+            const frame = frames[state.editor.currentFrame];
+            const idx = row * pixelCols + col;
+
+            frame[idx] = value;
+            state.isDirty = true;
+            updateStatus();
+            renderCurrentViewer();
+        }
+
+        function fillRow(row) {
+            if (!state.pattern || !state.editor.editMode) return;
+
+            const { pixelCols, frames } = state.pattern;
+            const frame = frames[state.editor.currentFrame];
+
+            for (let col = 0; col < pixelCols; col++) {
+                frame[row * pixelCols + col] = state.editor.drawColor;
+            }
+
+            state.isDirty = true;
+            updateStatus();
+            renderCurrentViewer();
+        }
+
+        function fillColumn(col) {
+            if (!state.pattern || !state.editor.editMode) return;
+
+            const { pixelRows, pixelCols, frames } = state.pattern;
+            const frame = frames[state.editor.currentFrame];
+
+            for (let row = 0; row < pixelRows; row++) {
+                frame[row * pixelCols + col] = state.editor.drawColor;
+            }
+
+            state.isDirty = true;
+            updateStatus();
+            renderCurrentViewer();
+        }
+
+        function flipHorizontal() {
+            if (!state.pattern) return;
+
+            const { pixelRows, pixelCols, frames } = state.pattern;
+            const frame = frames[state.editor.currentFrame];
+
+            for (let row = 0; row < pixelRows; row++) {
+                for (let col = 0; col < Math.floor(pixelCols / 2); col++) {
+                    const leftIdx = row * pixelCols + col;
+                    const rightIdx = row * pixelCols + (pixelCols - 1 - col);
+                    const temp = frame[leftIdx];
+                    frame[leftIdx] = frame[rightIdx];
+                    frame[rightIdx] = temp;
+                }
+            }
+
+            state.isDirty = true;
+            updateStatus();
+            renderCurrentViewer();
+        }
+
+        function flipVertical() {
+            if (!state.pattern) return;
+
+            const { pixelRows, pixelCols, frames } = state.pattern;
+            const frame = frames[state.editor.currentFrame];
+
+            for (let row = 0; row < Math.floor(pixelRows / 2); row++) {
+                for (let col = 0; col < pixelCols; col++) {
+                    const topIdx = row * pixelCols + col;
+                    const bottomIdx = (pixelRows - 1 - row) * pixelCols + col;
+                    const temp = frame[topIdx];
+                    frame[topIdx] = frame[bottomIdx];
+                    frame[bottomIdx] = temp;
+                }
+            }
+
+            state.isDirty = true;
+            updateStatus();
+            renderCurrentViewer();
+        }
+
+        function invertBrightness() {
+            if (!state.pattern) return;
+
+            const { pixelRows, pixelCols, gsMode, frames } = state.pattern;
+            const frame = frames[state.editor.currentFrame];
+            const maxVal = gsMode === 2 ? 1 : 15;
+
+            for (let i = 0; i < frame.length; i++) {
+                frame[i] = maxVal - frame[i];
+            }
+
+            state.isDirty = true;
+            updateStatus();
+            renderCurrentViewer();
+        }
+
+        function applyFindReplace() {
+            if (!state.pattern) return;
+
+            const findVal = parseInt(document.getElementById('findValue').value);
+            const replaceVal = parseInt(document.getElementById('replaceValue').value);
+            const { frames } = state.pattern;
+            const frame = frames[state.editor.currentFrame];
+
+            let count = 0;
+            for (let i = 0; i < frame.length; i++) {
+                if (frame[i] === findVal) {
+                    frame[i] = replaceVal;
+                    count++;
+                }
+            }
+
+            document.getElementById('findReplaceModal').classList.remove('visible');
+
+            if (count > 0) {
+                state.isDirty = true;
+                updateStatus();
+                renderCurrentViewer();
+                console.log(`Replaced ${count} pixels: ${findVal} -> ${replaceVal}`);
+            } else {
+                console.log(`No pixels found with value ${findVal}`);
+            }
+        }
+
+        // ============================================
         // Combine Operations (placeholders)
         // ============================================
         function handleSwap() {
@@ -1370,7 +2240,48 @@
         }
 
         function handleCombine() {
-            alert('Combine functionality coming in Phase 6');
+            if (!state.pattern) {
+                alert('Load or generate Pattern A first');
+                return;
+            }
+            if (!state.patternB) {
+                alert('Load Pattern B first');
+                return;
+            }
+
+            const mode = document.getElementById('combineMode').value;
+
+            try {
+                let options = {};
+
+                // For split mode, use default 50% position
+                if (mode === 'split') {
+                    options = { direction: 'horizontal', splitPosition: 0.5 };
+                }
+
+                // Map dropdown values to combiner modes
+                let combineMode = mode;
+                if (mode === 'mask') {
+                    combineMode = 'blend'; // Default to 50% blend for mask mode
+                }
+
+                const combined = combinePatterns(state.pattern, state.patternB, combineMode, options);
+
+                state.pattern = combined;
+                state.isDirty = true;
+                state.filename = null;
+                state.editor.currentFrame = 0;
+
+                updateStatus();
+                renderCurrentViewer();
+                updateFrameInfo();
+                updateCombineInfo();
+
+                console.log('Combined pattern:', combined);
+            } catch (err) {
+                alert('Combine failed: ' + err.message);
+                console.error('Combine error:', err);
+            }
         }
 
         function handleBuildSequence() {
@@ -1378,7 +2289,81 @@
                 alert('Capture some frames first');
                 return;
             }
-            alert('Sequence building coming in Phase 3');
+
+            // Get selected frames, or use all if none selected
+            let selectedEntries;
+            if (state.selectedClipboardIds && state.selectedClipboardIds.length > 0) {
+                selectedEntries = state.clipboard.filter(e =>
+                    state.selectedClipboardIds.includes(e.id)
+                );
+            } else {
+                // Use the first clipboard entry if none selected
+                selectedEntries = [state.clipboard[0]];
+            }
+
+            if (selectedEntries.length === 0) {
+                alert('No frames selected');
+                return;
+            }
+
+            // Get rotation parameters from UI
+            const stepSize = parseInt(document.getElementById('rotateStep').value) || 1;
+            const direction = document.getElementById('rotateDirection').value;
+            const totalFrames = parseInt(document.getElementById('totalFrames').value) || 360;
+
+            // Use the first selected frame as the base
+            const baseEntry = selectedEntries[0];
+            const { pixelRows, pixelCols, gsMode, generation } = baseEntry;
+
+            // Build rotation sequence
+            const frames = [];
+            for (let f = 0; f < totalFrames; f++) {
+                const offset = (direction === 'cw' ? f : -f) * stepSize;
+                const rotatedFrame = rotateFrameHorizontally(baseEntry.frame, pixelCols, pixelRows, offset);
+                frames.push(rotatedFrame);
+            }
+
+            // Create new pattern from sequence
+            state.pattern = {
+                generation: generation || 'G6',
+                gsMode: gsMode,
+                numFrames: totalFrames,
+                pixelRows: pixelRows,
+                pixelCols: pixelCols,
+                frames: frames,
+                stretchValues: new Array(totalFrames).fill(1)
+            };
+
+            state.filename = `${baseEntry.name}_rotation_${totalFrames}f.pat`;
+            state.isDirty = true;
+            state.editor.currentFrame = 0;
+            state.editor.editingClipboardId = null;
+
+            // Clear selection
+            state.selectedClipboardIds = [];
+            updateClipboardUI();
+
+            updateStatus();
+            renderCurrentViewer();
+            updateFrameInfo();
+
+            console.log(`Generated rotation sequence: ${totalFrames} frames, step=${stepSize}px, direction=${direction}`);
+        }
+
+        function rotateFrameHorizontally(frameData, pixelCols, pixelRows, offset) {
+            const rotated = new Uint8Array(frameData.length);
+
+            // Normalize offset to be positive and within bounds
+            offset = ((offset % pixelCols) + pixelCols) % pixelCols;
+
+            for (let row = 0; row < pixelRows; row++) {
+                for (let col = 0; col < pixelCols; col++) {
+                    const srcCol = (col + offset) % pixelCols;
+                    rotated[row * pixelCols + col] = frameData[row * pixelCols + srcCol];
+                }
+            }
+
+            return rotated;
         }
 
         // ============================================
@@ -1387,8 +2372,21 @@
         function renderCurrentViewer() {
             if (state.editor.activeViewer === 'grid') {
                 renderGridViewer();
+            } else if (state.editor.activeViewer === '3d') {
+                render3DViewer();
             }
-            // Other viewers will be added in later phases
+        }
+
+        function render3DViewer() {
+            if (!threeViewer) {
+                init3DViewer();
+                return;
+            }
+
+            if (state.pattern) {
+                threeViewer.setPattern(state.pattern);
+                threeViewer.setFrame(state.editor.currentFrame);
+            }
         }
 
         function renderGridViewer() {
@@ -1405,29 +2403,80 @@
                 return;
             }
 
-            // Create or get canvas
-            let canvasContainer = container.querySelector('.grid-canvas-container');
-            if (!canvasContainer) {
-                container.innerHTML = '<div class="grid-canvas-container"><canvas id="gridCanvas"></canvas></div>';
-                canvasContainer = container.querySelector('.grid-canvas-container');
-            }
-
-            const canvas = document.getElementById('gridCanvas');
-            const ctx = canvas.getContext('2d');
-
             const { pixelRows, pixelCols, frames, gsMode } = state.pattern;
             const frame = frames[state.editor.currentFrame];
 
             // Calculate pixel size to fit in viewer
-            const maxWidth = container.clientWidth - 40;
-            const maxHeight = container.clientHeight - 40;
+            const headerSize = state.editor.editMode ? 24 : 0;
+            const maxWidth = container.clientWidth - 40 - headerSize;
+            const maxHeight = container.clientHeight - 40 - headerSize;
             const pixelSize = Math.max(1, Math.min(
                 Math.floor(maxWidth / pixelCols),
                 Math.floor(maxHeight / pixelRows)
             ));
 
+            // Create or update container structure based on edit mode
+            if (state.editor.editMode) {
+                container.innerHTML = `
+                    <div class="grid-with-headers" style="width: ${pixelCols * pixelSize + headerSize}px;">
+                        <div class="corner-spacer"></div>
+                        <div class="col-headers" id="colHeaders" style="display: flex;"></div>
+                        <div class="row-headers" id="rowHeaders" style="display: flex; flex-direction: column;"></div>
+                        <div class="grid-canvas-container">
+                            <canvas id="gridCanvas"></canvas>
+                        </div>
+                    </div>
+                `;
+
+                // Create column headers
+                const colHeaders = document.getElementById('colHeaders');
+                for (let col = 0; col < pixelCols; col++) {
+                    const header = document.createElement('div');
+                    header.className = 'col-header';
+                    header.style.width = pixelSize + 'px';
+                    header.style.height = '24px';
+                    header.textContent = col % 10 === 0 ? col : '';
+                    header.title = `Fill column ${col}`;
+                    header.addEventListener('click', () => fillColumn(col));
+                    colHeaders.appendChild(header);
+                }
+
+                // Create row headers (row 0 at bottom)
+                const rowHeaders = document.getElementById('rowHeaders');
+                for (let row = pixelRows - 1; row >= 0; row--) {
+                    const header = document.createElement('div');
+                    header.className = 'row-header';
+                    header.style.width = '24px';
+                    header.style.height = pixelSize + 'px';
+                    header.textContent = row % 10 === 0 ? row : '';
+                    header.title = `Fill row ${row}`;
+                    header.addEventListener('click', () => fillRow(row));
+                    rowHeaders.appendChild(header);
+                }
+            } else {
+                // Non-edit mode: simple canvas container
+                let canvasContainer = container.querySelector('.grid-canvas-container');
+                if (!canvasContainer || container.querySelector('.grid-with-headers')) {
+                    container.innerHTML = '<div class="grid-canvas-container"><canvas id="gridCanvas"></canvas></div>';
+                }
+            }
+
+            const canvas = document.getElementById('gridCanvas');
+            const ctx = canvas.getContext('2d');
+
             canvas.width = pixelCols * pixelSize;
             canvas.height = pixelRows * pixelSize;
+
+            // Add mouse handlers for edit mode
+            if (state.editor.editMode) {
+                canvas.style.cursor = 'crosshair';
+                canvas.onmousedown = handleCanvasClick;
+                canvas.onmousemove = handleCanvasMouseMove;
+            } else {
+                canvas.style.cursor = 'default';
+                canvas.onmousedown = null;
+                canvas.onmousemove = null;
+            }
 
             // Draw pixels (row 0 = bottom)
             const maxVal = gsMode === 2 ? 1 : 15;
@@ -1446,6 +2495,24 @@
                     // Flip Y so row 0 is at bottom
                     const canvasY = (pixelRows - 1 - row) * pixelSize;
                     ctx.fillRect(col * pixelSize, canvasY, pixelSize, pixelSize);
+                }
+            }
+
+            // Draw grid lines in edit mode for better visibility
+            if (state.editor.editMode && pixelSize >= 4) {
+                ctx.strokeStyle = 'rgba(45, 54, 64, 0.5)';
+                ctx.lineWidth = 1;
+                for (let row = 0; row <= pixelRows; row++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, row * pixelSize);
+                    ctx.lineTo(canvas.width, row * pixelSize);
+                    ctx.stroke();
+                }
+                for (let col = 0; col <= pixelCols; col++) {
+                    ctx.beginPath();
+                    ctx.moveTo(col * pixelSize, 0);
+                    ctx.lineTo(col * pixelSize, canvas.height);
+                    ctx.stroke();
                 }
             }
 
@@ -1522,6 +2589,26 @@
             }
 
             document.getElementById('statusUnsaved').textContent = state.isDirty ? 'Unsaved*' : '';
+        }
+
+        function updateCombineInfo() {
+            // Update Pattern A info
+            if (state.pattern) {
+                const name = state.filename || 'Generated pattern';
+                document.getElementById('patternAInfo').textContent =
+                    `${name} (${state.pattern.pixelCols}×${state.pattern.pixelRows}, ${state.pattern.numFrames} frames)`;
+            } else {
+                document.getElementById('patternAInfo').textContent = 'No pattern loaded';
+            }
+
+            // Update Pattern B info
+            if (state.patternB) {
+                const name = state.patternB.filename || 'Unnamed pattern';
+                document.getElementById('patternBInfo').textContent =
+                    `${name} (${state.patternB.pixelCols}×${state.patternB.pixelRows}, ${state.patternB.numFrames} frames)`;
+            } else {
+                document.getElementById('patternBInfo').textContent = 'No pattern loaded';
+            }
         }
 
         // ============================================

@@ -1,0 +1,41 @@
+name: Validate Pattern Generation
+
+on:
+  push:
+    paths:
+      - 'js/pattern-editor/**'
+      - 'data/pattern_generation_reference.json'
+      - 'tests/validate-pattern-generation.js'
+  pull_request:
+    paths:
+      - 'js/pattern-editor/**'
+      - 'data/pattern_generation_reference.json'
+      - 'tests/validate-pattern-generation.js'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run pattern generation validation
+        run: node tests/validate-pattern-generation.js
+
+      - name: Report results
+        if: always()
+        run: |
+          echo "## Pattern Generation Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ $? -eq 0 ]; then
+            echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Some tests failed - check logs for details" >> $GITHUB_STEP_SUMMARY
+          fi

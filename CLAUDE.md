@@ -234,9 +234,28 @@ This plan covers:
 - Frame clipboard for capturing and sequencing frames
 - 7 implementation phases over ~6-7 weeks
 
-**Current status:** Phase 1 (Foundation) - skeleton created with basic pattern loading/generation.
+**Current status:** Streams A-H complete. All major features implemented: Grid/Edit mode, 3D viewer, pattern generation, frame clipboard, sequence builder, pattern combiner. Pending: MATLAB reference validation, manual testing, polish.
 
 **GitHub Issue:** [#6 - additional web tools for making patterns](https://github.com/reiserlab/webDisplayTools/issues/6)
+
+## Planning Best Practices
+
+When starting a new task or entering plan mode, consider using **parallel Explore agents** to efficiently understand the codebase:
+
+- **Use 1 agent** when the task is isolated to known files or making a small targeted change
+- **Use 2-3 agents in parallel** when:
+  - The scope is uncertain or spans multiple areas
+  - You need to understand existing patterns before planning
+  - Multiple subsystems are involved (e.g., parser + encoder + viewer)
+
+**Example parallel exploration:**
+```
+Agent 1: Search for existing pattern generation implementations
+Agent 2: Explore viewer integration patterns
+Agent 3: Investigate testing/validation approaches
+```
+
+Launch all agents in a single message with multiple Task tool calls for maximum parallelism. This significantly reduces planning time for complex tasks.
 
 ## Close Session Protocol
 
