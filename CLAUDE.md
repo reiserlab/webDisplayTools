@@ -240,6 +240,48 @@ This plan covers:
 
 ## Planning Best Practices
 
+### Project Size Assessment
+
+Before starting work, assess whether the request is a **big project** or a **small task**:
+
+**Small tasks** (no formal planning needed):
+- Single file changes
+- Bug fixes with clear scope
+- Adding a single feature to existing code
+- Documentation updates
+- Running tests or validation
+
+**Big projects** (use EnterPlanMode):
+- Multi-file changes across different modules
+- New features requiring architecture decisions
+- Implementing multiple related features
+- Refactoring that touches >3 files
+- Work estimated to take >30 minutes of focused effort
+
+### Parallel Agent Strategy
+
+When a big project involves **multiple independent features**, evaluate whether they would benefit from parallelization:
+
+**When to parallelize:**
+- Features don't depend on each other's output
+- Each feature can be tested independently
+- Different expertise areas (e.g., frontend + backend + tests)
+
+**How to coordinate parallel agents:**
+1. Create a shared plan document outlining the work split
+2. Launch agents simultaneously with clear scope boundaries
+3. Use the TodoWrite tool to track progress across agents
+4. Merge results and resolve any integration issues
+
+**Example: Implementing 3 independent features**
+```
+Agent 1: Implement feature A (generator module)
+Agent 2: Implement feature B (viewer module)
+Agent 3: Write tests for both A and B
+```
+
+### Codebase Exploration
+
 When starting a new task or entering plan mode, consider using **parallel Explore agents** to efficiently understand the codebase:
 
 - **Use 1 agent** when the task is isolated to known files or making a small targeted change
