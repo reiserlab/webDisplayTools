@@ -1200,6 +1200,11 @@
                 <button class="play-btn" id="playBtn" title="Play/Pause">▶</button>
 
                 <select class="fps-select" id="fpsSelect">
+                    <option value="-30">-30 FPS</option>
+                    <option value="-20">-20 FPS</option>
+                    <option value="-10">-10 FPS</option>
+                    <option value="-5">-5 FPS</option>
+                    <option value="-1">-1 FPS</option>
                     <option value="1">1 FPS</option>
                     <option value="5">5 FPS</option>
                     <option value="10" selected>10 FPS</option>
@@ -2186,9 +2191,13 @@
             state.playback.isPlaying = true;
             document.getElementById('playBtn').textContent = '⏸';
 
-            const interval = 1000 / state.playback.fps;
+            // Use absolute value of fps for interval, direction from sign
+            const fps = state.playback.fps;
+            const interval = 1000 / Math.abs(fps);
+            const direction = fps >= 0 ? 1 : -1;
+
             state.playback.intervalId = setInterval(() => {
-                navigateFrame(1);
+                navigateFrame(direction);
             }, interval);
         }
 
