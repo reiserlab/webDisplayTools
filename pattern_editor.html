@@ -842,6 +842,47 @@
             color: var(--text);
         }
 
+        .status-bar .arena-config {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-bar .arena-config select {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.15rem 0.3rem;
+            font-size: 0.65rem;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .status-bar .arena-config select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            background: var(--surface);
+        }
+
+        .status-bar .arena-config .lock-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            padding: 0.1rem 0.25rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+
+        .status-bar .arena-config .lock-btn:hover {
+            background: var(--border);
+            color: var(--text);
+        }
+
+        .status-bar .arena-config .lock-btn.locked {
+            color: var(--accent);
+        }
+
         /* Coming Soon overlay for disabled features */
         .coming-soon-overlay {
             position: absolute;
@@ -1111,10 +1152,6 @@
 
             <!-- File Operations -->
             <div class="file-operations">
-                <div class="arena-select-row">
-                    <label>Arena:</label>
-                    <select id="arenaConfig"></select>
-                </div>
                 <div class="file-buttons">
                     <button class="btn secondary" id="loadBtn">Load</button>
                     <button class="btn secondary" id="saveBtn">Save</button>
@@ -1241,8 +1278,13 @@
             <span id="statusDimensions">—</span>
             <span id="statusFrames">—</span>
             <span id="statusGsMode">—</span>
+            <span id="statusUnsaved" style="color: #ff4444; font-weight: bold;"></span>
         </div>
-        <span id="statusUnsaved" style="color: #ff4444; font-weight: bold;"></span>
+        <div class="arena-config">
+            <span style="color: var(--text-dim);">Arena:</span>
+            <select id="arenaConfigStatus"></select>
+            <button id="arenaLockBtn" class="lock-btn" title="Lock arena config">🔓</button>
+        </div>
     </div>
 
     <!-- Hidden file input -->
@@ -1301,7 +1343,8 @@
             },
             arena: {
                 configName: 'G6_2x10',
-                config: null
+                config: null,
+                locked: false
             },
             isDirty: false,
             filename: null,
@@ -1328,8 +1371,8 @@
         // UI Initialization
         // ============================================
         function initUI() {
-            // Populate arena config dropdown
-            const arenaSelect = document.getElementById('arenaConfig');
+            // Populate arena config dropdown (in status bar)
+            const arenaSelect = document.getElementById('arenaConfigStatus');
             const configsByGen = getConfigsByGeneration();
 
             for (const [gen, configs] of Object.entries(configsByGen)) {
@@ -1415,18 +1458,42 @@
                 const newName = prompt('Enter new filename:', currentName);
                 if (newName && newName.trim()) {
                     // Ensure .pat extension
-                    state.filename = newName.trim().endsWith('.pat') ? newName.trim() : newName.trim() + '.pat';
+                    let finalName = newName.trim().endsWith('.pat') ? newName.trim() : newName.trim() + '.pat';
+
+                    // Check if user removed the arena config prefix
+                    const configPrefix = state.arena.configName + '_';
+                    const hadPrefix = currentName.startsWith(configPrefix);
+                    const hasPrefix = finalName.startsWith(configPrefix);
+
+                    if (hadPrefix && !hasPrefix) {
+                        // User removed the prefix - warn them
+                        const keepPrefix = confirm(
+                            '⚠️ Warning: You removed the arena config prefix.\n\n' +
+                            'MATLAB requires patterns to be in a folder matching the arena config, ' +
+                            'OR have the config name as a filename prefix (e.g., "' + configPrefix + '...").\n\n' +
+                            'Without this prefix, MATLAB cannot auto-detect the arena configuration.\n\n' +
+                            'Click OK to restore the prefix, or Cancel to keep your filename.'
+                        );
+                        if (keepPrefix) {
+                            finalName = addArenaPrefix(finalName);
+                        }
+                    }
+
+                    state.filename = finalName;
                     state.isDirty = true;
                     updateStatus();
                 }
             });
 
-            document.getElementById('arenaConfig').addEventListener('change', (e) => {
+            document.getElementById('arenaConfigStatus').addEventListener('change', (e) => {
                 state.arena.configName = e.target.value;
                 state.arena.config = getConfig(e.target.value);
                 updateStatus();
                 updateG3ButtonStates();  // Disable save/load for G3
             });
+
+            // Arena lock/unlock button
+            document.getElementById('arenaLockBtn').addEventListener('click', toggleArenaLock);
 
             // Playback controls
             document.getElementById('playBtn').addEventListener('click', togglePlayback);
@@ -1604,8 +1671,11 @@
                 if (matchingConfig) {
                     state.arena.configName = matchingConfig;
                     state.arena.config = getConfig(matchingConfig);
-                    document.getElementById('arenaConfig').value = matchingConfig;
+                    document.getElementById('arenaConfigStatus').value = matchingConfig;
                 }
+
+                // Lock arena config after loading pattern
+                lockArenaConfig();
 
                 updateStatus();
                 renderCurrentViewer();
@@ -1658,20 +1728,60 @@
                 stretchValues: state.pattern.stretchValues || new Array(state.pattern.numFrames).fill(1)
             };
 
-            // Download the pattern
-            const filename = state.filename || 'pattern.pat';
+            // Build filename with arena config prefix
+            const baseFilename = state.filename || 'pattern.pat';
+            const filename = addArenaPrefix(baseFilename);
             PatEncoder.downloadPattern(patternData, filename);
 
             state.isDirty = false;
+            state.filename = filename;  // Update to include prefix
             updateStatus();
 
             console.log('Saved pattern:', filename);
+        }
+
+        /**
+         * Add arena config prefix to filename if not already present
+         * Format: {configName}_{patternName}.pat
+         * Example: G6_2x10_grating_20px.pat
+         */
+        function addArenaPrefix(filename) {
+            const configName = state.arena.configName;
+            if (!configName) return filename;
+
+            // Remove .pat extension for processing
+            const baseName = filename.replace(/\.pat$/i, '');
+
+            // Check if filename already starts with a config prefix (e.g., G6_2x10_)
+            // Config names look like: G6_2x10, G4_3x12, G41_2x12_cw, etc.
+            const configPattern = /^(G\d+_?\d*_\d+x\d+[a-z]*_?[a-z]*)_/i;
+            if (configPattern.test(baseName)) {
+                // Already has a prefix, replace it with current config
+                const newBase = baseName.replace(configPattern, configName + '_');
+                return newBase + '.pat';
+            }
+
+            // No prefix, add one
+            return configName + '_' + baseName + '.pat';
+        }
+
+        /**
+         * Remove arena config prefix from filename (for display or editing)
+         */
+        function removeArenaPrefix(filename) {
+            const baseName = filename.replace(/\.pat$/i, '');
+            const configPattern = /^(G\d+_?\d*_\d+x\d+[a-z]*_?[a-z]*)_/i;
+            const stripped = baseName.replace(configPattern, '');
+            return stripped + '.pat';
         }
 
         function handleNew() {
             if (state.isDirty) {
                 if (!confirm('Discard unsaved changes?')) return;
             }
+
+            // Unlock arena config so user can choose different arena for new pattern
+            unlockArenaConfig();
 
             const config = state.arena.config;
             if (!config) {
@@ -1696,6 +1806,9 @@
             state.filename = 'untitled.pat';
             state.isDirty = true;
             state.editor.currentFrame = 0;
+
+            // Lock again after creating the new pattern
+            lockArenaConfig();
 
             updateStatus();
             renderCurrentViewer();
@@ -1871,6 +1984,9 @@
                 state.filename = filename;
                 state.isDirty = true;
                 state.editor.currentFrame = 0;
+
+                // Lock arena config after generating pattern
+                lockArenaConfig();
 
                 updateStatus();
                 renderCurrentViewer();
@@ -2978,7 +3094,7 @@
                     if (matchingConfig) {
                         state.arena.configName = matchingConfig;
                         state.arena.config = getConfig(matchingConfig);
-                        document.getElementById('arenaConfig').value = matchingConfig;
+                        document.getElementById('arenaConfigStatus').value = matchingConfig;
                         threeViewer.reinit(state.arena.config, patternSpecs);
                     }
                 }
@@ -3250,6 +3366,45 @@
                 saveBtn.title = 'Save as .pat file';
                 loadBtn.style.opacity = '1';
                 saveBtn.style.opacity = '1';
+            }
+        }
+
+        // ============================================
+        // Arena Config Lock/Unlock
+        // ============================================
+        function lockArenaConfig() {
+            state.arena.locked = true;
+            const select = document.getElementById('arenaConfigStatus');
+            const lockBtn = document.getElementById('arenaLockBtn');
+            select.disabled = true;
+            lockBtn.textContent = '🔒';
+            lockBtn.classList.add('locked');
+            lockBtn.title = 'Arena config locked (click to unlock)';
+        }
+
+        function unlockArenaConfig() {
+            state.arena.locked = false;
+            const select = document.getElementById('arenaConfigStatus');
+            const lockBtn = document.getElementById('arenaLockBtn');
+            select.disabled = false;
+            lockBtn.textContent = '🔓';
+            lockBtn.classList.remove('locked');
+            lockBtn.title = 'Lock arena config';
+        }
+
+        function toggleArenaLock() {
+            if (state.arena.locked) {
+                // Warn if pattern exists
+                if (state.pattern) {
+                    const confirmed = confirm(
+                        'Warning: Changing the arena config while a pattern is loaded may cause dimension mismatches.\n\n' +
+                        'Are you sure you want to unlock the arena config?'
+                    );
+                    if (!confirmed) return;
+                }
+                unlockArenaConfig();
+            } else {
+                lockArenaConfig();
             }
         }
 
