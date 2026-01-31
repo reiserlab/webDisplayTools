@@ -1008,20 +1008,26 @@
 
                 <!-- Combine Tab -->
                 <div class="tool-pane" id="combinePane">
-                    <div class="section-title">Pattern A (Current)</div>
+                    <div class="section-title">Pattern A</div>
                     <div class="control-group">
-                        <div style="padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.75rem; color: var(--text-dim);">
-                            <span id="patternAInfo">No pattern loaded</span>
+                        <div style="padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.5rem;">
+                            <span id="patternAInfo">No pattern set</span>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn secondary" id="setPatternA" style="flex: 1;">Use Current as A</button>
+                            <button class="btn secondary" id="loadPatternA" style="flex: 1;">Load A...</button>
+                            <button class="btn secondary" id="clearPatternA" style="width: auto; padding: 0.4rem 0.8rem;" title="Clear Pattern A">✕</button>
                         </div>
                     </div>
 
                     <div class="section-title">Pattern B</div>
                     <div class="control-group">
                         <div style="padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.5rem;">
-                            <span id="patternBInfo">No pattern loaded</span>
+                            <span id="patternBInfo">No pattern set</span>
                         </div>
                         <div style="display: flex; gap: 0.5rem;">
-                            <button class="btn secondary" id="loadPatternB" style="flex: 1;">Load Pattern B...</button>
+                            <button class="btn secondary" id="setPatternB" style="flex: 1;">Use Current as B</button>
+                            <button class="btn secondary" id="loadPatternB" style="flex: 1;">Load B...</button>
                             <button class="btn secondary" id="clearPatternB" style="width: auto; padding: 0.4rem 0.8rem;" title="Clear Pattern B">✕</button>
                         </div>
                     </div>
@@ -1216,6 +1222,7 @@
 
     <!-- Hidden file input -->
     <input type="file" id="fileInput" accept=".pat" style="display: none;">
+    <input type="file" id="fileInputA" accept=".pat" style="display: none;">
     <input type="file" id="fileInputB" accept=".pat" style="display: none;">
 
     <!-- Find/Replace Modal -->
@@ -1247,7 +1254,8 @@
         // ============================================
         const state = {
             pattern: null,          // Current loaded/generated pattern
-            patternB: null,         // Pattern B for combining
+            combinePatternA: null,  // Pattern A for combining (saved separately)
+            combinePatternB: null,  // Pattern B for combining (saved separately)
             clipboard: [],          // Array of captured frames
             clipboardOffset: 0,     // Scroll offset for clipboard display
             selectedClipboardIds: [], // Selected clipboard entries for sequence building
@@ -1404,14 +1412,25 @@
             document.getElementById('generateBtn').addEventListener('click', handleGenerate);
             document.getElementById('patternType').addEventListener('change', updatePatternTypeUI);
 
-            // Combine operations
+            // Combine operations - Pattern A
+            document.getElementById('setPatternA').addEventListener('click', handleSetPatternA);
+            document.getElementById('loadPatternA').addEventListener('click', () => {
+                document.getElementById('fileInputA').click();
+            });
+            document.getElementById('fileInputA').addEventListener('change', handleLoadPatternA);
+            document.getElementById('clearPatternA').addEventListener('click', handleClearPatternA);
+
+            // Combine operations - Pattern B
+            document.getElementById('setPatternB').addEventListener('click', handleSetPatternB);
             document.getElementById('loadPatternB').addEventListener('click', () => {
                 document.getElementById('fileInputB').click();
             });
             document.getElementById('fileInputB').addEventListener('change', handleLoadPatternB);
+            document.getElementById('clearPatternB').addEventListener('click', handleClearPatternB);
+
+            // Combine operations - other
             document.getElementById('swapBtn').addEventListener('click', handleSwap);
             document.getElementById('combineBtn').addEventListener('click', handleCombine);
-            document.getElementById('clearPatternB').addEventListener('click', handleClearPatternB);
             document.getElementById('combineMode').addEventListener('change', updateCombineModeUI);
             document.getElementById('splitPosition').addEventListener('input', (e) => {
                 document.getElementById('splitPositionLabel').textContent = e.target.value + '%';
@@ -1569,11 +1588,11 @@
 
             try {
                 const buffer = await file.arrayBuffer();
-                state.patternB = normalizePattern(PatParser.parsePatFile(buffer));
-                state.patternB.filename = file.name;
+                state.combinePatternB = normalizePattern(PatParser.parsePatFile(buffer));
+                state.combinePatternB.filename = file.name;
 
                 updateCombineInfo();
-                console.log('Loaded pattern B:', state.patternB);
+                console.log('Loaded pattern B:', state.combinePatternB);
             } catch (err) {
                 console.error('Failed to load pattern B:', err);
                 alert('Failed to load pattern file: ' + err.message);
@@ -2468,25 +2487,74 @@
         // ============================================
         // Combine Operations
         // ============================================
-        function handleSwap() {
-            const temp = state.pattern;
-            state.pattern = state.patternB;
-            state.patternB = temp;
-
-            const tempName = state.filename;
-            state.filename = state.patternB?.filename || null;
-            if (state.patternB) state.patternB.filename = tempName;
-
-            updateStatus();
-            renderCurrentViewer();
-            updateFrameInfo();
+        function handleSetPatternA() {
+            if (!state.pattern) {
+                alert('No current pattern to use');
+                return;
+            }
+            // Deep copy the pattern to prevent changes from affecting the combine slot
+            state.combinePatternA = {
+                ...state.pattern,
+                frames: state.pattern.frames.map(f => new Uint8Array(f)),
+                filename: state.filename || 'Current pattern'
+            };
             updateCombineInfo();
+            console.log('Set Pattern A from current:', state.combinePatternA.filename);
+        }
+
+        async function handleLoadPatternA(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const buffer = await file.arrayBuffer();
+                state.combinePatternA = normalizePattern(PatParser.parsePatFile(buffer));
+                state.combinePatternA.filename = file.name;
+
+                updateCombineInfo();
+                console.log('Loaded pattern A:', state.combinePatternA);
+            } catch (err) {
+                console.error('Failed to load pattern A:', err);
+                alert('Failed to load pattern file: ' + err.message);
+            }
+
+            e.target.value = '';
+        }
+
+        function handleClearPatternA() {
+            state.combinePatternA = null;
+            updateCombineInfo();
+            console.log('Cleared Pattern A');
+        }
+
+        function handleSetPatternB() {
+            if (!state.pattern) {
+                alert('No current pattern to use');
+                return;
+            }
+            // Deep copy the pattern to prevent changes from affecting the combine slot
+            state.combinePatternB = {
+                ...state.pattern,
+                frames: state.pattern.frames.map(f => new Uint8Array(f)),
+                filename: state.filename || 'Current pattern'
+            };
+            updateCombineInfo();
+            console.log('Set Pattern B from current:', state.combinePatternB.filename);
         }
 
         function handleClearPatternB() {
-            state.patternB = null;
+            state.combinePatternB = null;
             updateCombineInfo();
             console.log('Cleared Pattern B');
+        }
+
+        function handleSwap() {
+            const temp = state.combinePatternA;
+            state.combinePatternA = state.combinePatternB;
+            state.combinePatternB = temp;
+
+            updateCombineInfo();
+            console.log('Swapped Pattern A and B');
         }
 
         function updateCombineModeUI() {
@@ -2496,13 +2564,12 @@
             document.getElementById('combineMaskOptions').style.display = 'none';
             document.getElementById('combineSplitOptions').style.display = 'none';
 
-            // Show length options for non-sequential modes
+            // Show length options only for non-sequential modes AND when patterns have different lengths
             const lengthOptions = document.getElementById('combineLengthOptions');
-            if (mode !== 'sequential') {
-                lengthOptions.style.display = 'block';
-            } else {
-                lengthOptions.style.display = 'none';
-            }
+            const showLengthOptions = mode !== 'sequential' &&
+                state.combinePatternA && state.combinePatternB &&
+                state.combinePatternA.numFrames !== state.combinePatternB.numFrames;
+            lengthOptions.style.display = showLengthOptions ? 'block' : 'none';
 
             // Show mode-specific options
             if (mode === 'mask') {
@@ -2513,12 +2580,12 @@
         }
 
         function handleCombine() {
-            if (!state.pattern) {
-                alert('Load or generate Pattern A first');
+            if (!state.combinePatternA) {
+                alert('Set or load Pattern A first');
                 return;
             }
-            if (!state.patternB) {
-                alert('Load Pattern B first');
+            if (!state.combinePatternB) {
+                alert('Set or load Pattern B first');
                 return;
             }
 
@@ -2548,8 +2615,8 @@
                 }
 
                 // Handle different frame counts
-                let patternA = state.pattern;
-                let patternB = state.patternB;
+                let patternA = state.combinePatternA;
+                let patternB = state.combinePatternB;
 
                 if (combineMode !== 'sequential' && patternA.numFrames !== patternB.numFrames) {
                     const maxFrames = Math.max(patternA.numFrames, patternB.numFrames);
@@ -3026,15 +3093,10 @@
                     `${state.pattern.numFrames} frame${state.pattern.numFrames !== 1 ? 's' : ''}`;
                 document.getElementById('statusGsMode').textContent =
                     state.pattern.gsMode === 2 ? 'GS2' : 'GS16';
-
-                // Update pattern A info for combine tab
-                document.getElementById('patternAInfo').textContent =
-                    `${state.filename} (${state.pattern.numFrames} frames)`;
             } else {
                 document.getElementById('statusDimensions').textContent = '—';
                 document.getElementById('statusFrames').textContent = '—';
                 document.getElementById('statusGsMode').textContent = '—';
-                document.getElementById('patternAInfo').textContent = 'No pattern loaded';
             }
 
             document.getElementById('statusUnsaved').textContent = state.isDirty ? 'Unsaved*' : '';
@@ -3042,22 +3104,25 @@
 
         function updateCombineInfo() {
             // Update Pattern A info
-            if (state.pattern) {
-                const name = state.filename || 'Generated pattern';
+            if (state.combinePatternA) {
+                const name = state.combinePatternA.filename || 'Unnamed pattern';
                 document.getElementById('patternAInfo').textContent =
-                    `${name} (${state.pattern.pixelCols}×${state.pattern.pixelRows}, ${state.pattern.numFrames} frames)`;
+                    `${name} (${state.combinePatternA.pixelCols}×${state.combinePatternA.pixelRows}, ${state.combinePatternA.numFrames} frames)`;
             } else {
-                document.getElementById('patternAInfo').textContent = 'No pattern loaded';
+                document.getElementById('patternAInfo').textContent = 'No pattern set';
             }
 
             // Update Pattern B info
-            if (state.patternB) {
-                const name = state.patternB.filename || 'Unnamed pattern';
+            if (state.combinePatternB) {
+                const name = state.combinePatternB.filename || 'Unnamed pattern';
                 document.getElementById('patternBInfo').textContent =
-                    `${name} (${state.patternB.pixelCols}×${state.patternB.pixelRows}, ${state.patternB.numFrames} frames)`;
+                    `${name} (${state.combinePatternB.pixelCols}×${state.combinePatternB.pixelRows}, ${state.combinePatternB.numFrames} frames)`;
             } else {
-                document.getElementById('patternBInfo').textContent = 'No pattern loaded';
+                document.getElementById('patternBInfo').textContent = 'No pattern set';
             }
+
+            // Update length options visibility based on current mode and patterns
+            updateCombineModeUI();
         }
 
         /**
