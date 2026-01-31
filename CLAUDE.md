@@ -254,6 +254,8 @@ When the user says **"close session"**, enter plan mode and prepare documentatio
 
 3. **Review maDisplayTools docs/G4G6_ROADMAP.md for updates**
    - This is the unified roadmap for both MATLAB and web tools
+   - Add a one-line entry to the changelog table in `G4G6_ROADMAP.md`
+   - Append detailed session notes to `G4G6_ROADMAP_SESSIONS.md`
    - Mark completed tasks as done
    - Add any new issues discovered during the session
    - Note deferred items or future improvements identified
