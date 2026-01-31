@@ -874,7 +874,7 @@
             <!-- Tool Tabs -->
             <div class="tool-tabs">
                 <button class="tool-tab active" data-tab="generate">Generate</button>
-                <button class="tool-tab" data-tab="frame">Frame</button>
+                <button class="tool-tab" data-tab="frame">Animate</button>
                 <button class="tool-tab" data-tab="combine">Combine</button>
             </div>
 
@@ -975,7 +975,7 @@
                         <input type="number" id="lowLevel" value="0" min="0" max="15">
                     </div>
 
-                    <button class="btn" id="generateBtn" style="margin-top: 1rem;">Generate Pattern</button>
+                    <button class="btn" id="generateBtn" style="margin-top: 1rem;">Generate Pattern →</button>
                 </div>
 
                 <!-- Frame to Pattern Tab -->
@@ -1102,15 +1102,13 @@
         <div class="viewer-panel">
             <!-- Viewer Tabs -->
             <div class="viewer-tabs">
-                <button class="viewer-tab active" data-viewer="grid">Grid/Edit</button>
+                <button class="viewer-tab active" data-viewer="grid">2D</button>
+                <button class="viewer-tab" data-viewer="edit">Edit</button>
                 <button class="viewer-tab" data-viewer="3d">3D</button>
                 <button class="viewer-tab disabled" data-viewer="mercator">Mercator</button>
                 <button class="viewer-tab disabled" data-viewer="mollweide">Mollweide</button>
 
                 <div class="viewer-options">
-                    <div class="edit-mode-toggle">
-                        <button class="edit-toggle-btn" id="editModeBtn">Edit Mode</button>
-                    </div>
                     <label>
                         <input type="checkbox" id="showBoundaries" checked>
                         Panel boundaries
@@ -1200,7 +1198,7 @@
                     <option value="30">30 FPS</option>
                 </select>
 
-                <button class="capture-btn" id="captureBtn">Capture Frame</button>
+                <button class="capture-btn" id="captureBtn">← Capture Frame</button>
             </div>
         </div>
     </div>
@@ -1343,11 +1341,12 @@
 
             document.getElementById('showNumbers').addEventListener('change', (e) => {
                 state.editor.showPanelNumbers = e.target.checked;
+                // Update 3D viewer if it exists
+                if (threeViewer) {
+                    threeViewer.setOptions({ showPanelNumbers: e.target.checked });
+                }
                 renderCurrentViewer();
             });
-
-            // Edit mode toggle
-            document.getElementById('editModeBtn').addEventListener('click', toggleEditMode);
 
             // Edit operations
             document.getElementById('flipHBtn').addEventListener('click', flipHorizontal);
@@ -1451,18 +1450,34 @@
         }
 
         function setActiveViewer(viewerName) {
-            state.editor.activeViewer = viewerName;
+            // Map 'edit' to 'grid' for the viewer pane, but track edit mode
+            const isEditMode = viewerName === 'edit';
+            const actualViewer = isEditMode ? 'grid' : viewerName;
 
+            state.editor.activeViewer = actualViewer;
+            state.editor.editMode = isEditMode;
+
+            // Update tab highlighting
             document.querySelectorAll('.viewer-tab').forEach(t => {
                 t.classList.toggle('active', t.dataset.viewer === viewerName);
             });
 
+            // Show correct viewer pane (edit uses grid pane)
             document.querySelectorAll('.viewer-pane').forEach(p => {
-                p.classList.toggle('active', p.id === viewerName + 'Viewer');
+                p.classList.toggle('active', p.id === actualViewer + 'Viewer');
             });
 
+            // Show/hide edit toolbar
+            const toolbar = document.getElementById('editToolbar');
+            toolbar.classList.toggle('visible', isEditMode);
+
+            // Update edit palette when entering edit mode
+            if (isEditMode && state.pattern) {
+                updateEditPalette(state.pattern.gsMode);
+            }
+
             // Initialize or update 3D viewer when switching to it
-            if (viewerName === '3d') {
+            if (actualViewer === '3d') {
                 init3DViewer();
             }
 
@@ -1982,13 +1997,10 @@
             state.filename = `${entry.name}.pat`;
             state.isDirty = false;
 
-            // Enable edit mode
-            if (!state.editor.editMode) {
-                toggleEditMode();
-            }
+            // Switch to edit view
+            setActiveViewer('edit');
 
             updateStatus();
-            renderCurrentViewer();
             updateFrameInfo();
 
             console.log('Loaded clipboard frame for editing:', entry.name);
@@ -2225,22 +2237,6 @@
         // ============================================
         // Edit Mode Functions
         // ============================================
-        function toggleEditMode() {
-            state.editor.editMode = !state.editor.editMode;
-            const btn = document.getElementById('editModeBtn');
-            const toolbar = document.getElementById('editToolbar');
-
-            btn.classList.toggle('active', state.editor.editMode);
-            toolbar.classList.toggle('visible', state.editor.editMode);
-
-            // Update palette based on current pattern
-            if (state.editor.editMode && state.pattern) {
-                updateEditPalette(state.pattern.gsMode);
-            }
-
-            renderCurrentViewer();
-        }
-
         function initEditPalette() {
             const palette = document.getElementById('editPalette');
             palette.innerHTML = '';
@@ -2726,15 +2722,10 @@
             state.selectedClipboardIds = [];
             updateClipboardUI();
 
-            // Exit edit mode if active
-            if (state.editor.editMode) {
-                state.editor.editMode = false;
-                document.getElementById('editModeBtn').textContent = 'Edit Mode';
-                document.getElementById('editModeBtn').classList.remove('active');
-            }
+            // Switch to 2D view (exit edit mode if active)
+            setActiveViewer('grid');
 
             updateStatus();
-            renderCurrentViewer();
             updateFrameInfo();
 
             console.log(`Generated motion sequence: ${totalFrames} frames, step=${stepSize}px, direction=${direction}`);

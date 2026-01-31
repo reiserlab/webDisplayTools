@@ -14,6 +14,7 @@
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/renderers/CSS2DRenderer.js';
 
 const GRAYSCALE_LEVELS = 16;
 const BASE_OFFSET_RAD = -Math.PI / 2;
@@ -24,9 +25,11 @@ class ThreeViewer {
         this.scene = null;
         this.camera = null;
         this.renderer = null;
+        this.labelRenderer = null;
         this.controls = null;
         this.arenaGroup = null;
         this.ledMeshes = [];
+        this.labelObjects = [];
 
         this.state = {
             pattern: null,          // Pattern data from editor
@@ -34,6 +37,7 @@ class ThreeViewer {
             phaseOffset: 0,
             showPanelBoundaries: true,
             showPanelNumbers: false,
+            showColumnLabels: false,
             isPlaying: false,
             fps: 10,
             playbackIntervalId: null
@@ -75,6 +79,20 @@ class ThreeViewer {
         this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.container.appendChild(this.renderer.domElement);
+
+        // CSS2D Renderer for labels
+        this.labelRenderer = new CSS2DRenderer();
+        this.labelRenderer.setSize(width, height);
+        this.labelRenderer.domElement.style.position = 'absolute';
+        this.labelRenderer.domElement.style.top = '0px';
+        this.labelRenderer.domElement.style.left = '0px';
+        this.labelRenderer.domElement.style.pointerEvents = 'none';
+        this.container.appendChild(this.labelRenderer.domElement);
+
+        // Ensure container has relative positioning for absolute label renderer
+        if (getComputedStyle(this.container).position === 'static') {
+            this.container.style.position = 'relative';
+        }
 
         // Controls
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -148,13 +166,21 @@ class ThreeViewer {
      * @param {Object} options - { showPanelBoundaries, showPanelNumbers }
      */
     setOptions(options) {
+        let needsRebuild = false;
+
         if (options.showPanelBoundaries !== undefined) {
             this.state.showPanelBoundaries = options.showPanelBoundaries;
         }
-        if (options.showPanelNumbers !== undefined) {
+        if (options.showPanelNumbers !== undefined && options.showPanelNumbers !== this.state.showPanelNumbers) {
             this.state.showPanelNumbers = options.showPanelNumbers;
+            needsRebuild = true;
         }
-        // TODO: Update panel boundary and number visibility
+
+        // Rebuild arena if label visibility changed (labels are attached to columns)
+        if (needsRebuild) {
+            this._buildArena();
+            this._updateLEDColors();
+        }
     }
 
     /**
@@ -225,15 +251,30 @@ class ThreeViewer {
             }
         }
 
+        if (this.labelRenderer) {
+            if (this.labelRenderer.domElement.parentNode) {
+                this.labelRenderer.domElement.parentNode.removeChild(this.labelRenderer.domElement);
+            }
+        }
+
         if (this.controls) {
             this.controls.dispose();
         }
 
+        // Clean up label elements
+        for (const label of this.labelObjects) {
+            if (label.element && label.element.parentNode) {
+                label.element.parentNode.removeChild(label.element);
+            }
+        }
+
         // Clear references
         this.ledMeshes = [];
+        this.labelObjects = [];
         this.scene = null;
         this.camera = null;
         this.renderer = null;
+        this.labelRenderer = null;
         this.controls = null;
         this.arenaGroup = null;
     }
@@ -246,6 +287,9 @@ class ThreeViewer {
         this._animationId = requestAnimationFrame(() => this._animate());
         this.controls.update();
         this.renderer.render(this.scene, this.camera);
+        if (this.labelRenderer) {
+            this.labelRenderer.render(this.scene, this.camera);
+        }
     }
 
     _onResize() {
@@ -255,14 +299,23 @@ class ThreeViewer {
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
+        if (this.labelRenderer) {
+            this.labelRenderer.setSize(width, height);
+        }
     }
 
     _buildArena() {
         // Clear existing
         while (this.arenaGroup.children.length > 0) {
-            this.arenaGroup.remove(this.arenaGroup.children[0]);
+            const child = this.arenaGroup.children[0];
+            // Clean up CSS2D label elements
+            if (child.element && child.element.parentNode) {
+                child.element.parentNode.removeChild(child.element);
+            }
+            this.arenaGroup.remove(child);
         }
         this.ledMeshes = [];
+        this.labelObjects = [];
 
         const config = this.arenaConfig;
         const specs = this.panelSpecs;
@@ -494,7 +547,38 @@ class ThreeViewer {
             }
         }
 
+        // Add panel number labels if enabled
+        if (this.state.showPanelNumbers) {
+            const panelH = height / numRows;
+            for (let row = 0; row < numRows; row++) {
+                const panelNumber = colIndex * numRows + row + 1; // 1-indexed
+                const label = this._createLabel(panelNumber.toString(), '#ffff00', 'bold');
+                // Position on back side of panel, centered
+                label.position.set(0, -halfH + row * panelH + panelH / 2, -panelThickness - 0.02);
+                group.add(label);
+                this.labelObjects.push(label);
+            }
+        }
+
         return group;
+    }
+
+    /**
+     * Create a CSS2D label
+     */
+    _createLabel(text, color, fontWeight = 'normal') {
+        const div = document.createElement('div');
+        div.className = 'arena-label';
+        div.textContent = text;
+        div.style.color = color;
+        div.style.fontFamily = "'JetBrains Mono', monospace";
+        div.style.fontSize = '14px';
+        div.style.fontWeight = fontWeight;
+        div.style.textShadow = '0 0 3px rgba(0,0,0,0.8)';
+        div.style.pointerEvents = 'none';
+
+        const label = new CSS2DObject(div);
+        return label;
     }
 
     _updateLEDColors() {
