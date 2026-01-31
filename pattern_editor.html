@@ -826,6 +826,22 @@
             font-weight: 600;
         }
 
+        .status-bar .small-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 0.1rem 0.3rem;
+            font-size: 0.65rem;
+            cursor: pointer;
+            border-radius: 3px;
+            margin-left: 0.3rem;
+        }
+
+        .status-bar .small-btn:hover {
+            background: var(--border);
+            color: var(--text);
+        }
+
         /* Coming Soon overlay for disabled features */
         .coming-soon-overlay {
             position: absolute;
@@ -1221,6 +1237,7 @@
     <div class="status-bar">
         <div class="pattern-info">
             <span id="statusFilename">No pattern</span>
+            <button id="renameBtn" class="small-btn" title="Rename pattern">✎</button>
             <span id="statusDimensions">—</span>
             <span id="statusFrames">—</span>
             <span id="statusGsMode">—</span>
@@ -1388,6 +1405,21 @@
 
             document.getElementById('saveBtn').addEventListener('click', handleSave);
             document.getElementById('newBtn').addEventListener('click', handleNew);
+
+            document.getElementById('renameBtn').addEventListener('click', () => {
+                if (!state.pattern) {
+                    alert('No pattern loaded');
+                    return;
+                }
+                const currentName = state.filename || 'pattern.pat';
+                const newName = prompt('Enter new filename:', currentName);
+                if (newName && newName.trim()) {
+                    // Ensure .pat extension
+                    state.filename = newName.trim().endsWith('.pat') ? newName.trim() : newName.trim() + '.pat';
+                    state.isDirty = true;
+                    updateStatus();
+                }
+            });
 
             document.getElementById('arenaConfig').addEventListener('change', (e) => {
                 state.arena.configName = e.target.value;
@@ -2672,7 +2704,21 @@
 
                 state.pattern = combined;
                 state.isDirty = true;
-                state.filename = null;
+
+                // Generate suggested filename based on combine mode and input patterns
+                const nameA = getBaseName(state.combinePatternA.filename || 'patternA');
+                const nameB = getBaseName(state.combinePatternB.filename || 'patternB');
+                let modeSuffix;
+                switch (combineMode) {
+                    case 'sequential': modeSuffix = 'seq'; break;
+                    case 'blend': modeSuffix = 'blend'; break;
+                    case 'mask': modeSuffix = 'mask'; break;
+                    case 'split-h': modeSuffix = `splitH${options.splitPosition || 50}`; break;
+                    case 'split-v': modeSuffix = `splitV${options.splitPosition || 50}`; break;
+                    default: modeSuffix = 'combined';
+                }
+                state.filename = `${nameA}_${nameB}_${modeSuffix}.pat`;
+
                 state.editor.currentFrame = 0;
 
                 updateStatus();
@@ -2685,6 +2731,25 @@
                 alert('Combine failed: ' + err.message);
                 console.error('Combine error:', err);
             }
+        }
+
+        /**
+         * Get base name without extension from a filename
+         */
+        function getBaseName(filename) {
+            if (!filename) return 'pattern';
+            // Remove .pat extension and path
+            let name = filename.replace(/\.pat$/i, '');
+            // Remove any path components
+            const lastSlash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
+            if (lastSlash >= 0) {
+                name = name.substring(lastSlash + 1);
+            }
+            // Truncate to reasonable length for combined names
+            if (name.length > 20) {
+                name = name.substring(0, 20);
+            }
+            return name;
         }
 
         /**

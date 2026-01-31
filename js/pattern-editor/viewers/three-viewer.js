@@ -305,17 +305,29 @@ class ThreeViewer {
     }
 
     _buildArena() {
-        // Clear existing
+        // Clean up existing label DOM elements FIRST (they're nested in column groups)
+        // CSS2DRenderer appends label.element to its own domElement container
+        for (const label of this.labelObjects) {
+            if (label.element && label.element.parentNode) {
+                label.element.parentNode.removeChild(label.element);
+            }
+        }
+        this.labelObjects = [];
+
+        // Also clear any orphaned labels from the labelRenderer's container
+        if (this.labelRenderer && this.labelRenderer.domElement) {
+            const labelContainer = this.labelRenderer.domElement;
+            while (labelContainer.firstChild) {
+                labelContainer.removeChild(labelContainer.firstChild);
+            }
+        }
+
+        // Clear existing arena children
         while (this.arenaGroup.children.length > 0) {
             const child = this.arenaGroup.children[0];
-            // Clean up CSS2D label elements
-            if (child.element && child.element.parentNode) {
-                child.element.parentNode.removeChild(child.element);
-            }
             this.arenaGroup.remove(child);
         }
         this.ledMeshes = [];
-        this.labelObjects = [];
 
         const config = this.arenaConfig;
         const specs = this.panelSpecs;
@@ -552,7 +564,7 @@ class ThreeViewer {
             const panelH = height / numRows;
             for (let row = 0; row < numRows; row++) {
                 const panelNumber = colIndex * numRows + row + 1; // 1-indexed
-                const label = this._createLabel(panelNumber.toString(), '#ffff00', 'bold');
+                const label = this._createLabel(panelNumber.toString(), '#ff3333', 'bold', '17px');
                 // Position on back side of panel, centered
                 label.position.set(0, -halfH + row * panelH + panelH / 2, -panelThickness - 0.02);
                 group.add(label);
@@ -566,15 +578,15 @@ class ThreeViewer {
     /**
      * Create a CSS2D label
      */
-    _createLabel(text, color, fontWeight = 'normal') {
+    _createLabel(text, color, fontWeight = 'normal', fontSize = '14px') {
         const div = document.createElement('div');
         div.className = 'arena-label';
         div.textContent = text;
         div.style.color = color;
         div.style.fontFamily = "'JetBrains Mono', monospace";
-        div.style.fontSize = '14px';
+        div.style.fontSize = fontSize;
         div.style.fontWeight = fontWeight;
-        div.style.textShadow = '0 0 3px rgba(0,0,0,0.8)';
+        div.style.textShadow = '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)';
         div.style.pointerEvents = 'none';
 
         const label = new CSS2DObject(div);
