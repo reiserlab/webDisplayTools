@@ -21,8 +21,9 @@ function generatePatternIcon(patternData, arenaConfig, options = {}) {
         width: 256,
         height: 256,
         innerRadiusRatio: 0.2,      // inner/outer radius (smaller = more perspective)
-        backgroundColor: '#0f1419',
+        backgroundColor: 'dark',    // 'dark', 'white', or 'transparent'
         showGaps: true,             // render missing panels as gaps
+        showOutlines: true,         // show arena outlines for depth
         ...options
     };
 
@@ -56,8 +57,9 @@ function generateMotionIcon(patternData, arenaConfig, options = {}) {
         width: 256,
         height: 256,
         innerRadiusRatio: 0.2,
-        backgroundColor: '#0f1419',
+        backgroundColor: 'dark',                          // 'dark', 'white', or 'transparent'
         showGaps: true,
+        showOutlines: true,
         ...options
     };
 
@@ -171,14 +173,26 @@ function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    // Fill background
-    ctx.fillStyle = opts.backgroundColor;
-    ctx.fillRect(0, 0, opts.width, opts.height);
+    // Determine background color
+    let bgColor;
+    if (opts.backgroundColor === 'transparent') {
+        bgColor = 'transparent';
+    } else if (opts.backgroundColor === 'white') {
+        bgColor = '#ffffff';
+    } else {
+        bgColor = '#0f1419';  // dark
+    }
+
+    // Fill background (unless transparent)
+    if (bgColor !== 'transparent') {
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, opts.width, opts.height);
+    }
 
     // Calculate arena geometry
     const centerX = opts.width / 2;
     const centerY = opts.height / 2;
-    const outerRadius = Math.min(opts.width, opts.height) / 2 - 10; // padding
+    const outerRadius = Math.min(opts.width, opts.height) / 2 - 15; // padding for outlines
     const innerRadius = outerRadius * opts.innerRadiusRatio;
 
     // Get panel specs
@@ -192,16 +206,29 @@ function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
     const numRows = arenaConfig.num_rows;
     const columnsInstalled = arenaConfig.columns_installed ||
         Array.from({ length: numCols }, (_, i) => i);
+    const columnOrder = arenaConfig.column_order || 'cw';
 
     // Total pixels in arena
     const totalColPixels = numCols * pixelsPerPanel;
     const totalRowPixels = numRows * pixelsPerPanel;
 
+    // Base offset: -90° to start at south (-PI/2)
+    const BASE_OFFSET_RAD = -Math.PI / 2;
+    const alpha = (2 * Math.PI) / numCols;  // angle per column
+
     // Render each column
     for (const colIdx of columnsInstalled) {
-        // Calculate angular position for this column
-        const colStartAngle = (colIdx / numCols) * 2 * Math.PI;
-        const colEndAngle = ((colIdx + 1) / numCols) * 2 * Math.PI;
+        // Calculate angular position for this column based on column_order
+        // CW: c0 left of south, columns increase counter-clockwise (decreasing angle)
+        // CCW: c0 right of south, columns increase clockwise (increasing angle)
+        let colStartAngle, colEndAngle;
+        if (columnOrder === 'cw') {
+            colStartAngle = BASE_OFFSET_RAD - colIdx * alpha;
+            colEndAngle = BASE_OFFSET_RAD - (colIdx + 1) * alpha;
+        } else {
+            colStartAngle = BASE_OFFSET_RAD + colIdx * alpha;
+            colEndAngle = BASE_OFFSET_RAD + (colIdx + 1) * alpha;
+        }
 
         // Render each panel in this column
         for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
@@ -238,17 +265,72 @@ function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
     }
 
     // Draw inner circle to create donut shape
-    ctx.fillStyle = opts.backgroundColor;
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, innerRadius, 0, 2 * Math.PI);
-    ctx.fill();
+    if (bgColor !== 'transparent') {
+        ctx.fillStyle = bgColor;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, innerRadius, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+
+    // Draw radial lines for gaps in partial arenas
+    if (opts.showGaps && columnsInstalled.length < numCols) {
+        const installedSet = new Set(columnsInstalled);
+        ctx.strokeStyle = '#2d3640';  // border color
+        ctx.lineWidth = 1;
+
+        for (let colIdx = 0; colIdx < numCols; colIdx++) {
+            if (!installedSet.has(colIdx)) {
+                // Draw radial lines for missing columns
+                let angle1, angle2;
+                if (columnOrder === 'cw') {
+                    angle1 = BASE_OFFSET_RAD - colIdx * alpha;
+                    angle2 = BASE_OFFSET_RAD - (colIdx + 1) * alpha;
+                } else {
+                    angle1 = BASE_OFFSET_RAD + colIdx * alpha;
+                    angle2 = BASE_OFFSET_RAD + (colIdx + 1) * alpha;
+                }
+
+                // Draw line at start of gap
+                ctx.beginPath();
+                ctx.moveTo(centerX + innerRadius * Math.cos(angle1),
+                          centerY + innerRadius * Math.sin(angle1));
+                ctx.lineTo(centerX + outerRadius * Math.cos(angle1),
+                          centerY + outerRadius * Math.sin(angle1));
+                ctx.stroke();
+
+                // Draw line at end of gap
+                ctx.beginPath();
+                ctx.moveTo(centerX + innerRadius * Math.cos(angle2),
+                          centerY + innerRadius * Math.sin(angle2));
+                ctx.lineTo(centerX + outerRadius * Math.cos(angle2),
+                          centerY + outerRadius * Math.sin(angle2));
+                ctx.stroke();
+            }
+        }
+    }
+
+    // Draw outlines for depth
+    if (opts.showOutlines) {
+        // Thick outline for outer edge
+        ctx.strokeStyle = '#2d3640';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, outerRadius, 0, 2 * Math.PI);
+        ctx.stroke();
+
+        // Thin outline for inner edge
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, innerRadius, 0, 2 * Math.PI);
+        ctx.stroke();
+    }
 
     // Export as PNG
     return canvas.toDataURL('image/png');
 }
 
 /**
- * Convert brightness value to RGB color
+ * Convert brightness value to RGB color (LED green)
  */
 function brightnessToRGB(brightness, grayscaleMode) {
     let normalized;
@@ -264,8 +346,13 @@ function brightnessToRGB(brightness, grayscaleMode) {
     // Apply gamma correction for better visibility
     normalized = Math.pow(normalized, 0.8);
 
-    const value = Math.round(normalized * 255);
-    return `rgb(${value}, ${value}, ${value})`;
+    // LED green color: #00e676 (yellowish-green ~560nm)
+    // RGB: (0, 230, 118)
+    const r = Math.round(0 * normalized);
+    const g = Math.round(230 * normalized);
+    const b = Math.round(118 * normalized);
+
+    return `rgb(${r}, ${g}, ${b})`;
 }
 
 /**

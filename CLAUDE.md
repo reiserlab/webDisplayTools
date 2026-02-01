@@ -4,9 +4,11 @@
 
 Use simple two-digit versions for all web tools (e.g., `v1`, `v2`, `v6`). No semantic versioning (1.0.0) needed.
 
-Format in footer: `Tool Name vX | YYYY-MM-DD`
+Format in footer: `Tool Name vX | YYYY-MM-DD HH:MM ET`
 
-Example: `Arena Editor v2 | 2026-01-16`
+Example: `Arena Editor v2 | 2026-01-16 14:30 ET`
+
+**IMPORTANT**: Always include timestamp in Eastern Time (ET) to distinguish multiple updates per day. Update the timestamp whenever the page is modified.
 
 ## Design System
 

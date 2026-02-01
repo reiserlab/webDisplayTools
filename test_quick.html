@@ -127,7 +127,9 @@
             const dataURL = IconGenerator.generatePatternIcon(patternData, arenaConfig, {
                 width: 256,
                 height: 256,
-                innerRadiusRatio: 0.2
+                innerRadiusRatio: 0.2,
+                backgroundColor: 'dark',
+                showOutlines: true
             });
 
             if (!dataURL || !dataURL.startsWith('data:image/png')) {
@@ -175,7 +177,9 @@
             const dataURLDramatic = IconGenerator.generatePatternIcon(patternData, arenaConfig, {
                 width: 256,
                 height: 256,
-                innerRadiusRatio: 0.1  // More dramatic
+                innerRadiusRatio: 0.1,  // More dramatic
+                backgroundColor: 'dark',
+                showOutlines: true
             });
 
             if (!dataURLDramatic || !dataURLDramatic.startsWith('data:image/png')) {
@@ -230,7 +234,9 @@
                 innerRadiusRatio: 0.2,
                 frameRange: [0, 9],
                 maxFrames: 10,
-                weightingFunction: 'exponential'
+                weightingFunction: 'exponential',
+                backgroundColor: 'dark',
+                showOutlines: true
             });
 
             if (!dataURL || !dataURL.startsWith('data:image/png')) {
