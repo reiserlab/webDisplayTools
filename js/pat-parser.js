@@ -581,10 +581,6 @@ if (typeof window !== 'undefined') {
     window.PatParser = PatParser;
 }
 
-// Export for ES modules
-export const parsePatFile = PatParser.parsePatFile;
-export const detectGeneration = PatParser.detectGeneration;
-export const verifyPatternOrientation = PatParser.verifyPatternOrientation;
-export const findMatchingConfig = PatParser.findMatchingConfig;
-export const getPixel = PatParser.getPixel;
-export default PatParser;
+// Note: ES module exports removed to maintain compatibility with regular script tags
+// If you need ES module support, import this file using:
+// import PatParser from './pat-parser.js' with type="module" in HTML
