@@ -420,7 +420,7 @@
         </div>
 
         <footer>
-            <p>Pattern Icon Generator v0.4 | 2026-02-01 14:52 ET</p>
+            <p>Pattern Icon Generator v0.5 | 2026-02-01 15:20 ET</p>
             <p><a href="index.html">← Back to Tools</a></p>
         </footer>
     </div>
@@ -486,9 +486,6 @@
             if (!file) return;
 
             try {
-                if (typeof PatParser === 'undefined') {
-                    throw new Error('PatParser is not defined - pattern file loading is not available');
-                }
                 const arrayBuffer = await file.arrayBuffer();
                 const patternData = PatParser.parse(arrayBuffer);
 

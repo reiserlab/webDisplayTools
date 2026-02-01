@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>G6 3x18 Partial Arena Icon Test</title>
+    <script src="js/arena-configs.js"></script>
+    <script src="js/icon-generator.js"></script>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #0f1419;
+            color: #e6edf3;
+        }
+        .result {
+            margin: 20px 0;
+            padding: 20px;
+            background: #1a1f26;
+            border: 2px solid #00e676;
+        }
+        h1 { color: #00e676; }
+        h2 { color: #00e676; margin-top: 20px; }
+        img { border: 2px solid #00e676; margin: 10px; }
+        .info { color: #8b949e; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>G6 3×18 Partial Arena Icon Test</h1>
+    <p class="info">Testing: 12 of 18 columns installed (240° coverage, 120° gap)</p>
+
+    <div id="output"></div>
+
+    <script>
+        const output = document.getElementById('output');
+
+        try {
+            // G6 3×18 with 12 columns installed (columns 0-11)
+            const specs = PANEL_SPECS['G6'];
+            const numCols = 18;
+            const numRows = 3;
+            const pixelsPerPanel = specs.pixels_per_panel;
+            const totalColPixels = numCols * pixelsPerPanel;  // 360 pixels
+            const totalRowPixels = numRows * pixelsPerPanel;  // 60 pixels
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            console.log('Total pixels:', totalColPixels, '×', totalRowPixels, '=', totalPixels);
+
+            // Test 1: All-on pattern
+            const frameDataAllOn = new Array(totalPixels).fill(1);
+
+            const patternDataAllOn = {
+                frames: [frameDataAllOn],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS2'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 3,
+                num_cols: 18,
+                columns_installed: [0,1,2,3,4,5,6,7,8,9,10,11],  // 12 of 18 = 240°
+                column_order: 'cw'
+                // Note: angle_offset_deg not implemented yet in icon generator
+            };
+
+            // Generate with white background
+            const dataURLWhite = IconGenerator.generatePatternIcon(patternDataAllOn, arenaConfig, {
+                width: 400,
+                height: 400,
+                innerRadiusRatio: 0.2,
+                backgroundColor: 'white',
+                showOutlines: true,
+                showGaps: true
+            });
+
+            const div1 = document.createElement('div');
+            div1.className = 'result';
+            div1.innerHTML = `
+                <h2>All-On Pattern (White Background)</h2>
+                <p class="info">12 of 18 columns installed = 240° coverage</p>
+                <p class="info">Gap: 120° (6 missing columns: 12-17)</p>
+                <p class="info">Should show 2 radial lines at gap boundaries</p>
+                <img src="${dataURLWhite}" width="400" height="400">
+            `;
+            output.appendChild(div1);
+
+            // Generate with dark background
+            const dataURLDark = IconGenerator.generatePatternIcon(patternDataAllOn, arenaConfig, {
+                width: 400,
+                height: 400,
+                innerRadiusRatio: 0.2,
+                backgroundColor: 'dark',
+                showOutlines: true,
+                showGaps: true
+            });
+
+            const div2 = document.createElement('div');
+            div2.className = 'result';
+            div2.innerHTML = `
+                <h2>All-On Pattern (Dark Background)</h2>
+                <img src="${dataURLDark}" width="400" height="400">
+            `;
+            output.appendChild(div2);
+
+            // Test 2: Grating pattern
+            const frameDataGrating = new Array(totalPixels);
+            for (let row = 0; row < totalRowPixels; row++) {
+                for (let col = 0; col < totalColPixels; col++) {
+                    const idx = row * totalColPixels + col;
+                    frameDataGrating[idx] = Math.floor(col / 20) % 2;
+                }
+            }
+
+            const patternDataGrating = {
+                frames: [frameDataGrating],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS2'
+            };
+
+            const dataURLGrating = IconGenerator.generatePatternIcon(patternDataGrating, arenaConfig, {
+                width: 400,
+                height: 400,
+                innerRadiusRatio: 0.2,
+                backgroundColor: 'white',
+                showOutlines: true,
+                showGaps: true
+            });
+
+            const div3 = document.createElement('div');
+            div3.className = 'result';
+            div3.innerHTML = `
+                <h2>Grating Pattern (White Background)</h2>
+                <p class="info">Should show vertical stripes in the 240° installed area</p>
+                <p class="info">Gap area should remain white (not filled with pattern)</p>
+                <img src="${dataURLGrating}" width="400" height="400">
+            `;
+            output.appendChild(div3);
+
+            // Test 3: More dramatic perspective
+            const dataURLDramatic = IconGenerator.generatePatternIcon(patternDataAllOn, arenaConfig, {
+                width: 400,
+                height: 400,
+                innerRadiusRatio: 0.5,  // Much larger inner hole
+                backgroundColor: 'white',
+                showOutlines: true,
+                showGaps: true
+            });
+
+            const div4 = document.createElement('div');
+            div4.className = 'result';
+            div4.innerHTML = `
+                <h2>Dramatic Perspective (innerRadius = 0.5)</h2>
+                <p class="info">Shows wider ring with larger inner hole</p>
+                <img src="${dataURLDramatic}" width="400" height="400">
+            `;
+            output.appendChild(div4);
+
+            console.log('✓ All icons generated successfully');
+
+        } catch (error) {
+            output.innerHTML = `<div style="color: #ff5252; padding: 20px;">
+                <h2>Error</h2>
+                <p>${error.message}</p>
+                <pre>${error.stack}</pre>
+            </div>`;
+            console.error(error);
+        }
+    </script>
+</body>
+</html>
