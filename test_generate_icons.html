@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate Test Icons</title>
+    <script src="js/arena-configs.js"></script>
+    <script src="js/icon-generator.js"></script>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #0f1419;
+            color: #e6edf3;
+        }
+        .icon {
+            margin: 20px 0;
+            padding: 15px;
+            background: #1a1f26;
+            border: 1px solid #2d3640;
+        }
+        .icon h3 {
+            margin: 0 0 10px 0;
+            color: #00e676;
+        }
+        .icon img {
+            border: 2px solid #00e676;
+        }
+        .download-btn {
+            margin: 10px 0;
+            padding: 8px 16px;
+            background: #00e676;
+            color: #0f1419;
+            border: none;
+            cursor: pointer;
+            font-family: monospace;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Icon Generator Test - PNG Generation</h1>
+    <p>Generating test icons...</p>
+    <div id="icons"></div>
+
+    <script>
+        const iconsDiv = document.getElementById('icons');
+
+        function addIcon(title, dataURL, filename) {
+            const div = document.createElement('div');
+            div.className = 'icon';
+
+            const h3 = document.createElement('h3');
+            h3.textContent = title;
+            div.appendChild(h3);
+
+            const img = document.createElement('img');
+            img.src = dataURL;
+            img.width = 256;
+            img.height = 256;
+            div.appendChild(img);
+
+            const btn = document.createElement('button');
+            btn.className = 'download-btn';
+            btn.textContent = `Download ${filename}`;
+            btn.onclick = () => {
+                const link = document.createElement('a');
+                link.download = filename;
+                link.href = dataURL;
+                link.click();
+            };
+            div.appendChild(btn);
+
+            iconsDiv.appendChild(div);
+
+            console.log('✓ Generated:', title);
+        }
+
+        // Test 1: All-on pattern (G6 full arena)
+        try {
+            console.log('Test 1: All-on pattern');
+            const specs = PANEL_SPECS['G6'];
+            const numCols = 10, numRows = 2;
+            const totalColPixels = numCols * specs.pixels_per_panel;
+            const totalRowPixels = numRows * specs.pixels_per_panel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            const frameData = new Array(totalPixels).fill(1);
+
+            const patternData = {
+                frames: [frameData],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS2'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 2,
+                num_cols: 10,
+                columns_installed: null,
+                column_order: 'cw'
+            };
+
+            const dataURL = IconGenerator.generatePatternIcon(patternData, arenaConfig, {
+                width: 256,
+                height: 256,
+                innerRadiusRatio: 0.2,
+                backgroundColor: 'dark',
+                showOutlines: true
+            });
+
+            addIcon('Test 1: All-On (Full Arena)', dataURL, 'test1_allon_full.png');
+        } catch (error) {
+            console.error('Test 1 failed:', error);
+        }
+
+        // Test 2: Grating pattern (should show clear stripes)
+        try {
+            console.log('Test 2: Grating pattern');
+            const specs = PANEL_SPECS['G6'];
+            const numCols = 10, numRows = 2;
+            const totalColPixels = numCols * specs.pixels_per_panel;
+            const totalRowPixels = numRows * specs.pixels_per_panel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            const frameData = new Array(totalPixels);
+            for (let row = 0; row < totalRowPixels; row++) {
+                for (let col = 0; col < totalColPixels; col++) {
+                    const idx = row * totalColPixels + col;
+                    frameData[idx] = Math.floor(col / 20) % 2;
+                }
+            }
+
+            const patternData = {
+                frames: [frameData],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS2'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 2,
+                num_cols: 10,
+                columns_installed: null,
+                column_order: 'cw'
+            };
+
+            const dataURL = IconGenerator.generatePatternIcon(patternData, arenaConfig, {
+                width: 256,
+                height: 256,
+                innerRadiusRatio: 0.2,
+                backgroundColor: 'dark',
+                showOutlines: true
+            });
+
+            addIcon('Test 2: Grating (20px stripes)', dataURL, 'test2_grating.png');
+        } catch (error) {
+            console.error('Test 2 failed:', error);
+        }
+
+        // Test 3: Sine pattern (should show smooth gradient)
+        try {
+            console.log('Test 3: Sine pattern');
+            const specs = PANEL_SPECS['G6'];
+            const numCols = 10, numRows = 2;
+            const totalColPixels = numCols * specs.pixels_per_panel;
+            const totalRowPixels = numRows * specs.pixels_per_panel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            const frameData = new Array(totalPixels);
+            for (let row = 0; row < totalRowPixels; row++) {
+                for (let col = 0; col < totalColPixels; col++) {
+                    const idx = row * totalColPixels + col;
+                    // GS16 requires values 0-15
+                    frameData[idx] = Math.round((Math.sin(col * Math.PI / 30) + 1) / 2 * 15);
+                }
+            }
+
+            const patternData = {
+                frames: [frameData],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS16'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 2,
+                num_cols: 10,
+                columns_installed: null,
+                column_order: 'cw'
+            };
+
+            const dataURL = IconGenerator.generatePatternIcon(patternData, arenaConfig, {
+                width: 256,
+                height: 256,
+                innerRadiusRatio: 0.2,
+                backgroundColor: 'dark',
+                showOutlines: true
+            });
+
+            addIcon('Test 3: Sine Pattern (GS16)', dataURL, 'test3_sine.png');
+        } catch (error) {
+            console.error('Test 3 failed:', error);
+        }
+
+        // Test 4: Partial arena (8 of 10 columns)
+        try {
+            console.log('Test 4: Partial arena');
+            const specs = PANEL_SPECS['G6'];
+            const numCols = 10, numRows = 2;
+            const totalColPixels = numCols * specs.pixels_per_panel;
+            const totalRowPixels = numRows * specs.pixels_per_panel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            const frameData = new Array(totalPixels).fill(1);
+
+            const patternData = {
+                frames: [frameData],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS2'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 2,
+                num_cols: 10,
+                columns_installed: [1,2,3,4,5,6,7,8],  // Missing columns 0 and 9
+                column_order: 'cw'
+            };
+
+            const dataURL = IconGenerator.generatePatternIcon(patternData, arenaConfig, {
+                width: 256,
+                height: 256,
+                innerRadiusRatio: 0.2,
+                backgroundColor: 'white',  // White background to see gaps clearly
+                showOutlines: true,
+                showGaps: true
+            });
+
+            addIcon('Test 4: Partial Arena (8 of 10 cols, white bg)', dataURL, 'test4_partial_white.png');
+        } catch (error) {
+            console.error('Test 4 failed:', error);
+        }
+
+        // Test 5: Partial arena with dark background
+        try {
+            console.log('Test 5: Partial arena dark bg');
+            const specs = PANEL_SPECS['G6'];
+            const numCols = 10, numRows = 2;
+            const totalColPixels = numCols * specs.pixels_per_panel;
+            const totalRowPixels = numRows * specs.pixels_per_panel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            const frameData = new Array(totalPixels).fill(1);
+
+            const patternData = {
+                frames: [frameData],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS2'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 2,
+                num_cols: 10,
+                columns_installed: [1,2,3,4,5,6,7,8],
+                column_order: 'cw'
+            };
+
+            const dataURL = IconGenerator.generatePatternIcon(patternData, arenaConfig, {
+                width: 256,
+                height: 256,
+                innerRadiusRatio: 0.2,
+                backgroundColor: 'dark',
+                showOutlines: true,
+                showGaps: true
+            });
+
+            addIcon('Test 5: Partial Arena (dark bg)', dataURL, 'test5_partial_dark.png');
+        } catch (error) {
+            console.error('Test 5 failed:', error);
+        }
+
+        console.log('\n=== All tests complete! ===');
+        console.log('Please download and examine each PNG file.');
+    </script>
+</body>
+</html>
