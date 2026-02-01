@@ -207,7 +207,7 @@
             console.error('Test 3 failed:', error);
         }
 
-        // Test 4: Partial arena (8 of 10 columns)
+        // Test 4: Partial arena (7 of 10 columns - R/L symmetric gap at bottom)
         try {
             console.log('Test 4: Partial arena');
             const specs = PANEL_SPECS['G6'];
@@ -230,7 +230,7 @@
                 generation: 'G6',
                 num_rows: 2,
                 num_cols: 10,
-                columns_installed: [1,2,3,4,5,6,7,8],  // Missing columns 0 and 9
+                columns_installed: [3,4,5,6,7,8,9],  // Missing columns 0,1,2 (gap at bottom, R/L symmetric)
                 column_order: 'cw'
             };
 
@@ -243,7 +243,7 @@
                 showGaps: true
             });
 
-            addIcon('Test 4: Partial Arena (8 of 10 cols, white bg)', dataURL, 'test4_partial_white.png');
+            addIcon('Test 4: Partial Arena (7 of 10 cols, gap at bottom, white bg)', dataURL, 'test4_partial_white.png');
         } catch (error) {
             console.error('Test 4 failed:', error);
         }
@@ -271,7 +271,7 @@
                 generation: 'G6',
                 num_rows: 2,
                 num_cols: 10,
-                columns_installed: [1,2,3,4,5,6,7,8],
+                columns_installed: [3,4,5,6,7,8,9],  // Missing columns 0,1,2
                 column_order: 'cw'
             };
 

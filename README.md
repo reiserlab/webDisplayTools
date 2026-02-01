@@ -49,6 +49,16 @@ Interactive 3D visualization of cylindrical arenas:
 
 **[Launch Arena 3D View →](https://reiserlab.github.io/webDisplayTools/arena_3d_viewer.html)**
 
+### Pattern Icon Generator 🚧 In Development
+Generate top-down cylindrical view icons from arena patterns:
+- Single-frame and multi-frame motion blur rendering
+- Configurable perspective (inner radius 0.1-0.75)
+- Multiple background options (dark, white, transparent)
+- Supports full and partial arena configurations
+- PNG export for documentation and UI thumbnails
+
+**[Launch Pattern Icon Generator →](https://reiserlab.github.io/webDisplayTools/icon_generator.html)**
+
 ### Multi-Panel Patterns 🚧 Coming Soon
 Full-arena pattern design with animation support. Export to GIF/video for documentation.
 
