@@ -486,6 +486,9 @@
             if (!file) return;
 
             try {
+                if (typeof PatParser === 'undefined') {
+                    throw new Error('PatParser is not defined - pattern file loading is not available');
+                }
                 const arrayBuffer = await file.arrayBuffer();
                 const patternData = PatParser.parse(arrayBuffer);
 
@@ -536,7 +539,8 @@
                     if (pattern === 'grating') {
                         frameData[idx] = Math.floor(col / 20) % 2;
                     } else if (pattern === 'sine') {
-                        frameData[idx] = (Math.sin(col * Math.PI / 30) + 1) / 2;
+                        // GS16 requires values 0-15, not 0-1
+                        frameData[idx] = Math.round((Math.sin(col * Math.PI / 30) + 1) / 2 * 15);
                     } else {
                         frameData[idx] = 1;
                     }

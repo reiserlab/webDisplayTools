@@ -252,11 +252,15 @@ function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
                     // Calculate next pixel angle for width
                     const nextPixelAngle = colStartAngle + ((px + 1) / pixelsPerPanel) * (colEndAngle - colStartAngle);
 
+                    // Ensure we always draw the shorter arc by using min/max
+                    const minAngle = Math.min(pixelAngle, nextPixelAngle);
+                    const maxAngle = Math.max(pixelAngle, nextPixelAngle);
+
                     // Draw as filled arc segment
                     ctx.fillStyle = color;
                     ctx.beginPath();
-                    ctx.arc(centerX, centerY, outerRadius, pixelAngle, nextPixelAngle);
-                    ctx.arc(centerX, centerY, innerRadius, nextPixelAngle, pixelAngle, true);
+                    ctx.arc(centerX, centerY, outerRadius, minAngle, maxAngle);
+                    ctx.arc(centerX, centerY, innerRadius, maxAngle, minAngle, true);
                     ctx.closePath();
                     ctx.fill();
                 }
