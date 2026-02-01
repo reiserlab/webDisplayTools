@@ -7,6 +7,7 @@
 
 // Import PANEL_SPECS if running in Node.js
 let PANEL_SPECS_LOCAL;
+let ArenaGeometry_LOCAL;
 if (typeof PANEL_SPECS !== 'undefined') {
     PANEL_SPECS_LOCAL = PANEL_SPECS;
 } else if (typeof require !== 'undefined') {
@@ -17,6 +18,17 @@ if (typeof PANEL_SPECS !== 'undefined') {
         // Will be set when module is used
         PANEL_SPECS_LOCAL = null;
     }
+}
+
+// Import ArenaGeometry for spherical coordinate patterns
+if (typeof require !== 'undefined') {
+    try {
+        ArenaGeometry_LOCAL = require('../../arena-geometry.js');
+    } catch (e) {
+        ArenaGeometry_LOCAL = null;
+    }
+} else if (typeof window !== 'undefined' && window.ArenaGeometry) {
+    ArenaGeometry_LOCAL = window.ArenaGeometry;
 }
 
 /**
@@ -41,7 +53,7 @@ function createSeededRandom(seed) {
 const PatternGenerator = {
     /**
      * Generate a pattern based on type and parameters
-     * @param {string} type - Pattern type: 'grating', 'sine', 'starfield', 'edge', 'offon'
+     * @param {string} type - Pattern type: 'grating', 'sine', 'starfield', 'edge', 'offon', 'spherical-grating', 'spherical-sine'
      * @param {Object} params - Type-specific parameters
      * @param {Object} arena - Arena configuration object
      * @returns {Object} Pattern data compatible with pat-encoder
@@ -52,6 +64,9 @@ const PatternGenerator = {
                 return this.generateGrating(params, arena);
             case 'sine':
                 return this.generateSine(params, arena);
+            case 'spherical-grating':
+            case 'spherical-sine':
+                return this.generateSphericalGrating(params, arena);
             case 'starfield':
                 return this.generateStarfield(params, arena);
             case 'edge':
@@ -273,6 +288,204 @@ const PatternGenerator = {
             frames,
             stretchValues
         };
+    },
+
+    /**
+     * Generate a spherical coordinate grating pattern
+     *
+     * Uses proper 3D geometry: generates arena coordinates, applies rotations,
+     * converts to spherical, and evaluates pattern based on azimuthal angle (phi)
+     * for rotation motion, polar angle (theta) for expansion, or a linear
+     * transformation for translation.
+     *
+     * @param {Object} params - Spherical grating parameters
+     * @param {number} params.spatFreq - Spatial frequency in radians (wavelength = 2π/spatFreq)
+     * @param {string} [params.motionType='rotation'] - 'rotation', 'translation', or 'expansion'
+     * @param {string} [params.waveform='square'] - 'square' or 'sine'
+     * @param {number} [params.dutyCycle=50] - Duty cycle percentage (0-100, for square wave)
+     * @param {number} params.high - High brightness level
+     * @param {number} params.low - Low brightness level
+     * @param {number[]} [params.poleCoord=[0,0]] - Pattern pole [phi, theta] in radians
+     * @param {number} [params.numFrames] - Number of frames (defaults to full cycle)
+     * @param {string} [params.direction='cw'] - 'cw' (clockwise) or 'ccw'
+     * @param {number} [params.stepSize=1] - Step size in pixels per frame
+     * @param {number} [params.aaSamples=1] - Anti-aliasing samples (1=off, 15=standard)
+     * @param {string} [params.arenaModel='smooth'] - 'smooth' (cylinder) or 'poly' (polygonal)
+     * @param {number} [params.gsMode=16] - Grayscale mode (2 or 16)
+     * @param {Object} arena - Arena configuration
+     * @returns {Object} Pattern data
+     */
+    generateSphericalGrating(params, arena) {
+        // Ensure ArenaGeometry is available
+        const geom = ArenaGeometry_LOCAL || (typeof window !== 'undefined' ? window.ArenaGeometry : null);
+        if (!geom) {
+            throw new Error('ArenaGeometry module not available. Include arena-geometry.js before using spherical patterns.');
+        }
+
+        const {
+            spatFreq,
+            motionType = 'rotation',
+            waveform = 'square',
+            dutyCycle = 50,
+            high,
+            low,
+            poleCoord = [0, 0],
+            numFrames: requestedFrames,
+            direction = 'cw',
+            stepSize = 1,
+            aaSamples = 1,
+            arenaModel = 'smooth',
+            gsMode = 16
+        } = params;
+
+        const dims = this.getArenaDimensions(arena);
+        const { pixelRows, pixelCols, generation, rows, cols, panelSize } = dims;
+
+        // Generate arena coordinates
+        const arenaConfig = {
+            panelSize,
+            numCols: cols,
+            numRows: rows,
+            numCircle: cols,  // Assume full circle arena
+            model: arenaModel
+        };
+        const arenaCoords = geom.arenaCoordinates(arenaConfig);
+
+        // Apply rotations to align pattern pole
+        // poleCoord = [phi, theta] where phi is azimuthal, theta is polar from north (0 = top)
+        // For rotation patterns, the pole is where all azimuthal lines converge
+        // poleCoord = [0, 0] means pole at north (z=-1), giving horizontal bands for rotation
+        //
+        // MATLAB formula (make_grating_edge.m line 34):
+        //   rotations = [-param.pole_coord(1) -param.pole_coord(2)-pi/2 0]
+        // The -π/2 pitch offset aligns the pattern coordinate system properly
+        const rotations = {
+            yaw: -poleCoord[0],
+            pitch: -poleCoord[1] - Math.PI / 2,
+            roll: 0
+        };
+        const rotated = geom.rotateCoordinates(
+            arenaCoords.x,
+            arenaCoords.y,
+            arenaCoords.z,
+            rotations
+        );
+
+        // Convert to spherical coordinates
+        const spherical = geom.cart2sphere(rotated.x, rotated.y, rotated.z);
+
+        // Select coordinate based on motion type
+        let coord;
+        if (motionType === 'rotation') {
+            // Use azimuthal angle (phi) - pattern rotates around pole
+            coord = spherical.phi;
+        } else if (motionType === 'expansion') {
+            // Use polar angle (theta) - pattern expands/contracts from pole
+            coord = spherical.theta;
+        } else if (motionType === 'translation') {
+            // Use tan(theta - π/2) for linear motion appearance
+            coord = new Array(pixelRows);
+            for (let r = 0; r < pixelRows; r++) {
+                coord[r] = new Float32Array(pixelCols);
+                for (let c = 0; c < pixelCols; c++) {
+                    coord[r][c] = Math.tan(spherical.theta[r][c] - Math.PI / 2);
+                }
+            }
+        } else {
+            throw new Error(`Unknown motion type: ${motionType}. Use 'rotation', 'expansion', or 'translation'.`);
+        }
+
+        // Generate samples for anti-aliasing
+        let samples;
+        if (aaSamples > 1) {
+            samples = geom.samplesByPRad(coord, aaSamples, arenaCoords.pRad);
+        }
+
+        // Calculate true step size in radians
+        const trueStepSize = arenaCoords.pRad * stepSize;
+
+        // Number of frames: default to one full spatial cycle
+        const framesPerCycle = Math.ceil(spatFreq / trueStepSize);
+        const numFrames = requestedFrames || framesPerCycle;
+
+        // Direction multiplier
+        const dirMult = direction === 'cw' ? 1 : -1;
+
+        const frames = [];
+        const stretchValues = [];
+
+        for (let f = 0; f < numFrames; f++) {
+            const frame = this.createEmptyFrame(pixelRows, pixelCols);
+            const phaseOffset = dirMult * f * trueStepSize;
+
+            for (let row = 0; row < pixelRows; row++) {
+                for (let col = 0; col < pixelCols; col++) {
+                    let value;
+
+                    if (aaSamples > 1) {
+                        // Average multiple samples for anti-aliasing
+                        let sum = 0;
+                        for (let s = 0; s < aaSamples; s++) {
+                            const c = samples[row][col][s] - phaseOffset;
+                            sum += this._evaluateWaveform(c, spatFreq, dutyCycle, waveform, high, low);
+                        }
+                        value = Math.round(sum / aaSamples);
+                    } else {
+                        // Single sample (no AA)
+                        const c = coord[row][col] - phaseOffset;
+                        value = this._evaluateWaveform(c, spatFreq, dutyCycle, waveform, high, low);
+                    }
+
+                    frame[row * pixelCols + col] = value;
+                }
+            }
+
+            frames.push(frame);
+            stretchValues.push(1);
+        }
+
+        return {
+            generation,
+            gs_val: gsMode,
+            numFrames,
+            rowCount: rows,
+            colCount: cols,
+            pixelRows,
+            pixelCols,
+            frames,
+            stretchValues
+        };
+    },
+
+    /**
+     * Evaluate waveform value at a given coordinate
+     * @private
+     * @param {number} c - Coordinate value (phase)
+     * @param {number} spatFreq - Spatial frequency in radians
+     * @param {number} dutyCycle - Duty cycle percentage (for square wave)
+     * @param {string} waveform - 'square' or 'sine'
+     * @param {number} high - High brightness level
+     * @param {number} low - Low brightness level
+     * @returns {number} Pixel value
+     */
+    _evaluateWaveform(c, spatFreq, dutyCycle, waveform, high, low) {
+        if (waveform === 'sine') {
+            // Sine wave: matches MATLAB's sin() formula
+            // MATLAB: (sin((coord+phase_shift)*2*pi/spat_freq)+1)/2
+            const normalized = (Math.sin(c * 2 * Math.PI / spatFreq) + 1) / 2;
+            return Math.round(low + normalized * (high - low));
+        } else {
+            // Square wave: matches MATLAB's square() function
+            // MATLAB: square(t, duty) returns +1 when mod(t, 2*pi) < 2*pi*duty/100
+            // In MATLAB: (square((coord)*2*pi/spat_freq, duty_cycle)+1)/2
+            // The argument to square is: coord * 2*pi / spat_freq
+            // Square returns +1 when mod(arg, 2*pi) < 2*pi * dutyCycle/100
+            const arg = c * 2 * Math.PI / spatFreq;
+            // Normalize arg to [0, 2*pi) range
+            const argMod = ((arg % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+            const threshold = 2 * Math.PI * dutyCycle / 100;
+            return argMod < threshold ? high : low;
+        }
     },
 
     /**
