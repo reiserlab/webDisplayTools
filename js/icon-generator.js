@@ -282,32 +282,27 @@ function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
         ctx.strokeStyle = '#2d3640';  // border color
         ctx.lineWidth = 1;
 
+        // Find gap boundaries (transitions between installed and missing columns)
         for (let colIdx = 0; colIdx < numCols; colIdx++) {
-            if (!installedSet.has(colIdx)) {
-                // Draw radial lines for missing columns
-                let angle1, angle2;
+            const isCurrentInstalled = installedSet.has(colIdx);
+            const nextIdx = (colIdx + 1) % numCols;
+            const isNextInstalled = installedSet.has(nextIdx);
+
+            // Draw line only at transitions (installed -> missing or missing -> installed)
+            if (isCurrentInstalled !== isNextInstalled) {
+                let angle;
                 if (columnOrder === 'cw') {
-                    angle1 = BASE_OFFSET_RAD - colIdx * alpha;
-                    angle2 = BASE_OFFSET_RAD - (colIdx + 1) * alpha;
+                    angle = BASE_OFFSET_RAD - (colIdx + 1) * alpha;
                 } else {
-                    angle1 = BASE_OFFSET_RAD + colIdx * alpha;
-                    angle2 = BASE_OFFSET_RAD + (colIdx + 1) * alpha;
+                    angle = BASE_OFFSET_RAD + (colIdx + 1) * alpha;
                 }
 
-                // Draw line at start of gap
+                // Draw radial line at boundary
                 ctx.beginPath();
-                ctx.moveTo(centerX + innerRadius * Math.cos(angle1),
-                          centerY + innerRadius * Math.sin(angle1));
-                ctx.lineTo(centerX + outerRadius * Math.cos(angle1),
-                          centerY + outerRadius * Math.sin(angle1));
-                ctx.stroke();
-
-                // Draw line at end of gap
-                ctx.beginPath();
-                ctx.moveTo(centerX + innerRadius * Math.cos(angle2),
-                          centerY + innerRadius * Math.sin(angle2));
-                ctx.lineTo(centerX + outerRadius * Math.cos(angle2),
-                          centerY + outerRadius * Math.sin(angle2));
+                ctx.moveTo(centerX + innerRadius * Math.cos(angle),
+                          centerY + innerRadius * Math.sin(angle));
+                ctx.lineTo(centerX + outerRadius * Math.cos(angle),
+                          centerY + outerRadius * Math.sin(angle));
                 ctx.stroke();
             }
         }

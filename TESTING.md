@@ -42,19 +42,18 @@
 - **If this shows uniform medium green, GS16 value range is still wrong**
 
 ### Test 4: Partial Arena (White Background)
-**Expected:** Gap with radial lines, NO green in gap area
-- Green appears on ~288° (8 of 10 columns)
-- Gap of ~72° (2 missing columns)
-- Radial lines connecting inner/outer at gap boundaries
+**Expected:** Gap with radial lines ONLY at boundaries, NO green in gap area
+- Green appears on ~252° (7 of 10 columns)
+- Gap of ~108° (3 missing columns: 0,1,2)
+- **CRITICAL**: Only 2 radial lines at gap boundaries (start and end), NOT multiple lines throughout
 - **CRITICAL**: WHITE background visible in gap area (NOT green!)
 - **If gap is filled with green, columns_installed is not being respected**
-- Gap orientation: columns 0 and 9 missing (bottom area)
-- **Note**: R/L symmetry may need adjustment (gap should ideally be centered at bottom)
+- Gap orientation: Centered at bottom for R/L symmetry
 
 ### Test 5: Partial Arena (Dark Background)
 **Expected:** Same as Test 4 but with dark background
 - Dark background visible in gap area
-- Gap clearly delineated by radial lines
+- Only 2 radial lines at gap boundaries (start/end)
 
 ## Bugs That Were Fixed
 
