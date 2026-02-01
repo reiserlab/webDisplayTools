@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Icon Generator Test</title>
+    <script src="js/arena-configs.js"></script>
+    <script src="js/icon-generator.js"></script>
+</head>
+<body>
+    <h1>Testing Icon Generator</h1>
+    <div id="output"></div>
+    <div id="icons"></div>
+
+    <script>
+        const output = document.getElementById('output');
+        const iconsDiv = document.getElementById('icons');
+
+        function log(msg) {
+            output.innerHTML += msg + '<br>';
+            console.log(msg);
+        }
+
+        // Test 1: Generate test icon for G6 full arena
+        try {
+            log('Test 1: G6 Full Arena (2x10) with grating pattern');
+            const dataURL = IconGenerator.generateTestIcon(256, 256, 'G6', 10, 2, 'grating');
+            log('✓ Generated successfully!');
+
+            const img = document.createElement('img');
+            img.src = dataURL;
+            img.style.border = '2px solid #00e676';
+            img.style.margin = '10px';
+            iconsDiv.appendChild(img);
+        } catch (error) {
+            log('✗ Error: ' + error.message);
+            console.error(error);
+        }
+
+        // Test 2: Generate for G6 partial arena
+        try {
+            log('Test 2: G6 Partial Arena (2x8of10) with sine pattern');
+
+            const specs = PANEL_SPECS['G6'];
+            const pixelsPerPanel = specs.pixels_per_panel;
+            const numCols = 10;
+            const numRows = 2;
+            const totalColPixels = numCols * pixelsPerPanel;
+            const totalRowPixels = numRows * pixelsPerPanel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            // Generate sine pattern
+            const frameData = new Array(totalPixels);
+            for (let row = 0; row < totalRowPixels; row++) {
+                for (let col = 0; col < totalColPixels; col++) {
+                    const idx = row * totalColPixels + col;
+                    frameData[idx] = (Math.sin(col * Math.PI / 30) + 1) / 2;
+                }
+            }
+
+            const patternData = {
+                frames: [frameData],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS16'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 2,
+                num_cols: 10,
+                columns_installed: [0, 1, 2, 3, 4, 5, 6, 7]  // 8 of 10 columns
+            };
+
+            const dataURL = IconGenerator.generatePatternIcon(patternData, arenaConfig, {
+                width: 256,
+                height: 256,
+                innerRadiusRatio: 0.2
+            });
+
+            log('✓ Generated partial arena successfully!');
+
+            const img = document.createElement('img');
+            img.src = dataURL;
+            img.style.border = '2px solid #00e676';
+            img.style.margin = '10px';
+            iconsDiv.appendChild(img);
+        } catch (error) {
+            log('✗ Error: ' + error.message);
+            console.error(error);
+        }
+
+        // Test 3: Test motion blur with exponential weighting
+        try {
+            log('Test 3: Motion blur with 5 frames (exponential weighting)');
+
+            const specs = PANEL_SPECS['G6'];
+            const pixelsPerPanel = specs.pixels_per_panel;
+            const numCols = 10;
+            const numRows = 2;
+            const totalColPixels = numCols * pixelsPerPanel;
+            const totalRowPixels = numRows * pixelsPerPanel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            // Generate 5 frames with moving grating
+            const frames = [];
+            for (let f = 0; f < 5; f++) {
+                const frameData = new Array(totalPixels);
+                const offset = f * 10;  // Move by 10 pixels each frame
+
+                for (let row = 0; row < totalRowPixels; row++) {
+                    for (let col = 0; col < totalColPixels; col++) {
+                        const idx = row * totalColPixels + col;
+                        frameData[idx] = Math.floor((col + offset) / 20) % 2;
+                    }
+                }
+                frames.push(frameData);
+            }
+
+            const patternData = {
+                frames: frames,
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS2'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 2,
+                num_cols: 10,
+                columns_installed: null  // Full arena
+            };
+
+            const dataURL = IconGenerator.generateMotionIcon(patternData, arenaConfig, {
+                width: 256,
+                height: 256,
+                innerRadiusRatio: 0.2,
+                frameRange: [0, 4],
+                maxFrames: 5,
+                weightingFunction: 'exponential'
+            });
+
+            log('✓ Generated motion blur icon successfully!');
+
+            const img = document.createElement('img');
+            img.src = dataURL;
+            img.style.border = '2px solid #ff9800';
+            img.style.margin = '10px';
+            iconsDiv.appendChild(img);
+        } catch (error) {
+            log('✗ Error: ' + error.message);
+            console.error(error);
+        }
+
+        // Test 4: Test different inner radius ratios
+        try {
+            log('Test 4: Different perspective (inner radius = 0.1)');
+            const dataURL = IconGenerator.generateTestIcon(256, 256, 'G6', 10, 2, 'grating');
+
+            // Generate with different settings
+            const specs = PANEL_SPECS['G6'];
+            const pixelsPerPanel = specs.pixels_per_panel;
+            const numCols = 10;
+            const numRows = 2;
+            const totalColPixels = numCols * pixelsPerPanel;
+            const totalRowPixels = numRows * pixelsPerPanel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            const frameData = new Array(totalPixels);
+            for (let row = 0; row < totalRowPixels; row++) {
+                for (let col = 0; col < totalColPixels; col++) {
+                    const idx = row * totalColPixels + col;
+                    frameData[idx] = Math.floor(col / 20) % 2;
+                }
+            }
+
+            const patternData = {
+                frames: [frameData],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS2'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 2,
+                num_cols: 10,
+                columns_installed: null
+            };
+
+            const dataURLSmallInner = IconGenerator.generatePatternIcon(patternData, arenaConfig, {
+                width: 256,
+                height: 256,
+                innerRadiusRatio: 0.1  // More dramatic perspective
+            });
+
+            log('✓ Generated with small inner radius!');
+
+            const img = document.createElement('img');
+            img.src = dataURLSmallInner;
+            img.style.border = '2px solid #2196f3';
+            img.style.margin = '10px';
+            iconsDiv.appendChild(img);
+        } catch (error) {
+            log('✗ Error: ' + error.message);
+            console.error(error);
+        }
+
+        log('<br><strong>All tests completed!</strong>');
+    </script>
+</body>
+</html>

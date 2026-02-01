@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pattern Icon Generator - PanelDisplayTools</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="js/arena-configs.js"></script>
+    <script src="js/pat-parser.js"></script>
+    <script src="js/icon-generator.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0f1419;
+            --surface: #1a1f26;
+            --border: #2d3640;
+            --text: #e6edf3;
+            --text-dim: #8b949e;
+            --accent: #00e676;
+            --hover: #00c853;
+        }
+
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--bg);
+            color: var(--text);
+            padding: 2rem;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 2rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 2rem;
+        }
+
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        .section {
+            margin-bottom: 1.5rem;
+        }
+
+        .section:last-child {
+            margin-bottom: 0;
+        }
+
+        .section-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--accent);
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .control-group {
+            margin-bottom: 1rem;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 0.4rem;
+        }
+
+        input[type="file"],
+        select {
+            width: 100%;
+            padding: 0.6rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin: 0.5rem 0;
+        }
+
+        .range-value {
+            display: inline-block;
+            min-width: 50px;
+            text-align: right;
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .btn {
+            padding: 0.6rem 1.2rem;
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background: var(--hover);
+        }
+
+        .btn:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+        }
+
+        .btn.secondary {
+            background: var(--border);
+            color: var(--text);
+        }
+
+        .btn.secondary:hover {
+            background: #3d4650;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .radio-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+
+        .radio-label input[type="radio"] {
+            width: auto;
+        }
+
+        .divider {
+            height: 1px;
+            background: var(--border);
+            margin: 1.5rem 0;
+        }
+
+        .icon-display {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .icon-container {
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 400px;
+        }
+
+        .icon-container img {
+            max-width: 100%;
+            border-radius: 4px;
+            image-rendering: crisp-edges;
+        }
+
+        .icon-placeholder {
+            color: var(--text-dim);
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        .info-box {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.75rem;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        .info-box .label {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .frame-range-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+
+        .frame-range-inputs input {
+            padding: 0.4rem;
+        }
+
+        input[type="number"] {
+            padding: 0.6rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .test-pattern-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .test-pattern-grid .btn {
+            padding: 0.5rem;
+            font-size: 0.75rem;
+        }
+
+        footer {
+            margin-top: 3rem;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Pattern Icon Generator</h1>
+            <p class="subtitle">Generate top-down cylindrical view icons from arena patterns</p>
+        </header>
+
+        <div class="content">
+            <!-- Controls Panel -->
+            <div class="panel">
+                <div class="section">
+                    <div class="section-title">Pattern Source</div>
+
+                    <div class="control-group">
+                        <label>Load Pattern File</label>
+                        <input type="file" id="pattern-file" accept=".pat">
+                    </div>
+
+                    <div class="control-group">
+                        <label>Or Generate Test Pattern</label>
+                        <div class="test-pattern-grid">
+                            <button class="btn secondary" onclick="generateTest('grating')">Grating</button>
+                            <button class="btn secondary" onclick="generateTest('sine')">Sine</button>
+                            <button class="btn secondary" onclick="generateTest('allon')">All On</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="section">
+                    <div class="section-title">Arena Configuration</div>
+
+                    <div class="control-group">
+                        <label>Arena Config</label>
+                        <select id="arena-select">
+                            <optgroup label="G6 Arenas" id="arena-group-G6"></optgroup>
+                            <optgroup label="G4.1 Arenas" id="arena-group-G41"></optgroup>
+                            <optgroup label="G4 Arenas" id="arena-group-G4"></optgroup>
+                            <optgroup label="G3 Arenas" id="arena-group-G3"></optgroup>
+                        </select>
+                    </div>
+
+                    <div class="info-box" id="arena-info" style="margin-top: 0.75rem;">
+                        Select an arena configuration
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="section">
+                    <div class="section-title">Icon Mode</div>
+
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="icon-mode" value="single" checked>
+                            <span>Single Frame</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="icon-mode" value="motion">
+                            <span>Motion Blur</span>
+                        </label>
+                    </div>
+
+                    <!-- Single frame controls -->
+                    <div id="single-frame-controls" class="control-group" style="margin-top: 1rem;">
+                        <label>Frame <span class="range-value" id="frame-value">0</span></label>
+                        <input type="range" id="frame-slider" min="0" max="0" value="0">
+                    </div>
+
+                    <!-- Motion blur controls -->
+                    <div id="motion-controls" style="display: none; margin-top: 1rem;">
+                        <div class="control-group">
+                            <label>Frame Range</label>
+                            <div class="frame-range-inputs">
+                                <input type="number" id="frame-start" min="0" value="0" placeholder="Start">
+                                <input type="number" id="frame-end" min="0" value="0" placeholder="End">
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <label>Max Frames to Sample</label>
+                            <input type="number" id="max-frames" min="2" max="20" value="10">
+                        </div>
+                        <div class="control-group">
+                            <label>Weighting</label>
+                            <select id="weighting-select">
+                                <option value="exponential">Exponential</option>
+                                <option value="linear">Linear</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="section">
+                    <div class="section-title">Icon Settings</div>
+
+                    <div class="control-group">
+                        <label>Icon Size</label>
+                        <select id="size-select">
+                            <option value="128">128 × 128</option>
+                            <option value="256" selected>256 × 256</option>
+                            <option value="512">512 × 512</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Inner Radius <span class="range-value" id="radius-value">0.20</span></label>
+                        <input type="range" id="radius-slider" min="0.1" max="0.4" step="0.01" value="0.2">
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="section">
+                    <button class="btn" id="generate-btn" disabled>Generate Icon</button>
+                    <button class="btn secondary" id="download-btn" style="margin-top: 0.5rem;" disabled>Download PNG</button>
+                </div>
+            </div>
+
+            <!-- Icon Display -->
+            <div class="panel">
+                <div class="icon-display">
+                    <div class="icon-container" id="icon-container">
+                        <div class="icon-placeholder">
+                            Load a pattern file or generate a test pattern to begin
+                        </div>
+                    </div>
+
+                    <div class="info-box" id="pattern-info" style="display: none; width: 100%;">
+                        <div><span class="label">Pattern:</span> <span id="info-pattern">-</span></div>
+                        <div><span class="label">Dimensions:</span> <span id="info-dims">-</span></div>
+                        <div><span class="label">Frames:</span> <span id="info-frames">-</span></div>
+                        <div><span class="label">Mode:</span> <span id="info-mode">-</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Pattern Icon Generator v1 | 2026-02-01</p>
+            <p><a href="index.html">← Back to Tools</a></p>
+        </footer>
+    </div>
+
+    <script>
+        let currentPatternData = null;
+        let currentArenaConfig = null;
+        let currentIconDataURL = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            populateArenaDropdown();
+            setupEventListeners();
+
+            // Select default arena
+            document.getElementById('arena-select').value = 'G6_2x10';
+            updateArenaConfig();
+        });
+
+        function populateArenaDropdown() {
+            const groups = getConfigsByGeneration();
+
+            for (const [gen, configs] of Object.entries(groups)) {
+                const groupId = gen === 'G4.1' ? 'G41' : gen;
+                const optgroup = document.getElementById(`arena-group-${groupId}`);
+                if (!optgroup) continue;
+
+                optgroup.innerHTML = '';
+                for (const config of configs) {
+                    const option = document.createElement('option');
+                    option.value = config.name;
+                    option.textContent = config.label;
+                    optgroup.appendChild(option);
+                }
+            }
+        }
+
+        function setupEventListeners() {
+            // Pattern file input
+            document.getElementById('pattern-file').addEventListener('change', handlePatternFile);
+
+            // Arena selection
+            document.getElementById('arena-select').addEventListener('change', updateArenaConfig);
+
+            // Icon mode radio buttons
+            document.querySelectorAll('input[name="icon-mode"]').forEach(radio => {
+                radio.addEventListener('change', toggleIconMode);
+            });
+
+            // Sliders
+            document.getElementById('frame-slider').addEventListener('input', updateFrameValue);
+            document.getElementById('radius-slider').addEventListener('input', updateRadiusValue);
+
+            // Generate button
+            document.getElementById('generate-btn').addEventListener('click', generateIcon);
+
+            // Download button
+            document.getElementById('download-btn').addEventListener('click', downloadIcon);
+        }
+
+        async function handlePatternFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const patternData = PatParser.parse(arrayBuffer);
+
+                currentPatternData = patternData;
+
+                // Update UI
+                document.getElementById('frame-slider').max = patternData.frames.length - 1;
+                document.getElementById('frame-slider').value = Math.floor(patternData.frames.length / 2);
+                document.getElementById('frame-start').max = patternData.frames.length - 1;
+                document.getElementById('frame-end').max = patternData.frames.length - 1;
+                document.getElementById('frame-end').value = patternData.frames.length - 1;
+                updateFrameValue();
+
+                // Show pattern info
+                document.getElementById('info-pattern').textContent = file.name;
+                document.getElementById('info-dims').textContent = `${patternData.cols} × ${patternData.rows}`;
+                document.getElementById('info-frames').textContent = patternData.frames.length;
+                document.getElementById('info-mode').textContent = patternData.grayscaleMode;
+                document.getElementById('pattern-info').style.display = 'block';
+
+                // Enable generate button
+                document.getElementById('generate-btn').disabled = false;
+            } catch (error) {
+                alert('Error loading pattern file: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        function generateTest(pattern) {
+            const arenaSelect = document.getElementById('arena-select');
+            const configName = arenaSelect.value;
+            const config = getConfig(configName);
+
+            if (!config) return;
+
+            const specs = PANEL_SPECS[config.arena.generation];
+            const pixelsPerPanel = specs.pixels_per_panel;
+            const totalColPixels = config.arena.num_cols * pixelsPerPanel;
+            const totalRowPixels = config.arena.num_rows * pixelsPerPanel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            // Generate test pattern frame
+            const frameData = new Array(totalPixels);
+            for (let row = 0; row < totalRowPixels; row++) {
+                for (let col = 0; col < totalColPixels; col++) {
+                    const idx = row * totalColPixels + col;
+
+                    if (pattern === 'grating') {
+                        frameData[idx] = Math.floor(col / 20) % 2;
+                    } else if (pattern === 'sine') {
+                        frameData[idx] = (Math.sin(col * Math.PI / 30) + 1) / 2;
+                    } else {
+                        frameData[idx] = 1;
+                    }
+                }
+            }
+
+            currentPatternData = {
+                frames: [frameData],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: config.arena.generation,
+                grayscaleMode: pattern === 'sine' ? 'GS16' : 'GS2'
+            };
+
+            // Update UI
+            document.getElementById('frame-slider').max = 0;
+            document.getElementById('frame-slider').value = 0;
+            document.getElementById('frame-start').value = 0;
+            document.getElementById('frame-end').value = 0;
+            updateFrameValue();
+
+            // Show pattern info
+            document.getElementById('info-pattern').textContent = `Test: ${pattern}`;
+            document.getElementById('info-dims').textContent = `${totalColPixels} × ${totalRowPixels}`;
+            document.getElementById('info-frames').textContent = '1';
+            document.getElementById('info-mode').textContent = currentPatternData.grayscaleMode;
+            document.getElementById('pattern-info').style.display = 'block';
+
+            // Enable generate button
+            document.getElementById('generate-btn').disabled = false;
+
+            // Auto-generate
+            generateIcon();
+        }
+
+        function updateArenaConfig() {
+            const arenaSelect = document.getElementById('arena-select');
+            const configName = arenaSelect.value;
+            const config = getConfig(configName);
+
+            if (!config) return;
+
+            currentArenaConfig = config.arena;
+
+            // Update info display
+            const installedCols = config.arena.columns_installed?.length || config.arena.num_cols;
+            const coverage = Math.round(360 * installedCols / config.arena.num_cols);
+            document.getElementById('arena-info').innerHTML =
+                `<div><span class="label">Generation:</span> ${config.arena.generation}</div>` +
+                `<div><span class="label">Layout:</span> ${config.arena.num_rows} × ${config.arena.num_cols}</div>` +
+                `<div><span class="label">Coverage:</span> ${coverage}°</div>`;
+        }
+
+        function toggleIconMode() {
+            const mode = document.querySelector('input[name="icon-mode"]:checked').value;
+
+            if (mode === 'single') {
+                document.getElementById('single-frame-controls').style.display = 'block';
+                document.getElementById('motion-controls').style.display = 'none';
+            } else {
+                document.getElementById('single-frame-controls').style.display = 'none';
+                document.getElementById('motion-controls').style.display = 'block';
+            }
+        }
+
+        function updateFrameValue() {
+            const value = document.getElementById('frame-slider').value;
+            document.getElementById('frame-value').textContent = value;
+        }
+
+        function updateRadiusValue() {
+            const value = document.getElementById('radius-slider').value;
+            document.getElementById('radius-value').textContent = parseFloat(value).toFixed(2);
+        }
+
+        function generateIcon() {
+            if (!currentPatternData || !currentArenaConfig) return;
+
+            const mode = document.querySelector('input[name="icon-mode"]:checked').value;
+            const size = parseInt(document.getElementById('size-select').value);
+            const innerRadiusRatio = parseFloat(document.getElementById('radius-slider').value);
+
+            const options = {
+                width: size,
+                height: size,
+                innerRadiusRatio: innerRadiusRatio,
+                backgroundColor: '#0f1419',
+                showGaps: true
+            };
+
+            try {
+                let dataURL;
+
+                if (mode === 'single') {
+                    const frameIndex = parseInt(document.getElementById('frame-slider').value);
+                    options.frameIndex = frameIndex;
+                    dataURL = IconGenerator.generatePatternIcon(currentPatternData, currentArenaConfig, options);
+                } else {
+                    const frameStart = parseInt(document.getElementById('frame-start').value);
+                    const frameEnd = parseInt(document.getElementById('frame-end').value);
+                    const maxFrames = parseInt(document.getElementById('max-frames').value);
+                    const weighting = document.getElementById('weighting-select').value;
+
+                    options.frameRange = [frameStart, frameEnd];
+                    options.maxFrames = maxFrames;
+                    options.weightingFunction = weighting;
+
+                    dataURL = IconGenerator.generateMotionIcon(currentPatternData, currentArenaConfig, options);
+                }
+
+                currentIconDataURL = dataURL;
+
+                // Display icon
+                const container = document.getElementById('icon-container');
+                container.innerHTML = `<img src="${dataURL}" alt="Pattern Icon">`;
+
+                // Enable download
+                document.getElementById('download-btn').disabled = false;
+            } catch (error) {
+                alert('Error generating icon: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        function downloadIcon() {
+            if (!currentIconDataURL) return;
+
+            const link = document.createElement('a');
+            const mode = document.querySelector('input[name="icon-mode"]:checked').value;
+            const arenaName = document.getElementById('arena-select').value;
+            const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
+
+            link.download = `pattern_icon_${arenaName}_${mode}_${timestamp}.png`;
+            link.href = currentIconDataURL;
+            link.click();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quick Icon Test</title>
+    <script src="js/arena-configs.js"></script>
+    <script src="js/icon-generator.js"></script>
+    <style>
+        body {
+            font-family: monospace;
+            background: #0f1419;
+            color: #e6edf3;
+            padding: 20px;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            background: #1a1f26;
+            border-left: 3px solid #00e676;
+        }
+        .test-result.fail { border-left-color: #ff5252; }
+        .icon-preview {
+            margin: 10px 0;
+            padding: 10px;
+            background: #1a1f26;
+            display: inline-block;
+        }
+        img {
+            border: 2px solid #00e676;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>Icon Generator Quick Test</h1>
+    <div id="results"></div>
+    <div id="icons"></div>
+
+    <script>
+        const results = document.getElementById('results');
+        const icons = document.getElementById('icons');
+
+        function logTest(name, passed, details) {
+            const div = document.createElement('div');
+            div.className = 'test-result' + (passed ? '' : ' fail');
+            div.innerHTML = `<strong>${passed ? '✓' : '✗'} ${name}</strong><br>${details}`;
+            results.appendChild(div);
+            console.log(passed ? '✓' : '✗', name, details);
+        }
+
+        function showIcon(name, dataURL) {
+            const div = document.createElement('div');
+            div.className = 'icon-preview';
+            const label = document.createElement('div');
+            label.textContent = name;
+            label.style.marginBottom = '5px';
+            label.style.fontWeight = 'bold';
+            const img = document.createElement('img');
+            img.src = dataURL;
+            img.width = 256;
+            img.height = 256;
+            div.appendChild(label);
+            div.appendChild(img);
+            icons.appendChild(div);
+        }
+
+        // Test 1: Check exports
+        try {
+            if (typeof IconGenerator === 'undefined') {
+                throw new Error('IconGenerator not exported to window');
+            }
+            if (!IconGenerator.generatePatternIcon) {
+                throw new Error('generatePatternIcon not found');
+            }
+            if (!IconGenerator.generateMotionIcon) {
+                throw new Error('generateMotionIcon not found');
+            }
+            logTest('Module Exports', true, 'All functions exported correctly');
+        } catch (error) {
+            logTest('Module Exports', false, error.message);
+        }
+
+        // Test 2: Generate full arena grating
+        try {
+            const dataURL = IconGenerator.generateTestIcon(256, 256, 'G6', 10, 2, 'grating');
+            if (!dataURL || !dataURL.startsWith('data:image/png')) {
+                throw new Error('Invalid data URL returned');
+            }
+            logTest('Full Arena Grating (G6 2x10)', true, `Generated ${dataURL.length} bytes`);
+            showIcon('Full Arena Grating', dataURL);
+        } catch (error) {
+            logTest('Full Arena Grating', false, error.message);
+        }
+
+        // Test 3: Partial arena with gap
+        try {
+            const specs = PANEL_SPECS['G6'];
+            const pixelsPerPanel = specs.pixels_per_panel;
+            const numCols = 10;
+            const numRows = 2;
+            const totalColPixels = numCols * pixelsPerPanel;
+            const totalRowPixels = numRows * pixelsPerPanel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            const frameData = new Array(totalPixels);
+            for (let row = 0; row < totalRowPixels; row++) {
+                for (let col = 0; col < totalColPixels; col++) {
+                    const idx = row * totalColPixels + col;
+                    frameData[idx] = (Math.sin(col * Math.PI / 20) + 1) / 2;
+                }
+            }
+
+            const patternData = {
+                frames: [frameData],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS16'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 2,
+                num_cols: 10,
+                columns_installed: [0, 1, 2, 3, 4, 5, 6, 7]  // 8 of 10 = 72° gap
+            };
+
+            const dataURL = IconGenerator.generatePatternIcon(patternData, arenaConfig, {
+                width: 256,
+                height: 256,
+                innerRadiusRatio: 0.2
+            });
+
+            if (!dataURL || !dataURL.startsWith('data:image/png')) {
+                throw new Error('Invalid data URL returned');
+            }
+            logTest('Partial Arena (8 of 10 columns)', true, `Generated with 72° gap`);
+            showIcon('Partial Arena (288°)', dataURL);
+        } catch (error) {
+            logTest('Partial Arena', false, error.message);
+        }
+
+        // Test 4: Different perspective
+        try {
+            const dataURL = IconGenerator.generateTestIcon(256, 256, 'G6', 10, 2, 'grating');
+
+            const specs = PANEL_SPECS['G6'];
+            const pixelsPerPanel = specs.pixels_per_panel;
+            const numCols = 10;
+            const numRows = 2;
+            const totalColPixels = numCols * pixelsPerPanel;
+            const totalRowPixels = numRows * pixelsPerPanel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            const frameData = new Array(totalPixels);
+            for (let i = 0; i < totalPixels; i++) {
+                const col = i % totalColPixels;
+                frameData[i] = Math.floor(col / 20) % 2;
+            }
+
+            const patternData = {
+                frames: [frameData],
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS2'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 2,
+                num_cols: 10,
+                columns_installed: null
+            };
+
+            const dataURLDramatic = IconGenerator.generatePatternIcon(patternData, arenaConfig, {
+                width: 256,
+                height: 256,
+                innerRadiusRatio: 0.1  // More dramatic
+            });
+
+            if (!dataURLDramatic || !dataURLDramatic.startsWith('data:image/png')) {
+                throw new Error('Invalid data URL returned');
+            }
+            logTest('Dramatic Perspective', true, 'Generated with innerRadius=0.1');
+            showIcon('Dramatic Perspective (0.1)', dataURLDramatic);
+        } catch (error) {
+            logTest('Dramatic Perspective', false, error.message);
+        }
+
+        // Test 5: Motion blur
+        try {
+            const specs = PANEL_SPECS['G6'];
+            const pixelsPerPanel = specs.pixels_per_panel;
+            const numCols = 10;
+            const numRows = 2;
+            const totalColPixels = numCols * pixelsPerPanel;
+            const totalRowPixels = numRows * pixelsPerPanel;
+            const totalPixels = totalColPixels * totalRowPixels;
+
+            // Create 10 frames with moving grating
+            const frames = [];
+            for (let f = 0; f < 10; f++) {
+                const frameData = new Array(totalPixels);
+                const offset = f * 5;  // Move 5 pixels per frame
+                for (let i = 0; i < totalPixels; i++) {
+                    const col = i % totalColPixels;
+                    frameData[i] = Math.floor((col + offset) / 20) % 2;
+                }
+                frames.push(frameData);
+            }
+
+            const patternData = {
+                frames: frames,
+                rows: totalRowPixels,
+                cols: totalColPixels,
+                generation: 'G6',
+                grayscaleMode: 'GS2'
+            };
+
+            const arenaConfig = {
+                generation: 'G6',
+                num_rows: 2,
+                num_cols: 10,
+                columns_installed: null
+            };
+
+            const dataURL = IconGenerator.generateMotionIcon(patternData, arenaConfig, {
+                width: 256,
+                height: 256,
+                innerRadiusRatio: 0.2,
+                frameRange: [0, 9],
+                maxFrames: 10,
+                weightingFunction: 'exponential'
+            });
+
+            if (!dataURL || !dataURL.startsWith('data:image/png')) {
+                throw new Error('Invalid data URL returned');
+            }
+            logTest('Motion Blur (10 frames)', true, 'Generated with exponential weighting');
+            showIcon('Motion Blur (Moving Grating)', dataURL);
+        } catch (error) {
+            logTest('Motion Blur', false, error.message);
+        }
+
+        console.log('=== All Tests Complete ===');
+    </script>
+</body>
+</html>
