@@ -420,7 +420,7 @@
         </div>
 
         <footer>
-            <p>Pattern Icon Generator v0.5 | 2026-02-01 15:20 ET</p>
+            <p>Pattern Icon Generator v0.6 | 2026-02-01 16:31 ET</p>
             <p><a href="index.html">← Back to Tools</a></p>
         </footer>
     </div>
@@ -487,7 +487,7 @@
 
             try {
                 const arrayBuffer = await file.arrayBuffer();
-                const patternData = PatParser.parse(arrayBuffer);
+                const patternData = PatParser.parsePatFile(arrayBuffer);
 
                 currentPatternData = patternData;
 

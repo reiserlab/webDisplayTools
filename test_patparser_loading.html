@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PatParser Loading Diagnostic</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #0f1419; color: #e6edf3; }
+        .pass { color: #00e676; }
+        .fail { color: #ff5252; }
+        .test { margin: 10px 0; padding: 10px; background: #1a1f26; border-left: 3px solid #2d3640; }
+        .test.pass { border-left-color: #00e676; }
+        .test.fail { border-left-color: #ff5252; }
+        h1 { color: #00e676; }
+        pre { background: #000; padding: 10px; overflow-x: auto; }
+    </style>
+    <script src="js/arena-configs.js"></script>
+    <script src="js/pat-parser.js"></script>
+    <script src="js/icon-generator.js"></script>
+</head>
+<body>
+    <h1>PatParser Loading Diagnostic</h1>
+    <div id="output"></div>
+
+    <script>
+        const output = document.getElementById('output');
+
+        function test(name, condition, details = '') {
+            const div = document.createElement('div');
+            div.className = condition ? 'test pass' : 'test fail';
+            div.innerHTML = `<strong>${condition ? '✓ PASS' : '✗ FAIL'}: ${name}</strong>${details ? '<pre>' + details + '</pre>' : ''}`;
+            output.appendChild(div);
+            return condition;
+        }
+
+        // Test 1: Check if window exists
+        test('window object', typeof window !== 'undefined');
+
+        // Test 2: Check if PANEL_SPECS loaded
+        const panelSpecsLoaded = typeof PANEL_SPECS !== 'undefined';
+        test('PANEL_SPECS loaded (arena-configs.js)', panelSpecsLoaded,
+             panelSpecsLoaded ? `Found: ${Object.keys(PANEL_SPECS).join(', ')}` : 'Not found');
+
+        // Test 3: Check if IconGenerator loaded
+        const iconGenLoaded = typeof IconGenerator !== 'undefined';
+        test('IconGenerator loaded (icon-generator.js)', iconGenLoaded,
+             iconGenLoaded ? `Found methods: ${Object.keys(IconGenerator).join(', ')}` : 'Not found');
+
+        // Test 4: Check if PatParser loaded
+        const patParserLoaded = typeof PatParser !== 'undefined';
+        test('PatParser loaded (pat-parser.js)', patParserLoaded,
+             patParserLoaded ? `Found: ${typeof PatParser}` : 'Not found - THIS IS THE PROBLEM!');
+
+        // Test 5: If PatParser loaded, check its methods
+        if (patParserLoaded) {
+            const methods = Object.keys(PatParser);
+            test('PatParser has methods', methods.length > 0,
+                 `Methods: ${methods.join(', ')}`);
+
+            test('PatParser.parse exists', typeof PatParser.parse === 'function');
+        } else {
+            test('PatParser.parse exists', false, 'Cannot test - PatParser not loaded');
+        }
+
+        // Test 6: Check browser console for errors
+        const div = document.createElement('div');
+        div.className = 'test';
+        div.innerHTML = `<strong>Next Step:</strong><br>
+            1. Open browser console (F12)<br>
+            2. Look for JavaScript errors (red text)<br>
+            3. Check Network tab to see if js/pat-parser.js loaded<br>
+            4. If you see syntax errors or 404, that's the problem<br><br>
+            <strong>If all tests pass above but pattern loading still fails:</strong><br>
+            The issue is in the file loading/parsing logic, not script loading.`;
+        output.appendChild(div);
+
+        // Test 7: Create a simple G6 test pattern in memory
+        if (patParserLoaded && panelSpecsLoaded) {
+            try {
+                // Create a minimal G6 pattern header
+                const headerBytes = new Uint8Array([
+                    0x47, 0x36, 0x50, 0x54,  // 'G6PT' magic
+                    0x14, 0x00,              // 20x20 panels
+                    0x00, 0x00, 0x00, 0x01,  // 1 frame
+                    0x00, 0x00, 0x00, 0x00,  // row index start
+                    0x01,                     // GS2 (binary)
+                    0x00, 0x00               // padding
+                ]);
+
+                // Test if PatParser can validate the header
+                test('Created test G6 header', true, 'Created 17-byte test header');
+
+                // Try to detect generation
+                const gen = PatParser.detectGeneration(headerBytes.buffer);
+                test('PatParser.detectGeneration() works', gen === 'G6',
+                     `Detected: ${gen}`);
+            } catch (error) {
+                test('PatParser test failed', false, error.message);
+            }
+        }
+
+        console.log('=== Diagnostic complete ===');
+        console.log('PatParser available:', typeof PatParser !== 'undefined');
+        if (typeof PatParser !== 'undefined') {
+            console.log('PatParser:', PatParser);
+        }
+    </script>
+</body>
+</html>
