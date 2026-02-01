@@ -581,6 +581,5 @@ if (typeof window !== 'undefined') {
     window.PatParser = PatParser;
 }
 
-// Note: ES module exports removed to maintain compatibility with regular script tags
-// If you need ES module support, import this file using:
-// import PatParser from './pat-parser.js' with type="module" in HTML
+// ES module export for import statements
+export default PatParser;
