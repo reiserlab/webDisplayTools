@@ -121,8 +121,10 @@ const PatEncoder = (function() {
         bytes[10] = checksum;
 
         // Panel mask (all panels active)
-        // Set bits for each panel (bit 0 = panel 0, etc.)
-        for (let i = 0; i < colCount && i < 48; i++) {
+        // Set bits for TOTAL panels (rowCount * colCount), not just columns
+        // MATLAB counts set bits to determine num_panels_in_file
+        const numPanelsTotal = rowCount * colCount;
+        for (let i = 0; i < numPanelsTotal && i < 48; i++) {
             const byteIdx = Math.floor(i / 8);
             const bitIdx = i % 8;
             bytes[11 + byteIdx] |= (1 << bitIdx);
@@ -135,11 +137,12 @@ const PatEncoder = (function() {
             const frame = frames[f];
             const stretch = stretchValues[f] !== undefined ? stretchValues[f] : 1;
 
-            // Frame header "FR" + 2 reserved bytes
+            // Frame header "FR" + frame_idx (uint16 LE)
             bytes[offset] = 0x46;      // 'F'
             bytes[offset + 1] = 0x52;  // 'R'
-            bytes[offset + 2] = 0x00;  // Reserved
-            bytes[offset + 3] = 0x00;  // Reserved
+            // Frame index as little-endian uint16
+            bytes[offset + 2] = f & 0xFF;           // Low byte
+            bytes[offset + 3] = (f >> 8) & 0xFF;    // High byte
             offset += G6_FRAME_HEADER_SIZE;
 
             // Encode panels in row-major order
