@@ -963,8 +963,8 @@
                             </select>
                         </div>
 
-                        <!-- Pole coordinates (only for expansion/translation) -->
-                        <div id="poleCoordGroup" style="display: none;">
+                        <!-- Pole coordinates (shown for all motion types - determines direction) -->
+                        <div id="poleCoordGroup">
                             <div class="control-group">
                                 <label>Pole Azimuth (°)</label>
                                 <input type="number" id="poleAzimuth" value="0" min="-180" max="180" step="1">
@@ -974,6 +974,9 @@
                                 <label>Pole Elevation (°)</label>
                                 <input type="number" id="poleElevation" value="-90" min="-90" max="90" step="1">
                                 <span class="hint" style="color: var(--text-dim); font-size: 0.7rem;">-90 (down) to +90 (up)</span>
+                            </div>
+                            <div style="color: var(--text-dim); font-size: 0.7rem; margin-top: 0.25rem; padding: 0.25rem; background: rgba(0,230,118,0.1); border-radius: 4px;">
+                                ℹ️ Direction determined by pole position (right-hand rule)
                             </div>
                         </div>
 
@@ -1017,6 +1020,9 @@
 
                     <!-- Starfield params -->
                     <div id="starfieldParams" style="display: none;">
+                        <div style="color: var(--text-dim); font-size: 0.75rem; padding: 0.5rem; background: rgba(0,230,118,0.1); border-radius: 4px; margin-bottom: 0.5rem;">
+                            Starfield uses spherical motion. Configure motion type and pole above.
+                        </div>
                         <div class="control-group">
                             <label>Dot Count</label>
                             <input type="number" id="dotCount" value="100" min="1" max="1000">
@@ -1031,18 +1037,11 @@
                         </div>
                     </div>
 
-                    <!-- Edge params -->
+                    <!-- Edge params - uses same spherical controls as grating -->
                     <div id="edgeParams" style="display: none;">
-                        <div class="control-group">
-                            <label>Edge Position (0-1)</label>
-                            <input type="number" id="edgePosition" value="0.5" min="0" max="1" step="0.1">
-                        </div>
-                        <div class="control-group">
-                            <label>Polarity</label>
-                            <select id="edgePolarity">
-                                <option value="light-to-dark">Light → Dark</option>
-                                <option value="dark-to-light">Dark → Light</option>
-                            </select>
+                        <div style="color: var(--text-dim); font-size: 0.75rem; padding: 0.5rem; background: rgba(0,230,118,0.1); border-radius: 4px; margin-bottom: 0.5rem;">
+                            Edge patterns use duty-cycle sweep (0%→100%) with spherical coordinates.
+                            Configure motion type and pole above.
                         </div>
                     </div>
 
@@ -1058,13 +1057,6 @@
                                 </select>
                             </div>
                             <span id="stepSizeConversion" style="color: var(--text-dim); font-size: 0.75rem;">= 1.80°</span>
-                        </div>
-                        <div class="control-group">
-                            <label>Direction</label>
-                            <select id="direction">
-                                <option value="cw">Clockwise</option>
-                                <option value="ccw">Counter-clockwise</option>
-                            </select>
                         </div>
                         <div class="control-group" id="numFramesGroup">
                             <label>Number of Frames <span id="numFramesHint" style="color: var(--text-dim); font-size: 0.7rem;"></span></label>
@@ -1904,8 +1896,8 @@
             edgeParams.style.display = 'none';
             motionParams.style.display = 'block';
 
-            // Spherical params are shown for grating/sine patterns (always, no checkbox)
-            const supportsSpherical = ['grating', 'sine'].includes(patternType);
+            // Spherical params are shown for grating/sine/edge/starfield patterns (always, no checkbox)
+            const supportsSpherical = ['grating', 'sine', 'edge', 'starfield'].includes(patternType);
             sphericalParams.style.display = supportsSpherical ? 'block' : 'none';
 
             // Update conversion displays
@@ -1932,6 +1924,8 @@
                     break;
                 case 'edge':
                     edgeParams.style.display = 'block';
+                    gratingParams.style.display = 'block';  // Show spatial freq for edge
+                    dutyCycleGroup.style.display = 'none';  // No duty cycle (edge sweeps 0-100%)
                     numFramesGroup.style.display = 'block';
                     updateNumFramesDefault();
                     break;
@@ -1942,18 +1936,12 @@
         }
 
         /**
-         * Update motion type UI - show/hide pole coordinate controls
+         * Update motion type UI
+         * Note: Pole coordinates are always shown (they determine direction for all motion types)
          */
         function updateMotionTypeUI() {
-            const motionTypeEl = document.getElementById('motionType');
-            const poleCoordGroup = document.getElementById('poleCoordGroup');
-
-            // Show pole coordinates only for expansion and translation
-            if (motionTypeEl && poleCoordGroup) {
-                const motionType = motionTypeEl.value;
-                const showPole = ['expansion', 'translation'].includes(motionType);
-                poleCoordGroup.style.display = showPole ? 'block' : 'none';
-            }
+            // Pole coordinates are always visible now since they determine direction
+            // (matching MATLAB behavior - no CW/CCW, direction from pole + right-hand rule)
         }
 
         /**
@@ -2097,19 +2085,14 @@
                         params.motionType = motionType;
                         params.waveform = 'square';
                         params.dutyCycle = parseInt(document.getElementById('dutyCycle').value);
-                        params.direction = document.getElementById('direction').value;
                         params.stepSize = convertStepSizeToPixels(stepSizeValue, stepSizeUnit);
                         params.aaSamples = parseInt(document.getElementById('aaSamples').value);
                         params.arenaModel = document.getElementById('arenaModel').value;
 
-                        // Get pole coordinates (for expansion/translation)
-                        if (['expansion', 'translation'].includes(motionType)) {
-                            const poleAzimuth = parseFloat(document.getElementById('poleAzimuth').value) || 0;
-                            const poleElevation = parseFloat(document.getElementById('poleElevation').value) || -90;
-                            params.poleCoord = [poleAzimuth * Math.PI / 180, poleElevation * Math.PI / 180];
-                        } else {
-                            params.poleCoord = [0, 0];  // Default for rotation
-                        }
+                        // Get pole coordinates (used for ALL motion types - determines direction)
+                        const poleAzimuth = parseFloat(document.getElementById('poleAzimuth').value) || 0;
+                        const poleElevation = parseFloat(document.getElementById('poleElevation').value) || -90;
+                        params.poleCoord = [poleAzimuth * Math.PI / 180, poleElevation * Math.PI / 180];
 
                         pattern = PatternGenerator.generateSphericalGrating(params, arena);
 
@@ -2130,19 +2113,14 @@
                         params.spatFreq = convertSpatialFreqToRadians(spatialFreqValue, spatialFreqUnit);
                         params.motionType = motionType;
                         params.waveform = 'sine';
-                        params.direction = document.getElementById('direction').value;
                         params.stepSize = convertStepSizeToPixels(stepSizeValue, stepSizeUnit);
                         params.aaSamples = parseInt(document.getElementById('aaSamples').value);
                         params.arenaModel = document.getElementById('arenaModel').value;
 
-                        // Get pole coordinates (for expansion/translation)
-                        if (['expansion', 'translation'].includes(motionType)) {
-                            const poleAzimuth = parseFloat(document.getElementById('poleAzimuth').value) || 0;
-                            const poleElevation = parseFloat(document.getElementById('poleElevation').value) || -90;
-                            params.poleCoord = [poleAzimuth * Math.PI / 180, poleElevation * Math.PI / 180];
-                        } else {
-                            params.poleCoord = [0, 0];  // Default for rotation
-                        }
+                        // Get pole coordinates (used for ALL motion types - determines direction)
+                        const poleAzimuthSine = parseFloat(document.getElementById('poleAzimuth').value) || 0;
+                        const poleElevationSine = parseFloat(document.getElementById('poleElevation').value) || -90;
+                        params.poleCoord = [poleAzimuthSine * Math.PI / 180, poleElevationSine * Math.PI / 180];
 
                         pattern = PatternGenerator.generateSphericalGrating(params, arena);
 
@@ -2153,31 +2131,51 @@
                     }
 
                     case 'starfield': {
-                        const stepSizeValue = parseFloat(document.getElementById('stepSize').value);
-                        const stepSizeUnit = document.getElementById('stepSizeUnit').value;
+                        // Starfield uses spherical motion with pole coordinates
+                        const stepSizeValueStar = parseFloat(document.getElementById('stepSize').value);
+                        const stepSizeUnitStar = document.getElementById('stepSizeUnit').value;
+                        const motionTypeStar = document.getElementById('motionType').value;
+
                         params.dotCount = parseInt(document.getElementById('dotCount').value);
                         params.dotSize = parseInt(document.getElementById('dotSize').value);
                         params.seed = parseInt(document.getElementById('starfieldSeed').value);
                         params.brightness = highLevel;
                         params.background = lowLevel;
-                        params.direction = document.getElementById('direction').value;
-                        params.stepSize = convertStepSizeToPixels(stepSizeValue, stepSizeUnit);
+                        params.motionType = motionTypeStar;
+                        params.stepSize = convertStepSizeToPixels(stepSizeValueStar, stepSizeUnitStar);
                         params.numFrames = parseInt(document.getElementById('numFramesInput').value);
+                        params.arenaModel = document.getElementById('arenaModel').value;
+
+                        // Get pole coordinates (determines direction)
+                        const poleAzimuthStar = parseFloat(document.getElementById('poleAzimuth').value) || 0;
+                        const poleElevationStar = parseFloat(document.getElementById('poleElevation').value) || -90;
+                        params.poleCoord = [poleAzimuthStar * Math.PI / 180, poleElevationStar * Math.PI / 180];
+
                         pattern = PatternGenerator.generateStarfield(params, arena);
-                        filename = `starfield_${params.dotCount}dots_${params.numFrames}f.pat`;
+                        filename = `starfield_${motionTypeStar}_${params.dotCount}dots_${params.numFrames}f.pat`;
                         break;
                     }
 
                     case 'edge': {
-                        const stepSizeValue = parseFloat(document.getElementById('stepSize').value);
-                        const stepSizeUnit = document.getElementById('stepSizeUnit').value;
-                        params.edgePosition = parseFloat(document.getElementById('edgePosition').value);
-                        params.polarity = document.getElementById('edgePolarity').value;
-                        params.direction = document.getElementById('direction').value;
-                        params.stepSize = convertStepSizeToPixels(stepSizeValue, stepSizeUnit);
+                        // Edge patterns use spherical coordinates with duty-cycle sweep
+                        const spatialFreqValueEdge = parseFloat(document.getElementById('spatialFreq').value);
+                        const spatialFreqUnitEdge = document.getElementById('spatialFreqUnit').value;
+                        const motionTypeEdge = document.getElementById('motionType').value;
+
+                        params.spatFreq = convertSpatialFreqToRadians(spatialFreqValueEdge, spatialFreqUnitEdge);
+                        params.motionType = motionTypeEdge;
+                        params.aaSamples = parseInt(document.getElementById('aaSamples').value);
+                        params.arenaModel = document.getElementById('arenaModel').value;
                         params.numFrames = parseInt(document.getElementById('numFramesInput').value);
+
+                        // Get pole coordinates (determines direction)
+                        const poleAzimuthEdge = parseFloat(document.getElementById('poleAzimuth').value) || 0;
+                        const poleElevationEdge = parseFloat(document.getElementById('poleElevation').value) || -90;
+                        params.poleCoord = [poleAzimuthEdge * Math.PI / 180, poleElevationEdge * Math.PI / 180];
+
                         pattern = PatternGenerator.generateEdge(params, arena);
-                        filename = `edge_${params.polarity}_${params.numFrames}f.pat`;
+                        const freqStrEdge = spatialFreqUnitEdge === 'px' ? `${spatialFreqValueEdge}px` : `${spatialFreqValueEdge}deg`;
+                        filename = `edge_${motionTypeEdge}_${freqStrEdge}_${params.numFrames}f.pat`;
                         break;
                     }
 

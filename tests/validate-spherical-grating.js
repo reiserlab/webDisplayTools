@@ -200,52 +200,77 @@ console.log('\nTest 5: Anti-aliasing produces smooth edges');
     assertTrue(uniqueWithAA.size > 2, `With AA: more than 2 values (found ${uniqueWithAA.size})`);
 }
 
-// Test 6: Direction affects phase progression
-console.log('\nTest 6: Direction affects phase progression');
+// Test 6: Pole position affects direction (replaces CW/CCW test)
+console.log('\nTest 6: Pole position affects direction');
 {
     const baseSpatFreq = Math.PI / 10;  // ~20 pixel wavelength
 
-    const paramsCW = {
+    // Two patterns with opposite pole azimuth positions
+    const paramsPolePlus = {
         spatFreq: baseSpatFreq,
         motionType: 'rotation',
         waveform: 'square',
         dutyCycle: 50,
         high: 15,
         low: 0,
-        poleCoord: [0, 0],
+        poleCoord: [Math.PI/4, 0],  // Pole at +45° azimuth
         numFrames: 5,
-        direction: 'cw',
         stepSize: 1,
         gsMode: 16
     };
 
-    const paramsCCW = {
-        ...paramsCW,
-        direction: 'ccw'
+    const paramsPoleMinus = {
+        ...paramsPolePlus,
+        poleCoord: [-Math.PI/4, 0]  // Pole at -45° azimuth
     };
 
-    const patternCW = PatternGenerator.generate('spherical-grating', paramsCW, arenaConfig);
-    const patternCCW = PatternGenerator.generate('spherical-grating', paramsCCW, arenaConfig);
+    const patternPlus = PatternGenerator.generate('spherical-grating', paramsPolePlus, arenaConfig);
+    const patternMinus = PatternGenerator.generate('spherical-grating', paramsPoleMinus, arenaConfig);
 
-    // First frames should be identical (same starting phase)
+    // First frames should differ (different pole positions = different orientation)
+    let framesAreDifferent = false;
+    for (let i = 0; i < patternPlus.frames[0].length; i++) {
+        if (patternPlus.frames[0][i] !== patternMinus.frames[0][i]) {
+            framesAreDifferent = true;
+            break;
+        }
+    }
+    assertTrue(framesAreDifferent, 'Different pole positions produce different patterns');
+
+    // Step size sign affects direction - test positive vs negative step
+    const paramsStepPos = {
+        ...paramsPolePlus,
+        poleCoord: [0, 0],
+        stepSize: 1
+    };
+    const paramsStepNeg = {
+        ...paramsPolePlus,
+        poleCoord: [0, 0],
+        stepSize: -1
+    };
+
+    const patternStepPos = PatternGenerator.generate('spherical-grating', paramsStepPos, arenaConfig);
+    const patternStepNeg = PatternGenerator.generate('spherical-grating', paramsStepNeg, arenaConfig);
+
+    // First frames should be identical (same phase)
     let firstFramesMatch = true;
-    for (let i = 0; i < patternCW.frames[0].length; i++) {
-        if (patternCW.frames[0][i] !== patternCCW.frames[0][i]) {
+    for (let i = 0; i < patternStepPos.frames[0].length; i++) {
+        if (patternStepPos.frames[0][i] !== patternStepNeg.frames[0][i]) {
             firstFramesMatch = false;
             break;
         }
     }
-    assertTrue(firstFramesMatch, 'First frames are identical regardless of direction');
+    assertTrue(firstFramesMatch, 'First frames match with opposite step sizes');
 
-    // Later frames should differ (opposite rotation)
+    // Later frames should differ (opposite direction)
     let laterFramesDiffer = false;
-    for (let i = 0; i < patternCW.frames[2].length; i++) {
-        if (patternCW.frames[2][i] !== patternCCW.frames[2][i]) {
+    for (let i = 0; i < patternStepPos.frames[2].length; i++) {
+        if (patternStepPos.frames[2][i] !== patternStepNeg.frames[2][i]) {
             laterFramesDiffer = true;
             break;
         }
     }
-    assertTrue(laterFramesDiffer, 'Later frames differ based on direction');
+    assertTrue(laterFramesDiffer, 'Later frames differ with opposite step sizes');
 }
 
 // Test 7: Polygonal arena model
