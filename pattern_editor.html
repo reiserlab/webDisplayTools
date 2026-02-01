@@ -952,16 +952,7 @@
                         </select>
                     </div>
 
-                    <!-- Spherical mode toggle (for grating/sine) -->
-                    <div id="sphericalModeGroup" class="control-group" style="margin-top: 0.5rem;">
-                        <label style="display: flex; align-items: center; gap: 0.5rem;">
-                            <input type="checkbox" id="useSpherical">
-                            Use spherical coordinates
-                            <span style="color: var(--text-dim); font-size: 0.7rem;" title="Uses proper 3D geometry for cylindrical arena projection. Matches MATLAB output.">(?)</span>
-                        </label>
-                    </div>
-
-                    <!-- Spherical-specific controls -->
+                    <!-- Spherical grating controls (for grating/sine patterns) -->
                     <div id="sphericalParams" style="display: none;">
                         <div class="control-group">
                             <label>Motion Type</label>
@@ -971,6 +962,21 @@
                                 <option value="translation">Translation (linear motion)</option>
                             </select>
                         </div>
+
+                        <!-- Pole coordinates (only for expansion/translation) -->
+                        <div id="poleCoordGroup" style="display: none;">
+                            <div class="control-group">
+                                <label>Pole Azimuth (°)</label>
+                                <input type="number" id="poleAzimuth" value="0" min="-180" max="180" step="1">
+                                <span class="hint" style="color: var(--text-dim); font-size: 0.7rem;">-180 to +180</span>
+                            </div>
+                            <div class="control-group">
+                                <label>Pole Elevation (°)</label>
+                                <input type="number" id="poleElevation" value="-90" min="-90" max="90" step="1">
+                                <span class="hint" style="color: var(--text-dim); font-size: 0.7rem;">-90 (down) to +90 (up)</span>
+                            </div>
+                        </div>
+
                         <div class="control-group">
                             <label>Arena Model</label>
                             <select id="arenaModel">
@@ -993,15 +999,15 @@
                     <!-- Common grating/sine params -->
                     <div id="gratingParams">
                         <div class="control-group">
-                            <label id="spatialFreqLabel">Wavelength (pixels)</label>
-                            <div style="display: flex; gap: 0.5rem;">
-                                <input type="number" id="spatialFreq" value="20" min="1" max="1000" style="flex: 1;">
+                            <label id="spatialFreqLabel">Spatial Frequency</label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input type="number" id="spatialFreq" value="20" min="1" max="1000" step="0.1" style="flex: 1;">
                                 <select id="spatialFreqUnit" style="width: 80px;">
                                     <option value="px" selected>pixels</option>
-                                    <option value="rad">radians</option>
                                     <option value="deg">degrees</option>
                                 </select>
                             </div>
+                            <span id="spatialFreqConversion" style="color: var(--text-dim); font-size: 0.75rem;">= 36.00°</span>
                         </div>
                         <div class="control-group" id="dutyCycleGroup">
                             <label>Duty Cycle (%)</label>
@@ -1043,8 +1049,15 @@
                     <!-- Motion params (hidden for off/on) -->
                     <div id="motionParams">
                         <div class="control-group">
-                            <label>Step Size (pixels/frame)</label>
-                            <input type="number" id="stepSize" value="1" min="1" max="20">
+                            <label>Step Size (per frame)</label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input type="number" id="stepSize" value="1" min="0.1" max="100" step="0.1" style="flex: 1;">
+                                <select id="stepSizeUnit" style="width: 80px;">
+                                    <option value="px" selected>pixels</option>
+                                    <option value="deg">degrees</option>
+                                </select>
+                            </div>
+                            <span id="stepSizeConversion" style="color: var(--text-dim); font-size: 0.75rem;">= 1.80°</span>
                         </div>
                         <div class="control-group">
                             <label>Direction</label>
@@ -1563,12 +1576,12 @@
             document.getElementById('generateBtn').addEventListener('click', handleGenerate);
             document.getElementById('patternType').addEventListener('change', updatePatternTypeUI);
 
-            // Spherical mode controls
-            document.getElementById('useSpherical').addEventListener('change', () => {
-                updatePatternTypeUI();
-                updateSpatialFreqLabel();
-            });
-            document.getElementById('spatialFreqUnit').addEventListener('change', updateSpatialFreqLabel);
+            // Spherical grating controls
+            document.getElementById('motionType').addEventListener('change', updateMotionTypeUI);
+            document.getElementById('spatialFreqUnit').addEventListener('change', updateConversionDisplays);
+            document.getElementById('spatialFreq').addEventListener('input', updateConversionDisplays);
+            document.getElementById('stepSizeUnit').addEventListener('change', updateConversionDisplays);
+            document.getElementById('stepSize').addEventListener('input', updateConversionDisplays);
 
             // Combine operations - Pattern A
             document.getElementById('setPatternA').addEventListener('click', handleSetPatternA);
@@ -1883,7 +1896,6 @@
             const motionParams = document.getElementById('motionParams');
             const dutyCycleGroup = document.getElementById('dutyCycleGroup');
             const numFramesGroup = document.getElementById('numFramesGroup');
-            const sphericalModeGroup = document.getElementById('sphericalModeGroup');
             const sphericalParams = document.getElementById('sphericalParams');
 
             // Reset visibility
@@ -1891,18 +1903,16 @@
             starfieldParams.style.display = 'none';
             edgeParams.style.display = 'none';
             motionParams.style.display = 'block';
-            sphericalModeGroup.style.display = 'none';
 
-            // Check if spherical mode is available for this pattern type
+            // Spherical params are shown for grating/sine patterns (always, no checkbox)
             const supportsSpherical = ['grating', 'sine'].includes(patternType);
-            sphericalModeGroup.style.display = supportsSpherical ? 'block' : 'none';
+            sphericalParams.style.display = supportsSpherical ? 'block' : 'none';
 
-            // Update spherical params visibility based on checkbox
-            const useSpherical = document.getElementById('useSpherical').checked;
-            sphericalParams.style.display = (supportsSpherical && useSpherical) ? 'block' : 'none';
+            // Update conversion displays
+            updateConversionDisplays();
 
-            // Update spatial frequency label based on mode
-            updateSpatialFreqLabel();
+            // Update motion type UI (pole coords visibility)
+            updateMotionTypeUI();
 
             switch (patternType) {
                 case 'grating':
@@ -1932,44 +1942,103 @@
         }
 
         /**
-         * Update spatial frequency label based on spherical mode
+         * Update motion type UI - show/hide pole coordinate controls
          */
-        function updateSpatialFreqLabel() {
-            const useSpherical = document.getElementById('useSpherical').checked;
-            const label = document.getElementById('spatialFreqLabel');
-            const unitSelect = document.getElementById('spatialFreqUnit');
+        function updateMotionTypeUI() {
+            const motionTypeEl = document.getElementById('motionType');
+            const poleCoordGroup = document.getElementById('poleCoordGroup');
 
-            if (useSpherical) {
-                label.textContent = 'Spatial Frequency';
-                // Show unit selector
-                unitSelect.style.display = 'block';
-            } else {
-                label.textContent = 'Wavelength (pixels)';
-                // Hide unit selector, force pixels
-                unitSelect.style.display = 'none';
-                unitSelect.value = 'px';
+            // Show pole coordinates only for expansion and translation
+            if (motionTypeEl && poleCoordGroup) {
+                const motionType = motionTypeEl.value;
+                const showPole = ['expansion', 'translation'].includes(motionType);
+                poleCoordGroup.style.display = showPole ? 'block' : 'none';
             }
         }
 
         /**
-         * Convert spatial frequency value based on unit selection
+         * Get degrees per pixel based on current arena configuration
+         */
+        function getDegreesPerPixel() {
+            if (!state.arena.config) return 1.8;  // Default for G6 2x10
+            const specs = PANEL_SPECS[state.arena.config.arena.generation];
+            const pixelCols = state.arena.config.arena.num_cols * specs.pixels_per_panel;
+            return 360 / pixelCols;
+        }
+
+        /**
+         * Update conversion displays for spatial frequency and step size
+         */
+        function updateConversionDisplays() {
+            const degPerPx = getDegreesPerPixel();
+
+            // Update spatial frequency conversion
+            const spatFreqEl = document.getElementById('spatialFreq');
+            const spatFreqUnitEl = document.getElementById('spatialFreqUnit');
+            const spatFreqConv = document.getElementById('spatialFreqConversion');
+
+            if (spatFreqEl && spatFreqUnitEl && spatFreqConv) {
+                const spatFreqValue = parseFloat(spatFreqEl.value) || 0;
+                const spatFreqUnit = spatFreqUnitEl.value;
+
+                if (spatFreqUnit === 'px') {
+                    const degrees = (spatFreqValue * degPerPx).toFixed(2);
+                    spatFreqConv.textContent = `= ${degrees}°`;
+                } else {  // degrees
+                    const pixels = (spatFreqValue / degPerPx).toFixed(1);
+                    spatFreqConv.textContent = `= ${pixels} px`;
+                }
+            }
+
+            // Update step size conversion
+            const stepSizeEl = document.getElementById('stepSize');
+            const stepSizeUnitEl = document.getElementById('stepSizeUnit');
+            const stepSizeConv = document.getElementById('stepSizeConversion');
+
+            if (stepSizeEl && stepSizeUnitEl && stepSizeConv) {
+                const stepSizeValue = parseFloat(stepSizeEl.value) || 0;
+                const stepSizeUnit = stepSizeUnitEl.value;
+
+                if (stepSizeUnit === 'px') {
+                    const degrees = (stepSizeValue * degPerPx).toFixed(2);
+                    stepSizeConv.textContent = `= ${degrees}°`;
+                } else {  // degrees
+                    const pixels = (stepSizeValue / degPerPx).toFixed(2);
+                    stepSizeConv.textContent = `= ${pixels} px`;
+                }
+            }
+        }
+
+        /**
+         * Convert spatial frequency value to radians
          * @param {number} value - The input value
-         * @param {string} unit - The unit ('px', 'rad', 'deg')
-         * @param {number} pRad - Radians per pixel for the arena
+         * @param {string} unit - The unit ('px' or 'deg')
          * @returns {number} Spatial frequency in radians
          */
-        function convertSpatialFreqToRadians(value, unit, pRad) {
-            switch (unit) {
-                case 'px':
-                    // Wavelength in pixels -> spatFreq in radians
-                    // wavelength (px) * pRad = wavelength (rad)
-                    return value * pRad;
-                case 'rad':
-                    return value;
-                case 'deg':
-                    return value * Math.PI / 180;
-                default:
-                    return value;
+        function convertSpatialFreqToRadians(value, unit) {
+            const degPerPx = getDegreesPerPixel();
+            const pRad = degPerPx * Math.PI / 180;  // radians per pixel
+
+            if (unit === 'px') {
+                // Wavelength in pixels -> spatFreq in radians
+                return value * pRad;
+            } else {  // degrees
+                return value * Math.PI / 180;
+            }
+        }
+
+        /**
+         * Convert step size value to pixels
+         * @param {number} value - The input value
+         * @param {string} unit - The unit ('px' or 'deg')
+         * @returns {number} Step size in pixels
+         */
+        function convertStepSizeToPixels(value, unit) {
+            if (unit === 'px') {
+                return value;
+            } else {  // degrees
+                const degPerPx = getDegreesPerPixel();
+                return value / degPerPx;
             }
         }
 
@@ -2014,104 +2083,103 @@
             let pattern;
             let filename;
 
-            // Check if spherical mode is enabled
-            const useSpherical = document.getElementById('useSpherical').checked &&
-                                 ['grating', 'sine'].includes(patternType);
-
             try {
                 switch (patternType) {
-                    case 'grating':
-                        if (useSpherical) {
-                            // Spherical mode parameters
-                            const spatialFreqValue = parseFloat(document.getElementById('spatialFreq').value);
-                            const spatialFreqUnit = document.getElementById('spatialFreqUnit').value;
-                            const specs = PANEL_SPECS[config.arena.generation];
-                            const pRad = (2 * Math.PI) / (config.arena.num_cols * specs.pixels_per_panel);
+                    case 'grating': {
+                        // Spherical grating generation (always uses proper 3D geometry)
+                        const spatialFreqValue = parseFloat(document.getElementById('spatialFreq').value);
+                        const spatialFreqUnit = document.getElementById('spatialFreqUnit').value;
+                        const stepSizeValue = parseFloat(document.getElementById('stepSize').value);
+                        const stepSizeUnit = document.getElementById('stepSizeUnit').value;
+                        const motionType = document.getElementById('motionType').value;
 
-                            params.spatFreq = convertSpatialFreqToRadians(spatialFreqValue, spatialFreqUnit, pRad);
-                            params.motionType = document.getElementById('motionType').value;
-                            params.waveform = 'square';
-                            params.dutyCycle = parseInt(document.getElementById('dutyCycle').value);
-                            params.direction = document.getElementById('direction').value;
-                            params.stepSize = parseInt(document.getElementById('stepSize').value);
-                            params.aaSamples = parseInt(document.getElementById('aaSamples').value);
-                            params.arenaModel = document.getElementById('arenaModel').value;
-                            params.poleCoord = [0, 0];  // Default pole at north
+                        params.spatFreq = convertSpatialFreqToRadians(spatialFreqValue, spatialFreqUnit);
+                        params.motionType = motionType;
+                        params.waveform = 'square';
+                        params.dutyCycle = parseInt(document.getElementById('dutyCycle').value);
+                        params.direction = document.getElementById('direction').value;
+                        params.stepSize = convertStepSizeToPixels(stepSizeValue, stepSizeUnit);
+                        params.aaSamples = parseInt(document.getElementById('aaSamples').value);
+                        params.arenaModel = document.getElementById('arenaModel').value;
 
-                            pattern = PatternGenerator.generateSphericalGrating(params, arena);
-
-                            // Generate filename
-                            const freqStr = spatialFreqUnit === 'px' ? `${spatialFreqValue}px` :
-                                           spatialFreqUnit === 'rad' ? `${spatialFreqValue.toFixed(2)}rad` :
-                                           `${spatialFreqValue}deg`;
-                            filename = `sph_grating_${params.motionType}_${freqStr}_${params.dutyCycle}pct.pat`;
+                        // Get pole coordinates (for expansion/translation)
+                        if (['expansion', 'translation'].includes(motionType)) {
+                            const poleAzimuth = parseFloat(document.getElementById('poleAzimuth').value) || 0;
+                            const poleElevation = parseFloat(document.getElementById('poleElevation').value) || -90;
+                            params.poleCoord = [poleAzimuth * Math.PI / 180, poleElevation * Math.PI / 180];
                         } else {
-                            // Legacy flat mode
-                            params.wavelength = parseInt(document.getElementById('spatialFreq').value);
-                            params.dutyCycle = parseInt(document.getElementById('dutyCycle').value);
-                            params.direction = document.getElementById('direction').value;
-                            params.stepSize = parseInt(document.getElementById('stepSize').value);
-                            pattern = PatternGenerator.generateGrating(params, arena);
-                            filename = `grating_${params.wavelength}px_${params.dutyCycle}pct.pat`;
+                            params.poleCoord = [0, 0];  // Default for rotation
                         }
+
+                        pattern = PatternGenerator.generateSphericalGrating(params, arena);
+
+                        // Generate filename
+                        const freqStr = spatialFreqUnit === 'px' ? `${spatialFreqValue}px` : `${spatialFreqValue}deg`;
+                        filename = `grating_${motionType}_${freqStr}_${params.dutyCycle}pct.pat`;
                         break;
+                    }
 
-                    case 'sine':
-                        if (useSpherical) {
-                            // Spherical mode parameters
-                            const spatialFreqValue = parseFloat(document.getElementById('spatialFreq').value);
-                            const spatialFreqUnit = document.getElementById('spatialFreqUnit').value;
-                            const specs = PANEL_SPECS[config.arena.generation];
-                            const pRad = (2 * Math.PI) / (config.arena.num_cols * specs.pixels_per_panel);
+                    case 'sine': {
+                        // Spherical sine grating generation (always uses proper 3D geometry)
+                        const spatialFreqValue = parseFloat(document.getElementById('spatialFreq').value);
+                        const spatialFreqUnit = document.getElementById('spatialFreqUnit').value;
+                        const stepSizeValue = parseFloat(document.getElementById('stepSize').value);
+                        const stepSizeUnit = document.getElementById('stepSizeUnit').value;
+                        const motionType = document.getElementById('motionType').value;
 
-                            params.spatFreq = convertSpatialFreqToRadians(spatialFreqValue, spatialFreqUnit, pRad);
-                            params.motionType = document.getElementById('motionType').value;
-                            params.waveform = 'sine';
-                            params.direction = document.getElementById('direction').value;
-                            params.stepSize = parseInt(document.getElementById('stepSize').value);
-                            params.aaSamples = parseInt(document.getElementById('aaSamples').value);
-                            params.arenaModel = document.getElementById('arenaModel').value;
-                            params.poleCoord = [0, 0];  // Default pole at north
+                        params.spatFreq = convertSpatialFreqToRadians(spatialFreqValue, spatialFreqUnit);
+                        params.motionType = motionType;
+                        params.waveform = 'sine';
+                        params.direction = document.getElementById('direction').value;
+                        params.stepSize = convertStepSizeToPixels(stepSizeValue, stepSizeUnit);
+                        params.aaSamples = parseInt(document.getElementById('aaSamples').value);
+                        params.arenaModel = document.getElementById('arenaModel').value;
 
-                            pattern = PatternGenerator.generateSphericalGrating(params, arena);
-
-                            // Generate filename
-                            const freqStr = spatialFreqUnit === 'px' ? `${spatialFreqValue}px` :
-                                           spatialFreqUnit === 'rad' ? `${spatialFreqValue.toFixed(2)}rad` :
-                                           `${spatialFreqValue}deg`;
-                            filename = `sph_sine_${params.motionType}_${freqStr}.pat`;
+                        // Get pole coordinates (for expansion/translation)
+                        if (['expansion', 'translation'].includes(motionType)) {
+                            const poleAzimuth = parseFloat(document.getElementById('poleAzimuth').value) || 0;
+                            const poleElevation = parseFloat(document.getElementById('poleElevation').value) || -90;
+                            params.poleCoord = [poleAzimuth * Math.PI / 180, poleElevation * Math.PI / 180];
                         } else {
-                            // Legacy flat mode
-                            params.wavelength = parseInt(document.getElementById('spatialFreq').value);
-                            params.direction = document.getElementById('direction').value;
-                            params.stepSize = parseInt(document.getElementById('stepSize').value);
-                            pattern = PatternGenerator.generateSine(params, arena);
-                            filename = `sine_${params.wavelength}px.pat`;
+                            params.poleCoord = [0, 0];  // Default for rotation
                         }
-                        break;
 
-                    case 'starfield':
+                        pattern = PatternGenerator.generateSphericalGrating(params, arena);
+
+                        // Generate filename
+                        const freqStr = spatialFreqUnit === 'px' ? `${spatialFreqValue}px` : `${spatialFreqValue}deg`;
+                        filename = `sine_${motionType}_${freqStr}.pat`;
+                        break;
+                    }
+
+                    case 'starfield': {
+                        const stepSizeValue = parseFloat(document.getElementById('stepSize').value);
+                        const stepSizeUnit = document.getElementById('stepSizeUnit').value;
                         params.dotCount = parseInt(document.getElementById('dotCount').value);
                         params.dotSize = parseInt(document.getElementById('dotSize').value);
                         params.seed = parseInt(document.getElementById('starfieldSeed').value);
                         params.brightness = highLevel;
                         params.background = lowLevel;
                         params.direction = document.getElementById('direction').value;
-                        params.stepSize = parseInt(document.getElementById('stepSize').value);
+                        params.stepSize = convertStepSizeToPixels(stepSizeValue, stepSizeUnit);
                         params.numFrames = parseInt(document.getElementById('numFramesInput').value);
                         pattern = PatternGenerator.generateStarfield(params, arena);
                         filename = `starfield_${params.dotCount}dots_${params.numFrames}f.pat`;
                         break;
+                    }
 
-                    case 'edge':
+                    case 'edge': {
+                        const stepSizeValue = parseFloat(document.getElementById('stepSize').value);
+                        const stepSizeUnit = document.getElementById('stepSizeUnit').value;
                         params.edgePosition = parseFloat(document.getElementById('edgePosition').value);
                         params.polarity = document.getElementById('edgePolarity').value;
                         params.direction = document.getElementById('direction').value;
-                        params.stepSize = parseInt(document.getElementById('stepSize').value);
+                        params.stepSize = convertStepSizeToPixels(stepSizeValue, stepSizeUnit);
                         params.numFrames = parseInt(document.getElementById('numFramesInput').value);
                         pattern = PatternGenerator.generateEdge(params, arena);
                         filename = `edge_${params.polarity}_${params.numFrames}f.pat`;
                         break;
+                    }
 
                     case 'off-on':
                         pattern = PatternGenerator.generateOffOn(params, arena);
