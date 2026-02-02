@@ -348,11 +348,14 @@ The following UI improvements were made on 2026-02-02 and need testing on GitHub
    - [ ] Frame Animation: Save .pat downloads file
    - [ ] Image tab shows placeholder
 
-2. **Icon Generator v0.8**:
-   - [ ] No arena dropdown visible
-   - [ ] Loading `G6_2x10_*.pat` file shows "✓ Detected: G6 (2×10)"
-   - [ ] Loading file without arena in name shows error
-   - [ ] Test patterns still work (use G6_2x10 default)
+2. **Icon Generator v0.9** (was v0.8):
+   - [x] No arena dropdown visible (removed)
+   - [x] Loading `G6_2x10_*.pat` file shows "✓ Detected: G6 (2×10)"
+   - [x] Loading file without arena in name shows error AND manual dropdown
+   - [x] Manual arena dropdown allows selection when auto-detect fails
+   - [ ] "Select Folder..." button opens folder picker
+   - [ ] Selecting folder with .pat files loads them with arena from folder name
+   - [x] Test patterns still work (use G6_2x10 default)
 
 **GitHub Issue:** [#6 - additional web tools for making patterns](https://github.com/reiserlab/webDisplayTools/issues/6)
 
