@@ -327,7 +327,30 @@ This plan covers:
 - Frame clipboard for capturing and sequencing frames
 - 7 implementation phases over ~6-7 weeks
 
-**Current status:** Streams A-H complete. All major features implemented: Grid/Edit mode, 3D viewer, pattern generation, frame clipboard, sequence builder, pattern combiner. Pending: MATLAB reference validation, manual testing, polish.
+**Current status:** Pattern Editor v0.9 complete. All major features implemented: Grid/Edit mode, 3D viewer, pattern generation, tabbed clipboard (frames/patterns), frame animation mode, sequence builder, pattern combiner. Pending: MATLAB reference validation, manual testing, polish.
+
+### Testing Required (Next Session)
+
+The following UI improvements were made on 2026-02-02 and need testing on GitHub Pages:
+
+1. **Pattern Editor v0.9**:
+   - [ ] GENERATE button visually larger and bolder
+   - [ ] Clipboard tabs switch between Frames and Patterns view
+   - [ ] "↓ Frame" capture button works, switches to Frames tab
+   - [ ] "↓ Pat" capture button works, switches to Patterns tab
+   - [ ] Clipboard clears when arena dropdown changes
+   - [ ] Clipboard clears when arena unlocked (with confirmation)
+   - [ ] Animate tab mode toggle works (Frame Shifting vs Frame Animation)
+   - [ ] Frame Animation: "Add All Clipboard Frames" populates sequence
+   - [ ] Frame Animation: Preview button generates pattern
+   - [ ] Frame Animation: Save .pat downloads file
+   - [ ] Image tab shows placeholder
+
+2. **Icon Generator v0.8**:
+   - [ ] No arena dropdown visible
+   - [ ] Loading `G6_2x10_*.pat` file shows "✓ Detected: G6 (2×10)"
+   - [ ] Loading file without arena in name shows error
+   - [ ] Test patterns still work (use G6_2x10 default)
 
 **GitHub Issue:** [#6 - additional web tools for making patterns](https://github.com/reiserlab/webDisplayTools/issues/6)
 
