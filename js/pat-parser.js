@@ -576,7 +576,7 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = PatParser;
 }
 
-// Export for browser (global)
+// Export for browser (global) - for <script> tags (icon generator)
 if (typeof window !== 'undefined') {
     window.PatParser = PatParser;
 }
