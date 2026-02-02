@@ -13,7 +13,17 @@
             }
         }
     </script>
-    <script src="js/arena-configs.js"></script>
+    <!-- arena-configs.js loaded as ES6 module to support dual-export pattern -->
+    <script type="module">
+        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration } from './js/arena-configs.js';
+        // Make available globally for other scripts
+        window.STANDARD_CONFIGS = STANDARD_CONFIGS;
+        window.PANEL_SPECS = PANEL_SPECS;
+        window.getConfig = getConfig;
+        window.getConfigsByGeneration = getConfigsByGeneration;
+        // Signal that arena configs are loaded
+        window.dispatchEvent(new Event('arenaConfigsLoaded'));
+    </script>
     <script src="js/pat-encoder.js"></script>
     <script src="js/arena-geometry.js"></script>
     <script src="js/pattern-editor/tools/generator.js"></script>
@@ -1025,7 +1035,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.7 | 2026-02-02 12:30 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.7 | 2026-02-02 13:25 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -4013,28 +4023,14 @@
             }
         }
 
-        // ============================================
-        // Helper: Get configs grouped by generation
-        // ============================================
-        function getConfigsByGeneration() {
-            const grouped = {};
-            for (const name of Object.keys(STANDARD_CONFIGS)) {
-                const config = STANDARD_CONFIGS[name];
-                const gen = config.arena.generation;
-                if (!grouped[gen]) grouped[gen] = [];
-                grouped[gen].push(name);
-            }
-            return grouped;
-        }
-
-        function getConfig(name) {
-            return STANDARD_CONFIGS[name] || null;
-        }
+        // Note: getConfigsByGeneration() and getConfig() are provided by arena-configs.js
+        // getConfigsByGeneration() returns arrays of { name, label, description, arena } objects
+        // getConfig(name) returns the full config object for a given name
 
         // ============================================
         // Initialize
         // ============================================
-        document.addEventListener('DOMContentLoaded', () => {
+        function initializeApp() {
             initUI();
             updateClipboardUI();
             updateDefaultFrames();  // Set initial frames based on default arena
@@ -4051,6 +4047,26 @@
                     }
                 }, 100);  // Debounce for smoother resizing
             });
+        }
+
+        // Wait for both DOM and arena configs (loaded as ES6 module) to be ready
+        let domReady = false;
+        let configsReady = typeof STANDARD_CONFIGS !== 'undefined';
+
+        function tryInitialize() {
+            if (domReady && configsReady) {
+                initializeApp();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            domReady = true;
+            tryInitialize();
+        });
+
+        window.addEventListener('arenaConfigsLoaded', () => {
+            configsReady = true;
+            tryInitialize();
         });
     </script>
 </body>
