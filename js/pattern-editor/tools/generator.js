@@ -336,7 +336,8 @@ const PatternGenerator = {
             stepSize = 1,
             aaSamples = 1,
             arenaModel = 'smooth',
-            gsMode = 16
+            gsMode = 16,
+            phaseShift = 0  // Phase shift as percentage of wavelength (0-100%)
         } = params;
 
         const dims = this.getArenaDimensions(arena);
@@ -418,9 +419,12 @@ const PatternGenerator = {
         const frames = [];
         const stretchValues = [];
 
+        // Initial phase shift: percentage of spatial frequency (wavelength) converted to radians
+        const initialPhase = (phaseShift / 100) * spatFreq;
+
         for (let f = 0; f < numFrames; f++) {
             const frame = this.createEmptyFrame(pixelRows, pixelCols);
-            const phaseOffset = f * trueStepSize;
+            const phaseOffset = initialPhase + f * trueStepSize;
 
             for (let row = 0; row < pixelRows; row++) {
                 for (let col = 0; col < pixelCols; col++) {
@@ -531,7 +535,12 @@ const PatternGenerator = {
             motionType = 'rotation',
             poleCoord = [0, 0],
             stepSize = 1,
-            arenaModel = 'smooth'
+            arenaModel = 'smooth',
+            // Advanced options (MATLAB parity)
+            dotBrightnessMode = 'fixed',    // 'fixed', 'random-spread', 'random-binary'
+            dotSizeMode = 'static',          // 'static', 'distance'
+            dotOcclusion = 'closest',        // 'closest', 'sum', 'mean'
+            snapDots = true                  // Snap dots to pixel grid
         } = params;
 
         const dims = this.getArenaDimensions(arena);
@@ -583,7 +592,23 @@ const PatternGenerator = {
             const phi = Math.atan2(y, x);
             const theta = Math.acos(z);
 
-            dots.push({ phi, theta, rho: 1 });
+            // Determine dot brightness based on mode
+            let dotBrightness;
+            if (dotBrightnessMode === 'fixed') {
+                dotBrightness = brightness;
+            } else if (dotBrightnessMode === 'random-spread') {
+                dotBrightness = Math.floor(random() * (brightness + 1));
+            } else if (dotBrightnessMode === 'random-binary') {
+                dotBrightness = random() > 0.5 ? brightness : 0;
+            } else {
+                dotBrightness = brightness;
+            }
+
+            // Store distance from center (for distance-relative size mode)
+            // Distance is based on theta (angular distance from pole)
+            const distance = Math.abs(theta - Math.PI / 2) / (Math.PI / 2);  // 0 at equator, 1 at poles
+
+            dots.push({ phi, theta, rho: 1, brightness: dotBrightness, distance });
         }
 
         const frames = [];
@@ -596,6 +621,14 @@ const PatternGenerator = {
             if (background > 0) {
                 frame.fill(background);
             }
+
+            // For occlusion tracking (closest mode)
+            const closestDistance = dotOcclusion === 'closest' ?
+                new Float32Array(pixelRows * pixelCols).fill(Infinity) : null;
+
+            // For mean occlusion (need to track count and sum)
+            const pixelCount = dotOcclusion === 'mean' ?
+                new Uint8Array(pixelRows * pixelCols) : null;
 
             // Calculate dot positions for this frame
             for (const dot of dots) {
@@ -656,31 +689,71 @@ const PatternGenerator = {
 
                 // Convert to pixel coordinates
                 // Azimuth maps to columns (centered at 0)
-                const pixelCol = Math.round((dotAzimuth / (2 * Math.PI) + 0.5) * pixelCols) % pixelCols;
+                let pixelColFloat = (dotAzimuth / (2 * Math.PI) + 0.5) * pixelCols;
+                let pixelCol = snapDots ? Math.round(pixelColFloat) : Math.floor(pixelColFloat);
+                pixelCol = pixelCol % pixelCols;
 
                 // Elevation maps to rows (centered at equator)
                 const elevationRange = Math.PI * rows * panelSize / (cols * panelSize);  // Approximate vertical FOV
-                const pixelRow = Math.round((dotElevation / elevationRange + 0.5) * pixelRows);
+                let pixelRowFloat = (dotElevation / elevationRange + 0.5) * pixelRows;
+                let pixelRow = snapDots ? Math.round(pixelRowFloat) : Math.floor(pixelRowFloat);
 
                 // Check if dot is visible
                 if (pixelRow >= 0 && pixelRow < pixelRows) {
                     const wrappedCol = ((pixelCol % pixelCols) + pixelCols) % pixelCols;
 
+                    // Calculate dot radius based on size mode
+                    let effectiveSize = dotSize;
+                    if (dotSizeMode === 'distance') {
+                        // Distance-relative: closer dots (lower theta) appear larger
+                        effectiveSize = Math.max(1, Math.round(dotSize * (1 + (1 - dot.distance))));
+                    }
+
+                    // Draw dot with brightness and occlusion handling
+                    const drawPixel = (r, c, val) => {
+                        const idx = r * pixelCols + c;
+                        if (dotOcclusion === 'sum') {
+                            // Sum brightness (clamp to max)
+                            const maxVal = gsMode === 2 ? 1 : 15;
+                            frame[idx] = Math.min(frame[idx] + val, maxVal);
+                        } else if (dotOcclusion === 'mean') {
+                            // Accumulate for mean
+                            frame[idx] += val;
+                            pixelCount[idx]++;
+                        } else {
+                            // Closest wins (default) - use stored distance
+                            if (dot.distance < closestDistance[idx]) {
+                                frame[idx] = val;
+                                closestDistance[idx] = dot.distance;
+                            }
+                        }
+                    };
+
                     // Draw dot
-                    if (dotSize <= 1) {
-                        this.setPixel(frame, pixelRow, wrappedCol, brightness, pixelCols);
+                    if (effectiveSize <= 1) {
+                        drawPixel(pixelRow, wrappedCol, dot.brightness);
                     } else {
                         // Draw filled circle
-                        for (let dy = -dotSize; dy <= dotSize; dy++) {
-                            for (let dx = -dotSize; dx <= dotSize; dx++) {
-                                if (dx * dx + dy * dy <= dotSize * dotSize) {
+                        for (let dy = -effectiveSize; dy <= effectiveSize; dy++) {
+                            for (let dx = -effectiveSize; dx <= effectiveSize; dx++) {
+                                if (dx * dx + dy * dy <= effectiveSize * effectiveSize) {
                                     const r = pixelRow + dy;
                                     if (r >= 0 && r < pixelRows) {
-                                        this.setPixel(frame, r, wrappedCol + dx, brightness, pixelCols);
+                                        const c = ((wrappedCol + dx) % pixelCols + pixelCols) % pixelCols;
+                                        drawPixel(r, c, dot.brightness);
                                     }
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // If using mean occlusion, divide accumulated values by count
+            if (dotOcclusion === 'mean' && pixelCount) {
+                for (let i = 0; i < frame.length; i++) {
+                    if (pixelCount[i] > 0) {
+                        frame[i] = Math.round(frame[i] / pixelCount[i]);
                     }
                 }
             }
@@ -738,7 +811,8 @@ const PatternGenerator = {
             numFrames: requestedFrames,
             aaSamples = 1,
             arenaModel = 'smooth',
-            gsMode = 16
+            gsMode = 16,
+            phaseShift = 0  // Phase shift as percentage of wavelength (0-100%)
         } = params;
 
         const dims = this.getArenaDimensions(arena);
@@ -803,6 +877,9 @@ const PatternGenerator = {
         const frames = [];
         const stretchValues = [];
 
+        // Initial phase shift: percentage of spatial frequency (wavelength) converted to radians
+        const initialPhase = (phaseShift / 100) * spatFreq;
+
         // MATLAB: duty_cycle = 0:100/(num_frames-1):100
         // Duty cycle sweeps from 0% to 100% across frames
         for (let f = 0; f < numFrames; f++) {
@@ -817,13 +894,13 @@ const PatternGenerator = {
                         // Average multiple samples for anti-aliasing
                         let sum = 0;
                         for (let s = 0; s < aaSamples; s++) {
-                            const c = samples[row][col][s];
+                            const c = samples[row][col][s] + initialPhase;
                             sum += this._evaluateWaveform(c, spatFreq, dutyCycle, 'square', high, low);
                         }
                         value = Math.round(sum / aaSamples);
                     } else {
                         // Single sample (no AA)
-                        const c = coord[row][col];
+                        const c = coord[row][col] + initialPhase;
                         value = this._evaluateWaveform(c, spatFreq, dutyCycle, 'square', high, low);
                     }
 

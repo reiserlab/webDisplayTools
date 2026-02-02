@@ -65,6 +65,43 @@
             overflow: hidden;
         }
 
+        /* Generate Button Column - between tools and viewer */
+        .generate-column {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 8px 4px;
+            background: var(--bg);
+            border-right: 1px solid var(--border);
+        }
+
+        .generate-btn-vertical {
+            writing-mode: vertical-lr;
+            text-orientation: mixed;
+            padding: 16px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background-color 0.15s ease;
+        }
+
+        .generate-btn-vertical:hover {
+            background: var(--hover);
+        }
+
+        .generate-btn-vertical .arrow {
+            display: block;
+            margin-top: 8px;
+            font-size: 14px;
+        }
+
         /* Left Panel - Tools */
         .tools-panel {
             width: 320px;
@@ -180,68 +217,56 @@
             border-color: var(--accent);
         }
 
-        /* Frame Clipboard */
-        .clipboard-section {
-            border-top: 1px solid var(--border);
-            padding: 1rem 1.25rem;
-            background: var(--bg);
-        }
-
-        .clipboard-header {
+        /* Frame Clipboard - Full Width Horizontal Bar */
+        .clipboard-bar {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: 0.75rem;
+            gap: 12px;
+            padding: 8px 16px;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
         }
 
-        .clipboard-header h3 {
-            font-size: 0.65rem;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
+        .clipboard-label {
             color: var(--text-dim);
+            font-size: 11px;
             font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
         }
 
         .clipboard-count {
-            font-size: 0.7rem;
+            font-size: 11px;
             color: var(--accent);
-        }
-
-        .clipboard-frames {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
-
-        .clipboard-scroll-btn {
-            width: 24px;
-            height: 40px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            color: var(--text-dim);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.8rem;
-        }
-
-        .clipboard-scroll-btn:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        .clipboard-scroll-btn:disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
+            white-space: nowrap;
         }
 
         .clipboard-thumbnails {
-            display: flex;
-            gap: 0.4rem;
             flex: 1;
-            overflow: hidden;
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;  /* Native horizontal scroll */
+            padding: 4px 0;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+
+        .clipboard-thumbnails::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .clipboard-thumbnails::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .clipboard-thumbnails::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .clipboard-thumbnails::-webkit-scrollbar-thumb:hover {
+            background: var(--text-dim);
         }
 
         .clipboard-thumb {
@@ -275,12 +300,11 @@
         }
 
         .clipboard-empty {
-            flex: 1;
-            text-align: center;
-            padding: 0.75rem;
             color: var(--text-dim);
-            font-size: 0.7rem;
+            font-size: 11px;
             font-style: italic;
+            padding: 8px 0;
+            white-space: nowrap;
         }
 
         /* File Operations */
@@ -918,7 +942,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.4 | 2026-02-01 17:43 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.5 | 2026-02-01 19:15 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1016,6 +1040,11 @@
                             <label>Duty Cycle (%)</label>
                             <input type="number" id="dutyCycle" value="50" min="1" max="99">
                         </div>
+                        <div class="control-group" id="phaseShiftGroup">
+                            <label>Phase Shift (% of wavelength)</label>
+                            <input type="number" id="phaseShift" value="0" min="0" max="100" step="1">
+                            <span style="color: var(--text-dim); font-size: 0.7rem;">0-100% shifts starting position</span>
+                        </div>
                     </div>
 
                     <!-- Starfield params -->
@@ -1034,6 +1063,36 @@
                         <div class="control-group">
                             <label>Random Seed</label>
                             <input type="number" id="starfieldSeed" value="12345" min="1">
+                        </div>
+
+                        <!-- Advanced Starfield Options (MATLAB parity) -->
+                        <div class="section-title" style="margin-top: 0.75rem;">Advanced Options</div>
+                        <div class="control-group">
+                            <label>Dot Brightness</label>
+                            <select id="dotBrightnessMode">
+                                <option value="fixed" selected>Fixed (all same)</option>
+                                <option value="random-spread">Random spread (0 to high)</option>
+                                <option value="random-binary">Random binary (0 or high)</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label>Dot Size Mode</label>
+                            <select id="dotSizeMode">
+                                <option value="static" selected>Static (all same size)</option>
+                                <option value="distance">Distance-relative (closer = larger)</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label>Dot Overlap</label>
+                            <select id="dotOcclusion">
+                                <option value="closest" selected>Closest wins</option>
+                                <option value="sum">Sum brightness</option>
+                                <option value="mean">Average brightness</option>
+                            </select>
+                        </div>
+                        <div class="control-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                            <input type="checkbox" id="snapDots" checked>
+                            <label for="snapDots" style="margin: 0;">Snap dots to pixel grid</label>
                         </div>
                     </div>
 
@@ -1057,6 +1116,7 @@
                                 </select>
                             </div>
                             <span id="stepSizeConversion" style="color: var(--text-dim); font-size: 0.75rem;">= 1.80°</span>
+                            <span id="frameCountPreview" style="color: var(--accent); font-size: 0.75rem; margin-left: 0.5rem;">(200 frames)</span>
                         </div>
                         <div class="control-group" id="numFramesGroup">
                             <label>Number of Frames <span id="numFramesHint" style="color: var(--text-dim); font-size: 0.7rem;"></span></label>
@@ -1080,8 +1140,6 @@
                         <label>Low Level</label>
                         <input type="number" id="lowLevel" value="0" min="0" max="15">
                     </div>
-
-                    <button class="btn" id="generateBtn" style="margin-top: 1rem;">Generate Pattern →</button>
                 </div>
 
                 <!-- Frame to Pattern Tab -->
@@ -1184,21 +1242,6 @@
                 </div>
             </div>
 
-            <!-- Frame Clipboard -->
-            <div class="clipboard-section">
-                <div class="clipboard-header">
-                    <h3>Frame Clipboard</h3>
-                    <span class="clipboard-count" id="clipboardCount">0 frames</span>
-                </div>
-                <div class="clipboard-frames">
-                    <button class="clipboard-scroll-btn" id="clipboardPrev" disabled>◀</button>
-                    <div class="clipboard-thumbnails" id="clipboardThumbnails">
-                        <div class="clipboard-empty">Capture frames to build sequences</div>
-                    </div>
-                    <button class="clipboard-scroll-btn" id="clipboardNext" disabled>▶</button>
-                </div>
-            </div>
-
             <!-- File Operations -->
             <div class="file-operations">
                 <div class="file-buttons">
@@ -1207,6 +1250,14 @@
                     <button class="btn secondary" id="newBtn">New</button>
                 </div>
             </div>
+        </div>
+
+        <!-- Generate Column - between tools and viewer -->
+        <div class="generate-column">
+            <button id="generateBtn" class="generate-btn-vertical">
+                <span>GENERATE</span>
+                <span class="arrow">→</span>
+            </button>
         </div>
 
         <!-- Right Panel: Viewer -->
@@ -1314,7 +1365,16 @@
                     <option value="30">30 FPS</option>
                 </select>
 
-                <button class="capture-btn" id="captureBtn">← Capture Frame</button>
+                <button class="capture-btn" id="captureBtn">↓ Capture Frame</button>
+            </div>
+
+            <!-- Frame Clipboard - Full Width Horizontal Bar -->
+            <div class="clipboard-bar">
+                <span class="clipboard-label">Clipboard:</span>
+                <div class="clipboard-thumbnails" id="clipboardThumbnails">
+                    <span class="clipboard-empty">Capture frames to build sequences</span>
+                </div>
+                <span class="clipboard-count" id="clipboardCount">0 frames</span>
             </div>
         </div>
     </div>
@@ -1601,10 +1661,6 @@
             // Direction change updates default frames
             document.getElementById('rotateDirection').addEventListener('change', updateDefaultFrames);
 
-            // Clipboard scroll buttons
-            document.getElementById('clipboardPrev').addEventListener('click', () => scrollClipboard(-1));
-            document.getElementById('clipboardNext').addEventListener('click', () => scrollClipboard(1));
-
             // Stretch value input
             document.getElementById('stretchValue').addEventListener('change', handleStretchChange);
 
@@ -1887,6 +1943,7 @@
             const edgeParams = document.getElementById('edgeParams');
             const motionParams = document.getElementById('motionParams');
             const dutyCycleGroup = document.getElementById('dutyCycleGroup');
+            const phaseShiftGroup = document.getElementById('phaseShiftGroup');
             const numFramesGroup = document.getElementById('numFramesGroup');
             const sphericalParams = document.getElementById('sphericalParams');
 
@@ -1910,15 +1967,18 @@
                 case 'grating':
                     gratingParams.style.display = 'block';
                     dutyCycleGroup.style.display = 'block';
+                    phaseShiftGroup.style.display = 'block';
                     numFramesGroup.style.display = 'none';  // Auto-calculated from wavelength
                     break;
                 case 'sine':
                     gratingParams.style.display = 'block';
                     dutyCycleGroup.style.display = 'none';  // No duty cycle for sine
+                    phaseShiftGroup.style.display = 'block';
                     numFramesGroup.style.display = 'none';  // Auto-calculated from wavelength
                     break;
                 case 'starfield':
                     starfieldParams.style.display = 'block';
+                    phaseShiftGroup.style.display = 'none';  // No phase shift for starfield
                     numFramesGroup.style.display = 'block';
                     updateNumFramesDefault();
                     break;
@@ -1926,11 +1986,12 @@
                     edgeParams.style.display = 'block';
                     gratingParams.style.display = 'block';  // Show spatial freq for edge
                     dutyCycleGroup.style.display = 'none';  // No duty cycle (edge sweeps 0-100%)
-                    numFramesGroup.style.display = 'block';
-                    updateNumFramesDefault();
+                    phaseShiftGroup.style.display = 'block';
+                    numFramesGroup.style.display = 'none';  // Auto-calculated from wavelength (MATLAB parity)
                     break;
                 case 'off-on':
                     motionParams.style.display = 'none';  // No motion for off/on
+                    phaseShiftGroup.style.display = 'none';  // No phase shift for off/on
                     break;
             }
         }
@@ -1995,6 +2056,62 @@
                     stepSizeConv.textContent = `= ${pixels} px`;
                 }
             }
+
+            // Update live frame count preview
+            updateFrameCountPreview();
+        }
+
+        /**
+         * Update the live frame count preview based on current settings
+         * Shows how many frames will be generated for patterns that auto-calculate frame count
+         */
+        function updateFrameCountPreview() {
+            const framePreviewEl = document.getElementById('frameCountPreview');
+            if (!framePreviewEl) return;
+
+            const patternType = document.getElementById('patternType').value;
+
+            // Only show frame count for patterns that auto-calculate frames
+            if (!['grating', 'sine', 'edge'].includes(patternType)) {
+                framePreviewEl.style.display = 'none';
+                return;
+            }
+
+            framePreviewEl.style.display = 'inline';
+
+            // Get step size in pixels
+            const stepSizeValue = parseFloat(document.getElementById('stepSize').value) || 1;
+            const stepSizeUnit = document.getElementById('stepSizeUnit').value;
+            const stepSizePixels = convertStepSizeToPixels(stepSizeValue, stepSizeUnit);
+
+            // Get wavelength for grating/sine, or total pixels for edge
+            let numFrames;
+            if (patternType === 'edge') {
+                // Edge: frames = total azimuth pixels / step size
+                if (!state.arena.config) {
+                    numFrames = 200;  // Default
+                } else {
+                    const specs = PANEL_SPECS[state.arena.config.arena.generation];
+                    const totalPixels = state.arena.config.arena.num_cols * specs.pixels_per_panel;
+                    numFrames = Math.ceil(totalPixels / stepSizePixels);
+                }
+            } else {
+                // Grating/Sine: frames = wavelength / step size
+                const spatFreqValue = parseFloat(document.getElementById('spatialFreq').value) || 20;
+                const spatFreqUnit = document.getElementById('spatialFreqUnit').value;
+
+                let wavelengthPixels;
+                if (spatFreqUnit === 'px') {
+                    wavelengthPixels = spatFreqValue;
+                } else {  // degrees
+                    const degPerPx = getDegreesPerPixel();
+                    wavelengthPixels = spatFreqValue / degPerPx;
+                }
+
+                numFrames = Math.ceil(wavelengthPixels / stepSizePixels);
+            }
+
+            framePreviewEl.textContent = `(${numFrames} frames)`;
         }
 
         /**
@@ -2089,6 +2206,9 @@
                         params.aaSamples = parseInt(document.getElementById('aaSamples').value);
                         params.arenaModel = document.getElementById('arenaModel').value;
 
+                        // Phase shift as percentage of wavelength (0-100%)
+                        params.phaseShift = parseFloat(document.getElementById('phaseShift').value) || 0;
+
                         // Get pole coordinates (used for ALL motion types - determines direction)
                         const poleAzimuth = parseFloat(document.getElementById('poleAzimuth').value) || 0;
                         const poleElevation = parseFloat(document.getElementById('poleElevation').value) || -90;
@@ -2116,6 +2236,9 @@
                         params.stepSize = convertStepSizeToPixels(stepSizeValue, stepSizeUnit);
                         params.aaSamples = parseInt(document.getElementById('aaSamples').value);
                         params.arenaModel = document.getElementById('arenaModel').value;
+
+                        // Phase shift as percentage of wavelength (0-100%)
+                        params.phaseShift = parseFloat(document.getElementById('phaseShift').value) || 0;
 
                         // Get pole coordinates (used for ALL motion types - determines direction)
                         const poleAzimuthSine = parseFloat(document.getElementById('poleAzimuth').value) || 0;
@@ -2146,6 +2269,12 @@
                         params.numFrames = parseInt(document.getElementById('numFramesInput').value);
                         params.arenaModel = document.getElementById('arenaModel').value;
 
+                        // Advanced starfield options (MATLAB parity)
+                        params.dotBrightnessMode = document.getElementById('dotBrightnessMode').value;
+                        params.dotSizeMode = document.getElementById('dotSizeMode').value;
+                        params.dotOcclusion = document.getElementById('dotOcclusion').value;
+                        params.snapDots = document.getElementById('snapDots').checked;
+
                         // Get pole coordinates (determines direction)
                         const poleAzimuthStar = parseFloat(document.getElementById('poleAzimuth').value) || 0;
                         const poleElevationStar = parseFloat(document.getElementById('poleElevation').value) || -90;
@@ -2166,7 +2295,16 @@
                         params.motionType = motionTypeEdge;
                         params.aaSamples = parseInt(document.getElementById('aaSamples').value);
                         params.arenaModel = document.getElementById('arenaModel').value;
-                        params.numFrames = parseInt(document.getElementById('numFramesInput').value);
+
+                        // Phase shift as percentage of wavelength (0-100%)
+                        params.phaseShift = parseFloat(document.getElementById('phaseShift').value) || 0;
+
+                        // Auto-calculate numFrames from total pixels and step size (MATLAB parity)
+                        // Edge sweeps duty cycle 0%→100% across these frames
+                        const stepSizeValueEdge = parseFloat(document.getElementById('stepSize').value);
+                        const stepSizeUnitEdge = document.getElementById('stepSizeUnit').value;
+                        const stepSizePixelsEdge = convertStepSizeToPixels(stepSizeValueEdge, stepSizeUnitEdge);
+                        params.numFrames = Math.ceil(arena.totalAzimuthPixels / stepSizePixelsEdge);
 
                         // Get pole coordinates (determines direction)
                         const poleAzimuthEdge = parseFloat(document.getElementById('poleAzimuth').value) || 0;
@@ -2304,28 +2442,18 @@
         function updateClipboardUI() {
             const container = document.getElementById('clipboardThumbnails');
             const countEl = document.getElementById('clipboardCount');
-            const prevBtn = document.getElementById('clipboardPrev');
-            const nextBtn = document.getElementById('clipboardNext');
 
             countEl.textContent = `${state.clipboard.length} frame${state.clipboard.length !== 1 ? 's' : ''}`;
 
             if (state.clipboard.length === 0) {
-                container.innerHTML = '<div class="clipboard-empty">Capture frames to build sequences</div>';
-                prevBtn.disabled = true;
-                nextBtn.disabled = true;
+                container.innerHTML = '<span class="clipboard-empty">Capture frames to build sequences</span>';
                 state.selectedClipboardIds = [];
                 return;
             }
 
-            const maxVisible = 5;
-            const startIdx = state.clipboardOffset;
-            const endIdx = Math.min(startIdx + maxVisible, state.clipboard.length);
-
-            prevBtn.disabled = startIdx === 0;
-            nextBtn.disabled = endIdx >= state.clipboard.length;
-
+            // Show ALL frames with native horizontal scrolling
             container.innerHTML = '';
-            for (let i = startIdx; i < endIdx; i++) {
+            for (let i = 0; i < state.clipboard.length; i++) {
                 const entry = state.clipboard[i];
                 const thumb = document.createElement('div');
                 thumb.className = 'clipboard-thumb';
@@ -2527,19 +2655,6 @@
                 entry.name = newName.trim();
                 updateClipboardUI();
             }
-        }
-
-        function scrollClipboard(direction) {
-            const maxVisible = 5;
-            if (direction < 0) {
-                state.clipboardOffset = Math.max(0, state.clipboardOffset - 1);
-            } else {
-                state.clipboardOffset = Math.min(
-                    Math.max(0, state.clipboard.length - maxVisible),
-                    state.clipboardOffset + 1
-                );
-            }
-            updateClipboardUI();
         }
 
         function formatTimestamp(date) {
@@ -3665,6 +3780,17 @@
             updateDefaultFrames();  // Set initial frames based on default arena
             updatePatternTypeUI();  // Set initial pattern type UI visibility
             updateG3ButtonStates(); // Disable save/load for G3 arenas
+
+            // Re-render 2D view on window resize to scale to fill available space
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    if (state.pattern && state.editor.activeViewer === 'grid') {
+                        renderGridViewer();
+                    }
+                }, 100);  // Debounce for smoother resizing
+            });
         });
     </script>
 </body>
