@@ -9,13 +9,32 @@
  */
 
 /**
+ * Normalize pattern data from pat-parser to consistent format
+ * pat-parser uses: pixelRows, pixelCols, gs_val
+ * icon-generator expects: rows, cols, grayscaleMode
+ */
+function normalizePatternData(patternData) {
+    return {
+        ...patternData,
+        // Map pixelRows/pixelCols to rows/cols
+        rows: patternData.pixelRows || patternData.rows,
+        cols: patternData.pixelCols || patternData.cols,
+        // Map gs_val to grayscaleMode
+        grayscaleMode: patternData.grayscaleMode ||
+            (patternData.gs_val === 16 ? 'GS16' : 'GS2')
+    };
+}
+
+/**
  * Generate a single-frame pattern icon
- * @param {object} patternData - Pattern data from pat-parser { frames, rows, cols, generation, grayscaleMode }
+ * @param {object} patternData - Pattern data from pat-parser { frames, pixelRows, pixelCols, gs_val } or { frames, rows, cols, grayscaleMode }
  * @param {object} arenaConfig - Arena configuration { num_rows, num_cols, columns_installed, generation }
  * @param {object} options - Rendering options
  * @returns {string} PNG data URL
  */
 function generatePatternIcon(patternData, arenaConfig, options = {}) {
+    // Normalize pattern data field names
+    patternData = normalizePatternData(patternData);
     const opts = {
         frameIndex: null,           // null = middle frame
         width: 256,
@@ -50,6 +69,9 @@ function generatePatternIcon(patternData, arenaConfig, options = {}) {
  * @returns {string} PNG data URL
  */
 function generateMotionIcon(patternData, arenaConfig, options = {}) {
+    // Normalize pattern data field names
+    patternData = normalizePatternData(patternData);
+
     const opts = {
         frameRange: [0, patternData.frames.length - 1],  // [start, end] inclusive
         maxFrames: 10,                                    // max frames to sample
@@ -208,16 +230,20 @@ function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
         Array.from({ length: numCols }, (_, i) => i);
     const columnOrder = arenaConfig.column_order || 'cw';
 
-    // Total pixels in arena
-    const totalColPixels = numCols * pixelsPerPanel;
-    const totalRowPixels = numRows * pixelsPerPanel;
+    // Pattern data dimensions (from loaded file)
+    // Pattern stores only installed columns sequentially
+    const patternColPixels = patternData.cols;
+    const patternRowPixels = patternData.rows;
+    const installedColumnCount = columnsInstalled.length;
 
     // Base offset: -90° to start at south (-PI/2)
     const BASE_OFFSET_RAD = -Math.PI / 2;
-    const alpha = (2 * Math.PI) / numCols;  // angle per column
+    const alpha = (2 * Math.PI) / numCols;  // angle per column (full arena)
 
-    // Render each column
-    for (const colIdx of columnsInstalled) {
+    // Render each installed column
+    for (let installedIdx = 0; installedIdx < installedColumnCount; installedIdx++) {
+        const colIdx = columnsInstalled[installedIdx];  // Physical column position
+
         // Calculate angular position for this column based on column_order
         // CW: c0 left of south, columns increase counter-clockwise (decreasing angle)
         // CCW: c0 right of south, columns increase clockwise (increasing angle)
@@ -235,12 +261,13 @@ function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
             // Render each pixel in this panel
             for (let py = 0; py < pixelsPerPanel; py++) {
                 for (let px = 0; px < pixelsPerPanel; px++) {
-                    // Calculate position in full arena grid
-                    const arenaCol = colIdx * pixelsPerPanel + px;
-                    const arenaRow = rowIdx * pixelsPerPanel + py;
+                    // Calculate position in pattern data (sequential columns)
+                    // Pattern data has columns 0 to installedColumnCount-1
+                    const patternCol = installedIdx * pixelsPerPanel + px;
+                    const patternRow = rowIdx * pixelsPerPanel + py;
 
                     // Get brightness from pattern data
-                    const pixelIdx = arenaRow * totalColPixels + arenaCol;
+                    const pixelIdx = patternRow * patternColPixels + patternCol;
                     const brightness = frameData[pixelIdx] || 0;
 
                     // Convert to color
@@ -407,6 +434,7 @@ if (typeof window !== 'undefined') {
         generatePatternIcon,
         generateMotionIcon,
         generateTestIcon,
+        normalizePatternData,
         selectFrames,
         calculateExponentialWeights,
         calculateLinearWeights
@@ -423,4 +451,4 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 
 // ES6 module export
-export { generatePatternIcon, generateMotionIcon, generateTestIcon };
+export { generatePatternIcon, generateMotionIcon, generateTestIcon, normalizePatternData };

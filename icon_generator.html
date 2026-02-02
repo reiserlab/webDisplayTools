@@ -7,10 +7,10 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
     <!-- Load as ES6 modules for compatibility with pat-parser.js export -->
     <script type="module">
-        // Cache-busting: v2 added ES6 exports
-        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration } from './js/arena-configs.js?v=2';
-        import PatParser from './js/pat-parser.js?v=2';
-        import { generatePatternIcon, generateMotionIcon, generateTestIcon } from './js/icon-generator.js?v=2';
+        // Cache-busting: v3 fixes field name mapping and partial arena rendering
+        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration } from './js/arena-configs.js?v=3';
+        import PatParser from './js/pat-parser.js?v=3';
+        import { generatePatternIcon, generateMotionIcon, generateTestIcon } from './js/icon-generator.js?v=3';
 
         // Make available globally for inline script
         window.STANDARD_CONFIGS = STANDARD_CONFIGS;
@@ -435,7 +435,7 @@
         </div>
 
         <footer>
-            <p>Pattern Icon Generator v0.6 | 2026-02-01 16:31 ET</p>
+            <p>Pattern Icon Generator v0.7 | 2026-02-02 12:15 ET</p>
             <p><a href="index.html">← Back to Tools</a></p>
         </footer>
     </div>
