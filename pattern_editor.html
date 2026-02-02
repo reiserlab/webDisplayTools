@@ -1025,7 +1025,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.6 | 2026-02-02 11:45 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.7 | 2026-02-02 12:30 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1589,11 +1589,12 @@
             for (const [gen, configs] of Object.entries(configsByGen)) {
                 const optgroup = document.createElement('optgroup');
                 optgroup.label = gen;
-                configs.forEach(name => {
+                // configs is array of { name, label, description, arena } objects
+                configs.forEach(config => {
                     const option = document.createElement('option');
-                    option.value = name;
-                    option.textContent = name;
-                    if (name === state.arena.configName) {
+                    option.value = config.name;
+                    option.textContent = config.label || config.name;
+                    if (config.name === state.arena.configName) {
                         option.selected = true;
                     }
                     optgroup.appendChild(option);

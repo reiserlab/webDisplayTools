@@ -51,6 +51,29 @@ export default PatParser;
 
 **Important**: When modifying shared modules, test with ALL tools that depend on them.
 
+**Arena Config Helper Functions** (`js/arena-configs.js`):
+
+The `getConfigsByGeneration()` function returns objects, NOT simple strings:
+
+```javascript
+// CORRECT - configs is array of { name, label, description, arena } objects
+const configsByGen = getConfigsByGeneration();
+for (const [gen, configs] of Object.entries(configsByGen)) {
+    configs.forEach(config => {
+        console.log(config.name);   // "G6_2x10"
+        console.log(config.label);  // "G6 (2×10) - 360°"
+        console.log(config.arena);  // { generation, num_rows, num_cols, ... }
+    });
+}
+
+// WRONG - treating config objects as strings will break dropdown population
+configs.forEach(name => {
+    option.value = name;  // BUG: name is an object, not a string!
+});
+```
+
+This pattern has caused bugs multiple times. Always use `config.name` for the value and `config.label` for display text.
+
 ## CI/CD Validation
 
 Web calculations are validated against MATLAB reference data:
