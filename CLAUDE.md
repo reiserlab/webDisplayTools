@@ -153,17 +153,24 @@ A proper implementation should:
 The azimuth resolution is constant (360° / total_azimuth_pixels), but vertical resolution varies based on viewing angle from center - pixels near the vertical center subtend smaller angles than those at the top/bottom edges.
 
 ### Icon Generator Arena Mapping
-**Status:** Partially working as of 2026-02-02
+**Status:** Broken for partial arenas as of 2026-02-02
 
-The icon generator works for test patterns but arena mapping onto the cylindrical view has issues:
-- Full arenas render correctly
-- Partial arenas (e.g., 8 of 10 columns) may have incorrect column positioning
-- The mapping between pattern pixel coordinates and physical arena positions needs review
+The icon generator has issues with partial arenas (arenas where not all columns are installed):
+- Full arenas (e.g., G6_2x10 with all 10 columns) render correctly
+- Partial arenas (e.g., G6_2x12 with 8 of 12 columns) produce scrambled patterns
+- Folder detection (inferring arena from folder name) doesn't work for partial arenas
+- Manual arena selection dropdown does appear as fallback
+
+**Known issues:**
+1. Pattern data is scrambled when rendered for partial arenas
+2. Arena detection regex may not handle partial arena folder naming conventions
+3. The mapping between pattern pixel coordinates and physical arena positions needs review
 
 **To investigate:**
 1. Compare MATLAB's icon generation algorithm
 2. Verify column_installed handling for partial arenas
 3. Check if column ordering (CW/CCW) affects the mapping
+4. Debug folder name detection for partial arena patterns
 
 ### Spherical Pattern Generation - Pole Position Bug
 **Status:** Known issue as of 2026-02-02
