@@ -318,7 +318,7 @@ document.getElementById('playPauseButton').textContent;
 
 The Pattern Editor is being developed in phases. The full migration plan is saved at:
 
-**Plan file:** `~/.claude/plans/linear-fluttering-lerdorf.md`
+**Plan file:** `~/.claude/plans/fuzzy-waddling-harbor.md`
 
 This plan covers:
 - Two-pane layout (tools left, viewer right)
