@@ -705,8 +705,10 @@ class ThreeViewer {
         const panelHeight = specs.panel_height_mm / 25.4;
         const columnHeight = panelHeight * numRows;
 
-        // Line extends well beyond arena
-        const lineLength = Math.max(cRadius, columnHeight) * 3;
+        // Line length = 2x max(arena height, arena diameter)
+        // Diameter = 2 * cRadius, height = columnHeight
+        const arenaDiameter = cRadius * 2;
+        const lineLength = Math.max(columnHeight, arenaDiameter);
 
         // Get pole coordinates [phi, theta] in radians
         // phi is azimuthal angle, theta is polar angle from north (0 = north pole, PI = south pole)

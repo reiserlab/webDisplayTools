@@ -150,23 +150,40 @@ A proper implementation should:
 
 The azimuth resolution is constant (360° / total_azimuth_pixels), but vertical resolution varies based on viewing angle from center - pixels near the vertical center subtend smaller angles than those at the top/bottom edges.
 
-### Icon Generator Pattern Loading
-**Status:** Not working as of 2026-02-02
+### Icon Generator Arena Mapping
+**Status:** Partially working as of 2026-02-02
 
-The icon generator (`icon_generator.html`) cannot load `.pat` files - users get "PatParser is not defined" error.
+The icon generator works for test patterns but arena mapping onto the cylindrical view has issues:
+- Full arenas render correctly
+- Partial arenas (e.g., 8 of 10 columns) may have incorrect column positioning
+- The mapping between pattern pixel coordinates and physical arena positions needs review
 
-**Known Issues:**
-- PR with fixes exists but not yet merged to main
-- Fixes include: correct method name (`parsePatFile()`) and dual export pattern
-- Even after merge, GitHub Pages caching may prevent immediate fix
-- Needs testing in future session after merge + cache clear
+**To investigate:**
+1. Compare MATLAB's icon generation algorithm
+2. Verify column_installed handling for partial arenas
+3. Check if column ordering (CW/CCW) affects the mapping
 
-**To fix in future session:**
-1. Verify PR is merged to main
-2. Test with hard refresh (Ctrl+Shift+R)
-3. Check browser DevTools → Sources to confirm updated JS files loaded
-4. Test with actual G4 and G6 .pat files
-5. If still broken, investigate additional causes beyond method name/exports
+### Spherical Pattern Generation - Pole Position Bug
+**Status:** Known issue as of 2026-02-02
+
+Pattern generation with non-default pole positions produces incorrect results:
+
+**Problem:**
+- For a rotation pattern with north pole [0,0], horizontal bands are expected
+- After rotation transform, phi (azimuthal angle) should be constant along each horizontal row
+- Current implementation: phi varies along rows AND columns after rotation
+
+**Root Cause:**
+The rotation transformation in `arena-geometry.js` doesn't achieve the desired coordinate mapping. After pitch rotation by -π/2:
+- Original Z (height) transforms into Y, but...
+- `cart2sphere` computes `phi = atan2(x, y)`, which still depends on both x and the transformed z
+- For horizontal bands, we need phi to depend ONLY on original height (z)
+
+**To fix:**
+1. Review MATLAB's `make_grating_edge.m` implementation closely
+2. Verify the coordinate convention (which axis is "up", which is "forward")
+3. May need different rotation order or additional transformation
+4. Consider if `cart2sphere` convention differs from MATLAB's `cart2sph`
 
 ### Load Pattern Feature
 The 3D viewer supports loading `.pat` files directly:
