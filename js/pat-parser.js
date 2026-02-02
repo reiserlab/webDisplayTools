@@ -581,5 +581,5 @@ if (typeof window !== 'undefined') {
     window.PatParser = PatParser;
 }
 
-// ES module export - for import statements (pattern editor)
+// ES module export for import statements
 export default PatParser;

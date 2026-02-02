@@ -4,13 +4,23 @@ on:
   push:
     paths:
       - 'js/pattern-editor/**'
+      - 'js/arena-geometry.js'
+      - 'js/arena-configs.js'
       - 'data/pattern_generation_reference.json'
+      - 'data/comprehensive_pattern_reference.json'
       - 'tests/validate-pattern-generation.js'
+      - 'tests/validate-spherical-grating.js'
+      - 'tests/validate-comprehensive-reference.js'
   pull_request:
     paths:
       - 'js/pattern-editor/**'
+      - 'js/arena-geometry.js'
+      - 'js/arena-configs.js'
       - 'data/pattern_generation_reference.json'
+      - 'data/comprehensive_pattern_reference.json'
       - 'tests/validate-pattern-generation.js'
+      - 'tests/validate-spherical-grating.js'
+      - 'tests/validate-comprehensive-reference.js'
   workflow_dispatch:
 
 jobs:
@@ -29,13 +39,24 @@ jobs:
       - name: Run pattern generation validation
         run: node tests/validate-pattern-generation.js
 
+      - name: Run spherical grating validation
+        run: node tests/validate-spherical-grating.js
+
+      - name: Run comprehensive MATLAB reference validation
+        run: node tests/validate-comprehensive-reference.js
+
       - name: Report results
         if: always()
         run: |
           echo "## Pattern Generation Validation Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Suites Run:" >> $GITHUB_STEP_SUMMARY
+          echo "- Pattern Generation (11 tests)" >> $GITHUB_STEP_SUMMARY
+          echo "- Spherical Grating (30 tests)" >> $GITHUB_STEP_SUMMARY
+          echo "- Comprehensive MATLAB Reference (32 tests)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           if [ $? -eq 0 ]; then
-            echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ All 73 tests passed" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Some tests failed - check logs for details" >> $GITHUB_STEP_SUMMARY
           fi

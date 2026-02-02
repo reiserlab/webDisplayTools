@@ -7,6 +7,7 @@
 
 // Import PANEL_SPECS if running in Node.js
 let PANEL_SPECS_LOCAL;
+let ArenaGeometry_LOCAL;
 if (typeof PANEL_SPECS !== 'undefined') {
     PANEL_SPECS_LOCAL = PANEL_SPECS;
 } else if (typeof require !== 'undefined') {
@@ -17,6 +18,17 @@ if (typeof PANEL_SPECS !== 'undefined') {
         // Will be set when module is used
         PANEL_SPECS_LOCAL = null;
     }
+}
+
+// Import ArenaGeometry for spherical coordinate patterns
+if (typeof require !== 'undefined') {
+    try {
+        ArenaGeometry_LOCAL = require('../../arena-geometry.js');
+    } catch (e) {
+        ArenaGeometry_LOCAL = null;
+    }
+} else if (typeof window !== 'undefined' && window.ArenaGeometry) {
+    ArenaGeometry_LOCAL = window.ArenaGeometry;
 }
 
 /**
@@ -41,7 +53,7 @@ function createSeededRandom(seed) {
 const PatternGenerator = {
     /**
      * Generate a pattern based on type and parameters
-     * @param {string} type - Pattern type: 'grating', 'sine', 'starfield', 'edge', 'offon'
+     * @param {string} type - Pattern type: 'grating', 'sine', 'starfield', 'edge', 'offon', 'spherical-grating', 'spherical-sine'
      * @param {Object} params - Type-specific parameters
      * @param {Object} arena - Arena configuration object
      * @returns {Object} Pattern data compatible with pat-encoder
@@ -52,6 +64,9 @@ const PatternGenerator = {
                 return this.generateGrating(params, arena);
             case 'sine':
                 return this.generateSine(params, arena);
+            case 'spherical-grating':
+            case 'spherical-sine':
+                return this.generateSphericalGrating(params, arena);
             case 'starfield':
                 return this.generateStarfield(params, arena);
             case 'edge':
@@ -276,7 +291,213 @@ const PatternGenerator = {
     },
 
     /**
-     * Generate a starfield pattern with random dots
+     * Generate a spherical coordinate grating pattern
+     *
+     * Uses proper 3D geometry: generates arena coordinates, applies rotations,
+     * converts to spherical, and evaluates pattern based on azimuthal angle (phi)
+     * for rotation motion, polar angle (theta) for expansion, or a linear
+     * transformation for translation.
+     *
+     * Direction is determined by pole position and the right-hand rule, matching
+     * MATLAB behavior (no explicit CW/CCW parameter).
+     *
+     * @param {Object} params - Spherical grating parameters
+     * @param {number} params.spatFreq - Spatial frequency in radians (wavelength = 2π/spatFreq)
+     * @param {string} [params.motionType='rotation'] - 'rotation', 'translation', or 'expansion'
+     * @param {string} [params.waveform='square'] - 'square' or 'sine'
+     * @param {number} [params.dutyCycle=50] - Duty cycle percentage (0-100, for square wave)
+     * @param {number} params.high - High brightness level
+     * @param {number} params.low - Low brightness level
+     * @param {number[]} [params.poleCoord=[0,0]] - Pattern pole [phi, theta] in radians (determines direction)
+     * @param {number} [params.numFrames] - Number of frames (defaults to full cycle)
+     * @param {number} [params.stepSize=1] - Step size in pixels per frame (positive = forward motion)
+     * @param {number} [params.aaSamples=1] - Anti-aliasing samples (1=off, 15=standard)
+     * @param {string} [params.arenaModel='smooth'] - 'smooth' (cylinder) or 'poly' (polygonal)
+     * @param {number} [params.gsMode=16] - Grayscale mode (2 or 16)
+     * @param {Object} arena - Arena configuration
+     * @returns {Object} Pattern data
+     */
+    generateSphericalGrating(params, arena) {
+        // Ensure ArenaGeometry is available
+        const geom = ArenaGeometry_LOCAL || (typeof window !== 'undefined' ? window.ArenaGeometry : null);
+        if (!geom) {
+            throw new Error('ArenaGeometry module not available. Include arena-geometry.js before using spherical patterns.');
+        }
+
+        const {
+            spatFreq,
+            motionType = 'rotation',
+            waveform = 'square',
+            dutyCycle = 50,
+            high,
+            low,
+            poleCoord = [0, 0],
+            numFrames: requestedFrames,
+            stepSize = 1,
+            aaSamples = 1,
+            arenaModel = 'smooth',
+            gsMode = 16
+        } = params;
+
+        const dims = this.getArenaDimensions(arena);
+        const { pixelRows, pixelCols, generation, rows, cols, panelSize } = dims;
+
+        // Determine number of columns for full circle (Pcircle)
+        // For partial arenas, this may differ from installed columns
+        const numCircle = arena.numCircle || arena.num_cols_full || arena.Pcircle || cols;
+
+        // Generate arena coordinates
+        const arenaConfig = {
+            panelSize,
+            numCols: cols,
+            numRows: rows,
+            numCircle: numCircle,  // Full circle panels (for correct angular spacing)
+            model: arenaModel
+        };
+        const arenaCoords = geom.arenaCoordinates(arenaConfig);
+
+        // Apply rotations to align pattern pole
+        // poleCoord = [phi, theta] where phi is azimuthal, theta is polar from north (0 = top)
+        // For rotation patterns, the pole is where all azimuthal lines converge
+        // poleCoord = [0, 0] means pole at north (z=-1), giving horizontal bands for rotation
+        //
+        // MATLAB formula (make_grating_edge.m line 34):
+        //   rotations = [-param.pole_coord(1) -param.pole_coord(2)-pi/2 0]
+        // The -π/2 pitch offset aligns the pattern coordinate system properly
+        const rotations = {
+            yaw: -poleCoord[0],
+            pitch: -poleCoord[1] - Math.PI / 2,
+            roll: 0
+        };
+        const rotated = geom.rotateCoordinates(
+            arenaCoords.x,
+            arenaCoords.y,
+            arenaCoords.z,
+            rotations
+        );
+
+        // Convert to spherical coordinates
+        const spherical = geom.cart2sphere(rotated.x, rotated.y, rotated.z);
+
+        // Select coordinate based on motion type
+        let coord;
+        if (motionType === 'rotation') {
+            // Use azimuthal angle (phi) - pattern rotates around pole
+            coord = spherical.phi;
+        } else if (motionType === 'expansion') {
+            // Use polar angle (theta) - pattern expands/contracts from pole
+            coord = spherical.theta;
+        } else if (motionType === 'translation') {
+            // Use tan(theta - π/2) for linear motion appearance
+            coord = new Array(pixelRows);
+            for (let r = 0; r < pixelRows; r++) {
+                coord[r] = new Float32Array(pixelCols);
+                for (let c = 0; c < pixelCols; c++) {
+                    coord[r][c] = Math.tan(spherical.theta[r][c] - Math.PI / 2);
+                }
+            }
+        } else {
+            throw new Error(`Unknown motion type: ${motionType}. Use 'rotation', 'expansion', or 'translation'.`);
+        }
+
+        // Generate samples for anti-aliasing
+        let samples;
+        if (aaSamples > 1) {
+            samples = geom.samplesByPRad(coord, aaSamples, arenaCoords.pRad);
+        }
+
+        // Calculate true step size in radians
+        const trueStepSize = arenaCoords.pRad * stepSize;
+
+        // Number of frames: default to one full spatial cycle
+        const framesPerCycle = Math.ceil(spatFreq / Math.abs(trueStepSize));
+        const numFrames = requestedFrames || framesPerCycle;
+
+        // Direction is determined by step size sign (positive = one direction, negative = opposite)
+        // Combined with pole position, this matches MATLAB's right-hand rule behavior
+        const frames = [];
+        const stretchValues = [];
+
+        for (let f = 0; f < numFrames; f++) {
+            const frame = this.createEmptyFrame(pixelRows, pixelCols);
+            const phaseOffset = f * trueStepSize;
+
+            for (let row = 0; row < pixelRows; row++) {
+                for (let col = 0; col < pixelCols; col++) {
+                    let value;
+
+                    if (aaSamples > 1) {
+                        // Average multiple samples for anti-aliasing
+                        let sum = 0;
+                        for (let s = 0; s < aaSamples; s++) {
+                            const c = samples[row][col][s] - phaseOffset;
+                            sum += this._evaluateWaveform(c, spatFreq, dutyCycle, waveform, high, low);
+                        }
+                        value = Math.round(sum / aaSamples);
+                    } else {
+                        // Single sample (no AA)
+                        const c = coord[row][col] - phaseOffset;
+                        value = this._evaluateWaveform(c, spatFreq, dutyCycle, waveform, high, low);
+                    }
+
+                    frame[row * pixelCols + col] = value;
+                }
+            }
+
+            frames.push(frame);
+            stretchValues.push(1);
+        }
+
+        return {
+            generation,
+            gs_val: gsMode,
+            numFrames,
+            rowCount: rows,
+            colCount: cols,
+            pixelRows,
+            pixelCols,
+            frames,
+            stretchValues
+        };
+    },
+
+    /**
+     * Evaluate waveform value at a given coordinate
+     * @private
+     * @param {number} c - Coordinate value (phase)
+     * @param {number} spatFreq - Spatial frequency in radians
+     * @param {number} dutyCycle - Duty cycle percentage (for square wave)
+     * @param {string} waveform - 'square' or 'sine'
+     * @param {number} high - High brightness level
+     * @param {number} low - Low brightness level
+     * @returns {number} Pixel value
+     */
+    _evaluateWaveform(c, spatFreq, dutyCycle, waveform, high, low) {
+        if (waveform === 'sine') {
+            // Sine wave: matches MATLAB's sin() formula
+            // MATLAB: (sin((coord+phase_shift)*2*pi/spat_freq)+1)/2
+            const normalized = (Math.sin(c * 2 * Math.PI / spatFreq) + 1) / 2;
+            return Math.round(low + normalized * (high - low));
+        } else {
+            // Square wave: matches MATLAB's square() function
+            // MATLAB: square(t, duty) returns +1 when mod(t, 2*pi) < 2*pi*duty/100
+            // In MATLAB: (square((coord)*2*pi/spat_freq, duty_cycle)+1)/2
+            // The argument to square is: coord * 2*pi / spat_freq
+            // Square returns +1 when mod(arg, 2*pi) < 2*pi * dutyCycle/100
+            const arg = c * 2 * Math.PI / spatFreq;
+            // Normalize arg to [0, 2*pi) range
+            const argMod = ((arg % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+            const threshold = 2 * Math.PI * dutyCycle / 100;
+            return argMod < threshold ? high : low;
+        }
+    },
+
+    /**
+     * Generate a starfield pattern with random dots using spherical motion
+     *
+     * Matches MATLAB behavior: generates random dots in 3D space and moves them
+     * using spherical coordinates. Direction is determined by pole position.
+     *
      * @param {Object} params - Starfield parameters
      * @param {number} params.dotCount - Number of dots
      * @param {number} [params.dotSize=1] - Dot radius in pixels
@@ -284,13 +505,21 @@ const PatternGenerator = {
      * @param {number} [params.background=0] - Background brightness
      * @param {number} [params.seed=12345] - Random seed for reproducibility
      * @param {number} [params.gsMode=16] - Grayscale mode (2 or 16)
-     * @param {number} [params.numFrames=1] - Number of frames (for rotation)
-     * @param {string} [params.direction='cw'] - Rotation direction
-     * @param {number} [params.stepSize=1] - Pixels to rotate per frame
+     * @param {number} [params.numFrames=1] - Number of frames
+     * @param {string} [params.motionType='rotation'] - 'rotation', 'translation', or 'expansion'
+     * @param {number[]} [params.poleCoord=[0,0]] - Pattern pole [phi, theta] in radians
+     * @param {number} [params.stepSize=1] - Step size per frame (in pixels equivalent)
+     * @param {string} [params.arenaModel='smooth'] - 'smooth' (cylinder) or 'poly' (polygonal)
      * @param {Object} arena - Arena configuration
      * @returns {Object} Pattern data
      */
     generateStarfield(params, arena) {
+        // Ensure ArenaGeometry is available
+        const geom = ArenaGeometry_LOCAL || (typeof window !== 'undefined' ? window.ArenaGeometry : null);
+        if (!geom) {
+            throw new Error('ArenaGeometry module not available. Include arena-geometry.js before using starfield patterns.');
+        }
+
         const {
             dotCount,
             dotSize = 1,
@@ -299,22 +528,62 @@ const PatternGenerator = {
             seed = 12345,
             gsMode = 16,
             numFrames = 1,
-            direction = 'cw',
-            stepSize = 1
+            motionType = 'rotation',
+            poleCoord = [0, 0],
+            stepSize = 1,
+            arenaModel = 'smooth'
         } = params;
 
         const dims = this.getArenaDimensions(arena);
-        const { pixelRows, pixelCols, generation, rows, cols } = dims;
+        const { pixelRows, pixelCols, generation, rows, cols, panelSize } = dims;
 
-        // Generate star positions using seeded random
+        // Determine number of columns for full circle (Pcircle)
+        const numCircle = arena.numCircle || arena.num_cols_full || arena.Pcircle || cols;
+
+        // Generate arena coordinates for projection
+        const arenaConfig = {
+            panelSize,
+            numCols: cols,
+            numRows: rows,
+            numCircle: numCircle,
+            model: arenaModel
+        };
+        const arenaCoords = geom.arenaCoordinates(arenaConfig);
+
+        // Calculate rotation matrix based on pole (same as grating)
+        const rotations = {
+            yaw: -poleCoord[0],
+            pitch: -poleCoord[1] - Math.PI / 2,
+            roll: 0
+        };
+
+        // Calculate step size in radians
+        const trueStepSize = arenaCoords.pRad * stepSize;
+
+        // Generate random dot positions in spherical coordinates using seeded random
         const random = createSeededRandom(seed);
-        const stars = [];
+        const dots = [];
 
         for (let i = 0; i < dotCount; i++) {
-            stars.push({
-                col: Math.floor(random() * pixelCols),
-                row: Math.floor(random() * pixelRows)
-            });
+            // Generate random position in 3D space (uniform on sphere surface)
+            // Using rejection sampling for uniform distribution
+            let x, y, z, r2;
+            do {
+                x = random() * 2 - 1;
+                y = random() * 2 - 1;
+                z = random() * 2 - 1;
+                r2 = x * x + y * y + z * z;
+            } while (r2 > 1 || r2 < 0.01);
+
+            // Normalize to unit sphere and convert to spherical
+            const r = Math.sqrt(r2);
+            x /= r; y /= r; z /= r;
+
+            // Convert to spherical coordinates
+            const phi = Math.atan2(y, x);
+            const theta = Math.acos(z);
+
+            dots.push({ phi, theta, rho: 1 });
         }
 
         const frames = [];
@@ -328,23 +597,87 @@ const PatternGenerator = {
                 frame.fill(background);
             }
 
-            const offset = (direction === 'cw' ? f : -f) * stepSize;
+            // Calculate dot positions for this frame
+            for (const dot of dots) {
+                // Apply motion
+                let dotPhi = dot.phi;
+                let dotTheta = dot.theta;
 
-            // Draw stars with offset
-            for (const star of stars) {
-                const baseCol = (star.col + offset) % pixelCols;
+                if (motionType === 'rotation') {
+                    // Motion through phi (azimuthal)
+                    dotPhi = dot.phi + f * trueStepSize;
+                } else if (motionType === 'expansion') {
+                    // Motion through theta (polar)
+                    dotTheta = dot.theta + f * trueStepSize;
+                    // Wrap around
+                    if (dotTheta > Math.PI) {
+                        dotTheta = dotTheta - Math.PI;
+                    }
+                } else if (motionType === 'translation') {
+                    // Motion through z coordinate
+                    const x = Math.sin(dot.theta) * Math.cos(dot.phi);
+                    const y = Math.sin(dot.theta) * Math.sin(dot.phi);
+                    let z = Math.cos(dot.theta) + f * trueStepSize;
+                    // Wrap z
+                    while (z > 1) z -= 2;
+                    while (z < -1) z += 2;
+                    // Convert back to spherical
+                    const rhoXY = Math.sqrt(x * x + y * y);
+                    dotTheta = Math.atan2(rhoXY, z);
+                    if (dotTheta < 0) dotTheta += Math.PI;
+                }
 
-                // Draw dot (simple circle approximation for dotSize > 1)
-                if (dotSize <= 1) {
-                    this.setPixel(frame, star.row, baseCol, brightness, pixelCols);
-                } else {
-                    // Draw filled circle
-                    for (let dy = -dotSize; dy <= dotSize; dy++) {
-                        for (let dx = -dotSize; dx <= dotSize; dx++) {
-                            if (dx * dx + dy * dy <= dotSize * dotSize) {
-                                const r = star.row + dy;
-                                if (r >= 0 && r < pixelRows) {
-                                    this.setPixel(frame, r, baseCol + dx, brightness, pixelCols);
+                // Convert spherical to Cartesian
+                const dotX = Math.sin(dotTheta) * Math.cos(dotPhi);
+                const dotY = Math.sin(dotTheta) * Math.sin(dotPhi);
+                const dotZ = Math.cos(dotTheta);
+
+                // Apply inverse rotation to transform from pattern space to arena space
+                // We need the inverse of the rotation applied to arena coordinates
+                const cosYaw = Math.cos(-rotations.yaw);
+                const sinYaw = Math.sin(-rotations.yaw);
+                const cosPitch = Math.cos(-rotations.pitch);
+                const sinPitch = Math.sin(-rotations.pitch);
+
+                // Apply inverse pitch (around X axis)
+                const y1 = dotY * cosPitch - dotZ * sinPitch;
+                const z1 = dotY * sinPitch + dotZ * cosPitch;
+                const x1 = dotX;
+
+                // Apply inverse yaw (around Z axis)
+                const x2 = x1 * cosYaw - y1 * sinYaw;
+                const y2 = x1 * sinYaw + y1 * cosYaw;
+                const z2 = z1;
+
+                // Project to arena pixel coordinates
+                // Find the pixel that this dot falls into
+                const dotAzimuth = Math.atan2(y2, x2);  // -π to π
+                const dotElevation = Math.asin(z2);     // -π/2 to π/2
+
+                // Convert to pixel coordinates
+                // Azimuth maps to columns (centered at 0)
+                const pixelCol = Math.round((dotAzimuth / (2 * Math.PI) + 0.5) * pixelCols) % pixelCols;
+
+                // Elevation maps to rows (centered at equator)
+                const elevationRange = Math.PI * rows * panelSize / (cols * panelSize);  // Approximate vertical FOV
+                const pixelRow = Math.round((dotElevation / elevationRange + 0.5) * pixelRows);
+
+                // Check if dot is visible
+                if (pixelRow >= 0 && pixelRow < pixelRows) {
+                    const wrappedCol = ((pixelCol % pixelCols) + pixelCols) % pixelCols;
+
+                    // Draw dot
+                    if (dotSize <= 1) {
+                        this.setPixel(frame, pixelRow, wrappedCol, brightness, pixelCols);
+                    } else {
+                        // Draw filled circle
+                        for (let dy = -dotSize; dy <= dotSize; dy++) {
+                            for (let dx = -dotSize; dx <= dotSize; dx++) {
+                                if (dx * dx + dy * dy <= dotSize * dotSize) {
+                                    const r = pixelRow + dy;
+                                    if (r >= 0 && r < pixelRows) {
+                                        this.setPixel(frame, r, wrappedCol + dx, brightness, pixelCols);
+                                    }
                                 }
                             }
                         }
@@ -370,61 +703,130 @@ const PatternGenerator = {
     },
 
     /**
-     * Generate an edge pattern (vertical line dividing bright/dark regions)
+     * Generate an edge pattern (duty-cycle sweep using spherical coordinates)
+     *
+     * Matches MATLAB behavior: creates a grating pattern where the duty cycle
+     * sweeps from 0% to 100%, creating an advancing edge effect. Uses the same
+     * spherical coordinate system as gratings.
+     *
      * @param {Object} params - Edge parameters
-     * @param {number} [params.edgePosition=0.5] - Edge position (0-1, 0.5 = middle)
-     * @param {string} [params.polarity='light-to-dark'] - 'light-to-dark' or 'dark-to-light'
+     * @param {number} params.spatFreq - Spatial frequency in radians (determines edge steepness)
+     * @param {string} [params.motionType='rotation'] - 'rotation', 'translation', or 'expansion'
      * @param {number} params.high - High brightness level
      * @param {number} params.low - Low brightness level
+     * @param {number[]} [params.poleCoord=[0,0]] - Pattern pole [phi, theta] in radians
+     * @param {number} [params.numFrames] - Number of frames (defaults to pixelCols + 1)
+     * @param {number} [params.aaSamples=1] - Anti-aliasing samples (1=off, 15=standard)
+     * @param {string} [params.arenaModel='smooth'] - 'smooth' (cylinder) or 'poly' (polygonal)
      * @param {number} [params.gsMode=16] - Grayscale mode (2 or 16)
-     * @param {number} [params.numFrames=2] - Number of frames (for edge movement)
-     * @param {string} [params.direction='cw'] - Movement direction
-     * @param {number} [params.stepSize=1] - Pixels to move per frame
      * @param {Object} arena - Arena configuration
      * @returns {Object} Pattern data
      */
     generateEdge(params, arena) {
+        // Ensure ArenaGeometry is available
+        const geom = ArenaGeometry_LOCAL || (typeof window !== 'undefined' ? window.ArenaGeometry : null);
+        if (!geom) {
+            throw new Error('ArenaGeometry module not available. Include arena-geometry.js before using edge patterns.');
+        }
+
         const {
-            edgePosition = 0.5,
-            polarity = 'light-to-dark',
+            spatFreq,
+            motionType = 'rotation',
             high,
             low,
-            gsMode = 16,
-            numFrames = 2,
-            direction = 'cw',
-            stepSize = 1
+            poleCoord = [0, 0],
+            numFrames: requestedFrames,
+            aaSamples = 1,
+            arenaModel = 'smooth',
+            gsMode = 16
         } = params;
 
         const dims = this.getArenaDimensions(arena);
-        const { pixelRows, pixelCols, generation, rows, cols } = dims;
+        const { pixelRows, pixelCols, generation, rows, cols, panelSize } = dims;
 
-        // Calculate edge column position
-        const baseEdgeCol = Math.round(edgePosition * pixelCols);
+        // Determine number of columns for full circle (Pcircle)
+        const numCircle = arena.numCircle || arena.num_cols_full || arena.Pcircle || cols;
 
-        // Determine which side is bright
-        const leftBright = polarity === 'dark-to-light';
+        // Generate arena coordinates
+        const arenaConfig = {
+            panelSize,
+            numCols: cols,
+            numRows: rows,
+            numCircle: numCircle,
+            model: arenaModel
+        };
+        const arenaCoords = geom.arenaCoordinates(arenaConfig);
+
+        // Apply rotations to align pattern pole (same as spherical grating)
+        const rotations = {
+            yaw: -poleCoord[0],
+            pitch: -poleCoord[1] - Math.PI / 2,
+            roll: 0
+        };
+        const rotated = geom.rotateCoordinates(
+            arenaCoords.x,
+            arenaCoords.y,
+            arenaCoords.z,
+            rotations
+        );
+
+        // Convert to spherical coordinates
+        const spherical = geom.cart2sphere(rotated.x, rotated.y, rotated.z);
+
+        // Select coordinate based on motion type
+        let coord;
+        if (motionType === 'rotation') {
+            coord = spherical.phi;
+        } else if (motionType === 'expansion') {
+            coord = spherical.theta;
+        } else if (motionType === 'translation') {
+            coord = new Array(pixelRows);
+            for (let r = 0; r < pixelRows; r++) {
+                coord[r] = new Float32Array(pixelCols);
+                for (let c = 0; c < pixelCols; c++) {
+                    coord[r][c] = Math.tan(spherical.theta[r][c] - Math.PI / 2);
+                }
+            }
+        } else {
+            throw new Error(`Unknown motion type: ${motionType}`);
+        }
+
+        // Generate samples for anti-aliasing
+        let samples;
+        if (aaSamples > 1) {
+            samples = geom.samplesByPRad(coord, aaSamples, arenaCoords.pRad);
+        }
+
+        // Number of frames: default to pixelCols + 1 for full edge sweep
+        const numFrames = requestedFrames || (pixelCols + 1);
 
         const frames = [];
         const stretchValues = [];
 
+        // MATLAB: duty_cycle = 0:100/(num_frames-1):100
+        // Duty cycle sweeps from 0% to 100% across frames
         for (let f = 0; f < numFrames; f++) {
             const frame = this.createEmptyFrame(pixelRows, pixelCols);
-            const offset = (direction === 'cw' ? f : -f) * stepSize;
-            const edgeCol = ((baseEdgeCol + offset) % pixelCols + pixelCols) % pixelCols;
+            const dutyCycle = (f / (numFrames - 1)) * 100;
 
             for (let row = 0; row < pixelRows; row++) {
                 for (let col = 0; col < pixelCols; col++) {
-                    // Determine which side of the edge this pixel is on
-                    // Handle wrap-around: consider distance to edge in both directions
-                    const distToEdge = col - edgeCol;
-                    const isLeftOfEdge = distToEdge < 0 || distToEdge > pixelCols / 2;
-
                     let value;
-                    if (leftBright) {
-                        value = isLeftOfEdge ? high : low;
+
+                    if (aaSamples > 1) {
+                        // Average multiple samples for anti-aliasing
+                        let sum = 0;
+                        for (let s = 0; s < aaSamples; s++) {
+                            const c = samples[row][col][s];
+                            sum += this._evaluateWaveform(c, spatFreq, dutyCycle, 'square', high, low);
+                        }
+                        value = Math.round(sum / aaSamples);
                     } else {
-                        value = isLeftOfEdge ? low : high;
+                        // Single sample (no AA)
+                        const c = coord[row][col];
+                        value = this._evaluateWaveform(c, spatFreq, dutyCycle, 'square', high, low);
                     }
+
                     frame[row * pixelCols + col] = value;
                 }
             }
@@ -447,10 +849,15 @@ const PatternGenerator = {
     },
 
     /**
-     * Generate an off/on pattern (alternating all-off and all-on frames)
+     * Generate an off/on pattern (brightness ramp from low to high)
+     *
+     * Matches MATLAB behavior: generates |high - low| + 1 frames where each frame
+     * is a uniform brightness level stepping from low to high (or high to low if
+     * low > high). This creates a gradual brightness ramp for flicker stimuli.
+     *
      * @param {Object} params - Off/On parameters
-     * @param {number} params.high - High brightness level (on)
-     * @param {number} params.low - Low brightness level (off)
+     * @param {number} params.high - High brightness level
+     * @param {number} params.low - Low brightness level
      * @param {number} [params.gsMode=16] - Grayscale mode (2 or 16)
      * @param {Object} arena - Arena configuration
      * @returns {Object} Pattern data
@@ -465,24 +872,31 @@ const PatternGenerator = {
         const dims = this.getArenaDimensions(arena);
         const { pixelRows, pixelCols, generation, rows, cols } = dims;
 
-        // Frame 0: all off (low)
-        const frameOff = this.createEmptyFrame(pixelRows, pixelCols);
-        frameOff.fill(low);
+        // MATLAB behavior: |high - low| + 1 frames
+        // Each frame is uniform brightness stepping from low to high
+        const numFrames = Math.abs(high - low) + 1;
+        const frames = [];
+        const stretchValues = [];
 
-        // Frame 1: all on (high)
-        const frameOn = this.createEmptyFrame(pixelRows, pixelCols);
-        frameOn.fill(high);
+        for (let i = 0; i < numFrames; i++) {
+            const frame = this.createEmptyFrame(pixelRows, pixelCols);
+            // Step from low to high (or high to low if low > high)
+            const brightness = low < high ? low + i : low - i;
+            frame.fill(brightness);
+            frames.push(frame);
+            stretchValues.push(1);
+        }
 
         return {
             generation,
             gs_val: gsMode,
-            numFrames: 2,
+            numFrames,
             rowCount: rows,
             colCount: cols,
             pixelRows,
             pixelCols,
-            frames: [frameOff, frameOn],
-            stretchValues: [1, 1]
+            frames,
+            stretchValues
         };
     },
 
