@@ -316,20 +316,12 @@
                 <div class="divider"></div>
 
                 <div class="section">
-                    <div class="section-title">Arena Configuration</div>
+                    <div class="section-title">Detected Arena</div>
 
-                    <div class="control-group">
-                        <label>Arena Config</label>
-                        <select id="arena-select">
-                            <optgroup label="G6 Arenas" id="arena-group-G6"></optgroup>
-                            <optgroup label="G4.1 Arenas" id="arena-group-G41"></optgroup>
-                            <optgroup label="G4 Arenas" id="arena-group-G4"></optgroup>
-                            <optgroup label="G3 Arenas" id="arena-group-G3"></optgroup>
-                        </select>
-                    </div>
-
-                    <div class="info-box" id="arena-info" style="margin-top: 0.75rem;">
-                        Select an arena configuration
+                    <div class="info-box" id="arena-info">
+                        <div id="arena-detected" style="color: var(--text-dim);">
+                            Load a pattern to detect arena configuration
+                        </div>
                     </div>
                 </div>
 
@@ -435,7 +427,7 @@
         </div>
 
         <footer>
-            <p>Pattern Icon Generator v0.7 | 2026-02-02 13:25 ET</p>
+            <p>Pattern Icon Generator v0.8 | 2026-02-02 16:00 ET</p>
             <p><a href="index.html">← Back to Tools</a></p>
         </footer>
     </div>
@@ -444,15 +436,12 @@
         let currentPatternData = null;
         let currentArenaConfig = null;
         let currentIconDataURL = null;
+        let currentFilename = null;
 
         // Initialize - wait for modules to load
         function init() {
-            populateArenaDropdown();
             setupEventListeners();
-
-            // Select default arena
-            document.getElementById('arena-select').value = 'G6_2x10';
-            updateArenaConfig();
+            updateArenaDisplay(null, null);
         }
 
         // Wait for ES6 modules to load, then initialize
@@ -468,30 +457,84 @@
             });
         }
 
-        function populateArenaDropdown() {
-            const groups = getConfigsByGeneration();
+        /**
+         * Infer arena configuration from filename or parent folder path.
+         * Matches patterns like: G6_2x10, G4_4x12, G4.1_3x12
+         * @param {string} filepath - Full file path or filename
+         * @returns {Object|null} - Config object { name, config } or null if not detected
+         */
+        function inferArenaFromPath(filepath) {
+            if (!filepath) return null;
 
-            for (const [gen, configs] of Object.entries(groups)) {
-                const groupId = gen === 'G4.1' ? 'G41' : gen;
-                const optgroup = document.getElementById(`arena-group-${groupId}`);
-                if (!optgroup) continue;
+            // Patterns to match: G6_2x10, G4_4x12, G4.1_3x12
+            // Allow both "x" and "×" as separator
+            const arenaPattern = /G(6|4\.1|4|3)[_-](\d+)[x×](\d+)/i;
 
-                optgroup.innerHTML = '';
-                for (const config of configs) {
-                    const option = document.createElement('option');
-                    option.value = config.name;
-                    option.textContent = config.label;
-                    optgroup.appendChild(option);
+            // First check filename
+            const filename = filepath.split('/').pop().split('\\').pop();
+            let match = filename.match(arenaPattern);
+
+            // If not found in filename, check parent folder (one level up)
+            if (!match) {
+                const pathParts = filepath.replace(/\\/g, '/').split('/');
+                if (pathParts.length >= 2) {
+                    const parentFolder = pathParts[pathParts.length - 2];
+                    match = parentFolder.match(arenaPattern);
                 }
             }
+
+            if (!match) return null;
+
+            const generation = 'G' + match[1];
+            const rows = parseInt(match[2]);
+            const cols = parseInt(match[3]);
+
+            // Build config name in expected format
+            const configName = `${generation}_${rows}x${cols}`;
+
+            // Try to find this config
+            const config = getConfig(configName);
+            if (config) {
+                return { name: configName, config };
+            }
+
+            // Config not found - return null
+            console.warn(`Arena config not found for: ${configName}`);
+            return null;
+        }
+
+        function updateArenaDisplay(configName, config) {
+            const arenaInfo = document.getElementById('arena-info');
+            const arenaDetected = document.getElementById('arena-detected');
+
+            if (!config) {
+                arenaDetected.innerHTML = `<span style="color: var(--text-dim);">Load a pattern to detect arena configuration</span>`;
+                return;
+            }
+
+            const installedCols = config.arena.columns_installed?.length || config.arena.num_cols;
+            const coverage = Math.round(360 * installedCols / config.arena.num_cols);
+
+            arenaDetected.innerHTML =
+                `<div style="color: var(--accent); font-weight: 600; margin-bottom: 0.5rem;">✓ Detected: ${config.label || configName}</div>` +
+                `<div><span class="label">Generation:</span> ${config.arena.generation}</div>` +
+                `<div><span class="label">Layout:</span> ${config.arena.num_rows} × ${config.arena.num_cols}</div>` +
+                `<div><span class="label">Coverage:</span> ${coverage}°</div>`;
+        }
+
+        function showArenaError(filepath) {
+            const arenaDetected = document.getElementById('arena-detected');
+            arenaDetected.innerHTML =
+                `<div style="color: #ff6b6b; font-weight: 600;">✗ Arena not detected</div>` +
+                `<div style="margin-top: 0.5rem; font-size: 0.8rem;">` +
+                `Could not detect arena from filename or parent folder.<br>` +
+                `Expected format: <code>G6_2x10_*.pat</code> or folder named <code>G6_2x10</code>` +
+                `</div>`;
         }
 
         function setupEventListeners() {
             // Pattern file input
             document.getElementById('pattern-file').addEventListener('change', handlePatternFile);
-
-            // Arena selection
-            document.getElementById('arena-select').addEventListener('change', updateArenaConfig);
 
             // Icon mode radio buttons
             document.querySelectorAll('input[name="icon-mode"]').forEach(radio => {
@@ -517,7 +560,28 @@
                 const arrayBuffer = await file.arrayBuffer();
                 const patternData = PatParser.parsePatFile(arrayBuffer);
 
+                // Try to get full path from the file input
+                // Note: browsers only expose filename for security, but we also check webkitRelativePath
+                const filepath = file.webkitRelativePath || file.name;
+                currentFilename = file.name;
+
+                // Try to infer arena from filename/path
+                const arenaResult = inferArenaFromPath(filepath);
+
+                if (!arenaResult) {
+                    showArenaError(filepath);
+                    currentArenaConfig = null;
+                    currentPatternData = null;
+                    document.getElementById('generate-btn').disabled = true;
+                    document.getElementById('pattern-info').style.display = 'none';
+                    return;
+                }
+
+                currentArenaConfig = arenaResult.config.arena;
                 currentPatternData = patternData;
+
+                // Update arena display
+                updateArenaDisplay(arenaResult.name, arenaResult.config);
 
                 // Update UI
                 document.getElementById('frame-slider').max = patternData.frames.length - 1;
@@ -529,9 +593,9 @@
 
                 // Show pattern info
                 document.getElementById('info-pattern').textContent = file.name;
-                document.getElementById('info-dims').textContent = `${patternData.cols} × ${patternData.rows}`;
+                document.getElementById('info-dims').textContent = `${patternData.cols || patternData.pixelCols} × ${patternData.rows || patternData.pixelRows}`;
                 document.getElementById('info-frames').textContent = patternData.frames.length;
-                document.getElementById('info-mode').textContent = patternData.grayscaleMode;
+                document.getElementById('info-mode').textContent = patternData.grayscaleMode || (patternData.gs_val === 16 ? 'GS16' : 'GS2');
                 document.getElementById('pattern-info').style.display = 'block';
 
                 // Enable generate button
@@ -543,11 +607,17 @@
         }
 
         function generateTest(pattern) {
-            const arenaSelect = document.getElementById('arena-select');
-            const configName = arenaSelect.value;
+            // Use G6_2x10 as default for test patterns
+            const configName = 'G6_2x10';
             const config = getConfig(configName);
 
-            if (!config) return;
+            if (!config) {
+                alert('Default arena config (G6_2x10) not found');
+                return;
+            }
+
+            currentArenaConfig = config.arena;
+            currentFilename = `test_${pattern}.pat`;
 
             const specs = PANEL_SPECS[config.arena.generation];
             const pixelsPerPanel = specs.pixels_per_panel;
@@ -580,6 +650,9 @@
                 grayscaleMode: pattern === 'sine' ? 'GS16' : 'GS2'
             };
 
+            // Update arena display
+            updateArenaDisplay(configName, config);
+
             // Update UI
             document.getElementById('frame-slider').max = 0;
             document.getElementById('frame-slider').value = 0;
@@ -599,24 +672,6 @@
 
             // Auto-generate
             generateIcon();
-        }
-
-        function updateArenaConfig() {
-            const arenaSelect = document.getElementById('arena-select');
-            const configName = arenaSelect.value;
-            const config = getConfig(configName);
-
-            if (!config) return;
-
-            currentArenaConfig = config.arena;
-
-            // Update info display
-            const installedCols = config.arena.columns_installed?.length || config.arena.num_cols;
-            const coverage = Math.round(360 * installedCols / config.arena.num_cols);
-            document.getElementById('arena-info').innerHTML =
-                `<div><span class="label">Generation:</span> ${config.arena.generation}</div>` +
-                `<div><span class="label">Layout:</span> ${config.arena.num_rows} × ${config.arena.num_cols}</div>` +
-                `<div><span class="label">Coverage:</span> ${coverage}°</div>`;
         }
 
         function toggleIconMode() {
@@ -697,10 +752,16 @@
 
             const link = document.createElement('a');
             const mode = document.querySelector('input[name="icon-mode"]:checked').value;
-            const arenaName = document.getElementById('arena-select').value;
+
+            // Use current filename (without extension) or arena config for naming
+            let baseName = 'pattern';
+            if (currentFilename) {
+                baseName = currentFilename.replace(/\.pat$/i, '');
+            }
+
             const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
 
-            link.download = `pattern_icon_${arenaName}_${mode}_${timestamp}.png`;
+            link.download = `${baseName}_icon_${mode}_${timestamp}.png`;
             link.href = currentIconDataURL;
             link.click();
         }

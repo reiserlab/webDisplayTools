@@ -84,8 +84,8 @@
             padding: 4px 2px;
             background: var(--bg);
             border-right: 1px solid var(--border);
-            width: 28px;
-            min-width: 28px;
+            width: 35px;  /* 25% wider: 28px * 1.25 = 35px */
+            min-width: 35px;
         }
 
         .generate-btn-vertical {
@@ -93,10 +93,10 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 2px;
-            padding: 8px 4px;
-            font-size: 11px;
-            font-weight: 700;
+            gap: 3px;
+            padding: 10px 6px;
+            font-size: 14px;  /* Increased from 11px */
+            font-weight: 800;  /* Bolder */
             font-family: 'JetBrains Mono', monospace;
             background: var(--accent);
             color: var(--bg);
@@ -112,8 +112,8 @@
         }
 
         .generate-btn-vertical .arrow {
-            font-size: 12px;
-            font-weight: bold;
+            font-size: 18px;  /* Increased from 12px - bigger arrows */
+            font-weight: 900;
         }
 
         .generate-btn-vertical .letter {
@@ -197,6 +197,114 @@
             display: block;
         }
 
+        /* Animate Tab Mode Toggle */
+        .animate-mode-toggle {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 1rem;
+            background: var(--bg);
+            padding: 4px;
+            border-radius: 6px;
+        }
+
+        .animate-mode-toggle .mode-btn {
+            flex: 1;
+            padding: 0.5rem 0.75rem;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .animate-mode-toggle .mode-btn:hover {
+            color: var(--text);
+        }
+
+        .animate-mode-toggle .mode-btn.active {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .animate-mode-content {
+            display: none;
+        }
+
+        .animate-mode-content.active {
+            display: block;
+        }
+
+        /* Frame Sequence Builder */
+        .frame-sequence-builder {
+            background: var(--bg);
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+            padding: 0.75rem;
+            min-height: 80px;
+        }
+
+        .sequence-empty {
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            text-align: center;
+            padding: 1rem;
+        }
+
+        .sequence-frames {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .sequence-frame {
+            width: 36px;
+            height: 36px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            position: relative;
+            font-size: 0.65rem;
+            color: var(--text-dim);
+        }
+
+        .sequence-frame:hover {
+            border-color: var(--accent);
+        }
+
+        .sequence-frame canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 3px;
+        }
+
+        .sequence-frame .remove-btn {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 14px;
+            height: 14px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            font-size: 9px;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sequence-frame:hover .remove-btn {
+            display: flex;
+        }
+
         .section-title {
             font-size: 0.65rem;
             text-transform: uppercase;
@@ -261,83 +369,97 @@
             font-size: 0.75rem;
         }
 
-        /* Clipboard Bar - Split into Frames and Patterns */
+        /* Clipboard Bar - Tabbed design with Frames left, Patterns right */
         .clipboard-bar {
             display: flex;
-            align-items: center;
-            gap: 0;
-            padding: 6px 12px;
-            background: var(--surface);
+            align-items: stretch;
+            background: var(--bg);
             border-top: 1px solid var(--border);
+            min-height: 36px;
         }
 
-        .clipboard-section {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex: 1;
-            min-width: 0;
-        }
-
-        .clipboard-divider {
-            width: 1px;
-            height: 32px;
-            background: var(--border);
-            margin: 0 12px;
-        }
-
-        .clipboard-label {
-            color: var(--text-dim);
-            font-size: 10px;
+        .clipboard-tab {
+            padding: 8px 16px;
+            background: var(--surface);
+            border: none;
+            cursor: pointer;
+            font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            white-space: nowrap;
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s;
         }
 
-        .clipboard-count {
+        .clipboard-tab:hover {
+            background: var(--hover-dim, #2a3540);
+            color: var(--text);
+        }
+
+        .clipboard-tab.active {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .clipboard-tab .count {
             font-size: 10px;
-            color: var(--accent);
-            white-space: nowrap;
-            min-width: 16px;
-            text-align: center;
+            opacity: 0.8;
         }
 
-        .clipboard-thumbnails {
+        .clipboard-tab.active .count {
+            opacity: 1;
+        }
+
+        .clipboard-content-area {
             flex: 1;
             display: flex;
-            gap: 4px;
-            overflow-x: auto;
-            padding: 2px 0;
-            scrollbar-width: thin;
-            scrollbar-color: var(--border) transparent;
-            min-width: 0;
-            max-width: 200px;
+            align-items: center;
+            padding: 4px 12px;
+            overflow: hidden;
+            background: var(--surface);
         }
 
-        .clipboard-thumbnails::-webkit-scrollbar {
+        .clipboard-content {
+            display: none;
+            flex: 1;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 4px 0;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+            align-items: center;
+        }
+
+        .clipboard-content.active {
+            display: flex;
+        }
+
+        .clipboard-content::-webkit-scrollbar {
             height: 4px;
         }
 
-        .clipboard-thumbnails::-webkit-scrollbar-track {
+        .clipboard-content::-webkit-scrollbar-track {
             background: transparent;
         }
 
-        .clipboard-thumbnails::-webkit-scrollbar-thumb {
+        .clipboard-content::-webkit-scrollbar-thumb {
             background: var(--border);
             border-radius: 2px;
         }
 
-        .clipboard-thumbnails::-webkit-scrollbar-thumb:hover {
+        .clipboard-content::-webkit-scrollbar-thumb:hover {
             background: var(--text-dim);
         }
 
         .clipboard-thumb {
-            width: 40px;
-            height: 40px;
-            min-width: 40px;
-            background: var(--surface);
-            border: 1px solid var(--border);
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            background: var(--bg);
+            border: 2px solid var(--border);
             border-radius: 4px;
             cursor: pointer;
             position: relative;
@@ -360,20 +482,20 @@
         .clipboard-thumb canvas {
             width: 100%;
             height: 100%;
-            border-radius: 3px;
+            border-radius: 2px;
         }
 
         .clipboard-thumb .delete-btn {
             position: absolute;
-            top: -4px;
-            right: -4px;
-            width: 14px;
-            height: 14px;
+            top: -6px;
+            right: -6px;
+            width: 16px;
+            height: 16px;
             background: #ff4444;
             color: white;
             border: none;
             border-radius: 50%;
-            font-size: 9px;
+            font-size: 10px;
             font-weight: bold;
             cursor: pointer;
             display: none;
@@ -398,6 +520,77 @@
             font-style: italic;
             padding: 8px 0;
             white-space: nowrap;
+        }
+
+        /* Pattern item in clipboard (for patterns with names) */
+        .clipboard-pattern-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            min-width: 120px;
+            max-width: 180px;
+        }
+
+        .clipboard-pattern-item:hover {
+            border-color: var(--accent);
+        }
+
+        .clipboard-pattern-item.selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 8px rgba(0, 230, 118, 0.3);
+        }
+
+        .clipboard-pattern-item .pattern-name {
+            flex: 1;
+            font-size: 11px;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .clipboard-pattern-item .pattern-name:focus {
+            outline: none;
+            background: var(--surface);
+            padding: 2px 4px;
+            margin: -2px -4px;
+            border-radius: 2px;
+        }
+
+        .clipboard-pattern-item .pattern-frames {
+            font-size: 10px;
+            color: var(--text-dim);
+            white-space: nowrap;
+        }
+
+        .clipboard-pattern-item .delete-btn {
+            width: 14px;
+            height: 14px;
+            background: transparent;
+            color: var(--text-dim);
+            border: none;
+            border-radius: 50%;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+
+        .clipboard-pattern-item:hover .delete-btn {
+            opacity: 1;
+        }
+
+        .clipboard-pattern-item .delete-btn:hover {
+            color: #ff4444;
         }
 
         /* File Operations */
@@ -904,9 +1097,14 @@
             font-size: 0.75rem;
         }
 
-        .capture-btn {
+        .capture-buttons {
+            display: flex;
+            gap: 6px;
             margin-left: auto;
-            padding: 0.5rem 1rem;
+        }
+
+        .capture-btn {
+            padding: 0.5rem 0.75rem;
             background: var(--bg);
             border: 1px solid var(--accent);
             border-radius: 4px;
@@ -920,6 +1118,16 @@
 
         .capture-btn:hover {
             background: var(--accent);
+            color: var(--bg);
+        }
+
+        .capture-btn.capture-pat {
+            border-color: #64b5f6;
+            color: #64b5f6;
+        }
+
+        .capture-btn.capture-pat:hover {
+            background: #64b5f6;
             color: var(--bg);
         }
 
@@ -1035,7 +1243,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.8 | 2026-02-02 14:00 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9 | 2026-02-02 15:30 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1051,6 +1259,7 @@
                 <button class="tool-tab active" data-tab="generate">Generate</button>
                 <button class="tool-tab" data-tab="frame">Animate</button>
                 <button class="tool-tab" data-tab="combine">Combine</button>
+                <button class="tool-tab" data-tab="image">Image</button>
             </div>
 
             <!-- Tool Content -->
@@ -1234,29 +1443,66 @@
                     </div>
                 </div>
 
-                <!-- Frame to Pattern Tab -->
+                <!-- Animate Tab -->
                 <div class="tool-pane" id="framePane">
-                    <div class="section-title">Sequence Builder</div>
-                    <div class="control-row">
-                        <div class="control-group half">
-                            <label>Direction</label>
-                            <select id="rotateDirection" title="Motion direction for the sequence">
-                                <option value="h-cw">H CW</option>
-                                <option value="h-ccw">H CCW</option>
-                                <option value="v-up">V Up</option>
-                                <option value="v-down">V Down</option>
+                    <!-- Mode Toggle -->
+                    <div class="animate-mode-toggle">
+                        <button class="mode-btn active" data-mode="shifting" id="shiftingModeBtn">Frame Shifting</button>
+                        <button class="mode-btn" data-mode="animation" id="animationModeBtn">Frame Animation</button>
+                    </div>
+
+                    <!-- Frame Shifting Mode -->
+                    <div class="animate-mode-content active" id="shiftingMode">
+                        <div class="section-title">Sequence Builder</div>
+                        <div class="control-row">
+                            <div class="control-group half">
+                                <label>Direction</label>
+                                <select id="rotateDirection" title="Motion direction for the sequence">
+                                    <option value="h-cw">H CW</option>
+                                    <option value="h-ccw">H CCW</option>
+                                    <option value="v-up">V Up</option>
+                                    <option value="v-down">V Down</option>
+                                </select>
+                            </div>
+                            <div class="control-group half">
+                                <label>Step (px)</label>
+                                <input type="number" id="rotateStep" value="1" min="1" max="20" title="Pixels per frame">
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <label>Frames <span id="framesHint" style="color: var(--text-dim); font-size: 0.65rem;"></span></label>
+                            <input type="number" id="totalFrames" value="200" min="1" max="10000" title="Total number of frames">
+                        </div>
+                        <button class="btn" id="buildSequenceBtn" style="margin-top: 0.5rem;">Generate Sequence</button>
+                    </div>
+
+                    <!-- Frame Animation Mode -->
+                    <div class="animate-mode-content" id="animationMode">
+                        <div class="section-title">Build from Clipboard Frames</div>
+                        <div class="frame-sequence-builder" id="frameSequenceBuilder">
+                            <div class="sequence-empty" id="sequenceEmpty">
+                                Add frames from the Frames clipboard below
+                            </div>
+                            <div class="sequence-frames" id="sequenceFrames"></div>
+                        </div>
+                        <div class="control-group" style="margin-top: 0.75rem;">
+                            <label>Playback FPS</label>
+                            <select id="animationFps">
+                                <option value="5">5 FPS</option>
+                                <option value="10" selected>10 FPS</option>
+                                <option value="15">15 FPS</option>
+                                <option value="20">20 FPS</option>
+                                <option value="30">30 FPS</option>
                             </select>
                         </div>
-                        <div class="control-group half">
-                            <label>Step (px)</label>
-                            <input type="number" id="rotateStep" value="1" min="1" max="20" title="Pixels per frame">
+                        <div class="control-group">
+                            <button class="btn secondary" id="addAllFramesBtn" style="width: 100%;">+ Add All Clipboard Frames</button>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                            <button class="btn" id="previewAnimationBtn" style="flex: 1;">Preview</button>
+                            <button class="btn" id="savePatBtn" style="flex: 1; background: #64b5f6;">Save .pat</button>
                         </div>
                     </div>
-                    <div class="control-group">
-                        <label>Frames <span id="framesHint" style="color: var(--text-dim); font-size: 0.65rem;"></span></label>
-                        <input type="number" id="totalFrames" value="200" min="1" max="10000" title="Total number of frames">
-                    </div>
-                    <button class="btn" id="buildSequenceBtn" style="margin-top: 0.5rem;">Generate Sequence</button>
                 </div>
 
                 <!-- Combine Tab -->
@@ -1328,6 +1574,18 @@
                     </div>
 
                     <button class="btn" id="combineBtn" style="margin-top: 1rem;">Combine Patterns</button>
+                </div>
+
+                <!-- Image Tab (placeholder) -->
+                <div class="tool-pane" id="imagePane">
+                    <div class="section-title">Image to Frame</div>
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem 1rem; text-align: center; color: var(--text-dim);">
+                        <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;">🖼️</div>
+                        <div style="font-size: 0.85rem; line-height: 1.5;">
+                            <strong style="color: var(--text);">Coming Soon</strong><br>
+                            Import images and convert them to LED patterns with automatic sizing and dithering.
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1466,26 +1724,28 @@
                     <option value="30">30 FPS</option>
                 </select>
 
-                <button class="capture-btn" id="captureBtn">↓ Capture Frame</button>
+                <div class="capture-buttons">
+                    <button class="capture-btn" id="captureFrameBtn" title="Capture current frame to clipboard">↓ Frame</button>
+                    <button class="capture-btn capture-pat" id="capturePatBtn" title="Capture full pattern to clipboard">↓ Pat</button>
+                </div>
             </div>
 
-            <!-- Clipboard Bar - Split into Frames and Patterns -->
+            <!-- Clipboard Bar - Tabbed design with Frames left, Patterns right -->
             <div class="clipboard-bar">
-                <div class="clipboard-section">
-                    <span class="clipboard-label">Frames:</span>
-                    <div class="clipboard-thumbnails" id="clipboardFrames">
-                        <span class="clipboard-empty">Capture frames</span>
+                <button class="clipboard-tab active" data-clipboard="frames" id="framesTab">
+                    Frames <span class="count" id="framesCount">(0)</span>
+                </button>
+                <div class="clipboard-content-area">
+                    <div class="clipboard-content active" id="clipboardFrames">
+                        <span class="clipboard-empty">Capture frames from viewer</span>
                     </div>
-                    <span class="clipboard-count" id="framesCount">0</span>
-                </div>
-                <div class="clipboard-divider"></div>
-                <div class="clipboard-section">
-                    <span class="clipboard-label">Patterns:</span>
-                    <div class="clipboard-thumbnails" id="clipboardPatterns">
-                        <span class="clipboard-empty">Store patterns</span>
+                    <div class="clipboard-content" id="clipboardPatterns">
+                        <span class="clipboard-empty">Capture patterns from viewer</span>
                     </div>
-                    <span class="clipboard-count" id="patternsCount">0</span>
                 </div>
+                <button class="clipboard-tab" data-clipboard="patterns" id="patternsTab">
+                    Patterns <span class="count" id="patternsCount">(0)</span>
+                </button>
             </div>
         </div>
     </div>
@@ -1567,6 +1827,10 @@
                 config: null,
                 locked: false
             },
+            frameAnimation: {
+                mode: 'shifting',  // 'shifting' or 'animation'
+                sequence: []       // Array of frame entries for animation mode
+            },
             isDirty: false,
             filename: null,
             listeners: new Map()
@@ -1628,6 +1892,14 @@
                 tab.addEventListener('click', () => {
                     const viewerName = tab.dataset.viewer;
                     setActiveViewer(viewerName);
+                });
+            });
+
+            // Clipboard tabs
+            document.querySelectorAll('.clipboard-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const tabType = tab.dataset.clipboard;
+                    switchClipboardTab(tabType);
                 });
             });
 
@@ -1724,8 +1996,15 @@
             });
 
             document.getElementById('arenaConfigStatus').addEventListener('change', (e) => {
+                const oldConfig = state.arena.configName;
                 state.arena.configName = e.target.value;
                 state.arena.config = getConfig(e.target.value);
+
+                // Clear clipboards if arena changed (dimensions may differ)
+                if (oldConfig !== e.target.value) {
+                    clearClipboards();
+                }
+
                 updateStatus();
                 updateG3ButtonStates();  // Disable save/load for G3
             });
@@ -1750,8 +2029,9 @@
                 }
             });
 
-            // Capture button
-            document.getElementById('captureBtn').addEventListener('click', captureFrame);
+            // Capture buttons
+            document.getElementById('captureFrameBtn').addEventListener('click', captureFrame);
+            document.getElementById('capturePatBtn').addEventListener('click', storePatternToClipboard);
 
             // Generate button and pattern type change
             document.getElementById('generateBtn').addEventListener('click', handleGenerate);
@@ -1798,6 +2078,15 @@
             document.getElementById('combineMode').addEventListener('change', updateCombineModeUI);
             document.getElementById('splitPosition').addEventListener('input', updateSplitPositionDisplay);
             document.getElementById('buildSequenceBtn').addEventListener('click', handleBuildSequence);
+
+            // Animate tab mode toggle
+            document.getElementById('shiftingModeBtn').addEventListener('click', () => setAnimateMode('shifting'));
+            document.getElementById('animationModeBtn').addEventListener('click', () => setAnimateMode('animation'));
+
+            // Frame animation buttons
+            document.getElementById('addAllFramesBtn').addEventListener('click', addAllClipboardFramesToSequence);
+            document.getElementById('previewAnimationBtn').addEventListener('click', previewFrameAnimation);
+            document.getElementById('savePatBtn').addEventListener('click', saveFrameAnimationAsPat);
 
             // Direction change updates default frames
             document.getElementById('rotateDirection').addEventListener('change', updateDefaultFrames);
@@ -2547,6 +2836,7 @@
             }
             state.clipboardFrames.push(clipboardEntry);
             updateClipboardUI();
+            switchClipboardTab('frames');  // Show frames tab
 
             console.log('Captured frame to clipboard:', clipboardEntry.name);
         }
@@ -2589,6 +2879,7 @@
             }
             state.clipboardPatterns.push(patternEntry);
             updateClipboardUI();
+            switchClipboardTab('patterns');  // Show patterns tab
 
             console.log('Stored pattern to clipboard:', patternEntry.name);
         }
@@ -2626,15 +2917,45 @@
             return canvas;
         }
 
+        // Clear both clipboards (called when arena changes)
+        function clearClipboards() {
+            state.clipboardFrames = [];
+            state.clipboardPatterns = [];
+            state.selectedFrameId = null;
+            state.selectedPatternId = null;
+            updateClipboardUI();
+            console.log('Clipboards cleared due to arena change');
+        }
+
+        // Switch clipboard tab (frames or patterns)
+        function switchClipboardTab(tabType) {
+            const framesTab = document.getElementById('framesTab');
+            const patternsTab = document.getElementById('patternsTab');
+            const framesContent = document.getElementById('clipboardFrames');
+            const patternsContent = document.getElementById('clipboardPatterns');
+
+            if (tabType === 'frames') {
+                framesTab.classList.add('active');
+                patternsTab.classList.remove('active');
+                framesContent.classList.add('active');
+                patternsContent.classList.remove('active');
+            } else {
+                framesTab.classList.remove('active');
+                patternsTab.classList.add('active');
+                framesContent.classList.remove('active');
+                patternsContent.classList.add('active');
+            }
+        }
+
         function updateClipboardUI() {
             // Update Frames section
             const framesContainer = document.getElementById('clipboardFrames');
             const framesCountEl = document.getElementById('framesCount');
 
-            framesCountEl.textContent = state.clipboardFrames.length;
+            framesCountEl.textContent = `(${state.clipboardFrames.length})`;
 
             if (state.clipboardFrames.length === 0) {
-                framesContainer.innerHTML = '<span class="clipboard-empty">Capture frames</span>';
+                framesContainer.innerHTML = '<span class="clipboard-empty">Capture frames from viewer</span>';
             } else {
                 framesContainer.innerHTML = '';
                 for (let i = 0; i < state.clipboardFrames.length; i++) {
@@ -2648,18 +2969,86 @@
             const patternsContainer = document.getElementById('clipboardPatterns');
             const patternsCountEl = document.getElementById('patternsCount');
 
-            patternsCountEl.textContent = state.clipboardPatterns.length;
+            patternsCountEl.textContent = `(${state.clipboardPatterns.length})`;
 
             if (state.clipboardPatterns.length === 0) {
-                patternsContainer.innerHTML = '<span class="clipboard-empty">Store patterns</span>';
+                patternsContainer.innerHTML = '<span class="clipboard-empty">Capture patterns from viewer</span>';
             } else {
                 patternsContainer.innerHTML = '';
                 for (let i = 0; i < state.clipboardPatterns.length; i++) {
                     const entry = state.clipboardPatterns[i];
-                    const thumb = createClipboardThumb(entry, 'pattern', i);
-                    patternsContainer.appendChild(thumb);
+                    const item = createPatternClipboardItem(entry, i);
+                    patternsContainer.appendChild(item);
                 }
             }
+        }
+
+        // Create a pattern item with editable name (different from frame thumbnails)
+        function createPatternClipboardItem(entry, index) {
+            const item = document.createElement('div');
+            item.className = 'clipboard-pattern-item';
+
+            const isSelected = state.selectedPatternId === entry.id;
+            if (isSelected) {
+                item.classList.add('selected');
+            }
+
+            item.title = `${entry.name}\n${entry.pattern ? entry.pattern.frames.length + ' frames' : '1 frame'}\n${formatTimestamp(entry.timestamp)}`;
+
+            // Editable name
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'pattern-name';
+            nameSpan.textContent = entry.name || `Pattern ${index + 1}`;
+            nameSpan.contentEditable = true;
+            nameSpan.spellcheck = false;
+            nameSpan.addEventListener('blur', () => {
+                entry.name = nameSpan.textContent.trim() || `Pattern ${index + 1}`;
+            });
+            nameSpan.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    nameSpan.blur();
+                }
+            });
+            nameSpan.addEventListener('click', (e) => {
+                e.stopPropagation(); // Don't select when editing name
+            });
+            item.appendChild(nameSpan);
+
+            // Frame count
+            const framesSpan = document.createElement('span');
+            framesSpan.className = 'pattern-frames';
+            framesSpan.textContent = entry.pattern ? `${entry.pattern.frames.length}f` : '1f';
+            item.appendChild(framesSpan);
+
+            // Delete button
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.textContent = '×';
+            deleteBtn.title = 'Delete pattern';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteClipboardEntry(entry.id, 'pattern');
+            });
+            item.appendChild(deleteBtn);
+
+            // Click to select
+            item.addEventListener('click', () => {
+                selectClipboardEntry(entry.id, 'pattern');
+            });
+
+            // Double-click to load
+            item.addEventListener('dblclick', () => {
+                loadClipboardPattern(entry.id);
+            });
+
+            // Right-click context menu
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showClipboardContextMenu(e, entry, 'pattern');
+            });
+
+            return item;
         }
 
         function createClipboardThumb(entry, type, index) {
@@ -3667,6 +4056,180 @@
             return shifted;
         }
 
+        // ============================================
+        // Animate Tab Mode Toggle
+        // ============================================
+        function setAnimateMode(mode) {
+            state.frameAnimation.mode = mode;
+
+            // Update toggle buttons
+            document.getElementById('shiftingModeBtn').classList.toggle('active', mode === 'shifting');
+            document.getElementById('animationModeBtn').classList.toggle('active', mode === 'animation');
+
+            // Update content visibility
+            document.getElementById('shiftingMode').classList.toggle('active', mode === 'shifting');
+            document.getElementById('animationMode').classList.toggle('active', mode === 'animation');
+
+            // Update sequence UI if switching to animation mode
+            if (mode === 'animation') {
+                updateSequenceBuilderUI();
+            }
+        }
+
+        function updateSequenceBuilderUI() {
+            const container = document.getElementById('sequenceFrames');
+            const emptyMsg = document.getElementById('sequenceEmpty');
+            const sequence = state.frameAnimation.sequence;
+
+            if (sequence.length === 0) {
+                container.innerHTML = '';
+                emptyMsg.style.display = 'block';
+            } else {
+                emptyMsg.style.display = 'none';
+                container.innerHTML = '';
+
+                sequence.forEach((entry, index) => {
+                    const frameEl = createSequenceFrameElement(entry, index);
+                    container.appendChild(frameEl);
+                });
+            }
+        }
+
+        function createSequenceFrameElement(entry, index) {
+            const frameEl = document.createElement('div');
+            frameEl.className = 'sequence-frame';
+            frameEl.draggable = true;
+            frameEl.dataset.index = index;
+            frameEl.title = `Frame ${index + 1}: ${entry.name || 'Frame'}`;
+
+            // Show thumbnail if available
+            if (entry.thumbnail) {
+                frameEl.appendChild(entry.thumbnail.cloneNode(true));
+            } else {
+                frameEl.textContent = index + 1;
+            }
+
+            // Remove button
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'remove-btn';
+            removeBtn.textContent = '×';
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeFromSequence(index);
+            });
+            frameEl.appendChild(removeBtn);
+
+            // Drag and drop for reordering
+            frameEl.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', index);
+                frameEl.classList.add('dragging');
+            });
+
+            frameEl.addEventListener('dragend', () => {
+                frameEl.classList.remove('dragging');
+            });
+
+            frameEl.addEventListener('dragover', (e) => {
+                e.preventDefault();
+            });
+
+            frameEl.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                const toIndex = index;
+                if (fromIndex !== toIndex) {
+                    reorderSequence(fromIndex, toIndex);
+                }
+            });
+
+            return frameEl;
+        }
+
+        function addAllClipboardFramesToSequence() {
+            if (state.clipboardFrames.length === 0) {
+                alert('No frames in clipboard. Capture some frames first.');
+                return;
+            }
+
+            // Add all clipboard frames to the sequence
+            state.clipboardFrames.forEach(entry => {
+                state.frameAnimation.sequence.push({
+                    ...entry,
+                    // Create a copy of the frame data
+                    frame: new Uint8Array(entry.frame),
+                    thumbnail: entry.thumbnail ? entry.thumbnail.cloneNode(true) : null
+                });
+            });
+
+            updateSequenceBuilderUI();
+            console.log(`Added ${state.clipboardFrames.length} frames to sequence`);
+        }
+
+        function removeFromSequence(index) {
+            state.frameAnimation.sequence.splice(index, 1);
+            updateSequenceBuilderUI();
+        }
+
+        function reorderSequence(fromIndex, toIndex) {
+            const [moved] = state.frameAnimation.sequence.splice(fromIndex, 1);
+            state.frameAnimation.sequence.splice(toIndex, 0, moved);
+            updateSequenceBuilderUI();
+        }
+
+        function previewFrameAnimation() {
+            const sequence = state.frameAnimation.sequence;
+
+            if (sequence.length === 0) {
+                alert('Add frames to the sequence first');
+                return;
+            }
+
+            // Build pattern from sequence
+            const firstEntry = sequence[0];
+            const { pixelRows, pixelCols, gsMode, generation } = firstEntry;
+
+            const frames = sequence.map(entry => new Uint8Array(entry.frame));
+
+            state.pattern = {
+                generation: generation || 'G6',
+                gsMode: gsMode || 2,
+                numFrames: frames.length,
+                pixelRows: pixelRows,
+                pixelCols: pixelCols,
+                frames: frames,
+                stretchValues: new Array(frames.length).fill(1)
+            };
+
+            state.filename = `animation_${frames.length}f.pat`;
+            state.isDirty = true;
+            state.editor.currentFrame = 0;
+
+            // Switch to 2D view
+            setActiveViewer('grid');
+
+            updateStatus();
+            updateFrameInfo();
+
+            console.log(`Preview animation: ${frames.length} frames`);
+        }
+
+        function saveFrameAnimationAsPat() {
+            const sequence = state.frameAnimation.sequence;
+
+            if (sequence.length === 0) {
+                alert('Add frames to the sequence first');
+                return;
+            }
+
+            // Build pattern from sequence first
+            previewFrameAnimation();
+
+            // Then trigger save
+            if (state.pattern) {
+                savePatternFile();
+            }
+        }
+
         // Legacy alias for backwards compatibility
         function rotateFrameHorizontally(frameData, pixelCols, pixelRows, offset) {
             return shiftFrameHorizontally(frameData, pixelCols, pixelRows, offset);
@@ -4009,13 +4572,16 @@
 
         function toggleArenaLock() {
             if (state.arena.locked) {
-                // Warn if pattern exists
-                if (state.pattern) {
+                // Warn if pattern or clipboard items exist
+                const hasClipboardItems = state.clipboardFrames.length > 0 || state.clipboardPatterns.length > 0;
+                if (state.pattern || hasClipboardItems) {
+                    const clipboardWarning = hasClipboardItems ? '\n\nClipboard contents will be cleared.' : '';
                     const confirmed = confirm(
-                        'Warning: Changing the arena config while a pattern is loaded may cause dimension mismatches.\n\n' +
-                        'Are you sure you want to unlock the arena config?'
+                        'Warning: Changing the arena config while a pattern is loaded may cause dimension mismatches.' +
+                        clipboardWarning + '\n\nAre you sure you want to unlock the arena config?'
                     );
                     if (!confirmed) return;
+                    clearClipboards();
                 }
                 unlockArenaConfig();
             } else {
