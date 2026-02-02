@@ -10,7 +10,7 @@ Example: `Arena Editor v2 | 2026-01-16 14:30 ET`
 
 **IMPORTANT**: Always include timestamp in Eastern Time (ET) to distinguish multiple updates per day. Update the timestamp whenever the page is modified.
 
-**To get current time**: Run `date "+%Y-%m-%d %H:%M ET"` in Bash to get the actual current time. Never guess or make up timestamps.
+**To get current time**: Run `TZ='America/New_York' date "+%Y-%m-%d %H:%M ET"` in Bash to get the actual current time. Never guess or make up timestamps.
 
 ## Design System
 
