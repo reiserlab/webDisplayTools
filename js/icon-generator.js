@@ -421,3 +421,6 @@ if (typeof module !== 'undefined' && module.exports) {
         generateTestIcon
     };
 }
+
+// ES6 module export
+export { generatePatternIcon, generateMotionIcon, generateTestIcon };

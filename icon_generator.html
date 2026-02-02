@@ -5,9 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pattern Icon Generator - PanelDisplayTools</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-    <script src="js/arena-configs.js"></script>
-    <script src="js/pat-parser.js"></script>
-    <script src="js/icon-generator.js"></script>
+    <!-- Load as ES6 modules for compatibility with pat-parser.js export -->
+    <script type="module">
+        // Cache-busting: v2 added ES6 exports
+        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration } from './js/arena-configs.js?v=2';
+        import PatParser from './js/pat-parser.js?v=2';
+        import { generatePatternIcon, generateMotionIcon, generateTestIcon } from './js/icon-generator.js?v=2';
+
+        // Make available globally for inline script
+        window.STANDARD_CONFIGS = STANDARD_CONFIGS;
+        window.PANEL_SPECS = PANEL_SPECS;
+        window.getConfig = getConfig;
+        window.getConfigsByGeneration = getConfigsByGeneration;
+        window.PatParser = PatParser;
+        window.IconGenerator = { generatePatternIcon, generateMotionIcon, generateTestIcon };
+
+        // Dispatch event when modules are loaded
+        window.dispatchEvent(new Event('modulesLoaded'));
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -430,15 +445,28 @@
         let currentArenaConfig = null;
         let currentIconDataURL = null;
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
+        // Initialize - wait for modules to load
+        function init() {
             populateArenaDropdown();
             setupEventListeners();
 
             // Select default arena
             document.getElementById('arena-select').value = 'G6_2x10';
             updateArenaConfig();
-        });
+        }
+
+        // Wait for ES6 modules to load, then initialize
+        if (window.PatParser) {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            window.addEventListener('modulesLoaded', () => {
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', init);
+                } else {
+                    init();
+                }
+            });
+        }
 
         function populateArenaDropdown() {
             const groups = getConfigsByGeneration();

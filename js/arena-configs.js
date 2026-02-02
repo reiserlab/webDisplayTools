@@ -235,3 +235,14 @@ function getConfigsByGeneration() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration };
 }
+
+// Browser global export (for non-module scripts)
+if (typeof window !== 'undefined') {
+    window.STANDARD_CONFIGS = STANDARD_CONFIGS;
+    window.PANEL_SPECS = PANEL_SPECS;
+    window.getConfig = getConfig;
+    window.getConfigsByGeneration = getConfigsByGeneration;
+}
+
+// ES6 module export
+export { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration };

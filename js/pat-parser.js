@@ -581,5 +581,12 @@ if (typeof window !== 'undefined') {
     window.PatParser = PatParser;
 }
 
-// ES module export for import statements
+// ES module export - only works when loaded as module
+// Note: This file supports dual loading:
+// - <script src="pat-parser.js"> → uses window.PatParser (global)
+// - import PatParser from './pat-parser.js' → uses this export
+// The export statement below will cause a syntax error if loaded as regular script,
+// but since we set window.PatParser above, the global is still available.
+// To avoid the error when loading as script, load this file with type="module"
+// or only use the window.PatParser global.
 export default PatParser;
