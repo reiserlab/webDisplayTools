@@ -268,6 +268,19 @@
             font-size: 0.75rem;
         }
 
+        .help-text {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 0.4rem;
+        }
+
+        .help-text code {
+            background: var(--bg);
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
         footer {
             margin-top: 3rem;
             text-align: center;
@@ -304,6 +317,13 @@
                     </div>
 
                     <div class="control-group">
+                        <label>Or Load from Folder</label>
+                        <input type="file" id="folder-input" webkitdirectory directory accept=".pat" style="display: none;">
+                        <button class="btn secondary" id="folder-btn" onclick="document.getElementById('folder-input').click()">Select Folder...</button>
+                        <div class="help-text">Select a folder like <code>G6_2x10</code> to auto-detect arena</div>
+                    </div>
+
+                    <div class="control-group">
                         <label>Or Generate Test Pattern</label>
                         <div class="test-pattern-grid">
                             <button class="btn secondary" onclick="generateTest('grating')">Grating</button>
@@ -322,6 +342,14 @@
                         <div id="arena-detected" style="color: var(--text-dim);">
                             Load a pattern to detect arena configuration
                         </div>
+                    </div>
+
+                    <!-- Manual arena override - shown only when auto-detection fails -->
+                    <div id="arena-override" class="control-group" style="display: none; margin-top: 0.75rem;">
+                        <label>Manual Arena Selection</label>
+                        <select id="arena-select">
+                            <option value="">-- Select Arena --</option>
+                        </select>
                     </div>
                 </div>
 
@@ -427,7 +455,7 @@
         </div>
 
         <footer>
-            <p>Pattern Icon Generator v0.8 | 2026-02-02 10:35 ET</p>
+            <p>Pattern Icon Generator v0.9 | 2026-02-02 10:44 ET</p>
             <p><a href="index.html">← Back to Tools</a></p>
         </footer>
     </div>
@@ -536,6 +564,12 @@
             // Pattern file input
             document.getElementById('pattern-file').addEventListener('change', handlePatternFile);
 
+            // Folder input
+            document.getElementById('folder-input').addEventListener('change', handleFolderSelect);
+
+            // Arena override dropdown
+            document.getElementById('arena-select').addEventListener('change', handleArenaOverride);
+
             // Icon mode radio buttons
             document.querySelectorAll('input[name="icon-mode"]').forEach(radio => {
                 radio.addEventListener('change', toggleIconMode);
@@ -550,6 +584,136 @@
 
             // Download button
             document.getElementById('download-btn').addEventListener('click', downloadIcon);
+
+            // Populate arena dropdown for manual override
+            populateArenaDropdown();
+        }
+
+        function populateArenaDropdown() {
+            const select = document.getElementById('arena-select');
+            const configsByGen = getConfigsByGeneration();
+
+            for (const [gen, configs] of Object.entries(configsByGen)) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = gen;
+                configs.forEach(config => {
+                    const option = document.createElement('option');
+                    option.value = config.name;
+                    option.textContent = config.label;
+                    optgroup.appendChild(option);
+                });
+                select.appendChild(optgroup);
+            }
+        }
+
+        async function handleFolderSelect(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            // Find .pat files
+            const patFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pat'));
+
+            if (patFiles.length === 0) {
+                alert('No .pat files found in the selected folder');
+                return;
+            }
+
+            // Show file picker dialog for which pattern to load
+            const fileNames = patFiles.map(f => f.name);
+            const selectedName = patFiles.length === 1 ? patFiles[0].name :
+                prompt('Multiple .pat files found. Enter the filename to load:\n\n' + fileNames.join('\n'));
+
+            if (!selectedName) return;
+
+            const selectedFile = patFiles.find(f => f.name === selectedName);
+            if (!selectedFile) {
+                alert('File not found: ' + selectedName);
+                return;
+            }
+
+            try {
+                const arrayBuffer = await selectedFile.arrayBuffer();
+                const patternData = PatParser.parsePatFile(arrayBuffer);
+
+                // webkitRelativePath contains the folder structure: "G6_2x10/filename.pat"
+                const filepath = selectedFile.webkitRelativePath || selectedFile.name;
+                currentFilename = selectedFile.name;
+
+                console.log('Folder file path:', filepath); // Debug
+
+                // Try to infer arena from the path (folder name now available!)
+                const arenaResult = inferArenaFromPath(filepath);
+
+                if (!arenaResult) {
+                    showArenaError(filepath);
+                    showArenaOverride(patternData);
+                    return;
+                }
+
+                currentArenaConfig = arenaResult.config.arena;
+                currentPatternData = patternData;
+
+                // Hide manual override
+                document.getElementById('arena-override').style.display = 'none';
+
+                // Update arena display
+                updateArenaDisplay(arenaResult.name, arenaResult.config);
+
+                // Update UI with pattern info
+                updatePatternUI(patternData, selectedFile.name);
+
+                // Enable generate button
+                document.getElementById('generate-btn').disabled = false;
+            } catch (error) {
+                alert('Error loading pattern file: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        // Store pending pattern data when manual override is needed
+        let pendingPatternData = null;
+
+        function showArenaOverride(patternData) {
+            pendingPatternData = patternData;
+            document.getElementById('arena-override').style.display = 'block';
+            document.getElementById('arena-select').value = '';
+            document.getElementById('generate-btn').disabled = true;
+        }
+
+        function handleArenaOverride(event) {
+            const configName = event.target.value;
+            if (!configName || !pendingPatternData) return;
+
+            const config = getConfig(configName);
+            if (!config) return;
+
+            currentArenaConfig = config.arena;
+            currentPatternData = pendingPatternData;
+
+            // Update arena display
+            updateArenaDisplay(configName, config);
+
+            // Update UI with pattern info
+            updatePatternUI(currentPatternData, currentFilename);
+
+            // Enable generate button
+            document.getElementById('generate-btn').disabled = false;
+        }
+
+        function updatePatternUI(patternData, filename) {
+            document.getElementById('frame-slider').max = patternData.frames.length - 1;
+            document.getElementById('frame-slider').value = Math.floor(patternData.frames.length / 2);
+            document.getElementById('frame-start').max = patternData.frames.length - 1;
+            document.getElementById('frame-end').max = patternData.frames.length - 1;
+            document.getElementById('frame-end').value = patternData.frames.length - 1;
+            updateFrameValue();
+
+            // Show pattern info
+            document.getElementById('info-pattern').textContent = filename;
+            document.getElementById('info-dims').textContent = `${patternData.cols || patternData.pixelCols} × ${patternData.rows || patternData.pixelRows}`;
+            document.getElementById('info-frames').textContent = patternData.frames.length;
+            document.getElementById('info-mode').textContent = patternData.grayscaleMode || (patternData.gs_val === 16 ? 'GS16' : 'GS2');
+            document.getElementById('pattern-info').style.display = 'block';
         }
 
         async function handlePatternFile(event) {
@@ -570,33 +734,24 @@
 
                 if (!arenaResult) {
                     showArenaError(filepath);
-                    currentArenaConfig = null;
-                    currentPatternData = null;
-                    document.getElementById('generate-btn').disabled = true;
-                    document.getElementById('pattern-info').style.display = 'none';
+                    // Show manual override dropdown instead of blocking
+                    showArenaOverride(patternData);
+                    // Update pattern info even without arena
+                    updatePatternUI(patternData, file.name);
                     return;
                 }
 
                 currentArenaConfig = arenaResult.config.arena;
                 currentPatternData = patternData;
 
+                // Hide manual override
+                document.getElementById('arena-override').style.display = 'none';
+
                 // Update arena display
                 updateArenaDisplay(arenaResult.name, arenaResult.config);
 
                 // Update UI
-                document.getElementById('frame-slider').max = patternData.frames.length - 1;
-                document.getElementById('frame-slider').value = Math.floor(patternData.frames.length / 2);
-                document.getElementById('frame-start').max = patternData.frames.length - 1;
-                document.getElementById('frame-end').max = patternData.frames.length - 1;
-                document.getElementById('frame-end').value = patternData.frames.length - 1;
-                updateFrameValue();
-
-                // Show pattern info
-                document.getElementById('info-pattern').textContent = file.name;
-                document.getElementById('info-dims').textContent = `${patternData.cols || patternData.pixelCols} × ${patternData.rows || patternData.pixelRows}`;
-                document.getElementById('info-frames').textContent = patternData.frames.length;
-                document.getElementById('info-mode').textContent = patternData.grayscaleMode || (patternData.gs_val === 16 ? 'GS16' : 'GS2');
-                document.getElementById('pattern-info').style.display = 'block';
+                updatePatternUI(patternData, file.name);
 
                 // Enable generate button
                 document.getElementById('generate-btn').disabled = false;
