@@ -55,7 +55,7 @@
             test('PatParser has methods', methods.length > 0,
                  `Methods: ${methods.join(', ')}`);
 
-            test('PatParser.parse exists', typeof PatParser.parse === 'function');
+            test('PatParser.parsePatFile exists', typeof PatParser.parsePatFile === 'function');
         } else {
             test('PatParser.parse exists', false, 'Cannot test - PatParser not loaded');
         }

@@ -30,6 +30,7 @@ class ThreeViewer {
         this.arenaGroup = null;
         this.ledMeshes = [];
         this.labelObjects = [];
+        this.poleGroup = null;      // Group for pole geometry visualization
 
         this.state = {
             pattern: null,          // Pattern data from editor
@@ -38,6 +39,8 @@ class ThreeViewer {
             showPanelBoundaries: true,
             showPanelNumbers: false,
             showColumnLabels: false,
+            showPoleGeometry: false,  // Show pole axis line
+            poleCoord: [0, -Math.PI / 2],  // [phi, theta] in radians - default south pole
             isPlaying: false,
             fps: 10,
             playbackIntervalId: null
@@ -163,7 +166,7 @@ class ThreeViewer {
 
     /**
      * Update display options
-     * @param {Object} options - { showPanelBoundaries, showPanelNumbers }
+     * @param {Object} options - { showPanelBoundaries, showPanelNumbers, showPoleGeometry, poleCoord }
      */
     setOptions(options) {
         let needsRebuild = false;
@@ -175,11 +178,32 @@ class ThreeViewer {
             this.state.showPanelNumbers = options.showPanelNumbers;
             needsRebuild = true;
         }
+        if (options.showPoleGeometry !== undefined) {
+            this.state.showPoleGeometry = options.showPoleGeometry;
+            this._updatePoleGeometry();
+        }
+        if (options.poleCoord !== undefined) {
+            this.state.poleCoord = options.poleCoord;
+            if (this.state.showPoleGeometry) {
+                this._updatePoleGeometry();
+            }
+        }
 
         // Rebuild arena if label visibility changed (labels are attached to columns)
         if (needsRebuild) {
             this._buildArena();
             this._updateLEDColors();
+        }
+    }
+
+    /**
+     * Update pole coordinate for visualization
+     * @param {Array} poleCoord - [phi, theta] in radians
+     */
+    setPoleCoord(poleCoord) {
+        this.state.poleCoord = poleCoord;
+        if (this.state.showPoleGeometry) {
+            this._updatePoleGeometry();
         }
     }
 
@@ -647,6 +671,108 @@ class ThreeViewer {
         const g = Math.floor(brightness * 255);
         const b = Math.floor(brightness * 0.2 * 255);
         return (r << 16) | (g << 8) | b;
+    }
+
+    /**
+     * Update pole geometry visualization
+     * Shows a red line through the arena indicating the pole axis
+     */
+    _updatePoleGeometry() {
+        // Remove existing pole group
+        if (this.poleGroup) {
+            this.scene.remove(this.poleGroup);
+            this.poleGroup = null;
+        }
+
+        if (!this.state.showPoleGeometry) {
+            return;
+        }
+
+        // Create pole group
+        this.poleGroup = new THREE.Group();
+
+        // Get arena radius for line length
+        const config = this.arenaConfig;
+        const specs = this.panelSpecs;
+        if (!config || !specs) return;
+
+        const arena = config.arena;
+        const numCols = arena.num_cols;
+        const panelWidth = specs.panel_width_mm / 25.4;
+        const alpha = (2 * Math.PI) / numCols;
+        const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+        const numRows = arena.num_rows;
+        const panelHeight = specs.panel_height_mm / 25.4;
+        const columnHeight = panelHeight * numRows;
+
+        // Line extends well beyond arena
+        const lineLength = Math.max(cRadius, columnHeight) * 3;
+
+        // Get pole coordinates [phi, theta] in radians
+        // phi is azimuthal angle, theta is polar angle from north (0 = north pole, PI = south pole)
+        const [phi, theta] = this.state.poleCoord;
+
+        // Convert spherical to direction vector
+        // theta is angle from north pole (zenith), phi is azimuth
+        // Direction vector pointing in the pole direction
+        const sinTheta = Math.sin(theta);
+        const cosTheta = Math.cos(theta);
+        const sinPhi = Math.sin(phi);
+        const cosPhi = Math.cos(phi);
+
+        // In Three.js: Y is up, X is right, Z is toward viewer (negated to match MATLAB)
+        // Pole direction in 3D
+        const dx = sinTheta * cosPhi;
+        const dy = cosTheta;
+        const dz = -sinTheta * sinPhi;  // Negate Z to match arena rendering
+
+        // Create line geometry
+        const lineGeom = new THREE.BufferGeometry();
+        const lineVertices = new Float32Array([
+            -dx * lineLength, -dy * lineLength, -dz * lineLength,
+             dx * lineLength,  dy * lineLength,  dz * lineLength
+        ]);
+        lineGeom.setAttribute('position', new THREE.Float32BufferAttribute(lineVertices, 3));
+
+        // Red line material - thick and prominent
+        const lineMat = new THREE.LineBasicMaterial({
+            color: 0xff0000,
+            linewidth: 3  // Note: linewidth > 1 only works with LineBasicMaterial on some systems
+        });
+        const poleLine = new THREE.Line(lineGeom, lineMat);
+        this.poleGroup.add(poleLine);
+
+        // Add arrowhead to indicate positive direction (using right-hand rule)
+        // Arrow points in the direction the pattern rotates around (thumb direction)
+        const arrowLength = lineLength * 0.15;
+        const arrowRadius = lineLength * 0.04;
+
+        // Arrow cone at the positive end
+        const arrowGeom = new THREE.ConeGeometry(arrowRadius, arrowLength, 8);
+        const arrowMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const arrow = new THREE.Mesh(arrowGeom, arrowMat);
+
+        // Position arrow at the positive end of the line
+        arrow.position.set(dx * lineLength, dy * lineLength, dz * lineLength);
+
+        // Orient arrow to point along the direction
+        // Default cone points up (+Y), we need to rotate to match direction
+        const targetDir = new THREE.Vector3(dx, dy, dz).normalize();
+        const upDir = new THREE.Vector3(0, 1, 0);
+        const quaternion = new THREE.Quaternion();
+        quaternion.setFromUnitVectors(upDir, targetDir);
+        arrow.setRotationFromQuaternion(quaternion);
+
+        this.poleGroup.add(arrow);
+
+        // Add a small sphere at the center for reference
+        const sphereGeom = new THREE.SphereGeometry(arrowRadius * 0.8, 16, 12);
+        const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff4444 });
+        const centerSphere = new THREE.Mesh(sphereGeom, sphereMat);
+        centerSphere.position.set(0, 0, 0);
+        this.poleGroup.add(centerSphere);
+
+        this.scene.add(this.poleGroup);
     }
 }
 

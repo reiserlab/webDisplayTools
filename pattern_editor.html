@@ -71,25 +71,30 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            padding: 8px 4px;
+            padding: 4px 2px;
             background: var(--bg);
             border-right: 1px solid var(--border);
+            width: 28px;
+            min-width: 28px;
         }
 
         .generate-btn-vertical {
-            writing-mode: vertical-lr;
-            text-orientation: mixed;
-            padding: 16px 10px;
-            font-size: 12px;
-            font-weight: 600;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            padding: 8px 4px;
+            font-size: 11px;
+            font-weight: 700;
             font-family: 'JetBrains Mono', monospace;
             background: var(--accent);
             color: var(--bg);
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            white-space: nowrap;
             transition: background-color 0.15s ease;
+            line-height: 1.1;
         }
 
         .generate-btn-vertical:hover {
@@ -97,9 +102,12 @@
         }
 
         .generate-btn-vertical .arrow {
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .generate-btn-vertical .letter {
             display: block;
-            margin-top: 8px;
-            font-size: 14px;
         }
 
         /* Left Panel - Tools */
@@ -217,19 +225,60 @@
             border-color: var(--accent);
         }
 
-        /* Frame Clipboard - Full Width Horizontal Bar */
+        /* Compact control layouts */
+        .control-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .control-group.half {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .control-group.third {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .control-row .control-group label {
+            font-size: 0.65rem;
+        }
+
+        .control-row .control-group input {
+            padding: 0.4rem;
+            font-size: 0.75rem;
+        }
+
+        /* Clipboard Bar - Split into Frames and Patterns */
         .clipboard-bar {
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 8px 16px;
+            gap: 0;
+            padding: 6px 12px;
             background: var(--surface);
             border-top: 1px solid var(--border);
         }
 
+        .clipboard-section {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .clipboard-divider {
+            width: 1px;
+            height: 32px;
+            background: var(--border);
+            margin: 0 12px;
+        }
+
         .clipboard-label {
             color: var(--text-dim);
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
@@ -237,23 +286,27 @@
         }
 
         .clipboard-count {
-            font-size: 11px;
+            font-size: 10px;
             color: var(--accent);
             white-space: nowrap;
+            min-width: 16px;
+            text-align: center;
         }
 
         .clipboard-thumbnails {
             flex: 1;
             display: flex;
-            gap: 6px;
-            overflow-x: auto;  /* Native horizontal scroll */
-            padding: 4px 0;
+            gap: 4px;
+            overflow-x: auto;
+            padding: 2px 0;
             scrollbar-width: thin;
             scrollbar-color: var(--border) transparent;
+            min-width: 0;
+            max-width: 200px;
         }
 
         .clipboard-thumbnails::-webkit-scrollbar {
-            height: 6px;
+            height: 4px;
         }
 
         .clipboard-thumbnails::-webkit-scrollbar-track {
@@ -262,7 +315,7 @@
 
         .clipboard-thumbnails::-webkit-scrollbar-thumb {
             background: var(--border);
-            border-radius: 3px;
+            border-radius: 2px;
         }
 
         .clipboard-thumbnails::-webkit-scrollbar-thumb:hover {
@@ -272,6 +325,7 @@
         .clipboard-thumb {
             width: 40px;
             height: 40px;
+            min-width: 40px;
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 4px;
@@ -297,6 +351,35 @@
             width: 100%;
             height: 100%;
             border-radius: 3px;
+        }
+
+        .clipboard-thumb .delete-btn {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            width: 14px;
+            height: 14px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            font-size: 9px;
+            font-weight: bold;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            padding: 0;
+            z-index: 10;
+        }
+
+        .clipboard-thumb:hover .delete-btn {
+            display: flex;
+        }
+
+        .clipboard-thumb .delete-btn:hover {
+            background: #ff0000;
         }
 
         .clipboard-empty {
@@ -942,7 +1025,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.5 | 2026-02-01 19:15 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.6 | 2026-02-02 11:45 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -989,35 +1072,34 @@
 
                         <!-- Pole coordinates (shown for all motion types - determines direction) -->
                         <div id="poleCoordGroup">
-                            <div class="control-group">
-                                <label>Pole Azimuth (°)</label>
-                                <input type="number" id="poleAzimuth" value="0" min="-180" max="180" step="1">
-                                <span class="hint" style="color: var(--text-dim); font-size: 0.7rem;">-180 to +180</span>
-                            </div>
-                            <div class="control-group">
-                                <label>Pole Elevation (°)</label>
-                                <input type="number" id="poleElevation" value="-90" min="-90" max="90" step="1">
-                                <span class="hint" style="color: var(--text-dim); font-size: 0.7rem;">-90 (down) to +90 (up)</span>
-                            </div>
-                            <div style="color: var(--text-dim); font-size: 0.7rem; margin-top: 0.25rem; padding: 0.25rem; background: rgba(0,230,118,0.1); border-radius: 4px;">
-                                ℹ️ Direction determined by pole position (right-hand rule)
+                            <div class="control-row">
+                                <div class="control-group half">
+                                    <label>Pole Az (°)</label>
+                                    <input type="number" id="poleAzimuth" value="0" min="-180" max="180" step="1" title="Azimuth angle: -180 to +180 degrees">
+                                </div>
+                                <div class="control-group half">
+                                    <label>Pole El (°)</label>
+                                    <input type="number" id="poleElevation" value="-90" min="-90" max="90" step="1" title="Elevation: -90 (down) to +90 (up)">
+                                </div>
                             </div>
                         </div>
 
-                        <div class="control-group">
-                            <label>Arena Model</label>
-                            <select id="arenaModel">
-                                <option value="smooth">Smooth cylinder</option>
-                                <option value="poly">Polygonal</option>
-                            </select>
-                        </div>
-                        <div class="control-group">
-                            <label>Anti-aliasing</label>
-                            <select id="aaSamples">
-                                <option value="1">None (fastest)</option>
-                                <option value="5">Low (5 samples)</option>
-                                <option value="15" selected>Standard (15 samples)</option>
-                            </select>
+                        <div class="control-row">
+                            <div class="control-group half">
+                                <label>Arena Model</label>
+                                <select id="arenaModel" title="Smooth: perfect cylinder. Poly: polygonal facets">
+                                    <option value="smooth">Smooth</option>
+                                    <option value="poly">Polygonal</option>
+                                </select>
+                            </div>
+                            <div class="control-group half">
+                                <label>Anti-alias</label>
+                                <select id="aaSamples" title="More samples = smoother edges but slower">
+                                    <option value="1">None</option>
+                                    <option value="5">Low (5)</option>
+                                    <option value="15" selected>Std (15)</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -1036,58 +1118,57 @@
                             </div>
                             <span id="spatialFreqConversion" style="color: var(--text-dim); font-size: 0.75rem;">= 36.00°</span>
                         </div>
-                        <div class="control-group" id="dutyCycleGroup">
-                            <label>Duty Cycle (%)</label>
-                            <input type="number" id="dutyCycle" value="50" min="1" max="99">
-                        </div>
-                        <div class="control-group" id="phaseShiftGroup">
-                            <label>Phase Shift (% of wavelength)</label>
-                            <input type="number" id="phaseShift" value="0" min="0" max="100" step="1">
-                            <span style="color: var(--text-dim); font-size: 0.7rem;">0-100% shifts starting position</span>
+                        <div class="control-row" id="dutyCyclePhaseRow">
+                            <div class="control-group half" id="dutyCycleGroup">
+                                <label>Duty (%)</label>
+                                <input type="number" id="dutyCycle" value="50" min="1" max="99" title="Duty cycle percentage (1-99%)">
+                            </div>
+                            <div class="control-group half" id="phaseShiftGroup">
+                                <label>Phase (%)</label>
+                                <input type="number" id="phaseShift" value="0" min="0" max="100" step="1" title="Phase offset as percentage of wavelength (0-100%)">
+                            </div>
                         </div>
                     </div>
 
                     <!-- Starfield params -->
                     <div id="starfieldParams" style="display: none;">
-                        <div style="color: var(--text-dim); font-size: 0.75rem; padding: 0.5rem; background: rgba(0,230,118,0.1); border-radius: 4px; margin-bottom: 0.5rem;">
-                            Starfield uses spherical motion. Configure motion type and pole above.
+                        <div class="control-row">
+                            <div class="control-group third">
+                                <label>Dots</label>
+                                <input type="number" id="dotCount" value="100" min="1" max="1000" title="Number of dots">
+                            </div>
+                            <div class="control-group third">
+                                <label>Size</label>
+                                <input type="number" id="dotSize" value="1" min="1" max="10" title="Dot size in pixels">
+                            </div>
+                            <div class="control-group third">
+                                <label>Seed</label>
+                                <input type="number" id="randomSeed" value="12345" title="Random seed for reproducibility">
+                            </div>
+                        </div>
+                        <div class="control-row">
+                            <div class="control-group half">
+                                <label>Brightness</label>
+                                <select id="dotBrightnessMode" title="Fixed: all same. Random-spread: 0 to max. Random-binary: 0 or max">
+                                    <option value="fixed" selected>Fixed</option>
+                                    <option value="random-spread">Random</option>
+                                    <option value="random-binary">Binary</option>
+                                </select>
+                            </div>
+                            <div class="control-group half">
+                                <label>Size Mode</label>
+                                <select id="dotSizeMode" title="Static: all same. Distance: closer dots appear larger">
+                                    <option value="static" selected>Static</option>
+                                    <option value="distance">Distance</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="control-group">
-                            <label>Dot Count</label>
-                            <input type="number" id="dotCount" value="100" min="1" max="1000">
-                        </div>
-                        <div class="control-group">
-                            <label>Dot Size (pixels)</label>
-                            <input type="number" id="dotSize" value="1" min="1" max="10">
-                        </div>
-                        <div class="control-group">
-                            <label>Random Seed</label>
-                            <input type="number" id="starfieldSeed" value="12345" min="1">
-                        </div>
-
-                        <!-- Advanced Starfield Options (MATLAB parity) -->
-                        <div class="section-title" style="margin-top: 0.75rem;">Advanced Options</div>
-                        <div class="control-group">
-                            <label>Dot Brightness</label>
-                            <select id="dotBrightnessMode">
-                                <option value="fixed" selected>Fixed (all same)</option>
-                                <option value="random-spread">Random spread (0 to high)</option>
-                                <option value="random-binary">Random binary (0 or high)</option>
-                            </select>
-                        </div>
-                        <div class="control-group">
-                            <label>Dot Size Mode</label>
-                            <select id="dotSizeMode">
-                                <option value="static" selected>Static (all same size)</option>
-                                <option value="distance">Distance-relative (closer = larger)</option>
-                            </select>
-                        </div>
-                        <div class="control-group">
-                            <label>Dot Overlap</label>
-                            <select id="dotOcclusion">
+                            <label>Overlap</label>
+                            <select id="dotOcclusion" title="How to handle overlapping dots">
                                 <option value="closest" selected>Closest wins</option>
-                                <option value="sum">Sum brightness</option>
-                                <option value="mean">Average brightness</option>
+                                <option value="sum">Sum</option>
+                                <option value="mean">Average</option>
                             </select>
                         </div>
                         <div class="control-group" style="display: flex; align-items: center; gap: 0.5rem;">
@@ -1124,50 +1205,48 @@
                         </div>
                     </div>
 
-                    <div class="section-title">Brightness</div>
-                    <div class="control-group">
-                        <label>Grayscale Mode</label>
-                        <select id="gsMode">
-                            <option value="16">GS16 (4-bit, 0-15)</option>
-                            <option value="2">GS2 (binary, 0-1)</option>
-                        </select>
-                    </div>
-                    <div class="control-group">
-                        <label>High Level</label>
-                        <input type="number" id="highLevel" value="15" min="0" max="15">
-                    </div>
-                    <div class="control-group">
-                        <label>Low Level</label>
-                        <input type="number" id="lowLevel" value="0" min="0" max="15">
+                    <div class="section-title">Output</div>
+                    <div class="control-row">
+                        <div class="control-group half">
+                            <label>Mode</label>
+                            <select id="gsMode" title="GS16: 4-bit grayscale (0-15). GS2: binary (0-1)">
+                                <option value="16">GS16</option>
+                                <option value="2">GS2</option>
+                            </select>
+                        </div>
+                        <div class="control-group half">
+                            <label>High / Low</label>
+                            <div style="display: flex; gap: 4px;">
+                                <input type="number" id="highLevel" value="15" min="0" max="15" title="High brightness level" style="flex: 1;">
+                                <input type="number" id="lowLevel" value="0" min="0" max="15" title="Low brightness level" style="flex: 1;">
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Frame to Pattern Tab -->
                 <div class="tool-pane" id="framePane">
                     <div class="section-title">Sequence Builder</div>
-                    <p style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 1rem;">
-                        Select frame(s) from the clipboard below, then configure rotation to generate a pattern.
-                    </p>
-
-                    <div class="control-group">
-                        <label>Motion Direction</label>
-                        <select id="rotateDirection">
-                            <option value="h-cw">Horizontal CW</option>
-                            <option value="h-ccw">Horizontal CCW</option>
-                            <option value="v-up">Vertical Up</option>
-                            <option value="v-down">Vertical Down</option>
-                        </select>
+                    <div class="control-row">
+                        <div class="control-group half">
+                            <label>Direction</label>
+                            <select id="rotateDirection" title="Motion direction for the sequence">
+                                <option value="h-cw">H CW</option>
+                                <option value="h-ccw">H CCW</option>
+                                <option value="v-up">V Up</option>
+                                <option value="v-down">V Down</option>
+                            </select>
+                        </div>
+                        <div class="control-group half">
+                            <label>Step (px)</label>
+                            <input type="number" id="rotateStep" value="1" min="1" max="20" title="Pixels per frame">
+                        </div>
                     </div>
                     <div class="control-group">
-                        <label>Step Size (pixels/frame)</label>
-                        <input type="number" id="rotateStep" value="1" min="1" max="20">
+                        <label>Frames <span id="framesHint" style="color: var(--text-dim); font-size: 0.65rem;"></span></label>
+                        <input type="number" id="totalFrames" value="200" min="1" max="10000" title="Total number of frames">
                     </div>
-                    <div class="control-group">
-                        <label>Total Frames <span id="framesHint" style="color: var(--text-dim); font-size: 0.7rem;"></span></label>
-                        <input type="number" id="totalFrames" value="200" min="1" max="10000">
-                    </div>
-
-                    <button class="btn" id="buildSequenceBtn" style="margin-top: 1rem;">Generate Sequence</button>
+                    <button class="btn" id="buildSequenceBtn" style="margin-top: 0.5rem;">Generate Sequence</button>
                 </div>
 
                 <!-- Combine Tab -->
@@ -1254,8 +1333,16 @@
 
         <!-- Generate Column - between tools and viewer -->
         <div class="generate-column">
-            <button id="generateBtn" class="generate-btn-vertical">
-                <span>GENERATE</span>
+            <button id="generateBtn" class="generate-btn-vertical" title="Generate pattern from settings">
+                <span class="arrow">→</span>
+                <span class="letter">G</span>
+                <span class="letter">E</span>
+                <span class="letter">N</span>
+                <span class="letter">E</span>
+                <span class="letter">R</span>
+                <span class="letter">A</span>
+                <span class="letter">T</span>
+                <span class="letter">E</span>
                 <span class="arrow">→</span>
             </button>
         </div>
@@ -1278,6 +1365,10 @@
                     <label>
                         <input type="checkbox" id="showNumbers">
                         Panel numbers
+                    </label>
+                    <label>
+                        <input type="checkbox" id="showPoleGeometry">
+                        Pole geometry
                     </label>
                 </div>
             </div>
@@ -1368,13 +1459,23 @@
                 <button class="capture-btn" id="captureBtn">↓ Capture Frame</button>
             </div>
 
-            <!-- Frame Clipboard - Full Width Horizontal Bar -->
+            <!-- Clipboard Bar - Split into Frames and Patterns -->
             <div class="clipboard-bar">
-                <span class="clipboard-label">Clipboard:</span>
-                <div class="clipboard-thumbnails" id="clipboardThumbnails">
-                    <span class="clipboard-empty">Capture frames to build sequences</span>
+                <div class="clipboard-section">
+                    <span class="clipboard-label">Frames:</span>
+                    <div class="clipboard-thumbnails" id="clipboardFrames">
+                        <span class="clipboard-empty">Capture frames</span>
+                    </div>
+                    <span class="clipboard-count" id="framesCount">0</span>
                 </div>
-                <span class="clipboard-count" id="clipboardCount">0 frames</span>
+                <div class="clipboard-divider"></div>
+                <div class="clipboard-section">
+                    <span class="clipboard-label">Patterns:</span>
+                    <div class="clipboard-thumbnails" id="clipboardPatterns">
+                        <span class="clipboard-empty">Store patterns</span>
+                    </div>
+                    <span class="clipboard-count" id="patternsCount">0</span>
+                </div>
             </div>
         </div>
     </div>
@@ -1432,9 +1533,10 @@
             pattern: null,          // Current loaded/generated pattern
             combinePatternA: null,  // Pattern A for combining (saved separately)
             combinePatternB: null,  // Pattern B for combining (saved separately)
-            clipboard: [],          // Array of captured frames
-            clipboardOffset: 0,     // Scroll offset for clipboard display
-            selectedClipboardIds: [], // Selected clipboard entries for sequence building
+            clipboardFrames: [],    // Array of captured single frames (max ~10)
+            clipboardPatterns: [],  // Array of stored patterns for combine/preview
+            selectedFrameId: null,  // Single selected frame ID (only one at a time)
+            selectedPatternId: null, // Single selected pattern ID
             editor: {
                 activeTool: 'generate',
                 activeViewer: 'grid',
@@ -1531,6 +1633,22 @@
                     threeViewer.setOptions({ showPanelNumbers: e.target.checked });
                 }
                 renderCurrentViewer();
+            });
+
+            document.getElementById('showPoleGeometry').addEventListener('change', (e) => {
+                state.editor.showPoleGeometry = e.target.checked;
+                // Update 3D viewer if it exists
+                if (threeViewer) {
+                    // Get current pole coordinates from generator inputs
+                    const poleAzimuth = parseFloat(document.getElementById('poleAzimuth')?.value || 0) * Math.PI / 180;
+                    const poleElevation = parseFloat(document.getElementById('poleElevation')?.value || -90) * Math.PI / 180;
+                    // Convert elevation to polar angle (theta from north pole)
+                    const theta = Math.PI / 2 - poleElevation;
+                    threeViewer.setOptions({
+                        showPoleGeometry: e.target.checked,
+                        poleCoord: [poleAzimuth, theta]
+                    });
+                }
             });
 
             // Edit operations
@@ -1634,6 +1752,18 @@
             document.getElementById('spatialFreq').addEventListener('input', updateConversionDisplays);
             document.getElementById('stepSizeUnit').addEventListener('change', updateConversionDisplays);
             document.getElementById('stepSize').addEventListener('input', updateConversionDisplays);
+
+            // Pole coordinate inputs - update 3D visualization
+            const updatePoleVisualization = () => {
+                if (threeViewer && state.editor.showPoleGeometry) {
+                    const poleAzimuth = parseFloat(document.getElementById('poleAzimuth')?.value || 0) * Math.PI / 180;
+                    const poleElevation = parseFloat(document.getElementById('poleElevation')?.value || -90) * Math.PI / 180;
+                    const theta = Math.PI / 2 - poleElevation;
+                    threeViewer.setPoleCoord([poleAzimuth, theta]);
+                }
+            };
+            document.getElementById('poleAzimuth').addEventListener('input', updatePoleVisualization);
+            document.getElementById('poleElevation').addEventListener('input', updatePoleVisualization);
 
             // Combine operations - Pattern A
             document.getElementById('setPatternA').addEventListener('click', handleSetPatternA);
@@ -2393,17 +2523,63 @@
                 frame: frameCopy,
                 thumbnail: thumbnail,
                 timestamp: new Date(),
-                name: `Frame ${state.clipboard.length + 1}`,
+                name: `Frame ${state.clipboardFrames.length + 1}`,
                 pixelRows: state.pattern.pixelRows,
                 pixelCols: state.pattern.pixelCols,
                 gsMode: state.pattern.gsMode,
                 generation: state.pattern.generation
             };
 
-            state.clipboard.push(clipboardEntry);
+            // Limit frames clipboard to ~10 entries
+            if (state.clipboardFrames.length >= 10) {
+                state.clipboardFrames.shift(); // Remove oldest
+            }
+            state.clipboardFrames.push(clipboardEntry);
             updateClipboardUI();
 
             console.log('Captured frame to clipboard:', clipboardEntry.name);
+        }
+
+        // Store current pattern to patterns clipboard
+        function storePatternToClipboard() {
+            if (!state.pattern) {
+                alert('No pattern to store');
+                return;
+            }
+
+            // Generate thumbnail from middle frame
+            const middleFrame = Math.floor(state.pattern.numFrames / 2);
+            const thumbnail = generateThumbnail(
+                state.pattern.frames[middleFrame],
+                state.pattern.pixelRows,
+                state.pattern.pixelCols,
+                state.pattern.gsMode
+            );
+
+            const patternEntry = {
+                id: Date.now(),
+                pattern: {
+                    generation: state.pattern.generation,
+                    gsMode: state.pattern.gsMode,
+                    numFrames: state.pattern.numFrames,
+                    pixelRows: state.pattern.pixelRows,
+                    pixelCols: state.pattern.pixelCols,
+                    frames: state.pattern.frames.map(f => new Uint8Array(f)),
+                    stretchValues: state.pattern.stretchValues ? [...state.pattern.stretchValues] : null
+                },
+                thumbnail: thumbnail,
+                timestamp: new Date(),
+                name: state.filename || `Pattern ${state.clipboardPatterns.length + 1}`
+            };
+
+            // Limit patterns clipboard to ~10 entries
+            if (state.clipboardPatterns.length >= 10) {
+                state.clipboardPatterns.shift();
+            }
+            state.clipboardPatterns.push(patternEntry);
+            updateClipboardUI();
+
+            console.log('Stored pattern to clipboard:', patternEntry.name);
         }
 
         function generateThumbnail(frameData, pixelRows, pixelCols, gsMode) {
@@ -2440,76 +2616,153 @@
         }
 
         function updateClipboardUI() {
-            const container = document.getElementById('clipboardThumbnails');
-            const countEl = document.getElementById('clipboardCount');
+            // Update Frames section
+            const framesContainer = document.getElementById('clipboardFrames');
+            const framesCountEl = document.getElementById('framesCount');
 
-            countEl.textContent = `${state.clipboard.length} frame${state.clipboard.length !== 1 ? 's' : ''}`;
+            framesCountEl.textContent = state.clipboardFrames.length;
 
-            if (state.clipboard.length === 0) {
-                container.innerHTML = '<span class="clipboard-empty">Capture frames to build sequences</span>';
-                state.selectedClipboardIds = [];
-                return;
+            if (state.clipboardFrames.length === 0) {
+                framesContainer.innerHTML = '<span class="clipboard-empty">Capture frames</span>';
+            } else {
+                framesContainer.innerHTML = '';
+                for (let i = 0; i < state.clipboardFrames.length; i++) {
+                    const entry = state.clipboardFrames[i];
+                    const thumb = createClipboardThumb(entry, 'frame', i);
+                    framesContainer.appendChild(thumb);
+                }
             }
 
-            // Show ALL frames with native horizontal scrolling
-            container.innerHTML = '';
-            for (let i = 0; i < state.clipboard.length; i++) {
-                const entry = state.clipboard[i];
-                const thumb = document.createElement('div');
-                thumb.className = 'clipboard-thumb';
-                if (state.selectedClipboardIds && state.selectedClipboardIds.includes(entry.id)) {
-                    thumb.classList.add('selected');
+            // Update Patterns section
+            const patternsContainer = document.getElementById('clipboardPatterns');
+            const patternsCountEl = document.getElementById('patternsCount');
+
+            patternsCountEl.textContent = state.clipboardPatterns.length;
+
+            if (state.clipboardPatterns.length === 0) {
+                patternsContainer.innerHTML = '<span class="clipboard-empty">Store patterns</span>';
+            } else {
+                patternsContainer.innerHTML = '';
+                for (let i = 0; i < state.clipboardPatterns.length; i++) {
+                    const entry = state.clipboardPatterns[i];
+                    const thumb = createClipboardThumb(entry, 'pattern', i);
+                    patternsContainer.appendChild(thumb);
                 }
-                thumb.title = `${entry.name}\n${formatTimestamp(entry.timestamp)}\nClick to select, double-click to edit`;
-
-                // Use actual thumbnail if available
-                if (entry.thumbnail) {
-                    thumb.appendChild(entry.thumbnail.cloneNode(true));
-                    thumb.style.padding = '0';
-                } else {
-                    thumb.textContent = (i + 1).toString();
-                }
-
-                // Single click: toggle selection for sequence building
-                thumb.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    toggleClipboardSelection(entry.id);
-                });
-
-                // Double click: send to editor
-                thumb.addEventListener('dblclick', (e) => {
-                    e.stopPropagation();
-                    sendClipboardFrameToEditor(entry.id);
-                });
-
-                // Right-click context menu
-                thumb.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    showClipboardContextMenu(e, entry);
-                });
-
-                container.appendChild(thumb);
             }
         }
 
-        function toggleClipboardSelection(id) {
-            if (!state.selectedClipboardIds) {
-                state.selectedClipboardIds = [];
+        function createClipboardThumb(entry, type, index) {
+            const thumb = document.createElement('div');
+            thumb.className = 'clipboard-thumb';
+
+            // Check if selected (single selection per type)
+            const isSelected = type === 'frame'
+                ? state.selectedFrameId === entry.id
+                : state.selectedPatternId === entry.id;
+            if (isSelected) {
+                thumb.classList.add('selected');
             }
 
-            const idx = state.selectedClipboardIds.indexOf(id);
-            if (idx >= 0) {
-                state.selectedClipboardIds.splice(idx, 1);
+            const itemType = type === 'frame' ? 'frame' : 'pattern';
+            thumb.title = `${entry.name}\n${formatTimestamp(entry.timestamp)}\nClick to select, double-click to ${type === 'frame' ? 'edit' : 'load'}`;
+
+            // Use actual thumbnail if available
+            if (entry.thumbnail) {
+                thumb.appendChild(entry.thumbnail.cloneNode(true));
+                thumb.style.padding = '0';
             } else {
-                state.selectedClipboardIds.push(id);
+                thumb.textContent = (index + 1).toString();
             }
 
+            // Add delete button
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.textContent = '×';
+            deleteBtn.title = `Delete ${itemType}`;
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteClipboardEntry(entry.id, type);
+            });
+            thumb.appendChild(deleteBtn);
+
+            // Single click: select (single selection only)
+            thumb.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectClipboardEntry(entry.id, type);
+            });
+
+            // Double click: send to editor (frame) or load (pattern)
+            thumb.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                if (type === 'frame') {
+                    sendClipboardFrameToEditor(entry.id);
+                } else {
+                    loadClipboardPattern(entry.id);
+                }
+            });
+
+            // Right-click context menu
+            thumb.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showClipboardContextMenu(e, entry, type);
+            });
+
+            return thumb;
+        }
+
+        function selectClipboardEntry(id, type) {
+            if (type === 'frame') {
+                // Single selection: toggle or set
+                state.selectedFrameId = state.selectedFrameId === id ? null : id;
+            } else {
+                state.selectedPatternId = state.selectedPatternId === id ? null : id;
+            }
             updateClipboardUI();
-            console.log('Selected clipboard frames:', state.selectedClipboardIds.length);
+            console.log(`Selected ${type}:`, id);
+        }
+
+        function deleteClipboardEntry(id, type) {
+            if (type === 'frame') {
+                const idx = state.clipboardFrames.findIndex(e => e.id === id);
+                if (idx >= 0) {
+                    state.clipboardFrames.splice(idx, 1);
+                    if (state.selectedFrameId === id) {
+                        state.selectedFrameId = null;
+                    }
+                }
+            } else {
+                const idx = state.clipboardPatterns.findIndex(e => e.id === id);
+                if (idx >= 0) {
+                    state.clipboardPatterns.splice(idx, 1);
+                    if (state.selectedPatternId === id) {
+                        state.selectedPatternId = null;
+                    }
+                }
+            }
+            updateClipboardUI();
+            console.log(`Deleted ${type}:`, id);
+        }
+
+        function loadClipboardPattern(id) {
+            const entry = state.clipboardPatterns.find(e => e.id === id);
+            if (!entry || !entry.pattern) return;
+
+            // Load pattern into main view
+            state.pattern = JSON.parse(JSON.stringify(entry.pattern)); // Deep copy
+            state.pattern.frames = entry.pattern.frames.map(f => new Uint8Array(f));
+            state.filename = entry.name.endsWith('.pat') ? entry.name : `${entry.name}.pat`;
+            state.isDirty = false;
+            state.editor.currentFrame = 0;
+
+            updateStatus();
+            updateFrameInfo();
+            drawPatternGrid();
+
+            console.log('Loaded clipboard pattern:', entry.name);
         }
 
         function sendClipboardFrameToEditor(id) {
-            const entry = state.clipboard.find(e => e.id === id);
+            const entry = state.clipboardFrames.find(e => e.id === id);
             if (!entry) return;
 
             // Create a single-frame pattern from this clipboard entry
@@ -2543,7 +2796,7 @@
                 return;
             }
 
-            const entry = state.clipboard.find(e => e.id === state.editor.editingClipboardId);
+            const entry = state.clipboardFrames.find(e => e.id === state.editor.editingClipboardId);
             if (!entry) {
                 alert('Original clipboard entry not found');
                 return;
@@ -2563,34 +2816,7 @@
             console.log('Updated clipboard frame:', entry.name);
         }
 
-        function deleteClipboardEntry(id) {
-            const idx = state.clipboard.findIndex(e => e.id === id);
-            if (idx >= 0) {
-                state.clipboard.splice(idx, 1);
-
-                // Clear editing reference if we deleted the one being edited
-                if (state.editor.editingClipboardId === id) {
-                    state.editor.editingClipboardId = null;
-                }
-
-                // Remove from selection
-                if (state.selectedClipboardIds) {
-                    const selIdx = state.selectedClipboardIds.indexOf(id);
-                    if (selIdx >= 0) {
-                        state.selectedClipboardIds.splice(selIdx, 1);
-                    }
-                }
-
-                // Adjust scroll offset if needed
-                if (state.clipboardOffset > 0 && state.clipboardOffset >= state.clipboard.length) {
-                    state.clipboardOffset = Math.max(0, state.clipboard.length - 5);
-                }
-
-                updateClipboardUI();
-            }
-        }
-
-        function showClipboardContextMenu(e, entry) {
+        function showClipboardContextMenu(e, entry, type) {
             // Remove existing context menu
             const existingMenu = document.getElementById('clipboardContextMenu');
             if (existingMenu) existingMenu.remove();
@@ -2609,10 +2835,17 @@
                 min-width: 120px;
             `;
 
-            const menuItems = [
+            // Different menu items for frames vs patterns
+            const menuItems = type === 'frame' ? [
                 { label: 'Edit', action: () => sendClipboardFrameToEditor(entry.id) },
-                { label: 'Rename...', action: () => renameClipboardEntry(entry) },
-                { label: 'Delete', action: () => deleteClipboardEntry(entry.id) }
+                { label: 'Rename...', action: () => renameClipboardEntry(entry, type) },
+                { label: 'Delete', action: () => deleteClipboardEntry(entry.id, type) }
+            ] : [
+                { label: 'Load Pattern', action: () => loadClipboardPattern(entry.id) },
+                { label: 'Use as Pattern A', action: () => usePatternAs(entry.id, 'A') },
+                { label: 'Use as Pattern B', action: () => usePatternAs(entry.id, 'B') },
+                { label: 'Rename...', action: () => renameClipboardEntry(entry, type) },
+                { label: 'Delete', action: () => deleteClipboardEntry(entry.id, type) }
             ];
 
             menuItems.forEach(item => {
@@ -2649,12 +2882,39 @@
             setTimeout(() => document.addEventListener('click', closeMenu), 0);
         }
 
-        function renameClipboardEntry(entry) {
+        function renameClipboardEntry(entry, type) {
             const newName = prompt('Enter new name:', entry.name);
             if (newName && newName.trim()) {
                 entry.name = newName.trim();
                 updateClipboardUI();
             }
+        }
+
+        function usePatternAs(id, slot) {
+            const entry = state.clipboardPatterns.find(e => e.id === id);
+            if (!entry || !entry.pattern) return;
+
+            // Deep copy pattern
+            const patternCopy = {
+                generation: entry.pattern.generation,
+                gsMode: entry.pattern.gsMode,
+                numFrames: entry.pattern.numFrames,
+                pixelRows: entry.pattern.pixelRows,
+                pixelCols: entry.pattern.pixelCols,
+                frames: entry.pattern.frames.map(f => new Uint8Array(f)),
+                stretchValues: entry.pattern.stretchValues ? [...entry.pattern.stretchValues] : null
+            };
+
+            if (slot === 'A') {
+                state.combinePatternA = patternCopy;
+                console.log('Set Pattern A from clipboard:', entry.name);
+            } else {
+                state.combinePatternB = patternCopy;
+                console.log('Set Pattern B from clipboard:', entry.name);
+            }
+
+            // Update combiner UI if visible
+            updateCombinerUI();
         }
 
         function formatTimestamp(date) {
@@ -3258,10 +3518,10 @@
                 const specs = PANEL_SPECS[state.arena.config.arena.generation];
                 pixelCols = state.arena.config.arena.num_cols * specs.pixels_per_panel;
                 pixelRows = state.arena.config.arena.num_rows * specs.pixels_per_panel;
-            } else if (state.clipboard.length > 0) {
+            } else if (state.clipboardFrames.length > 0) {
                 // Fallback to clipboard entry dimensions
-                pixelCols = state.clipboard[0].pixelCols;
-                pixelRows = state.clipboard[0].pixelRows;
+                pixelCols = state.clipboardFrames[0].pixelCols;
+                pixelRows = state.clipboardFrames[0].pixelRows;
             }
 
             let defaultFrames;
@@ -3281,20 +3541,19 @@
         }
 
         function handleBuildSequence() {
-            if (state.clipboard.length === 0) {
+            if (state.clipboardFrames.length === 0) {
                 alert('Capture some frames first');
                 return;
             }
 
-            // Get selected frames, or use all if none selected
+            // Get selected frame (single selection now)
             let selectedEntries;
-            if (state.selectedClipboardIds && state.selectedClipboardIds.length > 0) {
-                selectedEntries = state.clipboard.filter(e =>
-                    state.selectedClipboardIds.includes(e.id)
-                );
+            if (state.selectedFrameId) {
+                const selectedEntry = state.clipboardFrames.find(e => e.id === state.selectedFrameId);
+                selectedEntries = selectedEntry ? [selectedEntry] : [];
             } else {
                 // Use the first clipboard entry if none selected
-                selectedEntries = [state.clipboard[0]];
+                selectedEntries = [state.clipboardFrames[0]];
             }
 
             if (selectedEntries.length === 0) {
