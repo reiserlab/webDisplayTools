@@ -30,6 +30,27 @@ All tools use a consistent dark theme:
 - Dependencies via CDN only (Three.js, etc.)
 - Web outputs must match MATLAB outputs exactly
 
+### Shared Modules
+
+Some JavaScript modules are shared between multiple tools and must support different loading patterns:
+
+**Pat-Parser Dual Export Pattern** (`js/pat-parser.js`):
+- Icon generator loads via `<script src="js/pat-parser.js">` → requires `window.PatParser`
+- Pattern editor loads via `import PatParser from './js/pat-parser.js'` → requires ES6 export
+- Solution: Export both ways with clear comments explaining the dual export strategy
+
+```javascript
+// Export for browser (global) - for <script> tags (icon generator)
+if (typeof window !== 'undefined') {
+    window.PatParser = PatParser;
+}
+
+// ES module export - for import statements (pattern editor)
+export default PatParser;
+```
+
+**Important**: When modifying shared modules, test with ALL tools that depend on them.
+
 ## CI/CD Validation
 
 Web calculations are validated against MATLAB reference data:
@@ -106,6 +127,24 @@ A proper implementation should:
 
 The azimuth resolution is constant (360° / total_azimuth_pixels), but vertical resolution varies based on viewing angle from center - pixels near the vertical center subtend smaller angles than those at the top/bottom edges.
 
+### Icon Generator Pattern Loading
+**Status:** Not working as of 2026-02-02
+
+The icon generator (`icon_generator.html`) cannot load `.pat` files - users get "PatParser is not defined" error.
+
+**Known Issues:**
+- PR with fixes exists but not yet merged to main
+- Fixes include: correct method name (`parsePatFile()`) and dual export pattern
+- Even after merge, GitHub Pages caching may prevent immediate fix
+- Needs testing in future session after merge + cache clear
+
+**To fix in future session:**
+1. Verify PR is merged to main
+2. Test with hard refresh (Ctrl+Shift+R)
+3. Check browser DevTools → Sources to confirm updated JS files loaded
+4. Test with actual G4 and G6 .pat files
+5. If still broken, investigate additional causes beyond method name/exports
+
 ### Load Pattern Feature
 The 3D viewer supports loading `.pat` files directly:
 
@@ -121,7 +160,7 @@ The 3D viewer supports loading `.pat` files directly:
 - "Clear Pattern" button returns to synthetic patterns
 
 **Implementation Files:**
-- `js/pat-parser.js` - Pattern file parser module
+- `js/pat-parser.js` - Pattern file parser module (use `PatParser.parsePatFile()` method)
 - Pattern loading integrated into `arena_3d_viewer.html`
 
 ## Pattern Validation
@@ -222,6 +261,18 @@ document.getElementById('playPauseButton').textContent;
 | FPS dropdown | `fpsSelect` | Playback speed |
 | FOV slider | `fovSlider` | Camera field of view |
 | Clear button | `clearPatternBtn` | Reset to synthetic patterns |
+
+### Testing Gotchas
+
+**Browser Caching with GitHub Pages:**
+- GitHub Pages and browser caching can prevent updated JS files from loading
+- Symptoms: "X is not defined" errors for recently added exports/functions
+- Solutions:
+  - Hard refresh: Ctrl+Shift+R (Windows/Linux) or Cmd+Shift+R (Mac)
+  - Clear browser cache for localhost:8080 or GitHub Pages domain
+  - Add cache-busting query params: `<script src="file.js?v=2">`
+  - For local testing, use `python -m http.server` with hard refresh
+- Always verify changes are visible in browser DevTools → Sources tab before debugging
 
 ## Pattern Editor Migration Plan
 
