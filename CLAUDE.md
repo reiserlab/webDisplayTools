@@ -24,6 +24,28 @@ All tools use a consistent dark theme:
 - Hover: `#00c853`
 - Fonts: JetBrains Mono (headings), IBM Plex Mono (body)
 
+## Tooltip Guidelines
+
+When editing web tools, audit all buttons and controls in the modified code sections:
+
+1. **Every interactive element needs a tooltip** - buttons, tabs, inputs, sliders
+2. **Use the `title` attribute** for simple tooltips
+3. **Be descriptive but concise** - explain what happens when clicked/changed
+4. **Include keyboard shortcuts** if applicable (e.g., "Save pattern (Ctrl+S)")
+5. **Update tooltips when behavior changes** - stale tooltips are worse than none
+
+**Standard tooltip patterns:**
+- Buttons: "Action description" (e.g., "Capture current frame to clipboard")
+- Toggles: "Enable/disable feature" (e.g., "Show panel boundaries")
+- Inputs: "Parameter name: valid range" (e.g., "Wavelength: 10-360 pixels")
+- Tabs: "View name" (e.g., "3D arena preview")
+
+**Audit checklist when touching UI code:**
+- [ ] All buttons have tooltips
+- [ ] All tabs have tooltips
+- [ ] All sliders/inputs have tooltips with valid ranges
+- [ ] Tooltips match current behavior (not outdated)
+
 ## Architecture
 
 - All web tools are standalone single-page HTML files

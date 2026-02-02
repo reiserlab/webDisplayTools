@@ -479,6 +479,30 @@
             box-shadow: 0 0 8px rgba(0, 230, 118, 0.3);
         }
 
+        .clipboard-thumb.loaded {
+            border-color: var(--accent);
+        }
+
+        .clipboard-thumb .loaded-badge {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            background: var(--accent);
+            color: #000;
+            font-size: 7px;
+            font-weight: bold;
+            padding: 1px 3px;
+            border-radius: 2px;
+            z-index: 5;
+        }
+
+        .clipboard-thumb img {
+            width: 100%;
+            height: 100%;
+            border-radius: 2px;
+            object-fit: contain;
+        }
+
         .clipboard-thumb canvas {
             width: 100%;
             height: 100%;
@@ -1243,7 +1267,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9 | 2026-02-02 10:48 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.1 | 2026-02-02 12:08 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1732,7 +1756,7 @@
 
             <!-- Clipboard Bar - Tabbed design with Frames left, Patterns right -->
             <div class="clipboard-bar">
-                <button class="clipboard-tab active" data-clipboard="frames" id="framesTab">
+                <button class="clipboard-tab active" data-clipboard="frames" id="framesTab" title="View captured frames (single frames for editing or animation)">
                     Frames <span class="count" id="framesCount">(0)</span>
                 </button>
                 <div class="clipboard-content-area">
@@ -1743,7 +1767,7 @@
                         <span class="clipboard-empty">Capture patterns from viewer</span>
                     </div>
                 </div>
-                <button class="clipboard-tab" data-clipboard="patterns" id="patternsTab">
+                <button class="clipboard-tab" data-clipboard="patterns" id="patternsTab" title="View captured patterns (full multi-frame patterns for combining)">
                     Patterns <span class="count" id="patternsCount">(0)</span>
                 </button>
             </div>
@@ -1795,6 +1819,7 @@
         import PatParser from './js/pat-parser.js';
         import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js';
         import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
+        import { generatePatternIcon } from './js/icon-generator.js';
 
         // ============================================
         // State Management
@@ -1807,6 +1832,8 @@
             clipboardPatterns: [],  // Array of stored patterns for combine/preview
             selectedFrameId: null,  // Single selected frame ID (only one at a time)
             selectedPatternId: null, // Single selected pattern ID
+            loadedClipboardFrameId: null,   // ID of clipboard frame currently loaded in viewer
+            loadedClipboardPatternId: null, // ID of clipboard pattern currently loaded in viewer
             editor: {
                 activeTool: 'generate',
                 activeViewer: 'grid',
@@ -2810,12 +2837,13 @@
             const frameData = state.pattern.frames[state.editor.currentFrame];
             const frameCopy = new Uint8Array(frameData);
 
-            // Generate thumbnail canvas
-            const thumbnail = generateThumbnail(
+            // Generate cylindrical icon thumbnail (falls back to flat if arena unavailable)
+            const thumbnail = generateIconThumbnail(
                 frameCopy,
                 state.pattern.pixelRows,
                 state.pattern.pixelCols,
-                state.pattern.gsMode
+                state.pattern.gsMode,
+                state.pattern.generation
             );
 
             const clipboardEntry = {
@@ -2848,13 +2876,14 @@
                 return;
             }
 
-            // Generate thumbnail from middle frame
+            // Generate cylindrical icon thumbnail from middle frame
             const middleFrame = Math.floor(state.pattern.numFrames / 2);
-            const thumbnail = generateThumbnail(
+            const thumbnail = generateIconThumbnail(
                 state.pattern.frames[middleFrame],
                 state.pattern.pixelRows,
                 state.pattern.pixelCols,
-                state.pattern.gsMode
+                state.pattern.gsMode,
+                state.pattern.generation
             );
 
             const patternEntry = {
@@ -2915,6 +2944,39 @@
             }
 
             return canvas;
+        }
+
+        // Generate cylindrical icon thumbnail using icon-generator
+        function generateIconThumbnail(frameData, pixelRows, pixelCols, gsMode, generation) {
+            // Validate arena config exists and matches generation
+            if (!state.arena.config || state.arena.config.arena.generation !== generation) {
+                // Fall back to flat thumbnail if arena doesn't match
+                return generateThumbnail(frameData, pixelRows, pixelCols, gsMode);
+            }
+
+            const patternData = {
+                frames: [frameData],
+                rows: pixelRows,
+                cols: pixelCols,
+                grayscaleMode: gsMode === 2 ? 'GS2' : 'GS16'
+            };
+
+            const arenaConfig = state.arena.config.arena;
+
+            try {
+                return generatePatternIcon(patternData, arenaConfig, {
+                    width: 64,
+                    height: 64,
+                    backgroundColor: 'white',
+                    innerRadiusRatio: 0.25,
+                    showGaps: true,
+                    showOutlines: false,
+                    frameIndex: 0
+                });
+            } catch (err) {
+                console.warn('Icon generation failed, using flat thumbnail:', err);
+                return generateThumbnail(frameData, pixelRows, pixelCols, gsMode);
+            }
         }
 
         // Clear both clipboards (called when arena changes)
@@ -2993,7 +3055,7 @@
                 item.classList.add('selected');
             }
 
-            item.title = `${entry.name}\n${entry.pattern ? entry.pattern.frames.length + ' frames' : '1 frame'}\n${formatTimestamp(entry.timestamp)}`;
+            item.title = `${entry.name}\n${entry.pattern ? entry.pattern.frames.length + ' frames' : '1 frame'}\n${formatTimestamp(entry.timestamp)}\nDouble-click to load pattern`;
 
             // Editable name
             const nameSpan = document.createElement('span');
@@ -3063,15 +3125,41 @@
                 thumb.classList.add('selected');
             }
 
-            const itemType = type === 'frame' ? 'frame' : 'pattern';
-            thumb.title = `${entry.name}\n${formatTimestamp(entry.timestamp)}\nClick to select, double-click to ${type === 'frame' ? 'edit' : 'load'}`;
+            // Check if this item is currently loaded in viewer
+            const isLoaded = type === 'frame'
+                ? state.loadedClipboardFrameId === entry.id
+                : state.loadedClipboardPatternId === entry.id;
+            if (isLoaded) {
+                thumb.classList.add('loaded');
+            }
+
+            thumb.title = `${entry.name}\n${formatTimestamp(entry.timestamp)}\nDouble-click to view`;
 
             // Use actual thumbnail if available
             if (entry.thumbnail) {
-                thumb.appendChild(entry.thumbnail.cloneNode(true));
+                if (typeof entry.thumbnail === 'string') {
+                    // Data URL from icon generator
+                    const img = document.createElement('img');
+                    img.src = entry.thumbnail;
+                    img.style.width = '100%';
+                    img.style.height = '100%';
+                    img.style.borderRadius = '2px';
+                    thumb.appendChild(img);
+                } else {
+                    // Canvas element (legacy flat thumbnail)
+                    thumb.appendChild(entry.thumbnail.cloneNode(true));
+                }
                 thumb.style.padding = '0';
             } else {
                 thumb.textContent = (index + 1).toString();
+            }
+
+            // Add LOADED badge if this item is currently loaded
+            if (isLoaded) {
+                const badge = document.createElement('span');
+                badge.className = 'loaded-badge';
+                badge.textContent = 'LOADED';
+                thumb.appendChild(badge);
             }
 
             // Add delete button
@@ -3154,9 +3242,14 @@
             state.isDirty = false;
             state.editor.currentFrame = 0;
 
+            // Track loaded clipboard item for LOADED badge
+            state.loadedClipboardPatternId = id;
+            state.loadedClipboardFrameId = null;
+
             updateStatus();
             updateFrameInfo();
-            drawPatternGrid();
+            renderCurrentViewer();
+            updateClipboardUI();  // Refresh to show LOADED badge
 
             console.log('Loaded clipboard pattern:', entry.name);
         }
@@ -3181,11 +3274,16 @@
             state.filename = `${entry.name}.pat`;
             state.isDirty = false;
 
+            // Track loaded clipboard item for LOADED badge
+            state.loadedClipboardFrameId = id;
+            state.loadedClipboardPatternId = null;
+
             // Switch to edit view
             setActiveViewer('edit');
 
             updateStatus();
             updateFrameInfo();
+            updateClipboardUI();  // Refresh to show LOADED badge
 
             console.log('Loaded clipboard frame for editing:', entry.name);
         }
