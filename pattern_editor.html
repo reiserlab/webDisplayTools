@@ -1273,7 +1273,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.10 | 2026-02-03 17:33 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.11 | 2026-02-03 18:13 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1486,7 +1486,11 @@
 
                     <!-- Frame Shifting Mode -->
                     <div class="animate-mode-content active" id="shiftingMode">
-                        <div class="section-title">Sequence Builder</div>
+                        <div class="section-title">Source Frame</div>
+                        <div id="shiftingFrameStatus" style="padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.75rem;">
+                            <span id="shiftingFrameInfo">No frame loaded - double-click a frame in clipboard</span>
+                        </div>
+                        <div class="section-title">Sequence Settings</div>
                         <div class="control-row">
                             <div class="control-group half">
                                 <label>Direction</label>
@@ -1506,7 +1510,7 @@
                             <label>Frames <span id="framesHint" style="color: var(--text-dim); font-size: 0.65rem;"></span></label>
                             <input type="number" id="totalFrames" value="200" min="1" max="10000" title="Total number of frames">
                         </div>
-                        <button class="btn" id="buildSequenceBtn" style="margin-top: 0.5rem;">Generate Sequence</button>
+                        <button class="btn secondary" id="clearShiftingFrameBtn" style="margin-top: 0.5rem; display: none;">Clear Source Frame</button>
                     </div>
 
                     <!-- Frame Animation Mode -->
@@ -1518,13 +1522,12 @@
                             </div>
                             <div class="sequence-frames" id="sequenceFrames"></div>
                         </div>
-                        <div class="control-group" style="margin-top: 0.75rem;">
-                            <button class="btn secondary" id="addAllFramesBtn" style="width: 100%;">+ Add All Clipboard Frames</button>
-                        </div>
-                        <div id="sequenceSelectionFeedback" style="display: none; color: var(--accent); font-size: 0.8rem; text-align: center;"></div>
-                        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
-                            <button class="btn" id="previewAnimationBtn" style="flex: 1;">Preview</button>
-                            <button class="btn" id="savePatBtn" style="flex: 1; background: #64b5f6;">Save .pat</button>
+                        <div id="sequenceSelectionFeedback" style="display: none; color: var(--accent); font-size: 0.8rem; text-align: center; margin-top: 0.5rem;"></div>
+                        <div class="control-group" style="margin-top: 0.5rem;">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn secondary" id="addAllFramesBtn" style="flex: 1;">+ Add All Frames</button>
+                                <button class="btn secondary" id="clearSequenceBtn" style="flex: 1;">Clear Sequence</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1597,7 +1600,6 @@
                         </select>
                     </div>
 
-                    <button class="btn" id="combineBtn" style="margin-top: 1rem;">Combine Patterns</button>
                 </div>
 
                 <!-- Image Tab (placeholder) -->
@@ -2102,10 +2104,8 @@
 
             // Combine operations - other
             document.getElementById('swapBtn').addEventListener('click', handleSwap);
-            document.getElementById('combineBtn').addEventListener('click', handleCombine);
             document.getElementById('combineMode').addEventListener('change', updateCombineModeUI);
             document.getElementById('splitPosition').addEventListener('input', updateSplitPositionDisplay);
-            document.getElementById('buildSequenceBtn').addEventListener('click', handleBuildSequence);
 
             // Animate tab mode toggle
             document.getElementById('shiftingModeBtn').addEventListener('click', () => setAnimateMode('shifting'));
@@ -2113,8 +2113,10 @@
 
             // Frame animation buttons
             document.getElementById('addAllFramesBtn').addEventListener('click', addAllClipboardFramesToSequence);
-            document.getElementById('previewAnimationBtn').addEventListener('click', previewFrameAnimation);
-            document.getElementById('savePatBtn').addEventListener('click', saveFrameAnimationAsPat);
+            document.getElementById('clearSequenceBtn').addEventListener('click', clearFrameAnimationSequence);
+
+            // Frame shifting buttons
+            document.getElementById('clearShiftingFrameBtn').addEventListener('click', clearShiftingFrame);
 
             // Direction change updates default frames
             document.getElementById('rotateDirection').addEventListener('change', updateDefaultFrames);
@@ -2649,6 +2651,25 @@
                 return;
             }
 
+            // Context-aware: Route based on active tool tab
+            const activeTool = state.editor.activeTool;
+
+            if (activeTool === 'frame') {
+                // Animate tab - check which mode
+                if (state.frameAnimation.mode === 'shifting') {
+                    handleBuildSequence();
+                } else {
+                    handleFrameAnimationGenerate();
+                }
+                return;
+            }
+
+            if (activeTool === 'combine') {
+                handleCombine();
+                return;
+            }
+
+            // Default: Generate tab - pattern generation
             const patternType = document.getElementById('patternType').value;
             const gsMode = parseInt(document.getElementById('gsMode').value);
             const highLevel = parseInt(document.getElementById('highLevel').value);
@@ -3011,8 +3032,34 @@
             state.clipboardPatterns = [];
             state.selectedFrameId = null;
             state.selectedPatternId = null;
+            state.loadedClipboardFrameId = null;
+            state.loadedClipboardPatternId = null;
+
+            // Clear the main pattern viewer
+            state.pattern = null;
+            state.editor.currentFrame = 0;
+            state.filename = null;
+            state.isDirty = false;
+
+            // Clear combine patterns
+            state.combinePatternA = null;
+            state.combinePatternB = null;
+            updateCombineInfo();
+
+            // Clear frame animation sequence
+            state.frameAnimation.sequence = [];
+            updateSequenceBuilderUI();
+
+            // Clear shifting frame status
+            clearShiftingFrame();
+
+            // Update UI
             updateClipboardUI();
-            console.log('Clipboards cleared due to arena change');
+            renderCurrentViewer();
+            updateStatus();
+            updateFrameInfo();
+
+            console.log('Clipboards and viewer cleared due to arena change');
         }
 
         // Switch clipboard tab (frames or patterns)
@@ -3308,6 +3355,9 @@
 
             // Switch to edit view
             setActiveViewer('edit');
+
+            // Update shifting frame status if in Animate tab
+            updateShiftingFrameStatus(entry.name);
 
             updateStatus();
             updateFrameInfo();
@@ -4345,6 +4395,30 @@
             console.log(`Added ${state.clipboardFrames.length} frames to sequence`);
         }
 
+        function clearFrameAnimationSequence() {
+            state.frameAnimation.sequence = [];
+            state.frameAnimation.selectedIndex = -1;
+            updateSequenceBuilderUI();
+            console.log('Frame animation sequence cleared');
+        }
+
+        function clearShiftingFrame() {
+            // Clear the loaded frame from state
+            state.loadedClipboardFrameId = null;
+
+            // Update UI
+            document.getElementById('shiftingFrameInfo').textContent = 'No frame loaded - double-click a frame in clipboard';
+            document.getElementById('shiftingFrameInfo').style.color = 'var(--text-dim)';
+            document.getElementById('clearShiftingFrameBtn').style.display = 'none';
+
+            console.log('Shifting source frame cleared');
+        }
+
+        function updateShiftingFrameStatus(frameName) {
+            document.getElementById('shiftingFrameInfo').innerHTML = `<span style="color: var(--accent);">✓ Loaded:</span> ${frameName}`;
+            document.getElementById('clearShiftingFrameBtn').style.display = 'block';
+        }
+
         function removeFromSequence(index) {
             state.frameAnimation.sequence.splice(index, 1);
             updateSequenceBuilderUI();
@@ -4391,6 +4465,18 @@
             updateFrameInfo();
 
             console.log(`Preview animation: ${frames.length} frames`);
+        }
+
+        // Called from global Generate button when in Frame Animation mode
+        function handleFrameAnimationGenerate() {
+            previewFrameAnimation();
+
+            // Auto-start playback if pattern was created
+            if (state.pattern && state.pattern.frames.length > 1) {
+                if (!state.playback.isPlaying) {
+                    togglePlayback();
+                }
+            }
         }
 
         function saveFrameAnimationAsPat() {
