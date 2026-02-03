@@ -320,6 +320,34 @@ document.getElementById('playPauseButton').textContent;
   - For local testing, use `python -m http.server` with hard refresh
 - Always verify changes are visible in browser DevTools → Sources tab before debugging
 
+**CRITICAL: ES6 Module Import Failures are Catastrophic:**
+
+When an ES6 `import` statement fails, the **entire** `<script type="module">` block stops executing. This is different from regular script errors - there's no partial execution.
+
+**How this breaks the Pattern Editor:**
+1. Developer adds new import: `import { newFunction } from './module.js'`
+2. Developer adds `newFunction` to module.js exports
+3. Local testing works (fresh files loaded)
+4. Push to GitHub
+5. GitHub Pages serves **cached old** module.js (without new export)
+6. Import fails silently → entire module stops → arena dropdown empty, no events attached
+
+**Symptoms:**
+- Arena dropdown is empty (most obvious)
+- No JavaScript functionality works at all
+- Console shows: `SyntaxError: The requested module does not provide an export named 'X'`
+
+**Prevention rules:**
+1. **Never add new imports without testing on GitHub Pages** after deployment
+2. **Wait for cache to clear** (or use hard refresh) before declaring success
+3. **Test Pattern Editor loads** after any change to shared modules (icon-generator.js, pat-parser.js, arena-configs.js)
+4. **If adding new exports to shared modules**, consider whether they're truly needed in the importing file
+
+**Recovery:**
+- Remove the failing import
+- Push fix immediately
+- Hard refresh on GitHub Pages to verify
+
 ## Pattern Editor Migration Plan
 
 The Pattern Editor is being developed in phases. The full migration plan is saved at:
