@@ -416,12 +416,13 @@ function generatePatternGIF(patternData, arenaConfig, options = {}, onProgress =
     return new Promise((resolve, reject) => {
         try {
             // Create GIF encoder
+            // Use local worker script to avoid CORS issues on GitHub Pages
             const gif = new GIF({
                 workers: opts.workers,
                 quality: opts.quality,
                 width: opts.width,
                 height: opts.height,
-                workerScript: 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js'
+                workerScript: './js/gif.worker.js'
             });
 
             const frameDelay = Math.round(1000 / opts.fps);
