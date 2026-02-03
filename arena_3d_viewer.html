@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arena 3D Viewer - PanelDisplayTools</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-    <script src="js/arena-configs.js"></script>
     <script type="importmap">
         {
             "imports": {
@@ -842,7 +841,9 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-        import { parsePatFile, verifyPatternOrientation, findMatchingConfig } from './js/pat-parser.js';
+        import PatParser from './js/pat-parser.js';
+        const { parsePatFile, verifyPatternOrientation, findMatchingConfig } = PatParser;
+        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration } from './js/arena-configs.js';
 
         // State
         let state = {

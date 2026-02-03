@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arena Layout Editor - PanelDisplayTools</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-    <script src="js/arena-configs.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -673,11 +672,13 @@
 
         <footer>
             <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | PanelDisplayTools</p>
-            <p class="version">Arena Editor v3.1 | 2026-01-30 15:00 ET</p>
+            <p class="version">Arena Editor v3.2 | 2026-02-02 22:08 ET</p>
         </footer>
     </div>
 
-    <script>
+    <script type="module">
+        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration } from './js/arena-configs.js';
+
         // State
         let state = {
             mode: 'view',  // 'view' or 'create'

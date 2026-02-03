@@ -1267,7 +1267,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.4 | 2026-02-02 14:05 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.5 | 2026-02-02 22:38 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -4205,9 +4205,20 @@
             frameEl.dataset.index = index;
             frameEl.title = `Frame ${index + 1}: ${entry.name || 'Frame'}`;
 
-            // Show thumbnail if available
+            // Show thumbnail if available - handle both string (data URL) and DOM node
             if (entry.thumbnail) {
-                frameEl.appendChild(entry.thumbnail.cloneNode(true));
+                if (typeof entry.thumbnail === 'string') {
+                    // Data URL from icon generator
+                    const img = document.createElement('img');
+                    img.src = entry.thumbnail;
+                    img.style.width = '100%';
+                    img.style.height = '100%';
+                    img.style.borderRadius = '2px';
+                    frameEl.appendChild(img);
+                } else if (entry.thumbnail.cloneNode) {
+                    // DOM node (canvas)
+                    frameEl.appendChild(entry.thumbnail.cloneNode(true));
+                }
             } else {
                 frameEl.textContent = index + 1;
             }
@@ -4256,11 +4267,23 @@
 
             // Add all clipboard frames to the sequence
             state.clipboardFrames.forEach(entry => {
+                // Clone thumbnail - handle both string (data URL) and DOM node cases
+                let thumbnailCopy = null;
+                if (entry.thumbnail) {
+                    if (typeof entry.thumbnail === 'string') {
+                        // Data URL - just copy the string
+                        thumbnailCopy = entry.thumbnail;
+                    } else if (entry.thumbnail.cloneNode) {
+                        // DOM node - clone it
+                        thumbnailCopy = entry.thumbnail.cloneNode(true);
+                    }
+                }
+
                 state.frameAnimation.sequence.push({
                     ...entry,
                     // Create a copy of the frame data
                     frame: new Uint8Array(entry.frame),
-                    thumbnail: entry.thumbnail ? entry.thumbnail.cloneNode(true) : null
+                    thumbnail: thumbnailCopy
                 });
             });
 
