@@ -7,10 +7,10 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
     <!-- Load as ES6 modules for compatibility with pat-parser.js export -->
     <script type="module">
-        // Cache-busting: v3 fixes field name mapping and partial arena rendering
-        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration } from './js/arena-configs.js?v=3';
-        import PatParser from './js/pat-parser.js?v=3';
-        import { generatePatternIcon, generateMotionIcon } from './js/icon-generator.js?v=3';
+        // Cache-busting: v4 adds GIF generation support
+        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration } from './js/arena-configs.js?v=4';
+        import PatParser from './js/pat-parser.js?v=4';
+        import { generatePatternIcon, generateMotionIcon, generatePatternGIF } from './js/icon-generator.js?v=4';
 
         // Make available globally for inline script
         window.STANDARD_CONFIGS = STANDARD_CONFIGS;
@@ -18,11 +18,13 @@
         window.getConfig = getConfig;
         window.getConfigsByGeneration = getConfigsByGeneration;
         window.PatParser = PatParser;
-        window.IconGenerator = { generatePatternIcon, generateMotionIcon };
+        window.IconGenerator = { generatePatternIcon, generateMotionIcon, generatePatternGIF };
 
         // Dispatch event when modules are loaded
         window.dispatchEvent(new Event('modulesLoaded'));
     </script>
+    <!-- gif.js library for GIF encoding -->
+    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -345,7 +347,7 @@
                 <div class="section">
                     <div class="section-title">Icon Mode</div>
 
-                    <div class="radio-group">
+                    <div class="radio-group" style="flex-wrap: wrap;">
                         <label class="radio-label">
                             <input type="radio" name="icon-mode" value="single" checked>
                             <span>Single Frame</span>
@@ -353,6 +355,10 @@
                         <label class="radio-label">
                             <input type="radio" name="icon-mode" value="motion">
                             <span>Motion Blur</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="icon-mode" value="gif">
+                            <span>Animated GIF</span>
                         </label>
                     </div>
 
@@ -382,6 +388,21 @@
                                 <option value="linear">Linear</option>
                             </select>
                         </div>
+                    </div>
+
+                    <!-- GIF controls -->
+                    <div id="gif-controls" style="display: none; margin-top: 1rem;">
+                        <div class="control-group">
+                            <label>Playback FPS</label>
+                            <select id="gif-fps">
+                                <option value="5">5 FPS</option>
+                                <option value="10" selected>10 FPS</option>
+                                <option value="15">15 FPS</option>
+                                <option value="20">20 FPS</option>
+                                <option value="30">30 FPS</option>
+                            </select>
+                        </div>
+                        <div class="help-text">All frames in the pattern will be included in the GIF animation.</div>
                     </div>
                 </div>
 
@@ -419,6 +440,12 @@
                 <div class="section">
                     <button class="btn" id="generate-btn" disabled>Generate Icon</button>
                     <button class="btn secondary" id="download-btn" style="margin-top: 0.5rem;" disabled>Download PNG</button>
+                    <div id="gif-progress" style="display: none; margin-top: 0.75rem;">
+                        <div style="background: var(--bg); border-radius: 4px; overflow: hidden; height: 6px;">
+                            <div id="gif-progress-bar" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.1s;"></div>
+                        </div>
+                        <div id="gif-progress-text" style="font-size: 0.7rem; color: var(--text-dim); text-align: center; margin-top: 0.25rem;">Encoding GIF...</div>
+                    </div>
                 </div>
             </div>
 
@@ -442,7 +469,7 @@
         </div>
 
         <footer>
-            <p>Pattern Icon Generator v1.1 | 2026-02-02 23:01 ET</p>
+            <p>Pattern Icon Generator v1.2 | 2026-02-03 17:41 ET</p>
             <p><a href="index.html">← Back to Tools</a></p>
         </footer>
     </div>
@@ -811,13 +838,27 @@
         function toggleIconMode() {
             const mode = document.querySelector('input[name="icon-mode"]:checked').value;
 
+            // Hide all mode-specific controls
+            document.getElementById('single-frame-controls').style.display = 'none';
+            document.getElementById('motion-controls').style.display = 'none';
+            document.getElementById('gif-controls').style.display = 'none';
+
+            // Show controls for selected mode
             if (mode === 'single') {
                 document.getElementById('single-frame-controls').style.display = 'block';
-                document.getElementById('motion-controls').style.display = 'none';
-            } else {
-                document.getElementById('single-frame-controls').style.display = 'none';
+            } else if (mode === 'motion') {
                 document.getElementById('motion-controls').style.display = 'block';
+            } else if (mode === 'gif') {
+                document.getElementById('gif-controls').style.display = 'block';
             }
+
+            // Update button text
+            const generateBtn = document.getElementById('generate-btn');
+            generateBtn.textContent = mode === 'gif' ? 'Generate GIF' : 'Generate Icon';
+
+            // Update download button text
+            const downloadBtn = document.getElementById('download-btn');
+            downloadBtn.textContent = mode === 'gif' ? 'Download GIF' : 'Download PNG';
         }
 
         function updateFrameValue() {
@@ -830,7 +871,9 @@
             document.getElementById('radius-value').textContent = parseFloat(value).toFixed(2);
         }
 
-        function generateIcon() {
+        let currentGifBlob = null;  // Store GIF blob for download
+
+        async function generateIcon() {
             if (!currentPatternData || !currentArenaConfig) return;
 
             const mode = document.querySelector('input[name="icon-mode"]:checked').value;
@@ -848,44 +891,105 @@
             };
 
             try {
-                let dataURL;
-
-                if (mode === 'single') {
-                    const frameIndex = parseInt(document.getElementById('frame-slider').value);
-                    options.frameIndex = frameIndex;
-                    dataURL = IconGenerator.generatePatternIcon(currentPatternData, currentArenaConfig, options);
+                if (mode === 'gif') {
+                    // GIF generation
+                    await generateGif(options);
                 } else {
-                    const frameStart = parseInt(document.getElementById('frame-start').value);
-                    const frameEnd = parseInt(document.getElementById('frame-end').value);
-                    const maxFrames = parseInt(document.getElementById('max-frames').value);
-                    const weighting = document.getElementById('weighting-select').value;
+                    // PNG generation (single frame or motion blur)
+                    let dataURL;
 
-                    options.frameRange = [frameStart, frameEnd];
-                    options.maxFrames = maxFrames;
-                    options.weightingFunction = weighting;
+                    if (mode === 'single') {
+                        const frameIndex = parseInt(document.getElementById('frame-slider').value);
+                        options.frameIndex = frameIndex;
+                        dataURL = IconGenerator.generatePatternIcon(currentPatternData, currentArenaConfig, options);
+                    } else {
+                        const frameStart = parseInt(document.getElementById('frame-start').value);
+                        const frameEnd = parseInt(document.getElementById('frame-end').value);
+                        const maxFrames = parseInt(document.getElementById('max-frames').value);
+                        const weighting = document.getElementById('weighting-select').value;
 
-                    dataURL = IconGenerator.generateMotionIcon(currentPatternData, currentArenaConfig, options);
+                        options.frameRange = [frameStart, frameEnd];
+                        options.maxFrames = maxFrames;
+                        options.weightingFunction = weighting;
+
+                        dataURL = IconGenerator.generateMotionIcon(currentPatternData, currentArenaConfig, options);
+                    }
+
+                    currentIconDataURL = dataURL;
+                    currentGifBlob = null;  // Clear any previous GIF
+
+                    // Display icon
+                    const container = document.getElementById('icon-container');
+                    container.innerHTML = `<img src="${dataURL}" alt="Pattern Icon">`;
+
+                    // Enable download
+                    document.getElementById('download-btn').disabled = false;
                 }
-
-                currentIconDataURL = dataURL;
-
-                // Display icon
-                const container = document.getElementById('icon-container');
-                container.innerHTML = `<img src="${dataURL}" alt="Pattern Icon">`;
-
-                // Enable download
-                document.getElementById('download-btn').disabled = false;
             } catch (error) {
                 alert('Error generating icon: ' + error.message);
                 console.error(error);
             }
         }
 
-        function downloadIcon() {
-            if (!currentIconDataURL) return;
+        async function generateGif(options) {
+            const fps = parseInt(document.getElementById('gif-fps').value);
+            const progressDiv = document.getElementById('gif-progress');
+            const progressBar = document.getElementById('gif-progress-bar');
+            const progressText = document.getElementById('gif-progress-text');
+            const generateBtn = document.getElementById('generate-btn');
+            const downloadBtn = document.getElementById('download-btn');
 
-            const link = document.createElement('a');
+            // Show progress UI
+            progressDiv.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Encoding GIF...';
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+
+            try {
+                const gifOptions = {
+                    ...options,
+                    fps: fps
+                };
+
+                const blob = await IconGenerator.generatePatternGIF(currentPatternData, currentArenaConfig, gifOptions, (progress) => {
+                    const pct = Math.round(progress * 100);
+                    progressBar.style.width = pct + '%';
+                    progressText.textContent = `Encoding GIF... ${pct}%`;
+                });
+
+                // Store blob for download
+                currentGifBlob = blob;
+                currentIconDataURL = null;  // Clear PNG data
+
+                // Create object URL for display
+                const url = URL.createObjectURL(blob);
+
+                // Display GIF
+                const container = document.getElementById('icon-container');
+                container.innerHTML = `<img src="${url}" alt="Pattern GIF" style="max-width: 100%;">`;
+
+                progressText.textContent = 'Done!';
+                setTimeout(() => {
+                    progressDiv.style.display = 'none';
+                }, 1000);
+
+                // Enable download
+                downloadBtn.disabled = false;
+
+            } catch (err) {
+                console.error('GIF generation failed:', err);
+                alert('GIF generation failed: ' + err.message);
+                progressDiv.style.display = 'none';
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate GIF';
+            }
+        }
+
+        function downloadIcon() {
             const mode = document.querySelector('input[name="icon-mode"]:checked').value;
+            const link = document.createElement('a');
 
             // Use current filename (without extension) or arena config for naming
             let baseName = 'pattern';
@@ -895,9 +999,19 @@
 
             const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
 
-            link.download = `${baseName}_icon_${mode}_${timestamp}.png`;
-            link.href = currentIconDataURL;
-            link.click();
+            if (mode === 'gif' && currentGifBlob) {
+                // Download GIF
+                const fps = document.getElementById('gif-fps').value;
+                link.download = `${baseName}_${fps}fps_${timestamp}.gif`;
+                link.href = URL.createObjectURL(currentGifBlob);
+                link.click();
+                URL.revokeObjectURL(link.href);
+            } else if (currentIconDataURL) {
+                // Download PNG
+                link.download = `${baseName}_icon_${mode}_${timestamp}.png`;
+                link.href = currentIconDataURL;
+                link.click();
+            }
         }
     </script>
 </body>
