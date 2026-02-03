@@ -183,12 +183,13 @@ const arenaPattern = /G(6|4\.1|4|3)[_-](\d+)[x×](\d+)(?:of(\d+))?/i;
 ```
 
 ### Spherical Pattern Generation
-**Status:** ✅ VERIFIED WORKING as of 2026-02-02
+**Status:** ✅ VERIFIED WORKING as of 2026-02-03
 
 Detailed byte-for-byte comparison with MATLAB confirmed the JavaScript implementation is correct:
 - `cart2sphere`, `sphere2cart`, and `rotateCoordinates` match MATLAB exactly
 - All motion types (rotation, expansion, translation) with rotated poles produce identical output
-- The original concern about "scrambled" patterns was unfounded - the implementation is correct
+
+**Bug Fix (2026-02-03):** A JavaScript falsy-value bug in the UI was causing `poleElevation = 0` to be silently converted to `-90`. The expression `parseFloat(value) || -90` evaluates to `-90` when value is `0` because `0` is falsy. Fixed by adding `parseFloatWithDefault()` helper using `Number.isFinite()`. Pattern Editor v0.9.7 now correctly handles Pole El = 0 and produces concentric rings matching MATLAB.
 
 ### Load Pattern Feature
 The 3D viewer supports loading `.pat` files directly:

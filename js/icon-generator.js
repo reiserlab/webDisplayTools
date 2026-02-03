@@ -256,10 +256,24 @@ function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
             colEndAngle = BASE_OFFSET_RAD + (colIdx + 1) * alpha;
         }
 
+        // Calculate total vertical pixels for radial mapping
+        const totalVerticalPixels = numRows * pixelsPerPanel;
+        const radiusRange = outerRadius - innerRadius;
+
         // Render each panel in this column
         for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
             // Render each pixel in this panel
             for (let py = 0; py < pixelsPerPanel; py++) {
+                // Calculate vertical pixel index (0 = top row, top pixel)
+                const verticalPixelIdx = rowIdx * pixelsPerPanel + py;
+
+                // Map vertical position to radius:
+                // Row 0 (top of arena) → outer edge of ring
+                // Row N (bottom of arena) → inner edge of ring
+                const verticalFraction = verticalPixelIdx / totalVerticalPixels;
+                const pixelOuterRadius = outerRadius - (verticalFraction * radiusRange);
+                const pixelInnerRadius = outerRadius - ((verticalPixelIdx + 1) / totalVerticalPixels * radiusRange);
+
                 for (let px = 0; px < pixelsPerPanel; px++) {
                     // Calculate position in pattern data (sequential columns)
                     // Pattern data has columns 0 to installedColumnCount-1
@@ -283,11 +297,11 @@ function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
                     const minAngle = Math.min(pixelAngle, nextPixelAngle);
                     const maxAngle = Math.max(pixelAngle, nextPixelAngle);
 
-                    // Draw as filled arc segment
+                    // Draw as filled arc segment with per-pixel radius
                     ctx.fillStyle = color;
                     ctx.beginPath();
-                    ctx.arc(centerX, centerY, outerRadius, minAngle, maxAngle);
-                    ctx.arc(centerX, centerY, innerRadius, maxAngle, minAngle, true);
+                    ctx.arc(centerX, centerY, pixelOuterRadius, minAngle, maxAngle);
+                    ctx.arc(centerX, centerY, pixelInnerRadius, maxAngle, minAngle, true);
                     ctx.closePath();
                     ctx.fill();
                 }
