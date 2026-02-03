@@ -43,6 +43,7 @@ function generatePatternIcon(patternData, arenaConfig, options = {}) {
         backgroundColor: 'dark',    // 'dark', 'white', or 'transparent'
         showGaps: true,             // render missing panels as gaps
         showOutlines: true,         // show arena outlines for depth
+        padding: 2,                 // minimal padding - ring fills ~95% of canvas
         ...options
     };
 
@@ -183,9 +184,10 @@ function computeWeightedAverage(frames, frameIndices, weights, rows, cols) {
 }
 
 /**
- * Render cylindrical icon from frame data
+ * Render cylindrical icon from frame data to canvas element
+ * @returns {HTMLCanvasElement} Canvas with rendered icon
  */
-function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
+function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts) {
     const canvas = document.createElement('canvas');
     canvas.width = opts.width;
     canvas.height = opts.height;
@@ -214,7 +216,9 @@ function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
     // Calculate arena geometry
     const centerX = opts.width / 2;
     const centerY = opts.height / 2;
-    const outerRadius = Math.min(opts.width, opts.height) / 2 - 15; // padding for outlines
+    // Use opts.padding (default 2) - ring fills ~95% of canvas
+    const padding = opts.padding !== undefined ? opts.padding : 2;
+    const outerRadius = Math.min(opts.width, opts.height) / 2 - padding;
     const innerRadius = outerRadius * opts.innerRadiusRatio;
 
     // Get panel specs
@@ -365,8 +369,87 @@ function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
         ctx.stroke();
     }
 
-    // Export as PNG
+    return canvas;
+}
+
+/**
+ * Render cylindrical icon from frame data (returns PNG data URL)
+ * @returns {string} PNG data URL
+ */
+function renderCylindricalIcon(frameData, patternData, arenaConfig, opts) {
+    const canvas = renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts);
     return canvas.toDataURL('image/png');
+}
+
+/**
+ * Generate animated GIF from all pattern frames
+ * Requires gif.js library to be loaded: https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js
+ * @param {object} patternData - Pattern data from pat-parser
+ * @param {object} arenaConfig - Arena configuration
+ * @param {object} options - Rendering options (fps, width, height, etc.)
+ * @param {function} onProgress - Optional progress callback (0-1)
+ * @returns {Promise<Blob>} Promise resolving to GIF blob
+ */
+function generatePatternGIF(patternData, arenaConfig, options = {}, onProgress = null) {
+    // Normalize pattern data field names
+    patternData = normalizePatternData(patternData);
+
+    const opts = {
+        fps: 10,
+        width: 256,
+        height: 256,
+        innerRadiusRatio: 0.3,
+        backgroundColor: 'dark',
+        showGaps: true,
+        showOutlines: true,
+        padding: 2,
+        quality: 10,            // GIF quality (1-30, lower = better)
+        workers: 2,             // Web workers for encoding
+        ...options
+    };
+
+    // Check if gif.js is available
+    if (typeof GIF === 'undefined') {
+        return Promise.reject(new Error('gif.js library not loaded. Add: <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>'));
+    }
+
+    return new Promise((resolve, reject) => {
+        try {
+            // Create GIF encoder
+            const gif = new GIF({
+                workers: opts.workers,
+                quality: opts.quality,
+                width: opts.width,
+                height: opts.height,
+                workerScript: 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js'
+            });
+
+            const frameDelay = Math.round(1000 / opts.fps);
+
+            // Add each frame
+            for (let i = 0; i < patternData.frames.length; i++) {
+                const frameData = patternData.frames[i];
+                const canvas = renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts);
+                gif.addFrame(canvas, { delay: frameDelay, copy: true });
+            }
+
+            // Handle progress
+            if (onProgress) {
+                gif.on('progress', onProgress);
+            }
+
+            // Handle completion
+            gif.on('finished', (blob) => {
+                resolve(blob);
+            });
+
+            // Start encoding
+            gif.render();
+
+        } catch (err) {
+            reject(err);
+        }
+    });
 }
 
 /**
@@ -447,7 +530,9 @@ if (typeof window !== 'undefined') {
     window.IconGenerator = {
         generatePatternIcon,
         generateMotionIcon,
+        generatePatternGIF,
         generateTestIcon,
+        renderCylindricalIconToCanvas,
         normalizePatternData,
         selectFrames,
         calculateExponentialWeights,
@@ -460,9 +545,11 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         generatePatternIcon,
         generateMotionIcon,
-        generateTestIcon
+        generatePatternGIF,
+        generateTestIcon,
+        renderCylindricalIconToCanvas
     };
 }
 
 // ES6 module export
-export { generatePatternIcon, generateMotionIcon, generateTestIcon, normalizePatternData };
+export { generatePatternIcon, generateMotionIcon, generatePatternGIF, generateTestIcon, renderCylindricalIconToCanvas, normalizePatternData };

@@ -27,6 +27,7 @@
     <script src="js/pat-encoder.js"></script>
     <script src="js/arena-geometry.js"></script>
     <script src="js/pattern-editor/tools/generator.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -1273,7 +1274,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.8 | 2026-02-03 08:39 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.9 | 2026-02-03 16:02 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1525,6 +1526,15 @@
                         <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
                             <button class="btn" id="previewAnimationBtn" style="flex: 1;">Preview</button>
                             <button class="btn" id="savePatBtn" style="flex: 1; background: #64b5f6;">Save .pat</button>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                            <button class="btn" id="generateGifBtn" style="flex: 1; background: #ab47bc;" title="Generate animated GIF from pattern frames">Generate GIF</button>
+                        </div>
+                        <div id="gifProgress" style="display: none; margin-top: 0.5rem;">
+                            <div style="background: var(--bg); border-radius: 4px; overflow: hidden; height: 4px;">
+                                <div id="gifProgressBar" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.1s;"></div>
+                            </div>
+                            <div id="gifProgressText" style="font-size: 0.7rem; color: var(--text-dim); text-align: center; margin-top: 0.25rem;">Encoding...</div>
                         </div>
                     </div>
                 </div>
@@ -1819,7 +1829,7 @@
         import PatParser from './js/pat-parser.js';
         import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js';
         import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
-        import { generatePatternIcon } from './js/icon-generator.js';
+        import { generatePatternIcon, generatePatternGIF } from './js/icon-generator.js';
 
         // ============================================
         // State Management
@@ -2115,6 +2125,7 @@
             document.getElementById('addAllFramesBtn').addEventListener('click', addAllClipboardFramesToSequence);
             document.getElementById('previewAnimationBtn').addEventListener('click', previewFrameAnimation);
             document.getElementById('savePatBtn').addEventListener('click', saveFrameAnimationAsPat);
+            document.getElementById('generateGifBtn').addEventListener('click', generateGifFromPattern);
 
             // Direction change updates default frames
             document.getElementById('rotateDirection').addEventListener('change', updateDefaultFrames);
@@ -4407,6 +4418,80 @@
             // Then trigger save
             if (state.pattern) {
                 savePatternFile();
+            }
+        }
+
+        // Generate GIF from current pattern
+        async function generateGifFromPattern() {
+            if (!state.pattern || state.pattern.frames.length === 0) {
+                alert('No pattern loaded. Generate or load a pattern first.');
+                return;
+            }
+
+            if (!state.arena.config) {
+                alert('No arena configured. Select an arena configuration first.');
+                return;
+            }
+
+            const fps = parseInt(document.getElementById('fpsSelect').value) || 10;
+            const progressDiv = document.getElementById('gifProgress');
+            const progressBar = document.getElementById('gifProgressBar');
+            const progressText = document.getElementById('gifProgressText');
+            const generateBtn = document.getElementById('generateGifBtn');
+
+            // Show progress UI
+            progressDiv.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Encoding...';
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+
+            try {
+                const patternData = {
+                    frames: state.pattern.frames,
+                    rows: state.pattern.pixelRows,
+                    cols: state.pattern.pixelCols,
+                    grayscaleMode: state.pattern.gs_val === 16 ? 'GS16' : 'GS2'
+                };
+
+                const arenaConfig = state.arena.config.arena;
+
+                const blob = await generatePatternGIF(patternData, arenaConfig, {
+                    fps: fps,
+                    width: 256,
+                    height: 256,
+                    innerRadiusRatio: 0.3,
+                    padding: 4
+                }, (progress) => {
+                    const pct = Math.round(progress * 100);
+                    progressBar.style.width = pct + '%';
+                    progressText.textContent = `Encoding... ${pct}%`;
+                });
+
+                // Create download link
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const gen = state.pattern.generation || 'pattern';
+                a.href = url;
+                a.download = `${gen}_${state.pattern.pixelCols}x${state.pattern.pixelRows}_${fps}fps_${timestamp}.gif`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                progressText.textContent = 'Done!';
+                setTimeout(() => {
+                    progressDiv.style.display = 'none';
+                }, 1500);
+
+            } catch (err) {
+                console.error('GIF generation failed:', err);
+                alert('GIF generation failed: ' + err.message);
+                progressDiv.style.display = 'none';
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate GIF';
             }
         }
 
