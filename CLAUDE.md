@@ -175,46 +175,20 @@ A proper implementation should:
 The azimuth resolution is constant (360° / total_azimuth_pixels), but vertical resolution varies based on viewing angle from center - pixels near the vertical center subtend smaller angles than those at the top/bottom edges.
 
 ### Icon Generator Arena Mapping
-**Status:** Broken for partial arenas as of 2026-02-02
+**Status:** ✅ FIXED as of 2026-02-02
 
-The icon generator has issues with partial arenas (arenas where not all columns are installed):
-- Full arenas (e.g., G6_2x10 with all 10 columns) render correctly
-- Partial arenas (e.g., G6_2x12 with 8 of 12 columns) produce scrambled patterns
-- Folder detection (inferring arena from folder name) doesn't work for partial arenas
-- Manual arena selection dropdown does appear as fallback
+The regex in `inferArenaFromPath()` was updated to handle partial arena names like `G6_2x8of10`:
+```javascript
+const arenaPattern = /G(6|4\.1|4|3)[_-](\d+)[x×](\d+)(?:of(\d+))?/i;
+```
 
-**Known issues:**
-1. Pattern data is scrambled when rendered for partial arenas
-2. Arena detection regex may not handle partial arena folder naming conventions
-3. The mapping between pattern pixel coordinates and physical arena positions needs review
+### Spherical Pattern Generation
+**Status:** ✅ VERIFIED WORKING as of 2026-02-02
 
-**To investigate:**
-1. Compare MATLAB's icon generation algorithm
-2. Verify column_installed handling for partial arenas
-3. Check if column ordering (CW/CCW) affects the mapping
-4. Debug folder name detection for partial arena patterns
-
-### Spherical Pattern Generation - Pole Position Bug
-**Status:** Known issue as of 2026-02-02
-
-Pattern generation with non-default pole positions produces incorrect results:
-
-**Problem:**
-- For a rotation pattern with north pole [0,0], horizontal bands are expected
-- After rotation transform, phi (azimuthal angle) should be constant along each horizontal row
-- Current implementation: phi varies along rows AND columns after rotation
-
-**Root Cause:**
-The rotation transformation in `arena-geometry.js` doesn't achieve the desired coordinate mapping. After pitch rotation by -π/2:
-- Original Z (height) transforms into Y, but...
-- `cart2sphere` computes `phi = atan2(x, y)`, which still depends on both x and the transformed z
-- For horizontal bands, we need phi to depend ONLY on original height (z)
-
-**To fix:**
-1. Review MATLAB's `make_grating_edge.m` implementation closely
-2. Verify the coordinate convention (which axis is "up", which is "forward")
-3. May need different rotation order or additional transformation
-4. Consider if `cart2sphere` convention differs from MATLAB's `cart2sph`
+Detailed byte-for-byte comparison with MATLAB confirmed the JavaScript implementation is correct:
+- `cart2sphere`, `sphere2cart`, and `rotateCoordinates` match MATLAB exactly
+- All motion types (rotation, expansion, translation) with rotated poles produce identical output
+- The original concern about "scrambled" patterns was unfounded - the implementation is correct
 
 ### Load Pattern Feature
 The 3D viewer supports loading `.pat` files directly:

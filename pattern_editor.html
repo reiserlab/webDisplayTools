@@ -278,6 +278,12 @@
             border-color: var(--accent);
         }
 
+        .sequence-frame.selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 6px rgba(0, 230, 118, 0.4);
+            background: rgba(0, 230, 118, 0.1);
+        }
+
         .sequence-frame canvas {
             width: 100%;
             height: 100%;
@@ -455,9 +461,9 @@
         }
 
         .clipboard-thumb {
-            width: 44px;
-            height: 44px;
-            min-width: 44px;
+            width: 52px;
+            height: 52px;
+            min-width: 52px;
             background: var(--bg);
             border: 2px solid var(--border);
             border-radius: 4px;
@@ -500,7 +506,7 @@
             width: 100%;
             height: 100%;
             border-radius: 2px;
-            object-fit: contain;
+            object-fit: cover;
         }
 
         .clipboard-thumb canvas {
@@ -1267,7 +1273,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.5 | 2026-02-02 22:38 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.7 | 2026-02-03 00:08 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1859,7 +1865,8 @@
             },
             frameAnimation: {
                 mode: 'shifting',  // 'shifting' or 'animation'
-                sequence: []       // Array of frame entries for animation mode
+                sequence: [],      // Array of frame entries for animation mode
+                selectedIndex: -1  // Currently selected frame in sequence (-1 = none)
             },
             isDirty: false,
             filename: null,
@@ -1953,8 +1960,8 @@
                 // Update 3D viewer if it exists
                 if (threeViewer) {
                     // Get current pole coordinates from generator inputs
-                    const poleAzimuth = parseFloat(document.getElementById('poleAzimuth')?.value || 0) * Math.PI / 180;
-                    const poleElevation = parseFloat(document.getElementById('poleElevation')?.value || -90) * Math.PI / 180;
+                    const poleAzimuth = parseFloatWithDefault(document.getElementById('poleAzimuth')?.value, 0) * Math.PI / 180;
+                    const poleElevation = parseFloatWithDefault(document.getElementById('poleElevation')?.value, -90) * Math.PI / 180;
                     // Convert elevation to polar angle (theta from north pole)
                     const theta = Math.PI / 2 - poleElevation;
                     threeViewer.setOptions({
@@ -2077,8 +2084,8 @@
             // Pole coordinate inputs - update 3D visualization
             const updatePoleVisualization = () => {
                 if (threeViewer && state.editor.showPoleGeometry) {
-                    const poleAzimuth = parseFloat(document.getElementById('poleAzimuth')?.value || 0) * Math.PI / 180;
-                    const poleElevation = parseFloat(document.getElementById('poleElevation')?.value || -90) * Math.PI / 180;
+                    const poleAzimuth = parseFloatWithDefault(document.getElementById('poleAzimuth')?.value, 0) * Math.PI / 180;
+                    const poleElevation = parseFloatWithDefault(document.getElementById('poleElevation')?.value, -90) * Math.PI / 180;
                     const theta = Math.PI / 2 - poleElevation;
                     threeViewer.setPoleCoord([poleAzimuth, theta]);
                 }
@@ -2166,6 +2173,12 @@
             // Show/hide edit toolbar
             const toolbar = document.getElementById('editToolbar');
             toolbar.classList.toggle('visible', isEditMode);
+
+            // Disable playback controls in edit mode (editing operates on single frame)
+            document.querySelectorAll('.frame-btn, .play-btn').forEach(btn => {
+                btn.disabled = isEditMode;
+                btn.style.opacity = isEditMode ? '0.4' : '1';
+            });
 
             // Update edit palette when entering edit mode
             if (isEditMode && state.pattern) {
@@ -2575,6 +2588,18 @@
         }
 
         /**
+         * Parse float with explicit default (handles 0 correctly)
+         * Unlike || operator, this only uses default for NaN/undefined/empty
+         * @param {string} value - The string value to parse
+         * @param {number} defaultVal - Default value if parsing fails
+         * @returns {number} Parsed value or default
+         */
+        function parseFloatWithDefault(value, defaultVal) {
+            const parsed = parseFloat(value);
+            return Number.isFinite(parsed) ? parsed : defaultVal;
+        }
+
+        /**
          * Convert spatial frequency value to radians
          * @param {number} value - The input value
          * @param {string} unit - The unit ('px' or 'deg')
@@ -2670,8 +2695,8 @@
                         params.phaseShift = parseFloat(document.getElementById('phaseShift').value) || 0;
 
                         // Get pole coordinates (used for ALL motion types - determines direction)
-                        const poleAzimuth = parseFloat(document.getElementById('poleAzimuth').value) || 0;
-                        const poleElevation = parseFloat(document.getElementById('poleElevation').value) || -90;
+                        const poleAzimuth = parseFloatWithDefault(document.getElementById('poleAzimuth').value, 0);
+                        const poleElevation = parseFloatWithDefault(document.getElementById('poleElevation').value, -90);
                         params.poleCoord = [poleAzimuth * Math.PI / 180, poleElevation * Math.PI / 180];
 
                         pattern = PatternGenerator.generateSphericalGrating(params, arena);
@@ -2701,8 +2726,8 @@
                         params.phaseShift = parseFloat(document.getElementById('phaseShift').value) || 0;
 
                         // Get pole coordinates (used for ALL motion types - determines direction)
-                        const poleAzimuthSine = parseFloat(document.getElementById('poleAzimuth').value) || 0;
-                        const poleElevationSine = parseFloat(document.getElementById('poleElevation').value) || -90;
+                        const poleAzimuthSine = parseFloatWithDefault(document.getElementById('poleAzimuth').value, 0);
+                        const poleElevationSine = parseFloatWithDefault(document.getElementById('poleElevation').value, -90);
                         params.poleCoord = [poleAzimuthSine * Math.PI / 180, poleElevationSine * Math.PI / 180];
 
                         pattern = PatternGenerator.generateSphericalGrating(params, arena);
@@ -2736,8 +2761,8 @@
                         params.snapDots = document.getElementById('snapDots').checked;
 
                         // Get pole coordinates (determines direction)
-                        const poleAzimuthStar = parseFloat(document.getElementById('poleAzimuth').value) || 0;
-                        const poleElevationStar = parseFloat(document.getElementById('poleElevation').value) || -90;
+                        const poleAzimuthStar = parseFloatWithDefault(document.getElementById('poleAzimuth').value, 0);
+                        const poleElevationStar = parseFloatWithDefault(document.getElementById('poleElevation').value, -90);
                         params.poleCoord = [poleAzimuthStar * Math.PI / 180, poleElevationStar * Math.PI / 180];
 
                         pattern = PatternGenerator.generateStarfield(params, arena);
@@ -2767,8 +2792,8 @@
                         params.numFrames = Math.ceil(arena.totalAzimuthPixels / stepSizePixelsEdge);
 
                         // Get pole coordinates (determines direction)
-                        const poleAzimuthEdge = parseFloat(document.getElementById('poleAzimuth').value) || 0;
-                        const poleElevationEdge = parseFloat(document.getElementById('poleElevation').value) || -90;
+                        const poleAzimuthEdge = parseFloatWithDefault(document.getElementById('poleAzimuth').value, 0);
+                        const poleElevationEdge = parseFloatWithDefault(document.getElementById('poleElevation').value, -90);
                         params.poleCoord = [poleAzimuthEdge * Math.PI / 180, poleElevationEdge * Math.PI / 180];
 
                         pattern = PatternGenerator.generateEdge(params, arena);
@@ -2970,7 +2995,7 @@
                 return generatePatternIcon(patternData, arenaConfig, {
                     width: 64,
                     height: 64,
-                    backgroundColor: 'white',
+                    backgroundColor: '#1a1f26',  // Dark theme surface color
                     innerRadiusRatio: 0.25,
                     showGaps: true,
                     showOutlines: false,
@@ -4253,6 +4278,27 @@
                 const toIndex = index;
                 if (fromIndex !== toIndex) {
                     reorderSequence(fromIndex, toIndex);
+                }
+            });
+
+            // Click to select/deselect
+            frameEl.addEventListener('click', (e) => {
+                if (e.target.classList.contains('remove-btn')) return; // Ignore remove button clicks
+
+                // Toggle selection
+                const wasSelected = frameEl.classList.contains('selected');
+
+                // Deselect all frames
+                document.querySelectorAll('.sequence-frame.selected').forEach(f => {
+                    f.classList.remove('selected');
+                });
+
+                // Select this frame (if it wasn't already selected)
+                if (!wasSelected) {
+                    frameEl.classList.add('selected');
+                    state.frameAnimation.selectedIndex = index;
+                } else {
+                    state.frameAnimation.selectedIndex = -1;
                 }
             });
 

@@ -442,7 +442,7 @@
         </div>
 
         <footer>
-            <p>Pattern Icon Generator v1.0 | 2026-02-02 12:07 ET</p>
+            <p>Pattern Icon Generator v1.1 | 2026-02-02 23:01 ET</p>
             <p><a href="index.html">← Back to Tools</a></p>
         </footer>
     </div>
@@ -482,9 +482,10 @@
         function inferArenaFromPath(filepath) {
             if (!filepath) return null;
 
-            // Patterns to match: G6_2x10, G4_4x12, G4.1_3x12
+            // Patterns to match: G6_2x10, G4_4x12, G4.1_3x12, G6_2x8of10 (partial arenas)
             // Allow both "x" and "×" as separator
-            const arenaPattern = /G(6|4\.1|4|3)[_-](\d+)[x×](\d+)/i;
+            // Optional "ofN" suffix for partial arenas (e.g., G6_2x8of10 = 8 of 10 columns installed)
+            const arenaPattern = /G(6|4\.1|4|3)[_-](\d+)[x×](\d+)(?:of(\d+))?/i;
 
             // First check filename
             const filename = filepath.split('/').pop().split('\\').pop();
@@ -503,15 +504,33 @@
 
             const generation = 'G' + match[1];
             const rows = parseInt(match[2]);
-            const cols = parseInt(match[3]);
+            const installedCols = parseInt(match[3]);
+            const totalCols = match[4] ? parseInt(match[4]) : installedCols;
 
-            // Build config name in expected format
-            const configName = `${generation}_${rows}x${cols}`;
+            // Build config name - try partial format first if applicable
+            let configName;
+            if (totalCols !== installedCols) {
+                // Partial arena format: G6_2x8of10
+                configName = `${generation}_${rows}x${installedCols}of${totalCols}`;
+            } else {
+                // Full arena format: G6_2x10
+                configName = `${generation}_${rows}x${totalCols}`;
+            }
 
             // Try to find this config
-            const config = getConfig(configName);
+            let config = getConfig(configName);
             if (config) {
                 return { name: configName, config };
+            }
+
+            // Fallback: try without partial suffix (use full arena config)
+            if (totalCols !== installedCols) {
+                const fallbackName = `${generation}_${rows}x${totalCols}`;
+                config = getConfig(fallbackName);
+                if (config) {
+                    console.warn(`Partial arena config ${configName} not found, using ${fallbackName}`);
+                    return { name: fallbackName, config };
+                }
             }
 
             // Config not found - return null
