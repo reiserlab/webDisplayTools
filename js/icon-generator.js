@@ -243,6 +243,10 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
     // Base offset: -90° to start at south (-PI/2)
     const BASE_OFFSET_RAD = -Math.PI / 2;
     const alpha = (2 * Math.PI) / numCols;  // angle per column (full arena)
+    const halfPanel = alpha / 2;  // offset to center column on its angular position
+
+    // Arena-specific angular offset (e.g., for aligning gap position)
+    const angleOffsetRad = (arena.angle_offset_deg || 0) * Math.PI / 180;
 
     // Render each installed column
     for (let installedIdx = 0; installedIdx < installedColumnCount; installedIdx++) {
@@ -251,13 +255,14 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
         // Calculate angular position for this column based on column_order
         // CW: c0 left of south, columns increase counter-clockwise (decreasing angle)
         // CCW: c0 right of south, columns increase clockwise (increasing angle)
+        // Include halfPanel offset to match 3D viewer positioning
         let colStartAngle, colEndAngle;
         if (columnOrder === 'cw') {
-            colStartAngle = BASE_OFFSET_RAD - colIdx * alpha;
-            colEndAngle = BASE_OFFSET_RAD - (colIdx + 1) * alpha;
+            colStartAngle = BASE_OFFSET_RAD - halfPanel - colIdx * alpha + angleOffsetRad;
+            colEndAngle = BASE_OFFSET_RAD - halfPanel - (colIdx + 1) * alpha + angleOffsetRad;
         } else {
-            colStartAngle = BASE_OFFSET_RAD + colIdx * alpha;
-            colEndAngle = BASE_OFFSET_RAD + (colIdx + 1) * alpha;
+            colStartAngle = BASE_OFFSET_RAD + halfPanel + colIdx * alpha + angleOffsetRad;
+            colEndAngle = BASE_OFFSET_RAD + halfPanel + (colIdx + 1) * alpha + angleOffsetRad;
         }
 
         // Calculate total vertical pixels for radial mapping
