@@ -6,7 +6,7 @@ The Pattern Editor is a web-based tool for creating and editing arena display pa
 
 **[Launch Pattern Editor](https://reiserlab.github.io/webDisplayTools/pattern_editor.html)**
 
-> **Found a bug?** [Report it](https://github.com/reiserlab/webDisplayTools/issues/new?assignees=reiserm&labels=bug&title=%5BBug%5D+Pattern+Editor:+) | **Have an idea?** [Request a feature](https://github.com/reiserlab/webDisplayTools/issues/new?assignees=reiserm&labels=enhancement&title=%5BFeature%5D+Pattern+Editor:+)
+> **Found a bug?** [Report it](https://github.com/reiserlab/webDisplayTools/issues/new?assignees=mbreiser&labels=bug&title=%5BBug%5D+Pattern+Editor:+) | **Have an idea?** [Request a feature](https://github.com/reiserlab/webDisplayTools/issues/new?assignees=mbreiser&labels=enhancement&title=%5BFeature%5D+Pattern+Editor:+)
 
 ---
 
@@ -163,7 +163,8 @@ Interactive pixel editing for fine-tuning patterns.
 2. Click the **Edit** viewer tab
 3. Select a color from the palette (0-15 grayscale)
 4. Click pixels in the viewer to paint with the selected color
-5. Use transform buttons for bulk operations:
+5. **Tip:** Click on row numbers (left) or column numbers (top) to paint the entire row or column at once
+6. Use transform buttons for bulk operations:
    - **Flip H/V** - Mirror horizontally or vertically
    - **Invert** - Invert all pixel values
    - **Find/Replace** - Replace all pixels of one value with another

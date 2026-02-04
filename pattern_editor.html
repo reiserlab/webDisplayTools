@@ -821,6 +821,31 @@
             transition: all 0.2s;
         }
 
+        .help-button {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: auto;
+        }
+
+        .help-button:hover {
+            background: var(--accent);
+            color: var(--bg);
+            border-color: var(--accent);
+        }
+
         .viewer-tab:hover {
             border-color: var(--accent);
             color: var(--text);
@@ -1824,6 +1849,8 @@
                 <button class="viewer-tab disabled" data-viewer="mercator">Mercator</button>
                 <button class="viewer-tab disabled" data-viewer="mollweide">Mollweide</button>
 
+                <button class="help-button" id="helpButton" title="Quick Start Guide">?</button>
+
                 <div class="viewer-options">
                     <label>
                         <input type="checkbox" id="showBoundaries" checked>
@@ -2136,6 +2163,11 @@
                         poleCoord: [poleAzimuth, theta]
                     });
                 }
+            });
+
+            // Help button - opens Quick Start Guide
+            document.getElementById('helpButton').addEventListener('click', () => {
+                window.open('https://github.com/reiserlab/webDisplayTools/blob/main/PATTERN_EDITOR_QUICKSTART.md', '_blank');
             });
 
             // Edit operations
