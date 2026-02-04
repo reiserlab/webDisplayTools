@@ -277,11 +277,11 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
                 const verticalPixelIdx = rowIdx * pixelsPerPanel + py;
 
                 // Map vertical position to radius:
-                // Row 0 (top of arena) → outer edge of ring
-                // Row N (bottom of arena) → inner edge of ring
+                // Row 0 (top of arena) → inner edge of ring (center)
+                // Row N (bottom of arena) → outer edge of ring
                 const verticalFraction = verticalPixelIdx / totalVerticalPixels;
-                const pixelOuterRadius = outerRadius - (verticalFraction * radiusRange);
-                const pixelInnerRadius = outerRadius - ((verticalPixelIdx + 1) / totalVerticalPixels * radiusRange);
+                const pixelInnerRadius = innerRadius + (verticalFraction * radiusRange);
+                const pixelOuterRadius = innerRadius + ((verticalPixelIdx + 1) / totalVerticalPixels * radiusRange);
 
                 for (let px = 0; px < pixelsPerPanel; px++) {
                     // Calculate position in pattern data (sequential columns)
