@@ -1376,7 +1376,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.19 | 2026-02-04 01:27 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.20 | 2026-02-04 07:32 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -5041,9 +5041,12 @@
 
                 // Check if current arena config matches pattern
                 const currentConfig = state.arena.config;
+                // For partial arenas, use columns_installed length instead of num_cols
+                const currentInstalledCols = currentConfig?.arena?.columns_installed?.length
+                    || currentConfig?.arena?.num_cols;
                 const needsReinit = !currentConfig ||
                     currentConfig.arena.generation !== patternGen ||
-                    currentConfig.arena.num_cols !== patternCols ||
+                    currentInstalledCols !== patternCols ||
                     currentConfig.arena.num_rows !== patternRows;
 
                 if (needsReinit) {
@@ -5070,8 +5073,11 @@
             const configsByGen = getConfigsByGeneration();
             for (const [gen, configs] of Object.entries(configsByGen)) {
                 for (const configObj of configs) {
+                    // For partial arenas, use columns_installed length instead of num_cols
+                    const configCols = configObj.arena.columns_installed?.length
+                        || configObj.arena.num_cols;
                     if (configObj.arena.generation === generation &&
-                        configObj.arena.num_cols === numCols &&
+                        configCols === numCols &&
                         configObj.arena.num_rows === numRows) {
                         return configObj.name;
                     }
