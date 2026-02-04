@@ -1376,7 +1376,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.20 | 2026-02-04 07:32 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.21 | 2026-02-04 07:56 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -2207,10 +2207,17 @@
                 // Clear clipboards if arena changed (dimensions may differ)
                 if (oldConfig !== e.target.value) {
                     clearClipboards();
+
+                    // Force 3D viewer to reinit with new arena if it exists and is active
+                    if (threeViewer && state.editor.activeViewer === '3d') {
+                        const specs = PANEL_SPECS[state.arena.config.arena.generation];
+                        threeViewer.reinit(state.arena.config, specs);
+                    }
                 }
 
                 updateStatus();
                 updateG3ButtonStates();  // Disable save/load for G3
+                renderCurrentViewer();
             });
 
             // Arena lock/unlock button
