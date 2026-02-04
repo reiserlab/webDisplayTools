@@ -260,8 +260,8 @@
         }
 
         .sequence-frame {
-            width: 36px;
-            height: 36px;
+            width: 56px;
+            height: 56px;
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 4px;
@@ -270,8 +270,9 @@
             justify-content: center;
             cursor: grab;
             position: relative;
-            font-size: 0.65rem;
+            font-size: 0.7rem;
             color: var(--text-dim);
+            transition: transform 0.15s ease, opacity 0.15s ease;
         }
 
         .sequence-frame:hover {
@@ -284,23 +285,39 @@
             background: rgba(0, 230, 118, 0.1);
         }
 
-        .sequence-frame canvas {
+        .sequence-frame.dragging {
+            opacity: 0.5;
+            border-color: var(--accent);
+            box-shadow: 0 0 10px rgba(0, 230, 118, 0.5);
+            transform: scale(1.05);
+            cursor: grabbing;
+        }
+
+        .sequence-frame.drag-over {
+            border-color: var(--accent);
+            border-style: dashed;
+            background: rgba(0, 230, 118, 0.15);
+        }
+
+        .sequence-frame canvas,
+        .sequence-frame img {
             width: 100%;
             height: 100%;
             border-radius: 3px;
+            object-fit: contain;
         }
 
         .sequence-frame .remove-btn {
             position: absolute;
             top: -5px;
             right: -5px;
-            width: 14px;
-            height: 14px;
+            width: 16px;
+            height: 16px;
             background: #ff4444;
             color: white;
             border: none;
             border-radius: 50%;
-            font-size: 9px;
+            font-size: 10px;
             cursor: pointer;
             display: none;
             align-items: center;
@@ -309,6 +326,61 @@
 
         .sequence-frame:hover .remove-btn {
             display: flex;
+        }
+
+        /* Combine Tab Thumbnails */
+        .combine-pattern-preview {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem;
+            background: var(--bg);
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+
+        .combine-pattern-thumbnail {
+            width: 56px;
+            height: 56px;
+            flex-shrink: 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .combine-pattern-thumbnail img,
+        .combine-pattern-thumbnail canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .combine-pattern-thumbnail.empty {
+            color: var(--text-dim);
+            font-size: 1.5rem;
+        }
+
+        .combine-pattern-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .combine-pattern-name {
+            font-size: 0.8rem;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 0.25rem;
+        }
+
+        .combine-pattern-dims {
+            font-size: 0.7rem;
+            color: var(--text-dim);
         }
 
         .section-title {
@@ -1304,7 +1376,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.18 | 2026-02-04 01:01 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.19 | 2026-02-04 01:27 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1572,8 +1644,12 @@
                 <div class="tool-pane" id="combinePane">
                     <div class="section-title">Pattern A</div>
                     <div class="control-group">
-                        <div style="padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.5rem;">
-                            <span id="patternAInfo">No pattern set</span>
+                        <div class="combine-pattern-preview">
+                            <div class="combine-pattern-thumbnail empty" id="patternAThumbnail">?</div>
+                            <div class="combine-pattern-info">
+                                <div class="combine-pattern-name" id="patternAName">No pattern set</div>
+                                <div class="combine-pattern-dims" id="patternADims"></div>
+                            </div>
                         </div>
                         <div style="display: flex; gap: 0.5rem;">
                             <button class="btn secondary" id="setPatternA" style="flex: 1;">Use Current as A</button>
@@ -1584,8 +1660,12 @@
 
                     <div class="section-title">Pattern B</div>
                     <div class="control-group">
-                        <div style="padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.5rem;">
-                            <span id="patternBInfo">No pattern set</span>
+                        <div class="combine-pattern-preview">
+                            <div class="combine-pattern-thumbnail empty" id="patternBThumbnail">?</div>
+                            <div class="combine-pattern-info">
+                                <div class="combine-pattern-name" id="patternBName">No pattern set</div>
+                                <div class="combine-pattern-dims" id="patternBDims"></div>
+                            </div>
                         </div>
                         <div style="display: flex; gap: 0.5rem;">
                             <button class="btn secondary" id="setPatternB" style="flex: 1;">Use Current as B</button>
@@ -4717,18 +4797,34 @@
             frameEl.addEventListener('dragstart', (e) => {
                 e.dataTransfer.setData('text/plain', index);
                 frameEl.classList.add('dragging');
+                // Add class to container for styling context
+                document.getElementById('sequenceFrames').classList.add('dragging-active');
             });
 
             frameEl.addEventListener('dragend', () => {
                 frameEl.classList.remove('dragging');
+                document.getElementById('sequenceFrames').classList.remove('dragging-active');
+                // Clean up any remaining drag-over classes
+                document.querySelectorAll('.sequence-frame.drag-over').forEach(f => {
+                    f.classList.remove('drag-over');
+                });
             });
 
             frameEl.addEventListener('dragover', (e) => {
                 e.preventDefault();
+                // Only add drag-over if not the dragged element
+                if (!frameEl.classList.contains('dragging')) {
+                    frameEl.classList.add('drag-over');
+                }
+            });
+
+            frameEl.addEventListener('dragleave', () => {
+                frameEl.classList.remove('drag-over');
             });
 
             frameEl.addEventListener('drop', (e) => {
                 e.preventDefault();
+                frameEl.classList.remove('drag-over');
                 const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
                 const toIndex = index;
                 if (fromIndex !== toIndex) {
@@ -5186,22 +5282,66 @@
         }
 
         function updateCombineInfo() {
-            // Update Pattern A info
+            // Update Pattern A info and thumbnail
+            const thumbA = document.getElementById('patternAThumbnail');
+            const nameA = document.getElementById('patternAName');
+            const dimsA = document.getElementById('patternADims');
+
             if (state.combinePatternA) {
-                const name = state.combinePatternA.filename || 'Unnamed pattern';
-                document.getElementById('patternAInfo').textContent =
-                    `${name} (${state.combinePatternA.pixelCols}×${state.combinePatternA.pixelRows}, ${state.combinePatternA.numFrames} frames)`;
+                const p = state.combinePatternA;
+                nameA.textContent = p.filename || 'Unnamed pattern';
+                dimsA.textContent = `${p.pixelCols}×${p.pixelRows}, ${p.numFrames} frames`;
+
+                // Generate thumbnail
+                thumbA.classList.remove('empty');
+                thumbA.innerHTML = '';
+                const gen = p.generation || state.arena.config?.arena?.generation || 'G6';
+                const thumb = generateIconThumbnail(p.frames[0], p.pixelRows, p.pixelCols, p.gsMode, gen);
+                if (thumb) {
+                    if (typeof thumb === 'string') {
+                        const img = document.createElement('img');
+                        img.src = thumb;
+                        thumbA.appendChild(img);
+                    } else {
+                        thumbA.appendChild(thumb);
+                    }
+                }
             } else {
-                document.getElementById('patternAInfo').textContent = 'No pattern set';
+                nameA.textContent = 'No pattern set';
+                dimsA.textContent = '';
+                thumbA.classList.add('empty');
+                thumbA.innerHTML = '?';
             }
 
-            // Update Pattern B info
+            // Update Pattern B info and thumbnail
+            const thumbB = document.getElementById('patternBThumbnail');
+            const nameB = document.getElementById('patternBName');
+            const dimsB = document.getElementById('patternBDims');
+
             if (state.combinePatternB) {
-                const name = state.combinePatternB.filename || 'Unnamed pattern';
-                document.getElementById('patternBInfo').textContent =
-                    `${name} (${state.combinePatternB.pixelCols}×${state.combinePatternB.pixelRows}, ${state.combinePatternB.numFrames} frames)`;
+                const p = state.combinePatternB;
+                nameB.textContent = p.filename || 'Unnamed pattern';
+                dimsB.textContent = `${p.pixelCols}×${p.pixelRows}, ${p.numFrames} frames`;
+
+                // Generate thumbnail
+                thumbB.classList.remove('empty');
+                thumbB.innerHTML = '';
+                const gen = p.generation || state.arena.config?.arena?.generation || 'G6';
+                const thumb = generateIconThumbnail(p.frames[0], p.pixelRows, p.pixelCols, p.gsMode, gen);
+                if (thumb) {
+                    if (typeof thumb === 'string') {
+                        const img = document.createElement('img');
+                        img.src = thumb;
+                        thumbB.appendChild(img);
+                    } else {
+                        thumbB.appendChild(thumb);
+                    }
+                }
             } else {
-                document.getElementById('patternBInfo').textContent = 'No pattern set';
+                nameB.textContent = 'No pattern set';
+                dimsB.textContent = '';
+                thumbB.classList.add('empty');
+                thumbB.innerHTML = '?';
             }
 
             // Update length options visibility based on current mode and patterns

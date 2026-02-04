@@ -328,6 +328,31 @@ class ThreeViewer {
         }
     }
 
+    /**
+     * Get set of installed column indices (0-indexed)
+     * Handles both direct column indices and panel-based indices
+     * @returns {Set<number>} Set of installed column indices
+     */
+    _getInstalledColumnsSet() {
+        const arena = this.arenaConfig?.arena;
+        if (!arena) return new Set();
+
+        // If columns_installed is null/undefined, all columns are installed
+        if (arena.columns_installed === null || arena.columns_installed === undefined) {
+            return new Set([...Array(arena.num_cols).keys()]);
+        }
+
+        // Handle panel-based indices (convert to column indices)
+        const maxIndex = Math.max(...arena.columns_installed);
+        if (maxIndex < arena.num_cols) {
+            // Direct column indices
+            return new Set(arena.columns_installed);
+        } else {
+            // Panel indices - convert to column indices
+            return new Set(arena.columns_installed.map(p => p % arena.num_cols));
+        }
+    }
+
     _buildArena() {
         // Clean up existing label DOM elements FIRST (they're nested in column groups)
         // CSS2DRenderer appends label.element to its own domElement container
@@ -381,7 +406,12 @@ class ThreeViewer {
         // CCW: c0 just RIGHT of south, columns increase clockwise (mirror)
         // Note: Three.js uses right-handed coords but top-down view has +Z toward viewer,
         // so we negate Z to match MATLAB's top-down appearance
+        const installedSet = this._getInstalledColumnsSet();
+
         for (let col = 0; col < numCols; col++) {
+            // Skip uninstalled columns (for partial arenas like G6_2x8of10)
+            if (!installedSet.has(col)) continue;
+
             let angle;
             if (columnOrder === 'cw') {
                 // CW: start left of south, go counter-clockwise
