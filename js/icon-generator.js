@@ -246,7 +246,7 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
     const halfPanel = alpha / 2;  // offset to center column on its angular position
 
     // Arena-specific angular offset (e.g., for aligning gap position)
-    const angleOffsetRad = (arena.angle_offset_deg || 0) * Math.PI / 180;
+    const angleOffsetRad = (arenaConfig.angle_offset_deg || 0) * Math.PI / 180;
 
     // Render each installed column
     for (let installedIdx = 0; installedIdx < installedColumnCount; installedIdx++) {
