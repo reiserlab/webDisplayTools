@@ -364,9 +364,6 @@ class ThreeViewer {
         const angleOffsetDeg = arena.angle_offset_deg || 0;
         const angleOffsetRad = (angleOffsetDeg * Math.PI) / 180;
 
-        // Get set of installed columns (for partial arenas)
-        const installedSet = this._getInstalledColumnsSet(arena);
-
         // Convert mm to inches (working units)
         const panelWidth = specs.panel_width_mm / 25.4;
         const panelHeight = specs.panel_height_mm / 25.4;
@@ -384,18 +381,7 @@ class ThreeViewer {
         // CCW: c0 just RIGHT of south, columns increase clockwise (mirror)
         // Note: Three.js uses right-handed coords but top-down view has +Z toward viewer,
         // so we negate Z to match MATLAB's top-down appearance
-
-        // Build ordered list of installed column indices (for mapping physical to pattern columns)
-        const installedColsList = Array.from(installedSet).sort((a, b) => a - b);
-
         for (let col = 0; col < numCols; col++) {
-            // Skip columns that aren't installed (for partial arenas)
-            if (!installedSet.has(col)) continue;
-
-            // Pattern column index: position of this column in the installed columns list
-            // This maps physical column index to pattern pixel columns
-            const patternColIndex = installedColsList.indexOf(col);
-
             let angle;
             if (columnOrder === 'cw') {
                 // CW: start left of south, go counter-clockwise
@@ -408,8 +394,7 @@ class ThreeViewer {
             const x = cRadius * Math.cos(angle);
             const z = -cRadius * Math.sin(angle);  // Negate Z to match MATLAB top-down view
 
-            // Pass patternColIndex for correct pixel mapping in partial arenas
-            const columnGroup = this._createColumn(specs, panelWidth, columnHeight, panelDepth, -angle, numRows, patternColIndex, installedColsList.length, columnOrder);
+            const columnGroup = this._createColumn(specs, panelWidth, columnHeight, panelDepth, -angle, numRows, col, numCols, columnOrder);
             columnGroup.position.set(x, 0, z);
 
             this.arenaGroup.add(columnGroup);
@@ -420,34 +405,6 @@ class ThreeViewer {
         this.camera.position.set(0, viewDistance, 0.01);
         this.controls.target.set(0, 0, 0);
         this.controls.update();
-    }
-
-    /**
-     * Get set of installed column indices for partial arenas
-     * @param {Object} arena - Arena configuration object
-     * @returns {Set} Set of installed column indices
-     */
-    _getInstalledColumnsSet(arena) {
-        const columns_installed = arena.columns_installed || arena.panels_installed;
-
-        if (!columns_installed) {
-            // Full arena - all columns installed
-            const allCols = new Set();
-            for (let i = 0; i < arena.num_cols; i++) {
-                allCols.add(i);
-            }
-            return allCols;
-        }
-
-        // Check if values are panel indices (> num_cols) or column indices
-        const maxIndex = Math.max(...columns_installed);
-        if (maxIndex < arena.num_cols) {
-            // Direct column indices
-            return new Set(columns_installed);
-        } else {
-            // Panel indices - convert to unique column indices
-            return new Set(columns_installed.map(p => p % arena.num_cols));
-        }
     }
 
     _createColumn(specs, width, height, depth, angle, numRows, colIndex, numCols, columnOrder) {
@@ -675,15 +632,14 @@ class ThreeViewer {
         const pattern = this.state.pattern;
 
         if (!pattern || !pattern.frames || pattern.frames.length === 0) {
-            return 0.0; // Off when no pattern loaded
+            return 1.0; // Default full brightness
         }
 
         const frame = pattern.frames[this.state.currentFrame];
         if (!frame) return 0.0;
 
         const pixelsPerPanel = totalPixelsH;
-        // Use pattern's actual pixel columns (handles partial arenas correctly)
-        const totalAzimuthPixels = pattern.pixelCols;
+        const totalAzimuthPixels = numCols * totalPixelsH;
 
         // For CCW mode, mirror the pixel index within each panel
         // to ensure grating tiles correctly when columns are placed clockwise
@@ -692,12 +648,11 @@ class ThreeViewer {
             : px;
 
         // Calculate global X with phase offset support
-        // colIndex is now the pattern column index (0 to installedCols-1), not physical column
         const phaseOffset = this.state.phaseOffset || 0;
         const globalX = ((colIndex * pixelsPerPanel + effectivePx) + phaseOffset + totalAzimuthPixels) % totalAzimuthPixels;
         const globalY = py;
 
-        // Row-major index: row * pixelCols + col
+        // Row-major index: row * numCols + col
         const pixelIndex = globalY * pattern.pixelCols + globalX;
 
         if (pixelIndex < 0 || pixelIndex >= frame.length) {
