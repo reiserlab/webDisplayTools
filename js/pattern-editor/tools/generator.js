@@ -101,6 +101,9 @@ const PatternGenerator = {
         const generation = arena.generation || arena.arena?.generation;
         const numRows = arena.rows || arena.num_rows || arena.arena?.num_rows;
         const numCols = arena.cols || arena.num_cols || arena.arena?.num_cols;
+        // For partial arenas, use columns_installed length instead of num_cols
+        const columnsInstalled = arena.columns_installed || arena.arena?.columns_installed;
+        const installedCols = columnsInstalled?.length || numCols;
 
         const specs = this.getPanelSpecs(generation);
         const panelSize = specs.pixels_per_panel;
@@ -108,9 +111,10 @@ const PatternGenerator = {
         return {
             generation,
             rows: numRows,
-            cols: numCols,
+            cols: numCols,           // Total arena slots (for geometry calculations)
+            installedCols,           // Actual installed columns (for pattern dimensions)
             pixelRows: numRows * panelSize,
-            pixelCols: numCols * panelSize,
+            pixelCols: installedCols * panelSize,  // Use installed columns for pattern width
             panelSize
         };
     },
@@ -341,18 +345,21 @@ const PatternGenerator = {
         } = params;
 
         const dims = this.getArenaDimensions(arena);
-        const { pixelRows, pixelCols, generation, rows, cols, panelSize } = dims;
+        const { pixelRows, pixelCols, generation, rows, cols, installedCols, panelSize } = dims;
 
         // Determine number of columns for full circle (Pcircle)
-        // For partial arenas, this may differ from installed columns
+        // For partial arenas, numCircle is the FULL arena size (for correct angular spacing)
+        // but numCols should be the installed columns (for pattern dimensions)
         const numCircle = arena.numCircle || arena.num_cols_full || arena.Pcircle || cols;
 
         // Generate arena coordinates
+        // numCols = installed columns (pattern dimension)
+        // numCircle = full circle columns (for angular spacing geometry)
         const arenaConfig = {
             panelSize,
-            numCols: cols,
+            numCols: installedCols,      // Pattern covers installed columns only
             numRows: rows,
-            numCircle: numCircle,  // Full circle panels (for correct angular spacing)
+            numCircle: numCircle,        // Full circle panels (for correct angular spacing)
             model: arenaModel
         };
         const arenaCoords = geom.arenaCoordinates(arenaConfig);
@@ -544,7 +551,7 @@ const PatternGenerator = {
         } = params;
 
         const dims = this.getArenaDimensions(arena);
-        const { pixelRows, pixelCols, generation, rows, cols, panelSize } = dims;
+        const { pixelRows, pixelCols, generation, rows, cols, installedCols, panelSize } = dims;
 
         // Determine number of columns for full circle (Pcircle)
         const numCircle = arena.numCircle || arena.num_cols_full || arena.Pcircle || cols;
@@ -552,9 +559,9 @@ const PatternGenerator = {
         // Generate arena coordinates for projection
         const arenaConfig = {
             panelSize,
-            numCols: cols,
+            numCols: installedCols,      // Pattern covers installed columns only
             numRows: rows,
-            numCircle: numCircle,
+            numCircle: numCircle,        // Full circle for angular spacing
             model: arenaModel
         };
         const arenaCoords = geom.arenaCoordinates(arenaConfig);
@@ -816,7 +823,7 @@ const PatternGenerator = {
         } = params;
 
         const dims = this.getArenaDimensions(arena);
-        const { pixelRows, pixelCols, generation, rows, cols, panelSize } = dims;
+        const { pixelRows, pixelCols, generation, rows, cols, installedCols, panelSize } = dims;
 
         // Determine number of columns for full circle (Pcircle)
         const numCircle = arena.numCircle || arena.num_cols_full || arena.Pcircle || cols;
@@ -824,9 +831,9 @@ const PatternGenerator = {
         // Generate arena coordinates
         const arenaConfig = {
             panelSize,
-            numCols: cols,
+            numCols: installedCols,      // Pattern covers installed columns only
             numRows: rows,
-            numCircle: numCircle,
+            numCircle: numCircle,        // Full circle for angular spacing
             model: arenaModel
         };
         const arenaCoords = geom.arenaCoordinates(arenaConfig);

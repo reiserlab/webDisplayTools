@@ -623,6 +623,37 @@
             color: #ff4444;
         }
 
+        /* Animated thumbnail for pattern items */
+        .clipboard-pattern-item .pattern-thumbnail {
+            width: 36px;
+            height: 36px;
+            border-radius: 4px;
+            overflow: hidden;
+            flex-shrink: 0;
+            position: relative;
+            background: var(--bg);
+        }
+
+        .clipboard-pattern-item .pattern-thumbnail img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 4px;
+        }
+
+        /* Frame count badge on thumbnail */
+        .clipboard-pattern-item .pattern-thumbnail .frame-badge {
+            position: absolute;
+            bottom: 1px;
+            right: 1px;
+            background: rgba(0, 0, 0, 0.7);
+            color: var(--accent);
+            font-size: 8px;
+            padding: 1px 3px;
+            border-radius: 2px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
         /* File Operations */
         .file-operations {
             padding: 1rem 1.25rem;
@@ -1273,7 +1304,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.12 | 2026-02-03 18:21 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.14 | 2026-02-03 23:04 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -2379,8 +2410,10 @@
             }
 
             // Create empty single-frame pattern
+            // Use columns_installed for partial arenas, fallback to num_cols for full arenas
+            const installedCols = config.arena.columns_installed?.length || config.arena.num_cols;
             const pixelRows = config.arena.num_rows * PANEL_SPECS[config.arena.generation].pixels_per_panel;
-            const pixelCols = config.arena.num_cols * PANEL_SPECS[config.arena.generation].pixels_per_panel;
+            const pixelCols = installedCols * PANEL_SPECS[config.arena.generation].pixels_per_panel;
 
             state.pattern = {
                 generation: config.arena.generation,
@@ -2487,8 +2520,11 @@
          */
         function getDegreesPerPixel() {
             if (!state.arena.config) return 1.8;  // Default for G6 2x10
-            const specs = PANEL_SPECS[state.arena.config.arena.generation];
-            const pixelCols = state.arena.config.arena.num_cols * specs.pixels_per_panel;
+            const config = state.arena.config.arena;
+            const specs = PANEL_SPECS[config.generation];
+            // Use columns_installed for partial arenas, fallback to num_cols for full arenas
+            const installedCols = config.columns_installed?.length || config.num_cols;
+            const pixelCols = installedCols * specs.pixels_per_panel;
             return 360 / pixelCols;
         }
 
@@ -2568,8 +2604,11 @@
                 if (!state.arena.config) {
                     numFrames = 200;  // Default
                 } else {
-                    const specs = PANEL_SPECS[state.arena.config.arena.generation];
-                    const totalPixels = state.arena.config.arena.num_cols * specs.pixels_per_panel;
+                    const config = state.arena.config.arena;
+                    const specs = PANEL_SPECS[config.generation];
+                    // Use columns_installed for partial arenas
+                    const installedCols = config.columns_installed?.length || config.num_cols;
+                    const totalPixels = installedCols * specs.pixels_per_panel;
                     numFrames = Math.ceil(totalPixels / stepSizePixels);
                 }
             } else {
@@ -2642,9 +2681,14 @@
         function updateNumFramesDefault() {
             const hint = document.getElementById('numFramesHint');
             if (state.arena.config) {
-                const specs = PANEL_SPECS[state.arena.config.arena.generation];
-                const pixelCols = state.arena.config.arena.num_cols * specs.pixels_per_panel;
-                hint.textContent = `(360° = ${pixelCols})`;
+                const config = state.arena.config.arena;
+                const specs = PANEL_SPECS[config.generation];
+                // Use columns_installed for partial arenas
+                const installedCols = config.columns_installed?.length || config.num_cols;
+                const pixelCols = installedCols * specs.pixels_per_panel;
+                // Calculate actual degrees coverage (partial arenas < 360°)
+                const degrees = Math.round((installedCols / config.num_cols) * 360);
+                hint.textContent = `(${degrees}° = ${pixelCols} px)`;
                 document.getElementById('numFramesInput').value = pixelCols;
             }
         }
@@ -2681,10 +2725,12 @@
             const lowLevel = parseInt(document.getElementById('lowLevel').value);
 
             // Build arena object for generator
+            // For partial arenas, pass columns_installed so generator uses correct pixel width
             const arena = {
                 generation: config.arena.generation,
                 rows: config.arena.num_rows,
-                cols: config.arena.num_cols
+                cols: config.arena.num_cols,
+                columns_installed: config.arena.columns_installed  // null for full arenas
             };
 
             let params = {
@@ -2927,15 +2973,27 @@
                 return;
             }
 
-            // Generate cylindrical icon thumbnail from middle frame
-            const middleFrame = Math.floor(state.pattern.numFrames / 2);
-            const thumbnail = generateIconThumbnail(
-                state.pattern.frames[middleFrame],
-                state.pattern.pixelRows,
-                state.pattern.pixelCols,
-                state.pattern.gsMode,
-                state.pattern.generation
-            );
+            // Generate animated thumbnails for hover preview
+            // Sample up to 10 frames evenly distributed
+            const numFrames = state.pattern.numFrames;
+            const maxThumbnails = Math.min(10, numFrames);
+            const frameStep = Math.max(1, Math.floor(numFrames / maxThumbnails));
+
+            const animatedThumbnails = [];
+            for (let i = 0; i < numFrames && animatedThumbnails.length < maxThumbnails; i += frameStep) {
+                const thumb = generateIconThumbnail(
+                    state.pattern.frames[i],
+                    state.pattern.pixelRows,
+                    state.pattern.pixelCols,
+                    state.pattern.gsMode,
+                    state.pattern.generation
+                );
+                animatedThumbnails.push(thumb);
+            }
+
+            // Use middle thumbnail as static preview
+            const middleIdx = Math.floor(animatedThumbnails.length / 2);
+            const thumbnail = animatedThumbnails[middleIdx] || animatedThumbnails[0];
 
             const patternEntry = {
                 id: Date.now(),
@@ -2949,6 +3007,7 @@
                     stretchValues: state.pattern.stretchValues ? [...state.pattern.stretchValues] : null
                 },
                 thumbnail: thumbnail,
+                animatedThumbnails: animatedThumbnails,  // Array of frame thumbnails for hover animation
                 timestamp: new Date(),
                 name: state.filename || `Pattern ${state.clipboardPatterns.length + 1}`
             };
@@ -3123,7 +3182,7 @@
             }
         }
 
-        // Create a pattern item with editable name (different from frame thumbnails)
+        // Create a pattern item with animated thumbnail and editable name
         function createPatternClipboardItem(entry, index) {
             const item = document.createElement('div');
             item.className = 'clipboard-pattern-item';
@@ -3134,6 +3193,50 @@
             }
 
             item.title = `${entry.name}\n${entry.pattern ? entry.pattern.frames.length + ' frames' : '1 frame'}\n${formatTimestamp(entry.timestamp)}\nDouble-click to load pattern`;
+
+            // Animated thumbnail container
+            const thumbContainer = document.createElement('div');
+            thumbContainer.className = 'pattern-thumbnail';
+
+            // Create image element for thumbnail
+            const thumbImg = document.createElement('img');
+            thumbImg.src = entry.thumbnail || '';
+            thumbImg.alt = entry.name;
+            thumbContainer.appendChild(thumbImg);
+
+            // Frame count badge on thumbnail
+            const numFrames = entry.pattern ? entry.pattern.frames.length : 1;
+            if (numFrames > 1) {
+                const frameBadge = document.createElement('span');
+                frameBadge.className = 'frame-badge';
+                frameBadge.textContent = `${numFrames}f`;
+                thumbContainer.appendChild(frameBadge);
+            }
+
+            // Animation state for hover
+            let animationInterval = null;
+            let currentFrameIdx = 0;
+
+            // Hover animation for multi-frame patterns
+            if (entry.animatedThumbnails && entry.animatedThumbnails.length > 1) {
+                thumbContainer.addEventListener('mouseenter', () => {
+                    currentFrameIdx = 0;
+                    animationInterval = setInterval(() => {
+                        currentFrameIdx = (currentFrameIdx + 1) % entry.animatedThumbnails.length;
+                        thumbImg.src = entry.animatedThumbnails[currentFrameIdx];
+                    }, 150);  // ~6-7 FPS for smooth preview
+                });
+
+                thumbContainer.addEventListener('mouseleave', () => {
+                    if (animationInterval) {
+                        clearInterval(animationInterval);
+                        animationInterval = null;
+                    }
+                    thumbImg.src = entry.thumbnail;  // Reset to static thumbnail
+                });
+            }
+
+            item.appendChild(thumbContainer);
 
             // Editable name
             const nameSpan = document.createElement('span');
@@ -3154,12 +3257,6 @@
                 e.stopPropagation(); // Don't select when editing name
             });
             item.appendChild(nameSpan);
-
-            // Frame count
-            const framesSpan = document.createElement('span');
-            framesSpan.className = 'pattern-frames';
-            framesSpan.textContent = entry.pattern ? `${entry.pattern.frames.length}f` : '1f';
-            item.appendChild(framesSpan);
 
             // Delete button
             const deleteBtn = document.createElement('button');
@@ -4106,9 +4203,12 @@
             let pixelRows = 60;   // Default
 
             if (state.arena.config) {
-                const specs = PANEL_SPECS[state.arena.config.arena.generation];
-                pixelCols = state.arena.config.arena.num_cols * specs.pixels_per_panel;
-                pixelRows = state.arena.config.arena.num_rows * specs.pixels_per_panel;
+                const config = state.arena.config.arena;
+                const specs = PANEL_SPECS[config.generation];
+                // Use columns_installed for partial arenas
+                const installedCols = config.columns_installed?.length || config.num_cols;
+                pixelCols = installedCols * specs.pixels_per_panel;
+                pixelRows = config.num_rows * specs.pixels_per_panel;
             } else if (state.clipboardFrames.length > 0) {
                 // Fallback to clipboard entry dimensions
                 pixelCols = state.clipboardFrames[0].pixelCols;
