@@ -1304,7 +1304,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.15 | 2026-02-04 00:07 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.16 | 2026-02-04 00:26 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -4952,11 +4952,14 @@
 
         // Find arena config that matches pattern dimensions
         function findMatchingArenaConfig(generation, numCols, numRows) {
-            for (const [name, config] of Object.entries(ARENA_CONFIGS)) {
-                if (config.arena.generation === generation &&
-                    config.arena.num_cols === numCols &&
-                    config.arena.num_rows === numRows) {
-                    return name;
+            const configsByGen = getConfigsByGeneration();
+            for (const [gen, configs] of Object.entries(configsByGen)) {
+                for (const configObj of configs) {
+                    if (configObj.arena.generation === generation &&
+                        configObj.arena.num_cols === numCols &&
+                        configObj.arena.num_rows === numRows) {
+                        return configObj.name;
+                    }
                 }
             }
             return null;
