@@ -8,27 +8,17 @@ Web-based tools for configuring and editing display patterns for modular arena s
 
 Open `index.html` in your web browser to access all tools, or visit the live demo above.
 
-## Supported Panel Generations
-
-| Generation | Status | Notes |
-|------------|--------|-------|
-| **G6** | ✅ Actively tested | Current generation, 20×20 pixels, 0402 SMD LEDs |
-| **G4.1** | ✅ Actively tested | Production systems, 16×16 pixels, 0603 SMD LEDs |
-| **G4** | 📋 Comparison only | Legacy systems, included for reference |
-| **G3** | 📋 Comparison only | Legacy systems, included for reference |
-
-> **Note**: G3 and G4 configurations are included for comparison and backward compatibility, but are not actively tested or validated. For new installations, use G4.1 or G6 panels.
-
 ## Tools
 
-### G6 Panel Patterns ✅ Ready
-Create and preview 20×20 pixel patterns for individual G6 panels:
-- Real-time preview with draw/erase modes
-- Multiple modes: GS2, GS16, 4-Char, LED Map Reference
-- Pattern export capabilities
-- CI/CD validated against MATLAB
+### Pattern Editor ✅ Ready
+Full-arena pattern design with spherical coordinate transformations:
+- Generate gratings, starfields, edges with pole rotation
+- Edit pixels directly in 2D or view in 3D
+- Animate patterns via frame shifting or sequence building
+- Combine patterns with blend/mask/split modes
+- Export to .pat format for MATLAB
 
-**[Launch G6 Panel Patterns →](https://reiserlab.github.io/webDisplayTools/g6_panel_editor.html)**
+**[Launch Pattern Editor →](https://reiserlab.github.io/webDisplayTools/pattern_editor.html)** | **[Quick Start Guide](PATTERN_EDITOR_QUICKSTART.md)**
 
 ### Arena Layout ✅ Ready
 Configure arena geometry from standard configs or create custom layouts:
@@ -49,7 +39,7 @@ Interactive 3D visualization of cylindrical arenas:
 
 **[Launch Arena 3D View →](https://reiserlab.github.io/webDisplayTools/arena_3d_viewer.html)**
 
-### Pattern Icon Generator 🚧 In Development
+### Pattern Icon Generator ✅ Ready
 Generate top-down cylindrical view icons from arena patterns:
 - Single-frame and multi-frame motion blur rendering
 - Configurable perspective (inner radius 0.1-0.75)
@@ -59,8 +49,14 @@ Generate top-down cylindrical view icons from arena patterns:
 
 **[Launch Pattern Icon Generator →](https://reiserlab.github.io/webDisplayTools/icon_generator.html)**
 
-### Multi-Panel Patterns 🚧 Coming Soon
-Full-arena pattern design with animation support. Export to GIF/video for documentation.
+### G6 Panel Patterns ✅ Ready
+Create and preview 20×20 pixel patterns for individual G6 panels:
+- Real-time preview with draw/erase modes
+- Multiple modes: GS2, GS16, 4-Char, LED Map Reference
+- Pattern export capabilities
+- CI/CD validated against MATLAB
+
+**[Launch G6 Panel Patterns →](https://reiserlab.github.io/webDisplayTools/g6_panel_editor.html)**
 
 ### Experiment Designer 🚧 Coming Soon
 Design experiment protocols with stimulus sequences and trial parameters. YAML export for MATLAB execution.
@@ -92,25 +88,28 @@ All tools can be tested locally by opening the HTML files directly in a web brow
 
 ```
 webDisplayTools/
-├── index.html                # Main landing page
-├── g6_panel_editor.html      # G6 Panel Pattern Editor (ready)
-├── arena_editor.html         # Arena Layout Editor (ready)
-├── arena_3d_viewer.html      # Arena 3D Viewer (ready)
-├── g41_pattern_editor.html   # G4.1 pattern editor (placeholder)
-├── g6_pattern_editor.html    # G6 pattern editor (placeholder)
-├── experiment_designer.html  # Experiment Designer (placeholder)
-├── js/                       # Shared JavaScript modules
-│   ├── arena-calculations.js # Arena geometry calculations
-│   └── arena-configs.js      # Standard arena configurations (auto-generated)
-├── scripts/                  # Build/generation scripts
-│   └── generate-arena-configs.js  # Syncs configs from maDisplayTools
-├── data/                     # Reference data
-│   └── reference_data.json   # MATLAB-generated validation data
-├── tests/                    # Validation tests
-│   └── validate-arena-calculations.js
-└── .github/workflows/        # CI/CD workflows
-    ├── validate-calculations.yml
-    └── sync-arena-configs.yml  # Syncs arena configs from maDisplayTools
+├── index.html                    # Main landing page
+├── pattern_editor.html           # Pattern Editor (ready)
+├── arena_editor.html             # Arena Layout Editor (ready)
+├── arena_3d_viewer.html          # Arena 3D Viewer (ready)
+├── icon_generator.html           # Pattern Icon Generator (ready)
+├── g6_panel_editor.html          # G6 Panel Editor (ready)
+├── experiment_designer.html      # Experiment Designer (placeholder)
+├── PATTERN_EDITOR_QUICKSTART.md  # Pattern Editor guide
+├── js/                           # Shared JavaScript modules
+│   ├── arena-calculations.js     # Arena geometry calculations
+│   ├── arena-configs.js          # Standard arena configurations
+│   ├── arena-geometry.js         # Arena geometry helpers
+│   ├── pat-parser.js             # .pat file parser
+│   ├── pat-encoder.js            # .pat file encoder
+│   ├── icon-generator.js         # Icon generation module
+│   └── g6-encoding.js            # G6 panel encoding
+├── docs/                         # Documentation assets
+│   └── images/                   # Screenshots for guides
+├── data/                         # Reference data
+│   └── reference_data.json       # MATLAB validation data
+├── tests/                        # Validation tests
+└── .github/workflows/            # CI/CD workflows
 ```
 
 ## CI/CD Validation
@@ -123,6 +122,17 @@ Web tools are validated against MATLAB reference implementations:
 4. Tests compare JavaScript calculations against MATLAB with tolerance of 0.0001
 
 Run tests locally: `npm test`
+
+## Supported Panel Generations
+
+| Generation | Status | Notes |
+|------------|--------|-------|
+| **G6** | ✅ Actively tested | Current generation, 20×20 pixels, 0402 SMD LEDs |
+| **G4.1** | ✅ Actively tested | Production systems, 16×16 pixels, 0603 SMD LEDs |
+| **G4** | 📋 Comparison only | Legacy systems, included for reference |
+| **G3** | 📋 Comparison only | Legacy systems, included for reference |
+
+> **Note**: G3 and G4 configurations are included for comparison and backward compatibility, but are not actively tested or validated. For new installations, use G4.1 or G6 panels.
 
 ## About
 
