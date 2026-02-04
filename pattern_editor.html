@@ -1304,7 +1304,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.17 | 2026-02-04 00:29 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.18 | 2026-02-04 00:59 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -2296,7 +2296,10 @@
 
         function init3DViewer() {
             const container = document.getElementById('threeContainer');
-            if (!container) return;
+            if (!container) {
+                console.error('3D Viewer: Container not found');
+                return;
+            }
 
             // Create viewer if it doesn't exist
             if (!threeViewer) {
@@ -2305,13 +2308,26 @@
                 const config = state.arena.config;
                 if (config) {
                     const specs = PANEL_SPECS[config.arena.generation];
-                    threeViewer.init(config, specs);
+                    if (!specs) {
+                        console.error('3D Viewer: No specs for generation', config.arena.generation);
+                        return;
+                    }
+                    try {
+                        threeViewer.init(config, specs);
+                        console.log('3D Viewer: Initialized with', config.arena.generation,
+                            config.arena.num_cols + 'x' + config.arena.num_rows);
+                    } catch (err) {
+                        console.error('3D Viewer: Init failed:', err.message);
+                        return;
+                    }
 
                     // Set up frame change callback to sync with playback controls
                     threeViewer.onFrameChange((frameIndex) => {
                         state.editor.currentFrame = frameIndex;
                         updateFrameInfo();
                     });
+                } else {
+                    console.error('3D Viewer: No arena config available');
                 }
             }
 
