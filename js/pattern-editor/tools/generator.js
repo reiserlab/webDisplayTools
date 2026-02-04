@@ -878,8 +878,9 @@ const PatternGenerator = {
             samples = geom.samplesByPRad(coord, aaSamples, arenaCoords.pRad);
         }
 
-        // Number of frames: default to pixelCols + 1 for full edge sweep
-        const numFrames = requestedFrames || (pixelCols + 1);
+        // Number of frames: use requested frames, or default to gsMode + 1 for duty cycle sweep
+        // gsMode + 1 gives frames for 0%, 100/(gsMode)%, 200/(gsMode)%, ..., 100% duty cycle
+        const numFrames = requestedFrames || (gsMode + 1);
 
         const frames = [];
         const stretchValues = [];

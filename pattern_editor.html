@@ -1304,7 +1304,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.14 | 2026-02-03 23:04 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.15 | 2026-02-04 00:07 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1640,13 +1640,70 @@
 
                 <!-- Image Tab (placeholder) -->
                 <div class="tool-pane" id="imagePane">
-                    <div class="section-title">Image to Frame</div>
-                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem 1rem; text-align: center; color: var(--text-dim);">
-                        <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;">🖼️</div>
-                        <div style="font-size: 0.85rem; line-height: 1.5;">
-                            <strong style="color: var(--text);">Coming Soon</strong><br>
-                            Import images and convert them to LED patterns with automatic sizing and dithering.
+                    <div class="section-title">Load Image</div>
+                    <div class="control-group">
+                        <button class="btn secondary" id="loadImageBtn" style="width: 100%;" title="Load PNG or JPEG image">
+                            Load Image...
+                        </button>
+                        <div id="imageInfo" style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.75rem; color: var(--text-dim);">
+                            No image loaded
                         </div>
+                    </div>
+
+                    <div class="section-title">Preview</div>
+                    <div class="control-group" style="position: relative;">
+                        <div id="imagePreviewContainer" style="width: 100%; aspect-ratio: 4/3; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; position: relative; cursor: move;">
+                            <canvas id="imagePreviewCanvas" style="width: 100%; height: 100%;"></canvas>
+                        </div>
+                        <div style="font-size: 0.65rem; color: var(--text-dim); margin-top: 0.25rem;">
+                            Drag to pan the arena region
+                        </div>
+                    </div>
+
+                    <div class="section-title">Transform</div>
+                    <div class="control-group">
+                        <label>Scale</label>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <input type="range" id="imageScale" min="10" max="500" value="100" style="flex: 1;" title="Scale the arena region (10-500%)">
+                            <span id="imageScaleValue" style="min-width: 40px; text-align: right; font-size: 0.8rem;">100%</span>
+                        </div>
+                    </div>
+                    <div class="control-row">
+                        <div class="control-group half">
+                            <label>Rotation</label>
+                            <div style="display: flex; gap: 0.25rem; align-items: center;">
+                                <input type="number" id="imageRotation" value="0" min="-180" max="180" step="1" title="Rotation in degrees (-180 to 180)">
+                                <span style="color: var(--text-dim); font-size: 0.8rem;">deg</span>
+                            </div>
+                        </div>
+                        <div class="control-group half">
+                            <label>&nbsp;</label>
+                            <button class="btn secondary" id="fitImageBtn" style="width: 100%;" title="Fit arena to image bounds">
+                                Fit
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="section-title">Output</div>
+                    <div class="control-row">
+                        <div class="control-group half">
+                            <label>Mode</label>
+                            <select id="imageGsMode" title="GS16: 4-bit grayscale (0-15). GS2: binary (0-1)">
+                                <option value="16">GS16</option>
+                                <option value="2">GS2</option>
+                            </select>
+                        </div>
+                        <div class="control-group half">
+                            <label>Invert</label>
+                            <div style="display: flex; align-items: center; height: 34px;">
+                                <input type="checkbox" id="imageInvert" title="Invert grayscale values" style="margin: 0;">
+                                <label for="imageInvert" style="margin: 0 0 0 0.5rem; font-size: 0.75rem; cursor: pointer;">Invert</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="imageQuantizationInfo" style="padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.65rem; color: var(--text-dim);">
+                        GS16: Maps 0-255 to 0-15<br>
+                        GS2: Threshold at 128 (0=dark, 1=bright)
                     </div>
                 </div>
             </div>
@@ -1858,6 +1915,7 @@
         import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js';
         import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
         import { generatePatternIcon } from './js/icon-generator.js';
+        import ImageConverter from './js/pattern-editor/tools/image-converter.js';
 
         // ============================================
         // State Management
@@ -2160,6 +2218,9 @@
             // Stretch value input
             document.getElementById('stretchValue').addEventListener('change', handleStretchChange);
 
+            // Image converter initialization
+            initImageConverter();
+
             // Initial status
             updateStatus();
         }
@@ -2178,6 +2239,11 @@
             // Update combine info when switching to combine tab
             if (tabName === 'combine') {
                 updateCombineInfo();
+            }
+
+            // Refresh image preview when switching to image tab
+            if (tabName === 'image' && typeof window.updateImagePreview === 'function') {
+                window.updateImagePreview();
             }
         }
 
@@ -2597,20 +2663,16 @@
             const stepSizeUnit = document.getElementById('stepSizeUnit').value;
             const stepSizePixels = convertStepSizeToPixels(stepSizeValue, stepSizeUnit);
 
-            // Get wavelength for grating/sine, or total pixels for edge
+            // Get wavelength for grating/sine/edge
             let numFrames;
             if (patternType === 'edge') {
-                // Edge: frames = total azimuth pixels / step size
-                if (!state.arena.config) {
-                    numFrames = 200;  // Default
-                } else {
-                    const config = state.arena.config.arena;
-                    const specs = PANEL_SPECS[config.generation];
-                    // Use columns_installed for partial arenas
-                    const installedCols = config.columns_installed?.length || config.num_cols;
-                    const totalPixels = installedCols * specs.pixels_per_panel;
-                    numFrames = Math.ceil(totalPixels / stepSizePixels);
-                }
+                // Edge: frames = spatFreq / stepSize + 1 (MATLAB parity)
+                // +1 to include both fully-on and fully-off frames
+                const spatFreqValue = parseFloat(document.getElementById('spatialFreq').value) || 20;
+                const spatFreqUnit = document.getElementById('spatialFreqUnit').value;
+                const spatFreqRadians = convertSpatialFreqToRadians(spatFreqValue, spatFreqUnit);
+                const stepSizeRadians = convertStepSizeToRadians(stepSizeValue, stepSizeUnit);
+                numFrames = Math.max(1, Math.round(spatFreqRadians / stepSizeRadians)) + 1;
             } else {
                 // Grating/Sine: frames = wavelength / step size
                 const spatFreqValue = parseFloat(document.getElementById('spatialFreq').value) || 20;
@@ -2676,6 +2738,23 @@
         }
 
         /**
+         * Convert step size value to radians
+         * @param {number} value - The input value
+         * @param {string} unit - The unit ('px' or 'deg')
+         * @returns {number} Step size in radians
+         */
+        function convertStepSizeToRadians(value, unit) {
+            const degPerPx = getDegreesPerPixel();
+            const pRad = degPerPx * Math.PI / 180;  // radians per pixel
+
+            if (unit === 'px') {
+                return value * pRad;
+            } else {  // degrees
+                return value * Math.PI / 180;
+            }
+        }
+
+        /**
          * Update the default number of frames hint based on arena config
          */
         function updateNumFramesDefault() {
@@ -2715,6 +2794,11 @@
 
             if (activeTool === 'combine') {
                 handleCombine();
+                return;
+            }
+
+            if (activeTool === 'image') {
+                handleImageGenerate();
                 return;
             }
 
@@ -2853,12 +2937,13 @@
                         // Phase shift as percentage of wavelength (0-100%)
                         params.phaseShift = parseFloat(document.getElementById('phaseShift').value) || 0;
 
-                        // Auto-calculate numFrames from total pixels and step size (MATLAB parity)
+                        // Auto-calculate numFrames from spatFreq and step size (MATLAB parity)
+                        // MATLAB: num_frames = max([1 round(param.spat_freq/param.step_size)]) + 1
                         // Edge sweeps duty cycle 0%→100% across these frames
                         const stepSizeValueEdge = parseFloat(document.getElementById('stepSize').value);
                         const stepSizeUnitEdge = document.getElementById('stepSizeUnit').value;
-                        const stepSizePixelsEdge = convertStepSizeToPixels(stepSizeValueEdge, stepSizeUnitEdge);
-                        params.numFrames = Math.ceil(arena.totalAzimuthPixels / stepSizePixelsEdge);
+                        const stepSizeRadiansEdge = convertStepSizeToRadians(stepSizeValueEdge, stepSizeUnitEdge);
+                        params.numFrames = Math.max(1, Math.round(params.spatFreq / stepSizeRadiansEdge)) + 1;
 
                         // Get pole coordinates (determines direction)
                         const poleAzimuthEdge = parseFloatWithDefault(document.getElementById('poleAzimuth').value, 0);
@@ -4143,6 +4228,187 @@
         }
 
         /**
+         * Handle Generate button for Image tab
+         */
+        function handleImageGenerate() {
+            if (!ImageConverter.hasImage()) {
+                alert('Please load an image first');
+                return;
+            }
+
+            const gsMode = parseInt(document.getElementById('imageGsMode').value);
+            const invert = document.getElementById('imageInvert').checked;
+
+            const config = state.arena.config;
+            if (!config) {
+                alert('Please select an arena configuration first');
+                return;
+            }
+
+            // Build arena object for generator
+            const arena = {
+                generation: config.arena.generation,
+                rows: config.arena.num_rows,
+                cols: config.arena.num_cols,
+                columns_installed: config.arena.columns_installed
+            };
+
+            try {
+                const pattern = ImageConverter.generatePattern({ gsMode, invert }, arena);
+
+                state.pattern = pattern;
+                state.isDirty = true;
+                state.editor.currentFrame = 0;
+
+                // Generate suggested filename
+                const imageInfo = ImageConverter.getImageInfo();
+                const baseName = imageInfo?.name?.replace(/\.[^.]+$/, '') || 'image';
+                state.filename = `${baseName}_frame.pat`;
+
+                // Lock arena config after generating pattern
+                lockArenaConfig();
+
+                // Switch to grid view to show result
+                setActiveViewer('grid');
+
+                updateStatus();
+                renderCurrentViewer();
+                updateFrameInfo();
+
+                console.log('Generated pattern from image:', state.pattern);
+            } catch (err) {
+                console.error('Image conversion error:', err);
+                alert('Failed to convert image: ' + err.message);
+            }
+        }
+
+        /**
+         * Initialize Image Converter tab
+         */
+        function initImageConverter() {
+            const loadBtn = document.getElementById('loadImageBtn');
+            const scaleSlider = document.getElementById('imageScale');
+            const scaleValue = document.getElementById('imageScaleValue');
+            const rotationInput = document.getElementById('imageRotation');
+            const fitBtn = document.getElementById('fitImageBtn');
+            const previewCanvas = document.getElementById('imagePreviewCanvas');
+            const imageInfo = document.getElementById('imageInfo');
+
+            // Set canvas size
+            function resizeCanvas() {
+                const container = document.getElementById('imagePreviewContainer');
+                previewCanvas.width = container.clientWidth;
+                previewCanvas.height = container.clientHeight;
+                updateImagePreview();
+            }
+
+            // Update arena dimensions when config changes
+            function updateArenaDimensions() {
+                if (state.arena.config) {
+                    const config = state.arena.config.arena;
+                    const panelSpecs = PANEL_SPECS[config.generation];
+                    // Use columns_installed for partial arenas
+                    const installedCols = config.columns_installed?.length || config.num_cols;
+                    const pixelCols = installedCols * panelSpecs.pixels_per_panel;
+                    const pixelRows = config.num_rows * panelSpecs.pixels_per_panel;
+                    ImageConverter.setArenaDimensions(pixelCols, pixelRows);
+                }
+            }
+
+            // Update preview
+            function updateImagePreview() {
+                updateArenaDimensions();
+                ImageConverter.renderPreview(previewCanvas);
+            }
+
+            // Make updateImagePreview available globally for tab switching
+            window.updateImagePreview = updateImagePreview;
+
+            // Load image button
+            loadBtn.addEventListener('click', () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/png,image/jpeg,image/jpg';
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    try {
+                        const dims = await ImageConverter.loadImage(file);
+                        imageInfo.innerHTML = `<strong style="color: var(--text);">${file.name}</strong><br>${dims.width} x ${dims.height} pixels`;
+
+                        // Auto-fit on load
+                        const fitTransform = ImageConverter.calculateFitTransform();
+                        ImageConverter.setTransform(fitTransform);
+                        scaleSlider.value = Math.round(fitTransform.scale * 100);
+                        scaleValue.textContent = scaleSlider.value + '%';
+                        rotationInput.value = 0;
+
+                        updateImagePreview();
+                    } catch (err) {
+                        alert('Failed to load image: ' + err.message);
+                    }
+                };
+                input.click();
+            });
+
+            // Scale slider
+            scaleSlider.addEventListener('input', () => {
+                const scale = parseInt(scaleSlider.value) / 100;
+                scaleValue.textContent = scaleSlider.value + '%';
+                ImageConverter.setTransform({ scale });
+                updateImagePreview();
+            });
+
+            // Rotation input
+            rotationInput.addEventListener('change', () => {
+                let rotation = parseFloat(rotationInput.value) || 0;
+                rotation = Math.max(-180, Math.min(180, rotation));
+                rotationInput.value = rotation;
+                ImageConverter.setTransform({ rotation });
+                updateImagePreview();
+            });
+
+            // Fit button
+            fitBtn.addEventListener('click', () => {
+                const fitTransform = ImageConverter.calculateFitTransform();
+                ImageConverter.setTransform(fitTransform);
+                scaleSlider.value = Math.round(fitTransform.scale * 100);
+                scaleValue.textContent = scaleSlider.value + '%';
+                rotationInput.value = 0;
+                updateImagePreview();
+            });
+
+            // Drag-to-pan
+            previewCanvas.addEventListener('mousedown', (e) => {
+                const rect = previewCanvas.getBoundingClientRect();
+                ImageConverter.startDrag(e.clientX - rect.left, e.clientY - rect.top, previewCanvas);
+            });
+
+            previewCanvas.addEventListener('mousemove', (e) => {
+                const rect = previewCanvas.getBoundingClientRect();
+                if (ImageConverter.updateDrag(e.clientX - rect.left, e.clientY - rect.top, previewCanvas)) {
+                    updateImagePreview();
+                }
+            });
+
+            previewCanvas.addEventListener('mouseup', () => {
+                ImageConverter.endDrag();
+            });
+
+            previewCanvas.addEventListener('mouseleave', () => {
+                ImageConverter.endDrag();
+            });
+
+            // Resize observer for canvas
+            const resizeObserver = new ResizeObserver(resizeCanvas);
+            resizeObserver.observe(document.getElementById('imagePreviewContainer'));
+
+            // Initial setup
+            resizeCanvas();
+        }
+
+        /**
          * Get base name without extension from a filename
          */
         function getBaseName(filename) {
@@ -4237,18 +4503,27 @@
                 return;
             }
 
-            // Get selected frame (single selection now)
-            let selectedEntries;
-            if (state.selectedFrameId) {
-                const selectedEntry = state.clipboardFrames.find(e => e.id === state.selectedFrameId);
-                selectedEntries = selectedEntry ? [selectedEntry] : [];
-            } else {
-                // Use the first clipboard entry if none selected
-                selectedEntries = [state.clipboardFrames[0]];
+            // Use the loaded frame (double-clicked) for Frame Shifting mode
+            // Falls back to selected frame, then first clipboard frame
+            let baseEntry = null;
+
+            if (state.loadedClipboardFrameId) {
+                // Use the double-clicked/loaded frame
+                baseEntry = state.clipboardFrames.find(e => e.id === state.loadedClipboardFrameId);
             }
 
-            if (selectedEntries.length === 0) {
-                alert('No frames selected');
+            if (!baseEntry && state.selectedFrameId) {
+                // Fall back to single-click selected frame
+                baseEntry = state.clipboardFrames.find(e => e.id === state.selectedFrameId);
+            }
+
+            if (!baseEntry) {
+                // Fall back to first clipboard entry
+                baseEntry = state.clipboardFrames[0];
+            }
+
+            if (!baseEntry) {
+                alert('No frame available for shifting');
                 return;
             }
 
@@ -4257,8 +4532,6 @@
             const direction = document.getElementById('rotateDirection').value;
             const totalFrames = parseInt(document.getElementById('totalFrames').value) || 200;
 
-            // Use the first selected frame as the base
-            const baseEntry = selectedEntries[0];
             const { pixelRows, pixelCols, gsMode, generation } = baseEntry;
 
             // Build motion sequence based on direction
@@ -4671,6 +4944,9 @@
 
                 threeViewer.setPattern(state.pattern);
                 threeViewer.setFrame(state.editor.currentFrame);
+            } else {
+                // Clear the 3D viewer when no pattern is loaded
+                threeViewer.setPattern(null);
             }
         }
 
