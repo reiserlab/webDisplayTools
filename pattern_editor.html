@@ -846,6 +846,24 @@
             border-color: var(--accent);
         }
 
+        .quick-start-btn {
+            padding: 4px 8px;
+            background: var(--accent);
+            border: none;
+            border-radius: 4px;
+            color: var(--bg);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: 0.5rem;
+        }
+
+        .quick-start-btn:hover {
+            background: var(--hover);
+        }
+
         .viewer-tab:hover {
             border-color: var(--accent);
             color: var(--text);
@@ -1401,7 +1419,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.21 | 2026-02-04 07:56 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.22 | 2026-02-04 21:11 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1411,6 +1429,7 @@
                 <div style="display: flex; align-items: baseline; gap: 0.5rem;">
                     <a href="index.html" title="Back to Tools" style="color: var(--text-dim); text-decoration: none; font-size: 0.85rem;">← Tools</a>
                     <h1 style="margin: 0;">Pattern Editor</h1>
+                    <button class="quick-start-btn" id="quickStartBtn" title="Open Quick Start Guide">quick start?</button>
                 </div>
                 <div class="subtitle">Create and edit arena patterns</div>
             </div>
@@ -1849,8 +1868,6 @@
                 <button class="viewer-tab disabled" data-viewer="mercator">Mercator</button>
                 <button class="viewer-tab disabled" data-viewer="mollweide">Mollweide</button>
 
-                <button class="help-button" id="helpButton" title="Quick Start Guide">?</button>
-
                 <div class="viewer-options">
                     <label>
                         <input type="checkbox" id="showBoundaries" checked>
@@ -2165,8 +2182,8 @@
                 }
             });
 
-            // Help button - opens Quick Start Guide
-            document.getElementById('helpButton').addEventListener('click', () => {
+            // Quick Start button - opens Quick Start Guide
+            document.getElementById('quickStartBtn').addEventListener('click', () => {
                 window.open('https://github.com/reiserlab/webDisplayTools/blob/main/PATTERN_EDITOR_QUICKSTART.md', '_blank');
             });
 
