@@ -1,6 +1,6 @@
 # Pattern Editor Quick Start
 
-**Based on Pattern Editor v0.9.21**
+**Based on Pattern Editor v0.9.22**
 
 The Pattern Editor is a web-based tool for creating and editing arena display patterns. This guide covers all controls and common workflows.
 
@@ -257,7 +257,7 @@ The bottom bar shows:
 
 | Version | Date | Notes |
 |---------|------|-------|
-| v0.9.21 | 2026-02-04 | Current version documented in this guide |
+| v0.9.22 | 2026-02-04 | Current version documented in this guide |
 
 See the [Pattern Editor changelog](https://github.com/reiserlab/webDisplayTools/commits/main/pattern_editor.html) for detailed version history.
 
