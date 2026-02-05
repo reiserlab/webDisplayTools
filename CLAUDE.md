@@ -58,6 +58,11 @@ When editing web tools, audit all buttons and controls in the modified code sect
 
 This project uses **Prettier** for consistent JavaScript formatting. Configuration is in `.prettierrc`.
 
+**Setup:**
+```bash
+npm install           # Install Prettier (first time only)
+```
+
 **Style rules:**
 - Single quotes (`'string'`)
 - No trailing commas
