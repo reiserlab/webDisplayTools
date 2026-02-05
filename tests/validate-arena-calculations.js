@@ -86,7 +86,10 @@ function runTests() {
                 // Show details of failures
                 for (const detail of comparison.details) {
                     if (!detail.pass) {
-                        log(`      ${detail.field}: computed=${detail.computed.toFixed(6)}, ref=${detail.reference.toFixed(6)}, diff=${detail.diff.toExponential(2)}`, 'yellow');
+                        log(
+                            `      ${detail.field}: computed=${detail.computed.toFixed(6)}, ref=${detail.reference.toFixed(6)}, diff=${detail.diff.toExponential(2)}`,
+                            'yellow'
+                        );
                         failures.push({
                             config: configName,
                             field: detail.field,
@@ -109,7 +112,10 @@ function runTests() {
 
     // Summary
     log('\n────────────────────────────────────────────────────────────', 'dim');
-    log(`\nResults: ${passedTests}/${totalTests} tests passed`, passedTests === totalTests ? 'green' : 'red');
+    log(
+        `\nResults: ${passedTests}/${totalTests} tests passed`,
+        passedTests === totalTests ? 'green' : 'red'
+    );
 
     if (failedTests > 0) {
         log(`\n${failedTests} test(s) failed:`, 'red');

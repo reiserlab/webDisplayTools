@@ -16,11 +16,15 @@
 export function combineSequential(patternA, patternB) {
     // Validate patterns have compatible dimensions
     if (patternA.pixelRows !== patternB.pixelRows || patternA.pixelCols !== patternB.pixelCols) {
-        throw new Error(`Pattern dimensions must match. A: ${patternA.pixelCols}x${patternA.pixelRows}, B: ${patternB.pixelCols}x${patternB.pixelRows}`);
+        throw new Error(
+            `Pattern dimensions must match. A: ${patternA.pixelCols}x${patternA.pixelRows}, B: ${patternB.pixelCols}x${patternB.pixelRows}`
+        );
     }
 
     if (patternA.gsMode !== patternB.gsMode) {
-        throw new Error(`Grayscale modes must match. A: GS${patternA.gsMode === 2 ? '2' : '16'}, B: GS${patternB.gsMode === 2 ? '2' : '16'}`);
+        throw new Error(
+            `Grayscale modes must match. A: GS${patternA.gsMode === 2 ? '2' : '16'}, B: GS${patternB.gsMode === 2 ? '2' : '16'}`
+        );
     }
 
     // Concatenate frames
@@ -46,11 +50,15 @@ export function combineMask(patternA, patternB, options = {}) {
 
     // Validate patterns have compatible dimensions
     if (patternA.pixelRows !== patternB.pixelRows || patternA.pixelCols !== patternB.pixelCols) {
-        throw new Error(`Pattern dimensions must match. A: ${patternA.pixelCols}x${patternA.pixelRows}, B: ${patternB.pixelCols}x${patternB.pixelRows}`);
+        throw new Error(
+            `Pattern dimensions must match. A: ${patternA.pixelCols}x${patternA.pixelRows}, B: ${patternB.pixelCols}x${patternB.pixelRows}`
+        );
     }
 
     if (patternA.gsMode !== patternB.gsMode) {
-        throw new Error(`Grayscale modes must match. A: GS${patternA.gsMode === 2 ? '2' : '16'}, B: GS${patternB.gsMode === 2 ? '2' : '16'}`);
+        throw new Error(
+            `Grayscale modes must match. A: GS${patternA.gsMode === 2 ? '2' : '16'}, B: GS${patternB.gsMode === 2 ? '2' : '16'}`
+        );
     }
 
     // Use the longer pattern's frame count
@@ -102,11 +110,15 @@ export function combineSplit(patternA, patternB, options = {}) {
 
     // Validate patterns have compatible dimensions
     if (patternA.pixelRows !== patternB.pixelRows || patternA.pixelCols !== patternB.pixelCols) {
-        throw new Error(`Pattern dimensions must match. A: ${patternA.pixelCols}x${patternA.pixelRows}, B: ${patternB.pixelCols}x${patternB.pixelRows}`);
+        throw new Error(
+            `Pattern dimensions must match. A: ${patternA.pixelCols}x${patternA.pixelRows}, B: ${patternB.pixelCols}x${patternB.pixelRows}`
+        );
     }
 
     if (patternA.gsMode !== patternB.gsMode) {
-        throw new Error(`Grayscale modes must match. A: GS${patternA.gsMode === 2 ? '2' : '16'}, B: GS${patternB.gsMode === 2 ? '2' : '16'}`);
+        throw new Error(
+            `Grayscale modes must match. A: GS${patternA.gsMode === 2 ? '2' : '16'}, B: GS${patternB.gsMode === 2 ? '2' : '16'}`
+        );
     }
 
     const numFrames = Math.max(patternA.numFrames, patternB.numFrames);

@@ -15,15 +15,15 @@
  * - Column 0 = leftmost (south in CW mode)
  */
 
-const PatEncoder = (function() {
+const PatEncoder = (function () {
     'use strict';
 
     // Constants - must match pat-parser.js
     const G6_MAGIC = 'G6PT';
     const G6_HEADER_SIZE = 17;
-    const G6_FRAME_HEADER_SIZE = 4;  // "FR" + 2 reserved bytes
+    const G6_FRAME_HEADER_SIZE = 4; // "FR" + 2 reserved bytes
     const G6_PANEL_SIZE = 20;
-    const G6_GS2_PANEL_BYTES = 53;   // header(1) + cmd(1) + data(50) + stretch(1)
+    const G6_GS2_PANEL_BYTES = 53; // header(1) + cmd(1) + data(50) + stretch(1)
     const G6_GS16_PANEL_BYTES = 203; // header(1) + cmd(1) + data(200) + stretch(1)
 
     const G4_HEADER_SIZE = 7;
@@ -74,10 +74,14 @@ const PatEncoder = (function() {
 
         // Validate dimensions
         if (pixelRows !== rowCount * G6_PANEL_SIZE) {
-            throw new Error(`pixelRows (${pixelRows}) must equal rowCount (${rowCount}) * ${G6_PANEL_SIZE}`);
+            throw new Error(
+                `pixelRows (${pixelRows}) must equal rowCount (${rowCount}) * ${G6_PANEL_SIZE}`
+            );
         }
         if (pixelCols !== colCount * G6_PANEL_SIZE) {
-            throw new Error(`pixelCols (${pixelCols}) must equal colCount (${colCount}) * ${G6_PANEL_SIZE}`);
+            throw new Error(
+                `pixelCols (${pixelCols}) must equal colCount (${colCount}) * ${G6_PANEL_SIZE}`
+            );
         }
 
         const isGrayscale = gs_val === 16;
@@ -85,8 +89,8 @@ const PatEncoder = (function() {
         const numPanels = rowCount * colCount;
 
         // Calculate total file size
-        const frameDataSize = G6_FRAME_HEADER_SIZE + (numPanels * panelBytes);
-        const totalSize = G6_HEADER_SIZE + (numFrames * frameDataSize);
+        const frameDataSize = G6_FRAME_HEADER_SIZE + numPanels * panelBytes;
+        const totalSize = G6_HEADER_SIZE + numFrames * frameDataSize;
 
         // Create buffer
         const buffer = new ArrayBuffer(totalSize);
@@ -95,10 +99,10 @@ const PatEncoder = (function() {
 
         // Write header
         // Magic bytes "G6PT"
-        bytes[0] = 0x47;  // 'G'
-        bytes[1] = 0x36;  // '6'
-        bytes[2] = 0x50;  // 'P'
-        bytes[3] = 0x54;  // 'T'
+        bytes[0] = 0x47; // 'G'
+        bytes[1] = 0x36; // '6'
+        bytes[2] = 0x50; // 'P'
+        bytes[3] = 0x54; // 'T'
 
         // Version
         bytes[4] = 1;
@@ -127,7 +131,7 @@ const PatEncoder = (function() {
         for (let i = 0; i < numPanelsTotal && i < 48; i++) {
             const byteIdx = Math.floor(i / 8);
             const bitIdx = i % 8;
-            bytes[11 + byteIdx] |= (1 << bitIdx);
+            bytes[11 + byteIdx] |= 1 << bitIdx;
         }
 
         // Write frames
@@ -138,11 +142,11 @@ const PatEncoder = (function() {
             const stretch = stretchValues[f] !== undefined ? stretchValues[f] : 1;
 
             // Frame header "FR" + frame_idx (uint16 LE)
-            bytes[offset] = 0x46;      // 'F'
-            bytes[offset + 1] = 0x52;  // 'R'
+            bytes[offset] = 0x46; // 'F'
+            bytes[offset + 1] = 0x52; // 'R'
             // Frame index as little-endian uint16
-            bytes[offset + 2] = f & 0xFF;           // Low byte
-            bytes[offset + 3] = (f >> 8) & 0xFF;    // High byte
+            bytes[offset + 2] = f & 0xff; // Low byte
+            bytes[offset + 3] = (f >> 8) & 0xff; // High byte
             offset += G6_FRAME_HEADER_SIZE;
 
             // Encode panels in row-major order
@@ -150,8 +154,12 @@ const PatEncoder = (function() {
                 for (let panelCol = 0; panelCol < colCount; panelCol++) {
                     // Extract panel pixels from frame
                     const panelPixels = extractPanelPixels(
-                        frame, pixelCols, pixelRows,
-                        panelRow, panelCol, G6_PANEL_SIZE
+                        frame,
+                        pixelCols,
+                        pixelRows,
+                        panelRow,
+                        panelCol,
+                        G6_PANEL_SIZE
                     );
 
                     // Encode panel block
@@ -221,15 +229,15 @@ const PatEncoder = (function() {
         for (let panelRow = 0; panelRow < G6_PANEL_SIZE; panelRow++) {
             for (let panelCol = 0; panelCol < G6_PANEL_SIZE; panelCol++) {
                 // Flip rows to match encoder convention
-                const inputRow = (G6_PANEL_SIZE - 1) - panelRow;
+                const inputRow = G6_PANEL_SIZE - 1 - panelRow;
                 const pixelVal = panelPixels[inputRow * G6_PANEL_SIZE + panelCol] > 0 ? 1 : 0;
 
                 const pixelNum = panelRow * G6_PANEL_SIZE + panelCol;
                 const byteIdx = Math.floor(pixelNum / 8);
-                const bitPos = 7 - (pixelNum % 8);  // MSB first
+                const bitPos = 7 - (pixelNum % 8); // MSB first
 
                 if (pixelVal) {
-                    dataBytes[byteIdx] |= (1 << bitPos);
+                    dataBytes[byteIdx] |= 1 << bitPos;
                 }
             }
         }
@@ -267,15 +275,18 @@ const PatEncoder = (function() {
         for (let panelRow = 0; panelRow < G6_PANEL_SIZE; panelRow++) {
             for (let panelCol = 0; panelCol < G6_PANEL_SIZE; panelCol++) {
                 // Flip rows to match encoder convention
-                const inputRow = (G6_PANEL_SIZE - 1) - panelRow;
-                const pixelVal = Math.min(15, Math.max(0, panelPixels[inputRow * G6_PANEL_SIZE + panelCol]));
+                const inputRow = G6_PANEL_SIZE - 1 - panelRow;
+                const pixelVal = Math.min(
+                    15,
+                    Math.max(0, panelPixels[inputRow * G6_PANEL_SIZE + panelCol])
+                );
 
                 const pixelNum = panelRow * G6_PANEL_SIZE + panelCol;
                 const byteIdx = Math.floor(pixelNum / 2);
 
                 if (pixelNum % 2 === 0) {
                     // Even pixel -> high nibble
-                    dataBytes[byteIdx] |= (pixelVal << 4);
+                    dataBytes[byteIdx] |= pixelVal << 4;
                 } else {
                     // Odd pixel -> low nibble
                     dataBytes[byteIdx] |= pixelVal;
@@ -318,10 +329,14 @@ const PatEncoder = (function() {
 
         // Validate dimensions
         if (pixelRows !== rowCount * G4_PANEL_SIZE) {
-            throw new Error(`pixelRows (${pixelRows}) must equal rowCount (${rowCount}) * ${G4_PANEL_SIZE}`);
+            throw new Error(
+                `pixelRows (${pixelRows}) must equal rowCount (${rowCount}) * ${G4_PANEL_SIZE}`
+            );
         }
         if (pixelCols !== colCount * G4_PANEL_SIZE) {
-            throw new Error(`pixelCols (${pixelCols}) must equal colCount (${colCount}) * ${G4_PANEL_SIZE}`);
+            throw new Error(
+                `pixelCols (${pixelCols}) must equal colCount (${colCount}) * ${G4_PANEL_SIZE}`
+            );
         }
 
         const isGrayscale = gs_val === 16;
@@ -330,7 +345,7 @@ const PatEncoder = (function() {
         const frameBytes = (colCount * subpanelMsgLength + 1) * rowCount * numSubpanel;
 
         // Calculate total file size
-        const totalSize = G4_HEADER_SIZE + (numFrames * frameBytes);
+        const totalSize = G4_HEADER_SIZE + numFrames * frameBytes;
 
         // Create buffer
         const buffer = new ArrayBuffer(totalSize);
@@ -338,9 +353,9 @@ const PatEncoder = (function() {
         const view = new DataView(buffer);
 
         // Write header
-        view.setUint16(0, numPatsX, true);  // little-endian
+        view.setUint16(0, numPatsX, true); // little-endian
         view.setUint16(2, numPatsY, true);
-        bytes[4] = isGrayscale ? 4 : 1;     // gs_val
+        bytes[4] = isGrayscale ? 4 : 1; // gs_val
         bytes[5] = rowCount;
         bytes[6] = colCount;
 
@@ -351,7 +366,14 @@ const PatEncoder = (function() {
             const frame = frames[f];
             const stretch = stretchValues[f] !== undefined ? stretchValues[f] : 1;
 
-            const frameData = encodeG4Frame(frame, rowCount, colCount, pixelCols, isGrayscale, stretch);
+            const frameData = encodeG4Frame(
+                frame,
+                rowCount,
+                colCount,
+                pixelCols,
+                isGrayscale,
+                stretch
+            );
             bytes.set(frameData, offset);
             offset += frameBytes;
         }
@@ -379,31 +401,55 @@ const PatEncoder = (function() {
                     for (let m = 0; m < panelCols; m++) {
                         if (k === 1) {
                             // Command byte with stretch
-                            frameData[n++] = (stretch << 1);
+                            frameData[n++] = stretch << 1;
                         } else {
                             if (isGrayscale) {
                                 // GS16: 2 pixels per byte
-                                const panelStartRowBeforeInvert = i * 16 + ((j - 1) % 2) * 8 + Math.floor((k - 2) / 4);
-                                const panelStartRow = Math.floor(panelStartRowBeforeInvert / 16) * 16 + 15 - (panelStartRowBeforeInvert % 16);
-                                const panelStartCol = m * 16 + Math.floor(j / 3) * 8 + ((k - 2) % 4) * 2;
+                                const panelStartRowBeforeInvert =
+                                    i * 16 + ((j - 1) % 2) * 8 + Math.floor((k - 2) / 4);
+                                const panelStartRow =
+                                    Math.floor(panelStartRowBeforeInvert / 16) * 16 +
+                                    15 -
+                                    (panelStartRowBeforeInvert % 16);
+                                const panelStartCol =
+                                    m * 16 + Math.floor(j / 3) * 8 + ((k - 2) % 4) * 2;
 
-                                const px1 = getPixelSafe(frame, panelStartRow, panelStartCol, frameCols);
-                                const px2 = getPixelSafe(frame, panelStartRow, panelStartCol + 1, frameCols);
+                                const px1 = getPixelSafe(
+                                    frame,
+                                    panelStartRow,
+                                    panelStartCol,
+                                    frameCols
+                                );
+                                const px2 = getPixelSafe(
+                                    frame,
+                                    panelStartRow,
+                                    panelStartCol + 1,
+                                    frameCols
+                                );
 
                                 // Low nibble = left pixel, high nibble = right pixel
-                                frameData[n++] = (px1 & 0x0F) | ((px2 & 0x0F) << 4);
+                                frameData[n++] = (px1 & 0x0f) | ((px2 & 0x0f) << 4);
                             } else {
                                 // Binary: 8 pixels per byte
                                 const rowOffset = k - 2;
-                                const panelStartRowBeforeInvert = i * 16 + ((j - 1) % 2) * 8 + rowOffset;
-                                const panelStartRow = Math.floor(panelStartRowBeforeInvert / 16) * 16 + 15 - (panelStartRowBeforeInvert % 16);
+                                const panelStartRowBeforeInvert =
+                                    i * 16 + ((j - 1) % 2) * 8 + rowOffset;
+                                const panelStartRow =
+                                    Math.floor(panelStartRowBeforeInvert / 16) * 16 +
+                                    15 -
+                                    (panelStartRowBeforeInvert % 16);
                                 const panelStartCol = m * 16 + Math.floor(j / 3) * 8;
 
                                 let byteVal = 0;
                                 for (let p = 0; p < 8; p++) {
-                                    const pixelVal = getPixelSafe(frame, panelStartRow, panelStartCol + p, frameCols);
+                                    const pixelVal = getPixelSafe(
+                                        frame,
+                                        panelStartRow,
+                                        panelStartCol + p,
+                                        frameCols
+                                    );
                                     if (pixelVal > 0) {
-                                        byteVal |= (1 << p);
+                                        byteVal |= 1 << p;
                                     }
                                 }
                                 frameData[n++] = byteVal;
@@ -461,11 +507,13 @@ const PatEncoder = (function() {
         if (bytesA.length !== bytesB.length) {
             return {
                 equal: false,
-                differences: [{
-                    type: 'length',
-                    a: bytesA.length,
-                    b: bytesB.length
-                }]
+                differences: [
+                    {
+                        type: 'length',
+                        a: bytesA.length,
+                        b: bytesB.length
+                    }
+                ]
             };
         }
 

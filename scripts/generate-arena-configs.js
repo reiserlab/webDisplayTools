@@ -48,7 +48,7 @@ function parseYAML(yamlText) {
                 if (arrayContent.trim() === '') {
                     currentSection[key] = [];
                 } else {
-                    currentSection[key] = arrayContent.split(',').map(v => {
+                    currentSection[key] = arrayContent.split(',').map((v) => {
                         v = v.trim();
                         const num = parseFloat(v);
                         return isNaN(num) ? v.replace(/^"|"$/g, '') : num;
@@ -101,7 +101,7 @@ function generateLabel(parsed) {
     if (columnsInstalled && Array.isArray(columnsInstalled)) {
         // columns_installed is always column indices (0-indexed)
         const installedCols = columnsInstalled.length;
-        const coverageDeg = Math.round(360 * installedCols / cols);
+        const coverageDeg = Math.round((360 * installedCols) / cols);
         coverage = `${coverageDeg}°`;
     }
 
@@ -131,7 +131,9 @@ function findConfigDir() {
     }
 
     console.error('Error: Could not find config directory.');
-    console.error('Provide path as argument or ensure temp_configs/ or ../maDisplayTools/configs/arenas/ exists.');
+    console.error(
+        'Provide path as argument or ensure temp_configs/ or ../maDisplayTools/configs/arenas/ exists.'
+    );
     process.exit(1);
 }
 
@@ -143,7 +145,9 @@ function main() {
     console.log(`Reading configs from: ${configDir}`);
 
     const configs = {};
-    const files = fs.readdirSync(configDir).filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
+    const files = fs
+        .readdirSync(configDir)
+        .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
 
     if (files.length === 0) {
         console.error('Error: No YAML files found in config directory.');
@@ -177,7 +181,7 @@ function main() {
             if (orderA !== orderB) return orderA - orderB;
             return a.localeCompare(b);
         })
-        .forEach(key => {
+        .forEach((key) => {
             sortedConfigs[key] = configs[key];
         });
 
