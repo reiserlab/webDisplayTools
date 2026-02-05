@@ -14,6 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // Simple YAML parser for our arena config format
 function parseYAML(yamlText) {
@@ -257,6 +258,17 @@ function getConfigsByGeneration() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration };
 }
+
+// Browser global export (for non-module scripts)
+if (typeof window !== 'undefined') {
+    window.STANDARD_CONFIGS = STANDARD_CONFIGS;
+    window.PANEL_SPECS = PANEL_SPECS;
+    window.getConfig = getConfig;
+    window.getConfigsByGeneration = getConfigsByGeneration;
+}
+
+// ES6 module export
+export { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration };
 `;
 
     // Ensure js/ directory exists
@@ -266,7 +278,17 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     fs.writeFileSync(outputFile, output);
-    console.log(`\nGenerated ${outputFile} with ${Object.keys(sortedConfigs).length} configs`);
+
+    // Format with Prettier to match project style
+    try {
+        execSync(`npx prettier --write "${outputFile}"`, { stdio: 'inherit' });
+        console.log(
+            `\nGenerated and formatted ${outputFile} with ${Object.keys(sortedConfigs).length} configs`
+        );
+    } catch (err) {
+        console.log(`\nGenerated ${outputFile} with ${Object.keys(sortedConfigs).length} configs`);
+        console.log('Warning: Could not run Prettier. Run "npm run format" to format the output.');
+    }
 }
 
 main();
