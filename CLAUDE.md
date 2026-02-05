@@ -54,6 +54,31 @@ When editing web tools, audit all buttons and controls in the modified code sect
 - Dependencies via CDN only (Three.js, etc.)
 - Web outputs must match MATLAB outputs exactly
 
+### Code Formatting
+
+This project uses **Prettier** for consistent JavaScript formatting. Configuration is in `.prettierrc`.
+
+**Setup:**
+```bash
+npm install           # Install Prettier (first time only)
+```
+
+**Style rules:**
+- Single quotes (`'string'`)
+- No trailing commas
+- 4-space indentation
+- 100 character print width
+- Semicolons required
+
+**Commands:**
+```bash
+npm run format        # Format all JS files
+npm run format:check  # Check formatting (for CI)
+npx prettier --write path/to/file.js  # Format single file
+```
+
+**Before committing:** Run `npm run format` on any modified JavaScript files to ensure consistent style.
+
 ### Shared Modules
 
 Some JavaScript modules are shared between multiple tools and must support different loading patterns:

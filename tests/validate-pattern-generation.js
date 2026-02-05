@@ -19,10 +19,10 @@ const PatternGenerator = require('../js/pattern-editor/tools/generator.js');
 // Mock PANEL_SPECS for Node.js testing
 if (typeof PANEL_SPECS === 'undefined') {
     global.PANEL_SPECS = {
-        'G3': { pixels_per_panel: 8 },
-        'G4': { pixels_per_panel: 16 },
+        G3: { pixels_per_panel: 8 },
+        G4: { pixels_per_panel: 16 },
         'G4.1': { pixels_per_panel: 16 },
-        'G6': { pixels_per_panel: 20 }
+        G6: { pixels_per_panel: 20 }
     };
 }
 
@@ -96,8 +96,16 @@ function runTests() {
     log('── Module Validation ──', 'cyan');
 
     totalTests++;
-    const requiredMethods = ['generate', 'generateGrating', 'generateSine', 'generateStarfield', 'generateEdge', 'generateOffOn', 'validate'];
-    const missingMethods = requiredMethods.filter(m => typeof PatternGenerator[m] !== 'function');
+    const requiredMethods = [
+        'generate',
+        'generateGrating',
+        'generateSine',
+        'generateStarfield',
+        'generateEdge',
+        'generateOffOn',
+        'validate'
+    ];
+    const missingMethods = requiredMethods.filter((m) => typeof PatternGenerator[m] !== 'function');
 
     if (missingMethods.length === 0) {
         log('  ✓ All required methods exist', 'green');
@@ -122,15 +130,18 @@ function runTests() {
     // Grating produces expected frame count
     totalTests++;
     try {
-        const grating = PatternGenerator.generateGrating({
-            wavelength: 20,
-            direction: 'cw',
-            dutyCycle: 50,
-            high: 15,
-            low: 0,
-            gsMode: 16,
-            stepSize: 1
-        }, testArena);
+        const grating = PatternGenerator.generateGrating(
+            {
+                wavelength: 20,
+                direction: 'cw',
+                dutyCycle: 50,
+                high: 15,
+                low: 0,
+                gsMode: 16,
+                stepSize: 1
+            },
+            testArena
+        );
 
         if (grating.numFrames === 20 && grating.frames.length === 20) {
             log('  ✓ Grating produces correct frame count (20 for wavelength 20)', 'green');
@@ -138,7 +149,10 @@ function runTests() {
         } else {
             log(`  ✗ Grating frame count mismatch: expected 20, got ${grating.numFrames}`, 'red');
             failedTests++;
-            failures.push({ test: 'Grating frame count', error: `Expected 20, got ${grating.numFrames}` });
+            failures.push({
+                test: 'Grating frame count',
+                error: `Expected 20, got ${grating.numFrames}`
+            });
         }
     } catch (error) {
         log(`  ✗ Grating generation failed: ${error.message}`, 'red');
@@ -149,13 +163,16 @@ function runTests() {
     // Sine values are in valid range
     totalTests++;
     try {
-        const sine = PatternGenerator.generateSine({
-            wavelength: 40,
-            direction: 'cw',
-            high: 15,
-            low: 0,
-            gsMode: 16
-        }, testArena);
+        const sine = PatternGenerator.generateSine(
+            {
+                wavelength: 40,
+                direction: 'cw',
+                high: 15,
+                low: 0,
+                gsMode: 16
+            },
+            testArena
+        );
 
         let allInRange = true;
         for (const frame of sine.frames) {
@@ -184,26 +201,32 @@ function runTests() {
     // Off/On generates |high-low|+1 frames (MATLAB behavior: brightness ramp)
     totalTests++;
     try {
-        const offon = PatternGenerator.generateOffOn({
-            high: 15,
-            low: 0,
-            gsMode: 16
-        }, testArena);
+        const offon = PatternGenerator.generateOffOn(
+            {
+                high: 15,
+                low: 0,
+                gsMode: 16
+            },
+            testArena
+        );
 
         // Expected: |15-0|+1 = 16 frames
-        const expectedFrames = Math.abs(15 - 0) + 1;  // 16
+        const expectedFrames = Math.abs(15 - 0) + 1; // 16
         if (offon.numFrames === expectedFrames && offon.frames.length === expectedFrames) {
             // Verify brightness ramp: frame[i] should have uniform brightness = low + i
             let rampCorrect = true;
             for (let i = 0; i < expectedFrames; i++) {
-                const expectedBrightness = i;  // 0, 1, 2, ..., 15
+                const expectedBrightness = i; // 0, 1, 2, ..., 15
                 if (offon.frames[i][0] !== expectedBrightness) {
                     rampCorrect = false;
                     break;
                 }
             }
             if (rampCorrect) {
-                log(`  ✓ Off/On generates ${expectedFrames} frames (brightness ramp 0→15)`, 'green');
+                log(
+                    `  ✓ Off/On generates ${expectedFrames} frames (brightness ramp 0→15)`,
+                    'green'
+                );
                 passedTests++;
             } else {
                 log('  ✗ Off/On brightness ramp incorrect', 'red');
@@ -211,9 +234,15 @@ function runTests() {
                 failures.push({ test: 'Off/On brightness ramp', error: 'Ramp values incorrect' });
             }
         } else {
-            log(`  ✗ Off/On frame count mismatch: expected ${expectedFrames}, got ${offon.numFrames}`, 'red');
+            log(
+                `  ✗ Off/On frame count mismatch: expected ${expectedFrames}, got ${offon.numFrames}`,
+                'red'
+            );
             failedTests++;
-            failures.push({ test: 'Off/On frame count', error: `Expected ${expectedFrames}, got ${offon.numFrames}` });
+            failures.push({
+                test: 'Off/On frame count',
+                error: `Expected ${expectedFrames}, got ${offon.numFrames}`
+            });
         }
     } catch (error) {
         log(`  ✗ Off/On generation failed: ${error.message}`, 'red');
@@ -224,19 +253,25 @@ function runTests() {
     // Starfield reproducibility with same seed
     totalTests++;
     try {
-        const starfield1 = PatternGenerator.generateStarfield({
-            dotCount: 50,
-            brightness: 15,
-            seed: 12345,
-            gsMode: 16
-        }, testArena);
+        const starfield1 = PatternGenerator.generateStarfield(
+            {
+                dotCount: 50,
+                brightness: 15,
+                seed: 12345,
+                gsMode: 16
+            },
+            testArena
+        );
 
-        const starfield2 = PatternGenerator.generateStarfield({
-            dotCount: 50,
-            brightness: 15,
-            seed: 12345,
-            gsMode: 16
-        }, testArena);
+        const starfield2 = PatternGenerator.generateStarfield(
+            {
+                dotCount: 50,
+                brightness: 15,
+                seed: 12345,
+                gsMode: 16
+            },
+            testArena
+        );
 
         const frame1 = Array.from(starfield1.frames[0]);
         const frame2 = Array.from(starfield2.frames[0]);
@@ -248,7 +283,10 @@ function runTests() {
         } else {
             log('  ✗ Starfield not reproducible with same seed', 'red');
             failedTests++;
-            failures.push({ test: 'Starfield reproducibility', error: 'Different results with same seed' });
+            failures.push({
+                test: 'Starfield reproducibility',
+                error: 'Different results with same seed'
+            });
         }
     } catch (error) {
         log(`  ✗ Starfield generation failed: ${error.message}`, 'red');
@@ -259,21 +297,30 @@ function runTests() {
     // Pattern validation function works
     totalTests++;
     try {
-        const validPattern = PatternGenerator.generateGrating({
-            wavelength: 20,
-            direction: 'cw',
-            high: 15,
-            low: 0
-        }, testArena);
+        const validPattern = PatternGenerator.generateGrating(
+            {
+                wavelength: 20,
+                direction: 'cw',
+                high: 15,
+                low: 0
+            },
+            testArena
+        );
 
         const validationResult = PatternGenerator.validate(validPattern);
         if (validationResult.valid) {
             log('  ✓ Pattern validation accepts valid pattern', 'green');
             passedTests++;
         } else {
-            log(`  ✗ Pattern validation rejected valid pattern: ${validationResult.errors.join(', ')}`, 'red');
+            log(
+                `  ✗ Pattern validation rejected valid pattern: ${validationResult.errors.join(', ')}`,
+                'red'
+            );
             failedTests++;
-            failures.push({ test: 'Pattern validation', error: validationResult.errors.join(', ') });
+            failures.push({
+                test: 'Pattern validation',
+                error: validationResult.errors.join(', ')
+            });
         }
     } catch (error) {
         log(`  ✗ Pattern validation failed: ${error.message}`, 'red');
@@ -313,24 +360,30 @@ function runTests() {
                 let computed;
                 switch (refPattern.type) {
                     case 'grating':
-                        computed = PatternGenerator.generateGrating({
-                            wavelength: refPattern.params.wavelength,
-                            direction: refPattern.params.direction,
-                            dutyCycle: refPattern.params.dutyCycle,
-                            high: refPattern.params.high,
-                            low: refPattern.params.low,
-                            gsMode: refPattern.result.gsMode
-                        }, arena);
+                        computed = PatternGenerator.generateGrating(
+                            {
+                                wavelength: refPattern.params.wavelength,
+                                direction: refPattern.params.direction,
+                                dutyCycle: refPattern.params.dutyCycle,
+                                high: refPattern.params.high,
+                                low: refPattern.params.low,
+                                gsMode: refPattern.result.gsMode
+                            },
+                            arena
+                        );
                         break;
 
                     case 'sine':
-                        computed = PatternGenerator.generateSine({
-                            wavelength: refPattern.params.wavelength,
-                            direction: refPattern.params.direction,
-                            high: refPattern.params.high,
-                            low: refPattern.params.low,
-                            gsMode: refPattern.result.gsMode
-                        }, arena);
+                        computed = PatternGenerator.generateSine(
+                            {
+                                wavelength: refPattern.params.wavelength,
+                                direction: refPattern.params.direction,
+                                high: refPattern.params.high,
+                                low: refPattern.params.low,
+                                gsMode: refPattern.result.gsMode
+                            },
+                            arena
+                        );
                         break;
 
                     case 'starfield':
@@ -338,67 +391,95 @@ function runTests() {
                         // Dots are placed uniformly on a sphere and projected to the arena surface
                         // This results in fewer visible dots than the old 2D pixel-space approach
                         // We verify that dots are generated and the pattern has correct structure
-                        computed = PatternGenerator.generateStarfield({
-                            dotCount: refPattern.params.dotCount,
-                            dotSize: refPattern.params.dotSize,
-                            brightness: refPattern.params.brightness,
-                            seed: refPattern.params.randomSeed,
-                            gsMode: refPattern.result.gsMode,
-                            motionType: 'rotation',  // Default motion type
-                            poleCoord: [0, 0]        // Default pole
-                        }, arena);
+                        computed = PatternGenerator.generateStarfield(
+                            {
+                                dotCount: refPattern.params.dotCount,
+                                dotSize: refPattern.params.dotSize,
+                                brightness: refPattern.params.brightness,
+                                seed: refPattern.params.randomSeed,
+                                gsMode: refPattern.result.gsMode,
+                                motionType: 'rotation', // Default motion type
+                                poleCoord: [0, 0] // Default pole
+                            },
+                            arena
+                        );
 
                         // Check that pattern was generated with correct structure
-                        const jsLitPixels = Array.from(computed.frames[0]).filter(v => v > 0).length;
-                        const hasCorrectDimensions = computed.pixelRows === refPattern.arena.pixelRows &&
-                                                     computed.pixelCols === refPattern.arena.pixelCols;
+                        const jsLitPixels = Array.from(computed.frames[0]).filter(
+                            (v) => v > 0
+                        ).length;
+                        const hasCorrectDimensions =
+                            computed.pixelRows === refPattern.arena.pixelRows &&
+                            computed.pixelCols === refPattern.arena.pixelCols;
                         const hasSomeDots = jsLitPixels > 0;
 
                         if (hasCorrectDimensions && hasSomeDots) {
-                            log(`  ✓ ${patternName} (spherical starfield: ${jsLitPixels} visible dots)`, 'green');
+                            log(
+                                `  ✓ ${patternName} (spherical starfield: ${jsLitPixels} visible dots)`,
+                                'green'
+                            );
                             passedTests++;
                         } else {
-                            log(`  ✗ ${patternName}: invalid structure (dims: ${hasCorrectDimensions}, dots: ${jsLitPixels})`, 'red');
+                            log(
+                                `  ✗ ${patternName}: invalid structure (dims: ${hasCorrectDimensions}, dots: ${jsLitPixels})`,
+                                'red'
+                            );
                             failedTests++;
-                            failures.push({ test: patternName, error: `dims: ${hasCorrectDimensions}, dots: ${jsLitPixels}` });
+                            failures.push({
+                                test: patternName,
+                                error: `dims: ${hasCorrectDimensions}, dots: ${jsLitPixels}`
+                            });
                         }
-                        totalTests--;  // Will be incremented below, but we handled it here
+                        totalTests--; // Will be incremented below, but we handled it here
                         continue;
 
                     case 'edge':
                         // Edge implementation differs between MATLAB and JS
                         // MATLAB creates numCols+1 frames, JS creates configurable frames
                         // We verify dimensions match
-                        computed = PatternGenerator.generateEdge({
-                            high: refPattern.params.high,
-                            low: refPattern.params.low,
-                            gsMode: refPattern.result.gsMode
-                        }, arena);
+                        computed = PatternGenerator.generateEdge(
+                            {
+                                high: refPattern.params.high,
+                                low: refPattern.params.low,
+                                gsMode: refPattern.result.gsMode
+                            },
+                            arena
+                        );
 
-                        const dimsMatch = computed.pixelRows === refPattern.arena.pixelRows &&
-                                         computed.pixelCols === refPattern.arena.pixelCols;
+                        const dimsMatch =
+                            computed.pixelRows === refPattern.arena.pixelRows &&
+                            computed.pixelCols === refPattern.arena.pixelCols;
 
                         if (dimsMatch) {
-                            log(`  ✓ ${patternName} (structure match: ${computed.pixelRows}x${computed.pixelCols})`, 'green');
+                            log(
+                                `  ✓ ${patternName} (structure match: ${computed.pixelRows}x${computed.pixelCols})`,
+                                'green'
+                            );
                             passedTests++;
                         } else {
                             log(`  ✗ ${patternName}: dimension mismatch`, 'red');
                             failedTests++;
                             failures.push({ test: patternName, error: 'dimension mismatch' });
                         }
-                        totalTests--;  // Will be incremented below, but we handled it here
+                        totalTests--; // Will be incremented below, but we handled it here
                         continue;
 
                     case 'offon':
-                        computed = PatternGenerator.generateOffOn({
-                            high: refPattern.params.high,
-                            low: refPattern.params.low,
-                            gsMode: refPattern.result.gsMode
-                        }, arena);
+                        computed = PatternGenerator.generateOffOn(
+                            {
+                                high: refPattern.params.high,
+                                low: refPattern.params.low,
+                                gsMode: refPattern.result.gsMode
+                            },
+                            arena
+                        );
                         break;
 
                     default:
-                        log(`  - ${patternName} (skipped - unknown type: ${refPattern.type})`, 'dim');
+                        log(
+                            `  - ${patternName} (skipped - unknown type: ${refPattern.type})`,
+                            'dim'
+                        );
                         totalTests--;
                         continue;
                 }
@@ -414,7 +495,10 @@ function runTests() {
                     passedTests++;
                 } else {
                     const diff = result.differences[0];
-                    log(`  ✗ ${patternName}: pixel[${diff.index}] got ${diff.computed}, expected ${diff.reference}`, 'red');
+                    log(
+                        `  ✗ ${patternName}: pixel[${diff.index}] got ${diff.computed}, expected ${diff.reference}`,
+                        'red'
+                    );
                     failedTests++;
                     failures.push({
                         test: patternName,
@@ -433,7 +517,10 @@ function runTests() {
     // Summary
     // ================================================================
     log('\n────────────────────────────────────────────────────────────', 'dim');
-    log(`\nResults: ${passedTests}/${totalTests} tests passed`, passedTests === totalTests ? 'green' : 'red');
+    log(
+        `\nResults: ${passedTests}/${totalTests} tests passed`,
+        passedTests === totalTests ? 'green' : 'red'
+    );
 
     if (failedTests > 0) {
         log(`\n${failedTests} test(s) failed:`, 'red');

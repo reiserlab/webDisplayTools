@@ -66,45 +66,54 @@ for (const tc of referenceData.testCases) {
             cols: tc.cols,
             num_rows: tc.rows,
             num_cols: tc.cols,
-            Pcircle: tc.Pcircle || tc.cols  // Full circle panels
+            Pcircle: tc.Pcircle || tc.cols // Full circle panels
         };
 
         let jsPattern;
 
         // Handle different pattern types
         if (tc.patternType === 'offon') {
-            jsPattern = PatternGenerator.generateOffOn({
-                high: tc.high,
-                low: tc.low,
-                gsMode: tc.gsMode
-            }, arena);
+            jsPattern = PatternGenerator.generateOffOn(
+                {
+                    high: tc.high,
+                    low: tc.low,
+                    gsMode: tc.gsMode
+                },
+                arena
+            );
         } else if (tc.patternType === 'edge') {
-            jsPattern = PatternGenerator.generateEdge({
-                spatFreq: tc.spatFreq,
-                motionType: tc.motionType,
-                high: tc.high,
-                low: tc.low,
-                poleCoord: tc.poleCoord,
-                aaSamples: tc.aaSamples,
-                arenaModel: tc.arenaModel,
-                gsMode: tc.gsMode,
-                numFrames: tc.numFrames
-            }, arena);
+            jsPattern = PatternGenerator.generateEdge(
+                {
+                    spatFreq: tc.spatFreq,
+                    motionType: tc.motionType,
+                    high: tc.high,
+                    low: tc.low,
+                    poleCoord: tc.poleCoord,
+                    aaSamples: tc.aaSamples,
+                    arenaModel: tc.arenaModel,
+                    gsMode: tc.gsMode,
+                    numFrames: tc.numFrames
+                },
+                arena
+            );
         } else {
             // Grating/Sine patterns
-            jsPattern = PatternGenerator.generateSphericalGrating({
-                spatFreq: tc.spatFreq,
-                motionType: tc.motionType,
-                waveform: tc.waveform,
-                dutyCycle: tc.dutyCycle || 50,
-                high: tc.high,
-                low: tc.low,
-                poleCoord: tc.poleCoord,
-                aaSamples: tc.aaSamples,
-                arenaModel: tc.arenaModel,
-                gsMode: tc.gsMode,
-                numFrames: 1
-            }, arena);
+            jsPattern = PatternGenerator.generateSphericalGrating(
+                {
+                    spatFreq: tc.spatFreq,
+                    motionType: tc.motionType,
+                    waveform: tc.waveform,
+                    dutyCycle: tc.dutyCycle || 50,
+                    high: tc.high,
+                    low: tc.low,
+                    poleCoord: tc.poleCoord,
+                    aaSamples: tc.aaSamples,
+                    arenaModel: tc.arenaModel,
+                    gsMode: tc.gsMode,
+                    numFrames: 1
+                },
+                arena
+            );
         }
 
         // Compare reference frame (frame 0)
@@ -112,7 +121,9 @@ for (const tc of referenceData.testCases) {
         const matlabFrame = tc.referenceFrame;
 
         if (jsFrame.length !== matlabFrame.length) {
-            throw new Error(`Dimension mismatch: JS=${jsFrame.length}, MATLAB=${matlabFrame.length}`);
+            throw new Error(
+                `Dimension mismatch: JS=${jsFrame.length}, MATLAB=${matlabFrame.length}`
+            );
         }
 
         // Compare pixel-by-pixel
@@ -135,7 +146,7 @@ for (const tc of referenceData.testCases) {
             log('PASS ✓', 'green');
             passed++;
         } else {
-            const mismatchPct = (mismatches / jsFrame.length * 100).toFixed(1);
+            const mismatchPct = ((mismatches / jsFrame.length) * 100).toFixed(1);
             log(`FAIL - ${mismatches} mismatches (${mismatchPct}%), max diff: ${maxDiff}`, 'red');
             failed++;
             failures.push({
@@ -148,7 +159,6 @@ for (const tc of referenceData.testCases) {
                 matlabVal: matlabFrame[firstMismatchIdx]
             });
         }
-
     } catch (err) {
         log(`ERROR - ${err.message}`, 'red');
         failed++;
@@ -158,7 +168,10 @@ for (const tc of referenceData.testCases) {
 
 // Summary
 log('\n' + '='.repeat(60), 'blue');
-log(`\nResults: ${passed} passed, ${failed} failed, ${skipped} skipped`, failed > 0 ? 'red' : 'green');
+log(
+    `\nResults: ${passed} passed, ${failed} failed, ${skipped} skipped`,
+    failed > 0 ? 'red' : 'green'
+);
 
 if (failures.length > 0) {
     log('\nFailed tests:', 'red');
@@ -166,8 +179,14 @@ if (failures.length > 0) {
         if (f.error) {
             log(`  - ${f.name}: ${f.error}`, 'red');
         } else {
-            log(`  - ${f.name}: ${f.mismatches}/${f.total} mismatches, max diff=${f.maxDiff}`, 'red');
-            log(`    First mismatch at pixel ${f.firstIdx}: JS=${f.jsVal}, MATLAB=${f.matlabVal}`, 'dim');
+            log(
+                `  - ${f.name}: ${f.mismatches}/${f.total} mismatches, max diff=${f.maxDiff}`,
+                'red'
+            );
+            log(
+                `    First mismatch at pixel ${f.firstIdx}: JS=${f.jsVal}, MATLAB=${f.matlabVal}`,
+                'dim'
+            );
         }
     }
 }

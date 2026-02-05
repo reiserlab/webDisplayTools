@@ -9,20 +9,20 @@
  * State for the image converter
  */
 const ImageConverterState = {
-    sourceImage: null,        // HTMLImageElement (loaded image)
-    sourceCanvas: null,       // Canvas with grayscale source
-    sourceWidth: 0,           // Original image width
-    sourceHeight: 0,          // Original image height
+    sourceImage: null, // HTMLImageElement (loaded image)
+    sourceCanvas: null, // Canvas with grayscale source
+    sourceWidth: 0, // Original image width
+    sourceHeight: 0, // Original image height
 
     // Transform state
-    scale: 1.0,               // Scale factor (0.1 to 5.0)
-    rotation: 0,              // Rotation in degrees
-    panX: 0,                  // Pan offset X (in source image pixels)
-    panY: 0,                  // Pan offset Y (in source image pixels)
+    scale: 1.0, // Scale factor (0.1 to 5.0)
+    rotation: 0, // Rotation in degrees
+    panX: 0, // Pan offset X (in source image pixels)
+    panY: 0, // Pan offset Y (in source image pixels)
 
     // Arena dimensions (set from arena config)
-    arenaWidth: 200,          // Arena pixel columns
-    arenaHeight: 40,          // Arena pixel rows
+    arenaWidth: 200, // Arena pixel columns
+    arenaHeight: 40, // Arena pixel rows
 
     // Interaction state
     isDragging: false,
@@ -191,7 +191,17 @@ export function renderPreview(canvas, showOverlay = true) {
         return;
     }
 
-    const { sourceCanvas, sourceWidth, sourceHeight, scale, rotation, panX, panY, arenaWidth, arenaHeight } = ImageConverterState;
+    const {
+        sourceCanvas,
+        sourceWidth,
+        sourceHeight,
+        scale,
+        rotation,
+        panX,
+        panY,
+        arenaWidth,
+        arenaHeight
+    } = ImageConverterState;
 
     // Calculate display scaling to fit image in canvas
     const displayScale = Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight) * 0.95;
@@ -213,7 +223,7 @@ export function renderPreview(canvas, showOverlay = true) {
         ctx.translate(canvas.width / 2, canvas.height / 2);
         ctx.scale(displayScale, displayScale);
         ctx.translate(panX, panY);
-        ctx.rotate(rotation * Math.PI / 180);
+        ctx.rotate((rotation * Math.PI) / 180);
         ctx.scale(scale, scale);
 
         // Arena rectangle dimensions (centered at origin)
@@ -311,7 +321,17 @@ export function extractArenaRegion(options) {
     }
 
     const { gsMode, invert = false } = options;
-    const { sourceCanvas, sourceWidth, sourceHeight, scale, rotation, panX, panY, arenaWidth, arenaHeight } = ImageConverterState;
+    const {
+        sourceCanvas,
+        sourceWidth,
+        sourceHeight,
+        scale,
+        rotation,
+        panX,
+        panY,
+        arenaWidth,
+        arenaHeight
+    } = ImageConverterState;
 
     // Create temporary canvas for transformed extraction
     const extractCanvas = document.createElement('canvas');
@@ -336,7 +356,7 @@ export function extractArenaRegion(options) {
     // Apply inverse scale
     ctx.scale(1 / scale, 1 / scale);
     // Apply inverse rotation
-    ctx.rotate(-rotation * Math.PI / 180);
+    ctx.rotate((-rotation * Math.PI) / 180);
     // Translate to source center with pan offset
     ctx.translate(-sourceWidth / 2 - panX, -sourceHeight / 2 - panY);
 
@@ -373,7 +393,7 @@ export function extractArenaRegion(options) {
                 value = gray >= 128 ? 1 : 0;
             } else {
                 // GS16: Map 0-255 to 0-15
-                value = Math.round(gray * 15 / 255);
+                value = Math.round((gray * 15) / 255);
             }
 
             frame[row * arenaWidth + col] = value;

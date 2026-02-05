@@ -14,7 +14,7 @@
  * - Column 0 = leftmost (south in CW mode)
  */
 
-const PatParser = (function() {
+const PatParser = (function () {
     'use strict';
 
     // Constants
@@ -96,10 +96,10 @@ const PatParser = (function() {
 
         // Parse header
         const version = bytes[4];
-        const gs_val_raw = bytes[5];  // 1=GS2, 2=GS16
-        const numFrames = view.getUint16(6, true);  // little-endian
+        const gs_val_raw = bytes[5]; // 1=GS2, 2=GS16
+        const numFrames = view.getUint16(6, true); // little-endian
         const rowCount = bytes[8];
-        const colCount = bytes[9];  // Installed columns
+        const colCount = bytes[9]; // Installed columns
         const checksum = bytes[10];
         const panelMask = bytes.slice(11, 17);
 
@@ -128,7 +128,8 @@ const PatParser = (function() {
 
         for (let f = 0; f < numFrames; f++) {
             // Verify frame header "FR"
-            if (bytes[offset] !== 0x46 || bytes[offset + 1] !== 0x52) {  // 'F', 'R'
+            if (bytes[offset] !== 0x46 || bytes[offset + 1] !== 0x52) {
+                // 'F', 'R'
                 console.warn(`Frame ${f}: expected FR header at offset ${offset}`);
             }
             offset += G6_FRAME_HEADER_SIZE;
@@ -170,11 +171,15 @@ const PatParser = (function() {
         // Console diagnostics
         console.group('Pattern loaded (G6)');
         console.log(`Generation: G6 (${G6_PANEL_SIZE}×${G6_PANEL_SIZE} panels)`);
-        console.log(`Dimensions: ${rowCount} rows × ${colCount} cols = ${pixelRows}×${pixelCols} pixels`);
+        console.log(
+            `Dimensions: ${rowCount} rows × ${colCount} cols = ${pixelRows}×${pixelCols} pixels`
+        );
         console.log(`Frames: ${numFrames}`);
         console.log(`Grayscale: ${isGrayscale ? 'GS16 (4-bit, 0-15)' : 'GS2 (1-bit, 0-1)'}`);
         console.log(`Pixel (0,0) value: ${frames[0][0]} (frame 0)`);
-        console.log(`Pixel (${pixelRows-1},${pixelCols-1}) value: ${frames[0][(pixelRows-1) * pixelCols + (pixelCols-1)]} (frame 0)`);
+        console.log(
+            `Pixel (${pixelRows - 1},${pixelCols - 1}) value: ${frames[0][(pixelRows - 1) * pixelCols + (pixelCols - 1)]} (frame 0)`
+        );
         console.groupEnd();
 
         return {
@@ -207,18 +212,18 @@ const PatParser = (function() {
      */
     function decodeG6PanelGS2(panelBlock) {
         const pixels = new Uint8Array(G6_PANEL_SIZE * G6_PANEL_SIZE);
-        const dataBytes = panelBlock.slice(2, 52);  // Skip header (1) and cmd (1), take 50 bytes
+        const dataBytes = panelBlock.slice(2, 52); // Skip header (1) and cmd (1), take 50 bytes
 
         for (let panelRow = 0; panelRow < G6_PANEL_SIZE; panelRow++) {
             for (let panelCol = 0; panelCol < G6_PANEL_SIZE; panelCol++) {
                 const pixelNum = panelRow * G6_PANEL_SIZE + panelCol;
                 const byteIdx = Math.floor(pixelNum / 8);
-                const bitPos = 7 - (pixelNum % 8);  // MSB first
+                const bitPos = 7 - (pixelNum % 8); // MSB first
                 const pixelVal = (dataBytes[byteIdx] >> bitPos) & 1;
 
                 // Compensate for encoder's row flip
                 // Panel row 0 (encoded) was originally row 19, map to output row 19
-                const outputRow = (G6_PANEL_SIZE - 1) - panelRow;
+                const outputRow = G6_PANEL_SIZE - 1 - panelRow;
                 const outputIdx = outputRow * G6_PANEL_SIZE + panelCol;
                 pixels[outputIdx] = pixelVal;
             }
@@ -240,7 +245,7 @@ const PatParser = (function() {
      */
     function decodeG6PanelGS16(panelBlock) {
         const pixels = new Uint8Array(G6_PANEL_SIZE * G6_PANEL_SIZE);
-        const dataBytes = panelBlock.slice(2, 202);  // Skip header (1) and cmd (1), take 200 bytes
+        const dataBytes = panelBlock.slice(2, 202); // Skip header (1) and cmd (1), take 200 bytes
 
         for (let panelRow = 0; panelRow < G6_PANEL_SIZE; panelRow++) {
             for (let panelCol = 0; panelCol < G6_PANEL_SIZE; panelCol++) {
@@ -250,14 +255,14 @@ const PatParser = (function() {
 
                 if (pixelNum % 2 === 0) {
                     // Even pixel: high nibble
-                    pixelVal = (dataBytes[byteIdx] >> 4) & 0x0F;
+                    pixelVal = (dataBytes[byteIdx] >> 4) & 0x0f;
                 } else {
                     // Odd pixel: low nibble
-                    pixelVal = dataBytes[byteIdx] & 0x0F;
+                    pixelVal = dataBytes[byteIdx] & 0x0f;
                 }
 
                 // Compensate for encoder's row flip
-                const outputRow = (G6_PANEL_SIZE - 1) - panelRow;
+                const outputRow = G6_PANEL_SIZE - 1 - panelRow;
                 const outputIdx = outputRow * G6_PANEL_SIZE + panelCol;
                 pixels[outputIdx] = pixelVal;
             }
@@ -286,18 +291,18 @@ const PatParser = (function() {
         const bytes = new Uint8Array(buffer);
 
         // Parse header
-        const numPatsX = view.getUint16(0, true);  // little-endian
+        const numPatsX = view.getUint16(0, true); // little-endian
         const numPatsY = view.getUint16(2, true);
         const gs_val_raw = bytes[4];
-        const rowN = bytes[5];  // Panel rows
-        const colN = bytes[6];  // Panel cols
+        const rowN = bytes[5]; // Panel rows
+        const colN = bytes[6]; // Panel cols
 
         // Normalize gs_val (legacy 1→2, legacy 4→16)
         let gs_val;
         if (gs_val_raw === 1 || gs_val_raw === 2) {
-            gs_val = 2;  // Binary
+            gs_val = 2; // Binary
         } else {
-            gs_val = 16;  // Grayscale
+            gs_val = 16; // Grayscale
         }
 
         const isGrayscale = gs_val === 16;
@@ -334,7 +339,9 @@ const PatParser = (function() {
         console.log(`Frames: ${numFrames} (${numPatsX}×${numPatsY})`);
         console.log(`Grayscale: ${isGrayscale ? 'GS16 (4-bit, 0-15)' : 'GS2 (1-bit, 0-1)'}`);
         console.log(`Pixel (0,0) value: ${frames[0][0]} (frame 0)`);
-        console.log(`Pixel (${pixelRows-1},${pixelCols-1}) value: ${frames[0][(pixelRows-1) * pixelCols + (pixelCols-1)]} (frame 0)`);
+        console.log(
+            `Pixel (${pixelRows - 1},${pixelCols - 1}) value: ${frames[0][(pixelRows - 1) * pixelCols + (pixelCols - 1)]} (frame 0)`
+        );
         console.groupEnd();
 
         return {
@@ -391,13 +398,18 @@ const PatParser = (function() {
                         } else {
                             if (isGrayscale) {
                                 // GS16: each byte has 2 pixels (4 bits each)
-                                const panelStartRowBeforeInvert = i * 16 + ((j - 1) % 2) * 8 + Math.floor((k - 2) / 4);
-                                const panelStartRow = Math.floor(panelStartRowBeforeInvert / 16) * 16 + 15 - (panelStartRowBeforeInvert % 16);
-                                const panelStartCol = m * 16 + Math.floor(j / 3) * 8 + ((k - 2) % 4) * 2;
+                                const panelStartRowBeforeInvert =
+                                    i * 16 + ((j - 1) % 2) * 8 + Math.floor((k - 2) / 4);
+                                const panelStartRow =
+                                    Math.floor(panelStartRowBeforeInvert / 16) * 16 +
+                                    15 -
+                                    (panelStartRowBeforeInvert % 16);
+                                const panelStartCol =
+                                    m * 16 + Math.floor(j / 3) * 8 + ((k - 2) % 4) * 2;
 
                                 const byte = frameData[n];
-                                const px1 = byte & 0x0F;         // Low nibble = left pixel
-                                const px2 = (byte >> 4) & 0x0F;  // High nibble = right pixel
+                                const px1 = byte & 0x0f; // Low nibble = left pixel
+                                const px2 = (byte >> 4) & 0x0f; // High nibble = right pixel
 
                                 if (panelStartRow < pixelRows && panelStartCol < pixelCols) {
                                     pixels[panelStartRow * pixelCols + panelStartCol] = px1;
@@ -407,9 +419,13 @@ const PatParser = (function() {
                                 }
                             } else {
                                 // Binary: each byte has 8 pixels (1 bit each)
-                                const rowOffset = k - 2;  // 0-7
-                                const panelStartRowBeforeInvert = i * 16 + ((j - 1) % 2) * 8 + rowOffset;
-                                const panelStartRow = Math.floor(panelStartRowBeforeInvert / 16) * 16 + 15 - (panelStartRowBeforeInvert % 16);
+                                const rowOffset = k - 2; // 0-7
+                                const panelStartRowBeforeInvert =
+                                    i * 16 + ((j - 1) % 2) * 8 + rowOffset;
+                                const panelStartRow =
+                                    Math.floor(panelStartRowBeforeInvert / 16) * 16 +
+                                    15 -
+                                    (panelStartRowBeforeInvert % 16);
                                 const panelStartCol = m * 16 + Math.floor(j / 3) * 8;
 
                                 const byte = frameData[n];
@@ -484,7 +500,7 @@ const PatParser = (function() {
 
         // Log results
         console.group('Pattern Orientation Verification');
-        checks.forEach(c => {
+        checks.forEach((c) => {
             console.log(c.pass ? '✓' : '✗', c.name, c.pass ? '' : c);
         });
         console.groupEnd();
@@ -522,8 +538,10 @@ const PatParser = (function() {
             const arena = config.arena;
 
             // Match generation
-            if (arena.generation !== generation &&
-                !(generation === 'G4' && arena.generation === 'G4.1')) {
+            if (
+                arena.generation !== generation &&
+                !(generation === 'G4' && arena.generation === 'G4.1')
+            ) {
                 continue;
             }
 

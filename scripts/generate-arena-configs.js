@@ -14,6 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // Simple YAML parser for our arena config format
 function parseYAML(yamlText) {
@@ -48,7 +49,7 @@ function parseYAML(yamlText) {
                 if (arrayContent.trim() === '') {
                     currentSection[key] = [];
                 } else {
-                    currentSection[key] = arrayContent.split(',').map(v => {
+                    currentSection[key] = arrayContent.split(',').map((v) => {
                         v = v.trim();
                         const num = parseFloat(v);
                         return isNaN(num) ? v.replace(/^"|"$/g, '') : num;
@@ -101,7 +102,7 @@ function generateLabel(parsed) {
     if (columnsInstalled && Array.isArray(columnsInstalled)) {
         // columns_installed is always column indices (0-indexed)
         const installedCols = columnsInstalled.length;
-        const coverageDeg = Math.round(360 * installedCols / cols);
+        const coverageDeg = Math.round((360 * installedCols) / cols);
         coverage = `${coverageDeg}°`;
     }
 
@@ -131,7 +132,9 @@ function findConfigDir() {
     }
 
     console.error('Error: Could not find config directory.');
-    console.error('Provide path as argument or ensure temp_configs/ or ../maDisplayTools/configs/arenas/ exists.');
+    console.error(
+        'Provide path as argument or ensure temp_configs/ or ../maDisplayTools/configs/arenas/ exists.'
+    );
     process.exit(1);
 }
 
@@ -143,7 +146,9 @@ function main() {
     console.log(`Reading configs from: ${configDir}`);
 
     const configs = {};
-    const files = fs.readdirSync(configDir).filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
+    const files = fs
+        .readdirSync(configDir)
+        .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
 
     if (files.length === 0) {
         console.error('Error: No YAML files found in config directory.');
@@ -177,7 +182,7 @@ function main() {
             if (orderA !== orderB) return orderA - orderB;
             return a.localeCompare(b);
         })
-        .forEach(key => {
+        .forEach((key) => {
             sortedConfigs[key] = configs[key];
         });
 
@@ -253,6 +258,17 @@ function getConfigsByGeneration() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration };
 }
+
+// Browser global export (for non-module scripts)
+if (typeof window !== 'undefined') {
+    window.STANDARD_CONFIGS = STANDARD_CONFIGS;
+    window.PANEL_SPECS = PANEL_SPECS;
+    window.getConfig = getConfig;
+    window.getConfigsByGeneration = getConfigsByGeneration;
+}
+
+// ES6 module export
+export { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration };
 `;
 
     // Ensure js/ directory exists
@@ -262,7 +278,17 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     fs.writeFileSync(outputFile, output);
-    console.log(`\nGenerated ${outputFile} with ${Object.keys(sortedConfigs).length} configs`);
+
+    // Format with Prettier to match project style
+    try {
+        execSync(`npx prettier --write "${outputFile}"`, { stdio: 'inherit' });
+        console.log(
+            `\nGenerated and formatted ${outputFile} with ${Object.keys(sortedConfigs).length} configs`
+        );
+    } catch (err) {
+        console.log(`\nGenerated ${outputFile} with ${Object.keys(sortedConfigs).length} configs`);
+        console.log('Warning: Could not run Prettier. Run "npm run format" to format the output.');
+    }
 }
 
 main();

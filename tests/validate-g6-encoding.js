@@ -104,8 +104,7 @@ function runTests() {
     log('── Module Validation ──', 'cyan');
 
     totalTests++;
-    if (typeof G6Encoding.encodeGS2 === 'function' &&
-        typeof G6Encoding.encodeGS16 === 'function') {
+    if (typeof G6Encoding.encodeGS2 === 'function' && typeof G6Encoding.encodeGS16 === 'function') {
         log('  ✓ Encoding functions exist', 'green');
         passedTests++;
     } else {
@@ -123,7 +122,7 @@ function runTests() {
     totalTests++;
     const emptyArray = G6Encoding.createEmptyArray();
     const emptyGS2 = G6Encoding.encodeGS2(emptyArray);
-    const allZeros = emptyGS2.every(b => b === 0);
+    const allZeros = emptyGS2.every((b) => b === 0);
     if (allZeros) {
         log('  ✓ Empty array produces all-zero bytes (GS2)', 'green');
         passedTests++;
@@ -137,7 +136,7 @@ function runTests() {
     totalTests++;
     const fullArray = G6Encoding.createFilledArray(1);
     const fullGS2 = G6Encoding.encodeGS2(fullArray);
-    const all255 = fullGS2.every(b => b === 255);
+    const all255 = fullGS2.every((b) => b === 255);
     if (all255) {
         log('  ✓ Full array produces all-255 bytes (GS2)', 'green');
         passedTests++;
@@ -171,7 +170,11 @@ function runTests() {
                         computedGS2 = G6Encoding.encodeGS2(pixelArray);
                     }
                     if (vector.gs16_bytes) {
-                        pixelArray = createSinglePixelArray(vector.panel_row, vector.panel_col, vector.gs16_value || 15);
+                        pixelArray = createSinglePixelArray(
+                            vector.panel_row,
+                            vector.panel_col,
+                            vector.gs16_value || 15
+                        );
                         computedGS16 = G6Encoding.encodeGS16(pixelArray);
                     }
                 } else if (vector.description && vector.description.includes('row')) {
@@ -301,7 +304,7 @@ function runTests() {
                 // JavaScript expects panel coordinates (row 0 = bottom of panel)
                 // So we need to flip the matrix vertically
                 const matlabMatrix = patternData.pixel_matrix;
-                const pixelMatrix = matlabMatrix.slice().reverse();  // Flip rows
+                const pixelMatrix = matlabMatrix.slice().reverse(); // Flip rows
 
                 let computed;
                 let reference;
@@ -325,7 +328,10 @@ function runTests() {
                     passedTests++;
                 } else {
                     const diff = result.differences[0];
-                    log(`  ✗ ${patternName}: byte[${diff.index}] got ${diff.computed}, expected ${diff.reference}`, 'red');
+                    log(
+                        `  ✗ ${patternName}: byte[${diff.index}] got ${diff.computed}, expected ${diff.reference}`,
+                        'red'
+                    );
                     failedTests++;
                     failures.push({
                         test: patternName,
@@ -346,7 +352,10 @@ function runTests() {
     // Summary
     // ================================================================
     log('\n────────────────────────────────────────────────────────────', 'dim');
-    log(`\nResults: ${passedTests}/${totalTests} tests passed`, passedTests === totalTests ? 'green' : 'red');
+    log(
+        `\nResults: ${passedTests}/${totalTests} tests passed`,
+        passedTests === totalTests ? 'green' : 'red'
+    );
 
     if (failedTests > 0) {
         log(`\n${failedTests} test(s) failed:`, 'red');

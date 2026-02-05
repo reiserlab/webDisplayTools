@@ -84,6 +84,20 @@ All tools use a consistent dark theme design:
 
 All tools can be tested locally by opening the HTML files directly in a web browser. No server setup is required for basic functionality.
 
+For running tests or code formatting, first install dependencies:
+
+```bash
+npm install
+```
+
+Then you can use:
+
+```bash
+npm test              # Run validation tests
+npm run format        # Format all JS files with Prettier
+npm run format:check  # Check formatting without changes
+```
+
 ## Repository Structure
 
 ```

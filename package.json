@@ -1,15 +1,20 @@
 {
-  "name": "web-display-tools",
-  "version": "1.0.0",
-  "description": "Web-based tools for configuring and editing display patterns for modular arena systems",
-  "scripts": {
-    "test": "node tests/validate-arena-calculations.js",
-    "validate": "node tests/validate-arena-calculations.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/reiserlab/webDisplayTools"
-  },
-  "author": "Reiser Lab",
-  "license": "MIT"
+    "name": "web-display-tools",
+    "version": "1.0.1",
+    "description": "Web-based tools for configuring and editing display patterns for modular arena systems",
+    "scripts": {
+        "test": "node tests/validate-arena-calculations.js",
+        "validate": "node tests/validate-arena-calculations.js",
+        "format": "prettier --write \"**/*.js\"",
+        "format:check": "prettier --check \"**/*.js\""
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/reiserlab/webDisplayTools"
+    },
+    "author": "Reiser Lab",
+    "license": "MIT",
+    "devDependencies": {
+        "prettier": "^3.8.1"
+    }
 }

@@ -14,7 +14,10 @@
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/controls/OrbitControls.js';
-import { CSS2DRenderer, CSS2DObject } from 'https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/renderers/CSS2DRenderer.js';
+import {
+    CSS2DRenderer,
+    CSS2DObject
+} from 'https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/renderers/CSS2DRenderer.js';
 
 const GRAYSCALE_LEVELS = 16;
 const BASE_OFFSET_RAD = -Math.PI / 2;
@@ -30,17 +33,17 @@ class ThreeViewer {
         this.arenaGroup = null;
         this.ledMeshes = [];
         this.labelObjects = [];
-        this.poleGroup = null;      // Group for pole geometry visualization
+        this.poleGroup = null; // Group for pole geometry visualization
 
         this.state = {
-            pattern: null,          // Pattern data from editor
+            pattern: null, // Pattern data from editor
             currentFrame: 0,
             phaseOffset: 0,
             showPanelBoundaries: true,
             showPanelNumbers: false,
             showColumnLabels: false,
-            showPoleGeometry: false,  // Show pole axis line
-            poleCoord: [0, -Math.PI / 2],  // [phi, theta] in radians - default south pole
+            showPoleGeometry: false, // Show pole axis line
+            poleCoord: [0, -Math.PI / 2], // [phi, theta] in radians - default south pole
             isPlaying: false,
             fps: 10,
             playbackIntervalId: null
@@ -160,7 +163,10 @@ class ThreeViewer {
      */
     setFrame(frameIndex) {
         if (!this.state.pattern) return;
-        this.state.currentFrame = Math.max(0, Math.min(frameIndex, this.state.pattern.numFrames - 1));
+        this.state.currentFrame = Math.max(
+            0,
+            Math.min(frameIndex, this.state.pattern.numFrames - 1)
+        );
         this._updateLEDColors();
     }
 
@@ -174,7 +180,10 @@ class ThreeViewer {
         if (options.showPanelBoundaries !== undefined) {
             this.state.showPanelBoundaries = options.showPanelBoundaries;
         }
-        if (options.showPanelNumbers !== undefined && options.showPanelNumbers !== this.state.showPanelNumbers) {
+        if (
+            options.showPanelNumbers !== undefined &&
+            options.showPanelNumbers !== this.state.showPanelNumbers
+        ) {
             this.state.showPanelNumbers = options.showPanelNumbers;
             needsRebuild = true;
         }
@@ -349,7 +358,7 @@ class ThreeViewer {
             return new Set(arena.columns_installed);
         } else {
             // Panel indices - convert to column indices
-            return new Set(arena.columns_installed.map(p => p % arena.num_cols));
+            return new Set(arena.columns_installed.map((p) => p % arena.num_cols));
         }
     }
 
@@ -396,8 +405,8 @@ class ThreeViewer {
 
         // Calculate radius using the formula from MATLAB
         const alpha = (2 * Math.PI) / numCols;
-        const halfPanel = alpha / 2;  // Offset so c0 starts at boundary, not centered
-        const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+        const halfPanel = alpha / 2; // Offset so c0 starts at boundary, not centered
+        const cRadius = panelWidth / Math.tan(alpha / 2) / 2;
 
         const columnHeight = panelHeight * numRows;
 
@@ -422,9 +431,19 @@ class ThreeViewer {
             }
 
             const x = cRadius * Math.cos(angle);
-            const z = -cRadius * Math.sin(angle);  // Negate Z to match MATLAB top-down view
+            const z = -cRadius * Math.sin(angle); // Negate Z to match MATLAB top-down view
 
-            const columnGroup = this._createColumn(specs, panelWidth, columnHeight, panelDepth, -angle, numRows, col, numCols, columnOrder);
+            const columnGroup = this._createColumn(
+                specs,
+                panelWidth,
+                columnHeight,
+                panelDepth,
+                -angle,
+                numRows,
+                col,
+                numCols,
+                columnOrder
+            );
             columnGroup.position.set(x, 0, z);
 
             this.arenaGroup.add(columnGroup);
@@ -460,16 +479,35 @@ class ThreeViewer {
         for (const borderZ of borderOffsets) {
             const borderGeom = new THREE.BufferGeometry();
             const borderVertices = new Float32Array([
-                -halfW, -halfH, borderZ,
-                 halfW, -halfH, borderZ,
-                 halfW, -halfH, borderZ,
-                 halfW,  halfH, borderZ,
-                 halfW,  halfH, borderZ,
-                -halfW,  halfH, borderZ,
-                -halfW,  halfH, borderZ,
-                -halfW, -halfH, borderZ
+                -halfW,
+                -halfH,
+                borderZ,
+                halfW,
+                -halfH,
+                borderZ,
+                halfW,
+                -halfH,
+                borderZ,
+                halfW,
+                halfH,
+                borderZ,
+                halfW,
+                halfH,
+                borderZ,
+                -halfW,
+                halfH,
+                borderZ,
+                -halfW,
+                halfH,
+                borderZ,
+                -halfW,
+                -halfH,
+                borderZ
             ]);
-            borderGeom.setAttribute('position', new THREE.Float32BufferAttribute(borderVertices, 3));
+            borderGeom.setAttribute(
+                'position',
+                new THREE.Float32BufferAttribute(borderVertices, 3)
+            );
             const border = new THREE.LineSegments(borderGeom, borderMat);
             group.add(border);
 
@@ -480,10 +518,17 @@ class ThreeViewer {
                     const lineY = -halfH + r * panelH;
                     const lineGeom = new THREE.BufferGeometry();
                     const lineVerts = new Float32Array([
-                        -halfW, lineY, borderZ,
-                         halfW, lineY, borderZ
+                        -halfW,
+                        lineY,
+                        borderZ,
+                        halfW,
+                        lineY,
+                        borderZ
                     ]);
-                    lineGeom.setAttribute('position', new THREE.Float32BufferAttribute(lineVerts, 3));
+                    lineGeom.setAttribute(
+                        'position',
+                        new THREE.Float32BufferAttribute(lineVerts, 3)
+                    );
                     const line = new THREE.Line(lineGeom, borderMat);
                     group.add(line);
                 }
@@ -524,14 +569,14 @@ class ThreeViewer {
                     const cos45 = Math.SQRT1_2;
                     const sin45 = Math.SQRT1_2;
 
-                    const c1x = (-rectW) * cos45 - (-rectH) * sin45;
-                    const c1y = (-rectW) * sin45 + (-rectH) * cos45;
-                    const c2x = (rectW) * cos45 - (-rectH) * sin45;
-                    const c2y = (rectW) * sin45 + (-rectH) * cos45;
-                    const c3x = (rectW) * cos45 - (rectH) * sin45;
-                    const c3y = (rectW) * sin45 + (rectH) * cos45;
-                    const c4x = (-rectW) * cos45 - (rectH) * sin45;
-                    const c4y = (-rectW) * sin45 + (rectH) * cos45;
+                    const c1x = -rectW * cos45 - -rectH * sin45;
+                    const c1y = -rectW * sin45 + -rectH * cos45;
+                    const c2x = rectW * cos45 - -rectH * sin45;
+                    const c2y = rectW * sin45 + -rectH * cos45;
+                    const c3x = rectW * cos45 - rectH * sin45;
+                    const c3y = rectW * sin45 + rectH * cos45;
+                    const c4x = -rectW * cos45 - rectH * sin45;
+                    const c4y = -rectW * sin45 + rectH * cos45;
 
                     const rectShape = new THREE.Shape();
                     rectShape.moveTo(c1x, c1y);
@@ -560,16 +605,35 @@ class ThreeViewer {
                     // LED outline
                     const outlineGeom = new THREE.BufferGeometry();
                     const outlineVerts = new Float32Array([
-                        c1x, c1y, 0,
-                        c2x, c2y, 0,
-                        c2x, c2y, 0,
-                        c3x, c3y, 0,
-                        c3x, c3y, 0,
-                        c4x, c4y, 0,
-                        c4x, c4y, 0,
-                        c1x, c1y, 0
+                        c1x,
+                        c1y,
+                        0,
+                        c2x,
+                        c2y,
+                        0,
+                        c2x,
+                        c2y,
+                        0,
+                        c3x,
+                        c3y,
+                        0,
+                        c3x,
+                        c3y,
+                        0,
+                        c4x,
+                        c4y,
+                        0,
+                        c4x,
+                        c4y,
+                        0,
+                        c1x,
+                        c1y,
+                        0
                     ]);
-                    outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlineVerts, 3));
+                    outlineGeom.setAttribute(
+                        'position',
+                        new THREE.Float32BufferAttribute(outlineVerts, 3)
+                    );
                     const outlineMat = new THREE.LineBasicMaterial({ color: 0x333333 });
                     const outline = new THREE.LineSegments(outlineGeom, outlineMat);
                     outline.position.set(localX, localY, localZ + 0.0001);
@@ -598,11 +662,13 @@ class ThreeViewer {
                     const segments = 16;
                     for (let i = 0; i <= segments; i++) {
                         const theta = (i / segments) * Math.PI * 2;
-                        circlePoints.push(new THREE.Vector3(
-                            Math.cos(theta) * ledRadius,
-                            Math.sin(theta) * ledRadius,
-                            0
-                        ));
+                        circlePoints.push(
+                            new THREE.Vector3(
+                                Math.cos(theta) * ledRadius,
+                                Math.sin(theta) * ledRadius,
+                                0
+                            )
+                        );
                     }
                     const circleGeom = new THREE.BufferGeometry().setFromPoints(circlePoints);
                     const circleMat = new THREE.LineBasicMaterial({ color: 0x333333 });
@@ -673,13 +739,13 @@ class ThreeViewer {
 
         // For CCW mode, mirror the pixel index within each panel
         // to ensure grating tiles correctly when columns are placed clockwise
-        const effectivePx = (columnOrder === 'ccw')
-            ? (totalPixelsH - 1 - px)
-            : px;
+        const effectivePx = columnOrder === 'ccw' ? totalPixelsH - 1 - px : px;
 
         // Calculate global X with phase offset support
         const phaseOffset = this.state.phaseOffset || 0;
-        const globalX = ((colIndex * pixelsPerPanel + effectivePx) + phaseOffset + totalAzimuthPixels) % totalAzimuthPixels;
+        const globalX =
+            (colIndex * pixelsPerPanel + effectivePx + phaseOffset + totalAzimuthPixels) %
+            totalAzimuthPixels;
         const globalY = py;
 
         // Row-major index: row * numCols + col
@@ -730,7 +796,7 @@ class ThreeViewer {
         const numCols = arena.num_cols;
         const panelWidth = specs.panel_width_mm / 25.4;
         const alpha = (2 * Math.PI) / numCols;
-        const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+        const cRadius = panelWidth / Math.tan(alpha / 2) / 2;
         const numRows = arena.num_rows;
         const panelHeight = specs.panel_height_mm / 25.4;
         const columnHeight = panelHeight * numRows;
@@ -757,20 +823,24 @@ class ThreeViewer {
         // Pole direction in 3D
         const dx = sinTheta * cosPhi;
         const dy = cosTheta;
-        const dz = -sinTheta * sinPhi;  // Negate Z to match arena rendering
+        const dz = -sinTheta * sinPhi; // Negate Z to match arena rendering
 
         // Create line geometry
         const lineGeom = new THREE.BufferGeometry();
         const lineVertices = new Float32Array([
-            -dx * lineLength, -dy * lineLength, -dz * lineLength,
-             dx * lineLength,  dy * lineLength,  dz * lineLength
+            -dx * lineLength,
+            -dy * lineLength,
+            -dz * lineLength,
+            dx * lineLength,
+            dy * lineLength,
+            dz * lineLength
         ]);
         lineGeom.setAttribute('position', new THREE.Float32BufferAttribute(lineVertices, 3));
 
         // Red line material - thick and prominent
         const lineMat = new THREE.LineBasicMaterial({
             color: 0xff0000,
-            linewidth: 3  // Note: linewidth > 1 only works with LineBasicMaterial on some systems
+            linewidth: 3 // Note: linewidth > 1 only works with LineBasicMaterial on some systems
         });
         const poleLine = new THREE.Line(lineGeom, lineMat);
         this.poleGroup.add(poleLine);
