@@ -1,5 +1,15 @@
 # Claude Code Guidelines for webDisplayTools
 
+## Scope of This File
+
+**CLAUDE.md** is for **how to work with the code** — architecture, patterns, gotchas, testing procedures, and coding conventions. It should NOT contain roadmap items, feature wishlists, or project planning.
+
+Roadmap and planning content belongs in:
+- **`maDisplayTools/docs/G4G6_ROADMAP.md`** — unified roadmap for both MATLAB and web tools
+- **`maDisplayTools/docs/G4G6_ROADMAP_SESSIONS.md`** — detailed session notes and changelog
+
+**Review needed (future session):** Audit existing CLAUDE.md sections for roadmap content that has leaked in (e.g., "Future Improvements" lists, "Testing Required (Next Session)" checklists). Move planning items to the roadmap files and keep CLAUDE.md focused on technical reference.
+
 ## Versioning
 
 Use simple two-digit versions for all web tools (e.g., `v1`, `v2`, `v6`). No semantic versioning (1.0.0) needed.
@@ -415,6 +425,32 @@ The following UI improvements were made on 2026-02-02 and need testing on GitHub
    - [x] Test patterns still work (use G6_2x10 default)
 
 **GitHub Issue:** [#6 - additional web tools for making patterns](https://github.com/reiserlab/webDisplayTools/issues/6)
+
+## Experiment Designer
+
+### Architecture (v1 — 2026-02-10)
+- 3-zone layout: settings panel (280px left), condition editor (flex right), timeline (bottom strip)
+- Single `<script type="module">` importing from `js/arena-configs.js`
+- Custom YAML parser (`simpleYAMLParse`) — no external dependency required
+- Data model: `experiment` object with `experiment_info`, `arena_info`, `experiment_structure`, phases, and `conditions[]`
+
+### YAML Export
+- Generates protocol v1 with `trialParams` command name
+- Empty pattern fields export as `allOff` controller command
+- Phase structure: one `trialParams` command + one `wait` command per phase
+- Conditions wrapped in `block.conditions[].commands[]`
+
+### Key Implementation Notes
+- **Must use `<script type="module">`** to import `arena-configs.js` (bare `export` at end breaks regular `<script>` tags — this caused the initial "+ Add Condition" bug)
+- Mode 2 (Constant Rate): `gain` fixed at 0, `frame_rate` editable
+- Mode 4 (Closed-Loop): `frame_rate` fixed at 0, `gain` editable
+- All 7 trial parameters always included regardless of mode
+
+### Related Files
+- `experiment_designer.html` — Main tool
+- `experiment_designer_quickstart.html` — Step-by-step guide
+- `examples/simple_optomotor_protocol.yaml` — Test protocol
+- GitHub Issue: [#33](https://github.com/reiserlab/webDisplayTools/issues/33)
 
 ## Planning Best Practices
 
