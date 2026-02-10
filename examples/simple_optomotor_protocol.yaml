@@ -1,0 +1,92 @@
+# Protocol Version 1
+# Simple optomotor experiment for testing the Experiment Designer
+# 3 conditions, 3 repetitions, randomized, with intertrial intervals
+
+version: 1
+
+experiment_info:
+  name: "Simple Optomotor Test"
+  date_created: "2026-02-09"
+  author: "Test User"
+  pattern_library: "/Users/testuser/patterns/"
+
+arena_info:
+  num_rows: 2
+  num_cols: 12
+  generation: "G4.1"
+
+experiment_structure:
+  repetitions: 3
+  randomization:
+    enabled: true
+    seed: null
+    method: "block"
+
+pretrial:
+  include: true
+  commands:
+    - type: "controller"
+      command_name: "trialParams"
+      pattern: "pat0001_test_grid.pat"
+      pattern_ID: 1
+      duration: 2
+      mode: 2
+      frame_index: 1
+      frame_rate: 60
+      gain: 0
+
+    - type: "wait"
+      duration: 0.5
+
+block:
+  conditions:
+    - id: "rightward_grating"
+      commands:
+        - type: "controller"
+          command_name: "trialParams"
+          pattern: "pat0002_rightward_grating.pat"
+          pattern_ID: 2
+          duration: 5
+          mode: 2
+          frame_index: 1
+          frame_rate: 60
+          gain: 0
+
+    - id: "leftward_grating"
+      commands:
+        - type: "controller"
+          command_name: "trialParams"
+          pattern: "pat0003_leftward_grating.pat"
+          pattern_ID: 3
+          duration: 5
+          mode: 2
+          frame_index: 1
+          frame_rate: 60
+          gain: 0
+
+    - id: "dark_control"
+      commands:
+        - type: "controller"
+          command_name: "allOff"
+
+        - type: "wait"
+          duration: 3
+
+intertrial:
+  include: true
+  commands:
+    - type: "controller"
+      command_name: "trialParams"
+      pattern: "pat0004_uniform_gray.pat"
+      pattern_ID: 4
+      duration: 2
+      mode: 2
+      frame_index: 1
+      frame_rate: 60
+      gain: 0
+
+    - type: "wait"
+      duration: 0.5
+
+posttrial:
+  include: false

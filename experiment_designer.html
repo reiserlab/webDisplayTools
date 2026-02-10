@@ -616,6 +616,7 @@
         <h1>Experiment Designer</h1>
     </div>
     <div class="top-bar-right">
+        <a href="experiment_designer_quickstart.html" class="btn" title="Step-by-step guide for using the Experiment Designer">Quick Start</a>
         <button class="btn" id="importBtn" title="Load an existing YAML protocol file">Import YAML</button>
         <button class="btn btn-primary" id="exportBtn" title="Export experiment as YAML protocol file (Ctrl+E)">Export YAML</button>
     </div>
@@ -719,15 +720,14 @@
 
 <!-- Footer -->
 <div class="app-footer">
-    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v1 | 2026-02-09 18:19 ET</p>
+    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v1 | 2026-02-09 21:09 ET</p>
 </div>
 
 <!-- Hidden file input for import -->
 <input type="file" id="yamlFileInput" accept=".yaml,.yml" style="display: none;">
 
-<script src="js/arena-configs.js"></script>
-<script>
-'use strict';
+<script type="module">
+import { STANDARD_CONFIGS, getConfig, getConfigsByGeneration } from './js/arena-configs.js';
 
 // ════════════════════════════════════════════════════
 // Data Model
@@ -1937,6 +1937,10 @@ document.addEventListener('keydown', function(e) {
 // ════════════════════════════════════════════════════
 
 init();
+// Auto-select first condition so editor is immediately useful
+selection = { type: 'condition', index: 0 };
+renderTimeline();
+renderEditor();
 </script>
 </body>
 </html>
