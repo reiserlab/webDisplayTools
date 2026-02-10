@@ -711,6 +711,7 @@
                     <span id="pattern-dims">40×200</span>
                     <span id="pattern-frames">1 frame</span>
                     <span id="pattern-gs">GS16</span>
+                    <span id="pattern-header-meta" style="display: none;"></span>
                 </div>
             </div>
             <button class="btn secondary" id="clear-pattern" style="display: none; margin-top: 0.5rem;">Clear Pattern</button>
@@ -843,7 +844,7 @@
         import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
         import PatParser from './js/pat-parser.js';
         const { parsePatFile, verifyPatternOrientation, findMatchingConfig } = PatParser;
-        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration } from './js/arena-configs.js';
+        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration, getArenaName, getGenerationName } from './js/arena-configs.js';
 
         // State
         let state = {
@@ -1359,6 +1360,28 @@
             document.getElementById('pattern-frames').textContent = patternData.numFrames === 1 ? '1 frame' : `${patternData.numFrames} frames`;
             document.getElementById('pattern-gs').textContent = patternData.gs_val === 2 ? 'GS2' : 'GS16';
             document.getElementById('clear-pattern').style.display = 'block';
+
+            // Show V2 header metadata if available
+            const metaEl = document.getElementById('pattern-header-meta');
+            if (patternData.headerVersion >= 2) {
+                const parts = [`V${patternData.headerVersion}`];
+                if (patternData.generation === 'G6') {
+                    const arenaName = getArenaName('G6', patternData.arena_id);
+                    parts.push(arenaName ? arenaName : `arena:${patternData.arena_id}`);
+                    if (patternData.observer_id > 0) {
+                        parts.push(`obs:${patternData.observer_id}`);
+                    }
+                } else {
+                    // G4/G4.1 — resolve arena name using generation from header
+                    const gen = patternData.generation;
+                    const arenaName = getArenaName(gen, patternData.arena_id);
+                    parts.push(arenaName ? arenaName : `arena:${patternData.arena_id}`);
+                }
+                metaEl.textContent = parts.join(' | ');
+                metaEl.style.display = '';
+            } else {
+                metaEl.style.display = 'none';
+            }
         }
 
         // Update frame controls visibility and range

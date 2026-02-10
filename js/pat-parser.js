@@ -5,8 +5,10 @@
  * Works in both Node.js and browser environments.
  *
  * Supported formats:
- * - G6: 20x20 pixel panels, 18-byte header with "G6PT" magic
- * - G4/G4.1: 16x16 pixel panels, 7-byte header
+ * - G6 V1: 20x20 pixel panels, 17-byte header with "G6PT" magic
+ * - G6 V2: 20x20 pixel panels, 18-byte header with arena_id + observer_id
+ * - G4/G4.1 V1: 16x16 pixel panels, 7-byte header (legacy)
+ * - G4/G4.1 V2: 16x16 pixel panels, 7-byte header with generation_id + arena_id
  *
  * Coordinate Convention:
  * - Origin (0,0) at bottom-left of arena
@@ -19,7 +21,8 @@ const PatParser = (function() {
 
     // Constants
     const G6_MAGIC = 'G6PT';
-    const G6_HEADER_SIZE = 17;
+    const G6_V1_HEADER_SIZE = 17;
+    const G6_V2_HEADER_SIZE = 18;
     const G6_FRAME_HEADER_SIZE = 4;
     const G6_PANEL_SIZE = 20;
     const G6_GS2_PANEL_BYTES = 53;
@@ -27,6 +30,11 @@ const PatParser = (function() {
 
     const G4_HEADER_SIZE = 7;
     const G4_PANEL_SIZE = 16;
+
+    // Generation ID mapping (mirrors maDisplayTools/configs/arena_registry/generations.yaml)
+    const GENERATION_NAMES = {
+        0: 'unspecified', 1: 'G3', 2: 'G4', 3: 'G4.1', 4: 'G6'
+    };
 
     /**
      * Detect pattern generation from file header
@@ -71,7 +79,7 @@ const PatParser = (function() {
     /**
      * Parse G6 format pattern file
      *
-     * Header (17 bytes):
+     * V1 Header (17 bytes):
      *   Bytes 0-3:   "G6PT" magic
      *   Byte 4:      Version (1)
      *   Byte 5:      gs_val (1=GS2 binary, 2=GS16 grayscale)
@@ -80,6 +88,17 @@ const PatParser = (function() {
      *   Byte 9:      col_count (installed columns)
      *   Byte 10:     checksum
      *   Bytes 11-16: panel_mask (6 bytes, 48-bit bitmask)
+     *
+     * V2 Header (18 bytes):
+     *   Bytes 0-3:   "G6PT" magic
+     *   Byte 4:      [VVVV][AAAA] - Version (4 bits = 2) + Arena ID upper 4 bits
+     *   Byte 5:      [AA][OOOOOO] - Arena ID lower 2 bits + Observer ID (6 bits)
+     *   Bytes 6-7:   num_frames (uint16 LE)
+     *   Byte 8:      row_count (panel rows)
+     *   Byte 9:      col_count (installed columns)
+     *   Byte 10:     gs_val (1=GS2, 2=GS16)
+     *   Bytes 11-16: panel_mask (6 bytes, 48-bit bitmask)
+     *   Byte 17:     checksum (XOR of frame data)
      *
      * @param {ArrayBuffer} buffer - Raw file data
      * @returns {PatternData} Parsed pattern data
@@ -94,14 +113,38 @@ const PatParser = (function() {
             throw new Error(`Invalid G6 file: expected G6PT magic, got ${magic}`);
         }
 
-        // Parse header
-        const version = bytes[4];
-        const gs_val_raw = bytes[5];  // 1=GS2, 2=GS16
+        // Detect header version from byte 4
+        // V1: byte 4 < 16 (version stored as full byte, value = 1)
+        // V2: byte 4 upper nibble >= 2 (version in upper 4 bits)
+        const versionByte = bytes[4];
+        let headerVersion, arena_id, observer_id, gs_val_raw, checksum, panelMask, headerSize;
+
+        if (versionByte < 16) {
+            // V1 format
+            headerVersion = versionByte;
+            arena_id = 0;
+            observer_id = 0;
+            gs_val_raw = bytes[5];
+            checksum = bytes[10];
+            panelMask = bytes.slice(11, 17);
+            headerSize = G6_V1_HEADER_SIZE;
+        } else {
+            // V2 format
+            headerVersion = (versionByte >> 4) & 0x0F;
+            const arenaUpper = versionByte & 0x0F;     // Lower 4 bits of byte 4
+            const byte5 = bytes[5];
+            const arenaLower = (byte5 >> 6) & 0x03;    // Upper 2 bits of byte 5
+            arena_id = (arenaUpper << 2) | arenaLower;  // Combined 6-bit arena ID
+            observer_id = byte5 & 0x3F;                 // Lower 6 bits of byte 5
+            gs_val_raw = bytes[10];
+            checksum = bytes[17];
+            panelMask = bytes.slice(11, 17);
+            headerSize = G6_V2_HEADER_SIZE;
+        }
+
         const numFrames = view.getUint16(6, true);  // little-endian
         const rowCount = bytes[8];
         const colCount = bytes[9];  // Installed columns
-        const checksum = bytes[10];
-        const panelMask = bytes.slice(11, 17);
 
         // Convert G6 gs_val to standard (2=binary, 16=grayscale)
         const gs_val = gs_val_raw === 1 ? 2 : 16;
@@ -124,7 +167,7 @@ const PatParser = (function() {
         // Parse frames
         const frames = [];
         const stretchValues = [];
-        let offset = G6_HEADER_SIZE;
+        let offset = headerSize;
 
         for (let f = 0; f < numFrames; f++) {
             // Verify frame header "FR"
@@ -170,6 +213,7 @@ const PatParser = (function() {
         // Console diagnostics
         console.group('Pattern loaded (G6)');
         console.log(`Generation: G6 (${G6_PANEL_SIZE}×${G6_PANEL_SIZE} panels)`);
+        console.log(`Header: V${headerVersion}${headerVersion >= 2 ? ` arena_id=${arena_id} observer_id=${observer_id}` : ''}`);
         console.log(`Dimensions: ${rowCount} rows × ${colCount} cols = ${pixelRows}×${pixelCols} pixels`);
         console.log(`Frames: ${numFrames}`);
         console.log(`Grayscale: ${isGrayscale ? 'GS16 (4-bit, 0-15)' : 'GS2 (1-bit, 0-1)'}`);
@@ -189,7 +233,9 @@ const PatParser = (function() {
             frames,
             stretchValues,
             panelSize: G6_PANEL_SIZE,
-            version,
+            headerVersion,
+            arena_id,
+            observer_id,
             checksum
         };
     }
@@ -269,14 +315,20 @@ const PatParser = (function() {
     /**
      * Parse G4/G4.1 format pattern file
      *
-     * Header (7 bytes):
+     * V1 Header (7 bytes):
      *   Bytes 0-1:   NumPatsX (uint16 LE)
      *   Bytes 2-3:   NumPatsY (uint16 LE)
      *   Byte 4:      gs_val (1 or 2 = binary, 4 or 16 = grayscale)
      *   Byte 5:      RowN (panel rows)
      *   Byte 6:      ColN (panel cols)
      *
-     * Frame data follows header with subpanel messages
+     * V2 Header (7 bytes):
+     *   Bytes 0-1:   NumPatsX (uint16 LE)
+     *   Byte 2:      [V][GGG][RRRR] - Version flag (bit 7) + Generation ID (bits 6-4) + Reserved
+     *   Byte 3:      Arena ID (8 bits, 0-255)
+     *   Byte 4:      gs_val (2 or 16)
+     *   Byte 5:      RowN (panel rows)
+     *   Byte 6:      ColN (panel cols)
      *
      * @param {ArrayBuffer} buffer - Raw file data
      * @returns {PatternData} Parsed pattern data
@@ -287,7 +339,30 @@ const PatParser = (function() {
 
         // Parse header
         const numPatsX = view.getUint16(0, true);  // little-endian
-        const numPatsY = view.getUint16(2, true);
+
+        // Detect V1 vs V2: V2 has MSB set in byte 2 (>= 0x80)
+        const configHigh = bytes[2];
+        const isV2 = configHigh >= 0x80;
+
+        let headerVersion, numPatsY, generation_id, generationName, arena_id;
+
+        if (isV2) {
+            headerVersion = 2;
+            // Byte 2: [V][GGG][RRRR] — extract generation from bits 6-4
+            generation_id = (configHigh >> 4) & 0x07;
+            generationName = GENERATION_NAMES[generation_id] || 'unknown';
+            // Byte 3: Arena config ID
+            arena_id = bytes[3];
+            // NumPatsY not stored in V2, assume 1
+            numPatsY = 1;
+        } else {
+            headerVersion = 1;
+            numPatsY = view.getUint16(2, true);
+            generation_id = 0;
+            generationName = 'unspecified';
+            arena_id = 0;
+        }
+
         const gs_val_raw = bytes[4];
         const rowN = bytes[5];  // Panel rows
         const colN = bytes[6];  // Panel cols
@@ -327,9 +402,13 @@ const PatParser = (function() {
             }
         }
 
+        // Determine generation label for display
+        const genLabel = isV2 ? generationName : 'G4';
+
         // Console diagnostics
-        console.group('Pattern loaded (G4)');
-        console.log(`Generation: G4 (${G4_PANEL_SIZE}×${G4_PANEL_SIZE} panels)`);
+        console.group(`Pattern loaded (${genLabel})`);
+        console.log(`Generation: ${genLabel} (${G4_PANEL_SIZE}×${G4_PANEL_SIZE} panels)`);
+        console.log(`Header: V${headerVersion}${isV2 ? ` gen=${generationName} arena_id=${arena_id}` : ''}`);
         console.log(`Dimensions: ${rowN} rows × ${colN} cols = ${pixelRows}×${pixelCols} pixels`);
         console.log(`Frames: ${numFrames} (${numPatsX}×${numPatsY})`);
         console.log(`Grayscale: ${isGrayscale ? 'GS16 (4-bit, 0-15)' : 'GS2 (1-bit, 0-1)'}`);
@@ -338,7 +417,7 @@ const PatParser = (function() {
         console.groupEnd();
 
         return {
-            generation: 'G4',
+            generation: genLabel === 'unspecified' ? 'G4' : genLabel,
             gs_val,
             numFrames,
             numPatsX,
@@ -350,7 +429,10 @@ const PatParser = (function() {
             maxValue,
             frames,
             stretchValues,
-            panelSize: G4_PANEL_SIZE
+            panelSize: G4_PANEL_SIZE,
+            headerVersion,
+            generation_id,
+            arena_id
         };
     }
 
@@ -565,7 +647,10 @@ const PatParser = (function() {
         G6_PANEL_SIZE,
         G4_PANEL_SIZE,
         G6_GS2_PANEL_BYTES,
-        G6_GS16_PANEL_BYTES
+        G6_GS16_PANEL_BYTES,
+        G6_V1_HEADER_SIZE,
+        G6_V2_HEADER_SIZE,
+        GENERATION_NAMES
     };
 
     return api;

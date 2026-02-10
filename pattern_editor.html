@@ -15,7 +15,7 @@
     </script>
     <!-- arena-configs.js loaded as ES6 module to support dual-export pattern -->
     <script type="module">
-        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration } from './js/arena-configs.js';
+        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration, getArenaId, getArenaName, getGenerationId, getGenerationName } from './js/arena-configs.js';
         // Make available globally for other scripts
         window.STANDARD_CONFIGS = STANDARD_CONFIGS;
         window.PANEL_SPECS = PANEL_SPECS;
@@ -2003,6 +2003,7 @@
             <span id="statusDimensions">—</span>
             <span id="statusFrames">—</span>
             <span id="statusGsMode">—</span>
+            <span id="statusHeaderMeta" style="color: var(--text-dim);"></span>
             <span id="statusUnsaved" style="color: #ff4444; font-weight: bold;"></span>
         </div>
         <div class="arena-config">
@@ -2558,17 +2559,23 @@
                 return;
             }
 
-            // Convert state.pattern to format expected by PatEncoder
+            // Convert state.pattern to format expected by PatEncoder (V2 headers)
+            const gen = state.pattern.generation;
+            const configName = document.getElementById('arenaConfigStatus').value;
             const patternData = {
-                generation: state.pattern.generation,
+                generation: gen,
                 gs_val: state.pattern.gsMode,
                 numFrames: state.pattern.numFrames,
-                rowCount: Math.floor(state.pattern.pixelRows / PANEL_SPECS[state.pattern.generation].pixels_per_panel),
-                colCount: Math.floor(state.pattern.pixelCols / PANEL_SPECS[state.pattern.generation].pixels_per_panel),
+                rowCount: Math.floor(state.pattern.pixelRows / PANEL_SPECS[gen].pixels_per_panel),
+                colCount: Math.floor(state.pattern.pixelCols / PANEL_SPECS[gen].pixels_per_panel),
                 pixelRows: state.pattern.pixelRows,
                 pixelCols: state.pattern.pixelCols,
                 frames: state.pattern.frames,
-                stretchValues: state.pattern.stretchValues || new Array(state.pattern.numFrames).fill(1)
+                stretchValues: state.pattern.stretchValues || new Array(state.pattern.numFrames).fill(1),
+                // V2 header metadata
+                generation_id: getGenerationId(gen),
+                arena_id: configName ? getArenaId(gen, configName) : 0,
+                observer_id: 0
             };
 
             // Build filename with arena config prefix
@@ -5336,10 +5343,28 @@
                     `${state.pattern.numFrames} frame${state.pattern.numFrames !== 1 ? 's' : ''}`;
                 document.getElementById('statusGsMode').textContent =
                     state.pattern.gsMode === 2 ? 'GS2' : 'GS16';
+
+                // Show V2 header metadata if pattern was loaded from file
+                const metaEl = document.getElementById('statusHeaderMeta');
+                if (state.pattern.headerVersion >= 2) {
+                    const parts = [];
+                    const gen = state.pattern.generation;
+                    if (gen === 'G6') {
+                        const arenaName = getArenaName('G6', state.pattern.arena_id);
+                        parts.push(arenaName || `arena:${state.pattern.arena_id}`);
+                    } else if (state.pattern.arena_id > 0) {
+                        const arenaName = getArenaName(gen, state.pattern.arena_id);
+                        parts.push(arenaName || `arena:${state.pattern.arena_id}`);
+                    }
+                    metaEl.textContent = parts.length ? `[${parts.join(', ')}]` : '';
+                } else {
+                    metaEl.textContent = '';
+                }
             } else {
                 document.getElementById('statusDimensions').textContent = '—';
                 document.getElementById('statusFrames').textContent = '—';
                 document.getElementById('statusGsMode').textContent = '—';
+                document.getElementById('statusHeaderMeta').textContent = '';
             }
 
             document.getElementById('statusUnsaved').textContent = state.isDirty ? 'Unsaved*' : '';
