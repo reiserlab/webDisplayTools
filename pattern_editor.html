@@ -791,6 +791,45 @@
             color: var(--accent);
         }
 
+        /* ========================================
+           Preview Mode - Tool panels locked
+           ======================================== */
+        .tools-panel.preview-mode .tool-content {
+            position: relative;
+            pointer-events: none;
+            opacity: 0.45;
+        }
+        .tools-panel.preview-mode .tool-tabs {
+            pointer-events: auto;
+            opacity: 1;
+        }
+        .tools-panel.preview-mode .file-operations {
+            pointer-events: auto;
+            opacity: 1;
+        }
+        .generate-column.preview-mode .generate-btn-vertical {
+            pointer-events: none;
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        .preview-mode-banner {
+            display: none;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.75rem;
+            background: rgba(255, 152, 0, 0.15);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 4px;
+            color: var(--warning, #ff9800);
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-align: center;
+            letter-spacing: 0.5px;
+            pointer-events: auto;
+        }
+        .tools-panel.preview-mode .preview-mode-banner {
+            display: block;
+        }
+
         /* Right Panel - Viewer */
         .viewer-panel {
             flex: 1;
@@ -1446,6 +1485,9 @@
 
             <!-- Tool Content -->
             <div class="tool-content">
+                <div class="preview-mode-banner" id="previewModeBanner">
+                    PREVIEW MODE &mdash; Click "New" to create a pattern
+                </div>
                 <!-- Generate Tab -->
                 <div class="tool-pane active" id="generatePane">
                     <div class="section-title">Pattern Type</div>
@@ -2082,6 +2124,7 @@
                 sequence: [],      // Array of frame entries for animation mode
                 selectedIndex: -1  // Currently selected frame in sequence (-1 = none)
             },
+            previewMode: false,
             isDirty: false,
             filename: null,
             listeners: new Map()
@@ -2510,16 +2553,32 @@
                 state.isDirty = false;
                 state.editor.currentFrame = 0;
 
-                // Try to find matching arena config
-                const matchingConfig = PatParser.findMatchingConfig(pattern, STANDARD_CONFIGS);
+                // Resolve arena config: V2 header is authoritative, dimension-match is fallback
+                let matchingConfig = null;
+
+                if (pattern.headerVersion >= 2 && pattern.arena_id > 0) {
+                    const registryName = getArenaName(pattern.generation, pattern.arena_id);
+                    if (registryName && getConfig(registryName)) {
+                        matchingConfig = registryName;
+                        console.log(`Arena config from V2 header: ${registryName} (arena_id=${pattern.arena_id})`);
+                    } else {
+                        console.warn(`V2 arena_id=${pattern.arena_id} for ${pattern.generation} not in registry, falling back to dimension match`);
+                    }
+                }
+
+                if (!matchingConfig) {
+                    matchingConfig = PatParser.findMatchingConfig(pattern, STANDARD_CONFIGS);
+                }
+
                 if (matchingConfig) {
                     state.arena.configName = matchingConfig;
                     state.arena.config = getConfig(matchingConfig);
                     document.getElementById('arenaConfigStatus').value = matchingConfig;
                 }
 
-                // Lock arena config after loading pattern
+                // Lock arena config and enter preview mode
                 lockArenaConfig();
+                enterPreviewMode();
 
                 updateStatus();
                 renderCurrentViewer();
@@ -2629,6 +2688,9 @@
             if (state.isDirty) {
                 if (!confirm('Discard unsaved changes?')) return;
             }
+
+            // Exit preview mode if viewing a loaded pattern
+            exitPreviewMode();
 
             // Unlock arena config so user can choose different arena for new pattern
             unlockArenaConfig();
@@ -2937,6 +2999,11 @@
         }
 
         function handleGenerate() {
+            // Safety net: exit preview mode if somehow reached while previewing
+            if (state.previewMode) {
+                exitPreviewMode();
+            }
+
             const config = state.arena.config;
             if (!config) {
                 alert('Please select an arena configuration first');
@@ -5487,6 +5554,21 @@
             lockBtn.textContent = '🔓';
             lockBtn.classList.remove('locked');
             lockBtn.title = 'Lock arena config';
+        }
+
+        // ============================================
+        // Preview Mode (loaded pattern viewing)
+        // ============================================
+        function enterPreviewMode() {
+            state.previewMode = true;
+            document.querySelector('.tools-panel').classList.add('preview-mode');
+            document.querySelector('.generate-column').classList.add('preview-mode');
+        }
+
+        function exitPreviewMode() {
+            state.previewMode = false;
+            document.querySelector('.tools-panel').classList.remove('preview-mode');
+            document.querySelector('.generate-column').classList.remove('preview-mode');
         }
 
         function toggleArenaLock() {
