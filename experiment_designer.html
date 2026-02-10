@@ -719,15 +719,14 @@
 
 <!-- Footer -->
 <div class="app-footer">
-    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v1 | 2026-02-09 18:19 ET</p>
+    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v1 | 2026-02-09 20:41 ET</p>
 </div>
 
 <!-- Hidden file input for import -->
 <input type="file" id="yamlFileInput" accept=".yaml,.yml" style="display: none;">
 
-<script src="js/arena-configs.js"></script>
-<script>
-'use strict';
+<script type="module">
+import { STANDARD_CONFIGS, getConfig, getConfigsByGeneration } from './js/arena-configs.js';
 
 // ════════════════════════════════════════════════════
 // Data Model
@@ -1937,6 +1936,10 @@ document.addEventListener('keydown', function(e) {
 // ════════════════════════════════════════════════════
 
 init();
+// Auto-select first condition so editor is immediately useful
+selection = { type: 'condition', index: 0 };
+renderTimeline();
+renderEditor();
 </script>
 </body>
 </html>
