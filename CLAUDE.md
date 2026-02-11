@@ -1,5 +1,14 @@
 # Claude Code Guidelines for webDisplayTools
 
+## Scope of This File
+
+**CLAUDE.md** is for **how to work with the code** — architecture, patterns, gotchas, testing procedures, and coding conventions. It should NOT contain roadmap items, feature wishlists, or project planning.
+
+Roadmap and planning content belongs in:
+- **`docs/ROADMAP.md`** — roadmap, milestones, changelog, and open items
+
+**Review needed (future session):** Audit existing CLAUDE.md sections for roadmap content that has leaked in (e.g., "Future Improvements" lists, "Testing Required (Next Session)" checklists). Move planning items to the roadmap file and keep CLAUDE.md focused on technical reference.
+
 ## Versioning
 
 Use simple two-digit versions for all web tools (e.g., `v1`, `v2`, `v6`). No semantic versioning (1.0.0) needed.
@@ -53,6 +62,31 @@ When editing web tools, audit all buttons and controls in the modified code sect
 - Vanilla JavaScript preferred
 - Dependencies via CDN only (Three.js, etc.)
 - Web outputs must match MATLAB outputs exactly
+
+### Code Formatting
+
+This project uses **Prettier** for consistent JavaScript formatting. Configuration is in `.prettierrc`.
+
+**Setup:**
+```bash
+npm install           # Install Prettier (first time only)
+```
+
+**Style rules:**
+- Single quotes (`'string'`)
+- No trailing commas
+- 4-space indentation
+- 100 character print width
+- Semicolons required
+
+**Commands:**
+```bash
+npm run format        # Format all JS files
+npm run format:check  # Check formatting (for CI)
+npx prettier --write path/to/file.js  # Format single file
+```
+
+**Before committing:** Run `npm run format` on any modified JavaScript files to ensure consistent style.
 
 ### Shared Modules
 
@@ -348,6 +382,17 @@ When an ES6 `import` statement fails, the **entire** `<script type="module">` bl
 - Push fix immediately
 - Hard refresh on GitHub Pages to verify
 
+## Pattern Editor 3D Viewer Rules
+
+**CRITICAL: The 3D viewer MUST fully rebuild its geometry whenever the arena configuration changes or a new pattern is loaded.** This means:
+
+1. **Arena config changes** (dropdown selection, pattern load auto-detect) → call `threeViewer.reinit(config, specs)` to rebuild all panel/LED geometry
+2. **`_buildArena()` must NEVER reset the camera position** — only the initial `init()` call sets the camera to top-down. Rebuilds preserve the user's current view.
+3. **Track which arena config the 3D viewer was last built with** using `threeViewerArenaConfig`. Compare on every `init3DViewer()` call and reinit if stale.
+4. **If `init()` fails** (scene is null), destroy the viewer and retry on next attempt — never leave a half-initialized viewer that silently ignores all controls.
+
+These rules prevent stale geometry bugs where the 3D viewer shows an old arena after config changes.
+
 ## Pattern Editor Migration Plan
 
 The Pattern Editor is being developed in phases. The full migration plan is saved at:
@@ -390,6 +435,32 @@ The following UI improvements were made on 2026-02-02 and need testing on GitHub
    - [x] Test patterns still work (use G6_2x10 default)
 
 **GitHub Issue:** [#6 - additional web tools for making patterns](https://github.com/reiserlab/webDisplayTools/issues/6)
+
+## Experiment Designer
+
+### Architecture (v1 — 2026-02-10)
+- 3-zone layout: settings panel (280px left), condition editor (flex right), timeline (bottom strip)
+- Single `<script type="module">` importing from `js/arena-configs.js`
+- Custom YAML parser (`simpleYAMLParse`) — no external dependency required
+- Data model: `experiment` object with `experiment_info`, `arena_info`, `experiment_structure`, phases, and `conditions[]`
+
+### YAML Export
+- Generates protocol v1 with `trialParams` command name
+- Empty pattern fields export as `allOff` controller command
+- Phase structure: one `trialParams` command + one `wait` command per phase
+- Conditions wrapped in `block.conditions[].commands[]`
+
+### Key Implementation Notes
+- **Must use `<script type="module">`** to import `arena-configs.js` (bare `export` at end breaks regular `<script>` tags — this caused the initial "+ Add Condition" bug)
+- Mode 2 (Constant Rate): `gain` fixed at 0, `frame_rate` editable
+- Mode 4 (Closed-Loop): `frame_rate` fixed at 0, `gain` editable
+- All 7 trial parameters always included regardless of mode
+
+### Related Files
+- `experiment_designer.html` — Main tool
+- `experiment_designer_quickstart.html` — Step-by-step guide
+- `examples/simple_optomotor_protocol.yaml` — Test protocol
+- GitHub Issue: [#33](https://github.com/reiserlab/webDisplayTools/issues/33)
 
 ## Planning Best Practices
 

@@ -124,6 +124,9 @@ class ThreeViewer {
         // Build arena
         this._buildArena();
 
+        // Set initial camera to top-down view (only on first init)
+        this._resetCameraToTopDown();
+
         // Resize handler
         this._resizeHandler = () => this._onResize();
         window.addEventListener('resize', this._resizeHandler);
@@ -143,13 +146,15 @@ class ThreeViewer {
     }
 
     /**
-     * Reinitialize the viewer with a new arena configuration
+     * Reinitialize the viewer with a new arena configuration.
+     * Rebuilds geometry but preserves the current camera position/orientation.
      * @param {Object} arenaConfig - Arena configuration from arena-configs.js
      * @param {Object} panelSpecs - Panel specifications from arena-configs.js
      */
     reinit(arenaConfig, panelSpecs) {
         this.arenaConfig = arenaConfig;
         this.panelSpecs = panelSpecs;
+        // _buildArena preserves camera — only init() resets to top-down
         this._buildArena();
         this._updateLEDColors();
     }
@@ -252,6 +257,164 @@ class ThreeViewer {
     screenshot() {
         this.renderer.render(this.scene, this.camera);
         return this.renderer.domElement.toDataURL('image/png');
+    }
+
+    /**
+     * Set camera to a named view preset
+     * External views: camera outside arena looking in (like cube faces)
+     * Internal views: camera at arena center looking out toward display
+     * @param {string} preset - View preset name
+     */
+    setViewPreset(preset) {
+        if (!this.arenaConfig || !this.panelSpecs) return;
+
+        const arena = this.arenaConfig.arena;
+        const panelWidth = this.panelSpecs.panel_width_mm / 25.4;
+        const alpha = (2 * Math.PI) / arena.num_cols;
+        const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+        const viewDistance = cRadius * 3;
+        const midlineY = 0;
+
+        switch (preset) {
+            // External views (camera outside, looking in)
+            case 'top-down':
+                this.camera.position.set(0, viewDistance, 0.01);
+                this.controls.target.set(0, midlineY, 0);
+                break;
+            case 'bottom-up':
+                this.camera.position.set(0, -viewDistance, 0.01);
+                this.controls.target.set(0, midlineY, 0);
+                break;
+            case 'from-north':
+                this.camera.position.set(0, midlineY, -viewDistance);
+                this.controls.target.set(0, midlineY, 0);
+                break;
+            case 'from-east':
+                this.camera.position.set(viewDistance, midlineY, 0);
+                this.controls.target.set(0, midlineY, 0);
+                break;
+            case 'from-south':
+                this.camera.position.set(0, midlineY, viewDistance);
+                this.controls.target.set(0, midlineY, 0);
+                break;
+            case 'from-west':
+                this.camera.position.set(-viewDistance, midlineY, 0);
+                this.controls.target.set(0, midlineY, 0);
+                break;
+
+            // Internal views (camera at center, looking outward)
+            case 'fly-north':
+                this.camera.position.set(0, midlineY, 0);
+                this.controls.target.set(0, midlineY, -cRadius);
+                break;
+            case 'fly-east':
+                this.camera.position.set(0, midlineY, 0);
+                this.controls.target.set(cRadius, midlineY, 0);
+                break;
+            case 'fly-south':
+                this.camera.position.set(0, midlineY, 0);
+                this.controls.target.set(0, midlineY, cRadius);
+                break;
+            case 'fly-west':
+                this.camera.position.set(0, midlineY, 0);
+                this.controls.target.set(-cRadius, midlineY, 0);
+                break;
+        }
+        this.controls.update();
+    }
+
+    /**
+     * Set camera field of view
+     * @param {number} fov - FOV in degrees (30-120)
+     * @param {boolean} compensateDistance - Adjust camera distance to maintain apparent size
+     */
+    setFOV(fov, compensateDistance = false) {
+        const oldFOV = this.camera.fov;
+        this.camera.fov = fov;
+        this.camera.updateProjectionMatrix();
+
+        if (compensateDistance && oldFOV !== fov) {
+            const oldTan = Math.tan((oldFOV / 2) * Math.PI / 180);
+            const newTan = Math.tan((fov / 2) * Math.PI / 180);
+            const scale = oldTan / newTan;
+
+            const direction = new THREE.Vector3();
+            direction.subVectors(this.camera.position, this.controls.target);
+            direction.multiplyScalar(scale);
+            this.camera.position.copy(this.controls.target).add(direction);
+            this.controls.update();
+        }
+    }
+
+    /**
+     * Zoom in by moving camera closer to target
+     */
+    zoomIn() {
+        const direction = new THREE.Vector3();
+        direction.subVectors(this.camera.position, this.controls.target);
+        direction.multiplyScalar(0.8);
+        this.camera.position.copy(this.controls.target).add(direction);
+        this.controls.update();
+    }
+
+    /**
+     * Zoom out by moving camera farther from target
+     */
+    zoomOut() {
+        const direction = new THREE.Vector3();
+        direction.subVectors(this.camera.position, this.controls.target);
+        direction.multiplyScalar(1.25);
+        this.camera.position.copy(this.controls.target).add(direction);
+        this.controls.update();
+    }
+
+    /**
+     * Get arena statistics for display
+     * @returns {Object|null} Stats object or null if no arena config
+     */
+    getArenaStats() {
+        if (!this.arenaConfig || !this.panelSpecs) return null;
+
+        const arena = this.arenaConfig.arena;
+        const specs = this.panelSpecs;
+        const numCols = arena.num_cols;
+        const numRows = arena.num_rows;
+
+        const panelWidth = specs.panel_width_mm / 25.4;
+        const panelHeight = specs.panel_height_mm / 25.4;
+        const alpha = (2 * Math.PI) / numCols;
+        const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+        const arenaHeight = panelHeight * numRows;
+
+        // Installed columns (for partial arenas)
+        const installedCols = arena.columns_installed
+            ? arena.columns_installed.length
+            : numCols;
+        const totalPanels = installedCols * numRows;
+        const totalLEDs = totalPanels * specs.pixels_per_panel * specs.pixels_per_panel;
+
+        const azimuthPixels = numCols * specs.pixels_per_panel;
+        const verticalPixels = numRows * specs.pixels_per_panel;
+        const azimuthRes = 360 / azimuthPixels;
+
+        const halfAngleRad = Math.atan((arenaHeight / 2) / cRadius);
+        const totalVerticalDegrees = 2 * halfAngleRad * (180 / Math.PI);
+        const verticalRes = totalVerticalDegrees / verticalPixels;
+
+        const radiusMM = cRadius * 25.4;
+        const heightMM = arenaHeight * 25.4;
+
+        return {
+            columns: installedCols,
+            totalPanels,
+            innerRadius: radiusMM,
+            arenaHeight: heightMM,
+            totalLEDs,
+            azimuthRes,
+            verticalRes,
+            azimuthPixels,
+            verticalPixels
+        };
     }
 
     /**
@@ -429,9 +592,25 @@ class ThreeViewer {
 
             this.arenaGroup.add(columnGroup);
         }
+        // Note: camera position is NOT reset here — preserves user's current view.
+        // Only init() calls _resetCameraToTopDown() for the initial view.
+    }
 
-        // Position camera to view arena (top-down view)
+    /**
+     * Reset camera to top-down view based on current arena dimensions.
+     * Called only on initial init(), not on rebuilds or reinits.
+     */
+    _resetCameraToTopDown() {
+        const config = this.arenaConfig;
+        const specs = this.panelSpecs;
+        if (!config || !specs) return;
+
+        const arena = config.arena;
+        const panelWidth = specs.panel_width_mm / 25.4;
+        const alpha = (2 * Math.PI) / arena.num_cols;
+        const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
         const viewDistance = cRadius * 3;
+
         this.camera.position.set(0, viewDistance, 0.01);
         this.controls.target.set(0, 0, 0);
         this.controls.update();

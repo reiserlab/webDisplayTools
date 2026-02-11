@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Experiment Designer Quick Start - PanelDisplayTools</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0f1419;
+            --surface: #1a1f26;
+            --border: #2d3640;
+            --text: #e6edf3;
+            --text-dim: #8b949e;
+            --accent: #00e676;
+            --hover: #00c853;
+        }
+
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--bg);
+            color: var(--text);
+            padding: 2rem;
+            line-height: 1.7;
+        }
+
+        .container {
+            max-width: 820px;
+            margin: 0 auto;
+        }
+
+        .nav-link {
+            display: inline-block;
+            color: var(--text-dim);
+            text-decoration: none;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+            transition: color 0.2s;
+        }
+
+        .nav-link:hover { color: var(--accent); }
+
+        h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 2px solid var(--border);
+        }
+
+        h2 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-top: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        h3 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        p {
+            margin-bottom: 0.75rem;
+            font-size: 0.88rem;
+        }
+
+        .step {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+            position: relative;
+            padding-left: 3.5rem;
+        }
+
+        .step-number {
+            position: absolute;
+            left: 1rem;
+            top: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--accent);
+        }
+
+        .step strong {
+            color: var(--accent);
+        }
+
+        .step p {
+            margin-bottom: 0.4rem;
+        }
+
+        .step p:last-child {
+            margin-bottom: 0;
+        }
+
+        code {
+            background: rgba(0, 230, 118, 0.1);
+            color: var(--accent);
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+        }
+
+        .hint {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            font-style: italic;
+        }
+
+        .layout-diagram {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1.25rem;
+            margin: 1.25rem 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            line-height: 1.5;
+            white-space: pre;
+            overflow-x: auto;
+            color: var(--text-dim);
+        }
+
+        .layout-diagram .hl {
+            color: var(--accent);
+        }
+
+        .key-list {
+            list-style: none;
+            margin: 0.5rem 0 1rem;
+        }
+
+        .key-list li {
+            padding: 0.3rem 0;
+            font-size: 0.85rem;
+        }
+
+        .key-list li code {
+            min-width: 100px;
+            display: inline-block;
+        }
+
+        .tip-box {
+            background: rgba(255, 152, 0, 0.08);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
+            font-size: 0.82rem;
+            color: #ff9800;
+        }
+
+        .tip-box strong { color: #ffb74d; }
+
+        .example-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1rem 1.25rem;
+            margin: 1rem 0;
+        }
+
+        .example-box h4 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.75rem;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        a:hover { color: var(--hover); }
+
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 2px solid var(--border);
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { color: var(--hover); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="experiment_designer.html" class="nav-link">&larr; Back to Experiment Designer</a>
+
+        <h1>Experiment Designer Quick Start</h1>
+        <p class="subtitle">Learn the interface and create your first protocol in minutes.</p>
+
+        <h2>Interface overview</h2>
+
+        <div class="layout-diagram"><span class="hl">Top bar</span>: &larr; Back | Experiment Designer | [Import YAML] [Export YAML]
+&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;
+<span class="hl">Left panel</span>        &#9474;  <span class="hl">Right panel</span>
+                  &#9474;
+  Experiment      &#9474;    Condition / Phase Editor
+  Arena Config    &#9474;    (appears when you click a
+  Structure       &#9474;     block on the timeline)
+  Phases          &#9474;
+&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;
+<span class="hl">Timeline</span>: [+ Add] | summary          [&#8722;] [+] [Fit]
+  <span class="hl">PRE</span> &#9474; <span class="hl">Cond 1</span> &#9474; <span class="hl">ITI</span> &#9474; <span class="hl">Cond 2</span> &#9474; <span class="hl">ITI</span> &#9474; <span class="hl">Cond 3</span> &#9474; <span class="hl">POST</span>
+  0s     5s    10s    15s    20s    25s</div>
+
+        <p>The page has three zones:</p>
+        <ul class="key-list">
+            <li><strong>Left panel</strong> &mdash; experiment settings, arena choice, repetitions, phase toggles</li>
+            <li><strong>Right panel</strong> &mdash; editor for whichever block you click on the timeline</li>
+            <li><strong>Bottom timeline</strong> &mdash; your experiment sequence. Green = conditions, gray = phases (PRE/POST), dark = inter-trial intervals (ITI)</li>
+        </ul>
+
+        <h2>Walkthrough: create an optomotor protocol</h2>
+
+        <p>We will build a simple experiment with 3 stimulus conditions, 3 repetitions, randomized, with inter-trial intervals.</p>
+
+        <div class="step">
+            <span class="step-number">1</span>
+            <p><strong>Set experiment metadata</strong> (left panel, top section)</p>
+            <p>Name: <code>Optomotor Response Test</code></p>
+            <p>Author: your name</p>
+            <p>Pattern Library: the directory where your <code>.pat</code> files live, e.g. <code>/Users/you/patterns/</code></p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">2</span>
+            <p><strong>Choose arena configuration</strong> (left panel, Arena section)</p>
+            <p>Select <code>G4.1 CCW (2&times;12) - 360&deg;</code> from the dropdown.</p>
+            <p class="hint">The summary below the dropdown confirms: G4.1 &mdash; 2 rows &times; 12 cols</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">3</span>
+            <p><strong>Set repetitions and randomization</strong> (left panel, Structure section)</p>
+            <p>Repetitions: <code>3</code></p>
+            <p>Check <strong>Randomize order</strong></p>
+            <p class="hint">The summary bar on the timeline updates to show total trials and duration.</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">4</span>
+            <p><strong>Enable phases</strong> (left panel, Phases section)</p>
+            <p>Check <strong>Pretrial</strong> &mdash; a gray PRE block appears at the start of the timeline</p>
+            <p>Check <strong>Intertrial</strong> &mdash; dark ITI blocks appear between conditions</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">5</span>
+            <p><strong>Edit the first condition</strong> (right panel)</p>
+            <p>The first condition is auto-selected on page load. In the right panel:</p>
+            <p>Condition ID: <code>rightward_grating</code></p>
+            <p>Pattern File: <code>pat0002_rightward_grating.pat</code></p>
+            <p>Duration: <code>5</code> seconds</p>
+            <p>Mode: <code>Constant Rate</code>, Frame Rate: <code>60</code></p>
+            <p class="hint">The timeline block updates in real time as you type.</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">6</span>
+            <p><strong>Add a second condition</strong></p>
+            <p>Click <strong>+ Add Condition</strong> in the timeline toolbar. A new green block appears and is auto-selected.</p>
+            <p>Condition ID: <code>leftward_grating</code></p>
+            <p>Pattern File: <code>pat0003_leftward_grating.pat</code></p>
+            <p>Duration: <code>5</code>, Frame Rate: <code>60</code></p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">7</span>
+            <p><strong>Add a dark control condition</strong></p>
+            <p>Click <strong>+ Add Condition</strong> again.</p>
+            <p>Condition ID: <code>dark_control</code></p>
+            <p>Leave <strong>Pattern File empty</strong> &mdash; this generates an <code>allOff</code> command in the YAML</p>
+            <p>Duration: <code>3</code> seconds</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">8</span>
+            <p><strong>Configure the pretrial phase</strong></p>
+            <p>Click the gray <strong>PRE</strong> block on the timeline.</p>
+            <p>Pattern File: <code>pat0001_test_grid.pat</code></p>
+            <p>Duration: <code>2</code>, Wait After: <code>0.5</code></p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">9</span>
+            <p><strong>Configure the inter-trial interval</strong></p>
+            <p>Click any dark <strong>ITI</strong> block on the timeline.</p>
+            <p>Pattern File: <code>pat0004_uniform_gray.pat</code></p>
+            <p>Duration: <code>2</code>, Wait After: <code>0.5</code></p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">10</span>
+            <p><strong>Reorder conditions (optional)</strong></p>
+            <p>Drag any green condition block and drop it onto another to swap positions.</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">11</span>
+            <p><strong>Export your protocol</strong></p>
+            <p>Click <strong>Export YAML</strong> (or press <code>Ctrl+E</code>). A <code>.yaml</code> file downloads.</p>
+            <p class="hint">The file is a valid protocol v1 YAML ready for MATLAB execution.</p>
+        </div>
+
+        <h2>Importing an existing protocol</h2>
+
+        <p>Click <strong>Import YAML</strong> in the top bar and select any protocol v1 <code>.yaml</code> file. The editor populates with all settings, conditions, and phases from the file. You can then modify and re-export.</p>
+
+        <div class="tip-box">
+            <strong>Try it now:</strong> Download the example file <a href="examples/simple_optomotor_protocol.yaml">simple_optomotor_protocol.yaml</a> and import it into the designer to see the walkthrough above pre-filled.
+        </div>
+
+        <h2>Timeline controls</h2>
+
+        <ul class="key-list">
+            <li><code>+ Add Condition</code> adds a new condition block and selects it</li>
+            <li><code>&times;</code> button on a condition block removes it (visible on hover, needs 2+ conditions)</li>
+            <li><strong>Drag</strong> a green condition block onto another to reorder</li>
+            <li><code>&minus;</code> / <code>+</code> zoom the timeline in and out</li>
+            <li><code>Fit</code> scales the timeline to fit the window</li>
+        </ul>
+
+        <h2>Keyboard shortcuts</h2>
+
+        <ul class="key-list">
+            <li><code>Ctrl+E</code> Export YAML</li>
+            <li><code>Delete</code> Remove selected condition (when not typing in a field)</li>
+        </ul>
+
+        <h2>Key concepts</h2>
+
+        <h3>Conditions vs. Trials</h3>
+        <p>You define <strong>conditions</strong> (unique stimulus configurations). The experiment runs each condition &times; repetitions, optionally in random order. The actual sequence of <strong>trials</strong> is shown in the summary bar.</p>
+
+        <h3>Phases</h3>
+        <p><strong>Pretrial</strong> runs once before all trials. <strong>Intertrial</strong> runs between every trial. <strong>Posttrial</strong> runs once after all trials complete. Each phase has one pattern command + an optional wait.</p>
+
+        <h3>Modes</h3>
+        <p><strong>Constant Rate</strong> (mode 2): pattern plays at a fixed frame rate. Set <code>Frame Rate</code> in fps.</p>
+        <p><strong>Closed-Loop</strong> (mode 4): pattern responds to analog input. Set <code>Gain</code> value.</p>
+        <p>The irrelevant parameter is automatically dimmed and disabled.</p>
+
+        <h3>Empty pattern = allOff</h3>
+        <p>If you leave the Pattern File field empty for a condition, the YAML export generates an <code>allOff</code> controller command. This is useful for dark control conditions.</p>
+
+        <footer>
+            <p><a href="experiment_designer.html">Experiment Designer</a> | <a href="index.html">PanelDisplayTools</a> | <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">GitHub</a></p>
+        </footer>
+    </div>
+</body>
+</html>

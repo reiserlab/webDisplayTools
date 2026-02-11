@@ -16,107 +16,1931 @@
             --text-dim: #8b949e;
             --accent: #00e676;
             --hover: #00c853;
+            --warning: #ff9800;
+            --block-condition: rgba(0, 230, 118, 0.18);
+            --block-condition-border: rgba(0, 230, 118, 0.5);
+            --block-phase: rgba(139, 148, 158, 0.12);
+            --block-phase-border: rgba(139, 148, 158, 0.35);
+            --block-iti: rgba(45, 54, 64, 0.4);
+            --block-iti-border: rgba(45, 54, 64, 0.7);
+            --block-selected: rgba(0, 230, 118, 0.85);
         }
 
         body {
             font-family: 'IBM Plex Mono', monospace;
             background: var(--bg);
             color: var(--text);
-            padding: 2rem;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
+        /* ── Top Bar ─────────────────────────────── */
+        .top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.6rem 1.25rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
         }
 
-        header {
-            margin-bottom: 2rem;
-            border-bottom: 2px solid var(--border);
-            padding-bottom: 1.5rem;
+        .top-bar-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
         }
 
-        .nav-link {
-            display: inline-block;
+        .back-link {
             color: var(--text-dim);
             text-decoration: none;
-            margin-bottom: 1rem;
+            font-size: 0.85rem;
             transition: color 0.2s;
         }
 
-        .nav-link:hover {
-            color: var(--accent);
-        }
+        .back-link:hover { color: var(--accent); }
 
-        h1 {
+        .top-bar h1 {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 2rem;
+            font-size: 1.1rem;
             font-weight: 700;
             color: var(--accent);
         }
 
-        .subtitle {
-            color: var(--text-dim);
-            font-size: 0.85rem;
-            margin-top: 0.5rem;
+        .top-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
         }
 
-        .placeholder {
-            padding: 60px 40px;
+        /* ── Buttons ─────────────────────────────── */
+        .btn {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.45rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
             background: var(--surface);
-            border: 2px dashed var(--border);
-            text-align: center;
-            margin-top: 30px;
-            border-radius: 8px;
-        }
-
-        .placeholder h2 {
             color: var(--text);
-            margin-bottom: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
         }
 
-        .placeholder p {
+        .btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg);
+            border-color: var(--accent);
+        }
+
+        .btn-primary:hover {
+            background: var(--hover);
+            border-color: var(--hover);
+            color: var(--bg);
+        }
+
+        .btn-danger {
             color: var(--text-dim);
+        }
+
+        .btn-danger:hover {
+            border-color: #f44336;
+            color: #f44336;
+        }
+
+        .btn-small {
+            font-size: 0.7rem;
+            padding: 0.3rem 0.6rem;
+        }
+
+        /* ── Main Content ────────────────────────── */
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        /* ── Left Panel: Settings ────────────────── */
+        .settings-panel {
+            width: 280px;
+            flex-shrink: 0;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        .panel-section {
+            margin-bottom: 1.25rem;
+        }
+
+        .panel-section-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.4rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .field {
+            margin-bottom: 0.75rem;
+        }
+
+        .field label {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            margin-bottom: 0.25rem;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .field input,
+        .field select {
+            width: 100%;
+            padding: 0.4rem 0.6rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.82rem;
+        }
+
+        .field input:focus,
+        .field select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .field select {
+            cursor: pointer;
+        }
+
+        .field-row {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .field-row .field { flex: 1; }
+
+        .arena-summary {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 0.25rem;
+        }
+
+        .checkbox-field {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+        }
+
+        .checkbox-field input[type="checkbox"] {
+            width: auto;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .checkbox-field span {
+            font-size: 0.82rem;
+            color: var(--text);
+        }
+
+        .phase-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.4rem 0.6rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            margin-bottom: 0.4rem;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .phase-toggle:hover {
+            border-color: var(--text-dim);
+        }
+
+        .phase-toggle.active {
+            border-color: var(--accent);
+        }
+
+        .phase-toggle span {
+            font-size: 0.8rem;
+        }
+
+        .phase-toggle input[type="checkbox"] {
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        /* ── Right Panel: Editor ─────────────────── */
+        .editor-panel {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .editor-placeholder {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--text-dim);
+        }
+
+        .editor-placeholder p {
+            font-size: 0.9rem;
             line-height: 1.6;
         }
 
-        footer {
-            text-align: center;
-            margin-top: 3rem;
-            padding-top: 2rem;
-            border-top: 2px solid var(--border);
-            color: var(--text-dim);
+        .editor-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .editor-header h2 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .editor-form {
+            max-width: 560px;
+        }
+
+        .editor-form .field-row {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .editor-form .field {
+            margin-bottom: 1rem;
+        }
+
+        .editor-form .field label {
+            font-size: 0.75rem;
+            margin-bottom: 0.3rem;
+        }
+
+        .editor-form .field input,
+        .editor-form .field select {
+            padding: 0.5rem 0.75rem;
             font-size: 0.85rem;
         }
 
-        footer a {
-            color: var(--accent);
-            text-decoration: none;
-            transition: color 0.2s;
+        .mode-info {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            margin-top: 0.2rem;
+            font-style: italic;
         }
 
-        footer a:hover {
-            color: var(--hover);
+        .editor-section-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 0.75rem;
+            margin-bottom: 0.75rem;
         }
+
+        /* ── Bottom: Timeline ────────────────────── */
+        .timeline-container {
+            flex-shrink: 0;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+        }
+
+        .timeline-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.4rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.75rem;
+        }
+
+        .timeline-toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .timeline-summary {
+            color: var(--text-dim);
+        }
+
+        .timeline-summary strong {
+            color: var(--text);
+        }
+
+        .timeline-toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .zoom-controls button {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-family: 'IBM Plex Mono', monospace;
+            transition: all 0.2s;
+        }
+
+        .zoom-controls button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .zoom-btn-fit {
+            width: auto !important;
+            padding: 0 6px;
+            font-size: 0.65rem !important;
+        }
+
+        .timeline-scroll {
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 0.75rem 1rem 0;
+        }
+
+        .timeline-track {
+            display: flex;
+            align-items: stretch;
+            min-height: 56px;
+            gap: 2px;
+            min-width: min-content;
+        }
+
+        .timeline-block {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-width: 48px;
+            border-radius: 4px;
+            padding: 0.35rem 0.5rem;
+            cursor: pointer;
+            transition: all 0.15s;
+            border: 2px solid transparent;
+            user-select: none;
+        }
+
+        .timeline-block:hover {
+            filter: brightness(1.15);
+        }
+
+        .timeline-block.selected {
+            border-color: var(--block-selected);
+            box-shadow: 0 0 8px rgba(0, 230, 118, 0.25);
+        }
+
+        .timeline-block.condition {
+            background: var(--block-condition);
+            border-color: var(--block-condition-border);
+        }
+
+        .timeline-block.condition.selected {
+            border-color: var(--block-selected);
+        }
+
+        .timeline-block.phase {
+            background: var(--block-phase);
+            border-color: var(--block-phase-border);
+        }
+
+        .timeline-block.phase.selected {
+            border-color: var(--block-selected);
+        }
+
+        .timeline-block.iti {
+            background: var(--block-iti);
+            border-color: var(--block-iti-border);
+            min-width: 36px;
+        }
+
+        .timeline-block.iti.selected {
+            border-color: var(--block-selected);
+        }
+
+        .timeline-block .block-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.68rem;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+
+        .timeline-block.condition .block-label {
+            color: var(--accent);
+        }
+
+        .timeline-block.phase .block-label {
+            color: var(--text-dim);
+        }
+
+        .timeline-block.iti .block-label {
+            color: var(--text-dim);
+            font-size: 0.62rem;
+        }
+
+        .timeline-block .block-duration {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            margin-top: 0.15rem;
+        }
+
+        .timeline-block .block-pattern {
+            font-size: 0.58rem;
+            color: var(--text-dim);
+            opacity: 0.7;
+            margin-top: 0.1rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+
+        .timeline-block.dragging {
+            opacity: 0.4;
+        }
+
+        .timeline-block.drag-over {
+            border-color: var(--warning) !important;
+            box-shadow: 0 0 8px rgba(255, 152, 0, 0.3);
+        }
+
+        /* Drag handle indicator on condition blocks */
+        .timeline-block.condition::before {
+            content: '\u2807';
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+
+        .timeline-block.condition:hover::before {
+            opacity: 0.6;
+        }
+
+        /* Remove button on condition blocks */
+        .block-remove-btn {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            width: 14px;
+            height: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            background: transparent;
+            border: none;
+            border-radius: 2px;
+            cursor: pointer;
+            opacity: 0;
+            transition: all 0.15s;
+            line-height: 1;
+        }
+
+        .timeline-block:hover .block-remove-btn {
+            opacity: 0.6;
+        }
+
+        .block-remove-btn:hover {
+            opacity: 1 !important;
+            color: #f44336;
+        }
+
+        /* Time ruler */
+        .time-ruler {
+            position: relative;
+            padding: 0.25rem 1rem 0.5rem;
+            font-size: 0.62rem;
+            color: var(--text-dim);
+            min-width: min-content;
+            height: 20px;
+        }
+
+        .time-ruler-label {
+            position: absolute;
+            transform: translateX(-50%);
+            white-space: nowrap;
+        }
+
+        /* ── Footer ──────────────────────────────── */
+        .app-footer {
+            text-align: center;
+            padding: 0.4rem 1rem;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+            flex-shrink: 0;
+        }
+
+        .app-footer p {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+
+        .app-footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .app-footer a:hover { color: var(--hover); }
+
+        /* ── Scrollbar styling ───────────────────── */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <a href="index.html" class="nav-link">← Back to Tools</a>
-            <h1>Experiment Designer</h1>
-            <p class="subtitle">Design and configure experiments with visual stimuli sequences and parameter management</p>
-        </header>
 
-        <div class="placeholder">
-            <h2>Coming Soon</h2>
-            <p>This tool will allow you to design experiments with visual stimuli sequences,<br>
-            configure experimental parameters, and export experiment definitions.</p>
+<!-- Top Bar -->
+<div class="top-bar">
+    <div class="top-bar-left">
+        <a href="index.html" class="back-link" title="Back to PanelDisplayTools home">&#8592; Back</a>
+        <h1>Experiment Designer</h1>
+    </div>
+    <div class="top-bar-right">
+        <a href="experiment_designer_quickstart.html" class="btn" title="Step-by-step guide for using the Experiment Designer">Quick Start</a>
+        <button class="btn" id="importBtn" title="Load an existing YAML protocol file">Import YAML</button>
+        <button class="btn btn-primary" id="exportBtn" title="Export experiment as YAML protocol file (Ctrl+E)">Export YAML</button>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="main-content">
+
+    <!-- Left Panel: Settings -->
+    <div class="settings-panel">
+        <div class="panel-section">
+            <div class="panel-section-title">Experiment</div>
+            <div class="field">
+                <label for="expName">Name</label>
+                <input type="text" id="expName" placeholder="My experiment" title="Experiment name (required)">
+            </div>
+            <div class="field">
+                <label for="expAuthor">Author</label>
+                <input type="text" id="expAuthor" placeholder="Researcher name" title="Author name">
+            </div>
+            <div class="field">
+                <label for="patternLibrary">Pattern Library</label>
+                <input type="text" id="patternLibrary" placeholder="/path/to/patterns/" title="Directory containing pattern files. Patterns are resolved relative to this path.">
+            </div>
         </div>
 
-        <footer>
-            <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | PanelDisplayTools</p>
-        </footer>
+        <div class="panel-section">
+            <div class="panel-section-title">Arena</div>
+            <div class="field">
+                <label for="arenaConfig">Configuration</label>
+                <select id="arenaConfig" title="Select arena hardware configuration"></select>
+            </div>
+            <div class="arena-summary" id="arenaSummary"></div>
+        </div>
+
+        <div class="panel-section">
+            <div class="panel-section-title">Structure</div>
+            <div class="field">
+                <label for="repetitions">Repetitions</label>
+                <input type="number" id="repetitions" min="1" max="999" value="1" title="Number of times to repeat all conditions">
+            </div>
+            <div class="checkbox-field" title="Randomize condition order within each repetition">
+                <input type="checkbox" id="randomize">
+                <span>Randomize order</span>
+            </div>
+            <div class="field" id="seedField" style="display: none;">
+                <label for="seed">Random Seed</label>
+                <input type="number" id="seed" placeholder="auto" title="Fixed seed for reproducibility. Leave empty for random seed.">
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="panel-section-title">Phases</div>
+            <label class="phase-toggle" id="pretrialToggle" title="Execute commands once before all trials begin">
+                <span>Pretrial</span>
+                <input type="checkbox" id="pretrialEnabled">
+            </label>
+            <label class="phase-toggle" id="intertrialToggle" title="Execute commands between each trial">
+                <span>Intertrial</span>
+                <input type="checkbox" id="intertrialEnabled">
+            </label>
+            <label class="phase-toggle" id="posttrialToggle" title="Execute commands once after all trials complete">
+                <span>Posttrial</span>
+                <input type="checkbox" id="posttrialEnabled">
+            </label>
+        </div>
     </div>
+
+    <!-- Right Panel: Editor -->
+    <div class="editor-panel" id="editorPanel">
+        <div class="editor-placeholder" id="editorPlaceholder">
+            <div>
+                <p>Select a block on the timeline to edit its properties.</p>
+                <p style="margin-top: 0.75rem; font-size: 0.8rem;">Click a green condition block or a gray phase block below.</p>
+            </div>
+        </div>
+        <div id="editorContent" style="display: none;"></div>
+    </div>
+</div>
+
+<!-- Timeline -->
+<div class="timeline-container">
+    <div class="timeline-toolbar">
+        <div class="timeline-toolbar-left">
+            <button class="btn btn-small" id="addConditionBtn" title="Add a new stimulus condition to the experiment">+ Add Condition</button>
+            <span class="timeline-summary" id="timelineSummary"></span>
+        </div>
+        <div class="timeline-toolbar-right">
+            <div class="zoom-controls">
+                <button id="zoomOut" title="Zoom out timeline">&#8722;</button>
+                <button id="zoomIn" title="Zoom in timeline">+</button>
+                <button id="zoomFit" class="zoom-btn-fit" title="Fit entire timeline to view">Fit</button>
+            </div>
+        </div>
+    </div>
+    <div class="timeline-scroll" id="timelineScroll">
+        <div class="timeline-track" id="timelineTrack"></div>
+        <div class="time-ruler" id="timeRuler"></div>
+    </div>
+</div>
+
+<!-- Footer -->
+<div class="app-footer">
+    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v1 | 2026-02-09 21:09 ET</p>
+</div>
+
+<!-- Hidden file input for import -->
+<input type="file" id="yamlFileInput" accept=".yaml,.yml" style="display: none;">
+
+<script type="module">
+import { STANDARD_CONFIGS, getConfig, getConfigsByGeneration } from './js/arena-configs.js';
+
+// ════════════════════════════════════════════════════
+// Data Model
+// ════════════════════════════════════════════════════
+
+const DEFAULT_CONDITION = {
+    id: '',
+    pattern: '',
+    duration: 5,
+    mode: 2,
+    frame_rate: 60,
+    frame_index: 1,
+    gain: 0
+};
+
+const DEFAULT_PHASE = {
+    include: false,
+    pattern: '',
+    duration: 2,
+    mode: 2,
+    frame_rate: 60,
+    frame_index: 1,
+    gain: 0,
+    wait: 0.5
+};
+
+let experiment = {
+    experiment_info: {
+        name: '',
+        author: '',
+        date_created: new Date().toISOString().split('T')[0],
+        pattern_library: ''
+    },
+    arena_config_key: 'G41_2x12_ccw',
+    arena_info: {
+        generation: 'G4.1',
+        num_rows: 2,
+        num_cols: 12
+    },
+    experiment_structure: {
+        repetitions: 1,
+        randomization: { enabled: false, seed: null, method: 'block' }
+    },
+    pretrial: { ...DEFAULT_PHASE },
+    intertrial: { ...DEFAULT_PHASE },
+    posttrial: { ...DEFAULT_PHASE },
+    conditions: [
+        { ...DEFAULT_CONDITION, id: 'condition_1' }
+    ]
+};
+
+// Selection: { type: 'condition'|'pretrial'|'intertrial'|'posttrial', index?: number }
+let selection = null;
+
+// Timeline zoom: pixels per second
+let pxPerSecond = 40;
+
+// ════════════════════════════════════════════════════
+// Initialization
+// ════════════════════════════════════════════════════
+
+function init() {
+    populateArenaDropdown();
+    bindSettingsEvents();
+    bindToolbarEvents();
+    syncSettingsToUI();
+    renderTimeline();
+    updateSummary();
+}
+
+function populateArenaDropdown() {
+    var select = document.getElementById('arenaConfig');
+    var groups = getConfigsByGeneration();
+
+    for (var gen in groups) {
+        var configs = groups[gen];
+        if (configs.length === 0) continue;
+        var optgroup = document.createElement('optgroup');
+        optgroup.label = gen;
+        for (var ci = 0; ci < configs.length; ci++) {
+            var opt = document.createElement('option');
+            opt.value = configs[ci].name;
+            opt.textContent = configs[ci].label;
+            optgroup.appendChild(opt);
+        }
+        select.appendChild(optgroup);
+    }
+
+    select.value = experiment.arena_config_key;
+    updateArenaSummary();
+}
+
+function updateArenaSummary() {
+    var config = getConfig(experiment.arena_config_key);
+    if (config) {
+        var a = config.arena;
+        document.getElementById('arenaSummary').textContent =
+            a.generation + ' \u2014 ' + a.num_rows + ' rows \u00d7 ' + a.num_cols + ' cols';
+    }
+}
+
+function syncSettingsToUI() {
+    document.getElementById('expName').value = experiment.experiment_info.name;
+    document.getElementById('expAuthor').value = experiment.experiment_info.author;
+    document.getElementById('patternLibrary').value = experiment.experiment_info.pattern_library;
+    document.getElementById('arenaConfig').value = experiment.arena_config_key;
+    document.getElementById('repetitions').value = experiment.experiment_structure.repetitions;
+    document.getElementById('randomize').checked = experiment.experiment_structure.randomization.enabled;
+    document.getElementById('seedField').style.display =
+        experiment.experiment_structure.randomization.enabled ? '' : 'none';
+    document.getElementById('pretrialEnabled').checked = experiment.pretrial.include;
+    document.getElementById('intertrialEnabled').checked = experiment.intertrial.include;
+    document.getElementById('posttrialEnabled').checked = experiment.posttrial.include;
+
+    updatePhaseToggleStyle('pretrialToggle', experiment.pretrial.include);
+    updatePhaseToggleStyle('intertrialToggle', experiment.intertrial.include);
+    updatePhaseToggleStyle('posttrialToggle', experiment.posttrial.include);
+}
+
+function updatePhaseToggleStyle(id, active) {
+    document.getElementById(id).classList.toggle('active', active);
+}
+
+// ════════════════════════════════════════════════════
+// Settings Bindings
+// ════════════════════════════════════════════════════
+
+function bindSettingsEvents() {
+    document.getElementById('expName').addEventListener('input', function(e) {
+        experiment.experiment_info.name = e.target.value;
+    });
+    document.getElementById('expAuthor').addEventListener('input', function(e) {
+        experiment.experiment_info.author = e.target.value;
+    });
+    document.getElementById('patternLibrary').addEventListener('input', function(e) {
+        experiment.experiment_info.pattern_library = e.target.value;
+    });
+
+    document.getElementById('arenaConfig').addEventListener('change', function(e) {
+        experiment.arena_config_key = e.target.value;
+        var config = getConfig(e.target.value);
+        if (config) {
+            experiment.arena_info = {
+                generation: config.arena.generation,
+                num_rows: config.arena.num_rows,
+                num_cols: config.arena.num_cols
+            };
+        }
+        updateArenaSummary();
+    });
+
+    document.getElementById('repetitions').addEventListener('input', function(e) {
+        var val = parseInt(e.target.value);
+        if (val >= 1) {
+            experiment.experiment_structure.repetitions = val;
+            updateSummary();
+        }
+    });
+
+    document.getElementById('randomize').addEventListener('change', function(e) {
+        experiment.experiment_structure.randomization.enabled = e.target.checked;
+        document.getElementById('seedField').style.display = e.target.checked ? '' : 'none';
+    });
+
+    document.getElementById('seed').addEventListener('input', function(e) {
+        var val = e.target.value.trim();
+        experiment.experiment_structure.randomization.seed = val === '' ? null : parseInt(val);
+    });
+
+    var phases = ['pretrial', 'intertrial', 'posttrial'];
+    phases.forEach(function(phase) {
+        document.getElementById(phase + 'Enabled').addEventListener('change', function(e) {
+            experiment[phase].include = e.target.checked;
+            updatePhaseToggleStyle(phase + 'Toggle', e.target.checked);
+            renderTimeline();
+            updateSummary();
+            if (!e.target.checked && selection && selection.type === phase) {
+                selection = null;
+                renderEditor();
+            }
+        });
+    });
+}
+
+// ════════════════════════════════════════════════════
+// Toolbar Bindings
+// ════════════════════════════════════════════════════
+
+function bindToolbarEvents() {
+    document.getElementById('addConditionBtn').addEventListener('click', addCondition);
+    document.getElementById('exportBtn').addEventListener('click', downloadYAML);
+    document.getElementById('importBtn').addEventListener('click', function() {
+        document.getElementById('yamlFileInput').click();
+    });
+    document.getElementById('yamlFileInput').addEventListener('change', handleYAMLImport);
+    document.getElementById('zoomIn').addEventListener('click', function() {
+        pxPerSecond = Math.min(200, pxPerSecond * 1.3);
+        renderTimeline();
+    });
+    document.getElementById('zoomOut').addEventListener('click', function() {
+        pxPerSecond = Math.max(8, pxPerSecond / 1.3);
+        renderTimeline();
+    });
+    document.getElementById('zoomFit').addEventListener('click', zoomToFit);
+}
+
+// ════════════════════════════════════════════════════
+// Conditions
+// ════════════════════════════════════════════════════
+
+function addCondition() {
+    var n = experiment.conditions.length + 1;
+    experiment.conditions.push({
+        id: 'condition_' + n,
+        pattern: '',
+        duration: 5,
+        mode: 2,
+        frame_rate: 60,
+        frame_index: 1,
+        gain: 0
+    });
+    selection = { type: 'condition', index: experiment.conditions.length - 1 };
+    renderTimeline();
+    renderEditor();
+    updateSummary();
+}
+
+function removeCondition(index) {
+    if (experiment.conditions.length <= 1) return;
+    experiment.conditions.splice(index, 1);
+    if (selection && selection.type === 'condition') {
+        if (selection.index === index) {
+            selection = null;
+        } else if (selection.index > index) {
+            selection.index--;
+        }
+    }
+    renderTimeline();
+    renderEditor();
+    updateSummary();
+}
+
+function reorderConditions(fromIndex, toIndex) {
+    var moved = experiment.conditions.splice(fromIndex, 1)[0];
+    experiment.conditions.splice(toIndex, 0, moved);
+    if (selection && selection.type === 'condition') {
+        if (selection.index === fromIndex) {
+            selection.index = toIndex;
+        } else if (fromIndex < selection.index && toIndex >= selection.index) {
+            selection.index--;
+        } else if (fromIndex > selection.index && toIndex <= selection.index) {
+            selection.index++;
+        }
+    }
+    renderTimeline();
+    renderEditor();
+}
+
+// ════════════════════════════════════════════════════
+// Timeline
+// ════════════════════════════════════════════════════
+
+function getTimelineBlocks() {
+    var blocks = [];
+
+    if (experiment.pretrial.include) {
+        blocks.push({
+            type: 'pretrial',
+            label: 'PRE',
+            duration: phaseDuration(experiment.pretrial),
+            pattern: experiment.pretrial.pattern
+        });
+    }
+
+    for (var i = 0; i < experiment.conditions.length; i++) {
+        if (i > 0 && experiment.intertrial.include) {
+            blocks.push({
+                type: 'intertrial',
+                label: 'ITI',
+                duration: phaseDuration(experiment.intertrial),
+                pattern: experiment.intertrial.pattern
+            });
+        }
+        var cond = experiment.conditions[i];
+        blocks.push({
+            type: 'condition',
+            index: i,
+            label: cond.id || ('Cond ' + (i + 1)),
+            duration: cond.duration,
+            pattern: cond.pattern
+        });
+    }
+
+    if (experiment.posttrial.include) {
+        blocks.push({
+            type: 'posttrial',
+            label: 'POST',
+            duration: phaseDuration(experiment.posttrial),
+            pattern: experiment.posttrial.pattern
+        });
+    }
+
+    return blocks;
+}
+
+function phaseDuration(phase) {
+    return phase.duration + (phase.wait || 0);
+}
+
+function renderTimeline() {
+    var track = document.getElementById('timelineTrack');
+    var ruler = document.getElementById('timeRuler');
+    track.innerHTML = '';
+    ruler.innerHTML = '';
+
+    var blocks = getTimelineBlocks();
+    var totalDuration = 0;
+    for (var b = 0; b < blocks.length; b++) {
+        totalDuration += blocks[b].duration;
+    }
+    if (totalDuration <= 0) totalDuration = 1;
+
+    var totalWidth = totalDuration * pxPerSecond;
+
+    for (var bi = 0; bi < blocks.length; bi++) {
+        var block = blocks[bi];
+        var el = document.createElement('div');
+        var blockWidth = Math.max(48, block.duration * pxPerSecond);
+        el.style.width = blockWidth + 'px';
+
+        var cssClass = 'timeline-block';
+        if (block.type === 'condition') {
+            cssClass += ' condition';
+            el.draggable = true;
+            el.dataset.conditionIndex = block.index;
+        } else if (block.type === 'intertrial') {
+            cssClass += ' iti';
+        } else {
+            cssClass += ' phase';
+        }
+
+        // Check selection
+        if (selection) {
+            if (block.type === 'condition' && selection.type === 'condition' && selection.index === block.index) {
+                cssClass += ' selected';
+            } else if (block.type === selection.type && block.type !== 'condition') {
+                cssClass += ' selected';
+            }
+        }
+
+        el.className = cssClass;
+
+        // Label
+        var label = document.createElement('div');
+        label.className = 'block-label';
+        label.textContent = block.label;
+        el.appendChild(label);
+
+        // Duration
+        var dur = document.createElement('div');
+        dur.className = 'block-duration';
+        dur.textContent = formatDuration(block.duration);
+        el.appendChild(dur);
+
+        // Pattern name
+        if (block.pattern) {
+            var pat = document.createElement('div');
+            pat.className = 'block-pattern';
+            pat.textContent = block.pattern.split('/').pop();
+            el.appendChild(pat);
+        }
+
+        // Remove button for conditions (only if > 1)
+        if (block.type === 'condition' && experiment.conditions.length > 1) {
+            var removeBtn = document.createElement('button');
+            removeBtn.className = 'block-remove-btn';
+            removeBtn.innerHTML = '&#215;';
+            removeBtn.title = 'Remove this condition';
+            removeBtn.dataset.removeIndex = block.index;
+            el.appendChild(removeBtn);
+        }
+
+        // Tooltip
+        if (block.type === 'condition') {
+            el.title = block.label + ': Click to edit, drag to reorder';
+        } else if (block.type === 'intertrial') {
+            el.title = 'Inter-trial interval: Click to edit';
+        } else {
+            el.title = block.label + ': Click to edit';
+        }
+
+        // Store block info for event delegation
+        el.dataset.blockType = block.type;
+        if (block.type === 'condition') {
+            el.dataset.blockIndex = block.index;
+        }
+
+        track.appendChild(el);
+    }
+
+    // Event delegation for the track
+    track.onclick = handleTrackClick;
+    track.ondragstart = handleDragStart;
+    track.ondragend = handleDragEnd;
+    track.ondragover = handleDragOver;
+    track.ondragleave = handleDragLeave;
+    track.ondrop = handleDrop;
+
+    // Time ruler
+    renderTimeRuler(totalDuration, totalWidth);
+}
+
+function handleTrackClick(e) {
+    // Check if it's a remove button
+    var removeBtn = e.target.closest('.block-remove-btn');
+    if (removeBtn) {
+        e.stopPropagation();
+        removeCondition(parseInt(removeBtn.dataset.removeIndex));
+        return;
+    }
+
+    var block = e.target.closest('.timeline-block');
+    if (!block) return;
+
+    var type = block.dataset.blockType;
+    if (type === 'condition') {
+        selection = { type: 'condition', index: parseInt(block.dataset.blockIndex) };
+    } else {
+        selection = { type: type };
+    }
+    renderTimeline();
+    renderEditor();
+}
+
+function handleDragStart(e) {
+    var block = e.target.closest('.timeline-block.condition');
+    if (!block) return;
+    e.dataTransfer.setData('text/plain', block.dataset.conditionIndex);
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(function() { block.classList.add('dragging'); }, 0);
+}
+
+function handleDragEnd(e) {
+    var block = e.target.closest('.timeline-block');
+    if (block) block.classList.remove('dragging');
+    var overs = document.querySelectorAll('.drag-over');
+    for (var i = 0; i < overs.length; i++) overs[i].classList.remove('drag-over');
+}
+
+function handleDragOver(e) {
+    var block = e.target.closest('.timeline-block.condition');
+    if (!block) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    block.classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+    var block = e.target.closest('.timeline-block.condition');
+    if (block) block.classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+    var block = e.target.closest('.timeline-block.condition');
+    if (!block) return;
+    e.preventDefault();
+    block.classList.remove('drag-over');
+    var fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+    var toIndex = parseInt(block.dataset.conditionIndex);
+    if (fromIndex !== toIndex) {
+        reorderConditions(fromIndex, toIndex);
+    }
+}
+
+function renderTimeRuler(totalDuration, totalWidth) {
+    var ruler = document.getElementById('timeRuler');
+    ruler.style.width = (totalWidth + 20) + 'px';
+
+    var tickInterval;
+    if (pxPerSecond >= 80) tickInterval = 1;
+    else if (pxPerSecond >= 30) tickInterval = 2;
+    else if (pxPerSecond >= 15) tickInterval = 5;
+    else tickInterval = 10;
+
+    for (var t = 0; t <= totalDuration; t += tickInterval) {
+        var lbl = document.createElement('span');
+        lbl.className = 'time-ruler-label';
+        lbl.style.left = (t * pxPerSecond) + 'px';
+        lbl.textContent = formatDuration(t);
+        ruler.appendChild(lbl);
+    }
+}
+
+function formatDuration(seconds) {
+    if (seconds < 60) {
+        return seconds % 1 === 0 ? seconds + 's' : seconds.toFixed(1) + 's';
+    }
+    var m = Math.floor(seconds / 60);
+    var s = seconds % 60;
+    var sStr = s % 1 === 0 ? String(s) : s.toFixed(1);
+    return m + ':' + (s < 10 ? '0' : '') + sStr;
+}
+
+function zoomToFit() {
+    var blocks = getTimelineBlocks();
+    var totalDuration = 0;
+    for (var i = 0; i < blocks.length; i++) totalDuration += blocks[i].duration;
+    if (totalDuration <= 0) totalDuration = 1;
+
+    var scrollWidth = document.getElementById('timelineScroll').clientWidth - 40;
+    pxPerSecond = Math.max(8, Math.min(200, scrollWidth / totalDuration));
+    renderTimeline();
+}
+
+// ════════════════════════════════════════════════════
+// Summary
+// ════════════════════════════════════════════════════
+
+function updateSummary() {
+    var nCond = experiment.conditions.length;
+    var reps = experiment.experiment_structure.repetitions;
+    var totalTrials = nCond * reps;
+
+    // Compute expanded duration
+    var condDuration = 0;
+    for (var i = 0; i < experiment.conditions.length; i++) {
+        condDuration += experiment.conditions[i].duration;
+    }
+    var itiDuration = experiment.intertrial.include ? phaseDuration(experiment.intertrial) : 0;
+    var preDuration = experiment.pretrial.include ? phaseDuration(experiment.pretrial) : 0;
+    var postDuration = experiment.posttrial.include ? phaseDuration(experiment.posttrial) : 0;
+
+    var expandedDuration = preDuration +
+        (condDuration * reps) +
+        (itiDuration * (totalTrials - 1)) +
+        postDuration;
+
+    var summary = document.getElementById('timelineSummary');
+    summary.innerHTML = '<strong>' + nCond + '</strong> condition' + (nCond !== 1 ? 's' : '') + ' \u00d7 ' +
+        '<strong>' + reps + '</strong> rep' + (reps !== 1 ? 's' : '') + ' = ' +
+        '<strong>' + totalTrials + '</strong> trial' + (totalTrials !== 1 ? 's' : '') + ' \u2014 ' +
+        'Total: <strong>' + formatDuration(expandedDuration) + '</strong>';
+}
+
+// ════════════════════════════════════════════════════
+// Editor Panel
+// ════════════════════════════════════════════════════
+
+function renderEditor() {
+    var placeholder = document.getElementById('editorPlaceholder');
+    var content = document.getElementById('editorContent');
+
+    if (!selection) {
+        placeholder.style.display = 'flex';
+        content.style.display = 'none';
+        return;
+    }
+
+    placeholder.style.display = 'none';
+    content.style.display = 'block';
+
+    if (selection.type === 'condition') {
+        renderConditionEditor(experiment.conditions[selection.index], selection.index);
+    } else {
+        renderPhaseEditor(selection.type);
+    }
+}
+
+function renderConditionEditor(cond, index) {
+    var content = document.getElementById('editorContent');
+    var isMode4 = cond.mode === 4;
+    var removeHtml = experiment.conditions.length > 1
+        ? '<button class="btn btn-danger btn-small" id="editorRemoveBtn" title="Remove this condition">Remove</button>'
+        : '';
+
+    content.innerHTML =
+        '<div class="editor-header">' +
+            '<h2>Condition ' + (index + 1) + '</h2>' +
+            removeHtml +
+        '</div>' +
+        '<div class="editor-form">' +
+            '<div class="field">' +
+                '<label for="condId">Condition ID</label>' +
+                '<input type="text" id="condId" value="' + escapeAttr(cond.id) + '" ' +
+                    'placeholder="e.g. vertical_bars_right" ' +
+                    'title="Unique identifier for this condition (used in YAML and trial log)">' +
+            '</div>' +
+
+            '<div class="editor-section-label">Arena Command</div>' +
+
+            '<div class="field">' +
+                '<label for="condPattern">Pattern File</label>' +
+                '<input type="text" id="condPattern" value="' + escapeAttr(cond.pattern) + '" ' +
+                    'placeholder="pattern_file.pat" ' +
+                    'title="Pattern filename (resolved relative to Pattern Library path)">' +
+            '</div>' +
+
+            '<div class="field-row">' +
+                '<div class="field">' +
+                    '<label for="condDuration">Duration (s)</label>' +
+                    '<input type="number" id="condDuration" min="0.1" step="0.1" value="' + cond.duration + '" ' +
+                        'title="How long to display this pattern (seconds)">' +
+                '</div>' +
+                '<div class="field">' +
+                    '<label for="condMode">Mode</label>' +
+                    '<select id="condMode" title="Display mode: Constant Rate plays at fixed FPS, Closed-Loop responds to input">' +
+                        '<option value="2"' + (cond.mode === 2 ? ' selected' : '') + '>Constant Rate</option>' +
+                        '<option value="4"' + (cond.mode === 4 ? ' selected' : '') + '>Closed-Loop</option>' +
+                    '</select>' +
+                '</div>' +
+            '</div>' +
+
+            '<div class="field-row">' +
+                '<div class="field" id="frameRateField" style="' + (isMode4 ? 'opacity: 0.35' : '') + '">' +
+                    '<label for="condFrameRate">Frame Rate (fps)</label>' +
+                    '<input type="number" id="condFrameRate" min="0" max="200" value="' + cond.frame_rate + '"' +
+                        (isMode4 ? ' disabled' : '') +
+                        ' title="Frames per second (Constant Rate mode only)">' +
+                    (isMode4 ? '<div class="mode-info">Not used in Closed-Loop mode</div>' : '') +
+                '</div>' +
+                '<div class="field" id="gainField" style="' + (!isMode4 ? 'opacity: 0.35' : '') + '">' +
+                    '<label for="condGain">Gain</label>' +
+                    '<input type="number" id="condGain" value="' + cond.gain + '"' +
+                        (!isMode4 ? ' disabled' : '') +
+                        ' title="Closed-loop gain value (Closed-Loop mode only)">' +
+                    (!isMode4 ? '<div class="mode-info">Not used in Constant Rate mode</div>' : '') +
+                '</div>' +
+            '</div>' +
+
+            '<div class="field">' +
+                '<label for="condFrameIndex">Starting Frame Index</label>' +
+                '<input type="number" id="condFrameIndex" min="1" value="' + cond.frame_index + '" ' +
+                    'title="Which frame to start displaying (1-based)">' +
+            '</div>' +
+        '</div>';
+
+    // Bind events
+    document.getElementById('condId').addEventListener('input', function(e) {
+        cond.id = e.target.value;
+        renderTimeline();
+    });
+    document.getElementById('condPattern').addEventListener('input', function(e) {
+        cond.pattern = e.target.value;
+        renderTimeline();
+    });
+    document.getElementById('condDuration').addEventListener('input', function(e) {
+        var val = parseFloat(e.target.value);
+        if (val > 0) {
+            cond.duration = val;
+            renderTimeline();
+            updateSummary();
+        }
+    });
+    document.getElementById('condMode').addEventListener('change', function(e) {
+        cond.mode = parseInt(e.target.value);
+        if (cond.mode === 2) { cond.gain = 0; }
+        else { cond.frame_rate = 0; }
+        renderEditor();
+    });
+    document.getElementById('condFrameRate').addEventListener('input', function(e) {
+        cond.frame_rate = parseInt(e.target.value) || 0;
+    });
+    document.getElementById('condGain').addEventListener('input', function(e) {
+        cond.gain = parseInt(e.target.value) || 0;
+    });
+    document.getElementById('condFrameIndex').addEventListener('input', function(e) {
+        var val = parseInt(e.target.value);
+        if (val >= 1) cond.frame_index = val;
+    });
+
+    var removeBtn = document.getElementById('editorRemoveBtn');
+    if (removeBtn) {
+        removeBtn.addEventListener('click', function() {
+            removeCondition(index);
+        });
+    }
+}
+
+function renderPhaseEditor(phaseType) {
+    var phase = experiment[phaseType];
+    var content = document.getElementById('editorContent');
+    var phaseLabels = { pretrial: 'Pretrial', intertrial: 'Intertrial', posttrial: 'Posttrial' };
+    var label = phaseLabels[phaseType];
+    var isMode4 = phase.mode === 4;
+
+    content.innerHTML =
+        '<div class="editor-header">' +
+            '<h2>' + label + '</h2>' +
+        '</div>' +
+        '<div class="editor-form">' +
+            '<div class="editor-section-label">Arena Command</div>' +
+
+            '<div class="field">' +
+                '<label for="phasePattern">Pattern File</label>' +
+                '<input type="text" id="phasePattern" value="' + escapeAttr(phase.pattern) + '" ' +
+                    'placeholder="pattern_file.pat" ' +
+                    'title="Pattern filename for this phase">' +
+            '</div>' +
+
+            '<div class="field-row">' +
+                '<div class="field">' +
+                    '<label for="phaseDuration">Duration (s)</label>' +
+                    '<input type="number" id="phaseDuration" min="0" step="0.1" value="' + phase.duration + '" ' +
+                        'title="Pattern display duration (seconds)">' +
+                '</div>' +
+                '<div class="field">' +
+                    '<label for="phaseWait">Wait After (s)</label>' +
+                    '<input type="number" id="phaseWait" min="0" step="0.1" value="' + phase.wait + '" ' +
+                        'title="Pause after pattern display (seconds)">' +
+                '</div>' +
+            '</div>' +
+
+            '<div class="field-row">' +
+                '<div class="field">' +
+                    '<label for="phaseMode">Mode</label>' +
+                    '<select id="phaseMode" title="Display mode">' +
+                        '<option value="2"' + (phase.mode === 2 ? ' selected' : '') + '>Constant Rate</option>' +
+                        '<option value="4"' + (phase.mode === 4 ? ' selected' : '') + '>Closed-Loop</option>' +
+                    '</select>' +
+                '</div>' +
+                '<div class="field">' +
+                    '<label for="phaseFrameIndex">Start Frame</label>' +
+                    '<input type="number" id="phaseFrameIndex" min="1" value="' + phase.frame_index + '" ' +
+                        'title="Starting frame index (1-based)">' +
+                '</div>' +
+            '</div>' +
+
+            '<div class="field-row">' +
+                '<div class="field" style="' + (isMode4 ? 'opacity: 0.35' : '') + '">' +
+                    '<label for="phaseFrameRate">Frame Rate</label>' +
+                    '<input type="number" id="phaseFrameRate" min="0" max="200" value="' + phase.frame_rate + '"' +
+                        (isMode4 ? ' disabled' : '') +
+                        ' title="Frames per second (Constant Rate mode only)">' +
+                '</div>' +
+                '<div class="field" style="' + (!isMode4 ? 'opacity: 0.35' : '') + '">' +
+                    '<label for="phaseGain">Gain</label>' +
+                    '<input type="number" id="phaseGain" value="' + phase.gain + '"' +
+                        (!isMode4 ? ' disabled' : '') +
+                        ' title="Closed-loop gain (Closed-Loop mode only)">' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+
+    // Bind events
+    document.getElementById('phasePattern').addEventListener('input', function(e) {
+        phase.pattern = e.target.value;
+        renderTimeline();
+    });
+
+    bindPhaseField('phaseDuration', phase, 'duration', function(v) {
+        var n = parseFloat(v); return n >= 0 ? n : null;
+    });
+    bindPhaseField('phaseWait', phase, 'wait', function(v) {
+        var n = parseFloat(v); return n >= 0 ? n : null;
+    });
+    bindPhaseField('phaseFrameIndex', phase, 'frame_index', function(v) {
+        var n = parseInt(v); return n >= 1 ? n : null;
+    });
+    bindPhaseField('phaseFrameRate', phase, 'frame_rate', function(v) {
+        var n = parseInt(v); return !isNaN(n) ? n : null;
+    });
+    bindPhaseField('phaseGain', phase, 'gain', function(v) {
+        var n = parseInt(v); return !isNaN(n) ? n : null;
+    });
+
+    document.getElementById('phaseMode').addEventListener('change', function(e) {
+        phase.mode = parseInt(e.target.value);
+        if (phase.mode === 2) { phase.gain = 0; }
+        else { phase.frame_rate = 0; }
+        renderEditor();
+    });
+}
+
+function bindPhaseField(elementId, phase, field, parser) {
+    document.getElementById(elementId).addEventListener('input', function(e) {
+        var val = parser(e.target.value);
+        if (val !== null) {
+            phase[field] = val;
+            renderTimeline();
+            updateSummary();
+        }
+    });
+}
+
+function escapeAttr(str) {
+    return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+// ════════════════════════════════════════════════════
+// YAML Export
+// ════════════════════════════════════════════════════
+
+function generateYAML() {
+    var exp = experiment;
+    var lines = [];
+
+    lines.push('# Protocol Version 1');
+    lines.push('# Generated by Experiment Designer \u2014 ' + new Date().toISOString());
+    lines.push('');
+    lines.push('version: 1');
+    lines.push('');
+
+    // Experiment info
+    lines.push('experiment_info:');
+    lines.push('  name: ' + yamlStr(exp.experiment_info.name || 'Untitled Experiment'));
+    lines.push('  date_created: ' + yamlStr(exp.experiment_info.date_created));
+    lines.push('  author: ' + yamlStr(exp.experiment_info.author));
+    lines.push('  pattern_library: ' + yamlStr(exp.experiment_info.pattern_library));
+    lines.push('');
+
+    // Arena info
+    lines.push('arena_info:');
+    lines.push('  num_rows: ' + exp.arena_info.num_rows);
+    lines.push('  num_cols: ' + exp.arena_info.num_cols);
+    lines.push('  generation: ' + yamlStr(exp.arena_info.generation));
+    lines.push('');
+
+    // Experiment structure
+    lines.push('experiment_structure:');
+    lines.push('  repetitions: ' + exp.experiment_structure.repetitions);
+    lines.push('  randomization:');
+    lines.push('    enabled: ' + exp.experiment_structure.randomization.enabled);
+    lines.push('    seed: ' + (exp.experiment_structure.randomization.seed === null ? 'null' : exp.experiment_structure.randomization.seed));
+    lines.push('    method: "block"');
+    lines.push('');
+
+    // Pretrial
+    lines.push('pretrial:');
+    lines.push('  include: ' + exp.pretrial.include);
+    if (exp.pretrial.include) {
+        lines.push('  commands:');
+        appendTrialCommand(lines, exp.pretrial, 2);
+        if (exp.pretrial.wait > 0) {
+            appendWaitCommand(lines, exp.pretrial.wait, 2);
+        }
+    }
+    lines.push('');
+
+    // Block
+    lines.push('block:');
+    lines.push('  conditions:');
+    for (var i = 0; i < exp.conditions.length; i++) {
+        var cond = exp.conditions[i];
+        lines.push('    - id: ' + yamlStr(cond.id || 'condition_' + (i + 1)));
+        lines.push('      commands:');
+        appendTrialCommand(lines, cond, 4);
+    }
+    lines.push('');
+
+    // Intertrial
+    lines.push('intertrial:');
+    lines.push('  include: ' + exp.intertrial.include);
+    if (exp.intertrial.include) {
+        lines.push('  commands:');
+        appendTrialCommand(lines, exp.intertrial, 2);
+        if (exp.intertrial.wait > 0) {
+            appendWaitCommand(lines, exp.intertrial.wait, 2);
+        }
+    }
+    lines.push('');
+
+    // Posttrial
+    lines.push('posttrial:');
+    lines.push('  include: ' + exp.posttrial.include);
+    if (exp.posttrial.include) {
+        lines.push('  commands:');
+        appendTrialCommand(lines, exp.posttrial, 2);
+        if (exp.posttrial.wait > 0) {
+            appendWaitCommand(lines, exp.posttrial.wait, 2);
+        }
+    }
+
+    return lines.join('\n') + '\n';
+}
+
+function appendTrialCommand(lines, data, indentLevel) {
+    var ind = repeat('  ', indentLevel);
+    if (!data.pattern) {
+        lines.push(ind + '- type: "controller"');
+        lines.push(ind + '  command_name: "allOff"');
+        return;
+    }
+    lines.push(ind + '- type: "controller"');
+    lines.push(ind + '  command_name: "trialParams"');
+    lines.push(ind + '  pattern: ' + yamlStr(data.pattern));
+    lines.push(ind + '  pattern_ID: 1');
+    lines.push(ind + '  duration: ' + data.duration);
+    lines.push(ind + '  mode: ' + data.mode);
+    lines.push(ind + '  frame_index: ' + data.frame_index);
+    lines.push(ind + '  frame_rate: ' + data.frame_rate);
+    lines.push(ind + '  gain: ' + data.gain);
+}
+
+function appendWaitCommand(lines, duration, indentLevel) {
+    var ind = repeat('  ', indentLevel);
+    lines.push(ind + '- type: "wait"');
+    lines.push(ind + '  duration: ' + duration);
+}
+
+function repeat(str, n) {
+    var result = '';
+    for (var i = 0; i < n; i++) result += str;
+    return result;
+}
+
+function yamlStr(str) {
+    if (str === null || str === undefined || str === '') return '""';
+    str = String(str);
+    if (/[:#\{\}\[\],&\*\?|>!'"%@`\n]/.test(str) || str.trim() !== str) {
+        return '"' + str.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+    }
+    return '"' + str + '"';
+}
+
+function downloadYAML() {
+    var yaml = generateYAML();
+    var name = experiment.experiment_info.name || 'experiment';
+    var filename = name.replace(/[^a-zA-Z0-9_\-]/g, '_').toLowerCase() + '_protocol.yaml';
+
+    var blob = new Blob([yaml], { type: 'text/yaml' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ════════════════════════════════════════════════════
+// YAML Import
+// ════════════════════════════════════════════════════
+
+function handleYAMLImport(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+
+    var reader = new FileReader();
+    reader.onload = function(evt) {
+        try {
+            parseAndLoadYAML(evt.target.result);
+        } catch (err) {
+            alert('Failed to parse YAML: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+}
+
+function parseAndLoadYAML(text) {
+    var data = simpleYAMLParse(text);
+
+    if (data.experiment_info) {
+        experiment.experiment_info.name = data.experiment_info.name || '';
+        experiment.experiment_info.author = data.experiment_info.author || '';
+        experiment.experiment_info.date_created = data.experiment_info.date_created || '';
+        experiment.experiment_info.pattern_library = data.experiment_info.pattern_library || '';
+    }
+
+    if (data.arena_info) {
+        experiment.arena_info.generation = data.arena_info.generation || 'G4.1';
+        experiment.arena_info.num_rows = parseInt(data.arena_info.num_rows) || 2;
+        experiment.arena_info.num_cols = parseInt(data.arena_info.num_cols) || 12;
+        matchArenaConfig();
+    }
+
+    if (data.experiment_structure) {
+        experiment.experiment_structure.repetitions = parseInt(data.experiment_structure.repetitions) || 1;
+        if (data.experiment_structure.randomization) {
+            experiment.experiment_structure.randomization.enabled =
+                data.experiment_structure.randomization.enabled === true ||
+                data.experiment_structure.randomization.enabled === 'true';
+            var seedVal = data.experiment_structure.randomization.seed;
+            experiment.experiment_structure.randomization.seed =
+                (seedVal === 'null' || seedVal == null) ? null : parseInt(seedVal);
+        }
+    }
+
+    // Load phases
+    var phases = ['pretrial', 'intertrial', 'posttrial'];
+    for (var pi = 0; pi < phases.length; pi++) {
+        var phaseName = phases[pi];
+        if (data[phaseName]) {
+            experiment[phaseName].include =
+                data[phaseName].include === true || data[phaseName].include === 'true';
+            if (data[phaseName].commands && Array.isArray(data[phaseName].commands)) {
+                var cmds = data[phaseName].commands;
+                var trialCmd = null;
+                var waitCmd = null;
+                for (var ci = 0; ci < cmds.length; ci++) {
+                    if (cmds[ci].type === 'controller' && cmds[ci].pattern) trialCmd = cmds[ci];
+                    if (cmds[ci].type === 'wait') waitCmd = cmds[ci];
+                }
+                if (trialCmd) {
+                    experiment[phaseName].pattern = trialCmd.pattern || '';
+                    experiment[phaseName].duration = parseFloat(trialCmd.duration) || 2;
+                    experiment[phaseName].mode = parseInt(trialCmd.mode) || 2;
+                    experiment[phaseName].frame_rate = parseInt(trialCmd.frame_rate) || 60;
+                    experiment[phaseName].frame_index = parseInt(trialCmd.frame_index) || 1;
+                    experiment[phaseName].gain = parseInt(trialCmd.gain) || 0;
+                }
+                if (waitCmd) {
+                    experiment[phaseName].wait = parseFloat(waitCmd.duration) || 0;
+                }
+            }
+        }
+    }
+
+    // Load conditions
+    if (data.block && data.block.conditions && Array.isArray(data.block.conditions)) {
+        experiment.conditions = [];
+        for (var i = 0; i < data.block.conditions.length; i++) {
+            var condData = data.block.conditions[i];
+            var condCmds = condData.commands || [];
+            var trialC = null;
+            for (var j = 0; j < condCmds.length; j++) {
+                if (condCmds[j].type === 'controller' && condCmds[j].pattern) {
+                    trialC = condCmds[j];
+                    break;
+                }
+            }
+            experiment.conditions.push({
+                id: condData.id || 'condition_' + (i + 1),
+                pattern: trialC ? (trialC.pattern || '') : '',
+                duration: trialC ? (parseFloat(trialC.duration) || 5) : 5,
+                mode: trialC ? (parseInt(trialC.mode) || 2) : 2,
+                frame_rate: trialC ? (parseInt(trialC.frame_rate) || 60) : 60,
+                frame_index: trialC ? (parseInt(trialC.frame_index) || 1) : 1,
+                gain: trialC ? (parseInt(trialC.gain) || 0) : 0
+            });
+        }
+        if (experiment.conditions.length === 0) {
+            experiment.conditions = [{ id: 'condition_1', pattern: '', duration: 5, mode: 2, frame_rate: 60, frame_index: 1, gain: 0 }];
+        }
+    }
+
+    selection = null;
+    syncSettingsToUI();
+    renderTimeline();
+    renderEditor();
+    updateSummary();
+    zoomToFit();
+}
+
+function matchArenaConfig() {
+    var ai = experiment.arena_info;
+    for (var name in STANDARD_CONFIGS) {
+        var a = STANDARD_CONFIGS[name].arena;
+        if (a.generation === ai.generation && a.num_rows === ai.num_rows && a.num_cols === ai.num_cols) {
+            experiment.arena_config_key = name;
+            document.getElementById('arenaConfig').value = name;
+            updateArenaSummary();
+            return;
+        }
+    }
+}
+
+// Minimal YAML parser for protocol v1 files
+function simpleYAMLParse(text) {
+    var lines = text.split('\n');
+    var i = 0;
+
+    function getIndent(line) {
+        var m = line.match(/^(\s*)/);
+        return m ? m[1].length : 0;
+    }
+
+    function parseValue(raw) {
+        if (raw === undefined || raw === '') return '';
+        raw = raw.trim();
+        if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+            return raw.slice(1, -1);
+        }
+        if (raw === 'null' || raw === '~') return null;
+        if (raw === 'true') return true;
+        if (raw === 'false') return false;
+        var num = Number(raw);
+        if (!isNaN(num) && raw !== '') return num;
+        return raw;
+    }
+
+    function parseBlock(baseIndent) {
+        var obj = {};
+        while (i < lines.length) {
+            var line = lines[i];
+            if (line.trim() === '' || line.trim().startsWith('#')) { i++; continue; }
+            var indent = getIndent(line);
+            if (indent < baseIndent) break;
+            if (indent > baseIndent) { i++; continue; }
+
+            var trimmed = line.trim();
+            if (trimmed.startsWith('- ')) break;
+
+            var kvMatch = trimmed.match(/^([^:]+?):\s*(.*)?$/);
+            if (!kvMatch) { i++; continue; }
+
+            var key = kvMatch[1].trim();
+            var valRaw = (kvMatch[2] || '').trim();
+
+            if (valRaw === '' || valRaw === undefined) {
+                i++;
+                if (i < lines.length) {
+                    var nextLine = lines[i];
+                    if (nextLine && nextLine.trim() !== '' && !nextLine.trim().startsWith('#')) {
+                        var nextIndent = getIndent(nextLine);
+                        if (nextIndent > indent) {
+                            if (nextLine.trim().startsWith('- ')) {
+                                obj[key] = parseList(nextIndent);
+                            } else {
+                                obj[key] = parseBlock(nextIndent);
+                            }
+                        }
+                    }
+                }
+            } else {
+                obj[key] = parseValue(valRaw);
+                i++;
+            }
+        }
+        return obj;
+    }
+
+    function parseList(baseIndent) {
+        var arr = [];
+        while (i < lines.length) {
+            var line = lines[i];
+            if (line.trim() === '' || line.trim().startsWith('#')) { i++; continue; }
+            var indent = getIndent(line);
+            if (indent < baseIndent) break;
+
+            var trimmed = line.trim();
+            if (!trimmed.startsWith('- ')) { i++; continue; }
+
+            var itemContent = trimmed.slice(2).trim();
+            var kvMatch = itemContent.match(/^([^:]+?):\s*(.*)?$/);
+
+            if (kvMatch) {
+                var item = {};
+                item[kvMatch[1].trim()] = parseValue((kvMatch[2] || '').trim());
+                i++;
+                while (i < lines.length) {
+                    var subLine = lines[i];
+                    if (subLine.trim() === '' || subLine.trim().startsWith('#')) { i++; continue; }
+                    var subIndent = getIndent(subLine);
+                    if (subIndent <= baseIndent) break;
+                    var subTrimmed = subLine.trim();
+                    if (subTrimmed.startsWith('- ')) break;
+                    var subKv = subTrimmed.match(/^([^:]+?):\s*(.*)?$/);
+                    if (subKv) {
+                        var subKey = subKv[1].trim();
+                        var subVal = (subKv[2] || '').trim();
+                        if (subVal === '') {
+                            i++;
+                            if (i < lines.length) {
+                                var nLine = lines[i];
+                                if (nLine && nLine.trim() !== '') {
+                                    var nIndent = getIndent(nLine);
+                                    if (nIndent > subIndent) {
+                                        if (nLine.trim().startsWith('- ')) {
+                                            item[subKey] = parseList(nIndent);
+                                        } else {
+                                            item[subKey] = parseBlock(nIndent);
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            item[subKey] = parseValue(subVal);
+                            i++;
+                        }
+                    } else {
+                        i++;
+                    }
+                }
+                arr.push(item);
+            } else {
+                arr.push(parseValue(itemContent));
+                i++;
+            }
+        }
+        return arr;
+    }
+
+    return parseBlock(0);
+}
+
+// ════════════════════════════════════════════════════
+// Keyboard shortcuts
+// ════════════════════════════════════════════════════
+
+document.addEventListener('keydown', function(e) {
+    // Delete/Backspace: remove selected condition
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selection && selection.type === 'condition') {
+        if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
+            e.preventDefault();
+            removeCondition(selection.index);
+        }
+    }
+    // Ctrl+E: export YAML
+    if (e.ctrlKey && e.key === 'e') {
+        e.preventDefault();
+        downloadYAML();
+    }
+});
+
+// ════════════════════════════════════════════════════
+// Boot
+// ════════════════════════════════════════════════════
+
+init();
+// Auto-select first condition so editor is immediately useful
+selection = { type: 'condition', index: 0 };
+renderTimeline();
+renderEditor();
+</script>
 </body>
 </html>

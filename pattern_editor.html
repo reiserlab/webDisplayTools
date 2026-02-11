@@ -15,7 +15,7 @@
     </script>
     <!-- arena-configs.js loaded as ES6 module to support dual-export pattern -->
     <script type="module">
-        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration } from './js/arena-configs.js';
+        import { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration, getArenaId, getArenaName, getGenerationId, getGenerationName } from './js/arena-configs.js';
         // Make available globally for other scripts
         window.STANDARD_CONFIGS = STANDARD_CONFIGS;
         window.PANEL_SPECS = PANEL_SPECS;
@@ -791,6 +791,45 @@
             color: var(--accent);
         }
 
+        /* ========================================
+           Preview Mode - Tool panels locked
+           ======================================== */
+        .tools-panel.preview-mode .tool-content {
+            position: relative;
+            pointer-events: none;
+            opacity: 0.45;
+        }
+        .tools-panel.preview-mode .tool-tabs {
+            pointer-events: auto;
+            opacity: 1;
+        }
+        .tools-panel.preview-mode .file-operations {
+            pointer-events: auto;
+            opacity: 1;
+        }
+        .generate-column.preview-mode .generate-btn-vertical {
+            pointer-events: none;
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        .preview-mode-banner {
+            display: none;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.75rem;
+            background: rgba(255, 152, 0, 0.15);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 4px;
+            color: var(--warning, #ff9800);
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-align: center;
+            letter-spacing: 0.5px;
+            pointer-events: auto;
+        }
+        .tools-panel.preview-mode .preview-mode-banner {
+            display: block;
+        }
+
         /* Right Panel - Viewer */
         .viewer-panel {
             flex: 1;
@@ -923,6 +962,143 @@
             display: flex;
             align-items: center;
             justify-content: center;
+        }
+
+        /* 3D Viewer Controls */
+        .viewer-pane.three-viewer-pane {
+            position: relative;
+            flex-direction: column;
+        }
+
+        .viewer-pane.three-viewer-pane.active {
+            display: flex;
+            align-items: stretch;
+            justify-content: stretch;
+        }
+
+        .three-controls-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.4rem 0.75rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+
+        .three-controls-bar label {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        .three-controls-bar select {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 0.25rem 0.4rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+
+        .three-controls-bar select:hover {
+            border-color: var(--accent);
+        }
+
+        .three-controls-bar .ctrl-group {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .three-controls-bar .ctrl-btn {
+            padding: 0.2rem 0.5rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            color: var(--text-dim);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .three-controls-bar .ctrl-btn:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .three-controls-bar .fov-slider {
+            width: 80px;
+            accent-color: var(--accent);
+        }
+
+        .three-controls-bar .fov-value {
+            font-size: 0.65rem;
+            color: var(--text);
+            min-width: 2.5em;
+            text-align: center;
+        }
+
+        .three-controls-bar .separator {
+            width: 1px;
+            height: 1.2rem;
+            background: var(--border);
+        }
+
+        /* 3D Stats Overlay */
+        .three-stats-overlay {
+            position: absolute;
+            top: 3rem;
+            right: 0.5rem;
+            background: rgba(26, 31, 38, 0.9);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.5rem 0.7rem;
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            pointer-events: auto;
+            z-index: 10;
+            line-height: 1.6;
+        }
+
+        .three-stats-overlay .stat-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .three-stats-overlay .stat-label {
+            color: var(--text-dim);
+        }
+
+        .three-stats-overlay .stat-value {
+            color: var(--text);
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .three-stats-overlay .stat-header {
+            color: var(--accent);
+            font-weight: 600;
+            font-size: 0.65rem;
+            margin-bottom: 0.2rem;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .three-stats-overlay.collapsed .stats-body {
+            display: none;
+        }
+
+        .three-stats-overlay.collapsed {
+            padding: 0.3rem 0.5rem;
         }
 
         /* Grid Viewer */
@@ -1421,7 +1597,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.22 | 2026-02-04 21:22 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.24 | 2026-02-11 06:41 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1446,6 +1622,9 @@
 
             <!-- Tool Content -->
             <div class="tool-content">
+                <div class="preview-mode-banner" id="previewModeBanner">
+                    PREVIEW MODE &mdash; Click "New" to create a pattern
+                </div>
                 <!-- Generate Tab -->
                 <div class="tool-pane active" id="generatePane">
                     <div class="section-title">Pattern Type</div>
@@ -1914,8 +2093,71 @@
                 </div>
 
                 <!-- 3D Viewer -->
-                <div class="viewer-pane" id="3dViewer">
-                    <div id="threeContainer" style="width: 100%; height: 100%;"></div>
+                <div class="viewer-pane three-viewer-pane" id="3dViewer">
+                    <!-- 3D Controls Bar -->
+                    <div class="three-controls-bar" id="threeControlsBar">
+                        <div class="ctrl-group">
+                            <label>View:</label>
+                            <select id="threeViewPreset" title="Camera view preset">
+                                <optgroup label="External (outside)">
+                                    <option value="top-down" selected>Top Down</option>
+                                    <option value="bottom-up">Bottom Up</option>
+                                    <option value="from-north">From North</option>
+                                    <option value="from-east">From East</option>
+                                    <option value="from-south">From South</option>
+                                    <option value="from-west">From West</option>
+                                </optgroup>
+                                <optgroup label="Internal (fly view)">
+                                    <option value="fly-north">Fly → North</option>
+                                    <option value="fly-east">Fly → East</option>
+                                    <option value="fly-south">Fly → South</option>
+                                    <option value="fly-west">Fly → West</option>
+                                </optgroup>
+                            </select>
+                        </div>
+
+                        <div class="separator"></div>
+
+                        <div class="ctrl-group">
+                            <label>Zoom:</label>
+                            <button class="ctrl-btn" id="threeZoomIn" title="Zoom closer to arena">+</button>
+                            <button class="ctrl-btn" id="threeZoomOut" title="Zoom farther from arena">−</button>
+                        </div>
+
+                        <div class="separator"></div>
+
+                        <div class="ctrl-group">
+                            <label>FOV:</label>
+                            <input type="range" class="fov-slider" id="threeFovSlider" min="30" max="120" value="60" title="Camera field of view (30-120 degrees)">
+                            <span class="fov-value" id="threeFovValue">60°</span>
+                            <button class="ctrl-btn" id="threeFovNormal" title="Normal field of view (60°)">60°</button>
+                            <button class="ctrl-btn" id="threeFovWide" title="Wide field of view (120°)">120°</button>
+                        </div>
+
+                        <div class="separator"></div>
+
+                        <div class="ctrl-group">
+                            <button class="ctrl-btn" id="threeScreenshot" title="Download screenshot of 3D view">📷 Screenshot</button>
+                        </div>
+                    </div>
+                    <!-- 3D Container -->
+                    <div id="threeContainer" style="width: 100%; flex: 1; position: relative;">
+                        <!-- Stats Overlay -->
+                        <div class="three-stats-overlay" id="threeStatsOverlay">
+                            <div class="stat-header" id="threeStatsToggle" title="Click to collapse/expand">Arena Stats ▾</div>
+                            <div class="stats-body" id="threeStatsBody">
+                                <div class="stat-row"><span class="stat-label">Columns:</span><span class="stat-value" id="statColumns">—</span></div>
+                                <div class="stat-row"><span class="stat-label">Total panels:</span><span class="stat-value" id="statPanels">—</span></div>
+                                <div class="stat-row"><span class="stat-label">Inner radius:</span><span class="stat-value" id="statRadius">—</span></div>
+                                <div class="stat-row"><span class="stat-label">Arena height:</span><span class="stat-value" id="statHeight">—</span></div>
+                                <div class="stat-row"><span class="stat-label">Total LEDs:</span><span class="stat-value" id="statLEDs">—</span></div>
+                                <div class="stat-row"><span class="stat-label">Az. resolution:</span><span class="stat-value" id="statAzRes">—</span></div>
+                                <div class="stat-row"><span class="stat-label">V. resolution:</span><span class="stat-value" id="statVRes">—</span></div>
+                                <div class="stat-row"><span class="stat-label">Az. pixels:</span><span class="stat-value" id="statAzPx">—</span></div>
+                                <div class="stat-row"><span class="stat-label">V. pixels:</span><span class="stat-value" id="statVPx">—</span></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Mercator Viewer -->
@@ -2003,6 +2245,7 @@
             <span id="statusDimensions">—</span>
             <span id="statusFrames">—</span>
             <span id="statusGsMode">—</span>
+            <span id="statusHeaderMeta" style="color: var(--text-dim);"></span>
             <span id="statusUnsaved" style="color: #ff4444; font-weight: bold;"></span>
         </div>
         <div class="arena-config">
@@ -2038,7 +2281,7 @@
 
     <script type="module">
         import PatParser from './js/pat-parser.js';
-        import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js';
+        import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js?v=0924';
         import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
         import { generatePatternIcon } from './js/icon-generator.js';
         import ImageConverter from './js/pattern-editor/tools/image-converter.js';
@@ -2081,6 +2324,7 @@
                 sequence: [],      // Array of frame entries for animation mode
                 selectedIndex: -1  // Currently selected frame in sequence (-1 = none)
             },
+            previewMode: false,
             isDirty: false,
             filename: null,
             listeners: new Map()
@@ -2088,6 +2332,7 @@
 
         // 3D Viewer instance
         let threeViewer = null;
+        let threeViewerArenaConfig = null;  // Track which arena config the 3D viewer was last built with
 
         // Event emitter
         function emit(event, data) {
@@ -2263,6 +2508,8 @@
                     if (threeViewer && state.editor.activeViewer === '3d') {
                         const specs = PANEL_SPECS[state.arena.config.arena.generation];
                         threeViewer.reinit(state.arena.config, specs);
+                        threeViewerArenaConfig = state.arena.configName;
+                        updateThreeStats();
                     }
                 }
 
@@ -2317,6 +2564,61 @@
             };
             document.getElementById('poleAzimuth').addEventListener('input', updatePoleVisualization);
             document.getElementById('poleElevation').addEventListener('input', updatePoleVisualization);
+
+            // 3D viewer controls
+            document.getElementById('threeViewPreset').addEventListener('change', (e) => {
+                if (threeViewer) {
+                    threeViewer.setViewPreset(e.target.value);
+                }
+            });
+
+            document.getElementById('threeZoomIn').addEventListener('click', () => {
+                if (threeViewer) threeViewer.zoomIn();
+            });
+
+            document.getElementById('threeZoomOut').addEventListener('click', () => {
+                if (threeViewer) threeViewer.zoomOut();
+            });
+
+            document.getElementById('threeFovSlider').addEventListener('input', (e) => {
+                const fov = parseInt(e.target.value);
+                document.getElementById('threeFovValue').textContent = fov + '°';
+                if (threeViewer) threeViewer.setFOV(fov);
+            });
+
+            document.getElementById('threeFovNormal').addEventListener('click', () => {
+                document.getElementById('threeFovSlider').value = 60;
+                document.getElementById('threeFovValue').textContent = '60°';
+                if (threeViewer) threeViewer.setFOV(60, true);
+            });
+
+            document.getElementById('threeFovWide').addEventListener('click', () => {
+                document.getElementById('threeFovSlider').value = 120;
+                document.getElementById('threeFovValue').textContent = '120°';
+                if (threeViewer) threeViewer.setFOV(120, true);
+            });
+
+            document.getElementById('threeScreenshot').addEventListener('click', () => {
+                if (!threeViewer) return;
+                const dataUrl = threeViewer.screenshot();
+                const link = document.createElement('a');
+                const configName = state.arena.configName || 'arena';
+                const now = new Date();
+                const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                link.download = `${configName}_3d_${timestamp}.png`;
+                link.href = dataUrl;
+                link.click();
+            });
+
+            // Stats overlay toggle
+            document.getElementById('threeStatsToggle').addEventListener('click', () => {
+                const overlay = document.getElementById('threeStatsOverlay');
+                overlay.classList.toggle('collapsed');
+                const toggle = document.getElementById('threeStatsToggle');
+                toggle.textContent = overlay.classList.contains('collapsed')
+                    ? 'Arena Stats ▸'
+                    : 'Arena Stats ▾';
+            });
 
             // Combine operations - Pattern A
             document.getElementById('setPatternA').addEventListener('click', handleSetPatternA);
@@ -2439,37 +2741,51 @@
                 return;
             }
 
-            // Log container dimensions for debugging
-            console.log('3D Viewer: Container size', container.clientWidth + 'x' + container.clientHeight);
+            const config = state.arena.config;
+            if (!config) {
+                console.error('3D Viewer: No arena config available');
+                return;
+            }
+            const specs = PANEL_SPECS[config.arena.generation];
+            if (!specs) {
+                console.error('3D Viewer: No specs for generation', config.arena.generation);
+                return;
+            }
+
+            // If viewer exists but failed to initialize (scene is null), destroy and retry
+            if (threeViewer && !threeViewer.scene) {
+                console.log('3D Viewer: Previous init failed, retrying...');
+                threeViewer.destroy();
+                threeViewer = null;
+                threeViewerArenaConfig = null;
+            }
 
             // Create viewer if it doesn't exist
             if (!threeViewer) {
                 threeViewer = new ThreeViewer(container);
-
-                const config = state.arena.config;
-                if (config) {
-                    const specs = PANEL_SPECS[config.arena.generation];
-                    if (!specs) {
-                        console.error('3D Viewer: No specs for generation', config.arena.generation);
-                        return;
-                    }
-                    try {
-                        threeViewer.init(config, specs);
-                        console.log('3D Viewer: Initialized with', config.arena.generation,
-                            config.arena.num_cols + 'x' + config.arena.num_rows);
-                    } catch (err) {
-                        console.error('3D Viewer: Init failed:', err.message);
-                        return;
-                    }
-
-                    // Set up frame change callback to sync with playback controls
-                    threeViewer.onFrameChange((frameIndex) => {
-                        state.editor.currentFrame = frameIndex;
-                        updateFrameInfo();
-                    });
-                } else {
-                    console.error('3D Viewer: No arena config available');
+                try {
+                    threeViewer.init(config, specs);
+                    threeViewerArenaConfig = state.arena.configName;
+                    console.log('3D Viewer: Initialized with', config.arena.generation,
+                        config.arena.num_cols + 'x' + config.arena.num_rows);
+                } catch (err) {
+                    console.error('3D Viewer: Init failed:', err.message);
+                    threeViewer = null;
+                    return;
                 }
+
+                // Set up frame change callback to sync with playback controls
+                threeViewer.onFrameChange((frameIndex) => {
+                    state.editor.currentFrame = frameIndex;
+                    updateFrameInfo();
+                });
+            }
+
+            // If arena config changed since last build, reinit geometry
+            if (threeViewerArenaConfig !== state.arena.configName) {
+                console.log('3D Viewer: Arena changed from', threeViewerArenaConfig, 'to', state.arena.configName);
+                threeViewer.reinit(config, specs);
+                threeViewerArenaConfig = state.arena.configName;
             }
 
             // Update pattern if one is loaded
@@ -2477,6 +2793,25 @@
                 threeViewer.setPattern(state.pattern);
                 threeViewer.setFrame(state.editor.currentFrame);
             }
+
+            // Update stats display
+            updateThreeStats();
+        }
+
+        function updateThreeStats() {
+            if (!threeViewer) return;
+            const stats = threeViewer.getArenaStats();
+            if (!stats) return;
+
+            document.getElementById('statColumns').textContent = stats.columns;
+            document.getElementById('statPanels').textContent = stats.totalPanels;
+            document.getElementById('statRadius').textContent = stats.innerRadius.toFixed(1) + ' mm';
+            document.getElementById('statHeight').textContent = stats.arenaHeight.toFixed(1) + ' mm';
+            document.getElementById('statLEDs').textContent = stats.totalLEDs.toLocaleString();
+            document.getElementById('statAzRes').textContent = stats.azimuthRes.toFixed(2) + '°/px';
+            document.getElementById('statVRes').textContent = stats.verticalRes.toFixed(2) + '°/px';
+            document.getElementById('statAzPx').textContent = stats.azimuthPixels;
+            document.getElementById('statVPx').textContent = stats.verticalPixels;
         }
 
         // ============================================
@@ -2509,16 +2844,32 @@
                 state.isDirty = false;
                 state.editor.currentFrame = 0;
 
-                // Try to find matching arena config
-                const matchingConfig = PatParser.findMatchingConfig(pattern, STANDARD_CONFIGS);
+                // Resolve arena config: V2 header is authoritative, dimension-match is fallback
+                let matchingConfig = null;
+
+                if (pattern.headerVersion >= 2 && pattern.arena_id > 0) {
+                    const registryName = getArenaName(pattern.generation, pattern.arena_id);
+                    if (registryName && getConfig(registryName)) {
+                        matchingConfig = registryName;
+                        console.log(`Arena config from V2 header: ${registryName} (arena_id=${pattern.arena_id})`);
+                    } else {
+                        console.warn(`V2 arena_id=${pattern.arena_id} for ${pattern.generation} not in registry, falling back to dimension match`);
+                    }
+                }
+
+                if (!matchingConfig) {
+                    matchingConfig = PatParser.findMatchingConfig(pattern, STANDARD_CONFIGS);
+                }
+
                 if (matchingConfig) {
                     state.arena.configName = matchingConfig;
                     state.arena.config = getConfig(matchingConfig);
                     document.getElementById('arenaConfigStatus').value = matchingConfig;
                 }
 
-                // Lock arena config after loading pattern
+                // Lock arena config and enter preview mode
                 lockArenaConfig();
+                enterPreviewMode();
 
                 updateStatus();
                 renderCurrentViewer();
@@ -2558,17 +2909,23 @@
                 return;
             }
 
-            // Convert state.pattern to format expected by PatEncoder
+            // Convert state.pattern to format expected by PatEncoder (V2 headers)
+            const gen = state.pattern.generation;
+            const configName = document.getElementById('arenaConfigStatus').value;
             const patternData = {
-                generation: state.pattern.generation,
+                generation: gen,
                 gs_val: state.pattern.gsMode,
                 numFrames: state.pattern.numFrames,
-                rowCount: Math.floor(state.pattern.pixelRows / PANEL_SPECS[state.pattern.generation].pixels_per_panel),
-                colCount: Math.floor(state.pattern.pixelCols / PANEL_SPECS[state.pattern.generation].pixels_per_panel),
+                rowCount: Math.floor(state.pattern.pixelRows / PANEL_SPECS[gen].pixels_per_panel),
+                colCount: Math.floor(state.pattern.pixelCols / PANEL_SPECS[gen].pixels_per_panel),
                 pixelRows: state.pattern.pixelRows,
                 pixelCols: state.pattern.pixelCols,
                 frames: state.pattern.frames,
-                stretchValues: state.pattern.stretchValues || new Array(state.pattern.numFrames).fill(1)
+                stretchValues: state.pattern.stretchValues || new Array(state.pattern.numFrames).fill(1),
+                // V2 header metadata
+                generation_id: getGenerationId(gen),
+                arena_id: configName ? getArenaId(gen, configName) : 0,
+                observer_id: 0
             };
 
             // Build filename with arena config prefix
@@ -2622,6 +2979,9 @@
             if (state.isDirty) {
                 if (!confirm('Discard unsaved changes?')) return;
             }
+
+            // Exit preview mode if viewing a loaded pattern
+            exitPreviewMode();
 
             // Unlock arena config so user can choose different arena for new pattern
             unlockArenaConfig();
@@ -2930,6 +3290,11 @@
         }
 
         function handleGenerate() {
+            // Safety net: exit preview mode if somehow reached while previewing
+            if (state.previewMode) {
+                exitPreviewMode();
+            }
+
             const config = state.arena.config;
             if (!config) {
                 alert('Please select an arena configuration first');
@@ -5115,6 +5480,8 @@
                         state.arena.config = getConfig(matchingConfig);
                         document.getElementById('arenaConfigStatus').value = matchingConfig;
                         threeViewer.reinit(state.arena.config, patternSpecs);
+                        threeViewerArenaConfig = state.arena.configName;
+                        updateThreeStats();
                     }
                 }
 
@@ -5336,10 +5703,28 @@
                     `${state.pattern.numFrames} frame${state.pattern.numFrames !== 1 ? 's' : ''}`;
                 document.getElementById('statusGsMode').textContent =
                     state.pattern.gsMode === 2 ? 'GS2' : 'GS16';
+
+                // Show V2 header metadata if pattern was loaded from file
+                const metaEl = document.getElementById('statusHeaderMeta');
+                if (state.pattern.headerVersion >= 2) {
+                    const parts = [];
+                    const gen = state.pattern.generation;
+                    if (gen === 'G6') {
+                        const arenaName = getArenaName('G6', state.pattern.arena_id);
+                        parts.push(arenaName || `arena:${state.pattern.arena_id}`);
+                    } else if (state.pattern.arena_id > 0) {
+                        const arenaName = getArenaName(gen, state.pattern.arena_id);
+                        parts.push(arenaName || `arena:${state.pattern.arena_id}`);
+                    }
+                    metaEl.textContent = parts.length ? `[${parts.join(', ')}]` : '';
+                } else {
+                    metaEl.textContent = '';
+                }
             } else {
                 document.getElementById('statusDimensions').textContent = '—';
                 document.getElementById('statusFrames').textContent = '—';
                 document.getElementById('statusGsMode').textContent = '—';
+                document.getElementById('statusHeaderMeta').textContent = '';
             }
 
             document.getElementById('statusUnsaved').textContent = state.isDirty ? 'Unsaved*' : '';
@@ -5462,6 +5847,21 @@
             lockBtn.textContent = '🔓';
             lockBtn.classList.remove('locked');
             lockBtn.title = 'Lock arena config';
+        }
+
+        // ============================================
+        // Preview Mode (loaded pattern viewing)
+        // ============================================
+        function enterPreviewMode() {
+            state.previewMode = true;
+            document.querySelector('.tools-panel').classList.add('preview-mode');
+            document.querySelector('.generate-column').classList.add('preview-mode');
+        }
+
+        function exitPreviewMode() {
+            state.previewMode = false;
+            document.querySelector('.tools-panel').classList.remove('preview-mode');
+            document.querySelector('.generate-column').classList.remove('preview-mode');
         }
 
         function toggleArenaLock() {
