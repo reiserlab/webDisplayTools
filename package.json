@@ -6,7 +6,8 @@
         "test": "node tests/validate-arena-calculations.js",
         "validate": "node tests/validate-arena-calculations.js",
         "format": "prettier --write \"**/*.js\"",
-        "format:check": "prettier --check \"**/*.js\""
+        "format:check": "prettier --check \"**/*.js\"",
+        "generate:configs": "node scripts/generate-arena-configs.js"
     },
     "repository": {
         "type": "git",
