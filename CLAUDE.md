@@ -382,6 +382,17 @@ When an ES6 `import` statement fails, the **entire** `<script type="module">` bl
 - Push fix immediately
 - Hard refresh on GitHub Pages to verify
 
+## Pattern Editor 3D Viewer Rules
+
+**CRITICAL: The 3D viewer MUST fully rebuild its geometry whenever the arena configuration changes or a new pattern is loaded.** This means:
+
+1. **Arena config changes** (dropdown selection, pattern load auto-detect) → call `threeViewer.reinit(config, specs)` to rebuild all panel/LED geometry
+2. **`_buildArena()` must NEVER reset the camera position** — only the initial `init()` call sets the camera to top-down. Rebuilds preserve the user's current view.
+3. **Track which arena config the 3D viewer was last built with** using `threeViewerArenaConfig`. Compare on every `init3DViewer()` call and reinit if stale.
+4. **If `init()` fails** (scene is null), destroy the viewer and retry on next attempt — never leave a half-initialized viewer that silently ignores all controls.
+
+These rules prevent stale geometry bugs where the 3D viewer shows an old arena after config changes.
+
 ## Pattern Editor Migration Plan
 
 The Pattern Editor is being developed in phases. The full migration plan is saved at:

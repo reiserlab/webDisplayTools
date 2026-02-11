@@ -124,6 +124,9 @@ class ThreeViewer {
         // Build arena
         this._buildArena();
 
+        // Set initial camera to top-down view (only on first init)
+        this._resetCameraToTopDown();
+
         // Resize handler
         this._resizeHandler = () => this._onResize();
         window.addEventListener('resize', this._resizeHandler);
@@ -143,13 +146,15 @@ class ThreeViewer {
     }
 
     /**
-     * Reinitialize the viewer with a new arena configuration
+     * Reinitialize the viewer with a new arena configuration.
+     * Rebuilds geometry but preserves the current camera position/orientation.
      * @param {Object} arenaConfig - Arena configuration from arena-configs.js
      * @param {Object} panelSpecs - Panel specifications from arena-configs.js
      */
     reinit(arenaConfig, panelSpecs) {
         this.arenaConfig = arenaConfig;
         this.panelSpecs = panelSpecs;
+        // _buildArena preserves camera — only init() resets to top-down
         this._buildArena();
         this._updateLEDColors();
     }
@@ -587,9 +592,25 @@ class ThreeViewer {
 
             this.arenaGroup.add(columnGroup);
         }
+        // Note: camera position is NOT reset here — preserves user's current view.
+        // Only init() calls _resetCameraToTopDown() for the initial view.
+    }
 
-        // Position camera to view arena (top-down view)
+    /**
+     * Reset camera to top-down view based on current arena dimensions.
+     * Called only on initial init(), not on rebuilds or reinits.
+     */
+    _resetCameraToTopDown() {
+        const config = this.arenaConfig;
+        const specs = this.panelSpecs;
+        if (!config || !specs) return;
+
+        const arena = config.arena;
+        const panelWidth = specs.panel_width_mm / 25.4;
+        const alpha = (2 * Math.PI) / arena.num_cols;
+        const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
         const viewDistance = cRadius * 3;
+
         this.camera.position.set(0, viewDistance, 0.01);
         this.controls.target.set(0, 0, 0);
         this.controls.update();
