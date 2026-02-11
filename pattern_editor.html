@@ -242,8 +242,10 @@
             background: var(--bg);
             border: 1px dashed var(--border);
             border-radius: 6px;
-            padding: 0.75rem;
+            padding: 0.5rem;
             min-height: 80px;
+            max-height: 340px;
+            overflow-y: auto;
         }
 
         .sequence-empty {
@@ -255,23 +257,21 @@
 
         .sequence-frames {
             display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
+            flex-direction: column;
+            gap: 4px;
         }
 
         .sequence-frame {
-            width: 56px;
-            height: 56px;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.35rem 0.5rem;
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             cursor: grab;
             position: relative;
-            font-size: 0.7rem;
-            color: var(--text-dim);
             transition: transform 0.15s ease, opacity 0.15s ease;
         }
 
@@ -289,7 +289,7 @@
             opacity: 0.5;
             border-color: var(--accent);
             box-shadow: 0 0 10px rgba(0, 230, 118, 0.5);
-            transform: scale(1.05);
+            transform: scale(1.02);
             cursor: grabbing;
         }
 
@@ -299,25 +299,51 @@
             background: rgba(0, 230, 118, 0.15);
         }
 
-        .sequence-frame canvas,
-        .sequence-frame img {
+        .sequence-frame-thumb {
+            width: 64px;
+            height: 64px;
+            flex-shrink: 0;
+            border-radius: 3px;
+            overflow: hidden;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sequence-frame-thumb img,
+        .sequence-frame-thumb canvas {
             width: 100%;
             height: 100%;
-            border-radius: 3px;
             object-fit: contain;
         }
 
+        .sequence-frame-index {
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            min-width: 1.5em;
+            flex-shrink: 0;
+        }
+
+        .sequence-frame-label {
+            flex: 1;
+            min-width: 0;
+            font-size: 0.7rem;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         .sequence-frame .remove-btn {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            width: 16px;
-            height: 16px;
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
             background: #ff4444;
             color: white;
             border: none;
             border-radius: 50%;
-            font-size: 10px;
+            font-size: 11px;
             cursor: pointer;
             display: none;
             align-items: center;
@@ -357,6 +383,14 @@
             width: 100%;
             height: 100%;
             object-fit: contain;
+        }
+
+        .combine-pattern-thumbnail:not(.empty) {
+            cursor: pointer;
+        }
+
+        .combine-pattern-thumbnail:not(.empty):hover {
+            border-color: var(--accent);
         }
 
         .combine-pattern-thumbnail.empty {
@@ -1597,7 +1631,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.24 | 2026-02-11 06:41 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.25 | 2026-02-11 07:24 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -4209,7 +4243,7 @@
             }
 
             // Update combiner UI if visible
-            updateCombinerUI();
+            updateCombineInfo();
         }
 
         function formatTimestamp(date) {
@@ -5186,25 +5220,37 @@
             frameEl.className = 'sequence-frame';
             frameEl.draggable = true;
             frameEl.dataset.index = index;
-            frameEl.title = `Frame ${index + 1}: ${entry.name || 'Frame'}`;
+            frameEl.title = `Drag to reorder. ${entry.name || 'Frame'}`;
 
-            // Show thumbnail if available - handle both string (data URL) and DOM node
+            // Index number
+            const indexEl = document.createElement('span');
+            indexEl.className = 'sequence-frame-index';
+            indexEl.textContent = `${index + 1}.`;
+            frameEl.appendChild(indexEl);
+
+            // Thumbnail container
+            const thumbEl = document.createElement('div');
+            thumbEl.className = 'sequence-frame-thumb';
             if (entry.thumbnail) {
                 if (typeof entry.thumbnail === 'string') {
-                    // Data URL from icon generator
                     const img = document.createElement('img');
                     img.src = entry.thumbnail;
-                    img.style.width = '100%';
-                    img.style.height = '100%';
-                    img.style.borderRadius = '2px';
-                    frameEl.appendChild(img);
+                    thumbEl.appendChild(img);
                 } else if (entry.thumbnail.cloneNode) {
-                    // DOM node (canvas)
-                    frameEl.appendChild(entry.thumbnail.cloneNode(true));
+                    thumbEl.appendChild(entry.thumbnail.cloneNode(true));
                 }
             } else {
-                frameEl.textContent = index + 1;
+                thumbEl.textContent = index + 1;
+                thumbEl.style.color = 'var(--text-dim)';
+                thumbEl.style.fontSize = '0.8rem';
             }
+            frameEl.appendChild(thumbEl);
+
+            // Frame name label
+            const labelEl = document.createElement('span');
+            labelEl.className = 'sequence-frame-label';
+            labelEl.textContent = entry.name || `Frame ${index + 1}`;
+            frameEl.appendChild(labelEl);
 
             // Remove button
             const removeBtn = document.createElement('button');
@@ -5730,6 +5776,59 @@
             document.getElementById('statusUnsaved').textContent = state.isDirty ? 'Unsaved*' : '';
         }
 
+        /**
+         * Set up a combine thumbnail with static display and hover animation.
+         * @param {HTMLElement} thumbEl - The thumbnail container element
+         * @param {Object} pattern - Pattern object with frames, pixelRows, pixelCols, gsMode, generation
+         */
+        function setupCombineThumbnail(thumbEl, pattern) {
+            thumbEl.classList.remove('empty');
+            thumbEl.innerHTML = '';
+
+            const gen = pattern.generation || state.arena.config?.arena?.generation || 'G6';
+            const numFrames = pattern.numFrames || pattern.frames.length;
+
+            // Generate animated thumbnails (up to 10, evenly sampled)
+            const maxThumbs = Math.min(10, numFrames);
+            const step = Math.max(1, Math.floor(numFrames / maxThumbs));
+            const animThumbs = [];
+            for (let i = 0; i < numFrames && animThumbs.length < maxThumbs; i += step) {
+                const t = generateIconThumbnail(pattern.frames[i], pattern.pixelRows, pattern.pixelCols, pattern.gsMode, gen);
+                if (t) animThumbs.push(t);
+            }
+
+            // Use middle frame as static thumbnail
+            const midIdx = Math.floor(animThumbs.length / 2);
+            const staticThumb = animThumbs[midIdx] || animThumbs[0];
+
+            if (staticThumb) {
+                const img = document.createElement('img');
+                img.src = typeof staticThumb === 'string' ? staticThumb : staticThumb.toDataURL();
+                thumbEl.appendChild(img);
+
+                // Hover animation for multi-frame patterns
+                if (animThumbs.length > 1) {
+                    let interval = null;
+                    let frameIdx = 0;
+                    thumbEl.title = `${numFrames} frames — hover to animate`;
+
+                    thumbEl.addEventListener('mouseenter', () => {
+                        frameIdx = 0;
+                        interval = setInterval(() => {
+                            frameIdx = (frameIdx + 1) % animThumbs.length;
+                            const src = animThumbs[frameIdx];
+                            img.src = typeof src === 'string' ? src : src.toDataURL();
+                        }, 150);
+                    });
+
+                    thumbEl.addEventListener('mouseleave', () => {
+                        if (interval) { clearInterval(interval); interval = null; }
+                        img.src = typeof staticThumb === 'string' ? staticThumb : staticThumb.toDataURL();
+                    });
+                }
+            }
+        }
+
         function updateCombineInfo() {
             // Update Pattern A info and thumbnail
             const thumbA = document.getElementById('patternAThumbnail');
@@ -5740,21 +5839,7 @@
                 const p = state.combinePatternA;
                 nameA.textContent = p.filename || 'Unnamed pattern';
                 dimsA.textContent = `${p.pixelCols}×${p.pixelRows}, ${p.numFrames} frames`;
-
-                // Generate thumbnail
-                thumbA.classList.remove('empty');
-                thumbA.innerHTML = '';
-                const gen = p.generation || state.arena.config?.arena?.generation || 'G6';
-                const thumb = generateIconThumbnail(p.frames[0], p.pixelRows, p.pixelCols, p.gsMode, gen);
-                if (thumb) {
-                    if (typeof thumb === 'string') {
-                        const img = document.createElement('img');
-                        img.src = thumb;
-                        thumbA.appendChild(img);
-                    } else {
-                        thumbA.appendChild(thumb);
-                    }
-                }
+                setupCombineThumbnail(thumbA, p);
             } else {
                 nameA.textContent = 'No pattern set';
                 dimsA.textContent = '';
@@ -5771,21 +5856,7 @@
                 const p = state.combinePatternB;
                 nameB.textContent = p.filename || 'Unnamed pattern';
                 dimsB.textContent = `${p.pixelCols}×${p.pixelRows}, ${p.numFrames} frames`;
-
-                // Generate thumbnail
-                thumbB.classList.remove('empty');
-                thumbB.innerHTML = '';
-                const gen = p.generation || state.arena.config?.arena?.generation || 'G6';
-                const thumb = generateIconThumbnail(p.frames[0], p.pixelRows, p.pixelCols, p.gsMode, gen);
-                if (thumb) {
-                    if (typeof thumb === 'string') {
-                        const img = document.createElement('img');
-                        img.src = thumb;
-                        thumbB.appendChild(img);
-                    } else {
-                        thumbB.appendChild(thumb);
-                    }
-                }
+                setupCombineThumbnail(thumbB, p);
             } else {
                 nameB.textContent = 'No pattern set';
                 dimsB.textContent = '';
