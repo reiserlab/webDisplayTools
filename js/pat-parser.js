@@ -33,7 +33,11 @@ const PatParser = (function () {
 
     // Generation ID mapping (mirrors maDisplayTools/configs/arena_registry/generations.yaml)
     const GENERATION_NAMES = {
-        0: 'unspecified', 1: 'G3', 2: 'G4', 3: 'G4.1', 4: 'G6'
+        0: 'unspecified',
+        1: 'G3',
+        2: 'G4',
+        3: 'G4.1',
+        4: 'G6'
     };
 
     /**
@@ -130,21 +134,21 @@ const PatParser = (function () {
             headerSize = G6_V1_HEADER_SIZE;
         } else {
             // V2 format
-            headerVersion = (versionByte >> 4) & 0x0F;
-            const arenaUpper = versionByte & 0x0F;     // Lower 4 bits of byte 4
+            headerVersion = (versionByte >> 4) & 0x0f;
+            const arenaUpper = versionByte & 0x0f; // Lower 4 bits of byte 4
             const byte5 = bytes[5];
-            const arenaLower = (byte5 >> 6) & 0x03;    // Upper 2 bits of byte 5
-            arena_id = (arenaUpper << 2) | arenaLower;  // Combined 6-bit arena ID
-            observer_id = byte5 & 0x3F;                 // Lower 6 bits of byte 5
+            const arenaLower = (byte5 >> 6) & 0x03; // Upper 2 bits of byte 5
+            arena_id = (arenaUpper << 2) | arenaLower; // Combined 6-bit arena ID
+            observer_id = byte5 & 0x3f; // Lower 6 bits of byte 5
             gs_val_raw = bytes[10];
             checksum = bytes[17];
             panelMask = bytes.slice(11, 17);
             headerSize = G6_V2_HEADER_SIZE;
         }
 
-        const numFrames = view.getUint16(6, true);  // little-endian
+        const numFrames = view.getUint16(6, true); // little-endian
         const rowCount = bytes[8];
-        const colCount = bytes[9];  // Installed columns
+        const colCount = bytes[9]; // Installed columns
 
         // Convert G6 gs_val to standard (2=binary, 16=grayscale)
         const gs_val = gs_val_raw === 1 ? 2 : 16;
@@ -214,7 +218,9 @@ const PatParser = (function () {
         // Console diagnostics
         console.group('Pattern loaded (G6)');
         console.log(`Generation: G6 (${G6_PANEL_SIZE}×${G6_PANEL_SIZE} panels)`);
-        console.log(`Header: V${headerVersion}${headerVersion >= 2 ? ` arena_id=${arena_id} observer_id=${observer_id}` : ''}`);
+        console.log(
+            `Header: V${headerVersion}${headerVersion >= 2 ? ` arena_id=${arena_id} observer_id=${observer_id}` : ''}`
+        );
         console.log(
             `Dimensions: ${rowCount} rows × ${colCount} cols = ${pixelRows}×${pixelCols} pixels`
         );
@@ -343,7 +349,7 @@ const PatParser = (function () {
         const bytes = new Uint8Array(buffer);
 
         // Parse header
-        const numPatsX = view.getUint16(0, true);  // little-endian
+        const numPatsX = view.getUint16(0, true); // little-endian
 
         // Detect V1 vs V2: V2 has MSB set in byte 2 (>= 0x80)
         const configHigh = bytes[2];
@@ -413,7 +419,9 @@ const PatParser = (function () {
         // Console diagnostics
         console.group(`Pattern loaded (${genLabel})`);
         console.log(`Generation: ${genLabel} (${G4_PANEL_SIZE}×${G4_PANEL_SIZE} panels)`);
-        console.log(`Header: V${headerVersion}${isV2 ? ` gen=${generationName} arena_id=${arena_id}` : ''}`);
+        console.log(
+            `Header: V${headerVersion}${isV2 ? ` gen=${generationName} arena_id=${arena_id}` : ''}`
+        );
         console.log(`Dimensions: ${rowN} rows × ${colN} cols = ${pixelRows}×${pixelCols} pixels`);
         console.log(`Frames: ${numFrames} (${numPatsX}×${numPatsY})`);
         console.log(`Grayscale: ${isGrayscale ? 'GS16 (4-bit, 0-15)' : 'GS2 (1-bit, 0-1)'}`);

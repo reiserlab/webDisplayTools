@@ -20,7 +20,7 @@ const PatEncoder = (function () {
 
     // Constants - must match pat-parser.js
     const G6_MAGIC = 'G6PT';
-    const G6_HEADER_SIZE = 18;       // V2: 18 bytes (always write V2)
+    const G6_HEADER_SIZE = 18; // V2: 18 bytes (always write V2)
     const G6_FRAME_HEADER_SIZE = 4; // "FR" + 2 reserved bytes
     const G6_PANEL_SIZE = 20;
     const G6_GS2_PANEL_BYTES = 53; // header(1) + cmd(1) + data(50) + stretch(1)
@@ -31,7 +31,10 @@ const PatEncoder = (function () {
 
     // Generation ID mapping (same as pat-parser.js)
     const GENERATION_IDS = {
-        'G3': 1, 'G4': 2, 'G4.1': 3, 'G6': 4
+        G3: 1,
+        G4: 2,
+        'G4.1': 3,
+        G6: 4
     };
 
     /**
@@ -116,12 +119,12 @@ const PatEncoder = (function () {
         const version = 2;
         const clampedArenaId = Math.min(63, Math.max(0, arena_id));
         const clampedObserverId = Math.min(63, Math.max(0, observer_id));
-        const arenaUpper = (clampedArenaId >> 2) & 0x0F;  // Upper 4 bits of 6-bit arena_id
+        const arenaUpper = (clampedArenaId >> 2) & 0x0f; // Upper 4 bits of 6-bit arena_id
         bytes[4] = (version << 4) | arenaUpper;
 
         // Byte 5: [AA][OOOOOO] - Arena ID lower 2 bits + Observer ID (6 bits)
-        const arenaLower = clampedArenaId & 0x03;  // Lower 2 bits of arena_id
-        bytes[5] = (arenaLower << 6) | (clampedObserverId & 0x3F);
+        const arenaLower = clampedArenaId & 0x03; // Lower 2 bits of arena_id
+        bytes[5] = (arenaLower << 6) | (clampedObserverId & 0x3f);
 
         // Frame count (little-endian)
         view.setUint16(6, numFrames, true);
@@ -374,20 +377,19 @@ const PatEncoder = (function () {
         const view = new DataView(buffer);
 
         // Write V2 header
-        view.setUint16(0, numPatsX, true);  // little-endian
+        view.setUint16(0, numPatsX, true); // little-endian
 
         // Byte 2: [V][GGG][RRRR] - V2 flag + generation ID
         // Resolve generation_id: use explicit value, or look up from generation name
-        const genId = generation_id !== undefined ? generation_id
-            : (GENERATION_IDS[generation] || 0);
-        const v2Flag = 0x80;  // Set MSB (bit 7)
-        const genBits = (genId & 0x07) << 4;  // Bits 6-4
+        const genId = generation_id !== undefined ? generation_id : GENERATION_IDS[generation] || 0;
+        const v2Flag = 0x80; // Set MSB (bit 7)
+        const genBits = (genId & 0x07) << 4; // Bits 6-4
         bytes[2] = v2Flag | genBits;
 
         // Byte 3: Arena config ID
         bytes[3] = Math.min(255, Math.max(0, arena_id));
 
-        bytes[4] = isGrayscale ? 16 : 2;    // gs_val (use normalized values: 2 or 16)
+        bytes[4] = isGrayscale ? 16 : 2; // gs_val (use normalized values: 2 or 16)
         bytes[5] = rowCount;
         bytes[6] = colCount;
 

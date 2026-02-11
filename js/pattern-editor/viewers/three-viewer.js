@@ -280,7 +280,7 @@ class ThreeViewer {
         const arena = this.arenaConfig.arena;
         const panelWidth = this.panelSpecs.panel_width_mm / 25.4;
         const alpha = (2 * Math.PI) / arena.num_cols;
-        const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+        const cRadius = panelWidth / Math.tan(alpha / 2) / 2;
         const viewDistance = cRadius * 3;
         const midlineY = 0;
 
@@ -343,8 +343,8 @@ class ThreeViewer {
         this.camera.updateProjectionMatrix();
 
         if (compensateDistance && oldFOV !== fov) {
-            const oldTan = Math.tan((oldFOV / 2) * Math.PI / 180);
-            const newTan = Math.tan((fov / 2) * Math.PI / 180);
+            const oldTan = Math.tan(((oldFOV / 2) * Math.PI) / 180);
+            const newTan = Math.tan(((fov / 2) * Math.PI) / 180);
             const scale = oldTan / newTan;
 
             const direction = new THREE.Vector3();
@@ -392,13 +392,11 @@ class ThreeViewer {
         const panelWidth = specs.panel_width_mm / 25.4;
         const panelHeight = specs.panel_height_mm / 25.4;
         const alpha = (2 * Math.PI) / numCols;
-        const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+        const cRadius = panelWidth / Math.tan(alpha / 2) / 2;
         const arenaHeight = panelHeight * numRows;
 
         // Installed columns (for partial arenas)
-        const installedCols = arena.columns_installed
-            ? arena.columns_installed.length
-            : numCols;
+        const installedCols = arena.columns_installed ? arena.columns_installed.length : numCols;
         const totalPanels = installedCols * numRows;
         const totalLEDs = totalPanels * specs.pixels_per_panel * specs.pixels_per_panel;
 
@@ -406,7 +404,7 @@ class ThreeViewer {
         const verticalPixels = numRows * specs.pixels_per_panel;
         const azimuthRes = 360 / azimuthPixels;
 
-        const halfAngleRad = Math.atan((arenaHeight / 2) / cRadius);
+        const halfAngleRad = Math.atan(arenaHeight / 2 / cRadius);
         const totalVerticalDegrees = 2 * halfAngleRad * (180 / Math.PI);
         const verticalRes = totalVerticalDegrees / verticalPixels;
 
@@ -627,7 +625,7 @@ class ThreeViewer {
         const arena = config.arena;
         const panelWidth = specs.panel_width_mm / 25.4;
         const alpha = (2 * Math.PI) / arena.num_cols;
-        const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+        const cRadius = panelWidth / Math.tan(alpha / 2) / 2;
         const viewDistance = cRadius * 3;
 
         this.camera.position.set(0, viewDistance, 0.01);

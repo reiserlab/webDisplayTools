@@ -49,7 +49,7 @@ function squareGrating(pixelRows, pixelCols, period, shift, maxVal) {
     const frame = new Uint8Array(pixelRows * pixelCols);
     for (let r = 0; r < pixelRows; r++) {
         for (let c = 0; c < pixelCols; c++) {
-            const phase = ((c + shift) % period + period) % period;  // handle negative shift
+            const phase = (((c + shift) % period) + period) % period; // handle negative shift
             frame[r * pixelCols + c] = phase < period / 2 ? maxVal : 0;
         }
     }
@@ -64,7 +64,9 @@ function sineGrating(pixelRows, pixelCols, period, shift, maxVal) {
     const frame = new Uint8Array(pixelRows * pixelCols);
     for (let r = 0; r < pixelRows; r++) {
         for (let c = 0; c < pixelCols; c++) {
-            const val = Math.round(maxVal * (0.5 + 0.5 * Math.sin(2 * Math.PI * (c + shift) / period)));
+            const val = Math.round(
+                maxVal * (0.5 + 0.5 * Math.sin((2 * Math.PI * (c + shift)) / period))
+            );
             frame[r * pixelCols + c] = Math.min(maxVal, Math.max(0, val));
         }
     }
@@ -78,7 +80,7 @@ function sineGrating(pixelRows, pixelCols, period, shift, maxVal) {
 function horizontalGrating(pixelRows, pixelCols, period, shift, maxVal) {
     const frame = new Uint8Array(pixelRows * pixelCols);
     for (let r = 0; r < pixelRows; r++) {
-        const phase = ((r + shift) % period + period) % period;
+        const phase = (((r + shift) % period) + period) % period;
         const val = phase < period / 2 ? maxVal : 0;
         for (let c = 0; c < pixelCols; c++) {
             frame[r * pixelCols + c] = val;
@@ -95,7 +97,9 @@ function checkerboard(pixelRows, pixelCols, blockSize, shift, maxVal) {
     const frame = new Uint8Array(pixelRows * pixelCols);
     for (let r = 0; r < pixelRows; r++) {
         for (let c = 0; c < pixelCols; c++) {
-            const rBlock = Math.floor(((r + shift) % pixelRows + pixelRows) % pixelRows / blockSize);
+            const rBlock = Math.floor(
+                ((((r + shift) % pixelRows) + pixelRows) % pixelRows) / blockSize
+            );
             const cBlock = Math.floor(c / blockSize);
             frame[r * pixelCols + c] = (rBlock + cBlock) % 2 === 0 ? maxVal : 0;
         }
@@ -110,9 +114,13 @@ const testPatterns = [
         name: 'web_G6_2x10_gs16_square_grating',
         generation: 'G6',
         arenaName: 'G6_2x10',
-        rowCount: 2, colCount: 10,
-        gs_val: 16, maxVal: 15,
-        numFrames: 20, period: 20, stepPixels: 1,
+        rowCount: 2,
+        colCount: 10,
+        gs_val: 16,
+        maxVal: 15,
+        numFrames: 20,
+        period: 20,
+        stepPixels: 1,
         genFunc: 'squareGrating',
         description: 'G6 full arena, GS16 square grating, 20px period, 1px/frame'
     },
@@ -120,9 +128,13 @@ const testPatterns = [
         name: 'web_G6_2x10_gs2_square_grating',
         generation: 'G6',
         arenaName: 'G6_2x10',
-        rowCount: 2, colCount: 10,
-        gs_val: 2, maxVal: 1,
-        numFrames: 20, period: 20, stepPixels: 1,
+        rowCount: 2,
+        colCount: 10,
+        gs_val: 2,
+        maxVal: 1,
+        numFrames: 20,
+        period: 20,
+        stepPixels: 1,
         genFunc: 'squareGrating',
         description: 'G6 full arena, GS2 square grating, 20px period, 1px/frame'
     },
@@ -130,9 +142,13 @@ const testPatterns = [
         name: 'web_G6_2x8of10_gs16_sine_grating',
         generation: 'G6',
         arenaName: 'G6_2x8of10',
-        rowCount: 2, colCount: 8,
-        gs_val: 16, maxVal: 15,
-        numFrames: 20, period: 40, stepPixels: 2,
+        rowCount: 2,
+        colCount: 8,
+        gs_val: 16,
+        maxVal: 15,
+        numFrames: 20,
+        period: 40,
+        stepPixels: 2,
         genFunc: 'sineGrating',
         description: 'G6 partial arena (8of10), GS16 sine grating, 40px period, 2px/frame'
     },
@@ -140,9 +156,13 @@ const testPatterns = [
         name: 'web_G6_3x12of18_gs16_horiz_grating',
         generation: 'G6',
         arenaName: 'G6_3x12of18',
-        rowCount: 3, colCount: 12,
-        gs_val: 16, maxVal: 15,
-        numFrames: 20, period: 20, stepPixels: 1,
+        rowCount: 3,
+        colCount: 12,
+        gs_val: 16,
+        maxVal: 15,
+        numFrames: 20,
+        period: 20,
+        stepPixels: 1,
         genFunc: 'horizontalGrating',
         description: 'G6 large partial arena (12of18), GS16 horizontal grating, 20px period'
     },
@@ -150,9 +170,13 @@ const testPatterns = [
         name: 'web_G4_4x12_gs16_square_grating',
         generation: 'G4',
         arenaName: 'G4_4x12',
-        rowCount: 4, colCount: 12,
-        gs_val: 16, maxVal: 15,
-        numFrames: 16, period: 16, stepPixels: 1,
+        rowCount: 4,
+        colCount: 12,
+        gs_val: 16,
+        maxVal: 15,
+        numFrames: 16,
+        period: 16,
+        stepPixels: 1,
         genFunc: 'squareGrating',
         description: 'G4 full arena, GS16 square grating, 16px period (=panel width)'
     },
@@ -160,9 +184,13 @@ const testPatterns = [
         name: 'web_G4_4x12_gs2_square_grating',
         generation: 'G4',
         arenaName: 'G4_4x12',
-        rowCount: 4, colCount: 12,
-        gs_val: 2, maxVal: 1,
-        numFrames: 16, period: 16, stepPixels: 1,
+        rowCount: 4,
+        colCount: 12,
+        gs_val: 2,
+        maxVal: 1,
+        numFrames: 16,
+        period: 16,
+        stepPixels: 1,
         genFunc: 'squareGrating',
         description: 'G4 full arena, GS2 square grating, 16px period'
     },
@@ -170,9 +198,13 @@ const testPatterns = [
         name: 'web_G41_2x12_gs16_sine_grating',
         generation: 'G4.1',
         arenaName: 'G41_2x12_cw',
-        rowCount: 2, colCount: 12,
-        gs_val: 16, maxVal: 15,
-        numFrames: 16, period: 32, stepPixels: 2,
+        rowCount: 2,
+        colCount: 12,
+        gs_val: 16,
+        maxVal: 15,
+        numFrames: 16,
+        period: 32,
+        stepPixels: 2,
         genFunc: 'sineGrating',
         description: 'G4.1 treadmill, GS16 sine grating, 32px period, 2px/frame'
     },
@@ -180,9 +212,13 @@ const testPatterns = [
         name: 'web_G4_3x12of18_gs16_checkerboard',
         generation: 'G4',
         arenaName: 'G4_3x12of18',
-        rowCount: 3, colCount: 12,
-        gs_val: 16, maxVal: 15,
-        numFrames: 16, period: 16, stepPixels: 1,
+        rowCount: 3,
+        colCount: 12,
+        gs_val: 16,
+        maxVal: 15,
+        numFrames: 16,
+        period: 16,
+        stepPixels: 1,
         genFunc: 'checkerboard',
         description: 'G4 partial arena (12of18), GS16 checkerboard, 16px blocks'
     }
@@ -300,7 +336,9 @@ for (const tp of testPatterns) {
             if (orig[p] !== loaded[p]) {
                 const row = Math.floor(p / pixelCols);
                 const col = p % pixelCols;
-                console.log(`  FAIL: Frame ${f} pixel (${row},${col}) = ${loaded[p]}, expected ${orig[p]}`);
+                console.log(
+                    `  FAIL: Frame ${f} pixel (${row},${col}) = ${loaded[p]}, expected ${orig[p]}`
+                );
                 ok = false;
                 break;
             }
