@@ -28,24 +28,14 @@ try {
         console.log('✓ PatParser.detectGeneration() exists and is a function');
 
         // Create a test G6 header
+        // prettier-ignore
         const headerBytes = Buffer.from([
-            0x47,
-            0x36,
-            0x50,
-            0x54, // 'G6PT' magic
-            0x14,
-            0x00, // 20x20 panels
-            0x00,
-            0x00,
-            0x00,
-            0x01, // 1 frame
-            0x00,
-            0x00,
-            0x00,
-            0x00, // row index start
+            0x47, 0x36, 0x50, 0x54, // 'G6PT' magic
+            0x14, 0x00, // 20x20 panels
+            0x00, 0x00, 0x00, 0x01, // 1 frame
+            0x00, 0x00, 0x00, 0x00, // row index start
             0x01, // GS2
-            0x00,
-            0x00 // padding
+            0x00, 0x00 // padding
         ]);
 
         try {
