@@ -385,11 +385,8 @@
             object-fit: contain;
         }
 
-        .combine-pattern-thumbnail:not(.empty) {
-            cursor: pointer;
-        }
-
-        .combine-pattern-thumbnail:not(.empty):hover {
+        /* Hover highlight on entire preview row when pattern is set */
+        .combine-pattern-preview:hover .combine-pattern-thumbnail:not(.empty) {
             border-color: var(--accent);
         }
 
@@ -1631,7 +1628,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.25 | 2026-02-11 07:24 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.26 | 2026-02-11 08:15 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -3858,9 +3855,9 @@
             let animationInterval = null;
             let currentFrameIdx = 0;
 
-            // Hover animation for multi-frame patterns
+            // Hover animation for multi-frame patterns (on entire row, not just thumbnail)
             if (entry.animatedThumbnails && entry.animatedThumbnails.length > 1) {
-                thumbContainer.addEventListener('mouseenter', () => {
+                item.addEventListener('mouseenter', () => {
                     currentFrameIdx = 0;
                     animationInterval = setInterval(() => {
                         currentFrameIdx = (currentFrameIdx + 1) % entry.animatedThumbnails.length;
@@ -3868,7 +3865,7 @@
                     }, 150);  // ~6-7 FPS for smooth preview
                 });
 
-                thumbContainer.addEventListener('mouseleave', () => {
+                item.addEventListener('mouseleave', () => {
                     if (animationInterval) {
                         clearInterval(animationInterval);
                         animationInterval = null;
@@ -5778,12 +5775,17 @@
 
         /**
          * Set up a combine thumbnail with static display and hover animation.
+         * Hover animation triggers on the entire preview row (thumbnail + name + dims),
+         * not just the thumbnail icon itself.
          * @param {HTMLElement} thumbEl - The thumbnail container element
          * @param {Object} pattern - Pattern object with frames, pixelRows, pixelCols, gsMode, generation
          */
         function setupCombineThumbnail(thumbEl, pattern) {
             thumbEl.classList.remove('empty');
             thumbEl.innerHTML = '';
+
+            // Find the parent .combine-pattern-preview row for hover area
+            const hoverEl = thumbEl.closest('.combine-pattern-preview') || thumbEl;
 
             const gen = pattern.generation || state.arena.config?.arena?.generation || 'G6';
             const numFrames = pattern.numFrames || pattern.frames.length;
@@ -5806,13 +5808,19 @@
                 img.src = typeof staticThumb === 'string' ? staticThumb : staticThumb.toDataURL();
                 thumbEl.appendChild(img);
 
-                // Hover animation for multi-frame patterns
+                // Hover animation for multi-frame patterns (on entire preview row)
                 if (animThumbs.length > 1) {
                     let interval = null;
                     let frameIdx = 0;
-                    thumbEl.title = `${numFrames} frames — hover to animate`;
+                    hoverEl.title = `${numFrames} frames — hover to animate`;
+                    hoverEl.style.cursor = 'pointer';
 
-                    thumbEl.addEventListener('mouseenter', () => {
+                    // Remove old listeners if re-setup (clone+replace pattern)
+                    const newHoverEl = hoverEl.cloneNode(false);
+                    while (hoverEl.firstChild) newHoverEl.appendChild(hoverEl.firstChild);
+                    hoverEl.parentNode.replaceChild(newHoverEl, hoverEl);
+
+                    newHoverEl.addEventListener('mouseenter', () => {
                         frameIdx = 0;
                         interval = setInterval(() => {
                             frameIdx = (frameIdx + 1) % animThumbs.length;
@@ -5821,7 +5829,7 @@
                         }, 150);
                     });
 
-                    thumbEl.addEventListener('mouseleave', () => {
+                    newHoverEl.addEventListener('mouseleave', () => {
                         if (interval) { clearInterval(interval); interval = null; }
                         img.src = typeof staticThumb === 'string' ? staticThumb : staticThumb.toDataURL();
                     });
