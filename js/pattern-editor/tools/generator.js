@@ -38,11 +38,11 @@ if (typeof require !== 'undefined') {
  * @returns {function} Random number generator function returning 0-1
  */
 function createSeededRandom(seed) {
-    return function() {
-        let t = seed += 0x6D2B79F5;
-        t = Math.imul(t ^ t >>> 15, t | 1);
-        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    return function () {
+        let t = (seed += 0x6d2b79f5);
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
 }
 
@@ -85,9 +85,12 @@ const PatternGenerator = {
      * @returns {Object} Panel specifications
      */
     getPanelSpecs(generation) {
-        const specs = PANEL_SPECS_LOCAL || (typeof PANEL_SPECS !== 'undefined' ? PANEL_SPECS : null);
+        const specs =
+            PANEL_SPECS_LOCAL || (typeof PANEL_SPECS !== 'undefined' ? PANEL_SPECS : null);
         if (!specs) {
-            throw new Error('PANEL_SPECS not available. Include arena-configs.js before this module.');
+            throw new Error(
+                'PANEL_SPECS not available. Include arena-configs.js before this module.'
+            );
         }
         return specs[generation];
     },
@@ -111,10 +114,10 @@ const PatternGenerator = {
         return {
             generation,
             rows: numRows,
-            cols: numCols,           // Total arena slots (for geometry calculations)
-            installedCols,           // Actual installed columns (for pattern dimensions)
+            cols: numCols, // Total arena slots (for geometry calculations)
+            installedCols, // Actual installed columns (for pattern dimensions)
             pixelRows: numRows * panelSize,
-            pixelCols: installedCols * panelSize,  // Use installed columns for pattern width
+            pixelCols: installedCols * panelSize, // Use installed columns for pattern width
             panelSize
         };
     },
@@ -184,14 +187,16 @@ const PatternGenerator = {
 
         // Validate wavelength divides evenly into total pixels for seamless tiling
         if (pixelCols % wavelength !== 0) {
-            console.warn(`Wavelength ${wavelength} does not divide evenly into ${pixelCols} pixels. Pattern may not tile seamlessly.`);
+            console.warn(
+                `Wavelength ${wavelength} does not divide evenly into ${pixelCols} pixels. Pattern may not tile seamlessly.`
+            );
         }
 
         // Number of frames for one complete cycle
         const numFrames = Math.ceil(wavelength / stepSize);
 
         // Calculate duty cycle thresholds
-        const onPixels = Math.round(wavelength * dutyCycle / 100);
+        const onPixels = Math.round((wavelength * dutyCycle) / 100);
 
         const frames = [];
         const stretchValues = [];
@@ -204,7 +209,7 @@ const PatternGenerator = {
             for (let row = 0; row < pixelRows; row++) {
                 for (let col = 0; col < pixelCols; col++) {
                     // Calculate phase position within wavelength
-                    const phase = ((col + offset) % wavelength + wavelength) % wavelength;
+                    const phase = (((col + offset) % wavelength) + wavelength) % wavelength;
                     const value = phase < onPixels ? high : low;
                     frame[row * pixelCols + col] = value;
                 }
@@ -240,21 +245,16 @@ const PatternGenerator = {
      * @returns {Object} Pattern data
      */
     generateSine(params, arena) {
-        const {
-            wavelength,
-            direction = 'cw',
-            high,
-            low,
-            gsMode = 16,
-            stepSize = 1
-        } = params;
+        const { wavelength, direction = 'cw', high, low, gsMode = 16, stepSize = 1 } = params;
 
         const dims = this.getArenaDimensions(arena);
         const { pixelRows, pixelCols, generation, rows, cols } = dims;
 
         // Validate wavelength divides evenly into total pixels
         if (pixelCols % wavelength !== 0) {
-            console.warn(`Wavelength ${wavelength} does not divide evenly into ${pixelCols} pixels. Pattern may not tile seamlessly.`);
+            console.warn(
+                `Wavelength ${wavelength} does not divide evenly into ${pixelCols} pixels. Pattern may not tile seamlessly.`
+            );
         }
 
         // Number of frames for one complete cycle
@@ -323,9 +323,12 @@ const PatternGenerator = {
      */
     generateSphericalGrating(params, arena) {
         // Ensure ArenaGeometry is available
-        const geom = ArenaGeometry_LOCAL || (typeof window !== 'undefined' ? window.ArenaGeometry : null);
+        const geom =
+            ArenaGeometry_LOCAL || (typeof window !== 'undefined' ? window.ArenaGeometry : null);
         if (!geom) {
-            throw new Error('ArenaGeometry module not available. Include arena-geometry.js before using spherical patterns.');
+            throw new Error(
+                'ArenaGeometry module not available. Include arena-geometry.js before using spherical patterns.'
+            );
         }
 
         const {
@@ -341,7 +344,7 @@ const PatternGenerator = {
             aaSamples = 1,
             arenaModel = 'smooth',
             gsMode = 16,
-            phaseShift = 0  // Phase shift as percentage of wavelength (0-100%)
+            phaseShift = 0 // Phase shift as percentage of wavelength (0-100%)
         } = params;
 
         const dims = this.getArenaDimensions(arena);
@@ -357,9 +360,9 @@ const PatternGenerator = {
         // numCircle = full circle columns (for angular spacing geometry)
         const arenaConfig = {
             panelSize,
-            numCols: installedCols,      // Pattern covers installed columns only
+            numCols: installedCols, // Pattern covers installed columns only
             numRows: rows,
-            numCircle: numCircle,        // Full circle panels (for correct angular spacing)
+            numCircle: numCircle, // Full circle panels (for correct angular spacing)
             model: arenaModel
         };
         const arenaCoords = geom.arenaCoordinates(arenaConfig);
@@ -405,7 +408,9 @@ const PatternGenerator = {
                 }
             }
         } else {
-            throw new Error(`Unknown motion type: ${motionType}. Use 'rotation', 'expansion', or 'translation'.`);
+            throw new Error(
+                `Unknown motion type: ${motionType}. Use 'rotation', 'expansion', or 'translation'.`
+            );
         }
 
         // Generate samples for anti-aliasing
@@ -442,7 +447,14 @@ const PatternGenerator = {
                         let sum = 0;
                         for (let s = 0; s < aaSamples; s++) {
                             const c = samples[row][col][s] - phaseOffset;
-                            sum += this._evaluateWaveform(c, spatFreq, dutyCycle, waveform, high, low);
+                            sum += this._evaluateWaveform(
+                                c,
+                                spatFreq,
+                                dutyCycle,
+                                waveform,
+                                high,
+                                low
+                            );
                         }
                         value = Math.round(sum / aaSamples);
                     } else {
@@ -487,7 +499,7 @@ const PatternGenerator = {
         if (waveform === 'sine') {
             // Sine wave: matches MATLAB's sin() formula
             // MATLAB: (sin((coord+phase_shift)*2*pi/spat_freq)+1)/2
-            const normalized = (Math.sin(c * 2 * Math.PI / spatFreq) + 1) / 2;
+            const normalized = (Math.sin((c * 2 * Math.PI) / spatFreq) + 1) / 2;
             return Math.round(low + normalized * (high - low));
         } else {
             // Square wave: matches MATLAB's square() function
@@ -495,10 +507,10 @@ const PatternGenerator = {
             // In MATLAB: (square((coord)*2*pi/spat_freq, duty_cycle)+1)/2
             // The argument to square is: coord * 2*pi / spat_freq
             // Square returns +1 when mod(arg, 2*pi) < 2*pi * dutyCycle/100
-            const arg = c * 2 * Math.PI / spatFreq;
+            const arg = (c * 2 * Math.PI) / spatFreq;
             // Normalize arg to [0, 2*pi) range
             const argMod = ((arg % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-            const threshold = 2 * Math.PI * dutyCycle / 100;
+            const threshold = (2 * Math.PI * dutyCycle) / 100;
             return argMod < threshold ? high : low;
         }
     },
@@ -526,9 +538,12 @@ const PatternGenerator = {
      */
     generateStarfield(params, arena) {
         // Ensure ArenaGeometry is available
-        const geom = ArenaGeometry_LOCAL || (typeof window !== 'undefined' ? window.ArenaGeometry : null);
+        const geom =
+            ArenaGeometry_LOCAL || (typeof window !== 'undefined' ? window.ArenaGeometry : null);
         if (!geom) {
-            throw new Error('ArenaGeometry module not available. Include arena-geometry.js before using starfield patterns.');
+            throw new Error(
+                'ArenaGeometry module not available. Include arena-geometry.js before using starfield patterns.'
+            );
         }
 
         const {
@@ -544,10 +559,10 @@ const PatternGenerator = {
             stepSize = 1,
             arenaModel = 'smooth',
             // Advanced options (MATLAB parity)
-            dotBrightnessMode = 'fixed',    // 'fixed', 'random-spread', 'random-binary'
-            dotSizeMode = 'static',          // 'static', 'distance'
-            dotOcclusion = 'closest',        // 'closest', 'sum', 'mean'
-            snapDots = true                  // Snap dots to pixel grid
+            dotBrightnessMode = 'fixed', // 'fixed', 'random-spread', 'random-binary'
+            dotSizeMode = 'static', // 'static', 'distance'
+            dotOcclusion = 'closest', // 'closest', 'sum', 'mean'
+            snapDots = true // Snap dots to pixel grid
         } = params;
 
         const dims = this.getArenaDimensions(arena);
@@ -559,9 +574,9 @@ const PatternGenerator = {
         // Generate arena coordinates for projection
         const arenaConfig = {
             panelSize,
-            numCols: installedCols,      // Pattern covers installed columns only
+            numCols: installedCols, // Pattern covers installed columns only
             numRows: rows,
-            numCircle: numCircle,        // Full circle for angular spacing
+            numCircle: numCircle, // Full circle for angular spacing
             model: arenaModel
         };
         const arenaCoords = geom.arenaCoordinates(arenaConfig);
@@ -593,7 +608,9 @@ const PatternGenerator = {
 
             // Normalize to unit sphere and convert to spherical
             const r = Math.sqrt(r2);
-            x /= r; y /= r; z /= r;
+            x /= r;
+            y /= r;
+            z /= r;
 
             // Convert to spherical coordinates
             const phi = Math.atan2(y, x);
@@ -613,7 +630,7 @@ const PatternGenerator = {
 
             // Store distance from center (for distance-relative size mode)
             // Distance is based on theta (angular distance from pole)
-            const distance = Math.abs(theta - Math.PI / 2) / (Math.PI / 2);  // 0 at equator, 1 at poles
+            const distance = Math.abs(theta - Math.PI / 2) / (Math.PI / 2); // 0 at equator, 1 at poles
 
             dots.push({ phi, theta, rho: 1, brightness: dotBrightness, distance });
         }
@@ -630,12 +647,14 @@ const PatternGenerator = {
             }
 
             // For occlusion tracking (closest mode)
-            const closestDistance = dotOcclusion === 'closest' ?
-                new Float32Array(pixelRows * pixelCols).fill(Infinity) : null;
+            const closestDistance =
+                dotOcclusion === 'closest'
+                    ? new Float32Array(pixelRows * pixelCols).fill(Infinity)
+                    : null;
 
             // For mean occlusion (need to track count and sum)
-            const pixelCount = dotOcclusion === 'mean' ?
-                new Uint8Array(pixelRows * pixelCols) : null;
+            const pixelCount =
+                dotOcclusion === 'mean' ? new Uint8Array(pixelRows * pixelCols) : null;
 
             // Calculate dot positions for this frame
             for (const dot of dots) {
@@ -691,8 +710,8 @@ const PatternGenerator = {
 
                 // Project to arena pixel coordinates
                 // Find the pixel that this dot falls into
-                const dotAzimuth = Math.atan2(y2, x2);  // -π to π
-                const dotElevation = Math.asin(z2);     // -π/2 to π/2
+                const dotAzimuth = Math.atan2(y2, x2); // -π to π
+                const dotElevation = Math.asin(z2); // -π/2 to π/2
 
                 // Convert to pixel coordinates
                 // Azimuth maps to columns (centered at 0)
@@ -701,7 +720,7 @@ const PatternGenerator = {
                 pixelCol = pixelCol % pixelCols;
 
                 // Elevation maps to rows (centered at equator)
-                const elevationRange = Math.PI * rows * panelSize / (cols * panelSize);  // Approximate vertical FOV
+                const elevationRange = (Math.PI * rows * panelSize) / (cols * panelSize); // Approximate vertical FOV
                 let pixelRowFloat = (dotElevation / elevationRange + 0.5) * pixelRows;
                 let pixelRow = snapDots ? Math.round(pixelRowFloat) : Math.floor(pixelRowFloat);
 
@@ -746,7 +765,9 @@ const PatternGenerator = {
                                 if (dx * dx + dy * dy <= effectiveSize * effectiveSize) {
                                     const r = pixelRow + dy;
                                     if (r >= 0 && r < pixelRows) {
-                                        const c = ((wrappedCol + dx) % pixelCols + pixelCols) % pixelCols;
+                                        const c =
+                                            (((wrappedCol + dx) % pixelCols) + pixelCols) %
+                                            pixelCols;
                                         drawPixel(r, c, dot.brightness);
                                     }
                                 }
@@ -804,9 +825,12 @@ const PatternGenerator = {
      */
     generateEdge(params, arena) {
         // Ensure ArenaGeometry is available
-        const geom = ArenaGeometry_LOCAL || (typeof window !== 'undefined' ? window.ArenaGeometry : null);
+        const geom =
+            ArenaGeometry_LOCAL || (typeof window !== 'undefined' ? window.ArenaGeometry : null);
         if (!geom) {
-            throw new Error('ArenaGeometry module not available. Include arena-geometry.js before using edge patterns.');
+            throw new Error(
+                'ArenaGeometry module not available. Include arena-geometry.js before using edge patterns.'
+            );
         }
 
         const {
@@ -819,7 +843,7 @@ const PatternGenerator = {
             aaSamples = 1,
             arenaModel = 'smooth',
             gsMode = 16,
-            phaseShift = 0  // Phase shift as percentage of wavelength (0-100%)
+            phaseShift = 0 // Phase shift as percentage of wavelength (0-100%)
         } = params;
 
         const dims = this.getArenaDimensions(arena);
@@ -831,9 +855,9 @@ const PatternGenerator = {
         // Generate arena coordinates
         const arenaConfig = {
             panelSize,
-            numCols: installedCols,      // Pattern covers installed columns only
+            numCols: installedCols, // Pattern covers installed columns only
             numRows: rows,
-            numCircle: numCircle,        // Full circle for angular spacing
+            numCircle: numCircle, // Full circle for angular spacing
             model: arenaModel
         };
         const arenaCoords = geom.arenaCoordinates(arenaConfig);
@@ -880,7 +904,7 @@ const PatternGenerator = {
 
         // Number of frames: use requested frames, or default to gsMode + 1 for duty cycle sweep
         // gsMode + 1 gives frames for 0%, 100/(gsMode)%, 200/(gsMode)%, ..., 100% duty cycle
-        const numFrames = requestedFrames || (gsMode + 1);
+        const numFrames = requestedFrames || gsMode + 1;
 
         const frames = [];
         const stretchValues = [];
@@ -903,7 +927,14 @@ const PatternGenerator = {
                         let sum = 0;
                         for (let s = 0; s < aaSamples; s++) {
                             const c = samples[row][col][s] + initialPhase;
-                            sum += this._evaluateWaveform(c, spatFreq, dutyCycle, 'square', high, low);
+                            sum += this._evaluateWaveform(
+                                c,
+                                spatFreq,
+                                dutyCycle,
+                                'square',
+                                high,
+                                low
+                            );
                         }
                         value = Math.round(sum / aaSamples);
                     } else {
@@ -948,11 +979,7 @@ const PatternGenerator = {
      * @returns {Object} Pattern data
      */
     generateOffOn(params, arena) {
-        const {
-            high,
-            low,
-            gsMode = 16
-        } = params;
+        const { high, low, gsMode = 16 } = params;
 
         const dims = this.getArenaDimensions(arena);
         const { pixelRows, pixelCols, generation, rows, cols } = dims;
@@ -998,21 +1025,26 @@ const PatternGenerator = {
         if (!pattern.generation) errors.push('Missing generation');
         if (!pattern.gs_val) errors.push('Missing gs_val (grayscale mode)');
         if (typeof pattern.numFrames !== 'number') errors.push('Missing or invalid numFrames');
-        if (!pattern.frames || !Array.isArray(pattern.frames)) errors.push('Missing or invalid frames array');
+        if (!pattern.frames || !Array.isArray(pattern.frames))
+            errors.push('Missing or invalid frames array');
         if (typeof pattern.pixelRows !== 'number') errors.push('Missing pixelRows');
         if (typeof pattern.pixelCols !== 'number') errors.push('Missing pixelCols');
 
         if (errors.length === 0) {
             // Check frame count matches
             if (pattern.frames.length !== pattern.numFrames) {
-                errors.push(`Frame count mismatch: numFrames=${pattern.numFrames}, actual=${pattern.frames.length}`);
+                errors.push(
+                    `Frame count mismatch: numFrames=${pattern.numFrames}, actual=${pattern.frames.length}`
+                );
             }
 
             // Check frame sizes
             const expectedSize = pattern.pixelRows * pattern.pixelCols;
             pattern.frames.forEach((frame, i) => {
                 if (frame.length !== expectedSize) {
-                    errors.push(`Frame ${i} size mismatch: expected ${expectedSize}, got ${frame.length}`);
+                    errors.push(
+                        `Frame ${i} size mismatch: expected ${expectedSize}, got ${frame.length}`
+                    );
                 }
             });
 
@@ -1021,7 +1053,9 @@ const PatternGenerator = {
             pattern.frames.forEach((frame, i) => {
                 for (let j = 0; j < frame.length; j++) {
                     if (frame[j] < 0 || frame[j] > maxVal) {
-                        errors.push(`Frame ${i} pixel ${j} out of range: ${frame[j]} (max ${maxVal})`);
+                        errors.push(
+                            `Frame ${i} pixel ${j} out of range: ${frame[j]} (max ${maxVal})`
+                        );
                         break; // Only report first error per frame
                     }
                 }
@@ -1030,7 +1064,9 @@ const PatternGenerator = {
             // Check stretch values
             if (pattern.stretchValues) {
                 if (pattern.stretchValues.length !== pattern.numFrames) {
-                    warnings.push(`Stretch values count mismatch: ${pattern.stretchValues.length} vs ${pattern.numFrames} frames`);
+                    warnings.push(
+                        `Stretch values count mismatch: ${pattern.stretchValues.length} vs ${pattern.numFrames} frames`
+                    );
                 }
             } else {
                 warnings.push('Missing stretchValues array');

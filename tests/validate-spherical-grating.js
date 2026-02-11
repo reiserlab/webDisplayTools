@@ -58,7 +58,7 @@ console.log('=== Spherical Grating Generator Tests ===\n');
 console.log('Test 1: Basic pattern generation');
 {
     const params = {
-        spatFreq: Math.PI / 5,  // ~10 pixel wavelength
+        spatFreq: Math.PI / 5, // ~10 pixel wavelength
         motionType: 'rotation',
         waveform: 'square',
         dutyCycle: 50,
@@ -85,7 +85,7 @@ console.log('Test 1: Basic pattern generation');
 console.log('\nTest 2: Rotation grating produces repeating pattern');
 {
     const params = {
-        spatFreq: Math.PI / 5,  // ~10 pixel wavelength
+        spatFreq: Math.PI / 5, // ~10 pixel wavelength
         motionType: 'rotation',
         waveform: 'square',
         dutyCycle: 50,
@@ -105,12 +105,15 @@ console.log('\nTest 2: Rotation grating produces repeating pattern');
     const hasGratingPattern = uniqueValues.has(0) && uniqueValues.has(15);
 
     // Check that the pattern roughly follows 50% duty cycle (40-60% should be "on")
-    const onCount = frame.filter(v => v === 15).length;
+    const onCount = frame.filter((v) => v === 15).length;
     const onRatio = onCount / frame.length;
     const dutyApproxCorrect = onRatio > 0.4 && onRatio < 0.6;
 
     assertTrue(hasGratingPattern, 'Rotation grating has both high and low values');
-    assertTrue(dutyApproxCorrect, `Rotation grating duty cycle is reasonable (${(onRatio*100).toFixed(1)}%)`);
+    assertTrue(
+        dutyApproxCorrect,
+        `Rotation grating duty cycle is reasonable (${(onRatio * 100).toFixed(1)}%)`
+    );
 }
 
 // Test 3: Square wave produces only high and low values (no AA)
@@ -125,7 +128,7 @@ console.log('\nTest 3: Square wave produces binary values');
         low: 0,
         poleCoord: [0, 0],
         numFrames: 1,
-        aaSamples: 1,  // No anti-aliasing
+        aaSamples: 1, // No anti-aliasing
         gsMode: 16
     };
 
@@ -173,7 +176,7 @@ console.log('\nTest 5: Anti-aliasing produces smooth edges');
 {
     // Use spatFreq that doesn't align perfectly with pixel grid
     const paramsNoAA = {
-        spatFreq: 0.65,  // Misaligned with pRad
+        spatFreq: 0.65, // Misaligned with pRad
         motionType: 'rotation',
         waveform: 'square',
         dutyCycle: 50,
@@ -203,7 +206,7 @@ console.log('\nTest 5: Anti-aliasing produces smooth edges');
 // Test 6: Pole position affects direction (replaces CW/CCW test)
 console.log('\nTest 6: Pole position affects direction');
 {
-    const baseSpatFreq = Math.PI / 10;  // ~20 pixel wavelength
+    const baseSpatFreq = Math.PI / 10; // ~20 pixel wavelength
 
     // Two patterns with opposite pole azimuth positions
     const paramsPolePlus = {
@@ -213,7 +216,7 @@ console.log('\nTest 6: Pole position affects direction');
         dutyCycle: 50,
         high: 15,
         low: 0,
-        poleCoord: [Math.PI/4, 0],  // Pole at +45° azimuth
+        poleCoord: [Math.PI / 4, 0], // Pole at +45° azimuth
         numFrames: 5,
         stepSize: 1,
         gsMode: 16
@@ -221,11 +224,15 @@ console.log('\nTest 6: Pole position affects direction');
 
     const paramsPoleMinus = {
         ...paramsPolePlus,
-        poleCoord: [-Math.PI/4, 0]  // Pole at -45° azimuth
+        poleCoord: [-Math.PI / 4, 0] // Pole at -45° azimuth
     };
 
     const patternPlus = PatternGenerator.generate('spherical-grating', paramsPolePlus, arenaConfig);
-    const patternMinus = PatternGenerator.generate('spherical-grating', paramsPoleMinus, arenaConfig);
+    const patternMinus = PatternGenerator.generate(
+        'spherical-grating',
+        paramsPoleMinus,
+        arenaConfig
+    );
 
     // First frames should differ (different pole positions = different orientation)
     let framesAreDifferent = false;
@@ -249,8 +256,16 @@ console.log('\nTest 6: Pole position affects direction');
         stepSize: -1
     };
 
-    const patternStepPos = PatternGenerator.generate('spherical-grating', paramsStepPos, arenaConfig);
-    const patternStepNeg = PatternGenerator.generate('spherical-grating', paramsStepNeg, arenaConfig);
+    const patternStepPos = PatternGenerator.generate(
+        'spherical-grating',
+        paramsStepPos,
+        arenaConfig
+    );
+    const patternStepNeg = PatternGenerator.generate(
+        'spherical-grating',
+        paramsStepNeg,
+        arenaConfig
+    );
 
     // First frames should be identical (same phase)
     let firstFramesMatch = true;
@@ -348,7 +363,7 @@ console.log('\nTest 8: Expansion motion type');
 console.log('\nTest 9: Translation motion type');
 {
     const params = {
-        spatFreq: 0.5,  // Different scale for translation
+        spatFreq: 0.5, // Different scale for translation
         motionType: 'translation',
         waveform: 'square',
         dutyCycle: 50,
@@ -405,8 +420,8 @@ console.log('\nTest 10: Duty cycle affects pattern');
     const pattern75 = PatternGenerator.generate('spherical-grating', params75, arenaConfig);
 
     // Count high pixels
-    const countHigh25 = pattern25.frames[0].filter(v => v === 15).length;
-    const countHigh75 = pattern75.frames[0].filter(v => v === 15).length;
+    const countHigh25 = pattern25.frames[0].filter((v) => v === 15).length;
+    const countHigh75 = pattern75.frames[0].filter((v) => v === 15).length;
 
     assertTrue(countHigh75 > countHigh25, '75% duty cycle has more high pixels than 25%');
 }
@@ -451,7 +466,7 @@ console.log('\nTest 12: GS2 binary mode');
     assertEqual(pattern.gs_val, 2, 'Grayscale mode is 2');
 
     // All values should be 0 or 1
-    const allBinary = pattern.frames[0].every(v => v === 0 || v === 1);
+    const allBinary = pattern.frames[0].every((v) => v === 0 || v === 1);
     assertTrue(allBinary, 'All pixels are binary (0 or 1)');
 }
 

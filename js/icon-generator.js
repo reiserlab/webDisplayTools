@@ -20,8 +20,7 @@ function normalizePatternData(patternData) {
         rows: patternData.pixelRows || patternData.rows,
         cols: patternData.pixelCols || patternData.cols,
         // Map gs_val to grayscaleMode
-        grayscaleMode: patternData.grayscaleMode ||
-            (patternData.gs_val === 16 ? 'GS16' : 'GS2')
+        grayscaleMode: patternData.grayscaleMode || (patternData.gs_val === 16 ? 'GS16' : 'GS2')
     };
 }
 
@@ -36,21 +35,20 @@ function generatePatternIcon(patternData, arenaConfig, options = {}) {
     // Normalize pattern data field names
     patternData = normalizePatternData(patternData);
     const opts = {
-        frameIndex: null,           // null = middle frame
+        frameIndex: null, // null = middle frame
         width: 256,
         height: 256,
-        innerRadiusRatio: 0.2,      // inner/outer radius (smaller = more perspective)
-        backgroundColor: 'dark',    // 'dark', 'white', or 'transparent'
-        showGaps: true,             // render missing panels as gaps
-        showOutlines: true,         // show arena outlines for depth
-        padding: 2,                 // minimal padding - ring fills ~95% of canvas
+        innerRadiusRatio: 0.2, // inner/outer radius (smaller = more perspective)
+        backgroundColor: 'dark', // 'dark', 'white', or 'transparent'
+        showGaps: true, // render missing panels as gaps
+        showOutlines: true, // show arena outlines for depth
+        padding: 2, // minimal padding - ring fills ~95% of canvas
         ...options
     };
 
     // Select frame
-    const frameIndex = opts.frameIndex !== null
-        ? opts.frameIndex
-        : Math.floor(patternData.frames.length / 2);
+    const frameIndex =
+        opts.frameIndex !== null ? opts.frameIndex : Math.floor(patternData.frames.length / 2);
 
     if (frameIndex < 0 || frameIndex >= patternData.frames.length) {
         throw new Error(`Frame index ${frameIndex} out of range`);
@@ -74,13 +72,13 @@ function generateMotionIcon(patternData, arenaConfig, options = {}) {
     patternData = normalizePatternData(patternData);
 
     const opts = {
-        frameRange: [0, patternData.frames.length - 1],  // [start, end] inclusive
-        maxFrames: 10,                                    // max frames to sample
-        weightingFunction: 'exponential',                 // 'exponential' or 'linear'
+        frameRange: [0, patternData.frames.length - 1], // [start, end] inclusive
+        maxFrames: 10, // max frames to sample
+        weightingFunction: 'exponential', // 'exponential' or 'linear'
         width: 256,
         height: 256,
         innerRadiusRatio: 0.2,
-        backgroundColor: 'dark',                          // 'dark', 'white', or 'transparent'
+        backgroundColor: 'dark', // 'dark', 'white', or 'transparent'
         showGaps: true,
         showOutlines: true,
         ...options
@@ -97,9 +95,10 @@ function generateMotionIcon(patternData, arenaConfig, options = {}) {
     const frameIndices = selectFrames(startIdx, endIdx, opts.maxFrames);
 
     // Calculate weights (newest = highest weight)
-    const weights = opts.weightingFunction === 'exponential'
-        ? calculateExponentialWeights(frameIndices.length)
-        : calculateLinearWeights(frameIndices.length);
+    const weights =
+        opts.weightingFunction === 'exponential'
+            ? calculateExponentialWeights(frameIndices.length)
+            : calculateLinearWeights(frameIndices.length);
 
     // Compute weighted average frame
     const averagedFrame = computeWeightedAverage(
@@ -147,7 +146,7 @@ function calculateExponentialWeights(numFrames) {
     }
     // Normalize
     const sum = weights.reduce((a, b) => a + b, 0);
-    return weights.map(w => w / sum);
+    return weights.map((w) => w / sum);
 }
 
 /**
@@ -160,7 +159,7 @@ function calculateLinearWeights(numFrames) {
     }
     // Normalize
     const sum = weights.reduce((a, b) => a + b, 0);
-    return weights.map(w => w / sum);
+    return weights.map((w) => w / sum);
 }
 
 /**
@@ -204,7 +203,7 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
     } else if (opts.backgroundColor === 'white') {
         bgColor = '#ffffff';
     } else {
-        bgColor = '#0f1419';  // dark
+        bgColor = '#0f1419'; // dark
     }
 
     // Fill background (unless transparent)
@@ -230,8 +229,8 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
     const pixelsPerPanel = specs.pixels_per_panel;
     const numCols = arenaConfig.num_cols;
     const numRows = arenaConfig.num_rows;
-    const columnsInstalled = arenaConfig.columns_installed ||
-        Array.from({ length: numCols }, (_, i) => i);
+    const columnsInstalled =
+        arenaConfig.columns_installed || Array.from({ length: numCols }, (_, i) => i);
     const columnOrder = arenaConfig.column_order || 'cw';
 
     // Pattern data dimensions (from loaded file)
@@ -243,14 +242,14 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
     // Base offset: -90° to start at south (-PI/2)
     // In canvas: 0° = right (East), -90° = down (South), angles go counter-clockwise
     const BASE_OFFSET_RAD = -Math.PI / 2;
-    const alpha = (2 * Math.PI) / numCols;  // angle per column (full arena)
+    const alpha = (2 * Math.PI) / numCols; // angle per column (full arena)
 
     // Arena-specific angular offset (e.g., for aligning gap position)
-    const angleOffsetRad = (arenaConfig.angle_offset_deg || 0) * Math.PI / 180;
+    const angleOffsetRad = ((arenaConfig.angle_offset_deg || 0) * Math.PI) / 180;
 
     // Render each installed column
     for (let installedIdx = 0; installedIdx < installedColumnCount; installedIdx++) {
-        const colIdx = columnsInstalled[installedIdx];  // Physical column position
+        const colIdx = columnsInstalled[installedIdx]; // Physical column position
 
         // Calculate angular position for this column based on column_order
         // CW: c0 spans from South boundary leftward (counter-clockwise), columns continue CCW
@@ -280,8 +279,9 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
                 // Row 0 (top of arena) → inner edge of ring (center)
                 // Row N (bottom of arena) → outer edge of ring
                 const verticalFraction = verticalPixelIdx / totalVerticalPixels;
-                const pixelInnerRadius = innerRadius + (verticalFraction * radiusRange);
-                const pixelOuterRadius = innerRadius + ((verticalPixelIdx + 1) / totalVerticalPixels * radiusRange);
+                const pixelInnerRadius = innerRadius + verticalFraction * radiusRange;
+                const pixelOuterRadius =
+                    innerRadius + ((verticalPixelIdx + 1) / totalVerticalPixels) * radiusRange;
 
                 for (let px = 0; px < pixelsPerPanel; px++) {
                     // Calculate position in pattern data (sequential columns)
@@ -297,10 +297,12 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
                     const color = brightnessToRGB(brightness, patternData.grayscaleMode);
 
                     // Calculate angular position for this pixel
-                    const pixelAngle = colStartAngle + (px / pixelsPerPanel) * (colEndAngle - colStartAngle);
+                    const pixelAngle =
+                        colStartAngle + (px / pixelsPerPanel) * (colEndAngle - colStartAngle);
 
                     // Calculate next pixel angle for width
-                    const nextPixelAngle = colStartAngle + ((px + 1) / pixelsPerPanel) * (colEndAngle - colStartAngle);
+                    const nextPixelAngle =
+                        colStartAngle + ((px + 1) / pixelsPerPanel) * (colEndAngle - colStartAngle);
 
                     // Ensure we always draw the shorter arc by using min/max
                     const minAngle = Math.min(pixelAngle, nextPixelAngle);
@@ -329,7 +331,7 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
     // Draw radial lines for gaps in partial arenas
     if (opts.showGaps && columnsInstalled.length < numCols) {
         const installedSet = new Set(columnsInstalled);
-        ctx.strokeStyle = '#2d3640';  // border color
+        ctx.strokeStyle = '#2d3640'; // border color
         ctx.lineWidth = 1;
 
         // Find gap boundaries (transitions between installed and missing columns)
@@ -349,10 +351,14 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
 
                 // Draw radial line at boundary
                 ctx.beginPath();
-                ctx.moveTo(centerX + innerRadius * Math.cos(angle),
-                          centerY + innerRadius * Math.sin(angle));
-                ctx.lineTo(centerX + outerRadius * Math.cos(angle),
-                          centerY + outerRadius * Math.sin(angle));
+                ctx.moveTo(
+                    centerX + innerRadius * Math.cos(angle),
+                    centerY + innerRadius * Math.sin(angle)
+                );
+                ctx.lineTo(
+                    centerX + outerRadius * Math.cos(angle),
+                    centerY + outerRadius * Math.sin(angle)
+                );
                 ctx.stroke();
             }
         }
@@ -408,14 +414,18 @@ function generatePatternGIF(patternData, arenaConfig, options = {}, onProgress =
         showGaps: true,
         showOutlines: true,
         padding: 2,
-        quality: 10,            // GIF quality (1-30, lower = better)
-        workers: 2,             // Web workers for encoding
+        quality: 10, // GIF quality (1-30, lower = better)
+        workers: 2, // Web workers for encoding
         ...options
     };
 
     // Check if gif.js is available
     if (typeof GIF === 'undefined') {
-        return Promise.reject(new Error('gif.js library not loaded. Add: <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>'));
+        return Promise.reject(
+            new Error(
+                'gif.js library not loaded. Add: <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>'
+            )
+        );
     }
 
     return new Promise((resolve, reject) => {
@@ -435,7 +445,12 @@ function generatePatternGIF(patternData, arenaConfig, options = {}, onProgress =
             // Add each frame
             for (let i = 0; i < patternData.frames.length; i++) {
                 const frameData = patternData.frames[i];
-                const canvas = renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts);
+                const canvas = renderCylindricalIconToCanvas(
+                    frameData,
+                    patternData,
+                    arenaConfig,
+                    opts
+                );
                 gif.addFrame(canvas, { delay: frameDelay, copy: true });
             }
 
@@ -451,7 +466,6 @@ function generatePatternGIF(patternData, arenaConfig, options = {}, onProgress =
 
             // Start encoding
             gif.render();
-
         } catch (err) {
             reject(err);
         }
@@ -505,7 +519,7 @@ function generateTestIcon(width, height, generation, numCols, numRows, pattern =
                 frameData[idx] = Math.floor(col / 20) % 2;
             } else if (pattern === 'sine') {
                 // Sine wave
-                frameData[idx] = (Math.sin(col * Math.PI / 30) + 1) / 2;
+                frameData[idx] = (Math.sin((col * Math.PI) / 30) + 1) / 2;
             } else {
                 // All on
                 frameData[idx] = 1;
@@ -558,4 +572,11 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 
 // ES6 module export
-export { generatePatternIcon, generateMotionIcon, generatePatternGIF, generateTestIcon, renderCylindricalIconToCanvas, normalizePatternData };
+export {
+    generatePatternIcon,
+    generateMotionIcon,
+    generatePatternGIF,
+    generateTestIcon,
+    renderCylindricalIconToCanvas,
+    normalizePatternData
+};

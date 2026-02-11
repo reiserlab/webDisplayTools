@@ -19,7 +19,14 @@ const path = require('path');
 const _patParser = require('../js/pat-parser.js');
 const PatParser = _patParser.default || _patParser;
 const PatEncoder = require('../js/pat-encoder.js');
-const { GENERATIONS, ARENA_REGISTRY, getGenerationName, getGenerationId, getArenaName, getArenaId } = require('../js/arena-configs.js');
+const {
+    GENERATIONS,
+    ARENA_REGISTRY,
+    getGenerationName,
+    getGenerationId,
+    getArenaName,
+    getArenaId
+} = require('../js/arena-configs.js');
 
 // ANSI color codes
 const colors = {
@@ -141,10 +148,10 @@ function test1_g4_v1_compat() {
     const numPatsX = 96;
     const numPatsY = 1;
     view.setUint16(0, numPatsX, true);
-    view.setUint16(2, numPatsY, true);  // V1: NumPatsY in bytes 2-3
-    bytes[4] = 16;  // gs_val
-    bytes[5] = 2;   // RowN
-    bytes[6] = 12;  // ColN
+    view.setUint16(2, numPatsY, true); // V1: NumPatsY in bytes 2-3
+    bytes[4] = 16; // gs_val
+    bytes[5] = 2; // RowN
+    bytes[6] = 12; // ColN
 
     // Verify byte 2 MSB is NOT set (V1)
     assert(bytes[2] < 0x80, 'V1 header: byte 2 MSB not set');
@@ -215,7 +222,11 @@ function test4_g4_all_generations() {
     ];
 
     for (const gen of generations) {
-        const data = makeG4PatternData({ generation: gen.name, generation_id: gen.id, arena_id: gen.id * 10 });
+        const data = makeG4PatternData({
+            generation: gen.name,
+            generation_id: gen.id,
+            arena_id: gen.id * 10
+        });
         const buffer = PatEncoder.encodeG4(data);
         const parsed = PatParser.parseG4Pattern(buffer);
 
@@ -235,7 +246,7 @@ function test5_g6_v2_basic() {
     const bytes = new Uint8Array(buffer);
 
     // Verify V2: byte 4 upper nibble = 2
-    const version = (bytes[4] >> 4) & 0x0F;
+    const version = (bytes[4] >> 4) & 0x0f;
     assertEqual(version, 2, 'Version = 2 in byte 4 upper nibble');
 
     // Parse it back
@@ -260,8 +271,8 @@ function test6_g6_v2_with_ids() {
     // arena_id = 15 = 0b001111
     // Byte 4: version(2)=0010 | arena_upper(0011) = 0x23
     // Byte 5: arena_lower(11) | observer(101010) = 0xEA
-    const arenaUpper = (15 >> 2) & 0x0F;  // 3
-    const arenaLower = 15 & 0x03;          // 3
+    const arenaUpper = (15 >> 2) & 0x0f; // 3
+    const arenaLower = 15 & 0x03; // 3
     assertEqual(bytes[4], (2 << 4) | arenaUpper, 'Byte 4 bit packing correct');
     assertEqual(bytes[5], (arenaLower << 6) | 42, 'Byte 5 bit packing correct');
 
@@ -299,40 +310,40 @@ function test8_g6_v1_compat() {
     log('\nTest 8: G6 V1 backward compatibility', 'cyan');
 
     // Create a V1 header manually (17 bytes)
-    const gs_val_raw = 2;  // GS16
+    const gs_val_raw = 2; // GS16
     const numFrames = 1;
     const rowCount = 2;
     const colCount = 10;
-    const panelBytes = 203;  // GS16
+    const panelBytes = 203; // GS16
     const numPanels = rowCount * colCount;
-    const frameDataSize = 4 + (numPanels * panelBytes);
-    const totalSize = 17 + (numFrames * frameDataSize);
+    const frameDataSize = 4 + numPanels * panelBytes;
+    const totalSize = 17 + numFrames * frameDataSize;
 
     const buffer = new ArrayBuffer(totalSize);
     const bytes = new Uint8Array(buffer);
     const view = new DataView(buffer);
 
     // Write V1 header
-    bytes[0] = 0x47;  // G
-    bytes[1] = 0x36;  // 6
-    bytes[2] = 0x50;  // P
-    bytes[3] = 0x54;  // T
-    bytes[4] = 1;     // Version = 1 (V1: full byte)
+    bytes[0] = 0x47; // G
+    bytes[1] = 0x36; // 6
+    bytes[2] = 0x50; // P
+    bytes[3] = 0x54; // T
+    bytes[4] = 1; // Version = 1 (V1: full byte)
     bytes[5] = gs_val_raw;
     view.setUint16(6, numFrames, true);
     bytes[8] = rowCount;
     bytes[9] = colCount;
-    bytes[10] = 0;    // Checksum
+    bytes[10] = 0; // Checksum
 
     // Panel mask
     for (let i = 0; i < numPanels && i < 48; i++) {
-        bytes[11 + Math.floor(i / 8)] |= (1 << (i % 8));
+        bytes[11 + Math.floor(i / 8)] |= 1 << (i % 8);
     }
 
     // Write a frame header + empty panel data
     let offset = 17;
-    bytes[offset] = 0x46;  // F
-    bytes[offset + 1] = 0x52;  // R
+    bytes[offset] = 0x46; // F
+    bytes[offset + 1] = 0x52; // R
     offset += 4;
     // Panel data is already zeros
 
