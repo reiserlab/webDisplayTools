@@ -17,192 +17,13 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const yaml = require('js-yaml');
 
 // GitHub configuration for fallback download
 const GITHUB_REPO = 'reiserlab/maDisplayTools';
 const GITHUB_BRANCH = 'feature/g6-tools';
 const GITHUB_CONFIG_PATH = 'configs/arenas';
 const GITHUB_REGISTRY_PATH = 'configs/arena_registry';
-
-// Simple YAML parser for our arena config format
-function parseYAML(yamlText) {
-    const config = {};
-    let currentSection = config;
-
-    const lines = yamlText.split('\n');
-    for (const line of lines) {
-        // Skip comments and empty lines
-        if (line.trim().startsWith('#') || line.trim() === '') continue;
-
-        // Check for section (arena:)
-        if (line.match(/^(\w+):$/)) {
-            const sectionName = line.match(/^(\w+):$/)[1];
-            config[sectionName] = {};
-            currentSection = config[sectionName];
-            continue;
-        }
-
-        // Check for key: value pairs (indented)
-        const kvMatch = line.match(/^\s+(\w+):\s*(.+?)(?:\s*#.*)?$/);
-        if (kvMatch) {
-            const key = kvMatch[1];
-            let value = kvMatch[2].trim();
-
-            // Handle different value types
-            if (value === 'null') {
-                currentSection[key] = null;
-            } else if (value.startsWith('[') && value.endsWith(']')) {
-                // Array
-                const arrayContent = value.slice(1, -1);
-                if (arrayContent.trim() === '') {
-                    currentSection[key] = [];
-                } else {
-                    currentSection[key] = arrayContent.split(',').map((v) => {
-                        v = v.trim();
-                        const num = parseFloat(v);
-                        return isNaN(num) ? v.replace(/^"|"$/g, '') : num;
-                    });
-                }
-            } else if (value.startsWith('"') && value.endsWith('"')) {
-                // Quoted string
-                currentSection[key] = value.slice(1, -1);
-            } else if (!isNaN(parseFloat(value))) {
-                // Number
-                currentSection[key] = parseFloat(value);
-            } else {
-                // Unquoted string
-                currentSection[key] = value;
-            }
-            continue;
-        }
-
-        // Check for top-level key: value
-        const topKvMatch = line.match(/^(\w+):\s*(.+?)(?:\s*#.*)?$/);
-        if (topKvMatch) {
-            const key = topKvMatch[1];
-            let value = topKvMatch[2].trim();
-
-            if (value.startsWith('"') && value.endsWith('"')) {
-                config[key] = value.slice(1, -1);
-            } else {
-                config[key] = value;
-            }
-            currentSection = config;
-        }
-    }
-
-    return config;
-}
-
-/**
- * Parse generations.yaml — maps numeric IDs to generation info
- * Format: top-level "generations:" section with numeric keys (0, 1, 2, ...)
- * each containing { name, panel_size, deprecated? }
- */
-function parseGenerationsYAML(yamlText) {
-    const generations = {};
-    let currentId = null;
-
-    for (const line of yamlText.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-
-        // Match generation ID line (2-space indent, numeric key only)
-        const idMatch = line.match(/^  (\d+):$/);
-        if (idMatch) {
-            currentId = parseInt(idMatch[1]);
-            generations[currentId] = {};
-            continue;
-        }
-
-        // Non-numeric key at 2-space indent (e.g., "  6-7:") — reset context
-        if (line.match(/^  \S+:/) && !line.match(/^    /)) {
-            currentId = null;
-            continue;
-        }
-
-        // Match property under a generation (4-space indent)
-        if (currentId !== null) {
-            const propMatch = line.match(/^    (\w+):\s*(.+?)(?:\s*#.*)?$/);
-            if (propMatch) {
-                const key = propMatch[1];
-                let value = propMatch[2].trim();
-
-                if (value === 'null') value = null;
-                else if (value === 'true') value = true;
-                else if (value === 'false') value = false;
-                else if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
-                else if (!isNaN(parseFloat(value))) value = parseFloat(value);
-
-                generations[currentId][key] = value;
-                continue;
-            }
-        }
-
-        // Non-indented lines reset context (e.g., "generations:" header, "version: 1")
-        if (!line.startsWith(' ')) {
-            currentId = null;
-        }
-    }
-
-    return generations;
-}
-
-/**
- * Parse index.yaml — maps generation keys to arena ID→name mappings
- * Format: top-level generation keys (G4, G41, G6) with numeric sub-keys
- * Uses generations data to map YAML keys (G41) to canonical names (G4.1)
- */
-function parseRegistryIndexYAML(yamlText, generations) {
-    const registry = {};
-
-    // Build mapping from YAML-safe keys (G41) to canonical names (G4.1)
-    const yamlKeyToName = {};
-    for (const gen of Object.values(generations)) {
-        if (gen.name) {
-            yamlKeyToName[gen.name] = gen.name;
-            yamlKeyToName[gen.name.replace('.', '')] = gen.name;
-        }
-    }
-
-    let currentGen = null;
-
-    for (const line of yamlText.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-
-        // Match generation section header (top-level key, no value)
-        const genMatch = line.match(/^(\w[\w.]*):$/);
-        if (genMatch) {
-            const yamlKey = genMatch[1];
-            const canonicalName = yamlKeyToName[yamlKey];
-            if (canonicalName) {
-                currentGen = canonicalName;
-                registry[currentGen] = {};
-            } else {
-                currentGen = null;
-            }
-            continue;
-        }
-
-        // Match arena ID → name mapping (indented)
-        if (currentGen) {
-            const arenaMatch = line.match(/^\s+(\d+):\s*(\S+)/);
-            if (arenaMatch) {
-                const arenaId = parseInt(arenaMatch[1]);
-                const arenaName = arenaMatch[2];
-                registry[currentGen][arenaId] = arenaName;
-            }
-        }
-
-        // Top-level key:value lines (like "version: 1") reset context
-        if (!line.startsWith(' ') && !line.match(/^(\w[\w.]*):$/)) {
-            currentGen = null;
-        }
-    }
-
-    return registry;
-}
 
 // Generate human-readable label from config
 function generateLabel(parsed) {
@@ -401,11 +222,37 @@ async function downloadRegistryFromGitHub(targetDir) {
  * @returns {{generations: Object, arenaRegistry: Object}}
  */
 function parseRegistryFiles(dir) {
-    const genText = fs.readFileSync(path.join(dir, 'generations.yaml'), 'utf8');
-    const idxText = fs.readFileSync(path.join(dir, 'index.yaml'), 'utf8');
+    const genData = yaml.load(fs.readFileSync(path.join(dir, 'generations.yaml'), 'utf8'));
+    const idxData = yaml.load(fs.readFileSync(path.join(dir, 'index.yaml'), 'utf8'));
 
-    const generations = parseGenerationsYAML(genText);
-    const arenaRegistry = parseRegistryIndexYAML(idxText, generations);
+    // Extract generations: keep only numeric IDs, pick name/panel_size/deprecated
+    const generations = {};
+    for (const [key, value] of Object.entries(genData.generations || {})) {
+        if (!/^\d+$/.test(key)) continue; // skip range keys like "6-7"
+        const id = parseInt(key);
+        generations[id] = { name: value.name, panel_size: value.panel_size ?? null };
+        if (value.deprecated) generations[id].deprecated = true;
+    }
+
+    // Build YAML key → canonical name mapping (e.g., G41 → G4.1)
+    const yamlKeyToName = {};
+    for (const gen of Object.values(generations)) {
+        if (gen.name) {
+            yamlKeyToName[gen.name] = gen.name;
+            yamlKeyToName[gen.name.replace('.', '')] = gen.name;
+        }
+    }
+
+    // Extract arena registry: map YAML keys to canonical generation names
+    const arenaRegistry = {};
+    for (const [key, value] of Object.entries(idxData)) {
+        const canonicalName = yamlKeyToName[key];
+        if (!canonicalName || typeof value !== 'object') continue;
+        arenaRegistry[canonicalName] = {};
+        for (const [arenaId, arenaName] of Object.entries(value)) {
+            arenaRegistry[canonicalName][parseInt(arenaId)] = arenaName;
+        }
+    }
 
     return { generations, arenaRegistry };
 }
@@ -653,7 +500,7 @@ async function main() {
 
     for (const file of files) {
         const content = fs.readFileSync(path.join(configDir, file), 'utf8');
-        const parsed = parseYAML(content);
+        const parsed = yaml.load(content);
         const name = file.replace(/\.ya?ml$/, '');
 
         configs[name] = {

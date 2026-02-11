@@ -16,6 +16,7 @@
     "author": "Reiser Lab",
     "license": "MIT",
     "devDependencies": {
+        "js-yaml": "^4.1.1",
         "prettier": "^3.8.1"
     }
 }
