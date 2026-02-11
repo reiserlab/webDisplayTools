@@ -6,8 +6,8 @@
  * Works in both Node.js and browser environments.
  *
  * Supported formats:
- * - G6: 20x20 pixel panels, 17-byte header with "G6PT" magic
- * - G4/G4.1: 16x16 pixel panels, 7-byte header
+ * - G6: 20x20 pixel panels, 18-byte V2 header with "G6PT" magic, arena_id + observer_id
+ * - G4/G4.1: 16x16 pixel panels, 7-byte V2 header with generation_id + arena_id
  *
  * Coordinate Convention:
  * - Origin (0,0) at bottom-left of arena
@@ -20,7 +20,7 @@ const PatEncoder = (function () {
 
     // Constants - must match pat-parser.js
     const G6_MAGIC = 'G6PT';
-    const G6_HEADER_SIZE = 17;
+    const G6_HEADER_SIZE = 18;       // V2: 18 bytes (always write V2)
     const G6_FRAME_HEADER_SIZE = 4; // "FR" + 2 reserved bytes
     const G6_PANEL_SIZE = 20;
     const G6_GS2_PANEL_BYTES = 53; // header(1) + cmd(1) + data(50) + stretch(1)
@@ -28,6 +28,11 @@ const PatEncoder = (function () {
 
     const G4_HEADER_SIZE = 7;
     const G4_PANEL_SIZE = 16;
+
+    // Generation ID mapping (same as pat-parser.js)
+    const GENERATION_IDS = {
+        'G3': 1, 'G4': 2, 'G4.1': 3, 'G6': 4
+    };
 
     /**
      * Encode pattern data to ArrayBuffer (auto-detects G4/G6)
@@ -45,17 +50,18 @@ const PatEncoder = (function () {
     }
 
     /**
-     * Encode pattern data to G6 format
+     * Encode pattern data to G6 V2 format
      *
-     * Header (17 bytes):
+     * V2 Header (18 bytes):
      *   Bytes 0-3:   "G6PT" magic
-     *   Byte 4:      Version (1)
-     *   Byte 5:      gs_val (1=GS2 binary, 2=GS16 grayscale)
+     *   Byte 4:      [VVVV][AAAA] - Version (4 bits = 2) + Arena ID upper 4 bits
+     *   Byte 5:      [AA][OOOOOO] - Arena ID lower 2 bits + Observer ID (6 bits)
      *   Bytes 6-7:   num_frames (uint16 LE)
      *   Byte 8:      row_count (panel rows)
      *   Byte 9:      col_count (installed columns)
-     *   Byte 10:     checksum (XOR of bytes 0-9)
+     *   Byte 10:     gs_val (1=GS2, 2=GS16)
      *   Bytes 11-16: panel_mask (6 bytes, 48-bit bitmask)
+     *   Byte 17:     checksum (XOR of frame data)
      *
      * @param {Object} patternData - Pattern data object
      * @returns {ArrayBuffer} Encoded binary data
@@ -69,7 +75,9 @@ const PatEncoder = (function () {
             pixelRows,
             pixelCols,
             frames,
-            stretchValues = []
+            stretchValues = [],
+            arena_id = 0,
+            observer_id = 0
         } = patternData;
 
         // Validate dimensions
@@ -97,18 +105,23 @@ const PatEncoder = (function () {
         const bytes = new Uint8Array(buffer);
         const view = new DataView(buffer);
 
-        // Write header
+        // Write V2 header (18 bytes)
         // Magic bytes "G6PT"
         bytes[0] = 0x47; // 'G'
         bytes[1] = 0x36; // '6'
         bytes[2] = 0x50; // 'P'
         bytes[3] = 0x54; // 'T'
 
-        // Version
-        bytes[4] = 1;
+        // Byte 4: [VVVV][AAAA] - Version (4 bits = 2) + Arena ID upper 4 bits
+        const version = 2;
+        const clampedArenaId = Math.min(63, Math.max(0, arena_id));
+        const clampedObserverId = Math.min(63, Math.max(0, observer_id));
+        const arenaUpper = (clampedArenaId >> 2) & 0x0F;  // Upper 4 bits of 6-bit arena_id
+        bytes[4] = (version << 4) | arenaUpper;
 
-        // GS mode (1=GS2, 2=GS16)
-        bytes[5] = isGrayscale ? 2 : 1;
+        // Byte 5: [AA][OOOOOO] - Arena ID lower 2 bits + Observer ID (6 bits)
+        const arenaLower = clampedArenaId & 0x03;  // Lower 2 bits of arena_id
+        bytes[5] = (arenaLower << 6) | (clampedObserverId & 0x3F);
 
         // Frame count (little-endian)
         view.setUint16(6, numFrames, true);
@@ -117,22 +130,19 @@ const PatEncoder = (function () {
         bytes[8] = rowCount;
         bytes[9] = colCount;
 
-        // Checksum (XOR of bytes 0-9)
-        let checksum = 0;
-        for (let i = 0; i < 10; i++) {
-            checksum ^= bytes[i];
-        }
-        bytes[10] = checksum;
+        // GS mode (1=GS2, 2=GS16) - V2 puts this in byte 10
+        bytes[10] = isGrayscale ? 2 : 1;
 
         // Panel mask (all panels active)
-        // Set bits for TOTAL panels (rowCount * colCount), not just columns
-        // MATLAB counts set bits to determine num_panels_in_file
         const numPanelsTotal = rowCount * colCount;
         for (let i = 0; i < numPanelsTotal && i < 48; i++) {
             const byteIdx = Math.floor(i / 8);
             const bitIdx = i % 8;
             bytes[11 + byteIdx] |= 1 << bitIdx;
         }
+
+        // Byte 17: checksum placeholder (will be computed after frame data)
+        bytes[17] = 0;
 
         // Write frames
         let offset = G6_HEADER_SIZE;
@@ -173,6 +183,13 @@ const PatEncoder = (function () {
                 }
             }
         }
+
+        // Compute checksum: XOR of all frame data bytes (after header)
+        let checksum = 0;
+        for (let i = G6_HEADER_SIZE; i < offset; i++) {
+            checksum ^= bytes[i];
+        }
+        bytes[17] = checksum;
 
         return buffer;
     }
@@ -301,12 +318,13 @@ const PatEncoder = (function () {
     }
 
     /**
-     * Encode pattern data to G4 format
+     * Encode pattern data to G4 V2 format
      *
-     * Header (7 bytes):
+     * V2 Header (7 bytes):
      *   Bytes 0-1:   NumPatsX (uint16 LE)
-     *   Bytes 2-3:   NumPatsY (uint16 LE)
-     *   Byte 4:      gs_val (1 or 2 = binary, 4 or 16 = grayscale)
+     *   Byte 2:      [V][GGG][RRRR] - Version flag + Generation ID + Reserved
+     *   Byte 3:      Arena ID (8 bits, 0-255)
+     *   Byte 4:      gs_val (2 or 16)
      *   Byte 5:      RowN (panel rows)
      *   Byte 6:      ColN (panel cols)
      *
@@ -324,7 +342,10 @@ const PatEncoder = (function () {
             pixelRows,
             pixelCols,
             frames,
-            stretchValues = []
+            stretchValues = [],
+            generation = 'G4',
+            generation_id,
+            arena_id = 0
         } = patternData;
 
         // Validate dimensions
@@ -352,10 +373,21 @@ const PatEncoder = (function () {
         const bytes = new Uint8Array(buffer);
         const view = new DataView(buffer);
 
-        // Write header
-        view.setUint16(0, numPatsX, true); // little-endian
-        view.setUint16(2, numPatsY, true);
-        bytes[4] = isGrayscale ? 4 : 1; // gs_val
+        // Write V2 header
+        view.setUint16(0, numPatsX, true);  // little-endian
+
+        // Byte 2: [V][GGG][RRRR] - V2 flag + generation ID
+        // Resolve generation_id: use explicit value, or look up from generation name
+        const genId = generation_id !== undefined ? generation_id
+            : (GENERATION_IDS[generation] || 0);
+        const v2Flag = 0x80;  // Set MSB (bit 7)
+        const genBits = (genId & 0x07) << 4;  // Bits 6-4
+        bytes[2] = v2Flag | genBits;
+
+        // Byte 3: Arena config ID
+        bytes[3] = Math.min(255, Math.max(0, arena_id));
+
+        bytes[4] = isGrayscale ? 16 : 2;    // gs_val (use normalized values: 2 or 16)
         bytes[5] = rowCount;
         bytes[6] = colCount;
 
