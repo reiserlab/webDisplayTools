@@ -5,10 +5,9 @@
 **CLAUDE.md** is for **how to work with the code** — architecture, patterns, gotchas, testing procedures, and coding conventions. It should NOT contain roadmap items, feature wishlists, or project planning.
 
 Roadmap and planning content belongs in:
-- **`maDisplayTools/docs/G4G6_ROADMAP.md`** — unified roadmap for both MATLAB and web tools
-- **`maDisplayTools/docs/G4G6_ROADMAP_SESSIONS.md`** — detailed session notes and changelog
+- **`docs/ROADMAP.md`** — roadmap, milestones, changelog, and open items
 
-**Review needed (future session):** Audit existing CLAUDE.md sections for roadmap content that has leaked in (e.g., "Future Improvements" lists, "Testing Required (Next Session)" checklists). Move planning items to the roadmap files and keep CLAUDE.md focused on technical reference.
+**Review needed (future session):** Audit existing CLAUDE.md sections for roadmap content that has leaked in (e.g., "Future Improvements" lists, "Testing Required (Next Session)" checklists). Move planning items to the roadmap file and keep CLAUDE.md focused on technical reference.
 
 ## Versioning
 
