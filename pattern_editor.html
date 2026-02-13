@@ -491,6 +491,7 @@
             padding: 8px 16px;
             background: var(--surface);
             border: none;
+            border-bottom: 2px solid transparent;
             cursor: pointer;
             font-size: 11px;
             font-weight: 600;
@@ -504,13 +505,14 @@
         }
 
         .clipboard-tab:hover {
-            background: var(--hover-dim, #2a3540);
+            background: rgba(0, 230, 118, 0.08);
             color: var(--text);
         }
 
         .clipboard-tab.active {
-            background: var(--accent);
-            color: var(--bg);
+            background: rgba(0, 230, 118, 0.1);
+            border-bottom-color: var(--accent);
+            color: var(--accent);
         }
 
         .clipboard-tab .count {
@@ -881,9 +883,9 @@
         .viewer-tab {
             padding: 0.5rem 1rem;
             background: var(--bg);
-            border: 1px solid var(--border);
+            border: 1px solid var(--accent);
             border-radius: 4px;
-            color: var(--text-dim);
+            color: var(--accent);
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.75rem;
             font-weight: 600;
@@ -937,8 +939,9 @@
         }
 
         .viewer-tab:hover {
+            background: rgba(0, 230, 118, 0.15);
             border-color: var(--accent);
-            color: var(--text);
+            color: var(--accent);
         }
 
         .viewer-tab.active {
@@ -1452,13 +1455,13 @@
 
         .file-action-btn.file-action-new {
             background: var(--bg);
-            border: 1px solid var(--border);
-            color: var(--text);
+            border: 1px solid var(--accent);
+            color: var(--accent);
         }
 
         .file-action-btn.file-action-new:hover {
-            border-color: var(--accent);
-            color: var(--accent);
+            background: var(--accent);
+            color: var(--bg);
         }
 
         .frame-nav {
@@ -1471,9 +1474,9 @@
             width: 28px;
             height: 28px;
             background: var(--bg);
-            border: 1px solid var(--border);
+            border: 1px solid var(--accent);
             border-radius: 4px;
-            color: var(--text-dim);
+            color: var(--accent);
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -1482,8 +1485,8 @@
         }
 
         .frame-btn:hover {
-            border-color: var(--accent);
-            color: var(--accent);
+            background: var(--accent);
+            color: var(--bg);
         }
 
         .frame-info {
@@ -1668,7 +1671,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.27 | 2026-02-13 15:51 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.28 | 2026-02-13 16:01 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -2087,7 +2090,7 @@
             <!-- File Operations -->
             <div class="file-operations">
                 <div class="file-buttons">
-                    <button class="btn secondary" id="saveBtn">Save</button>
+                    <button class="btn" id="saveBtn">SAVE</button>
                 </div>
             </div>
         </div>
