@@ -1421,6 +1421,46 @@
             background: var(--surface);
         }
 
+        .file-action-buttons {
+            display: flex;
+            gap: 6px;
+            padding-right: 0.75rem;
+            border-right: 1px solid var(--border);
+        }
+
+        .file-action-btn {
+            padding: 0.5rem 0.75rem;
+            background: var(--accent);
+            border: none;
+            border-radius: 4px;
+            color: var(--bg);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .file-action-btn:hover {
+            background: var(--hover);
+        }
+
+        .file-action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .file-action-btn.file-action-new {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .file-action-btn.file-action-new:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
         .frame-nav {
             display: flex;
             align-items: center;
@@ -1628,7 +1668,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.26 | 2026-02-11 08:15 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.27 | 2026-02-13 15:51 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -2047,9 +2087,7 @@
             <!-- File Operations -->
             <div class="file-operations">
                 <div class="file-buttons">
-                    <button class="btn secondary" id="loadBtn">Load</button>
                     <button class="btn secondary" id="saveBtn">Save</button>
-                    <button class="btn secondary" id="newBtn">New</button>
                 </div>
             </div>
         </div>
@@ -2214,6 +2252,10 @@
 
             <!-- Playback Controls -->
             <div class="playback-controls">
+                <div class="file-action-buttons">
+                    <button class="file-action-btn" id="loadBtn" title="Load a .pat file">LOAD</button>
+                    <button class="file-action-btn file-action-new" id="newBtn" title="Create a new blank pattern">NEW</button>
+                </div>
                 <div class="frame-nav">
                     <button class="frame-btn" id="firstFrameBtn" title="First frame">⏮</button>
                     <button class="frame-btn" id="prevFrameBtn" title="Previous frame">◀</button>
