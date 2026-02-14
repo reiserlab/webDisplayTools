@@ -404,8 +404,8 @@ const PatEncoder = (function() {
 
         for (let i = 0; i < panelRows; i++) {
             for (let j = 1; j <= numSubpanel; j++) {
-                // Row header
-                frameData[n++] = 0x00;
+                // Row header: 1-based panel row index (matches MATLAB encoder)
+                frameData[n++] = i + 1;
 
                 for (let k = 1; k <= subpanelMsgLength; k++) {
                     for (let m = 0; m < panelCols; m++) {
