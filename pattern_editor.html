@@ -1086,6 +1086,64 @@
             background: var(--border);
         }
 
+        /* Projection Controls Bar (Mercator, Mollweide) */
+        .projection-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.4rem 0.75rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .projection-controls label {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        .projection-controls .ctrl-group {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .projection-controls .ctrl-btn {
+            padding: 0.2rem 0.5rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            color: var(--text-dim);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .projection-controls .ctrl-btn:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .projection-controls .separator {
+            width: 1px;
+            height: 1.2rem;
+            background: var(--border);
+        }
+
+        .proj-fov-label {
+            font-size: 0.65rem;
+            color: var(--text);
+            min-width: 8em;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
         /* 3D Stats Overlay */
         .three-stats-overlay {
             position: absolute;
@@ -1642,40 +1700,13 @@
         }
 
         /* Coming Soon overlay for disabled features */
-        .coming-soon-overlay {
-            position: absolute;
-            inset: 0;
-            background: rgba(15, 20, 25, 0.9);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10;
-        }
-
-        .coming-soon-badge {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            padding: 1rem 2rem;
-            border-radius: 8px;
-            text-align: center;
-        }
-
-        .coming-soon-badge h3 {
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--accent);
-            margin-bottom: 0.5rem;
-        }
-
-        .coming-soon-badge p {
-            font-size: 0.8rem;
-            color: var(--text-dim);
-        }
+        /* coming-soon styles removed — Mercator/Mollweide now implemented */
     </style>
 </head>
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.29 | 2026-02-13 16:32 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.30 | 2026-02-17 17:50 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -2122,8 +2153,8 @@
                 <button class="viewer-tab active" data-viewer="grid">2D</button>
                 <button class="viewer-tab" data-viewer="edit">Edit</button>
                 <button class="viewer-tab" data-viewer="3d">3D</button>
-                <button class="viewer-tab disabled" data-viewer="mercator">Mercator</button>
-                <button class="viewer-tab disabled" data-viewer="mollweide">Mollweide</button>
+                <button class="viewer-tab" data-viewer="mercator" title="Mercator projection (longitude vs latitude)">Mercator</button>
+                <button class="viewer-tab" data-viewer="mollweide" title="Mollweide projection (equal-area, elliptical)">Mollweide</button>
 
                 <div class="viewer-options">
                     <label>
@@ -2238,22 +2269,12 @@
 
                 <!-- Mercator Viewer -->
                 <div class="viewer-pane" id="mercatorViewer">
-                    <div class="coming-soon-overlay">
-                        <div class="coming-soon-badge">
-                            <h3>Mercator Projection</h3>
-                            <p>Optional enhancement</p>
-                        </div>
-                    </div>
+                    <div id="mercatorContainer" style="width: 100%; height: 100%;"></div>
                 </div>
 
                 <!-- Mollweide Viewer -->
                 <div class="viewer-pane" id="mollweideViewer">
-                    <div class="coming-soon-overlay">
-                        <div class="coming-soon-badge">
-                            <h3>Mollweide Projection</h3>
-                            <p>Optional enhancement</p>
-                        </div>
-                    </div>
+                    <div id="mollweideContainer" style="width: 100%; height: 100%;"></div>
                 </div>
             </div>
 
@@ -2362,6 +2383,8 @@
     <script type="module">
         import PatParser from './js/pat-parser.js';
         import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js?v=0924';
+        import MercatorViewer from './js/pattern-editor/viewers/mercator-viewer.js?v=0217';
+        import MollweideViewer from './js/pattern-editor/viewers/mollweide-viewer.js?v=0217';
         import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
         import { generatePatternIcon } from './js/icon-generator.js';
         import ImageConverter from './js/pattern-editor/tools/image-converter.js';
@@ -2414,6 +2437,12 @@
         let threeViewer = null;
         let threeViewerArenaConfig = null;  // Track which arena config the 3D viewer was last built with
 
+        // Projection viewer instances
+        let mercatorViewer = null;
+        let mercatorViewerArenaConfig = null;
+        let mollweideViewer = null;
+        let mollweideViewerArenaConfig = null;
+
         // Event emitter
         function emit(event, data) {
             const callbacks = state.listeners.get(event) || [];
@@ -2463,7 +2492,8 @@
             });
 
             // Viewer tabs
-            document.querySelectorAll('.viewer-tab:not(.disabled)').forEach(tab => {
+            document.querySelectorAll('.viewer-tab').forEach(tab => {
+                if (tab.classList.contains('disabled')) return;
                 tab.addEventListener('click', () => {
                     const viewerName = tab.dataset.viewer;
                     setActiveViewer(viewerName);
@@ -2481,6 +2511,8 @@
             // View options
             document.getElementById('showBoundaries').addEventListener('change', (e) => {
                 state.editor.showPanelBoundaries = e.target.checked;
+                if (mercatorViewer) mercatorViewer.setOptions({ showPanelBoundaries: e.target.checked });
+                if (mollweideViewer) mollweideViewer.setOptions({ showPanelBoundaries: e.target.checked });
                 renderCurrentViewer();
             });
 
@@ -2490,6 +2522,8 @@
                 if (threeViewer) {
                     threeViewer.setOptions({ showPanelNumbers: e.target.checked });
                 }
+                if (mercatorViewer) mercatorViewer.setOptions({ showPanelNumbers: e.target.checked });
+                if (mollweideViewer) mollweideViewer.setOptions({ showPanelNumbers: e.target.checked });
                 renderCurrentViewer();
             });
 
@@ -2590,6 +2624,17 @@
                         threeViewer.reinit(state.arena.config, specs);
                         threeViewerArenaConfig = state.arena.configName;
                         updateThreeStats();
+                    }
+                    // Force projection viewers to reinit if active
+                    if (mercatorViewer && state.editor.activeViewer === 'mercator') {
+                        const specs = PANEL_SPECS[state.arena.config.arena.generation];
+                        mercatorViewer.reinit(state.arena.config, specs);
+                        mercatorViewerArenaConfig = state.arena.configName;
+                    }
+                    if (mollweideViewer && state.editor.activeViewer === 'mollweide') {
+                        const specs = PANEL_SPECS[state.arena.config.arena.generation];
+                        mollweideViewer.reinit(state.arena.config, specs);
+                        mollweideViewerArenaConfig = state.arena.configName;
                     }
                 }
 
@@ -2806,9 +2851,13 @@
                 updateEditPalette(state.pattern.gsMode);
             }
 
-            // Initialize or update 3D viewer when switching to it
+            // Initialize or update viewer when switching to it
             if (actualViewer === '3d') {
                 init3DViewer();
+            } else if (actualViewer === 'mercator') {
+                initMercatorViewer();
+            } else if (actualViewer === 'mollweide') {
+                initMollweideViewer();
             }
 
             renderCurrentViewer();
@@ -2892,6 +2941,146 @@
             document.getElementById('statVRes').textContent = stats.verticalRes.toFixed(2) + '°/px';
             document.getElementById('statAzPx').textContent = stats.azimuthPixels;
             document.getElementById('statVPx').textContent = stats.verticalPixels;
+        }
+
+        // ============================================
+        // Projection Viewer Initialization
+        // ============================================
+
+        function initMercatorViewer() {
+            const container = document.getElementById('mercatorContainer');
+            if (!container) {
+                console.error('Mercator Viewer: Container not found');
+                return;
+            }
+            const config = state.arena.config;
+            if (!config) {
+                console.error('Mercator Viewer: No arena config');
+                return;
+            }
+            const specs = PANEL_SPECS[config.arena.generation];
+            if (!specs) {
+                console.error('Mercator Viewer: No specs for', config.arena.generation);
+                return;
+            }
+
+            // Destroy failed viewer
+            if (mercatorViewer && !mercatorViewer.canvas) {
+                mercatorViewer.destroy();
+                mercatorViewer = null;
+                mercatorViewerArenaConfig = null;
+            }
+
+            // Create viewer if needed
+            if (!mercatorViewer) {
+                mercatorViewer = new MercatorViewer(container);
+                try {
+                    mercatorViewer.init(config, specs);
+                    mercatorViewerArenaConfig = state.arena.configName;
+                    console.log('Mercator Viewer: Initialized with', config.arena.generation,
+                        config.arena.num_cols + 'x' + config.arena.num_rows);
+                } catch (err) {
+                    console.error('Mercator Viewer: Init failed:', err.message);
+                    mercatorViewer = null;
+                    return;
+                }
+            }
+
+            // Reinit if arena changed
+            if (mercatorViewerArenaConfig !== state.arena.configName) {
+                console.log('Mercator Viewer: Arena changed to', state.arena.configName);
+                mercatorViewer.reinit(config, specs);
+                mercatorViewerArenaConfig = state.arena.configName;
+            }
+
+            // Update pattern
+            if (state.pattern) {
+                mercatorViewer.setPattern(state.pattern);
+                mercatorViewer.setFrame(state.editor.currentFrame);
+            } else {
+                mercatorViewer.setPattern(null);
+            }
+        }
+
+        function initMollweideViewer() {
+            const container = document.getElementById('mollweideContainer');
+            if (!container) {
+                console.error('Mollweide Viewer: Container not found');
+                return;
+            }
+            const config = state.arena.config;
+            if (!config) {
+                console.error('Mollweide Viewer: No arena config');
+                return;
+            }
+            const specs = PANEL_SPECS[config.arena.generation];
+            if (!specs) {
+                console.error('Mollweide Viewer: No specs for', config.arena.generation);
+                return;
+            }
+
+            // Destroy failed viewer
+            if (mollweideViewer && !mollweideViewer.canvas) {
+                mollweideViewer.destroy();
+                mollweideViewer = null;
+                mollweideViewerArenaConfig = null;
+            }
+
+            // Create viewer if needed
+            if (!mollweideViewer) {
+                mollweideViewer = new MollweideViewer(container);
+                try {
+                    mollweideViewer.init(config, specs);
+                    mollweideViewerArenaConfig = state.arena.configName;
+                    console.log('Mollweide Viewer: Initialized with', config.arena.generation,
+                        config.arena.num_cols + 'x' + config.arena.num_rows);
+                } catch (err) {
+                    console.error('Mollweide Viewer: Init failed:', err.message);
+                    mollweideViewer = null;
+                    return;
+                }
+            }
+
+            // Reinit if arena changed
+            if (mollweideViewerArenaConfig !== state.arena.configName) {
+                console.log('Mollweide Viewer: Arena changed to', state.arena.configName);
+                mollweideViewer.reinit(config, specs);
+                mollweideViewerArenaConfig = state.arena.configName;
+            }
+
+            // Update pattern
+            if (state.pattern) {
+                mollweideViewer.setPattern(state.pattern);
+                mollweideViewer.setFrame(state.editor.currentFrame);
+            } else {
+                mollweideViewer.setPattern(null);
+            }
+        }
+
+        function renderMercatorViewer() {
+            if (!mercatorViewer) {
+                initMercatorViewer();
+                return;
+            }
+            if (state.pattern) {
+                mercatorViewer.setPattern(state.pattern);
+                mercatorViewer.setFrame(state.editor.currentFrame);
+            } else {
+                mercatorViewer.setPattern(null);
+            }
+        }
+
+        function renderMollweideViewer() {
+            if (!mollweideViewer) {
+                initMollweideViewer();
+                return;
+            }
+            if (state.pattern) {
+                mollweideViewer.setPattern(state.pattern);
+                mollweideViewer.setFrame(state.editor.currentFrame);
+            } else {
+                mollweideViewer.setPattern(null);
+            }
         }
 
         // ============================================
@@ -5538,6 +5727,10 @@
                 renderGridViewer();
             } else if (state.editor.activeViewer === '3d') {
                 render3DViewer();
+            } else if (state.editor.activeViewer === 'mercator') {
+                renderMercatorViewer();
+            } else if (state.editor.activeViewer === 'mollweide') {
+                renderMollweideViewer();
             }
         }
 
