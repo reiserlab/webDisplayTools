@@ -1706,7 +1706,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.30 | 2026-02-17 17:50 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.31 | 2026-02-18 18:07 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -2169,6 +2169,10 @@
                         <input type="checkbox" id="showPoleGeometry">
                         Pole geometry
                     </label>
+                    <label id="eyeFOVLabel" style="display:none;" title="Show fly eye field-of-view boundaries (Mollweide only)">
+                        <input type="checkbox" id="showEyeFOV">
+                        Eye FOV
+                    </label>
                 </div>
             </div>
 
@@ -2383,8 +2387,8 @@
     <script type="module">
         import PatParser from './js/pat-parser.js';
         import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js?v=0924';
-        import MercatorViewer from './js/pattern-editor/viewers/mercator-viewer.js?v=0217';
-        import MollweideViewer from './js/pattern-editor/viewers/mollweide-viewer.js?v=0217';
+        import MercatorViewer from './js/pattern-editor/viewers/mercator-viewer.js?v=0218';
+        import MollweideViewer from './js/pattern-editor/viewers/mollweide-viewer.js?v=0218';
         import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
         import { generatePatternIcon } from './js/icon-generator.js';
         import ImageConverter from './js/pattern-editor/tools/image-converter.js';
@@ -2541,6 +2545,11 @@
                         poleCoord: [poleAzimuth, theta]
                     });
                 }
+            });
+
+            // Eye FOV overlay (Mollweide only)
+            document.getElementById('showEyeFOV').addEventListener('change', (e) => {
+                if (mollweideViewer) mollweideViewer.setShowEyeFOV(e.target.checked);
             });
 
             // Quick Start button - opens Quick Start Guide
@@ -2858,6 +2867,12 @@
                 initMercatorViewer();
             } else if (actualViewer === 'mollweide') {
                 initMollweideViewer();
+            }
+
+            // Show/hide Eye FOV checkbox (Mollweide only)
+            const eyeFOVLabel = document.getElementById('eyeFOVLabel');
+            if (eyeFOVLabel) {
+                eyeFOVLabel.style.display = actualViewer === 'mollweide' ? '' : 'none';
             }
 
             renderCurrentViewer();
