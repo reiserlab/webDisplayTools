@@ -8,10 +8,12 @@ Once all features are tested and confirmed on lab hardware:
 - Remove the orange "in progress" development banner
 - Update index page card if needed
 
-### Current: v0.9.26 (2026-02-11)
+### Current: v0.9.31 (2026-02-18)
 All major features implemented:
 - Grid/Edit mode with pixel-level editing
 - 3D viewer with full view controls (10 presets, FOV, zoom, screenshot, stats)
+- Mercator projection viewer tab with pan/zoom, gridlines, panel boundaries
+- Mollweide projection viewer tab with eye FOV overlay
 - Pattern generation (square/sine gratings, spherical patterns)
 - Tabbed clipboard (frames and patterns)
 - Frame animation mode with vertical filmstrip sequence builder
@@ -23,8 +25,8 @@ All major features implemented:
 
 ### Future Enhancements
 - **True fisheye shader** (#9) — barrel distortion for fly eye simulation
-- **Mercator projection** viewer tab
-- **Mollweide projection** viewer tab
+- ~~**Mercator projection** viewer tab~~ (done v0.9.31)
+- ~~**Mollweide projection** viewer tab~~ (done v0.9.31)
 - **Image tab** — import images as patterns
 
 ---
@@ -49,6 +51,7 @@ All major features implemented:
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-02-18 | PE v0.9.31 | Mercator and Mollweide projection viewer tabs; white labels/axes; full-sphere default FOV; eye FOV overlay on Mollweide (#44) |
 | 2026-02-13 | PE v0.9.29 | Relocated LOAD/NEW buttons to viewer toolbar; 3-tier button visual hierarchy (primary/secondary/status); LOAD button widened for discoverability |
 | 2026-02-11 | PE v0.9.26 | Expanded hover animation to full row in combiner and clipboard; vertical filmstrip for sequence builder; animated combiner thumbnails; closed #28 and #29 |
 | 2026-02-11 | PE v0.9.24 | 3D viewer controls: 10 view presets, FOV slider, zoom, screenshot, arena stats (#29) |
