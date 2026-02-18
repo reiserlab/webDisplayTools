@@ -12,6 +12,9 @@
  * Output coordinates are converted to degrees for consistent axis labeling.
  * The projection boundary is an ellipse.
  *
+ * Supports optional eye FOV overlay from CSV data files containing
+ * Mollweide-projected boundary coordinates (in radians).
+ *
  * @module mollweide-viewer
  */
 
@@ -23,6 +26,12 @@ const PI = Math.PI;
 class MollweideViewer extends ProjectionViewer {
     constructor(container) {
         super(container, 'mollweide');
+
+        // Eye FOV overlay state
+        this.showEyeFOV = false;
+        this.eyeFOVLeft = null;
+        this.eyeFOVRight = null;
+        this._eyeFOVLoading = false;
     }
 
     /**
@@ -107,15 +116,123 @@ class MollweideViewer extends ProjectionViewer {
         };
     }
 
+    // ========================================
+    // Eye FOV overlay
+    // ========================================
+
     /**
-     * Draw Mollweide-specific decorations: the elliptical boundary.
+     * Toggle eye FOV overlay visibility.
+     * Loads CSV data lazily on first enable.
+     * @param {boolean} show - Whether to show the eye FOV overlay
+     */
+    setShowEyeFOV(show) {
+        this.showEyeFOV = show;
+        if (show && !this.eyeFOVLeft && !this._eyeFOVLoading) {
+            this._loadEyeFOV().then(() => this._render());
+        } else {
+            this._render();
+        }
+    }
+
+    /**
+     * Fetch and parse eye FOV boundary CSV files.
+     * CSV files contain Mollweide-projected coordinates in radians (x1, y1).
+     * Converts to degrees to match the viewer's coordinate system.
+     */
+    async _loadEyeFOV() {
+        this._eyeFOVLoading = true;
+        try {
+            const [leftResp, rightResp] = await Promise.all([
+                fetch('data/fov_left_Mo.csv'),
+                fetch('data/fov_right_Mo.csv')
+            ]);
+
+            if (!leftResp.ok || !rightResp.ok) {
+                console.error('Eye FOV: Failed to load CSV files');
+                this._eyeFOVLoading = false;
+                return;
+            }
+
+            const [leftText, rightText] = await Promise.all([leftResp.text(), rightResp.text()]);
+
+            this.eyeFOVLeft = this._parseEyeFOVCSV(leftText);
+            this.eyeFOVRight = this._parseEyeFOVCSV(rightText);
+
+            console.log(
+                'Eye FOV loaded:',
+                this.eyeFOVLeft.length,
+                'left pts,',
+                this.eyeFOVRight.length,
+                'right pts'
+            );
+        } catch (err) {
+            console.error('Eye FOV: Load error:', err.message);
+        }
+        this._eyeFOVLoading = false;
+    }
+
+    /**
+     * Parse a CSV string of Mollweide coordinates (radians) into degree points.
+     * @param {string} csvText - CSV with "x1","y1" header and radian values
+     * @returns {Array<{x: number, y: number}>} Points in degrees (Mollweide map space)
+     */
+    _parseEyeFOVCSV(csvText) {
+        const lines = csvText.trim().split('\n');
+        const points = [];
+        // Skip header row
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            const parts = line.split(',');
+            if (parts.length < 2) continue;
+            const xRad = parseFloat(parts[0]);
+            const yRad = parseFloat(parts[1]);
+            if (isNaN(xRad) || isNaN(yRad)) continue;
+            // Convert from Mollweide radians to degrees
+            points.push({
+                x: (xRad * 180) / PI,
+                y: (yRad * 180) / PI
+            });
+        }
+        return points;
+    }
+
+    /**
+     * Draw eye FOV boundary polygons on the projection.
+     * @param {CanvasRenderingContext2D} ctx
+     * @param {Function} mapToCanvas - Convert (mapX, mapY) => { cx, cy }
+     */
+    _drawEyeFOV(ctx, mapToCanvas) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.lineWidth = 2.5;
+
+        for (const points of [this.eyeFOVLeft, this.eyeFOVRight]) {
+            if (!points || points.length < 3) continue;
+
+            ctx.beginPath();
+            for (let i = 0; i < points.length; i++) {
+                const { cx, cy } = mapToCanvas(points[i].x, points[i].y);
+                if (i === 0) {
+                    ctx.moveTo(cx, cy);
+                } else {
+                    ctx.lineTo(cx, cy);
+                }
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+    }
+
+    // ========================================
+    // Decorations
+    // ========================================
+
+    /**
+     * Draw Mollweide-specific decorations: elliptical boundary + optional eye FOV.
      */
     _drawDecorations(ctx, mapToCanvas) {
         // Draw the full-sphere ellipse outline
-        // The Mollweide boundary at full FOV is an ellipse:
-        // x = (2√2/π)·λ·cos(θ), y = √2·sin(θ)
-        // For the full boundary: λ = ±π, lat varies
-        ctx.strokeStyle = '#3d4a58';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.lineWidth = 1;
         ctx.beginPath();
 
@@ -142,6 +259,11 @@ class MollweideViewer extends ProjectionViewer {
         }
         ctx.closePath();
         ctx.stroke();
+
+        // Draw eye FOV overlay if enabled and loaded
+        if (this.showEyeFOV && this.eyeFOVLeft && this.eyeFOVRight) {
+            this._drawEyeFOV(ctx, mapToCanvas);
+        }
     }
 }
 

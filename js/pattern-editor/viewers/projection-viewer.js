@@ -389,37 +389,19 @@ class ProjectionViewer {
     }
 
     /**
-     * Set initial FOV based on arena coverage.
-     * Matches MATLAB: lat FOV = max lat extent + 5°, lon FOV from coverage.
+     * Set initial FOV to full sphere view.
+     * Always defaults to ±180° × ±90° so the full projection is visible.
      */
     _setInitialFOV() {
-        if (!this.pixelData || this.pixelData.length === 0) return;
-
-        // Find lat/lon extent of arena pixels
-        let maxAbsLat = 0;
-        for (const px of this.pixelData) {
-            const absLat = Math.abs(px.latDeg);
-            if (absLat > maxAbsLat) maxAbsLat = absLat;
-        }
-
-        // Check for partial azimuth coverage
-        const arena = this.arenaConfig.arena;
-        const columnsInstalled = arena.columns_installed;
-        if (columnsInstalled && columnsInstalled.length < arena.num_cols) {
-            // Partial arena: tighten lon FOV
-            const azCoverage = (columnsInstalled.length / arena.num_cols) * 360;
-            this.lonFOV = azCoverage / 2 + 10;
-        } else {
-            this.lonFOV = 180;
-        }
-
-        this.latFOV = Math.min(90, maxAbsLat + 5);
+        this.lonFOV = 180;
+        this.latFOV = 90;
         this.lonCenter = 0;
         this.latCenter = 0;
     }
 
     /**
      * Main render function. Clears canvas and draws everything.
+     * Uses a margin system so axis labels remain visible when zoomed.
      */
     _render() {
         if (!this.canvas || !this.ctx) return;
@@ -427,6 +409,11 @@ class ProjectionViewer {
         const ctx = this.ctx;
         const w = this.canvas.width;
         const h = this.canvas.height;
+
+        // Margins for axis labels (pixels)
+        const margin = { left: 38, right: 8, top: 8, bottom: 18 };
+        const plotW = w - margin.left - margin.right;
+        const plotH = h - margin.top - margin.bottom;
 
         // Clear with background color
         ctx.fillStyle = '#0f1419';
@@ -442,26 +429,26 @@ class ProjectionViewer {
         const mapW = bounds.xMax - bounds.xMin;
         const mapH = bounds.yMax - bounds.yMin;
 
-        // Map coordinate to canvas pixel
+        // Map coordinate to canvas pixel (within plot area)
         const mapToCanvas = (mx, my) => ({
-            cx: ((mx - bounds.xMin) / mapW) * w,
-            cy: ((bounds.yMax - my) / mapH) * h // y-axis inverted (top = max lat)
+            cx: margin.left + ((mx - bounds.xMin) / mapW) * plotW,
+            cy: margin.top + ((bounds.yMax - my) / mapH) * plotH
         });
 
         // Canvas pixel to map coordinate (for background fill)
         const canvasToMap = (cx, cy) => ({
-            mx: bounds.xMin + (cx / w) * mapW,
-            my: bounds.yMax - (cy / h) * mapH
+            mx: bounds.xMin + ((cx - margin.left) / plotW) * mapW,
+            my: bounds.yMax - ((cy - margin.top) / plotH) * mapH
         });
 
         // Draw sphere background (areas inside projection but outside arena)
-        this._drawBackground(ctx, w, h, canvasToMap);
+        this._drawBackground(ctx, w, h, canvasToMap, margin);
 
-        // Draw gridlines
-        this._drawGridlines(ctx, w, h, bounds, mapToCanvas);
+        // Draw gridlines (with labels in margin area)
+        this._drawGridlines(ctx, w, h, bounds, mapToCanvas, margin);
 
         // Draw arena pixels
-        this._drawArenaPixels(ctx, w, h, bounds, mapToCanvas);
+        this._drawArenaPixels(ctx, w, h, bounds, mapToCanvas, margin);
 
         // Draw panel boundaries
         if (this.state.showPanelBoundaries) {
@@ -484,20 +471,29 @@ class ProjectionViewer {
     /**
      * Draw background: sphere-but-no-arena region in surface dark color.
      */
-    _drawBackground(ctx, w, h, canvasToMap) {
-        // For Mollweide, fill the ellipse interior with sphere color
-        // For Mercator, fill the entire canvas with sphere color
+    _drawBackground(ctx, w, h, canvasToMap, margin) {
+        // Fill plot area with sphere background color
         ctx.fillStyle = '#1a1f26';
-
-        // Simple fill — subclass decorations will handle ellipse clipping if needed
-        ctx.fillRect(0, 0, w, h);
+        const m = margin || { left: 0, right: 0, top: 0, bottom: 0 };
+        ctx.fillRect(m.left, m.top, w - m.left - m.right, h - m.top - m.bottom);
     }
 
     /**
      * Draw latitude/longitude gridlines at 30° intervals.
+     * Labels are drawn in the margin area so they remain visible when zoomed.
      */
-    _drawGridlines(ctx, w, h, bounds, mapToCanvas) {
-        ctx.strokeStyle = 'rgba(45, 54, 64, 0.6)';
+    _drawGridlines(ctx, w, h, bounds, mapToCanvas, margin) {
+        const m = margin || { left: 0, right: 0, top: 0, bottom: 0 };
+        const plotRight = w - m.right;
+        const plotBottom = h - m.bottom;
+
+        // Clip gridlines to plot area
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(m.left, m.top, plotRight - m.left, plotBottom - m.top);
+        ctx.clip();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
         ctx.lineWidth = 0.5;
 
         // Longitude lines (vertical)
@@ -513,7 +509,6 @@ class ProjectionViewer {
                 const proj = this._forwardProject(lon, lat);
                 if (!proj) continue;
                 const { cx, cy } = mapToCanvas(proj.x, proj.y);
-                if (cx < -10 || cx > w + 10 || cy < -10 || cy > h + 10) continue;
                 if (!started) {
                     ctx.moveTo(cx, cy);
                     started = true;
@@ -537,7 +532,6 @@ class ProjectionViewer {
                 const proj = this._forwardProject(lon, lat);
                 if (!proj) continue;
                 const { cx, cy } = mapToCanvas(proj.x, proj.y);
-                if (cx < -10 || cx > w + 10 || cy < -10 || cy > h + 10) continue;
                 if (!started) {
                     ctx.moveTo(cx, cy);
                     started = true;
@@ -549,7 +543,7 @@ class ProjectionViewer {
         }
 
         // Equator highlight
-        ctx.strokeStyle = 'rgba(45, 54, 64, 0.9)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         let started = false;
@@ -568,50 +562,60 @@ class ProjectionViewer {
         }
         ctx.stroke();
 
-        // Axis labels
-        ctx.fillStyle = '#4a5568';
-        ctx.font = '10px "IBM Plex Mono", monospace';
-        ctx.textAlign = 'center';
+        ctx.restore(); // Remove clip
 
-        // Longitude labels along bottom
+        // Axis labels — drawn in the margin area (always visible)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.font = '10px "IBM Plex Mono", monospace';
+
+        // Longitude labels along bottom margin
+        ctx.textAlign = 'center';
         for (let lon = -180; lon <= 180; lon += 30) {
             if (lon < this.lonCenter - this.lonFOV || lon > this.lonCenter + this.lonFOV) continue;
-            const proj = this._forwardProject(lon, this.latCenter - this.latFOV);
+            const proj = this._forwardProject(lon, this.latCenter);
             if (!proj) continue;
-            const { cx, cy } = mapToCanvas(proj.x, proj.y);
-            if (cx > 20 && cx < w - 20 && cy > 0 && cy < h) {
-                ctx.fillText(lon + '\u00b0', cx, Math.min(cy + 12, h - 2));
+            const { cx } = mapToCanvas(proj.x, proj.y);
+            if (cx >= m.left && cx <= plotRight) {
+                ctx.fillText(lon + '\u00b0', cx, h - 3);
             }
         }
 
-        // Latitude labels along left
+        // Latitude labels along left margin
         ctx.textAlign = 'right';
         for (let lat = -90; lat <= 90; lat += 30) {
             if (lat < this.latCenter - this.latFOV || lat > this.latCenter + this.latFOV) continue;
-            const proj = this._forwardProject(this.lonCenter - this.lonFOV, lat);
+            const proj = this._forwardProject(this.lonCenter, lat);
             if (!proj) continue;
-            const { cx, cy } = mapToCanvas(proj.x, proj.y);
-            if (cy > 12 && cy < h - 5 && cx >= 0) {
-                ctx.fillText(lat + '\u00b0', Math.max(cx - 4, 30), cy + 3);
+            const { cy } = mapToCanvas(proj.x, proj.y);
+            if (cy >= m.top && cy <= plotBottom) {
+                ctx.fillText(lat + '\u00b0', m.left - 4, cy + 3);
             }
         }
     }
 
     /**
-     * Draw arena pixels as colored rectangles.
+     * Draw arena pixels as colored rectangles (clipped to plot area).
      */
-    _drawArenaPixels(ctx, w, h, bounds, mapToCanvas) {
+    _drawArenaPixels(ctx, w, h, bounds, mapToCanvas, margin) {
+        const m = margin || { left: 0, right: 0, top: 0, bottom: 0 };
+        const plotW = w - m.left - m.right;
+        const plotH = h - m.top - m.bottom;
         const frame = this.state.pattern?.frames?.[this.state.currentFrame] ?? null;
         const maxVal = this.state.pattern?.gsMode === 2 ? 1 : 15;
         const mapW = bounds.xMax - bounds.xMin;
         const mapH = bounds.yMax - bounds.yMin;
 
         // Compute dot size based on pixel angular spacing
-        // Each pixel subtends approximately pRad radians
         const pRadDeg =
             this.pixelData.length > 1
                 ? Math.abs(this.pixelData[1].lonDeg - this.pixelData[0].lonDeg) || 1
                 : 1;
+
+        // Clip to plot area
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(m.left, m.top, plotW, plotH);
+        ctx.clip();
 
         for (const px of this.pixelData) {
             // Forward project this pixel
@@ -646,12 +650,14 @@ class ProjectionViewer {
             // Convert to canvas coordinates
             const { cx, cy } = mapToCanvas(proj.x, proj.y);
 
-            // Dot size: scale pRad to canvas pixels
-            const dotW = Math.max(1.5, (pRadDeg / mapW) * w * 0.95);
-            const dotH = Math.max(1.5, (pRadDeg / mapH) * h * 0.95);
+            // Dot size: scale pRad to canvas pixels (use plot dimensions, not full canvas)
+            const dotW = Math.max(1.5, (pRadDeg / mapW) * plotW * 0.95);
+            const dotH = Math.max(1.5, (pRadDeg / mapH) * plotH * 0.95);
 
             ctx.fillRect(cx - dotW / 2, cy - dotH / 2, dotW, dotH);
         }
+
+        ctx.restore(); // Remove clip
     }
 
     /**
