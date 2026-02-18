@@ -135,12 +135,54 @@ function findConfigDir() {
     process.exit(1);
 }
 
+// Parse arena registry index.yaml to build ARENA_REGISTRY
+function parseArenaRegistry(registryDir) {
+    const indexFile = path.join(registryDir, 'index.yaml');
+    if (!fs.existsSync(indexFile)) {
+        console.warn('Warning: arena_registry/index.yaml not found, using empty registry');
+        return {};
+    }
+
+    const content = fs.readFileSync(indexFile, 'utf8');
+    const registry = {};
+    let currentGen = null;
+
+    for (const line of content.split('\n')) {
+        if (line.trim().startsWith('#') || line.trim() === '') continue;
+        if (line.match(/^version:/)) continue;
+
+        // Generation section header (e.g., "G41:" or "G6:")
+        const sectionMatch = line.match(/^(\w+):$/);
+        if (sectionMatch) {
+            // Map YAML keys to generation names: G41 -> G4.1, G4 -> G4, G6 -> G6
+            const key = sectionMatch[1];
+            if (key === 'G41') currentGen = 'G4.1';
+            else currentGen = key;
+            registry[currentGen] = {};
+            continue;
+        }
+
+        // Arena ID entry (e.g., "  1: G41_2x12_cw")
+        const entryMatch = line.match(/^\s+(\d+):\s*(\S+)/);
+        if (entryMatch && currentGen) {
+            registry[currentGen][parseInt(entryMatch[1])] = entryMatch[2];
+        }
+    }
+
+    return registry;
+}
+
 // Main
 function main() {
     const configDir = findConfigDir();
     const outputFile = path.join(process.cwd(), 'js', 'arena-configs.js');
 
     console.log(`Reading configs from: ${configDir}`);
+
+    // Also find registry directory (sibling of arenas/)
+    const registryDir = path.join(path.dirname(configDir), 'arena_registry');
+    const arenaRegistry = parseArenaRegistry(registryDir);
+    console.log(`  Arena registry: ${JSON.stringify(arenaRegistry)}`);
 
     const configs = {};
     const files = fs.readdirSync(configDir).filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
@@ -181,16 +223,87 @@ function main() {
             sortedConfigs[key] = configs[key];
         });
 
+    // Format ARENA_REGISTRY as readable JS
+    const registryLines = [];
+    for (const [gen, entries] of Object.entries(arenaRegistry)) {
+        const items = Object.entries(entries).map(([id, name]) => `${id}: '${name}'`).join(', ');
+        registryLines.push(`    '${gen}': { ${items} }`);
+    }
+    const registryStr = registryLines.join(',\n');
+
     // Generate output
     const output = `/**
  * Arena Configurations
- * Auto-generated from maDisplayTools/configs/arenas/
+ * Auto-generated from maDisplayTools/configs/arenas/ and arena_registry/
  * Last updated: ${new Date().toISOString()}
  *
  * DO NOT EDIT MANUALLY - regenerate with: node scripts/generate-arena-configs.js
  */
 
 const STANDARD_CONFIGS = ${JSON.stringify(sortedConfigs, null, 2)};
+
+// Generation ID registry (from maDisplayTools/configs/arena_registry/generations.yaml)
+const GENERATIONS = {
+    0: { name: 'unspecified', panel_size: null },
+    1: { name: 'G3', panel_size: 8 },
+    2: { name: 'G4', panel_size: 16 },
+    3: { name: 'G4.1', panel_size: 16 },
+    4: { name: 'G6', panel_size: 20 },
+    5: { name: 'G5', panel_size: null, deprecated: true }
+};
+
+// Arena ID registry — per-generation namespaces (from maDisplayTools/configs/arena_registry/index.yaml)
+const ARENA_REGISTRY = {
+${registryStr}
+};
+
+/**
+ * Get generation name from ID
+ * @param {number} id - Generation ID (0-7)
+ * @returns {string} Generation name or 'unknown'
+ */
+function getGenerationName(id) {
+    return GENERATIONS[id] ? GENERATIONS[id].name : 'unknown';
+}
+
+/**
+ * Get generation ID from name
+ * @param {string} name - Generation name (e.g., 'G6', 'G4.1')
+ * @returns {number} Generation ID or 0
+ */
+function getGenerationId(name) {
+    for (const [id, gen] of Object.entries(GENERATIONS)) {
+        if (gen.name === name) return parseInt(id);
+    }
+    return 0;
+}
+
+/**
+ * Get arena config name from generation and arena ID
+ * @param {string} generation - Generation name (e.g., 'G6', 'G4')
+ * @param {number} arenaId - Arena ID
+ * @returns {string|null} Arena config name or null
+ */
+function getArenaName(generation, arenaId) {
+    const genRegistry = ARENA_REGISTRY[generation];
+    if (!genRegistry) return null;
+    return genRegistry[arenaId] || null;
+}
+
+/**
+ * Get arena ID from generation and config name
+ * @param {string} generation - Generation name (e.g., 'G6', 'G4')
+ * @param {string} arenaName - Arena config name (e.g., 'G6_2x10')
+ * @returns {number} Arena ID or 0
+ */
+function getArenaId(generation, arenaName) {
+    const genRegistry = ARENA_REGISTRY[generation];
+    if (!genRegistry) return 0;
+    for (const [id, name] of Object.entries(genRegistry)) {
+        if (name === arenaName) return parseInt(id);
+    }
+    return 0;
+}
 
 // Panel specifications by generation
 const PANEL_SPECS = {
@@ -251,8 +364,33 @@ function getConfigsByGeneration() {
 
 // Export for both browser and Node.js
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { STANDARD_CONFIGS, PANEL_SPECS, getConfig, getConfigsByGeneration };
+    module.exports = {
+        STANDARD_CONFIGS, PANEL_SPECS, GENERATIONS, ARENA_REGISTRY,
+        getConfig, getConfigsByGeneration,
+        getGenerationName, getGenerationId, getArenaName, getArenaId
+    };
 }
+
+// Browser global export (for non-module scripts)
+if (typeof window !== 'undefined') {
+    window.STANDARD_CONFIGS = STANDARD_CONFIGS;
+    window.PANEL_SPECS = PANEL_SPECS;
+    window.GENERATIONS = GENERATIONS;
+    window.ARENA_REGISTRY = ARENA_REGISTRY;
+    window.getConfig = getConfig;
+    window.getConfigsByGeneration = getConfigsByGeneration;
+    window.getGenerationName = getGenerationName;
+    window.getGenerationId = getGenerationId;
+    window.getArenaName = getArenaName;
+    window.getArenaId = getArenaId;
+}
+
+// ES6 module export
+export {
+    STANDARD_CONFIGS, PANEL_SPECS, GENERATIONS, ARENA_REGISTRY,
+    getConfig, getConfigsByGeneration,
+    getGenerationName, getGenerationId, getArenaName, getArenaId
+};
 `;
 
     // Ensure js/ directory exists
