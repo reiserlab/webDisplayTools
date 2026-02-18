@@ -410,8 +410,8 @@ const PatEncoder = (function() {
                 for (let k = 1; k <= subpanelMsgLength; k++) {
                     for (let m = 0; m < panelCols; m++) {
                         if (k === 1) {
-                            // Command byte with stretch
-                            frameData[n++] = (stretch << 1);
+                            // Command byte: bit 0 = GS16 flag, bits 1+ = stretch
+                            frameData[n++] = (isGrayscale ? 1 : 0) | (stretch << 1);
                         } else {
                             if (isGrayscale) {
                                 // GS16: 2 pixels per byte
