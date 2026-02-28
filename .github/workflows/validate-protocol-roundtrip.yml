@@ -1,0 +1,61 @@
+name: Validate Protocol YAML Roundtrip
+
+on:
+  push:
+    paths:
+      - 'experiment_designer.html'
+      - 'tests/test-protocol-roundtrip.js'
+      - 'tests/generate-roundtrip-protocol.js'
+      - '.github/workflows/validate-protocol-roundtrip.yml'
+  pull_request:
+    paths:
+      - 'experiment_designer.html'
+      - 'tests/test-protocol-roundtrip.js'
+      - 'tests/generate-roundtrip-protocol.js'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run protocol roundtrip tests
+        run: node tests/test-protocol-roundtrip.js
+
+      - name: Generate roundtrip YAML (smoke test)
+        run: node tests/generate-roundtrip-protocol.js --outdir /tmp/roundtrip-output
+
+      - name: Verify generated files exist
+        run: |
+          echo "Checking generated YAML files..."
+          ls -la /tmp/roundtrip-output/
+          test -f /tmp/roundtrip-output/test_protocol_v1.yaml || { echo "FAIL: test_protocol_v1.yaml not generated"; exit 1; }
+          test -f /tmp/roundtrip-output/test_protocol_manifest.json || { echo "FAIL: manifest not generated"; exit 1; }
+          echo "All generated files present."
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Protocol YAML Roundtrip Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Suites:" >> $GITHUB_STEP_SUMMARY
+          echo "- V1 Generate → Parse Roundtrip (33 checks)" >> $GITHUB_STEP_SUMMARY
+          echo "- Comment-Handling Regression (5 checks)" >> $GITHUB_STEP_SUMMARY
+          echo "- Excluded Phases (3 checks)" >> $GITHUB_STEP_SUMMARY
+          echo "- Numeric Type Preservation (6 checks)" >> $GITHUB_STEP_SUMMARY
+          echo "- Inline Comments (2 checks)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Generated Files:" >> $GITHUB_STEP_SUMMARY
+          echo "- test_protocol_v1.yaml (for MATLAB validation)" >> $GITHUB_STEP_SUMMARY
+          echo "- test_protocol_manifest.json (field expectations)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> **Note**: Full MATLAB-side validation requires local MATLAB." >> $GITHUB_STEP_SUMMARY
+          echo "> Run \`validate_web_protocol_roundtrip.m\` in maDisplayTools for end-to-end verification." >> $GITHUB_STEP_SUMMARY

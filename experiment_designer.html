@@ -1828,19 +1828,20 @@ function simpleYAMLParse(text) {
 
             if (valRaw === '' || valRaw === undefined) {
                 i++;
+                // Skip blank lines and comments to find actual child content
+                while (i < lines.length && (lines[i].trim() === '' || lines[i].trim().startsWith('#'))) {
+                    i++;
+                }
                 if (i < lines.length) {
                     var nextLine = lines[i];
-                    if (nextLine && nextLine.trim() !== '' && !nextLine.trim().startsWith('#')) {
-                        var nextIndent = getIndent(nextLine);
-                        if (nextIndent > indent) {
-                            if (nextLine.trim().startsWith('- ')) {
-                                obj[key] = parseList(nextIndent);
-                            } else {
-                                obj[key] = parseBlock(nextIndent);
-                            }
+                    var nextIndent = getIndent(nextLine);
+                    if (nextIndent > indent) {
+                        if (nextLine.trim().startsWith('- ')) {
+                            obj[key] = parseList(nextIndent);
+                        } else {
+                            obj[key] = parseBlock(nextIndent);
                         }
                     }
-                }
             } else {
                 obj[key] = parseValue(valRaw);
                 i++;
@@ -1880,19 +1881,20 @@ function simpleYAMLParse(text) {
                         var subVal = (subKv[2] || '').trim();
                         if (subVal === '') {
                             i++;
+                            // Skip blank lines and comments to find actual child content
+                            while (i < lines.length && (lines[i].trim() === '' || lines[i].trim().startsWith('#'))) {
+                                i++;
+                            }
                             if (i < lines.length) {
                                 var nLine = lines[i];
-                                if (nLine && nLine.trim() !== '') {
-                                    var nIndent = getIndent(nLine);
-                                    if (nIndent > subIndent) {
-                                        if (nLine.trim().startsWith('- ')) {
-                                            item[subKey] = parseList(nIndent);
-                                        } else {
-                                            item[subKey] = parseBlock(nIndent);
-                                        }
+                                var nIndent = getIndent(nLine);
+                                if (nIndent > subIndent) {
+                                    if (nLine.trim().startsWith('- ')) {
+                                        item[subKey] = parseList(nIndent);
+                                    } else {
+                                        item[subKey] = parseBlock(nIndent);
                                     }
                                 }
-                            }
                         } else {
                             item[subKey] = parseValue(subVal);
                             i++;
