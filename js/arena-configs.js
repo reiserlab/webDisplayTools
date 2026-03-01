@@ -1,7 +1,7 @@
 /**
  * Arena Configurations
  * Auto-generated from maDisplayTools/configs/arenas/ and arena_registry/
- * Last updated: 2026-02-18T23:17:28.795Z
+ * Last updated: 2026-03-01T00:06:26.508Z
  *
  * DO NOT EDIT MANUALLY - regenerate with: node scripts/generate-arena-configs.js
  */
@@ -186,9 +186,7 @@ const GENERATIONS = {
 
 // Arena ID registry — per-generation namespaces (from maDisplayTools/configs/arena_registry/index.yaml)
 const ARENA_REGISTRY = {
-    'G4': { 1: 'G4_4x12', 2: 'G4_3x12of18' },
-    'G4.1': { 1: 'G41_2x12_cw' },
-    'G6': { 1: 'G6_2x10', 2: 'G6_2x8of10', 3: 'G6_3x12of18' }
+
 };
 
 /**
