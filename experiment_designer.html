@@ -720,7 +720,7 @@
 
 <!-- Footer -->
 <div class="app-footer">
-    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v1 | 2026-02-09 21:09 ET</p>
+    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.2 | 2026-02-28</p>
 </div>
 
 <!-- Hidden file input for import -->
@@ -1842,6 +1842,7 @@ function simpleYAMLParse(text) {
                             obj[key] = parseBlock(nextIndent);
                         }
                     }
+                }
             } else {
                 obj[key] = parseValue(valRaw);
                 i++;
@@ -1895,6 +1896,7 @@ function simpleYAMLParse(text) {
                                         item[subKey] = parseBlock(nIndent);
                                     }
                                 }
+                            }
                         } else {
                             item[subKey] = parseValue(subVal);
                             i++;
