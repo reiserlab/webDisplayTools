@@ -1706,7 +1706,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.33 | 2026-03-10 19:22 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.34 | 2026-03-10 19:48 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -2548,7 +2548,7 @@
                 }
             });
 
-            // Eye FOV overlay (Mollweide only)
+            // Eye FOV overlay (Mollweide only — data is in Mollweide-projected coords)
             document.getElementById('showEyeFOV').addEventListener('change', (e) => {
                 if (mollweideViewer) mollweideViewer.setShowEyeFOV(e.target.checked);
             });
@@ -2879,26 +2879,21 @@
                 initMollweideViewer();
             }
 
-            // Show/hide Eye FOV checkbox (Mollweide only)
+            // Toggle viewer-specific controls visibility
+            const isProjection = actualViewer === 'mollweide' || actualViewer === 'mercator';
+
+            // Panel boundaries, panel numbers, pole geometry: 2D & 3D only
+            const boundariesLabel = document.getElementById('showBoundaries')?.parentElement;
+            const numbersLabel = document.getElementById('showNumbers')?.parentElement;
+            const poleLabel = document.getElementById('showPoleGeometry')?.parentElement;
+            if (boundariesLabel) boundariesLabel.style.display = isProjection ? 'none' : '';
+            if (numbersLabel) numbersLabel.style.display = isProjection ? 'none' : '';
+            if (poleLabel) poleLabel.style.display = isProjection ? 'none' : '';
+
+            // Eye FOV: Mollweide only (data is in Mollweide-projected coordinates)
             const eyeFOVLabel = document.getElementById('eyeFOVLabel');
             if (eyeFOVLabel) {
                 eyeFOVLabel.style.display = actualViewer === 'mollweide' ? '' : 'none';
-            }
-
-            // Gray out checkboxes not supported in certain views
-            const isMollweide = actualViewer === 'mollweide';
-            const is3D = actualViewer === '3d';
-            const panelNumsCheckbox = document.getElementById('showNumbers');
-            const poleCheckbox = document.getElementById('showPoleGeometry');
-            // Panel numbers: not implemented in Mollweide
-            if (panelNumsCheckbox) {
-                panelNumsCheckbox.disabled = isMollweide;
-                panelNumsCheckbox.parentElement.style.opacity = isMollweide ? '0.4' : '1';
-            }
-            // Pole geometry: only implemented in 3D viewer
-            if (poleCheckbox) {
-                poleCheckbox.disabled = !is3D;
-                poleCheckbox.parentElement.style.opacity = !is3D ? '0.4' : '1';
             }
 
             renderCurrentViewer();
