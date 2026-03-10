@@ -1706,7 +1706,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.31 | 2026-02-18 18:07 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.32 | 2026-03-10 18:15 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -2386,7 +2386,7 @@
 
     <script type="module">
         import PatParser from './js/pat-parser.js';
-        import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js?v=0924';
+        import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js?v=0310';
         import MercatorViewer from './js/pattern-editor/viewers/mercator-viewer.js?v=0218';
         import MollweideViewer from './js/pattern-editor/viewers/mollweide-viewer.js?v=0218';
         import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
@@ -2413,6 +2413,7 @@
                 editingClipboardId: null,
                 showPanelBoundaries: true,
                 showPanelNumbers: false,
+                showPoleGeometry: false,
                 currentFrame: 0,
                 drawColor: 15
             },
@@ -2860,9 +2861,18 @@
                 updateEditPalette(state.pattern.gsMode);
             }
 
+            // Pause 3D viewer when leaving its tab to free GPU resources
+            if (threeViewer && actualViewer !== '3d') {
+                threeViewer.pause();
+            }
+
             // Initialize or update viewer when switching to it
             if (actualViewer === '3d') {
                 init3DViewer();
+                // Resume animation loop when entering 3D tab
+                if (threeViewer) {
+                    threeViewer.resume();
+                }
             } else if (actualViewer === 'mercator') {
                 initMercatorViewer();
             } else if (actualViewer === 'mollweide') {
@@ -2936,6 +2946,19 @@
             if (state.pattern && threeViewer) {
                 threeViewer.setPattern(state.pattern);
                 threeViewer.setFrame(state.editor.currentFrame);
+            }
+
+            // Sync pole geometry state with viewer (read checkbox directly for robustness)
+            if (threeViewer) {
+                const showPole = document.getElementById('showPoleGeometry').checked;
+                state.editor.showPoleGeometry = showPole;
+                const poleAzimuth = parseFloatWithDefault(document.getElementById('poleAzimuth')?.value, 0) * Math.PI / 180;
+                const poleElevation = parseFloatWithDefault(document.getElementById('poleElevation')?.value, -90) * Math.PI / 180;
+                const theta = Math.PI / 2 - poleElevation;
+                threeViewer.setOptions({
+                    showPoleGeometry: showPole,
+                    poleCoord: [poleAzimuth, theta]
+                });
             }
 
             // Update stats display

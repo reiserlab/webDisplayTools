@@ -400,63 +400,80 @@ class ProjectionViewer {
     }
 
     /**
-     * Main render function. Clears canvas and draws everything.
-     * Uses a margin system so axis labels remain visible when zoomed.
+     * Main render function. Debounced via requestAnimationFrame so rapid
+     * sequential calls (tab switch, setPattern, setFrame) only paint once.
      */
     _render() {
+        if (this._renderPending) return;
+        this._renderPending = true;
+        requestAnimationFrame(() => {
+            this._renderPending = false;
+            this._renderImmediate();
+        });
+    }
+
+    /**
+     * Actual render implementation. Clears canvas and draws everything.
+     * Uses a margin system so axis labels remain visible when zoomed.
+     */
+    _renderImmediate() {
         if (!this.canvas || !this.ctx) return;
 
-        const ctx = this.ctx;
-        const w = this.canvas.width;
-        const h = this.canvas.height;
+        try {
+            const ctx = this.ctx;
+            const w = this.canvas.width;
+            const h = this.canvas.height;
 
-        // Margins for axis labels (pixels)
-        const margin = { left: 38, right: 8, top: 8, bottom: 18 };
-        const plotW = w - margin.left - margin.right;
-        const plotH = h - margin.top - margin.bottom;
+            // Margins for axis labels (pixels)
+            const margin = { left: 38, right: 8, top: 8, bottom: 18 };
+            const plotW = w - margin.left - margin.right;
+            const plotH = h - margin.top - margin.bottom;
 
-        // Clear with background color
-        ctx.fillStyle = '#0f1419';
-        ctx.fillRect(0, 0, w, h);
+            // Clear with background color
+            ctx.fillStyle = '#0f1419';
+            ctx.fillRect(0, 0, w, h);
 
-        if (!this.pixelData || this.pixelData.length === 0) {
-            this._drawPlaceholder(ctx, w, h);
-            return;
+            if (!this.pixelData || this.pixelData.length === 0) {
+                this._drawPlaceholder(ctx, w, h);
+                return;
+            }
+
+            // Get map bounds for current FOV
+            const bounds = this._getMapBounds();
+            const mapW = bounds.xMax - bounds.xMin;
+            const mapH = bounds.yMax - bounds.yMin;
+
+            // Map coordinate to canvas pixel (within plot area)
+            const mapToCanvas = (mx, my) => ({
+                cx: margin.left + ((mx - bounds.xMin) / mapW) * plotW,
+                cy: margin.top + ((bounds.yMax - my) / mapH) * plotH
+            });
+
+            // Canvas pixel to map coordinate (for background fill)
+            const canvasToMap = (cx, cy) => ({
+                mx: bounds.xMin + ((cx - margin.left) / plotW) * mapW,
+                my: bounds.yMax - ((cy - margin.top) / plotH) * mapH
+            });
+
+            // Draw sphere background (areas inside projection but outside arena)
+            this._drawBackground(ctx, w, h, canvasToMap, margin);
+
+            // Draw gridlines (with labels in margin area)
+            this._drawGridlines(ctx, w, h, bounds, mapToCanvas, margin);
+
+            // Draw arena pixels
+            this._drawArenaPixels(ctx, w, h, bounds, mapToCanvas, margin);
+
+            // Draw panel boundaries
+            if (this.state.showPanelBoundaries) {
+                this._drawPanelBoundaries(ctx, w, h, mapToCanvas);
+            }
+
+            // Draw projection-specific decorations
+            this._drawDecorations(ctx, mapToCanvas);
+        } catch (err) {
+            console.error('Projection render error:', err);
         }
-
-        // Get map bounds for current FOV
-        const bounds = this._getMapBounds();
-        const mapW = bounds.xMax - bounds.xMin;
-        const mapH = bounds.yMax - bounds.yMin;
-
-        // Map coordinate to canvas pixel (within plot area)
-        const mapToCanvas = (mx, my) => ({
-            cx: margin.left + ((mx - bounds.xMin) / mapW) * plotW,
-            cy: margin.top + ((bounds.yMax - my) / mapH) * plotH
-        });
-
-        // Canvas pixel to map coordinate (for background fill)
-        const canvasToMap = (cx, cy) => ({
-            mx: bounds.xMin + ((cx - margin.left) / plotW) * mapW,
-            my: bounds.yMax - ((cy - margin.top) / plotH) * mapH
-        });
-
-        // Draw sphere background (areas inside projection but outside arena)
-        this._drawBackground(ctx, w, h, canvasToMap, margin);
-
-        // Draw gridlines (with labels in margin area)
-        this._drawGridlines(ctx, w, h, bounds, mapToCanvas, margin);
-
-        // Draw arena pixels
-        this._drawArenaPixels(ctx, w, h, bounds, mapToCanvas, margin);
-
-        // Draw panel boundaries
-        if (this.state.showPanelBoundaries) {
-            this._drawPanelBoundaries(ctx, w, h, mapToCanvas);
-        }
-
-        // Draw projection-specific decorations
-        this._drawDecorations(ctx, mapToCanvas);
     }
 
     _drawPlaceholder(ctx, w, h) {
