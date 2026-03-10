@@ -770,6 +770,15 @@ class ProjectionViewer {
         }
     }
 
+    /**
+     * Public resize method — call when the viewer's container becomes visible
+     * (e.g. switching from another tab). The canvas may have been sized while
+     * the container was display:none, giving incorrect dimensions.
+     */
+    resize() {
+        this._onResize();
+    }
+
     _onResize() {
         if (!this.canvas) return;
         this._sizeCanvas();
