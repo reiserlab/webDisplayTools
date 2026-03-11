@@ -1706,7 +1706,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.34 | 2026-03-10 19:48 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.35 | 2026-03-11 08:34 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -2165,7 +2165,7 @@
                         <input type="checkbox" id="showNumbers">
                         Panel numbers
                     </label>
-                    <label>
+                    <label style="display:none;">
                         <input type="checkbox" id="showPoleGeometry">
                         Pole geometry
                     </label>
@@ -2880,15 +2880,18 @@
             }
 
             // Toggle viewer-specific controls visibility
-            const isProjection = actualViewer === 'mollweide' || actualViewer === 'mercator';
+            const is2DGrid = (actualViewer === '2d' || actualViewer === 'grid') && !isEditMode;
+            const is3D = actualViewer === '3d';
 
-            // Panel boundaries, panel numbers, pole geometry: 2D & 3D only
+            // Panel boundaries & panel numbers: 2D & 3D only (not Edit, Mercator, Mollweide)
             const boundariesLabel = document.getElementById('showBoundaries')?.parentElement;
             const numbersLabel = document.getElementById('showNumbers')?.parentElement;
+            if (boundariesLabel) boundariesLabel.style.display = (is2DGrid || is3D) ? '' : 'none';
+            if (numbersLabel) numbersLabel.style.display = (is2DGrid || is3D) ? '' : 'none';
+
+            // Pole geometry: 3D only
             const poleLabel = document.getElementById('showPoleGeometry')?.parentElement;
-            if (boundariesLabel) boundariesLabel.style.display = isProjection ? 'none' : '';
-            if (numbersLabel) numbersLabel.style.display = isProjection ? 'none' : '';
-            if (poleLabel) poleLabel.style.display = isProjection ? 'none' : '';
+            if (poleLabel) poleLabel.style.display = is3D ? '' : 'none';
 
             // Eye FOV: Mollweide only (data is in Mollweide-projected coordinates)
             const eyeFOVLabel = document.getElementById('eyeFOVLabel');
