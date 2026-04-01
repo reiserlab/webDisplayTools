@@ -2,12 +2,13 @@
 // test-protocol-roundtrip.js — CI-ready regression test for protocol YAML roundtrip
 //
 // Tests that:
-//   1. generateYAML()-style output produces valid YAML
+//   1. generateV1Protocol() output produces valid YAML
 //   2. simpleYAMLParse() can parse it back correctly
 //   3. All required V1 sections are present with correct types
 //   4. Multi-condition blocks parse correctly
 //   5. Comments between conditions don't break parsing (regression)
 //   6. Phase includes/commands are preserved
+//   7. V2 YAML files with plugins and nested params parse correctly
 //
 // Usage:
 //   node tests/test-protocol-roundtrip.js
@@ -15,6 +16,13 @@
 // Exit code 0 = all passed, 1 = failures
 
 'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+// ─── Import shared modules ──────────────────────────────────────────────────
+
+const { simpleYAMLParse, generateV1Protocol } = require('../js/protocol-yaml.js');
 
 // ─── Counters ────────────────────────────────────────────────────────────────
 
@@ -49,227 +57,6 @@ function checkType(label, value, expectedType) {
     } else {
         fail(label, 'got ' + actualType + ', expected ' + expectedType);
     }
-}
-
-// ─── simpleYAMLParse (copy from experiment_designer.html, with bug fix) ─────
-
-function simpleYAMLParse(text) {
-    const lines = text.split('\n');
-    let i = 0;
-
-    function getIndent(line) {
-        const m = line.match(/^(\s*)/);
-        return m ? m[1].length : 0;
-    }
-
-    function parseValue(raw) {
-        if (raw === undefined || raw === '') return '';
-        raw = raw.trim();
-        if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
-            return raw.slice(1, -1);
-        }
-        if (raw === 'null' || raw === '~') return null;
-        if (raw === 'true') return true;
-        if (raw === 'false') return false;
-        const num = Number(raw);
-        if (!isNaN(num) && raw !== '') return num;
-        return raw;
-    }
-
-    function parseBlock(baseIndent) {
-        const obj = {};
-        while (i < lines.length) {
-            const line = lines[i];
-            if (line.trim() === '' || line.trim().startsWith('#')) { i++; continue; }
-            const indent = getIndent(line);
-            if (indent < baseIndent) break;
-            if (indent > baseIndent) { i++; continue; }
-
-            const trimmed = line.trim();
-            if (trimmed.startsWith('- ')) break;
-
-            const kvMatch = trimmed.match(/^([^:]+?):\s*(.*)?$/);
-            if (!kvMatch) { i++; continue; }
-
-            const key = kvMatch[1].trim();
-            const valRaw = (kvMatch[2] || '').trim();
-
-            if (valRaw === '' || valRaw === undefined) {
-                i++;
-                // Skip blank lines and comments to find actual child content
-                while (i < lines.length && (lines[i].trim() === '' || lines[i].trim().startsWith('#'))) {
-                    i++;
-                }
-                if (i < lines.length) {
-                    const nextLine = lines[i];
-                    const nextIndent = getIndent(nextLine);
-                    if (nextIndent > indent) {
-                        if (nextLine.trim().startsWith('- ')) {
-                            obj[key] = parseList(nextIndent);
-                        } else {
-                            obj[key] = parseBlock(nextIndent);
-                        }
-                    }
-                }
-            } else {
-                obj[key] = parseValue(valRaw);
-                i++;
-            }
-        }
-        return obj;
-    }
-
-    function parseList(baseIndent) {
-        const arr = [];
-        while (i < lines.length) {
-            const line = lines[i];
-            if (line.trim() === '' || line.trim().startsWith('#')) { i++; continue; }
-            const indent = getIndent(line);
-            if (indent < baseIndent) break;
-
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('- ')) { i++; continue; }
-
-            const itemContent = trimmed.slice(2).trim();
-            const kvMatch = itemContent.match(/^([^:]+?):\s*(.*)?$/);
-
-            if (kvMatch) {
-                const item = {};
-                item[kvMatch[1].trim()] = parseValue((kvMatch[2] || '').trim());
-                i++;
-                while (i < lines.length) {
-                    const subLine = lines[i];
-                    if (subLine.trim() === '' || subLine.trim().startsWith('#')) { i++; continue; }
-                    const subIndent = getIndent(subLine);
-                    if (subIndent <= baseIndent) break;
-                    const subTrimmed = subLine.trim();
-                    if (subTrimmed.startsWith('- ')) break;
-                    const subKv = subTrimmed.match(/^([^:]+?):\s*(.*)?$/);
-                    if (subKv) {
-                        const subKey = subKv[1].trim();
-                        const subVal = (subKv[2] || '').trim();
-                        if (subVal === '') {
-                            i++;
-                            while (i < lines.length && (lines[i].trim() === '' || lines[i].trim().startsWith('#'))) {
-                                i++;
-                            }
-                            if (i < lines.length) {
-                                const nLine = lines[i];
-                                const nIndent = getIndent(nLine);
-                                if (nIndent > subIndent) {
-                                    if (nLine.trim().startsWith('- ')) {
-                                        item[subKey] = parseList(nIndent);
-                                    } else {
-                                        item[subKey] = parseBlock(nIndent);
-                                    }
-                                }
-                            }
-                        } else {
-                            item[subKey] = parseValue(subVal);
-                            i++;
-                        }
-                    } else {
-                        i++;
-                    }
-                }
-                arr.push(item);
-            } else {
-                arr.push(parseValue(itemContent));
-                i++;
-            }
-        }
-        return arr;
-    }
-
-    return parseBlock(0);
-}
-
-// ─── generateV1Protocol (mirrors experiment_designer.html generateYAML) ─────
-
-function generateV1Protocol(opts) {
-    let yaml = '';
-    yaml += '# Protocol Version 1\n';
-    yaml += '# Generated by test-protocol-roundtrip.js\n\n';
-    yaml += 'version: 1\n\n';
-
-    yaml += 'experiment_info:\n';
-    yaml += '  name: "' + opts.name + '"\n';
-    yaml += '  date_created: "' + opts.date_created + '"\n';
-    yaml += '  author: "' + opts.author + '"\n';
-    yaml += '  pattern_library: ""\n\n';
-
-    yaml += 'arena_info:\n';
-    yaml += '  num_rows: ' + opts.num_rows + '\n';
-    yaml += '  num_cols: ' + opts.num_cols + '\n';
-    yaml += '  generation: "' + opts.generation + '"\n\n';
-
-    yaml += 'experiment_structure:\n';
-    yaml += '  repetitions: ' + opts.repetitions + '\n';
-    yaml += '  randomization:\n';
-    yaml += '    enabled: ' + opts.randomization_enabled + '\n';
-    yaml += '    seed: null\n';
-    yaml += '    method: "block"\n\n';
-
-    // Pretrial
-    yaml += 'pretrial:\n';
-    yaml += '  include: ' + opts.pretrial.include + '\n';
-    if (opts.pretrial.include && opts.pretrial.commands) {
-        yaml += '  commands:\n';
-        for (const cmd of opts.pretrial.commands) {
-            yaml += '    - type: "' + cmd.type + '"\n';
-            if (cmd.command_name) yaml += '      command_name: "' + cmd.command_name + '"\n';
-            if (cmd.duration !== undefined) yaml += '      duration: ' + cmd.duration + '\n';
-        }
-    }
-    yaml += '\n';
-
-    // Block conditions
-    yaml += 'block:\n';
-    yaml += '  conditions:\n';
-    for (const cond of opts.conditions) {
-        yaml += '    - id: "' + cond.id + '"\n';
-        yaml += '      commands:\n';
-        for (const cmd of cond.commands) {
-            yaml += '        - type: "' + cmd.type + '"\n';
-            yaml += '          command_name: "' + cmd.command_name + '"\n';
-            if (cmd.pattern) yaml += '          pattern: "' + cmd.pattern + '"\n';
-            if (cmd.pattern_ID !== undefined) yaml += '          pattern_ID: ' + cmd.pattern_ID + '\n';
-            if (cmd.duration !== undefined) yaml += '          duration: ' + cmd.duration + '\n';
-            if (cmd.mode !== undefined) yaml += '          mode: ' + cmd.mode + '\n';
-            if (cmd.frame_index !== undefined) yaml += '          frame_index: ' + cmd.frame_index + '\n';
-            if (cmd.frame_rate !== undefined) yaml += '          frame_rate: ' + cmd.frame_rate + '\n';
-            if (cmd.gain !== undefined) yaml += '          gain: ' + cmd.gain + '\n';
-        }
-    }
-    yaml += '\n';
-
-    // Intertrial
-    yaml += 'intertrial:\n';
-    yaml += '  include: ' + opts.intertrial.include + '\n';
-    if (opts.intertrial.include && opts.intertrial.commands) {
-        yaml += '  commands:\n';
-        for (const cmd of opts.intertrial.commands) {
-            yaml += '    - type: "' + cmd.type + '"\n';
-            if (cmd.command_name) yaml += '      command_name: "' + cmd.command_name + '"\n';
-            if (cmd.duration !== undefined) yaml += '      duration: ' + cmd.duration + '\n';
-        }
-    }
-    yaml += '\n';
-
-    // Posttrial
-    yaml += 'posttrial:\n';
-    yaml += '  include: ' + opts.posttrial.include + '\n';
-    if (opts.posttrial.include && opts.posttrial.commands) {
-        yaml += '  commands:\n';
-        for (const cmd of opts.posttrial.commands) {
-            yaml += '    - type: "' + cmd.type + '"\n';
-            if (cmd.command_name) yaml += '      command_name: "' + cmd.command_name + '"\n';
-            if (cmd.duration !== undefined) yaml += '      duration: ' + cmd.duration + '\n';
-        }
-    }
-    yaml += '\n';
-
-    return yaml;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -544,6 +331,226 @@ posttrial:
 const parsed4 = simpleYAMLParse(inlineCommentYaml);
 check('single condition parses', parsed4.block.conditions.length, 1);
 check('single condition id', parsed4.block.conditions[0].id, 'cond_1');
+
+// ─── Test Suite 6: V2 simple backlight test ────────────────────────────────
+
+console.log('\n--- Suite 6: V2 Simple Backlight ---');
+
+const fixturesDir = path.join(__dirname, 'fixtures');
+if (fs.existsSync(path.join(fixturesDir, 'v2_simple_backlight_test.yaml'))) {
+    const blYaml = fs.readFileSync(path.join(fixturesDir, 'v2_simple_backlight_test.yaml'), 'utf8');
+    const bl = simpleYAMLParse(blYaml);
+
+    check('v2_bl: version', bl.version, 2);
+    checkType('v2_bl: plugins is array', bl.plugins, 'array');
+    check('v2_bl: plugins.length', bl.plugins.length, 1);
+    check('v2_bl: plugin name', bl.plugins[0].name, 'backlight');
+    check('v2_bl: plugin type', bl.plugins[0].type, 'class');
+    checkType('v2_bl: plugin.matlab is object', bl.plugins[0].matlab, 'object');
+    check('v2_bl: plugin.matlab.class', bl.plugins[0].matlab.class, 'LEDControllerPlugin');
+    check('v2_bl: rig no inline comment', bl.rig.includes('#'), false);
+    check('v2_bl: conditions count', bl.block.conditions.length, 5);
+    // Check nested params
+    const blCond0 = bl.block.conditions[0];
+    check('v2_bl: cond[0].commands.length', blCond0.commands.length, 4);
+    const irCmd = blCond0.commands.find(c => c.command_name === 'setIRLEDPower');
+    checkType('v2_bl: IR cmd params', irCmd.params, 'object');
+    check('v2_bl: IR cmd params.power', irCmd.params.power, 50);
+} else {
+    console.log('  (skipped — fixtures not found)');
+}
+
+// ─── Test Suite 7: V2 full experiment ──────────────────────────────────────
+
+console.log('\n--- Suite 7: V2 Full Experiment ---');
+
+if (fs.existsSync(path.join(fixturesDir, 'v2_full_experiment_test.yaml'))) {
+    const fullYaml = fs.readFileSync(path.join(fixturesDir, 'v2_full_experiment_test.yaml'), 'utf8');
+    const full = simpleYAMLParse(fullYaml);
+
+    check('v2_full: version', full.version, 2);
+    check('v2_full: plugins.length', full.plugins.length, 2);
+    check('v2_full: plugin[0].name', full.plugins[0].name, 'camera');
+    check('v2_full: plugin[1].name', full.plugins[1].name, 'backlight');
+    check('v2_full: conditions count', full.block.conditions.length, 9);
+    // First condition has 7 commands
+    const c0 = full.block.conditions[0];
+    check('v2_full: cond[0].commands.length', c0.commands.length, 7);
+    check('v2_full: cond[0].cmd[0].type', c0.commands[0].type, 'plugin');
+    check('v2_full: cond[0].cmd[0].plugin_name', c0.commands[0].plugin_name, 'camera');
+    check('v2_full: cond[0].cmd[1].type', c0.commands[1].type, 'controller');
+    check('v2_full: cond[0].cmd[1].duration', c0.commands[1].duration, 10);
+    // Nested params check
+    const redCmd = c0.commands.find(c => c.command_name === 'setRedLEDPower');
+    checkType('v2_full: redCmd.params', redCmd.params, 'object');
+    check('v2_full: redCmd.params.power', redCmd.params.power, 5);
+    check('v2_full: redCmd.params.panel_num', redCmd.params.panel_num, 0);
+    check('v2_full: redCmd.params.pattern', redCmd.params.pattern, '1010');
+    // Pretrial commands
+    check('v2_full: pretrial.include', full.pretrial.include, true);
+    checkType('v2_full: pretrial.commands', full.pretrial.commands, 'array');
+    check('v2_full: pretrial.commands.length', full.pretrial.commands.length, 8);
+} else {
+    console.log('  (skipped — fixtures not found)');
+}
+
+// ─── Test Suite 8: V2 all possible plugins ─────────────────────────────────
+
+console.log('\n--- Suite 8: V2 All Possible Plugins ---');
+
+if (fs.existsSync(path.join(fixturesDir, 'v2_all_possible_plugins.yaml'))) {
+    const allYaml = fs.readFileSync(path.join(fixturesDir, 'v2_all_possible_plugins.yaml'), 'utf8');
+    const all = simpleYAMLParse(allYaml);
+
+    check('v2_all: version', all.version, 2);
+    check('v2_all: plugins.length', all.plugins.length, 5);
+    // Serial device plugin
+    const serial = all.plugins.find(p => p.type === 'serial_device');
+    check('v2_all: serial plugin exists', !!serial, true);
+    check('v2_all: serial.name', serial.name, 'background_light');
+    checkType('v2_all: serial.commands', serial.commands, 'object');
+    check('v2_all: serial.commands.reset', serial.commands.reset, 'RESET');
+    // Camera plugin with config
+    const cam = all.plugins.find(p => p.name === 'camera');
+    checkType('v2_all: camera.config', cam.config, 'object');
+    check('v2_all: camera.config.frame_rate', cam.config.frame_rate, 150);
+    check('v2_all: camera.config.video_format', cam.config.video_format, 'avi');
+    // Script plugin
+    const script = all.plugins.find(p => p.type === 'script');
+    check('v2_all: script plugin exists', !!script, true);
+    check('v2_all: script.name', script.name, 'preprocessing');
+    // Conditions
+    check('v2_all: conditions count', all.block.conditions.length, 5);
+} else {
+    console.log('  (skipped — fixtures not found)');
+}
+
+// ─── Test Suite 9: V2 Generate → Parse Roundtrip ───────────────────────────
+
+console.log('\n--- Suite 9: V2 Generate → Parse Roundtrip ---');
+
+const { generateV2Protocol } = require('../js/protocol-yaml.js');
+
+const v2Experiment = {
+    experiment_info: {
+        name: 'V2 Roundtrip Test',
+        date_created: '2026-04-01',
+        author: 'Test Suite',
+        pattern_library: './patterns'
+    },
+    rig_path: './configs/rigs/test_rig.yaml',
+    plugins: [
+        { name: 'backlight', type: 'class', matlab: { class: 'LEDControllerPlugin' } },
+        { name: 'camera', type: 'class', matlab: { class: 'BiasPlugin' }, config: { frame_rate: 100 } }
+    ],
+    experiment_structure: {
+        repetitions: 2,
+        randomization: { enabled: true, seed: 42 }
+    },
+    pretrial: {
+        include: true,
+        commands: [
+            { type: 'controller', command_name: 'allOn' },
+            { type: 'wait', duration: 1 },
+            { type: 'plugin', plugin_name: 'backlight', command_name: 'setIRLEDPower', params: { power: 50 } },
+            { type: 'plugin', plugin_name: 'camera', command_name: 'startRecording', params: { filename: 'test' } }
+        ]
+    },
+    intertrial: {
+        include: true,
+        commands: [
+            { type: 'controller', command_name: 'allOff' },
+            { type: 'wait', duration: 2 }
+        ]
+    },
+    posttrial: {
+        include: true,
+        commands: [
+            { type: 'controller', command_name: 'allOff' },
+            { type: 'plugin', plugin_name: 'camera', command_name: 'stopRecording' },
+            { type: 'wait', duration: 1 }
+        ]
+    },
+    conditions: [
+        {
+            id: 'grating_with_backlight',
+            commands: [
+                { type: 'plugin', plugin_name: 'camera', command_name: 'getTimestamp' },
+                { type: 'controller', command_name: 'trialParams', pattern: 'pat01.pat', pattern_ID: 1, duration: 10, mode: 2, frame_index: 1, frame_rate: 10, gain: 0 },
+                { type: 'wait', duration: 3 },
+                { type: 'plugin', plugin_name: 'backlight', command_name: 'setRedLEDPower', params: { power: 5, panel_num: 0, pattern: '1010' } },
+                { type: 'wait', duration: 4 },
+                { type: 'plugin', plugin_name: 'backlight', command_name: 'setVisibleBacklightsOff' },
+                { type: 'wait', duration: 3 }
+            ]
+        },
+        {
+            id: 'closed_loop_test',
+            commands: [
+                { type: 'controller', command_name: 'trialParams', pattern: 'pat02.pat', pattern_ID: 2, duration: 5, mode: 4, frame_index: 1, frame_rate: 0, gain: -90 },
+                { type: 'wait', duration: 5 }
+            ]
+        }
+    ]
+};
+
+const v2Yaml = generateV2Protocol(v2Experiment);
+const v2Parsed = simpleYAMLParse(v2Yaml);
+
+// Version and top-level
+check('v2rt: version', v2Parsed.version, 2);
+check('v2rt: rig', v2Parsed.rig, './configs/rigs/test_rig.yaml');
+check('v2rt: experiment_info.name', v2Parsed.experiment_info.name, 'V2 Roundtrip Test');
+check('v2rt: experiment_info.author', v2Parsed.experiment_info.author, 'Test Suite');
+
+// Plugins roundtrip
+checkType('v2rt: plugins is array', v2Parsed.plugins, 'array');
+check('v2rt: plugins.length', v2Parsed.plugins.length, 2);
+check('v2rt: plugin[0].name', v2Parsed.plugins[0].name, 'backlight');
+check('v2rt: plugin[0].matlab.class', v2Parsed.plugins[0].matlab.class, 'LEDControllerPlugin');
+check('v2rt: plugin[1].name', v2Parsed.plugins[1].name, 'camera');
+check('v2rt: plugin[1].config.frame_rate', v2Parsed.plugins[1].config.frame_rate, 100);
+
+// Experiment structure
+check('v2rt: repetitions', v2Parsed.experiment_structure.repetitions, 2);
+check('v2rt: randomization.enabled', v2Parsed.experiment_structure.randomization.enabled, true);
+check('v2rt: randomization.seed', v2Parsed.experiment_structure.randomization.seed, 42);
+
+// Conditions
+check('v2rt: num_conditions', v2Parsed.block.conditions.length, 2);
+const rtC0 = v2Parsed.block.conditions[0];
+check('v2rt: cond[0].id', rtC0.id, 'grating_with_backlight');
+check('v2rt: cond[0].commands.length', rtC0.commands.length, 7);
+check('v2rt: cond[0].cmd[0].type', rtC0.commands[0].type, 'plugin');
+check('v2rt: cond[0].cmd[0].plugin_name', rtC0.commands[0].plugin_name, 'camera');
+check('v2rt: cond[0].cmd[0].command_name', rtC0.commands[0].command_name, 'getTimestamp');
+check('v2rt: cond[0].cmd[1].command_name', rtC0.commands[1].command_name, 'trialParams');
+check('v2rt: cond[0].cmd[1].duration', rtC0.commands[1].duration, 10);
+check('v2rt: cond[0].cmd[1].mode', rtC0.commands[1].mode, 2);
+check('v2rt: cond[0].cmd[1].pattern', rtC0.commands[1].pattern, 'pat01.pat');
+// Plugin params roundtrip
+const rtRedCmd = rtC0.commands.find(c => c.command_name === 'setRedLEDPower');
+checkType('v2rt: redCmd.params', rtRedCmd.params, 'object');
+check('v2rt: redCmd.params.power', rtRedCmd.params.power, 5);
+check('v2rt: redCmd.params.panel_num', rtRedCmd.params.panel_num, 0);
+check('v2rt: redCmd.params.pattern', rtRedCmd.params.pattern, '1010');
+// Closed-loop condition
+const rtC1 = v2Parsed.block.conditions[1];
+check('v2rt: cond[1].id', rtC1.id, 'closed_loop_test');
+check('v2rt: cond[1].cmd[0].mode', rtC1.commands[0].mode, 4);
+check('v2rt: cond[1].cmd[0].gain', rtC1.commands[0].gain, -90);
+
+// Phases
+check('v2rt: pretrial.include', v2Parsed.pretrial.include, true);
+checkType('v2rt: pretrial.commands', v2Parsed.pretrial.commands, 'array');
+check('v2rt: pretrial.commands.length', v2Parsed.pretrial.commands.length, 4);
+check('v2rt: pretrial.cmd[2].plugin_name', v2Parsed.pretrial.commands[2].plugin_name, 'backlight');
+check('v2rt: pretrial.cmd[2].params.power', v2Parsed.pretrial.commands[2].params.power, 50);
+check('v2rt: pretrial.cmd[3].command_name', v2Parsed.pretrial.commands[3].command_name, 'startRecording');
+check('v2rt: intertrial.include', v2Parsed.intertrial.include, true);
+check('v2rt: intertrial.commands.length', v2Parsed.intertrial.commands.length, 2);
+check('v2rt: posttrial.include', v2Parsed.posttrial.include, true);
+check('v2rt: posttrial.commands.length', v2Parsed.posttrial.commands.length, 3);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUMMARY

@@ -438,28 +438,68 @@ The following UI improvements were made on 2026-02-02 and need testing on GitHub
 
 ## Experiment Designer
 
-### Architecture (v1 — 2026-02-10)
-- 3-zone layout: settings panel (280px left), condition editor (flex right), timeline (bottom strip)
-- Single `<script type="module">` importing from `js/arena-configs.js`
-- Custom YAML parser (`simpleYAMLParse`) — no external dependency required
-- Data model: `experiment` object with `experiment_info`, `arena_info`, `experiment_structure`, phases, and `conditions[]`
+### Architecture (v0.6 — 2026-04-01)
+- 3-zone layout: settings panel (280px left), editor with tab bar (flex right), timeline (bottom strip)
+- Single `<script type="module">` importing from `js/arena-configs.js`, `js/protocol-yaml.js`, `js/plugin-registry.js`
+- Data model: `experiment` object with `experiment_info`, `arena_info`, `rig_path`, `plugins[]`, `experiment_structure`, phases with `commands[]`, and `conditions[]` with `commands[]`
 
-### YAML Export
-- Generates protocol v1 with `trialParams` command name
-- Empty pattern fields export as `allOff` controller command
-- Phase structure: one `trialParams` command + one `wait` command per phase
-- Conditions wrapped in `block.conditions[].commands[]`
+### Shared Modules
+- **`js/protocol-yaml.js`** — YAML parser (`simpleYAMLParse` with inline comment stripping), v1/v2 generators, string helpers. Dual-export (window.ProtocolYAML + ES6 module). Used by HTML, both test files.
+- **`js/plugin-registry.js`** — Built-in plugin definitions (LEDControllerPlugin: 7 commands, BiasPlugin: 6 commands), controller command definitions (6 commands), lookup functions for dropdown population. Dual-export.
+
+### Data Model (v2 commands)
+Conditions and phases use **command arrays** as the primary data model:
+```javascript
+condition = {
+    id: "string",
+    commands: [
+        { type: "plugin", plugin_name: "camera", command_name: "getTimestamp" },
+        { type: "controller", command_name: "trialParams", pattern: "...",
+          duration: 10, mode: 2, frame_index: 1, frame_rate: 10, gain: 0 },
+        { type: "wait", duration: 3 },
+        { type: "plugin", plugin_name: "backlight", command_name: "setRedLEDPower",
+          params: { power: 5, panel_num: 0, pattern: "1010" } },
+    ]
+}
+phase = { include: true/false, commands: [ ...same format... ] }
+experiment.plugins = [
+    { name: "backlight", type: "class", matlab: { class: "LEDControllerPlugin" }, config: { ... } },
+    { name: "camera", type: "class", matlab: { class: "BiasPlugin" }, config: { ... } }
+]
+experiment.rig_path = "./configs/rigs/test_rig_1.yaml"
+```
+Helper functions: `cmdFindTrialParams(commands)`, `condGetDuration(cond)`, `condGetPattern(cond)`, `phaseGetDuration(phase)`.
+
+### YAML Export (v2)
+- Generates protocol v2 via `generateV2Protocol()` from `js/protocol-yaml.js`
+- `rig:` field replaces inline `arena_info`
+- `plugins:` section lists enabled plugins with class/config
+- Conditions export full command arrays including plugin commands with params
+- Phases export command arrays directly
+
+### Editor Tabs
+Three tabs in the right panel, all views of the same data model:
+1. **Visual** — Command card editor with color-coded cards (green=controller, gray=wait, blue=plugin), inline field editing, "Add Command" dropdown from plugin registry
+2. **Table** — Spreadsheet view with collapsible sections (pretrial, conditions with ITI, posttrial), type badges, param display
+3. **Timeline** — SVG multi-lane visualization per condition: controller spans, plugin event markers, wait bars, time axis. Read-only with hover tooltips.
 
 ### Key Implementation Notes
-- **Must use `<script type="module">`** to import `arena-configs.js` (bare `export` at end breaks regular `<script>` tags — this caused the initial "+ Add Condition" bug)
+- **Must use `<script type="module">`** to import shared modules
 - Mode 2 (Constant Rate): `gain` fixed at 0, `frame_rate` editable
 - Mode 4 (Closed-Loop): `frame_rate` fixed at 0, `gain` editable
-- All 7 trial parameters always included regardless of mode
+- `handleTrackClick` must explicitly call `renderTimelineView()` and `renderTableView()` after `renderEditor()` to keep all tabs in sync
+- Timeline `computeLaneData()`: trialParams fires controller autonomously (doesn't advance clock), wait advances clock, plugin commands are instantaneous
 
 ### Related Files
-- `experiment_designer.html` — Main tool
+- `experiment_designer.html` — Main tool (v0.6)
 - `experiment_designer_quickstart.html` — Step-by-step guide
-- `examples/simple_optomotor_protocol.yaml` — Test protocol
+- `js/protocol-yaml.js` — Shared YAML parser/generator
+- `js/plugin-registry.js` — Plugin definitions + command schemas
+- `tests/test-protocol-roundtrip.js` — 130 CI checks (9 suites, v1+v2)
+- `tests/generate-roundtrip-protocol.js` — YAML + manifest generator for MATLAB
+- `tests/fixtures/v2_*.yaml` — V2 YAML test fixtures from maDisplayTools
+- `docs/experiment-designer-v06-testing.md` — Manual testing checklist
+- `docs/protocol-roundtrip-testing.md` — Roundtrip testing architecture
 - GitHub Issue: [#33](https://github.com/reiserlab/webDisplayTools/issues/33)
 
 ## Planning Best Practices

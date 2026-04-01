@@ -252,8 +252,60 @@
             cursor: pointer;
         }
 
+        .plugin-config {
+            margin: 0.25rem 0 0.5rem 1.5rem;
+            padding: 0.5rem;
+            border-left: 2px solid var(--border);
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 0 4px 4px 0;
+        }
+        .plugin-config .field {
+            margin-bottom: 0.35rem;
+        }
+        .plugin-config .field:last-child {
+            margin-bottom: 0;
+        }
+
         /* ── Right Panel: Editor ─────────────────── */
         .editor-panel {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .editor-tab-bar {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            padding: 0 1.25rem;
+            flex-shrink: 0;
+        }
+        .editor-tab {
+            padding: 0.5rem 1rem;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-dim);
+            font-family: var(--font-body);
+            font-size: 0.8rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .editor-tab:hover:not(:disabled) {
+            color: var(--text);
+        }
+        .editor-tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        .editor-tab:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        .editor-tab-content {
             flex: 1;
             overflow-y: auto;
             padding: 1.25rem;
@@ -268,6 +320,180 @@
             justify-content: center;
             text-align: center;
             color: var(--text-dim);
+        }
+
+        /* ── Table View ─────────────────────────── */
+        .table-section {
+            margin-bottom: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .table-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.4rem 0.6rem;
+            background: var(--surface);
+            cursor: pointer;
+            user-select: none;
+            font-family: var(--font-heading);
+            font-size: 0.8rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+        }
+        .table-section-header:hover {
+            background: #222830;
+        }
+        .table-section-header .section-toggle {
+            color: var(--text-dim);
+            margin-right: 0.4rem;
+            font-size: 0.7rem;
+            transition: transform 0.15s;
+        }
+        .table-section-header.collapsed .section-toggle {
+            transform: rotate(-90deg);
+        }
+        .table-section-header .section-duration {
+            color: var(--text-dim);
+            font-weight: 400;
+            font-size: 0.75rem;
+        }
+        .table-section-body {
+            overflow-x: auto;
+        }
+        .table-section.collapsed .table-section-body {
+            display: none;
+        }
+        .cmd-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.78rem;
+            table-layout: fixed;
+        }
+        .cmd-table th {
+            background: rgba(0,0,0,0.2);
+            padding: 0.3rem 0.4rem;
+            text-align: left;
+            font-weight: 500;
+            color: var(--text-dim);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        .cmd-table td {
+            padding: 0.25rem 0.4rem;
+            border-bottom: 1px solid rgba(45,54,64,0.5);
+            vertical-align: middle;
+        }
+        .cmd-table tr:last-child td {
+            border-bottom: none;
+        }
+        .cmd-table tr:hover {
+            background: rgba(0,230,118,0.04);
+        }
+        .cmd-table tr.selected {
+            background: rgba(0,230,118,0.1);
+        }
+        .cmd-table select, .cmd-table input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.15rem 0.3rem;
+            border-radius: 3px;
+            font-size: 0.78rem;
+            font-family: var(--font-body);
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .cmd-table select:focus, .cmd-table input:focus {
+            border-color: var(--accent);
+            outline: none;
+        }
+        .cmd-table .cell-dim {
+            color: var(--text-dim);
+            font-style: italic;
+        }
+        .cmd-table .type-badge {
+            display: inline-block;
+            padding: 0.1rem 0.35rem;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+        .type-badge.type-controller { background: rgba(0,230,118,0.15); color: #00e676; }
+        .type-badge.type-wait { background: rgba(139,148,158,0.15); color: #8b949e; }
+        .type-badge.type-plugin { background: rgba(77,171,247,0.15); color: #4dabf7; }
+        .cmd-table .row-actions {
+            text-align: center;
+            width: 28px;
+        }
+        .cmd-table .btn-row-delete {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+        }
+        .cmd-table .btn-row-delete:hover {
+            color: #ff6b6b;
+            background: rgba(255,107,107,0.1);
+        }
+        .table-add-row {
+            padding: 0.3rem 0.6rem;
+            border-top: 1px solid rgba(45,54,64,0.3);
+        }
+        .table-add-row button {
+            background: none;
+            border: 1px dashed var(--border);
+            color: var(--text-dim);
+            padding: 0.25rem 0.6rem;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-family: var(--font-body);
+            width: 100%;
+        }
+        .table-add-row button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        /* Column widths */
+        .cmd-table .col-num { width: 28px; text-align: center; }
+        .cmd-table .col-type { width: 80px; }
+        .cmd-table .col-target { width: 80px; }
+        .cmd-table .col-command { width: 130px; }
+        .cmd-table .col-dur { width: 55px; }
+        .cmd-table .col-mode { width: 50px; }
+        .cmd-table .col-fr { width: 50px; }
+        .cmd-table .col-pattern { min-width: 120px; }
+        .cmd-table .col-params { min-width: 80px; }
+        .cmd-table .col-actions { width: 28px; }
+
+        /* ── Multi-Lane Timeline ────────────────── */
+        .lane-timeline {
+            padding: 0.5rem 0;
+        }
+        .lane-timeline .lane-header {
+            font-family: var(--font-heading);
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 0.75rem;
+        }
+        .lane-timeline svg {
+            display: block;
+            width: 100%;
+        }
+        .lane-timeline svg text {
+            font-family: var(--font-body);
         }
 
         .editor-placeholder p {
@@ -650,6 +876,10 @@
                 <select id="arenaConfig" title="Select arena hardware configuration"></select>
             </div>
             <div class="arena-summary" id="arenaSummary"></div>
+            <div class="field" style="margin-top: 0.5rem;">
+                <label for="rigPath">Rig Path (v2)</label>
+                <input type="text" id="rigPath" placeholder="./configs/rigs/my_rig.yaml" title="Path to rig YAML file. Used in v2 protocol export instead of inline arena_info.">
+            </div>
         </div>
 
         <div class="panel-section">
@@ -683,17 +913,67 @@
                 <input type="checkbox" id="posttrialEnabled">
             </label>
         </div>
+
+        <div class="panel-section">
+            <div class="panel-section-title">Plugins</div>
+            <label class="phase-toggle" title="LED backlight controller (LEDControllerPlugin) — control IR and visible LEDs behind arena panels">
+                <span>LED Backlight</span>
+                <input type="checkbox" id="pluginBacklight">
+            </label>
+            <div class="plugin-config" id="pluginBacklightConfig" style="display: none;">
+                <div class="field">
+                    <label for="backlightPort">Serial Port</label>
+                    <input type="text" id="backlightPort" placeholder="COM6" title="Serial port for LED controller">
+                </div>
+            </div>
+            <label class="phase-toggle" title="BIAS camera plugin (BiasPlugin) — video recording and timestamps">
+                <span>BIAS Camera</span>
+                <input type="checkbox" id="pluginCamera">
+            </label>
+            <div class="plugin-config" id="pluginCameraConfig" style="display: none;">
+                <div class="field">
+                    <label for="cameraFormat">Video Format</label>
+                    <select id="cameraFormat" title="Video recording format">
+                        <option value="ufmf">UFMF</option>
+                        <option value="avi">AVI</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="cameraFrameRate">Frame Rate</label>
+                    <input type="number" id="cameraFrameRate" min="10" max="200" value="100" title="Camera frame rate (10-200 Hz)">
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Right Panel: Editor -->
     <div class="editor-panel" id="editorPanel">
-        <div class="editor-placeholder" id="editorPlaceholder">
-            <div>
-                <p>Select a block on the timeline to edit its properties.</p>
-                <p style="margin-top: 0.75rem; font-size: 0.8rem;">Click a green condition block or a gray phase block below.</p>
-            </div>
+        <div class="editor-tab-bar" id="editorTabBar">
+            <button class="editor-tab active" data-tab="visual" title="Visual form editor for the selected condition/phase">Visual</button>
+            <button class="editor-tab" data-tab="table" title="Spreadsheet view of all commands across all sections">Table</button>
+            <button class="editor-tab" data-tab="timeline" title="Multi-lane timeline visualization of the selected condition">Timeline</button>
         </div>
-        <div id="editorContent" style="display: none;"></div>
+        <div class="editor-tab-content" id="editorTabVisual">
+            <div class="editor-placeholder" id="editorPlaceholder">
+                <div>
+                    <p>Select a block on the timeline to edit its properties.</p>
+                    <p style="margin-top: 0.75rem; font-size: 0.8rem;">Click a green condition block or a gray phase block below.</p>
+                </div>
+            </div>
+            <div id="editorContent" style="display: none;"></div>
+        </div>
+        <div class="editor-tab-content" id="editorTabTable" style="display: none;">
+            <div id="tableViewContent"></div>
+        </div>
+        <div class="editor-tab-content" id="editorTabTimeline" style="display: none;">
+            <div id="timelineViewPlaceholder" class="editor-placeholder">
+                <div>
+                    <p>Select a condition on the timeline below to see its multi-lane view.</p>
+                    <p style="margin-top: 0.75rem; font-size: 0.8rem;">Shows controller, plugin, and wait commands as concurrent lanes.</p>
+                </div>
+            </div>
+            <div id="timelineViewContent" style="display: none;"></div>
+        </div>
     </div>
 </div>
 
@@ -720,7 +1000,7 @@
 
 <!-- Footer -->
 <div class="app-footer">
-    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.2 | 2026-02-28</p>
+    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.6 | 2026-04-01 11:47 ET</p>
 </div>
 
 <!-- Hidden file input for import -->
@@ -728,6 +1008,8 @@
 
 <script type="module">
 import { STANDARD_CONFIGS, getConfig, getConfigsByGeneration } from './js/arena-configs.js';
+import { simpleYAMLParse, generateV2Protocol, yamlStr } from './js/protocol-yaml.js';
+import { BUILTIN_PLUGINS, CONTROLLER_COMMANDS, getPluginCommands, getAllCommandOptions, createPluginEntry } from './js/plugin-registry.js';
 
 // ════════════════════════════════════════════════════
 // Data Model
@@ -735,23 +1017,20 @@ import { STANDARD_CONFIGS, getConfig, getConfigsByGeneration } from './js/arena-
 
 const DEFAULT_CONDITION = {
     id: '',
-    pattern: '',
-    duration: 5,
-    mode: 2,
-    frame_rate: 60,
-    frame_index: 1,
-    gain: 0
+    // V2 command array — the primary data model for conditions
+    commands: [
+        { type: 'controller', command_name: 'trialParams', pattern: '', pattern_ID: 1,
+          duration: 5, mode: 2, frame_index: 1, frame_rate: 60, gain: 0 }
+    ]
 };
 
 const DEFAULT_PHASE = {
     include: false,
-    pattern: '',
-    duration: 2,
-    mode: 2,
-    frame_rate: 60,
-    frame_index: 1,
-    gain: 0,
-    wait: 0.5
+    // V2 command array for phases
+    commands: [
+        { type: 'controller', command_name: 'allOff' },
+        { type: 'wait', duration: 0.5 }
+    ]
 };
 
 let experiment = {
@@ -771,6 +1050,8 @@ let experiment = {
         repetitions: 1,
         randomization: { enabled: false, seed: null, method: 'block' }
     },
+    rig_path: '',
+    plugins: [],
     pretrial: { ...DEFAULT_PHASE },
     intertrial: { ...DEFAULT_PHASE },
     posttrial: { ...DEFAULT_PHASE },
@@ -784,6 +1065,54 @@ let selection = null;
 
 // Timeline zoom: pixels per second
 let pxPerSecond = 40;
+
+// ════════════════════════════════════════════════════
+// Command Array Helpers
+// ════════════════════════════════════════════════════
+
+/** Find the trialParams command in a commands array. */
+function cmdFindTrialParams(commands) {
+    if (!commands) return null;
+    for (var i = 0; i < commands.length; i++) {
+        if (commands[i].command_name === 'trialParams') return commands[i];
+    }
+    return null;
+}
+
+/** Get display duration for a condition (trialParams duration or sum of waits). */
+function condGetDuration(cond) {
+    var tp = cmdFindTrialParams(cond.commands);
+    if (tp && tp.duration) return tp.duration;
+    var total = 0;
+    for (var i = 0; i < cond.commands.length; i++) {
+        if (cond.commands[i].type === 'wait') total += (cond.commands[i].duration || 0);
+        else if (cond.commands[i].command_name === 'trialParams') total += (cond.commands[i].duration || 0);
+    }
+    return total || 0;
+}
+
+/** Get pattern filename for a condition. */
+function condGetPattern(cond) {
+    var tp = cmdFindTrialParams(cond.commands);
+    return tp ? (tp.pattern || '') : '';
+}
+
+/** Get total duration of a phase's commands. */
+function phaseGetDuration(phase) {
+    if (!phase.include || !phase.commands) return 0;
+    var total = 0;
+    for (var i = 0; i < phase.commands.length; i++) {
+        var cmd = phase.commands[i];
+        if (cmd.type === 'wait') total += (cmd.duration || 0);
+        if (cmd.command_name === 'trialParams') total += (cmd.duration || 0);
+    }
+    return total;
+}
+
+/** Create a deep copy of a commands array. */
+function cloneCommands(commands) {
+    return JSON.parse(JSON.stringify(commands));
+}
 
 // ════════════════════════════════════════════════════
 // Initialization
@@ -845,6 +1174,28 @@ function syncSettingsToUI() {
     updatePhaseToggleStyle('pretrialToggle', experiment.pretrial.include);
     updatePhaseToggleStyle('intertrialToggle', experiment.intertrial.include);
     updatePhaseToggleStyle('posttrialToggle', experiment.posttrial.include);
+
+    // Rig path
+    document.getElementById('rigPath').value = experiment.rig_path || '';
+
+    // Plugin checkboxes and config
+    var hasBacklight = experiment.plugins.some(function(p) { return p.name === 'backlight'; });
+    var hasCamera = experiment.plugins.some(function(p) { return p.name === 'camera'; });
+    document.getElementById('pluginBacklight').checked = hasBacklight;
+    document.getElementById('pluginBacklightConfig').style.display = hasBacklight ? '' : 'none';
+    document.getElementById('pluginCamera').checked = hasCamera;
+    document.getElementById('pluginCameraConfig').style.display = hasCamera ? '' : 'none';
+
+    // Plugin config values
+    if (hasBacklight) {
+        var bl = experiment.plugins.find(function(p) { return p.name === 'backlight'; });
+        document.getElementById('backlightPort').value = (bl.config && bl.config.port) || '';
+    }
+    if (hasCamera) {
+        var cam = experiment.plugins.find(function(p) { return p.name === 'camera'; });
+        document.getElementById('cameraFormat').value = (cam.config && cam.config.video_format) || 'ufmf';
+        document.getElementById('cameraFrameRate').value = (cam.config && cam.config.frame_rate) || 100;
+    }
 }
 
 function updatePhaseToggleStyle(id, active) {
@@ -910,11 +1261,97 @@ function bindSettingsEvents() {
             }
         });
     });
+
+    // Rig path
+    document.getElementById('rigPath').addEventListener('input', function(e) {
+        experiment.rig_path = e.target.value;
+    });
+
+    // Plugin checkboxes
+    document.getElementById('pluginBacklight').addEventListener('change', function(e) {
+        togglePlugin('backlight', e.target.checked);
+        document.getElementById('pluginBacklightConfig').style.display = e.target.checked ? '' : 'none';
+    });
+    document.getElementById('pluginCamera').addEventListener('change', function(e) {
+        togglePlugin('camera', e.target.checked);
+        document.getElementById('pluginCameraConfig').style.display = e.target.checked ? '' : 'none';
+    });
+
+    // Plugin config fields
+    document.getElementById('backlightPort').addEventListener('input', function(e) {
+        var plugin = experiment.plugins.find(function(p) { return p.name === 'backlight'; });
+        if (plugin) {
+            if (!plugin.config) plugin.config = {};
+            plugin.config.port = e.target.value;
+        }
+    });
+    document.getElementById('cameraFormat').addEventListener('change', function(e) {
+        var plugin = experiment.plugins.find(function(p) { return p.name === 'camera'; });
+        if (plugin) {
+            if (!plugin.config) plugin.config = {};
+            plugin.config.video_format = e.target.value;
+        }
+    });
+    document.getElementById('cameraFrameRate').addEventListener('input', function(e) {
+        var plugin = experiment.plugins.find(function(p) { return p.name === 'camera'; });
+        if (plugin) {
+            if (!plugin.config) plugin.config = {};
+            plugin.config.frame_rate = parseInt(e.target.value) || 100;
+        }
+    });
+}
+
+/**
+ * Toggle a plugin on/off in experiment.plugins[].
+ */
+function togglePlugin(name, enabled) {
+    if (enabled) {
+        // Add plugin if not already present
+        var exists = experiment.plugins.some(function(p) { return p.name === name; });
+        if (!exists) {
+            var entry = createPluginEntry(name);
+            if (entry) experiment.plugins.push(entry);
+        }
+    } else {
+        // Check if any conditions/phases use this plugin's commands
+        var inUse = hasPluginCommands(name);
+        if (inUse) {
+            var ok = confirm('Plugin "' + name + '" has commands in your experiment. Disabling it will NOT remove those commands, but they won\'t be available in dropdowns. Continue?');
+            if (!ok) {
+                document.getElementById('plugin' + name.charAt(0).toUpperCase() + name.slice(1)).checked = true;
+                return;
+            }
+        }
+        experiment.plugins = experiment.plugins.filter(function(p) { return p.name !== name; });
+    }
+}
+
+/**
+ * Check if any condition or phase uses commands from a given plugin.
+ */
+function hasPluginCommands(pluginName) {
+    function checkCmds(cmds) {
+        if (!cmds) return false;
+        for (var i = 0; i < cmds.length; i++) {
+            if (cmds[i].type === 'plugin' && cmds[i].plugin_name === pluginName) return true;
+        }
+        return false;
+    }
+    for (var i = 0; i < experiment.conditions.length; i++) {
+        if (checkCmds(experiment.conditions[i].commands)) return true;
+    }
+    if (checkCmds(experiment.pretrial.commands)) return true;
+    if (checkCmds(experiment.intertrial.commands)) return true;
+    if (checkCmds(experiment.posttrial.commands)) return true;
+    return false;
 }
 
 // ════════════════════════════════════════════════════
 // Toolbar Bindings
 // ════════════════════════════════════════════════════
+
+// Current editor tab
+let activeEditorTab = 'visual';
 
 function bindToolbarEvents() {
     document.getElementById('addConditionBtn').addEventListener('click', addCondition);
@@ -932,6 +1369,36 @@ function bindToolbarEvents() {
         renderTimeline();
     });
     document.getElementById('zoomFit').addEventListener('click', zoomToFit);
+
+    // Editor tab switching
+    document.querySelectorAll('.editor-tab').forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            if (this.disabled) return;
+            var tabName = this.getAttribute('data-tab');
+            switchEditorTab(tabName);
+        });
+    });
+}
+
+function switchEditorTab(tabName) {
+    activeEditorTab = tabName;
+
+    // Update tab bar
+    document.querySelectorAll('.editor-tab').forEach(function(t) {
+        t.classList.toggle('active', t.getAttribute('data-tab') === tabName);
+    });
+
+    // Show/hide tab content
+    document.getElementById('editorTabVisual').style.display = tabName === 'visual' ? '' : 'none';
+    document.getElementById('editorTabTable').style.display = tabName === 'table' ? '' : 'none';
+    document.getElementById('editorTabTimeline').style.display = tabName === 'timeline' ? '' : 'none';
+
+    // Render the active tab
+    if (tabName === 'table') {
+        renderTableView();
+    } else if (tabName === 'timeline') {
+        renderTimelineView();
+    }
 }
 
 // ════════════════════════════════════════════════════
@@ -942,12 +1409,7 @@ function addCondition() {
     var n = experiment.conditions.length + 1;
     experiment.conditions.push({
         id: 'condition_' + n,
-        pattern: '',
-        duration: 5,
-        mode: 2,
-        frame_rate: 60,
-        frame_index: 1,
-        gain: 0
+        commands: cloneCommands(DEFAULT_CONDITION.commands)
     });
     selection = { type: 'condition', index: experiment.conditions.length - 1 };
     renderTimeline();
@@ -997,8 +1459,8 @@ function getTimelineBlocks() {
         blocks.push({
             type: 'pretrial',
             label: 'PRE',
-            duration: phaseDuration(experiment.pretrial),
-            pattern: experiment.pretrial.pattern
+            duration: phaseGetDuration(experiment.pretrial),
+            pattern: condGetPattern({ commands: experiment.pretrial.commands })
         });
     }
 
@@ -1007,8 +1469,8 @@ function getTimelineBlocks() {
             blocks.push({
                 type: 'intertrial',
                 label: 'ITI',
-                duration: phaseDuration(experiment.intertrial),
-                pattern: experiment.intertrial.pattern
+                duration: phaseGetDuration(experiment.intertrial),
+                pattern: condGetPattern({ commands: experiment.intertrial.commands })
             });
         }
         var cond = experiment.conditions[i];
@@ -1016,8 +1478,8 @@ function getTimelineBlocks() {
             type: 'condition',
             index: i,
             label: cond.id || ('Cond ' + (i + 1)),
-            duration: cond.duration,
-            pattern: cond.pattern
+            duration: condGetDuration(cond),
+            pattern: condGetPattern(cond)
         });
     }
 
@@ -1025,16 +1487,12 @@ function getTimelineBlocks() {
         blocks.push({
             type: 'posttrial',
             label: 'POST',
-            duration: phaseDuration(experiment.posttrial),
-            pattern: experiment.posttrial.pattern
+            duration: phaseGetDuration(experiment.posttrial),
+            pattern: condGetPattern({ commands: experiment.posttrial.commands })
         });
     }
 
     return blocks;
-}
-
-function phaseDuration(phase) {
-    return phase.duration + (phase.wait || 0);
 }
 
 function renderTimeline() {
@@ -1160,6 +1618,9 @@ function handleTrackClick(e) {
     }
     renderTimeline();
     renderEditor();
+    // Always update non-visual tabs so they stay in sync with selection
+    renderTimelineView();
+    renderTableView();
 }
 
 function handleDragStart(e) {
@@ -1254,11 +1715,11 @@ function updateSummary() {
     // Compute expanded duration
     var condDuration = 0;
     for (var i = 0; i < experiment.conditions.length; i++) {
-        condDuration += experiment.conditions[i].duration;
+        condDuration += condGetDuration(experiment.conditions[i]);
     }
-    var itiDuration = experiment.intertrial.include ? phaseDuration(experiment.intertrial) : 0;
-    var preDuration = experiment.pretrial.include ? phaseDuration(experiment.pretrial) : 0;
-    var postDuration = experiment.posttrial.include ? phaseDuration(experiment.posttrial) : 0;
+    var itiDuration = experiment.intertrial.include ? phaseGetDuration(experiment.intertrial) : 0;
+    var preDuration = experiment.pretrial.include ? phaseGetDuration(experiment.pretrial) : 0;
+    var postDuration = experiment.posttrial.include ? phaseGetDuration(experiment.posttrial) : 0;
 
     var expandedDuration = preDuration +
         (condDuration * reps) +
@@ -1277,36 +1738,38 @@ function updateSummary() {
 // ════════════════════════════════════════════════════
 
 function renderEditor() {
+    // Always update the visual editor content (needed when switching back)
     var placeholder = document.getElementById('editorPlaceholder');
     var content = document.getElementById('editorContent');
 
     if (!selection) {
         placeholder.style.display = 'flex';
         content.style.display = 'none';
-        return;
+    } else {
+        placeholder.style.display = 'none';
+        content.style.display = 'block';
+
+        if (selection.type === 'condition') {
+            renderConditionEditor(experiment.conditions[selection.index], selection.index);
+        } else {
+            renderPhaseEditor(selection.type);
+        }
     }
 
-    placeholder.style.display = 'none';
-    content.style.display = 'block';
-
-    if (selection.type === 'condition') {
-        renderConditionEditor(experiment.conditions[selection.index], selection.index);
-    } else {
-        renderPhaseEditor(selection.type);
+    // Always update the active non-visual tab too
+    if (activeEditorTab === 'table') {
+        renderTableView();
     }
 }
 
 function renderConditionEditor(cond, index) {
     var content = document.getElementById('editorContent');
-    var isMode4 = cond.mode === 4;
     var removeHtml = experiment.conditions.length > 1
         ? '<button class="btn btn-danger btn-small" id="editorRemoveBtn" title="Remove this condition">Remove</button>'
         : '';
 
-    content.innerHTML =
-        '<div class="editor-header">' +
-            '<h2>Condition ' + (index + 1) + '</h2>' +
-            removeHtml +
+    var html = '<div class="editor-header">' +
+        '<h2>Condition ' + (index + 1) + '</h2>' + removeHtml +
         '</div>' +
         '<div class="editor-form">' +
             '<div class="field">' +
@@ -1315,95 +1778,190 @@ function renderConditionEditor(cond, index) {
                     'placeholder="e.g. vertical_bars_right" ' +
                     'title="Unique identifier for this condition (used in YAML and trial log)">' +
             '</div>' +
+            '<div class="editor-section-label">Commands (' + cond.commands.length + ')</div>';
 
-            '<div class="editor-section-label">Arena Command</div>' +
+    // Render each command as a card
+    for (var ci = 0; ci < cond.commands.length; ci++) {
+        html += renderCommandCard(cond.commands[ci], ci, cond.commands.length > 1);
+    }
 
-            '<div class="field">' +
-                '<label for="condPattern">Pattern File</label>' +
-                '<input type="text" id="condPattern" value="' + escapeAttr(cond.pattern) + '" ' +
-                    'placeholder="pattern_file.pat" ' +
-                    'title="Pattern filename (resolved relative to Pattern Library path)">' +
-            '</div>' +
+    // Add Command button
+    html += '<div style="margin-top: 0.5rem;">' +
+        '<select id="addCommandSelect" title="Add a new command to this condition" style="font-size:0.78rem;padding:0.3rem;background:var(--bg);border:1px dashed var(--border);color:var(--text-dim);border-radius:3px;width:100%;cursor:pointer;">' +
+            '<option value="">+ Add Command...</option>' +
+            '<optgroup label="Controller">';
+    var ctrlKeys = Object.keys(CONTROLLER_COMMANDS);
+    for (var k = 0; k < ctrlKeys.length; k++) {
+        html += '<option value="controller:' + ctrlKeys[k] + '">' + CONTROLLER_COMMANDS[ctrlKeys[k]].label + '</option>';
+    }
+    html += '</optgroup><option value="wait:wait">Wait</option>';
+    // Plugin commands
+    for (var pi = 0; pi < experiment.plugins.length; pi++) {
+        var pName = experiment.plugins[pi].name;
+        var pDef = BUILTIN_PLUGINS[pName];
+        if (pDef && pDef.commands) {
+            html += '<optgroup label="Plugin: ' + escapeAttr(pDef.label) + '">';
+            var cmdKeys = Object.keys(pDef.commands);
+            for (var ck = 0; ck < cmdKeys.length; ck++) {
+                html += '<option value="plugin:' + pName + ':' + cmdKeys[ck] + '">' + pDef.commands[cmdKeys[ck]].label + '</option>';
+            }
+            html += '</optgroup>';
+        }
+    }
+    html += '</select></div>';
+    html += '</div>'; // editor-form
 
-            '<div class="field-row">' +
-                '<div class="field">' +
-                    '<label for="condDuration">Duration (s)</label>' +
-                    '<input type="number" id="condDuration" min="0.1" step="0.1" value="' + cond.duration + '" ' +
-                        'title="How long to display this pattern (seconds)">' +
-                '</div>' +
-                '<div class="field">' +
-                    '<label for="condMode">Mode</label>' +
-                    '<select id="condMode" title="Display mode: Constant Rate plays at fixed FPS, Closed-Loop responds to input">' +
-                        '<option value="2"' + (cond.mode === 2 ? ' selected' : '') + '>Constant Rate</option>' +
-                        '<option value="4"' + (cond.mode === 4 ? ' selected' : '') + '>Closed-Loop</option>' +
-                    '</select>' +
-                '</div>' +
-            '</div>' +
+    content.innerHTML = html;
 
-            '<div class="field-row">' +
-                '<div class="field" id="frameRateField" style="' + (isMode4 ? 'opacity: 0.35' : '') + '">' +
-                    '<label for="condFrameRate">Frame Rate (fps)</label>' +
-                    '<input type="number" id="condFrameRate" min="0" max="200" value="' + cond.frame_rate + '"' +
-                        (isMode4 ? ' disabled' : '') +
-                        ' title="Frames per second (Constant Rate mode only)">' +
-                    (isMode4 ? '<div class="mode-info">Not used in Closed-Loop mode</div>' : '') +
-                '</div>' +
-                '<div class="field" id="gainField" style="' + (!isMode4 ? 'opacity: 0.35' : '') + '">' +
-                    '<label for="condGain">Gain</label>' +
-                    '<input type="number" id="condGain" value="' + cond.gain + '"' +
-                        (!isMode4 ? ' disabled' : '') +
-                        ' title="Closed-loop gain value (Closed-Loop mode only)">' +
-                    (!isMode4 ? '<div class="mode-info">Not used in Constant Rate mode</div>' : '') +
-                '</div>' +
-            '</div>' +
-
-            '<div class="field">' +
-                '<label for="condFrameIndex">Starting Frame Index</label>' +
-                '<input type="number" id="condFrameIndex" min="1" value="' + cond.frame_index + '" ' +
-                    'title="Which frame to start displaying (1-based)">' +
-            '</div>' +
-        '</div>';
-
-    // Bind events
+    // Bind ID
     document.getElementById('condId').addEventListener('input', function(e) {
         cond.id = e.target.value;
         renderTimeline();
     });
-    document.getElementById('condPattern').addEventListener('input', function(e) {
-        cond.pattern = e.target.value;
+
+    // Bind command card fields
+    bindCommandCardEvents(cond.commands, function() {
         renderTimeline();
-    });
-    document.getElementById('condDuration').addEventListener('input', function(e) {
-        var val = parseFloat(e.target.value);
-        if (val > 0) {
-            cond.duration = val;
-            renderTimeline();
-            updateSummary();
-        }
-    });
-    document.getElementById('condMode').addEventListener('change', function(e) {
-        cond.mode = parseInt(e.target.value);
-        if (cond.mode === 2) { cond.gain = 0; }
-        else { cond.frame_rate = 0; }
-        renderEditor();
-    });
-    document.getElementById('condFrameRate').addEventListener('input', function(e) {
-        cond.frame_rate = parseInt(e.target.value) || 0;
-    });
-    document.getElementById('condGain').addEventListener('input', function(e) {
-        cond.gain = parseInt(e.target.value) || 0;
-    });
-    document.getElementById('condFrameIndex').addEventListener('input', function(e) {
-        var val = parseInt(e.target.value);
-        if (val >= 1) cond.frame_index = val;
+        updateSummary();
+        if (activeEditorTab === 'table') renderTableView();
     });
 
+    // Bind Add Command
+    document.getElementById('addCommandSelect').addEventListener('change', function(e) {
+        if (!e.target.value) return;
+        var parts = e.target.value.split(':');
+        var newCmd = {};
+        if (parts[0] === 'controller') {
+            newCmd = { type: 'controller', command_name: parts[1] };
+            if (parts[1] === 'trialParams') {
+                newCmd.pattern = ''; newCmd.pattern_ID = 1; newCmd.duration = 5;
+                newCmd.mode = 2; newCmd.frame_index = 1; newCmd.frame_rate = 60; newCmd.gain = 0;
+            }
+        } else if (parts[0] === 'wait') {
+            newCmd = { type: 'wait', duration: 1 };
+        } else if (parts[0] === 'plugin') {
+            newCmd = { type: 'plugin', plugin_name: parts[1], command_name: parts[2] };
+        }
+        cond.commands.push(newCmd);
+        e.target.value = '';
+        renderEditor();
+        renderTimeline();
+        updateSummary();
+    });
+
+    // Bind remove condition
     var removeBtn = document.getElementById('editorRemoveBtn');
     if (removeBtn) {
-        removeBtn.addEventListener('click', function() {
-            removeCondition(index);
-        });
+        removeBtn.addEventListener('click', function() { removeCondition(index); });
     }
+}
+
+/**
+ * Render a single command as a card in the visual editor.
+ */
+function renderCommandCard(cmd, cmdIndex, canDelete) {
+    var typeClass = 'type-' + cmd.type;
+    var borderColor = cmd.type === 'controller' ? '#00e676' : cmd.type === 'wait' ? '#8b949e' : '#4dabf7';
+
+    var html = '<div class="cmd-card" data-cmd="' + cmdIndex + '" style="border-left: 3px solid ' + borderColor + '; margin-bottom: 0.4rem; padding: 0.5rem 0.6rem; background: rgba(0,0,0,0.15); border-radius: 0 4px 4px 0;">';
+
+    // Header row with type badge and delete
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.3rem;">';
+    html += '<span class="type-badge ' + typeClass + '">' + cmd.type + '</span>';
+    html += '<span style="color:var(--text-dim);font-size:0.75rem;">';
+    if (cmd.plugin_name) html += cmd.plugin_name + ' \u2192 ';
+    html += (cmd.command_name || '') + '</span>';
+    if (canDelete) {
+        html += '<button class="btn-row-delete cmd-delete-btn" data-cmd="' + cmdIndex + '" title="Remove this command">\u00d7</button>';
+    }
+    html += '</div>';
+
+    // Command-specific fields
+    if (cmd.command_name === 'trialParams') {
+        var isMode4 = cmd.mode === 4;
+        html += '<div class="field" style="margin-bottom:0.3rem;"><label>Pattern</label>' +
+            '<input type="text" class="cmd-field" data-cmd="' + cmdIndex + '" data-field="pattern" value="' + escapeAttr(cmd.pattern || '') + '" placeholder="pattern_file.pat"></div>';
+        html += '<div style="display:flex;gap:0.5rem;">';
+        html += '<div class="field" style="flex:1;"><label>Duration</label><input type="number" class="cmd-field" data-cmd="' + cmdIndex + '" data-field="duration" min="0.1" step="0.1" value="' + (cmd.duration || 5) + '"></div>';
+        html += '<div class="field" style="flex:1;"><label>Mode</label><select class="cmd-field" data-cmd="' + cmdIndex + '" data-field="mode"><option value="2"' + (cmd.mode === 2 ? ' selected' : '') + '>Constant Rate</option><option value="4"' + (cmd.mode === 4 ? ' selected' : '') + '>Closed-Loop</option></select></div>';
+        html += '</div>';
+        html += '<div style="display:flex;gap:0.5rem;">';
+        html += '<div class="field" style="flex:1;' + (isMode4 ? 'opacity:0.35' : '') + '"><label>Frame Rate</label><input type="number" class="cmd-field" data-cmd="' + cmdIndex + '" data-field="frame_rate" value="' + (cmd.frame_rate || 60) + '"' + (isMode4 ? ' disabled' : '') + '></div>';
+        html += '<div class="field" style="flex:1;' + (!isMode4 ? 'opacity:0.35' : '') + '"><label>Gain</label><input type="number" class="cmd-field" data-cmd="' + cmdIndex + '" data-field="gain" value="' + (cmd.gain || 0) + '"' + (!isMode4 ? ' disabled' : '') + '></div>';
+        html += '<div class="field" style="flex:1;"><label>Start Frame</label><input type="number" class="cmd-field" data-cmd="' + cmdIndex + '" data-field="frame_index" min="1" value="' + (cmd.frame_index || 1) + '"></div>';
+        html += '</div>';
+    } else if (cmd.type === 'wait') {
+        html += '<div class="field"><label>Duration (s)</label><input type="number" class="cmd-field" data-cmd="' + cmdIndex + '" data-field="duration" min="0" step="0.1" value="' + (cmd.duration || 0) + '"></div>';
+    } else if (cmd.params && typeof cmd.params === 'object') {
+        // Plugin command with params
+        var paramKeys = Object.keys(cmd.params);
+        for (var pk = 0; pk < paramKeys.length; pk++) {
+            html += '<div class="field" style="margin-bottom:0.2rem;"><label>' + paramKeys[pk] + '</label>' +
+                '<input type="text" class="cmd-param-field" data-cmd="' + cmdIndex + '" data-param="' + paramKeys[pk] + '" value="' + escapeAttr(String(cmd.params[paramKeys[pk]])) + '"></div>';
+        }
+    }
+    // Plugin commands without params — no additional fields needed
+
+    html += '</div>'; // cmd-card
+    return html;
+}
+
+/**
+ * Bind events for command card fields.
+ */
+function bindCommandCardEvents(commands, onChange) {
+    // Field edits
+    document.querySelectorAll('.cmd-field').forEach(function(el) {
+        var eventType = el.tagName === 'SELECT' ? 'change' : 'input';
+        el.addEventListener(eventType, function() {
+            var ci = parseInt(this.dataset.cmd);
+            var field = this.dataset.field;
+            var cmd = commands[ci];
+            if (!cmd) return;
+
+            if (field === 'mode') {
+                cmd.mode = parseInt(this.value);
+                if (cmd.mode === 2) { cmd.gain = 0; } else { cmd.frame_rate = 0; }
+                renderEditor(); // re-render to update disabled fields
+                return;
+            }
+
+            var val = this.value;
+            if (['duration', 'frame_rate', 'gain', 'frame_index', 'pattern_ID'].indexOf(field) >= 0) {
+                val = parseFloat(val);
+                if (isNaN(val)) return;
+            }
+            cmd[field] = val;
+            if (onChange) onChange();
+        });
+    });
+
+    // Param fields (plugin params)
+    document.querySelectorAll('.cmd-param-field').forEach(function(el) {
+        el.addEventListener('input', function() {
+            var ci = parseInt(this.dataset.cmd);
+            var param = this.dataset.param;
+            var cmd = commands[ci];
+            if (!cmd || !cmd.params) return;
+            var val = this.value;
+            // Try to parse as number
+            var num = Number(val);
+            cmd.params[param] = (!isNaN(num) && val !== '') ? num : val;
+        });
+    });
+
+    // Delete buttons
+    document.querySelectorAll('.cmd-delete-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var ci = parseInt(this.dataset.cmd);
+            if (commands.length > 1) {
+                commands.splice(ci, 1);
+                renderEditor();
+                if (onChange) onChange();
+            }
+        });
+    });
 }
 
 function renderPhaseEditor(phaseType) {
@@ -1411,104 +1969,70 @@ function renderPhaseEditor(phaseType) {
     var content = document.getElementById('editorContent');
     var phaseLabels = { pretrial: 'Pretrial', intertrial: 'Intertrial', posttrial: 'Posttrial' };
     var label = phaseLabels[phaseType];
-    var isMode4 = phase.mode === 4;
 
-    content.innerHTML =
-        '<div class="editor-header">' +
-            '<h2>' + label + '</h2>' +
-        '</div>' +
+    var html = '<div class="editor-header"><h2>' + label + '</h2></div>' +
         '<div class="editor-form">' +
-            '<div class="editor-section-label">Arena Command</div>' +
+        '<div class="editor-section-label">Commands (' + phase.commands.length + ')</div>';
 
-            '<div class="field">' +
-                '<label for="phasePattern">Pattern File</label>' +
-                '<input type="text" id="phasePattern" value="' + escapeAttr(phase.pattern) + '" ' +
-                    'placeholder="pattern_file.pat" ' +
-                    'title="Pattern filename for this phase">' +
-            '</div>' +
+    // Render each command as a card (same as conditions)
+    for (var ci = 0; ci < phase.commands.length; ci++) {
+        html += renderCommandCard(phase.commands[ci], ci, phase.commands.length > 1);
+    }
 
-            '<div class="field-row">' +
-                '<div class="field">' +
-                    '<label for="phaseDuration">Duration (s)</label>' +
-                    '<input type="number" id="phaseDuration" min="0" step="0.1" value="' + phase.duration + '" ' +
-                        'title="Pattern display duration (seconds)">' +
-                '</div>' +
-                '<div class="field">' +
-                    '<label for="phaseWait">Wait After (s)</label>' +
-                    '<input type="number" id="phaseWait" min="0" step="0.1" value="' + phase.wait + '" ' +
-                        'title="Pause after pattern display (seconds)">' +
-                '</div>' +
-            '</div>' +
-
-            '<div class="field-row">' +
-                '<div class="field">' +
-                    '<label for="phaseMode">Mode</label>' +
-                    '<select id="phaseMode" title="Display mode">' +
-                        '<option value="2"' + (phase.mode === 2 ? ' selected' : '') + '>Constant Rate</option>' +
-                        '<option value="4"' + (phase.mode === 4 ? ' selected' : '') + '>Closed-Loop</option>' +
-                    '</select>' +
-                '</div>' +
-                '<div class="field">' +
-                    '<label for="phaseFrameIndex">Start Frame</label>' +
-                    '<input type="number" id="phaseFrameIndex" min="1" value="' + phase.frame_index + '" ' +
-                        'title="Starting frame index (1-based)">' +
-                '</div>' +
-            '</div>' +
-
-            '<div class="field-row">' +
-                '<div class="field" style="' + (isMode4 ? 'opacity: 0.35' : '') + '">' +
-                    '<label for="phaseFrameRate">Frame Rate</label>' +
-                    '<input type="number" id="phaseFrameRate" min="0" max="200" value="' + phase.frame_rate + '"' +
-                        (isMode4 ? ' disabled' : '') +
-                        ' title="Frames per second (Constant Rate mode only)">' +
-                '</div>' +
-                '<div class="field" style="' + (!isMode4 ? 'opacity: 0.35' : '') + '">' +
-                    '<label for="phaseGain">Gain</label>' +
-                    '<input type="number" id="phaseGain" value="' + phase.gain + '"' +
-                        (!isMode4 ? ' disabled' : '') +
-                        ' title="Closed-loop gain (Closed-Loop mode only)">' +
-                '</div>' +
-            '</div>' +
-        '</div>';
-
-    // Bind events
-    document.getElementById('phasePattern').addEventListener('input', function(e) {
-        phase.pattern = e.target.value;
-        renderTimeline();
-    });
-
-    bindPhaseField('phaseDuration', phase, 'duration', function(v) {
-        var n = parseFloat(v); return n >= 0 ? n : null;
-    });
-    bindPhaseField('phaseWait', phase, 'wait', function(v) {
-        var n = parseFloat(v); return n >= 0 ? n : null;
-    });
-    bindPhaseField('phaseFrameIndex', phase, 'frame_index', function(v) {
-        var n = parseInt(v); return n >= 1 ? n : null;
-    });
-    bindPhaseField('phaseFrameRate', phase, 'frame_rate', function(v) {
-        var n = parseInt(v); return !isNaN(n) ? n : null;
-    });
-    bindPhaseField('phaseGain', phase, 'gain', function(v) {
-        var n = parseInt(v); return !isNaN(n) ? n : null;
-    });
-
-    document.getElementById('phaseMode').addEventListener('change', function(e) {
-        phase.mode = parseInt(e.target.value);
-        if (phase.mode === 2) { phase.gain = 0; }
-        else { phase.frame_rate = 0; }
-        renderEditor();
-    });
-}
-
-function bindPhaseField(elementId, phase, field, parser) {
-    document.getElementById(elementId).addEventListener('input', function(e) {
-        var val = parser(e.target.value);
-        if (val !== null) {
-            phase[field] = val;
-            renderTimeline();
-            updateSummary();
+    // Add Command button
+    html += '<div style="margin-top: 0.5rem;">' +
+        '<select id="addCommandSelect" title="Add a command to this phase" style="font-size:0.78rem;padding:0.3rem;background:var(--bg);border:1px dashed var(--border);color:var(--text-dim);border-radius:3px;width:100%;cursor:pointer;">' +
+            '<option value="">+ Add Command...</option>' +
+            '<optgroup label="Controller">';
+    var ctrlKeys = Object.keys(CONTROLLER_COMMANDS);
+    for (var k = 0; k < ctrlKeys.length; k++) {
+        html += '<option value="controller:' + ctrlKeys[k] + '">' + CONTROLLER_COMMANDS[ctrlKeys[k]].label + '</option>';
+    }
+    html += '</optgroup><option value="wait:wait">Wait</option>';
+    for (var pi = 0; pi < experiment.plugins.length; pi++) {
+        var pName = experiment.plugins[pi].name;
+        var pDef = BUILTIN_PLUGINS[pName];
+        if (pDef && pDef.commands) {
+            html += '<optgroup label="Plugin: ' + escapeAttr(pDef.label) + '">';
+            var cmdKeys = Object.keys(pDef.commands);
+            for (var ck = 0; ck < cmdKeys.length; ck++) {
+                html += '<option value="plugin:' + pName + ':' + cmdKeys[ck] + '">' + pDef.commands[cmdKeys[ck]].label + '</option>';
+            }
+            html += '</optgroup>';
         }
+    }
+    html += '</select></div></div>';
+
+    content.innerHTML = html;
+
+    // Bind command card events
+    bindCommandCardEvents(phase.commands, function() {
+        renderTimeline();
+        updateSummary();
+        if (activeEditorTab === 'table') renderTableView();
+    });
+
+    // Bind Add Command
+    document.getElementById('addCommandSelect').addEventListener('change', function(e) {
+        if (!e.target.value) return;
+        var parts = e.target.value.split(':');
+        var newCmd = {};
+        if (parts[0] === 'controller') {
+            newCmd = { type: 'controller', command_name: parts[1] };
+            if (parts[1] === 'trialParams') {
+                newCmd.pattern = ''; newCmd.pattern_ID = 1; newCmd.duration = 5;
+                newCmd.mode = 2; newCmd.frame_index = 1; newCmd.frame_rate = 60; newCmd.gain = 0;
+            }
+        } else if (parts[0] === 'wait') {
+            newCmd = { type: 'wait', duration: 1 };
+        } else if (parts[0] === 'plugin') {
+            newCmd = { type: 'plugin', plugin_name: parts[1], command_name: parts[2] };
+        }
+        phase.commands.push(newCmd);
+        e.target.value = '';
+        renderEditor();
+        renderTimeline();
+        updateSummary();
     });
 }
 
@@ -1517,129 +2041,562 @@ function escapeAttr(str) {
 }
 
 // ════════════════════════════════════════════════════
+// Table View
+// ════════════════════════════════════════════════════
+
+function renderTableView() {
+    var container = document.getElementById('tableViewContent');
+    var html = '';
+
+    // Build sections: pretrial, conditions, intertrial, posttrial
+    var sections = [];
+
+    if (experiment.pretrial.include) {
+        sections.push({
+            key: 'pretrial',
+            label: 'PRETRIAL',
+            commands: getPhaseCommands(experiment.pretrial),
+            sectionType: 'phase'
+        });
+    }
+
+    for (var i = 0; i < experiment.conditions.length; i++) {
+        var cond = experiment.conditions[i];
+        sections.push({
+            key: 'condition_' + i,
+            label: 'CONDITION ' + (i + 1) + ': ' + (cond.id || ''),
+            commands: getConditionCommands(cond),
+            sectionType: 'condition',
+            condIndex: i
+        });
+
+        // Show intertrial between conditions (except after last)
+        if (experiment.intertrial.include && i < experiment.conditions.length - 1) {
+            sections.push({
+                key: 'intertrial_' + i,
+                label: 'INTERTRIAL',
+                commands: getPhaseCommands(experiment.intertrial),
+                sectionType: 'phase-iti'
+            });
+        }
+    }
+
+    if (experiment.posttrial.include) {
+        sections.push({
+            key: 'posttrial',
+            label: 'POSTTRIAL',
+            commands: getPhaseCommands(experiment.posttrial),
+            sectionType: 'phase'
+        });
+    }
+
+    for (var si = 0; si < sections.length; si++) {
+        html += renderTableSection(sections[si]);
+    }
+
+    if (sections.length === 0) {
+        html = '<div class="editor-placeholder" style="padding: 2rem;"><div><p>No phases or conditions defined.</p></div></div>';
+    }
+
+    container.innerHTML = html;
+    bindTableEvents(sections);
+}
+
+/**
+ * Get commands array from a phase (already stored as commands[]).
+ */
+function getPhaseCommands(phase) {
+    return phase.commands || [];
+}
+
+/**
+ * Get commands array from a condition (already stored as commands[]).
+ */
+function getConditionCommands(cond) {
+    return cond.commands || [];
+}
+
+/**
+ * Compute total duration of a command array.
+ */
+function computeSectionDuration(commands) {
+    var total = 0;
+    for (var i = 0; i < commands.length; i++) {
+        var cmd = commands[i];
+        if (cmd.type === 'wait' && cmd.duration) {
+            total += cmd.duration;
+        } else if (cmd.command_name === 'trialParams' && cmd.duration) {
+            total += cmd.duration;
+        }
+    }
+    return total;
+}
+
+function renderTableSection(section) {
+    var dur = computeSectionDuration(section.commands);
+    var durStr = dur > 0 ? dur + 's' : '';
+    var isCondition = section.sectionType === 'condition';
+    var isIti = section.sectionType === 'phase-iti';
+
+    var html = '<div class="table-section' + (isIti ? ' collapsed' : '') + '" data-section="' + section.key + '">';
+
+    // Header
+    html += '<div class="table-section-header' + (isIti ? ' collapsed' : '') + '" data-section="' + section.key + '">';
+    html += '<span><span class="section-toggle">\u25BC</span> ' + escapeHtml(section.label) + '</span>';
+    html += '<span class="section-duration">' + durStr + '</span>';
+    html += '</div>';
+
+    // Body
+    html += '<div class="table-section-body">';
+    html += '<table class="cmd-table">';
+    html += '<thead><tr>';
+    html += '<th class="col-num">#</th>';
+    html += '<th class="col-type">Type</th>';
+    html += '<th class="col-target">Target</th>';
+    html += '<th class="col-command">Command</th>';
+    html += '<th class="col-dur">Dur</th>';
+    html += '<th class="col-mode">Mode</th>';
+    html += '<th class="col-fr">FR</th>';
+    html += '<th class="col-pattern">Pattern / Params</th>';
+    html += '<th class="col-actions"></th>';
+    html += '</tr></thead><tbody>';
+
+    for (var ci = 0; ci < section.commands.length; ci++) {
+        html += renderTableRow(section, ci, section.commands[ci]);
+    }
+
+    html += '</tbody></table>';
+
+    // Add row button (only for conditions, not for phase-iti duplicates)
+    if (isCondition) {
+        html += '<div class="table-add-row"><button data-section="' + section.key + '" title="Add a command to this condition">+ Add Command</button></div>';
+    }
+
+    html += '</div>'; // section-body
+    html += '</div>'; // table-section
+
+    return html;
+}
+
+function renderTableRow(section, rowIndex, cmd) {
+    var isController = cmd.type === 'controller';
+    var isWait = cmd.type === 'wait';
+    var isPlugin = cmd.type === 'plugin';
+    var isTrialParams = isController && cmd.command_name === 'trialParams';
+    var isCondition = section.sectionType === 'condition';
+
+    var html = '<tr data-section="' + section.key + '" data-row="' + rowIndex + '">';
+
+    // #
+    html += '<td class="col-num">' + (rowIndex + 1) + '</td>';
+
+    // Type badge
+    html += '<td class="col-type"><span class="type-badge type-' + cmd.type + '">' + cmd.type + '</span></td>';
+
+    // Target (plugin name or empty)
+    if (isPlugin) {
+        html += '<td class="col-target">' + escapeHtml(cmd.plugin_name || '') + '</td>';
+    } else {
+        html += '<td class="col-target cell-dim">\u2014</td>';
+    }
+
+    // Command name
+    html += '<td class="col-command">' + escapeHtml(cmd.command_name || '') + '</td>';
+
+    // Duration
+    if (cmd.duration !== undefined) {
+        html += '<td class="col-dur">' + cmd.duration + '</td>';
+    } else {
+        html += '<td class="col-dur cell-dim">\u2014</td>';
+    }
+
+    // Mode
+    if (isTrialParams) {
+        html += '<td class="col-mode">' + cmd.mode + '</td>';
+    } else {
+        html += '<td class="col-mode cell-dim">\u2014</td>';
+    }
+
+    // Frame Rate
+    if (isTrialParams) {
+        html += '<td class="col-fr">' + cmd.frame_rate + '</td>';
+    } else {
+        html += '<td class="col-fr cell-dim">\u2014</td>';
+    }
+
+    // Pattern / Params
+    if (isTrialParams && cmd.pattern) {
+        html += '<td class="col-pattern">' + escapeHtml(cmd.pattern) + '</td>';
+    } else if (isPlugin && cmd.params) {
+        var paramStr = Object.keys(cmd.params).map(function(k) {
+            return k + ': ' + cmd.params[k];
+        }).join(', ');
+        html += '<td class="col-pattern">' + escapeHtml(paramStr) + '</td>';
+    } else {
+        html += '<td class="col-pattern cell-dim">\u2014</td>';
+    }
+
+    // Actions
+    if (isCondition && section.commands.length > 1) {
+        html += '<td class="row-actions"><button class="btn-row-delete" data-section="' + section.key + '" data-row="' + rowIndex + '" title="Remove this command">\u00d7</button></td>';
+    } else {
+        html += '<td class="row-actions"></td>';
+    }
+
+    html += '</tr>';
+    return html;
+}
+
+function escapeHtml(str) {
+    return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function bindTableEvents(sections) {
+    // Section collapse/expand
+    document.querySelectorAll('.table-section-header').forEach(function(header) {
+        header.addEventListener('click', function() {
+            var sectionKey = this.getAttribute('data-section');
+            var sectionEl = document.querySelector('.table-section[data-section="' + sectionKey + '"]');
+            if (sectionEl) {
+                sectionEl.classList.toggle('collapsed');
+                this.classList.toggle('collapsed');
+            }
+        });
+    });
+
+    // Row click → select in visual editor
+    document.querySelectorAll('.cmd-table tbody tr').forEach(function(row) {
+        row.addEventListener('click', function() {
+            var sectionKey = this.getAttribute('data-section');
+            // Highlight this row
+            document.querySelectorAll('.cmd-table tr.selected').forEach(function(r) { r.classList.remove('selected'); });
+            this.classList.add('selected');
+
+            // If it's a condition, select it in the visual tab too
+            if (sectionKey && sectionKey.startsWith('condition_')) {
+                var idx = parseInt(sectionKey.split('_')[1]);
+                if (!isNaN(idx) && idx < experiment.conditions.length) {
+                    selection = { type: 'condition', index: idx };
+                    renderTimeline();
+                    // Don't re-render editor since we're in table view
+                }
+            } else if (sectionKey === 'pretrial' || sectionKey === 'posttrial') {
+                selection = { type: sectionKey };
+                renderTimeline();
+            }
+        });
+    });
+
+    // Delete row buttons
+    document.querySelectorAll('.btn-row-delete').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            // For now, only conditions have delete buttons and only have 1 command
+            // (will be expanded when conditions get multi-command support)
+            alert('Command removal will be available when multi-command conditions are implemented (Phase 3).');
+        });
+    });
+
+    // Add row buttons
+    document.querySelectorAll('.table-add-row button').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            alert('Add command will be available when multi-command conditions are implemented (Phase 3).');
+        });
+    });
+}
+
+// ════════════════════════════════════════════════════
+// Multi-Lane Timeline View
+// ════════════════════════════════════════════════════
+
+function renderTimelineView() {
+    var placeholder = document.getElementById('timelineViewPlaceholder');
+    var content = document.getElementById('timelineViewContent');
+
+    // Need a selected condition or phase
+    if (!selection) {
+        placeholder.style.display = 'flex';
+        content.style.display = 'none';
+        return;
+    }
+
+    var commands;
+    var sectionLabel;
+    if (selection.type === 'condition') {
+        var cond = experiment.conditions[selection.index];
+        commands = cond.commands;
+        sectionLabel = 'Condition ' + (selection.index + 1) + ': ' + (cond.id || '');
+    } else {
+        var phase = experiment[selection.type];
+        commands = phase.commands;
+        var labels = { pretrial: 'Pretrial', intertrial: 'Intertrial', posttrial: 'Posttrial' };
+        sectionLabel = labels[selection.type] || selection.type;
+    }
+
+    if (!commands || commands.length === 0) {
+        placeholder.style.display = 'flex';
+        content.style.display = 'none';
+        return;
+    }
+
+    placeholder.style.display = 'none';
+    content.style.display = 'block';
+
+    // Compute lane events from sequential command execution
+    var laneData = computeLaneData(commands);
+
+    // Build SVG
+    content.innerHTML = '<div class="lane-timeline">' +
+        '<div class="lane-header">' + escapeHtml(sectionLabel) + '</div>' +
+        buildLaneSVG(laneData, commands) +
+        '</div>';
+
+    // Bind click events on SVG elements
+    bindTimelineViewEvents(commands);
+}
+
+/**
+ * Compute lane positions from sequential command execution.
+ *
+ * Returns: {
+ *   totalDuration: number,
+ *   controllerSpans: [{ startTime, endTime, cmd, cmdIndex }],
+ *   pluginEvents: { pluginName: [{ time, cmd, cmdIndex }] },
+ *   waitSpans: [{ startTime, endTime, cmdIndex }],
+ *   lanes: string[]  // ordered lane names: 'controller', plugin names...
+ * }
+ */
+function computeLaneData(commands) {
+    var clock = 0;
+    var controllerSpans = [];
+    var pluginEvents = {};
+    var waitSpans = [];
+    var controllerEndTime = 0;
+
+    for (var i = 0; i < commands.length; i++) {
+        var cmd = commands[i];
+
+        if (cmd.command_name === 'trialParams') {
+            // trialParams fires controller autonomously for duration seconds
+            var dur = cmd.duration || 0;
+            controllerSpans.push({ startTime: clock, endTime: clock + dur, cmd: cmd, cmdIndex: i });
+            controllerEndTime = Math.max(controllerEndTime, clock + dur);
+            // Clock does NOT advance — controller runs autonomously
+        } else if (cmd.type === 'controller') {
+            // Other controller commands (allOn, allOff, etc.) are instantaneous
+            controllerSpans.push({ startTime: clock, endTime: clock, cmd: cmd, cmdIndex: i });
+        } else if (cmd.type === 'wait') {
+            var waitDur = cmd.duration || 0;
+            waitSpans.push({ startTime: clock, endTime: clock + waitDur, cmdIndex: i });
+            clock += waitDur;
+        } else if (cmd.type === 'plugin') {
+            var pName = cmd.plugin_name || 'plugin';
+            if (!pluginEvents[pName]) pluginEvents[pName] = [];
+            pluginEvents[pName].push({ time: clock, cmd: cmd, cmdIndex: i });
+            // Plugin commands are instantaneous — clock does NOT advance
+        }
+    }
+
+    // Total duration = max of clock (end of last wait) and controller end
+    var totalDuration = Math.max(clock, controllerEndTime);
+    if (totalDuration <= 0) totalDuration = 1;
+
+    // Build ordered lane list
+    var lanes = ['controller'];
+    var pluginNames = Object.keys(pluginEvents);
+    for (var pi = 0; pi < pluginNames.length; pi++) {
+        lanes.push(pluginNames[pi]);
+    }
+
+    return {
+        totalDuration: totalDuration,
+        controllerSpans: controllerSpans,
+        pluginEvents: pluginEvents,
+        waitSpans: waitSpans,
+        lanes: lanes
+    };
+}
+
+/**
+ * Build SVG markup for the multi-lane timeline.
+ */
+function buildLaneSVG(laneData, commands) {
+    var MARGIN_LEFT = 90;
+    var MARGIN_RIGHT = 20;
+    var LANE_HEIGHT = 32;
+    var LANE_GAP = 4;
+    var TICK_HEIGHT = 16;
+    var HEADER_HEIGHT = 20;
+
+    var numLanes = laneData.lanes.length;
+    var svgHeight = HEADER_HEIGHT + (numLanes * (LANE_HEIGHT + LANE_GAP)) + TICK_HEIGHT + 10;
+    var svgWidth = '100%';
+
+    // We'll use a viewBox so it scales. Use 800px logical width.
+    var LOGICAL_WIDTH = 800;
+    var trackWidth = LOGICAL_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
+    var pxPerSec = trackWidth / laneData.totalDuration;
+
+    var svg = '<svg viewBox="0 0 ' + LOGICAL_WIDTH + ' ' + svgHeight + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">';
+
+    // Background
+    svg += '<rect width="' + LOGICAL_WIDTH + '" height="' + svgHeight + '" fill="transparent"/>';
+
+    // Time axis ticks
+    var tickY = HEADER_HEIGHT;
+    var tickInterval = getTickInterval(laneData.totalDuration);
+    for (var t = 0; t <= laneData.totalDuration; t += tickInterval) {
+        var tx = MARGIN_LEFT + t * pxPerSec;
+        svg += '<line x1="' + tx + '" y1="' + tickY + '" x2="' + tx + '" y2="' + (svgHeight - 4) + '" stroke="#2d3640" stroke-width="0.5" stroke-dasharray="2,3"/>';
+        svg += '<text x="' + tx + '" y="' + (tickY - 4) + '" fill="#8b949e" font-size="9" text-anchor="middle">' + formatTimeTick(t) + '</text>';
+    }
+
+    // Render each lane
+    for (var li = 0; li < laneData.lanes.length; li++) {
+        var laneName = laneData.lanes[li];
+        var laneY = HEADER_HEIGHT + li * (LANE_HEIGHT + LANE_GAP);
+        var laneCenter = laneY + LANE_HEIGHT / 2;
+
+        // Lane label
+        var labelColor = laneName === 'controller' ? '#00e676' : '#4dabf7';
+        svg += '<text x="' + (MARGIN_LEFT - 8) + '" y="' + (laneCenter + 4) + '" fill="' + labelColor + '" font-size="10" text-anchor="end" font-weight="600">' + escapeHtml(laneName) + '</text>';
+
+        // Lane background
+        svg += '<rect x="' + MARGIN_LEFT + '" y="' + laneY + '" width="' + trackWidth + '" height="' + LANE_HEIGHT + '" fill="rgba(255,255,255,0.02)" rx="3"/>';
+
+        if (laneName === 'controller') {
+            // Render controller spans
+            for (var ci = 0; ci < laneData.controllerSpans.length; ci++) {
+                var span = laneData.controllerSpans[ci];
+                var sx = MARGIN_LEFT + span.startTime * pxPerSec;
+
+                if (span.startTime === span.endTime) {
+                    // Instantaneous command (allOn, allOff, etc.) — diamond marker
+                    svg += '<g class="tl-cmd" data-cmd="' + span.cmdIndex + '" style="cursor:pointer;">';
+                    svg += '<polygon points="' + sx + ',' + (laneCenter - 6) + ' ' + (sx + 6) + ',' + laneCenter + ' ' + sx + ',' + (laneCenter + 6) + ' ' + (sx - 6) + ',' + laneCenter + '" fill="#00e676" opacity="0.8"/>';
+                    svg += '<title>' + escapeHtml(span.cmd.command_name || '') + '</title>';
+                    svg += '</g>';
+                } else {
+                    // Duration span (trialParams)
+                    var sw = (span.endTime - span.startTime) * pxPerSec;
+                    svg += '<g class="tl-cmd" data-cmd="' + span.cmdIndex + '" style="cursor:pointer;">';
+                    svg += '<rect x="' + sx + '" y="' + (laneY + 4) + '" width="' + sw + '" height="' + (LANE_HEIGHT - 8) + '" fill="#00e676" opacity="0.2" rx="3" stroke="#00e676" stroke-width="1"/>';
+                    // Label inside bar
+                    var patLabel = (span.cmd.pattern || '').split('/').pop();
+                    if (patLabel.length > 30) patLabel = patLabel.substring(0, 27) + '...';
+                    var barLabel = patLabel + ' (' + span.cmd.duration + 's)';
+                    if (sw > 60) {
+                        svg += '<text x="' + (sx + 6) + '" y="' + (laneCenter + 3) + '" fill="#00e676" font-size="9" clip-path="url(#clip' + ci + ')">' + escapeHtml(barLabel) + '</text>';
+                    }
+                    svg += '<title>trialParams: ' + escapeHtml(patLabel) + ' | ' + span.cmd.duration + 's, mode ' + span.cmd.mode + ', FR ' + (span.cmd.frame_rate || 0) + '</title>';
+                    svg += '</g>';
+                }
+            }
+        } else {
+            // Plugin lane — render event markers
+            var events = laneData.pluginEvents[laneName] || [];
+            for (var ei = 0; ei < events.length; ei++) {
+                var evt = events[ei];
+                var ex = MARGIN_LEFT + evt.time * pxPerSec;
+
+                svg += '<g class="tl-cmd" data-cmd="' + evt.cmdIndex + '" style="cursor:pointer;">';
+                // Circle marker
+                svg += '<circle cx="' + ex + '" cy="' + laneCenter + '" r="5" fill="#4dabf7" opacity="0.8" stroke="#4dabf7" stroke-width="1"/>';
+                // Label to the right if space
+                var cmdLabel = evt.cmd.command_name || '';
+                svg += '<text x="' + (ex + 8) + '" y="' + (laneCenter + 3) + '" fill="#4dabf7" font-size="8" opacity="0.7">' + escapeHtml(cmdLabel) + '</text>';
+
+                // Tooltip
+                var tipText = laneName + '.' + cmdLabel;
+                if (evt.cmd.params) {
+                    var pKeys = Object.keys(evt.cmd.params);
+                    tipText += ' | ' + pKeys.map(function(k) { return k + '=' + evt.cmd.params[k]; }).join(', ');
+                }
+                svg += '<title>' + escapeHtml(tipText) + '</title>';
+                svg += '</g>';
+            }
+        }
+    }
+
+    // Wait spans as gray bars at the bottom
+    var waitY = HEADER_HEIGHT + numLanes * (LANE_HEIGHT + LANE_GAP);
+    svg += '<text x="' + (MARGIN_LEFT - 8) + '" y="' + (waitY + 10) + '" fill="#8b949e" font-size="9" text-anchor="end">waits</text>';
+    for (var wi = 0; wi < laneData.waitSpans.length; wi++) {
+        var ws = laneData.waitSpans[wi];
+        var wx = MARGIN_LEFT + ws.startTime * pxPerSec;
+        var ww = (ws.endTime - ws.startTime) * pxPerSec;
+        if (ww > 1) {
+            svg += '<g class="tl-cmd" data-cmd="' + ws.cmdIndex + '" style="cursor:pointer;">';
+            svg += '<rect x="' + wx + '" y="' + (waitY + 2) + '" width="' + ww + '" height="' + 10 + '" fill="#8b949e" opacity="0.15" rx="2" stroke="#8b949e" stroke-width="0.5"/>';
+            if (ww > 20) {
+                svg += '<text x="' + (wx + ww / 2) + '" y="' + (waitY + 10) + '" fill="#8b949e" font-size="7" text-anchor="middle">' + (ws.endTime - ws.startTime) + 's</text>';
+            }
+            svg += '<title>wait ' + (ws.endTime - ws.startTime) + 's</title>';
+            svg += '</g>';
+        }
+    }
+
+    svg += '</svg>';
+    return svg;
+}
+
+/**
+ * Get a nice tick interval for the time axis.
+ */
+function getTickInterval(totalDuration) {
+    if (totalDuration <= 2) return 0.5;
+    if (totalDuration <= 5) return 1;
+    if (totalDuration <= 15) return 2;
+    if (totalDuration <= 30) return 5;
+    if (totalDuration <= 60) return 10;
+    return 20;
+}
+
+function formatTimeTick(seconds) {
+    if (seconds === 0) return '0s';
+    if (seconds < 1) return seconds.toFixed(1) + 's';
+    if (seconds === Math.floor(seconds)) return seconds + 's';
+    return seconds.toFixed(1) + 's';
+}
+
+/**
+ * Bind click events on SVG timeline command elements.
+ */
+function bindTimelineViewEvents(commands) {
+    document.querySelectorAll('.tl-cmd').forEach(function(el) {
+        el.addEventListener('click', function() {
+            var cmdIndex = parseInt(this.dataset.cmd);
+            // Highlight in SVG
+            document.querySelectorAll('.tl-cmd').forEach(function(e) {
+                e.querySelectorAll('rect, circle, polygon').forEach(function(shape) {
+                    shape.removeAttribute('filter');
+                });
+            });
+            this.querySelectorAll('rect, circle, polygon').forEach(function(shape) {
+                shape.setAttribute('filter', 'url(#glow)');
+            });
+        });
+    });
+}
+
+// ════════════════════════════════════════════════════
 // YAML Export
 // ════════════════════════════════════════════════════
 
 function generateYAML() {
     var exp = experiment;
-    var lines = [];
 
-    lines.push('# Protocol Version 1');
-    lines.push('# Generated by Experiment Designer \u2014 ' + new Date().toISOString());
-    lines.push('');
-    lines.push('version: 1');
-    lines.push('');
-
-    // Experiment info
-    lines.push('experiment_info:');
-    lines.push('  name: ' + yamlStr(exp.experiment_info.name || 'Untitled Experiment'));
-    lines.push('  date_created: ' + yamlStr(exp.experiment_info.date_created));
-    lines.push('  author: ' + yamlStr(exp.experiment_info.author));
-    lines.push('  pattern_library: ' + yamlStr(exp.experiment_info.pattern_library));
-    lines.push('');
-
-    // Arena info
-    lines.push('arena_info:');
-    lines.push('  num_rows: ' + exp.arena_info.num_rows);
-    lines.push('  num_cols: ' + exp.arena_info.num_cols);
-    lines.push('  generation: ' + yamlStr(exp.arena_info.generation));
-    lines.push('');
-
-    // Experiment structure
-    lines.push('experiment_structure:');
-    lines.push('  repetitions: ' + exp.experiment_structure.repetitions);
-    lines.push('  randomization:');
-    lines.push('    enabled: ' + exp.experiment_structure.randomization.enabled);
-    lines.push('    seed: ' + (exp.experiment_structure.randomization.seed === null ? 'null' : exp.experiment_structure.randomization.seed));
-    lines.push('    method: "block"');
-    lines.push('');
-
-    // Pretrial
-    lines.push('pretrial:');
-    lines.push('  include: ' + exp.pretrial.include);
-    if (exp.pretrial.include) {
-        lines.push('  commands:');
-        appendTrialCommand(lines, exp.pretrial, 2);
-        if (exp.pretrial.wait > 0) {
-            appendWaitCommand(lines, exp.pretrial.wait, 2);
-        }
-    }
-    lines.push('');
-
-    // Block
-    lines.push('block:');
-    lines.push('  conditions:');
-    for (var i = 0; i < exp.conditions.length; i++) {
-        var cond = exp.conditions[i];
-        lines.push('    - id: ' + yamlStr(cond.id || 'condition_' + (i + 1)));
-        lines.push('      commands:');
-        appendTrialCommand(lines, cond, 4);
-    }
-    lines.push('');
-
-    // Intertrial
-    lines.push('intertrial:');
-    lines.push('  include: ' + exp.intertrial.include);
-    if (exp.intertrial.include) {
-        lines.push('  commands:');
-        appendTrialCommand(lines, exp.intertrial, 2);
-        if (exp.intertrial.wait > 0) {
-            appendWaitCommand(lines, exp.intertrial.wait, 2);
-        }
-    }
-    lines.push('');
-
-    // Posttrial
-    lines.push('posttrial:');
-    lines.push('  include: ' + exp.posttrial.include);
-    if (exp.posttrial.include) {
-        lines.push('  commands:');
-        appendTrialCommand(lines, exp.posttrial, 2);
-        if (exp.posttrial.wait > 0) {
-            appendWaitCommand(lines, exp.posttrial.wait, 2);
-        }
-    }
-
-    return lines.join('\n') + '\n';
-}
-
-function appendTrialCommand(lines, data, indentLevel) {
-    var ind = repeat('  ', indentLevel);
-    if (!data.pattern) {
-        lines.push(ind + '- type: "controller"');
-        lines.push(ind + '  command_name: "allOff"');
-        return;
-    }
-    lines.push(ind + '- type: "controller"');
-    lines.push(ind + '  command_name: "trialParams"');
-    lines.push(ind + '  pattern: ' + yamlStr(data.pattern));
-    lines.push(ind + '  pattern_ID: 1');
-    lines.push(ind + '  duration: ' + data.duration);
-    lines.push(ind + '  mode: ' + data.mode);
-    lines.push(ind + '  frame_index: ' + data.frame_index);
-    lines.push(ind + '  frame_rate: ' + data.frame_rate);
-    lines.push(ind + '  gain: ' + data.gain);
-}
-
-function appendWaitCommand(lines, duration, indentLevel) {
-    var ind = repeat('  ', indentLevel);
-    lines.push(ind + '- type: "wait"');
-    lines.push(ind + '  duration: ' + duration);
-}
-
-function repeat(str, n) {
-    var result = '';
-    for (var i = 0; i < n; i++) result += str;
-    return result;
-}
-
-function yamlStr(str) {
-    if (str === null || str === undefined || str === '') return '""';
-    str = String(str);
-    if (/[:#\{\}\[\],&\*\?|>!'"%@`\n]/.test(str) || str.trim() !== str) {
-        return '"' + str.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-    }
-    return '"' + str + '"';
+    // Data model already uses commands arrays — pass directly to v2 generator
+    return generateV2Protocol({
+        experiment_info: exp.experiment_info,
+        rig_path: exp.rig_path || '',
+        plugins: exp.plugins || [],
+        experiment_structure: exp.experiment_structure,
+        pretrial: { include: exp.pretrial.include, commands: exp.pretrial.commands || [] },
+        intertrial: { include: exp.intertrial.include, commands: exp.intertrial.commands || [] },
+        posttrial: { include: exp.posttrial.include, commands: exp.posttrial.commands || [] },
+        conditions: exp.conditions
+    });
 }
 
 function downloadYAML() {
@@ -1678,6 +2635,7 @@ function handleYAMLImport(e) {
 
 function parseAndLoadYAML(text) {
     var data = simpleYAMLParse(text);
+    var isV2 = data.version === 2;
 
     if (data.experiment_info) {
         experiment.experiment_info.name = data.experiment_info.name || '';
@@ -1686,11 +2644,35 @@ function parseAndLoadYAML(text) {
         experiment.experiment_info.pattern_library = data.experiment_info.pattern_library || '';
     }
 
+    // V2: rig path (replaces arena_info)
+    if (data.rig) {
+        experiment.rig_path = data.rig;
+        // Try to infer arena config from rig path
+        inferArenaFromRigPath(data.rig);
+    }
+
+    // V1: inline arena_info
     if (data.arena_info) {
         experiment.arena_info.generation = data.arena_info.generation || 'G4.1';
         experiment.arena_info.num_rows = parseInt(data.arena_info.num_rows) || 2;
         experiment.arena_info.num_cols = parseInt(data.arena_info.num_cols) || 12;
         matchArenaConfig();
+    }
+
+    // V2: plugins
+    if (data.plugins && Array.isArray(data.plugins)) {
+        experiment.plugins = data.plugins.map(function(p) {
+            var entry = { name: p.name, type: p.type };
+            if (p.matlab) entry.matlab = p.matlab;
+            if (p.config) entry.config = p.config;
+            if (p.port) entry.port = p.port;
+            if (p.baudrate !== undefined) entry.baudrate = p.baudrate;
+            if (p.script_path) entry.script_path = p.script_path;
+            if (p.commands) entry.commands = p.commands;
+            return entry;
+        });
+    } else {
+        experiment.plugins = [];
     }
 
     if (data.experiment_structure) {
@@ -1705,7 +2687,7 @@ function parseAndLoadYAML(text) {
         }
     }
 
-    // Load phases
+    // Load phases — store command arrays directly
     var phases = ['pretrial', 'intertrial', 'posttrial'];
     for (var pi = 0; pi < phases.length; pi++) {
         var phaseName = phases[pi];
@@ -1713,54 +2695,31 @@ function parseAndLoadYAML(text) {
             experiment[phaseName].include =
                 data[phaseName].include === true || data[phaseName].include === 'true';
             if (data[phaseName].commands && Array.isArray(data[phaseName].commands)) {
-                var cmds = data[phaseName].commands;
-                var trialCmd = null;
-                var waitCmd = null;
-                for (var ci = 0; ci < cmds.length; ci++) {
-                    if (cmds[ci].type === 'controller' && cmds[ci].pattern) trialCmd = cmds[ci];
-                    if (cmds[ci].type === 'wait') waitCmd = cmds[ci];
-                }
-                if (trialCmd) {
-                    experiment[phaseName].pattern = trialCmd.pattern || '';
-                    experiment[phaseName].duration = parseFloat(trialCmd.duration) || 2;
-                    experiment[phaseName].mode = parseInt(trialCmd.mode) || 2;
-                    experiment[phaseName].frame_rate = parseInt(trialCmd.frame_rate) || 60;
-                    experiment[phaseName].frame_index = parseInt(trialCmd.frame_index) || 1;
-                    experiment[phaseName].gain = parseInt(trialCmd.gain) || 0;
-                }
-                if (waitCmd) {
-                    experiment[phaseName].wait = parseFloat(waitCmd.duration) || 0;
-                }
+                experiment[phaseName].commands = data[phaseName].commands;
+            } else {
+                experiment[phaseName].commands = cloneCommands(DEFAULT_PHASE.commands);
             }
         }
     }
 
-    // Load conditions
+    // Load conditions — store command arrays directly
     if (data.block && data.block.conditions && Array.isArray(data.block.conditions)) {
         experiment.conditions = [];
         for (var i = 0; i < data.block.conditions.length; i++) {
             var condData = data.block.conditions[i];
-            var condCmds = condData.commands || [];
-            var trialC = null;
-            for (var j = 0; j < condCmds.length; j++) {
-                if (condCmds[j].type === 'controller' && condCmds[j].pattern) {
-                    trialC = condCmds[j];
-                    break;
-                }
-            }
             experiment.conditions.push({
                 id: condData.id || 'condition_' + (i + 1),
-                pattern: trialC ? (trialC.pattern || '') : '',
-                duration: trialC ? (parseFloat(trialC.duration) || 5) : 5,
-                mode: trialC ? (parseInt(trialC.mode) || 2) : 2,
-                frame_rate: trialC ? (parseInt(trialC.frame_rate) || 60) : 60,
-                frame_index: trialC ? (parseInt(trialC.frame_index) || 1) : 1,
-                gain: trialC ? (parseInt(trialC.gain) || 0) : 0
+                commands: condData.commands || cloneCommands(DEFAULT_CONDITION.commands)
             });
         }
         if (experiment.conditions.length === 0) {
-            experiment.conditions = [{ id: 'condition_1', pattern: '', duration: 5, mode: 2, frame_rate: 60, frame_index: 1, gain: 0 }];
+            experiment.conditions = [{ id: 'condition_1', commands: cloneCommands(DEFAULT_CONDITION.commands) }];
         }
+    }
+
+    if (isV2 && experiment.plugins.length > 0) {
+        console.log('Loaded v2 protocol with ' + experiment.plugins.length + ' plugin(s): ' +
+            experiment.plugins.map(function(p) { return p.name; }).join(', '));
     }
 
     selection = null;
@@ -1769,6 +2728,21 @@ function parseAndLoadYAML(text) {
     renderEditor();
     updateSummary();
     zoomToFit();
+}
+
+/**
+ * Try to infer arena config from a rig path string.
+ * e.g., "test_rig_G41_2x12_cw" → match G4.1, 2 rows, 12 cols
+ */
+function inferArenaFromRigPath(rigPath) {
+    var m = rigPath.match(/G(6|4\.1|4|3)[_\-](\d+)[x×](\d+)/i);
+    if (m) {
+        var genMap = { '3': 'G3', '4': 'G4', '4.1': 'G4.1', '6': 'G6' };
+        experiment.arena_info.generation = genMap[m[1]] || 'G4.1';
+        experiment.arena_info.num_rows = parseInt(m[2]) || 2;
+        experiment.arena_info.num_cols = parseInt(m[3]) || 12;
+        matchArenaConfig();
+    }
 }
 
 function matchArenaConfig() {
@@ -1784,138 +2758,7 @@ function matchArenaConfig() {
     }
 }
 
-// Minimal YAML parser for protocol v1 files
-function simpleYAMLParse(text) {
-    var lines = text.split('\n');
-    var i = 0;
-
-    function getIndent(line) {
-        var m = line.match(/^(\s*)/);
-        return m ? m[1].length : 0;
-    }
-
-    function parseValue(raw) {
-        if (raw === undefined || raw === '') return '';
-        raw = raw.trim();
-        if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
-            return raw.slice(1, -1);
-        }
-        if (raw === 'null' || raw === '~') return null;
-        if (raw === 'true') return true;
-        if (raw === 'false') return false;
-        var num = Number(raw);
-        if (!isNaN(num) && raw !== '') return num;
-        return raw;
-    }
-
-    function parseBlock(baseIndent) {
-        var obj = {};
-        while (i < lines.length) {
-            var line = lines[i];
-            if (line.trim() === '' || line.trim().startsWith('#')) { i++; continue; }
-            var indent = getIndent(line);
-            if (indent < baseIndent) break;
-            if (indent > baseIndent) { i++; continue; }
-
-            var trimmed = line.trim();
-            if (trimmed.startsWith('- ')) break;
-
-            var kvMatch = trimmed.match(/^([^:]+?):\s*(.*)?$/);
-            if (!kvMatch) { i++; continue; }
-
-            var key = kvMatch[1].trim();
-            var valRaw = (kvMatch[2] || '').trim();
-
-            if (valRaw === '' || valRaw === undefined) {
-                i++;
-                // Skip blank lines and comments to find actual child content
-                while (i < lines.length && (lines[i].trim() === '' || lines[i].trim().startsWith('#'))) {
-                    i++;
-                }
-                if (i < lines.length) {
-                    var nextLine = lines[i];
-                    var nextIndent = getIndent(nextLine);
-                    if (nextIndent > indent) {
-                        if (nextLine.trim().startsWith('- ')) {
-                            obj[key] = parseList(nextIndent);
-                        } else {
-                            obj[key] = parseBlock(nextIndent);
-                        }
-                    }
-                }
-            } else {
-                obj[key] = parseValue(valRaw);
-                i++;
-            }
-        }
-        return obj;
-    }
-
-    function parseList(baseIndent) {
-        var arr = [];
-        while (i < lines.length) {
-            var line = lines[i];
-            if (line.trim() === '' || line.trim().startsWith('#')) { i++; continue; }
-            var indent = getIndent(line);
-            if (indent < baseIndent) break;
-
-            var trimmed = line.trim();
-            if (!trimmed.startsWith('- ')) { i++; continue; }
-
-            var itemContent = trimmed.slice(2).trim();
-            var kvMatch = itemContent.match(/^([^:]+?):\s*(.*)?$/);
-
-            if (kvMatch) {
-                var item = {};
-                item[kvMatch[1].trim()] = parseValue((kvMatch[2] || '').trim());
-                i++;
-                while (i < lines.length) {
-                    var subLine = lines[i];
-                    if (subLine.trim() === '' || subLine.trim().startsWith('#')) { i++; continue; }
-                    var subIndent = getIndent(subLine);
-                    if (subIndent <= baseIndent) break;
-                    var subTrimmed = subLine.trim();
-                    if (subTrimmed.startsWith('- ')) break;
-                    var subKv = subTrimmed.match(/^([^:]+?):\s*(.*)?$/);
-                    if (subKv) {
-                        var subKey = subKv[1].trim();
-                        var subVal = (subKv[2] || '').trim();
-                        if (subVal === '') {
-                            i++;
-                            // Skip blank lines and comments to find actual child content
-                            while (i < lines.length && (lines[i].trim() === '' || lines[i].trim().startsWith('#'))) {
-                                i++;
-                            }
-                            if (i < lines.length) {
-                                var nLine = lines[i];
-                                var nIndent = getIndent(nLine);
-                                if (nIndent > subIndent) {
-                                    if (nLine.trim().startsWith('- ')) {
-                                        item[subKey] = parseList(nIndent);
-                                    } else {
-                                        item[subKey] = parseBlock(nIndent);
-                                    }
-                                }
-                            }
-                        } else {
-                            item[subKey] = parseValue(subVal);
-                            i++;
-                        }
-                    } else {
-                        i++;
-                    }
-                }
-                arr.push(item);
-            } else {
-                arr.push(parseValue(itemContent));
-                i++;
-            }
-        }
-        return arr;
-    }
-
-    return parseBlock(0);
-}
+// simpleYAMLParse is now imported from js/protocol-yaml.js
 
 // ════════════════════════════════════════════════════
 // Keyboard shortcuts

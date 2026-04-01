@@ -1,0 +1,457 @@
+# Protocol Version 1 - Complete Example
+# This example demonstrates all features of the protocol specification
+
+version: 2
+
+# ============================================================================
+# EXPERIMENT METADATA
+# ============================================================================
+experiment_info:
+  name: "Example of all possible plugins - cannot run"
+  date_created: "2024-01-15"
+  author: "Research Lab"
+  pattern_library: '/Users/lisaferguson/Documents/PC/Programming/Reiser/maDisplayTools/patterns/reference/G41_2x12_cw'
+
+# ============================================================================
+# ARENA CONFIGURATION
+# ============================================================================
+rig: '/Users/lisaferguson/Documents/PC/Programming/Reiser/maDisplayTools/configs/rigs/example_rig.yaml' # UPDATE THIS BEFORE USE
+
+# ============================================================================
+# PLUGIN DEFINITIONS
+# ============================================================================
+plugins:
+  # Serial Device Plugin example - not real
+  - name: "background_light"
+    type: "serial_device"
+    port: "/dev/ttyUSB0"
+    port_windows: "COM4"
+    port_posix: "/dev/ttyUSB0"
+    baudrate: 115200
+    commands:
+      activate: "RED 50\nGREEN 0\nBLUE 0\nON 0,0"
+      reset: "RESET"
+      off: "OFF"
+
+
+  # Class Plugin - Camera/video capture system
+  - name: "camera"
+    type: "class"
+    matlab:
+      class: "BiasPlugin"
+    config: # Optional - required config is in rig yaml. This config is for optional settings that may 
+            # change between experiments. Values here that contradict rig yaml will override rig yaml.
+      saveDir: 'path/to/save/videos' # Optional, default is in experiment yaml's location. 
+      frame_rate: 150 # Optional, default is 100, a value outside of 10-200 will produce warning
+      video_format: "avi" # Optional, default is "ufmf", only other option is "avi"
+    # python: WOULD USE THIS IF PYTHON CLASS
+    #   module: "pyDisplayTools.plugins.SimpleBias"
+    #   class: "SimpleBias"
+    # config:   # config established in rig yaml but can add here to override
+      
+
+  # Class Plugin - Data acquisition system
+  - name: "temperature"
+    type: "class"
+    matlab:
+      class: "maDisplayTools.plugins.DAQController"
+    config:
+      sample_rate: 1000
+      # This is needed because it's not included in the rig yaml
+
+  - name: "backlight"
+    type: "class"
+    matlab:
+      class: "LEDControllerPlugin"
+
+  # Script Plugin - Custom preprocessing
+  - name: "preprocessing"
+    type: "script"
+    script_path: './examples/example_script_plugin' #example, does not exist
+
+# ============================================================================
+# EXPERIMENT STRUCTURE
+# ============================================================================
+experiment_structure:
+  repetitions: 3
+  randomization:
+    enabled: true
+    seed: null  # null = random seed; set to integer for reproducibility
+    method: "block"  # "block" is only option right now
+
+# ============================================================================
+# PRETRIAL - Execute once before any trials
+# Used for hardware initialization and setup
+# ============================================================================
+pretrial:
+  include: true
+  commands:
+    # Initialize camera system
+    - type: "plugin"
+      plugin_name: "camera"
+      command_name: "connect"
+    
+    - type: "plugin"
+      plugin_name: "camera"
+      command_name: "initialize"
+
+    # Initialize DAQ system
+    - type: "plugin"
+      plugin_name: "temperature"
+      command_name: "connect"
+    
+    - type: "plugin"
+      plugin_name: "temperature"
+      command_name: "configure"
+      params:
+        buffer_size: 10000
+    
+    # Initialize background lighting
+    - type: "plugin"
+      plugin_name: "background_light"
+      command_name: "activate"
+    
+    # Wait for systems to stabilize
+    - type: "wait"
+      duration: 1  # 1 second
+    
+    # Run preprocessing script
+    - type: "plugin"
+      plugin_name: "preprocessing"
+    
+    # Display a test pattern to verify arena
+    - type: "controller"
+      command_name: "trialParams"
+      pattern: 'pat01_sq_grating_30deg_gs2_G4.pat'
+      pattern_ID: 1
+      duration: 2  # 2 seconds
+      mode: 2  # position mode
+      frame_index: 1
+      frame_rate: 60
+      gain: 0
+    
+    - type: "wait"
+      duration: .5  # 0.5 second pause
+
+# ============================================================================
+# BLOCK - Main experimental conditions
+# These are the core trials that will be repeated and/or randomized
+# ============================================================================
+block:
+  conditions:
+    # Condition 1: Vertical bars moving right
+    - id: "sq grating 30deg gs16"
+      commands:
+        # Start recording
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "startCapture"
+        
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "setVideoFile"
+          params:
+            filename: "sqGrating_30deg_gs16.avi"
+        
+        # Start DAQ
+        - type: "plugin"
+          plugin_name: "temperature"
+          command_name: "startAcquisition"
+        
+        # Pulse LED to mark trial start
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "pulse"
+        
+        # Wait 50ms
+        - type: "wait"
+          duration: .1
+        
+        # Display pattern
+        - type: "controller"
+          command_name: "trialParams"
+          pattern: 'pat02_sq_grating_30deg_gs16_G4.pat'
+          pattern_ID: 2
+          duration: 5  # 5 seconds
+          mode: 2  # closed-loop mode
+          frame_index: 1
+          frame_rate: 60
+          gain: -90  # degrees per second
+        
+        # Stop recording
+        - type: "plugin"
+          plugin_name: "temperature"
+          command_name: "stopAcquisition"
+        
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "stopCapture"
+    
+    # Condition 2: Horizontal bars moving up
+    - id: "Sq grating 60Deg gs2"
+      commands:
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "startCapture"
+        
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "setVideoFile"
+          params:
+            filename: "SqGrating_60Deg_gs2.avi"
+        
+        - type: "plugin"
+          plugin_name: "temperature"
+          command_name: "startAcquisition"
+        
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "pulse"
+        
+        - type: "wait"
+          duration: .1
+        
+        - type: "controller"
+          command_name: "trialParams"
+          pattern: 'pat03_sq_grating_60deg_gs2_G4.pat'
+          pattern_ID: 3
+          duration: 5
+          mode: 2
+          frame_index: 1
+          frame_rate: 60
+          gain: -90
+        
+        - type: "plugin"
+          plugin_name: "temperature"
+          command_name: "stopAcquisition"
+        
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "stopCapture"
+    
+    # Condition 3: Checkerboard pattern (static)
+    - id: "Sq Grating 60Deg gs16"
+      commands:
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "startCapture"
+        
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "setVideoFile"
+          params:
+            filename: "SqGrating_60Deg_gs16.avi"
+        
+        - type: "plugin"
+          plugin_name: "temperature"
+          command_name: "startAcquisition"
+        
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "pulse"
+        
+        - type: "wait"
+          duration: .1
+        
+        - type: "controller"
+          command_name: "trialParams"
+          pattern: 'pat04_sq_grating_60deg_gs16_G4.pat'
+          pattern_ID: 4
+          duration: 3  # 3 seconds
+          mode: 2  # position mode (static)
+          frame_index: 1
+          frame_rate: 60
+          gain: 0
+        
+        - type: "plugin"
+          plugin_name: "temperature"
+          command_name: "stopAcquisition"
+        
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "stopCapture"
+    
+    # Condition 4: Expanding grating
+    - id: "Sine grating 30deg gs16"
+      commands:
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "startCapture"
+        
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "setVideoFile"
+          params:
+            filename: "SineGrating_30Deg_gs16.avi"
+        
+        - type: "plugin"
+          plugin_name: "temperature"
+          command_name: "startAcquisition"
+        
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "pulse"
+        
+        - type: "wait"
+          duration: .1
+        
+        - type: "controller"
+          command_name: "trialParams"
+          pattern: 'pat05_sine_grating_30deg_gs16_G4.pat'
+          pattern_ID: 5
+          duration: 4  # 4 seconds
+          mode: 2
+          frame_index: 1
+          frame_rate: 60
+          gain: -45
+
+        - type: "plugin"
+          plugin_name: "temperature"
+          command_name: "stopAcquisition"
+        
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "stopCapture"
+    
+    # Condition 5: Dark (no stimulus)
+    - id: "dark_control"
+      commands:
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "startCapture"
+        
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "setVideoFile"
+          params:
+            filename: "dark_control.avi"
+        
+        - type: "plugin"
+          plugin_name: "temperature"
+          command_name: "startAcquisition"
+        
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "pulse"
+        
+        # Turn off arena
+        - type: "plugin"
+          plugin_name: "background_light"
+          command_name: "off"
+        
+        # Wait in darkness
+        - type: "wait"
+          duration: 3  # 3 seconds
+        
+        # Turn background back on
+        - type: "plugin"
+          plugin_name: "background_light"
+          command_name: "activate"
+        
+        - type: "plugin"
+          plugin_name: "temperature"
+          command_name: "stopAcquisition"
+        
+        - type: "plugin"
+          plugin_name: "camera"
+          command_name: "stopCapture"
+
+# ============================================================================
+# INTERTRIAL - Execute between each trial
+# Used for baseline periods and resetting hardware state
+# ============================================================================
+intertrial:
+  include: true
+  commands:
+    # Reset to baseline pattern
+    - type: "controller"
+      command_name: "trialParams"
+      pattern: 'pat06_sine_grating_60deg_gs16_G4.pat'
+      pattern_ID: 6
+      duration: 2  # 2 second inter-trial interval
+      mode: 2
+      frame_index: 1
+      frame_rate: 60
+      gain: 0
+    
+    # Run analysis script on previous trial
+    - type: "plugin"
+      plugin_name: "analysis"
+    
+    # Brief pause
+    - type: "wait"
+      duration: .5 # 0.5 second
+
+# ============================================================================
+# POSTTRIAL - Execute once after all trials complete
+# Used for cleanup, data saving, and shutdown
+# ============================================================================
+posttrial:
+  include: true
+  commands:
+    # Stop all recording systems
+    - type: "plugin"
+      plugin_name: "camera"
+      command_name: "disconnect"
+    
+    - type: "plugin"
+      plugin_name: "temperature"
+      command_name: "disconnect"
+    
+    # Turn off hardware
+    - type: "plugin"
+      plugin_name: "background_light"
+      command_name: "off"
+    
+    - type: "plugin"
+      plugin_name: "backlight"
+      command_name: "off"
+    
+    # Display completion message pattern
+    - type: "controller"
+      command_name: "trialParams"
+      pattern: 'pat07_sine_grating_30deg_fine_gs16_G4.pat'
+      pattern_ID: 7
+      duration: 2
+      mode: 2
+      frame_index: 1
+      frame_rate: 60
+      gain: 0
+    
+    # Final wait before shutdown
+    - type: "wait"
+      duration: 1  # 1 second
+
+# ============================================================================
+# CONTROLLER COMMANDS REFERENCE
+# ============================================================================
+# Available controller commands and their parameters:
+#
+# allOn - Turn all arena panels on
+#   Parameters: (none)
+#
+# allOff - Turn all arena panels off
+#   Parameters: (none)
+# 
+# stopDisplay - stop displaying pattern
+#   Parameters: (none)
+#
+# setPositionX - set the starting frame when displaying a pattern (default 1)
+#   Parameters: posX: integer between 1 and number of frames in pattern
+#
+# setColorDepth - change the arena's accepted grayscale value 
+#   Parameters: gs_val: 2 or 16
+#
+# trialParams - start displaying a trial on the G4.1 system
+#   Parameters: mode: integer 2-4 
+#               patID: integer from 1 - number of patterns available  
+#               posX: integer, starting frame number  
+#               dur: duration of the experiment in seconds (converted to deciseconds at runtime) 
+#               frameRate: Frames per second, mode 2 only
+#               gain: integer, mode 4 only
+#
+#
+# Note: streamFrame is also available but should not be used via yaml. 
+#
+#
+# ============================================================================

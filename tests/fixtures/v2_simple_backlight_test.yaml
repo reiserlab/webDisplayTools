@@ -1,0 +1,144 @@
+# Test Protocol for BiasPlugin and LEDBacklightPlugin
+# Uses dummy BiasControl class for testing without actual hardware
+
+version: 2
+
+experiment_info:
+  name: "Test Backlight Plugin"
+  date_created: "2026-03-19"
+  author: "Lisa"
+  pattern_library: ''
+
+rig: './configs/rigs/test_rig_1.yaml'  #REPLACE THIS WITH FULL PATH
+
+# ============================================================================
+# PLUGIN DEFINITIONS
+# ============================================================================
+plugins:
+  # LED backlight plugin
+  - name: "backlight"
+    type: "class"
+    matlab:
+      class: "LEDControllerPlugin"
+
+# ============================================================================
+# EXPERIMENT STRUCTURE
+# ============================================================================
+experiment_structure:
+  repetitions: 1
+  randomization:
+    enabled: false
+    seed: null
+    method: "block"
+
+# ============================================================================
+# PRETRIAL - Test plugin initialization
+# ============================================================================
+pretrial:
+  include: false
+  commands:
+    - type: "wait"
+      duration: 1
+    
+# ============================================================================
+# BLOCK - Test camera commands during trials
+# ============================================================================
+block:
+  conditions:
+    - id: "Turn on IR/Red LED"
+      commands:
+        # Test disable logging
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "setIRLEDPower"
+          params:
+            power: 50
+
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "setRedLEDPower"
+          params:
+            power: 5
+            panel_num: 0
+            pattern: "1010"
+           
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "turnOnLED"
+
+        - type: "wait"
+          duration: 5
+
+    - id: "Turn off LED"
+      commands:
+        # Test disable logging
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "turnOffLED"
+
+    - id: "Turn on Green then blue LED"
+      commands:
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "setGreenLEDPower"
+          params:
+            power: 5
+            panel_num: 2
+
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "turnOnLED"
+
+        - type: "wait"
+          duration: 5
+
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "setBlueLEDPower"
+          params: 
+            power: 5
+            panel_num: 3
+
+        - type: "wait"
+          duration: 5
+
+    - id: "Turn on IR then turn off only visible backlight"
+      commands:
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "setIRLEDPower"
+          params: 
+            power: 50
+
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "setVisibleBacklightsOff"
+
+        - type: "wait"
+          duration: 5
+
+    - id: "Turn off IR light"
+      commands: 
+        - type: "plugin"
+          plugin_name: "backlight"
+          command_name: "turnOffLED"
+         
+
+
+
+
+
+# ============================================================================
+# INTERTRIAL 
+# ============================================================================
+intertrial:
+  include: false
+  commands:
+    
+# ============================================================================
+# POSTTRIAL
+# ============================================================================
+posttrial:
+  include: false
+  commands:
+    
