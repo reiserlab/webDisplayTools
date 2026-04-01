@@ -219,29 +219,32 @@
 
         <h2>Interface overview</h2>
 
-        <div class="layout-diagram"><span class="hl">Top bar</span>: &larr; Back | Experiment Designer | [Import YAML] [Export YAML]
-&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;
-<span class="hl">Left panel</span>        &#9474;  <span class="hl">Right panel</span>
+        <div class="layout-diagram"><span class="hl">Top bar</span>: &larr; Back | Experiment Designer    [Quick Start] [Import YAML] [<span class="hl">Export YAML</span>]
+&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;
+<span class="hl">Left panel</span>        &#9474;  <span class="hl">Right panel</span>: [VISUAL] [TABLE] [TIMELINE]
                   &#9474;
-  Experiment      &#9474;    Condition / Phase Editor
-  Arena Config    &#9474;    (appears when you click a
-  Structure       &#9474;     block on the timeline)
+  Experiment      &#9474;    Visual: Command card editor
+  Arena + Rig     &#9474;    Table:  Spreadsheet view
+  Structure       &#9474;    Timeline: Multi-lane SVG
   Phases          &#9474;
-&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;
+  Plugins         &#9474;    (select a block on the timeline
+                  &#9474;     to populate the editor)
+&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;
 <span class="hl">Timeline</span>: [+ Add] | summary          [&#8722;] [+] [Fit]
   <span class="hl">PRE</span> &#9474; <span class="hl">Cond 1</span> &#9474; <span class="hl">ITI</span> &#9474; <span class="hl">Cond 2</span> &#9474; <span class="hl">ITI</span> &#9474; <span class="hl">Cond 3</span> &#9474; <span class="hl">POST</span>
   0s     5s    10s    15s    20s    25s</div>
 
         <p>The page has three zones:</p>
         <ul class="key-list">
-            <li><strong>Left panel</strong> &mdash; experiment settings, arena choice, repetitions, phase toggles</li>
-            <li><strong>Right panel</strong> &mdash; editor for whichever block you click on the timeline</li>
-            <li><strong>Bottom timeline</strong> &mdash; your experiment sequence. Green = conditions, gray = phases (PRE/POST), dark = inter-trial intervals (ITI)</li>
+            <li><strong>Left panel</strong> &mdash; experiment settings, arena + rig path, repetitions, phase toggles, plugin checkboxes</li>
+            <li><strong>Right panel</strong> &mdash; three tabs for editing the selected condition or phase:
+                <strong>Visual</strong> (command cards), <strong>Table</strong> (spreadsheet), <strong>Timeline</strong> (multi-lane SVG)</li>
+            <li><strong>Bottom timeline</strong> &mdash; your experiment sequence. Green = conditions, gray = phases (PRE/POST), dark = inter-trial intervals (ITI). Click any block to edit it.</li>
         </ul>
 
         <h2>Walkthrough: create an optomotor protocol</h2>
 
-        <p>We will build a simple experiment with 3 stimulus conditions, 3 repetitions, randomized, with inter-trial intervals.</p>
+        <p>We will build an experiment with 3 stimulus conditions, backlight and camera plugins, 3 repetitions, randomized, with inter-trial intervals.</p>
 
         <div class="step">
             <span class="step-number">1</span>
@@ -253,9 +256,10 @@
 
         <div class="step">
             <span class="step-number">2</span>
-            <p><strong>Choose arena configuration</strong> (left panel, Arena section)</p>
+            <p><strong>Choose arena and set rig path</strong> (left panel, Arena section)</p>
             <p>Select <code>G4.1 (2&times;12) - 360&deg;</code> from the dropdown.</p>
-            <p class="hint">The summary below the dropdown confirms: G4.1 &mdash; 2 rows &times; 12 cols</p>
+            <p>Rig Path: <code>./configs/rigs/my_rig.yaml</code></p>
+            <p class="hint">The arena dropdown sets the visual preview. The rig path is written to the v2 YAML for MATLAB to resolve the full hardware configuration.</p>
         </div>
 
         <div class="step">
@@ -263,7 +267,6 @@
             <p><strong>Set repetitions and randomization</strong> (left panel, Structure section)</p>
             <p>Repetitions: <code>3</code></p>
             <p>Check <strong>Randomize order</strong></p>
-            <p class="hint">The summary bar on the timeline updates to show total trials and duration.</p>
         </div>
 
         <div class="step">
@@ -275,69 +278,92 @@
 
         <div class="step">
             <span class="step-number">5</span>
-            <p><strong>Edit the first condition</strong> (right panel)</p>
-            <p>The first condition is auto-selected on page load. In the right panel:</p>
-            <p>Condition ID: <code>rightward_grating</code></p>
-            <p>Pattern File: <code>pat0002_rightward_grating.pat</code></p>
-            <p>Duration: <code>5</code> seconds</p>
-            <p>Mode: <code>Constant Rate</code>, Frame Rate: <code>60</code></p>
-            <p class="hint">The timeline block updates in real time as you type.</p>
+            <p><strong>Enable plugins</strong> (left panel, Plugins section &mdash; scroll down)</p>
+            <p>Check <strong>LED Backlight</strong> &mdash; config card expands with Serial Port field</p>
+            <p>Check <strong>BIAS Camera</strong> &mdash; config card expands with Video Format and Frame Rate</p>
+            <p class="hint">Enabling plugins makes their commands available in the "Add Command" dropdown when editing conditions.</p>
         </div>
 
         <div class="step">
             <span class="step-number">6</span>
-            <p><strong>Add a second condition</strong></p>
-            <p>Click <strong>+ Add Condition</strong> in the timeline toolbar. A new green block appears and is auto-selected.</p>
-            <p>Condition ID: <code>leftward_grating</code></p>
-            <p>Pattern File: <code>pat0003_leftward_grating.pat</code></p>
-            <p>Duration: <code>5</code>, Frame Rate: <code>60</code></p>
+            <p><strong>Edit the first condition</strong> (right panel, Visual tab)</p>
+            <p>Click the first green condition block on the bottom timeline. The Visual tab shows command cards.</p>
+            <p>Set the Condition ID: <code>rightward_grating</code></p>
+            <p>In the <strong>trialParams</strong> card: Pattern: <code>pat0002_rightward_grating.pat</code>, Duration: <code>5</code>, Mode: <code>Constant Rate</code>, Frame Rate: <code>60</code></p>
+            <p class="hint">The timeline block updates in real time as you type.</p>
         </div>
 
         <div class="step">
             <span class="step-number">7</span>
-            <p><strong>Add a dark control condition</strong></p>
-            <p>Click <strong>+ Add Condition</strong> again.</p>
-            <p>Condition ID: <code>dark_control</code></p>
-            <p>Leave <strong>Pattern File empty</strong> &mdash; this generates an <code>allOff</code> command in the YAML</p>
-            <p>Duration: <code>3</code> seconds</p>
+            <p><strong>Add plugin commands to the condition</strong></p>
+            <p>Use the <strong>+ Add Command...</strong> dropdown at the bottom of the card list:</p>
+            <p>Select <code>Get Timestamp</code> from the BIAS Camera group &mdash; a blue plugin card appears</p>
+            <p>Select <code>Wait</code> &mdash; a gray wait card appears (set duration to <code>3</code>)</p>
+            <p>Select <code>Set IR LED Power</code> from the LED Backlight group &mdash; set power to <code>50</code></p>
+            <p class="hint">Commands execute sequentially. trialParams fires the arena controller autonomously; plugin and wait commands run during the display period.</p>
         </div>
 
         <div class="step">
             <span class="step-number">8</span>
-            <p><strong>Configure the pretrial phase</strong></p>
-            <p>Click the gray <strong>PRE</strong> block on the timeline.</p>
-            <p>Pattern File: <code>pat0001_test_grid.pat</code></p>
-            <p>Duration: <code>2</code>, Wait After: <code>0.5</code></p>
+            <p><strong>Add more conditions</strong></p>
+            <p>Click <strong>+ Add Condition</strong> in the timeline toolbar. Repeat for a third.</p>
+            <p>Set IDs like <code>leftward_grating</code> and <code>dark_control</code>. For the dark control, leave Pattern empty to generate an <code>allOff</code> command.</p>
         </div>
 
         <div class="step">
             <span class="step-number">9</span>
-            <p><strong>Configure the inter-trial interval</strong></p>
-            <p>Click any dark <strong>ITI</strong> block on the timeline.</p>
-            <p>Pattern File: <code>pat0004_uniform_gray.pat</code></p>
-            <p>Duration: <code>2</code>, Wait After: <code>0.5</code></p>
+            <p><strong>Configure phases</strong></p>
+            <p>Click the gray <strong>PRE</strong> block. The phase editor shows command cards just like conditions.</p>
+            <p>The default is <code>allOff</code> + <code>wait 0.5s</code>. Use the Add Command dropdown to add plugin commands (e.g., <code>Start Recording</code> from BIAS Camera).</p>
         </div>
 
         <div class="step">
             <span class="step-number">10</span>
-            <p><strong>Reorder conditions (optional)</strong></p>
-            <p>Drag any green condition block and drop it onto another to swap positions.</p>
+            <p><strong>Review in Table view</strong></p>
+            <p>Click the <strong>TABLE</strong> tab to see all commands across all sections as a spreadsheet.</p>
+            <p>Collapsible sections show Pretrial, each Condition, Intertrial, and Posttrial with their command lists.</p>
+            <p class="hint">Type badges are color-coded: green = controller, gray = wait, blue = plugin.</p>
         </div>
 
         <div class="step">
             <span class="step-number">11</span>
+            <p><strong>Visualize with Timeline view</strong></p>
+            <p>Click the <strong>TIMELINE</strong> tab, then click a condition on the bottom timeline.</p>
+            <p>The SVG shows concurrent lanes: controller bar (green), plugin markers (blue dots), and wait bars (gray).</p>
+            <p class="hint">This shows how trialParams runs autonomously while plugin commands execute at their sequential time positions. Hover over elements for tooltips.</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">12</span>
             <p><strong>Export your protocol</strong></p>
             <p>Click <strong>Export YAML</strong> (or press <code>Ctrl+E</code>). A <code>.yaml</code> file downloads.</p>
-            <p class="hint">The file is a valid protocol v1 YAML ready for MATLAB execution.</p>
+            <p class="hint">The file is a valid protocol v2 YAML with rig reference, plugins, and multi-command conditions &mdash; ready for MATLAB execution.</p>
         </div>
 
         <h2>Importing an existing protocol</h2>
 
-        <p>Click <strong>Import YAML</strong> in the top bar and select any protocol v1 <code>.yaml</code> file. The editor populates with all settings, conditions, and phases from the file. You can then modify and re-export.</p>
+        <p>Click <strong>Import YAML</strong> in the top bar and select any v2 protocol <code>.yaml</code> file. The editor populates with all settings, conditions, plugins, and phases. You can modify and re-export.</p>
 
         <div class="tip-box">
-            <strong>Try it now:</strong> Download the example file <a href="examples/simple_optomotor_protocol.yaml">simple_optomotor_protocol.yaml</a> and import it into the designer to see the walkthrough above pre-filled.
+            <strong>Try it:</strong> Import one of the example protocols from the maDisplayTools repository, such as <code>full_experiment_test.yaml</code> (9 conditions with camera + backlight plugins) to see a fully populated experiment.
         </div>
+
+        <h2>Editor tabs</h2>
+
+        <h3>Visual tab</h3>
+        <p>The default editor. Each command is a color-coded card with inline editable fields. Cards have colored left borders: <strong style="color: #00e676;">green</strong> = controller, <strong style="color: #8b949e;">gray</strong> = wait, <strong style="color: #4dabf7;">blue</strong> = plugin. Use the <code>+ Add Command...</code> dropdown to add new commands. Click <strong>&times;</strong> to delete a command.</p>
+
+        <h3>Table tab</h3>
+        <p>Shows the entire experiment as a spreadsheet with collapsible sections. Each row is one command with columns for Type, Target (plugin name), Command, Duration, Mode, Frame Rate, and Pattern/Params. Click section headers to collapse/expand.</p>
+
+        <h3>Timeline tab</h3>
+        <p>SVG multi-lane visualization of the selected condition. Shows how commands execute concurrently:</p>
+        <ul class="key-list">
+            <li><strong>Controller lane</strong> &mdash; green bar spanning the trialParams duration</li>
+            <li><strong>Plugin lanes</strong> &mdash; blue circle markers at each plugin command's execution time</li>
+            <li><strong>Waits row</strong> &mdash; gray bars showing pause durations</li>
+        </ul>
+        <p class="hint">Key insight: <code>trialParams</code> fires the arena controller which runs autonomously for its duration. Wait commands advance the clock. Plugin commands fire at the current clock position without advancing it.</p>
 
         <h2>Timeline controls</h2>
 
@@ -358,11 +384,27 @@
 
         <h2>Key concepts</h2>
 
+        <h3>Protocol v2</h3>
+        <p>The designer exports <strong>YAML protocol v2</strong>. Key differences from v1: a <code>rig:</code> reference replaces inline <code>arena_info:</code>, a <code>plugins:</code> section defines hardware plugins, and conditions use <strong>command arrays</strong> (multiple commands per condition, not just one trialParams).</p>
+
         <h3>Conditions vs. Trials</h3>
-        <p>You define <strong>conditions</strong> (unique stimulus configurations). The experiment runs each condition &times; repetitions, optionally in random order. The actual sequence of <strong>trials</strong> is shown in the summary bar.</p>
+        <p>You define <strong>conditions</strong> (unique stimulus + plugin configurations). The experiment runs each condition &times; repetitions, optionally in random order. The actual sequence of <strong>trials</strong> is shown in the summary bar.</p>
+
+        <h3>Commands</h3>
+        <p>Each condition and phase contains a sequence of <strong>commands</strong>:</p>
+        <ul class="key-list">
+            <li><strong>controller</strong> &mdash; arena commands: <code>trialParams</code> (display pattern), <code>allOn</code>, <code>allOff</code>, <code>stopDisplay</code></li>
+            <li><strong>wait</strong> &mdash; pause execution for a specified duration</li>
+            <li><strong>plugin</strong> &mdash; send a command to an enabled plugin (e.g., <code>camera.getTimestamp</code>, <code>backlight.setRedLEDPower</code>)</li>
+        </ul>
+
+        <h3>Plugins</h3>
+        <p><strong>LED Backlight</strong> (LEDControllerPlugin): control IR and visible LEDs behind arena panels. Commands: setIRLEDPower, setRedLEDPower, setGreenLEDPower, setBlueLEDPower, turnOnLED, turnOffLED, setVisibleBacklightsOff.</p>
+        <p><strong>BIAS Camera</strong> (BiasPlugin): video recording and timestamps. Commands: startRecording, stopRecording, startPreview, stopCapture, getTimestamp, disconnect.</p>
+        <p class="hint">Enable plugins in the left panel to make their commands available in the Add Command dropdown.</p>
 
         <h3>Phases</h3>
-        <p><strong>Pretrial</strong> runs once before all trials. <strong>Intertrial</strong> runs between every trial. <strong>Posttrial</strong> runs once after all trials complete. Each phase has one pattern command + an optional wait.</p>
+        <p><strong>Pretrial</strong> runs once before all trials. <strong>Intertrial</strong> runs between every trial. <strong>Posttrial</strong> runs once after all trials complete. Each phase can contain any combination of controller, wait, and plugin commands.</p>
 
         <h3>Modes</h3>
         <p><strong>Constant Rate</strong> (mode 2): pattern plays at a fixed frame rate. Set <code>Frame Rate</code> in fps.</p>
@@ -370,7 +412,7 @@
         <p>The irrelevant parameter is automatically dimmed and disabled.</p>
 
         <h3>Empty pattern = allOff</h3>
-        <p>If you leave the Pattern File field empty for a condition, the YAML export generates an <code>allOff</code> controller command. This is useful for dark control conditions.</p>
+        <p>If you leave the Pattern File field empty for a trialParams command, the condition exports with an <code>allOff</code> controller command. This is useful for dark control conditions.</p>
 
         <footer>
             <p><a href="experiment_designer.html">Experiment Designer</a> | <a href="index.html">PanelDisplayTools</a> | <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">GitHub</a></p>
