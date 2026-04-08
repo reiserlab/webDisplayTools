@@ -5,7 +5,8 @@
  *   - simpleYAMLParse(text) — parse YAML protocol files (v1 and v2)
  *   - generateV1Protocol(opts) — generate v1 protocol YAML
  *   - generateV2Protocol(experiment) — generate v2 protocol YAML
- *   - yamlStr(str) — escape/quote a YAML string value
+ *   - yamlStr(str) — escape/quote a YAML string value (double quotes)
+ *   - yamlPath(str) — quote a file path for YAML (single quotes, no escapes)
  *   - appendCommand(lines, cmd, indentLevel) — append a command to YAML lines
  *
  * Dual-export pattern (same as pat-parser.js):
@@ -56,6 +57,16 @@ function yamlStr(str) {
         return '"' + str.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
     }
     return '"' + str + '"';
+}
+
+/**
+ * Quote a file path for YAML output using single quotes.
+ * Single-quoted YAML strings have no escape sequences, so backslashes
+ * (common in Windows paths) are treated as literal characters.
+ */
+function yamlPath(str) {
+    if (str === null || str === undefined || str === '') return "''";
+    return "'" + String(str).replace(/'/g, "''") + "'";
 }
 
 /**
@@ -329,7 +340,7 @@ function generateV1Protocol(opts) {
     lines.push('  name: ' + yamlStr(opts.name));
     lines.push('  date_created: ' + yamlStr(opts.date_created));
     lines.push('  author: ' + yamlStr(opts.author));
-    lines.push('  pattern_library: ' + yamlStr(opts.pattern_library || ''));
+    lines.push('  pattern_library: ' + yamlPath(opts.pattern_library || ''));
     lines.push('');
 
     // Arena info
@@ -431,11 +442,11 @@ function generateV2Protocol(experiment) {
     lines.push('  name: ' + yamlStr(experiment.experiment_info.name || 'Untitled Experiment'));
     lines.push('  date_created: ' + yamlStr(experiment.experiment_info.date_created));
     lines.push('  author: ' + yamlStr(experiment.experiment_info.author));
-    lines.push('  pattern_library: ' + yamlStr(experiment.experiment_info.pattern_library));
+    lines.push('  pattern_library: ' + yamlPath(experiment.experiment_info.pattern_library));
     lines.push('');
 
     // Rig reference (v2 replaces arena_info)
-    lines.push('rig: ' + yamlStr(experiment.rig_path || ''));
+    lines.push('rig: ' + yamlPath(experiment.rig_path || ''));
     lines.push('');
 
     // Plugins
@@ -459,7 +470,7 @@ function generateV2Protocol(experiment) {
             }
             // Script
             if (plugin.script_path) {
-                lines.push('    script_path: ' + yamlStr(plugin.script_path));
+                lines.push('    script_path: ' + yamlPath(plugin.script_path));
             }
             // Config (optional overrides)
             if (plugin.config && Object.keys(plugin.config).length > 0) {
@@ -618,6 +629,7 @@ var ProtocolYAML = {
     generateV2Protocol: generateV2Protocol,
     appendCommand: appendCommand,
     yamlStr: yamlStr,
+    yamlPath: yamlPath,
     repeat: repeat,
     stripInlineComment: stripInlineComment,
     v1ConditionToCommands: v1ConditionToCommands,
@@ -641,6 +653,7 @@ export {
     generateV2Protocol,
     appendCommand,
     yamlStr,
+    yamlPath,
     repeat,
     stripInlineComment,
     v1ConditionToCommands,

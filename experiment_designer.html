@@ -431,7 +431,9 @@
             text-align: center;
             width: 28px;
         }
-        .cmd-table .btn-row-delete {
+        .cmd-table .btn-row-delete,
+        .cmd-table .btn-row-move,
+        .cmd-delete-btn {
             background: none;
             border: none;
             color: var(--text-dim);
@@ -440,16 +442,89 @@
             padding: 0.1rem 0.3rem;
             border-radius: 3px;
         }
-        .cmd-table .btn-row-delete:hover {
+        .cmd-table .btn-row-delete:hover,
+        .cmd-delete-btn:hover {
             color: #ff6b6b;
             background: rgba(255,107,107,0.1);
+        }
+        .cmd-table .btn-row-move {
+            font-size: 0.65rem;
+        }
+        .cmd-table .btn-row-move:hover {
+            color: var(--accent);
+            background: rgba(0,230,118,0.1);
+        }
+        .section-move-btns {
+            margin-left: 0.5rem;
+        }
+        .btn-section-move {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.65rem;
+            padding: 0.1rem 0.25rem;
+            border-radius: 3px;
+        }
+        .btn-section-move:hover {
+            color: var(--accent);
+            background: rgba(0,230,118,0.1);
+        }
+        .btn-section-remove {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }
+        .btn-section-remove:hover {
+            color: #ff6b6b;
+            background: rgba(255,107,107,0.1);
+        }
+        .cmd-move-btn {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.65rem;
+            padding: 0.1rem 0.25rem;
+            border-radius: 3px;
+            line-height: 1;
+        }
+        .cmd-move-btn:hover {
+            color: var(--accent);
+            background: rgba(0,230,118,0.1);
+        }
+        .table-toolbar {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.4rem 0.6rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .table-toolbar button {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 0.2rem 0.6rem;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.72rem;
+            font-family: var(--font-body);
+        }
+        .table-toolbar button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
         }
         .table-add-row {
             padding: 0.3rem 0.6rem;
             border-top: 1px solid rgba(45,54,64,0.3);
         }
+        .table-add-row select,
         .table-add-row button {
-            background: none;
+            background: var(--bg);
             border: 1px dashed var(--border);
             color: var(--text-dim);
             padding: 0.25rem 0.6rem;
@@ -459,21 +534,43 @@
             font-family: var(--font-body);
             width: 100%;
         }
+        .table-add-row select:hover,
         .table-add-row button:hover {
             border-color: var(--accent);
             color: var(--accent);
         }
         /* Column widths */
+        .cmd-table { table-layout: auto; width: 100%; }
+        .cmd-table td, .cmd-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0.25rem 0.4rem; }
         .cmd-table .col-num { width: 28px; text-align: center; }
-        .cmd-table .col-type { width: 80px; }
-        .cmd-table .col-target { width: 80px; }
-        .cmd-table .col-command { width: 130px; }
-        .cmd-table .col-dur { width: 55px; }
+        .cmd-table .col-type { width: 70px; }
+        .cmd-table .col-dur { width: 50px; }
         .cmd-table .col-mode { width: 50px; }
         .cmd-table .col-fr { width: 50px; }
-        .cmd-table .col-pattern { min-width: 120px; }
+        .cmd-table .col-pattern { white-space: normal; word-break: break-word; }
+        .cmd-table input, .cmd-table select {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text);
+            font-family: inherit;
+            font-size: inherit;
+            padding: 0.1rem 0.2rem;
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 2px;
+        }
+        .cmd-table input:hover, .cmd-table select:hover {
+            border-color: var(--border);
+        }
+        .cmd-table input:focus, .cmd-table select:focus {
+            border-color: var(--accent);
+            outline: none;
+            background: var(--bg);
+        }
+        .cmd-table select { cursor: pointer; }
         .cmd-table .col-params { min-width: 80px; }
-        .cmd-table .col-actions { width: 28px; }
+        .cmd-table .col-move { width: 32px; text-align: right; padding-right: 0; }
+        .cmd-table .col-delete { width: 24px; text-align: center; padding-left: 2px; }
 
         /* ── Multi-Lane Timeline ────────────────── */
         .lane-timeline {
@@ -628,10 +725,16 @@
             font-size: 0.65rem !important;
         }
 
+        .timeline-body {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
         .timeline-scroll {
+            flex: 1;
             overflow-x: auto;
             overflow-y: hidden;
-            padding: 0.75rem 1rem 0;
+            padding: 0.75rem 1rem 0 1rem;
         }
 
         .timeline-track {
@@ -805,6 +908,32 @@
             white-space: nowrap;
         }
 
+        /* ── Lane View (inside timeline-scroll) ──── */
+        .lane-labels {
+            flex-shrink: 0;
+            width: 70px;
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding-bottom: 4px;
+        }
+        .lane-label-item {
+            font-size: 9px;
+            font-weight: 600;
+            text-align: right;
+            padding-right: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .timeline-lane-svg {
+            border-top: 1px solid var(--border);
+            background: rgba(0,0,0,0.15);
+        }
+        .timeline-lane-svg svg {
+            display: block;
+        }
+
         /* ── Footer ──────────────────────────────── */
         .app-footer {
             text-align: center;
@@ -842,7 +971,7 @@
         <h1>Experiment Designer</h1>
     </div>
     <div class="top-bar-right">
-        <a href="experiment_designer_quickstart.html" class="btn" title="Step-by-step guide for using the Experiment Designer">Quick Start</a>
+        <a href="experiment_designer_quickstart.html" target="_blank" class="btn" title="Step-by-step guide for using the Experiment Designer">Quick Start</a>
         <button class="btn" id="importBtn" title="Load an existing YAML protocol file">Import YAML</button>
         <button class="btn btn-primary" id="exportBtn" title="Export experiment as YAML protocol file (Ctrl+E)">Export YAML</button>
     </div>
@@ -922,8 +1051,8 @@
             </label>
             <div class="plugin-config" id="pluginBacklightConfig" style="display: none;">
                 <div class="field">
-                    <label for="backlightPort">Serial Port</label>
-                    <input type="text" id="backlightPort" placeholder="COM6" title="Serial port for LED controller">
+                    <label for="backlightPort">Serial Port (override)</label>
+                    <input type="text" id="backlightPort" placeholder="Set in rig YAML" title="Override rig YAML serial port — leave empty to use rig value">
                 </div>
             </div>
             <label class="phase-toggle" title="BIAS camera plugin (BiasPlugin) — video recording and timestamps">
@@ -932,15 +1061,24 @@
             </label>
             <div class="plugin-config" id="pluginCameraConfig" style="display: none;">
                 <div class="field">
-                    <label for="cameraFormat">Video Format</label>
-                    <select id="cameraFormat" title="Video recording format">
+                    <label for="cameraIp">IP Address (override)</label>
+                    <input type="text" id="cameraIp" placeholder="Set in rig YAML" title="Override rig YAML IP address — leave empty to use rig value">
+                </div>
+                <div class="field">
+                    <label for="cameraPort">Port (override)</label>
+                    <input type="number" id="cameraPort" placeholder="Set in rig YAML" title="Override rig YAML port — leave empty to use rig value">
+                </div>
+                <div class="field">
+                    <label for="cameraFormat">Video Format (override)</label>
+                    <select id="cameraFormat" title="Override default video format — leave as default to omit from YAML">
+                        <option value="">(use default: UFMF)</option>
                         <option value="ufmf">UFMF</option>
                         <option value="avi">AVI</option>
                     </select>
                 </div>
                 <div class="field">
-                    <label for="cameraFrameRate">Frame Rate</label>
-                    <input type="number" id="cameraFrameRate" min="10" max="200" value="100" title="Camera frame rate (10-200 Hz)">
+                    <label for="cameraFrameRate">Frame Rate (override)</label>
+                    <input type="number" id="cameraFrameRate" min="10" max="200" placeholder="Default: 100" title="Override default frame rate (10-200 Hz) — leave empty to use default">
                 </div>
             </div>
         </div>
@@ -949,11 +1087,10 @@
     <!-- Right Panel: Editor -->
     <div class="editor-panel" id="editorPanel">
         <div class="editor-tab-bar" id="editorTabBar">
-            <button class="editor-tab active" data-tab="visual" title="Visual form editor for the selected condition/phase">Visual</button>
+            <button class="editor-tab active" data-tab="commands" title="Command card editor for the selected condition/phase">Commands</button>
             <button class="editor-tab" data-tab="table" title="Spreadsheet view of all commands across all sections">Table</button>
-            <button class="editor-tab" data-tab="timeline" title="Multi-lane timeline visualization of the selected condition">Timeline</button>
         </div>
-        <div class="editor-tab-content" id="editorTabVisual">
+        <div class="editor-tab-content" id="editorTabCommands">
             <div class="editor-placeholder" id="editorPlaceholder">
                 <div>
                     <p>Select a block on the timeline to edit its properties.</p>
@@ -964,15 +1101,6 @@
         </div>
         <div class="editor-tab-content" id="editorTabTable" style="display: none;">
             <div id="tableViewContent"></div>
-        </div>
-        <div class="editor-tab-content" id="editorTabTimeline" style="display: none;">
-            <div id="timelineViewPlaceholder" class="editor-placeholder">
-                <div>
-                    <p>Select a condition on the timeline below to see its multi-lane view.</p>
-                    <p style="margin-top: 0.75rem; font-size: 0.8rem;">Shows controller, plugin, and wait commands as concurrent lanes.</p>
-                </div>
-            </div>
-            <div id="timelineViewContent" style="display: none;"></div>
         </div>
     </div>
 </div>
@@ -992,15 +1120,19 @@
             </div>
         </div>
     </div>
-    <div class="timeline-scroll" id="timelineScroll">
-        <div class="timeline-track" id="timelineTrack"></div>
-        <div class="time-ruler" id="timeRuler"></div>
+    <div class="timeline-body">
+        <div class="lane-labels" id="laneLabels"></div>
+        <div class="timeline-scroll" id="timelineScroll">
+            <div class="timeline-track" id="timelineTrack"></div>
+            <div class="time-ruler" id="timeRuler"></div>
+            <div class="timeline-lane-svg" id="timelineLaneSvg"></div>
+        </div>
     </div>
 </div>
 
 <!-- Footer -->
 <div class="app-footer">
-    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.6 | 2026-04-01 11:47 ET</p>
+    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.8 | 2026-04-08 18:31 ET</p>
 </div>
 
 <!-- Hidden file input for import -->
@@ -1052,9 +1184,9 @@ let experiment = {
     },
     rig_path: '',
     plugins: [],
-    pretrial: { ...DEFAULT_PHASE },
-    intertrial: { ...DEFAULT_PHASE },
-    posttrial: { ...DEFAULT_PHASE },
+    pretrial: { include: false, commands: JSON.parse(JSON.stringify(DEFAULT_PHASE.commands)) },
+    intertrial: { include: false, commands: JSON.parse(JSON.stringify(DEFAULT_PHASE.commands)) },
+    posttrial: { include: false, commands: JSON.parse(JSON.stringify(DEFAULT_PHASE.commands)) },
     conditions: [
         { ...DEFAULT_CONDITION, id: 'condition_1' }
     ]
@@ -1112,6 +1244,66 @@ function phaseGetDuration(phase) {
 /** Create a deep copy of a commands array. */
 function cloneCommands(commands) {
     return JSON.parse(JSON.stringify(commands));
+}
+
+/** Build a new plugin command object with default params from the registry. */
+function createPluginCommand(pluginName, commandName) {
+    var cmd = { type: 'plugin', plugin_name: pluginName, command_name: commandName };
+    var pluginDef = BUILTIN_PLUGINS[pluginName];
+    if (pluginDef && pluginDef.commands && pluginDef.commands[commandName]) {
+        var cmdDef = pluginDef.commands[commandName];
+        if (cmdDef.params) {
+            var params = {};
+            var keys = Object.keys(cmdDef.params);
+            for (var i = 0; i < keys.length; i++) {
+                var pDef = cmdDef.params[keys[i]];
+                params[keys[i]] = pDef.default !== undefined ? pDef.default : '';
+            }
+            cmd.params = params;
+        }
+    }
+    return cmd;
+}
+
+/** Build HTML options for the Add Command dropdown (shared by all editors). */
+function buildAddCommandOptions() {
+    var html = '<option value="">+ Add Command...</option><optgroup label="Controller">';
+    var ctrlKeys = Object.keys(CONTROLLER_COMMANDS);
+    for (var k = 0; k < ctrlKeys.length; k++) {
+        html += '<option value="controller:' + ctrlKeys[k] + '">' + CONTROLLER_COMMANDS[ctrlKeys[k]].label + '</option>';
+    }
+    html += '</optgroup><option value="wait:wait">Wait</option>';
+    for (var pi = 0; pi < experiment.plugins.length; pi++) {
+        var pName = experiment.plugins[pi].name;
+        var pDef = BUILTIN_PLUGINS[pName];
+        if (pDef && pDef.commands) {
+            html += '<optgroup label="Plugin: ' + escapeAttr(pDef.label) + '">';
+            var cmdKeys = Object.keys(pDef.commands);
+            for (var ck = 0; ck < cmdKeys.length; ck++) {
+                html += '<option value="plugin:' + pName + ':' + cmdKeys[ck] + '">' + pDef.commands[cmdKeys[ck]].label + '</option>';
+            }
+            html += '</optgroup>';
+        }
+    }
+    return html;
+}
+
+/** Create a new command object from a select dropdown value string. */
+function createCommandFromSelectValue(value) {
+    var parts = value.split(':');
+    if (parts[0] === 'controller') {
+        var cmd = { type: 'controller', command_name: parts[1] };
+        if (parts[1] === 'trialParams') {
+            cmd.pattern = ''; cmd.pattern_ID = 1; cmd.duration = 5;
+            cmd.mode = 2; cmd.frame_index = 1; cmd.frame_rate = 60; cmd.gain = 0;
+        }
+        return cmd;
+    } else if (parts[0] === 'wait') {
+        return { type: 'wait', duration: 1 };
+    } else if (parts[0] === 'plugin') {
+        return createPluginCommand(parts[1], parts[2]);
+    }
+    return null;
 }
 
 // ════════════════════════════════════════════════════
@@ -1186,15 +1378,17 @@ function syncSettingsToUI() {
     document.getElementById('pluginCamera').checked = hasCamera;
     document.getElementById('pluginCameraConfig').style.display = hasCamera ? '' : 'none';
 
-    // Plugin config values
+    // Plugin config values — only show user-set overrides, not defaults
     if (hasBacklight) {
         var bl = experiment.plugins.find(function(p) { return p.name === 'backlight'; });
         document.getElementById('backlightPort').value = (bl.config && bl.config.port) || '';
     }
     if (hasCamera) {
         var cam = experiment.plugins.find(function(p) { return p.name === 'camera'; });
-        document.getElementById('cameraFormat').value = (cam.config && cam.config.video_format) || 'ufmf';
-        document.getElementById('cameraFrameRate').value = (cam.config && cam.config.frame_rate) || 100;
+        document.getElementById('cameraIp').value = (cam.config && cam.config.ip) || '';
+        document.getElementById('cameraPort').value = (cam.config && cam.config.port) || '';
+        document.getElementById('cameraFormat').value = (cam.config && cam.config.video_format) || '';
+        document.getElementById('cameraFrameRate').value = (cam.config && cam.config.frame_rate) || '';
     }
 }
 
@@ -1277,27 +1471,36 @@ function bindSettingsEvents() {
         document.getElementById('pluginCameraConfig').style.display = e.target.checked ? '' : 'none';
     });
 
-    // Plugin config fields
-    document.getElementById('backlightPort').addEventListener('input', function(e) {
-        var plugin = experiment.plugins.find(function(p) { return p.name === 'backlight'; });
-        if (plugin) {
-            if (!plugin.config) plugin.config = {};
-            plugin.config.port = e.target.value;
+    // Plugin config fields — only store non-empty values (empty = use rig/default)
+    function setPluginConfig(pluginName, key, value) {
+        var plugin = experiment.plugins.find(function(p) { return p.name === pluginName; });
+        if (!plugin) return;
+        if (!plugin.config) plugin.config = {};
+        if (value === '' || value === null || value === undefined) {
+            delete plugin.config[key];
+            // Remove config object entirely if empty
+            if (Object.keys(plugin.config).length === 0) delete plugin.config;
+        } else {
+            plugin.config[key] = value;
         }
+    }
+
+    document.getElementById('backlightPort').addEventListener('input', function(e) {
+        setPluginConfig('backlight', 'port', e.target.value.trim());
+    });
+    document.getElementById('cameraIp').addEventListener('input', function(e) {
+        setPluginConfig('camera', 'ip', e.target.value.trim());
+    });
+    document.getElementById('cameraPort').addEventListener('input', function(e) {
+        var val = e.target.value.trim();
+        setPluginConfig('camera', 'port', val === '' ? '' : (parseInt(val) || ''));
     });
     document.getElementById('cameraFormat').addEventListener('change', function(e) {
-        var plugin = experiment.plugins.find(function(p) { return p.name === 'camera'; });
-        if (plugin) {
-            if (!plugin.config) plugin.config = {};
-            plugin.config.video_format = e.target.value;
-        }
+        setPluginConfig('camera', 'video_format', e.target.value);
     });
     document.getElementById('cameraFrameRate').addEventListener('input', function(e) {
-        var plugin = experiment.plugins.find(function(p) { return p.name === 'camera'; });
-        if (plugin) {
-            if (!plugin.config) plugin.config = {};
-            plugin.config.frame_rate = parseInt(e.target.value) || 100;
-        }
+        var val = e.target.value.trim();
+        setPluginConfig('camera', 'frame_rate', val === '' ? '' : (parseInt(val) || ''));
     });
 }
 
@@ -1351,7 +1554,7 @@ function hasPluginCommands(pluginName) {
 // ════════════════════════════════════════════════════
 
 // Current editor tab
-let activeEditorTab = 'visual';
+let activeEditorTab = 'commands';
 
 function bindToolbarEvents() {
     document.getElementById('addConditionBtn').addEventListener('click', addCondition);
@@ -1389,15 +1592,12 @@ function switchEditorTab(tabName) {
     });
 
     // Show/hide tab content
-    document.getElementById('editorTabVisual').style.display = tabName === 'visual' ? '' : 'none';
+    document.getElementById('editorTabCommands').style.display = tabName === 'commands' ? '' : 'none';
     document.getElementById('editorTabTable').style.display = tabName === 'table' ? '' : 'none';
-    document.getElementById('editorTabTimeline').style.display = tabName === 'timeline' ? '' : 'none';
 
     // Render the active tab
     if (tabName === 'table') {
         renderTableView();
-    } else if (tabName === 'timeline') {
-        renderTimelineView();
     }
 }
 
@@ -1503,12 +1703,12 @@ function renderTimeline() {
 
     var blocks = getTimelineBlocks();
     var totalDuration = 0;
+    var totalWidth = 0;
     for (var b = 0; b < blocks.length; b++) {
         totalDuration += blocks[b].duration;
+        totalWidth += Math.max(48, blocks[b].duration * pxPerSecond);
     }
     if (totalDuration <= 0) totalDuration = 1;
-
-    var totalWidth = totalDuration * pxPerSecond;
 
     for (var bi = 0; bi < blocks.length; bi++) {
         var block = blocks[bi];
@@ -1558,16 +1758,6 @@ function renderTimeline() {
             el.appendChild(pat);
         }
 
-        // Remove button for conditions (only if > 1)
-        if (block.type === 'condition' && experiment.conditions.length > 1) {
-            var removeBtn = document.createElement('button');
-            removeBtn.className = 'block-remove-btn';
-            removeBtn.innerHTML = '&#215;';
-            removeBtn.title = 'Remove this condition';
-            removeBtn.dataset.removeIndex = block.index;
-            el.appendChild(removeBtn);
-        }
-
         // Tooltip
         if (block.type === 'condition') {
             el.title = block.label + ': Click to edit, drag to reorder';
@@ -1596,6 +1786,161 @@ function renderTimeline() {
 
     // Time ruler
     renderTimeRuler(totalDuration, totalWidth);
+
+    // Lane view below filmstrip
+    renderTimelineLanes(blocks, totalDuration, totalWidth);
+}
+
+/**
+ * Render the always-visible multi-lane view below the filmstrip.
+ * Shows controller, plugin, and wait lanes across all blocks.
+ */
+function renderTimelineLanes(blocks, totalDuration, totalWidth) {
+    var labelsEl = document.getElementById('laneLabels');
+    var svgEl = document.getElementById('timelineLaneSvg');
+    if (!blocks || blocks.length === 0 || totalDuration <= 0) {
+        labelsEl.innerHTML = '';
+        svgEl.innerHTML = '';
+        return;
+    }
+
+    // Collect all unique plugin names across all blocks for consistent lanes
+    var allPluginNames = {};
+    var blockLaneData = [];
+    var timeOffset = 0;
+    for (var bi = 0; bi < blocks.length; bi++) {
+        var block = blocks[bi];
+        var commands = [];
+        if (block.type === 'condition') {
+            commands = experiment.conditions[block.index].commands || [];
+        } else if (block.type === 'pretrial') {
+            commands = experiment.pretrial.commands || [];
+        } else if (block.type === 'intertrial') {
+            commands = experiment.intertrial.commands || [];
+        } else if (block.type === 'posttrial') {
+            commands = experiment.posttrial.commands || [];
+        }
+        var ld = computeLaneData(commands);
+        blockLaneData.push({ laneData: ld, timeOffset: timeOffset, block: block });
+        var pNames = Object.keys(ld.pluginEvents);
+        for (var p = 0; p < pNames.length; p++) allPluginNames[pNames[p]] = true;
+        timeOffset += block.duration;
+    }
+
+    // Build ordered lane list: controller, then all plugins, then waits
+    var laneNames = ['controller'];
+    var pluginKeys = Object.keys(allPluginNames);
+    for (var pk = 0; pk < pluginKeys.length; pk++) laneNames.push(pluginKeys[pk]);
+
+    var LANE_H = 24;
+    var LANE_GAP = 2;
+    var numLanes = laneNames.length;
+    var svgHeight = numLanes * (LANE_H + LANE_GAP) + (LANE_H + LANE_GAP) + 4; // +1 for waits
+    var waitLaneY = numLanes * (LANE_H + LANE_GAP);
+
+    // Build fixed label column HTML
+    var labelsHtml = '';
+    for (var li = 0; li < laneNames.length; li++) {
+        var lColor = laneNames[li] === 'controller' ? '#00e676' : '#4dabf7';
+        labelsHtml += '<div class="lane-label-item" style="height:' + (LANE_H + LANE_GAP) + 'px;line-height:' + (LANE_H + LANE_GAP) + 'px;color:' + lColor + ';">' + escapeHtml(laneNames[li]) + '</div>';
+    }
+    labelsHtml += '<div class="lane-label-item" style="height:' + (LANE_H + LANE_GAP) + 'px;line-height:' + (LANE_H + LANE_GAP) + 'px;color:#8b949e;">waits</div>';
+
+    // Build scrollable SVG (no labels — x=0 is the start of data, with left padding to align with blocks)
+    var totalGap = (blocks.length > 1) ? (blocks.length - 1) * 2 : 0;
+    var svgWidth = totalWidth + totalGap + 16; // block gaps + right padding
+    var svg = '<svg width="' + svgWidth + '" height="' + svgHeight + '" xmlns="http://www.w3.org/2000/svg">';
+
+    // Lane backgrounds
+    for (var bg = 0; bg < laneNames.length; bg++) {
+        var bgY = bg * (LANE_H + LANE_GAP);
+        svg += '<rect x="0" y="' + bgY + '" width="' + svgWidth + '" height="' + LANE_H + '" fill="rgba(255,255,255,0.015)" rx="2"/>';
+    }
+
+    // Render each block's lane data at its time offset
+    for (var bdi = 0; bdi < blockLaneData.length; bdi++) {
+        var bd = blockLaneData[bdi];
+        var ld = bd.laneData;
+        // Use actual block width from filmstrip (min 48px, same as renderTimeline)
+        var blockW = Math.max(48, bd.block.duration * pxPerSecond);
+        // Calculate xOff by summing actual block widths (matching filmstrip)
+        var xOff = 0;
+        for (var prev = 0; prev < bdi; prev++) {
+            xOff += Math.max(48, blockLaneData[prev].block.duration * pxPerSecond);
+        }
+        if (bdi > 0) xOff += bdi * 2; // account for CSS gap: 2px between blocks
+
+        // Selected block highlight
+        var isSelected = false;
+        if (selection) {
+            if (bd.block.type === 'condition' && selection.type === 'condition' && selection.index === bd.block.index) isSelected = true;
+            else if (bd.block.type === selection.type && bd.block.type !== 'condition') isSelected = true;
+        }
+        if (isSelected) {
+            svg += '<rect x="' + xOff + '" y="0" width="' + blockW + '" height="' + svgHeight + '" fill="rgba(0,230,118,0.06)"/>';
+        }
+
+        // Block separator line (centered in the 2px gap)
+        if (bdi > 0) {
+            var sepX = xOff - 1;
+            svg += '<line x1="' + sepX + '" y1="0" x2="' + sepX + '" y2="' + svgHeight + '" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>';
+        }
+
+        var scale = ld.totalDuration > 0 ? blockW / ld.totalDuration : 0;
+
+        // Controller spans
+        for (var cs = 0; cs < ld.controllerSpans.length; cs++) {
+            var span = ld.controllerSpans[cs];
+            var sx = xOff + span.startTime * scale;
+            var laneIdx = 0;
+            var cy = laneIdx * (LANE_H + LANE_GAP) + LANE_H / 2;
+
+            if (span.startTime === span.endTime) {
+                svg += '<polygon points="' + sx + ',' + (cy - 5) + ' ' + (sx + 5) + ',' + cy + ' ' + sx + ',' + (cy + 5) + ' ' + (sx - 5) + ',' + cy + '" fill="#00e676" opacity="0.7">';
+                svg += '<title>' + escapeHtml(span.cmd.command_name || '') + '</title></polygon>';
+            } else {
+                var sw = (span.endTime - span.startTime) * scale;
+                svg += '<rect x="' + sx + '" y="' + (laneIdx * (LANE_H + LANE_GAP) + 3) + '" width="' + sw + '" height="' + (LANE_H - 6) + '" fill="#00e676" opacity="0.2" rx="2" stroke="#00e676" stroke-width="0.5">';
+                svg += '<title>trialParams: ' + escapeHtml((span.cmd.pattern || '').split('/').pop()) + ' | ' + span.cmd.duration + 's</title></rect>';
+            }
+        }
+
+        // Plugin events
+        for (var pli = 0; pli < pluginKeys.length; pli++) {
+            var pName = pluginKeys[pli];
+            var events = ld.pluginEvents[pName] || [];
+            var pLaneIdx = 1 + pli;
+            var pcy = pLaneIdx * (LANE_H + LANE_GAP) + LANE_H / 2;
+
+            for (var ei = 0; ei < events.length; ei++) {
+                var evt = events[ei];
+                var ex = xOff + evt.time * scale;
+                svg += '<circle cx="' + ex + '" cy="' + pcy + '" r="4" fill="#4dabf7" opacity="0.7">';
+                var tip = pName + '.' + (evt.cmd.command_name || '');
+                if (evt.cmd.params) {
+                    tip += ' | ' + Object.keys(evt.cmd.params).map(function(k) { return k + '=' + evt.cmd.params[k]; }).join(', ');
+                }
+                svg += '<title>' + escapeHtml(tip) + '</title></circle>';
+            }
+        }
+
+        // Wait spans
+        for (var wi = 0; wi < ld.waitSpans.length; wi++) {
+            var ws = ld.waitSpans[wi];
+            var wx = xOff + ws.startTime * scale;
+            var ww = (ws.endTime - ws.startTime) * scale;
+            if (ww > 1) {
+                svg += '<rect x="' + wx + '" y="' + (waitLaneY + 2) + '" width="' + ww + '" height="' + (LANE_H - 6) + '" fill="#8b949e" opacity="0.15" rx="2" stroke="#8b949e" stroke-width="0.5">';
+                svg += '<title>wait ' + (ws.endTime - ws.startTime) + 's</title></rect>';
+            }
+        }
+    }
+
+    svg += '</svg>';
+
+    // Render labels into fixed column, SVG into scrollable area (same scroll parent as blocks)
+    labelsEl.innerHTML = labelsHtml;
+    svgEl.innerHTML = svg;
 }
 
 function handleTrackClick(e) {
@@ -1618,8 +1963,6 @@ function handleTrackClick(e) {
     }
     renderTimeline();
     renderEditor();
-    // Always update non-visual tabs so they stay in sync with selection
-    renderTimelineView();
     renderTableView();
 }
 
@@ -1782,33 +2125,13 @@ function renderConditionEditor(cond, index) {
 
     // Render each command as a card
     for (var ci = 0; ci < cond.commands.length; ci++) {
-        html += renderCommandCard(cond.commands[ci], ci, cond.commands.length > 1);
+        html += renderCommandCard(cond.commands[ci], ci, cond.commands.length > 1, cond.commands.length);
     }
 
-    // Add Command button
+    // Add Command dropdown
     html += '<div style="margin-top: 0.5rem;">' +
         '<select id="addCommandSelect" title="Add a new command to this condition" style="font-size:0.78rem;padding:0.3rem;background:var(--bg);border:1px dashed var(--border);color:var(--text-dim);border-radius:3px;width:100%;cursor:pointer;">' +
-            '<option value="">+ Add Command...</option>' +
-            '<optgroup label="Controller">';
-    var ctrlKeys = Object.keys(CONTROLLER_COMMANDS);
-    for (var k = 0; k < ctrlKeys.length; k++) {
-        html += '<option value="controller:' + ctrlKeys[k] + '">' + CONTROLLER_COMMANDS[ctrlKeys[k]].label + '</option>';
-    }
-    html += '</optgroup><option value="wait:wait">Wait</option>';
-    // Plugin commands
-    for (var pi = 0; pi < experiment.plugins.length; pi++) {
-        var pName = experiment.plugins[pi].name;
-        var pDef = BUILTIN_PLUGINS[pName];
-        if (pDef && pDef.commands) {
-            html += '<optgroup label="Plugin: ' + escapeAttr(pDef.label) + '">';
-            var cmdKeys = Object.keys(pDef.commands);
-            for (var ck = 0; ck < cmdKeys.length; ck++) {
-                html += '<option value="plugin:' + pName + ':' + cmdKeys[ck] + '">' + pDef.commands[cmdKeys[ck]].label + '</option>';
-            }
-            html += '</optgroup>';
-        }
-    }
-    html += '</select></div>';
+        buildAddCommandOptions() + '</select></div>';
     html += '</div>'; // editor-form
 
     content.innerHTML = html;
@@ -1829,20 +2152,8 @@ function renderConditionEditor(cond, index) {
     // Bind Add Command
     document.getElementById('addCommandSelect').addEventListener('change', function(e) {
         if (!e.target.value) return;
-        var parts = e.target.value.split(':');
-        var newCmd = {};
-        if (parts[0] === 'controller') {
-            newCmd = { type: 'controller', command_name: parts[1] };
-            if (parts[1] === 'trialParams') {
-                newCmd.pattern = ''; newCmd.pattern_ID = 1; newCmd.duration = 5;
-                newCmd.mode = 2; newCmd.frame_index = 1; newCmd.frame_rate = 60; newCmd.gain = 0;
-            }
-        } else if (parts[0] === 'wait') {
-            newCmd = { type: 'wait', duration: 1 };
-        } else if (parts[0] === 'plugin') {
-            newCmd = { type: 'plugin', plugin_name: parts[1], command_name: parts[2] };
-        }
-        cond.commands.push(newCmd);
+        var newCmd = createCommandFromSelectValue(e.target.value);
+        if (newCmd) cond.commands.push(newCmd);
         e.target.value = '';
         renderEditor();
         renderTimeline();
@@ -1859,21 +2170,31 @@ function renderConditionEditor(cond, index) {
 /**
  * Render a single command as a card in the visual editor.
  */
-function renderCommandCard(cmd, cmdIndex, canDelete) {
+function renderCommandCard(cmd, cmdIndex, canDelete, totalCommands) {
     var typeClass = 'type-' + cmd.type;
     var borderColor = cmd.type === 'controller' ? '#00e676' : cmd.type === 'wait' ? '#8b949e' : '#4dabf7';
 
     var html = '<div class="cmd-card" data-cmd="' + cmdIndex + '" style="border-left: 3px solid ' + borderColor + '; margin-bottom: 0.4rem; padding: 0.5rem 0.6rem; background: rgba(0,0,0,0.15); border-radius: 0 4px 4px 0;">';
 
-    // Header row with type badge and delete
+    // Header row with type badge, reorder arrows, and delete
     html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.3rem;">';
     html += '<span class="type-badge ' + typeClass + '">' + cmd.type + '</span>';
     html += '<span style="color:var(--text-dim);font-size:0.75rem;">';
     if (cmd.plugin_name) html += cmd.plugin_name + ' \u2192 ';
     html += (cmd.command_name || '') + '</span>';
-    if (canDelete) {
-        html += '<button class="btn-row-delete cmd-delete-btn" data-cmd="' + cmdIndex + '" title="Remove this command">\u00d7</button>';
+    html += '<span style="display:flex;align-items:center;gap:0.15rem;">';
+    if (totalCommands > 1) {
+        if (cmdIndex > 0) {
+            html += '<button class="cmd-move-btn" data-cmd="' + cmdIndex + '" data-dir="up" title="Move command up">\u25b2</button>';
+        }
+        if (cmdIndex < totalCommands - 1) {
+            html += '<button class="cmd-move-btn" data-cmd="' + cmdIndex + '" data-dir="down" title="Move command down">\u25bc</button>';
+        }
     }
+    if (canDelete) {
+        html += '<button class="cmd-delete-btn" data-cmd="' + cmdIndex + '" title="Remove this command">\u00d7</button>';
+    }
+    html += '</span>';
     html += '</div>';
 
     // Command-specific fields
@@ -1962,6 +2283,23 @@ function bindCommandCardEvents(commands, onChange) {
             }
         });
     });
+
+    // Move up/down buttons
+    document.querySelectorAll('.cmd-move-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var ci = parseInt(this.dataset.cmd);
+            var dir = this.dataset.dir;
+            var target = dir === 'up' ? ci - 1 : ci + 1;
+            if (target >= 0 && target < commands.length) {
+                var tmp = commands[ci];
+                commands[ci] = commands[target];
+                commands[target] = tmp;
+                renderEditor();
+                if (onChange) onChange();
+            }
+        });
+    });
 }
 
 function renderPhaseEditor(phaseType) {
@@ -1976,32 +2314,13 @@ function renderPhaseEditor(phaseType) {
 
     // Render each command as a card (same as conditions)
     for (var ci = 0; ci < phase.commands.length; ci++) {
-        html += renderCommandCard(phase.commands[ci], ci, phase.commands.length > 1);
+        html += renderCommandCard(phase.commands[ci], ci, phase.commands.length > 1, phase.commands.length);
     }
 
-    // Add Command button
+    // Add Command dropdown
     html += '<div style="margin-top: 0.5rem;">' +
         '<select id="addCommandSelect" title="Add a command to this phase" style="font-size:0.78rem;padding:0.3rem;background:var(--bg);border:1px dashed var(--border);color:var(--text-dim);border-radius:3px;width:100%;cursor:pointer;">' +
-            '<option value="">+ Add Command...</option>' +
-            '<optgroup label="Controller">';
-    var ctrlKeys = Object.keys(CONTROLLER_COMMANDS);
-    for (var k = 0; k < ctrlKeys.length; k++) {
-        html += '<option value="controller:' + ctrlKeys[k] + '">' + CONTROLLER_COMMANDS[ctrlKeys[k]].label + '</option>';
-    }
-    html += '</optgroup><option value="wait:wait">Wait</option>';
-    for (var pi = 0; pi < experiment.plugins.length; pi++) {
-        var pName = experiment.plugins[pi].name;
-        var pDef = BUILTIN_PLUGINS[pName];
-        if (pDef && pDef.commands) {
-            html += '<optgroup label="Plugin: ' + escapeAttr(pDef.label) + '">';
-            var cmdKeys = Object.keys(pDef.commands);
-            for (var ck = 0; ck < cmdKeys.length; ck++) {
-                html += '<option value="plugin:' + pName + ':' + cmdKeys[ck] + '">' + pDef.commands[cmdKeys[ck]].label + '</option>';
-            }
-            html += '</optgroup>';
-        }
-    }
-    html += '</select></div></div>';
+        buildAddCommandOptions() + '</select></div></div>';
 
     content.innerHTML = html;
 
@@ -2015,20 +2334,8 @@ function renderPhaseEditor(phaseType) {
     // Bind Add Command
     document.getElementById('addCommandSelect').addEventListener('change', function(e) {
         if (!e.target.value) return;
-        var parts = e.target.value.split(':');
-        var newCmd = {};
-        if (parts[0] === 'controller') {
-            newCmd = { type: 'controller', command_name: parts[1] };
-            if (parts[1] === 'trialParams') {
-                newCmd.pattern = ''; newCmd.pattern_ID = 1; newCmd.duration = 5;
-                newCmd.mode = 2; newCmd.frame_index = 1; newCmd.frame_rate = 60; newCmd.gain = 0;
-            }
-        } else if (parts[0] === 'wait') {
-            newCmd = { type: 'wait', duration: 1 };
-        } else if (parts[0] === 'plugin') {
-            newCmd = { type: 'plugin', plugin_name: parts[1], command_name: parts[2] };
-        }
-        phase.commands.push(newCmd);
+        var newCmd = createCommandFromSelectValue(e.target.value);
+        if (newCmd) phase.commands.push(newCmd);
         e.target.value = '';
         renderEditor();
         renderTimeline();
@@ -2090,6 +2397,11 @@ function renderTableView() {
         });
     }
 
+    // Expand/Collapse all toolbar
+    if (sections.length > 0) {
+        html += '<div class="table-toolbar"><button id="tableExpandAll" title="Expand all sections">Expand All</button><button id="tableCollapseAll" title="Collapse all sections">Collapse All</button></div>';
+    }
+
     for (var si = 0; si < sections.length; si++) {
         html += renderTableSection(sections[si]);
     }
@@ -2143,7 +2455,21 @@ function renderTableSection(section) {
     // Header
     html += '<div class="table-section-header' + (isIti ? ' collapsed' : '') + '" data-section="' + section.key + '">';
     html += '<span><span class="section-toggle">\u25BC</span> ' + escapeHtml(section.label) + '</span>';
+    // Condition reorder arrows
+    if (isCondition && experiment.conditions.length > 1) {
+        html += '<span class="section-move-btns">';
+        if (section.condIndex > 0) {
+            html += '<button class="btn-section-move" data-cond="' + section.condIndex + '" data-dir="up" title="Move condition up">\u25b2</button>';
+        }
+        if (section.condIndex < experiment.conditions.length - 1) {
+            html += '<button class="btn-section-move" data-cond="' + section.condIndex + '" data-dir="down" title="Move condition down">\u25bc</button>';
+        }
+        html += '</span>';
+    }
     html += '<span class="section-duration">' + durStr + '</span>';
+    if (isCondition && experiment.conditions.length > 1) {
+        html += '<button class="btn-section-remove" data-cond="' + section.condIndex + '" title="Remove this condition">\u00d7</button>';
+    }
     html += '</div>';
 
     // Body
@@ -2158,7 +2484,8 @@ function renderTableSection(section) {
     html += '<th class="col-mode">Mode</th>';
     html += '<th class="col-fr">FR</th>';
     html += '<th class="col-pattern">Pattern / Params</th>';
-    html += '<th class="col-actions"></th>';
+    html += '<th class="col-move"></th>';
+    html += '<th class="col-delete"></th>';
     html += '</tr></thead><tbody>';
 
     for (var ci = 0; ci < section.commands.length; ci++) {
@@ -2167,9 +2494,9 @@ function renderTableSection(section) {
 
     html += '</tbody></table>';
 
-    // Add row button (only for conditions, not for phase-iti duplicates)
-    if (isCondition) {
-        html += '<div class="table-add-row"><button data-section="' + section.key + '" title="Add a command to this condition">+ Add Command</button></div>';
+    // Add command dropdown (conditions and phases, not ITI duplicates)
+    if (isCondition || section.sectionType === 'phase') {
+        html += '<div class="table-add-row"><select class="table-add-cmd-select" data-section="' + section.key + '" title="Add a command to this section">' + buildAddCommandOptions() + '</select></div>';
     }
 
     html += '</div>'; // section-body
@@ -2203,45 +2530,61 @@ function renderTableRow(section, rowIndex, cmd) {
     // Command name
     html += '<td class="col-command">' + escapeHtml(cmd.command_name || '') + '</td>';
 
-    // Duration
+    // Duration (editable for trialParams and wait)
     if (cmd.duration !== undefined) {
-        html += '<td class="col-dur">' + cmd.duration + '</td>';
+        html += '<td class="col-dur"><input type="number" class="tbl-field" data-section="' + section.key + '" data-row="' + rowIndex + '" data-field="duration" value="' + cmd.duration + '" step="0.1" min="0" title="Duration in seconds"></td>';
     } else {
         html += '<td class="col-dur cell-dim">\u2014</td>';
     }
 
-    // Mode
+    // Mode (editable select for trialParams)
     if (isTrialParams) {
-        html += '<td class="col-mode">' + cmd.mode + '</td>';
+        html += '<td class="col-mode"><select class="tbl-field" data-section="' + section.key + '" data-row="' + rowIndex + '" data-field="mode" title="Display mode">' +
+            '<option value="2"' + (cmd.mode === 2 ? ' selected' : '') + '>2</option>' +
+            '<option value="4"' + (cmd.mode === 4 ? ' selected' : '') + '>4</option>' +
+            '</select></td>';
     } else {
         html += '<td class="col-mode cell-dim">\u2014</td>';
     }
 
-    // Frame Rate
+    // Frame Rate / Gain (editable for trialParams)
     if (isTrialParams) {
-        html += '<td class="col-fr">' + cmd.frame_rate + '</td>';
+        if (cmd.mode === 4) {
+            html += '<td class="col-fr"><input type="number" class="tbl-field" data-section="' + section.key + '" data-row="' + rowIndex + '" data-field="gain" value="' + (cmd.gain || 0) + '" title="Gain"></td>';
+        } else {
+            html += '<td class="col-fr"><input type="number" class="tbl-field" data-section="' + section.key + '" data-row="' + rowIndex + '" data-field="frame_rate" value="' + (cmd.frame_rate || 0) + '" min="1" title="Frame rate (fps)"></td>';
+        }
     } else {
         html += '<td class="col-fr cell-dim">\u2014</td>';
     }
 
-    // Pattern / Params
-    if (isTrialParams && cmd.pattern) {
-        html += '<td class="col-pattern">' + escapeHtml(cmd.pattern) + '</td>';
+    // Pattern / Params (editable)
+    if (isTrialParams) {
+        html += '<td class="col-pattern"><input type="text" class="tbl-field" data-section="' + section.key + '" data-row="' + rowIndex + '" data-field="pattern" value="' + escapeAttr(cmd.pattern || '') + '" placeholder="pattern_file.pat" title="Pattern filename"></td>';
     } else if (isPlugin && cmd.params) {
-        var paramStr = Object.keys(cmd.params).map(function(k) {
-            return k + ': ' + cmd.params[k];
-        }).join(', ');
-        html += '<td class="col-pattern">' + escapeHtml(paramStr) + '</td>';
+        var paramFields = Object.keys(cmd.params).map(function(k) {
+            return '<span style="white-space:nowrap;">' + escapeHtml(k) + ':<input type="text" class="tbl-param" data-section="' + section.key + '" data-row="' + rowIndex + '" data-param="' + escapeAttr(k) + '" value="' + escapeAttr(String(cmd.params[k])) + '" style="width:50px;display:inline;" title="' + escapeAttr(k) + '"></span>';
+        }).join(' ');
+        html += '<td class="col-pattern">' + paramFields + '</td>';
     } else {
         html += '<td class="col-pattern cell-dim">\u2014</td>';
     }
 
-    // Actions
-    if (isCondition && section.commands.length > 1) {
-        html += '<td class="row-actions"><button class="btn-row-delete" data-section="' + section.key + '" data-row="' + rowIndex + '" title="Remove this command">\u00d7</button></td>';
-    } else {
-        html += '<td class="row-actions"></td>';
+    // Actions: move arrows column + delete column (separate to avoid misclicks)
+    var canEdit = isCondition || section.sectionType === 'phase';
+    var moveHtml = '';
+    var deleteHtml = '';
+    if (canEdit && section.commands.length > 1) {
+        if (rowIndex > 0) {
+            moveHtml += '<button class="btn-row-move" data-section="' + section.key + '" data-row="' + rowIndex + '" data-dir="up" title="Move command up">\u25b2</button>';
+        }
+        if (rowIndex < section.commands.length - 1) {
+            moveHtml += '<button class="btn-row-move" data-section="' + section.key + '" data-row="' + rowIndex + '" data-dir="down" title="Move command down">\u25bc</button>';
+        }
+        deleteHtml = '<button class="btn-row-delete" data-section="' + section.key + '" data-row="' + rowIndex + '" title="Remove this command">\u00d7</button>';
     }
+    html += '<td class="col-move">' + moveHtml + '</td>';
+    html += '<td class="col-delete">' + deleteHtml + '</td>';
 
     html += '</tr>';
     return html;
@@ -2252,6 +2595,22 @@ function escapeHtml(str) {
 }
 
 function bindTableEvents(sections) {
+    // Expand All / Collapse All
+    var expandBtn = document.getElementById('tableExpandAll');
+    var collapseBtn = document.getElementById('tableCollapseAll');
+    if (expandBtn) {
+        expandBtn.addEventListener('click', function() {
+            document.querySelectorAll('.table-section.collapsed').forEach(function(el) { el.classList.remove('collapsed'); });
+            document.querySelectorAll('.table-section-header.collapsed').forEach(function(el) { el.classList.remove('collapsed'); });
+        });
+    }
+    if (collapseBtn) {
+        collapseBtn.addEventListener('click', function() {
+            document.querySelectorAll('.table-section').forEach(function(el) { el.classList.add('collapsed'); });
+            document.querySelectorAll('.table-section-header').forEach(function(el) { el.classList.add('collapsed'); });
+        });
+    }
+
     // Section collapse/expand
     document.querySelectorAll('.table-section-header').forEach(function(header) {
         header.addEventListener('click', function() {
@@ -2264,9 +2623,35 @@ function bindTableEvents(sections) {
         });
     });
 
-    // Row click → select in visual editor
+    // Condition reorder buttons
+    document.querySelectorAll('.btn-section-move').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var condIdx = parseInt(this.getAttribute('data-cond'));
+            var dir = this.getAttribute('data-dir');
+            var target = dir === 'up' ? condIdx - 1 : condIdx + 1;
+            if (target >= 0 && target < experiment.conditions.length) {
+                reorderConditions(condIdx, target);
+                renderTableView();
+            }
+        });
+    });
+
+    // Condition remove buttons
+    document.querySelectorAll('.btn-section-remove').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var condIdx = parseInt(this.getAttribute('data-cond'));
+            removeCondition(condIdx);
+            renderTableView();
+        });
+    });
+
+    // Row click → select in commands editor
     document.querySelectorAll('.cmd-table tbody tr').forEach(function(row) {
-        row.addEventListener('click', function() {
+        row.addEventListener('click', function(e) {
+            // Don't trigger row selection when clicking inputs/buttons
+            if (e.target.closest('input, select, button')) return;
             var sectionKey = this.getAttribute('data-section');
             // Highlight this row
             document.querySelectorAll('.cmd-table tr.selected').forEach(function(r) { r.classList.remove('selected'); });
@@ -2287,20 +2672,108 @@ function bindTableEvents(sections) {
         });
     });
 
+    // Editable table fields
+    document.querySelectorAll('.tbl-field').forEach(function(el) {
+        var eventType = el.tagName === 'SELECT' ? 'change' : 'input';
+        el.addEventListener(eventType, function(e) {
+            e.stopPropagation();
+            var sectionKey = this.getAttribute('data-section');
+            var rowIndex = parseInt(this.getAttribute('data-row'));
+            var field = this.getAttribute('data-field');
+            var section = sections.find(function(s) { return s.key === sectionKey; });
+            if (!section) return;
+            var cmd = section.commands[rowIndex];
+            if (!cmd) return;
+
+            if (field === 'mode') {
+                cmd.mode = parseInt(this.value);
+                if (cmd.mode === 2) { cmd.gain = 0; } else { cmd.frame_rate = 0; }
+                renderTableView(); // re-render to swap FR/gain field
+                renderTimeline();
+                return;
+            }
+
+            var val = this.value;
+            if (['duration', 'frame_rate', 'gain', 'frame_index', 'pattern_ID'].indexOf(field) >= 0) {
+                val = parseFloat(val);
+                if (isNaN(val)) return;
+            }
+            cmd[field] = val;
+            renderTimeline();
+            updateSummary();
+        });
+    });
+
+    // Editable plugin param fields in table
+    document.querySelectorAll('.tbl-param').forEach(function(el) {
+        el.addEventListener('input', function(e) {
+            e.stopPropagation();
+            var sectionKey = this.getAttribute('data-section');
+            var rowIndex = parseInt(this.getAttribute('data-row'));
+            var param = this.getAttribute('data-param');
+            var section = sections.find(function(s) { return s.key === sectionKey; });
+            if (!section) return;
+            var cmd = section.commands[rowIndex];
+            if (!cmd || !cmd.params) return;
+            var val = this.value;
+            var num = Number(val);
+            cmd.params[param] = (!isNaN(num) && val !== '') ? num : val;
+            renderTimeline();
+        });
+    });
+
     // Delete row buttons
     document.querySelectorAll('.btn-row-delete').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
-            // For now, only conditions have delete buttons and only have 1 command
-            // (will be expanded when conditions get multi-command support)
-            alert('Command removal will be available when multi-command conditions are implemented (Phase 3).');
+            var sectionKey = this.getAttribute('data-section');
+            var rowIndex = parseInt(this.getAttribute('data-row'));
+            var section = sections.find(function(s) { return s.key === sectionKey; });
+            if (section && section.commands.length > 1 && rowIndex < section.commands.length) {
+                section.commands.splice(rowIndex, 1);
+                renderTableView();
+                renderTimeline();
+                updateSummary();
+            }
         });
     });
 
-    // Add row buttons
-    document.querySelectorAll('.table-add-row button').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            alert('Add command will be available when multi-command conditions are implemented (Phase 3).');
+    // Move command up/down buttons
+    document.querySelectorAll('.btn-row-move').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var sectionKey = this.getAttribute('data-section');
+            var rowIndex = parseInt(this.getAttribute('data-row'));
+            var dir = this.getAttribute('data-dir');
+            var target = dir === 'up' ? rowIndex - 1 : rowIndex + 1;
+            var section = sections.find(function(s) { return s.key === sectionKey; });
+            if (section && target >= 0 && target < section.commands.length) {
+                var tmp = section.commands[rowIndex];
+                section.commands[rowIndex] = section.commands[target];
+                section.commands[target] = tmp;
+                renderTableView();
+                renderTimeline();
+                updateSummary();
+            }
+        });
+    });
+
+    // Add command dropdowns
+    document.querySelectorAll('.table-add-cmd-select').forEach(function(sel) {
+        sel.addEventListener('change', function(e) {
+            if (!e.target.value) return;
+            var sectionKey = this.getAttribute('data-section');
+            var section = sections.find(function(s) { return s.key === sectionKey; });
+            if (section) {
+                var newCmd = createCommandFromSelectValue(e.target.value);
+                if (newCmd) {
+                    section.commands.push(newCmd);
+                    renderTableView();
+                    renderTimeline();
+                    updateSummary();
+                }
+            }
+            e.target.value = '';
         });
     });
 }
@@ -2308,52 +2781,6 @@ function bindTableEvents(sections) {
 // ════════════════════════════════════════════════════
 // Multi-Lane Timeline View
 // ════════════════════════════════════════════════════
-
-function renderTimelineView() {
-    var placeholder = document.getElementById('timelineViewPlaceholder');
-    var content = document.getElementById('timelineViewContent');
-
-    // Need a selected condition or phase
-    if (!selection) {
-        placeholder.style.display = 'flex';
-        content.style.display = 'none';
-        return;
-    }
-
-    var commands;
-    var sectionLabel;
-    if (selection.type === 'condition') {
-        var cond = experiment.conditions[selection.index];
-        commands = cond.commands;
-        sectionLabel = 'Condition ' + (selection.index + 1) + ': ' + (cond.id || '');
-    } else {
-        var phase = experiment[selection.type];
-        commands = phase.commands;
-        var labels = { pretrial: 'Pretrial', intertrial: 'Intertrial', posttrial: 'Posttrial' };
-        sectionLabel = labels[selection.type] || selection.type;
-    }
-
-    if (!commands || commands.length === 0) {
-        placeholder.style.display = 'flex';
-        content.style.display = 'none';
-        return;
-    }
-
-    placeholder.style.display = 'none';
-    content.style.display = 'block';
-
-    // Compute lane events from sequential command execution
-    var laneData = computeLaneData(commands);
-
-    // Build SVG
-    content.innerHTML = '<div class="lane-timeline">' +
-        '<div class="lane-header">' + escapeHtml(sectionLabel) + '</div>' +
-        buildLaneSVG(laneData, commands) +
-        '</div>';
-
-    // Bind click events on SVG elements
-    bindTimelineViewEvents(commands);
-}
 
 /**
  * Compute lane positions from sequential command execution.
@@ -2562,23 +2989,6 @@ function formatTimeTick(seconds) {
 /**
  * Bind click events on SVG timeline command elements.
  */
-function bindTimelineViewEvents(commands) {
-    document.querySelectorAll('.tl-cmd').forEach(function(el) {
-        el.addEventListener('click', function() {
-            var cmdIndex = parseInt(this.dataset.cmd);
-            // Highlight in SVG
-            document.querySelectorAll('.tl-cmd').forEach(function(e) {
-                e.querySelectorAll('rect, circle, polygon').forEach(function(shape) {
-                    shape.removeAttribute('filter');
-                });
-            });
-            this.querySelectorAll('rect, circle, polygon').forEach(function(shape) {
-                shape.setAttribute('filter', 'url(#glow)');
-            });
-        });
-    });
-}
-
 // ════════════════════════════════════════════════════
 // YAML Export
 // ════════════════════════════════════════════════════

@@ -215,31 +215,33 @@
         <a href="experiment_designer.html" class="nav-link">&larr; Back to Experiment Designer</a>
 
         <h1>Experiment Designer Quick Start</h1>
-        <p class="subtitle">Learn the interface and create your first protocol in minutes.</p>
+        <p class="subtitle">v0.8 | 2026-04-08 18:31 ET &mdash; Learn the interface and create your first protocol in minutes.</p>
 
         <h2>Interface overview</h2>
 
         <div class="layout-diagram"><span class="hl">Top bar</span>: &larr; Back | Experiment Designer    [Quick Start] [Import YAML] [<span class="hl">Export YAML</span>]
 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;
-<span class="hl">Left panel</span>        &#9474;  <span class="hl">Right panel</span>: [VISUAL] [TABLE] [TIMELINE]
+<span class="hl">Left panel</span>        &#9474;  <span class="hl">Right panel</span>: [COMMANDS] [TABLE]
                   &#9474;
-  Experiment      &#9474;    Visual: Command card editor
-  Arena + Rig     &#9474;    Table:  Spreadsheet view
-  Structure       &#9474;    Timeline: Multi-lane SVG
-  Phases          &#9474;
-  Plugins         &#9474;    (select a block on the timeline
-                  &#9474;     to populate the editor)
+  Experiment      &#9474;    Commands: Command card editor
+  Arena + Rig     &#9474;    Table:    Editable spreadsheet view
+  Structure       &#9474;
+  Phases          &#9474;    (select a block on the timeline
+  Plugins         &#9474;     to populate the editor)
 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;
 <span class="hl">Timeline</span>: [+ Add] | summary          [&#8722;] [+] [Fit]
   <span class="hl">PRE</span> &#9474; <span class="hl">Cond 1</span> &#9474; <span class="hl">ITI</span> &#9474; <span class="hl">Cond 2</span> &#9474; <span class="hl">ITI</span> &#9474; <span class="hl">Cond 3</span> &#9474; <span class="hl">POST</span>
-  0s     5s    10s    15s    20s    25s</div>
+  &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;
+  <span class="hl">Lane view</span>: controller &#9608;&#9608;&#9608;   &#9608;&#9608;&#9608;   &#9608;&#9608;&#9608;
+              plugins   &#9679;  &#9679;  &#9679;  &#9679;  &#9679;  &#9679;
+              waits     &#9604;&#9604; &#9604;&#9604; &#9604;&#9604; &#9604;&#9604; &#9604;&#9604; &#9604;&#9604;</div>
 
         <p>The page has three zones:</p>
         <ul class="key-list">
             <li><strong>Left panel</strong> &mdash; experiment settings, arena + rig path, repetitions, phase toggles, plugin checkboxes</li>
-            <li><strong>Right panel</strong> &mdash; three tabs for editing the selected condition or phase:
-                <strong>Visual</strong> (command cards), <strong>Table</strong> (spreadsheet), <strong>Timeline</strong> (multi-lane SVG)</li>
-            <li><strong>Bottom timeline</strong> &mdash; your experiment sequence. Green = conditions, gray = phases (PRE/POST), dark = inter-trial intervals (ITI). Click any block to edit it.</li>
+            <li><strong>Right panel</strong> &mdash; two tabs for editing the selected condition or phase:
+                <strong>Commands</strong> (command cards), <strong>Table</strong> (editable spreadsheet)</li>
+            <li><strong>Bottom timeline</strong> &mdash; your experiment sequence. Green = conditions, gray = phases (PRE/POST), dark = inter-trial intervals (ITI). Click any block to edit it. Below the blocks, a <strong>lane view</strong> shows controller, plugin, and wait commands across the full experiment.</li>
         </ul>
 
         <h2>Walkthrough: create an optomotor protocol</h2>
@@ -279,15 +281,15 @@
         <div class="step">
             <span class="step-number">5</span>
             <p><strong>Enable plugins</strong> (left panel, Plugins section &mdash; scroll down)</p>
-            <p>Check <strong>LED Backlight</strong> &mdash; config card expands with Serial Port field</p>
-            <p>Check <strong>BIAS Camera</strong> &mdash; config card expands with Video Format and Frame Rate</p>
-            <p class="hint">Enabling plugins makes their commands available in the "Add Command" dropdown when editing conditions.</p>
+            <p>Check <strong>LED Backlight</strong> &mdash; config card expands with optional override fields</p>
+            <p>Check <strong>BIAS Camera</strong> &mdash; config card expands with optional override fields (IP, Port, Video Format, Frame Rate)</p>
+            <p class="hint">Enabling plugins makes their commands available in the "Add Command" dropdown. Config fields like IP, port, and serial port are already set in the rig YAML &mdash; leave them empty to use the rig values. Only fill them in if you need to override the rig for this experiment.</p>
         </div>
 
         <div class="step">
             <span class="step-number">6</span>
-            <p><strong>Edit the first condition</strong> (right panel, Visual tab)</p>
-            <p>Click the first green condition block on the bottom timeline. The Visual tab shows command cards.</p>
+            <p><strong>Edit the first condition</strong> (right panel, Commands tab)</p>
+            <p>Click the first green condition block on the bottom timeline. The Commands tab shows command cards.</p>
             <p>Set the Condition ID: <code>rightward_grating</code></p>
             <p>In the <strong>trialParams</strong> card: Pattern: <code>pat0002_rightward_grating.pat</code>, Duration: <code>5</code>, Mode: <code>Constant Rate</code>, Frame Rate: <code>60</code></p>
             <p class="hint">The timeline block updates in real time as you type.</p>
@@ -299,8 +301,8 @@
             <p>Use the <strong>+ Add Command...</strong> dropdown at the bottom of the card list:</p>
             <p>Select <code>Get Timestamp</code> from the BIAS Camera group &mdash; a blue plugin card appears</p>
             <p>Select <code>Wait</code> &mdash; a gray wait card appears (set duration to <code>3</code>)</p>
-            <p>Select <code>Set IR LED Power</code> from the LED Backlight group &mdash; set power to <code>50</code></p>
-            <p class="hint">Commands execute sequentially. trialParams fires the arena controller autonomously; plugin and wait commands run during the display period.</p>
+            <p>Select <code>Set IR LED Power</code> from the LED Backlight group &mdash; a blue card appears with a <strong>Power</strong> field pre-filled with the default value. Set it to <code>50</code>.</p>
+            <p class="hint">Commands execute sequentially. trialParams fires the arena controller autonomously; plugin and wait commands run during the display period. Plugin commands that accept parameters show editable fields automatically.</p>
         </div>
 
         <div class="step">
@@ -327,10 +329,9 @@
 
         <div class="step">
             <span class="step-number">11</span>
-            <p><strong>Visualize with Timeline view</strong></p>
-            <p>Click the <strong>TIMELINE</strong> tab, then click a condition on the bottom timeline.</p>
-            <p>The SVG shows concurrent lanes: controller bar (green), plugin markers (blue dots), and wait bars (gray).</p>
-            <p class="hint">This shows how trialParams runs autonomously while plugin commands execute at their sequential time positions. Hover over elements for tooltips.</p>
+            <p><strong>Check the lane view</strong></p>
+            <p>Below the filmstrip blocks, the <strong>lane view</strong> shows the full experiment as concurrent lanes: controller bars (green), plugin markers (blue dots), and wait bars (gray). The selected block is highlighted.</p>
+            <p class="hint">This shows how trialParams runs autonomously while plugin commands execute at their sequential time positions. Hover over elements for tooltips. The lane view scrolls and zooms in sync with the block strip above.</p>
         </div>
 
         <div class="step">
@@ -350,26 +351,24 @@
 
         <h2>Editor tabs</h2>
 
-        <h3>Visual tab</h3>
-        <p>The default editor. Each command is a color-coded card with inline editable fields. Cards have colored left borders: <strong style="color: #00e676;">green</strong> = controller, <strong style="color: #8b949e;">gray</strong> = wait, <strong style="color: #4dabf7;">blue</strong> = plugin. Use the <code>+ Add Command...</code> dropdown to add new commands. Click <strong>&times;</strong> to delete a command.</p>
+        <h3>Commands tab</h3>
+        <p>The default editor. Each command is a color-coded card with inline editable fields. Cards have colored left borders: <strong style="color: #00e676;">green</strong> = controller, <strong style="color: #8b949e;">gray</strong> = wait, <strong style="color: #4dabf7;">blue</strong> = plugin. Use the <code>+ Add Command...</code> dropdown to add new commands. Click <strong>&times;</strong> to delete a command. Use the <strong>&#9650;</strong>/<strong>&#9660;</strong> arrows to reorder commands within a condition or phase.</p>
 
         <h3>Table tab</h3>
-        <p>Shows the entire experiment as a spreadsheet with collapsible sections. Each row is one command with columns for Type, Target (plugin name), Command, Duration, Mode, Frame Rate, and Pattern/Params. Click section headers to collapse/expand.</p>
-
-        <h3>Timeline tab</h3>
-        <p>SVG multi-lane visualization of the selected condition. Shows how commands execute concurrently:</p>
+        <p>Shows the entire experiment as an editable spreadsheet with collapsible sections. Each row is one command with columns for Type, Target, Command, Duration, Mode, Frame Rate, and Pattern/Params. Use <strong>Expand All</strong> / <strong>Collapse All</strong> buttons to toggle all sections. Within each section you can:</p>
         <ul class="key-list">
-            <li><strong>Controller lane</strong> &mdash; green bar spanning the trialParams duration</li>
-            <li><strong>Plugin lanes</strong> &mdash; blue circle markers at each plugin command's execution time</li>
-            <li><strong>Waits row</strong> &mdash; gray bars showing pause durations</li>
+            <li><strong>Edit fields inline</strong> &mdash; click any Duration, Mode, Frame Rate, Pattern, or plugin parameter to edit it directly</li>
+            <li>Use <strong>&#9650;</strong>/<strong>&#9660;</strong> arrows to reorder commands</li>
+            <li>Click <strong>&times;</strong> to delete a command or remove a condition</li>
+            <li>Use the <strong>+ Add Command...</strong> dropdown to add new commands</li>
+            <li>Use section header arrows to reorder conditions</li>
         </ul>
-        <p class="hint">Key insight: <code>trialParams</code> fires the arena controller which runs autonomously for its duration. Wait commands advance the clock. Plugin commands fire at the current clock position without advancing it.</p>
 
         <h2>Timeline controls</h2>
 
         <ul class="key-list">
             <li><code>+ Add Condition</code> adds a new condition block and selects it</li>
-            <li><code>&times;</code> button on a condition block removes it (visible on hover, needs 2+ conditions)</li>
+            <li>Remove conditions from the <strong>Table</strong> tab using the <strong>&times;</strong> button in the section header</li>
             <li><strong>Drag</strong> a green condition block onto another to reorder</li>
             <li><code>&minus;</code> / <code>+</code> zoom the timeline in and out</li>
             <li><code>Fit</code> scales the timeline to fit the window</li>

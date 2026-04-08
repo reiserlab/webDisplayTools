@@ -128,13 +128,15 @@ var BUILTIN_PLUGINS = {
             port: {
                 type: 'string',
                 label: 'Serial Port',
-                default: 'COM6',
-                placeholder: 'COM6 or /dev/ttyUSB0'
+                default: '',
+                placeholder: 'Set in rig YAML (e.g. COM6)',
+                rigDefined: true
             },
             critical: {
                 type: 'boolean',
                 label: 'Critical (abort on failure)',
-                default: false
+                default: '',
+                placeholder: 'Default: true (set in code)'
             }
         },
         commands: {
@@ -264,18 +266,24 @@ var BUILTIN_PLUGINS = {
             ip: {
                 type: 'string',
                 label: 'IP Address',
-                default: '127.0.0.1'
+                default: '',
+                placeholder: 'Set in rig YAML (e.g. 127.0.0.1)',
+                rigDefined: true
             },
             port: {
                 type: 'number',
                 label: 'Port',
-                default: 5010
+                default: '',
+                placeholder: 'Set in rig YAML (e.g. 5010)',
+                rigDefined: true
             },
             video_format: {
                 type: 'select',
                 label: 'Video Format',
-                default: 'ufmf',
+                default: '',
+                placeholder: 'Default: ufmf',
                 options: [
+                    { value: '', label: '(use default)' },
                     { value: 'ufmf', label: 'UFMF' },
                     { value: 'avi', label: 'AVI' }
                 ]
@@ -283,7 +291,8 @@ var BUILTIN_PLUGINS = {
             frame_rate: {
                 type: 'number',
                 label: 'Frame Rate',
-                default: 100,
+                default: '',
+                placeholder: 'Default: 100 (10-200)',
                 min: 10,
                 max: 200
             }
