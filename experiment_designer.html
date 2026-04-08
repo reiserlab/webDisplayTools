@@ -1132,7 +1132,7 @@
 
 <!-- Footer -->
 <div class="app-footer">
-    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.8 | 2026-04-08 18:31 ET</p>
+    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.8 | 2026-04-08 18:38 ET</p>
 </div>
 
 <!-- Hidden file input for import -->
@@ -1962,8 +1962,8 @@ function handleTrackClick(e) {
         selection = { type: type };
     }
     renderTimeline();
+    switchEditorTab('commands');
     renderEditor();
-    renderTableView();
 }
 
 function handleDragStart(e) {
