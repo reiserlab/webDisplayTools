@@ -438,14 +438,18 @@ The following UI improvements were made on 2026-02-02 and need testing on GitHub
 
 ## Experiment Designer
 
-### Architecture (v0.6 — 2026-04-01)
-- 3-zone layout: settings panel (280px left), editor with tab bar (flex right), timeline (bottom strip)
+### Architecture (v0.8 — 2026-04-08)
+- 3-zone layout: settings panel (280px left), editor with tab bar (flex right), filmstrip with lane view (bottom)
 - Single `<script type="module">` importing from `js/arena-configs.js`, `js/protocol-yaml.js`, `js/plugin-registry.js`
 - Data model: `experiment` object with `experiment_info`, `arena_info`, `rig_path`, `plugins[]`, `experiment_structure`, phases with `commands[]`, and `conditions[]` with `commands[]`
 
 ### Shared Modules
 - **`js/protocol-yaml.js`** — YAML parser (`simpleYAMLParse` with inline comment stripping), v1/v2 generators, string helpers. Dual-export (window.ProtocolYAML + ES6 module). Used by HTML, both test files.
+  - `yamlStr(str)` — double-quotes strings for YAML
+  - `yamlPath(str)` — single-quotes paths (no escape sequences, safe for Windows backslashes)
 - **`js/plugin-registry.js`** — Built-in plugin definitions (LEDControllerPlugin: 7 commands, BiasPlugin: 6 commands), controller command definitions (6 commands), lookup functions for dropdown population. Dual-export.
+  - Plugin config fields use `rigDefined: true` for fields already in rig YAML (ip, port) — these are NOT auto-included in exports
+  - `createPluginEntry()` skips fields with empty string defaults
 
 ### Data Model (v2 commands)
 Conditions and phases use **command arrays** as the primary data model:
@@ -470,37 +474,53 @@ experiment.rig_path = "./configs/rigs/test_rig_1.yaml"
 ```
 Helper functions: `cmdFindTrialParams(commands)`, `condGetDuration(cond)`, `condGetPattern(cond)`, `phaseGetDuration(phase)`.
 
+**Shared command helpers** (used by Commands tab, Table view, and phase editor):
+- `buildAddCommandOptions()` — returns HTML `<option>`/`<optgroup>` string for add-command dropdowns
+- `createCommandFromSelectValue(value)` — parses `"controller:trialParams"` / `"wait:wait"` / `"plugin:backlight:setRedLEDPower"` into a command object
+- `createPluginCommand(pluginName, commandName)` — builds plugin command with default params from registry schema
+
 ### YAML Export (v2)
 - Generates protocol v2 via `generateV2Protocol()` from `js/protocol-yaml.js`
 - `rig:` field replaces inline `arena_info`
-- `plugins:` section lists enabled plugins with class/config
+- **Paths use single quotes** via `yamlPath()` (pattern_library, rig, script_path) — prevents Windows backslash escape issues
+- `plugins:` section lists enabled plugins with class/config — only user-set config values are exported (empty = omit)
 - Conditions export full command arrays including plugin commands with params
 - Phases export command arrays directly
 
 ### Editor Tabs
-Three tabs in the right panel, all views of the same data model:
-1. **Visual** — Command card editor with color-coded cards (green=controller, gray=wait, blue=plugin), inline field editing, "Add Command" dropdown from plugin registry
-2. **Table** — Spreadsheet view with collapsible sections (pretrial, conditions with ITI, posttrial), type badges, param display
-3. **Timeline** — SVG multi-lane visualization per condition: controller spans, plugin event markers, wait bars, time axis. Read-only with hover tooltips.
+Two tabs in the right panel, both views of the same data model:
+1. **Commands** (was "Visual" in v0.6) — Command card editor with color-coded cards (green=controller, gray=wait, blue=plugin), inline field editing, "Add Command" dropdown, up/down reorder arrows, delete buttons
+2. **Table** — Fully editable spreadsheet view with collapsible sections, inline field editing, add/move/delete commands, condition reorder/remove, Expand All/Collapse All buttons
+
+### Bottom Filmstrip + Lane View
+The bottom timeline area is a unified scroll container:
+- **Block strip**: Colored blocks (green=condition, gray=phase, dark=ITI) with drag-to-reorder conditions
+- **Lane view**: Always-visible SVG showing controller spans (green bars), plugin events (blue dots), and wait bars (gray) across all blocks
+- **Fixed lane labels**: Left column (70px) with lane names stays visible during scroll
+- Block strip and lane SVG share the same scroll parent for perfect alignment
+- Block widths use `Math.max(48, duration * pxPerSecond)` — lane SVG must match this + account for 2px CSS gap between blocks
+- Clicking any filmstrip block switches to the Commands tab
 
 ### Key Implementation Notes
 - **Must use `<script type="module">`** to import shared modules
 - Mode 2 (Constant Rate): `gain` fixed at 0, `frame_rate` editable
 - Mode 4 (Closed-Loop): `frame_rate` fixed at 0, `gain` editable
-- `handleTrackClick` must explicitly call `renderTimelineView()` and `renderTableView()` after `renderEditor()` to keep all tabs in sync
-- Timeline `computeLaneData()`: trialParams fires controller autonomously (doesn't advance clock), wait advances clock, plugin commands are instantaneous
+- `handleTrackClick` calls `switchEditorTab('commands')` then `renderEditor()` — always shows Commands tab on block click
+- `computeLaneData()`: trialParams fires controller autonomously (doesn't advance clock), wait advances clock, plugin commands are instantaneous
+- **Phase initialization must deep-clone**: `{ include: false, commands: JSON.parse(JSON.stringify(DEFAULT_PHASE.commands)) }` — shallow spread shares the commands array reference
+- Plugin config uses `setPluginConfig()` helper that deletes empty values and removes config object when empty
 
 ### Related Files
-- `experiment_designer.html` — Main tool (v0.6)
-- `experiment_designer_quickstart.html` — Step-by-step guide
-- `js/protocol-yaml.js` — Shared YAML parser/generator
-- `js/plugin-registry.js` — Plugin definitions + command schemas
+- `experiment_designer.html` — Main tool (v0.8)
+- `experiment_designer_quickstart.html` — Step-by-step guide (v0.8)
+- `js/protocol-yaml.js` — Shared YAML parser/generator (added `yamlPath`)
+- `js/plugin-registry.js` — Plugin definitions + command schemas (updated defaults)
 - `tests/test-protocol-roundtrip.js` — 130 CI checks (9 suites, v1+v2)
 - `tests/generate-roundtrip-protocol.js` — YAML + manifest generator for MATLAB
 - `tests/fixtures/v2_*.yaml` — V2 YAML test fixtures from maDisplayTools
 - `docs/experiment-designer-v06-testing.md` — Manual testing checklist
 - `docs/protocol-roundtrip-testing.md` — Roundtrip testing architecture
-- GitHub Issue: [#33](https://github.com/reiserlab/webDisplayTools/issues/33)
+- GitHub Issues: [#33](https://github.com/reiserlab/webDisplayTools/issues/33), [#53](https://github.com/reiserlab/webDisplayTools/issues/53) (hover tooltips), [#54](https://github.com/reiserlab/webDisplayTools/issues/54) (undo/redo)
 
 ## Planning Best Practices
 
