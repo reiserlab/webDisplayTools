@@ -283,7 +283,7 @@ function appendCommand(lines, cmd, indentLevel) {
         lines.push(ind + '  plugin_name: ' + yamlStr(cmd.plugin_name));
     }
     if (cmd.pattern) {
-        lines.push(ind + '  pattern: ' + yamlStr(cmd.pattern));
+        lines.push(ind + '  pattern: ' + yamlPath(cmd.pattern));
     }
     if (cmd.pattern_ID !== undefined) {
         lines.push(ind + '  pattern_ID: ' + cmd.pattern_ID);
@@ -305,16 +305,25 @@ function appendCommand(lines, cmd, indentLevel) {
     }
     // Plugin params (nested key-value)
     if (cmd.params && typeof cmd.params === 'object') {
-        lines.push(ind + '  params:');
         var paramInd = ind + '    ';
+        var paramLines = [];
         var keys = Object.keys(cmd.params);
         for (var k = 0; k < keys.length; k++) {
             var pKey = keys[k];
             var pVal = cmd.params[pKey];
+            // Skip empty optional params (bug #56)
+            if (pVal === '' || pVal === null || pVal === undefined) continue;
             if (typeof pVal === 'string') {
-                lines.push(paramInd + pKey + ': ' + yamlStr(pVal));
+                // Use single quotes for string params — safe for file paths (bug #58)
+                paramLines.push(paramInd + pKey + ': ' + yamlPath(pVal));
             } else {
-                lines.push(paramInd + pKey + ': ' + pVal);
+                paramLines.push(paramInd + pKey + ': ' + pVal);
+            }
+        }
+        if (paramLines.length > 0) {
+            lines.push(ind + '  params:');
+            for (var pl = 0; pl < paramLines.length; pl++) {
+                lines.push(paramLines[pl]);
             }
         }
     }

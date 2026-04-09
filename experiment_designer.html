@@ -1132,7 +1132,7 @@
 
 <!-- Footer -->
 <div class="app-footer">
-    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.8 | 2026-04-08 18:38 ET</p>
+    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.8.1 | 2026-04-09 17:46 ET</p>
 </div>
 
 <!-- Hidden file input for import -->
@@ -1141,7 +1141,7 @@
 <script type="module">
 import { STANDARD_CONFIGS, getConfig, getConfigsByGeneration } from './js/arena-configs.js';
 import { simpleYAMLParse, generateV2Protocol, yamlStr } from './js/protocol-yaml.js';
-import { BUILTIN_PLUGINS, CONTROLLER_COMMANDS, getPluginCommands, getAllCommandOptions, createPluginEntry } from './js/plugin-registry.js';
+import { BUILTIN_PLUGINS, CONTROLLER_COMMANDS, getPluginCommands, getCommandParams, getAllCommandOptions, createPluginEntry } from './js/plugin-registry.js';
 
 // ════════════════════════════════════════════════════
 // Data Model
@@ -1211,16 +1211,19 @@ function cmdFindTrialParams(commands) {
     return null;
 }
 
-/** Get display duration for a condition (trialParams duration or sum of waits). */
+/** Get display duration for a condition.
+ *  Duration = max(trialParams duration, sum of waits).
+ *  This shows the actual wall-clock time: if waits exceed trialParams,
+ *  the condition runs longer than the pattern display. */
 function condGetDuration(cond) {
-    var tp = cmdFindTrialParams(cond.commands);
-    if (tp && tp.duration) return tp.duration;
-    var total = 0;
+    var tpDuration = 0;
+    var waitTotal = 0;
     for (var i = 0; i < cond.commands.length; i++) {
-        if (cond.commands[i].type === 'wait') total += (cond.commands[i].duration || 0);
-        else if (cond.commands[i].command_name === 'trialParams') total += (cond.commands[i].duration || 0);
+        var cmd = cond.commands[i];
+        if (cmd.command_name === 'trialParams') tpDuration = cmd.duration || 0;
+        if (cmd.type === 'wait') waitTotal += (cmd.duration || 0);
     }
-    return total || 0;
+    return Math.max(tpDuration, waitTotal) || 0;
 }
 
 /** Get pattern filename for a condition. */
@@ -1229,16 +1232,18 @@ function condGetPattern(cond) {
     return tp ? (tp.pattern || '') : '';
 }
 
-/** Get total duration of a phase's commands. */
+/** Get total duration of a phase's commands.
+ *  Duration = max(trialParams duration, sum of waits). */
 function phaseGetDuration(phase) {
     if (!phase.include || !phase.commands) return 0;
-    var total = 0;
+    var tpDuration = 0;
+    var waitTotal = 0;
     for (var i = 0; i < phase.commands.length; i++) {
         var cmd = phase.commands[i];
-        if (cmd.type === 'wait') total += (cmd.duration || 0);
-        if (cmd.command_name === 'trialParams') total += (cmd.duration || 0);
+        if (cmd.command_name === 'trialParams') tpDuration = cmd.duration || 0;
+        if (cmd.type === 'wait') waitTotal += (cmd.duration || 0);
     }
-    return total;
+    return Math.max(tpDuration, waitTotal);
 }
 
 /** Create a deep copy of a commands array. */
@@ -2265,9 +2270,15 @@ function bindCommandCardEvents(commands, onChange) {
             var cmd = commands[ci];
             if (!cmd || !cmd.params) return;
             var val = this.value;
-            // Try to parse as number
-            var num = Number(val);
-            cmd.params[param] = (!isNaN(num) && val !== '') ? num : val;
+            // Check schema type — keep string-typed params as strings (bug #57)
+            var schema = getCommandParams('plugin', cmd.plugin_name, cmd.command_name);
+            var paramSchema = schema && schema[param];
+            if (paramSchema && paramSchema.type === 'string') {
+                cmd.params[param] = val;
+            } else {
+                var num = Number(val);
+                cmd.params[param] = (!isNaN(num) && val !== '') ? num : val;
+            }
         });
     });
 
@@ -2432,16 +2443,17 @@ function getConditionCommands(cond) {
  * Compute total duration of a command array.
  */
 function computeSectionDuration(commands) {
-    var total = 0;
+    var tpDuration = 0;
+    var waitTotal = 0;
     for (var i = 0; i < commands.length; i++) {
         var cmd = commands[i];
-        if (cmd.type === 'wait' && cmd.duration) {
-            total += cmd.duration;
-        } else if (cmd.command_name === 'trialParams' && cmd.duration) {
-            total += cmd.duration;
+        if (cmd.command_name === 'trialParams' && cmd.duration) {
+            tpDuration = cmd.duration;
+        } else if (cmd.type === 'wait' && cmd.duration) {
+            waitTotal += cmd.duration;
         }
     }
-    return total;
+    return Math.max(tpDuration, waitTotal);
 }
 
 function renderTableSection(section) {
@@ -2716,8 +2728,15 @@ function bindTableEvents(sections) {
             var cmd = section.commands[rowIndex];
             if (!cmd || !cmd.params) return;
             var val = this.value;
-            var num = Number(val);
-            cmd.params[param] = (!isNaN(num) && val !== '') ? num : val;
+            // Check schema type — keep string-typed params as strings (bug #57)
+            var schema = getCommandParams('plugin', cmd.plugin_name, cmd.command_name);
+            var paramSchema = schema && schema[param];
+            if (paramSchema && paramSchema.type === 'string') {
+                cmd.params[param] = val;
+            } else {
+                var num = Number(val);
+                cmd.params[param] = (!isNaN(num) && val !== '') ? num : val;
+            }
             renderTimeline();
         });
     });

@@ -553,6 +553,99 @@ check('v2rt: posttrial.include', v2Parsed.posttrial.include, true);
 check('v2rt: posttrial.commands.length', v2Parsed.posttrial.commands.length, 3);
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Suite 10: Bug fix regression tests (#55-58)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+console.log('\n--- Suite 10: Bug Fix Regressions (#55-58) ---');
+
+// Bug #56: Empty optional params should be omitted from YAML
+const emptyParamExperiment = {
+    experiment_info: { name: 'Empty Param Test' },
+    rig_path: './configs/rigs/test.yaml',
+    plugins: [
+        { name: 'backlight', type: 'class', matlab: { class: 'LEDControllerPlugin' }, config: {} }
+    ],
+    experiment_structure: { repetitions: 1, randomization: { enabled: false } },
+    conditions: [
+        {
+            id: 'test_empty',
+            commands: [
+                { type: 'plugin', plugin_name: 'backlight', command_name: 'setRedLEDPower',
+                  params: { power: 5, panel_num: 0, pattern: '' } },
+                { type: 'wait', duration: 3 }
+            ]
+        }
+    ],
+    pretrial: { include: false, commands: [] },
+    intertrial: { include: false, commands: [] },
+    posttrial: { include: false, commands: [] }
+};
+
+const emptyYaml = generateV2Protocol(emptyParamExperiment);
+check('bug56: empty pattern not in YAML', emptyYaml.includes('pattern:'), false);
+// Verify power and panel_num ARE present
+check('bug56: power still exported', emptyYaml.includes('power:'), true);
+check('bug56: panel_num still exported', emptyYaml.includes('panel_num:'), true);
+
+// Bug #57/#58: Pattern "1010" roundtrips as string with single quotes
+const patternExperiment = {
+    experiment_info: { name: 'Pattern Type Test' },
+    rig_path: './configs/rigs/test.yaml',
+    plugins: [
+        { name: 'backlight', type: 'class', matlab: { class: 'LEDControllerPlugin' }, config: {} }
+    ],
+    experiment_structure: { repetitions: 1, randomization: { enabled: false } },
+    conditions: [
+        {
+            id: 'test_pattern',
+            commands: [
+                { type: 'plugin', plugin_name: 'backlight', command_name: 'setRedLEDPower',
+                  params: { power: 5, panel_num: 0, pattern: '1010' } },
+                { type: 'wait', duration: 3 }
+            ]
+        }
+    ],
+    pretrial: { include: false, commands: [] },
+    intertrial: { include: false, commands: [] },
+    posttrial: { include: false, commands: [] }
+};
+
+const patYaml = generateV2Protocol(patternExperiment);
+const patParsed = simpleYAMLParse(patYaml);
+const patRedCmd = patParsed.block.conditions[0].commands.find(c => c.command_name === 'setRedLEDPower');
+check('bug57: pattern roundtrips as string', typeof patRedCmd.params.pattern, 'string');
+check('bug57: pattern value preserved', patRedCmd.params.pattern, '1010');
+
+// Bug #58: Controller pattern filename uses single quotes
+const filePatternExperiment = {
+    experiment_info: { name: 'Pattern Quote Test' },
+    rig_path: './configs/rigs/test.yaml',
+    plugins: [],
+    experiment_structure: { repetitions: 1, randomization: { enabled: false } },
+    conditions: [
+        {
+            id: 'test_quotes',
+            commands: [
+                { type: 'controller', command_name: 'trialParams',
+                  pattern: 'C:\\patterns\\my_pat.pat', duration: 5, mode: 2,
+                  frame_index: 1, frame_rate: 10, gain: 0 },
+                { type: 'wait', duration: 5 }
+            ]
+        }
+    ],
+    pretrial: { include: false, commands: [] },
+    intertrial: { include: false, commands: [] },
+    posttrial: { include: false, commands: [] }
+};
+
+const quoteYaml = generateV2Protocol(filePatternExperiment);
+// Single-quoted pattern should preserve backslashes
+check('bug58: pattern uses single quotes', quoteYaml.includes("pattern: 'C:\\patterns\\my_pat.pat'"), true);
+const quoteParsed = simpleYAMLParse(quoteYaml);
+const quoteTp = quoteParsed.block.conditions[0].commands.find(c => c.command_name === 'trialParams');
+check('bug58: backslash path roundtrips', quoteTp.pattern, 'C:\\patterns\\my_pat.pat');
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SUMMARY
 // ═══════════════════════════════════════════════════════════════════════════════
 
