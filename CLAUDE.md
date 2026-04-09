@@ -522,6 +522,51 @@ The bottom timeline area is a unified scroll container:
 - `docs/protocol-roundtrip-testing.md` — Roundtrip testing architecture
 - GitHub Issues: [#33](https://github.com/reiserlab/webDisplayTools/issues/33), [#53](https://github.com/reiserlab/webDisplayTools/issues/53) (hover tooltips), [#54](https://github.com/reiserlab/webDisplayTools/issues/54) (undo/redo)
 
+### Testing & Validation (v0.8)
+
+**Automated:** `node tests/test-protocol-roundtrip.js` — 130 checks across 9 suites (v1+v2 parse/generate roundtrips). Run after any change to `protocol-yaml.js` or the data model.
+
+**Manual testing checklist (import a v2 YAML like `full_experiment_test.yaml` to populate):**
+
+Phase independence:
+- [ ] Edit pretrial commands → intertrial/posttrial must NOT change
+- [ ] Each phase independently editable with different commands
+
+Plugin commands:
+- [ ] Adding `setRedLEDPower` shows power, panel_num, pattern fields with defaults
+- [ ] Adding `turnOffLED` shows NO parameter fields
+- [ ] Plugin params appear in exported YAML
+
+YAML export:
+- [ ] Paths use single quotes (check with Windows-style path like `C:\Users\lab\patterns`)
+- [ ] `critical` does NOT appear in backlight config
+- [ ] Camera ip/port/frame_rate/video_format NOT in export unless user-set
+- [ ] Backlight port NOT in export unless user-set
+
+Table view:
+- [ ] All fields editable inline (duration, mode, FR/gain, pattern, plugin params)
+- [ ] Add Command dropdown works for conditions and phases
+- [ ] Up/down arrows reorder commands
+- [ ] Up/down arrows in section headers reorder conditions
+- [ ] X button removes conditions (only when >1)
+- [ ] Expand All / Collapse All buttons work
+
+Filmstrip + lane view:
+- [ ] Clicking a block switches to Commands tab
+- [ ] Lane view labels stay fixed on left during scroll
+- [ ] Lane SVG aligns with blocks above (check across zoom levels)
+- [ ] White separator lines in gaps between blocks
+- [ ] Zoom in/out and Fit update both blocks and lanes
+- [ ] Selected block highlighted in lane view
+
+**Known issues from 2026-04-08 session:**
+- **Last-block lane alignment**: Minor drift may still be visible at certain zoom levels on the last block. Root cause was `totalWidth` not accounting for min-width clamping (`Math.max(48, ...)`) — fixed, but may need further tuning with complex experiments.
+- **GitHub Pages caching**: After pushing, the arena dropdown appeared empty until hard refresh (`Cmd+Shift+R`). This is the standard ES6 module caching issue — always hard refresh after deploy.
+- **CSS `content: '\u2807'` escape**: Unicode escapes in CSS `content` property rendered as literal text on some browsers. Fixed by using the literal character `⠇` instead.
+- **Filmstrip delete button removed**: Was too easy to accidentally delete a condition when double-clicking to select. Conditions can now only be removed from the Table view or the Commands tab's "Remove" button.
+- **Phase shallow copy bug**: `{ ...DEFAULT_PHASE }` shares the `commands` array reference between pretrial/intertrial/posttrial. Must use `JSON.parse(JSON.stringify(...))` for deep clone.
+- **Visual editor first-click alert**: The table view's `.btn-row-delete` class overlapped with visual editor delete buttons, causing a "Phase 3" alert on first click. Fixed by giving visual editor buttons a separate `.cmd-delete-btn` class.
+
 ## Planning Best Practices
 
 ### Project Size Assessment
