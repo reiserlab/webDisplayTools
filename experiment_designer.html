@@ -837,7 +837,7 @@
             max-width: 100%;
         }
 
-        /* Custom tooltip for filmstrip blocks (native title is unreliable with draggable) */
+        /* Custom tooltip for filmstrip blocks and lane elements */
         .block-tooltip {
             display: none;
             position: fixed;
@@ -848,11 +848,11 @@
             padding: 0.5rem 0.7rem;
             font-size: 0.72rem;
             line-height: 1.45;
-            white-space: pre;
+            white-space: nowrap;
             z-index: 1000;
             pointer-events: none;
             box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-            max-width: 320px;
+            max-width: 360px;
         }
 
         .timeline-block.dragging {
@@ -1150,7 +1150,7 @@
 
 <!-- Footer -->
 <div class="app-footer">
-    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.8.2 | 2026-04-09 23:16 ET</p>
+    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.8.3 | 2026-04-09 23:57 ET</p>
 </div>
 
 <!-- Hidden file input for import -->
@@ -1741,12 +1741,12 @@ function getTimelineBlocks() {
     return blocks;
 }
 
-/** Build a descriptive tooltip string for a filmstrip block (#53). */
+/** Build an HTML tooltip for a filmstrip block (#53). */
 function buildBlockTooltip(block) {
-    var lines = [block.label];
-    lines.push('Duration: ' + formatDuration(block.duration));
+    var h = '<div style="font-weight:600;">' + escapeHtml(block.label) + '</div>';
+    h += '<div>Duration: ' + formatDuration(block.duration) + '</div>';
     if (block.pattern) {
-        lines.push('Pattern: ' + block.pattern.split('/').pop());
+        h += '<div>Pattern: ' + escapeHtml(block.pattern.split('/').pop()) + '</div>';
     }
     if (block.commands && block.commands.length > 0) {
         var cmdSummary = [];
@@ -1774,17 +1774,14 @@ function buildBlockTooltip(block) {
                 cmdSummary.push(cmd.command_name);
             }
         }
-        lines.push('Commands (' + block.commands.length + '):');
+        h += '<div style="margin-top:2px;">Commands (' + block.commands.length + '):</div>';
         for (var ci = 0; ci < cmdSummary.length; ci++) {
-            lines.push('  ' + cmdSummary[ci]);
+            h += '<div style="padding-left:0.6em;">' + escapeHtml(cmdSummary[ci]) + '</div>';
         }
     }
-    if (block.type === 'condition') {
-        lines.push('Click to edit, drag to reorder');
-    } else {
-        lines.push('Click to edit');
-    }
-    return lines.join('\n');
+    var hint = block.type === 'condition' ? 'Click to edit, drag to reorder' : 'Click to edit';
+    h += '<div style="color:#ff6b6b;margin-top:3px;font-style:italic;">' + hint + '</div>';
+    return h;
 }
 
 function renderTimeline() {
@@ -1881,7 +1878,7 @@ function renderTimeline() {
             tip.className = 'block-tooltip';
             document.body.appendChild(tip);
         }
-        tip.textContent = block.dataset.tooltip;
+        tip.innerHTML = block.dataset.tooltip;
         tip.style.display = 'block';
         var rect = block.getBoundingClientRect();
         tip.style.left = Math.max(8, rect.left + rect.width / 2 - tip.offsetWidth / 2) + 'px';
@@ -1998,6 +1995,9 @@ function renderTimelineLanes(blocks, totalDuration, totalWidth) {
 
         var scale = ld.totalDuration > 0 ? blockW / ld.totalDuration : 0;
 
+        // Absolute time offset for this block (for tooltip display)
+        var absOff = bd.timeOffset;
+
         // Controller spans
         for (var cs = 0; cs < ld.controllerSpans.length; cs++) {
             var span = ld.controllerSpans[cs];
@@ -2006,12 +2006,20 @@ function renderTimelineLanes(blocks, totalDuration, totalWidth) {
             var cy = laneIdx * (LANE_H + LANE_GAP) + LANE_H / 2;
 
             if (span.startTime === span.endTime) {
-                svg += '<polygon points="' + sx + ',' + (cy - 5) + ' ' + (sx + 5) + ',' + cy + ' ' + sx + ',' + (cy + 5) + ' ' + (sx - 5) + ',' + cy + '" fill="#00e676" opacity="0.7">';
-                svg += '<title>' + escapeHtml(span.cmd.command_name || '') + '</title></polygon>';
+                var ctipI = '<div style="font-weight:600;color:#00e676;">' + escapeHtml(span.cmd.command_name || '') + '</div>'
+                    + '<div>Time: ' + formatDuration(absOff + span.startTime) + '</div>';
+                svg += '<polygon points="' + sx + ',' + (cy - 5) + ' ' + (sx + 5) + ',' + cy + ' ' + sx + ',' + (cy + 5) + ' ' + (sx - 5) + ',' + cy + '" fill="#00e676" opacity="0.7" class="lane-tip" data-tooltip="' + escapeAttr(ctipI) + '"/>';
             } else {
                 var sw = (span.endTime - span.startTime) * scale;
-                svg += '<rect x="' + sx + '" y="' + (laneIdx * (LANE_H + LANE_GAP) + 3) + '" width="' + sw + '" height="' + (LANE_H - 6) + '" fill="#00e676" opacity="0.2" rx="2" stroke="#00e676" stroke-width="0.5">';
-                svg += '<title>trialParams: ' + escapeHtml((span.cmd.pattern || '').split('/').pop()) + ' | ' + span.cmd.duration + 's</title></rect>';
+                var mStr = span.cmd.mode === 4 ? 'closed-loop' : 'constant-rate';
+                var ctipD = '<div style="font-weight:600;color:#00e676;">trialParams</div>';
+                if (span.cmd.pattern) ctipD += '<div>Pattern: ' + escapeHtml((span.cmd.pattern || '').split('/').pop()) + '</div>';
+                ctipD += '<div>Duration: ' + span.cmd.duration + 's (' + formatDuration(absOff + span.startTime) + ' &rarr; ' + formatDuration(absOff + span.endTime) + ')</div>';
+                ctipD += '<div>Mode: ' + mStr;
+                if (span.cmd.mode === 4) ctipD += ', Gain: ' + (span.cmd.gain || 0);
+                else ctipD += ', FR: ' + (span.cmd.frame_rate || 60);
+                ctipD += '</div>';
+                svg += '<rect x="' + sx + '" y="' + (laneIdx * (LANE_H + LANE_GAP) + 3) + '" width="' + sw + '" height="' + (LANE_H - 6) + '" fill="#00e676" opacity="0.2" rx="2" stroke="#00e676" stroke-width="0.5" class="lane-tip" data-tooltip="' + escapeAttr(ctipD) + '"/>';
             }
         }
 
@@ -2025,12 +2033,19 @@ function renderTimelineLanes(blocks, totalDuration, totalWidth) {
             for (var ei = 0; ei < events.length; ei++) {
                 var evt = events[ei];
                 var ex = xOff + evt.time * scale;
-                svg += '<circle cx="' + ex + '" cy="' + pcy + '" r="4" fill="#4dabf7" opacity="0.7">';
-                var tip = pName + '.' + (evt.cmd.command_name || '');
+                var ptip = '<div style="font-weight:600;color:#4dabf7;">' + escapeHtml(pName) + '.' + escapeHtml(evt.cmd.command_name || '') + '</div>';
+                ptip += '<div>Time: ' + formatDuration(absOff + evt.time) + '</div>';
                 if (evt.cmd.params) {
-                    tip += ' | ' + Object.keys(evt.cmd.params).map(function(k) { return k + '=' + evt.cmd.params[k]; }).join(', ');
+                    var pvals = [];
+                    var epKeys = Object.keys(evt.cmd.params);
+                    for (var epk = 0; epk < epKeys.length; epk++) {
+                        if (evt.cmd.params[epKeys[epk]] !== '' && evt.cmd.params[epKeys[epk]] !== null) {
+                            pvals.push(escapeHtml(epKeys[epk]) + '=' + escapeHtml(String(evt.cmd.params[epKeys[epk]])));
+                        }
+                    }
+                    if (pvals.length) ptip += '<div>Params: ' + pvals.join(', ') + '</div>';
                 }
-                svg += '<title>' + escapeHtml(tip) + '</title></circle>';
+                svg += '<circle cx="' + ex + '" cy="' + pcy + '" r="5" fill="#4dabf7" opacity="0.7" class="lane-tip" data-tooltip="' + escapeAttr(ptip) + '"/>';
             }
         }
 
@@ -2040,8 +2055,9 @@ function renderTimelineLanes(blocks, totalDuration, totalWidth) {
             var wx = xOff + ws.startTime * scale;
             var ww = (ws.endTime - ws.startTime) * scale;
             if (ww > 1) {
-                svg += '<rect x="' + wx + '" y="' + (waitLaneY + 2) + '" width="' + ww + '" height="' + (LANE_H - 6) + '" fill="#8b949e" opacity="0.15" rx="2" stroke="#8b949e" stroke-width="0.5">';
-                svg += '<title>wait ' + (ws.endTime - ws.startTime) + 's</title></rect>';
+                var wtip = '<div style="font-weight:600;color:#8b949e;">wait</div>';
+                wtip += '<div>Duration: ' + (ws.endTime - ws.startTime) + 's (' + formatDuration(absOff + ws.startTime) + ' &rarr; ' + formatDuration(absOff + ws.endTime) + ')</div>';
+                svg += '<rect x="' + wx + '" y="' + (waitLaneY + 2) + '" width="' + ww + '" height="' + (LANE_H - 6) + '" fill="#8b949e" opacity="0.15" rx="2" stroke="#8b949e" stroke-width="0.5" class="lane-tip" data-tooltip="' + escapeAttr(wtip) + '"/>';
             }
         }
     }
@@ -2051,6 +2067,30 @@ function renderTimelineLanes(blocks, totalDuration, totalWidth) {
     // Render labels into fixed column, SVG into scrollable area (same scroll parent as blocks)
     labelsEl.innerHTML = labelsHtml;
     svgEl.innerHTML = svg;
+
+    // Custom tooltips on lane SVG elements (reuses #blockTooltip div)
+    svgEl.addEventListener('mouseover', function(e) {
+        var el = e.target.closest('.lane-tip');
+        if (!el || !el.dataset.tooltip) return;
+        var tip = document.getElementById('blockTooltip');
+        if (!tip) {
+            tip = document.createElement('div');
+            tip.id = 'blockTooltip';
+            tip.className = 'block-tooltip';
+            document.body.appendChild(tip);
+        }
+        tip.innerHTML = el.dataset.tooltip;
+        tip.style.display = 'block';
+        var rect = el.getBoundingClientRect();
+        tip.style.left = Math.max(8, rect.left + rect.width / 2 - tip.offsetWidth / 2) + 'px';
+        tip.style.top = (rect.top - tip.offsetHeight - 8) + 'px';
+    });
+    svgEl.addEventListener('mouseout', function(e) {
+        var el = e.target.closest('.lane-tip');
+        if (!el) return;
+        var tip = document.getElementById('blockTooltip');
+        if (tip) tip.style.display = 'none';
+    });
 }
 
 function handleTrackClick(e) {
