@@ -837,6 +837,24 @@
             max-width: 100%;
         }
 
+        /* Custom tooltip for filmstrip blocks (native title is unreliable with draggable) */
+        .block-tooltip {
+            display: none;
+            position: fixed;
+            background: #1a1f26;
+            color: #e6edf3;
+            border: 1px solid #2d3640;
+            border-radius: 6px;
+            padding: 0.5rem 0.7rem;
+            font-size: 0.72rem;
+            line-height: 1.45;
+            white-space: pre;
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            max-width: 320px;
+        }
+
         .timeline-block.dragging {
             opacity: 0.4;
         }
@@ -1832,8 +1850,8 @@ function renderTimeline() {
             el.appendChild(pat);
         }
 
-        // Tooltip — rich summary of block contents (#53)
-        el.title = buildBlockTooltip(block);
+        // Tooltip — custom positioned div (draggable suppresses native title tooltips)
+        el.dataset.tooltip = buildBlockTooltip(block);
 
         // Store block info for event delegation
         el.dataset.blockType = block.type;
@@ -1851,6 +1869,30 @@ function renderTimeline() {
     track.ondragover = handleDragOver;
     track.ondragleave = handleDragLeave;
     track.ondrop = handleDrop;
+
+    // Filmstrip block tooltips — positioned via JS to avoid clipping
+    track.addEventListener('mouseenter', function(e) {
+        var block = e.target.closest('.timeline-block');
+        if (!block || !block.dataset.tooltip) return;
+        var tip = document.getElementById('blockTooltip');
+        if (!tip) {
+            tip = document.createElement('div');
+            tip.id = 'blockTooltip';
+            tip.className = 'block-tooltip';
+            document.body.appendChild(tip);
+        }
+        tip.textContent = block.dataset.tooltip;
+        tip.style.display = 'block';
+        var rect = block.getBoundingClientRect();
+        tip.style.left = Math.max(8, rect.left + rect.width / 2 - tip.offsetWidth / 2) + 'px';
+        tip.style.top = (rect.top - tip.offsetHeight - 8) + 'px';
+    }, true);
+    track.addEventListener('mouseleave', function(e) {
+        var block = e.target.closest('.timeline-block');
+        if (!block) return;
+        var tip = document.getElementById('blockTooltip');
+        if (tip) tip.style.display = 'none';
+    }, true);
 
     // Time ruler
     renderTimeRuler(totalDuration, totalWidth);
