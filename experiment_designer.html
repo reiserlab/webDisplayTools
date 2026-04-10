@@ -121,6 +121,22 @@
             padding: 0.3rem 0.6rem;
         }
 
+        .btn-undo { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
+        .btn-undo:disabled { opacity: 0.35; cursor: default; border-color: var(--border); color: var(--text-dim); }
+        .btn-undo:disabled:hover { border-color: var(--border); color: var(--text-dim); }
+
+        .btn-reset {
+            margin-left: auto;
+            padding: 0.2rem 0.6rem;
+            font-size: 0.75rem;
+            background: transparent;
+            color: #ff6b6b;
+            border: 1px solid #ff6b6b;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-reset:hover { background: rgba(255,107,107,0.15); }
+
         /* ── Main Content ────────────────────────── */
         .main-content {
             display: flex;
@@ -989,6 +1005,8 @@
         <h1>Experiment Designer</h1>
     </div>
     <div class="top-bar-right">
+        <button class="btn btn-undo" id="undoBtn" disabled title="Undo last edit (Ctrl+Z)">&#x21a9; Undo</button>
+        <button class="btn btn-undo" id="redoBtn" disabled title="Redo (Ctrl+Y / Ctrl+Shift+Z)">&#x21aa; Redo</button>
         <a href="experiment_designer_quickstart.html" target="_blank" class="btn" title="Step-by-step guide for using the Experiment Designer">Quick Start</a>
         <button class="btn" id="importBtn" title="Load an existing YAML protocol file">Import YAML</button>
         <button class="btn btn-primary" id="exportBtn" title="Export experiment as YAML protocol file (Ctrl+E)">Export YAML</button>
@@ -1107,6 +1125,7 @@
         <div class="editor-tab-bar" id="editorTabBar">
             <button class="editor-tab active" data-tab="commands" title="Command card editor for the selected condition/phase">Commands</button>
             <button class="editor-tab" data-tab="table" title="Spreadsheet view of all commands across all sections">Table</button>
+            <button class="btn-reset" id="resetBtn" title="Clear all conditions, phases, and plugins">Reset</button>
         </div>
         <div class="editor-tab-content" id="editorTabCommands">
             <div class="editor-placeholder" id="editorPlaceholder">
@@ -1150,7 +1169,7 @@
 
 <!-- Footer -->
 <div class="app-footer">
-    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.8.3 | 2026-04-09 23:57 ET</p>
+    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.9 | 2026-04-10 16:31 ET</p>
 </div>
 
 <!-- Hidden file input for import -->
@@ -1215,6 +1234,79 @@ let selection = null;
 
 // Timeline zoom: pixels per second
 let pxPerSecond = 40;
+
+// Undo/redo history (#54)
+var undoStack = [];
+var redoStack = [];
+var MAX_HISTORY = 50;
+var _restoring = false;
+
+function saveSnapshot() {
+    if (_restoring) return;
+    undoStack.push(JSON.stringify(experiment));
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack = [];
+    updateUndoRedoUI();
+}
+
+function restoreSnapshot(json) {
+    _restoring = true;
+    try {
+        experiment = JSON.parse(json);
+        // Clamp selection to valid bounds
+        if (selection && selection.type === 'condition') {
+            if (selection.index >= experiment.conditions.length) {
+                selection = experiment.conditions.length > 0
+                    ? { type: 'condition', index: experiment.conditions.length - 1 }
+                    : null;
+            }
+        }
+        syncSettingsToUI();
+        renderTimeline();
+        renderEditor();
+        updateSummary();
+    } finally {
+        _restoring = false;
+    }
+}
+
+function undo() {
+    if (!undoStack.length) return;
+    redoStack.push(JSON.stringify(experiment));
+    restoreSnapshot(undoStack.pop());
+    updateUndoRedoUI();
+}
+
+function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(JSON.stringify(experiment));
+    restoreSnapshot(redoStack.pop());
+    updateUndoRedoUI();
+}
+
+function updateUndoRedoUI() {
+    var undoBtn = document.getElementById('undoBtn');
+    var redoBtn = document.getElementById('redoBtn');
+    if (undoBtn) undoBtn.disabled = undoStack.length === 0;
+    if (redoBtn) redoBtn.disabled = redoStack.length === 0;
+}
+
+function resetProtocol() {
+    if (!confirm('Reset protocol?\n\nThis will clear all conditions, phases, and plugins. Settings (name, author, arena) will be kept.\n\nThis action cannot be undone.')) return;
+    experiment.plugins = [];
+    experiment.conditions = [{ id: 'condition_1', commands: cloneCommands(DEFAULT_CONDITION.commands) }];
+    experiment.pretrial = { include: false, commands: cloneCommands(DEFAULT_PHASE.commands) };
+    experiment.intertrial = { include: false, commands: cloneCommands(DEFAULT_PHASE.commands) };
+    experiment.posttrial = { include: false, commands: cloneCommands(DEFAULT_PHASE.commands) };
+    undoStack = [];
+    redoStack = [];
+    selection = null;
+    syncSettingsToUI();
+    renderTimeline();
+    renderEditor();
+    updateSummary();
+    updateUndoRedoUI();
+}
 
 // ════════════════════════════════════════════════════
 // Command Array Helpers
@@ -1401,6 +1493,8 @@ function syncSettingsToUI() {
     document.getElementById('randomize').checked = experiment.experiment_structure.randomization.enabled;
     document.getElementById('seedField').style.display =
         experiment.experiment_structure.randomization.enabled ? '' : 'none';
+    document.getElementById('seed').value =
+        experiment.experiment_structure.randomization.seed != null ? experiment.experiment_structure.randomization.seed : '';
     document.getElementById('pretrialEnabled').checked = experiment.pretrial.include;
     document.getElementById('intertrialEnabled').checked = experiment.intertrial.include;
     document.getElementById('posttrialEnabled').checked = experiment.posttrial.include;
@@ -1443,6 +1537,12 @@ function updatePhaseToggleStyle(id, active) {
 // ════════════════════════════════════════════════════
 
 function bindSettingsEvents() {
+    // Snapshot on focus for text inputs — one undo step per field visit
+    ['expName', 'expAuthor', 'patternLibrary', 'rigPath', 'repetitions', 'seed',
+     'backlightPort', 'cameraIp', 'cameraPort', 'cameraFrameRate'].forEach(function(id) {
+        document.getElementById(id).addEventListener('focus', saveSnapshot);
+    });
+
     document.getElementById('expName').addEventListener('input', function(e) {
         experiment.experiment_info.name = e.target.value;
     });
@@ -1454,6 +1554,7 @@ function bindSettingsEvents() {
     });
 
     document.getElementById('arenaConfig').addEventListener('change', function(e) {
+        saveSnapshot();
         experiment.arena_config_key = e.target.value;
         var config = getConfig(e.target.value);
         if (config) {
@@ -1475,6 +1576,7 @@ function bindSettingsEvents() {
     });
 
     document.getElementById('randomize').addEventListener('change', function(e) {
+        saveSnapshot();
         experiment.experiment_structure.randomization.enabled = e.target.checked;
         document.getElementById('seedField').style.display = e.target.checked ? '' : 'none';
     });
@@ -1487,6 +1589,7 @@ function bindSettingsEvents() {
     var phases = ['pretrial', 'intertrial', 'posttrial'];
     phases.forEach(function(phase) {
         document.getElementById(phase + 'Enabled').addEventListener('change', function(e) {
+            saveSnapshot();
             experiment[phase].include = e.target.checked;
             updatePhaseToggleStyle(phase + 'Toggle', e.target.checked);
             renderTimeline();
@@ -1505,10 +1608,12 @@ function bindSettingsEvents() {
 
     // Plugin checkboxes
     document.getElementById('pluginBacklight').addEventListener('change', function(e) {
+        saveSnapshot();
         togglePlugin('backlight', e.target.checked);
         document.getElementById('pluginBacklightConfig').style.display = e.target.checked ? '' : 'none';
     });
     document.getElementById('pluginCamera').addEventListener('change', function(e) {
+        saveSnapshot();
         togglePlugin('camera', e.target.checked);
         document.getElementById('pluginCameraConfig').style.display = e.target.checked ? '' : 'none';
     });
@@ -1538,6 +1643,7 @@ function bindSettingsEvents() {
         setPluginConfig('camera', 'port', val === '' ? '' : (parseInt(val) || ''));
     });
     document.getElementById('cameraFormat').addEventListener('change', function(e) {
+        saveSnapshot();
         setPluginConfig('camera', 'video_format', e.target.value);
     });
     document.getElementById('cameraFrameRate').addEventListener('input', function(e) {
@@ -1648,6 +1754,7 @@ function switchEditorTab(tabName) {
 // ════════════════════════════════════════════════════
 
 function addCondition() {
+    saveSnapshot();
     var n = experiment.conditions.length + 1;
     experiment.conditions.push({
         id: 'condition_' + n,
@@ -1661,6 +1768,7 @@ function addCondition() {
 
 function removeCondition(index) {
     if (experiment.conditions.length <= 1) return;
+    saveSnapshot();
     experiment.conditions.splice(index, 1);
     if (selection && selection.type === 'condition') {
         if (selection.index === index) {
@@ -1675,6 +1783,7 @@ function removeCondition(index) {
 }
 
 function reorderConditions(fromIndex, toIndex) {
+    saveSnapshot();
     var moved = experiment.conditions.splice(fromIndex, 1)[0];
     experiment.conditions.splice(toIndex, 0, moved);
     if (selection && selection.type === 'condition') {
@@ -2286,7 +2395,8 @@ function renderConditionEditor(cond, index) {
 
     content.innerHTML = html;
 
-    // Bind ID
+    // Bind ID — snapshot on focus
+    document.getElementById('condId').addEventListener('focus', saveSnapshot);
     document.getElementById('condId').addEventListener('input', function(e) {
         cond.id = e.target.value;
         renderTimeline();
@@ -2302,6 +2412,7 @@ function renderConditionEditor(cond, index) {
     // Bind Add Command
     document.getElementById('addCommandSelect').addEventListener('change', function(e) {
         if (!e.target.value) return;
+        saveSnapshot();
         var newCmd = createCommandFromSelectValue(e.target.value);
         if (newCmd) cond.commands.push(newCmd);
         e.target.value = '';
@@ -2381,6 +2492,14 @@ function renderCommandCard(cmd, cmdIndex, canDelete, totalCommands) {
  * Bind events for command card fields.
  */
 function bindCommandCardEvents(commands, onChange) {
+    // Snapshot on focus for text/number fields
+    document.querySelectorAll('.cmd-field').forEach(function(el) {
+        if (el.tagName !== 'SELECT') el.addEventListener('focus', saveSnapshot);
+    });
+    document.querySelectorAll('.cmd-param-field').forEach(function(el) {
+        el.addEventListener('focus', saveSnapshot);
+    });
+
     // Field edits
     document.querySelectorAll('.cmd-field').forEach(function(el) {
         var eventType = el.tagName === 'SELECT' ? 'change' : 'input';
@@ -2391,6 +2510,7 @@ function bindCommandCardEvents(commands, onChange) {
             if (!cmd) return;
 
             if (field === 'mode') {
+                saveSnapshot();
                 cmd.mode = parseInt(this.value);
                 if (cmd.mode === 2) { cmd.gain = 0; } else { cmd.frame_rate = 0; }
                 renderEditor(); // re-render to update disabled fields
@@ -2433,6 +2553,7 @@ function bindCommandCardEvents(commands, onChange) {
             e.stopPropagation();
             var ci = parseInt(this.dataset.cmd);
             if (commands.length > 1) {
+                saveSnapshot();
                 commands.splice(ci, 1);
                 renderEditor();
                 if (onChange) onChange();
@@ -2448,6 +2569,7 @@ function bindCommandCardEvents(commands, onChange) {
             var dir = this.dataset.dir;
             var target = dir === 'up' ? ci - 1 : ci + 1;
             if (target >= 0 && target < commands.length) {
+                saveSnapshot();
                 var tmp = commands[ci];
                 commands[ci] = commands[target];
                 commands[target] = tmp;
@@ -2490,6 +2612,7 @@ function renderPhaseEditor(phaseType) {
     // Bind Add Command
     document.getElementById('addCommandSelect').addEventListener('change', function(e) {
         if (!e.target.value) return;
+        saveSnapshot();
         var newCmd = createCommandFromSelectValue(e.target.value);
         if (newCmd) phase.commands.push(newCmd);
         e.target.value = '';
@@ -2829,7 +2952,14 @@ function bindTableEvents(sections) {
         });
     });
 
-    // Editable table fields
+    // Editable table fields — snapshot on focus for text/number inputs
+    document.querySelectorAll('.tbl-field').forEach(function(el) {
+        if (el.tagName !== 'SELECT') el.addEventListener('focus', saveSnapshot);
+    });
+    document.querySelectorAll('.tbl-param').forEach(function(el) {
+        el.addEventListener('focus', saveSnapshot);
+    });
+
     document.querySelectorAll('.tbl-field').forEach(function(el) {
         var eventType = el.tagName === 'SELECT' ? 'change' : 'input';
         el.addEventListener(eventType, function(e) {
@@ -2843,6 +2973,7 @@ function bindTableEvents(sections) {
             if (!cmd) return;
 
             if (field === 'mode') {
+                saveSnapshot();
                 cmd.mode = parseInt(this.value);
                 if (cmd.mode === 2) { cmd.gain = 0; } else { cmd.frame_rate = 0; }
                 renderTableView(); // re-render to swap FR/gain field
@@ -2894,6 +3025,7 @@ function bindTableEvents(sections) {
             var rowIndex = parseInt(this.getAttribute('data-row'));
             var section = sections.find(function(s) { return s.key === sectionKey; });
             if (section && section.commands.length > 1 && rowIndex < section.commands.length) {
+                saveSnapshot();
                 section.commands.splice(rowIndex, 1);
                 renderTableView();
                 renderTimeline();
@@ -2912,6 +3044,7 @@ function bindTableEvents(sections) {
             var target = dir === 'up' ? rowIndex - 1 : rowIndex + 1;
             var section = sections.find(function(s) { return s.key === sectionKey; });
             if (section && target >= 0 && target < section.commands.length) {
+                saveSnapshot();
                 var tmp = section.commands[rowIndex];
                 section.commands[rowIndex] = section.commands[target];
                 section.commands[target] = tmp;
@@ -2931,6 +3064,7 @@ function bindTableEvents(sections) {
             if (section) {
                 var newCmd = createCommandFromSelectValue(e.target.value);
                 if (newCmd) {
+                    saveSnapshot();
                     section.commands.push(newCmd);
                     renderTableView();
                     renderTimeline();
@@ -3198,6 +3332,7 @@ function handleYAMLImport(e) {
     var reader = new FileReader();
     reader.onload = function(evt) {
         try {
+            saveSnapshot();
             parseAndLoadYAML(evt.target.result);
         } catch (err) {
             alert('Failed to parse YAML: ' + err.message);
@@ -3350,15 +3485,34 @@ function matchArenaConfig() {
 // ════════════════════════════════════════════════════
 
 document.addEventListener('keydown', function(e) {
+    var inInput = document.activeElement.tagName === 'INPUT' ||
+                  document.activeElement.tagName === 'TEXTAREA' ||
+                  document.activeElement.tagName === 'SELECT';
+
+    // Undo: Ctrl+Z / Cmd+Z (only when not in a text input)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !inInput) {
+        e.preventDefault();
+        undo();
+        return;
+    }
+    // Redo: Ctrl+Y / Cmd+Y / Ctrl+Shift+Z / Cmd+Shift+Z (only when not in a text input)
+    if (!inInput && (((e.ctrlKey || e.metaKey) && e.key === 'y') ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Z'))) {
+        e.preventDefault();
+        redo();
+        return;
+    }
+
     // Delete/Backspace: remove selected condition
     if ((e.key === 'Delete' || e.key === 'Backspace') && selection && selection.type === 'condition') {
-        if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
+        if (!inInput) {
             e.preventDefault();
             removeCondition(selection.index);
         }
     }
     // Ctrl+E: export YAML
-    if (e.ctrlKey && e.key === 'e') {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
         e.preventDefault();
         downloadYAML();
     }
@@ -3369,10 +3523,14 @@ document.addEventListener('keydown', function(e) {
 // ════════════════════════════════════════════════════
 
 init();
+document.getElementById('undoBtn').addEventListener('click', undo);
+document.getElementById('redoBtn').addEventListener('click', redo);
+document.getElementById('resetBtn').addEventListener('click', resetProtocol);
 // Auto-select first condition so editor is immediately useful
 selection = { type: 'condition', index: 0 };
 renderTimeline();
 renderEditor();
+
 </script>
 </body>
 </html>
