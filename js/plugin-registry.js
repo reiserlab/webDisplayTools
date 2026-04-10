@@ -298,6 +298,33 @@ var BUILTIN_PLUGINS = {
             }
         },
         commands: {
+            connect: {
+                label: 'Connect',
+                description: 'Connect to BIAS camera (use when rig YAML is missing ip, port, or config_file)',
+                params: {
+                    ip: {
+                        type: 'string',
+                        required: false,
+                        default: '',
+                        label: 'IP Address',
+                        placeholder: '127.0.0.1'
+                    },
+                    port: {
+                        type: 'number',
+                        required: false,
+                        default: '',
+                        label: 'Port',
+                        placeholder: '5010'
+                    },
+                    config_file: {
+                        type: 'string',
+                        required: false,
+                        default: '',
+                        label: 'Config file',
+                        placeholder: 'path/to/camera_config.json'
+                    }
+                }
+            },
             startRecording: {
                 label: 'Start Recording',
                 description: 'Start video recording',

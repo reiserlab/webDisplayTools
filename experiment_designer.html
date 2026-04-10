@@ -1132,7 +1132,7 @@
 
 <!-- Footer -->
 <div class="app-footer">
-    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.8.1 | 2026-04-09 17:46 ET</p>
+    <p><a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> | Experiment Designer v0.8.2 | 2026-04-09 23:16 ET</p>
 </div>
 
 <!-- Hidden file input for import -->
@@ -1249,6 +1249,25 @@ function phaseGetDuration(phase) {
 /** Create a deep copy of a commands array. */
 function cloneCommands(commands) {
     return JSON.parse(JSON.stringify(commands));
+}
+
+/** Backfill missing optional params on plugin commands from the registry schema.
+ *  After YAML import, cmd.params may only contain keys that were in the file.
+ *  This ensures all schema-defined params are present so the UI renders input fields. */
+function backfillPluginParams(commands) {
+    for (var i = 0; i < commands.length; i++) {
+        var cmd = commands[i];
+        if (cmd.type !== 'plugin' || !cmd.plugin_name || !cmd.command_name) continue;
+        var schema = getCommandParams('plugin', cmd.plugin_name, cmd.command_name);
+        if (!schema) continue;
+        if (!cmd.params) cmd.params = {};
+        var keys = Object.keys(schema);
+        for (var k = 0; k < keys.length; k++) {
+            if (!(keys[k] in cmd.params)) {
+                cmd.params[keys[k]] = schema[keys[k]].default !== undefined ? schema[keys[k]].default : '';
+            }
+        }
+    }
 }
 
 /** Build a new plugin command object with default params from the registry. */
@@ -1665,7 +1684,8 @@ function getTimelineBlocks() {
             type: 'pretrial',
             label: 'PRE',
             duration: phaseGetDuration(experiment.pretrial),
-            pattern: condGetPattern({ commands: experiment.pretrial.commands })
+            pattern: condGetPattern({ commands: experiment.pretrial.commands }),
+            commands: experiment.pretrial.commands
         });
     }
 
@@ -1675,7 +1695,8 @@ function getTimelineBlocks() {
                 type: 'intertrial',
                 label: 'ITI',
                 duration: phaseGetDuration(experiment.intertrial),
-                pattern: condGetPattern({ commands: experiment.intertrial.commands })
+                pattern: condGetPattern({ commands: experiment.intertrial.commands }),
+                commands: experiment.intertrial.commands
             });
         }
         var cond = experiment.conditions[i];
@@ -1684,7 +1705,8 @@ function getTimelineBlocks() {
             index: i,
             label: cond.id || ('Cond ' + (i + 1)),
             duration: condGetDuration(cond),
-            pattern: condGetPattern(cond)
+            pattern: condGetPattern(cond),
+            commands: cond.commands
         });
     }
 
@@ -1693,11 +1715,58 @@ function getTimelineBlocks() {
             type: 'posttrial',
             label: 'POST',
             duration: phaseGetDuration(experiment.posttrial),
-            pattern: condGetPattern({ commands: experiment.posttrial.commands })
+            pattern: condGetPattern({ commands: experiment.posttrial.commands }),
+            commands: experiment.posttrial.commands
         });
     }
 
     return blocks;
+}
+
+/** Build a descriptive tooltip string for a filmstrip block (#53). */
+function buildBlockTooltip(block) {
+    var lines = [block.label];
+    lines.push('Duration: ' + formatDuration(block.duration));
+    if (block.pattern) {
+        lines.push('Pattern: ' + block.pattern.split('/').pop());
+    }
+    if (block.commands && block.commands.length > 0) {
+        var cmdSummary = [];
+        for (var i = 0; i < block.commands.length; i++) {
+            var cmd = block.commands[i];
+            if (cmd.command_name === 'trialParams') {
+                var modeStr = cmd.mode === 4 ? 'closed-loop' : 'constant-rate';
+                cmdSummary.push('trialParams (' + modeStr + ', ' + (cmd.duration || 0) + 's)');
+            } else if (cmd.type === 'wait') {
+                cmdSummary.push('wait ' + (cmd.duration || 0) + 's');
+            } else if (cmd.type === 'plugin') {
+                var summary = (cmd.plugin_name || '') + '.' + (cmd.command_name || '');
+                if (cmd.params) {
+                    var vals = [];
+                    var pKeys = Object.keys(cmd.params);
+                    for (var pk = 0; pk < pKeys.length; pk++) {
+                        if (cmd.params[pKeys[pk]] !== '' && cmd.params[pKeys[pk]] !== null) {
+                            vals.push(pKeys[pk] + '=' + cmd.params[pKeys[pk]]);
+                        }
+                    }
+                    if (vals.length) summary += ' (' + vals.join(', ') + ')';
+                }
+                cmdSummary.push(summary);
+            } else if (cmd.type === 'controller' && cmd.command_name !== 'trialParams') {
+                cmdSummary.push(cmd.command_name);
+            }
+        }
+        lines.push('Commands (' + block.commands.length + '):');
+        for (var ci = 0; ci < cmdSummary.length; ci++) {
+            lines.push('  ' + cmdSummary[ci]);
+        }
+    }
+    if (block.type === 'condition') {
+        lines.push('Click to edit, drag to reorder');
+    } else {
+        lines.push('Click to edit');
+    }
+    return lines.join('\n');
 }
 
 function renderTimeline() {
@@ -1763,14 +1832,8 @@ function renderTimeline() {
             el.appendChild(pat);
         }
 
-        // Tooltip
-        if (block.type === 'condition') {
-            el.title = block.label + ': Click to edit, drag to reorder';
-        } else if (block.type === 'intertrial') {
-            el.title = 'Inter-trial interval: Click to edit';
-        } else {
-            el.title = block.label + ': Click to edit';
-        }
+        // Tooltip — rich summary of block contents (#53)
+        el.title = buildBlockTooltip(block);
 
         // Store block info for event delegation
         el.dataset.blockType = block.type;
@@ -3144,6 +3207,17 @@ function parseAndLoadYAML(text) {
         if (experiment.conditions.length === 0) {
             experiment.conditions = [{ id: 'condition_1', commands: cloneCommands(DEFAULT_CONDITION.commands) }];
         }
+    }
+
+    // Backfill missing optional params so UI renders all input fields (#60)
+    var bfPhases = ['pretrial', 'intertrial', 'posttrial'];
+    for (var bpi = 0; bpi < bfPhases.length; bpi++) {
+        if (experiment[bfPhases[bpi]].commands) {
+            backfillPluginParams(experiment[bfPhases[bpi]].commands);
+        }
+    }
+    for (var bci = 0; bci < experiment.conditions.length; bci++) {
+        backfillPluginParams(experiment.conditions[bci].commands);
     }
 
     if (isV2 && experiment.plugins.length > 0) {
