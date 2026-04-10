@@ -438,16 +438,17 @@ The following UI improvements were made on 2026-02-02 and need testing on GitHub
 
 ## Experiment Designer
 
-### Architecture (v0.8 — 2026-04-08)
+### Architecture (v0.9 — 2026-04-10)
 - 3-zone layout: settings panel (280px left), editor with tab bar (flex right), filmstrip with lane view (bottom)
 - Single `<script type="module">` importing from `js/arena-configs.js`, `js/protocol-yaml.js`, `js/plugin-registry.js`
 - Data model: `experiment` object with `experiment_info`, `arena_info`, `rig_path`, `plugins[]`, `experiment_structure`, phases with `commands[]`, and `conditions[]` with `commands[]`
+- Undo/redo: snapshot-based history stack (JSON.stringify/parse of `experiment`, max 50 entries)
 
 ### Shared Modules
 - **`js/protocol-yaml.js`** — YAML parser (`simpleYAMLParse` with inline comment stripping), v1/v2 generators, string helpers. Dual-export (window.ProtocolYAML + ES6 module). Used by HTML, both test files.
   - `yamlStr(str)` — double-quotes strings for YAML
   - `yamlPath(str)` — single-quotes paths (no escape sequences, safe for Windows backslashes)
-- **`js/plugin-registry.js`** — Built-in plugin definitions (LEDControllerPlugin: 7 commands, BiasPlugin: 6 commands), controller command definitions (6 commands), lookup functions for dropdown population. Dual-export.
+- **`js/plugin-registry.js`** — Built-in plugin definitions (LEDControllerPlugin: 7 commands, BiasPlugin: 7 commands incl. connect), controller command definitions (6 commands), lookup functions for dropdown population. Dual-export.
   - Plugin config fields use `rigDefined: true` for fields already in rig YAML (ip, port) — these are NOT auto-included in exports
   - `createPluginEntry()` skips fields with empty string defaults
 
@@ -474,6 +475,8 @@ experiment.rig_path = "./configs/rigs/test_rig_1.yaml"
 ```
 Helper functions: `cmdFindTrialParams(commands)`, `condGetDuration(cond)`, `condGetPattern(cond)`, `phaseGetDuration(phase)`.
 
+**Duration formula**: `max(trialParams.duration, sum_of_waits)` — shows the actual wall-clock time. If waits exceed trialParams duration, the condition runs longer than the pattern display (visible to the user as a mismatch).
+
 **Shared command helpers** (used by Commands tab, Table view, and phase editor):
 - `buildAddCommandOptions()` — returns HTML `<option>`/`<optgroup>` string for add-command dropdowns
 - `createCommandFromSelectValue(value)` — parses `"controller:trialParams"` / `"wait:wait"` / `"plugin:backlight:setRedLEDPower"` into a command object
@@ -482,7 +485,9 @@ Helper functions: `cmdFindTrialParams(commands)`, `condGetDuration(cond)`, `cond
 ### YAML Export (v2)
 - Generates protocol v2 via `generateV2Protocol()` from `js/protocol-yaml.js`
 - `rig:` field replaces inline `arena_info`
-- **Paths use single quotes** via `yamlPath()` (pattern_library, rig, script_path) — prevents Windows backslash escape issues
+- **All string values use single quotes** via `yamlPath()` — pattern filenames, paths, plugin string params — prevents Windows backslash escape issues
+- **Empty optional plugin params are omitted** — e.g., an empty `pattern` field is not exported (would cause MATLAB errors)
+- **Plugin param types respected**: input handlers consult `getCommandParams()` schema — string-typed params like `pattern: "1010"` are kept as strings, not coerced to numbers
 - `plugins:` section lists enabled plugins with class/config — only user-set config values are exported (empty = omit)
 - Conditions export full command arrays including plugin commands with params
 - Phases export command arrays directly
@@ -501,6 +506,17 @@ The bottom timeline area is a unified scroll container:
 - Block widths use `Math.max(48, duration * pxPerSecond)` — lane SVG must match this + account for 2px CSS gap between blocks
 - Clicking any filmstrip block switches to the Commands tab
 
+### Undo/Redo System (v0.9)
+- **Snapshot stack**: `undoStack[]` and `redoStack[]` store `JSON.stringify(experiment)` snapshots (max 50)
+- **`saveSnapshot()`**: Called before every mutation. Pushes current state to undoStack, clears redoStack.
+- **`_restoring` guard**: Boolean flag set during `restoreSnapshot()` (wrapped in try/finally). Prevents focus events on re-rendered inputs from calling `saveSnapshot()` and clearing the redo stack.
+- **Selection clamping**: `restoreSnapshot()` clamps `selection.index` to valid bounds after restoring, since the restored state may have fewer conditions.
+- **Text inputs**: Snapshot on `focus` (not `input`) — one undo step per field visit, not per keystroke. Browser native Ctrl+Z still works inside inputs.
+- **Reset button**: Clears conditions/phases/plugins to defaults, keeps settings (experiment_info, arena, rig_path). Clears both undo/redo stacks. Shows confirm dialog.
+- **Keyboard**: Ctrl+Z/Cmd+Z (undo), Ctrl+Y/Cmd+Y/Ctrl+Shift+Z (redo) — only fires when focus is not in INPUT/TEXTAREA/SELECT.
+
+**When adding new mutation sites**: Always call `saveSnapshot()` before the mutation. For new text inputs, add a `focus` event listener that calls `saveSnapshot`.
+
 ### Key Implementation Notes
 - **Must use `<script type="module">`** to import shared modules
 - Mode 2 (Constant Rate): `gain` fixed at 0, `frame_rate` editable
@@ -511,20 +527,20 @@ The bottom timeline area is a unified scroll container:
 - Plugin config uses `setPluginConfig()` helper that deletes empty values and removes config object when empty
 
 ### Related Files
-- `experiment_designer.html` — Main tool (v0.8)
-- `experiment_designer_quickstart.html` — Step-by-step guide (v0.8)
+- `experiment_designer.html` — Main tool (v0.9)
+- `experiment_designer_quickstart.html` — Step-by-step guide (v0.9)
 - `js/protocol-yaml.js` — Shared YAML parser/generator (added `yamlPath`)
-- `js/plugin-registry.js` — Plugin definitions + command schemas (updated defaults)
-- `tests/test-protocol-roundtrip.js` — 130 CI checks (9 suites, v1+v2)
+- `js/plugin-registry.js` — Plugin definitions + command schemas (BiasPlugin: connect command added)
+- `tests/test-protocol-roundtrip.js` — 137 CI checks (10 suites, v1+v2 + bug regression)
 - `tests/generate-roundtrip-protocol.js` — YAML + manifest generator for MATLAB
 - `tests/fixtures/v2_*.yaml` — V2 YAML test fixtures from maDisplayTools
 - `docs/experiment-designer-v06-testing.md` — Manual testing checklist
 - `docs/protocol-roundtrip-testing.md` — Roundtrip testing architecture
-- GitHub Issues: [#33](https://github.com/reiserlab/webDisplayTools/issues/33), [#53](https://github.com/reiserlab/webDisplayTools/issues/53) (hover tooltips), [#54](https://github.com/reiserlab/webDisplayTools/issues/54) (undo/redo)
+- GitHub Issues: [#33](https://github.com/reiserlab/webDisplayTools/issues/33), [#53–60 closed](https://github.com/reiserlab/webDisplayTools/issues?q=is%3Aissue+is%3Aclosed) (tooltips, bugs, undo/redo, connect cmd, param backfill)
 
-### Testing & Validation (v0.8)
+### Testing & Validation (v0.9)
 
-**Automated:** `node tests/test-protocol-roundtrip.js` — 130 checks across 9 suites (v1+v2 parse/generate roundtrips). Run after any change to `protocol-yaml.js` or the data model.
+**Automated:** `node tests/test-protocol-roundtrip.js` — 137 checks across 10 suites (v1+v2 parse/generate roundtrips + bug #55-58 regressions). Run after any change to `protocol-yaml.js` or the data model.
 
 **Manual testing checklist (import a v2 YAML like `full_experiment_test.yaml` to populate):**
 

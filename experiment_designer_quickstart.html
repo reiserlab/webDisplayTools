@@ -215,13 +215,13 @@
         <a href="experiment_designer.html" class="nav-link">&larr; Back to Experiment Designer</a>
 
         <h1>Experiment Designer Quick Start</h1>
-        <p class="subtitle">v0.8 | 2026-04-08 18:38 ET &mdash; Learn the interface and create your first protocol in minutes.</p>
+        <p class="subtitle">v0.9 | 2026-04-10 16:37 ET &mdash; Learn the interface and create your first protocol in minutes.</p>
 
         <h2>Interface overview</h2>
 
-        <div class="layout-diagram"><span class="hl">Top bar</span>: &larr; Back | Experiment Designer    [Quick Start] [Import YAML] [<span class="hl">Export YAML</span>]
+        <div class="layout-diagram"><span class="hl">Top bar</span>: &larr; Back | Experiment Designer  [Undo] [Redo] [Quick Start] [Import YAML] [<span class="hl">Export YAML</span>]
 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;
-<span class="hl">Left panel</span>        &#9474;  <span class="hl">Right panel</span>: [COMMANDS] [TABLE]
+<span class="hl">Left panel</span>        &#9474;  <span class="hl">Right panel</span>: [COMMANDS] [TABLE]          [<span class="hl">Reset</span>]
                   &#9474;
   Experiment      &#9474;    Commands: Command card editor
   Arena + Rig     &#9474;    Table:    Editable spreadsheet view
@@ -343,7 +343,7 @@
 
         <h2>Importing an existing protocol</h2>
 
-        <p>Click <strong>Import YAML</strong> in the top bar and select any v2 protocol <code>.yaml</code> file. The editor populates with all settings, conditions, plugins, and phases. You can modify and re-export.</p>
+        <p>Click <strong>Import YAML</strong> in the top bar and select any v2 protocol <code>.yaml</code> file. The editor populates with all settings, conditions, plugins, and phases. You can modify and re-export. <strong>Import is undoable</strong> &mdash; press <code>Ctrl+Z</code> to restore your previous experiment.</p>
 
         <div class="tip-box">
             <strong>Try it:</strong> Import one of the example protocols from the maDisplayTools repository, such as <code>full_experiment_test.yaml</code> (9 conditions with camera + backlight plugins) to see a fully populated experiment.
@@ -374,12 +374,23 @@
             <li><code>Fit</code> scales the timeline to fit the window</li>
         </ul>
 
+        <h2>Undo, redo, and reset</h2>
+
+        <p>Every edit is tracked in an undo history (up to 50 steps). Use <strong>Undo</strong> / <strong>Redo</strong> in the top bar, or the keyboard shortcuts below.</p>
+        <ul class="key-list">
+            <li><strong>Undo / Redo buttons</strong> &mdash; in the top bar, disabled when the stack is empty</li>
+            <li><strong>Reset button</strong> &mdash; red button in the tab bar (right of Commands / Table). Clears all conditions, phases, and plugins back to defaults. <em>Settings</em> (name, author, arena, rig path) are kept. A confirmation dialog appears first. Reset also clears the undo/redo history.</li>
+        </ul>
+
         <h2>Keyboard shortcuts</h2>
 
         <ul class="key-list">
+            <li><code>Ctrl+Z</code> / <code>Cmd+Z</code> Undo last edit (when not typing in a field)</li>
+            <li><code>Ctrl+Y</code> / <code>Ctrl+Shift+Z</code> Redo</li>
             <li><code>Ctrl+E</code> Export YAML</li>
             <li><code>Delete</code> Remove selected condition (when not typing in a field)</li>
         </ul>
+        <p class="hint">Inside a text input, Ctrl+Z uses the browser's native undo (reverts the last keystroke within that field).</p>
 
         <h2>Key concepts</h2>
 
@@ -399,7 +410,7 @@
 
         <h3>Plugins</h3>
         <p><strong>LED Backlight</strong> (LEDControllerPlugin): control IR and visible LEDs behind arena panels. Commands: setIRLEDPower, setRedLEDPower, setGreenLEDPower, setBlueLEDPower, turnOnLED, turnOffLED, setVisibleBacklightsOff.</p>
-        <p><strong>BIAS Camera</strong> (BiasPlugin): video recording and timestamps. Commands: startRecording, stopRecording, startPreview, stopCapture, getTimestamp, disconnect.</p>
+        <p><strong>BIAS Camera</strong> (BiasPlugin): video recording and timestamps. Commands: connect (manual connection with optional ip/port/config_file), startRecording, stopRecording, startPreview, stopCapture, getTimestamp, disconnect.</p>
         <p class="hint">Enable plugins in the left panel to make their commands available in the Add Command dropdown.</p>
 
         <h3>Phases</h3>
