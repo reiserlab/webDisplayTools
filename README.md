@@ -1,3 +1,10 @@
+---
+title: Web Tools
+parent: Generation 6
+has_children: true
+nav_order: 11
+---
+
 # webDisplayTools - PanelDisplayTools
 
 Web-based tools for configuring and editing display patterns for modular arena systems.

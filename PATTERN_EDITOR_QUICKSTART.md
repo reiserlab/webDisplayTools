@@ -1,3 +1,10 @@
+---
+title: Quick start
+parent: Web Tools
+grand_parent: Generation 6
+nav_order: 1
+---
+
 # Pattern Editor Quick Start
 
 **Based on Pattern Editor v0.9.22**

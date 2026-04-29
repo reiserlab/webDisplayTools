@@ -1,3 +1,10 @@
+---
+title: Testing Guide
+parent: Web Tools
+grand_parent: Generation 6
+nav_order: 10
+---
+
 # Experiment Designer v0.6 Testing Guide
 
 Manual testing checklist for the YAML v2 migration, plugin support, and new editor views.
