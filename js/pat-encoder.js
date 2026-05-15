@@ -52,16 +52,24 @@ const PatEncoder = (function() {
     /**
      * Encode pattern data to G6 V2 format
      *
-     * V2 Header (18 bytes):
+     * V2 Header (18 bytes) — per docs/development/g6_04-pattern-file-format.md:
      *   Bytes 0-3:   "G6PT" magic
      *   Byte 4:      [VVVV][AAAA] - Version (4 bits = 2) + Arena ID upper 4 bits
      *   Byte 5:      [AA][OOOOOO] - Arena ID lower 2 bits + Observer ID (6 bits)
      *   Bytes 6-7:   num_frames (uint16 LE)
-     *   Byte 8:      row_count (panel rows)
-     *   Byte 9:      col_count (installed columns)
+     *   Byte 8:      row_count (panel rows; FULL grid)
+     *   Byte 9:      col_count (panel cols; FULL grid; subset installed via panel_mask)
      *   Byte 10:     gs_val (1=GS2, 2=GS16)
-     *   Bytes 11-16: panel_mask (6 bytes, 48-bit bitmask)
+     *   Bytes 11-16: panel_mask (6 bytes, 48-bit bitmask of installed panels)
      *   Byte 17:     checksum (XOR of frame data)
+     *
+     * KNOWN LIMITATION (2026-05-15): this encoder assumes full-grid arenas only
+     * (rowCount × colCount panels, no missing columns). For partial arenas
+     * (e.g. G6_2x8of10, G6_3x12of18) the encoder would need a separate
+     * `fullColCount` field for byte 9 + `installedCols` field for pixel-grid
+     * dimensions + explicit `panel_mask`. G6_2x10 (the only registered full-grid
+     * G6 arena today) works correctly because installed_cols === full_cols.
+     * Track: open-issues B.7 / D in g6_docs-open-issues.md.
      *
      * @param {Object} patternData - Pattern data object
      * @returns {ArrayBuffer} Encoded binary data
