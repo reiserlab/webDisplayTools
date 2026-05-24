@@ -147,6 +147,57 @@ const testPatterns = [
         description: 'G6 large partial arena (12of18), GS16 horizontal grating, 20px period'
     },
     {
+        name: 'web_G6_2x8of10_gs2_square_grating',
+        generation: 'G6',
+        arenaName: 'G6_2x8of10',
+        rowCount: 2, colCount: 8,
+        gs_val: 2, maxVal: 1,
+        numFrames: 20, period: 20, stepPixels: 1,
+        genFunc: 'squareGrating',
+        description: 'G6 partial arena (8of10), GS2 square grating'
+    },
+    {
+        name: 'web_G6_3x12of18_gs2_horiz_grating',
+        generation: 'G6',
+        arenaName: 'G6_3x12of18',
+        rowCount: 3, colCount: 12,
+        gs_val: 2, maxVal: 1,
+        numFrames: 20, period: 20, stepPixels: 1,
+        genFunc: 'horizontalGrating',
+        description: 'G6 large partial arena (12of18), GS2 horizontal grating'
+    },
+    {
+        name: 'web_G6_3x16_full_gs2_square_grating',
+        generation: 'G6',
+        arenaName: 'G6_3x16_full',
+        rowCount: 3, colCount: 16,
+        gs_val: 2, maxVal: 1,
+        numFrames: 20, period: 20, stepPixels: 1,
+        genFunc: 'squareGrating',
+        description: 'G6 max-density full arena (3x16=48 panels), GS2 square grating'
+    },
+    {
+        name: 'web_G6_3x16_full_gs16_sine_grating',
+        generation: 'G6',
+        arenaName: 'G6_3x16_full',
+        rowCount: 3, colCount: 16,
+        gs_val: 16, maxVal: 15,
+        numFrames: 20, period: 40, stepPixels: 2,
+        genFunc: 'sineGrating',
+        description: 'G6 max-density full arena (3x16=48 panels), GS16 sine grating'
+    },
+    {
+        name: 'web_G6_2x10_gs2_blank',
+        generation: 'G6',
+        arenaName: 'G6_2x10',
+        rowCount: 2, colCount: 10,
+        gs_val: 2, maxVal: 1,
+        numFrames: 1, period: 1, stepPixels: 0,
+        genFunc: 'squareGrating',  // produces all-zero with maxVal=1 and stepPixels=0 if period mismatches; we override below
+        forceBlank: true,
+        description: 'G6 edge case: 1-frame all-zero pixels (header CRC stress)'
+    },
+    {
         name: 'web_G4_4x12_gs16_square_grating',
         generation: 'G4',
         arenaName: 'G4_4x12',
@@ -224,7 +275,9 @@ for (const tp of testPatterns) {
     const frames = [];
     for (let f = 0; f < tp.numFrames; f++) {
         const shift = f * tp.stepPixels;
-        if (tp.genFunc === 'checkerboard') {
+        if (tp.forceBlank) {
+            frames.push(new Uint8Array(pixelRows * pixelCols));  // all zero
+        } else if (tp.genFunc === 'checkerboard') {
             frames.push(genFunc(pixelRows, pixelCols, tp.period, shift, tp.maxVal));
         } else if (tp.genFunc === 'horizontalGrating') {
             frames.push(genFunc(pixelRows, pixelCols, tp.period, shift, tp.maxVal));
