@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>v3 Experiment Designer (under construction)</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0f1419;
+            --surface: #1a1f26;
+            --border: #2d3640;
+            --text: #e6edf3;
+            --text-dim: #8b949e;
+            --accent: #00e676;
+            --hover: #00c853;
+            --beta: #29b6f6;
+        }
+
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 2.5rem;
+            max-width: 640px;
+            text-align: center;
+        }
+
+        h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.8rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .beta-badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: rgba(41, 182, 246, 0.15);
+            color: var(--beta);
+            border: 1px solid var(--beta);
+            margin-left: 0.5rem;
+            vertical-align: middle;
+        }
+
+        p {
+            color: var(--text-dim);
+            line-height: 1.6;
+            margin-top: 1rem;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        a:hover {
+            color: var(--hover);
+        }
+
+        .links {
+            margin-top: 1.5rem;
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            font-size: 0.9rem;
+        }
+
+        footer {
+            margin-top: 2rem;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>v3 Experiment Designer<span class="beta-badge">Beta / Viewer</span></h1>
+        <p>
+            This page will host a new designer for the <strong>Protocol v3</strong> YAML format
+            introduced in maDisplayTools (<code>origin/version3</code>).
+        </p>
+        <p>
+            <strong>PR1 (v0.1)</strong> ships a read-only viewer/importer that round-trips
+            v3 YAMLs with anchors and comments preserved.
+            <strong>PR2 (v0.2)</strong> adds inline editing, drag/drop, the Variables UX, and validation.
+        </p>
+        <p>
+            Until v0.1 lands, please use the existing
+            <a href="experiment_designer.html">Experiment Designer</a>
+            (v2 YAML format only).
+        </p>
+        <div class="links">
+            <a href="index.html">← All tools</a>
+            <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">GitHub</a>
+        </div>
+    </div>
+    <footer>
+        <p>v3 Experiment Designer (stub) | scaffolded 2026-05-24 ET</p>
+    </footer>
+</body>
+</html>

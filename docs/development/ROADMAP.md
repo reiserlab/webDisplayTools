@@ -1,5 +1,37 @@
 # webDisplayTools Roadmap
 
+## v3 Experiment Designer (beta)
+
+A new designer for the **Protocol v3** YAML format introduced in maDisplayTools
+on `origin/version3` (pinned SHA `00c8f95`). Lives alongside the existing v2
+Experiment Designer; the v2 designer stays untouched while v3 iterates. After
+the v3 editor (PR2) lands and the lab confirms v3 production use, a follow-up
+effort retires v2.
+
+### PR1 — v0.1 Viewer / Importer (in progress)
+Read-only 3-zone view of imported v3 YAMLs.
+- **Phase 0** (in progress): canonical fixtures, coverage-gap fixtures (MATLAB-validated),
+  js-yaml spike (PASSED — 100% anchor/alias/comment preservation on canonical files),
+  spec doc, CI wiring, stub page.
+- **Phase 1**: js-yaml-based parser/generator with anchor + comment round-trip;
+  unknown-keys passthrough at every nesting level.
+- **Phase 2**: read-only viewer (Library / Sequence / Inspector + bottom timeline preview).
+
+### PR2 — v0.2 Editor (planned)
+- Inline editing, drag/drop, Variables UX, atomic import + validation, rename cascade.
+- Quickstart page (`experiment_designer_v3_quickstart.html`).
+- Manual MATLAB validation flow documented (no GitHub-Actions MATLAB CI).
+
+### Retirement of v2 Experiment Designer (post-PR2)
+Separate follow-up effort. Triggered by lab confirming v3 production use over
+~2–4 weeks.
+
+### Reference
+- Spec doc: [`docs/development/v3-spec.md`](v3-spec.md)
+- Planning notes / Codex review artifacts: archived in `.codex-review/` (gitignored)
+
+---
+
 ## Pattern Editor
 
 ### v1.0 Milestone (Pending Hardware Validation)
