@@ -18,10 +18,53 @@
 const PatEncoder = (function() {
     'use strict';
 
+    // ---- CRC helpers (inlined; canonical source: js/crc.js) -----------------
+    // Inlined here (vs require()) to avoid Node ESM/CJS interop headaches when
+    // this file is loaded via `import PatEncoder from './js/pat-encoder.js'`.
+    // Tests + the CLI verifier use js/crc.js directly; LUT-builder + universal
+    // check below match that file byte-for-byte.
+
+    function _buildCrc8Lut(poly) {
+        const lut = new Uint8Array(256);
+        for (let b = 0; b < 256; b++) {
+            let c = b;
+            for (let i = 0; i < 8; i++) c = c & 0x80 ? ((c << 1) ^ poly) & 0xff : (c << 1) & 0xff;
+            lut[b] = c;
+        }
+        return lut;
+    }
+    function _buildCrc16Lut(poly) {
+        const lut = new Uint16Array(256);
+        for (let b = 0; b < 256; b++) {
+            let c = b << 8;
+            for (let i = 0; i < 8; i++) c = c & 0x8000 ? ((c << 1) ^ poly) & 0xffff : (c << 1) & 0xffff;
+            lut[b] = c;
+        }
+        return lut;
+    }
+    const _CRC8_LUT = _buildCrc8Lut(0x2f);
+    const _CRC16_LUT = _buildCrc16Lut(0x1021);
+    function crc8Autosar(bytes) {
+        let c = 0xff;
+        for (let i = 0; i < bytes.length; i++) c = _CRC8_LUT[(c ^ bytes[i]) & 0xff];
+        return c ^ 0xff;
+    }
+    function crc16CcittFalse(bytes) {
+        let c = 0xffff;
+        for (let i = 0; i < bytes.length; i++)
+            c = ((c << 8) ^ _CRC16_LUT[((c >> 8) ^ bytes[i]) & 0xff]) & 0xffff;
+        return c;
+    }
+    const _U = new Uint8Array([0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39]);
+    if (crc8Autosar(_U) !== 0xdf) throw new Error('pat-encoder.js CRC-8/AUTOSAR universal check failed');
+    if (crc16CcittFalse(_U) !== 0x29b1) throw new Error('pat-encoder.js CRC-16/CCITT-FALSE universal check failed');
+    // -------------------------------------------------------------------------
+
     // Constants - must match pat-parser.js
     const G6_MAGIC = 'G6PT';
-    const G6_HEADER_SIZE = 18;       // V2: 18 bytes (always write V2)
-    const G6_FRAME_HEADER_SIZE = 4;  // "FR" + 2 reserved bytes
+    const G6_HEADER_SIZE = 18;          // V2: 18 bytes (always write V2)
+    const G6_FRAME_HEADER_SIZE = 4;     // "FR" + 2 reserved bytes
+    const G6_FRAME_TRAILER_SIZE = 2;    // CRC-16/CCITT-FALSE (little-endian)
     const G6_PANEL_SIZE = 20;
     const G6_GS2_PANEL_BYTES = 53;   // header(1) + cmd(1) + data(50) + stretch(1)
     const G6_GS16_PANEL_BYTES = 203; // header(1) + cmd(1) + data(200) + stretch(1)
@@ -61,7 +104,11 @@ const PatEncoder = (function() {
      *   Byte 9:      col_count (panel cols; FULL grid; subset installed via panel_mask)
      *   Byte 10:     gs_val (1=GS2, 2=GS16)
      *   Bytes 11-16: panel_mask (6 bytes, 48-bit bitmask of installed panels)
-     *   Byte 17:     checksum (XOR of frame data)
+     *   Byte 17:     CRC-8/AUTOSAR over header bytes 0-16 (per g6_01-panel-protocol.md § CRC-8)
+     *
+     * Each frame carries a 2-byte CRC-16/CCITT-FALSE trailer (little-endian) over
+     * `{FR_magic, frame_index, panel_blocks}` of that frame (per g6_04-pattern-file-format.md
+     * § Frame Format). Trailer is appended after the panel blocks, before the next frame.
      *
      * KNOWN LIMITATION (2026-05-15): this encoder assumes full-grid arenas only
      * (rowCount × colCount panels, no missing columns). For partial arenas
@@ -100,8 +147,8 @@ const PatEncoder = (function() {
         const panelBytes = isGrayscale ? G6_GS16_PANEL_BYTES : G6_GS2_PANEL_BYTES;
         const numPanels = rowCount * colCount;
 
-        // Calculate total file size
-        const frameDataSize = G6_FRAME_HEADER_SIZE + (numPanels * panelBytes);
+        // Calculate total file size (per-frame: 4 magic+idx + panel blocks + 2 CRC trailer)
+        const frameDataSize = G6_FRAME_HEADER_SIZE + (numPanels * panelBytes) + G6_FRAME_TRAILER_SIZE;
         const totalSize = G6_HEADER_SIZE + (numFrames * frameDataSize);
 
         // Create buffer
@@ -145,7 +192,7 @@ const PatEncoder = (function() {
             bytes[11 + byteIdx] |= (1 << bitIdx);
         }
 
-        // Byte 17: checksum placeholder (will be computed after frame data)
+        // Byte 17: header CRC-8/AUTOSAR placeholder (filled in after header is fully populated)
         bytes[17] = 0;
 
         // Write frames
@@ -154,6 +201,8 @@ const PatEncoder = (function() {
         for (let f = 0; f < numFrames; f++) {
             const frame = frames[f];
             const stretch = stretchValues[f] !== undefined ? stretchValues[f] : 1;
+
+            const frameStart = offset;
 
             // Frame header "FR" + frame_idx (uint16 LE)
             bytes[offset] = 0x46;      // 'F'
@@ -182,14 +231,16 @@ const PatEncoder = (function() {
                     offset += panelBytes;
                 }
             }
+
+            // CRC-16/CCITT-FALSE trailer over {FR_magic, frame_index, panel_blocks} of THIS frame.
+            // subarray gives a view (no copy); the trailer bytes haven't been written yet.
+            const frameCrc = crc16CcittFalse(bytes.subarray(frameStart, offset));
+            bytes[offset++] = frameCrc & 0xff;          // low byte first (little-endian)
+            bytes[offset++] = (frameCrc >> 8) & 0xff;
         }
 
-        // Compute checksum: XOR of all frame data bytes (after header)
-        let checksum = 0;
-        for (let i = G6_HEADER_SIZE; i < offset; i++) {
-            checksum ^= bytes[i];
-        }
-        bytes[17] = checksum;
+        // Header CRC-8/AUTOSAR over bytes 0-16 (the placeholder at byte 17 is NOT in scope)
+        bytes[17] = crc8Autosar(bytes.subarray(0, 17));
 
         return buffer;
     }

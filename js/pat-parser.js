@@ -19,11 +19,54 @@
 const PatParser = (function() {
     'use strict';
 
+    // ---- CRC helpers (inlined; canonical source: js/crc.js) -----------------
+    // Inlined here (vs require()) to avoid Node ESM/CJS interop headaches when
+    // this file is loaded via `import PatParser from './js/pat-parser.js'`.
+    // Tests + the CLI verifier use js/crc.js directly; LUT-builder + universal
+    // check below match that file byte-for-byte.
+
+    function _buildCrc8Lut(poly) {
+        const lut = new Uint8Array(256);
+        for (let b = 0; b < 256; b++) {
+            let c = b;
+            for (let i = 0; i < 8; i++) c = c & 0x80 ? ((c << 1) ^ poly) & 0xff : (c << 1) & 0xff;
+            lut[b] = c;
+        }
+        return lut;
+    }
+    function _buildCrc16Lut(poly) {
+        const lut = new Uint16Array(256);
+        for (let b = 0; b < 256; b++) {
+            let c = b << 8;
+            for (let i = 0; i < 8; i++) c = c & 0x8000 ? ((c << 1) ^ poly) & 0xffff : (c << 1) & 0xffff;
+            lut[b] = c;
+        }
+        return lut;
+    }
+    const _CRC8_LUT = _buildCrc8Lut(0x2f);
+    const _CRC16_LUT = _buildCrc16Lut(0x1021);
+    function crc8Autosar(bytes) {
+        let c = 0xff;
+        for (let i = 0; i < bytes.length; i++) c = _CRC8_LUT[(c ^ bytes[i]) & 0xff];
+        return c ^ 0xff;
+    }
+    function crc16CcittFalse(bytes) {
+        let c = 0xffff;
+        for (let i = 0; i < bytes.length; i++)
+            c = ((c << 8) ^ _CRC16_LUT[((c >> 8) ^ bytes[i]) & 0xff]) & 0xffff;
+        return c;
+    }
+    const _U = new Uint8Array([0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39]);
+    if (crc8Autosar(_U) !== 0xdf) throw new Error('pat-parser.js CRC-8/AUTOSAR universal check failed');
+    if (crc16CcittFalse(_U) !== 0x29b1) throw new Error('pat-parser.js CRC-16/CCITT-FALSE universal check failed');
+    // -------------------------------------------------------------------------
+
     // Constants
     const G6_MAGIC = 'G6PT';
     const G6_V1_HEADER_SIZE = 17;
     const G6_V2_HEADER_SIZE = 18;
     const G6_FRAME_HEADER_SIZE = 4;
+    const G6_FRAME_TRAILER_SIZE = 2;    // V2 only: CRC-16/CCITT-FALSE (little-endian)
     const G6_PANEL_SIZE = 20;
     const G6_GS2_PANEL_BYTES = 53;
     const G6_GS16_PANEL_BYTES = 203;
@@ -62,15 +105,23 @@ const PatParser = (function() {
     }
 
     /**
-     * Parse a .pat file (auto-detects G4 vs G6)
+     * Parse a .pat file (auto-detects G4 vs G6).
+     *
+     * Options:
+     *   strict (default false) — CRC failures throw instead of warning. Used by
+     *     CI / regen / export-validation tooling. Interactive UI callers leave
+     *     it `false` so the file still loads and the user can see what's there.
+     *
      * @param {ArrayBuffer} buffer - Raw file data
+     * @param {Object} [opts] - Parser options
      * @returns {PatternData} Parsed pattern data
      */
-    function parsePatFile(buffer) {
+    function parsePatFile(buffer, opts) {
         const generation = detectGeneration(buffer);
+        const options = opts || {};
 
         if (generation === 'G6') {
-            return parseG6Pattern(buffer);
+            return parseG6Pattern(buffer, options);
         } else {
             return parseG4Pattern(buffer);
         }
@@ -98,12 +149,19 @@ const PatParser = (function() {
      *   Byte 9:      col_count (installed columns)
      *   Byte 10:     gs_val (1=GS2, 2=GS16)
      *   Bytes 11-16: panel_mask (6 bytes, 48-bit bitmask)
-     *   Byte 17:     checksum (XOR of frame data)
+     *   Byte 17:     CRC-8/AUTOSAR over header bytes 0-16 (per g6_01-panel-protocol.md § CRC-8)
+     *
+     * V2 frames carry a 2-byte CRC-16/CCITT-FALSE trailer (little-endian) over
+     * {FR_magic, frame_index, panel_blocks} (per g6_04-pattern-file-format.md
+     * § Frame Format). V1 frames have no trailer.
      *
      * @param {ArrayBuffer} buffer - Raw file data
+     * @param {Object} [options] - Parser options ({strict: bool})
      * @returns {PatternData} Parsed pattern data
      */
-    function parseG6Pattern(buffer) {
+    function parseG6Pattern(buffer, options) {
+        const opts = options || {};
+        const strict = !!opts.strict;
         const view = new DataView(buffer);
         const bytes = new Uint8Array(buffer);
 
@@ -140,6 +198,14 @@ const PatParser = (function() {
             checksum = bytes[17];
             panelMask = bytes.slice(11, 17);
             headerSize = G6_V2_HEADER_SIZE;
+
+            // Verify header CRC-8/AUTOSAR over bytes 0-16
+            const expectedHeaderCrc = crc8Autosar(bytes.subarray(0, 17));
+            if (expectedHeaderCrc !== checksum) {
+                const msg = `G6 header CRC-8 mismatch: file=0x${checksum.toString(16).padStart(2, '0')}, computed=0x${expectedHeaderCrc.toString(16).padStart(2, '0')}`;
+                if (strict) throw new Error(msg);
+                console.warn(msg);
+            }
         }
 
         const numFrames = view.getUint16(6, true);  // little-endian
@@ -164,15 +230,20 @@ const PatParser = (function() {
         const pixelCols = colCount * G6_PANEL_SIZE;
         const maxValue = isGrayscale ? 15 : 1;
 
-        // Parse frames
+        // Parse frames. V2 carries a per-frame CRC-16/CCITT-FALSE trailer; V1 does not.
+        const hasFrameTrailer = headerVersion >= 2;
         const frames = [];
         const stretchValues = [];
         let offset = headerSize;
 
         for (let f = 0; f < numFrames; f++) {
+            const frameStart = offset;
+
             // Verify frame header "FR"
             if (bytes[offset] !== 0x46 || bytes[offset + 1] !== 0x52) {  // 'F', 'R'
-                console.warn(`Frame ${f}: expected FR header at offset ${offset}`);
+                const msg = `Frame ${f}: expected FR header at offset ${offset}, got 0x${bytes[offset].toString(16)} 0x${bytes[offset + 1].toString(16)}`;
+                if (strict) throw new Error(msg);
+                console.warn(msg);
             }
             offset += G6_FRAME_HEADER_SIZE;
 
@@ -204,6 +275,21 @@ const PatParser = (function() {
                         }
                     }
                 }
+            }
+
+            if (hasFrameTrailer) {
+                // CRC-16 trailer over {FR_magic, frame_index, panel_blocks} of THIS frame,
+                // 2 bytes little-endian.
+                const trailerLo = bytes[offset];
+                const trailerHi = bytes[offset + 1];
+                const fileCrc = trailerLo | (trailerHi << 8);
+                const expectedCrc = crc16CcittFalse(bytes.subarray(frameStart, offset));
+                if (expectedCrc !== fileCrc) {
+                    const msg = `Frame ${f}: CRC-16 mismatch — file=0x${fileCrc.toString(16).padStart(4, '0')}, computed=0x${expectedCrc.toString(16).padStart(4, '0')}`;
+                    if (strict) throw new Error(msg);
+                    console.warn(msg);
+                }
+                offset += G6_FRAME_TRAILER_SIZE;
             }
 
             frames.push(frame);
