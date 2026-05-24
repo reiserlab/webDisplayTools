@@ -11,6 +11,8 @@ Web-based tools for configuring and editing display patterns for modular arena s
 
 **Live Demo**: https://reiserlab.github.io/webDisplayTools/
 
+> ⚠️ **G6 `.pat` format migration (2026-05-24)** — All G6 v2 `.pat` files produced before commit `a348ae1` are obsolete. The new format adds a CRC-8/AUTOSAR header byte and a per-frame CRC-16/CCITT-FALSE trailer (per [panel-protocol spec](https://github.com/reiserlab/Modular-LED-Display/blob/main/docs/development/g6_04-pattern-file-format.md) § Frame Format). Old files fail file-size validation in the new parser. Regenerate via `node tests/generate-roundtrip-patterns.js --outdir <path>` or re-export from the Pattern Editor. G4 / G4.1 files are unaffected.
+
 ## Quick Start
 
 Open `index.html` in your web browser to access all tools, or visit the live demo above.
