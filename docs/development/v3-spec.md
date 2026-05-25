@@ -46,6 +46,26 @@ machine. For portable MATLAB validation, use the rig-path-normalized copies in
 `tests/fixtures/matlab_normalized/` (rewritten to the user's local
 `maDisplayTools` checkout location).
 
+### Cross-check (designer round-trip vs. MATLAB flattened step sequence)
+
+For a regenerated YAML to be considered round-trip-equivalent to its original,
+the MATLAB ProtocolParser must produce the same flattened `commandSequence`
+when fed either version. Randomized blocks reorder per parse via `randperm`,
+so the comparison is only meaningful with the RNG seeded:
+
+```matlab
+rng(42);
+ro = ProtocolParser().parse('original.yaml');
+rng(42);
+rr = ProtocolParser().parse('regenerated.yaml');
+% Compare step ids cell-array element-by-element (must be byte-identical).
+```
+
+When the RNG is seeded identically, randomized blocks produce identical
+orderings. When unseeded, only the *multiset* of step ids per block is
+guaranteed equal (and even that depends on whether MATLAB's `randperm` is
+sampling with or without replacement — verify per block type before asserting).
+
 ---
 
 ## Top-level structure
