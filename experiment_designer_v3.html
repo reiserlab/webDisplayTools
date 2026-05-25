@@ -3,119 +3,1117 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>v3 Experiment Designer (under construction)</title>
+    <title>v3 Experiment Designer (Viewer)</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+    <!-- Import map: lets js/protocol-yaml-v3.js's `import YAML from 'yaml'`
+         resolve to the CDN-hosted browser build. Same module is consumable
+         in Node (via node_modules/yaml) and browser (via this import map). -->
+    <script type="importmap">
+    {
+        "imports": {
+            "yaml": "https://cdn.jsdelivr.net/npm/yaml@2.9.0/browser/dist/index.js"
+        }
+    }
+    </script>
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
             --bg: #0f1419;
             --surface: #1a1f26;
+            --surface-2: #232a33;
             --border: #2d3640;
             --text: #e6edf3;
             --text-dim: #8b949e;
             --accent: #00e676;
             --hover: #00c853;
             --beta: #29b6f6;
+            --warn: #ff9800;
+            --error: #f44336;
+            --ref-bg: rgba(0, 230, 118, 0.08);
+            --block-bg: rgba(41, 182, 246, 0.08);
+            --selected: rgba(0, 230, 118, 0.18);
         }
 
+        html, body { height: 100%; }
         body {
             font-family: 'IBM Plex Mono', monospace;
             background: var(--bg);
             color: var(--text);
-            min-height: 100vh;
+            font-size: 13px;
+            line-height: 1.4;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── Header ─────────────────────────────────────────────────── */
+        .app-header {
+            display: flex;
             align-items: center;
-            justify-content: center;
-            padding: 2rem;
-        }
-
-        .card {
+            gap: 0.75rem;
+            padding: 0.5rem 1rem;
             background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 2.5rem;
-            max-width: 640px;
-            text-align: center;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
         }
-
-        h1 {
+        .app-header h1 {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 1.8rem;
+            font-size: 1.1rem;
             color: var(--accent);
-            margin-bottom: 0.5rem;
+            font-weight: 700;
         }
-
         .beta-badge {
             display: inline-block;
-            padding: 0.25rem 0.6rem;
-            border-radius: 4px;
-            font-size: 0.7rem;
+            padding: 0.1rem 0.5rem;
+            font-size: 0.65rem;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             background: rgba(41, 182, 246, 0.15);
             color: var(--beta);
             border: 1px solid var(--beta);
-            margin-left: 0.5rem;
-            vertical-align: middle;
+            border-radius: 3px;
         }
+        .header-spacer { flex: 1; }
+        .header-btn {
+            background: var(--surface-2);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 0.35rem 0.75rem;
+            font-family: inherit;
+            font-size: 0.8rem;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .header-btn:hover { background: var(--border); border-color: var(--accent); color: var(--accent); }
+        .header-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .header-btn.primary { background: rgba(0, 230, 118, 0.1); border-color: var(--accent); color: var(--accent); }
+        .header-btn.primary:hover { background: rgba(0, 230, 118, 0.2); }
 
-        p {
+        /* ── View-only banner ────────────────────────────────────────── */
+        .view-only-banner {
+            padding: 0.4rem 1rem;
+            background: rgba(41, 182, 246, 0.08);
+            border-bottom: 1px solid var(--border);
+            color: var(--beta);
+            font-size: 0.75rem;
+            flex-shrink: 0;
+        }
+        .view-only-banner a { color: var(--accent); text-decoration: none; }
+        .view-only-banner a:hover { color: var(--hover); text-decoration: underline; }
+
+        /* ── Settings drawer ─────────────────────────────────────────── */
+        .settings-drawer {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0;
+            overflow: hidden;
+            max-height: 0;
+            transition: max-height 0.2s ease-out;
+            flex-shrink: 0;
+        }
+        .settings-drawer.open { max-height: 360px; overflow-y: auto; }
+        .settings-drawer-inner {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            padding: 1rem;
+        }
+        .settings-section h3 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             color: var(--text-dim);
+            margin-bottom: 0.5rem;
+        }
+        .settings-section .kv {
+            font-size: 0.8rem;
             line-height: 1.6;
-            margin-top: 1rem;
         }
-
-        a {
-            color: var(--accent);
-            text-decoration: none;
+        .settings-section .kv .k { color: var(--text-dim); }
+        .settings-section .kv .v { color: var(--text); word-break: break-all; }
+        .vars-table {
+            width: 100%;
+            font-size: 0.75rem;
+            border-collapse: collapse;
         }
-
-        a:hover {
-            color: var(--hover);
+        .vars-table th, .vars-table td {
+            padding: 0.2rem 0.4rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
         }
+        .vars-table th { color: var(--text-dim); font-weight: 400; }
+        .vars-table .num { text-align: right; font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+        .vars-table .str { color: var(--accent); }
 
-        .links {
-            margin-top: 1.5rem;
+        /* ── 3-zone main area ────────────────────────────────────────── */
+        .three-zone {
+            display: grid;
+            grid-template-columns: 280px 1fr 360px;
+            flex: 1;
+            min-height: 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .zone {
+            border-right: 1px solid var(--border);
             display: flex;
-            justify-content: center;
-            gap: 1.5rem;
-            font-size: 0.9rem;
+            flex-direction: column;
+            min-height: 0;
         }
-
-        footer {
-            margin-top: 2rem;
+        .zone:last-child { border-right: none; }
+        .zone-header {
+            padding: 0.5rem 0.75rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .zone-header .count {
+            background: var(--surface-2);
+            padding: 0.05rem 0.4rem;
+            border-radius: 8px;
+            color: var(--accent);
+            font-size: 0.65rem;
+        }
+        .zone-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+        .empty-state {
+            color: var(--text-dim);
+            font-style: italic;
+            padding: 1rem 0.5rem;
             font-size: 0.8rem;
         }
+
+        /* ── Library ─────────────────────────────────────────────────── */
+        .library-search {
+            margin: 0 0 0.5rem 0;
+            padding: 0.35rem 0.5rem;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 0.8rem;
+            border-radius: 3px;
+            width: 100%;
+        }
+        .library-search:focus { outline: none; border-color: var(--accent); }
+        .lib-row {
+            padding: 0.4rem 0.5rem;
+            border: 1px solid transparent;
+            border-radius: 3px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.4rem;
+            margin-bottom: 1px;
+        }
+        .lib-row:hover { background: var(--surface-2); border-color: var(--border); }
+        .lib-row.selected { background: var(--selected); border-color: var(--accent); }
+        .lib-row .name { font-size: 0.8rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lib-row .usage {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            background: var(--surface-2);
+            padding: 0.05rem 0.4rem;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+        .lib-row.unused .name { color: var(--text-dim); }
+        .lib-row.unused .usage { color: var(--warn); }
+
+        /* ── Sequence ────────────────────────────────────────────────── */
+        .seq-entry {
+            margin-bottom: 0.5rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--surface);
+            cursor: pointer;
+            transition: border-color 0.1s, background 0.1s;
+        }
+        .seq-entry:hover { border-color: var(--accent); }
+        .seq-entry.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0, 230, 118, 0.15); }
+        .seq-entry.ref {
+            background: var(--ref-bg);
+            padding: 0.5rem 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .seq-entry.ref .marker { color: var(--accent); font-weight: 700; }
+        .seq-entry.ref .name { font-family: 'JetBrains Mono', monospace; }
+        .seq-entry.block { background: var(--block-bg); padding: 0.6rem 0.75rem; }
+        .seq-entry.block .block-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            color: var(--beta);
+            font-size: 0.85rem;
+            margin-bottom: 0.3rem;
+        }
+        .seq-entry.block .block-meta {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            margin-bottom: 0.4rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+        .seq-entry.block .block-meta .randomize-badge {
+            color: var(--warn);
+            font-weight: 600;
+        }
+        .seq-entry.block .trials-row { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+        .trial-chip {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            padding: 0.15rem 0.4rem;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .trial-chip.missing { color: var(--error); border-color: var(--error); }
+        .iti-row {
+            margin-top: 0.4rem;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+        .iti-row .iti-ref { color: var(--accent); }
+        .unknown-keys-pill {
+            margin-top: 0.4rem;
+            display: inline-block;
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid var(--warn);
+            color: var(--warn);
+            padding: 0.1rem 0.4rem;
+            border-radius: 8px;
+            font-size: 0.65rem;
+        }
+
+        /* ── Inspector ───────────────────────────────────────────────── */
+        .inspector-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+            word-break: break-all;
+        }
+        .inspector-title .kind { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; margin-right: 0.4rem; }
+        .insp-section { margin-bottom: 0.75rem; }
+        .insp-section h4 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            margin-bottom: 0.3rem;
+        }
+        .cmd-card {
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 0.4rem 0.5rem;
+            margin-bottom: 0.3rem;
+            background: var(--surface);
+            font-size: 0.75rem;
+        }
+        .cmd-card.controller { border-left: 3px solid var(--accent); }
+        .cmd-card.wait { border-left: 3px solid var(--text-dim); }
+        .cmd-card.plugin { border-left: 3px solid var(--beta); }
+        .cmd-card .cmd-head { font-weight: 600; margin-bottom: 0.2rem; }
+        .cmd-card .cmd-head .ctype { color: var(--text-dim); font-weight: 400; font-size: 0.65rem; text-transform: uppercase; margin-right: 0.3rem; }
+        .cmd-card .kv-line { font-size: 0.7rem; color: var(--text-dim); }
+        .cmd-card .kv-line .k { display: inline-block; min-width: 80px; }
+        .cmd-card .kv-line .v { color: var(--text); }
+        .jump-btn {
+            background: rgba(0, 230, 118, 0.1);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 0.25rem 0.6rem;
+            font-family: inherit;
+            font-size: 0.75rem;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .jump-btn:hover { background: rgba(0, 230, 118, 0.25); }
+
+        /* ── Bottom timeline ─────────────────────────────────────────── */
+        .timeline-container {
+            flex-shrink: 0;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            max-height: 180px;
+            display: flex;
+            flex-direction: column;
+        }
+        .timeline-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.4rem 0.75rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            flex-shrink: 0;
+        }
+        .timeline-track {
+            display: flex;
+            gap: 2px;
+            padding: 0.5rem 0.75rem;
+            overflow-x: auto;
+            overflow-y: hidden;
+            flex: 1;
+        }
+        .step {
+            flex-shrink: 0;
+            min-width: 60px;
+            border-radius: 3px;
+            padding: 0.3rem 0.4rem;
+            font-size: 0.65rem;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+        .step.ref { background: var(--ref-bg); border-color: var(--accent); }
+        .step.block-trial { background: var(--block-bg); border-color: var(--beta); }
+        .step.iti { background: rgba(139, 148, 158, 0.05); border-color: var(--border); color: var(--text-dim); min-width: 40px; }
+        .step .step-label { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .step .step-dur { color: var(--text-dim); margin-top: 0.1rem; }
+        .randomize-note {
+            font-size: 0.7rem;
+            color: var(--warn);
+            margin: 0.25rem 0.75rem;
+            font-style: italic;
+        }
+
+        /* ── App footer ──────────────────────────────────────────────── */
+        .app-footer {
+            padding: 0.4rem 1rem;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 0.7rem;
+            flex-shrink: 0;
+        }
+        .app-footer a { color: var(--accent); text-decoration: none; }
+        .app-footer a:hover { color: var(--hover); }
+
+        /* ── Modal ───────────────────────────────────────────────────── */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .modal-backdrop.open { display: flex; }
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1.25rem;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal h2 { font-family: 'JetBrains Mono', monospace; color: var(--error); margin-bottom: 0.5rem; }
+        .modal pre { background: var(--bg); padding: 0.75rem; border-radius: 3px; font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; }
+        .modal-actions { margin-top: 1rem; text-align: right; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h1>v3 Experiment Designer<span class="beta-badge">Beta / Viewer</span></h1>
-        <p>
-            This page will host a new designer for the <strong>Protocol v3</strong> YAML format
-            introduced in maDisplayTools (<code>origin/version3</code>).
-        </p>
-        <p>
-            <strong>PR1 (v0.1)</strong> ships a read-only viewer/importer that round-trips
-            v3 YAMLs with anchors and comments preserved.
-            <strong>PR2 (v0.2)</strong> adds inline editing, drag/drop, the Variables UX, and validation.
-        </p>
-        <p>
-            Until v0.1 lands, please use the existing
-            <a href="experiment_designer.html">Experiment Designer</a>
-            (v2 YAML format only).
-        </p>
-        <div class="links">
-            <a href="index.html">← All tools</a>
-            <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">GitHub</a>
+    <!-- Header -->
+    <div class="app-header">
+        <h1>v3 Experiment Designer</h1>
+        <span class="beta-badge">Beta / Viewer</span>
+        <div class="header-spacer"></div>
+        <button id="settingsToggle" class="header-btn" title="Show/hide experiment metadata, rig, plugins, variables">Settings ▾</button>
+        <input type="file" id="fileInput" accept=".yaml,.yml" style="display: none;">
+        <button id="importBtn" class="header-btn primary" title="Load a v3 protocol YAML file">Import YAML</button>
+        <button id="exportBtn" class="header-btn" disabled title="Re-export the loaded YAML (round-trip)">Export YAML</button>
+        <a href="index.html" class="header-btn" style="text-decoration: none; display: inline-flex; align-items: center;">← All tools</a>
+    </div>
+
+    <!-- View-only banner -->
+    <div class="view-only-banner">
+        <strong>View only.</strong> v0.1 viewer round-trips v3 YAML preserving anchors and comments — editing arrives in v0.2.
+        Open in the <a href="experiment_designer.html">v2 Experiment Designer</a> to edit a v2 protocol.
+    </div>
+
+    <!-- Settings drawer -->
+    <div id="settingsDrawer" class="settings-drawer">
+        <div class="settings-drawer-inner" id="settingsContent">
+            <!-- populated by JS -->
         </div>
     </div>
-    <footer>
-        <p>v3 Experiment Designer (stub) | scaffolded 2026-05-24 ET</p>
-    </footer>
+
+    <!-- 3-zone main -->
+    <div class="three-zone">
+        <!-- LIBRARY -->
+        <div class="zone" id="libraryZone">
+            <div class="zone-header">
+                <span>Library</span>
+                <span class="count" id="libCount">0</span>
+            </div>
+            <div class="zone-body">
+                <input type="text" class="library-search" id="librarySearch" placeholder="Search conditions..." disabled>
+                <div id="libraryList">
+                    <div class="empty-state">Import a v3 YAML to populate the conditions library.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEQUENCE -->
+        <div class="zone" id="sequenceZone">
+            <div class="zone-header">
+                <span>Experiment Sequence</span>
+                <span class="count" id="seqCount">0</span>
+            </div>
+            <div class="zone-body">
+                <div id="sequenceList">
+                    <div class="empty-state">Import a v3 YAML to view the experiment sequence.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- INSPECTOR -->
+        <div class="zone" id="inspectorZone">
+            <div class="zone-header">
+                <span>Inspector</span>
+            </div>
+            <div class="zone-body" id="inspectorBody">
+                <div class="empty-state">Select a condition in the Library or an entry in the Sequence to view details.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom timeline -->
+    <div class="timeline-container">
+        <div class="timeline-header">
+            <span>Flattened Timeline Preview</span>
+            <span id="timelineNote" style="font-size: 0.65rem; color: var(--text-dim); text-transform: none;"></span>
+        </div>
+        <div class="timeline-track" id="timelineTrack">
+            <div class="empty-state">No timeline to preview yet.</div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="app-footer">
+        <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
+        v3 Experiment Designer v0.1 | <span id="footerTimestamp">2026-05-24 ET</span>
+    </div>
+
+    <!-- Error modal -->
+    <div class="modal-backdrop" id="errorModal">
+        <div class="modal">
+            <h2 id="modalTitle">Import error</h2>
+            <pre id="modalBody"></pre>
+            <div class="modal-actions">
+                <button class="header-btn" id="modalClose">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { parseV3Protocol, generateV3Protocol, validateReferences, V3ParseError }
+            from './js/protocol-yaml-v3.js';
+
+        // ═══════════════════════════════════════════════════════════════
+        // State
+        // ═══════════════════════════════════════════════════════════════
+
+        let experiment = null;        // current parsed v3 protocol
+        let lastFilename = null;       // for export naming
+        let selection = null;          // { kind: 'condition', name } | { kind: 'block', index } | { kind: 'ref', index }
+        let librarySearchText = '';
+
+        // ═══════════════════════════════════════════════════════════════
+        // DOM helpers
+        // ═══════════════════════════════════════════════════════════════
+
+        const $ = (id) => document.getElementById(id);
+        const el = (tag, props = {}, ...children) => {
+            const e = document.createElement(tag);
+            for (const [k, v] of Object.entries(props)) {
+                if (k === 'class') e.className = v;
+                else if (k === 'onClick') e.addEventListener('click', v);
+                else if (k === 'dataset') for (const [dk, dv] of Object.entries(v)) e.dataset[dk] = dv;
+                else if (k.startsWith('on')) e.addEventListener(k.slice(2).toLowerCase(), v);
+                else if (k in e) e[k] = v;
+                else e.setAttribute(k, v);
+            }
+            for (const c of children.flat()) {
+                if (c == null || c === false) continue;
+                if (typeof c === 'string') e.appendChild(document.createTextNode(c));
+                else e.appendChild(c);
+            }
+            return e;
+        };
+        const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
+            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+        // ═══════════════════════════════════════════════════════════════
+        // Import / Export
+        // ═══════════════════════════════════════════════════════════════
+
+        $('importBtn').addEventListener('click', () => $('fileInput').click());
+
+        $('fileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const text = await file.text();
+            try {
+                const parsed = parseV3Protocol(text);
+                // Atomic validation: collect all reference errors before committing
+                const refs = validateReferences(parsed);
+                if (!refs.ok) {
+                    showError(
+                        'Reference validation failed for ' + file.name,
+                        refs.errors.join('\n')
+                    );
+                    return;
+                }
+                experiment = parsed;
+                lastFilename = file.name;
+                selection = null;
+                renderAll();
+                $('exportBtn').disabled = false;
+            } catch (err) {
+                showError('Import error: ' + (err.name || 'Error'), err.message + (err.code ? '\n\n[' + err.code + ']' : ''));
+            }
+            $('fileInput').value = '';  // allow re-importing the same file
+        });
+
+        $('exportBtn').addEventListener('click', () => {
+            if (!experiment) return;
+            try {
+                const yaml = generateV3Protocol(experiment);
+                const blob = new Blob([yaml], { type: 'application/x-yaml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = (lastFilename || 'experiment.yaml').replace(/\.ya?ml$/i, '') + '_roundtrip.yaml';
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                showError('Export error', err.message);
+            }
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // Modal
+        // ═══════════════════════════════════════════════════════════════
+
+        function showError(title, body) {
+            $('modalTitle').textContent = title;
+            $('modalBody').textContent = body;
+            $('errorModal').classList.add('open');
+        }
+        $('modalClose').addEventListener('click', () => $('errorModal').classList.remove('open'));
+        $('errorModal').addEventListener('click', (e) => {
+            if (e.target.id === 'errorModal') $('errorModal').classList.remove('open');
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // Settings drawer
+        // ═══════════════════════════════════════════════════════════════
+
+        $('settingsToggle').addEventListener('click', () => {
+            $('settingsDrawer').classList.toggle('open');
+        });
+
+        function renderSettings() {
+            const root = $('settingsContent');
+            root.innerHTML = '';
+            if (!experiment) {
+                root.appendChild(el('div', { class: 'empty-state' }, 'No experiment loaded.'));
+                return;
+            }
+
+            // Experiment info
+            const info = experiment.experiment_info;
+            const infoBox = el('div', { class: 'settings-section' });
+            infoBox.appendChild(el('h3', {}, 'Experiment Info'));
+            for (const k of ['name', 'date_created', 'author', 'pattern_library']) {
+                const v = info[k];
+                if (v != null && v !== '') {
+                    infoBox.appendChild(el('div', { class: 'kv' },
+                        el('span', { class: 'k' }, k + ': '),
+                        el('span', { class: 'v' }, String(v))
+                    ));
+                }
+            }
+            root.appendChild(infoBox);
+
+            // Rig
+            const rigBox = el('div', { class: 'settings-section' });
+            rigBox.appendChild(el('h3', {}, 'Rig'));
+            rigBox.appendChild(el('div', { class: 'kv' },
+                el('span', { class: 'k' }, 'path: '),
+                el('span', { class: 'v' }, experiment.rig_path)
+            ));
+            root.appendChild(rigBox);
+
+            // Plugins
+            if (experiment.plugins.length > 0) {
+                const pluginBox = el('div', { class: 'settings-section' });
+                pluginBox.appendChild(el('h3', {}, 'Plugins (' + experiment.plugins.length + ')'));
+                for (const p of experiment.plugins) {
+                    const pluginCard = el('div', { class: 'kv', style: 'margin-bottom: 0.5rem;' });
+                    pluginCard.appendChild(el('div', {},
+                        el('span', { class: 'k' }, p.name + ': '),
+                        el('span', { class: 'v' }, p.type + (p.matlab ? ' / ' + p.matlab.class : ''))
+                    ));
+                    if (p.config) {
+                        for (const [ck, cv] of Object.entries(p.config)) {
+                            pluginCard.appendChild(el('div', { style: 'padding-left: 1rem;' },
+                                el('span', { class: 'k' }, ck + ': '),
+                                el('span', { class: 'v' }, JSON.stringify(cv))
+                            ));
+                        }
+                    }
+                    pluginBox.appendChild(pluginCard);
+                }
+                root.appendChild(pluginBox);
+            }
+
+            // Variables
+            if (experiment.variables.length > 0) {
+                const varBox = el('div', { class: 'settings-section' });
+                varBox.appendChild(el('h3', {}, 'Variables (' + experiment.variables.length + ')'));
+                const table = el('table', { class: 'vars-table' });
+                const thead = el('thead', {}, el('tr', {},
+                    el('th', {}, 'Anchor'), el('th', {}, 'Value')
+                ));
+                table.appendChild(thead);
+                const tbody = el('tbody');
+                for (const v of experiment.variables) {
+                    const valClass = typeof v.value === 'number' ? 'num' : (typeof v.value === 'string' ? 'str' : '');
+                    tbody.appendChild(el('tr', {},
+                        el('td', {}, '&' + v.name),
+                        el('td', { class: valClass }, typeof v.value === 'string' ? JSON.stringify(v.value) : String(v.value))
+                    ));
+                }
+                table.appendChild(tbody);
+                varBox.appendChild(table);
+                root.appendChild(varBox);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // Library
+        // ═══════════════════════════════════════════════════════════════
+
+        $('librarySearch').addEventListener('input', (e) => {
+            librarySearchText = e.target.value.toLowerCase();
+            renderLibrary();
+        });
+
+        function computeUsage() {
+            const usage = new Map();
+            if (!experiment) return usage;
+            for (const c of experiment.conditions) usage.set(c.name, 0);
+            for (const entry of experiment.sequence) {
+                if (entry.kind === 'ref') {
+                    usage.set(entry.condition_name, (usage.get(entry.condition_name) || 0) + 1);
+                } else if (entry.kind === 'block') {
+                    for (const t of entry.trials) usage.set(t, (usage.get(t) || 0) + 1);
+                    if (entry.intertrial) usage.set(entry.intertrial, (usage.get(entry.intertrial) || 0) + 1);
+                }
+            }
+            return usage;
+        }
+
+        function renderLibrary() {
+            const list = $('libraryList');
+            list.innerHTML = '';
+            $('librarySearch').disabled = !experiment;
+            $('libCount').textContent = experiment ? experiment.conditions.length : 0;
+
+            if (!experiment) {
+                list.appendChild(el('div', { class: 'empty-state' },
+                    'Import a v3 YAML to populate the conditions library.'));
+                return;
+            }
+
+            const usage = computeUsage();
+            const filter = librarySearchText.trim();
+            let shown = 0;
+            for (const cond of experiment.conditions) {
+                if (filter && !cond.name.toLowerCase().includes(filter)) continue;
+                const useCount = usage.get(cond.name) || 0;
+                const row = el('div', {
+                    class: 'lib-row' + (useCount === 0 ? ' unused' : '') +
+                           (selection && selection.kind === 'condition' && selection.name === cond.name ? ' selected' : ''),
+                    title: useCount === 0 ? 'Unreferenced in sequence' : (useCount + ' reference' + (useCount === 1 ? '' : 's')),
+                    onClick: () => { selection = { kind: 'condition', name: cond.name }; renderLibrary(); renderInspector(); renderSequence(); }
+                },
+                    el('span', { class: 'name' }, cond.name),
+                    el('span', { class: 'usage' }, useCount + '×')
+                );
+                list.appendChild(row);
+                shown++;
+            }
+            if (shown === 0) {
+                list.appendChild(el('div', { class: 'empty-state' }, 'No matches.'));
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // Sequence
+        // ═══════════════════════════════════════════════════════════════
+
+        function renderSequence() {
+            const list = $('sequenceList');
+            list.innerHTML = '';
+            $('seqCount').textContent = experiment ? experiment.sequence.length : 0;
+
+            if (!experiment) {
+                list.appendChild(el('div', { class: 'empty-state' },
+                    'Import a v3 YAML to view the experiment sequence.'));
+                return;
+            }
+
+            const knownConds = new Set(experiment.conditions.map(c => c.name));
+
+            experiment.sequence.forEach((entry, idx) => {
+                const isSelected = selection && (
+                    (selection.kind === 'ref' && selection.index === idx) ||
+                    (selection.kind === 'block' && selection.index === idx)
+                );
+
+                if (entry.kind === 'ref') {
+                    const card = el('div', {
+                        class: 'seq-entry ref' + (isSelected ? ' selected' : ''),
+                        onClick: () => { selection = { kind: 'ref', index: idx }; renderSequence(); renderInspector(); renderLibrary(); }
+                    },
+                        el('span', { class: 'marker' }, '▸'),
+                        el('span', { class: 'name' }, entry.condition_name),
+                        !knownConds.has(entry.condition_name) ? el('span', { class: 'trial-chip missing', style: 'margin-left: auto;' }, 'missing') : null
+                    );
+                    list.appendChild(card);
+                } else if (entry.kind === 'block') {
+                    const meta = el('div', { class: 'block-meta' });
+                    meta.appendChild(el('span', {}, 'trials: ' + entry.trials.length));
+                    meta.appendChild(el('span', {}, 'reps: ' + entry.repetitions));
+                    if (entry.randomize) meta.appendChild(el('span', { class: 'randomize-badge' }, '⚄ randomize'));
+
+                    const trialsRow = el('div', { class: 'trials-row' });
+                    for (const t of entry.trials) {
+                        const chip = el('span', {
+                            class: 'trial-chip' + (!knownConds.has(t) ? ' missing' : ''),
+                            title: !knownConds.has(t) ? 'Condition "' + t + '" not in library' : 'Click to view ' + t,
+                            onClick: (e) => {
+                                e.stopPropagation();
+                                if (knownConds.has(t)) {
+                                    selection = { kind: 'condition', name: t };
+                                    renderLibrary(); renderInspector(); renderSequence();
+                                }
+                            }
+                        }, t);
+                        trialsRow.appendChild(chip);
+                    }
+
+                    const itiRow = entry.intertrial
+                        ? el('div', { class: 'iti-row' },
+                            'intertrial: ',
+                            el('span', { class: 'iti-ref' + (!knownConds.has(entry.intertrial) ? ' missing' : '') }, entry.intertrial))
+                        : null;
+
+                    const unknownPill = entry._unknownKeys && Object.keys(entry._unknownKeys).length > 0
+                        ? el('div', { class: 'unknown-keys-pill', title: Object.keys(entry._unknownKeys).join(', ') },
+                            '⚠ ' + Object.keys(entry._unknownKeys).length + ' future-compat key' + (Object.keys(entry._unknownKeys).length === 1 ? '' : 's'))
+                        : null;
+
+                    const card = el('div', {
+                        class: 'seq-entry block' + (isSelected ? ' selected' : ''),
+                        onClick: () => { selection = { kind: 'block', index: idx }; renderSequence(); renderInspector(); renderLibrary(); }
+                    },
+                        el('div', { class: 'block-name' }, '▾ ' + (entry.name || 'block_' + (idx + 1))),
+                        meta,
+                        trialsRow,
+                        itiRow,
+                        unknownPill
+                    );
+                    list.appendChild(card);
+                }
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // Inspector
+        // ═══════════════════════════════════════════════════════════════
+
+        function renderInspector() {
+            const body = $('inspectorBody');
+            body.innerHTML = '';
+
+            if (!experiment) {
+                body.appendChild(el('div', { class: 'empty-state' },
+                    'Select a condition in the Library or an entry in the Sequence to view details.'));
+                return;
+            }
+            if (!selection) {
+                body.appendChild(el('div', { class: 'empty-state' },
+                    'Click a condition (Library) or a sequence entry to inspect.'));
+                return;
+            }
+
+            if (selection.kind === 'condition') {
+                const cond = experiment.conditions.find(c => c.name === selection.name);
+                if (!cond) {
+                    body.appendChild(el('div', { class: 'empty-state' }, 'Condition not found.'));
+                    return;
+                }
+                body.appendChild(el('div', { class: 'inspector-title' },
+                    el('span', { class: 'kind' }, 'Condition'),
+                    cond.name
+                ));
+                const section = el('div', { class: 'insp-section' });
+                section.appendChild(el('h4', {}, 'Commands (' + cond.commands.length + ')'));
+                for (const cmd of cond.commands) {
+                    section.appendChild(renderCommandCard(cmd));
+                }
+                body.appendChild(section);
+                return;
+            }
+
+            if (selection.kind === 'block') {
+                const entry = experiment.sequence[selection.index];
+                if (!entry || entry.kind !== 'block') return;
+                body.appendChild(el('div', { class: 'inspector-title' },
+                    el('span', { class: 'kind' }, 'Block'),
+                    entry.name || 'block_' + (selection.index + 1)
+                ));
+                const props = el('div', { class: 'insp-section' });
+                props.appendChild(el('h4', {}, 'Properties'));
+                props.appendChild(el('div', { class: 'kv' },
+                    el('span', { class: 'k' }, 'repetitions: '),
+                    el('span', { class: 'v' }, String(entry.repetitions))));
+                props.appendChild(el('div', { class: 'kv' },
+                    el('span', { class: 'k' }, 'randomize: '),
+                    el('span', { class: 'v' }, entry.randomize ? 'true' : 'false')));
+                if (entry.intertrial) {
+                    props.appendChild(el('div', { class: 'kv' },
+                        el('span', { class: 'k' }, 'intertrial: '),
+                        el('button', { class: 'jump-btn', onClick: () => {
+                            selection = { kind: 'condition', name: entry.intertrial };
+                            renderLibrary(); renderInspector(); renderSequence();
+                        }}, '→ ' + entry.intertrial)));
+                }
+                body.appendChild(props);
+
+                const trials = el('div', { class: 'insp-section' });
+                trials.appendChild(el('h4', {}, 'Trials (' + entry.trials.length + ')'));
+                const trialList = el('div', { style: 'display: flex; flex-direction: column; gap: 0.25rem;' });
+                for (const t of entry.trials) {
+                    trialList.appendChild(el('button', { class: 'jump-btn', style: 'text-align: left;', onClick: () => {
+                        selection = { kind: 'condition', name: t };
+                        renderLibrary(); renderInspector(); renderSequence();
+                    }}, '→ ' + t));
+                }
+                trials.appendChild(trialList);
+                body.appendChild(trials);
+
+                if (entry._unknownKeys && Object.keys(entry._unknownKeys).length > 0) {
+                    const unk = el('div', { class: 'insp-section' });
+                    unk.appendChild(el('h4', {}, 'Forward-compat keys (not edited in v0.1)'));
+                    const pre = el('pre', { style: 'background: var(--bg); padding: 0.5rem; border-radius: 3px; font-size: 0.7rem; white-space: pre-wrap;' },
+                        JSON.stringify(entry._unknownKeys, null, 2));
+                    unk.appendChild(pre);
+                    body.appendChild(unk);
+                }
+                return;
+            }
+
+            if (selection.kind === 'ref') {
+                const entry = experiment.sequence[selection.index];
+                if (!entry || entry.kind !== 'ref') return;
+                body.appendChild(el('div', { class: 'inspector-title' },
+                    el('span', { class: 'kind' }, 'Reference'),
+                    entry.condition_name
+                ));
+                body.appendChild(el('div', { class: 'insp-section' },
+                    el('div', { style: 'color: var(--text-dim); font-size: 0.8rem; margin-bottom: 0.5rem;' },
+                        'This entry in the sequence runs the condition "' + entry.condition_name + '" once.'),
+                    el('button', { class: 'jump-btn', onClick: () => {
+                        selection = { kind: 'condition', name: entry.condition_name };
+                        renderLibrary(); renderInspector(); renderSequence();
+                    }}, '→ View condition details')
+                ));
+                return;
+            }
+        }
+
+        function renderCommandCard(cmd) {
+            const card = el('div', { class: 'cmd-card ' + cmd.type });
+            const head = el('div', { class: 'cmd-head' },
+                el('span', { class: 'ctype' }, cmd.type),
+                cmd.type === 'plugin' ? (cmd.plugin_name + '.' + cmd.command_name) :
+                cmd.type === 'wait' ? 'wait' :
+                cmd.command_name || ''
+            );
+            card.appendChild(head);
+            const detailKeys = {
+                controller: ['pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain'],
+                wait: ['duration'],
+                plugin: []
+            }[cmd.type] || [];
+            for (const k of detailKeys) {
+                if (cmd[k] !== undefined) {
+                    card.appendChild(el('div', { class: 'kv-line' },
+                        el('span', { class: 'k' }, k + ':'),
+                        el('span', { class: 'v' }, ' ' + (typeof cmd[k] === 'string' ? cmd[k] : String(cmd[k])))));
+                }
+            }
+            if (cmd.type === 'plugin' && cmd.params && Object.keys(cmd.params).length > 0) {
+                card.appendChild(el('div', { class: 'kv-line' }, el('span', { class: 'k' }, 'params:')));
+                for (const [pk, pv] of Object.entries(cmd.params)) {
+                    card.appendChild(el('div', { class: 'kv-line', style: 'padding-left: 1rem;' },
+                        el('span', { class: 'k' }, pk + ':'),
+                        el('span', { class: 'v' }, ' ' + (typeof pv === 'string' ? JSON.stringify(pv) : String(pv)))));
+                }
+            }
+            if (cmd._unknownKeys && Object.keys(cmd._unknownKeys).length > 0) {
+                card.appendChild(el('div', { class: 'kv-line', style: 'color: var(--warn); margin-top: 0.2rem;' },
+                    '⚠ unknown keys: ' + Object.keys(cmd._unknownKeys).join(', ')));
+            }
+            return card;
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // Timeline preview (flattened)
+        // ═══════════════════════════════════════════════════════════════
+
+        function condDuration(cond) {
+            if (!cond) return 0;
+            let tp = 0, wait = 0;
+            for (const c of cond.commands) {
+                if (c.type === 'controller' && c.command_name === 'trialParams') tp = Math.max(tp, c.duration || 0);
+                if (c.type === 'wait') wait += (c.duration || 0);
+            }
+            return Math.max(tp, wait);
+        }
+
+        function flattenSequence() {
+            if (!experiment) return { steps: [], hasRandom: false };
+            const byName = new Map(experiment.conditions.map(c => [c.name, c]));
+            const steps = [];
+            let hasRandom = false;
+            for (const entry of experiment.sequence) {
+                if (entry.kind === 'ref') {
+                    steps.push({
+                        kind: 'ref',
+                        label: entry.condition_name,
+                        dur: condDuration(byName.get(entry.condition_name))
+                    });
+                } else if (entry.kind === 'block') {
+                    if (entry.randomize) hasRandom = true;
+                    const iti = entry.intertrial ? byName.get(entry.intertrial) : null;
+                    for (let r = 0; r < entry.repetitions; r++) {
+                        for (let t = 0; t < entry.trials.length; t++) {
+                            const condName = entry.trials[t];
+                            steps.push({
+                                kind: 'block-trial',
+                                label: condName,
+                                blockName: entry.name,
+                                dur: condDuration(byName.get(condName)),
+                                rep: r,
+                                randomize: entry.randomize
+                            });
+                            // Intertrial between consecutive trials within a rep (not after last)
+                            const isLastTrialOfFinalRep = (r === entry.repetitions - 1) && (t === entry.trials.length - 1);
+                            if (entry.intertrial && !isLastTrialOfFinalRep) {
+                                steps.push({
+                                    kind: 'iti',
+                                    label: 'iti: ' + entry.intertrial,
+                                    dur: condDuration(iti)
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            return { steps, hasRandom };
+        }
+
+        function renderTimeline() {
+            const track = $('timelineTrack');
+            track.innerHTML = '';
+            const note = $('timelineNote');
+            if (!experiment) {
+                track.appendChild(el('div', { class: 'empty-state' }, 'No timeline to preview yet.'));
+                note.textContent = '';
+                return;
+            }
+            const { steps, hasRandom } = flattenSequence();
+            note.textContent = steps.length + ' step' + (steps.length === 1 ? '' : 's') +
+                (hasRandom ? ' • randomized blocks shown in nominal order; runtime order will differ' : '');
+
+            // Build pixel-proportional widths (min 60px). Cap total to viewport width × 4.
+            const maxTotalPx = 4000;
+            const maxDur = steps.reduce((m, s) => Math.max(m, s.dur || 0), 0) || 1;
+            const pxPerSec = Math.max(8, Math.min(40, maxTotalPx / Math.max(1, steps.reduce((s, x) => s + (x.dur || 1), 0))));
+
+            for (const step of steps) {
+                const widthPx = Math.max(60, (step.dur || 1) * pxPerSec);
+                const cell = el('div', {
+                    class: 'step ' + step.kind,
+                    style: 'width: ' + widthPx + 'px;'
+                },
+                    el('div', { class: 'step-label', title: step.label }, step.label),
+                    el('div', { class: 'step-dur' }, (step.dur || 0).toFixed(1) + 's')
+                );
+                track.appendChild(cell);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // Render orchestrator
+        // ═══════════════════════════════════════════════════════════════
+
+        function renderAll() {
+            renderSettings();
+            renderLibrary();
+            renderSequence();
+            renderInspector();
+            renderTimeline();
+        }
+
+        // Set the ET timestamp in the footer
+        function setFooterTimestamp() {
+            const now = new Date();
+            // Format as YYYY-MM-DD HH:MM ET
+            const fmt = (d) => {
+                const opts = { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false };
+                return d.toLocaleString('en-CA', opts).replace(',', '');
+            };
+            $('footerTimestamp').textContent = fmt(now) + ' ET';
+        }
+        setFooterTimestamp();
+
+        // Initial empty render
+        renderAll();
+    </script>
 </body>
 </html>

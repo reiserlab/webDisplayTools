@@ -29,7 +29,10 @@
 
 'use strict';
 
-import YAML from 'yaml';
+// Import as namespace so both Node (yaml@2 npm package with a default export)
+// and browser (yaml@2/browser CDN build with named exports only) resolve.
+// All uses below go through `YAML.<fn>`.
+import * as YAML from 'yaml';
 
 // ════════════════════════════════════════════════════
 // Constants — known schema keys per level
