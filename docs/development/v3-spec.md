@@ -25,6 +25,27 @@ designer exists to view and edit data they could represent. Run
 `tests/refresh-v3-canonical.sh` to re-fetch them at a newer SHA; any `git diff`
 output is a signal the spec drifted upstream.
 
+### MATLAB-side validation (manual flow)
+
+The maDisplayTools v3 `ProtocolParser.m` calls `yaml.loadFile`, which lives in
+the third-party [MartinKoch123/yaml](https://github.com/MartinKoch123/yaml)
+library (NOT MATLAB base; NOT Text Analytics Toolbox). To validate a v3 YAML
+against the upstream parser locally:
+
+```matlab
+% One-time setup (clone the YAML library and add it to the path):
+%   git clone https://github.com/MartinKoch123/yaml.git /tmp/matlab-yaml-namespaced
+addpath('/tmp/matlab-yaml-namespaced');
+addpath(genpath('/path/to/maDisplayTools'));  % must be on origin/version3
+parser = ProtocolParser();
+result = parser.parse('tests/fixtures/v3_canonical_a.yaml');
+```
+
+The canonical fixtures use absolute paths pinned to a single developer's
+machine. For portable MATLAB validation, use the rig-path-normalized copies in
+`tests/fixtures/matlab_normalized/` (rewritten to the user's local
+`maDisplayTools` checkout location).
+
 ---
 
 ## Top-level structure

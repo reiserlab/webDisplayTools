@@ -1,0 +1,94 @@
+version: 3
+
+# ============================================================================
+# Plugin-config fixture — plugins carry inline `config:` blocks that override
+# defaults from the rig YAML. Exercises the plugin config nesting and the
+# `_unknownKeys`-at-plugin-config level for forward compatibility.
+# ============================================================================
+
+experiment_info:
+  name: "v3 fixture — plugins with inline config overrides"
+  date_created: "2026-05-24"
+  author: "webDisplayTools test fixture"
+  pattern_library: '/Users/reiserm/Documents/GitHub/maDisplayTools/patterns/reference/G41_2x12_cw'
+
+rig: '/Users/reiserm/Documents/GitHub/maDisplayTools/configs/rigs/test_rig_1.yaml'
+
+plugins:
+  - name: "camera"
+    type: "class"
+    matlab:
+      class: "BiasPlugin"
+    config:
+      frame_rate: 150
+      video_format: "avi"
+
+  - name: "backlight"
+    type: "class"
+    matlab:
+      class: "LEDControllerPlugin"
+    config:
+      port: "COM5"
+
+experiment:
+  - "setup"
+  - name: "main"
+    trials: ["stim"]
+    repetitions: 2
+    intertrial: "rest"
+  - "shutdown"
+
+conditions:
+  - name: "setup"
+    commands:
+      - type: "plugin"
+        plugin_name: "backlight"
+        command_name: "setIRLEDPower"
+        params:
+          power: 50
+      - type: "plugin"
+        plugin_name: "backlight"
+        command_name: "turnOnLED"
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "startRecording"
+        params:
+          filename: 'fixture_test'
+
+  - name: "stim"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat01_sq_grating_30deg_gs2_G4.pat"
+        pattern_ID: 1
+        duration: 5
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: 5
+
+  - name: "rest"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: 1
+
+  - name: "shutdown"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "plugin"
+        plugin_name: "backlight"
+        command_name: "turnOffLED"
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "stopRecording"
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "stopCapture"

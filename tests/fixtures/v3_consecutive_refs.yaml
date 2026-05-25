@@ -1,0 +1,57 @@
+version: 3
+
+# ============================================================================
+# Consecutive-refs fixture — `experiment:` contains only bare condition
+# references, no block objects. Exercises the heterogeneous-list parser path
+# when only one branch (bare-string) is taken.
+# ============================================================================
+
+experiment_info:
+  name: "v3 fixture — sequence of bare references, no blocks"
+  date_created: "2026-05-24"
+  author: "webDisplayTools test fixture"
+  pattern_library: '/Users/reiserm/Documents/GitHub/maDisplayTools/patterns/reference/G41_2x12_cw'
+
+rig: '/Users/reiserm/Documents/GitHub/maDisplayTools/configs/rigs/test_rig_1.yaml'
+
+experiment:
+  - "step_1"
+  - "step_2"
+  - "step_3"
+  - "step_4"
+
+conditions:
+  - name: "step_1"
+    commands:
+      - type: "controller"
+        command_name: "allOn"
+      - type: "wait"
+        duration: 1
+      - type: "controller"
+        command_name: "allOff"
+
+  - name: "step_2"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat01_sq_grating_30deg_gs2_G4.pat"
+        pattern_ID: 1
+        duration: 5
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: 5
+
+  - name: "step_3"
+    commands:
+      - type: "wait"
+        duration: 2
+
+  - name: "step_4"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: 1

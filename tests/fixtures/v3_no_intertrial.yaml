@@ -1,0 +1,52 @@
+version: 3
+
+# ============================================================================
+# No-intertrial fixture — block omits the optional `intertrial:` field.
+# Trials run back-to-back with no inserted between-trial commands.
+# ============================================================================
+
+experiment_info:
+  name: "v3 fixture — block without intertrial"
+  date_created: "2026-05-24"
+  author: "webDisplayTools test fixture"
+  pattern_library: '/Users/reiserm/Documents/GitHub/maDisplayTools/patterns/reference/G41_2x12_cw'
+
+rig: '/Users/reiserm/Documents/GitHub/maDisplayTools/configs/rigs/test_rig_1.yaml'
+
+variables:
+  trial_dur: &trial_dur 4
+
+experiment:
+  - name: "no_iti_block"
+    trials: ["fast_A", "fast_B"]
+    repetitions: 3
+    randomize: true
+
+conditions:
+  - name: "fast_A"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat01_sq_grating_30deg_gs2_G4.pat"
+        pattern_ID: 1
+        duration: *trial_dur
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: *trial_dur
+
+  - name: "fast_B"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat04_sq_grating_60deg_gs16_G4.pat"
+        pattern_ID: 2
+        duration: *trial_dur
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: *trial_dur

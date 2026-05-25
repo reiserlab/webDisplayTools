@@ -1,0 +1,34 @@
+version: 3
+
+# ============================================================================
+# No-variables fixture — minimal experiment with no `variables:` section.
+# Exercises the optional-anchor-block path in the parser/generator.
+# ============================================================================
+
+experiment_info:
+  name: "v3 fixture — no variables section"
+  date_created: "2026-05-24"
+  author: "webDisplayTools test fixture"
+  pattern_library: '/Users/reiserm/Documents/GitHub/maDisplayTools/patterns/reference/G41_2x12_cw'
+
+rig: '/Users/reiserm/Documents/GitHub/maDisplayTools/configs/rigs/test_rig_1.yaml'
+
+experiment:
+  - name: "single block"
+    trials: ["stimulus"]
+    repetitions: 1
+
+conditions:
+  - name: "stimulus"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat01_sq_grating_30deg_gs2_G4.pat"
+        pattern_ID: 1
+        duration: 5
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: 5

@@ -1,0 +1,68 @@
+version: 3
+
+# ============================================================================
+# Future-keys fixture — includes reserved v3.x keys that the current MATLAB
+# parser doesn't implement (`retry_on_fail`, `abort_if`). Exercises the
+# unknown-keys passthrough at the block level.
+#
+# The MATLAB parser at the pinned SHA (00c8f95) silently ignores unknown
+# block keys, so this fixture parses cleanly. The designer must preserve
+# these keys through a parse → generate → parse round-trip.
+# ============================================================================
+
+experiment_info:
+  name: "v3 fixture — block with reserved future-compat keys"
+  date_created: "2026-05-24"
+  author: "webDisplayTools test fixture"
+  pattern_library: '/Users/reiserm/Documents/GitHub/maDisplayTools/patterns/reference/G41_2x12_cw'
+
+rig: '/Users/reiserm/Documents/GitHub/maDisplayTools/configs/rigs/test_rig_1.yaml'
+
+experiment:
+  - name: "main_block_with_future_keys"
+    trials: ["trial_a", "trial_b"]
+    repetitions: 5
+    randomize: true
+    intertrial: "rest"
+    # Reserved v3.x flow-control keys (proposal-only, MATLAB ignores for now)
+    retry_on_fail:
+      condition: "tracker.fly_visible == false"
+      max_retries_per_trial: 3
+      placement: "end_of_block"
+    abort_if: "tracker.idle_seconds > 60"
+
+conditions:
+  - name: "trial_a"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat01_sq_grating_30deg_gs2_G4.pat"
+        pattern_ID: 1
+        duration: 5
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: 5
+
+  - name: "trial_b"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat04_sq_grating_60deg_gs16_G4.pat"
+        pattern_ID: 2
+        duration: 5
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: 5
+
+  - name: "rest"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: 2

@@ -1,0 +1,72 @@
+version: 3
+
+# ============================================================================
+# randomize: false fixture — block runs trials in the order listed for every
+# repetition. Exercises the explicit randomize=false case (default-omitted
+# behavior is covered by other fixtures).
+# ============================================================================
+
+experiment_info:
+  name: "v3 fixture — randomize=false block"
+  date_created: "2026-05-24"
+  author: "webDisplayTools test fixture"
+  pattern_library: '/Users/reiserm/Documents/GitHub/maDisplayTools/patterns/reference/G41_2x12_cw'
+
+rig: '/Users/reiserm/Documents/GitHub/maDisplayTools/configs/rigs/test_rig_1.yaml'
+
+experiment:
+  - name: "deterministic order"
+    trials: ["A", "B", "C"]
+    repetitions: 2
+    randomize: false
+    intertrial: "pause"
+
+conditions:
+  - name: "A"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat01_sq_grating_30deg_gs2_G4.pat"
+        pattern_ID: 1
+        duration: 3
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: 3
+
+  - name: "B"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat04_sq_grating_60deg_gs16_G4.pat"
+        pattern_ID: 2
+        duration: 3
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: 3
+
+  - name: "C"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat05_sine_grating_30deg_gs16_G4.pat"
+        pattern_ID: 3
+        duration: 3
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: 3
+
+  - name: "pause"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: 1

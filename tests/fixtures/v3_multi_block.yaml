@@ -1,0 +1,82 @@
+version: 3
+
+# ============================================================================
+# Multi-block fixture — the Shubham-P008-style structure that motivated v3.
+# Three blocks at independent repetition counts: pre-test (1 rep, no random),
+# training (4 reps, randomized), post-test (1 rep, no random).
+# ============================================================================
+
+experiment_info:
+  name: "v3 fixture — multi-block at different repetition counts"
+  date_created: "2026-05-24"
+  author: "webDisplayTools test fixture"
+  pattern_library: '/Users/reiserm/Documents/GitHub/maDisplayTools/patterns/reference/G41_2x12_cw'
+
+rig: '/Users/reiserm/Documents/GitHub/maDisplayTools/configs/rigs/test_rig_1.yaml'
+
+experiment:
+  - "arena_check"
+  - name: "pretest"
+    trials: ["probe"]
+    repetitions: 1
+  - name: "training"
+    trials: ["training_trial", "probe"]
+    repetitions: 4
+    randomize: true
+    intertrial: "baseline"
+  - name: "posttest"
+    trials: ["probe"]
+    repetitions: 1
+  - "shutdown"
+
+conditions:
+  - name: "arena_check"
+    commands:
+      - type: "controller"
+        command_name: "allOn"
+      - type: "wait"
+        duration: 1
+      - type: "controller"
+        command_name: "allOff"
+
+  - name: "training_trial"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat01_sq_grating_30deg_gs2_G4.pat"
+        pattern_ID: 1
+        duration: 10
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: 10
+
+  - name: "probe"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "pat04_sq_grating_60deg_gs16_G4.pat"
+        pattern_ID: 2
+        duration: 5
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "wait"
+        duration: 5
+
+  - name: "baseline"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: 2
+
+  - name: "shutdown"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: 1
