@@ -37,6 +37,7 @@ const {
     docInsertSequenceEntry,
     docMoveSequenceEntry,
     docRemoveSequenceEntry,
+    docReplaceSequenceEntry,
     docInsertTrialInBlock,
     docMoveTrialInBlock,
     docRemoveTrialFromBlock,
@@ -1791,6 +1792,61 @@ checkThrows(
         ].join('\n') + '\n';
         const exp = parseV3Protocol(yaml);
         docRemoveTrialFromBlock(exp, 0, 0);
+    },
+    'INVALID_INPUT'
+);
+
+// ─── Test Suite 28: docReplaceSequenceEntry ─────────────────────────────────
+console.log('\n--- Suite 28: docReplaceSequenceEntry (ref↔block convert) ---');
+
+{
+    // Convert a bare ref to a single-trial block
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const refIdx = 0;
+    const condName = exp.sequence[refIdx].condition_name;
+    docReplaceSequenceEntry(exp, refIdx, {
+        kind: 'block',
+        name: condName + ' block',
+        trials: [condName],
+        repetitions: 1
+    });
+    check('replace: ref → block kind', exp.sequence[refIdx].kind, 'block');
+    check('replace: block has 1 trial', exp.sequence[refIdx].trials.length, 1);
+    check('replace: trial is original cond', exp.sequence[refIdx].trials[0], condName);
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('replace: round-trip kind', reparsed.sequence[refIdx].kind, 'block');
+    check('replace: round-trip trial', reparsed.sequence[refIdx].trials[0], condName);
+}
+
+{
+    // Convert a block back to a ref
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const firstTrial = exp.sequence[blockIdx].trials[0];
+    docReplaceSequenceEntry(exp, blockIdx, { kind: 'ref', condition_name: firstTrial });
+    check('replace: block → ref kind', exp.sequence[blockIdx].kind, 'ref');
+    check('replace: ref condition_name', exp.sequence[blockIdx].condition_name, firstTrial);
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('replace: round-trip kind', reparsed.sequence[blockIdx].kind, 'ref');
+    check('replace: round-trip name', reparsed.sequence[blockIdx].condition_name, firstTrial);
+}
+
+checkThrows(
+    'replace: rejects out-of-bounds',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docReplaceSequenceEntry(exp, 999, { kind: 'ref', condition_name: 'x' });
+    },
+    'BAD_PATH'
+);
+
+checkThrows(
+    'replace: rejects bad entry kind',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docReplaceSequenceEntry(exp, 0, { kind: 'bogus' });
     },
     'INVALID_INPUT'
 );

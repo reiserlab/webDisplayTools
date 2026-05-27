@@ -978,7 +978,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.7 | <span id="footerTimestamp">2026-05-27 16:57 ET</span>
+        v3 Experiment Designer v0.8 | <span id="footerTimestamp">2026-05-27 17:28 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1009,6 +1009,7 @@
             docInsertSequenceEntry,
             docMoveSequenceEntry,
             docRemoveSequenceEntry,
+            docReplaceSequenceEntry,
             docInsertTrialInBlock,
             docMoveTrialInBlock,
             docRemoveTrialFromBlock,
@@ -1535,6 +1536,87 @@
             }
         }
 
+        // Right-click handler — convert a sequence entry between ref and
+        // single-trial block. A block is "convertible" to a ref only when it
+        // has exactly 1 trial, 1 rep, no randomize, and no intertrial (i.e.,
+        // it's semantically equivalent to a bare ref). Non-convertible blocks
+        // show a soft error instead.
+        function isConvertibleBlock(entry) {
+            return entry &&
+                entry.kind === 'block' &&
+                entry.trials.length === 1 &&
+                (entry.repetitions || 1) === 1 &&
+                !entry.randomize &&
+                !entry.intertrial;
+        }
+
+        function onConvertSequenceEntry(idx) {
+            const entry = experiment.sequence[idx];
+            if (!entry) return;
+            if (entry.kind === 'ref') {
+                if (!confirm('Convert ref "' + entry.condition_name + '" to a single-trial block?')) return;
+                pushUndo();
+                try {
+                    docReplaceSequenceEntry(experiment, idx, {
+                        kind: 'block',
+                        name: entry.condition_name,
+                        trials: [entry.condition_name],
+                        repetitions: 1
+                    });
+                    setDirty(true);
+                    selection = { kind: 'block', index: idx };
+                    renderAll();
+                } catch (err) {
+                    showError('Convert failed', err.message);
+                }
+            } else if (entry.kind === 'block') {
+                if (!isConvertibleBlock(entry)) {
+                    showError(
+                        'Cannot convert block to ref',
+                        'Only blocks with exactly 1 trial, 1 repetition, no randomize, and no intertrial can convert to a bare ref. ' +
+                        'This block has ' + entry.trials.length + ' trial(s), ' +
+                        (entry.repetitions || 1) + ' rep(s), randomize=' + (entry.randomize ? 'on' : 'off') + ', ' +
+                        (entry.intertrial ? 'intertrial=' + entry.intertrial : 'no intertrial') + '.'
+                    );
+                    return;
+                }
+                const trial = entry.trials[0];
+                if (!confirm('Convert block "' + (entry.name || 'block_' + (idx + 1)) + '" to a bare ref to "' + trial + '"?')) return;
+                pushUndo();
+                try {
+                    docReplaceSequenceEntry(experiment, idx, { kind: 'ref', condition_name: trial });
+                    setDirty(true);
+                    selection = { kind: 'ref', index: idx };
+                    renderAll();
+                } catch (err) {
+                    showError('Convert failed', err.message);
+                }
+            }
+        }
+
+        // Create a missing condition referenced from the sequence (either a
+        // bare ref to a missing condition, or a trial chip / intertrial that
+        // points at a name not in conditions:). Creates a minimal valid
+        // condition with [{type:'wait', duration:1}] as the placeholder; the
+        // user edits commands after.
+        function onCreateMissingCondition(name) {
+            if (!experiment) return;
+            if (experiment.conditions.find((c) => c.name === name)) {
+                showError('Create failed', 'A condition named "' + name + '" already exists.');
+                return;
+            }
+            if (!confirm('Create a new condition "' + name + '" with a placeholder wait command?')) return;
+            pushUndo();
+            try {
+                docInsertCondition(experiment, name, [{ type: 'wait', duration: 1 }]);
+                setDirty(true);
+                selection = { kind: 'condition', name };
+                renderAll();
+            } catch (err) {
+                showError('Create failed', err.message);
+            }
+        }
+
         function onRemoveSequenceEntry(idx) {
             pushUndo();
             try {
@@ -1751,13 +1833,28 @@
                 );
 
                 if (entry.kind === 'ref') {
+                    const isMissingRef = !knownConds.has(entry.condition_name);
+                    const missingBadge = isMissingRef
+                        ? el('span', {
+                            class: 'trial-chip missing',
+                            title: 'Right-click for options',
+                            onClick: (e) => {
+                                e.stopPropagation();
+                                onCreateMissingCondition(entry.condition_name);
+                            }
+                          }, 'missing — click to create')
+                        : null;
                     const card = el('div', {
                         class: 'seq-entry ref' + (isSelected ? ' selected' : ''),
-                        onClick: () => { selection = { kind: 'ref', index: idx }; renderSequence(); renderInspector(); renderLibrary(); }
+                        onClick: () => { selection = { kind: 'ref', index: idx }; renderSequence(); renderInspector(); renderLibrary(); },
+                        onContextMenu: (e) => {
+                            e.preventDefault();
+                            onConvertSequenceEntry(idx);
+                        }
                     },
                         el('span', { class: 'marker' }, '▸'),
                         el('span', { class: 'name' }, entry.condition_name),
-                        !knownConds.has(entry.condition_name) ? el('span', { class: 'trial-chip missing' }, 'missing') : null,
+                        missingBadge,
                         makeActions(idx)
                     );
                     attachDrag(card, idx);
@@ -1774,10 +1871,12 @@
                         const isMissing = !knownConds.has(t);
                         const chip = el('span', {
                             class: 'trial-chip' + (isMissing ? ' missing' : ''),
-                            title: isMissing ? 'Condition "' + t + '" not in library' : 'Click to view ' + t,
+                            title: isMissing ? 'Condition "' + t + '" not in library — click to create' : 'Click to view ' + t,
                             onClick: (e) => {
                                 e.stopPropagation();
-                                if (knownConds.has(t)) {
+                                if (isMissing) {
+                                    onCreateMissingCondition(t);
+                                } else {
                                     selection = { kind: 'condition', name: t };
                                     renderLibrary(); renderInspector(); renderSequence();
                                 }
@@ -1872,9 +1971,26 @@
                     });
 
                     const itiRow = entry.intertrial
-                        ? el('div', { class: 'iti-row' },
-                            'intertrial: ',
-                            el('span', { class: 'iti-ref' + (!knownConds.has(entry.intertrial) ? ' missing' : '') }, entry.intertrial))
+                        ? (() => {
+                            const itiName = entry.intertrial;
+                            const itiMissing = !knownConds.has(itiName);
+                            return el('div', { class: 'iti-row' },
+                                'intertrial: ',
+                                el('span', {
+                                    class: 'iti-ref' + (itiMissing ? ' missing' : ''),
+                                    title: itiMissing ? 'Condition "' + itiName + '" not in library — click to create' : 'Click to view ' + itiName,
+                                    style: 'cursor: pointer;',
+                                    onClick: (e) => {
+                                        e.stopPropagation();
+                                        if (itiMissing) {
+                                            onCreateMissingCondition(itiName);
+                                        } else {
+                                            selection = { kind: 'condition', name: itiName };
+                                            renderLibrary(); renderInspector(); renderSequence();
+                                        }
+                                    }
+                                }, itiName));
+                        })()
                         : null;
 
                     const unknownPill = entry._unknownKeys && Object.keys(entry._unknownKeys).length > 0
@@ -1888,7 +2004,11 @@
                     );
                     const card = el('div', {
                         class: 'seq-entry block' + (isSelected ? ' selected' : ''),
-                        onClick: () => { selection = { kind: 'block', index: idx }; renderSequence(); renderInspector(); renderLibrary(); }
+                        onClick: () => { selection = { kind: 'block', index: idx }; renderSequence(); renderInspector(); renderLibrary(); },
+                        onContextMenu: (e) => {
+                            e.preventDefault();
+                            onConvertSequenceEntry(idx);
+                        }
                     },
                         blockHead,
                         meta,

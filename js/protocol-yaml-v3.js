@@ -1124,6 +1124,38 @@ function docRemoveSequenceEntry(experiment, idx) {
 }
 
 /**
+ * docReplaceSequenceEntry(experiment, idx, newEntry)
+ *
+ * Replace the sequence entry at `idx` with a fresh ref or block built from
+ * `newEntry`. Used by the ref↔block convert affordance. Validates the new
+ * entry via _buildSequenceEntry (same kinds/shape as insert/append).
+ *
+ * Throws on out-of-bounds and on doc/model divergence.
+ */
+function docReplaceSequenceEntry(experiment, idx, newEntry) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docReplaceSequenceEntry: experiment has no _doc handle', 'NO_DOC');
+    }
+    const n = experiment.sequence.length;
+    if (idx < 0 || idx >= n) {
+        throw new V3ParseError(
+            'docReplaceSequenceEntry: idx ' + idx + ' out of bounds [0, ' + n + ')',
+            'BAD_PATH'
+        );
+    }
+    const seqNode = experiment._doc.getIn(['experiment'], true);
+    if (!seqNode || !Array.isArray(seqNode.items)) {
+        throw new V3ParseError(
+            'docReplaceSequenceEntry: doc/model divergence — no experiment seq node',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+    const built = _buildSequenceEntry(experiment._doc, newEntry);
+    seqNode.items[idx] = built.node;
+    experiment.sequence[idx] = built.jsEntry;
+}
+
+/**
  * docInsertTrialInBlock(experiment, blockIdx, atIdx, condName)
  *
  * Insert a trial reference (a condition name string) into the block at
@@ -1326,6 +1358,7 @@ const ProtocolV3 = {
     docInsertSequenceEntry,
     docMoveSequenceEntry,
     docRemoveSequenceEntry,
+    docReplaceSequenceEntry,
     docInsertTrialInBlock,
     docMoveTrialInBlock,
     docRemoveTrialFromBlock,
@@ -1363,6 +1396,7 @@ export {
     docInsertSequenceEntry,
     docMoveSequenceEntry,
     docRemoveSequenceEntry,
+    docReplaceSequenceEntry,
     docInsertTrialInBlock,
     docMoveTrialInBlock,
     docRemoveTrialFromBlock,
