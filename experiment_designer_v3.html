@@ -388,6 +388,48 @@
             max-width: 220px;
         }
         .cmd-card .kv-line select.field-edit:focus { outline: none; border-color: var(--accent); }
+        .cmd-card .cmd-head .plugin-head {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.15rem;
+            margin-left: 0.1rem;
+        }
+        .cmd-card .cmd-head .plugin-head select.plugin-head-sel {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--beta);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 0.05rem 0.3rem;
+            border-radius: 2px;
+        }
+        .cmd-card .cmd-head .plugin-head select.plugin-head-sel:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .cmd-card .kv-line .param-x-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            font-family: inherit;
+            font-size: 0.7rem;
+            width: 18px;
+            height: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 2px;
+            margin-left: 0.2rem;
+            padding: 0;
+            line-height: 1;
+        }
+        .cmd-card .kv-line .param-x-btn:hover {
+            background: rgba(244, 67, 54, 0.12);
+            color: var(--error);
+            border-color: var(--error);
+        }
         .cmd-card .kv-line .alias-chip {
             display: inline-flex;
             align-items: center;
@@ -415,6 +457,29 @@
             border-radius: 8px;
             margin-left: 0.4rem;
         }
+        .shared-badge {
+            display: inline-block;
+            background: rgba(41, 182, 246, 0.12);
+            color: var(--beta);
+            border: 1px solid var(--beta);
+            padding: 0.05rem 0.4rem;
+            font-size: 0.65rem;
+            border-radius: 8px;
+            margin-left: 0.4rem;
+            cursor: help;
+            font-weight: 400;
+        }
+        .ref-open-link {
+            background: transparent;
+            border: none;
+            color: var(--beta);
+            font-family: inherit;
+            font-size: 0.7rem;
+            cursor: pointer;
+            padding: 0;
+            text-decoration: underline;
+        }
+        .ref-open-link:hover { color: var(--accent); }
 
         /* Command-card action buttons (↑ ↓ ✕) */
         .cmd-card { position: relative; }
@@ -713,7 +778,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.2.1 | <span id="footerTimestamp">2026-05-27 14:03 ET</span>
+        v3 Experiment Designer v0.3 | <span id="footerTimestamp">2026-05-27 14:20 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -737,6 +802,9 @@
             docDelete,
             docInsertCommand,
             docMoveCommand,
+            docSetPluginCommandHead,
+            docAddPluginParam,
+            docDeletePluginParam,
             nodeIsAliasAt,
             aliasNameAt
         } from './js/protocol-yaml-v3.js';
@@ -1214,6 +1282,27 @@
         // Inspector
         // ═══════════════════════════════════════════════════════════════
 
+        // Render a condition's commands as an editable section. Pulled out of
+        // the `selection.kind === 'condition'` branch so the same machinery
+        // (command-card loop + add-picker) can be reused from the inline
+        // sequence-ref view. Always edits the canonical library condition —
+        // sequence-ref inlining is presentation, not a separate identity.
+        function renderConditionCommands(condIdx) {
+            const cond = experiment.conditions[condIdx];
+            const section = el('div', { class: 'insp-section' });
+            section.appendChild(el('h4', {}, 'Commands (' + cond.commands.length + ')'));
+            const total = cond.commands.length;
+            cond.commands.forEach((cmd, cmdIdx) => {
+                section.appendChild(renderCommandCard(
+                    cmd,
+                    ['conditions', condIdx, 'commands', cmdIdx],
+                    { condIdx, cmdIdx, total }
+                ));
+            });
+            section.appendChild(renderAddCommandPicker(condIdx));
+            return section;
+        }
+
         function renderInspector() {
             const body = $('inspectorBody');
             body.innerHTML = '';
@@ -1240,18 +1329,7 @@
                     el('span', { class: 'kind' }, 'Condition'),
                     cond.name
                 ));
-                const section = el('div', { class: 'insp-section' });
-                section.appendChild(el('h4', {}, 'Commands (' + cond.commands.length + ')'));
-                const total = cond.commands.length;
-                cond.commands.forEach((cmd, cmdIdx) => {
-                    section.appendChild(renderCommandCard(
-                        cmd,
-                        ['conditions', condIdx, 'commands', cmdIdx],
-                        { condIdx, cmdIdx, total }
-                    ));
-                });
-                section.appendChild(renderAddCommandPicker(condIdx));
-                body.appendChild(section);
+                body.appendChild(renderConditionCommands(condIdx));
                 return;
             }
 
@@ -1271,17 +1349,54 @@
                 props.appendChild(renderBlockIntertrialRow(blockIdx, entry));
                 body.appendChild(props);
 
-                const trials = el('div', { class: 'insp-section' });
-                trials.appendChild(el('h4', {}, 'Trials (' + entry.trials.length + ')'));
-                const trialList = el('div', { style: 'display: flex; flex-direction: column; gap: 0.25rem;' });
-                for (const t of entry.trials) {
-                    trialList.appendChild(el('button', { class: 'jump-btn', style: 'text-align: left;', onClick: () => {
-                        selection = { kind: 'condition', name: t };
-                        renderLibrary(); renderInspector(); renderSequence();
-                    }}, '→ ' + t));
+                // Trial navigation list — only show when there's > 1 reachable
+                // condition (multi-trial OR has intertrial). When the block has
+                // exactly 1 trial and no intertrial, inline the trial's commands
+                // below the block properties instead.
+                const reachable = entry.trials.length + (entry.intertrial ? 1 : 0);
+                if (reachable === 1) {
+                    const trialName = entry.trials[0];
+                    const trialIdx = experiment.conditions.findIndex(c => c.name === trialName);
+                    if (trialIdx >= 0) {
+                        const usage = computeUsage();
+                        const refCount = usage.get(trialName) || 0;
+                        const inline = el('div', { class: 'insp-section', style: 'padding-bottom: 0; color: var(--text-dim); font-size: 0.7rem;' },
+                            'Single trial: ', el('strong', { style: 'color: var(--text);' }, trialName)
+                        );
+                        if (refCount >= 2) {
+                            inline.appendChild(el('span', {
+                                class: 'shared-badge',
+                                title: 'Edits propagate: this condition is referenced from ' + refCount + ' positions in the sequence.'
+                            }, 'shared with ' + refCount + ' refs'));
+                        }
+                        inline.appendChild(document.createTextNode('. '));
+                        inline.appendChild(el('button', {
+                            class: 'ref-open-link',
+                            title: 'Switch the Inspector selection to the library entry for this condition.',
+                            onClick: () => {
+                                selection = { kind: 'condition', name: trialName };
+                                renderLibrary(); renderInspector(); renderSequence();
+                            }
+                        }, 'open in library view →'));
+                        body.appendChild(inline);
+                        body.appendChild(renderConditionCommands(trialIdx));
+                    } else {
+                        body.appendChild(el('div', { class: 'insp-section' },
+                            el('div', { class: 'empty-state' }, 'Trial "' + trialName + '" not in library.')));
+                    }
+                } else {
+                    const trials = el('div', { class: 'insp-section' });
+                    trials.appendChild(el('h4', {}, 'Trials (' + entry.trials.length + ')'));
+                    const trialList = el('div', { style: 'display: flex; flex-direction: column; gap: 0.25rem;' });
+                    for (const t of entry.trials) {
+                        trialList.appendChild(el('button', { class: 'jump-btn', style: 'text-align: left;', onClick: () => {
+                            selection = { kind: 'condition', name: t };
+                            renderLibrary(); renderInspector(); renderSequence();
+                        }}, '→ ' + t));
+                    }
+                    trials.appendChild(trialList);
+                    body.appendChild(trials);
                 }
-                trials.appendChild(trialList);
-                body.appendChild(trials);
 
                 if (entry._unknownKeys && Object.keys(entry._unknownKeys).length > 0) {
                     const unk = el('div', { class: 'insp-section' });
@@ -1297,20 +1412,59 @@
             if (selection.kind === 'ref') {
                 const entry = experiment.sequence[selection.index];
                 if (!entry || entry.kind !== 'ref') return;
-                body.appendChild(el('div', { class: 'inspector-title' },
-                    el('span', { class: 'kind' }, 'Reference'),
-                    entry.condition_name
-                ));
-                body.appendChild(el('div', { class: 'insp-section' },
-                    el('div', { style: 'color: var(--text-dim); font-size: 0.8rem; margin-bottom: 0.5rem;' },
-                        'This entry in the sequence runs the condition "' + entry.condition_name + '" once.'),
-                    el('button', { class: 'jump-btn', onClick: () => {
-                        selection = { kind: 'condition', name: entry.condition_name };
-                        renderLibrary(); renderInspector(); renderSequence();
-                    }}, '→ View condition details')
-                ));
+                renderInlineRefView(entry.condition_name);
                 return;
             }
+        }
+
+        // Inspector view for a bare ref or a 1-trial-no-ITI block: render the
+        // referenced library condition's commands inline with full edit
+        // affordances. Edits go to the canonical library condition; a "shared
+        // with N refs" badge appears when ≥ 2 sequence positions reference it
+        // so the user understands the propagation scope.
+        function renderInlineRefView(condName) {
+            const body = $('inspectorBody');
+            const condIdx = experiment.conditions.findIndex(c => c.name === condName);
+
+            // Count usage so the "shared with N refs" badge can show
+            const usage = computeUsage();
+            const refCount = usage.get(condName) || 0;
+
+            const title = el('div', { class: 'inspector-title' },
+                el('span', { class: 'kind' }, 'Reference'),
+                condName
+            );
+            if (refCount >= 2) {
+                title.appendChild(el('span', {
+                    class: 'shared-badge',
+                    title: 'Edits to this condition propagate: it is referenced from ' + refCount + ' positions in the sequence.'
+                }, 'shared with ' + refCount + ' refs'));
+            }
+            body.appendChild(title);
+
+            if (condIdx < 0) {
+                body.appendChild(el('div', { class: 'empty-state' },
+                    'Referenced condition "' + condName + '" is not in the library.'));
+                return;
+            }
+
+            // Small "open in library view" link so users can still get to the
+            // canonical condition view (selection-wise) without losing the
+            // affordance.
+            const refRow = el('div', { class: 'insp-section', style: 'padding-bottom: 0; color: var(--text-dim); font-size: 0.7rem;' },
+                'Editing the library condition. ',
+                el('button', {
+                    class: 'ref-open-link',
+                    title: 'Switch the Inspector selection to the library entry for this condition.',
+                    onClick: () => {
+                        selection = { kind: 'condition', name: condName };
+                        renderLibrary(); renderInspector(); renderSequence();
+                    }
+                }, 'open in library view →')
+            );
+            body.appendChild(refRow);
+
+            body.appendChild(renderConditionCommands(condIdx));
         }
 
         // Field type hints — drive input coercion (number vs string).
@@ -1694,6 +1848,98 @@
             }
         }
 
+        // Default value used when adding a param via the +add picker, or when
+        // a required param is missing after a plugin-head reconciliation.
+        function defaultParamValue(sch) {
+            if (sch.default !== undefined && sch.default !== '') return sch.default;
+            if (sch.type === 'number') return 0;
+            if (sch.type === 'boolean') return false;
+            if (sch.type === 'select' && Array.isArray(sch.options) && sch.options.length > 0) {
+                return sch.options[0].value;
+            }
+            return '';
+        }
+
+        function paramExpectedType(sch) {
+            if (sch.type === 'select' && Array.isArray(sch.options) && sch.options.length > 0) {
+                return typeof sch.options[0].value;
+            }
+            if (sch.type === 'number') return 'number';
+            if (sch.type === 'boolean') return 'boolean';
+            return 'string';
+        }
+
+        // Reconcile an existing params object against a new command schema
+        // when the plugin or command_name changes. Policy: keep params whose
+        // key matches a schema entry of compatible type (with select-options
+        // membership check); drop everything else; then re-add required
+        // schema params that aren't present, defaulted from `default` or
+        // type-appropriate. Silent — no prompt.
+        function reconcilePluginParams(oldParams, newSchema) {
+            const result = {};
+            if (oldParams && typeof oldParams === 'object') {
+                for (const [k, v] of Object.entries(oldParams)) {
+                    const sch = newSchema && newSchema[k];
+                    if (!sch) continue;
+                    if (typeof v !== paramExpectedType(sch)) continue;
+                    if (sch.type === 'select' && Array.isArray(sch.options)) {
+                        if (!sch.options.find(o => o.value === v)) continue;
+                    }
+                    result[k] = v;
+                }
+            }
+            if (newSchema) {
+                for (const [k, sch] of Object.entries(newSchema)) {
+                    if (k in result) continue;
+                    if (sch.required) {
+                        result[k] = defaultParamValue(sch);
+                    }
+                }
+            }
+            return result;
+        }
+
+        function onPluginHeadChange(condIdx, cmdIdx, newPluginName, newCmdName) {
+            pushUndo();
+            try {
+                const cmd = experiment.conditions[condIdx].commands[cmdIdx];
+                const newSchema = getV3CommandParams(experiment, 'plugin', newPluginName, newCmdName) || {};
+                const reconciled = reconcilePluginParams(cmd.params, newSchema);
+                docSetPluginCommandHead(experiment, condIdx, cmdIdx, {
+                    plugin_name: newPluginName,
+                    command_name: newCmdName,
+                    params: reconciled
+                });
+                commitInspectorEdit();
+            } catch (err) {
+                showError('Plugin command change failed', err.message);
+            }
+        }
+
+        function onAddPluginParam(condIdx, cmdIdx, paramKey) {
+            pushUndo();
+            try {
+                const cmd = experiment.conditions[condIdx].commands[cmdIdx];
+                const schema = getV3CommandParams(experiment, 'plugin', cmd.plugin_name, cmd.command_name) || {};
+                const sch = schema[paramKey];
+                const value = sch ? defaultParamValue(sch) : '';
+                docAddPluginParam(experiment, condIdx, cmdIdx, paramKey, value);
+                commitInspectorEdit();
+            } catch (err) {
+                showError('Add param failed', err.message);
+            }
+        }
+
+        function onDeletePluginParam(condIdx, cmdIdx, paramKey) {
+            pushUndo();
+            try {
+                docDeletePluginParam(experiment, condIdx, cmdIdx, paramKey);
+                commitInspectorEdit();
+            } catch (err) {
+                showError('Delete param failed', err.message);
+            }
+        }
+
         function onAddCommand(condIdx, addSelectValue) {
             // addSelectValue encoding: "wait" | "controller:<name>" | "plugin:<plugin>:<command>"
             pushUndo();
@@ -1760,6 +2006,80 @@
             return row;
         }
 
+        // Cascading <select> fields for a plugin command head: plugin name +
+        // command name. Falls back to a read-only alias chip when either
+        // field is anchor-bound. When the user picks a new plugin or command,
+        // delegates to onPluginHeadChange which reconciles params via
+        // reconcilePluginParams + writes through docSetPluginCommandHead.
+        function renderPluginHeadEdits(cmd, cmdPath, cardMeta) {
+            const wrap = el('span', { class: 'plugin-head' });
+
+            const pluginAlias = aliasNameAt(experiment, [...cmdPath, 'plugin_name']);
+            if (pluginAlias) {
+                wrap.appendChild(el('span', {
+                    class: 'alias-chip',
+                    title: 'Bound to anchor &' + pluginAlias + ' (resolved: ' + JSON.stringify(cmd.plugin_name) + ')'
+                }, '→ &' + pluginAlias));
+            } else {
+                const pluginSel = el('select', {
+                    class: 'field-edit plugin-head-sel',
+                    title: 'Change plugin (params reconcile against the new command schema)'
+                });
+                const names = listV3PluginNames(experiment);
+                if (!names.includes(cmd.plugin_name)) {
+                    pluginSel.appendChild(el('option', { value: cmd.plugin_name }, cmd.plugin_name + ' (undeclared)'));
+                }
+                for (const n of names) {
+                    const o = el('option', { value: n }, n);
+                    if (n === cmd.plugin_name) o.selected = true;
+                    pluginSel.appendChild(o);
+                }
+                pluginSel.addEventListener('change', () => {
+                    if (pluginSel.value === cmd.plugin_name) return;
+                    // When the plugin changes, the existing command_name probably
+                    // doesn't exist on the new plugin — pick the first available.
+                    const newCmds = getV3PluginCommands(experiment, pluginSel.value);
+                    const newCmdNames = Object.keys(newCmds);
+                    const newCmdName = newCmdNames.includes(cmd.command_name)
+                        ? cmd.command_name
+                        : (newCmdNames[0] || cmd.command_name);
+                    onPluginHeadChange(cardMeta.condIdx, cardMeta.cmdIdx, pluginSel.value, newCmdName);
+                });
+                wrap.appendChild(pluginSel);
+            }
+
+            wrap.appendChild(document.createTextNode('.'));
+
+            const cmdAlias = aliasNameAt(experiment, [...cmdPath, 'command_name']);
+            if (cmdAlias) {
+                wrap.appendChild(el('span', {
+                    class: 'alias-chip',
+                    title: 'Bound to anchor &' + cmdAlias + ' (resolved: ' + JSON.stringify(cmd.command_name) + ')'
+                }, '→ &' + cmdAlias));
+            } else {
+                const cmdSel = el('select', {
+                    class: 'field-edit plugin-head-sel',
+                    title: 'Change command on this plugin (params reconcile against the new schema)'
+                });
+                const cmds = getV3PluginCommands(experiment, cmd.plugin_name);
+                const cmdNames = Object.keys(cmds);
+                if (!cmdNames.includes(cmd.command_name)) {
+                    cmdSel.appendChild(el('option', { value: cmd.command_name }, cmd.command_name + ' (unknown)'));
+                }
+                for (const n of cmdNames) {
+                    const o = el('option', { value: n }, n);
+                    if (n === cmd.command_name) o.selected = true;
+                    cmdSel.appendChild(o);
+                }
+                cmdSel.addEventListener('change', () => {
+                    if (cmdSel.value === cmd.command_name) return;
+                    onPluginHeadChange(cardMeta.condIdx, cardMeta.cmdIdx, cmd.plugin_name, cmdSel.value);
+                });
+                wrap.appendChild(cmdSel);
+            }
+            return wrap;
+        }
+
         function renderCommandCard(cmd, cmdPath, cardMeta) {
             // cardMeta: { condIdx, cmdIdx, total } — required for action buttons
 
@@ -1791,11 +2111,15 @@
 
             const card = el('div', { class: 'cmd-card ' + cmd.type });
             const head = el('div', { class: 'cmd-head' },
-                el('span', { class: 'ctype' }, cmd.type),
-                cmd.type === 'plugin' ? (cmd.plugin_name + '.' + cmd.command_name) :
-                cmd.type === 'wait' ? 'wait' :
-                cmd.command_name || ''
+                el('span', { class: 'ctype' }, cmd.type)
             );
+            if (cmd.type === 'plugin') {
+                head.appendChild(renderPluginHeadEdits(cmd, cmdPath, cardMeta));
+            } else if (cmd.type === 'wait') {
+                head.appendChild(document.createTextNode('wait'));
+            } else {
+                head.appendChild(document.createTextNode(cmd.command_name || ''));
+            }
             card.appendChild(head);
 
             // Per-card action buttons (↑ ↓ ✕)
@@ -1852,21 +2176,57 @@
                 );
             }
 
-            if (cmd.type === 'plugin' && cmd.params && Object.keys(cmd.params).length > 0) {
-                const pluginParamsSchema = getV3CommandParams(experiment, 'plugin', cmd.plugin_name, cmd.command_name);
-                card.appendChild(el('div', { class: 'kv-line' }, el('span', { class: 'k' }, 'params:')));
-                for (const [pk, pv] of Object.entries(cmd.params)) {
-                    const fieldSchema = pluginParamsSchema && pluginParamsSchema[pk];
+            if (cmd.type === 'plugin') {
+                const pluginParamsSchema = getV3CommandParams(experiment, 'plugin', cmd.plugin_name, cmd.command_name) || {};
+                const presentKeys = cmd.params ? Object.keys(cmd.params) : [];
+                const schemaKeys = Object.keys(pluginParamsSchema);
+                const missingKeys = schemaKeys.filter(k => !(cmd.params && k in cmd.params));
+
+                if (presentKeys.length > 0 || missingKeys.length > 0) {
+                    card.appendChild(el('div', { class: 'kv-line' }, el('span', { class: 'k' }, 'params:')));
+                }
+                for (const pk of presentKeys) {
+                    const pv = cmd.params[pk];
+                    const fieldSchema = pluginParamsSchema[pk];
                     const fallback = typeof pv === 'number' ? 'number' : 'string';
-                    card.appendChild(
-                        renderEditableField(
-                            pk,
-                            [...cmdPath, 'params', pk],
-                            pv,
-                            fieldSchema || fallback,
-                            { indent: true }
-                        )
+                    const row = renderEditableField(
+                        pk,
+                        [...cmdPath, 'params', pk],
+                        pv,
+                        fieldSchema || fallback,
+                        { indent: true }
                     );
+                    const xBtn = el('button', {
+                        class: 'param-x-btn',
+                        title: 'Remove this param (Ctrl+Z to undo)',
+                        onClick: (e) => {
+                            e.stopPropagation();
+                            onDeletePluginParam(cardMeta.condIdx, cardMeta.cmdIdx, pk);
+                        }
+                    }, '✕');
+                    row.appendChild(xBtn);
+                    card.appendChild(row);
+                }
+                if (missingKeys.length > 0) {
+                    const addRow = el('div', { class: 'kv-line', style: 'padding-left: 1rem;' },
+                        el('span', { class: 'k' }, '+ add:')
+                    );
+                    const sel = el('select', {
+                        class: 'field-edit',
+                        title: 'Add a parameter from this command\'s schema'
+                    });
+                    sel.appendChild(el('option', { value: '' }, 'choose…'));
+                    for (const k of missingKeys) {
+                        const sch = pluginParamsSchema[k];
+                        const lbl = k + (sch.required ? ' (required)' : '');
+                        sel.appendChild(el('option', { value: k }, lbl));
+                    }
+                    sel.addEventListener('change', () => {
+                        if (!sel.value) return;
+                        onAddPluginParam(cardMeta.condIdx, cardMeta.cmdIdx, sel.value);
+                    });
+                    addRow.appendChild(sel);
+                    card.appendChild(addRow);
                 }
             }
 

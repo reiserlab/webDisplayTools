@@ -610,6 +610,163 @@ function docMoveCommand(experiment, condIdx, fromIdx, toIdx) {
 }
 
 /**
+ * docSetPluginCommandHead(experiment, condIdx, cmdIdx, newHead)
+ *
+ * Atomically replace a plugin command's head (plugin_name, command_name) and
+ * params. The caller is responsible for reconciling params against the new
+ * command's schema before invoking this (see docs at top of file). The helper
+ * itself stays plugin-registry-agnostic: it takes the final shape and writes
+ * it through to both _doc and JS model.
+ *
+ * newHead = { plugin_name, command_name, params } — `params` may be an object,
+ * `{}`, or undefined; an empty/absent params object omits the `params:` map
+ * from the emitted YAML.
+ *
+ * Comments attached to individual fields of the replaced command are lost —
+ * this is a semantic replacement, not a field-level edit. Comments above and
+ * below the command in the parent seq are preserved by yaml@2.
+ */
+function docSetPluginCommandHead(experiment, condIdx, cmdIdx, newHead) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docSetPluginCommandHead: experiment has no _doc handle', 'NO_DOC');
+    }
+    const cond = experiment.conditions[condIdx];
+    if (!cond) {
+        throw new V3ParseError(
+            'docSetPluginCommandHead: bad condition index ' + condIdx,
+            'BAD_PATH'
+        );
+    }
+    const cmd = cond.commands[cmdIdx];
+    if (!cmd || cmd.type !== 'plugin') {
+        throw new V3ParseError(
+            'docSetPluginCommandHead: command at [' + condIdx + ',' + cmdIdx + '] is not a plugin command',
+            'INVALID_INPUT'
+        );
+    }
+    if (!newHead || typeof newHead.plugin_name !== 'string' || typeof newHead.command_name !== 'string') {
+        throw new V3ParseError(
+            'docSetPluginCommandHead: newHead.plugin_name and newHead.command_name must be strings',
+            'INVALID_INPUT'
+        );
+    }
+
+    const cmdsNode = experiment._doc.getIn(['conditions', condIdx, 'commands'], true);
+    if (!cmdsNode || !Array.isArray(cmdsNode.items)) {
+        throw new V3ParseError(
+            'docSetPluginCommandHead: commands seq missing at conditions[' + condIdx + ']',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+
+    const newCmd = {
+        type: 'plugin',
+        plugin_name: newHead.plugin_name,
+        command_name: newHead.command_name
+    };
+    if (newHead.params && typeof newHead.params === 'object' && Object.keys(newHead.params).length > 0) {
+        newCmd.params = JSON.parse(JSON.stringify(newHead.params));
+    }
+    const newNode = experiment._doc.createNode(newCmd);
+    cmdsNode.items[cmdIdx] = newNode;
+
+    const jsCmd = {
+        type: 'plugin',
+        plugin_name: newHead.plugin_name,
+        command_name: newHead.command_name,
+        _unknownKeys: {}
+    };
+    if (newCmd.params) jsCmd.params = JSON.parse(JSON.stringify(newCmd.params));
+    cond.commands[cmdIdx] = jsCmd;
+}
+
+/**
+ * docAddPluginParam(experiment, condIdx, cmdIdx, paramKey, paramValue)
+ *
+ * Set a single param on a plugin command. Creates the `params:` map if it
+ * doesn't already exist (mirrorIntoModel returns early on missing
+ * intermediates, so a nested docSet would silently fail to mirror).
+ *
+ * Throws when the target command isn't a plugin command, or when the doc and
+ * JS model have diverged.
+ */
+function docAddPluginParam(experiment, condIdx, cmdIdx, paramKey, paramValue) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docAddPluginParam: experiment has no _doc handle', 'NO_DOC');
+    }
+    const cond = experiment.conditions[condIdx];
+    if (!cond) {
+        throw new V3ParseError('docAddPluginParam: bad condition index ' + condIdx, 'BAD_PATH');
+    }
+    const cmd = cond.commands[cmdIdx];
+    if (!cmd || cmd.type !== 'plugin') {
+        throw new V3ParseError(
+            'docAddPluginParam: command at [' + condIdx + ',' + cmdIdx + '] is not a plugin command',
+            'INVALID_INPUT'
+        );
+    }
+    if (typeof paramKey !== 'string' || !paramKey) {
+        throw new V3ParseError('docAddPluginParam: paramKey must be a non-empty string', 'INVALID_INPUT');
+    }
+
+    const paramsPath = ['conditions', condIdx, 'commands', cmdIdx, 'params'];
+    const paramsNode = experiment._doc.getIn(paramsPath, true);
+    if (!paramsNode || !Array.isArray(paramsNode.items)) {
+        // Create the whole params map atomically with this first param.
+        experiment._doc.setIn(paramsPath, { [paramKey]: paramValue });
+        cmd.params = { [paramKey]: paramValue };
+        return;
+    }
+    experiment._doc.setIn([...paramsPath, paramKey], paramValue);
+    cmd.params = cmd.params || {};
+    cmd.params[paramKey] = paramValue;
+}
+
+/**
+ * docDeletePluginParam(experiment, condIdx, cmdIdx, paramKey)
+ *
+ * Delete a single param from a plugin command. When the resulting params map
+ * is empty, also delete the `params:` map itself (an empty `params: {}` is
+ * valid YAML but semantically noisy and the parser would drop it anyway).
+ *
+ * No-op if the param doesn't exist.
+ */
+function docDeletePluginParam(experiment, condIdx, cmdIdx, paramKey) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docDeletePluginParam: experiment has no _doc handle', 'NO_DOC');
+    }
+    const cond = experiment.conditions[condIdx];
+    if (!cond) {
+        throw new V3ParseError('docDeletePluginParam: bad condition index ' + condIdx, 'BAD_PATH');
+    }
+    const cmd = cond.commands[cmdIdx];
+    if (!cmd || cmd.type !== 'plugin') {
+        throw new V3ParseError(
+            'docDeletePluginParam: command at [' + condIdx + ',' + cmdIdx + '] is not a plugin command',
+            'INVALID_INPUT'
+        );
+    }
+
+    const paramsPath = ['conditions', condIdx, 'commands', cmdIdx, 'params'];
+    const paramsNode = experiment._doc.getIn(paramsPath, true);
+    if (!paramsNode || !Array.isArray(paramsNode.items)) {
+        return; // No params to delete
+    }
+
+    experiment._doc.deleteIn([...paramsPath, paramKey]);
+    if (cmd.params) delete cmd.params[paramKey];
+
+    // If the map is now empty, remove the `params:` key entirely
+    const remaining = experiment._doc.getIn(paramsPath, true);
+    if (!remaining || !Array.isArray(remaining.items) || remaining.items.length === 0) {
+        experiment._doc.deleteIn(paramsPath);
+        if (cmd.params && Object.keys(cmd.params).length === 0) {
+            delete cmd.params;
+        }
+    }
+}
+
+/**
  * docDelete(experiment, path)
  *
  * Removes the key at `path` from both the YAML.Document and the JS data
@@ -667,6 +824,9 @@ const ProtocolV3 = {
     docDelete,
     docInsertCommand,
     docMoveCommand,
+    docSetPluginCommandHead,
+    docAddPluginParam,
+    docDeletePluginParam,
     nodeIsAliasAt,
     aliasNameAt
 };
@@ -691,6 +851,9 @@ export {
     docDelete,
     docInsertCommand,
     docMoveCommand,
+    docSetPluginCommandHead,
+    docAddPluginParam,
+    docDeletePluginParam,
     nodeIsAliasAt,
     aliasNameAt
 };

@@ -30,6 +30,9 @@ const {
     docDelete,
     docInsertCommand,
     docMoveCommand,
+    docSetPluginCommandHead,
+    docAddPluginParam,
+    docDeletePluginParam,
     nodeIsAliasAt,
     aliasNameAt
 } = require('../js/protocol-yaml-v3.js');
@@ -1011,6 +1014,218 @@ console.log('\n--- Suite 13: docMoveCommand doc/model divergence is loud ---');
     }
     checkTrue('divergence: docMoveCommand throws', threw);
     check('divergence: error code is DOC_MODEL_DIVERGENCE', code, 'DOC_MODEL_DIVERGENCE');
+}
+
+// ─── Test Suite 14: docSetPluginCommandHead ────────────────────────────────
+console.log('\n--- Suite 14: docSetPluginCommandHead (plugin/command rename) ---');
+
+function makePluginExp() {
+    return parseV3Protocol(
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'plugins:',
+            '  - name: backlight',
+            '    type: class',
+            '    matlab: {class: LEDControllerPlugin}',
+            '  - name: camera',
+            '    type: class',
+            '    matlab: {class: BiasPlugin}',
+            'experiment: [setup]',
+            'conditions:',
+            '  - name: setup',
+            '    commands:',
+            '      - type: plugin',
+            '        plugin_name: backlight',
+            '        command_name: setRedLEDPower',
+            '        params:',
+            '          power: 5',
+            '          panel_num: 2',
+            '          pattern: "1010"'
+        ].join('\n') + '\n'
+    );
+}
+
+{
+    // Change command_name only — params preserved (same plugin, same params schema)
+    const exp = makePluginExp();
+    docSetPluginCommandHead(exp, 0, 0, {
+        plugin_name: 'backlight',
+        command_name: 'setBlueLEDPower',
+        params: { power: 5, panel_num: 2, pattern: '1010' }
+    });
+    const cmd = exp.conditions[0].commands[0];
+    check('head: command_name updated', cmd.command_name, 'setBlueLEDPower');
+    check('head: plugin_name preserved', cmd.plugin_name, 'backlight');
+    check('head: power kept', cmd.params.power, 5);
+    check('head: panel_num kept', cmd.params.panel_num, 2);
+    check('head: pattern kept', cmd.params.pattern, '1010');
+
+    // Round-trip
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    const r = reparsed.conditions[0].commands[0];
+    check('head: round-trip command_name', r.command_name, 'setBlueLEDPower');
+    check('head: round-trip params.power', r.params.power, 5);
+}
+
+{
+    // Change command_name to one with a different param shape — caller-side
+    // reconciliation drops stale params. (Helper trusts the caller's params.)
+    const exp = makePluginExp();
+    docSetPluginCommandHead(exp, 0, 0, {
+        plugin_name: 'backlight',
+        command_name: 'turnOffLED',
+        params: {} // caller reconciled away the LED-power params
+    });
+    const cmd = exp.conditions[0].commands[0];
+    check('head: command_name changed', cmd.command_name, 'turnOffLED');
+    checkTrue('head: empty params dropped from JS model', !cmd.params);
+
+    const regen = generateV3Protocol(exp);
+    checkTrue('head: empty params not in regen YAML', !regen.includes('params:'));
+}
+
+{
+    // Change plugin_name to a different plugin
+    const exp = makePluginExp();
+    docSetPluginCommandHead(exp, 0, 0, {
+        plugin_name: 'camera',
+        command_name: 'startRecording',
+        params: { filename: 'trial_001.avi' }
+    });
+    const cmd = exp.conditions[0].commands[0];
+    check('head: plugin switched', cmd.plugin_name, 'camera');
+    check('head: command switched', cmd.command_name, 'startRecording');
+    check('head: new params populated', cmd.params.filename, 'trial_001.avi');
+}
+
+{
+    // Reject non-plugin command target
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    // Pick a condition whose first command is NOT a plugin
+    const condIdx = exp.conditions.findIndex(c => c.commands[0] && c.commands[0].type !== 'plugin');
+    checkTrue('head: found non-plugin command for reject test', condIdx >= 0);
+    checkThrows(
+        'head: rejects non-plugin target',
+        () => docSetPluginCommandHead(exp, condIdx, 0, {
+            plugin_name: 'backlight',
+            command_name: 'setRedLEDPower'
+        }),
+        'INVALID_INPUT'
+    );
+}
+
+// ─── Test Suite 15: docAddPluginParam ──────────────────────────────────────
+console.log('\n--- Suite 15: docAddPluginParam (create params: if absent) ---');
+
+{
+    // Build a plugin command with NO params, then add one
+    const exp = parseV3Protocol(
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'plugins:',
+            '  - name: backlight',
+            '    type: class',
+            '    matlab: {class: LEDControllerPlugin}',
+            'experiment: [setup]',
+            'conditions:',
+            '  - name: setup',
+            '    commands:',
+            '      - {type: plugin, plugin_name: backlight, command_name: turnOffLED}'
+        ].join('\n') + '\n'
+    );
+    const cmd0 = exp.conditions[0].commands[0];
+    checkTrue('add: starts with no params', !cmd0.params);
+
+    docAddPluginParam(exp, 0, 0, 'foo', 42);
+    check('add: first param sets type number', cmd0.params.foo, 42);
+    check('add: cmd.params exists', typeof cmd0.params, 'object');
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('add: round-trip foo', reparsed.conditions[0].commands[0].params.foo, 42);
+}
+
+{
+    // Add to an existing params map
+    const exp = makePluginExp();
+    docAddPluginParam(exp, 0, 0, 'extra_field', 'hello');
+    const cmd = exp.conditions[0].commands[0];
+    check('add: existing params preserved', cmd.params.power, 5);
+    check('add: new param added', cmd.params.extra_field, 'hello');
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('add: round-trip new param', reparsed.conditions[0].commands[0].params.extra_field, 'hello');
+}
+
+// ─── Test Suite 16: docDeletePluginParam ───────────────────────────────────
+console.log('\n--- Suite 16: docDeletePluginParam (params: removed when empty) ---');
+
+{
+    // Delete one of many — params: stays
+    const exp = makePluginExp();
+    docDeletePluginParam(exp, 0, 0, 'panel_num');
+    const cmd = exp.conditions[0].commands[0];
+    checkTrue('del: panel_num gone', !('panel_num' in (cmd.params || {})));
+    check('del: power still present', cmd.params.power, 5);
+    check('del: pattern still present', cmd.params.pattern, '1010');
+
+    const regen = generateV3Protocol(exp);
+    checkTrue('del: panel_num removed from YAML', !regen.includes('panel_num'));
+    checkTrue('del: params: still present', regen.includes('params:'));
+}
+
+{
+    // Delete the LAST param → params: map removed entirely
+    const exp = parseV3Protocol(
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'plugins:',
+            '  - name: backlight',
+            '    type: class',
+            '    matlab: {class: LEDControllerPlugin}',
+            'experiment: [setup]',
+            'conditions:',
+            '  - name: setup',
+            '    commands:',
+            '      - type: plugin',
+            '        plugin_name: backlight',
+            '        command_name: setRedLEDPower',
+            '        params:',
+            '          power: 5'
+        ].join('\n') + '\n'
+    );
+    docDeletePluginParam(exp, 0, 0, 'power');
+    const cmd = exp.conditions[0].commands[0];
+    checkTrue('del-last: cmd.params removed', !cmd.params);
+
+    const regen = generateV3Protocol(exp);
+    checkTrue('del-last: params: removed from regen YAML', !regen.includes('params:'));
+    // Command itself still present
+    checkTrue('del-last: command still present', regen.includes('setRedLEDPower'));
+
+    const reparsed = parseV3Protocol(regen);
+    checkTrue('del-last: reparse — no params', !reparsed.conditions[0].commands[0].params);
+}
+
+{
+    // Reject non-plugin command
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const condIdx = exp.conditions.findIndex(c => c.commands[0] && c.commands[0].type !== 'plugin');
+    checkThrows(
+        'del: rejects non-plugin target',
+        () => docDeletePluginParam(exp, condIdx, 0, 'foo'),
+        'INVALID_INPUT'
+    );
+    checkThrows(
+        'add: rejects non-plugin target',
+        () => docAddPluginParam(exp, condIdx, 0, 'foo', 1),
+        'INVALID_INPUT'
+    );
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────
