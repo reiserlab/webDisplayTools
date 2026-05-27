@@ -25,11 +25,15 @@ const {
     parseV3Protocol,
     generateV3Protocol,
     validateReferences,
+    collectExportWarnings,
     V3ParseError,
     docSet,
     docDelete,
     docInsertCommand,
     docMoveCommand,
+    docInsertCondition,
+    docCloneCondition,
+    docAppendSequenceEntry,
     docSetPluginCommandHead,
     docAddPluginParam,
     docDeletePluginParam,
@@ -1226,6 +1230,255 @@ console.log('\n--- Suite 16: docDeletePluginParam (params: removed when empty) -
         () => docAddPluginParam(exp, condIdx, 0, 'foo', 1),
         'INVALID_INPUT'
     );
+}
+
+// ─── Test Suite 17: collectExportWarnings ──────────────────────────────────
+console.log('\n--- Suite 17: collectExportWarnings (soft-warn gate) ---');
+
+{
+    // Canonical_a has anchors and references — should produce no warnings.
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const { warnings, totalCount } = collectExportWarnings(exp);
+    check('warn: clean fixture has 0 warnings', totalCount, 0);
+    check('warn: warnings array empty', warnings.length, 0);
+}
+
+{
+    // Add an unused condition by inserting one with no sequence reference.
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    docInsertCondition(exp, 'orphan', [{ type: 'wait', duration: 1 }]);
+    const { warnings } = collectExportWarnings(exp);
+    const orphanWarn = warnings.find(w => w.kind === 'unused-condition' && w.name === 'orphan');
+    checkTrue('warn: unused-condition detected', !!orphanWarn);
+    checkTrue('warn: orphan message mentions name', orphanWarn.message.includes('orphan'));
+}
+
+{
+    // Build a YAML with an unreferenced anchor in variables:
+    const yaml = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'variables:',
+        '  used_anchor: &used 5',
+        '  dangling_anchor: &dangling 99',
+        'experiment: [foo]',
+        'conditions:',
+        '  - name: foo',
+        '    commands:',
+        '      - type: wait',
+        '        duration: *used'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml);
+    const { warnings } = collectExportWarnings(exp);
+    const danglingWarn = warnings.find(w => w.kind === 'unused-anchor' && w.name === 'dangling');
+    checkTrue('warn: unused-anchor detected', !!danglingWarn);
+    const usedWarn = warnings.find(w => w.kind === 'unused-anchor' && w.name === 'used');
+    checkTrue('warn: referenced anchor NOT flagged', !usedWarn);
+}
+
+{
+    // Plugin used but not declared in plugins:
+    const yaml = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'plugins: []',
+        'experiment: [foo]',
+        'conditions:',
+        '  - name: foo',
+        '    commands:',
+        '      - {type: plugin, plugin_name: ghost, command_name: ping}'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml);
+    const { warnings } = collectExportWarnings(exp);
+    const ghost = warnings.find(w => w.kind === 'undeclared-plugin' && w.name === 'ghost');
+    checkTrue('warn: undeclared-plugin detected', !!ghost);
+
+    // log plugin is built-in and should NEVER warn even when undeclared
+    const yaml2 = yaml.replace('ghost', 'log').replace('ping', 'log');
+    const exp2 = parseV3Protocol(yaml2);
+    const w2 = collectExportWarnings(exp2).warnings;
+    checkTrue('warn: log plugin never flagged', !w2.find(w => w.kind === 'undeclared-plugin'));
+}
+
+{
+    // Raw command card → informational warning
+    const yaml = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'experiment: [foo]',
+        'conditions:',
+        '  - name: foo',
+        '    commands:',
+        '      - {type: "loop", count: 5}'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml);
+    const { warnings } = collectExportWarnings(exp);
+    const rawWarn = warnings.find(w => w.kind === 'raw-command' && w.name === 'loop');
+    checkTrue('warn: raw-command detected', !!rawWarn);
+}
+
+// ─── Test Suite 18: docInsertCondition ─────────────────────────────────────
+console.log('\n--- Suite 18: docInsertCondition (library add) ---');
+
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const before = exp.conditions.length;
+    docInsertCondition(exp, 'new_cond', [{ type: 'wait', duration: 2 }]);
+    check('insert-cond: JS conditions grew by 1', exp.conditions.length, before + 1);
+    check('insert-cond: name set', exp.conditions[before].name, 'new_cond');
+    check('insert-cond: commands set', exp.conditions[before].commands[0].duration, 2);
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('insert-cond: round-trip length', reparsed.conditions.length, before + 1);
+    check('insert-cond: round-trip name', reparsed.conditions[before].name, 'new_cond');
+}
+
+checkThrows(
+    'insert-cond: rejects duplicate name',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docInsertCondition(exp, exp.conditions[0].name, [{ type: 'wait', duration: 1 }]);
+    },
+    'DUPLICATE_NAME'
+);
+
+checkThrows(
+    'insert-cond: rejects empty commands',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docInsertCondition(exp, 'x', []);
+    },
+    'INVALID_INPUT'
+);
+
+// ─── Test Suite 19: docCloneCondition (anchor preservation) ────────────────
+console.log('\n--- Suite 19: docCloneCondition (preserves aliases) ---');
+
+{
+    // canonical_a has condition "arena check" with a wait using *dur_short.
+    // After clone, the duplicate must still have the *dur_short alias node,
+    // not the resolved literal — otherwise edits to dur_short won't propagate.
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const srcIdx = exp.conditions.findIndex(c => c.name === 'arena check');
+    checkTrue('clone: arena check source found', srcIdx >= 0);
+
+    docCloneCondition(exp, srcIdx, 'arena check copy');
+    const dupIdx = exp.conditions.findIndex(c => c.name === 'arena check copy');
+    checkTrue('clone: duplicate present in JS model', dupIdx >= 0);
+
+    // Find the wait command in the duplicate
+    const dupCmds = exp.conditions[dupIdx].commands;
+    const dupWaitIdx = dupCmds.findIndex(c => c.type === 'wait');
+    checkTrue('clone: wait command in duplicate', dupWaitIdx >= 0);
+
+    // The YAML node for the cloned wait's duration must still be an Alias
+    const aliasName = aliasNameAt(exp, ['conditions', dupIdx, 'commands', dupWaitIdx, 'duration']);
+    check('clone: cloned wait.duration is still *dur_short alias', aliasName, 'dur_short');
+
+    // Round-trip exports the cloned condition with the alias preserved
+    const regen = generateV3Protocol(exp);
+    checkTrue('clone: regen YAML contains arena check copy', regen.includes('arena check copy'));
+    // The alias name should appear at least 2x (original + clone)
+    const aliasOccurrences = (regen.match(/\*dur_short/g) || []).length;
+    checkTrue(
+        'clone: *dur_short alias appears in regen at least twice',
+        aliasOccurrences >= 2,
+        'occurrences=' + aliasOccurrences
+    );
+}
+
+checkThrows(
+    'clone: rejects duplicate name',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docCloneCondition(exp, 0, exp.conditions[0].name);
+    },
+    'DUPLICATE_NAME'
+);
+
+// ─── Test Suite 20: docAppendSequenceEntry ─────────────────────────────────
+console.log('\n--- Suite 20: docAppendSequenceEntry (ref + block append) ---');
+
+{
+    // Append a bare ref — fixture has 4 entries, should grow to 5.
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const before = exp.sequence.length;
+    docInsertCondition(exp, 'tail', [{ type: 'wait', duration: 1 }]);
+    docAppendSequenceEntry(exp, { kind: 'ref', condition_name: 'tail' });
+    check('seq-append: length grew by 1', exp.sequence.length, before + 1);
+    check('seq-append: last is ref', exp.sequence[before].kind, 'ref');
+    check('seq-append: last condition_name', exp.sequence[before].condition_name, 'tail');
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('seq-append: round-trip last is "tail"', reparsed.sequence[before].condition_name, 'tail');
+}
+
+{
+    // Append a block entry
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const before = exp.sequence.length;
+    docAppendSequenceEntry(exp, {
+        kind: 'block',
+        name: 'extras',
+        trials: ['arena check'],
+        repetitions: 2
+    });
+    check('seq-append-block: length grew', exp.sequence.length, before + 1);
+    check('seq-append-block: kind block', exp.sequence[before].kind, 'block');
+    check('seq-append-block: reps', exp.sequence[before].repetitions, 2);
+    check('seq-append-block: name', exp.sequence[before].name, 'extras');
+}
+
+checkThrows(
+    'seq-append: rejects bad kind',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docAppendSequenceEntry(exp, { kind: 'bogus' });
+    },
+    'INVALID_INPUT'
+);
+
+// ─── Test Suite 21: BLANK_TEMPLATE skeleton ────────────────────────────────
+console.log('\n--- Suite 21: BLANK_TEMPLATE skeleton parses + round-trips ---');
+
+{
+    // This mirrors the BLANK_TEMPLATE const in experiment_designer_v3.html.
+    // If the template changes there, update here so this test stays in sync.
+    const BLANK = [
+        'version: 3',
+        'experiment_info:',
+        '  name: "New Experiment"',
+        '  author: ""',
+        'rig: "./configs/rigs/your_rig.yaml"',
+        'plugins: []',
+        'experiment:',
+        '  - "setup"',
+        'conditions:',
+        '  - name: "setup"',
+        '    commands:',
+        '      - type: "wait"',
+        '        duration: 1',
+        ''
+    ].join('\n');
+
+    const exp = parseV3Protocol(BLANK);
+    check('blank: version', exp.version, 3);
+    check('blank: experiment_info.name', exp.experiment_info.name, 'New Experiment');
+    check('blank: rig_path', exp.rig_path, './configs/rigs/your_rig.yaml');
+    check('blank: 0 plugins', exp.plugins.length, 0);
+    check('blank: 1 condition', exp.conditions.length, 1);
+    check('blank: 1 sequence entry', exp.sequence.length, 1);
+    check('blank: sequence is bare ref', exp.sequence[0].kind, 'ref');
+    check('blank: ref points to setup', exp.sequence[0].condition_name, 'setup');
+
+    const refs = validateReferences(exp);
+    checkTrue('blank: references resolve', refs.ok, refs.errors.join('; '));
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('blank: round-trip stable', reparsed.conditions.length, 1);
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────

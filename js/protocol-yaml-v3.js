@@ -430,6 +430,122 @@ function validateReferences(experiment) {
     return { ok: errors.length === 0, errors };
 }
 
+/**
+ * Collect non-fatal export-time warnings. Soft-warn gate: the editor surfaces
+ * these in a yellow banner above the Export button, but never blocks export.
+ *
+ * Categories:
+ *   - unused-condition: condition declared in `conditions:` but not referenced
+ *     from anywhere in `experiment:` (sequence)
+ *   - unused-anchor: anchor declared in `variables:` but no `*alias` references
+ *     it anywhere in the document (uses YAML.visit on the doc tree)
+ *   - undeclared-plugin: `plugin_name:` on a command does not match any entry
+ *     in `plugins:` and isn't the built-in 'log'
+ *   - raw-command: command preserved as forward-compat unknown type
+ *     (informational only — designer can't edit it semantically)
+ *
+ * Returns { warnings: [{kind, message, ...meta}], totalCount }. Never throws.
+ */
+function collectExportWarnings(experiment) {
+    const warnings = [];
+    if (!experiment || !Array.isArray(experiment.conditions)) {
+        return { warnings, totalCount: 0 };
+    }
+
+    // 1. Unused conditions
+    const usedCondNames = new Set();
+    for (const entry of experiment.sequence || []) {
+        if (entry.kind === 'ref') {
+            usedCondNames.add(entry.condition_name);
+        } else if (entry.kind === 'block') {
+            for (const t of entry.trials) usedCondNames.add(t);
+            if (entry.intertrial) usedCondNames.add(entry.intertrial);
+        }
+    }
+    for (const c of experiment.conditions) {
+        if (!usedCondNames.has(c.name)) {
+            warnings.push({
+                kind: 'unused-condition',
+                name: c.name,
+                message: 'Condition "' + c.name + '" is declared but never referenced.'
+            });
+        }
+    }
+
+    // 2. Unused anchors — extract actual anchor names from the variables:
+    // value nodes (NOT the map keys; keys and anchors can diverge, e.g.
+    // `name_key: &different_anchor 5`). Compare against the set of all alias
+    // references in the document via YAML.visit.
+    if (experiment._doc) {
+        const declaredAnchors = [];
+        const varsNode = experiment._doc.get('variables', true);
+        if (varsNode && Array.isArray(varsNode.items)) {
+            for (const pair of varsNode.items) {
+                if (pair.value && pair.value.anchor) {
+                    declaredAnchors.push(pair.value.anchor);
+                }
+            }
+        }
+        if (declaredAnchors.length > 0) {
+            const usedAnchors = new Set();
+            if (typeof YAML.visit === 'function') {
+                YAML.visit(experiment._doc, {
+                    Alias(_, node) {
+                        if (node && node.source) usedAnchors.add(node.source);
+                    }
+                });
+            }
+            for (const name of declaredAnchors) {
+                if (!usedAnchors.has(name)) {
+                    warnings.push({
+                        kind: 'unused-anchor',
+                        name: name,
+                        message: 'Anchor "&' + name + '" is declared in variables: but never referenced.'
+                    });
+                }
+            }
+        }
+    }
+
+    // 3. Plugin names used in commands but not declared in plugins: (excl 'log')
+    const declaredPluginNames = new Set(
+        (experiment.plugins || []).map((p) => p && p.name).filter(Boolean)
+    );
+    declaredPluginNames.add('log');
+    const undeclaredPluginsSeen = new Set();
+    for (const c of experiment.conditions) {
+        for (const cmd of c.commands || []) {
+            if (cmd.type === 'plugin' && cmd.plugin_name) {
+                if (!declaredPluginNames.has(cmd.plugin_name) && !undeclaredPluginsSeen.has(cmd.plugin_name)) {
+                    undeclaredPluginsSeen.add(cmd.plugin_name);
+                    warnings.push({
+                        kind: 'undeclared-plugin',
+                        name: cmd.plugin_name,
+                        condition: c.name,
+                        message: 'Plugin "' + cmd.plugin_name + '" is referenced by commands but not declared in plugins:.'
+                    });
+                }
+            }
+        }
+    }
+
+    // 4. Raw / forward-compat command-type cards (informational)
+    for (const c of experiment.conditions) {
+        for (const cmd of c.commands || []) {
+            if (cmd._rawUnknownType) {
+                warnings.push({
+                    kind: 'raw-command',
+                    name: cmd.type,
+                    condition: c.name,
+                    message: 'Condition "' + c.name + '" contains an unknown command type "' + cmd.type + '" (preserved on export, but designer cannot edit it).'
+                });
+            }
+        }
+    }
+
+    return { warnings, totalCount: warnings.length };
+}
+
 // ════════════════════════════════════════════════════
 // Generator
 // ════════════════════════════════════════════════════
@@ -767,6 +883,184 @@ function docDeletePluginParam(experiment, condIdx, cmdIdx, paramKey) {
 }
 
 /**
+ * docInsertCondition(experiment, name, commands)
+ *
+ * Append a new condition to `conditions:`. `name` must be a non-empty string
+ * and unique across existing conditions. `commands` must be a non-empty array
+ * (the spec requires at least one command per condition).
+ *
+ * Creates a fresh YAMLMap via _doc.createNode and pushes it to the conditions
+ * seq, mirroring into the JS model. Use docAppendSequenceEntry separately if
+ * the caller also wants a bare ref into the sequence.
+ */
+function docInsertCondition(experiment, name, commands) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docInsertCondition: experiment has no _doc handle', 'NO_DOC');
+    }
+    if (typeof name !== 'string' || !name.trim()) {
+        throw new V3ParseError('docInsertCondition: name must be a non-empty string', 'INVALID_INPUT');
+    }
+    if (experiment.conditions.find((c) => c.name === name)) {
+        throw new V3ParseError(
+            'docInsertCondition: condition "' + name + '" already exists',
+            'DUPLICATE_NAME'
+        );
+    }
+    if (!Array.isArray(commands) || commands.length === 0) {
+        throw new V3ParseError(
+            'docInsertCondition: commands must be a non-empty array (spec requires at least one)',
+            'INVALID_INPUT'
+        );
+    }
+
+    const condsNode = experiment._doc.getIn(['conditions'], true);
+    if (!condsNode || !Array.isArray(condsNode.items)) {
+        throw new V3ParseError(
+            'docInsertCondition: conditions seq node not found',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+
+    const newCondNode = experiment._doc.createNode({ name, commands });
+    condsNode.items.push(newCondNode);
+
+    experiment.conditions.push({
+        name,
+        commands: JSON.parse(JSON.stringify(commands))
+    });
+}
+
+/**
+ * docCloneCondition(experiment, srcIdx, newName)
+ *
+ * Duplicate the condition at srcIdx under a new name, preserving anchors and
+ * comments from the source condition. Must clone the YAML node (not the JS
+ * object) — doc.toJS() resolves aliases at parse time, so JS-model deep-copy
+ * would lose anchor bindings like `command_name: *color_command`. The clone
+ * keeps the alias references intact in the duplicate.
+ */
+function docCloneCondition(experiment, srcIdx, newName) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docCloneCondition: experiment has no _doc handle', 'NO_DOC');
+    }
+    if (typeof newName !== 'string' || !newName.trim()) {
+        throw new V3ParseError('docCloneCondition: newName must be a non-empty string', 'INVALID_INPUT');
+    }
+    const src = experiment.conditions[srcIdx];
+    if (!src) {
+        throw new V3ParseError('docCloneCondition: bad srcIdx ' + srcIdx, 'BAD_PATH');
+    }
+    if (experiment.conditions.find((c) => c.name === newName)) {
+        throw new V3ParseError(
+            'docCloneCondition: condition "' + newName + '" already exists',
+            'DUPLICATE_NAME'
+        );
+    }
+
+    const condsNode = experiment._doc.getIn(['conditions'], true);
+    const srcNode = experiment._doc.getIn(['conditions', srcIdx], true);
+    if (!condsNode || !Array.isArray(condsNode.items) || !srcNode) {
+        throw new V3ParseError(
+            'docCloneCondition: conditions seq or source node not found',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+
+    // Deep clone the source YAML node so alias references are preserved.
+    // yaml@2's node.clone() does a structural clone that retains Alias nodes
+    // pointing at the same anchor names.
+    const clonedNode = srcNode.clone(experiment._doc.schema);
+    // Rewrite the `name:` field in the clone before splicing in
+    if (typeof clonedNode.set === 'function') {
+        clonedNode.set('name', newName);
+    } else {
+        for (const pair of clonedNode.items) {
+            if (pair.key && (pair.key.value === 'name' || pair.key === 'name')) {
+                pair.value = experiment._doc.createNode(newName);
+                break;
+            }
+        }
+    }
+    condsNode.items.push(clonedNode);
+
+    // Re-derive the JS model from the cloned node so the data shape matches
+    // what parseV3Protocol would have produced (alias references resolve to
+    // their values in toJS, but the YAML node retains the *alias for export).
+    const newCondJs = {
+        name: newName,
+        commands: JSON.parse(JSON.stringify(src.commands))
+    };
+    experiment.conditions.push(newCondJs);
+}
+
+/**
+ * docAppendSequenceEntry(experiment, entry)
+ *
+ * Append an entry to `experiment:` (the sequence). `entry` can be a ref —
+ * { kind: 'ref', condition_name: '<name>' } — or a block —
+ * { kind: 'block', name?, trials, repetitions?, randomize?, intertrial? }.
+ *
+ * Used by the library + Add and Duplicate flows to auto-wire the new
+ * condition into the experiment sequence.
+ */
+function docAppendSequenceEntry(experiment, entry) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docAppendSequenceEntry: experiment has no _doc handle', 'NO_DOC');
+    }
+    if (!entry || typeof entry !== 'object') {
+        throw new V3ParseError('docAppendSequenceEntry: entry must be an object', 'INVALID_INPUT');
+    }
+
+    const seqNode = experiment._doc.getIn(['experiment'], true);
+    if (!seqNode || !Array.isArray(seqNode.items)) {
+        throw new V3ParseError(
+            'docAppendSequenceEntry: experiment seq node not found',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+
+    if (entry.kind === 'ref') {
+        if (typeof entry.condition_name !== 'string' || !entry.condition_name) {
+            throw new V3ParseError(
+                'docAppendSequenceEntry: ref entry needs a condition_name',
+                'INVALID_INPUT'
+            );
+        }
+        seqNode.items.push(experiment._doc.createNode(entry.condition_name));
+        experiment.sequence.push({ kind: 'ref', condition_name: entry.condition_name });
+    } else if (entry.kind === 'block') {
+        if (!Array.isArray(entry.trials) || entry.trials.length === 0) {
+            throw new V3ParseError(
+                'docAppendSequenceEntry: block entry needs a non-empty trials list',
+                'INVALID_INPUT'
+            );
+        }
+        const blockShape = {
+            trials: entry.trials.slice()
+        };
+        if (typeof entry.name === 'string' && entry.name) blockShape.name = entry.name;
+        if (typeof entry.repetitions === 'number') blockShape.repetitions = entry.repetitions;
+        if (entry.randomize === true) blockShape.randomize = true;
+        if (typeof entry.intertrial === 'string' && entry.intertrial) blockShape.intertrial = entry.intertrial;
+        seqNode.items.push(experiment._doc.createNode(blockShape));
+        experiment.sequence.push({
+            kind: 'block',
+            name: blockShape.name || null,
+            trials: blockShape.trials,
+            repetitions: blockShape.repetitions || 1,
+            randomize: blockShape.randomize === true,
+            intertrial: blockShape.intertrial || null,
+            _unknownKeys: {}
+        });
+    } else {
+        throw new V3ParseError(
+            'docAppendSequenceEntry: entry.kind must be "ref" or "block"',
+            'INVALID_INPUT'
+        );
+    }
+}
+
+/**
  * docDelete(experiment, path)
  *
  * Removes the key at `path` from both the YAML.Document and the JS data
@@ -819,11 +1113,15 @@ const ProtocolV3 = {
     parseV3Protocol,
     generateV3Protocol,
     validateReferences,
+    collectExportWarnings,
     V3ParseError,
     docSet,
     docDelete,
     docInsertCommand,
     docMoveCommand,
+    docInsertCondition,
+    docCloneCondition,
+    docAppendSequenceEntry,
     docSetPluginCommandHead,
     docAddPluginParam,
     docDeletePluginParam,
@@ -846,11 +1144,15 @@ export {
     parseV3Protocol,
     generateV3Protocol,
     validateReferences,
+    collectExportWarnings,
     V3ParseError,
     docSet,
     docDelete,
     docInsertCommand,
     docMoveCommand,
+    docInsertCondition,
+    docCloneCondition,
+    docAppendSequenceEntry,
     docSetPluginCommandHead,
     docAddPluginParam,
     docDeletePluginParam,
