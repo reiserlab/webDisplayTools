@@ -25,7 +25,10 @@ const {
     parseV3Protocol,
     generateV3Protocol,
     validateReferences,
-    V3ParseError
+    V3ParseError,
+    docSet,
+    nodeIsAliasAt,
+    aliasNameAt
 } = require('../js/protocol-yaml-v3.js');
 
 // ─── Counters & helpers ─────────────────────────────────────────────────────
@@ -144,7 +147,8 @@ const coverageFixtures = [
     'v3_no_intertrial.yaml',
     'v3_consecutive_refs.yaml',
     'v3_future_keys.yaml',
-    'v3_plugin_config.yaml'
+    'v3_plugin_config.yaml',
+    'v3_full_experiment.yaml'
 ];
 
 for (const fname of coverageFixtures) {
@@ -330,6 +334,39 @@ checkThrows(
     );
 }
 
+// ─── Test Suite 8b: Full-experiment fixture (Lisa, 2026-05-26) ──────────────
+console.log('\n--- Suite 8b: Lisa\'s full_experiment_test_v3 fixture ---');
+
+{
+    const text = readFixture('v3_full_experiment.yaml');
+    const exp = parseV3Protocol(text);
+    check('full_exp: version', exp.version, 3);
+    check('full_exp: conditions count', exp.conditions.length, 15);
+    check('full_exp: variables count', exp.variables.length, 6);
+    check('full_exp: sequence length', exp.sequence.length, 6);
+    check('full_exp: seq[0] bare ref', exp.sequence[0].kind, 'ref');
+    check('full_exp: seq[4] is block', exp.sequence[4].kind, 'block');
+    check('full_exp: main block trials', exp.sequence[4].trials.length, 9);
+    check('full_exp: main block reps', exp.sequence[4].repetitions, 3);
+    check('full_exp: main block randomize', exp.sequence[4].randomize, false);
+    check('full_exp: main block intertrial', exp.sequence[4].intertrial, 'intertrial');
+    check('full_exp: seq[5] bare ref "shutdown"', exp.sequence[5].condition_name, 'shutdown');
+
+    const refs = validateReferences(exp);
+    checkTrue(
+        'full_exp: all references resolve',
+        refs.ok,
+        refs.ok ? '' : refs.errors.join('; ')
+    );
+
+    // Anchor survival (variable names from Lisa's fixture)
+    const regen = generateV3Protocol(exp);
+    for (const anchor of ['IR_power', 'trial_dur', 'fr_rate', 'led_power', 'baseline_wait', 'inter_wait']) {
+        checkTrue('full_exp: anchor &' + anchor + ' in regen', regen.includes('&' + anchor));
+        checkTrue('full_exp: alias *' + anchor + ' in regen', regen.includes('*' + anchor));
+    }
+}
+
 // ─── Test Suite 8: Numeric type preservation ────────────────────────────────
 console.log('\n--- Suite 8: Numeric type preservation ---');
 
@@ -347,6 +384,113 @@ console.log('\n--- Suite 8: Numeric type preservation ---');
     // Variable value (number)
     check('numeric: variable dur_long is number', typeof exp.variables[0].value, 'number');
     check('numeric: variable color_power value', exp.variables[3].value, 5);
+}
+
+// ─── Test Suite 9: Editing — docSet, alias detection, comment survival ─────
+console.log('\n--- Suite 9: docSet edits + alias detection ---');
+
+{
+    // 1. Edit a wait.duration in canonical_a and verify it round-trips.
+    const orig = readFixture('v3_canonical_a.yaml');
+    const exp = parseV3Protocol(orig);
+
+    // Find condition "arena check" and its wait command
+    const condIdx = exp.conditions.findIndex((c) => c.name === 'arena check');
+    checkTrue('edit: arena check condition found', condIdx >= 0);
+    const cmdIdx = exp.conditions[condIdx].commands.findIndex((c) => c.type === 'wait');
+    checkTrue('edit: wait command found in arena check', cmdIdx >= 0);
+
+    const oldDur = exp.conditions[condIdx].commands[cmdIdx].duration;
+    check('edit: pre-edit wait.duration', oldDur, 3);
+
+    // docSet to change the duration to 7
+    docSet(exp, ['conditions', condIdx, 'commands', cmdIdx, 'duration'], 7);
+
+    // JS model mirrored
+    check('edit: JS model updated', exp.conditions[condIdx].commands[cmdIdx].duration, 7);
+
+    // YAML emit contains the new value, not the old one (in the right place)
+    const regen = generateV3Protocol(exp);
+    const reparsed = parseV3Protocol(regen);
+    check(
+        'edit: reparsed wait.duration is 7',
+        reparsed.conditions[condIdx].commands[cmdIdx].duration,
+        7
+    );
+
+    // Comments survive the edit (count check)
+    const origComments = orig.split('\n').filter((l) => l.trimStart().startsWith('#')).length;
+    const regenComments = regen.split('\n').filter((l) => l.trimStart().startsWith('#')).length;
+    checkTrue(
+        'edit: comment count preserved through edit',
+        origComments === regenComments,
+        'orig=' + origComments + ', after-edit=' + regenComments
+    );
+
+    // Other anchors/aliases still intact in the regen
+    checkTrue('edit: anchor &dur_long still in regen', regen.includes('&dur_long'));
+    checkTrue('edit: alias *dur_long still in regen', regen.includes('*dur_long'));
+}
+
+{
+    // 2. Alias detection — arena check's wait is *dur_short (alias);
+    // start light and camera's wait is literal 0.5.
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+
+    const arenaCheckIdx = exp.conditions.findIndex((c) => c.name === 'arena check');
+    const arenaWaitIdx = exp.conditions[arenaCheckIdx].commands.findIndex(
+        (c) => c.type === 'wait'
+    );
+    const aliasPath = [
+        'conditions',
+        arenaCheckIdx,
+        'commands',
+        arenaWaitIdx,
+        'duration'
+    ];
+
+    checkTrue('alias: nodeIsAliasAt detects *dur_short binding', nodeIsAliasAt(exp, aliasPath));
+    check('alias: aliasNameAt returns "dur_short"', aliasNameAt(exp, aliasPath), 'dur_short');
+
+    const litCond = exp.conditions.find((c) => c.name === 'start light and camera');
+    const litCondIdx = exp.conditions.indexOf(litCond);
+    const litWaitIdx = litCond.commands.findIndex((c) => c.type === 'wait');
+    const literalPath = ['conditions', litCondIdx, 'commands', litWaitIdx, 'duration'];
+
+    check(
+        'alias: literal scalar returns null aliasName',
+        aliasNameAt(exp, literalPath),
+        null
+    );
+    checkTrue(
+        'alias: literal scalar is NOT detected as alias',
+        !nodeIsAliasAt(exp, literalPath)
+    );
+}
+
+{
+    // 3. Edit a string field (controller.command_name) — string round-trip
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const condIdx = exp.conditions.findIndex((c) => c.name === 'arena check');
+    const ctrlIdx = exp.conditions[condIdx].commands.findIndex(
+        (c) => c.type === 'controller'
+    );
+    docSet(
+        exp,
+        ['conditions', condIdx, 'commands', ctrlIdx, 'command_name'],
+        'allOff'
+    );
+    check(
+        'edit: string field JS model',
+        exp.conditions[condIdx].commands[ctrlIdx].command_name,
+        'allOff'
+    );
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check(
+        'edit: string field reparsed',
+        reparsed.conditions[condIdx].commands[ctrlIdx].command_name,
+        'allOff'
+    );
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────

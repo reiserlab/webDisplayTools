@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>v3 Experiment Designer (Viewer)</title>
+    <title>v3 Experiment Designer</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 
     <!-- Import map: lets js/protocol-yaml-v3.js's `import YAML from 'yaml'`
@@ -335,9 +335,50 @@
         .cmd-card.plugin { border-left: 3px solid var(--beta); }
         .cmd-card .cmd-head { font-weight: 600; margin-bottom: 0.2rem; }
         .cmd-card .cmd-head .ctype { color: var(--text-dim); font-weight: 400; font-size: 0.65rem; text-transform: uppercase; margin-right: 0.3rem; }
-        .cmd-card .kv-line { font-size: 0.7rem; color: var(--text-dim); }
-        .cmd-card .kv-line .k { display: inline-block; min-width: 80px; }
+        .cmd-card .kv-line { font-size: 0.7rem; color: var(--text-dim); display: flex; align-items: center; gap: 0.3rem; }
+        .cmd-card .kv-line .k { display: inline-block; min-width: 80px; flex-shrink: 0; }
         .cmd-card .kv-line .v { color: var(--text); }
+        .cmd-card .kv-line input.field-edit {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            padding: 0.1rem 0.35rem;
+            border-radius: 2px;
+            min-width: 60px;
+            max-width: 220px;
+        }
+        .cmd-card .kv-line input.field-edit:focus { outline: none; border-color: var(--accent); }
+        .cmd-card .kv-line input.field-edit.num { width: 70px; text-align: right; color: var(--accent); }
+        .cmd-card .kv-line input.field-edit.str { color: var(--accent); }
+        .cmd-card .kv-line .alias-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+            padding: 0.05rem 0.4rem;
+            background: rgba(41, 182, 246, 0.12);
+            border: 1px solid var(--beta);
+            color: var(--beta);
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            cursor: help;
+        }
+        .cmd-card .kv-line .alias-chip .resolved-val {
+            color: var(--text-dim);
+            font-size: 0.6rem;
+        }
+        .dirty-badge {
+            display: inline-block;
+            background: rgba(255, 152, 0, 0.15);
+            color: var(--warn);
+            border: 1px solid var(--warn);
+            padding: 0.05rem 0.4rem;
+            font-size: 0.65rem;
+            border-radius: 8px;
+            margin-left: 0.4rem;
+        }
         .jump-btn {
             background: rgba(0, 230, 118, 0.1);
             border: 1px solid var(--accent);
@@ -444,19 +485,22 @@
     <!-- Header -->
     <div class="app-header">
         <h1>v3 Experiment Designer</h1>
-        <span class="beta-badge">Beta / Viewer</span>
+        <span class="beta-badge">Beta / Editor</span>
         <div class="header-spacer"></div>
+        <span id="dirtyIndicator" class="dirty-badge" style="display: none;" title="Unsaved edits — Export to save">● edited</span>
         <button id="settingsToggle" class="header-btn" title="Show/hide experiment metadata, rig, plugins, variables">Settings ▾</button>
         <input type="file" id="fileInput" accept=".yaml,.yml" style="display: none;">
         <button id="importBtn" class="header-btn primary" title="Load a v3 protocol YAML file">Import YAML</button>
-        <button id="exportBtn" class="header-btn" disabled title="Re-export the loaded YAML (round-trip)">Export YAML</button>
+        <button id="exportBtn" class="header-btn" disabled title="Export the (possibly edited) YAML">Export YAML</button>
         <a href="index.html" class="header-btn" style="text-decoration: none; display: inline-flex; align-items: center;">← All tools</a>
     </div>
 
-    <!-- View-only banner -->
+    <!-- Editing banner -->
     <div class="view-only-banner">
-        <strong>View only.</strong> v0.1 viewer round-trips v3 YAML preserving anchors and comments — editing arrives in v0.2.
-        Open in the <a href="experiment_designer.html">v2 Experiment Designer</a> to edit a v2 protocol.
+        <strong>Editing (early).</strong> Scalar fields in command cards are editable; anchor-bound fields (
+        <span style="color: var(--beta);">→ &amp;name</span>) are read-only until the Variables editor lands.
+        Drag/drop, undo, and sequence editing arrive in later updates.
+        Need v2? <a href="experiment_designer.html">Open the v2 Experiment Designer</a>.
     </div>
 
     <!-- Settings drawer -->
@@ -520,7 +564,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.1 | <span id="footerTimestamp">2026-05-24 ET</span>
+        v3 Experiment Designer v0.2 | <span id="footerTimestamp">2026-05-27 08:56 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -535,8 +579,15 @@
     </div>
 
     <script type="module">
-        import { parseV3Protocol, generateV3Protocol, validateReferences, V3ParseError }
-            from './js/protocol-yaml-v3.js';
+        import {
+            parseV3Protocol,
+            generateV3Protocol,
+            validateReferences,
+            V3ParseError,
+            docSet,
+            nodeIsAliasAt,
+            aliasNameAt
+        } from './js/protocol-yaml-v3.js';
 
         // ═══════════════════════════════════════════════════════════════
         // State
@@ -546,6 +597,12 @@
         let lastFilename = null;       // for export naming
         let selection = null;          // { kind: 'condition', name } | { kind: 'block', index } | { kind: 'ref', index }
         let librarySearchText = '';
+        let dirty = false;             // true once the user has edited anything
+
+        function setDirty(val) {
+            dirty = !!val;
+            $('dirtyIndicator').style.display = dirty ? 'inline-block' : 'none';
+        }
 
         // ═══════════════════════════════════════════════════════════════
         // DOM helpers
@@ -596,6 +653,7 @@
                 experiment = parsed;
                 lastFilename = file.name;
                 selection = null;
+                setDirty(false);
                 renderAll();
                 $('exportBtn').disabled = false;
             } catch (err) {
@@ -880,20 +938,21 @@
             }
 
             if (selection.kind === 'condition') {
-                const cond = experiment.conditions.find(c => c.name === selection.name);
-                if (!cond) {
+                const condIdx = experiment.conditions.findIndex(c => c.name === selection.name);
+                if (condIdx < 0) {
                     body.appendChild(el('div', { class: 'empty-state' }, 'Condition not found.'));
                     return;
                 }
+                const cond = experiment.conditions[condIdx];
                 body.appendChild(el('div', { class: 'inspector-title' },
                     el('span', { class: 'kind' }, 'Condition'),
                     cond.name
                 ));
                 const section = el('div', { class: 'insp-section' });
                 section.appendChild(el('h4', {}, 'Commands (' + cond.commands.length + ')'));
-                for (const cmd of cond.commands) {
-                    section.appendChild(renderCommandCard(cmd));
-                }
+                cond.commands.forEach((cmd, cmdIdx) => {
+                    section.appendChild(renderCommandCard(cmd, ['conditions', condIdx, 'commands', cmdIdx]));
+                });
                 body.appendChild(section);
                 return;
             }
@@ -965,7 +1024,80 @@
             }
         }
 
-        function renderCommandCard(cmd) {
+        // Field type hints — drive input coercion (number vs string).
+        // Plugin params are freeform — type is inferred from the live value.
+        const FIELD_TYPES = {
+            // controller fields
+            'pattern': 'string',
+            'pattern_ID': 'number',
+            'duration': 'number',
+            'mode': 'number',
+            'frame_index': 'number',
+            'frame_rate': 'number',
+            'gain': 'number',
+            'command_name': 'string',
+            'plugin_name': 'string'
+        };
+
+        // Render a single editable scalar field. If the underlying YAML node is
+        // an Alias, show a read-only badge instead of an input. Otherwise, an
+        // input that calls docSet() on commit.
+        function renderEditableField(label, path, value, typeHint, opts) {
+            opts = opts || {};
+            const wrapper = el('div', { class: 'kv-line', style: opts.indent ? 'padding-left: 1rem;' : '' });
+            wrapper.appendChild(el('span', { class: 'k' }, label + ':'));
+
+            const aliasName = aliasNameAt(experiment, path);
+            if (aliasName) {
+                const chip = el('span', {
+                    class: 'alias-chip',
+                    title: 'Bound to anchor &' + aliasName + ' (resolved: ' + JSON.stringify(value) + '). Anchor binding editor arrives in a later update.'
+                },
+                    '→ &' + aliasName,
+                    el('span', { class: 'resolved-val' }, '= ' + (typeof value === 'string' ? JSON.stringify(value) : String(value)))
+                );
+                wrapper.appendChild(chip);
+                return wrapper;
+            }
+
+            const inputType = typeHint === 'number' ? 'number' : 'text';
+            const input = el('input', {
+                type: inputType,
+                class: 'field-edit ' + (typeHint === 'number' ? 'num' : 'str'),
+                value: typeof value === 'string' ? value : String(value),
+                title: 'Edit ' + label
+            });
+            if (typeHint === 'number') input.step = 'any';
+
+            input.addEventListener('change', () => {
+                let raw = input.value;
+                let coerced = raw;
+                if (typeHint === 'number') {
+                    const n = Number(raw);
+                    if (!Number.isFinite(n)) {
+                        // Reject — revert
+                        input.value = String(value);
+                        return;
+                    }
+                    coerced = n;
+                }
+                if (coerced === value) return;
+                try {
+                    docSet(experiment, path, coerced);
+                    setDirty(true);
+                    // Re-render the inspector card area only — preserve focus elsewhere.
+                    renderInspector();
+                    renderTimeline();
+                } catch (err) {
+                    showError('Edit failed', err.message);
+                    input.value = String(value);
+                }
+            });
+            wrapper.appendChild(input);
+            return wrapper;
+        }
+
+        function renderCommandCard(cmd, cmdPath) {
             const card = el('div', { class: 'cmd-card ' + cmd.type });
             const head = el('div', { class: 'cmd-head' },
                 el('span', { class: 'ctype' }, cmd.type),
@@ -974,29 +1106,29 @@
                 cmd.command_name || ''
             );
             card.appendChild(head);
+
             const detailKeys = {
-                controller: ['pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain'],
+                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain'],
                 wait: ['duration'],
                 plugin: []
             }[cmd.type] || [];
+
             for (const k of detailKeys) {
-                if (cmd[k] !== undefined) {
-                    card.appendChild(el('div', { class: 'kv-line' },
-                        el('span', { class: 'k' }, k + ':'),
-                        el('span', { class: 'v' }, ' ' + (typeof cmd[k] === 'string' ? cmd[k] : String(cmd[k])))));
-                }
+                if (cmd[k] === undefined) continue;
+                card.appendChild(renderEditableField(k, [...cmdPath, k], cmd[k], FIELD_TYPES[k] || 'string'));
             }
+
             if (cmd.type === 'plugin' && cmd.params && Object.keys(cmd.params).length > 0) {
                 card.appendChild(el('div', { class: 'kv-line' }, el('span', { class: 'k' }, 'params:')));
                 for (const [pk, pv] of Object.entries(cmd.params)) {
-                    card.appendChild(el('div', { class: 'kv-line', style: 'padding-left: 1rem;' },
-                        el('span', { class: 'k' }, pk + ':'),
-                        el('span', { class: 'v' }, ' ' + (typeof pv === 'string' ? JSON.stringify(pv) : String(pv)))));
+                    const ptype = typeof pv === 'number' ? 'number' : 'string';
+                    card.appendChild(renderEditableField(pk, [...cmdPath, 'params', pk], pv, ptype, { indent: true }));
                 }
             }
+
             if (cmd._unknownKeys && Object.keys(cmd._unknownKeys).length > 0) {
                 card.appendChild(el('div', { class: 'kv-line', style: 'color: var(--warn); margin-top: 0.2rem;' },
-                    '⚠ unknown keys: ' + Object.keys(cmd._unknownKeys).join(', ')));
+                    '⚠ unknown keys (preserved on export): ' + Object.keys(cmd._unknownKeys).join(', ')));
             }
             return card;
         }

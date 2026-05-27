@@ -12,18 +12,57 @@ with the canonical example files or the MATLAB parser, the latter wins.
 
 - Repo: `reiserlab/maDisplayTools`
 - Branch: `origin/version3`
-- Commit SHA: **`00c8f9561bb1915a36d54054aeadf89778888ba2`** (`00c8f95`, captured 2026-05-23)
+- Commit SHA: **`649d7efd…`** (`649d7ef`, captured 2026-05-27)
+- Previous pin: `00c8f95` (2026-05-23) — bumped after Lisa added docs +
+  full-experiment example on 2026-05-26.
 
-The two canonical example YAMLs from this commit are committed verbatim in
-this repo as:
+The reference YAMLs from this commit are committed verbatim in this repo as:
 
 - `tests/fixtures/v3_canonical_a.yaml` ← `examples/yamls/experimentExampleVersion3.yaml`
 - `tests/fixtures/v3_canonical_b.yaml` ← `examples/yamls/version3Attempt.yaml`
+- `tests/fixtures/v3_full_experiment.yaml` ← `examples/yamls/full_experiment_test_v3.yaml`
+  (Lisa's port of the v2 test experiment to v3; **three syntactic typos in the
+  upstream file were fixed locally** — missing `commands:` key on the
+  `start recording` condition, indent slip on a `wait`, missing close-quote on a
+  `type: "controller` — pending a fix push upstream)
 
-**These files are the spec.** The v3 parser exists to round-trip them; the
-designer exists to view and edit data they could represent. Run
-`tests/refresh-v3-canonical.sh` to re-fetch them at a newer SHA; any `git diff`
-output is a signal the spec drifted upstream.
+**These files plus Lisa's documentation are the spec.** The v3 parser exists
+to round-trip them; the designer exists to view and edit data they could
+represent. Run `tests/refresh-v3-canonical.sh` to re-fetch them at a newer SHA;
+any `git diff` output is a signal the spec drifted upstream.
+
+### Authoritative spec docs (upstream)
+
+- **`docs/development/yaml_protocol_documentation_v3.md`** on `origin/version3`
+  (added by Lisa in `3e1eb63`, 2026-05-26). This is the human-readable spec for
+  the v3 YAML format — three-tier config (arena/rig/experiment), all command
+  types, plugin catalog, validation checklist. **Defer to this doc, not this
+  file, when in doubt about format details.** This file documents
+  designer-specific concerns (round-trip strategy, designer constraints) and
+  the JS-side parser contract.
+
+### Spec details added by Lisa's documentation (2026-05-26)
+
+These are documented upstream but were not surfaced in the original `00c8f95`
+canonical examples; the designer should expect them eventually:
+
+- **`DAQThermometerPlugin`** — third built-in class plugin alongside
+  `BiasPlugin` and `LEDControllerPlugin`. Commands: `startContinuousLogging`,
+  `stopContinuousLogging` (added in `dfbfd0b`), `get_temperature`,
+  `log_temperature`. Config fields: `device_id`, `channels`,
+  `thermocouple_type`, `sample_rate`, `sample_duration`, `generate_plots`.
+- **Built-in `log` plugin** — `plugin_name: "log"`, `command_name: "log"`,
+  params `{message, level}` where `level ∈ {DEBUG, INFO, WARNING, ERROR}`. Not
+  declared in `plugins:`; treated as always-available.
+- **Anchor as `command_name`** — a plugin command's `command_name:` field may
+  be set via `*alias` (e.g. variables `&led_command "setRedLEDPower"` →
+  `command_name: *led_command`). The editor's anchor-binding UI must support
+  enum-style command-name fields, not just numeric/string scalars.
+- **Negative `frame_rate`** — explicit: a negative value on `trialParams`
+  plays the pattern in reverse.
+- **`pattern_ID` auto-update at SD-card prep** — `pattern_ID` is rewritten
+  during deployment to match SD slot, so its value in source YAML is
+  informational. Author hint: use a `*var` so the value is in one place.
 
 ### MATLAB-side validation (manual flow)
 
