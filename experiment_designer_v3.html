@@ -722,6 +722,14 @@
             $('dirtyIndicator').style.display = dirty ? 'inline-block' : 'none';
         }
 
+        // Warn before close/reload if there are unsaved edits.
+        window.addEventListener('beforeunload', (e) => {
+            if (dirty) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
         function updateUndoUI() {
             document.getElementById('undoBtn').disabled = undoStack.length === 0;
             document.getElementById('redoBtn').disabled = redoStack.length === 0;
@@ -835,6 +843,10 @@
         $('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            if (dirty && !confirm('Discard unsaved edits and import "' + file.name + '"?')) {
+                $('fileInput').value = '';
+                return;
+            }
             const text = await file.text();
             try {
                 const parsed = parseV3Protocol(text);
@@ -1271,6 +1283,12 @@
                 let raw = input.value;
                 let coerced = raw;
                 if (typeHint === 'number') {
+                    // Number("") === 0 — reject empty so clearing a field doesn't
+                    // silently commit zero. User must explicitly type a value.
+                    if (raw.trim() === '') {
+                        input.value = String(value);
+                        return;
+                    }
                     const n = Number(raw);
                     if (!Number.isFinite(n)) {
                         input.value = String(value);
@@ -1304,6 +1322,8 @@
             renderInspector();
             renderSequence();
             renderTimeline();
+            // Re-render library: block intertrial changes shift usage counts.
+            renderLibrary();
         }
 
         function renderBlockNameRow(blockIdx, entry) {

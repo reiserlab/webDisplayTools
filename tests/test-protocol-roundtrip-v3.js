@@ -3,7 +3,7 @@
  * Protocol v3 Roundtrip Tests
  *
  * Phase 1 gate: round-trip the two canonical v3 YAMLs from origin/version3
- * @ 00c8f95, plus all 7 coverage-gap fixtures, preserving anchors and comments.
+ * @ 649d7ef, plus all coverage-gap fixtures, preserving anchors and comments.
  *
  * MATLAB-side cross-check (Phase 1 gate item 4) lives in a separate manual
  * script (docs/development/v3-matlab-validation.md and Phase 8 work);
@@ -678,6 +678,55 @@ console.log('\n--- Suite 10: v3 plugin registry (class-based lookup + log) ---')
 
     const nope = getV3CommandParams(exp, 'plugin', 'camera', 'bogusCommand');
     check('params: unknown plugin command returns null', nope, null);
+}
+
+// ─── Test Suite 10b: Block `repetitions` validation ────────────────────────
+console.log("\n--- Suite 10b: repetitions validation ---");
+
+function v3WithReps(repsLiteral) {
+    return [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'experiment:',
+        '  - name: blk',
+        '    trials: [c]',
+        '    repetitions: ' + repsLiteral,
+        'conditions:',
+        '  - name: c',
+        '    commands: [{type: wait, duration: 1}]'
+    ].join('\n') + '\n';
+}
+
+checkThrows('reps validation: rejects 0', () => parseV3Protocol(v3WithReps('0')), 'INVALID_SCHEMA');
+checkThrows('reps validation: rejects -1', () => parseV3Protocol(v3WithReps('-1')), 'INVALID_SCHEMA');
+checkThrows('reps validation: rejects 1.5', () => parseV3Protocol(v3WithReps('1.5')), 'INVALID_SCHEMA');
+checkThrows(
+    'reps validation: rejects non-numeric string',
+    () => parseV3Protocol(v3WithReps('"three"')),
+    'INVALID_SCHEMA'
+);
+
+{
+    // Positive integer accepted
+    const exp = parseV3Protocol(v3WithReps('3'));
+    check('reps validation: accepts positive integer 3', exp.sequence[0].repetitions, 3);
+}
+{
+    // Omitted → default 1
+    const yamlNoReps = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'experiment:',
+        '  - name: blk',
+        '    trials: [c]',
+        'conditions:',
+        '  - name: c',
+        '    commands: [{type: wait, duration: 1}]'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yamlNoReps);
+    check('reps validation: omitted defaults to 1', exp.sequence[0].repetitions, 1);
 }
 
 // ─── Test Suite 11: docInsertCommand / docMoveCommand / delete-command ────

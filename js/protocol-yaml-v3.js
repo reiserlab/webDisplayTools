@@ -316,11 +316,32 @@ function extractSequenceEntry(entry) {
                 'INVALID_SCHEMA'
             );
         }
+        // repetitions: optional, but if present must be a positive integer.
+        // Catches `0`, negatives, decimals (1.5) that would otherwise silently
+        // drop a block or loop a non-integer number of times.
+        let repetitions = 1;
+        if (entry.repetitions !== undefined) {
+            if (
+                typeof entry.repetitions !== 'number' ||
+                !Number.isInteger(entry.repetitions) ||
+                entry.repetitions < 1
+            ) {
+                throw new V3ParseError(
+                    'Block "' +
+                        (entry.name || '?') +
+                        '" has invalid `repetitions`: ' +
+                        JSON.stringify(entry.repetitions) +
+                        ' (must be a positive integer)',
+                    'INVALID_SCHEMA'
+                );
+            }
+            repetitions = entry.repetitions;
+        }
         return {
             kind: 'block',
             name: typeof entry.name === 'string' ? entry.name : null,
             trials: entry.trials.map(String),
-            repetitions: typeof entry.repetitions === 'number' ? entry.repetitions : 1,
+            repetitions: repetitions,
             randomize: entry.randomize === true,
             intertrial: typeof entry.intertrial === 'string' ? entry.intertrial : null,
             _unknownKeys: extractUnknownKeys(entry, KNOWN_BLOCK_KEYS)

@@ -3,7 +3,7 @@
 ## v3 Experiment Designer (beta)
 
 A new designer for the **Protocol v3** YAML format introduced in maDisplayTools
-on `origin/version3` (pinned SHA `00c8f95`). Lives alongside the existing v2
+on `origin/version3` (pinned SHA `649d7ef`). Lives alongside the existing v2
 Experiment Designer; the v2 designer stays untouched while v3 iterates. After
 the v3 editor (PR2) lands and the lab confirms v3 production use, a follow-up
 effort retires v2.
