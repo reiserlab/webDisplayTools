@@ -771,12 +771,30 @@
             flex-shrink: 0;
         }
         .timeline-track {
-            display: flex;
-            gap: 2px;
-            padding: 0.5rem 0.75rem;
+            padding: 0.4rem 0.75rem 0.5rem;
             overflow-x: auto;
             overflow-y: hidden;
             flex: 1;
+        }
+        .timeline-inner {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .timeline-ruler {
+            display: block;
+            flex-shrink: 0;
+        }
+        .timeline-ruler .tick { stroke: var(--text-dim); stroke-width: 1; opacity: 0.5; }
+        .timeline-ruler .tick.major { stroke: var(--accent); opacity: 0.7; }
+        .timeline-ruler .label {
+            fill: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+        }
+        .timeline-steps {
+            display: flex;
+            gap: 2px;
         }
         .step {
             flex-shrink: 0;
@@ -787,6 +805,13 @@
             background: var(--surface-2);
             border: 1px solid var(--border);
             overflow: hidden;
+            cursor: pointer;
+            transition: border-color 0.1s, background 0.1s;
+        }
+        .step:hover { border-color: var(--accent); }
+        .step.selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(0, 230, 118, 0.25);
         }
         .step.ref { background: var(--ref-bg); border-color: var(--accent); }
         .step.block-trial { background: var(--block-bg); border-color: var(--beta); }
@@ -953,7 +978,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.6 | <span id="footerTimestamp">2026-05-27 16:05 ET</span>
+        v3 Experiment Designer v0.7 | <span id="footerTimestamp">2026-05-27 16:57 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -2930,11 +2955,14 @@
             const byName = new Map(experiment.conditions.map(c => [c.name, c]));
             const steps = [];
             let hasRandom = false;
-            for (const entry of experiment.sequence) {
+            for (let seqIdx = 0; seqIdx < experiment.sequence.length; seqIdx++) {
+                const entry = experiment.sequence[seqIdx];
                 if (entry.kind === 'ref') {
                     steps.push({
                         kind: 'ref',
                         label: entry.condition_name,
+                        conditionName: entry.condition_name,
+                        seqIdx,
                         dur: condDuration(byName.get(entry.condition_name))
                     });
                 } else if (entry.kind === 'block') {
@@ -2946,7 +2974,10 @@
                             steps.push({
                                 kind: 'block-trial',
                                 label: condName,
+                                conditionName: condName,
+                                seqIdx,
                                 blockName: entry.name,
+                                trialIdxInBlock: t,
                                 dur: condDuration(byName.get(condName)),
                                 rep: r,
                                 randomize: entry.randomize
@@ -2957,6 +2988,9 @@
                                 steps.push({
                                     kind: 'iti',
                                     label: 'iti: ' + entry.intertrial,
+                                    conditionName: entry.intertrial,
+                                    seqIdx,
+                                    blockName: entry.name,
                                     dur: condDuration(iti)
                                 });
                             }
@@ -2965,6 +2999,29 @@
                 }
             }
             return { steps, hasRandom };
+        }
+
+        // Format seconds as "1m", "15m", "1h 5m" for ruler labels.
+        function formatTimelineLabel(seconds) {
+            const totalMin = Math.round(seconds / 60);
+            if (totalMin < 60) return totalMin + 'm';
+            const h = Math.floor(totalMin / 60);
+            const m = totalMin - h * 60;
+            return m === 0 ? h + 'h' : h + 'h ' + m + 'm';
+        }
+
+        // Click handler for timeline steps. Maps step metadata to a selection so
+        // the inspector, library, and sequence pane all sync up.
+        function onTimelineStepClick(step) {
+            if (!experiment) return;
+            if (step.kind === 'ref') {
+                selection = { kind: 'ref', index: step.seqIdx };
+            } else {
+                // block-trial and iti both belong to a top-level block entry —
+                // select the block so the user can drill into its trials/iti.
+                selection = { kind: 'block', index: step.seqIdx };
+            }
+            renderAll();
         }
 
         function renderTimeline() {
@@ -2980,22 +3037,88 @@
             note.textContent = steps.length + ' step' + (steps.length === 1 ? '' : 's') +
                 (hasRandom ? ' • randomized blocks shown in nominal order; runtime order will differ' : '');
 
-            // Build pixel-proportional widths (min 60px). Cap total to viewport width × 4.
-            const maxTotalPx = 4000;
-            const maxDur = steps.reduce((m, s) => Math.max(m, s.dur || 0), 0) || 1;
-            const pxPerSec = Math.max(8, Math.min(40, maxTotalPx / Math.max(1, steps.reduce((s, x) => s + (x.dur || 1), 0))));
+            if (steps.length === 0) {
+                track.appendChild(el('div', { class: 'empty-state' }, 'Sequence is empty.'));
+                return;
+            }
 
-            for (const step of steps) {
-                const widthPx = Math.max(60, (step.dur || 1) * pxPerSec);
+            // Build pixel-proportional widths (min 60px / 40px iti).
+            const maxTotalPx = 4000;
+            const totalDurSec = steps.reduce((s, x) => s + (x.dur || 1), 0) || 1;
+            const pxPerSec = Math.max(8, Math.min(40, maxTotalPx / Math.max(1, totalDurSec)));
+
+            // Lay out the step strip first so the ruler can match its width.
+            // 2px gap between cells (CSS .timeline-steps gap) — accounted for here.
+            const layout = [];
+            let cumulativeWidth = 0;
+            for (let i = 0; i < steps.length; i++) {
+                const step = steps[i];
+                const minW = step.kind === 'iti' ? 40 : 60;
+                const width = Math.max(minW, (step.dur || 1) * pxPerSec);
+                layout.push({ step, width, startPx: cumulativeWidth, endPx: cumulativeWidth + width });
+                cumulativeWidth += width + (i < steps.length - 1 ? 2 : 0);
+            }
+            const totalWidthPx = cumulativeWidth;
+
+            // The ruler maps real time → pixel position using the *actual* step
+            // strip width (so ticks stay aligned even when min-width clamping
+            // stretches short steps). 10s tick interval; label every minute
+            // for <15min totals, every 5min for longer.
+            const realTotalSec = steps.reduce((s, x) => s + (x.dur || 0), 0) || 1;
+            const pxPerSecRuler = totalWidthPx / realTotalSec;
+            const tickIntervalSec = 10;
+            const labelIntervalSec = realTotalSec < 15 * 60 ? 60 : 5 * 60;
+            const rulerHeight = 18;
+
+            const NS = 'http://www.w3.org/2000/svg';
+            const ruler = document.createElementNS(NS, 'svg');
+            ruler.setAttribute('class', 'timeline-ruler');
+            ruler.setAttribute('width', String(totalWidthPx));
+            ruler.setAttribute('height', String(rulerHeight));
+            for (let t = 0; t <= realTotalSec; t += tickIntervalSec) {
+                const x = t * pxPerSecRuler;
+                const isMajor = (t % labelIntervalSec) === 0 && t > 0;
+                const tick = document.createElementNS(NS, 'line');
+                tick.setAttribute('class', 'tick' + (isMajor ? ' major' : ''));
+                tick.setAttribute('x1', String(x));
+                tick.setAttribute('x2', String(x));
+                tick.setAttribute('y1', String(isMajor ? 0 : rulerHeight / 2));
+                tick.setAttribute('y2', String(rulerHeight - 2));
+                ruler.appendChild(tick);
+                if (isMajor) {
+                    const label = document.createElementNS(NS, 'text');
+                    label.setAttribute('class', 'label');
+                    label.setAttribute('x', String(x + 3));
+                    label.setAttribute('y', '10');
+                    label.textContent = formatTimelineLabel(t);
+                    ruler.appendChild(label);
+                }
+            }
+
+            const inner = el('div', { class: 'timeline-inner' });
+            inner.appendChild(ruler);
+            const stepStrip = el('div', { class: 'timeline-steps' });
+
+            for (let i = 0; i < layout.length; i++) {
+                const { step, width } = layout[i];
+                const isSelected = selection && (
+                    (selection.kind === 'ref' && step.kind === 'ref' && selection.index === step.seqIdx) ||
+                    (selection.kind === 'block' && step.kind !== 'ref' && selection.index === step.seqIdx)
+                );
                 const cell = el('div', {
-                    class: 'step ' + step.kind,
-                    style: 'width: ' + widthPx + 'px;'
+                    class: 'step ' + step.kind + (isSelected ? ' selected' : ''),
+                    style: 'width: ' + width + 'px;',
+                    title: 'Click to select ' + (step.kind === 'ref' ? '"' + step.label + '" ref' : 'block "' + (step.blockName || step.seqIdx) + '"'),
+                    onClick: () => onTimelineStepClick(step)
                 },
-                    el('div', { class: 'step-label', title: step.label }, step.label),
+                    el('div', { class: 'step-label' }, step.label),
                     el('div', { class: 'step-dur' }, (step.dur || 0).toFixed(1) + 's')
                 );
-                track.appendChild(cell);
+                stepStrip.appendChild(cell);
             }
+
+            inner.appendChild(stepStrip);
+            track.appendChild(inner);
         }
 
         // ═══════════════════════════════════════════════════════════════
