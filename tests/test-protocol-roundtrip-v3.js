@@ -32,6 +32,15 @@ const {
     aliasNameAt
 } = require('../js/protocol-yaml-v3.js');
 
+const {
+    findPluginDefByClass,
+    getCommandsForClass,
+    getV3PluginCommands,
+    listV3PluginNames,
+    getV3CommandParams,
+    LOG_PLUGIN
+} = require('../js/plugin-registry.js');
+
 // ─── Counters & helpers ─────────────────────────────────────────────────────
 
 let totalTests = 0;
@@ -550,6 +559,123 @@ console.log('\n--- Suite 9: docSet edits + alias detection ---');
     check('block name: clear JS', exp.sequence[blockIdx].name, null);
     reparsed = parseV3Protocol(generateV3Protocol(exp));
     check('block name: clear round-trip', reparsed.sequence[blockIdx].name, null);
+}
+
+// ─── Test Suite 10: v3 plugin-registry lookups ──────────────────────────────
+console.log('\n--- Suite 10: v3 plugin registry (class-based lookup + log) ---');
+
+{
+    // findPluginDefByClass — finds DAQ, Bias; returns null for unknown
+    check(
+        'registry: findPluginDefByClass(DAQThermometerPlugin)',
+        findPluginDefByClass('DAQThermometerPlugin')?.name,
+        'thermometer'
+    );
+    check(
+        'registry: findPluginDefByClass(BiasPlugin)',
+        findPluginDefByClass('BiasPlugin')?.name,
+        'camera'
+    );
+    check(
+        'registry: findPluginDefByClass(LEDControllerPlugin)',
+        findPluginDefByClass('LEDControllerPlugin')?.name,
+        'backlight'
+    );
+    check('registry: findPluginDefByClass(Unknown) is null', findPluginDefByClass('Nope'), null);
+    check('registry: findPluginDefByClass(undef) is null', findPluginDefByClass(undefined), null);
+}
+
+{
+    // DAQ commands & log plugin shape
+    const daqCmds = getCommandsForClass('DAQThermometerPlugin');
+    check('registry: DAQ has 4 commands', Object.keys(daqCmds).length, 4);
+    checkTrue('registry: DAQ.startContinuousLogging defined', !!daqCmds.startContinuousLogging);
+    checkTrue('registry: DAQ.stopContinuousLogging defined', !!daqCmds.stopContinuousLogging);
+    checkTrue('registry: DAQ.get_temperature defined', !!daqCmds.get_temperature);
+    checkTrue('registry: DAQ.log_temperature defined', !!daqCmds.log_temperature);
+
+    check('registry: LOG_PLUGIN.name', LOG_PLUGIN.name, 'log');
+    check('registry: LOG_PLUGIN has 1 command', Object.keys(LOG_PLUGIN.commands).length, 1);
+    check(
+        'registry: LOG_PLUGIN.log.params.message.required',
+        LOG_PLUGIN.commands.log.params.message.required,
+        true
+    );
+    check(
+        'registry: LOG_PLUGIN.log.params.level default',
+        LOG_PLUGIN.commands.log.params.level.default,
+        'INFO'
+    );
+}
+
+{
+    // Class-based resolution within a parsed experiment (canonical_a has camera + backlight)
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+
+    // listV3PluginNames includes the user's declared names + "log" at the end
+    const names = listV3PluginNames(exp);
+    check('lookup: list ends with "log"', names[names.length - 1], 'log');
+    checkTrue('lookup: list includes camera', names.includes('camera'));
+    checkTrue('lookup: list includes backlight', names.includes('backlight'));
+
+    // getV3PluginCommands resolves via matlab.class
+    const camCmds = getV3PluginCommands(exp, 'camera');
+    checkTrue('lookup: camera resolves to BiasPlugin commands', !!camCmds.startRecording);
+    checkTrue('lookup: camera has getTimestamp', !!camCmds.getTimestamp);
+
+    const blCmds = getV3PluginCommands(exp, 'backlight');
+    checkTrue('lookup: backlight resolves to LEDControllerPlugin commands', !!blCmds.setIRLEDPower);
+    checkTrue('lookup: backlight has setRedLEDPower', !!blCmds.setRedLEDPower);
+
+    // "log" always available even without declaration
+    const logCmds = getV3PluginCommands(exp, 'log');
+    checkTrue('lookup: "log" returns LOG_PLUGIN.commands', !!logCmds.log);
+
+    // Unknown plugin name returns empty (designer should disable the picker)
+    const noCmds = getV3PluginCommands(exp, 'nonexistent');
+    check('lookup: unknown plugin name returns empty map', Object.keys(noCmds).length, 0);
+}
+
+{
+    // User can name a plugin anything — class-based lookup still resolves it
+    const customYaml = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'plugins:',
+        '  - name: my_cam',
+        '    type: class',
+        '    matlab: {class: BiasPlugin}',
+        'experiment: [setup]',
+        'conditions:',
+        '  - name: setup',
+        '    commands: [{type: wait, duration: 1}]'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(customYaml);
+    const cmds = getV3PluginCommands(exp, 'my_cam');
+    checkTrue('custom name: my_cam resolves Bias commands via class', !!cmds.startRecording);
+    check(
+        'custom name: listV3PluginNames returns ["my_cam", "log"]',
+        JSON.stringify(listV3PluginNames(exp)),
+        '["my_cam","log"]'
+    );
+}
+
+{
+    // getV3CommandParams routes controller, plugin, log all correctly
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+
+    const ctrlParams = getV3CommandParams(exp, 'controller', null, 'trialParams');
+    checkTrue('params: controller.trialParams has pattern param', !!ctrlParams?.pattern);
+
+    const startRec = getV3CommandParams(exp, 'plugin', 'camera', 'startRecording');
+    checkTrue('params: plugin camera.startRecording has filename param', !!startRec?.filename);
+
+    const logParams = getV3CommandParams(exp, 'plugin', 'log', 'log');
+    checkTrue('params: plugin log.log has message + level', !!logParams?.message && !!logParams?.level);
+
+    const nope = getV3CommandParams(exp, 'plugin', 'camera', 'bogusCommand');
+    check('params: unknown plugin command returns null', nope, null);
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────

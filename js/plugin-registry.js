@@ -250,6 +250,70 @@ var BUILTIN_PLUGINS = {
         }
     },
 
+    thermometer: {
+        name: 'thermometer',
+        label: 'DAQ Thermometer',
+        type: 'class',
+        matlab: { class: 'DAQThermometerPlugin' },
+        color: '#ffa94d', // orange for UI
+        // Config per Lisa's yaml_protocol_documentation_v3.md (2026-05-26).
+        configFields: {
+            device_id: {
+                type: 'string',
+                label: 'NI DAQ device',
+                default: '',
+                placeholder: 'e.g. cDAQ1Mod4'
+            },
+            channels: {
+                type: 'string',
+                label: 'Channels (comma-separated)',
+                default: '',
+                placeholder: 'ai0, ai2'
+            },
+            thermocouple_type: {
+                type: 'string',
+                label: 'Thermocouple type',
+                default: 'K',
+                placeholder: 'K'
+            },
+            sample_rate: {
+                type: 'number',
+                label: 'Sample rate (Hz)',
+                default: 7,
+                placeholder: '7'
+            },
+            sample_duration: {
+                type: 'number',
+                label: 'Sample duration (s)',
+                default: 1.0,
+                placeholder: '1.0'
+            },
+            generate_plots: {
+                type: 'boolean',
+                label: 'Generate PNG on log',
+                default: true
+            }
+        },
+        commands: {
+            startContinuousLogging: {
+                label: 'Start Continuous Logging',
+                description: 'Begin background acquisition; logs to CSV at sample_rate Hz until stopped (recommended for long experiments).'
+            },
+            stopContinuousLogging: {
+                label: 'Stop Continuous Logging',
+                description: 'Stop background acquisition and close the CSV file.'
+            },
+            get_temperature: {
+                label: 'Get Temperature',
+                description: 'Read a single sample (blocks for sample_duration seconds).'
+            },
+            log_temperature: {
+                label: 'Log Temperature',
+                description: 'Read and log one sample (with optional PNG plot per generate_plots).'
+            }
+        }
+    },
+
     camera: {
         name: 'camera',
         label: 'BIAS Camera',
@@ -357,6 +421,46 @@ var BUILTIN_PLUGINS = {
             disconnect: {
                 label: 'Disconnect',
                 description: 'Disconnect from BIAS camera'
+            }
+        }
+    }
+};
+
+// ════════════════════════════════════════════════════
+// Built-in "log" plugin (v3) — always available, never declared.
+// ════════════════════════════════════════════════════
+// Per Lisa's yaml_protocol_documentation_v3.md (Special Plugin Command - Logging):
+// `plugin_name: "log"`, `command_name: "log"`. Not listed in `plugins:`.
+
+var LOG_PLUGIN = {
+    name: 'log',
+    label: 'Log (built-in)',
+    builtIn: true,
+    color: '#8b949e',
+    commands: {
+        log: {
+            label: 'Log message',
+            description: 'Append a line to the experiment log.',
+            params: {
+                message: {
+                    type: 'string',
+                    required: true,
+                    default: '',
+                    label: 'Message',
+                    placeholder: 'free text, up to 2000 chars'
+                },
+                level: {
+                    type: 'select',
+                    required: false,
+                    default: 'INFO',
+                    label: 'Level',
+                    options: [
+                        { value: 'DEBUG', label: 'DEBUG' },
+                        { value: 'INFO', label: 'INFO' },
+                        { value: 'WARNING', label: 'WARNING' },
+                        { value: 'ERROR', label: 'ERROR' }
+                    ]
+                }
             }
         }
     }
@@ -482,16 +586,107 @@ function createPluginEntry(pluginName) {
 }
 
 // ════════════════════════════════════════════════════
+// v3 Lookup — by matlab class, not by plugin name
+// ════════════════════════════════════════════════════
+// v2 keyed off plugin **name** (assuming canonical "camera", "backlight"
+// names). v3 lets users pick any name for a plugin entry, so lookups go via
+// matlab.class instead. The built-in `log` plugin is always available even
+// when not declared in the experiment's `plugins:` section.
+
+/**
+ * Find a built-in plugin definition whose matlab.class matches `className`.
+ * Returns the entry or null.
+ */
+function findPluginDefByClass(className) {
+    if (!className) return null;
+    var keys = Object.keys(BUILTIN_PLUGINS);
+    for (var i = 0; i < keys.length; i++) {
+        var def = BUILTIN_PLUGINS[keys[i]];
+        if (def.matlab && def.matlab.class === className) return def;
+    }
+    return null;
+}
+
+/**
+ * Return the command schema map for a given MATLAB plugin class.
+ * Returns {} when no registry entry matches.
+ */
+function getCommandsForClass(className) {
+    var def = findPluginDefByClass(className);
+    return def ? def.commands || {} : {};
+}
+
+/**
+ * Resolve commands available on the plugin named `pluginName` in `experiment`.
+ *
+ *   - "log" returns the built-in LOG_PLUGIN commands (always available).
+ *   - Otherwise: find the plugin entry by name in experiment.plugins, read
+ *     matlab.class, and look up the registry by class.
+ *   - Returns {} when the plugin isn't declared or the class isn't recognized.
+ */
+function getV3PluginCommands(experiment, pluginName) {
+    if (pluginName === 'log') return LOG_PLUGIN.commands;
+    if (!experiment || !Array.isArray(experiment.plugins)) return {};
+    for (var i = 0; i < experiment.plugins.length; i++) {
+        var p = experiment.plugins[i];
+        if (p.name === pluginName) {
+            var cls = p.matlab && p.matlab.class;
+            return getCommandsForClass(cls);
+        }
+    }
+    return {};
+}
+
+/**
+ * Ordered list of plugin names available to a v3 experiment for use as
+ * `plugin_name:` on a command. Includes user-declared plugins (in declared
+ * order) plus the always-available "log" plugin at the end.
+ */
+function listV3PluginNames(experiment) {
+    var names = [];
+    if (experiment && Array.isArray(experiment.plugins)) {
+        for (var i = 0; i < experiment.plugins.length; i++) {
+            names.push(experiment.plugins[i].name);
+        }
+    }
+    names.push('log');
+    return names;
+}
+
+/**
+ * v3 equivalent of getCommandParams — takes an `experiment` context so plugin
+ * lookups route through matlab.class instead of guessing by plugin name.
+ */
+function getV3CommandParams(experiment, type, pluginName, commandName) {
+    if (type === 'controller') {
+        var cmd = CONTROLLER_COMMANDS[commandName];
+        return cmd ? cmd.params || null : null;
+    }
+    if (type === 'plugin') {
+        var cmds = getV3PluginCommands(experiment, pluginName);
+        var pluginCmd = cmds[commandName];
+        return pluginCmd ? pluginCmd.params || null : null;
+    }
+    return null;
+}
+
+// ════════════════════════════════════════════════════
 // Exports
 // ════════════════════════════════════════════════════
 
 var PluginRegistry = {
     BUILTIN_PLUGINS: BUILTIN_PLUGINS,
     CONTROLLER_COMMANDS: CONTROLLER_COMMANDS,
+    LOG_PLUGIN: LOG_PLUGIN,
     getPluginCommands: getPluginCommands,
     getCommandParams: getCommandParams,
     getAllCommandOptions: getAllCommandOptions,
-    createPluginEntry: createPluginEntry
+    createPluginEntry: createPluginEntry,
+    findPluginDefByClass: findPluginDefByClass,
+    getCommandsForClass: getCommandsForClass,
+    getV3PluginCommands: getV3PluginCommands,
+    listV3PluginNames: listV3PluginNames,
+    getV3CommandParams: getV3CommandParams
 };
 
 // Browser global
@@ -508,9 +703,15 @@ if (typeof module !== 'undefined' && module.exports) {
 export {
     BUILTIN_PLUGINS,
     CONTROLLER_COMMANDS,
+    LOG_PLUGIN,
     getPluginCommands,
     getCommandParams,
     getAllCommandOptions,
-    createPluginEntry
+    createPluginEntry,
+    findPluginDefByClass,
+    getCommandsForClass,
+    getV3PluginCommands,
+    listV3PluginNames,
+    getV3CommandParams
 };
 export default PluginRegistry;
