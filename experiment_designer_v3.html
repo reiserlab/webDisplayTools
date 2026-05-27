@@ -380,6 +380,70 @@
             margin-left: 0.4rem;
         }
 
+        /* Command-card action buttons (↑ ↓ ✕) */
+        .cmd-card { position: relative; }
+        .cmd-card .cmd-actions {
+            position: absolute;
+            top: 0.25rem;
+            right: 0.25rem;
+            display: flex;
+            gap: 2px;
+        }
+        .cmd-card .cmd-act-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            font-family: inherit;
+            font-size: 0.7rem;
+            width: 22px;
+            height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 3px;
+            padding: 0;
+        }
+        .cmd-card .cmd-act-btn:hover {
+            background: var(--surface-2);
+            color: var(--accent);
+            border-color: var(--border);
+        }
+        .cmd-card .cmd-act-btn:disabled {
+            color: var(--border);
+            cursor: not-allowed;
+            background: transparent;
+            border-color: transparent;
+        }
+        .cmd-card .cmd-act-btn.danger:hover {
+            background: rgba(244, 67, 54, 0.12);
+            color: var(--error);
+            border-color: var(--error);
+        }
+        .cmd-card .cmd-head { padding-right: 80px; }
+
+        /* + Add command picker */
+        .add-cmd-row {
+            margin-top: 0.5rem;
+            display: flex;
+            gap: 0.4rem;
+            align-items: center;
+            font-size: 0.75rem;
+        }
+        .add-cmd-row .k { color: var(--text-dim); }
+        .add-cmd-row select.field-edit {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            padding: 0.15rem 0.4rem;
+            border-radius: 2px;
+            flex: 1;
+            max-width: 280px;
+        }
+        .add-cmd-row select.field-edit:focus { outline: none; border-color: var(--accent); }
+
         /* Block-property editor controls */
         .block-prop-row {
             display: flex;
@@ -620,9 +684,18 @@
             V3ParseError,
             docSet,
             docDelete,
+            docInsertCommand,
+            docMoveCommand,
             nodeIsAliasAt,
             aliasNameAt
         } from './js/protocol-yaml-v3.js';
+
+        import {
+            CONTROLLER_COMMANDS,
+            getV3PluginCommands,
+            listV3PluginNames,
+            getV3CommandParams
+        } from './js/plugin-registry.js';
 
         // ═══════════════════════════════════════════════════════════════
         // State
@@ -985,9 +1058,15 @@
                 ));
                 const section = el('div', { class: 'insp-section' });
                 section.appendChild(el('h4', {}, 'Commands (' + cond.commands.length + ')'));
+                const total = cond.commands.length;
                 cond.commands.forEach((cmd, cmdIdx) => {
-                    section.appendChild(renderCommandCard(cmd, ['conditions', condIdx, 'commands', cmdIdx]));
+                    section.appendChild(renderCommandCard(
+                        cmd,
+                        ['conditions', condIdx, 'commands', cmdIdx],
+                        { condIdx, cmdIdx, total }
+                    ));
                 });
+                section.appendChild(renderAddCommandPicker(condIdx));
                 body.appendChild(section);
                 return;
             }
@@ -1284,7 +1363,150 @@
             return row;
         }
 
-        function renderCommandCard(cmd, cmdPath) {
+        // ── Command template factory + add/move/delete handlers ──────────
+        // Build a default command object for a newly-inserted card. Uses the
+        // plugin-registry to populate sensible defaults so the user starts
+        // from a working command rather than blank text inputs.
+
+        function buildCommandTemplate(kind, pluginName, commandName) {
+            if (kind === 'wait') {
+                return { type: 'wait', duration: 1 };
+            }
+            // Default value when a required param has no `default:` in the
+            // schema. Lets the new card render with an editable field instead
+            // of dropping the param entirely.
+            const fallbackForType = (t) => (t === 'number' ? 0 : t === 'boolean' ? false : '');
+            const valueFor = (schema) =>
+                schema.default !== undefined && schema.default !== ''
+                    ? schema.default
+                    : fallbackForType(schema.type);
+
+            if (kind === 'controller') {
+                const def = CONTROLLER_COMMANDS[commandName];
+                const cmd = { type: 'controller', command_name: commandName };
+                if (def && def.params) {
+                    for (const [k, schema] of Object.entries(def.params)) {
+                        if (schema.required || (schema.default !== undefined && schema.default !== '')) {
+                            cmd[k] = valueFor(schema);
+                        }
+                    }
+                }
+                return cmd;
+            }
+            if (kind === 'plugin') {
+                const cmd = {
+                    type: 'plugin',
+                    plugin_name: pluginName,
+                    command_name: commandName
+                };
+                const paramsSchema = getV3CommandParams(experiment, 'plugin', pluginName, commandName);
+                if (paramsSchema) {
+                    const params = {};
+                    let hasAny = false;
+                    for (const [k, schema] of Object.entries(paramsSchema)) {
+                        if (schema.required || (schema.default !== undefined && schema.default !== '')) {
+                            params[k] = valueFor(schema);
+                            hasAny = true;
+                        }
+                    }
+                    if (hasAny) cmd.params = params;
+                }
+                return cmd;
+            }
+            throw new Error('Unknown command kind: ' + kind);
+        }
+
+        function commitInspectorEdit() {
+            setDirty(true);
+            renderInspector();
+            renderTimeline();
+        }
+
+        function onMoveCommand(condIdx, fromIdx, toIdx) {
+            try {
+                docMoveCommand(experiment, condIdx, fromIdx, toIdx);
+                commitInspectorEdit();
+            } catch (err) {
+                showError('Move failed', err.message);
+            }
+        }
+
+        function onDeleteCommand(condIdx, atIdx) {
+            try {
+                docDelete(experiment, ['conditions', condIdx, 'commands', atIdx]);
+                commitInspectorEdit();
+            } catch (err) {
+                showError('Delete failed', err.message);
+            }
+        }
+
+        function onAddCommand(condIdx, addSelectValue) {
+            // addSelectValue encoding: "wait" | "controller:<name>" | "plugin:<plugin>:<command>"
+            try {
+                let cmd;
+                if (addSelectValue === 'wait') {
+                    cmd = buildCommandTemplate('wait');
+                } else if (addSelectValue.startsWith('controller:')) {
+                    cmd = buildCommandTemplate('controller', null, addSelectValue.slice('controller:'.length));
+                } else if (addSelectValue.startsWith('plugin:')) {
+                    const parts = addSelectValue.split(':');
+                    cmd = buildCommandTemplate('plugin', parts[1], parts[2]);
+                } else {
+                    return;
+                }
+                const cond = experiment.conditions[condIdx];
+                docInsertCommand(experiment, condIdx, cond.commands.length, cmd);
+                commitInspectorEdit();
+            } catch (err) {
+                showError('Add failed', err.message);
+            }
+        }
+
+        function renderAddCommandPicker(condIdx) {
+            const row = el('div', { class: 'add-cmd-row' },
+                el('span', { class: 'k' }, '+ add:')
+            );
+            const select = el('select', {
+                class: 'field-edit',
+                title: 'Append a new command to this condition'
+            });
+            select.appendChild(el('option', { value: '' }, 'choose…'));
+
+            // Wait
+            const waitGroup = el('optgroup', { label: 'Timing' });
+            waitGroup.appendChild(el('option', { value: 'wait' }, 'wait'));
+            select.appendChild(waitGroup);
+
+            // Controller commands
+            const ctrlGroup = el('optgroup', { label: 'Controller' });
+            for (const [name, def] of Object.entries(CONTROLLER_COMMANDS)) {
+                ctrlGroup.appendChild(el('option', { value: 'controller:' + name }, name));
+            }
+            select.appendChild(ctrlGroup);
+
+            // Plugin commands — group per declared plugin + log
+            for (const pluginName of listV3PluginNames(experiment)) {
+                const cmds = getV3PluginCommands(experiment, pluginName);
+                const keys = Object.keys(cmds);
+                if (keys.length === 0) continue;
+                const grp = el('optgroup', { label: 'Plugin: ' + pluginName });
+                for (const cName of keys) {
+                    grp.appendChild(el('option', { value: 'plugin:' + pluginName + ':' + cName }, cName));
+                }
+                select.appendChild(grp);
+            }
+
+            select.addEventListener('change', () => {
+                const v = select.value;
+                if (!v) return;
+                onAddCommand(condIdx, v);
+            });
+            row.appendChild(select);
+            return row;
+        }
+
+        function renderCommandCard(cmd, cmdPath, cardMeta) {
+            // cardMeta: { condIdx, cmdIdx, total } — required for action buttons
             const card = el('div', { class: 'cmd-card ' + cmd.type });
             const head = el('div', { class: 'cmd-head' },
                 el('span', { class: 'ctype' }, cmd.type),
@@ -1293,6 +1515,35 @@
                 cmd.command_name || ''
             );
             card.appendChild(head);
+
+            // Per-card action buttons (↑ ↓ ✕)
+            const actions = el('div', { class: 'cmd-actions' });
+            const upBtn = el('button', {
+                class: 'cmd-act-btn',
+                title: 'Move command up',
+                disabled: cardMeta.cmdIdx === 0,
+                onClick: (e) => { e.stopPropagation(); onMoveCommand(cardMeta.condIdx, cardMeta.cmdIdx, cardMeta.cmdIdx - 1); }
+            }, '↑');
+            const downBtn = el('button', {
+                class: 'cmd-act-btn',
+                title: 'Move command down',
+                disabled: cardMeta.cmdIdx === cardMeta.total - 1,
+                onClick: (e) => { e.stopPropagation(); onMoveCommand(cardMeta.condIdx, cardMeta.cmdIdx, cardMeta.cmdIdx + 1); }
+            }, '↓');
+            const delBtn = el('button', {
+                class: 'cmd-act-btn danger',
+                title: 'Delete command',
+                onClick: (e) => {
+                    e.stopPropagation();
+                    if (confirm('Delete this ' + cmd.type + ' command? (Undo not yet available.)')) {
+                        onDeleteCommand(cardMeta.condIdx, cardMeta.cmdIdx);
+                    }
+                }
+            }, '✕');
+            actions.appendChild(upBtn);
+            actions.appendChild(downBtn);
+            actions.appendChild(delBtn);
+            card.appendChild(actions);
 
             const detailKeys = {
                 controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain'],

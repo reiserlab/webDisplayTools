@@ -28,6 +28,8 @@ const {
     V3ParseError,
     docSet,
     docDelete,
+    docInsertCommand,
+    docMoveCommand,
     nodeIsAliasAt,
     aliasNameAt
 } = require('../js/protocol-yaml-v3.js');
@@ -676,6 +678,124 @@ console.log('\n--- Suite 10: v3 plugin registry (class-based lookup + log) ---')
 
     const nope = getV3CommandParams(exp, 'plugin', 'camera', 'bogusCommand');
     check('params: unknown plugin command returns null', nope, null);
+}
+
+// ─── Test Suite 11: docInsertCommand / docMoveCommand / delete-command ────
+console.log('\n--- Suite 11: command add / move / delete ---');
+
+{
+    // Insert a new wait command in the middle of "arena check"
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const condIdx = exp.conditions.findIndex((c) => c.name === 'arena check');
+    const before = exp.conditions[condIdx].commands.length;
+
+    docInsertCommand(exp, condIdx, 1, { type: 'wait', duration: 0.25 });
+    check('insert: JS length grew by 1', exp.conditions[condIdx].commands.length, before + 1);
+    check(
+        'insert: at index 1 is the new wait',
+        exp.conditions[condIdx].commands[1].type,
+        'wait'
+    );
+    check(
+        'insert: duration preserved',
+        exp.conditions[condIdx].commands[1].duration,
+        0.25
+    );
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check(
+        'insert: round-trip length',
+        reparsed.conditions[condIdx].commands.length,
+        before + 1
+    );
+    check(
+        'insert: round-trip new command type',
+        reparsed.conditions[condIdx].commands[1].type,
+        'wait'
+    );
+    check(
+        'insert: round-trip new command duration',
+        reparsed.conditions[condIdx].commands[1].duration,
+        0.25
+    );
+
+    // Anchors/comments still alive after insert
+    const regen = generateV3Protocol(exp);
+    checkTrue('insert: anchors preserved', regen.includes('&dur_short') && regen.includes('*dur_short'));
+    checkTrue('insert: comments preserved', regen.includes('# EXPERIMENT METADATA'));
+}
+
+{
+    // Append a plugin command (uses createNode with nested params map)
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const condIdx = exp.conditions.findIndex((c) => c.name === 'arena check');
+    const before = exp.conditions[condIdx].commands.length;
+    docInsertCommand(exp, condIdx, before, {
+        type: 'plugin',
+        plugin_name: 'log',
+        command_name: 'log',
+        params: { message: 'arena check done', level: 'INFO' }
+    });
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    const appended = reparsed.conditions[condIdx].commands[before];
+    check('insert plugin: type', appended.type, 'plugin');
+    check('insert plugin: plugin_name', appended.plugin_name, 'log');
+    check('insert plugin: command_name', appended.command_name, 'log');
+    check('insert plugin: params.message', appended.params.message, 'arena check done');
+    check('insert plugin: params.level', appended.params.level, 'INFO');
+}
+
+{
+    // Move first command to last (swap arena check's allOn → allOff order)
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const condIdx = exp.conditions.findIndex((c) => c.name === 'arena check');
+    const cmds = exp.conditions[condIdx].commands;
+    const origFirstName = cmds[0].command_name;
+    const origLastName = cmds[cmds.length - 1].command_name;
+
+    docMoveCommand(exp, condIdx, 0, cmds.length - 1);
+    // After moving [0] (controller allOn) to the end, the new order is:
+    // [wait, controller allOff, controller allOn]
+    check('move: JS new first is the wait', cmds[0].type, 'wait');
+    check('move: original first is now at end', cmds[cmds.length - 1].command_name, origFirstName);
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    const reparsedCmds = reparsed.conditions[condIdx].commands;
+    check('move: round-trip last is original first', reparsedCmds[reparsedCmds.length - 1].command_name, origFirstName);
+}
+
+{
+    // Delete a command via docDelete
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const condIdx = exp.conditions.findIndex((c) => c.name === 'arena check');
+    const before = exp.conditions[condIdx].commands.length;
+    docDelete(exp, ['conditions', condIdx, 'commands', 1]); // delete middle (the wait)
+
+    check('delete cmd: JS length shrank', exp.conditions[condIdx].commands.length, before - 1);
+    check('delete cmd: middle is now what was last', exp.conditions[condIdx].commands[1].command_name, 'allOff');
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('delete cmd: round-trip length', reparsed.conditions[condIdx].commands.length, before - 1);
+    // The *dur_short anchor was previously used in the deleted wait; *dur_short
+    // is still defined in `variables:` and used by no one (now orphaned).
+    // Generation should still succeed.
+    checkTrue('delete cmd: regen succeeds', generateV3Protocol(exp).length > 0);
+}
+
+{
+    // Bounds-check: docMoveCommand with bad indices is a no-op
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const condIdx = exp.conditions.findIndex((c) => c.name === 'arena check');
+    const before = JSON.stringify(exp.conditions[condIdx].commands.map((c) => c.type));
+    docMoveCommand(exp, condIdx, 0, 0); // no-op
+    docMoveCommand(exp, condIdx, 99, 0); // out of bounds
+    docMoveCommand(exp, condIdx, -1, 0); // negative
+    check(
+        'move: no-op / bad indices preserve order',
+        JSON.stringify(exp.conditions[condIdx].commands.map((c) => c.type)),
+        before
+    );
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────

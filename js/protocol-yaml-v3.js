@@ -506,6 +506,65 @@ function mirrorIntoModel(experiment, path, value) {
 }
 
 /**
+ * docInsertCommand(experiment, condIdx, atIdx, command)
+ *
+ * Insert `command` (a plain JS object: {type, command_name, ...}) into the
+ * commands list at conditions[condIdx].commands[atIdx]. atIdx is clamped to
+ * [0, commands.length]; pass commands.length to append.
+ *
+ * Mirrors the change into the JS data model.
+ */
+function docInsertCommand(experiment, condIdx, atIdx, command) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docInsertCommand: experiment has no _doc handle', 'NO_DOC');
+    }
+    const cond = experiment.conditions[condIdx];
+    if (!cond) {
+        throw new V3ParseError('docInsertCommand: bad condition index ' + condIdx, 'BAD_PATH');
+    }
+    const clampedIdx = Math.max(0, Math.min(atIdx, cond.commands.length));
+
+    const cmdsNode = experiment._doc.getIn(['conditions', condIdx, 'commands'], true);
+    if (!cmdsNode || !Array.isArray(cmdsNode.items)) {
+        throw new V3ParseError(
+            'docInsertCommand: commands sequence node not found at conditions[' + condIdx + ']',
+            'BAD_PATH'
+        );
+    }
+    const newNode = experiment._doc.createNode(command);
+    cmdsNode.items.splice(clampedIdx, 0, newNode);
+
+    cond.commands.splice(clampedIdx, 0, command);
+}
+
+/**
+ * docMoveCommand(experiment, condIdx, fromIdx, toIdx)
+ *
+ * Move a command within conditions[condIdx].commands. Bounds-checked; a
+ * no-op if fromIdx === toIdx. Mirrors both YAML.Document and JS model.
+ */
+function docMoveCommand(experiment, condIdx, fromIdx, toIdx) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docMoveCommand: experiment has no _doc handle', 'NO_DOC');
+    }
+    const cond = experiment.conditions[condIdx];
+    if (!cond) {
+        throw new V3ParseError('docMoveCommand: bad condition index ' + condIdx, 'BAD_PATH');
+    }
+    const n = cond.commands.length;
+    if (fromIdx < 0 || fromIdx >= n || toIdx < 0 || toIdx >= n || fromIdx === toIdx) return;
+
+    const cmdsNode = experiment._doc.getIn(['conditions', condIdx, 'commands'], true);
+    if (!cmdsNode || !Array.isArray(cmdsNode.items)) return;
+
+    const movedNode = cmdsNode.items.splice(fromIdx, 1)[0];
+    cmdsNode.items.splice(toIdx, 0, movedNode);
+
+    const movedJs = cond.commands.splice(fromIdx, 1)[0];
+    cond.commands.splice(toIdx, 0, movedJs);
+}
+
+/**
  * docDelete(experiment, path)
  *
  * Removes the key at `path` from both the YAML.Document and the JS data
@@ -561,6 +620,8 @@ const ProtocolV3 = {
     V3ParseError,
     docSet,
     docDelete,
+    docInsertCommand,
+    docMoveCommand,
     nodeIsAliasAt,
     aliasNameAt
 };
@@ -583,6 +644,8 @@ export {
     V3ParseError,
     docSet,
     docDelete,
+    docInsertCommand,
+    docMoveCommand,
     nodeIsAliasAt,
     aliasNameAt
 };
