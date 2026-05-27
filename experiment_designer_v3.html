@@ -978,7 +978,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.8 | <span id="footerTimestamp">2026-05-27 17:28 ET</span>
+        v3 Experiment Designer v0.9 | <span id="footerTimestamp">2026-05-27 19:54 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1473,15 +1473,55 @@
         $('addRefBtn').addEventListener('click', onAddSeqRef);
         $('addBlockBtn').addEventListener('click', onAddSeqBlock);
 
+        // List-level drop target for the empty-list / append-past-end case.
+        // Wired ONCE at startup (not per renderSequence) — the #sequenceList
+        // element persists across renders, so re-attaching here would stack N
+        // handlers and cause N duplicate inserts per drop.
+        (function wireSequenceListDrop() {
+            const list = $('sequenceList');
+            list.addEventListener('dragover', (e) => {
+                if (!e.dataTransfer.types.includes('text/x-library-cond')) return;
+                // Only highlight when we're not over an existing entry (entries handle their own)
+                if (e.target.closest('.seq-entry')) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                list.classList.add('lib-drop-target');
+            });
+            list.addEventListener('dragleave', (e) => {
+                if (e.target === list) list.classList.remove('lib-drop-target');
+            });
+            list.addEventListener('drop', (e) => {
+                if (e.target.closest('.seq-entry')) return;  // handled by entry's own drop
+                const libCond = e.dataTransfer.getData('text/x-library-cond');
+                if (!libCond) return;
+                e.preventDefault();
+                list.classList.remove('lib-drop-target');
+                if (!experiment) return;
+                onInsertSequenceRefFromLib(libCond, experiment.sequence.length);
+            });
+        })();
+
         function onMoveSequenceEntry(fromIdx, toIdx) {
             if (fromIdx === toIdx) return;
             pushUndo();
             try {
                 docMoveSequenceEntry(experiment, fromIdx, toIdx);
                 setDirty(true);
-                // Update selection if it was on the moved entry
-                if (selection && (selection.kind === 'ref' || selection.kind === 'block') && selection.index === fromIdx) {
-                    selection = { ...selection, index: toIdx };
+                // Walk selection.index across the displacement. Three cases:
+                //   1. The moved entry was selected → follow it to toIdx.
+                //   2. Selection sits in the range that shifts left because the
+                //      moved entry crossed it going down (fromIdx < sel <= toIdx).
+                //   3. Selection sits in the range that shifts right because the
+                //      moved entry crossed it going up (toIdx <= sel < fromIdx).
+                if (selection && (selection.kind === 'ref' || selection.kind === 'block')) {
+                    const sel = selection.index;
+                    if (sel === fromIdx) {
+                        selection = { ...selection, index: toIdx };
+                    } else if (fromIdx < sel && sel <= toIdx) {
+                        selection = { ...selection, index: sel - 1 };
+                    } else if (toIdx <= sel && sel < fromIdx) {
+                        selection = { ...selection, index: sel + 1 };
+                    }
                 }
                 renderAll();
             } catch (err) {
@@ -1494,8 +1534,14 @@
             try {
                 docInsertSequenceEntry(experiment, atIdx, { kind: 'ref', condition_name: condName });
                 setDirty(true);
-                const clamped = Math.max(0, Math.min(atIdx, experiment.sequence.length - 1));
-                selection = { kind: 'ref', index: clamped };
+                // Walk existing selection through the insert: any entry at or
+                // after atIdx shifts +1. Drag-drop from the library should not
+                // steal focus from whatever the user had selected, so we DON'T
+                // overwrite selection to point to the new entry (unlike the
+                // explicit "+ Add ref" button, which intentionally selects it).
+                if (selection && (selection.kind === 'ref' || selection.kind === 'block') && atIdx <= selection.index) {
+                    selection = { ...selection, index: selection.index + 1 };
+                }
                 renderAll();
             } catch (err) {
                 showError('Add ref failed', err.message);
@@ -1538,16 +1584,17 @@
 
         // Right-click handler — convert a sequence entry between ref and
         // single-trial block. A block is "convertible" to a ref only when it
-        // has exactly 1 trial, 1 rep, no randomize, and no intertrial (i.e.,
-        // it's semantically equivalent to a bare ref). Non-convertible blocks
-        // show a soft error instead.
+        // has exactly 1 trial, 1 rep, no randomize, no intertrial, AND no
+        // forward-compat unknown keys (which would be silently dropped by the
+        // replace path, undermining the Tier 1 unknown-passthrough guarantee).
         function isConvertibleBlock(entry) {
             return entry &&
                 entry.kind === 'block' &&
                 entry.trials.length === 1 &&
                 (entry.repetitions || 1) === 1 &&
                 !entry.randomize &&
-                !entry.intertrial;
+                !entry.intertrial &&
+                Object.keys(entry._unknownKeys || {}).length === 0;
         }
 
         function onConvertSequenceEntry(idx) {
@@ -1571,12 +1618,17 @@
                 }
             } else if (entry.kind === 'block') {
                 if (!isConvertibleBlock(entry)) {
+                    const unknownKeys = Object.keys(entry._unknownKeys || {});
+                    const reasons = [];
+                    if (entry.trials.length !== 1) reasons.push(entry.trials.length + ' trial(s)');
+                    if ((entry.repetitions || 1) !== 1) reasons.push((entry.repetitions || 1) + ' rep(s)');
+                    if (entry.randomize) reasons.push('randomize=on');
+                    if (entry.intertrial) reasons.push('intertrial=' + entry.intertrial);
+                    if (unknownKeys.length > 0) reasons.push('forward-compat keys: ' + unknownKeys.join(', '));
                     showError(
                         'Cannot convert block to ref',
-                        'Only blocks with exactly 1 trial, 1 repetition, no randomize, and no intertrial can convert to a bare ref. ' +
-                        'This block has ' + entry.trials.length + ' trial(s), ' +
-                        (entry.repetitions || 1) + ' rep(s), randomize=' + (entry.randomize ? 'on' : 'off') + ', ' +
-                        (entry.intertrial ? 'intertrial=' + entry.intertrial : 'no intertrial') + '.'
+                        'Only blocks with exactly 1 trial, 1 repetition, no randomize, no intertrial, and no forward-compat keys can convert to a bare ref. ' +
+                        'This block has ' + reasons.join(', ') + '.'
                     );
                     return;
                 }
@@ -1805,26 +1857,10 @@
                 });
             };
 
-            // List-level drop target for the empty-list / append-past-end case.
-            list.addEventListener('dragover', (e) => {
-                if (!e.dataTransfer.types.includes('text/x-library-cond')) return;
-                // Only highlight when we're not over an existing entry (entries handle their own)
-                if (e.target.closest('.seq-entry')) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'copy';
-                list.classList.add('lib-drop-target');
-            });
-            list.addEventListener('dragleave', (e) => {
-                if (e.target === list) list.classList.remove('lib-drop-target');
-            });
-            list.addEventListener('drop', (e) => {
-                if (e.target.closest('.seq-entry')) return;  // handled by entry's own drop
-                const libCond = e.dataTransfer.getData('text/x-library-cond');
-                if (!libCond) return;
-                e.preventDefault();
-                list.classList.remove('lib-drop-target');
-                onInsertSequenceRefFromLib(libCond, experiment.sequence.length);
-            });
+            // List-level drop target listeners live on #sequenceList itself —
+            // they're wired once at startup (see below), not per-render, because
+            // innerHTML='' clears children but leaves listeners on the list
+            // element. Re-binding here would stack N handlers per render.
 
             experiment.sequence.forEach((entry, idx) => {
                 const isSelected = selection && (
@@ -2573,6 +2609,15 @@
         }
 
         function onMoveCommand(condIdx, fromIdx, toIdx) {
+            // Defensive: docMoveCommand silently no-ops on out-of-bounds /
+            // identity moves. Without this early-return, pushUndo() would
+            // record a snapshot for a move that never happened. The up/down
+            // arrow buttons disable at the edges so this is mostly belt-and-
+            // suspenders, but matches the onMoveSequenceEntry pattern.
+            if (fromIdx === toIdx) return;
+            const cond = experiment.conditions[condIdx];
+            if (!cond || fromIdx < 0 || fromIdx >= cond.commands.length ||
+                toIdx < 0 || toIdx >= cond.commands.length) return;
             pushUndo();
             try {
                 docMoveCommand(experiment, condIdx, fromIdx, toIdx);
@@ -3180,15 +3225,34 @@
             }
             const totalWidthPx = cumulativeWidth;
 
-            // The ruler maps real time → pixel position using the *actual* step
-            // strip width (so ticks stay aligned even when min-width clamping
-            // stretches short steps). 10s tick interval; label every minute
-            // for <15min totals, every 5min for longer.
-            const realTotalSec = steps.reduce((s, x) => s + (x.dur || 0), 0) || 1;
-            const pxPerSecRuler = totalWidthPx / realTotalSec;
+            // The ruler maps real time → pixel position by walking the layout
+            // array piecewise. A flat pxPerSec rate would drift as soon as any
+            // step's pixel width clamped to the minimum, since cumulative pixel
+            // position would no longer be a linear function of cumulative real
+            // time. 10s tick interval; label every minute for <15min totals,
+            // every 5min for longer.
+            const realTotalSec = layout.reduce((s, x) => s + (x.step.dur || 0), 0);
             const tickIntervalSec = 10;
             const labelIntervalSec = realTotalSec < 15 * 60 ? 60 : 5 * 60;
             const rulerHeight = 18;
+
+            // Map real-time t → pixel position. Find the layout entry whose
+            // real-time range contains t and interpolate proportionally within
+            // that entry's pixel range. Steps with dur === 0 use their start.
+            const rulerXForRealTime = (t) => {
+                let acc = 0;
+                for (let i = 0; i < layout.length; i++) {
+                    const lay = layout[i];
+                    const stepDur = lay.step.dur || 0;
+                    const isLast = i === layout.length - 1;
+                    if (t <= acc + stepDur || isLast) {
+                        const within = stepDur > 0 ? (t - acc) / stepDur : 0;
+                        return lay.startPx + Math.max(0, Math.min(1, within)) * (lay.endPx - lay.startPx);
+                    }
+                    acc += stepDur;
+                }
+                return totalWidthPx;
+            };
 
             const NS = 'http://www.w3.org/2000/svg';
             const ruler = document.createElementNS(NS, 'svg');
@@ -3196,7 +3260,7 @@
             ruler.setAttribute('width', String(totalWidthPx));
             ruler.setAttribute('height', String(rulerHeight));
             for (let t = 0; t <= realTotalSec; t += tickIntervalSec) {
-                const x = t * pxPerSecRuler;
+                const x = rulerXForRealTime(t);
                 const isMajor = (t % labelIntervalSec) === 0 && t > 0;
                 const tick = document.createElementNS(NS, 'line');
                 tick.setAttribute('class', 'tick' + (isMajor ? ' major' : ''));

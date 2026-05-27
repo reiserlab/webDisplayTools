@@ -1019,7 +1019,20 @@ function _buildSequenceEntry(doc, entry) {
         }
         const blockShape = { trials: entry.trials.slice() };
         if (typeof entry.name === 'string' && entry.name) blockShape.name = entry.name;
-        if (typeof entry.repetitions === 'number') blockShape.repetitions = entry.repetitions;
+        if (entry.repetitions !== undefined) {
+            // Mirror the parser's validation: positive integer only. The
+            // parser at lines ~335-349 already rejects 0/negatives/decimals;
+            // without this guard, programmatic build paths (D4, paste-import)
+            // would emit invalid YAML and the doc/JS-mirror could diverge
+            // (entry.repetitions = 0 → YAML `0` but mirror = 1 via `|| 1`).
+            if (typeof entry.repetitions !== 'number' || !Number.isInteger(entry.repetitions) || entry.repetitions < 1) {
+                throw new V3ParseError(
+                    '_buildSequenceEntry: invalid repetitions (must be positive integer): ' + JSON.stringify(entry.repetitions),
+                    'INVALID_SCHEMA'
+                );
+            }
+            blockShape.repetitions = entry.repetitions;
+        }
         if (entry.randomize === true) blockShape.randomize = true;
         if (typeof entry.intertrial === 'string' && entry.intertrial) blockShape.intertrial = entry.intertrial;
         return {

@@ -800,6 +800,38 @@ checkThrows(
     check('reps validation: omitted defaults to 1', exp.sequence[0].repetitions, 1);
 }
 
+// _buildSequenceEntry (builder path used by D4 / paste-import) must mirror the
+// parser's positive-integer validation, so doc/JS-mirror can't diverge.
+{
+    const exp = parseV3Protocol(v3WithReps('1'));
+    checkThrows(
+        'reps validation: builder rejects 0',
+        () => docInsertSequenceEntry(exp, 0, { kind: 'block', trials: ['c'], repetitions: 0 }),
+        'INVALID_SCHEMA'
+    );
+    checkThrows(
+        'reps validation: builder rejects -2',
+        () => docInsertSequenceEntry(exp, 0, { kind: 'block', trials: ['c'], repetitions: -2 }),
+        'INVALID_SCHEMA'
+    );
+    checkThrows(
+        'reps validation: builder rejects 1.5',
+        () => docInsertSequenceEntry(exp, 0, { kind: 'block', trials: ['c'], repetitions: 1.5 }),
+        'INVALID_SCHEMA'
+    );
+    checkThrows(
+        'reps validation: builder rejects non-number',
+        () => docInsertSequenceEntry(exp, 0, { kind: 'block', trials: ['c'], repetitions: 'two' }),
+        'INVALID_SCHEMA'
+    );
+    // Positive integer accepted on the builder path
+    docInsertSequenceEntry(exp, 0, { kind: 'block', trials: ['c'], repetitions: 4 });
+    check('reps validation: builder accepts 4', exp.sequence[0].repetitions, 4);
+    // Omitted accepted on the builder path (becomes default 1 on mirror)
+    docInsertSequenceEntry(exp, 0, { kind: 'block', trials: ['c'] });
+    check('reps validation: builder accepts omitted', exp.sequence[0].repetitions, 1);
+}
+
 // ─── Test Suite 11: docInsertCommand / docMoveCommand / delete-command ────
 console.log('\n--- Suite 11: command add / move / delete ---');
 
