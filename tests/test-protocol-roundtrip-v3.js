@@ -37,6 +37,9 @@ const {
     docInsertSequenceEntry,
     docMoveSequenceEntry,
     docRemoveSequenceEntry,
+    docInsertTrialInBlock,
+    docMoveTrialInBlock,
+    docRemoveTrialFromBlock,
     docSetPluginCommandHead,
     docAddPluginParam,
     docDeletePluginParam,
@@ -1639,6 +1642,157 @@ checkThrows(
         docRemoveSequenceEntry(exp, -1);
     },
     'BAD_PATH'
+);
+
+// ─── Test Suite 25: docInsertTrialInBlock ──────────────────────────────────
+console.log('\n--- Suite 25: docInsertTrialInBlock (drop library row on block) ---');
+
+{
+    // canonical_a has a block at sequence[2] (main block, 7 trials)
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const before = exp.sequence[blockIdx].trials.length;
+
+    docInsertTrialInBlock(exp, blockIdx, 0, 'arena check');
+    check('insert-trial: at start grows length', exp.sequence[blockIdx].trials.length, before + 1);
+    check('insert-trial: trial[0] is the new one', exp.sequence[blockIdx].trials[0], 'arena check');
+
+    docInsertTrialInBlock(exp, blockIdx, 3, 'arena check');
+    check('insert-trial: middle places trial', exp.sequence[blockIdx].trials[3], 'arena check');
+
+    docInsertTrialInBlock(exp, blockIdx, exp.sequence[blockIdx].trials.length, 'arena check');
+    check(
+        'insert-trial: at end appends',
+        exp.sequence[blockIdx].trials[exp.sequence[blockIdx].trials.length - 1],
+        'arena check'
+    );
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check(
+        'insert-trial: round-trip length',
+        reparsed.sequence[blockIdx].trials.length,
+        before + 3
+    );
+}
+
+{
+    // Index clamping
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    docInsertTrialInBlock(exp, blockIdx, -5, 'arena check');
+    check('insert-trial: negative clamps to 0', exp.sequence[blockIdx].trials[0], 'arena check');
+
+    const exp2 = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const blockIdx2 = exp2.sequence.findIndex(e => e.kind === 'block');
+    const len = exp2.sequence[blockIdx2].trials.length;
+    docInsertTrialInBlock(exp2, blockIdx2, 999, 'arena check');
+    check('insert-trial: too-large clamps to end', exp2.sequence[blockIdx2].trials[len], 'arena check');
+}
+
+checkThrows(
+    'insert-trial: rejects non-block target',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        // sequence[0] is a ref, not a block
+        docInsertTrialInBlock(exp, 0, 0, 'arena check');
+    },
+    'INVALID_INPUT'
+);
+
+checkThrows(
+    'insert-trial: rejects empty condName',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+        docInsertTrialInBlock(exp, blockIdx, 0, '');
+    },
+    'INVALID_INPUT'
+);
+
+// ─── Test Suite 26: docMoveTrialInBlock ────────────────────────────────────
+console.log('\n--- Suite 26: docMoveTrialInBlock (reorder trial within block) ---');
+
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const origTrials = exp.sequence[blockIdx].trials.slice();
+
+    docMoveTrialInBlock(exp, blockIdx, 0, 2);
+    check(
+        'move-trial: first moves to position 2',
+        exp.sequence[blockIdx].trials.join('|'),
+        [origTrials[1], origTrials[2], origTrials[0], ...origTrials.slice(3)].join('|')
+    );
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check(
+        'move-trial: round-trip new order',
+        reparsed.sequence[blockIdx].trials[2],
+        origTrials[0]
+    );
+}
+
+{
+    // No-op / out-of-range
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const before = exp.sequence[blockIdx].trials.join('|');
+    docMoveTrialInBlock(exp, blockIdx, 1, 1);
+    docMoveTrialInBlock(exp, blockIdx, 99, 0);
+    docMoveTrialInBlock(exp, blockIdx, -1, 0);
+    check(
+        'move-trial: no-op / OOR preserves order',
+        exp.sequence[blockIdx].trials.join('|'),
+        before
+    );
+}
+
+// ─── Test Suite 27: docRemoveTrialFromBlock ────────────────────────────────
+console.log('\n--- Suite 27: docRemoveTrialFromBlock (✕ on trial chip) ---');
+
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const before = exp.sequence[blockIdx].trials.length;
+    const removed = exp.sequence[blockIdx].trials[0];
+
+    docRemoveTrialFromBlock(exp, blockIdx, 0);
+    check('remove-trial: length shrinks', exp.sequence[blockIdx].trials.length, before - 1);
+    checkTrue('remove-trial: removed gone', !exp.sequence[blockIdx].trials.includes(removed));
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('remove-trial: round-trip length', reparsed.sequence[blockIdx].trials.length, before - 1);
+}
+
+checkThrows(
+    'remove-trial: rejects out-of-bounds',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+        docRemoveTrialFromBlock(exp, blockIdx, 999);
+    },
+    'BAD_PATH'
+);
+
+checkThrows(
+    'remove-trial: rejects removing last trial (would leave block empty)',
+    () => {
+        // Build a synthetic 1-trial block
+        const yaml = [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'experiment:',
+            '  - name: blk',
+            '    trials: [only_one]',
+            'conditions:',
+            '  - name: only_one',
+            '    commands: [{type: wait, duration: 1}]'
+        ].join('\n') + '\n';
+        const exp = parseV3Protocol(yaml);
+        docRemoveTrialFromBlock(exp, 0, 0);
+    },
+    'INVALID_INPUT'
 );
 
 // ─── Results ────────────────────────────────────────────────────────────────

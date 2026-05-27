@@ -396,7 +396,18 @@
             color: var(--warn);
             font-weight: 600;
         }
-        .seq-entry.block .trials-row { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+        .seq-entry.block .trials-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+            min-height: 1.6rem;
+            padding: 0.15rem;
+            border-radius: 3px;
+        }
+        .seq-entry.block .trials-row.drop-target {
+            background: rgba(0, 230, 118, 0.08);
+            outline: 1px dashed var(--accent);
+        }
         .trial-chip {
             background: var(--surface-2);
             border: 1px solid var(--border);
@@ -404,8 +415,36 @@
             border-radius: 10px;
             font-size: 0.7rem;
             font-family: 'JetBrains Mono', monospace;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
         }
+        .trial-chip[draggable="true"] { cursor: grab; }
+        .trial-chip[draggable="true"]:active { cursor: grabbing; }
+        .trial-chip.dragging { opacity: 0.5; }
+        .trial-chip.drop-before { box-shadow: -2px 0 0 0 var(--accent); }
+        .trial-chip.drop-after { box-shadow: 2px 0 0 0 var(--accent); }
         .trial-chip.missing { color: var(--error); border-color: var(--error); }
+        .trial-chip .chip-x-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            font-size: 0.65rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+            opacity: 0;
+            transition: opacity 0.1s;
+        }
+        .trial-chip:hover .chip-x-btn { opacity: 1; }
+        .trial-chip .chip-x-btn:hover { color: var(--error); }
+        .lib-row[draggable="true"] { cursor: grab; }
+        .lib-row[draggable="true"]:active { cursor: grabbing; }
+        .lib-row.dragging { opacity: 0.5; }
+        #sequenceList.lib-drop-target {
+            outline: 1px dashed var(--accent);
+            border-radius: 4px;
+        }
         .iti-row {
             margin-top: 0.4rem;
             font-size: 0.7rem;
@@ -914,7 +953,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.5 | <span id="footerTimestamp">2026-05-27 15:45 ET</span>
+        v3 Experiment Designer v0.6 | <span id="footerTimestamp">2026-05-27 16:05 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -945,6 +984,9 @@
             docInsertSequenceEntry,
             docMoveSequenceEntry,
             docRemoveSequenceEntry,
+            docInsertTrialInBlock,
+            docMoveTrialInBlock,
+            docRemoveTrialFromBlock,
             docSetPluginCommandHead,
             docAddPluginParam,
             docDeletePluginParam,
@@ -1421,6 +1463,53 @@
             }
         }
 
+        function onInsertSequenceRefFromLib(condName, atIdx) {
+            pushUndo();
+            try {
+                docInsertSequenceEntry(experiment, atIdx, { kind: 'ref', condition_name: condName });
+                setDirty(true);
+                const clamped = Math.max(0, Math.min(atIdx, experiment.sequence.length - 1));
+                selection = { kind: 'ref', index: clamped };
+                renderAll();
+            } catch (err) {
+                showError('Add ref failed', err.message);
+            }
+        }
+
+        function onInsertTrialFromLib(blockIdx, atIdx, condName) {
+            pushUndo();
+            try {
+                docInsertTrialInBlock(experiment, blockIdx, atIdx, condName);
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                showError('Add trial failed', err.message);
+            }
+        }
+
+        function onMoveTrialInBlock(blockIdx, fromIdx, toIdx) {
+            if (fromIdx === toIdx) return;
+            pushUndo();
+            try {
+                docMoveTrialInBlock(experiment, blockIdx, fromIdx, toIdx);
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                showError('Move trial failed', err.message);
+            }
+        }
+
+        function onRemoveTrialFromBlock(blockIdx, trialIdx) {
+            pushUndo();
+            try {
+                docRemoveTrialFromBlock(experiment, blockIdx, trialIdx);
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                showError('Remove trial failed', err.message);
+            }
+        }
+
         function onRemoveSequenceEntry(idx) {
             pushUndo();
             try {
@@ -1499,6 +1588,21 @@
                     }, 'dup'),
                     el('span', { class: 'usage' }, useCount + '×')
                 );
+                // Drag source — library row → drop on sequence creates a ref,
+                // drop on a block's trial strip adds a trial. dataTransfer
+                // mime distinguishes from sequence-entry drags.
+                row.setAttribute('draggable', 'true');
+                row.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.effectAllowed = 'copy';
+                    e.dataTransfer.setData('text/x-library-cond', cond.name);
+                    row.classList.add('dragging');
+                });
+                row.addEventListener('dragend', () => {
+                    row.classList.remove('dragging');
+                    document.querySelectorAll('.drop-target, .lib-drop-target, .drop-before, .drop-after').forEach((el) => {
+                        el.classList.remove('drop-target', 'lib-drop-target', 'drop-before', 'drop-after');
+                    });
+                });
                 list.appendChild(row);
                 shown++;
             }
@@ -1539,9 +1643,11 @@
                 return actions;
             };
 
-            // Native HTML5 drag/drop. dragstart sets the source index;
-            // dragover on a target shows a drop indicator (before/after based
-            // on cursor y vs row midpoint); drop calls onMoveSequenceEntry.
+            // Native HTML5 drag/drop. Two drag sources land on sequence entries:
+            //   - existing seq entry (mime text/x-seq-idx)  → reorder
+            //   - library row       (mime text/x-library-cond) → insert ref
+            // dragover shows a top/bottom drop indicator based on cursor y;
+            // drop dispatches based on which mime arrived.
             const attachDrag = (card, idx) => {
                 card.setAttribute('draggable', 'true');
                 card.dataset.seqIdx = String(idx);
@@ -1552,14 +1658,17 @@
                 });
                 card.addEventListener('dragend', () => {
                     card.classList.remove('dragging');
-                    // Clear any lingering drop-indicator classes
                     list.querySelectorAll('.seq-entry').forEach((el) => {
                         el.classList.remove('drop-before', 'drop-after');
                     });
                 });
                 card.addEventListener('dragover', (e) => {
+                    const types = e.dataTransfer.types;
+                    const isLib = types.includes('text/x-library-cond');
+                    const isSeq = types.includes('text/x-seq-idx');
+                    if (!isLib && !isSeq) return;
                     e.preventDefault();  // allow drop
-                    e.dataTransfer.dropEffect = 'move';
+                    e.dataTransfer.dropEffect = isLib ? 'copy' : 'move';
                     const rect = card.getBoundingClientRect();
                     const before = e.clientY < rect.top + rect.height / 2;
                     list.querySelectorAll('.seq-entry').forEach((el) => {
@@ -1572,16 +1681,43 @@
                 });
                 card.addEventListener('drop', (e) => {
                     e.preventDefault();
-                    const fromIdx = Number(e.dataTransfer.getData('text/x-seq-idx'));
-                    if (!Number.isFinite(fromIdx) || fromIdx === idx) return;
+                    const libCond = e.dataTransfer.getData('text/x-library-cond');
+                    const seqIdxRaw = e.dataTransfer.getData('text/x-seq-idx');
                     const rect = card.getBoundingClientRect();
                     const dropBefore = e.clientY < rect.top + rect.height / 2;
-                    // toIdx for splice-after-removal: if dropping below the source, the index shifts by 1
-                    let toIdx = dropBefore ? idx : idx + 1;
-                    if (fromIdx < toIdx) toIdx -= 1;
-                    onMoveSequenceEntry(fromIdx, toIdx);
+                    if (libCond) {
+                        const insertAt = dropBefore ? idx : idx + 1;
+                        onInsertSequenceRefFromLib(libCond, insertAt);
+                    } else if (seqIdxRaw) {
+                        const fromIdx = Number(seqIdxRaw);
+                        if (!Number.isFinite(fromIdx) || fromIdx === idx) return;
+                        let toIdx = dropBefore ? idx : idx + 1;
+                        if (fromIdx < toIdx) toIdx -= 1;
+                        onMoveSequenceEntry(fromIdx, toIdx);
+                    }
                 });
             };
+
+            // List-level drop target for the empty-list / append-past-end case.
+            list.addEventListener('dragover', (e) => {
+                if (!e.dataTransfer.types.includes('text/x-library-cond')) return;
+                // Only highlight when we're not over an existing entry (entries handle their own)
+                if (e.target.closest('.seq-entry')) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                list.classList.add('lib-drop-target');
+            });
+            list.addEventListener('dragleave', (e) => {
+                if (e.target === list) list.classList.remove('lib-drop-target');
+            });
+            list.addEventListener('drop', (e) => {
+                if (e.target.closest('.seq-entry')) return;  // handled by entry's own drop
+                const libCond = e.dataTransfer.getData('text/x-library-cond');
+                if (!libCond) return;
+                e.preventDefault();
+                list.classList.remove('lib-drop-target');
+                onInsertSequenceRefFromLib(libCond, experiment.sequence.length);
+            });
 
             experiment.sequence.forEach((entry, idx) => {
                 const isSelected = selection && (
@@ -1608,10 +1744,12 @@
                     if (entry.randomize) meta.appendChild(el('span', { class: 'randomize-badge' }, '⚄ randomize'));
 
                     const trialsRow = el('div', { class: 'trials-row' });
-                    for (const t of entry.trials) {
+                    const blockIdxForRow = idx;
+                    entry.trials.forEach((t, trialIdx) => {
+                        const isMissing = !knownConds.has(t);
                         const chip = el('span', {
-                            class: 'trial-chip' + (!knownConds.has(t) ? ' missing' : ''),
-                            title: !knownConds.has(t) ? 'Condition "' + t + '" not in library' : 'Click to view ' + t,
+                            class: 'trial-chip' + (isMissing ? ' missing' : ''),
+                            title: isMissing ? 'Condition "' + t + '" not in library' : 'Click to view ' + t,
                             onClick: (e) => {
                                 e.stopPropagation();
                                 if (knownConds.has(t)) {
@@ -1620,8 +1758,93 @@
                                 }
                             }
                         }, t);
+                        // ✕ delete button (hidden when removing would leave 0 trials)
+                        if (entry.trials.length > 1) {
+                            chip.appendChild(el('button', {
+                                class: 'chip-x-btn',
+                                title: 'Remove this trial from the block',
+                                onClick: (e) => {
+                                    e.stopPropagation();
+                                    onRemoveTrialFromBlock(blockIdxForRow, trialIdx);
+                                }
+                            }, '✕'));
+                        }
+                        // Drag source for within-block reorder
+                        chip.setAttribute('draggable', 'true');
+                        chip.addEventListener('dragstart', (e) => {
+                            e.stopPropagation();  // don't bubble to the block card's dragstart
+                            e.dataTransfer.effectAllowed = 'move';
+                            e.dataTransfer.setData(
+                                'text/x-block-trial',
+                                blockIdxForRow + ':' + trialIdx
+                            );
+                            chip.classList.add('dragging');
+                        });
+                        chip.addEventListener('dragend', () => {
+                            chip.classList.remove('dragging');
+                            trialsRow.querySelectorAll('.trial-chip').forEach((el) =>
+                                el.classList.remove('drop-before', 'drop-after')
+                            );
+                        });
+                        chip.addEventListener('dragover', (e) => {
+                            const types = e.dataTransfer.types;
+                            const isLib = types.includes('text/x-library-cond');
+                            const isTrial = types.includes('text/x-block-trial');
+                            if (!isLib && !isTrial) return;
+                            e.stopPropagation();
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = isLib ? 'copy' : 'move';
+                            const rect = chip.getBoundingClientRect();
+                            const before = e.clientX < rect.left + rect.width / 2;
+                            trialsRow.querySelectorAll('.trial-chip').forEach((el) =>
+                                el.classList.remove('drop-before', 'drop-after')
+                            );
+                            chip.classList.add(before ? 'drop-before' : 'drop-after');
+                        });
+                        chip.addEventListener('drop', (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const libCond = e.dataTransfer.getData('text/x-library-cond');
+                            const trialRaw = e.dataTransfer.getData('text/x-block-trial');
+                            const rect = chip.getBoundingClientRect();
+                            const dropBefore = e.clientX < rect.left + rect.width / 2;
+                            if (libCond) {
+                                const insertAt = dropBefore ? trialIdx : trialIdx + 1;
+                                onInsertTrialFromLib(blockIdxForRow, insertAt, libCond);
+                            } else if (trialRaw) {
+                                const [srcBlockIdxStr, srcTrialIdxStr] = trialRaw.split(':');
+                                const srcBlockIdx = Number(srcBlockIdxStr);
+                                const srcTrialIdx = Number(srcTrialIdxStr);
+                                if (srcBlockIdx !== blockIdxForRow) return;  // no cross-block move in v1
+                                if (srcTrialIdx === trialIdx) return;
+                                let toIdx = dropBefore ? trialIdx : trialIdx + 1;
+                                if (srcTrialIdx < toIdx) toIdx -= 1;
+                                onMoveTrialInBlock(blockIdxForRow, srcTrialIdx, toIdx);
+                            }
+                        });
                         trialsRow.appendChild(chip);
-                    }
+                    });
+                    // Row-level drop target for library drag onto empty area or end
+                    trialsRow.addEventListener('dragover', (e) => {
+                        if (!e.dataTransfer.types.includes('text/x-library-cond')) return;
+                        if (e.target.closest('.trial-chip')) return;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'copy';
+                        trialsRow.classList.add('drop-target');
+                    });
+                    trialsRow.addEventListener('dragleave', (e) => {
+                        if (e.target === trialsRow) trialsRow.classList.remove('drop-target');
+                    });
+                    trialsRow.addEventListener('drop', (e) => {
+                        if (e.target.closest('.trial-chip')) return;
+                        const libCond = e.dataTransfer.getData('text/x-library-cond');
+                        if (!libCond) return;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        trialsRow.classList.remove('drop-target');
+                        onInsertTrialFromLib(blockIdxForRow, entry.trials.length, libCond);
+                    });
 
                     const itiRow = entry.intertrial
                         ? el('div', { class: 'iti-row' },
