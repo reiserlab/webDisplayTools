@@ -14,6 +14,7 @@ on:
       - 'tests/fixtures/v2_*.yaml'
       - 'tests/fixtures/v3_*.yaml'
       - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/validate-protocol-roundtrip.yml'
   pull_request:
     paths:
@@ -28,6 +29,7 @@ on:
       - 'tests/fixtures/v2_*.yaml'
       - 'tests/fixtures/v3_*.yaml'
       - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:
 
 jobs:
@@ -44,7 +46,7 @@ jobs:
           node-version: '24'
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Run v2 protocol roundtrip tests
         run: node tests/test-protocol-roundtrip.js

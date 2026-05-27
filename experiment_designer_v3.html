@@ -335,6 +335,28 @@
         .cmd-card.controller { border-left: 3px solid var(--accent); }
         .cmd-card.wait { border-left: 3px solid var(--text-dim); }
         .cmd-card.plugin { border-left: 3px solid var(--beta); }
+        .cmd-card.raw {
+            border-left: 3px solid var(--warn);
+            background: rgba(255, 152, 0, 0.04);
+        }
+        .cmd-card.raw .cmd-head .ctype { color: var(--warn); }
+        .cmd-card .raw-badge {
+            display: inline-block;
+            padding: 0.05rem 0.4rem;
+            background: rgba(255, 152, 0, 0.12);
+            color: var(--warn);
+            border: 1px solid var(--warn);
+            border-radius: 8px;
+            font-size: 0.6rem;
+            margin-left: 0.4rem;
+            cursor: help;
+            font-weight: 400;
+        }
+        .cmd-card.raw .kv-line .v-readonly {
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+        }
         .cmd-card .cmd-head { font-weight: 600; margin-bottom: 0.2rem; }
         .cmd-card .cmd-head .ctype { color: var(--text-dim); font-weight: 400; font-size: 0.65rem; text-transform: uppercase; margin-right: 0.3rem; }
         .cmd-card .kv-line { font-size: 0.7rem; color: var(--text-dim); display: flex; align-items: center; gap: 0.3rem; }
@@ -354,6 +376,18 @@
         .cmd-card .kv-line input.field-edit:focus { outline: none; border-color: var(--accent); }
         .cmd-card .kv-line input.field-edit.num { width: 70px; text-align: right; color: var(--accent); }
         .cmd-card .kv-line input.field-edit.str { color: var(--accent); }
+        .cmd-card .kv-line select.field-edit {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            padding: 0.1rem 0.35rem;
+            border-radius: 2px;
+            min-width: 120px;
+            max-width: 220px;
+        }
+        .cmd-card .kv-line select.field-edit:focus { outline: none; border-color: var(--accent); }
         .cmd-card .kv-line .alias-chip {
             display: inline-flex;
             align-items: center;
@@ -679,7 +713,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.2 | <span id="footerTimestamp">2026-05-27 08:56 ET</span>
+        v3 Experiment Designer v0.2.1 | <span id="footerTimestamp">2026-05-27 14:03 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1290,6 +1324,8 @@
             'frame_index': 'number',
             'frame_rate': 'number',
             'gain': 'number',
+            'gs_val': 'number',
+            'posX': 'number',
             'command_name': 'string',
             'plugin_name': 'string'
         };
@@ -1297,10 +1333,26 @@
         // Render a single editable scalar field. If the underlying YAML node is
         // an Alias, show a read-only badge instead of an input. Otherwise, an
         // input that calls docSet() on commit.
-        function renderEditableField(label, path, value, typeHint, opts) {
+        //
+        // `schemaOrTypeHint` accepts either:
+        //   - a string 'number' / 'string' (legacy callers, freeform params)
+        //   - a schema object { type, options, default, ... } from the plugin
+        //     registry. `type === 'select'` renders a <select> dropdown; the
+        //     picked value is coerced back to the option's original value type
+        //     (so a numeric `mode: 2` stays a number, not "2").
+        function renderEditableField(label, path, value, schemaOrTypeHint, opts) {
             opts = opts || {};
             const wrapper = el('div', { class: 'kv-line', style: opts.indent ? 'padding-left: 1rem;' : '' });
             wrapper.appendChild(el('span', { class: 'k' }, label + ':'));
+
+            let schema = null;
+            let typeHint = 'string';
+            if (typeof schemaOrTypeHint === 'string') {
+                typeHint = schemaOrTypeHint;
+            } else if (schemaOrTypeHint && typeof schemaOrTypeHint === 'object') {
+                schema = schemaOrTypeHint;
+                typeHint = schema.type === 'number' ? 'number' : (schema.type === 'select' ? 'select' : 'string');
+            }
 
             const aliasName = aliasNameAt(experiment, path);
             if (aliasName) {
@@ -1312,6 +1364,42 @@
                     el('span', { class: 'resolved-val' }, '= ' + (typeof value === 'string' ? JSON.stringify(value) : String(value)))
                 );
                 wrapper.appendChild(chip);
+                return wrapper;
+            }
+
+            if (schema && schema.type === 'select' && Array.isArray(schema.options)) {
+                const select = el('select', {
+                    class: 'field-edit',
+                    title: 'Edit ' + label
+                });
+                for (const opt of schema.options) {
+                    const optEl = el('option', { value: String(opt.value) }, opt.label || String(opt.value));
+                    if (opt.value === value) optEl.selected = true;
+                    select.appendChild(optEl);
+                }
+                select.addEventListener('change', () => {
+                    // Match the picked string back to the option's original
+                    // value type (numeric for mode/gs_val, string for log.level)
+                    const picked = schema.options.find((o) => String(o.value) === select.value);
+                    if (!picked) return;
+                    if (picked.value === value) return;
+                    pushUndo();
+                    try {
+                        docSet(experiment, path, picked.value);
+                        setDirty(true);
+                        renderInspector();
+                        renderTimeline();
+                    } catch (err) {
+                        showError('Edit failed', err.message);
+                        for (const o of select.options) {
+                            if (o.value === String(value)) {
+                                o.selected = true;
+                                break;
+                            }
+                        }
+                    }
+                });
+                wrapper.appendChild(select);
                 return wrapper;
             }
 
@@ -1674,6 +1762,33 @@
 
         function renderCommandCard(cmd, cmdPath, cardMeta) {
             // cardMeta: { condIdx, cmdIdx, total } — required for action buttons
+
+            // Forward-compat: unknown command types (e.g., a future `branch` or
+            // `loop` from MATLAB) render as read-only "raw" cards. Export
+            // preserves them verbatim via _doc.toString(); editing happens in
+            // YAML for now.
+            if (cmd._rawUnknownType) {
+                const rawCard = el('div', { class: 'cmd-card raw' });
+                const rawHead = el('div', { class: 'cmd-head' },
+                    el('span', { class: 'ctype' }, cmd.type),
+                    el('span', {
+                        class: 'raw-badge',
+                        title: 'Unknown command type — preserved on export. Edit in YAML.'
+                    }, 'raw')
+                );
+                rawCard.appendChild(rawHead);
+                for (const k of Object.keys(cmd)) {
+                    if (k === 'type' || k === '_rawUnknownType' || k === '_unknownKeys') continue;
+                    const v = cmd[k];
+                    const line = el('div', { class: 'kv-line' },
+                        el('span', { class: 'k' }, k + ':'),
+                        el('span', { class: 'v-readonly' }, typeof v === 'string' ? v : JSON.stringify(v))
+                    );
+                    rawCard.appendChild(line);
+                }
+                return rawCard;
+            }
+
             const card = el('div', { class: 'cmd-card ' + cmd.type });
             const head = el('div', { class: 'cmd-head' },
                 el('span', { class: 'ctype' }, cmd.type),
@@ -1711,21 +1826,47 @@
             card.appendChild(actions);
 
             const detailKeys = {
-                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain'],
+                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'gs_val', 'posX'],
                 wait: ['duration'],
                 plugin: []
             }[cmd.type] || [];
 
+            // Schema for this command's params (controller or plugin). Used so
+            // `mode` / `gs_val` / `level` render as <select> with type-correct
+            // coercion. Falls back to the freeform FIELD_TYPES map.
+            const paramsSchema =
+                cmd.type === 'controller'
+                    ? getV3CommandParams(experiment, 'controller', null, cmd.command_name)
+                    : null;
+
             for (const k of detailKeys) {
                 if (cmd[k] === undefined) continue;
-                card.appendChild(renderEditableField(k, [...cmdPath, k], cmd[k], FIELD_TYPES[k] || 'string'));
+                const fieldSchema = paramsSchema && paramsSchema[k];
+                card.appendChild(
+                    renderEditableField(
+                        k,
+                        [...cmdPath, k],
+                        cmd[k],
+                        fieldSchema || FIELD_TYPES[k] || 'string'
+                    )
+                );
             }
 
             if (cmd.type === 'plugin' && cmd.params && Object.keys(cmd.params).length > 0) {
+                const pluginParamsSchema = getV3CommandParams(experiment, 'plugin', cmd.plugin_name, cmd.command_name);
                 card.appendChild(el('div', { class: 'kv-line' }, el('span', { class: 'k' }, 'params:')));
                 for (const [pk, pv] of Object.entries(cmd.params)) {
-                    const ptype = typeof pv === 'number' ? 'number' : 'string';
-                    card.appendChild(renderEditableField(pk, [...cmdPath, 'params', pk], pv, ptype, { indent: true }));
+                    const fieldSchema = pluginParamsSchema && pluginParamsSchema[pk];
+                    const fallback = typeof pv === 'number' ? 'number' : 'string';
+                    card.appendChild(
+                        renderEditableField(
+                            pk,
+                            [...cmdPath, 'params', pk],
+                            pv,
+                            fieldSchema || fallback,
+                            { indent: true }
+                        )
+                    );
                 }
             }
 

@@ -64,7 +64,9 @@ const KNOWN_COMMAND_KEYS_BY_TYPE = {
         'mode',
         'frame_index',
         'frame_rate',
-        'gain'
+        'gain',
+        'gs_val',
+        'posX'
     ],
     wait: ['type', 'duration'],
     plugin: ['type', 'plugin_name', 'command_name', 'params']
@@ -273,16 +275,27 @@ function extractCommand(cmd) {
         throw new V3ParseError('Command entry must be a mapping', 'INVALID_SCHEMA');
     }
     const t = cmd.type;
-    const known = KNOWN_COMMAND_KEYS_BY_TYPE[t];
-    if (!known) {
+    if (typeof t !== 'string' || !t.trim()) {
         throw new V3ParseError(
-            'Unknown command type: ' +
-                JSON.stringify(t) +
-                ' (expected one of: ' +
-                Object.keys(KNOWN_COMMAND_KEYS_BY_TYPE).join(', ') +
-                ')',
+            'Command is missing a string `type` field',
             'INVALID_SCHEMA'
         );
+    }
+    const known = KNOWN_COMMAND_KEYS_BY_TYPE[t];
+    if (!known) {
+        // Forward-compat passthrough: round-trip unknown command types so
+        // future MATLAB additions (branch, loop, etc.) don't break import.
+        // The renderer shows these as read-only "raw" cards; export uses
+        // _doc.toString() which preserves the original YAML node verbatim.
+        const raw = { type: t, _rawUnknownType: true, _unknownKeys: {} };
+        for (const k of Object.keys(cmd)) {
+            if (k === 'type') continue;
+            raw[k] =
+                cmd[k] !== null && typeof cmd[k] === 'object'
+                    ? JSON.parse(JSON.stringify(cmd[k]))
+                    : cmd[k];
+        }
+        return raw;
     }
     const out = {};
     for (const k of known) {
@@ -576,7 +589,18 @@ function docMoveCommand(experiment, condIdx, fromIdx, toIdx) {
     if (fromIdx < 0 || fromIdx >= n || toIdx < 0 || toIdx >= n || fromIdx === toIdx) return;
 
     const cmdsNode = experiment._doc.getIn(['conditions', condIdx, 'commands'], true);
-    if (!cmdsNode || !Array.isArray(cmdsNode.items)) return;
+    if (!cmdsNode || !Array.isArray(cmdsNode.items)) {
+        // Doc/model divergence: the JS model claims a commands array at this
+        // condition but the YAML.Document has no matching seq node. Silent
+        // return would update the JS model while leaving the doc stale, then
+        // export incorrect YAML. Throw so the bug surfaces immediately.
+        throw new V3ParseError(
+            'docMoveCommand: doc/model divergence — no commands seq node at conditions[' +
+                condIdx +
+                ']',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
 
     const movedNode = cmdsNode.items.splice(fromIdx, 1)[0];
     cmdsNode.items.splice(toIdx, 0, movedNode);
