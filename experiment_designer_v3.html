@@ -92,6 +92,8 @@
         .header-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .header-btn.primary { background: rgba(0, 230, 118, 0.1); border-color: var(--accent); color: var(--accent); }
         .header-btn.primary:hover { background: rgba(0, 230, 118, 0.2); }
+        select.header-btn { max-width: 260px; }
+        select.header-btn:focus { outline: none; border-color: var(--accent); }
 
         /* ── View-only banner ────────────────────────────────────────── */
         .view-only-banner {
@@ -589,6 +591,19 @@
         <button id="redoBtn" class="header-btn" disabled title="Redo (Ctrl+Y)">↷ Redo</button>
         <span id="dirtyIndicator" class="dirty-badge" style="display: none;" title="Unsaved edits — Export to save">● edited</span>
         <button id="settingsToggle" class="header-btn" title="Show/hide experiment metadata, rig, plugins, variables">Settings ▾</button>
+        <select id="demoSelect" class="header-btn" title="Load a bundled demo YAML">
+            <option value="">Load demo ▾</option>
+            <option value="tests/fixtures/v3_canonical_a.yaml">canonical_a — 11 conds, 1 block, 4 anchors</option>
+            <option value="tests/fixtures/v3_canonical_b.yaml">canonical_b — same shape (alt trials)</option>
+            <option value="tests/fixtures/v3_full_experiment.yaml">full_experiment — 15 conds, 9 trials, 6 anchors</option>
+            <option value="tests/fixtures/v3_multi_block.yaml">multi_block — 3 blocks at different reps</option>
+            <option value="tests/fixtures/v3_no_randomize.yaml">no_randomize — randomize:false explicit</option>
+            <option value="tests/fixtures/v3_no_variables.yaml">no_variables — no anchors section</option>
+            <option value="tests/fixtures/v3_no_intertrial.yaml">no_intertrial — block without intertrial</option>
+            <option value="tests/fixtures/v3_consecutive_refs.yaml">consecutive_refs — no blocks, refs only</option>
+            <option value="tests/fixtures/v3_future_keys.yaml">future_keys — forward-compat unknown keys</option>
+            <option value="tests/fixtures/v3_plugin_config.yaml">plugin_config — inline plugin config</option>
+        </select>
         <input type="file" id="fileInput" accept=".yaml,.yml" style="display: none;">
         <button id="importBtn" class="header-btn primary" title="Load a v3 protocol YAML file">Import YAML</button>
         <button id="exportBtn" class="header-btn" disabled title="Export the (possibly edited) YAML">Export YAML</button>
@@ -840,6 +855,36 @@
 
         $('importBtn').addEventListener('click', () => $('fileInput').click());
 
+        // Shared loader — same atomic-validation + commit pipeline for both
+        // file imports and the "Load demo" dropdown. Returns true on success.
+        function loadYamlText(text, sourceName) {
+            try {
+                const parsed = parseV3Protocol(text);
+                const refs = validateReferences(parsed);
+                if (!refs.ok) {
+                    showError(
+                        'Reference validation failed for ' + sourceName,
+                        refs.errors.join('\n')
+                    );
+                    return false;
+                }
+                experiment = parsed;
+                lastFilename = sourceName;
+                selection = null;
+                setDirty(false);
+                clearUndo();
+                renderAll();
+                $('exportBtn').disabled = false;
+                return true;
+            } catch (err) {
+                showError(
+                    'Import error: ' + (err.name || 'Error'),
+                    err.message + (err.code ? '\n\n[' + err.code + ']' : '')
+                );
+                return false;
+            }
+        }
+
         $('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -848,28 +893,31 @@
                 return;
             }
             const text = await file.text();
+            loadYamlText(text, file.name);
+            $('fileInput').value = '';  // allow re-importing the same file
+        });
+
+        $('demoSelect').addEventListener('change', async (e) => {
+            const url = e.target.value;
+            if (!url) return;
+            const demoName = url.split('/').pop();
+            if (dirty && !confirm('Discard unsaved edits and load demo "' + demoName + '"?')) {
+                e.target.value = '';  // reset to placeholder
+                return;
+            }
             try {
-                const parsed = parseV3Protocol(text);
-                // Atomic validation: collect all reference errors before committing
-                const refs = validateReferences(parsed);
-                if (!refs.ok) {
-                    showError(
-                        'Reference validation failed for ' + file.name,
-                        refs.errors.join('\n')
-                    );
+                const resp = await fetch(url);
+                if (!resp.ok) {
+                    showError('Demo load failed', 'HTTP ' + resp.status + ' fetching ' + url);
+                    e.target.value = '';
                     return;
                 }
-                experiment = parsed;
-                lastFilename = file.name;
-                selection = null;
-                setDirty(false);
-                clearUndo();
-                renderAll();
-                $('exportBtn').disabled = false;
+                const text = await resp.text();
+                loadYamlText(text, demoName);
             } catch (err) {
-                showError('Import error: ' + (err.name || 'Error'), err.message + (err.code ? '\n\n[' + err.code + ']' : ''));
+                showError('Demo load failed', err.message);
             }
-            $('fileInput').value = '';  // allow re-importing the same file
+            e.target.value = '';  // reset so the same demo can be re-loaded
         });
 
         $('exportBtn').addEventListener('click', () => {
