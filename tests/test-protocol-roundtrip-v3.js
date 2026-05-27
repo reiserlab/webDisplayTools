@@ -27,6 +27,7 @@ const {
     validateReferences,
     V3ParseError,
     docSet,
+    docDelete,
     nodeIsAliasAt,
     aliasNameAt
 } = require('../js/protocol-yaml-v3.js');
@@ -491,6 +492,64 @@ console.log('\n--- Suite 9: docSet edits + alias detection ---');
         reparsed.conditions[condIdx].commands[ctrlIdx].command_name,
         'allOff'
     );
+}
+
+{
+    // 4. Block property edits — repetitions, randomize, intertrial set + delete
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
+    checkTrue('block edit: block found in canonical_a sequence', blockIdx >= 0);
+
+    docSet(exp, ['experiment', blockIdx, 'repetitions'], 5);
+    docSet(exp, ['experiment', blockIdx, 'randomize'], false);
+    check('block edit: JS reps mirrored', exp.sequence[blockIdx].repetitions, 5);
+    check('block edit: JS randomize mirrored', exp.sequence[blockIdx].randomize, false);
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('block edit: reps round-trip', reparsed.sequence[blockIdx].repetitions, 5);
+    check('block edit: randomize round-trip', reparsed.sequence[blockIdx].randomize, false);
+}
+
+{
+    // 5. docDelete — clear block intertrial back to "none"
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
+    check('delete: pre-delete intertrial', exp.sequence[blockIdx].intertrial, 'intertrial');
+
+    docDelete(exp, ['experiment', blockIdx, 'intertrial']);
+    check('delete: JS intertrial cleared to null', exp.sequence[blockIdx].intertrial, null);
+
+    const regen = generateV3Protocol(exp);
+    checkTrue(
+        'delete: intertrial line removed from YAML',
+        !regen.includes('intertrial: "intertrial"')
+    );
+    const reparsed = parseV3Protocol(regen);
+    check(
+        'delete: reparsed intertrial is null',
+        reparsed.sequence[blockIdx].intertrial,
+        null
+    );
+    // Anchors/comments still intact through a delete
+    checkTrue('delete: &dur_long preserved', regen.includes('&dur_long'));
+    checkTrue('delete: comment block preserved', regen.includes('# EXPERIMENT METADATA'));
+}
+
+{
+    // 6. Block name — set and clear
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
+    check('block name: pre-edit', exp.sequence[blockIdx].name, 'main block');
+
+    docSet(exp, ['experiment', blockIdx, 'name'], 'renamed block');
+    check('block name: set JS', exp.sequence[blockIdx].name, 'renamed block');
+    let reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('block name: set round-trip', reparsed.sequence[blockIdx].name, 'renamed block');
+
+    docDelete(exp, ['experiment', blockIdx, 'name']);
+    check('block name: clear JS', exp.sequence[blockIdx].name, null);
+    reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('block name: clear round-trip', reparsed.sequence[blockIdx].name, null);
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────

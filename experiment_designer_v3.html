@@ -379,6 +379,40 @@
             border-radius: 8px;
             margin-left: 0.4rem;
         }
+
+        /* Block-property editor controls */
+        .block-prop-row {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-bottom: 0.3rem;
+            font-size: 0.75rem;
+        }
+        .block-prop-row .k { color: var(--text-dim); min-width: 90px; flex-shrink: 0; }
+        .block-prop-row input.field-edit,
+        .block-prop-row select.field-edit {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            padding: 0.15rem 0.4rem;
+            border-radius: 2px;
+        }
+        .block-prop-row input.field-edit:focus,
+        .block-prop-row select.field-edit:focus {
+            outline: none; border-color: var(--accent);
+        }
+        .block-prop-row input.field-edit.num { width: 70px; text-align: right; color: var(--accent); }
+        .block-prop-row input.field-edit.str { min-width: 180px; color: var(--accent); }
+        .block-prop-row select.field-edit { min-width: 180px; color: var(--accent); }
+        .block-prop-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+        .block-prop-row .jump-btn { padding: 0.1rem 0.4rem; font-size: 0.7rem; }
         .jump-btn {
             background: rgba(0, 230, 118, 0.1);
             border: 1px solid var(--accent);
@@ -585,6 +619,7 @@
             validateReferences,
             V3ParseError,
             docSet,
+            docDelete,
             nodeIsAliasAt,
             aliasNameAt
         } from './js/protocol-yaml-v3.js';
@@ -958,28 +993,19 @@
             }
 
             if (selection.kind === 'block') {
-                const entry = experiment.sequence[selection.index];
+                const blockIdx = selection.index;
+                const entry = experiment.sequence[blockIdx];
                 if (!entry || entry.kind !== 'block') return;
                 body.appendChild(el('div', { class: 'inspector-title' },
                     el('span', { class: 'kind' }, 'Block'),
-                    entry.name || 'block_' + (selection.index + 1)
+                    entry.name || 'block_' + (blockIdx + 1)
                 ));
                 const props = el('div', { class: 'insp-section' });
                 props.appendChild(el('h4', {}, 'Properties'));
-                props.appendChild(el('div', { class: 'kv' },
-                    el('span', { class: 'k' }, 'repetitions: '),
-                    el('span', { class: 'v' }, String(entry.repetitions))));
-                props.appendChild(el('div', { class: 'kv' },
-                    el('span', { class: 'k' }, 'randomize: '),
-                    el('span', { class: 'v' }, entry.randomize ? 'true' : 'false')));
-                if (entry.intertrial) {
-                    props.appendChild(el('div', { class: 'kv' },
-                        el('span', { class: 'k' }, 'intertrial: '),
-                        el('button', { class: 'jump-btn', onClick: () => {
-                            selection = { kind: 'condition', name: entry.intertrial };
-                            renderLibrary(); renderInspector(); renderSequence();
-                        }}, '→ ' + entry.intertrial)));
-                }
+                props.appendChild(renderBlockNameRow(blockIdx, entry));
+                props.appendChild(renderBlockRepsRow(blockIdx, entry));
+                props.appendChild(renderBlockRandomizeRow(blockIdx, entry));
+                props.appendChild(renderBlockIntertrialRow(blockIdx, entry));
                 body.appendChild(props);
 
                 const trials = el('div', { class: 'insp-section' });
@@ -1095,6 +1121,167 @@
             });
             wrapper.appendChild(input);
             return wrapper;
+        }
+
+        // ── Block property row renderers ─────────────────────────────────
+        // After every commit, re-render sequence (block cards reflect new
+        // reps / randomize badge / iti label) and timeline (step count and
+        // step widths depend on reps + iti).
+
+        function commitBlockEdit() {
+            setDirty(true);
+            renderInspector();
+            renderSequence();
+            renderTimeline();
+        }
+
+        function renderBlockNameRow(blockIdx, entry) {
+            const row = el('div', { class: 'block-prop-row' },
+                el('span', { class: 'k' }, 'name:')
+            );
+            const input = el('input', {
+                type: 'text',
+                class: 'field-edit str',
+                value: entry.name || '',
+                placeholder: '(optional, auto-numbered)',
+                title: 'Block label shown in logs. Leave empty for auto-numbered fallback.'
+            });
+            input.addEventListener('change', () => {
+                const v = input.value.trim();
+                try {
+                    if (v === '') {
+                        if (entry.name) docDelete(experiment, ['experiment', blockIdx, 'name']);
+                    } else if (v !== entry.name) {
+                        docSet(experiment, ['experiment', blockIdx, 'name'], v);
+                    } else {
+                        return;
+                    }
+                    commitBlockEdit();
+                } catch (err) {
+                    showError('Edit failed', err.message);
+                    input.value = entry.name || '';
+                }
+            });
+            row.appendChild(input);
+            return row;
+        }
+
+        function renderBlockRepsRow(blockIdx, entry) {
+            const row = el('div', { class: 'block-prop-row' },
+                el('span', { class: 'k' }, 'repetitions:')
+            );
+            const aliasName = aliasNameAt(experiment, ['experiment', blockIdx, 'repetitions']);
+            if (aliasName) {
+                row.appendChild(el('span', {
+                    class: 'alias-chip',
+                    title: 'Bound to anchor &' + aliasName + '. Edit via Variables when the variables editor lands.'
+                },
+                    '→ &' + aliasName,
+                    el('span', { class: 'resolved-val' }, '= ' + entry.repetitions)
+                ));
+                return row;
+            }
+            const input = el('input', {
+                type: 'number',
+                class: 'field-edit num',
+                value: String(entry.repetitions),
+                min: '1',
+                step: '1',
+                title: 'Number of times the trials list runs (positive integer).'
+            });
+            input.addEventListener('change', () => {
+                const n = parseInt(input.value, 10);
+                if (!Number.isFinite(n) || n < 1) {
+                    input.value = String(entry.repetitions);
+                    return;
+                }
+                if (n === entry.repetitions) return;
+                try {
+                    docSet(experiment, ['experiment', blockIdx, 'repetitions'], n);
+                    commitBlockEdit();
+                } catch (err) {
+                    showError('Edit failed', err.message);
+                    input.value = String(entry.repetitions);
+                }
+            });
+            row.appendChild(input);
+            return row;
+        }
+
+        function renderBlockRandomizeRow(blockIdx, entry) {
+            const row = el('div', { class: 'block-prop-row' },
+                el('span', { class: 'k' }, 'randomize:')
+            );
+            const aliasName = aliasNameAt(experiment, ['experiment', blockIdx, 'randomize']);
+            if (aliasName) {
+                row.appendChild(el('span', { class: 'alias-chip' },
+                    '→ &' + aliasName,
+                    el('span', { class: 'resolved-val' }, '= ' + (entry.randomize ? 'true' : 'false'))
+                ));
+                return row;
+            }
+            const input = el('input', {
+                type: 'checkbox',
+                checked: entry.randomize,
+                title: 'When checked, trial order is shuffled per repetition (MATLAB randperm).'
+            });
+            input.addEventListener('change', () => {
+                try {
+                    docSet(experiment, ['experiment', blockIdx, 'randomize'], input.checked);
+                    commitBlockEdit();
+                } catch (err) {
+                    showError('Edit failed', err.message);
+                    input.checked = entry.randomize;
+                }
+            });
+            row.appendChild(input);
+            row.appendChild(el('span', { style: 'color: var(--text-dim); font-size: 0.7rem;' },
+                input.checked ? 'shuffled per repetition' : 'fixed order'));
+            return row;
+        }
+
+        function renderBlockIntertrialRow(blockIdx, entry) {
+            const row = el('div', { class: 'block-prop-row' },
+                el('span', { class: 'k' }, 'intertrial:')
+            );
+            const select = el('select', {
+                class: 'field-edit',
+                title: 'Condition inserted between consecutive trials in this block.'
+            });
+            select.appendChild(el('option', { value: '' }, '(none)'));
+            for (const c of experiment.conditions) {
+                const opt = el('option', { value: c.name }, c.name);
+                if (c.name === entry.intertrial) opt.selected = true;
+                select.appendChild(opt);
+            }
+            select.addEventListener('change', () => {
+                const v = select.value;
+                try {
+                    if (v === '') {
+                        if (entry.intertrial) docDelete(experiment, ['experiment', blockIdx, 'intertrial']);
+                    } else if (v !== entry.intertrial) {
+                        docSet(experiment, ['experiment', blockIdx, 'intertrial'], v);
+                    } else {
+                        return;
+                    }
+                    commitBlockEdit();
+                } catch (err) {
+                    showError('Edit failed', err.message);
+                    select.value = entry.intertrial || '';
+                }
+            });
+            row.appendChild(select);
+            if (entry.intertrial) {
+                row.appendChild(el('button', {
+                    class: 'jump-btn',
+                    title: 'Jump to "' + entry.intertrial + '" in the library',
+                    onClick: () => {
+                        selection = { kind: 'condition', name: entry.intertrial };
+                        renderLibrary(); renderInspector(); renderSequence();
+                    }
+                }, '→'));
+            }
+            return row;
         }
 
         function renderCommandCard(cmd, cmdPath) {

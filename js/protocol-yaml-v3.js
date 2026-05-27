@@ -505,6 +505,51 @@ function mirrorIntoModel(experiment, path, value) {
     }
 }
 
+/**
+ * docDelete(experiment, path)
+ *
+ * Removes the key at `path` from both the YAML.Document and the JS data
+ * model. Used for clearing optional fields (e.g., block `intertrial` →
+ * "none", block `name` cleared). For our JS model, optional string fields
+ * that were `null` when absent get set back to `null` after delete; map
+ * keys that don't normalize to a model field are deleted outright.
+ */
+function docDelete(experiment, path) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docDelete: experiment has no _doc handle', 'NO_DOC');
+    }
+    if (!Array.isArray(path) || path.length === 0) {
+        throw new V3ParseError('docDelete: path must be a non-empty array', 'BAD_PATH');
+    }
+    experiment._doc.deleteIn(path);
+
+    const jsPath = [...path];
+    if (jsPath[0] === 'experiment') jsPath[0] = 'sequence';
+    else if (jsPath[0] === 'rig') jsPath[0] = 'rig_path';
+
+    let cursor = experiment;
+    for (let i = 0; i < jsPath.length - 1; i++) {
+        if (cursor == null) return;
+        cursor = cursor[jsPath[i]];
+    }
+    if (cursor != null && jsPath.length > 0) {
+        const lastKey = jsPath[jsPath.length - 1];
+        // Block-level optional fields parse to `null` when missing; mirror that.
+        const optionalNullableBlockFields = ['name', 'intertrial'];
+        if (
+            jsPath[0] === 'sequence' &&
+            jsPath.length === 3 &&
+            optionalNullableBlockFields.includes(lastKey)
+        ) {
+            cursor[lastKey] = null;
+        } else if (Array.isArray(cursor)) {
+            cursor.splice(lastKey, 1);
+        } else {
+            delete cursor[lastKey];
+        }
+    }
+}
+
 // ════════════════════════════════════════════════════
 // Exports
 // ════════════════════════════════════════════════════
@@ -515,6 +560,7 @@ const ProtocolV3 = {
     validateReferences,
     V3ParseError,
     docSet,
+    docDelete,
     nodeIsAliasAt,
     aliasNameAt
 };
@@ -536,6 +582,7 @@ export {
     validateReferences,
     V3ParseError,
     docSet,
+    docDelete,
     nodeIsAliasAt,
     aliasNameAt
 };
