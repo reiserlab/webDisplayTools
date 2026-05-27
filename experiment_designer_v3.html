@@ -9,10 +9,13 @@
     <!-- Import map: lets js/protocol-yaml-v3.js's `import YAML from 'yaml'`
          resolve to the CDN-hosted browser build. Same module is consumable
          in Node (via node_modules/yaml) and browser (via this import map). -->
+    <!-- yaml@2.9.0 vendored at js/vendor/yaml/browser/dist/ so the editor
+         loads offline / on locked networks (and survives jsDelivr outages).
+         Node tests load the same package via node_modules/yaml. -->
     <script type="importmap">
     {
         "imports": {
-            "yaml": "https://cdn.jsdelivr.net/npm/yaml@2.9.0/browser/dist/index.js"
+            "yaml": "./js/vendor/yaml/browser/dist/index.js"
         }
     }
     </script>
@@ -107,6 +110,41 @@
         .view-only-banner a { color: var(--accent); text-decoration: none; }
         .view-only-banner a:hover { color: var(--hover); text-decoration: underline; }
 
+        /* ── Export warnings banner ──────────────────────────────────── */
+        .export-warnings {
+            padding: 0.3rem 1rem;
+            background: rgba(255, 152, 0, 0.08);
+            border-bottom: 1px solid var(--border);
+            color: var(--warn);
+            font-size: 0.72rem;
+            flex-shrink: 0;
+        }
+        .export-warnings summary {
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .export-warnings summary::-webkit-details-marker { display: none; }
+        .export-warnings .warn-icon { font-size: 0.9rem; }
+        .export-warnings .warn-hint {
+            color: var(--text-dim);
+            font-size: 0.65rem;
+            margin-left: auto;
+        }
+        .export-warnings ul {
+            margin: 0.3rem 0 0.2rem 0;
+            padding-left: 1.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text);
+        }
+        .export-warnings li { padding: 0.05rem 0; }
+        .export-warnings li.kind-unused-condition,
+        .export-warnings li.kind-unused-anchor { color: var(--text-dim); }
+        .export-warnings li.kind-undeclared-plugin,
+        .export-warnings li.kind-raw-command { color: var(--warn); }
+
         /* ── Settings drawer ─────────────────────────────────────────── */
         .settings-drawer {
             background: var(--surface);
@@ -187,6 +225,47 @@
             border-radius: 8px;
             color: var(--accent);
             font-size: 0.65rem;
+        }
+        .zone-head-btn {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--accent);
+            font-family: inherit;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.1rem 0.5rem;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-left: auto;
+        }
+        .zone-head-btn:hover:not(:disabled) {
+            background: var(--accent);
+            color: var(--bg);
+        }
+        .zone-head-btn:disabled {
+            color: var(--text-dim);
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        .lib-row .lib-row-dup {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            font-family: inherit;
+            font-size: 0.6rem;
+            padding: 0.05rem 0.3rem;
+            margin-left: 0.3rem;
+            border-radius: 3px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.1s;
+        }
+        .lib-row:hover .lib-row-dup { opacity: 1; }
+        .lib-row .lib-row-dup:hover {
+            background: var(--surface-2);
+            color: var(--accent);
+            border-color: var(--border);
         }
         .zone-body {
             flex: 1;
@@ -690,8 +769,9 @@
         <button id="redoBtn" class="header-btn" disabled title="Redo (Ctrl+Y)">↷ Redo</button>
         <span id="dirtyIndicator" class="dirty-badge" style="display: none;" title="Unsaved edits — Export to save">● edited</span>
         <button id="settingsToggle" class="header-btn" title="Show/hide experiment metadata, rig, plugins, variables">Settings ▾</button>
-        <select id="demoSelect" class="header-btn" title="Load a bundled demo YAML">
+        <select id="demoSelect" class="header-btn" title="Load a bundled demo YAML or start from a blank skeleton">
             <option value="">Load demo ▾</option>
+            <option value="__blank__">New (blank) — minimum-valid v3 skeleton</option>
             <option value="tests/fixtures/v3_canonical_a.yaml">canonical_a — 11 conds, 1 block, 4 anchors</option>
             <option value="tests/fixtures/v3_canonical_b.yaml">canonical_b — same shape (alt trials)</option>
             <option value="tests/fixtures/v3_full_experiment.yaml">full_experiment — 15 conds, 9 trials, 6 anchors</option>
@@ -717,6 +797,20 @@
         Need v2? <a href="experiment_designer.html">Open the v2 Experiment Designer</a>.
     </div>
 
+    <!-- Soft-warn export validation banner — non-blocking. Lists unused
+         conditions, unused anchors, undeclared plugins, and raw-type cards.
+         Export still works while this banner is visible. -->
+    <div id="exportWarnings" class="export-warnings" style="display: none;">
+        <details>
+            <summary>
+                <span class="warn-icon">⚠</span>
+                <span id="exportWarningSummary">No export warnings.</span>
+                <span class="warn-hint">(click to expand — non-blocking)</span>
+            </summary>
+            <ul id="exportWarningList"></ul>
+        </details>
+    </div>
+
     <!-- Settings drawer -->
     <div id="settingsDrawer" class="settings-drawer">
         <div class="settings-drawer-inner" id="settingsContent">
@@ -731,6 +825,7 @@
             <div class="zone-header">
                 <span>Library</span>
                 <span class="count" id="libCount">0</span>
+                <button id="addCondBtn" class="zone-head-btn" title="Add a new condition (also appends a bare ref to the sequence)" disabled>+ Add</button>
             </div>
             <div class="zone-body">
                 <input type="text" class="library-search" id="librarySearch" placeholder="Search conditions..." disabled>
@@ -778,7 +873,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.3 | <span id="footerTimestamp">2026-05-27 14:23 ET</span>
+        v3 Experiment Designer v0.4 | <span id="footerTimestamp">2026-05-27 14:40 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -797,11 +892,15 @@
             parseV3Protocol,
             generateV3Protocol,
             validateReferences,
+            collectExportWarnings,
             V3ParseError,
             docSet,
             docDelete,
             docInsertCommand,
             docMoveCommand,
+            docInsertCondition,
+            docCloneCondition,
+            docAppendSequenceEntry,
             docSetPluginCommandHead,
             docAddPluginParam,
             docDeletePluginParam,
@@ -977,6 +1076,7 @@
                 clearUndo();
                 renderAll();
                 $('exportBtn').disabled = false;
+                $('addCondBtn').disabled = false;
                 return true;
             } catch (err) {
                 showError(
@@ -999,18 +1099,47 @@
             $('fileInput').value = '';  // allow re-importing the same file
         });
 
+        // Minimum-valid v3 skeleton for the "New (blank)" demo option.
+        // Empty `commands: []` would violate the spec (commands required) —
+        // ship a wait:1 placeholder so the user has a valid starting point
+        // that imports cleanly through validateReferences.
+        const BLANK_TEMPLATE = [
+            'version: 3',
+            'experiment_info:',
+            '  name: "New Experiment"',
+            '  author: ""',
+            'rig: "./configs/rigs/your_rig.yaml"',
+            'plugins: []',
+            'experiment:',
+            '  - "setup"',
+            'conditions:',
+            '  - name: "setup"',
+            '    commands:',
+            '      - type: "wait"',
+            '        duration: 1',
+            ''
+        ].join('\n');
+
         $('demoSelect').addEventListener('change', async (e) => {
-            const url = e.target.value;
-            if (!url) return;
-            const demoName = url.split('/').pop();
+            const val = e.target.value;
+            if (!val) return;
+            // Sentinel for "New (blank)" — bypass fetch and load the template
+            // string directly. Anything else is a URL to a bundled fixture.
+            const isBlank = val === '__blank__';
+            const demoName = isBlank ? 'blank.yaml' : val.split('/').pop();
             if (dirty && !confirm('Discard unsaved edits and load demo "' + demoName + '"?')) {
                 e.target.value = '';  // reset to placeholder
                 return;
             }
+            if (isBlank) {
+                loadYamlText(BLANK_TEMPLATE, demoName);
+                e.target.value = '';
+                return;
+            }
             try {
-                const resp = await fetch(url);
+                const resp = await fetch(val);
                 if (!resp.ok) {
-                    showError('Demo load failed', 'HTTP ' + resp.status + ' fetching ' + url);
+                    showError('Demo load failed', 'HTTP ' + resp.status + ' fetching ' + val);
                     e.target.value = '';
                     return;
                 }
@@ -1147,6 +1276,8 @@
             renderLibrary();
         });
 
+        $('addCondBtn').addEventListener('click', onAddCondition);
+
         function computeUsage() {
             const usage = new Map();
             if (!experiment) return usage;
@@ -1177,16 +1308,34 @@
             const usage = computeUsage();
             const filter = librarySearchText.trim();
             let shown = 0;
-            for (const cond of experiment.conditions) {
+            for (let i = 0; i < experiment.conditions.length; i++) {
+                const cond = experiment.conditions[i];
                 if (filter && !cond.name.toLowerCase().includes(filter)) continue;
                 const useCount = usage.get(cond.name) || 0;
+                const condIdx = i;
                 const row = el('div', {
                     class: 'lib-row' + (useCount === 0 ? ' unused' : '') +
                            (selection && selection.kind === 'condition' && selection.name === cond.name ? ' selected' : ''),
                     title: useCount === 0 ? 'Unreferenced in sequence' : (useCount + ' reference' + (useCount === 1 ? '' : 's')),
-                    onClick: () => { selection = { kind: 'condition', name: cond.name }; renderLibrary(); renderInspector(); renderSequence(); }
+                    onClick: (e) => {
+                        if (e.target.classList.contains('lib-row-dup')) return;
+                        selection = { kind: 'condition', name: cond.name };
+                        renderLibrary(); renderInspector(); renderSequence();
+                    },
+                    onContextMenu: (e) => {
+                        e.preventDefault();
+                        onDuplicateCondition(condIdx);
+                    }
                 },
                     el('span', { class: 'name' }, cond.name),
+                    el('button', {
+                        class: 'lib-row-dup',
+                        title: 'Duplicate this condition (also right-click)',
+                        onClick: (e) => {
+                            e.stopPropagation();
+                            onDuplicateCondition(condIdx);
+                        }
+                    }, 'dup'),
                     el('span', { class: 'usage' }, useCount + '×')
                 );
                 list.appendChild(row);
@@ -1940,6 +2089,81 @@
             }
         }
 
+        // Suggest a unique condition name like condition_1, condition_2, ...
+        function autoConditionName() {
+            const taken = new Set(experiment.conditions.map((c) => c.name));
+            for (let i = 1; i <= 999; i++) {
+                const candidate = 'condition_' + i;
+                if (!taken.has(candidate)) return candidate;
+            }
+            return 'condition_new';
+        }
+
+        function onAddCondition() {
+            if (!experiment) return;
+            const suggested = autoConditionName();
+            const name = prompt('Name for new condition:', suggested);
+            if (name === null) return;  // cancelled
+            const trimmed = name.trim();
+            if (!trimmed) {
+                showError('Add condition failed', 'Condition name cannot be empty.');
+                return;
+            }
+            if (experiment.conditions.find((c) => c.name === trimmed)) {
+                showError(
+                    'Add condition failed',
+                    'A condition named "' + trimmed + '" already exists. Pick a different name.'
+                );
+                return;
+            }
+            pushUndo();
+            try {
+                docInsertCondition(experiment, trimmed, [{ type: 'wait', duration: 1 }]);
+                docAppendSequenceEntry(experiment, { kind: 'ref', condition_name: trimmed });
+                setDirty(true);
+                selection = { kind: 'condition', name: trimmed };
+                renderAll();
+            } catch (err) {
+                showError('Add condition failed', err.message);
+            }
+        }
+
+        function onDuplicateCondition(srcIdx) {
+            if (!experiment) return;
+            const src = experiment.conditions[srcIdx];
+            if (!src) return;
+            // Suggest <name>_2 (or _3 if _2 is taken, etc.)
+            const taken = new Set(experiment.conditions.map((c) => c.name));
+            let suggested = src.name + '_2';
+            for (let i = 2; i <= 99; i++) {
+                const candidate = src.name + '_' + i;
+                if (!taken.has(candidate)) { suggested = candidate; break; }
+            }
+            const newName = prompt('Duplicate "' + src.name + '" as:', suggested);
+            if (newName === null) return;
+            const trimmed = newName.trim();
+            if (!trimmed) {
+                showError('Duplicate failed', 'Condition name cannot be empty.');
+                return;
+            }
+            if (taken.has(trimmed)) {
+                showError(
+                    'Duplicate failed',
+                    'A condition named "' + trimmed + '" already exists. Pick a different name.'
+                );
+                return;
+            }
+            pushUndo();
+            try {
+                docCloneCondition(experiment, srcIdx, trimmed);
+                setDirty(true);
+                selection = { kind: 'condition', name: trimmed };
+                renderAll();
+            } catch (err) {
+                showError('Duplicate failed', err.message);
+            }
+        }
+
         function onAddCommand(condIdx, addSelectValue) {
             // addSelectValue encoding: "wait" | "controller:<name>" | "plugin:<plugin>:<command>"
             pushUndo();
@@ -2334,6 +2558,32 @@
             renderSequence();
             renderInspector();
             renderTimeline();
+            renderExportWarnings();
+        }
+
+        // Soft-warn validation banner. Listed in the yellow strip below the
+        // editing banner — non-blocking. Updated after every mutation so users
+        // see new warnings (e.g., a library add that produces an unused-condition
+        // entry) appear right away.
+        function renderExportWarnings() {
+            const banner = $('exportWarnings');
+            const summary = $('exportWarningSummary');
+            const list = $('exportWarningList');
+            list.innerHTML = '';
+            if (!experiment) {
+                banner.style.display = 'none';
+                return;
+            }
+            const { warnings, totalCount } = collectExportWarnings(experiment);
+            if (totalCount === 0) {
+                banner.style.display = 'none';
+                return;
+            }
+            banner.style.display = 'block';
+            summary.textContent = totalCount + ' export warning' + (totalCount === 1 ? '' : 's') + ':';
+            for (const w of warnings) {
+                list.appendChild(el('li', { class: 'kind-' + w.kind, title: w.kind }, w.message));
+            }
         }
 
         // Initial empty render
