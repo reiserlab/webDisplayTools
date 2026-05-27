@@ -585,6 +585,8 @@
         <h1>v3 Experiment Designer</h1>
         <span class="beta-badge">Beta / Editor</span>
         <div class="header-spacer"></div>
+        <button id="undoBtn" class="header-btn" disabled title="Undo last edit (Ctrl+Z)">↶ Undo</button>
+        <button id="redoBtn" class="header-btn" disabled title="Redo (Ctrl+Y)">↷ Redo</button>
         <span id="dirtyIndicator" class="dirty-badge" style="display: none;" title="Unsaved edits — Export to save">● edited</span>
         <button id="settingsToggle" class="header-btn" title="Show/hide experiment metadata, rig, plugins, variables">Settings ▾</button>
         <input type="file" id="fileInput" accept=".yaml,.yml" style="display: none;">
@@ -707,10 +709,97 @@
         let librarySearchText = '';
         let dirty = false;             // true once the user has edited anything
 
+        // Undo/redo: each snapshot is the YAML text + selection. Restoring
+        // re-parses, so the doc/JS-model stay in sync. _restoring blocks
+        // focus-on-rerender from polluting the stacks.
+        let undoStack = [];
+        let redoStack = [];
+        let _restoring = false;
+        const UNDO_LIMIT = 50;
+
         function setDirty(val) {
             dirty = !!val;
             $('dirtyIndicator').style.display = dirty ? 'inline-block' : 'none';
         }
+
+        function updateUndoUI() {
+            document.getElementById('undoBtn').disabled = undoStack.length === 0;
+            document.getElementById('redoBtn').disabled = redoStack.length === 0;
+        }
+
+        function snapshotState() {
+            if (!experiment || !experiment._doc) return null;
+            return {
+                text: experiment._doc.toString(),
+                selection: selection ? JSON.parse(JSON.stringify(selection)) : null
+            };
+        }
+
+        // Push current state onto undoStack. Called BEFORE a mutation so
+        // undo restores the pre-mutation state. Clears redoStack — once a
+        // new branch is taken, the old "redo future" is gone.
+        function pushUndo() {
+            if (_restoring) return;
+            const snap = snapshotState();
+            if (!snap) return;
+            undoStack.push(snap);
+            if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+            redoStack = [];
+            updateUndoUI();
+        }
+
+        function restoreSnapshot(snap) {
+            _restoring = true;
+            try {
+                experiment = parseV3Protocol(snap.text);
+                selection = snap.selection;
+                renderAll();
+            } catch (err) {
+                showError('Undo/redo restore failed', err.message);
+            } finally {
+                _restoring = false;
+            }
+        }
+
+        function undo() {
+            if (undoStack.length === 0) return;
+            const current = snapshotState();
+            const prev = undoStack.pop();
+            if (current) redoStack.push(current);
+            restoreSnapshot(prev);
+            updateUndoUI();
+        }
+
+        function redo() {
+            if (redoStack.length === 0) return;
+            const current = snapshotState();
+            const next = redoStack.pop();
+            if (current) undoStack.push(current);
+            restoreSnapshot(next);
+            updateUndoUI();
+        }
+
+        function clearUndo() {
+            undoStack = [];
+            redoStack = [];
+            updateUndoUI();
+        }
+
+        document.getElementById('undoBtn').addEventListener('click', undo);
+        document.getElementById('redoBtn').addEventListener('click', redo);
+
+        // Keyboard: Ctrl/Cmd+Z = undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z = redo.
+        // Skip when focus is inside an editable text field — let the
+        // browser handle intra-field undo first.
+        document.addEventListener('keydown', (e) => {
+            const tag = document.activeElement?.tagName;
+            const inField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+            if (inField) return;
+            const mod = e.ctrlKey || e.metaKey;
+            if (!mod) return;
+            if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+            else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) { e.preventDefault(); redo(); }
+        });
 
         // ═══════════════════════════════════════════════════════════════
         // DOM helpers
@@ -762,6 +851,7 @@
                 lastFilename = file.name;
                 selection = null;
                 setDirty(false);
+                clearUndo();
                 renderAll();
                 $('exportBtn').disabled = false;
             } catch (err) {
@@ -1174,23 +1264,25 @@
             });
             if (typeHint === 'number') input.step = 'any';
 
+            // Snapshot on commit-with-actual-change. Captures the pre-edit
+            // state so a single Ctrl+Z reverts the whole field visit. Browser
+            // native Ctrl+Z still works for intra-field keystroke undo.
             input.addEventListener('change', () => {
                 let raw = input.value;
                 let coerced = raw;
                 if (typeHint === 'number') {
                     const n = Number(raw);
                     if (!Number.isFinite(n)) {
-                        // Reject — revert
                         input.value = String(value);
                         return;
                     }
                     coerced = n;
                 }
                 if (coerced === value) return;
+                pushUndo();
                 try {
                     docSet(experiment, path, coerced);
                     setDirty(true);
-                    // Re-render the inspector card area only — preserve focus elsewhere.
                     renderInspector();
                     renderTimeline();
                 } catch (err) {
@@ -1227,13 +1319,15 @@
             });
             input.addEventListener('change', () => {
                 const v = input.value.trim();
+                const isClear = v === '' && entry.name;
+                const isChange = v !== '' && v !== entry.name;
+                if (!isClear && !isChange) return;
+                pushUndo();
                 try {
-                    if (v === '') {
-                        if (entry.name) docDelete(experiment, ['experiment', blockIdx, 'name']);
-                    } else if (v !== entry.name) {
-                        docSet(experiment, ['experiment', blockIdx, 'name'], v);
+                    if (isClear) {
+                        docDelete(experiment, ['experiment', blockIdx, 'name']);
                     } else {
-                        return;
+                        docSet(experiment, ['experiment', blockIdx, 'name'], v);
                     }
                     commitBlockEdit();
                 } catch (err) {
@@ -1275,6 +1369,7 @@
                     return;
                 }
                 if (n === entry.repetitions) return;
+                pushUndo();
                 try {
                     docSet(experiment, ['experiment', blockIdx, 'repetitions'], n);
                     commitBlockEdit();
@@ -1305,6 +1400,7 @@
                 title: 'When checked, trial order is shuffled per repetition (MATLAB randperm).'
             });
             input.addEventListener('change', () => {
+                pushUndo();
                 try {
                     docSet(experiment, ['experiment', blockIdx, 'randomize'], input.checked);
                     commitBlockEdit();
@@ -1335,13 +1431,13 @@
             }
             select.addEventListener('change', () => {
                 const v = select.value;
+                if ((v === '' && !entry.intertrial) || v === entry.intertrial) return;
+                pushUndo();
                 try {
                     if (v === '') {
-                        if (entry.intertrial) docDelete(experiment, ['experiment', blockIdx, 'intertrial']);
-                    } else if (v !== entry.intertrial) {
-                        docSet(experiment, ['experiment', blockIdx, 'intertrial'], v);
+                        docDelete(experiment, ['experiment', blockIdx, 'intertrial']);
                     } else {
-                        return;
+                        docSet(experiment, ['experiment', blockIdx, 'intertrial'], v);
                     }
                     commitBlockEdit();
                 } catch (err) {
@@ -1423,6 +1519,7 @@
         }
 
         function onMoveCommand(condIdx, fromIdx, toIdx) {
+            pushUndo();
             try {
                 docMoveCommand(experiment, condIdx, fromIdx, toIdx);
                 commitInspectorEdit();
@@ -1432,6 +1529,7 @@
         }
 
         function onDeleteCommand(condIdx, atIdx) {
+            pushUndo();
             try {
                 docDelete(experiment, ['conditions', condIdx, 'commands', atIdx]);
                 commitInspectorEdit();
@@ -1442,6 +1540,7 @@
 
         function onAddCommand(condIdx, addSelectValue) {
             // addSelectValue encoding: "wait" | "controller:<name>" | "plugin:<plugin>:<command>"
+            pushUndo();
             try {
                 let cmd;
                 if (addSelectValue === 'wait') {
@@ -1532,12 +1631,10 @@
             }, '↓');
             const delBtn = el('button', {
                 class: 'cmd-act-btn danger',
-                title: 'Delete command',
+                title: 'Delete command (Ctrl+Z to undo)',
                 onClick: (e) => {
                     e.stopPropagation();
-                    if (confirm('Delete this ' + cmd.type + ' command? (Undo not yet available.)')) {
-                        onDeleteCommand(cardMeta.condIdx, cardMeta.cmdIdx);
-                    }
+                    onDeleteCommand(cardMeta.condIdx, cardMeta.cmdIdx);
                 }
             }, '✕');
             actions.appendChild(upBtn);
