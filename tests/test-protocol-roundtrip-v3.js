@@ -34,6 +34,9 @@ const {
     docInsertCondition,
     docCloneCondition,
     docAppendSequenceEntry,
+    docInsertSequenceEntry,
+    docMoveSequenceEntry,
+    docRemoveSequenceEntry,
     docSetPluginCommandHead,
     docAddPluginParam,
     docDeletePluginParam,
@@ -1480,6 +1483,163 @@ console.log('\n--- Suite 21: BLANK_TEMPLATE skeleton parses + round-trips ---');
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
     check('blank: round-trip stable', reparsed.conditions.length, 1);
 }
+
+// ─── Test Suite 22: docInsertSequenceEntry ─────────────────────────────────
+console.log('\n--- Suite 22: docInsertSequenceEntry (insert anywhere) ---');
+
+{
+    // Insert at start, middle, end of canonical_a's sequence (length 4).
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const before = exp.sequence.length;
+    docInsertSequenceEntry(exp, 0, { kind: 'ref', condition_name: 'arena check' });
+    check('insert-seq: at start grows length', exp.sequence.length, before + 1);
+    check('insert-seq: idx 0 is the new ref', exp.sequence[0].condition_name, 'arena check');
+
+    docInsertSequenceEntry(exp, 2, { kind: 'ref', condition_name: 'arena check' });
+    check('insert-seq: middle places ref', exp.sequence[2].condition_name, 'arena check');
+
+    docInsertSequenceEntry(exp, exp.sequence.length, { kind: 'ref', condition_name: 'arena check' });
+    check('insert-seq: at end appends', exp.sequence[exp.sequence.length - 1].condition_name, 'arena check');
+
+    // Round-trip stable
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('insert-seq: round-trip length', reparsed.sequence.length, before + 3);
+}
+
+{
+    // Insert a block
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    docInsertSequenceEntry(exp, 1, {
+        kind: 'block',
+        name: 'extras',
+        trials: ['arena check'],
+        repetitions: 2
+    });
+    check('insert-seq-block: at idx 1 is block', exp.sequence[1].kind, 'block');
+    check('insert-seq-block: name', exp.sequence[1].name, 'extras');
+    check('insert-seq-block: reps', exp.sequence[1].repetitions, 2);
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('insert-seq-block: round-trip name', reparsed.sequence[1].name, 'extras');
+}
+
+{
+    // Out-of-range atIdx is clamped (no throw)
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    docInsertSequenceEntry(exp, -5, { kind: 'ref', condition_name: 'arena check' });
+    check('insert-seq: negative idx clamps to 0', exp.sequence[0].condition_name, 'arena check');
+
+    const exp2 = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const len2 = exp2.sequence.length;
+    docInsertSequenceEntry(exp2, 999, { kind: 'ref', condition_name: 'arena check' });
+    check('insert-seq: too-large idx clamps to length', exp2.sequence[len2].condition_name, 'arena check');
+}
+
+checkThrows(
+    'insert-seq: rejects bad entry kind',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docInsertSequenceEntry(exp, 0, { kind: 'bogus' });
+    },
+    'INVALID_INPUT'
+);
+
+// ─── Test Suite 23: docMoveSequenceEntry ───────────────────────────────────
+console.log('\n--- Suite 23: docMoveSequenceEntry (reorder) ---');
+
+{
+    // canonical_a sequence: [ref arena_check, ref start_light, block main_block, ref posttrial]
+    // Move idx 0 to idx 2 — order becomes [start_light, main_block, arena_check, posttrial]
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const origNames = exp.sequence.map(e => e.kind === 'ref' ? e.condition_name : e.name);
+    docMoveSequenceEntry(exp, 0, 2);
+    check(
+        'move-seq: first moves to position 2',
+        exp.sequence.map(e => e.kind === 'ref' ? e.condition_name : e.name).join('|'),
+        [origNames[1], origNames[2], origNames[0], origNames[3]].join('|')
+    );
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check(
+        'move-seq: round-trip preserves new order',
+        reparsed.sequence.map(e => e.kind === 'ref' ? e.condition_name : e.name).join('|'),
+        [origNames[1], origNames[2], origNames[0], origNames[3]].join('|')
+    );
+}
+
+{
+    // No-op cases: same index, out-of-range
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const before = JSON.stringify(exp.sequence.map(e => e.kind === 'ref' ? e.condition_name : e.name));
+    docMoveSequenceEntry(exp, 1, 1);
+    docMoveSequenceEntry(exp, 99, 0);
+    docMoveSequenceEntry(exp, -1, 0);
+    check(
+        'move-seq: no-op / out-of-range preserves order',
+        JSON.stringify(exp.sequence.map(e => e.kind === 'ref' ? e.condition_name : e.name)),
+        before
+    );
+}
+
+{
+    // Doc/model divergence throws
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    exp._doc.delete('experiment');  // nuke the doc-side sequence
+    let threw = false;
+    let code = null;
+    try {
+        docMoveSequenceEntry(exp, 0, 1);
+    } catch (e) {
+        threw = true;
+        code = e.code;
+    }
+    checkTrue('move-seq: throws on doc/model divergence', threw);
+    check('move-seq: error code DOC_MODEL_DIVERGENCE', code, 'DOC_MODEL_DIVERGENCE');
+}
+
+// ─── Test Suite 24: docRemoveSequenceEntry ─────────────────────────────────
+console.log('\n--- Suite 24: docRemoveSequenceEntry (delete) ---');
+
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const before = exp.sequence.length;
+    const removedName = exp.sequence[0].condition_name;
+    docRemoveSequenceEntry(exp, 0);
+    check('remove-seq: length shrinks', exp.sequence.length, before - 1);
+    checkTrue(
+        'remove-seq: removed entry gone from JS model',
+        !exp.sequence.some(e => e.kind === 'ref' && e.condition_name === removedName)
+    );
+
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('remove-seq: round-trip length', reparsed.sequence.length, before - 1);
+}
+
+{
+    // Remove a block
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    docRemoveSequenceEntry(exp, blockIdx);
+    checkTrue('remove-seq-block: block gone', !exp.sequence.some(e => e.kind === 'block'));
+}
+
+checkThrows(
+    'remove-seq: rejects out-of-bounds',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docRemoveSequenceEntry(exp, 999);
+    },
+    'BAD_PATH'
+);
+
+checkThrows(
+    'remove-seq: rejects negative idx',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docRemoveSequenceEntry(exp, -1);
+    },
+    'BAD_PATH'
+);
 
 // ─── Results ────────────────────────────────────────────────────────────────
 console.log('\n=== Results: ' + passedTests + '/' + totalTests + ' passed ===');

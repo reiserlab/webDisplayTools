@@ -994,6 +994,136 @@ function docCloneCondition(experiment, srcIdx, newName) {
 }
 
 /**
+ * Internal helper: build a YAMLSeq item and JS-mirror entry from a JS-side
+ * sequence entry shape. Used by both docAppendSequenceEntry and
+ * docInsertSequenceEntry so they construct identical structures.
+ *
+ * Returns { node, jsEntry } or throws V3ParseError on bad input.
+ */
+function _buildSequenceEntry(doc, entry) {
+    if (!entry || typeof entry !== 'object') {
+        throw new V3ParseError('sequence entry must be an object', 'INVALID_INPUT');
+    }
+    if (entry.kind === 'ref') {
+        if (typeof entry.condition_name !== 'string' || !entry.condition_name) {
+            throw new V3ParseError('ref entry needs a condition_name', 'INVALID_INPUT');
+        }
+        return {
+            node: doc.createNode(entry.condition_name),
+            jsEntry: { kind: 'ref', condition_name: entry.condition_name }
+        };
+    }
+    if (entry.kind === 'block') {
+        if (!Array.isArray(entry.trials) || entry.trials.length === 0) {
+            throw new V3ParseError('block entry needs a non-empty trials list', 'INVALID_INPUT');
+        }
+        const blockShape = { trials: entry.trials.slice() };
+        if (typeof entry.name === 'string' && entry.name) blockShape.name = entry.name;
+        if (typeof entry.repetitions === 'number') blockShape.repetitions = entry.repetitions;
+        if (entry.randomize === true) blockShape.randomize = true;
+        if (typeof entry.intertrial === 'string' && entry.intertrial) blockShape.intertrial = entry.intertrial;
+        return {
+            node: doc.createNode(blockShape),
+            jsEntry: {
+                kind: 'block',
+                name: blockShape.name || null,
+                trials: blockShape.trials,
+                repetitions: blockShape.repetitions || 1,
+                randomize: blockShape.randomize === true,
+                intertrial: blockShape.intertrial || null,
+                _unknownKeys: {}
+            }
+        };
+    }
+    throw new V3ParseError('entry.kind must be "ref" or "block"', 'INVALID_INPUT');
+}
+
+/**
+ * docInsertSequenceEntry(experiment, atIdx, entry)
+ *
+ * Insert a sequence entry at position `atIdx`. atIdx is clamped to
+ * [0, sequence.length] so passing sequence.length is equivalent to
+ * docAppendSequenceEntry.
+ *
+ * Used by the +Add UI in the sequence pane and (in Phase 4b) by
+ * library-to-sequence drag/drop with a target index.
+ */
+function docInsertSequenceEntry(experiment, atIdx, entry) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docInsertSequenceEntry: experiment has no _doc handle', 'NO_DOC');
+    }
+    const seqNode = experiment._doc.getIn(['experiment'], true);
+    if (!seqNode || !Array.isArray(seqNode.items)) {
+        throw new V3ParseError(
+            'docInsertSequenceEntry: experiment seq node not found',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+    const built = _buildSequenceEntry(experiment._doc, entry);
+    const clamped = Math.max(0, Math.min(atIdx, experiment.sequence.length));
+    seqNode.items.splice(clamped, 0, built.node);
+    experiment.sequence.splice(clamped, 0, built.jsEntry);
+}
+
+/**
+ * docMoveSequenceEntry(experiment, fromIdx, toIdx)
+ *
+ * Reorder a top-level sequence entry from fromIdx to toIdx. Both indices are
+ * bounds-checked; no-op if out of range or fromIdx === toIdx. Throws on
+ * doc/model divergence (matching docMoveCommand's contract).
+ */
+function docMoveSequenceEntry(experiment, fromIdx, toIdx) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docMoveSequenceEntry: experiment has no _doc handle', 'NO_DOC');
+    }
+    const n = experiment.sequence.length;
+    if (fromIdx < 0 || fromIdx >= n || toIdx < 0 || toIdx >= n || fromIdx === toIdx) return;
+
+    const seqNode = experiment._doc.getIn(['experiment'], true);
+    if (!seqNode || !Array.isArray(seqNode.items)) {
+        throw new V3ParseError(
+            'docMoveSequenceEntry: doc/model divergence — no experiment seq node',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+
+    const movedNode = seqNode.items.splice(fromIdx, 1)[0];
+    seqNode.items.splice(toIdx, 0, movedNode);
+
+    const movedJs = experiment.sequence.splice(fromIdx, 1)[0];
+    experiment.sequence.splice(toIdx, 0, movedJs);
+}
+
+/**
+ * docRemoveSequenceEntry(experiment, idx)
+ *
+ * Remove the sequence entry at `idx` from both _doc and the JS mirror.
+ * Throws on out-of-bounds rather than silently no-op'ing — accidental
+ * deletes should surface immediately.
+ */
+function docRemoveSequenceEntry(experiment, idx) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docRemoveSequenceEntry: experiment has no _doc handle', 'NO_DOC');
+    }
+    const n = experiment.sequence.length;
+    if (idx < 0 || idx >= n) {
+        throw new V3ParseError(
+            'docRemoveSequenceEntry: idx ' + idx + ' out of bounds [0, ' + n + ')',
+            'BAD_PATH'
+        );
+    }
+    const seqNode = experiment._doc.getIn(['experiment'], true);
+    if (!seqNode || !Array.isArray(seqNode.items)) {
+        throw new V3ParseError(
+            'docRemoveSequenceEntry: doc/model divergence — no experiment seq node',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+    seqNode.items.splice(idx, 1);
+    experiment.sequence.splice(idx, 1);
+}
+
+/**
  * docAppendSequenceEntry(experiment, entry)
  *
  * Append an entry to `experiment:` (the sequence). `entry` can be a ref —
@@ -1007,10 +1137,6 @@ function docAppendSequenceEntry(experiment, entry) {
     if (!experiment || !experiment._doc) {
         throw new V3ParseError('docAppendSequenceEntry: experiment has no _doc handle', 'NO_DOC');
     }
-    if (!entry || typeof entry !== 'object') {
-        throw new V3ParseError('docAppendSequenceEntry: entry must be an object', 'INVALID_INPUT');
-    }
-
     const seqNode = experiment._doc.getIn(['experiment'], true);
     if (!seqNode || !Array.isArray(seqNode.items)) {
         throw new V3ParseError(
@@ -1018,47 +1144,11 @@ function docAppendSequenceEntry(experiment, entry) {
             'DOC_MODEL_DIVERGENCE'
         );
     }
-
-    if (entry.kind === 'ref') {
-        if (typeof entry.condition_name !== 'string' || !entry.condition_name) {
-            throw new V3ParseError(
-                'docAppendSequenceEntry: ref entry needs a condition_name',
-                'INVALID_INPUT'
-            );
-        }
-        seqNode.items.push(experiment._doc.createNode(entry.condition_name));
-        experiment.sequence.push({ kind: 'ref', condition_name: entry.condition_name });
-    } else if (entry.kind === 'block') {
-        if (!Array.isArray(entry.trials) || entry.trials.length === 0) {
-            throw new V3ParseError(
-                'docAppendSequenceEntry: block entry needs a non-empty trials list',
-                'INVALID_INPUT'
-            );
-        }
-        const blockShape = {
-            trials: entry.trials.slice()
-        };
-        if (typeof entry.name === 'string' && entry.name) blockShape.name = entry.name;
-        if (typeof entry.repetitions === 'number') blockShape.repetitions = entry.repetitions;
-        if (entry.randomize === true) blockShape.randomize = true;
-        if (typeof entry.intertrial === 'string' && entry.intertrial) blockShape.intertrial = entry.intertrial;
-        seqNode.items.push(experiment._doc.createNode(blockShape));
-        experiment.sequence.push({
-            kind: 'block',
-            name: blockShape.name || null,
-            trials: blockShape.trials,
-            repetitions: blockShape.repetitions || 1,
-            randomize: blockShape.randomize === true,
-            intertrial: blockShape.intertrial || null,
-            _unknownKeys: {}
-        });
-    } else {
-        throw new V3ParseError(
-            'docAppendSequenceEntry: entry.kind must be "ref" or "block"',
-            'INVALID_INPUT'
-        );
-    }
+    const built = _buildSequenceEntry(experiment._doc, entry);
+    seqNode.items.push(built.node);
+    experiment.sequence.push(built.jsEntry);
 }
+
 
 /**
  * docDelete(experiment, path)
@@ -1122,6 +1212,9 @@ const ProtocolV3 = {
     docInsertCondition,
     docCloneCondition,
     docAppendSequenceEntry,
+    docInsertSequenceEntry,
+    docMoveSequenceEntry,
+    docRemoveSequenceEntry,
     docSetPluginCommandHead,
     docAddPluginParam,
     docDeletePluginParam,
@@ -1153,6 +1246,9 @@ export {
     docInsertCondition,
     docCloneCondition,
     docAppendSequenceEntry,
+    docInsertSequenceEntry,
+    docMoveSequenceEntry,
+    docRemoveSequenceEntry,
     docSetPluginCommandHead,
     docAddPluginParam,
     docDeletePluginParam,

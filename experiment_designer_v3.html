@@ -328,6 +328,45 @@
         }
         .seq-entry:hover { border-color: var(--accent); }
         .seq-entry.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0, 230, 118, 0.15); }
+        .seq-entry[draggable="true"] { cursor: grab; }
+        .seq-entry[draggable="true"]:active { cursor: grabbing; }
+        .seq-entry.dragging { opacity: 0.5; }
+        .seq-entry.drop-before { box-shadow: 0 -2px 0 0 var(--accent); }
+        .seq-entry.drop-after { box-shadow: 0 2px 0 0 var(--accent); }
+        .seq-entry .seq-actions {
+            display: flex;
+            gap: 0.2rem;
+            margin-left: auto;
+            opacity: 0;
+            transition: opacity 0.1s;
+        }
+        .seq-entry:hover .seq-actions { opacity: 1; }
+        .seq-entry .seq-act-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            font-family: inherit;
+            font-size: 0.7rem;
+            width: 20px;
+            height: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 3px;
+            padding: 0;
+            line-height: 1;
+        }
+        .seq-entry .seq-act-btn:hover {
+            background: var(--surface-2);
+            color: var(--accent);
+            border-color: var(--border);
+        }
+        .seq-entry .seq-act-btn.danger:hover {
+            background: rgba(244, 67, 54, 0.12);
+            color: var(--error);
+            border-color: var(--error);
+        }
         .seq-entry.ref {
             background: var(--ref-bg);
             padding: 0.5rem 0.75rem;
@@ -840,6 +879,8 @@
             <div class="zone-header">
                 <span>Experiment Sequence</span>
                 <span class="count" id="seqCount">0</span>
+                <button id="addRefBtn" class="zone-head-btn" title="Append a bare reference to an existing condition" disabled>+ Ref</button>
+                <button id="addBlockBtn" class="zone-head-btn" title="Append a new block (group of trials with optional repetition / intertrial)" disabled>+ Block</button>
             </div>
             <div class="zone-body">
                 <div id="sequenceList">
@@ -873,7 +914,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.4 | <span id="footerTimestamp">2026-05-27 14:40 ET</span>
+        v3 Experiment Designer v0.5 | <span id="footerTimestamp">2026-05-27 15:45 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -901,6 +942,9 @@
             docInsertCondition,
             docCloneCondition,
             docAppendSequenceEntry,
+            docInsertSequenceEntry,
+            docMoveSequenceEntry,
+            docRemoveSequenceEntry,
             docSetPluginCommandHead,
             docAddPluginParam,
             docDeletePluginParam,
@@ -1077,6 +1121,8 @@
                 renderAll();
                 $('exportBtn').disabled = false;
                 $('addCondBtn').disabled = false;
+                $('addRefBtn').disabled = false;
+                $('addBlockBtn').disabled = false;
                 return true;
             } catch (err) {
                 showError(
@@ -1278,6 +1324,121 @@
 
         $('addCondBtn').addEventListener('click', onAddCondition);
 
+        // ─── Sequence: + Ref / + Block / drag / delete ─────────────────────
+
+        function onAddSeqRef() {
+            if (!experiment) return;
+            if (experiment.conditions.length === 0) {
+                showError('Add ref failed', 'No conditions in the library yet. Add a condition first.');
+                return;
+            }
+            const names = experiment.conditions.map((c) => c.name);
+            const suggestion = names[0];
+            const promptText =
+                'Reference which condition?\n\n' +
+                'Available: ' + names.slice(0, 12).join(', ') +
+                (names.length > 12 ? `, ... (${names.length - 12} more)` : '');
+            const name = prompt(promptText, suggestion);
+            if (name === null) return;
+            const trimmed = name.trim();
+            if (!trimmed) {
+                showError('Add ref failed', 'Name cannot be empty.');
+                return;
+            }
+            if (!names.includes(trimmed)) {
+                showError(
+                    'Add ref failed',
+                    'Condition "' + trimmed + '" is not in the library. The ref would be marked missing on import.'
+                );
+                return;
+            }
+            pushUndo();
+            try {
+                docAppendSequenceEntry(experiment, { kind: 'ref', condition_name: trimmed });
+                setDirty(true);
+                selection = { kind: 'ref', index: experiment.sequence.length - 1 };
+                renderAll();
+            } catch (err) {
+                showError('Add ref failed', err.message);
+            }
+        }
+
+        function onAddSeqBlock() {
+            if (!experiment) return;
+            if (experiment.conditions.length === 0) {
+                showError('Add block failed', 'No conditions in the library yet. Add a condition first.');
+                return;
+            }
+            const names = experiment.conditions.map((c) => c.name);
+            const trial = prompt(
+                'First trial condition for the new block?\n\n' +
+                'Available: ' + names.slice(0, 12).join(', ') +
+                (names.length > 12 ? `, ... (${names.length - 12} more)` : ''),
+                names[0]
+            );
+            if (trial === null) return;
+            const trimmedTrial = trial.trim();
+            if (!trimmedTrial || !names.includes(trimmedTrial)) {
+                showError('Add block failed', 'First trial must be an existing library condition.');
+                return;
+            }
+            const blockName = prompt('Block name (optional, auto-numbered if blank):', '');
+            if (blockName === null) return;
+            const trimmedBlockName = blockName.trim();
+            pushUndo();
+            try {
+                const entry = {
+                    kind: 'block',
+                    trials: [trimmedTrial],
+                    repetitions: 1
+                };
+                if (trimmedBlockName) entry.name = trimmedBlockName;
+                docAppendSequenceEntry(experiment, entry);
+                setDirty(true);
+                selection = { kind: 'block', index: experiment.sequence.length - 1 };
+                renderAll();
+            } catch (err) {
+                showError('Add block failed', err.message);
+            }
+        }
+
+        $('addRefBtn').addEventListener('click', onAddSeqRef);
+        $('addBlockBtn').addEventListener('click', onAddSeqBlock);
+
+        function onMoveSequenceEntry(fromIdx, toIdx) {
+            if (fromIdx === toIdx) return;
+            pushUndo();
+            try {
+                docMoveSequenceEntry(experiment, fromIdx, toIdx);
+                setDirty(true);
+                // Update selection if it was on the moved entry
+                if (selection && (selection.kind === 'ref' || selection.kind === 'block') && selection.index === fromIdx) {
+                    selection = { ...selection, index: toIdx };
+                }
+                renderAll();
+            } catch (err) {
+                showError('Move failed', err.message);
+            }
+        }
+
+        function onRemoveSequenceEntry(idx) {
+            pushUndo();
+            try {
+                // Clear selection first if it's about to vanish; renderAll picks up the change.
+                if (selection && (selection.kind === 'ref' || selection.kind === 'block') && selection.index === idx) {
+                    selection = null;
+                } else if (selection && (selection.kind === 'ref' || selection.kind === 'block') && selection.index > idx) {
+                    // Adjust later-index selection to account for the shift
+                    selection = { ...selection, index: selection.index - 1 };
+                }
+                docRemoveSequenceEntry(experiment, idx);
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                showError('Remove failed', err.message);
+            }
+        }
+
         function computeUsage() {
             const usage = new Map();
             if (!experiment) return usage;
@@ -1363,6 +1524,65 @@
 
             const knownConds = new Set(experiment.conditions.map(c => c.name));
 
+            // Per-entry action button factory — reused for refs and blocks
+            const makeActions = (idx) => {
+                const actions = el('div', { class: 'seq-actions' });
+                const delBtn = el('button', {
+                    class: 'seq-act-btn danger',
+                    title: 'Remove this entry from the sequence (Ctrl+Z to undo)',
+                    onClick: (e) => {
+                        e.stopPropagation();
+                        onRemoveSequenceEntry(idx);
+                    }
+                }, '✕');
+                actions.appendChild(delBtn);
+                return actions;
+            };
+
+            // Native HTML5 drag/drop. dragstart sets the source index;
+            // dragover on a target shows a drop indicator (before/after based
+            // on cursor y vs row midpoint); drop calls onMoveSequenceEntry.
+            const attachDrag = (card, idx) => {
+                card.setAttribute('draggable', 'true');
+                card.dataset.seqIdx = String(idx);
+                card.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/x-seq-idx', String(idx));
+                    card.classList.add('dragging');
+                });
+                card.addEventListener('dragend', () => {
+                    card.classList.remove('dragging');
+                    // Clear any lingering drop-indicator classes
+                    list.querySelectorAll('.seq-entry').forEach((el) => {
+                        el.classList.remove('drop-before', 'drop-after');
+                    });
+                });
+                card.addEventListener('dragover', (e) => {
+                    e.preventDefault();  // allow drop
+                    e.dataTransfer.dropEffect = 'move';
+                    const rect = card.getBoundingClientRect();
+                    const before = e.clientY < rect.top + rect.height / 2;
+                    list.querySelectorAll('.seq-entry').forEach((el) => {
+                        el.classList.remove('drop-before', 'drop-after');
+                    });
+                    card.classList.add(before ? 'drop-before' : 'drop-after');
+                });
+                card.addEventListener('dragleave', () => {
+                    card.classList.remove('drop-before', 'drop-after');
+                });
+                card.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    const fromIdx = Number(e.dataTransfer.getData('text/x-seq-idx'));
+                    if (!Number.isFinite(fromIdx) || fromIdx === idx) return;
+                    const rect = card.getBoundingClientRect();
+                    const dropBefore = e.clientY < rect.top + rect.height / 2;
+                    // toIdx for splice-after-removal: if dropping below the source, the index shifts by 1
+                    let toIdx = dropBefore ? idx : idx + 1;
+                    if (fromIdx < toIdx) toIdx -= 1;
+                    onMoveSequenceEntry(fromIdx, toIdx);
+                });
+            };
+
             experiment.sequence.forEach((entry, idx) => {
                 const isSelected = selection && (
                     (selection.kind === 'ref' && selection.index === idx) ||
@@ -1376,8 +1596,10 @@
                     },
                         el('span', { class: 'marker' }, '▸'),
                         el('span', { class: 'name' }, entry.condition_name),
-                        !knownConds.has(entry.condition_name) ? el('span', { class: 'trial-chip missing', style: 'margin-left: auto;' }, 'missing') : null
+                        !knownConds.has(entry.condition_name) ? el('span', { class: 'trial-chip missing' }, 'missing') : null,
+                        makeActions(idx)
                     );
+                    attachDrag(card, idx);
                     list.appendChild(card);
                 } else if (entry.kind === 'block') {
                     const meta = el('div', { class: 'block-meta' });
@@ -1412,16 +1634,21 @@
                             '⚠ ' + Object.keys(entry._unknownKeys).length + ' future-compat key' + (Object.keys(entry._unknownKeys).length === 1 ? '' : 's'))
                         : null;
 
+                    const blockHead = el('div', { class: 'block-name-row', style: 'display: flex; align-items: center;' },
+                        el('div', { class: 'block-name' }, '▾ ' + (entry.name || 'block_' + (idx + 1))),
+                        makeActions(idx)
+                    );
                     const card = el('div', {
                         class: 'seq-entry block' + (isSelected ? ' selected' : ''),
                         onClick: () => { selection = { kind: 'block', index: idx }; renderSequence(); renderInspector(); renderLibrary(); }
                     },
-                        el('div', { class: 'block-name' }, '▾ ' + (entry.name || 'block_' + (idx + 1))),
+                        blockHead,
                         meta,
                         trialsRow,
                         itiRow,
                         unknownPill
                     );
+                    attachDrag(card, idx);
                     list.appendChild(card);
                 }
             });
