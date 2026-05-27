@@ -1124,6 +1124,117 @@ function docRemoveSequenceEntry(experiment, idx) {
 }
 
 /**
+ * docInsertTrialInBlock(experiment, blockIdx, atIdx, condName)
+ *
+ * Insert a trial reference (a condition name string) into the block at
+ * `blockIdx`'s `trials:` seq. atIdx is clamped to [0, trials.length] so
+ * passing trials.length appends.
+ */
+function docInsertTrialInBlock(experiment, blockIdx, atIdx, condName) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docInsertTrialInBlock: experiment has no _doc handle', 'NO_DOC');
+    }
+    const block = experiment.sequence[blockIdx];
+    if (!block || block.kind !== 'block') {
+        throw new V3ParseError(
+            'docInsertTrialInBlock: sequence[' + blockIdx + '] is not a block',
+            'INVALID_INPUT'
+        );
+    }
+    if (typeof condName !== 'string' || !condName) {
+        throw new V3ParseError(
+            'docInsertTrialInBlock: condName must be a non-empty string',
+            'INVALID_INPUT'
+        );
+    }
+    const trialsNode = experiment._doc.getIn(['experiment', blockIdx, 'trials'], true);
+    if (!trialsNode || !Array.isArray(trialsNode.items)) {
+        throw new V3ParseError(
+            'docInsertTrialInBlock: trials seq node missing at experiment[' + blockIdx + ']',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+    const clamped = Math.max(0, Math.min(atIdx, block.trials.length));
+    trialsNode.items.splice(clamped, 0, experiment._doc.createNode(condName));
+    block.trials.splice(clamped, 0, condName);
+}
+
+/**
+ * docMoveTrialInBlock(experiment, blockIdx, fromIdx, toIdx)
+ *
+ * Reorder a trial within a block's `trials:` seq. Bounds-checked; no-op on
+ * same-idx or out-of-range. Throws on doc/model divergence.
+ */
+function docMoveTrialInBlock(experiment, blockIdx, fromIdx, toIdx) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docMoveTrialInBlock: experiment has no _doc handle', 'NO_DOC');
+    }
+    const block = experiment.sequence[blockIdx];
+    if (!block || block.kind !== 'block') {
+        throw new V3ParseError(
+            'docMoveTrialInBlock: sequence[' + blockIdx + '] is not a block',
+            'INVALID_INPUT'
+        );
+    }
+    const n = block.trials.length;
+    if (fromIdx < 0 || fromIdx >= n || toIdx < 0 || toIdx >= n || fromIdx === toIdx) return;
+
+    const trialsNode = experiment._doc.getIn(['experiment', blockIdx, 'trials'], true);
+    if (!trialsNode || !Array.isArray(trialsNode.items)) {
+        throw new V3ParseError(
+            'docMoveTrialInBlock: doc/model divergence — no trials seq at experiment[' + blockIdx + ']',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+    const moved = trialsNode.items.splice(fromIdx, 1)[0];
+    trialsNode.items.splice(toIdx, 0, moved);
+    const movedJs = block.trials.splice(fromIdx, 1)[0];
+    block.trials.splice(toIdx, 0, movedJs);
+}
+
+/**
+ * docRemoveTrialFromBlock(experiment, blockIdx, trialIdx)
+ *
+ * Delete the trial at trialIdx from the block at blockIdx. Throws on
+ * out-of-bounds. v3 spec requires a non-empty trials list, so removing the
+ * last trial would produce an invalid block — guard against that here.
+ */
+function docRemoveTrialFromBlock(experiment, blockIdx, trialIdx) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docRemoveTrialFromBlock: experiment has no _doc handle', 'NO_DOC');
+    }
+    const block = experiment.sequence[blockIdx];
+    if (!block || block.kind !== 'block') {
+        throw new V3ParseError(
+            'docRemoveTrialFromBlock: sequence[' + blockIdx + '] is not a block',
+            'INVALID_INPUT'
+        );
+    }
+    const n = block.trials.length;
+    if (trialIdx < 0 || trialIdx >= n) {
+        throw new V3ParseError(
+            'docRemoveTrialFromBlock: trialIdx ' + trialIdx + ' out of bounds [0, ' + n + ')',
+            'BAD_PATH'
+        );
+    }
+    if (n === 1) {
+        throw new V3ParseError(
+            'docRemoveTrialFromBlock: cannot remove the last trial — v3 spec requires non-empty trials. Remove the whole block instead.',
+            'INVALID_INPUT'
+        );
+    }
+    const trialsNode = experiment._doc.getIn(['experiment', blockIdx, 'trials'], true);
+    if (!trialsNode || !Array.isArray(trialsNode.items)) {
+        throw new V3ParseError(
+            'docRemoveTrialFromBlock: doc/model divergence — no trials seq at experiment[' + blockIdx + ']',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+    trialsNode.items.splice(trialIdx, 1);
+    block.trials.splice(trialIdx, 1);
+}
+
+/**
  * docAppendSequenceEntry(experiment, entry)
  *
  * Append an entry to `experiment:` (the sequence). `entry` can be a ref —
@@ -1215,6 +1326,9 @@ const ProtocolV3 = {
     docInsertSequenceEntry,
     docMoveSequenceEntry,
     docRemoveSequenceEntry,
+    docInsertTrialInBlock,
+    docMoveTrialInBlock,
+    docRemoveTrialFromBlock,
     docSetPluginCommandHead,
     docAddPluginParam,
     docDeletePluginParam,
@@ -1249,6 +1363,9 @@ export {
     docInsertSequenceEntry,
     docMoveSequenceEntry,
     docRemoveSequenceEntry,
+    docInsertTrialInBlock,
+    docMoveTrialInBlock,
+    docRemoveTrialFromBlock,
     docSetPluginCommandHead,
     docAddPluginParam,
     docDeletePluginParam,
