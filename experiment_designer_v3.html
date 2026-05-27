@@ -778,7 +778,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.3 | <span id="footerTimestamp">2026-05-27 14:20 ET</span>
+        v3 Experiment Designer v0.3 | <span id="footerTimestamp">2026-05-27 14:23 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -2335,18 +2335,6 @@
             renderInspector();
             renderTimeline();
         }
-
-        // Set the ET timestamp in the footer
-        function setFooterTimestamp() {
-            const now = new Date();
-            // Format as YYYY-MM-DD HH:MM ET
-            const fmt = (d) => {
-                const opts = { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false };
-                return d.toLocaleString('en-CA', opts).replace(',', '');
-            };
-            $('footerTimestamp').textContent = fmt(now) + ' ET';
-        }
-        setFooterTimestamp();
 
         // Initial empty render
         renderAll();
