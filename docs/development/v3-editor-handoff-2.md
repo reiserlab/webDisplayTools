@@ -1,8 +1,8 @@
 # v3 Experiment Designer — Handoff for Next Session (Round 2)
 
-**Last updated:** 2026-05-27
-**Branch:** `main` at `c5cf223`
-**Editor version:** v3 Experiment Designer **v0.8**
+**Last updated:** 2026-05-27 (Phase 5 session)
+**Branch:** `main` at `c5cf223` → cleanup PR `#76` + Phase 5 PR (this session)
+**Editor version:** v3 Experiment Designer **v0.10** (Phase 5 shipped this session)
 **Pinned upstream:** maDisplayTools `origin/version3` at `649d7ef`
 
 This is the second handoff doc for the v3 designer. It supersedes the original
@@ -227,29 +227,47 @@ already-merged code.
 **Why first:** the event-listener bug surfaces within a normal editing
 session. If the lab is actively using v0.8, they'll hit it. Cheap to fix.
 
-### Tier 2: Phase 5 — Variables UX (next big feature — ~4–5 days)
+### Tier 2: Phase 5 — Variables UX ✅ SHIPPED (this session, v0.10)
 
-The handoff plan's Phase 5. Three pieces:
+Phase 5 landed in two PRs this session: cleanup (`#76`, v0.9) then
+Phase 5 (this branch, v0.10). All three pieces are in:
 
-1. **Inline-editable Variables table** in the Settings drawer (anchor name
-   + value, both editable). Already exists as read-only.
-2. **Anchor binding popover** on every editable scalar in command cards.
-   Today alias-bound fields are read-only chips. Phase 5 adds a pencil
-   icon → popover with three actions: Edit literal (unbinds anchor), Bind
-   to existing anchor (dropdown of available anchors), Create new anchor
-   (name + use current value).
-3. **Rename cascade.** Confirm dialog showing all references that will
-   update, then the cascade fires as one `pushUndo()` → many `docSet`
-   calls → single `renderAll`. One undo step for the whole rename.
+1. **Inline-editable Variables table** in the Settings drawer (anchor
+   name + value editable, ✕ delete with cascade-unbind, `+ Add` row).
+   Complex anchors (Map/Seq) render as read-only "complex anchor"
+   badges.
+2. **Anchor binding popover** on every editable scalar (controller and
+   plugin command fields) via a 🔗 button appended to each input.
+   - Literal scalars: Bind-to-existing dropdown (with type-mismatched
+     options visibly disabled) + Create-new-anchor section.
+   - Aliased scalars: summary card with "Edit in Variables…" jump
+     button, Rebind-to dropdown, and Unbind action.
+3. **Rename cascade.** Modal lists every reference path that will
+   update; single `pushUndo()` wraps the atomic `docRenameVariable`
+   call (which walks every `*alias` source in one synchronous pass via
+   `YAML.visit`). One undo step for the whole rename.
 
-**Why before D4:** Codex-adv flagged in the D4 design review that D4
-creates prefix-clutter (`sibling_lab__dur_short`) that Phase 5 is the
-exact tool to clean up. Doing Phase 5 first means D4 ships against a
-better base. Per `docs/development/v3-d4-design-reviews.md`.
+**New doc helpers** (10 added → 27 total):
+`docCreateVariable`, `docDeleteVariable`, `docRenameVariable`,
+`docSetVariableValue`, `docBindToAnchor`, `docUnbindAnchor`,
+`findAliasesTo`, `variableIsComplex`, `isValidAnchorName`,
+`anchorExists`.
+
+**New UI primitive:** `confirmModal({title, body, list, confirmLabel}) →
+Promise<bool>` — backdrop-dismiss + Escape/Enter keys. Reusable for
+Phase 6's full validation modal.
+
+**Test coverage:** 54 new tests in Suite 29 (Variable lifecycle +
+anchor binding). Total: 429/429.
+
+**D4 unblocked:** the prefix-clutter mitigation Codex-adv flagged in
+the D4 design review now has its UX (Phase 5's Variables table makes
+the renames trivial).
 
 Complex anchors (maps, lists, merge keys `<<: *foo`) round-trip via
-`_doc` but surface as read-only "advanced anchor" badges. User edits
-those in YAML.
+`_doc`, surface as read-only "complex anchor" badges in the Variables
+table, and rename cascades work for them (the test suite covers a
+merge-key case).
 
 ### Tier 3: Phase 6 — full validation modal + Reset (~1 day)
 
@@ -316,15 +334,18 @@ These should be resolved before the next session picks a direction:
 
 ### Current helpers (alphabetical)
 
-`docAddPluginParam`, `docAppendSequenceEntry`, `docCloneCondition`,
-`docDelete`, `docDeletePluginParam`, `docInsertCommand`,
+`docAddPluginParam`, `docAppendSequenceEntry`, `docBindToAnchor`,
+`docCloneCondition`, `docCreateVariable`, `docDelete`,
+`docDeletePluginParam`, `docDeleteVariable`, `docInsertCommand`,
 `docInsertCondition`, `docInsertSequenceEntry`, `docInsertTrialInBlock`,
 `docMoveCommand`, `docMoveSequenceEntry`, `docMoveTrialInBlock`,
 `docRemoveSequenceEntry`, `docRemoveTrialFromBlock`,
-`docReplaceSequenceEntry`, `docSet`, `docSetPluginCommandHead`.
+`docRenameVariable`, `docReplaceSequenceEntry`, `docSet`,
+`docSetPluginCommandHead`, `docSetVariableValue`, `docUnbindAnchor`.
 
 Plus inspection helpers: `nodeIsAliasAt`, `aliasNameAt`,
-`collectExportWarnings`, `validateReferences`.
+`anchorExists`, `findAliasesTo`, `isValidAnchorName`,
+`variableIsComplex`, `collectExportWarnings`, `validateReferences`.
 
 ### Helper anatomy (template for adding new ones)
 

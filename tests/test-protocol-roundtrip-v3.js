@@ -45,7 +45,18 @@ const {
     docAddPluginParam,
     docDeletePluginParam,
     nodeIsAliasAt,
-    aliasNameAt
+    aliasNameAt,
+    // Phase 5 — anchor lifecycle
+    docCreateVariable,
+    docDeleteVariable,
+    docRenameVariable,
+    docSetVariableValue,
+    docBindToAnchor,
+    docUnbindAnchor,
+    findAliasesTo,
+    variableIsComplex,
+    isValidAnchorName,
+    anchorExists
 } = require('../js/protocol-yaml-v3.js');
 
 const {
@@ -1882,6 +1893,312 @@ checkThrows(
     },
     'INVALID_INPUT'
 );
+
+// ─── Test Suite 29: Variable lifecycle + anchor binding (Phase 5) ─────────
+console.log('\n--- Suite 29: Variable lifecycle + anchor binding ---');
+
+// Helper: canonical_a has 4 variables with anchors that match their map keys:
+//   dur_long: &dur_long 10
+//   dur_short: &dur_short 3
+//   color_command: &color_command "setRedLEDPower"
+//   color_power: &color_power 5
+// `*dur_long` is referenced in the trialParams duration for several trials.
+
+// 29.1 — docCreateVariable emits `&name: value` line in regen
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    docCreateVariable(exp, 'gain_low', 2);
+    const regen = generateV3Protocol(exp);
+    checkTrue('var-create: anchor line in regen', /&gain_low\b/.test(regen));
+    checkTrue('var-create: value in regen', / 2\b/.test(regen));
+    check('var-create: mirror has new entry name', exp.variables[exp.variables.length - 1].name, 'gain_low');
+    check('var-create: mirror has new entry value', exp.variables[exp.variables.length - 1].value, 2);
+    // Re-parse confirms round-trip integrity
+    const exp2 = parseV3Protocol(regen);
+    checkTrue(
+        'var-create: round-trip preserves variable',
+        exp2.variables.some((v) => v.name === 'gain_low' && v.value === 2)
+    );
+}
+
+// 29.2 — docCreateVariable rejects duplicate name
+checkThrows(
+    'var-create: rejects duplicate name',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docCreateVariable(exp, 'dur_long', 999);
+    },
+    'INVALID_INPUT'
+);
+
+// 29.3 — docCreateVariable rejects invalid name
+checkThrows(
+    'var-create: rejects name with space',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docCreateVariable(exp, 'bad name', 1);
+    },
+    'INVALID_INPUT'
+);
+checkThrows(
+    'var-create: rejects empty name',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docCreateVariable(exp, '', 1);
+    },
+    'INVALID_INPUT'
+);
+
+// 29.4 — docDeleteVariable blocks when references exist
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const refs = findAliasesTo(exp, 'dur_long');
+    checkTrue('var-delete: dur_long has refs (precondition)', refs.length > 0, refs.length + ' refs');
+    let threw = null;
+    try {
+        docDeleteVariable(exp, 'dur_long');
+    } catch (e) {
+        threw = e;
+    }
+    checkTrue('var-delete: throws on referenced anchor', !!threw);
+    check('var-delete: error code', threw && threw.code, 'ANCHOR_HAS_REFS');
+    check('var-delete: refCount on error', threw && threw.refCount, refs.length);
+}
+
+// 29.5 — docDeleteVariable({cascadeUnbind:true}) cascades correctly
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const refs = findAliasesTo(exp, 'dur_long');
+    const refCount = refs.length;
+    docDeleteVariable(exp, 'dur_long', { cascadeUnbind: true });
+    const regen = generateV3Protocol(exp);
+    checkTrue('var-delete-cascade: no anchor in regen', !/\*dur_long\b/.test(regen));
+    checkTrue('var-delete-cascade: no anchor decl in regen', !/&dur_long\b/.test(regen));
+    // Mirror: variable entry removed
+    checkTrue(
+        'var-delete-cascade: mirror entry removed',
+        !exp.variables.some((v) => v.name === 'dur_long')
+    );
+    // Reparse + count literal `duration: 10`s — should match the alias count
+    const exp2 = parseV3Protocol(regen);
+    checkTrue('var-delete-cascade: round-trip parses', exp2 != null);
+    // refCount-many former aliases now hold literal 10
+    let literalCount = 0;
+    for (const cond of exp2.conditions) {
+        for (const cmd of cond.commands || []) {
+            if (cmd.duration === 10) literalCount++;
+        }
+    }
+    checkTrue(
+        'var-delete-cascade: literals replaced aliases',
+        literalCount >= refCount,
+        literalCount + ' literals found, ' + refCount + ' refs originally'
+    );
+}
+
+// 29.6 / 29.7 — docRenameVariable updates anchor at definition + all aliases
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const origRefs = findAliasesTo(exp, 'dur_long');
+    docRenameVariable(exp, 'dur_long', 'duration_long');
+    const regen = generateV3Protocol(exp);
+    checkTrue('var-rename: new anchor declared', /&duration_long\b/.test(regen));
+    checkTrue('var-rename: old anchor gone', !/&dur_long\b/.test(regen));
+    const oldAliasCount = (regen.match(/\*dur_long\b/g) || []).length;
+    const newAliasCount = (regen.match(/\*duration_long\b/g) || []).length;
+    check('var-rename: old aliases all gone', oldAliasCount, 0);
+    check('var-rename: new aliases match orig count', newAliasCount, origRefs.length);
+    // Mirror
+    check(
+        'var-rename: mirror name updated',
+        exp.variables.find((v) => v.name === 'duration_long')?.value,
+        10
+    );
+    checkTrue('var-rename: old name gone from mirror', !exp.variables.some((v) => v.name === 'dur_long'));
+}
+
+// 29.8 — docRenameVariable rejects collision with existing anchor
+checkThrows(
+    'var-rename: blocks newName collision',
+    () => {
+        const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+        docRenameVariable(exp, 'dur_long', 'dur_short');
+    },
+    'INVALID_INPUT'
+);
+
+// 29.9 — docBindToAnchor converts literal to alias
+{
+    // Take an unbound literal scalar: conditions[0].commands[?].duration
+    // The first condition is "arena_check". Find a literal duration there.
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    // Find a literal-bearing path
+    let targetPath = null;
+    for (let ci = 0; ci < exp.conditions.length && !targetPath; ci++) {
+        const cmds = exp.conditions[ci].commands || [];
+        for (let cmdi = 0; cmdi < cmds.length; cmdi++) {
+            const p = ['conditions', ci, 'commands', cmdi, 'duration'];
+            if (cmds[cmdi].duration !== undefined && !nodeIsAliasAt(exp, p)) {
+                targetPath = p;
+                break;
+            }
+        }
+    }
+    checkTrue('var-bind: found a literal duration path (precondition)', !!targetPath);
+    if (targetPath) {
+        const before = (generateV3Protocol(exp).match(/\*dur_short\b/g) || []).length;
+        docBindToAnchor(exp, targetPath, 'dur_short');
+        checkTrue('var-bind: path now Alias', nodeIsAliasAt(exp, targetPath));
+        check('var-bind: aliasNameAt returns anchor', aliasNameAt(exp, targetPath), 'dur_short');
+        const regen = generateV3Protocol(exp);
+        const after = (regen.match(/\*dur_short\b/g) || []).length;
+        check('var-bind: regen has one more alias', after, before + 1);
+        // Mirror: resolved to anchor value (3)
+        // Walk JS-mirror path
+        let cur = exp;
+        for (const k of targetPath) {
+            cur = cur[k === 'conditions' ? k : k];  // identity
+            // The above is a defensive walk
+        }
+        // Direct readout
+        const ci = targetPath[1], cmdi = targetPath[3];
+        check('var-bind: mirror resolved to anchor value', exp.conditions[ci].commands[cmdi].duration, 3);
+    }
+}
+
+// 29.10 — bind → unbind round-trip restores literal
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    // Find a literal duration path
+    let targetPath = null;
+    for (let ci = 0; ci < exp.conditions.length && !targetPath; ci++) {
+        const cmds = exp.conditions[ci].commands || [];
+        for (let cmdi = 0; cmdi < cmds.length; cmdi++) {
+            const p = ['conditions', ci, 'commands', cmdi, 'duration'];
+            if (cmds[cmdi].duration !== undefined && !nodeIsAliasAt(exp, p)) {
+                targetPath = p;
+                break;
+            }
+        }
+    }
+    if (targetPath) {
+        const origVal = exp._doc.getIn(targetPath); // resolved literal
+        docBindToAnchor(exp, targetPath, 'dur_short');
+        checkTrue('var-bind-unbind: bound to alias', nodeIsAliasAt(exp, targetPath));
+        docUnbindAnchor(exp, targetPath);
+        checkTrue('var-bind-unbind: alias removed', !nodeIsAliasAt(exp, targetPath));
+        // After unbind, scalar holds the resolved value (3 for dur_short)
+        check('var-bind-unbind: final literal is anchor value', exp._doc.getIn(targetPath), 3);
+    }
+}
+
+// 29.11 — docSetVariableValue preserves anchor; aliases still point to anchor
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const origAliasCount = (generateV3Protocol(exp).match(/\*dur_long\b/g) || []).length;
+    docSetVariableValue(exp, 'dur_long', 99);
+    const regen = generateV3Protocol(exp);
+    checkTrue('var-setval: anchor declaration preserved', /&dur_long\b/.test(regen));
+    checkTrue('var-setval: new value in regen', /&dur_long\s*99\b/.test(regen));
+    const aliasCount = (regen.match(/\*dur_long\b/g) || []).length;
+    check('var-setval: alias count unchanged', aliasCount, origAliasCount);
+    // Mirror: variable + every aliased path got the new value
+    check('var-setval: variable mirror', exp.variables.find((v) => v.name === 'dur_long').value, 99);
+    // At least one aliased path: walk conditions for any duration === 99
+    let found99 = false;
+    for (const c of exp.conditions) {
+        for (const cmd of c.commands || []) {
+            if (cmd.duration === 99) found99 = true;
+        }
+    }
+    checkTrue('var-setval: aliased mirror values updated to 99', found99);
+}
+
+// 29.12 — findAliasesTo count matches manual grep
+{
+    const yamlText = readFixture('v3_canonical_a.yaml');
+    const exp = parseV3Protocol(yamlText);
+    const refs = findAliasesTo(exp, 'dur_long');
+    const grepCount = (yamlText.match(/\*dur_long\b/g) || []).length;
+    check('findAliasesTo: count matches grep', refs.length, grepCount);
+    checkTrue('findAliasesTo: each ref has a path', refs.every((r) => Array.isArray(r.path) && r.path.length > 0));
+    checkTrue('findAliasesTo: each ref has a humanLabel', refs.every((r) => typeof r.humanLabel === 'string'));
+}
+
+// 29.13 — Comments survive a rename
+{
+    const orig = readFixture('v3_canonical_a.yaml');
+    const exp = parseV3Protocol(orig);
+    docRenameVariable(exp, 'color_command', 'led_command');
+    const regen = generateV3Protocol(exp);
+    const origCommentLines = (orig.match(/^\s*#.*$/gm) || []).length;
+    const regenCommentLines = (regen.match(/^\s*#.*$/gm) || []).length;
+    check('var-rename: comment line count preserved', regenCommentLines, origCommentLines);
+}
+
+// 29.14 — Merge keys cascade on rename (`<<: *foo`)
+{
+    // Construct a small YAML inline with a merge-key alias
+    const yamlText = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'variables:',
+        '  base: &base_cfg {a: 1, b: 2}',
+        'experiment:',
+        '  - "arena check"',
+        'conditions:',
+        '  - name: "arena check"',
+        '    commands:',
+        '      - type: wait',
+        '        duration: 1',
+        '        params:',
+        '          <<: *base_cfg',
+        '          c: 3'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yamlText);
+    // Confirm the alias is reachable via findAliasesTo
+    const refs = findAliasesTo(exp, 'base_cfg');
+    checkTrue('var-merge: findAliasesTo finds merge-key alias', refs.length >= 1);
+    // Rename and verify cascade
+    docRenameVariable(exp, 'base_cfg', 'new_base');
+    const regen = generateV3Protocol(exp);
+    checkTrue('var-merge: anchor renamed', /&new_base\b/.test(regen));
+    checkTrue('var-merge: merge-key alias renamed', /\*new_base\b/.test(regen));
+    checkTrue('var-merge: old anchor gone', !/&base_cfg\b/.test(regen));
+    checkTrue('var-merge: old alias gone', !/\*base_cfg\b/.test(regen));
+}
+
+// 29.15 — variableIsComplex detects map/seq anchors
+{
+    // The merge-key fixture's `&base_cfg` is a map → complex
+    const yamlText = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'variables:',
+        '  base: &base_cfg {a: 1}',
+        '  simple: &simple_n 42',
+        'experiment: ["c"]',
+        'conditions:',
+        '  - name: c',
+        '    commands: [{type: wait, duration: 1}]'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yamlText);
+    checkTrue('var-complex: map anchor is complex', variableIsComplex(exp, 'base_cfg'));
+    checkTrue('var-complex: scalar anchor is not complex', !variableIsComplex(exp, 'simple_n'));
+}
+
+// 29.16 — isValidAnchorName / anchorExists basics
+checkTrue('valid-name: alphanum_dashes', isValidAnchorName('foo_bar-1'));
+checkTrue('valid-name: rejects space', !isValidAnchorName('foo bar'));
+checkTrue('valid-name: rejects empty', !isValidAnchorName(''));
+checkTrue('valid-name: rejects non-string', !isValidAnchorName(42));
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    checkTrue('anchorExists: existing returns true', anchorExists(exp, 'dur_long'));
+    checkTrue('anchorExists: nonexistent returns false', !anchorExists(exp, 'no_such_anchor'));
+}
 
 // ─── Results ────────────────────────────────────────────────────────────────
 console.log('\n=== Results: ' + passedTests + '/' + totalTests + ' passed ===');

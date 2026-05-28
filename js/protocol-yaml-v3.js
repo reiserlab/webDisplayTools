@@ -214,7 +214,14 @@ function extractVariables(doc) {
     const varsNode = doc.get('variables', true);
     if (!varsNode || !varsNode.items) return out;
     for (const pair of varsNode.items) {
-        const name = pair.key && pair.key.value !== undefined ? pair.key.value : String(pair.key);
+        // Identity preference: the anchor name on pair.value (the v3-canonical
+        // form `name_key: &anchor_name value`). Falls back to the map key when
+        // there's no anchor — rare in real fixtures, but tolerated. Phase 5's
+        // Variables editor surfaces the anchor name as the rename target and
+        // expects this to be the identity used throughout the JS mirror.
+        const anchorName = pair.value && pair.value.anchor ? pair.value.anchor : null;
+        const mapKey = pair.key && pair.key.value !== undefined ? pair.key.value : String(pair.key);
+        const name = anchorName || mapKey;
         let value;
         if (pair.value && pair.value.value !== undefined) {
             value = pair.value.value;
@@ -1352,6 +1359,414 @@ function docDelete(experiment, path) {
 }
 
 // ════════════════════════════════════════════════════
+// Phase 5 — Variables (anchor) lifecycle helpers
+//
+// Anchors are first-class YAML CST nodes on `_doc`. The JS mirror
+// (`experiment.variables[]`) always holds the *resolved* values; the
+// `_doc` is the only place that knows about aliasing. These helpers
+// preserve that invariant.
+//
+// Helper inventory:
+//   docCreateVariable(exp, name, value)
+//   docDeleteVariable(exp, name, opts?)
+//   docRenameVariable(exp, oldName, newName)
+//   docSetVariableValue(exp, name, newValue)
+//   docBindToAnchor(exp, path, anchorName)
+//   docUnbindAnchor(exp, path)
+//   findAliasesTo(exp, anchorName)
+//   variableIsComplex(exp, name)
+//   isValidAnchorName(name)
+//   anchorExists(exp, name)
+// ════════════════════════════════════════════════════
+
+const _ANCHOR_NAME_RE = /^[A-Za-z0-9_-]+$/;
+
+function isValidAnchorName(name) {
+    return typeof name === 'string' && _ANCHOR_NAME_RE.test(name);
+}
+
+// Internal: locate the defining Pair of `name` in the variables: map.
+// Prefers anchor identity (pair.value.anchor), falls back to map key.
+function _findVariablePair(experiment, name) {
+    if (!experiment || !experiment._doc) return null;
+    const varsNode = experiment._doc.get('variables', true);
+    if (!varsNode || !Array.isArray(varsNode.items)) return null;
+    for (let i = 0; i < varsNode.items.length; i++) {
+        const pair = varsNode.items[i];
+        const anchorName = pair.value && pair.value.anchor ? pair.value.anchor : null;
+        const mapKey =
+            pair.key && pair.key.value !== undefined ? pair.key.value : String(pair.key);
+        const identity = anchorName || mapKey;
+        if (identity === name) return { pair, index: i, varsNode };
+    }
+    return null;
+}
+
+// True if `name` is in use as an anchor anywhere in the document.
+// Walks every Scalar/Map/Seq node; needs to be doc-wide because anchors
+// can legally sit on non-variables values (rare but legal).
+function anchorExists(experiment, name) {
+    if (!experiment || !experiment._doc) return false;
+    if (!isValidAnchorName(name)) return false;
+    let found = false;
+    if (typeof YAML.visit !== 'function') return false;
+    YAML.visit(experiment._doc, {
+        Node(_, node) {
+            if (node && node.anchor === name) {
+                found = true;
+                return YAML.visit.BREAK;
+            }
+        }
+    });
+    return found;
+}
+
+// True if the anchor's defining value node is a Map or Seq (not a Scalar).
+// The Variables UI renders complex anchors as read-only badges.
+function variableIsComplex(experiment, name) {
+    const found = _findVariablePair(experiment, name);
+    if (!found) return false;
+    const v = found.pair.value;
+    return !!(v && (YAML.isMap?.(v) || YAML.isSeq?.(v)));
+}
+
+// Walk the doc collecting every Alias whose `.source` matches anchorName.
+// Returns [{ path, humanLabel }] in document order. Recursive walk because
+// YAML.visit's ancestors chain mixes Pair/Map/Seq/Scalar in ways that are
+// fiddly to translate into a flat path; doing the walk ourselves with an
+// explicit accumulator is simpler and easier to reason about.
+function findAliasesTo(experiment, anchorName) {
+    const out = [];
+    if (!experiment || !experiment._doc) return out;
+    const root = experiment._doc.contents;
+    if (!root) return out;
+    _walkForAliases(root, [], anchorName, out);
+    return out;
+}
+
+function _walkForAliases(node, path, anchorName, out) {
+    if (!node) return;
+    if (YAML.isAlias?.(node)) {
+        if (node.source === anchorName) {
+            out.push({ path: path.slice(), humanLabel: _humanLabelForPath(path) });
+        }
+        return;
+    }
+    if (YAML.isMap?.(node)) {
+        for (const pair of node.items) {
+            const key =
+                pair.key && pair.key.value !== undefined ? pair.key.value : String(pair.key);
+            _walkForAliases(pair.value, [...path, key], anchorName, out);
+        }
+        return;
+    }
+    if (YAML.isSeq?.(node)) {
+        for (let i = 0; i < node.items.length; i++) {
+            _walkForAliases(node.items[i], [...path, i], anchorName, out);
+        }
+        return;
+    }
+    // Scalars / unknown: no recursion.
+}
+
+// Best-effort human label for an alias path — e.g. "conditions[2].commands[1].duration".
+function _humanLabelForPath(path) {
+    if (!path || path.length === 0) return '<root>';
+    const parts = [];
+    for (let i = 0; i < path.length; i++) {
+        const p = path[i];
+        if (typeof p === 'number') {
+            parts[parts.length - 1] = (parts[parts.length - 1] || '') + '[' + p + ']';
+        } else {
+            parts.push(String(p));
+        }
+    }
+    return parts.join('.');
+}
+
+/**
+ * docCreateVariable(experiment, name, value)
+ *
+ * Append `&name: value` to the variables: map. If no variables: section
+ * exists, create one at the top-level. Mirror into experiment.variables.
+ *
+ * Throws V3ParseError(INVALID_INPUT) on:
+ *   - invalid anchor name (regex)
+ *   - duplicate anchor (anywhere in the doc, not just variables)
+ *   - non-scalar value (caller should construct via setIn for maps/seqs)
+ */
+function docCreateVariable(experiment, name, value) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docCreateVariable: experiment has no _doc handle', 'NO_DOC');
+    }
+    if (!isValidAnchorName(name)) {
+        throw new V3ParseError(
+            'docCreateVariable: invalid anchor name ' + JSON.stringify(name) +
+                ' (must match /^[A-Za-z0-9_-]+$/)',
+            'INVALID_INPUT'
+        );
+    }
+    if (anchorExists(experiment, name)) {
+        throw new V3ParseError(
+            'docCreateVariable: anchor name "' + name + '" is already in use',
+            'INVALID_INPUT'
+        );
+    }
+
+    // Find or create the variables: map. yaml@2's setIn replaces nodes
+    // wholesale, so we create a fresh YAMLMap only if absent.
+    let varsNode = experiment._doc.get('variables', true);
+    if (!varsNode || !Array.isArray(varsNode.items)) {
+        const newMap = experiment._doc.createNode({});
+        experiment._doc.set('variables', newMap);
+        varsNode = experiment._doc.get('variables', true);
+    }
+
+    // Build the scalar with the anchor attached, then assemble the pair.
+    const valueNode = experiment._doc.createNode(value);
+    valueNode.anchor = name;
+    const keyNode = experiment._doc.createNode(name);
+    varsNode.items.push(new YAML.Pair(keyNode, valueNode));
+
+    // Mirror
+    if (!Array.isArray(experiment.variables)) experiment.variables = [];
+    experiment.variables.push({ name: name, value: value });
+}
+
+/**
+ * docDeleteVariable(experiment, name, opts = { cascadeUnbind: false })
+ *
+ * Remove the anchor's defining pair from the variables: map. If aliases
+ * reference this anchor:
+ *   - opts.cascadeUnbind === false (default) → throws ANCHOR_HAS_REFS
+ *   - opts.cascadeUnbind === true → unbinds each reference first (each
+ *     becomes a literal with the resolved value)
+ *
+ * Mirrors the JS-side variable list. Aliased path mirrors are unchanged
+ * (the JS mirror always holds resolved values).
+ */
+function docDeleteVariable(experiment, name, opts) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docDeleteVariable: experiment has no _doc handle', 'NO_DOC');
+    }
+    const cascade = !!(opts && opts.cascadeUnbind);
+    const found = _findVariablePair(experiment, name);
+    if (!found) {
+        throw new V3ParseError(
+            'docDeleteVariable: no anchor named "' + name + '"',
+            'BAD_PATH'
+        );
+    }
+    const refs = findAliasesTo(experiment, name);
+    if (refs.length > 0 && !cascade) {
+        const err = new V3ParseError(
+            'docDeleteVariable: anchor "' + name + '" still has ' + refs.length +
+                ' reference(s); pass {cascadeUnbind: true} to unbind them first',
+            'ANCHOR_HAS_REFS'
+        );
+        err.refCount = refs.length;
+        err.refs = refs;
+        throw err;
+    }
+    // Cascade-unbind: convert every alias to its literal value before
+    // removing the anchor. Walk the refs list AFTER capturing it (the doc
+    // walks are stable across mutations of unrelated nodes).
+    if (cascade) {
+        for (const ref of refs) {
+            docUnbindAnchor(experiment, ref.path);
+        }
+    }
+    found.varsNode.items.splice(found.index, 1);
+
+    // Mirror
+    if (Array.isArray(experiment.variables)) {
+        const mirrorIdx = experiment.variables.findIndex((v) => v.name === name);
+        if (mirrorIdx >= 0) experiment.variables.splice(mirrorIdx, 1);
+    }
+}
+
+/**
+ * docRenameVariable(experiment, oldName, newName)
+ *
+ * Atomic rename in a single synchronous pass:
+ *   1. Rewrite the anchor at the defining Scalar (`pair.value.anchor`).
+ *   2. Walk every Alias and rewrite `.source` where it matches oldName.
+ *   3. Update the JS mirror entry.
+ *
+ * Throws V3ParseError(INVALID_INPUT) on invalid newName or collision.
+ * BAD_PATH if oldName is not declared.
+ */
+function docRenameVariable(experiment, oldName, newName) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docRenameVariable: experiment has no _doc handle', 'NO_DOC');
+    }
+    if (oldName === newName) return;
+    if (!isValidAnchorName(newName)) {
+        throw new V3ParseError(
+            'docRenameVariable: invalid new anchor name ' + JSON.stringify(newName),
+            'INVALID_INPUT'
+        );
+    }
+    if (anchorExists(experiment, newName)) {
+        throw new V3ParseError(
+            'docRenameVariable: anchor name "' + newName + '" is already in use',
+            'INVALID_INPUT'
+        );
+    }
+    const found = _findVariablePair(experiment, oldName);
+    if (!found) {
+        throw new V3ParseError(
+            'docRenameVariable: no anchor named "' + oldName + '"',
+            'BAD_PATH'
+        );
+    }
+    // 1. Rename at the definition site.
+    if (found.pair.value) found.pair.value.anchor = newName;
+
+    // 2. Cascade to every alias. Single YAML.visit pass.
+    if (typeof YAML.visit === 'function') {
+        YAML.visit(experiment._doc, {
+            Alias(_, node) {
+                if (node && node.source === oldName) {
+                    node.source = newName;
+                }
+            }
+        });
+    }
+
+    // 3. Mirror.
+    if (Array.isArray(experiment.variables)) {
+        const mirrorIdx = experiment.variables.findIndex((v) => v.name === oldName);
+        if (mirrorIdx >= 0) experiment.variables[mirrorIdx].name = newName;
+    }
+}
+
+/**
+ * docSetVariableValue(experiment, name, newValue)
+ *
+ * Change the scalar value AT the anchor's definition site. Does NOT
+ * touch aliases (they resolve dynamically). Critically, this MUST mutate
+ * the existing Scalar's `.value` in place rather than swap the value
+ * node — otherwise the anchor is lost.
+ *
+ * Updates the JS mirror (both the variable entry and every aliased
+ * path's resolved value).
+ */
+function docSetVariableValue(experiment, name, newValue) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docSetVariableValue: experiment has no _doc handle', 'NO_DOC');
+    }
+    const found = _findVariablePair(experiment, name);
+    if (!found) {
+        throw new V3ParseError(
+            'docSetVariableValue: no anchor named "' + name + '"',
+            'BAD_PATH'
+        );
+    }
+    if (variableIsComplex(experiment, name)) {
+        throw new V3ParseError(
+            'docSetVariableValue: anchor "' + name + '" is complex (Map/Seq); ' +
+                'use scalar values only or edit YAML directly',
+            'INVALID_INPUT'
+        );
+    }
+    // Mutate the Scalar in place so the anchor stays attached.
+    if (found.pair.value) found.pair.value.value = newValue;
+
+    // Mirror the variable entry.
+    if (Array.isArray(experiment.variables)) {
+        const v = experiment.variables.find((v) => v.name === name);
+        if (v) v.value = newValue;
+    }
+
+    // Mirror every aliased path's resolved value (JS mirror holds resolved).
+    const refs = findAliasesTo(experiment, name);
+    for (const ref of refs) {
+        mirrorIntoModel(experiment, ref.path, newValue);
+    }
+}
+
+/**
+ * docBindToAnchor(experiment, path, anchorName)
+ *
+ * Replace the literal scalar at `path` with an Alias pointing to
+ * `anchorName`. The anchor must already exist (use docCreateVariable
+ * first to make a fresh one). Updates the JS mirror to the resolved
+ * value (the mirror never sees aliases).
+ */
+function docBindToAnchor(experiment, path, anchorName) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docBindToAnchor: experiment has no _doc handle', 'NO_DOC');
+    }
+    if (!Array.isArray(path) || path.length === 0) {
+        throw new V3ParseError('docBindToAnchor: path must be a non-empty array', 'BAD_PATH');
+    }
+    if (!isValidAnchorName(anchorName)) {
+        throw new V3ParseError(
+            'docBindToAnchor: invalid anchor name ' + JSON.stringify(anchorName),
+            'INVALID_INPUT'
+        );
+    }
+    const varPair = _findVariablePair(experiment, anchorName);
+    if (!varPair) {
+        throw new V3ParseError(
+            'docBindToAnchor: anchor "' + anchorName + '" is not declared in variables',
+            'BAD_PATH'
+        );
+    }
+    // Build the Alias node and stash it at path.
+    const alias = new YAML.Alias(anchorName);
+    experiment._doc.setIn(path, alias);
+
+    // Mirror: resolved value from the anchor's scalar.
+    let resolved;
+    const v = varPair.pair.value;
+    if (v && v.value !== undefined) resolved = v.value;
+    else if (v && typeof v.toJSON === 'function') resolved = v.toJSON();
+    else resolved = v;
+    mirrorIntoModel(experiment, path, resolved);
+}
+
+/**
+ * docUnbindAnchor(experiment, path)
+ *
+ * If the node at `path` is an Alias, replace it with its resolved
+ * literal value. Throws NOT_ALIAS if the path doesn't currently hold
+ * an Alias — caller should check `nodeIsAliasAt` first.
+ */
+function docUnbindAnchor(experiment, path) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docUnbindAnchor: experiment has no _doc handle', 'NO_DOC');
+    }
+    if (!Array.isArray(path) || path.length === 0) {
+        throw new V3ParseError('docUnbindAnchor: path must be a non-empty array', 'BAD_PATH');
+    }
+    const node = experiment._doc.getIn(path, true);
+    const isAlias = node && (YAML.isAlias?.(node) || node.constructor?.name === 'Alias');
+    if (!node || !isAlias) {
+        throw new V3ParseError(
+            'docUnbindAnchor: path does not point to an Alias',
+            'NOT_ALIAS'
+        );
+    }
+    const anchorName = node.source;
+    const varPair = _findVariablePair(experiment, anchorName);
+    let resolved;
+    if (varPair) {
+        const v = varPair.pair.value;
+        if (v && v.value !== undefined) resolved = v.value;
+        else if (v && typeof v.toJSON === 'function') resolved = v.toJSON();
+        else resolved = v;
+    } else {
+        // Dangling alias (shouldn't happen post-parse). Fall back to the
+        // path's current resolved JS-mirror value, if any.
+        resolved = experiment._doc.getIn(path);
+    }
+    experiment._doc.setIn(path, resolved);
+    // JS mirror was already holding the resolved value — no-op.
+}
+
+// ════════════════════════════════════════════════════
 // Exports
 // ════════════════════════════════════════════════════
 
@@ -1379,7 +1794,18 @@ const ProtocolV3 = {
     docAddPluginParam,
     docDeletePluginParam,
     nodeIsAliasAt,
-    aliasNameAt
+    aliasNameAt,
+    // Phase 5
+    docCreateVariable,
+    docDeleteVariable,
+    docRenameVariable,
+    docSetVariableValue,
+    docBindToAnchor,
+    docUnbindAnchor,
+    findAliasesTo,
+    variableIsComplex,
+    isValidAnchorName,
+    anchorExists
 };
 
 // Browser global
@@ -1417,6 +1843,17 @@ export {
     docAddPluginParam,
     docDeletePluginParam,
     nodeIsAliasAt,
-    aliasNameAt
+    aliasNameAt,
+    // Phase 5
+    docCreateVariable,
+    docDeleteVariable,
+    docRenameVariable,
+    docSetVariableValue,
+    docBindToAnchor,
+    docUnbindAnchor,
+    findAliasesTo,
+    variableIsComplex,
+    isValidAnchorName,
+    anchorExists
 };
 export default ProtocolV3;

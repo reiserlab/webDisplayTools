@@ -189,6 +189,168 @@
         .vars-table th { color: var(--text-dim); font-weight: 400; }
         .vars-table .num { text-align: right; font-family: 'JetBrains Mono', monospace; color: var(--accent); }
         .vars-table .str { color: var(--accent); }
+        /* Phase 5 — inline-editable Variables table */
+        .var-row input, .var-add-row input {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font: inherit;
+            padding: 0.15rem 0.35rem;
+            font-size: 0.75rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .var-row input.num, .var-add-row input.num { color: var(--accent); }
+        .var-row input.str, .var-add-row input.str { color: var(--accent); }
+        .var-row input:focus, .var-add-row input:focus {
+            outline: 1px solid var(--accent);
+            outline-offset: -1px;
+        }
+        .var-del-btn, .var-add-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.7rem;
+            padding: 0.15rem 0.4rem;
+        }
+        .var-del-btn:hover { color: var(--text); border-color: #c4514f; }
+        .var-add-btn:hover { color: var(--accent); border-color: var(--accent); }
+        .var-add-row { background: rgba(255, 255, 255, 0.02); }
+        .adv-anchor-badge {
+            color: var(--text-dim);
+            font-style: italic;
+            font-size: 0.7rem;
+        }
+        /* Phase 5 — anchor binding popover */
+        .bind-icon-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0 0.25rem;
+            font-size: 0.75rem;
+            line-height: 1;
+            margin-left: 0.25rem;
+        }
+        .bind-icon-btn:hover { color: var(--accent); border-color: var(--border); }
+        .bind-icon-btn.bound { color: var(--accent); }
+        .anchor-popover {
+            position: absolute;
+            z-index: 1000;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            min-width: 260px;
+            max-width: 360px;
+            padding: 0;
+            font-size: 0.75rem;
+        }
+        .anchor-popover .section {
+            padding: 0.5rem 0.75rem;
+            border-top: 1px solid var(--border);
+        }
+        .anchor-popover .section:first-child { border-top: none; }
+        .anchor-popover .section h4 {
+            margin: 0 0 0.3rem 0;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            font-weight: 400;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .anchor-popover select, .anchor-popover input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.2rem 0.4rem;
+            font: inherit;
+            font-size: 0.75rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .anchor-popover button {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.25rem 0.6rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            margin-top: 0.3rem;
+        }
+        .anchor-popover button:hover { border-color: var(--accent); color: var(--accent); }
+        .anchor-popover button.danger:hover { border-color: #c4514f; color: #c4514f; }
+        .anchor-popover .summary {
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            padding: 0.3rem 0;
+        }
+        /* Phase 5 — confirmation modal (rename cascade, cascade-unbind) */
+        .confirm-modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .confirm-modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            min-width: 360px;
+            max-width: 560px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .confirm-modal h3 {
+            margin: 0;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+        .confirm-modal .body {
+            padding: 0.75rem 1rem;
+            overflow: auto;
+        }
+        .confirm-modal .body p {
+            margin: 0 0 0.5rem 0;
+            font-size: 0.8rem;
+            color: var(--text);
+        }
+        .confirm-modal .body ul {
+            margin: 0;
+            padding-left: 1rem;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            max-height: 240px;
+            overflow: auto;
+        }
+        .confirm-modal .body ul li { padding: 0.1rem 0; }
+        .confirm-modal .actions {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.6rem 1rem;
+            border-top: 1px solid var(--border);
+            justify-content: flex-end;
+        }
+        .confirm-modal .actions button {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.3rem 0.8rem;
+            font: inherit;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        .confirm-modal .actions button.primary {
+            background: var(--accent);
+            color: #0f1419;
+            border-color: var(--accent);
+        }
+        .confirm-modal .actions button:hover { border-color: var(--accent); }
+        .confirm-modal .actions button.primary:hover { background: #00c853; }
 
         /* ── 3-zone main area ────────────────────────────────────────── */
         .three-zone {
@@ -894,9 +1056,9 @@
 
     <!-- Editing banner -->
     <div class="view-only-banner">
-        <strong>Editing (early).</strong> Scalar fields in command cards are editable; anchor-bound fields (
-        <span style="color: var(--beta);">→ &amp;name</span>) are read-only until the Variables editor lands.
-        Drag/drop, undo, and sequence editing arrive in later updates.
+        <strong>Editing.</strong> Scalar fields, sequence layout, and Variables are all editable. Click the
+        <span style="color: var(--beta);">🔗</span> icon next to any value to bind it to an anchor, or open
+        <strong>Settings</strong> to manage the Variables table directly.
         Need v2? <a href="experiment_designer.html">Open the v2 Experiment Designer</a>.
     </div>
 
@@ -978,7 +1140,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.9 | <span id="footerTimestamp">2026-05-27 19:54 ET</span>
+        v3 Experiment Designer v0.10 | <span id="footerTimestamp">2026-05-27 20:07 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1017,7 +1179,18 @@
             docAddPluginParam,
             docDeletePluginParam,
             nodeIsAliasAt,
-            aliasNameAt
+            aliasNameAt,
+            // Phase 5 — Variables (anchor) lifecycle
+            docCreateVariable,
+            docDeleteVariable,
+            docRenameVariable,
+            docSetVariableValue,
+            docBindToAnchor,
+            docUnbindAnchor,
+            findAliasesTo,
+            variableIsComplex,
+            isValidAnchorName,
+            anchorExists
         } from './js/protocol-yaml-v3.js';
 
         import {
@@ -1295,6 +1468,70 @@
             if (e.target.id === 'errorModal') $('errorModal').classList.remove('open');
         });
 
+        /**
+         * confirmModal({title, body, list, confirmLabel, cancelLabel}) -> Promise<boolean>
+         *
+         * Generic confirmation modal for destructive / wide-reaching operations.
+         * Used by the Variables rename cascade and cascade-unbind delete flows
+         * (Phase 5). Phase 6's full pre-export validation modal will reuse
+         * this primitive.
+         *
+         * - title: short heading
+         * - body: plain-text paragraph
+         * - list: optional array of strings rendered as a bulleted list (the
+         *   affected references, etc.). Pass [] or undefined to omit.
+         * - confirmLabel: label on the primary action button ("Rename", "Delete")
+         * - cancelLabel: defaults to "Cancel"
+         */
+        function confirmModal(opts) {
+            return new Promise((resolve) => {
+                const backdrop = el('div', { class: 'confirm-modal-backdrop' });
+                const modal = el('div', { class: 'confirm-modal' });
+                modal.appendChild(el('h3', {}, opts.title || 'Confirm'));
+                const body = el('div', { class: 'body' });
+                if (opts.body) body.appendChild(el('p', {}, opts.body));
+                if (opts.list && opts.list.length > 0) {
+                    const ul = el('ul');
+                    for (const item of opts.list) ul.appendChild(el('li', {}, item));
+                    body.appendChild(ul);
+                }
+                modal.appendChild(body);
+                const actions = el('div', { class: 'actions' });
+                let resolved = false;
+                const finish = (result) => {
+                    if (resolved) return;
+                    resolved = true;
+                    document.removeEventListener('keydown', onKey);
+                    backdrop.remove();
+                    resolve(result);
+                };
+                const cancelBtn = el('button', {
+                    onClick: () => finish(false),
+                }, opts.cancelLabel || 'Cancel');
+                const confirmBtn = el('button', {
+                    class: 'primary',
+                    onClick: () => finish(true),
+                }, opts.confirmLabel || 'Confirm');
+                actions.appendChild(cancelBtn);
+                actions.appendChild(confirmBtn);
+                modal.appendChild(actions);
+                backdrop.appendChild(modal);
+                // Backdrop click → cancel
+                backdrop.addEventListener('click', (e) => {
+                    if (e.target === backdrop) finish(false);
+                });
+                // Esc → cancel; Enter → confirm
+                const onKey = (e) => {
+                    if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+                    else if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+                };
+                document.addEventListener('keydown', onKey);
+                document.body.appendChild(backdrop);
+                // Autofocus primary
+                setTimeout(() => confirmBtn.focus(), 0);
+            });
+        }
+
         // ═══════════════════════════════════════════════════════════════
         // Settings drawer
         // ═══════════════════════════════════════════════════════════════
@@ -1358,26 +1595,238 @@
                 root.appendChild(pluginBox);
             }
 
-            // Variables
-            if (experiment.variables.length > 0) {
-                const varBox = el('div', { class: 'settings-section' });
-                varBox.appendChild(el('h3', {}, 'Variables (' + experiment.variables.length + ')'));
-                const table = el('table', { class: 'vars-table' });
-                const thead = el('thead', {}, el('tr', {},
-                    el('th', {}, 'Anchor'), el('th', {}, 'Value')
-                ));
-                table.appendChild(thead);
-                const tbody = el('tbody');
-                for (const v of experiment.variables) {
-                    const valClass = typeof v.value === 'number' ? 'num' : (typeof v.value === 'string' ? 'str' : '');
-                    tbody.appendChild(el('tr', {},
-                        el('td', {}, '&' + v.name),
-                        el('td', { class: valClass }, typeof v.value === 'string' ? JSON.stringify(v.value) : String(v.value))
+            // Variables — inline-editable (Phase 5, v0.10)
+            // Always render the section even when empty so the user can add
+            // the first variable. Complex anchors (maps/seqs) render as
+            // read-only badges; scalar anchors are name + value editable.
+            const varBox = el('div', { class: 'settings-section' });
+            const varCount = experiment.variables ? experiment.variables.length : 0;
+            varBox.appendChild(el('h3', {}, 'Variables (' + varCount + ')'));
+            const table = el('table', { class: 'vars-table' });
+            const thead = el('thead', {}, el('tr', {},
+                el('th', {}, 'Anchor'),
+                el('th', {}, 'Value'),
+                el('th', { style: 'width: 1.5em;' }, '')
+            ));
+            table.appendChild(thead);
+            const tbody = el('tbody');
+            for (const v of experiment.variables || []) {
+                const isComplex = variableIsComplex(experiment, v.name);
+                const row = el('tr', { class: 'var-row' });
+
+                // Name cell — always editable (rename cascades)
+                const nameInput = el('input', {
+                    type: 'text',
+                    value: v.name,
+                    class: 'var-name-input',
+                    title: 'Rename anchor. Renaming cascades to every *alias reference.',
+                });
+                // change fires on blur, so each visit to the input produces
+                // at most one pushUndo (inside onVariableRename).
+                nameInput.addEventListener('change', () => onVariableRename(v.name, nameInput.value.trim()));
+                row.appendChild(el('td', {}, nameInput));
+
+                // Value cell — editable scalar OR read-only badge for complex
+                if (isComplex) {
+                    row.appendChild(el('td', {},
+                        el('span', {
+                            class: 'adv-anchor-badge',
+                            title: 'Map or sequence anchor — edit the YAML directly to change the value. Renaming still works.',
+                        }, 'complex anchor (edit YAML)')
                     ));
+                } else {
+                    const isNum = typeof v.value === 'number';
+                    const valInput = el('input', {
+                        type: isNum ? 'number' : 'text',
+                        value: isNum ? String(v.value) : String(v.value ?? ''),
+                        class: 'var-value-input ' + (isNum ? 'num' : 'str'),
+                        title: 'Edit the anchor value. Every *alias to this anchor will resolve to the new value.',
+                    });
+                    valInput.addEventListener('change', () => onVariableValueEdit(v.name, valInput.value, isNum));
+                    row.appendChild(el('td', {}, valInput));
                 }
-                table.appendChild(tbody);
-                varBox.appendChild(table);
-                root.appendChild(varBox);
+
+                // Delete cell
+                const delBtn = el('button', {
+                    class: 'var-del-btn',
+                    title: 'Delete this anchor. Blocked if it has *alias references; the prompt will offer cascade-unbind.',
+                    onClick: () => onVariableDelete(v.name),
+                }, '✕');
+                row.appendChild(el('td', {}, delBtn));
+
+                tbody.appendChild(row);
+            }
+
+            // + Add variable row (always at end)
+            const addRow = el('tr', { class: 'var-add-row' });
+            const addNameInput = el('input', {
+                type: 'text',
+                placeholder: 'new_anchor_name',
+                class: 'var-name-input',
+                title: 'Anchor name (letters, digits, _, -). Pressing Enter or Tab creates the anchor with the value to the right.',
+            });
+            const addValInput = el('input', {
+                type: 'text',
+                placeholder: 'value',
+                class: 'var-value-input',
+                title: 'Initial value. Numeric strings become numbers; everything else stays a string.',
+            });
+            const addBtn = el('button', {
+                class: 'var-add-btn',
+                title: 'Create the new anchor.',
+                onClick: () => {
+                    const name = addNameInput.value.trim();
+                    const val = addValInput.value;
+                    if (!name) return;
+                    onVariableAdd(name, val);
+                    addNameInput.value = '';
+                    addValInput.value = '';
+                    addNameInput.focus();
+                },
+            }, '+ Add');
+            // Enter in either input submits the add
+            const submitOnEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); addBtn.click(); } };
+            addNameInput.addEventListener('keydown', submitOnEnter);
+            addValInput.addEventListener('keydown', submitOnEnter);
+            addRow.appendChild(el('td', {}, addNameInput));
+            addRow.appendChild(el('td', {}, addValInput));
+            addRow.appendChild(el('td', {}, addBtn));
+            tbody.appendChild(addRow);
+
+            table.appendChild(tbody);
+            varBox.appendChild(table);
+            root.appendChild(varBox);
+        }
+
+        // ─── Variables editor handlers ─────────────────────────────────────
+
+        // Coerce a string from a text input into a number when it parses
+        // cleanly. Used by the Add row (which doesn't pre-know the type).
+        function _coerceVarValue(raw) {
+            const trimmed = String(raw).trim();
+            if (trimmed === '') return '';
+            const n = Number(trimmed);
+            if (!Number.isNaN(n) && /^-?\d+(\.\d+)?$/.test(trimmed)) return n;
+            return trimmed;
+        }
+
+        async function onVariableRename(oldName, newName) {
+            if (!experiment) return;
+            if (oldName === newName) return;
+            if (!newName) {
+                showError('Rename failed', 'Anchor name cannot be empty.');
+                renderSettings();
+                return;
+            }
+            if (!isValidAnchorName(newName)) {
+                showError(
+                    'Rename failed',
+                    'Invalid anchor name: must contain only letters, digits, underscores, and hyphens.'
+                );
+                renderSettings();
+                return;
+            }
+            if (anchorExists(experiment, newName)) {
+                showError('Rename failed', 'Anchor name "' + newName + '" is already in use.');
+                renderSettings();
+                return;
+            }
+            const refs = findAliasesTo(experiment, oldName);
+            if (refs.length > 0) {
+                const proceed = await confirmModal({
+                    title: 'Rename &' + oldName + ' to &' + newName + '?',
+                    body: 'This will update ' + refs.length + ' reference' + (refs.length === 1 ? '' : 's') + ':',
+                    list: refs.map((r) => '• ' + r.humanLabel),
+                    confirmLabel: 'Rename',
+                });
+                if (!proceed) { renderSettings(); return; }
+            }
+            pushUndo();
+            try {
+                docRenameVariable(experiment, oldName, newName);
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                showError('Rename failed', err.message);
+                renderSettings();
+            }
+        }
+
+        function onVariableValueEdit(name, rawValue, isNumericInput) {
+            if (!experiment) return;
+            const coerced = isNumericInput ? Number(rawValue) : _coerceVarValue(rawValue);
+            if (isNumericInput && Number.isNaN(coerced)) {
+                showError('Update failed', 'Value must be a number.');
+                renderSettings();
+                return;
+            }
+            pushUndo();
+            try {
+                docSetVariableValue(experiment, name, coerced);
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                showError('Update failed', err.message);
+                renderSettings();
+            }
+        }
+
+        async function onVariableDelete(name) {
+            if (!experiment) return;
+            const refs = findAliasesTo(experiment, name);
+            if (refs.length === 0) {
+                if (!confirm('Delete anchor "&' + name + '"?')) return;
+                pushUndo();
+                try {
+                    docDeleteVariable(experiment, name);
+                    setDirty(true);
+                    renderAll();
+                } catch (err) {
+                    showError('Delete failed', err.message);
+                }
+                return;
+            }
+            const proceed = await confirmModal({
+                title: 'Anchor &' + name + ' is in use',
+                body: 'It has ' + refs.length + ' reference' + (refs.length === 1 ? '' : 's') +
+                    '. Cascade-unbind will replace each reference with the current literal value (' +
+                    JSON.stringify((experiment.variables.find((v) => v.name === name) || {}).value) +
+                    ') before deleting:',
+                list: refs.map((r) => '• ' + r.humanLabel),
+                confirmLabel: 'Cascade-unbind & delete',
+            });
+            if (!proceed) return;
+            pushUndo();
+            try {
+                docDeleteVariable(experiment, name, { cascadeUnbind: true });
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                showError('Delete failed', err.message);
+            }
+        }
+
+        function onVariableAdd(name, rawValue) {
+            if (!experiment) return;
+            if (!isValidAnchorName(name)) {
+                showError(
+                    'Add failed',
+                    'Invalid anchor name: must contain only letters, digits, underscores, and hyphens.'
+                );
+                return;
+            }
+            if (anchorExists(experiment, name)) {
+                showError('Add failed', 'Anchor name "' + name + '" is already in use.');
+                return;
+            }
+            const value = _coerceVarValue(rawValue);
+            pushUndo();
+            try {
+                docCreateVariable(experiment, name, value);
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                showError('Add failed', err.message);
             }
         }
 
@@ -2288,16 +2737,31 @@
                 typeHint = schema.type === 'number' ? 'number' : (schema.type === 'select' ? 'select' : 'string');
             }
 
+            // Build the 🔗 anchor-binding button — appended to every editable
+            // scalar regardless of alias state. Click opens a popover that
+            // offers bind / rebind / unbind / create-new based on context.
+            const bindBtn = el('button', {
+                class: 'bind-icon-btn' + (aliasNameAt(experiment, path) ? ' bound' : ''),
+                title: aliasNameAt(experiment, path)
+                    ? 'Edit anchor binding (rebind, unbind, or edit anchor value)'
+                    : 'Bind this value to an anchor variable',
+                onClick: (e) => {
+                    e.stopPropagation();
+                    openAnchorPopover(e.currentTarget, path, value, schema, typeHint);
+                }
+            }, '🔗');
+
             const aliasName = aliasNameAt(experiment, path);
             if (aliasName) {
                 const chip = el('span', {
                     class: 'alias-chip',
-                    title: 'Bound to anchor &' + aliasName + ' (resolved: ' + JSON.stringify(value) + '). Anchor binding editor arrives in a later update.'
+                    title: 'Bound to anchor &' + aliasName + ' (resolved: ' + JSON.stringify(value) + '). Click 🔗 to rebind or unbind.'
                 },
                     '→ &' + aliasName,
                     el('span', { class: 'resolved-val' }, '= ' + (typeof value === 'string' ? JSON.stringify(value) : String(value)))
                 );
                 wrapper.appendChild(chip);
+                wrapper.appendChild(bindBtn);
                 return wrapper;
             }
 
@@ -2334,6 +2798,7 @@
                     }
                 });
                 wrapper.appendChild(select);
+                wrapper.appendChild(bindBtn);
                 return wrapper;
             }
 
@@ -2379,7 +2844,266 @@
                 }
             });
             wrapper.appendChild(input);
+            wrapper.appendChild(bindBtn);
             return wrapper;
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // Phase 5 — Anchor binding popover
+        // ═══════════════════════════════════════════════════════════════
+
+        // Single global popover. Created lazily on first open; one instance
+        // shared across all 🔗 buttons. The outside-click and Escape handlers
+        // are wired once on first open and persist for the page lifetime.
+        let _anchorPopover = null;
+        let _anchorPopoverState = null;  // { triggerEl, path, schema }
+        function _closeAnchorPopover() {
+            if (_anchorPopover) {
+                _anchorPopover.remove();
+                _anchorPopover = null;
+                _anchorPopoverState = null;
+            }
+        }
+        // Outside-click & Escape — wired once at module init.
+        document.addEventListener('click', (e) => {
+            if (!_anchorPopover) return;
+            if (_anchorPopover.contains(e.target)) return;
+            if (_anchorPopoverState?.triggerEl?.contains(e.target)) return;
+            _closeAnchorPopover();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && _anchorPopover) {
+                e.preventDefault();
+                _closeAnchorPopover();
+            }
+        });
+
+        function openAnchorPopover(triggerEl, path, currentValue, schema, typeHint) {
+            // Re-open / re-position if already open
+            _closeAnchorPopover();
+            const aliasName = aliasNameAt(experiment, path);
+            const popover = el('div', { class: 'anchor-popover' });
+
+            // Sectioned content varies by alias state.
+            const buildLiteralContent = () => {
+                // Section A: Bind to existing anchor
+                const allAnchors = (experiment.variables || []).map((v) => v.name);
+                const sectionBind = el('div', { class: 'section' });
+                sectionBind.appendChild(el('h4', {}, 'Bind to existing anchor'));
+                if (allAnchors.length === 0) {
+                    sectionBind.appendChild(el('p', { style: 'color: var(--text-dim);' },
+                        'No anchors declared yet — create one below.'));
+                } else {
+                    const select = el('select');
+                    select.appendChild(el('option', { value: '' }, '— pick an anchor —'));
+                    // Sort: same-type first, then disabled mismatched
+                    const sameType = [];
+                    const otherType = [];
+                    for (const name of allAnchors) {
+                        const v = experiment.variables.find((x) => x.name === name);
+                        if (!v) continue;
+                        if (variableIsComplex(experiment, name)) continue;
+                        const sameTypeFlag = _anchorTypeCompatible(v.value, schema, typeHint);
+                        const labelStr = '&' + name + ' = ' + JSON.stringify(v.value) +
+                            (sameTypeFlag ? '' : ' (type: ' + (typeof v.value) + ')');
+                        const opt = el('option', { value: name, disabled: !sameTypeFlag }, labelStr);
+                        if (sameTypeFlag) sameType.push(opt);
+                        else otherType.push(opt);
+                    }
+                    for (const o of sameType) select.appendChild(o);
+                    for (const o of otherType) select.appendChild(o);
+                    sectionBind.appendChild(select);
+                    const bindBtn = el('button', {
+                        class: 'primary',
+                        onClick: () => {
+                            if (!select.value) return;
+                            _closeAnchorPopover();
+                            _doBindToAnchor(path, select.value);
+                        },
+                    }, 'Bind');
+                    sectionBind.appendChild(bindBtn);
+                }
+                popover.appendChild(sectionBind);
+
+                // Section B: Create new anchor from current value
+                const sectionNew = el('div', { class: 'section' });
+                sectionNew.appendChild(el('h4', {}, 'Create new anchor from this value'));
+                const nameInput = el('input', { type: 'text', placeholder: 'new_anchor_name' });
+                sectionNew.appendChild(nameInput);
+                const summary = el('div', { class: 'summary' },
+                    '= ' + (typeof currentValue === 'string' ? JSON.stringify(currentValue) : String(currentValue))
+                );
+                sectionNew.appendChild(summary);
+                const createBtn = el('button', {
+                    class: 'primary',
+                    onClick: () => {
+                        const newName = nameInput.value.trim();
+                        if (!newName) return;
+                        _closeAnchorPopover();
+                        _doCreateAndBind(path, newName, currentValue);
+                    },
+                }, 'Create & bind');
+                nameInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); createBtn.click(); }
+                });
+                sectionNew.appendChild(createBtn);
+                popover.appendChild(sectionNew);
+            };
+
+            const buildAliasContent = () => {
+                const anchorVar = (experiment.variables || []).find((v) => v.name === aliasName);
+
+                // Section A: Summary + jump to Variables
+                const sectionSummary = el('div', { class: 'section' });
+                sectionSummary.appendChild(el('h4', {}, 'Currently bound'));
+                sectionSummary.appendChild(el('div', { class: 'summary' },
+                    '→ &' + aliasName + ' = ' +
+                    (anchorVar ? (typeof anchorVar.value === 'string' ? JSON.stringify(anchorVar.value) : String(anchorVar.value)) : '?')
+                ));
+                const goBtn = el('button', {
+                    onClick: () => {
+                        _closeAnchorPopover();
+                        // Open settings drawer if closed; the Variables table is inside it.
+                        const drawer = $('settingsDrawer');
+                        if (!drawer.classList.contains('open')) drawer.classList.add('open');
+                        // Best-effort focus on the matching var row
+                        setTimeout(() => {
+                            const inputs = drawer.querySelectorAll('.var-name-input');
+                            for (const inp of inputs) {
+                                if (inp.value === aliasName) { inp.focus(); inp.select(); break; }
+                            }
+                        }, 50);
+                    },
+                }, 'Edit anchor value in Variables…');
+                sectionSummary.appendChild(goBtn);
+                popover.appendChild(sectionSummary);
+
+                // Section B: Rebind to a different anchor
+                const others = (experiment.variables || [])
+                    .filter((v) => v.name !== aliasName && !variableIsComplex(experiment, v.name));
+                if (others.length > 0) {
+                    const sectionRebind = el('div', { class: 'section' });
+                    sectionRebind.appendChild(el('h4', {}, 'Rebind to a different anchor'));
+                    const select = el('select');
+                    select.appendChild(el('option', { value: '' }, '— pick an anchor —'));
+                    for (const v of others) {
+                        const sameTypeFlag = _anchorTypeCompatible(v.value, schema, typeHint);
+                        select.appendChild(el('option', {
+                            value: v.name,
+                            disabled: !sameTypeFlag,
+                        }, '&' + v.name + ' = ' + JSON.stringify(v.value) +
+                            (sameTypeFlag ? '' : ' (type: ' + (typeof v.value) + ')')));
+                    }
+                    sectionRebind.appendChild(select);
+                    const rebindBtn = el('button', {
+                        class: 'primary',
+                        onClick: () => {
+                            if (!select.value) return;
+                            _closeAnchorPopover();
+                            _doBindToAnchor(path, select.value);
+                        },
+                    }, 'Rebind');
+                    sectionRebind.appendChild(rebindBtn);
+                    popover.appendChild(sectionRebind);
+                }
+
+                // Section C: Unbind
+                const sectionUnbind = el('div', { class: 'section' });
+                sectionUnbind.appendChild(el('h4', {}, 'Convert to literal'));
+                sectionUnbind.appendChild(el('p', {},
+                    'Replace the alias with the current resolved value. Other aliases to &' +
+                    aliasName + ' are unaffected.'
+                ));
+                const unbindBtn = el('button', {
+                    class: 'danger',
+                    onClick: () => {
+                        _closeAnchorPopover();
+                        _doUnbindAnchor(path);
+                    },
+                }, 'Unbind');
+                sectionUnbind.appendChild(unbindBtn);
+                popover.appendChild(sectionUnbind);
+            };
+
+            if (aliasName) buildAliasContent();
+            else buildLiteralContent();
+
+            document.body.appendChild(popover);
+            // Position beneath the trigger, clamped to viewport
+            const rect = triggerEl.getBoundingClientRect();
+            const pw = popover.offsetWidth;
+            const ph = popover.offsetHeight;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            let left = rect.left;
+            let top = rect.bottom + 4;
+            if (left + pw > vw - 8) left = vw - pw - 8;
+            if (left < 8) left = 8;
+            if (top + ph > vh - 8) top = rect.top - ph - 4;  // flip above if overflow below
+            popover.style.left = left + 'px';
+            popover.style.top = top + 'px';
+
+            _anchorPopover = popover;
+            _anchorPopoverState = { triggerEl, path, schema };
+        }
+
+        // Type compatibility between an anchor's resolved value and a target
+        // field's expected type. Booleans aren't aliasable in the v3 spec
+        // (no boolean fields in plugin schemas yet), so we only worry about
+        // number-vs-string and select.options enumeration.
+        function _anchorTypeCompatible(anchorValue, schema, typeHint) {
+            const aType = typeof anchorValue;
+            if (schema && schema.type === 'select' && Array.isArray(schema.options)) {
+                return schema.options.some((o) => o.value === anchorValue);
+            }
+            if (typeHint === 'number') return aType === 'number';
+            // string fields accept string anchors (and we allow numeric anchors
+            // since YAML scalars are stringified on serialize either way).
+            return aType === 'string' || aType === 'number';
+        }
+
+        function _doBindToAnchor(path, anchorName) {
+            pushUndo();
+            try {
+                docBindToAnchor(experiment, path, anchorName);
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                showError('Bind failed', err.message);
+            }
+        }
+
+        function _doUnbindAnchor(path) {
+            pushUndo();
+            try {
+                docUnbindAnchor(experiment, path);
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                showError('Unbind failed', err.message);
+            }
+        }
+
+        // Create-and-bind: one pushUndo wraps both mutations so a single Ctrl+Z
+        // reverts both operations.
+        function _doCreateAndBind(path, anchorName, currentValue) {
+            if (!isValidAnchorName(anchorName)) {
+                showError('Create & bind failed', 'Invalid anchor name.');
+                return;
+            }
+            if (anchorExists(experiment, anchorName)) {
+                showError('Create & bind failed', 'Anchor name "' + anchorName + '" is already in use.');
+                return;
+            }
+            pushUndo();
+            try {
+                docCreateVariable(experiment, anchorName, currentValue);
+                docBindToAnchor(experiment, path, anchorName);
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                showError('Create & bind failed', err.message);
+            }
         }
 
         // ── Block property row renderers ─────────────────────────────────
