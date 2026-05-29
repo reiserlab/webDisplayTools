@@ -453,6 +453,15 @@ function validateReferences(experiment) {
  * Returns { ok, errors } — the same shape as validateReferences, so callers can
  * treat the two interchangeably. Never throws (guards on _doc / YAML.visit).
  */
+// Format a " (line N)" / " (lines N, M)" suffix from a list of line numbers,
+// dropping any that couldn't be resolved. Returns '' when none are known.
+function _linesSuffix(lines) {
+    const known = (lines || []).filter((n) => typeof n === 'number');
+    if (known.length === 0) return '';
+    const uniq = [...new Set(known)].sort((a, b) => a - b);
+    return uniq.length === 1 ? ' (line ' + uniq[0] + ')' : ' (lines ' + uniq.join(', ') + ')';
+}
+
 function collectBlockingErrors(experiment) {
     // Fold in all structural reference errors first.
     const base = validateReferences(experiment);
@@ -460,30 +469,61 @@ function collectBlockingErrors(experiment) {
 
     // The two anchor checks need the CST; skip gracefully when it's absent.
     if (experiment && experiment._doc && typeof YAML.visit === 'function') {
-        // Duplicate anchor names — count every node.anchor across the doc tree.
-        // The `Node` visitor matches Scalar/Map/Seq (and Alias, which carries
-        // `.source` not `.anchor`, so it never contributes a count).
-        const anchorCounts = new Map();
-        YAML.visit(experiment._doc, {
+        // Re-parse the to-be-exported text with a LineCounter so error
+        // positions map to real line numbers in the export output. Mutated
+        // _doc nodes can lack source ranges; re-parsing _doc.toString() yields
+        // uniform, accurate positions against exactly what export will write.
+        // Falls back to a range-less scan of the live _doc if the yaml build
+        // lacks LineCounter/parseDocument or anything throws.
+        let scanDoc = experiment._doc;
+        let lineOf = () => null;
+        try {
+            if (typeof YAML.LineCounter === 'function' && typeof YAML.parseDocument === 'function') {
+                const lc = new YAML.LineCounter();
+                scanDoc = YAML.parseDocument(experiment._doc.toString(), { lineCounter: lc });
+                lineOf = (node) =>
+                    node && Array.isArray(node.range) && typeof node.range[0] === 'number'
+                        ? lc.linePos(node.range[0]).line
+                        : null;
+            }
+        } catch (_e) {
+            scanDoc = experiment._doc;
+            lineOf = () => null;
+        }
+
+        // Duplicate anchor names — collect every node.anchor across the doc
+        // tree with its line. The `Node` visitor matches Scalar/Map/Seq (and
+        // Alias, which carries `.source` not `.anchor`, so it never counts).
+        const anchorLines = new Map(); // name -> [line, ...]
+        YAML.visit(scanDoc, {
             Node(_, node) {
                 if (node && node.anchor) {
-                    anchorCounts.set(node.anchor, (anchorCounts.get(node.anchor) || 0) + 1);
+                    const lines = anchorLines.get(node.anchor) || [];
+                    lines.push(lineOf(node));
+                    anchorLines.set(node.anchor, lines);
                 }
             }
         });
-        const declaredAnchors = new Set(anchorCounts.keys());
-        for (const [name, count] of anchorCounts) {
-            if (count > 1) {
-                errors.push('Duplicate anchor name: "&' + name + '" declared ' + count + ' times');
+        const declaredAnchors = new Set(anchorLines.keys());
+        for (const [name, lines] of anchorLines) {
+            if (lines.length > 1) {
+                errors.push(
+                    'Duplicate anchor name: "&' +
+                        name +
+                        '" declared ' +
+                        lines.length +
+                        ' times' +
+                        _linesSuffix(lines)
+                );
             }
         }
 
         // Dangling aliases — an alias whose source has no anchor declaration
         // anywhere in the doc (variables:, conditions:, complex nodes — all
         // count as declared). Deduped so N references to one missing anchor
-        // produce a single error.
+        // produce a single error (reporting the first reference's line).
         const danglingSeen = new Set();
-        YAML.visit(experiment._doc, {
+        YAML.visit(scanDoc, {
             Alias(_, node) {
                 if (
                     node &&
@@ -493,7 +533,10 @@ function collectBlockingErrors(experiment) {
                 ) {
                     danglingSeen.add(node.source);
                     errors.push(
-                        'Dangling alias: "*' + node.source + '" has no matching anchor declaration'
+                        'Dangling alias: "*' +
+                            node.source +
+                            '" has no matching anchor declaration' +
+                            _linesSuffix([lineOf(node)])
                     );
                 }
             }

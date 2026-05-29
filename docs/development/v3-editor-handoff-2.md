@@ -1,8 +1,8 @@
 # v3 Experiment Designer — Handoff for Next Session (Round 2)
 
-**Last updated:** 2026-05-28 (Phase 6 session)
-**Branch:** `phase5/variables-ux` (Phase 5 `de31235` + Phase 6 this session) → PR to `main`
-**Editor version:** v3 Experiment Designer **v0.11** (Phase 6 shipped this session)
+**Last updated:** 2026-05-29 (Phase 6 + Phase 7 follow-up)
+**Branch:** `phase7/test-hardening-and-line-numbers` → PR to `main` (Phase 6 already merged via #77)
+**Editor version:** v3 Experiment Designer **v0.12** (validation line numbers + Phase 7 tests)
 **Pinned upstream:** maDisplayTools `origin/version3` at `649d7ef`
 
 This is the second handoff doc for the v3 designer. It supersedes the original
@@ -312,7 +312,16 @@ blocked-when-used / works-when-unused).
 > edits (a stale import silently kills the whole module). A no-cache static
 > server (`.claude/nocache-server.py`, untracked) on a fresh port avoids it.
 
-**Still deferred:** mapping validation errors to source **line numbers**.
+**Follow-up shipped (v0.12):** the validation modal now reports **source line
+numbers** for anchor errors — e.g. `Duplicate anchor name: "&dup" declared 2
+times (lines 5, 6)`. `collectBlockingErrors` re-parses `_doc.toString()` with a
+`YAML.LineCounter` and maps each node's `range[0]` to a line. Structural
+`validateReferences` errors stay line-less (model-based, no node handle).
+Dangling-alias errors are also line-less by nature: a dangling alias makes the
+doc non-serializable (`toString()` throws "Unresolved alias"), so the
+re-parse can't run — the check falls back to a range-less scan and still
+reports the error, just without a line. Also fixed a double-bullet in the
+modal list (callers prefix `• `, so the `<li>` disc marker is suppressed).
 
 ### Tier 4: D4 — cross-library import (parked — ~5+ days when picked up)
 
@@ -330,9 +339,12 @@ implementation:
 
 ### Tier 5: Phase 7-9 — polish (~1 day total)
 
-- Phase 7: comment-preservation tests at strategic positions, anchor edge
-  cases (numbers, strings, params, two anchors same value), randomized-block
-  semantics tests, validation error cases.
+- Phase 7 ✅ **largely done (v0.12)**: Suite 31 added comment-preservation at
+  strategic positions (head / section / inline / between), anchor edge cases
+  (two anchors same value, binding isolation), randomized-block semantics
+  (`randomize: true`/`false` round-trip), and validation line-number coverage.
+  Still open if wanted: params-level anchor cases, deeper validation-error
+  matrices. v3 suite now **467/467**.
 - Phase 8: write `docs/development/v3-matlab-validation.md` describing
   the MCP-driven MATLAB validation flow.
 - Phase 9: `experiment_designer_v3_quickstart.html` step-by-step

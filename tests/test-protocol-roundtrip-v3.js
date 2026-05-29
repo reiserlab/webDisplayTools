@@ -2345,6 +2345,156 @@ console.log('\n--- Suite 30: collectBlockingErrors + library delete ---');
     checkTrue('lib-del: round-trip still validates', collectBlockingErrors(reparsed).ok);
 }
 
+// ─── Test Suite 31: Phase 7 — comments, anchor edge cases, randomize, lines ──
+console.log('\n--- Suite 31: comment preservation + anchor edge cases + randomize + line numbers ---');
+
+// 31.1 — validation error line numbers: duplicate anchor reports its lines
+{
+    const yaml = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'variables:',
+        '  a: &dup 1',
+        '  b: &dup 2',
+        'experiment: [foo]',
+        'conditions:',
+        '  - name: foo',
+        '    commands: [{type: wait, duration: 1}]'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml);
+    const dupErr = collectBlockingErrors(exp).errors.find((e) => /Duplicate anchor/.test(e));
+    checkTrue('lines: duplicate-anchor error carries line numbers', /\(lines \d+, \d+\)/.test(dupErr), dupErr);
+}
+
+// 31.2 — dangling alias: still detected via graceful fallback. A dangling
+// alias makes the doc non-serializable (toString throws "Unresolved alias"),
+// so the line-number re-parse can't run — detection must still work without a
+// line number, and collectBlockingErrors must not throw.
+{
+    const yaml = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'variables:',
+        '  d: &d 7',
+        'experiment: [foo]',
+        'conditions:',
+        '  - name: foo',
+        '    commands: [{type: wait, duration: *d}]'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml);
+    const varsNode = exp._doc.get('variables', true);
+    for (const pair of varsNode.items) {
+        if (pair.value && pair.value.anchor === 'd') pair.value.anchor = undefined;
+    }
+    let report;
+    let threw = false;
+    try {
+        report = collectBlockingErrors(exp);
+    } catch (_e) {
+        threw = true;
+    }
+    checkTrue('lines: collectBlockingErrors survives unserializable doc', !threw);
+    checkTrue(
+        'lines: dangling alias still detected on fallback',
+        report && !report.ok && report.errors.some((e) => /Dangling alias.*\bd\b/.test(e))
+    );
+}
+
+// 31.3 — clean doc produces no spurious line-suffixed errors
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const report = collectBlockingErrors(exp);
+    checkTrue('lines: clean doc has no errors at all', report.ok && report.errors.length === 0);
+}
+
+// 31.4 — comment preservation at strategic positions (head / section / inline)
+{
+    const yaml = [
+        '# HEAD comment line',
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        '# SECTION comment before variables',
+        'variables:',
+        '  speed: &speed 12  # INLINE trailing comment',
+        'experiment: [foo, bar]',
+        'conditions:',
+        '  # BETWEEN comment before first condition',
+        '  - name: foo',
+        '    commands: [{type: wait, duration: *speed}]',
+        '  - name: bar',
+        '    commands: [{type: wait, duration: 1}]'
+    ].join('\n') + '\n';
+    const regen = generateV3Protocol(parseV3Protocol(yaml));
+    checkTrue('comments: HEAD comment preserved', regen.includes('# HEAD comment line'));
+    checkTrue('comments: SECTION comment preserved', regen.includes('# SECTION comment before variables'));
+    checkTrue('comments: INLINE trailing comment preserved', regen.includes('# INLINE trailing comment'));
+    checkTrue('comments: BETWEEN comment preserved', regen.includes('# BETWEEN comment before first condition'));
+    // round-trip stability: comment count stable across a second pass
+    const c1 = regen.split('\n').filter((l) => l.includes('#')).length;
+    const c2 = generateV3Protocol(parseV3Protocol(regen)).split('\n').filter((l) => l.includes('#')).length;
+    check('comments: count stable on second round-trip', c2, c1);
+}
+
+// 31.5 — two distinct anchors with the SAME value both round-trip independently
+{
+    const yaml = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'variables:',
+        '  first: &first 5',
+        '  second: &second 5',
+        'experiment: [foo]',
+        'conditions:',
+        '  - name: foo',
+        '    commands:',
+        '      - {type: wait, duration: *first}',
+        '      - {type: wait, duration: *second}'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml);
+    const regen = generateV3Protocol(exp);
+    checkTrue('anchors-same-value: &first declared', /&first\b/.test(regen));
+    checkTrue('anchors-same-value: &second declared', /&second\b/.test(regen));
+    checkTrue('anchors-same-value: *first referenced', /\*first\b/.test(regen));
+    checkTrue('anchors-same-value: *second referenced', /\*second\b/.test(regen));
+    checkTrue('anchors-same-value: no blocking errors (not treated as dup)', collectBlockingErrors(exp).ok);
+}
+
+// 31.6 — binding one field leaves an unrelated anchor's references intact
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const shortBefore = findAliasesTo(exp, 'dur_short').length;
+    // bind some literal to dur_long; dur_short references must be untouched
+    const longRefs = findAliasesTo(exp, 'dur_long');
+    checkTrue('anchor-isolation: precondition dur_long has refs', longRefs.length > 0);
+    docBindToAnchor(exp, longRefs[0].path.slice(), 'dur_short'); // rebind one to dur_short via path
+    const shortAfter = findAliasesTo(exp, 'dur_short').length;
+    check('anchor-isolation: dur_short ref count increased by exactly 1', shortAfter, shortBefore + 1);
+}
+
+// 31.7 — randomize:true round-trips (canonical_a block)
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const block = exp.sequence.find((e) => e.kind === 'block');
+    checkTrue('randomize: canonical block has randomize true', block && block.randomize === true);
+    const regen = generateV3Protocol(exp);
+    checkTrue('randomize: true survives in regen', /randomize:\s*true/.test(regen));
+}
+
+// 31.8 — randomize:false explicit is NOT dropped on round-trip
+{
+    const exp = parseV3Protocol(readFixture('v3_no_randomize.yaml'));
+    const block = exp.sequence.find((e) => e.kind === 'block');
+    checkTrue('randomize: no_randomize block parses randomize false', block && block.randomize === false);
+    const regen = generateV3Protocol(exp);
+    checkTrue('randomize: explicit false preserved in regen', /randomize:\s*false/.test(regen));
+    // repetitions survive too
+    checkTrue('randomize: repetitions preserved', block.repetitions === 2);
+}
+
 // ─── Results ────────────────────────────────────────────────────────────────
 console.log('\n=== Results: ' + passedTests + '/' + totalTests + ' passed ===');
 if (failedTests.length > 0) {
