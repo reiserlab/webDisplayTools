@@ -1,3 +1,10 @@
+---
+title: Changelog
+parent: Web Tools
+grand_parent: Generation 6
+nav_order: 90
+---
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
