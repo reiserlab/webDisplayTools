@@ -429,6 +429,25 @@
             color: var(--accent);
             border-color: var(--border);
         }
+        .lib-row .lib-row-del {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            font-family: inherit;
+            font-size: 0.6rem;
+            padding: 0.05rem 0.3rem;
+            margin-left: 0.15rem;
+            border-radius: 3px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.1s;
+        }
+        .lib-row:hover .lib-row-del { opacity: 1; }
+        .lib-row .lib-row-del:hover {
+            background: var(--surface-2);
+            color: var(--error);
+            border-color: #c4514f;
+        }
         .zone-body {
             flex: 1;
             overflow-y: auto;
@@ -1032,6 +1051,7 @@
         <div class="header-spacer"></div>
         <button id="undoBtn" class="header-btn" disabled title="Undo last edit (Ctrl+Z)">↶ Undo</button>
         <button id="redoBtn" class="header-btn" disabled title="Redo (Ctrl+Y)">↷ Redo</button>
+        <button id="resetBtn" class="header-btn" disabled title="Clear everything to a blank minimum-valid v3 skeleton (reversible with Undo)">⟲ Reset</button>
         <span id="dirtyIndicator" class="dirty-badge" style="display: none;" title="Unsaved edits — Export to save">● edited</span>
         <button id="settingsToggle" class="header-btn" title="Show/hide experiment metadata, rig, plugins, variables">Settings ▾</button>
         <select id="demoSelect" class="header-btn" title="Load a bundled demo YAML or start from a blank skeleton">
@@ -1140,7 +1160,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.10 | <span id="footerTimestamp">2026-05-27 20:07 ET</span>
+        v3 Experiment Designer v0.11 | <span id="footerTimestamp">2026-05-28 22:55 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1159,6 +1179,7 @@
             parseV3Protocol,
             generateV3Protocol,
             validateReferences,
+            collectBlockingErrors,
             collectExportWarnings,
             V3ParseError,
             docSet,
@@ -1343,7 +1364,7 @@
 
         // Shared loader — same atomic-validation + commit pipeline for both
         // file imports and the "Load demo" dropdown. Returns true on success.
-        function loadYamlText(text, sourceName) {
+        function loadYamlText(text, sourceName, opts = {}) {
             try {
                 const parsed = parseV3Protocol(text);
                 const refs = validateReferences(parsed);
@@ -1358,9 +1379,12 @@
                 lastFilename = sourceName;
                 selection = null;
                 setDirty(false);
-                clearUndo();
+                // Reset reuses this loader but wants the prior doc kept on the
+                // undo stack (so the wipe is reversible); imports/demos clear it.
+                if (!opts.keepUndo) clearUndo();
                 renderAll();
                 $('exportBtn').disabled = false;
+                $('resetBtn').disabled = false;
                 $('addCondBtn').disabled = false;
                 $('addRefBtn').disabled = false;
                 $('addBlockBtn').disabled = false;
@@ -1438,8 +1462,26 @@
             e.target.value = '';  // reset so the same demo can be re-loaded
         });
 
-        $('exportBtn').addEventListener('click', () => {
+        $('exportBtn').addEventListener('click', async () => {
             if (!experiment) return;
+            // Pre-export validation gate. Blocking errors (duplicate anchor
+            // names, dangling aliases, duplicate condition names, refs to
+            // missing conditions) likely fail to load in MATLAB — surface them
+            // in a modal with an "Export anyway" escape hatch. Soft warnings
+            // (unused conditions/anchors) stay in the non-blocking banner.
+            const report = collectBlockingErrors(experiment);
+            if (!report.ok) {
+                const proceed = await confirmModal({
+                    title: 'Export blocked: ' + report.errors.length + ' validation error' +
+                        (report.errors.length === 1 ? '' : 's'),
+                    body: 'The protocol has errors that will likely fail to load in MATLAB. ' +
+                        'Fix them first, or export anyway:',
+                    list: report.errors.map((e) => '• ' + e),
+                    confirmLabel: 'Export anyway',
+                    cancelLabel: 'Cancel',
+                });
+                if (!proceed) return;
+            }
             try {
                 const yaml = generateV3Protocol(experiment);
                 const blob = new Blob([yaml], { type: 'application/x-yaml' });
@@ -1451,6 +1493,25 @@
                 URL.revokeObjectURL(url);
             } catch (err) {
                 showError('Export error', err.message);
+            }
+        });
+
+        // Reset — clear sequence + conditions + variables to the blank
+        // skeleton. Reversible: pushUndo first, then load the template while
+        // keeping the undo stack so a single Ctrl+Z restores the prior doc.
+        $('resetBtn').addEventListener('click', async () => {
+            if (!experiment) return;
+            const proceed = await confirmModal({
+                title: 'Reset to blank skeleton?',
+                body: 'This clears the sequence, all conditions, and all variables, ' +
+                    'replacing them with a minimum-valid starting point. You can undo this.',
+                confirmLabel: 'Reset',
+                cancelLabel: 'Cancel',
+            });
+            if (!proceed) return;
+            pushUndo();
+            if (loadYamlText(BLANK_TEMPLATE, 'blank.yaml', { keepUndo: true })) {
+                setDirty(true);
             }
         });
 
@@ -2177,6 +2238,7 @@
                     title: useCount === 0 ? 'Unreferenced in sequence' : (useCount + ' reference' + (useCount === 1 ? '' : 's')),
                     onClick: (e) => {
                         if (e.target.classList.contains('lib-row-dup')) return;
+                        if (e.target.classList.contains('lib-row-del')) return;
                         selection = { kind: 'condition', name: cond.name };
                         renderLibrary(); renderInspector(); renderSequence();
                     },
@@ -2194,6 +2256,16 @@
                             onDuplicateCondition(condIdx);
                         }
                     }, 'dup'),
+                    el('button', {
+                        class: 'lib-row-del',
+                        title: useCount === 0
+                            ? 'Delete this condition from the library'
+                            : 'In use (' + useCount + '×) — remove from the sequence first',
+                        onClick: (e) => {
+                            e.stopPropagation();
+                            onDeleteCondition(condIdx);
+                        }
+                    }, '✕'),
                     el('span', { class: 'usage' }, useCount + '×')
                 );
                 // Drag source — library row → drop on sequence creates a ref,
@@ -3525,6 +3597,43 @@
                 renderAll();
             } catch (err) {
                 showError('Duplicate failed', err.message);
+            }
+        }
+
+        async function onDeleteCondition(condIdx) {
+            if (!experiment) return;
+            const cond = experiment.conditions[condIdx];
+            if (!cond) return;
+            // Block deletion while the condition is still referenced — the
+            // user must remove it from the sequence first (otherwise the
+            // export would have a dangling reference).
+            const useCount = computeUsage().get(cond.name) || 0;
+            if (useCount > 0) {
+                showError(
+                    'Cannot delete "' + cond.name + '"',
+                    'It is referenced ' + useCount + ' time' + (useCount === 1 ? '' : 's') +
+                        ' in the sequence. Remove it from the sequence first.'
+                );
+                return;
+            }
+            const proceed = await confirmModal({
+                title: 'Delete condition "' + cond.name + '"?',
+                body: 'It is unused in the sequence. This removes it from the library.',
+                confirmLabel: 'Delete',
+                cancelLabel: 'Cancel',
+            });
+            if (!proceed) return;
+            pushUndo();
+            try {
+                docDelete(experiment, ['conditions', condIdx]);
+                setDirty(true);
+                // Clear selection if it pointed at the now-deleted condition.
+                if (selection && selection.kind === 'condition' && selection.name === cond.name) {
+                    selection = null;
+                }
+                renderAll();
+            } catch (err) {
+                showError('Delete failed', err.message);
             }
         }
 

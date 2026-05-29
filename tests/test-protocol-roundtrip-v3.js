@@ -25,6 +25,7 @@ const {
     parseV3Protocol,
     generateV3Protocol,
     validateReferences,
+    collectBlockingErrors,
     collectExportWarnings,
     V3ParseError,
     docSet,
@@ -2198,6 +2199,150 @@ checkTrue('valid-name: rejects non-string', !isValidAnchorName(42));
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
     checkTrue('anchorExists: existing returns true', anchorExists(exp, 'dur_long'));
     checkTrue('anchorExists: nonexistent returns false', !anchorExists(exp, 'no_such_anchor'));
+}
+
+// ─── Test Suite 30: Phase 6 blocking validation + library delete ────────────
+console.log('\n--- Suite 30: collectBlockingErrors + library delete ---');
+
+// 30.1 — clean fixture has no blocking errors
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const report = collectBlockingErrors(exp);
+    checkTrue('block: clean fixture ok', report.ok, report.errors.join('; '));
+    check('block: clean fixture 0 errors', report.errors.length, 0);
+}
+
+// 30.2 / 30.3 — duplicate anchor name detected (exactly once per name)
+{
+    const yaml = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'variables:',
+        '  a: &dup 1',
+        '  b: &dup 2',
+        'experiment: [foo]',
+        'conditions:',
+        '  - name: foo',
+        '    commands: [{type: wait, duration: 1}]'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml);
+    const report = collectBlockingErrors(exp);
+    checkTrue('block: duplicate anchor blocks', !report.ok);
+    const dupErrs = report.errors.filter((e) => /Duplicate anchor.*dup/.test(e));
+    check('block: exactly one duplicate-anchor error', dupErrs.length, 1);
+}
+
+// 30.4 / 30.5 — dangling alias safety net (deduped). A fully-dangling alias
+// throws at import (toJS), so we construct the in-memory state by parsing a
+// valid doc, then stripping the anchor declaration off the _doc while leaving
+// the *alias references intact — exactly the mutation-model state this guards.
+{
+    const yaml = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'variables:',
+        '  d: &d 7',
+        'experiment: [foo, bar]',
+        'conditions:',
+        '  - name: foo',
+        '    commands: [{type: wait, duration: *d}]',
+        '  - name: bar',
+        '    commands: [{type: wait, duration: *d}]'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml);
+    // Strip the anchor declaration off the variables value node, leaving the
+    // two *d aliases dangling.
+    const varsNode = exp._doc.get('variables', true);
+    for (const pair of varsNode.items) {
+        if (pair.value && pair.value.anchor === 'd') pair.value.anchor = undefined;
+    }
+    const report = collectBlockingErrors(exp);
+    checkTrue('block: dangling alias blocks', !report.ok);
+    const danglingErrs = report.errors.filter((e) => /Dangling alias.*\bd\b/.test(e));
+    check('block: dangling alias deduped to one error', danglingErrs.length, 1);
+}
+
+// 30.6 — alias to an anchor declared OUTSIDE variables: is NOT flagged
+{
+    const yaml = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'experiment: [foo, bar]',
+        'conditions:',
+        '  - name: foo',
+        '    commands: [{type: wait, duration: &dwell 7}]',
+        '  - name: bar',
+        '    commands: [{type: wait, duration: *dwell}]'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml);
+    const report = collectBlockingErrors(exp);
+    checkTrue(
+        'block: alias to anchor declared in conditions not flagged',
+        report.ok,
+        report.errors.join('; ')
+    );
+}
+
+// 30.7 — folds in validateReferences errors (duplicate condition name)
+{
+    const yaml = [
+        'version: 3',
+        'experiment_info: {name: x}',
+        'rig: "/tmp/r.yaml"',
+        'experiment: [foo]',
+        'conditions:',
+        '  - name: foo',
+        '    commands: [{type: wait, duration: 1}]',
+        '  - name: foo',
+        '    commands: [{type: wait, duration: 2}]'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml);
+    const report = collectBlockingErrors(exp);
+    checkTrue('block: duplicate condition name blocks', !report.ok);
+    checkTrue(
+        'block: surfaces validateReferences error',
+        report.errors.some((e) => /Duplicate condition name.*foo/.test(e))
+    );
+}
+
+// 30.8 — no _doc → graceful, equals validateReferences result, never throws
+{
+    const bare = {
+        conditions: [{ name: 'a', commands: [] }],
+        sequence: [{ kind: 'ref', condition_name: 'a' }]
+    };
+    let report;
+    let threw = false;
+    try {
+        report = collectBlockingErrors(bare);
+    } catch (e) {
+        threw = true;
+    }
+    checkTrue('block: no _doc does not throw', !threw);
+    checkTrue('block: no _doc ok matches validateReferences', report.ok === validateReferences(bare).ok);
+}
+
+// 30.9 / 30.10 — library delete via docDelete: mirror splice + clean round-trip
+{
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const origCount = exp.conditions.length;
+    // Add an unused condition (docInsertCondition does not touch the sequence),
+    // then delete it — a deletion that leaves all references intact.
+    docInsertCondition(exp, 'tmp_del', [{ type: 'wait', duration: 1 }]);
+    check('lib-del: insert grew library', exp.conditions.length, origCount + 1);
+    const delIdx = exp.conditions.length - 1;
+    docDelete(exp, ['conditions', delIdx]);
+    check('lib-del: delete shrank library', exp.conditions.length, origCount);
+    checkTrue('lib-del: deleted name gone from mirror', !exp.conditions.some((c) => c.name === 'tmp_del'));
+
+    const regen = generateV3Protocol(exp);
+    checkTrue('lib-del: deleted name absent from regen', !/\btmp_del\b/.test(regen));
+    const reparsed = parseV3Protocol(regen);
+    check('lib-del: round-trip condition count', reparsed.conditions.length, origCount);
+    checkTrue('lib-del: round-trip still validates', collectBlockingErrors(reparsed).ok);
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────

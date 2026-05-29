@@ -1,8 +1,8 @@
 # v3 Experiment Designer — Handoff for Next Session (Round 2)
 
-**Last updated:** 2026-05-27 (Phase 5 session)
-**Branch:** `main` at `c5cf223` → cleanup PR `#76` + Phase 5 PR (this session)
-**Editor version:** v3 Experiment Designer **v0.10** (Phase 5 shipped this session)
+**Last updated:** 2026-05-28 (Phase 6 session)
+**Branch:** `phase5/variables-ux` (Phase 5 `de31235` + Phase 6 this session) → PR to `main`
+**Editor version:** v3 Experiment Designer **v0.11** (Phase 6 shipped this session)
 **Pinned upstream:** maDisplayTools `origin/version3` at `649d7ef`
 
 This is the second handoff doc for the v3 designer. It supersedes the original
@@ -194,15 +194,15 @@ fixtures, tests, and docs.
 
 ### What the editor still can't do (deferred work)
 
-- Edit the **variables** section (anchor inline-edit, rename cascade, anchor
-  binding popover).
 - **Cross-library import** (D4) — design is on the shelf with a known fix
   list; deferred per Codex-adv concerns.
-- **Pre-export blocking validation modal** with line numbers (currently
-  only the soft-warn banner).
-- **Library row delete** (when usage = 0).
-- **Reset button** (clear sequence + conditions + variables to defaults).
+- **Pre-export validation line numbers** — the Phase 6 modal aggregates
+  blocking errors but does not yet map them to source line numbers.
 - **MATLAB-validation flow documentation** (Phase 8 in the original plan).
+
+*(Shipped since the original deferred list: variables editing — Phase 5;
+pre-export blocking validation modal, library-row delete, Reset button —
+Phase 6.)*
 - **Quickstart HTML doc** (Phase 9 in the original plan).
 - Comment preservation tests at strategic positions (Phase 7 in the plan).
 
@@ -269,17 +269,50 @@ Complex anchors (maps, lists, merge keys `<<: *foo`) round-trip via
 table, and rename cascades work for them (the test suite covers a
 merge-key case).
 
-### Tier 3: Phase 6 — full validation modal + Reset (~1 day)
+### Tier 3: Phase 6 — validation modal + Reset + library delete ✅ SHIPPED (this session, v0.11)
 
-- Promote the soft-warn export banner to a full pre-export modal that
-  aggregates all errors (dup condition names, missing intertrial
-  referents, missing trial referents, alias references to missing
-  variables, duplicate anchor names, name-identity normalization).
-  Display with line numbers where possible.
-- Library: delete blocked when usage > 0; "remove from sequence first?"
-  affordance.
-- Reset button: clear sequence + conditions + variables to defaults
-  (one empty condition, sequence = `[ref to it]`).
+All three pieces landed on `phase5/variables-ux` after the Phase 5 commit:
+
+1. **Pre-export validation modal.** The Export button now runs a blocking
+   validator before writing. On errors it shows a `confirmModal` listing
+   each error with an "Export anyway" escape hatch (Cancel aborts the
+   download). Soft warnings stay in the non-blocking banner — the two
+   tiers are distinct.
+2. **Library-row delete.** Each library row has a `✕` button. Deletion is
+   blocked while usage > 0 (shows "remove from sequence first"); when
+   unused, a confirm modal precedes `docDelete(['conditions', idx])`.
+   Selection clears if the deleted condition was selected.
+3. **Reset button.** Header toolbar `⟲ Reset` confirms, then loads the
+   blank skeleton. Reversible: `pushUndo()` runs first and `loadYamlText`
+   gained a `{ keepUndo: true }` option, so a single Undo restores the
+   prior doc.
+
+**New validator:** `collectBlockingErrors(experiment)` in
+`js/protocol-yaml-v3.js` — a blocking sibling to `collectExportWarnings`.
+It *composes* `validateReferences` (folds in dup-condition-name and
+missing-ref errors) and adds two CST checks via `YAML.visit`: **duplicate
+anchor names** (yaml@2 silently accepts `&dup` twice, so it's counted) and
+**dangling aliases** (an `*alias` whose anchor is gone — a safety net for
+the in-memory mutation model, since a fully-dangling alias throws at
+import). Returns `{ ok, errors }`, the same shape as `validateReferences`.
+Exported from all three surfaces (ProtocolV3 object, named export, ESM
+import in the HTML).
+
+**Test coverage:** Suite 30 (17 checks) in `tests/test-protocol-roundtrip-v3.js`.
+Total: **446/446**.
+
+**Browser-verified (this session):** the 6 Phase 5 checks (rename cascade,
+bind, unbind, create-and-bind, cascade-unbind delete, complex-anchor badge)
+plus the 3 Phase 6 checks (validation modal blocks/cancels on duplicate
+anchor, Reset collapses to skeleton and Undo restores, library delete
+blocked-when-used / works-when-unused).
+
+> **Preview caching note:** `python -m http.server` lets the browser
+> heuristically cache `js/*.js`, which breaks ES-module verification after
+> edits (a stale import silently kills the whole module). A no-cache static
+> server (`.claude/nocache-server.py`, untracked) on a fresh port avoids it.
+
+**Still deferred:** mapping validation errors to source **line numbers**.
 
 ### Tier 4: D4 — cross-library import (parked — ~5+ days when picked up)
 
@@ -345,7 +378,8 @@ These should be resolved before the next session picks a direction:
 
 Plus inspection helpers: `nodeIsAliasAt`, `aliasNameAt`,
 `anchorExists`, `findAliasesTo`, `isValidAnchorName`,
-`variableIsComplex`, `collectExportWarnings`, `validateReferences`.
+`variableIsComplex`, `collectExportWarnings`, `validateReferences`,
+`collectBlockingErrors` (Phase 6 — blocking pre-export validation).
 
 ### Helper anatomy (template for adding new ones)
 

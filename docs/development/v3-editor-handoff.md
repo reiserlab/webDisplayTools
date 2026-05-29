@@ -1,5 +1,10 @@
 # v3 Experiment Designer — Handoff for Next Session
 
+> **⚠️ SUPERSEDED (2026-05-28).** This is the original handoff (covers up to
+> v0.2). Most of its items have shipped. Read
+> [`v3-editor-handoff-2.md`](v3-editor-handoff-2.md) instead — it has the
+> current picture through Phase 6 (v0.11). This file is kept for history only.
+
 **Last updated:** 2026-05-27
 **Branch:** `main` at `6bacb46`
 **Pinned upstream:** maDisplayTools `origin/version3` at `649d7ef`

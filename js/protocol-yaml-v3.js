@@ -438,6 +438,72 @@ function validateReferences(experiment) {
 }
 
 /**
+ * Collect blocking (hard) errors that should gate export. A blocking sibling to
+ * the soft-warn collectExportWarnings: this composes validateReferences (all of
+ * its structural reference errors) and adds two CST-level anchor checks that
+ * only the YAML.Document can surface:
+ *
+ *   - Duplicate anchor names: yaml@2 silently accepts two `&dup` declarations
+ *     (the later one wins on resolution), so we count anchor names ourselves.
+ *   - Dangling aliases: an `*alias` whose `&anchor` is not declared anywhere in
+ *     the document. A fully-dangling alias actually throws at import (toJS), so
+ *     this is a safety net for the in-memory mutation model — a `_doc` state
+ *     where an alias outlived the anchor it pointed at.
+ *
+ * Returns { ok, errors } — the same shape as validateReferences, so callers can
+ * treat the two interchangeably. Never throws (guards on _doc / YAML.visit).
+ */
+function collectBlockingErrors(experiment) {
+    // Fold in all structural reference errors first.
+    const base = validateReferences(experiment);
+    const errors = base.ok ? [] : base.errors.slice();
+
+    // The two anchor checks need the CST; skip gracefully when it's absent.
+    if (experiment && experiment._doc && typeof YAML.visit === 'function') {
+        // Duplicate anchor names — count every node.anchor across the doc tree.
+        // The `Node` visitor matches Scalar/Map/Seq (and Alias, which carries
+        // `.source` not `.anchor`, so it never contributes a count).
+        const anchorCounts = new Map();
+        YAML.visit(experiment._doc, {
+            Node(_, node) {
+                if (node && node.anchor) {
+                    anchorCounts.set(node.anchor, (anchorCounts.get(node.anchor) || 0) + 1);
+                }
+            }
+        });
+        const declaredAnchors = new Set(anchorCounts.keys());
+        for (const [name, count] of anchorCounts) {
+            if (count > 1) {
+                errors.push('Duplicate anchor name: "&' + name + '" declared ' + count + ' times');
+            }
+        }
+
+        // Dangling aliases — an alias whose source has no anchor declaration
+        // anywhere in the doc (variables:, conditions:, complex nodes — all
+        // count as declared). Deduped so N references to one missing anchor
+        // produce a single error.
+        const danglingSeen = new Set();
+        YAML.visit(experiment._doc, {
+            Alias(_, node) {
+                if (
+                    node &&
+                    node.source &&
+                    !declaredAnchors.has(node.source) &&
+                    !danglingSeen.has(node.source)
+                ) {
+                    danglingSeen.add(node.source);
+                    errors.push(
+                        'Dangling alias: "*' + node.source + '" has no matching anchor declaration'
+                    );
+                }
+            }
+        });
+    }
+
+    return { ok: errors.length === 0, errors };
+}
+
+/**
  * Collect non-fatal export-time warnings. Soft-warn gate: the editor surfaces
  * these in a yellow banner above the Export button, but never blocks export.
  *
@@ -1774,6 +1840,7 @@ const ProtocolV3 = {
     parseV3Protocol,
     generateV3Protocol,
     validateReferences,
+    collectBlockingErrors,
     collectExportWarnings,
     V3ParseError,
     docSet,
@@ -1823,6 +1890,7 @@ export {
     parseV3Protocol,
     generateV3Protocol,
     validateReferences,
+    collectBlockingErrors,
     collectExportWarnings,
     V3ParseError,
     docSet,
