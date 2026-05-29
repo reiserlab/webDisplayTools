@@ -1,8 +1,8 @@
 # v3 Experiment Designer — Handoff for Next Session (Round 2)
 
 **Last updated:** 2026-05-29
-**State:** everything below is **merged to `main`** — nothing pending.
-**Editor version:** v3 Experiment Designer **v0.12**
+**State:** v0.13 = manual-testing fixes (toolbar reflow + editable settings), on a branch → PR.
+**Editor version:** v3 Experiment Designer **v0.13**
 **`main` HEAD:** `7b9e72e` (#78) — prior `9dca364` (#77)
 **Pinned upstream:** maDisplayTools `origin/version3` at `649d7ef`
 
@@ -88,8 +88,27 @@ passthrough; 10 demo fixtures), **plus**:
   errors) and an "Export anyway" escape hatch. Soft warnings stay non-blocking.
 - **Reset button** — clears to the blank skeleton; reversible (one Undo restores).
 - **Library-row delete (✕)** — blocked while a condition is in use.
+- **Toolbar no longer reflows on first edit (v0.13 fix).** The `● edited`
+  badge moved to the LEFT cluster (before the flex spacer). Previously it sat
+  among the action buttons and `display:none→inline-block` shoved Undo/Redo/
+  **Reset** ~83px left on the first edit, so a click on Reset after editing
+  missed it — the "create-anchor then Reset both fail" report. Both features
+  always worked; the clicks were landing on shifted-away buttons.
+- **Editable Settings (v0.13).** Experiment Info (name/date_created/author/
+  pattern_library) and the Rig path are editable text fields (`docSet` on
+  `['experiment_info', k]` / `['rig']`; blank info fields `docDelete`). Rig has
+  a **Browse…** helper that fills in the picked filename while preserving the
+  directory prefix — browsers can't read full filesystem paths, so the path is
+  ultimately text. **Plugins stay read-only**: per the v3 spec the protocol's
+  `plugins:` list is self-contained and the rig is a separate file MATLAB loads,
+  which the web tool can't read off disk (no rig-plugin inheritance in-tool).
 
 ### Known by-design constraints (not gaps)
+
+- **Plugins are not editable in-tool / not inherited from the rig file.** The
+  rig path is a string MATLAB resolves; the browser has no access to that file.
+  Editing plugin entries is a YAML-by-hand task (or a future cross-file feature
+  like D4).
 
 - Complex anchors (map/seq, merge keys `<<: *foo`) are read-only in the UI.
 - Randomized blocks show a *sample* order in the timeline, labeled "randomized."

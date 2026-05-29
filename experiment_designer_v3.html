@@ -176,6 +176,39 @@
         }
         .settings-section .kv .k { color: var(--text-dim); }
         .settings-section .kv .v { color: var(--text); word-break: break-all; }
+        /* Editable settings rows (experiment info, rig) */
+        .settings-section .set-row { margin-bottom: 0.45rem; }
+        .settings-section .set-row label {
+            display: block;
+            color: var(--text-dim);
+            font-size: 0.7rem;
+            margin-bottom: 0.1rem;
+        }
+        .settings-section .set-row input.settings-input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.4rem;
+            border-radius: 2px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .settings-section .set-row input.settings-input:focus { outline: none; border-color: var(--accent); }
+        .settings-section .set-row .rig-row { display: flex; gap: 0.3rem; align-items: stretch; }
+        .settings-section .settings-browse-btn {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-family: inherit;
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .settings-section .settings-browse-btn:hover { color: var(--accent); border-color: var(--accent); }
         .vars-table {
             width: 100%;
             font-size: 0.75rem;
@@ -1051,11 +1084,16 @@
     <div class="app-header">
         <h1>v3 Experiment Designer</h1>
         <span class="beta-badge">Beta / Editor</span>
+        <!-- Dirty indicator lives in the LEFT cluster (before the flex spacer)
+             so that when it toggles visible it's absorbed by the spacer and
+             does NOT shift the right-aligned action buttons (Undo/Redo/Reset).
+             Previously it sat among the buttons and pushed them ~83px left on
+             the first edit, causing clicks on Reset to miss after editing. -->
+        <span id="dirtyIndicator" class="dirty-badge" style="display: none;" title="Unsaved edits — Export to save">● edited</span>
         <div class="header-spacer"></div>
         <button id="undoBtn" class="header-btn" disabled title="Undo last edit (Ctrl+Z)">↶ Undo</button>
         <button id="redoBtn" class="header-btn" disabled title="Redo (Ctrl+Y)">↷ Redo</button>
         <button id="resetBtn" class="header-btn" disabled title="Clear everything to a blank minimum-valid v3 skeleton (reversible with Undo)">⟲ Reset</button>
-        <span id="dirtyIndicator" class="dirty-badge" style="display: none;" title="Unsaved edits — Export to save">● edited</span>
         <button id="settingsToggle" class="header-btn" title="Show/hide experiment metadata, rig, plugins, variables">Settings ▾</button>
         <select id="demoSelect" class="header-btn" title="Load a bundled demo YAML or start from a blank skeleton">
             <option value="">Load demo ▾</option>
@@ -1163,7 +1201,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.12 | <span id="footerTimestamp">2026-05-29 00:08 ET</span>
+        v3 Experiment Designer v0.13 | <span id="footerTimestamp">2026-05-29 07:41 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1612,31 +1650,68 @@
                 return;
             }
 
-            // Experiment info
+            // Experiment info — editable text fields (v0.13)
             const info = experiment.experiment_info;
             const infoBox = el('div', { class: 'settings-section' });
             infoBox.appendChild(el('h3', {}, 'Experiment Info'));
             for (const k of ['name', 'date_created', 'author', 'pattern_library']) {
-                const v = info[k];
-                if (v != null && v !== '') {
-                    infoBox.appendChild(el('div', { class: 'kv' },
-                        el('span', { class: 'k' }, k + ': '),
-                        el('span', { class: 'v' }, String(v))
-                    ));
-                }
+                const row = el('div', { class: 'set-row' });
+                row.appendChild(el('label', {}, k));
+                const inp = el('input', {
+                    type: 'text',
+                    class: 'settings-input',
+                    value: info[k] != null ? String(info[k]) : '',
+                    placeholder: k === 'pattern_library' ? 'path to pattern library' : '',
+                    title: 'Edit ' + k + '. Blank clears the field.',
+                });
+                inp.addEventListener('change', () => onExperimentInfoEdit(k, inp.value));
+                row.appendChild(inp);
+                infoBox.appendChild(row);
             }
             root.appendChild(infoBox);
 
-            // Rig
+            // Rig — editable path + Browse helper (v0.13)
             const rigBox = el('div', { class: 'settings-section' });
             rigBox.appendChild(el('h3', {}, 'Rig'));
-            rigBox.appendChild(el('div', { class: 'kv' },
-                el('span', { class: 'k' }, 'path: '),
-                el('span', { class: 'v' }, experiment.rig_path)
-            ));
+            const rigRow = el('div', { class: 'set-row' });
+            rigRow.appendChild(el('label', {}, 'path (rig YAML loaded by MATLAB)'));
+            const rigInner = el('div', { class: 'rig-row' });
+            const rigInput = el('input', {
+                type: 'text',
+                class: 'settings-input',
+                value: experiment.rig_path || '',
+                title: 'Full path to the rig YAML. Required.',
+            });
+            rigInput.addEventListener('change', () => onRigEdit(rigInput.value));
+            // Browse fills in just the filename (browsers can't read full paths);
+            // the current directory prefix is preserved so you only adjust it.
+            const rigFile = el('input', { type: 'file', accept: '.yaml,.yml', style: 'display:none;' });
+            const browseBtn = el('button', {
+                class: 'settings-browse-btn',
+                title: 'Pick a .yaml file to fill in its name. The directory prefix is kept; browsers cannot read full filesystem paths.',
+                onClick: () => rigFile.click(),
+            }, 'Browse…');
+            rigFile.addEventListener('change', () => {
+                const f = rigFile.files && rigFile.files[0];
+                if (!f) return;
+                const cur = experiment.rig_path || '';
+                const slash = cur.lastIndexOf('/');
+                const dir = slash >= 0 ? cur.slice(0, slash + 1) : '';
+                const newPath = dir + f.name;
+                rigInput.value = newPath;
+                onRigEdit(newPath);
+                rigFile.value = '';
+            });
+            rigInner.appendChild(rigInput);
+            rigInner.appendChild(browseBtn);
+            rigRow.appendChild(rigInner);
+            rigBox.appendChild(rigRow);
+            rigBox.appendChild(rigFile);
             root.appendChild(rigBox);
 
-            // Plugins
+            // Plugins — read-only. Per the v3 spec the protocol's plugins: list
+            // is self-contained (the rig path is a separate file MATLAB loads;
+            // the web tool can't read it). Edit plugin entries in YAML for now.
             if (experiment.plugins.length > 0) {
                 const pluginBox = el('div', { class: 'settings-section' });
                 pluginBox.appendChild(el('h3', {}, 'Plugins (' + experiment.plugins.length + ')'));
@@ -1891,6 +1966,47 @@
                 renderAll();
             } catch (err) {
                 showError('Add failed', err.message);
+            }
+        }
+
+        // ─── Settings editor handlers (experiment info + rig) ───────────────
+
+        // Edit an experiment_info field. Blank clears the key. change fires on
+        // blur, so one undo step per field visit. No re-render needed — nothing
+        // else displays these values.
+        function onExperimentInfoEdit(key, rawValue) {
+            if (!experiment) return;
+            const value = rawValue.trim();
+            const current = experiment.experiment_info[key];
+            if (value === (current != null ? String(current) : '')) return; // no-op
+            pushUndo();
+            try {
+                if (value === '') docDelete(experiment, ['experiment_info', key]);
+                else docSet(experiment, ['experiment_info', key], value);
+                setDirty(true);
+            } catch (err) {
+                showError('Edit failed', err.message);
+                renderSettings();
+            }
+        }
+
+        // Edit the rig path. Required, so blank is rejected.
+        function onRigEdit(rawValue) {
+            if (!experiment) return;
+            const value = rawValue.trim();
+            if (value === (experiment.rig_path != null ? String(experiment.rig_path) : '')) return;
+            if (value === '') {
+                showError('Rig path required', 'The rig path cannot be empty.');
+                renderSettings();
+                return;
+            }
+            pushUndo();
+            try {
+                docSet(experiment, ['rig'], value);
+                setDirty(true);
+            } catch (err) {
+                showError('Edit failed', err.message);
+                renderSettings();
             }
         }
 
