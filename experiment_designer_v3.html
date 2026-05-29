@@ -321,7 +321,10 @@
         }
         .confirm-modal .body ul {
             margin: 0;
-            padding-left: 1rem;
+            /* Callers prefix each item with a literal "• ", so suppress the
+               default <li> disc marker to avoid a double bullet. */
+            list-style: none;
+            padding-left: 0.25rem;
             font-size: 0.75rem;
             color: var(--text-dim);
             max-height: 240px;
@@ -1160,7 +1163,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.11 | <span id="footerTimestamp">2026-05-28 22:55 ET</span>
+        v3 Experiment Designer v0.12 | <span id="footerTimestamp">2026-05-29 00:08 ET</span>
     </div>
 
     <!-- Error modal -->
