@@ -1,0 +1,70 @@
+version: 3
+
+# A "sibling lab" source protocol for D4 cross-library import tests.
+# Exercises: scalar anchors, a transitive anchor (a map anchor whose value
+# references another anchor), plugin declarations, a condition that aliases the
+# anchors AND references plugins by literal name, and a comment to verify
+# comment preservation on cross-doc clone.
+
+experiment_info:
+  name: "Sibling Lab Protocol"
+  author: "Sibling Lab"
+
+rig: '/sibling/configs/rigs/sibling_rig.yaml'
+
+variables:
+  dur_short: &dur_short 3
+  dur_long: &dur_long 10
+  color_power: &color_power 5
+  # transitive: this map anchor's value references &color_power
+  led_settings: &led_settings
+    power: *color_power
+    panel_num: 0
+
+plugins:
+  - name: "camera"
+    type: "class"
+    matlab:
+      class: "BiasPlugin"
+
+  - name: "backlight"
+    type: "class"
+    matlab:
+      class: "LEDControllerPlugin"
+
+experiment:
+  - "sibling check"
+
+conditions:
+  - name: "sibling check"
+    commands:
+      # references &dur_short via alias
+      - type: "controller"
+        command_name: "allOn"
+      - type: "wait"
+        duration: *dur_short
+      # references the camera plugin by literal name
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      # a controller trial that aliases &dur_long
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "sibling_pattern.pat"
+        duration: *dur_long
+        mode: 2
+        frame_index: 1
+        frame_rate: 10
+        gain: 0
+      - type: "controller"
+        command_name: "allOff"
+
+  - name: "sibling led"
+    commands:
+      # references the backlight plugin + the transitive &led_settings map anchor
+      - type: "plugin"
+        plugin_name: "backlight"
+        command_name: "setRedLEDPower"
+        params: *led_settings
+      - type: "wait"
+        duration: *dur_short

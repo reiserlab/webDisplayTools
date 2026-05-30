@@ -57,7 +57,12 @@ const {
     findAliasesTo,
     variableIsComplex,
     isValidAnchorName,
-    anchorExists
+    anchorExists,
+    // D4 (Milestone 1) — node-based section + splice helpers
+    ensureTopLevelSection,
+    docInsertConditionNode,
+    docInsertVariableNode,
+    docInsertPluginNode
 } = require('../js/protocol-yaml-v3.js');
 
 const {
@@ -68,6 +73,18 @@ const {
     getV3CommandParams,
     LOG_PLUGIN
 } = require('../js/plugin-registry.js');
+
+// D4 (Milestone 1) — cross-document primitives
+const {
+    collectAliasReferences,
+    resolveAlias,
+    cloneNodeAcrossDocs,
+    yamlNodeStructuralEquals,
+    sortedJson
+} = require('../js/v3-import.js');
+
+// yaml@2 itself (for building raw source docs in import tests)
+const YAML = require('yaml');
 
 // ─── Counters & helpers ─────────────────────────────────────────────────────
 
@@ -2493,6 +2510,328 @@ console.log('\n--- Suite 31: comment preservation + anchor edge cases + randomiz
     checkTrue('randomize: explicit false preserved in regen', /randomize:\s*false/.test(regen));
     // repetitions survive too
     checkTrue('randomize: repetitions preserved', block.repetitions === 2);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// D4 — Cross-library import, Milestone 1 (suites N1–N6)
+// Cross-doc primitives (js/v3-import.js) + node-based splice helpers
+// (js/protocol-yaml-v3.js). See docs/development/v3-d4-design.md §10.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Small builder: a raw source YAML.Document (no v3 validation) for primitive tests.
+function rawDoc(text) {
+    return YAML.parseDocument(text, { keepSourceTokens: true });
+}
+
+// ─── Suite N1: collectAliasReferences ───────────────────────────────────────
+console.log('\n--- Suite N1: collectAliasReferences ---');
+{
+    const src = parseV3Protocol(readFixture('v3_sibling_source.yaml'));
+    const cond = src._doc.getIn(['conditions', 0], true); // "sibling check"
+    const aliases = collectAliasReferences(cond);
+    const sources = aliases.map((a) => a.source);
+    check('N1: direct aliases found in condition', sources.length, 2);
+    checkTrue(
+        'N1: aliases are dur_short then dur_long (document order)',
+        sources[0] === 'dur_short' && sources[1] === 'dur_long'
+    );
+    checkTrue('N1: every collected node is an Alias', aliases.every((a) => YAML.isAlias(a)));
+
+    // transitive: the &led_settings value node itself contains *color_power
+    const ledVal = src._doc.getIn(['variables', 'led_settings'], true);
+    const nested = collectAliasReferences(ledVal).map((a) => a.source);
+    check('N1: transitive aliases inside a value node', nested.join(','), 'color_power');
+
+    // zero-alias subtree
+    const noAlias = rawDoc('a:\n  b: 1\n  c: [2, 3]\n').getIn(['a'], true);
+    check('N1: zero aliases → empty array', collectAliasReferences(noAlias).length, 0);
+
+    // works on a whole document
+    checkTrue('N1: walks a whole Document', collectAliasReferences(src._doc).length >= 2);
+}
+
+// ─── Suite N2: resolveAlias (last-wins) ──────────────────────────────────────
+console.log('\n--- Suite N2: resolveAlias ---');
+{
+    const src = parseV3Protocol(readFixture('v3_sibling_source.yaml'));
+    const cond = src._doc.getIn(['conditions', 0], true);
+    const aliases = collectAliasReferences(cond);
+    const v = resolveAlias(aliases[0], src._doc); // *dur_short
+    checkTrue('N2: resolves to the source value node (scalar 3)', v && v.value === 3);
+
+    // last-wins: with two anchors of the same name, an alias binds to the LAST
+    // definition appearing before it in document order.
+    const dup = rawDoc('first: &a 1\nsecond: &a 2\nuse: *a\n');
+    let useAlias = null;
+    YAML.visit(dup, {
+        Alias(_, n) {
+            useAlias = n;
+        }
+    });
+    const resolved = resolveAlias(useAlias, dup);
+    checkTrue('N2: last-wins — *a after two &a resolves to 2', resolved && resolved.value === 2);
+
+    // broken alias → null (no matching anchor anywhere)
+    const broken = rawDoc('x: *nope\n');
+    let brokenAlias = null;
+    YAML.visit(broken, {
+        Alias(_, n) {
+            brokenAlias = n;
+        }
+    });
+    check('N2: broken alias resolves to null', resolveAlias(brokenAlias, broken), null);
+    check('N2: null aliasNode → null', resolveAlias(null, src._doc), null);
+}
+
+// ─── Suite N3: cloneNodeAcrossDocs ───────────────────────────────────────────
+console.log('\n--- Suite N3: cloneNodeAcrossDocs ---');
+{
+    const src = parseV3Protocol(readFixture('v3_sibling_source.yaml'));
+    const target = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const cond = src._doc.getIn(['conditions', 0], true);
+
+    // rewrite dur_short, leave dur_long untouched
+    const cloned = cloneNodeAcrossDocs(cond, target._doc, { dur_short: 'sib__dur_short' });
+    const clonedSources = collectAliasReferences(cloned)
+        .map((a) => a.source)
+        .sort();
+    check(
+        'N3: mapped alias rewritten, unmapped left alone',
+        clonedSources.join(','),
+        'dur_long,sib__dur_short'
+    );
+
+    // deep clone: mutating the clone does not affect the source
+    cloned.set('name', 'mutated_clone');
+    check(
+        'N3: source condition name unchanged after clone mutation',
+        src._doc.getIn(['conditions', 0, 'name']),
+        'sibling check'
+    );
+
+    // inline anchor DEFINITION rewrite (the rev-3 review fix)
+    const inline = rawDoc('cmd:\n  duration: &dur 5\n  wait: *dur\n').getIn(['cmd'], true);
+    const clonedInline = cloneNodeAcrossDocs(inline, target._doc, { dur: 'sib__dur' });
+    let foundAnchor = null;
+    YAML.visit(clonedInline, {
+        Node(_, n) {
+            if (n && n.anchor) foundAnchor = n.anchor;
+        }
+    });
+    const inlineAliasSrc = collectAliasReferences(clonedInline).map((a) => a.source);
+    check('N3: inline anchor DEFINITION rewritten', foundAnchor, 'sib__dur');
+    check('N3: inline alias rewritten to match', inlineAliasSrc.join(','), 'sib__dur');
+
+    // comment preservation on clone — the cloned node keeps its commentBefore…
+    const commented = rawDoc('m:\n  # keep me\n  a: 1\n').getIn(['m'], true);
+    const clonedCommented = cloneNodeAcrossDocs(commented, target._doc, {});
+    checkTrue(
+        'N3: commentBefore preserved on the cloned node',
+        clonedCommented.commentBefore && clonedCommented.commentBefore.includes('keep me')
+    );
+    // …and it actually serializes when spliced into a real document
+    const condComment = rawDoc(
+        'conditions:\n  - name: c\n    # inside comment\n    commands: [{type: wait, duration: 1}]\n'
+    ).getIn(['conditions', 0], true);
+    const clonedCondComment = cloneNodeAcrossDocs(condComment, target._doc, {});
+    target._doc.getIn(['conditions'], true).items.push(clonedCondComment);
+    checkTrue(
+        'N3: comment emitted in full-document toString()',
+        target._doc.toString().includes('inside comment')
+    );
+}
+
+// ─── Suite N4: yamlNodeStructuralEquals + sortedJson ─────────────────────────
+console.log('\n--- Suite N4: yamlNodeStructuralEquals ---');
+{
+    check(
+        'N4: sortedJson is key-order-independent (flat)',
+        sortedJson({ b: 1, a: 2 }),
+        sortedJson({ a: 2, b: 1 })
+    );
+    check(
+        'N4: sortedJson is key-order-independent (nested)',
+        sortedJson({ x: { d: 4, c: 3 } }),
+        sortedJson({ x: { c: 3, d: 4 } })
+    );
+    checkTrue('N4: sortedJson preserves array order', sortedJson([1, 2, 3]) !== sortedJson([3, 2, 1]));
+    check('N4: sortedJson handles null', sortedJson({ a: null }), '{"a":null}');
+
+    const docA = rawDoc('p:\n  class: BiasPlugin\n  config: {a: 1, b: 2}\n');
+    const docB = rawDoc('p:\n  config: {b: 2, a: 1}\n  class: BiasPlugin\n'); // reordered
+    const docC = rawDoc('p:\n  class: BiasPlugin\n  config: {a: 1, b: 3}\n'); // b differs
+    const nA = docA.getIn(['p'], true);
+    const nB = docB.getIn(['p'], true);
+    const nC = docC.getIn(['p'], true);
+    checkTrue(
+        'N4: structurally-equal maps (key order ignored) → true',
+        yamlNodeStructuralEquals(nA, docA, nB, docB)
+    );
+    checkTrue('N4: differing value → false', !yamlNodeStructuralEquals(nA, docA, nC, docC));
+    // different types
+    const scalarDoc = rawDoc('s: 5\n');
+    checkTrue(
+        'N4: map vs scalar → false',
+        !yamlNodeStructuralEquals(nA, docA, scalarDoc.getIn(['s'], true), scalarDoc)
+    );
+    // broken alias inside → false (toJS throws → caught)
+    const brokenDoc = rawDoc('q:\n  x: *missing\n');
+    checkTrue(
+        'N4: unresolvable alias → false',
+        !yamlNodeStructuralEquals(brokenDoc.getIn(['q'], true), brokenDoc, nA, docA)
+    );
+}
+
+// ─── Suite N5: ensureTopLevelSection ─────────────────────────────────────────
+console.log('\n--- Suite N5: ensureTopLevelSection ---');
+{
+    // idempotent on an existing section (canonical_a has variables: already)
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const before = exp._doc.getIn(['variables'], true);
+    const got = ensureTopLevelSection(exp, 'variables', 'map');
+    checkTrue('N5: returns the existing section node (same identity)', got === before);
+    const varCount = (exp._doc.toString().match(/^variables:/gm) || []).length;
+    check('N5: existing section not duplicated', varCount, 1);
+
+    // creates a missing section, placed BEFORE conditions:
+    const noVars = parseV3Protocol(readFixture('v3_no_variables.yaml'));
+    checkTrue('N5: precondition — no variables: in fixture', !noVars._doc.getIn(['variables'], true));
+    const created = ensureTopLevelSection(noVars, 'variables', 'map');
+    checkTrue('N5: creates a YAMLMap', YAML.isMap(created));
+    const out = noVars._doc.toString();
+    const vIdx = out.indexOf('variables:');
+    const cIdx = out.indexOf('conditions:');
+    checkTrue('N5: created variables: lands BEFORE conditions:', vIdx >= 0 && vIdx < cIdx);
+    // and before experiment: too
+    const eIdx = out.indexOf('\nexperiment:');
+    checkTrue('N5: created variables: lands before experiment:', vIdx < eIdx);
+    checkTrue(
+        'N5: doc still re-parses after section creation',
+        (() => {
+            try {
+                parseV3Protocol(out);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        })()
+    );
+
+    // creates a seq section when asked
+    const noPlugins = parseV3Protocol(readFixture('v3_no_variables.yaml'));
+    const pl = ensureTopLevelSection(noPlugins, 'plugins', 'seq');
+    checkTrue('N5: creates a YAMLSeq for plugins', YAML.isSeq(pl));
+}
+
+// ─── Suite N6: docInsert{Condition,Variable,Plugin}Node ──────────────────────
+console.log('\n--- Suite N6: node-based splice helpers ---');
+{
+    const src = parseV3Protocol(readFixture('v3_sibling_source.yaml'));
+
+    // (a) insert variable into an EXISTING variables: section + mirror + round-trip
+    const target = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const durNode = cloneNodeAcrossDocs(
+        src._doc.getIn(['variables', 'dur_short'], true),
+        target._doc,
+        {}
+    );
+    docInsertVariableNode(target, 'sib__dur_short', durNode);
+    checkTrue(
+        'N6a: mirror variable added',
+        target.variables.some((v) => v.name === 'sib__dur_short' && v.value === 3)
+    );
+    const tOut = target._doc.toString();
+    checkTrue('N6a: anchor &sib__dur_short emitted', /&sib__dur_short\b/.test(tOut));
+    checkTrue(
+        'N6a: round-trips',
+        (() => {
+            try {
+                parseV3Protocol(tOut);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        })()
+    );
+
+    // (b) insert variable when variables: is ABSENT → section created, condition
+    //     aliasing it still re-parses (the headline placement guarantee)
+    const noVars = parseV3Protocol(readFixture('v3_no_variables.yaml'));
+    const durNode2 = cloneNodeAcrossDocs(
+        src._doc.getIn(['variables', 'dur_short'], true),
+        noVars._doc,
+        {}
+    );
+    docInsertVariableNode(noVars, 'sib__dur_short', durNode2);
+    const condClone = cloneNodeAcrossDocs(src._doc.getIn(['conditions', 0], true), noVars._doc, {
+        dur_short: 'sib__dur_short',
+        dur_long: 'sib__dur_long'
+    });
+    // import dur_long too so the second alias in that condition resolves
+    const durLong = cloneNodeAcrossDocs(
+        src._doc.getIn(['variables', 'dur_long'], true),
+        noVars._doc,
+        {}
+    );
+    docInsertVariableNode(noVars, 'sib__dur_long', durLong);
+    condClone.set('name', 'imported check');
+    docInsertConditionNode(noVars, condClone);
+    const nvOut = noVars._doc.toString();
+    checkTrue(
+        'N6b: created variables: precedes conditions:',
+        nvOut.indexOf('variables:') < nvOut.indexOf('conditions:')
+    );
+    checkTrue(
+        'N6b: doc with imported alias re-parses cleanly',
+        (() => {
+            try {
+                parseV3Protocol(nvOut);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        })()
+    );
+
+    // (c) docInsertConditionNode derives the mirror INTERNALLY with resolved values
+    const mirror = noVars.conditions.find((c) => c.name === 'imported check');
+    checkTrue('N6c: condition mirror added', !!mirror);
+    const waitCmd = mirror && mirror.commands.find((c) => c.type === 'wait');
+    check('N6c: aliased duration resolved in mirror', waitCmd && waitCmd.duration, 3);
+
+    // (d) docInsertPluginNode → doc + extractPlugin mirror + round-trip
+    const target2 = parseV3Protocol(readFixture('v3_no_variables.yaml'));
+    const camNode = cloneNodeAcrossDocs(src._doc.getIn(['plugins', 0], true), target2._doc, {});
+    const beforeCount = target2.plugins.length;
+    docInsertPluginNode(target2, camNode);
+    check('N6d: plugin mirror count +1', target2.plugins.length, beforeCount + 1);
+    const added = target2.plugins[target2.plugins.length - 1];
+    checkTrue(
+        'N6d: plugin mirror shaped by extractPlugin',
+        added.name === 'camera' && added.matlab && added.matlab.class === 'BiasPlugin'
+    );
+    checkTrue(
+        'N6d: plugins: section round-trips',
+        (() => {
+            try {
+                parseV3Protocol(target2._doc.toString());
+                return true;
+            } catch (e) {
+                return false;
+            }
+        })()
+    );
+
+    // (e) full round-trip stability after a node insert (parse→gen→parse model equal)
+    const stable = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    const cp = cloneNodeAcrossDocs(src._doc.getIn(['variables', 'color_power'], true), stable._doc, {});
+    docInsertVariableNode(stable, 'sib__color_power', cp);
+    const regen = generateV3Protocol(stable);
+    const re = parseV3Protocol(regen);
+    checkTrue(
+        'N6e: model stable across regen after insert',
+        JSON.stringify(dropDoc(re).variables) === JSON.stringify(dropDoc(stable).variables)
+    );
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────
