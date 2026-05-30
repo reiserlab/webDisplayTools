@@ -124,6 +124,10 @@ Phases 1–7 are done. Remaining work, by size:
 
 ### Tier 4: D4 — cross-library import (the one big feature, ~5+ days)
 
+> **Executable handoff:** `docs/development/v3-d4-implementation-handoff.md` —
+> milestones with completion gates, the rev-3 fix list, pre-answered open
+> questions, and dynamic-workflow guidance. Start there.
+
 Pull conditions/plugins/variables from one protocol into another. Design is
 preserved at `docs/development/v3-d4-design.md` (rev 2) with the review-fix list
 at `docs/development/v3-d4-design-reviews.md`. Before implementing:
