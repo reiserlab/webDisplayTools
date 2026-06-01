@@ -1876,6 +1876,181 @@ function docUnbindAnchor(experiment, path) {
 }
 
 // ════════════════════════════════════════════════════
+// D4 (cross-library import) — node-based section + splice helpers
+//
+// These exist alongside the JS-object-building docInsertCondition etc. The
+// difference: the import pipeline (js/v3-import.js) clones already-parsed YAML
+// nodes from a *second* document so it can preserve their comments, anchors,
+// and formatting. These helpers splice those cloned nodes in and re-derive the
+// JS mirror with the SAME extractors parseV3Protocol uses, so the mirror can't
+// drift from the YAML. See docs/development/v3-d4-design.md §4/§5.
+// ════════════════════════════════════════════════════
+
+/**
+ * ensureTopLevelSection(experiment, key, defaultShape)
+ *
+ * Return the top-level `key` node, creating it (empty map or seq) if absent.
+ *
+ * CRITICAL placement rule: a created section must land BEFORE the alias-bearing
+ * sections (`experiment:` / `conditions:`) in document order. `doc.set(key, …)`
+ * APPENDS to the end of the root map — i.e. after `conditions:` — and yaml@2
+ * stringifies with `verifyAliasOrder: true` (the default), so an imported
+ * condition's `*alias` would then precede its `&anchor` and `toString()` would
+ * throw. We splice at the canonical position derived from KNOWN_TOP_LEVEL_KEYS.
+ *
+ * @param {object} experiment - model with a `_doc` handle
+ * @param {string} key - 'variables' | 'plugins' | …
+ * @param {'map'|'seq'} defaultShape
+ * @returns {YAMLMap|YAMLSeq} the (existing or newly-created) section node
+ */
+function ensureTopLevelSection(experiment, key, defaultShape) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('ensureTopLevelSection: experiment has no _doc handle', 'NO_DOC');
+    }
+    const doc = experiment._doc;
+    const existing = doc.getIn([key], true);
+    if (existing) return existing;
+
+    const node = doc.createNode(defaultShape === 'seq' ? [] : {});
+    const root = doc.contents;
+    if (!root || !Array.isArray(root.items)) {
+        throw new V3ParseError(
+            'ensureTopLevelSection: document root is not a map',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+
+    // Insert before the first existing key that ranks AFTER `key` in the
+    // canonical top-level order; otherwise append.
+    const keyRank = KNOWN_TOP_LEVEL_KEYS.indexOf(key);
+    let insertAt = root.items.length;
+    if (keyRank !== -1) {
+        for (let i = 0; i < root.items.length; i++) {
+            const pair = root.items[i];
+            const k =
+                pair.key && pair.key.value !== undefined ? pair.key.value : String(pair.key);
+            const rank = KNOWN_TOP_LEVEL_KEYS.indexOf(k);
+            if (rank !== -1 && rank > keyRank) {
+                insertAt = i;
+                break;
+            }
+        }
+    }
+    root.items.splice(insertAt, 0, new YAML.Pair(doc.createNode(key), node));
+    return doc.getIn([key], true);
+}
+
+/**
+ * docInsertConditionNode(experiment, clonedCondNode)
+ *
+ * Splice an already-cloned-and-rewired condition node into `conditions:` and
+ * mirror it into experiment.conditions. The JS mirror is derived INTERNALLY via
+ * extractCondition(clonedCondNode.toJS(_doc)) — the node is pushed first so its
+ * aliases resolve against the target doc's (already-inserted) anchors, exactly
+ * like parseV3Protocol would have produced. If resolution fails (a dangling
+ * alias — which the import preflight blocks), falls back to the unresolved
+ * shape so the helper never throws on mirror derivation alone.
+ */
+function docInsertConditionNode(experiment, clonedCondNode) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docInsertConditionNode: experiment has no _doc handle', 'NO_DOC');
+    }
+    if (!clonedCondNode || !Array.isArray(clonedCondNode.items)) {
+        throw new V3ParseError('docInsertConditionNode: cloned node is not a map', 'INVALID_INPUT');
+    }
+    const condsNode = experiment._doc.getIn(['conditions'], true);
+    if (!condsNode || !Array.isArray(condsNode.items)) {
+        throw new V3ParseError(
+            'docInsertConditionNode: conditions seq missing',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+    condsNode.items.push(clonedCondNode);
+
+    let jsObj;
+    try {
+        jsObj = clonedCondNode.toJS(experiment._doc);
+    } catch (e) {
+        jsObj = clonedCondNode.toJSON();
+    }
+    if (!Array.isArray(experiment.conditions)) experiment.conditions = [];
+    experiment.conditions.push(extractCondition(jsObj));
+}
+
+/**
+ * docInsertVariableNode(experiment, name, clonedValueNode)
+ *
+ * Add `name: <clonedValueNode>` to `variables:` (creating the section in the
+ * canonical position if absent) and mirror into experiment.variables. Sets
+ * `clonedValueNode.anchor = name` itself so the map key and the anchor can never
+ * diverge. Mirror value derivation matches extractVariables.
+ */
+function docInsertVariableNode(experiment, name, clonedValueNode) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docInsertVariableNode: experiment has no _doc handle', 'NO_DOC');
+    }
+    if (!isValidAnchorName(name)) {
+        throw new V3ParseError(
+            'docInsertVariableNode: invalid anchor name ' + JSON.stringify(name),
+            'INVALID_INPUT'
+        );
+    }
+    if (!clonedValueNode || typeof clonedValueNode !== 'object') {
+        throw new V3ParseError('docInsertVariableNode: clonedValueNode missing', 'INVALID_INPUT');
+    }
+    const varsNode = ensureTopLevelSection(experiment, 'variables', 'map');
+    if (!varsNode || !Array.isArray(varsNode.items)) {
+        throw new V3ParseError(
+            'docInsertVariableNode: variables map missing',
+            'DOC_MODEL_DIVERGENCE'
+        );
+    }
+
+    clonedValueNode.anchor = name;
+    const keyNode = experiment._doc.createNode(name);
+    varsNode.items.push(new YAML.Pair(keyNode, clonedValueNode));
+
+    // Mirror — same identity/value rules as extractVariables.
+    let value;
+    if (clonedValueNode.value !== undefined) value = clonedValueNode.value;
+    else if (typeof clonedValueNode.toJSON === 'function') value = clonedValueNode.toJSON();
+    else value = clonedValueNode;
+    if (!Array.isArray(experiment.variables)) experiment.variables = [];
+    experiment.variables.push({ name: String(name), value: value });
+}
+
+/**
+ * docInsertPluginNode(experiment, clonedPluginNode)
+ *
+ * Splice an already-cloned plugin entry node into `plugins:` (creating the
+ * section in the canonical position if absent) and mirror into
+ * experiment.plugins via extractPlugin. The node is pushed first so any aliases
+ * in its config resolve against the target doc.
+ */
+function docInsertPluginNode(experiment, clonedPluginNode) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docInsertPluginNode: experiment has no _doc handle', 'NO_DOC');
+    }
+    if (!clonedPluginNode || !Array.isArray(clonedPluginNode.items)) {
+        throw new V3ParseError('docInsertPluginNode: cloned node is not a map', 'INVALID_INPUT');
+    }
+    const pluginsNode = ensureTopLevelSection(experiment, 'plugins', 'seq');
+    if (!pluginsNode || !Array.isArray(pluginsNode.items)) {
+        throw new V3ParseError('docInsertPluginNode: plugins seq missing', 'DOC_MODEL_DIVERGENCE');
+    }
+    pluginsNode.items.push(clonedPluginNode);
+
+    let jsObj;
+    try {
+        jsObj = clonedPluginNode.toJS(experiment._doc);
+    } catch (e) {
+        jsObj = clonedPluginNode.toJSON();
+    }
+    if (!Array.isArray(experiment.plugins)) experiment.plugins = [];
+    experiment.plugins.push(extractPlugin(jsObj));
+}
+
+// ════════════════════════════════════════════════════
 // Exports
 // ════════════════════════════════════════════════════
 
@@ -1915,7 +2090,12 @@ const ProtocolV3 = {
     findAliasesTo,
     variableIsComplex,
     isValidAnchorName,
-    anchorExists
+    anchorExists,
+    // D4 — node-based section + splice helpers
+    ensureTopLevelSection,
+    docInsertConditionNode,
+    docInsertVariableNode,
+    docInsertPluginNode
 };
 
 // Browser global
@@ -1965,6 +2145,11 @@ export {
     findAliasesTo,
     variableIsComplex,
     isValidAnchorName,
-    anchorExists
+    anchorExists,
+    // D4 — node-based section + splice helpers
+    ensureTopLevelSection,
+    docInsertConditionNode,
+    docInsertVariableNode,
+    docInsertPluginNode
 };
 export default ProtocolV3;
