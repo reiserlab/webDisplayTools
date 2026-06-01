@@ -62,7 +62,8 @@ const {
     ensureTopLevelSection,
     docInsertConditionNode,
     docInsertVariableNode,
-    docInsertPluginNode
+    docInsertPluginNode,
+    docRemovePlugin
 } = require('../js/protocol-yaml-v3.js');
 
 const {
@@ -71,6 +72,7 @@ const {
     getV3PluginCommands,
     listV3PluginNames,
     getV3CommandParams,
+    createPluginEntry,
     LOG_PLUGIN
 } = require('../js/plugin-registry.js');
 
@@ -3263,6 +3265,66 @@ console.log('\n--- Suite N10: preflight rejection ---');
     check('N10: derivePrefix strips path + ext', derivePrefix('/a/b/Sibling Lab.yaml'), 'Sibling_Lab__');
     check('N10: derivePrefix empty for empty name', derivePrefix(''), '');
     check('N10: suggestUniqueName bumps suffix', suggestUniqueName('x', new Set(['x', 'x_2'])), 'x_3');
+}
+
+// ─── Suite N11: add/remove plugin from registry (v0.20 UI feature) ───────────
+console.log('\n--- Suite N11: add/remove plugin from registry ---');
+{
+    // Add a registry plugin to a protocol that starts with `plugins: []`
+    // (the blank-template / from-scratch shape). The UI builds the entry via
+    // createPluginEntry → _doc.createNode → docInsertPluginNode.
+    const yaml = mkProtocol({
+        name: 'scratch',
+        plugins: 'plugins: []',
+        conditions: '  - name: c0\n    commands: [{type: wait, duration: 1}]'
+    });
+    const exp = parseV3Protocol(yaml);
+    check('N11: starts with zero plugins', exp.plugins.length, 0);
+
+    const entry = createPluginEntry('thermometer');
+    checkTrue(
+        'N11: createPluginEntry builds thermometer w/ matlab class',
+        !!entry && entry.matlab && entry.matlab.class === 'DAQThermometerPlugin'
+    );
+
+    const node = exp._doc.createNode(entry);
+    docInsertPluginNode(exp, node);
+    check('N11: mirror has the plugin', exp.plugins.length, 1);
+    check('N11: mirror plugin name', exp.plugins[0].name, 'thermometer');
+
+    // Commands now resolve via matlab.class → available in the Add-command picker
+    checkTrue('N11: thermometer in listV3PluginNames', listV3PluginNames(exp).includes('thermometer'));
+    checkTrue(
+        'N11: thermometer commands resolve',
+        Object.keys(getV3PluginCommands(exp, 'thermometer')).length > 0
+    );
+
+    // Re-parse the regenerated YAML — the new plugin survives a roundtrip
+    const reparsed = parseV3Protocol(generateV3Protocol(exp));
+    check('N11: plugin survives roundtrip', reparsed.plugins.length, 1);
+    check('N11: roundtrip plugin class', reparsed.plugins[0].matlab.class, 'DAQThermometerPlugin');
+
+    // Now remove it — both the doc node and the mirror drop
+    checkTrue('N11: docRemovePlugin returns true', docRemovePlugin(exp, 'thermometer') === true);
+    check('N11: mirror empty after remove', exp.plugins.length, 0);
+    checkTrue(
+        'N11: plugins: seq empty after remove',
+        exp._doc.getIn(['plugins'], true).items.length === 0
+    );
+    const reparsed2 = parseV3Protocol(generateV3Protocol(exp));
+    check('N11: removal survives roundtrip', reparsed2.plugins.length, 0);
+
+    // Removing a non-existent plugin is a no-op
+    checkTrue('N11: remove missing plugin → false', docRemovePlugin(exp, 'nope') === false);
+
+    // Add into a protocol that has NO plugins: key at all — section is created
+    const noPlug = parseV3Protocol(readFixture('v3_no_variables.yaml'));
+    const before = noPlug.plugins.length;
+    docInsertPluginNode(noPlug, noPlug._doc.createNode(createPluginEntry('camera')));
+    check('N11: camera added to no-plugins-key protocol', noPlug.plugins.length, before + 1);
+    checkTrue('N11: plugins: section now exists', !!noPlug._doc.getIn(['plugins'], true));
+    parseV3Protocol(generateV3Protocol(noPlug)); // must not throw
+    pass('N11: no-plugins-key protocol re-parses after add');
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────

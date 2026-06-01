@@ -215,12 +215,12 @@
         <a href="experiment_designer_v3.html" class="nav-link">&larr; Back to v3 Experiment Designer</a>
 
         <h1>v3 Experiment Designer Quick Start</h1>
-        <p class="subtitle">v0.18 | 2026-06-01 09:10 ET — Edit Protocol v3 YAML directly, with anchors and comments preserved on round-trip.</p>
+        <p class="subtitle">v0.20 | 2026-06-01 15:25 ET — Edit Protocol v3 YAML directly, with anchors and comments preserved on round-trip.</p>
 
         <p>The v3 Experiment Designer is a <strong>YAML round-trip editor</strong> for Protocol v3.
-        Unlike the v2 designer (which builds a protocol from scratch in a form), v3 loads an existing
-        v3 YAML, lets you edit it through a structured UI, and exports it back — <strong>preserving your
-        anchors, comments, and key order</strong>. The on-disk YAML is the single source of truth.</p>
+        It loads an existing v3 YAML (or starts a fresh one with <code>＋ New</code>), lets you edit it
+        through a structured UI, and exports it back — <strong>preserving your anchors, comments, and
+        key order</strong>. The on-disk YAML is the single source of truth.</p>
 
         <h2>The interface</h2>
         <p>Three columns over a flattened-timeline preview. The left column is split into a
@@ -246,15 +246,16 @@
             <li><code>Experiment Sequence</code> — the ordered run: bare <em>refs</em> to conditions and <em>blocks</em> (groups of trials with repetitions / randomize / intertrial).</li>
             <li><code>Inspector</code> — edits the selected item: a condition's commands, a block's properties, a ref.</li>
             <li><code>Timeline</code> — a read-only preview of the flattened run order.</li>
-            <li><code>Settings ▾</code> (header) — experiment metadata, the rig path, and the read-only plugins list.</li>
+            <li><code>Settings ▾</code> (header) — experiment metadata, the rig path, and the plugins list, where you can <strong>add or remove plugins</strong> (their commands then appear in the Inspector's "+ add" picker).</li>
         </ul>
 
         <h2>Walkthrough: edit and export a protocol</h2>
 
         <div class="step">
             <span class="step-number">1</span>
-            <p><strong>Load a protocol.</strong> Use <code>Import YAML</code> to open your own file, or
-            <code>Load demo ▾</code> to start from a bundled example (e.g. <code>canonical_a</code>).</p>
+            <p><strong>Load or create a protocol.</strong> Use <code>Import YAML</code> to open your own file,
+            <code>＋ New</code> to start from a minimum-valid blank skeleton, or <code>Load demo ▾</code> to
+            start from a bundled example (e.g. <code>canonical_a</code>).</p>
         </div>
 
         <div class="step">
@@ -262,6 +263,10 @@
             <p><strong>Inspect a condition.</strong> Click any row in the Library. Its commands appear in the
             Inspector — <code>controller</code> (trialParams), <code>wait</code>, and <code>plugin</code> commands.
             Edit fields inline; changes write straight to the YAML model.</p>
+            <p class="hint">Need a plugin command that isn't listed (e.g. a thermometer for temperature
+            monitoring)? Open <code>Settings ▾</code> → <strong>Plugins</strong>, pick the plugin from the
+            dropdown, and click <code>Add</code> — its commands appear in the "+ add" picker immediately. Set
+            config values (device id, channels, ports) in the exported YAML.</p>
         </div>
 
         <div class="step">

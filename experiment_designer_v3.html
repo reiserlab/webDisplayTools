@@ -1194,9 +1194,8 @@
         <button id="redoBtn" class="header-btn" disabled title="Redo (Ctrl+Y)">↷ Redo</button>
         <button id="resetBtn" class="header-btn" disabled title="Clear everything to a blank minimum-valid v3 skeleton (reversible with Undo)">⟲ Reset</button>
         <button id="settingsToggle" class="header-btn" title="Show/hide experiment metadata, rig, and plugins">Settings ▾</button>
-        <select id="demoSelect" class="header-btn" title="Load a bundled demo YAML or start from a blank skeleton">
+        <select id="demoSelect" class="header-btn" title="Load a bundled demo YAML to explore">
             <option value="">Load demo ▾</option>
-            <option value="__blank__">New (blank) — minimum-valid v3 skeleton</option>
             <option value="tests/fixtures/v3_canonical_a.yaml">canonical_a — 11 conds, 1 block, 4 anchors</option>
             <option value="tests/fixtures/v3_canonical_b.yaml">canonical_b — same shape (alt trials)</option>
             <option value="tests/fixtures/v3_full_experiment.yaml">full_experiment — 15 conds, 9 trials, 6 anchors</option>
@@ -1209,6 +1208,7 @@
             <option value="tests/fixtures/v3_plugin_config.yaml">plugin_config — inline plugin config</option>
         </select>
         <input type="file" id="fileInput" accept=".yaml,.yml" style="display: none;">
+        <button id="newBtn" class="header-btn" title="Start a new protocol from scratch (loads a minimum-valid v3 skeleton you can edit)">＋ New</button>
         <button id="importBtn" class="header-btn primary" title="Load a v3 protocol YAML file">Import YAML</button>
         <input type="file" id="importFromInput" accept=".yaml,.yml" style="display: none;">
         <button id="importFromBtn" class="header-btn" disabled title="Copy conditions from a second v3 YAML into this one (brings their anchors + plugins along)">Import from YAML…</button>
@@ -1332,7 +1332,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.19 | <span id="footerTimestamp">2026-06-01 09:26 ET</span>
+        v3 Experiment Designer v0.20 | <span id="footerTimestamp">2026-06-01 15:25 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1383,14 +1383,18 @@
             findAliasesTo,
             variableIsComplex,
             isValidAnchorName,
-            anchorExists
+            anchorExists,
+            docInsertPluginNode,
+            docRemovePlugin
         } from './js/protocol-yaml-v3.js';
 
         import {
             CONTROLLER_COMMANDS,
             getV3PluginCommands,
             listV3PluginNames,
-            getV3CommandParams
+            getV3CommandParams,
+            BUILTIN_PLUGINS,
+            createPluginEntry
         } from './js/plugin-registry.js';
 
         // D4 — cross-library import (Milestone 2 substrate, driven by Milestone 3 UI)
@@ -1653,10 +1657,11 @@
             staging.addBareRefs = $('importAddRefs').checked;
         });
 
-        // Minimum-valid v3 skeleton for the "New (blank)" demo option.
+        // Minimum-valid v3 skeleton for the "New" button (and Reset).
         // Empty `commands: []` would violate the spec (commands required) —
         // ship a wait:1 placeholder so the user has a valid starting point
-        // that imports cleanly through validateReferences.
+        // that imports cleanly through validateReferences. Starts with
+        // `plugins: []`; plugins are added from Settings → Plugins.
         const BLANK_TEMPLATE = [
             'version: 3',
             'experiment_info:',
@@ -1674,20 +1679,22 @@
             ''
         ].join('\n');
 
+        // New — start a protocol from scratch. Loads the blank skeleton so the
+        // user has a discoverable "create from scratch" path (previously only
+        // reachable via the demo dropdown). Blocked during import mode.
+        $('newBtn').addEventListener('click', () => {
+            if (importMode) return;
+            if (dirty && !confirm('Discard unsaved edits and start a new protocol?')) return;
+            loadYamlText(BLANK_TEMPLATE, 'untitled.yaml');
+        });
+
         $('demoSelect').addEventListener('change', async (e) => {
             const val = e.target.value;
             if (!val) return;
-            // Sentinel for "New (blank)" — bypass fetch and load the template
-            // string directly. Anything else is a URL to a bundled fixture.
-            const isBlank = val === '__blank__';
-            const demoName = isBlank ? 'blank.yaml' : val.split('/').pop();
+            // Each option value is a URL to a bundled fixture.
+            const demoName = val.split('/').pop();
             if (dirty && !confirm('Discard unsaved edits and load demo "' + demoName + '"?')) {
                 e.target.value = '';  // reset to placeholder
-                return;
-            }
-            if (isBlank) {
-                loadYamlText(BLANK_TEMPLATE, demoName);
-                e.target.value = '';
                 return;
             }
             try {
@@ -1911,18 +1918,36 @@
             rigBox.appendChild(rigFile);
             root.appendChild(rigBox);
 
-            // Plugins — read-only. Per the v3 spec the protocol's plugins: list
-            // is self-contained (the rig path is a separate file MATLAB loads;
-            // the web tool can't read it). Edit plugin entries in YAML for now.
-            if (experiment.plugins.length > 0) {
+            // Plugins — add/remove from the supported-plugin registry. Each
+            // entry's commands become available in the "Add command" picker as
+            // soon as it lands in experiment.plugins[]. Config VALUES (device_id,
+            // channels, ports, …) are still edited in the exported YAML — the
+            // web tool ships registry defaults only. Locked in import mode.
+            {
                 const pluginBox = el('div', { class: 'settings-section' });
                 pluginBox.appendChild(el('h3', {}, 'Plugins (' + experiment.plugins.length + ')'));
+                if (experiment.plugins.length === 0) {
+                    pluginBox.appendChild(el('div',
+                        { class: 'kv', style: 'color: var(--text-dim); margin-bottom: 0.5rem;' },
+                        'No plugins declared. Add one below to make its commands available.'));
+                }
                 for (const p of experiment.plugins) {
                     const pluginCard = el('div', { class: 'kv', style: 'margin-bottom: 0.5rem;' });
-                    pluginCard.appendChild(el('div', {},
-                        el('span', { class: 'k' }, p.name + ': '),
-                        el('span', { class: 'v' }, p.type + (p.matlab ? ' / ' + p.matlab.class : ''))
-                    ));
+                    const headRow = el('div',
+                        { style: 'display:flex; align-items:center; justify-content:space-between; gap:0.4rem;' },
+                        el('div', {},
+                            el('span', { class: 'k' }, p.name + ': '),
+                            el('span', { class: 'v' }, p.type + (p.matlab ? ' / ' + p.matlab.class : ''))
+                        ));
+                    if (!importMode) {
+                        headRow.appendChild(el('button', {
+                            class: 'header-btn',
+                            style: 'padding: 0.05rem 0.45rem; font-size: 0.85rem; line-height: 1.4;',
+                            title: 'Remove the "' + p.name + '" plugin from this protocol',
+                            onClick: () => onRemovePlugin(p.name)
+                        }, '✕'));
+                    }
+                    pluginCard.appendChild(headRow);
                     if (p.config) {
                         for (const [ck, cv] of Object.entries(p.config)) {
                             pluginCard.appendChild(el('div', { style: 'padding-left: 1rem;' },
@@ -1933,6 +1958,43 @@
                     }
                     pluginBox.appendChild(pluginCard);
                 }
+
+                // Add-plugin control (hidden in import mode — target doc locked).
+                if (!importMode) {
+                    const declared = new Set(experiment.plugins.map((p) => p.name));
+                    const available = Object.keys(BUILTIN_PLUGINS).filter((n) => !declared.has(n));
+                    const addRow = el('div',
+                        { style: 'display:flex; gap:0.3rem; margin-top:0.5rem;' });
+                    const sel = el('select', {
+                        style: 'flex:1; background: var(--bg); color: var(--text); ' +
+                            'border:1px solid var(--border); border-radius:4px; ' +
+                            'padding:0.3rem 0.4rem; font: inherit;',
+                        title: 'Choose a supported plugin to add to this protocol'
+                    });
+                    if (available.length === 0) {
+                        sel.appendChild(el('option', { value: '' },
+                            'All supported plugins already added'));
+                        sel.disabled = true;
+                    } else {
+                        sel.appendChild(el('option', { value: '' }, '+ Add plugin…'));
+                        for (const n of available) {
+                            const def = BUILTIN_PLUGINS[n];
+                            const cls = def.matlab ? def.matlab.class
+                                : (def.python ? def.python.class : '');
+                            sel.appendChild(el('option', { value: n },
+                                n + (cls ? ' — ' + cls : '')));
+                        }
+                    }
+                    addRow.appendChild(sel);
+                    addRow.appendChild(el('button', {
+                        class: 'header-btn',
+                        disabled: available.length === 0,
+                        title: 'Add the selected plugin (its commands become available immediately)',
+                        onClick: () => { if (sel.value) onAddPlugin(sel.value); }
+                    }, 'Add'));
+                    pluginBox.appendChild(addRow);
+                }
+
                 root.appendChild(pluginBox);
             }
 
@@ -2684,7 +2746,7 @@
         // UI, not by suppressing pushUndo, since commit itself pushes one undo).
         const IMPORT_LOCKED_CONTROLS = [
             'addCondBtn', 'addRefBtn', 'addBlockBtn', 'exportBtn', 'resetBtn',
-            'undoBtn', 'redoBtn', 'importBtn', 'importFromBtn', 'demoSelect',
+            'undoBtn', 'redoBtn', 'newBtn', 'importBtn', 'importFromBtn', 'demoSelect',
             'settingsToggle', 'librarySearch'
         ];
 
@@ -2733,7 +2795,7 @@
                 if (!node) continue;
                 if (id === 'undoBtn') node.disabled = undoStack.length === 0;
                 else if (id === 'redoBtn') node.disabled = redoStack.length === 0;
-                else if (id === 'importBtn' || id === 'demoSelect' || id === 'settingsToggle') node.disabled = false;
+                else if (id === 'newBtn' || id === 'importBtn' || id === 'demoSelect' || id === 'settingsToggle') node.disabled = false;
                 else node.disabled = !hasExp;
             }
             renderAll();
@@ -4291,6 +4353,75 @@
                 renderAll();
             } catch (err) {
                 showError('Add condition failed', err.message);
+            }
+        }
+
+        // Count plugin commands that reference a plugin by name (best-effort —
+        // used to warn before removing a plugin that's still in use).
+        function countPluginUsage(pluginName) {
+            let count = 0;
+            if (!experiment || !Array.isArray(experiment.conditions)) return 0;
+            for (const cond of experiment.conditions) {
+                if (!Array.isArray(cond.commands)) continue;
+                for (const cmd of cond.commands) {
+                    if (cmd && cmd.type === 'plugin' && cmd.plugin_name === pluginName) count++;
+                }
+            }
+            return count;
+        }
+
+        // Add a supported plugin (from the registry) to the protocol's plugins:
+        // list. Its commands become available in the "Add command" picker as
+        // soon as it lands in experiment.plugins[] (listV3PluginNames reads it).
+        function onAddPlugin(pluginName) {
+            if (!experiment || importMode || !pluginName) return;
+            if (experiment.plugins.some((p) => p.name === pluginName)) {
+                showError('Add plugin failed',
+                    'A plugin named "' + pluginName + '" is already declared.');
+                return;
+            }
+            const entry = createPluginEntry(pluginName);
+            if (!entry) {
+                showError('Add plugin failed', 'Unknown plugin: ' + pluginName);
+                return;
+            }
+            pushUndo();
+            try {
+                const node = experiment._doc.createNode(entry);
+                docInsertPluginNode(experiment, node);
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                undoStack.pop();  // mutation failed — drop the snapshot
+                showError('Add plugin failed', err.message);
+            }
+        }
+
+        async function onRemovePlugin(pluginName) {
+            if (!experiment || importMode) return;
+            const uses = countPluginUsage(pluginName);
+            const proceed = await confirmModal({
+                title: 'Remove plugin "' + pluginName + '"?',
+                body: uses > 0
+                    ? 'This plugin is referenced by ' + uses + ' command' + (uses === 1 ? '' : 's') +
+                      '. Removing it will leave those commands pointing at a missing plugin — ' +
+                      'fix or delete them before exporting.'
+                    : 'Remove this plugin declaration from the protocol?',
+                confirmLabel: 'Remove',
+                cancelLabel: 'Cancel'
+            });
+            if (!proceed) return;
+            pushUndo();
+            try {
+                if (!docRemovePlugin(experiment, pluginName)) {
+                    undoStack.pop();  // nothing matched — no-op
+                    return;
+                }
+                setDirty(true);
+                renderAll();
+            } catch (err) {
+                undoStack.pop();
+                showError('Remove plugin failed', err.message);
             }
         }
 

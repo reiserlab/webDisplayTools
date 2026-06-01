@@ -2050,6 +2050,44 @@ function docInsertPluginNode(experiment, clonedPluginNode) {
     experiment.plugins.push(extractPlugin(jsObj));
 }
 
+/**
+ * docRemovePlugin(experiment, pluginName)
+ *
+ * Remove the plugin entry named `pluginName` from the `plugins:` seq and from
+ * the experiment.plugins[] mirror. No-op (returns false) if not found. Does NOT
+ * touch commands that reference the plugin — callers warn the user first. The
+ * `plugins:` seq node is left in place even when it becomes empty (matches the
+ * blank-template `plugins: []` shape).
+ *
+ * @returns {boolean} true if a plugin was removed
+ */
+function docRemovePlugin(experiment, pluginName) {
+    if (!experiment || !experiment._doc) {
+        throw new V3ParseError('docRemovePlugin: experiment has no _doc handle', 'NO_DOC');
+    }
+    const pluginsNode = experiment._doc.getIn(['plugins'], true);
+    let removed = false;
+    if (pluginsNode && Array.isArray(pluginsNode.items)) {
+        for (let i = 0; i < pluginsNode.items.length; i++) {
+            const item = pluginsNode.items[i];
+            const name = item && typeof item.get === 'function' ? item.get('name') : undefined;
+            if (name === pluginName) {
+                pluginsNode.items.splice(i, 1);
+                removed = true;
+                break;
+            }
+        }
+    }
+    if (Array.isArray(experiment.plugins)) {
+        const idx = experiment.plugins.findIndex((p) => p && p.name === pluginName);
+        if (idx !== -1) {
+            experiment.plugins.splice(idx, 1);
+            removed = true;
+        }
+    }
+    return removed;
+}
+
 // ════════════════════════════════════════════════════
 // Exports
 // ════════════════════════════════════════════════════
@@ -2095,7 +2133,8 @@ const ProtocolV3 = {
     ensureTopLevelSection,
     docInsertConditionNode,
     docInsertVariableNode,
-    docInsertPluginNode
+    docInsertPluginNode,
+    docRemovePlugin
 };
 
 // Browser global
@@ -2150,6 +2189,7 @@ export {
     ensureTopLevelSection,
     docInsertConditionNode,
     docInsertVariableNode,
-    docInsertPluginNode
+    docInsertPluginNode,
+    docRemovePlugin
 };
 export default ProtocolV3;
