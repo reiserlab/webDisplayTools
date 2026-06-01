@@ -110,6 +110,107 @@
         .view-only-banner a { color: var(--accent); text-decoration: none; }
         .view-only-banner a:hover { color: var(--hover); text-decoration: underline; }
 
+        /* ── D4 import-mode banner ───────────────────────────────────── */
+        .import-banner {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            padding: 0.45rem 1rem;
+            background: rgba(0, 230, 118, 0.08);
+            border-bottom: 1px solid var(--accent);
+            font-size: 0.75rem;
+            color: var(--text);
+            flex-shrink: 0;
+        }
+        .import-banner .import-src { color: var(--accent); font-weight: 600; }
+        .import-banner .import-staged-count { color: var(--text-dim); }
+        .import-banner label { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-dim); }
+        .import-banner input[type="text"] {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            padding: 0.15rem 0.4rem;
+            width: 140px;
+        }
+        .import-banner input[type="text"]:focus { outline: none; border-color: var(--accent); }
+        .import-banner .spacer { flex: 1; }
+        /* "Yours" library is read-only while importing — mute + show a lock cue */
+        .three-zone.import-mode #libraryZone { opacity: 0.78; }
+        .three-zone.import-mode #libraryZone .zone-header::after {
+            content: '🔒 locked';
+            margin-left: auto;
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            text-transform: none;
+        }
+        /* "Theirs" rows: ← Add affordance + staged state */
+        .lib-row .theirs-add {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--accent);
+            font-family: inherit;
+            font-size: 0.62rem;
+            padding: 0.05rem 0.4rem;
+            border-radius: 3px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .lib-row .theirs-add:hover:not(:disabled) { background: rgba(0, 230, 118, 0.15); }
+        .lib-row .theirs-add:disabled { color: var(--text-dim); border-color: transparent; cursor: default; }
+        .staging-subhead {
+            margin: 0.6rem 0 0.3rem;
+            font-size: 0.62rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+            border-top: 1px dashed var(--border);
+            padding-top: 0.5rem;
+        }
+        .lib-row.staging-row .name { color: var(--accent); }
+        .collision-badge {
+            font-size: 0.6rem;
+            color: var(--error);
+            background: rgba(244, 67, 54, 0.12);
+            padding: 0.05rem 0.35rem;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+        /* Staging-item inspector */
+        .staging-insp { font-size: 0.78rem; }
+        .staging-insp .si-section { margin-bottom: 0.85rem; }
+        .staging-insp .si-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 0.3rem; }
+        .staging-insp .si-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; }
+        .staging-insp .si-row .si-key { color: var(--text-dim); min-width: 0; flex: 0 0 auto; }
+        .staging-insp input.si-input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            padding: 0.15rem 0.4rem;
+            flex: 1;
+            min-width: 0;
+        }
+        .staging-insp input.si-input:focus { outline: none; border-color: var(--accent); }
+        .staging-insp input.si-input.invalid { border-color: var(--error); }
+        .staging-insp .si-merge { color: var(--beta); font-size: 0.72rem; }
+        .staging-insp .si-warn { color: var(--warn); font-size: 0.7rem; margin-top: 0.2rem; }
+        .staging-insp .si-block { color: var(--error); font-size: 0.7rem; margin-top: 0.2rem; }
+        .theirs-preview .tp-cmd {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 0.3rem 0.45rem;
+            margin-bottom: 0.3rem;
+            font-size: 0.72rem;
+        }
+        .theirs-preview .tp-cmd .tp-type { color: var(--accent); }
+
         /* ── Export warnings banner ──────────────────────────────────── */
         .export-warnings {
             padding: 0.3rem 1rem;
@@ -1111,6 +1212,8 @@
         </select>
         <input type="file" id="fileInput" accept=".yaml,.yml" style="display: none;">
         <button id="importBtn" class="header-btn primary" title="Load a v3 protocol YAML file">Import YAML</button>
+        <input type="file" id="importFromInput" accept=".yaml,.yml" style="display: none;">
+        <button id="importFromBtn" class="header-btn" disabled title="Copy conditions from a second v3 YAML into this one (brings their anchors + plugins along)">Import from YAML…</button>
         <button id="exportBtn" class="header-btn" disabled title="Export the (possibly edited) YAML">Export YAML</button>
         <a href="index.html" class="header-btn" style="text-decoration: none; display: inline-flex; align-items: center;">← All tools</a>
     </div>
@@ -1121,6 +1224,24 @@
         <span style="color: var(--beta);">🔗</span> icon next to any value to bind it to an anchor, or open
         <strong>Settings</strong> to manage the Variables table directly.
         Need v2? <a href="experiment_designer.html">Open the v2 Experiment Designer</a>.
+    </div>
+
+    <!-- D4 import-mode banner — global controls for the staging buffer.
+         Hidden until enterImportMode(); "yours" is locked while visible. -->
+    <div id="importBanner" class="import-banner" style="display: none;">
+        <span>Importing from <span id="importSrcName" class="import-src"></span></span>
+        <label title="Prefix applied to imported anchor and plugin names (conditions keep their name). Editable.">
+            Prefix:
+            <input type="text" id="importPrefix" placeholder="prefix__">
+        </label>
+        <span class="import-staged-count"><span id="importStagedCount">0</span> staged</span>
+        <label title="After commit, append a bare reference to each imported condition so it actually runs. Source block/repetition context is not preserved.">
+            <input type="checkbox" id="importAddRefs" checked>
+            Append bare refs to sequence
+        </label>
+        <span class="spacer"></span>
+        <button id="importCancelBtn" class="header-btn" title="Discard the staging buffer and leave import mode (no changes made)">Cancel</button>
+        <button id="importCommitBtn" class="header-btn primary" title="Apply all staged conditions, anchors, and plugins to this protocol (one undo step)">Commit import</button>
     </div>
 
     <!-- Soft-warn export validation banner — non-blocking. Lists unused
@@ -1149,7 +1270,7 @@
         <!-- LIBRARY -->
         <div class="zone" id="libraryZone">
             <div class="zone-header">
-                <span>Library</span>
+                <span id="libZoneTitle">Library</span>
                 <span class="count" id="libCount">0</span>
                 <button id="addCondBtn" class="zone-head-btn" title="Add a new condition (also appends a bare ref to the sequence)" disabled>+ Add</button>
             </div>
@@ -1164,7 +1285,7 @@
         <!-- SEQUENCE -->
         <div class="zone" id="sequenceZone">
             <div class="zone-header">
-                <span>Experiment Sequence</span>
+                <span id="seqZoneTitle">Experiment Sequence</span>
                 <span class="count" id="seqCount">0</span>
                 <button id="addRefBtn" class="zone-head-btn" title="Append a bare reference to an existing condition" disabled>+ Ref</button>
                 <button id="addBlockBtn" class="zone-head-btn" title="Append a new block (group of trials with optional repetition / intertrial)" disabled>+ Block</button>
@@ -1179,7 +1300,7 @@
         <!-- INSPECTOR -->
         <div class="zone" id="inspectorZone">
             <div class="zone-header">
-                <span>Inspector</span>
+                <span id="inspectorZoneTitle">Inspector</span>
             </div>
             <div class="zone-body" id="inspectorBody">
                 <div class="empty-state">Select a condition in the Library or an entry in the Sequence to view details.</div>
@@ -1201,7 +1322,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.15 | <span id="footerTimestamp">2026-05-30 01:01 ET</span>
+        v3 Experiment Designer v0.16 | <span id="footerTimestamp">2026-06-01 07:47 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1262,6 +1383,20 @@
             getV3CommandParams
         } from './js/plugin-registry.js';
 
+        // D4 — cross-library import (Milestone 2 substrate, driven by Milestone 3 UI)
+        import {
+            createStagingBuffer,
+            addToStaging,
+            removeFromStaging,
+            setStagingPrefix,
+            setItemTargetName,
+            setAnchorPlannedName,
+            setPluginPlannedName,
+            refreshStagingValidation,
+            commitStaging,
+            V3ImportError
+        } from './js/v3-import.js';
+
         // ═══════════════════════════════════════════════════════════════
         // State
         // ═══════════════════════════════════════════════════════════════
@@ -1269,8 +1404,14 @@
         let experiment = null;        // current parsed v3 protocol
         let lastFilename = null;       // for export naming
         let selection = null;          // { kind: 'condition', name } | { kind: 'block', index } | { kind: 'ref', index }
+                                       // import mode adds: { kind: 'staging-item', stagingIdx } | { kind: 'theirs-preview', theirsCondIdx }
         let librarySearchText = '';
         let dirty = false;             // true once the user has edited anything
+
+        // D4 cross-library import mode (Milestone 3). `staging` is the M2 buffer
+        // (js/v3-import.js); `importMode` swaps the three-zone layout + locks "yours".
+        let staging = null;
+        let importMode = false;
 
         // Undo/redo: each snapshot is the YAML text + selection. Restoring
         // re-parses, so the doc/JS-model stay in sync. _restoring blocks
@@ -1333,6 +1474,7 @@
         }
 
         function undo() {
+            if (importMode) return;  // "yours" undo stack is frozen during import
             if (undoStack.length === 0) return;
             const current = snapshotState();
             const prev = undoStack.pop();
@@ -1342,6 +1484,7 @@
         }
 
         function redo() {
+            if (importMode) return;  // "yours" undo stack is frozen during import
             if (redoStack.length === 0) return;
             const current = snapshotState();
             const next = redoStack.pop();
@@ -1429,6 +1572,7 @@
                 $('addCondBtn').disabled = false;
                 $('addRefBtn').disabled = false;
                 $('addBlockBtn').disabled = false;
+                $('importFromBtn').disabled = false;
                 return true;
             } catch (err) {
                 showError(
@@ -1449,6 +1593,45 @@
             const text = await file.text();
             loadYamlText(text, file.name);
             $('fileInput').value = '';  // allow re-importing the same file
+        });
+
+        // ── D4 cross-library import wiring ───────────────────────────────
+        $('importFromBtn').addEventListener('click', () => {
+            if (!experiment) return;  // requires a loaded target protocol
+            $('importFromInput').click();
+        });
+
+        $('importFromInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            $('importFromInput').value = '';  // allow re-picking the same file
+            if (!file || !experiment) return;
+            const text = await file.text();
+            let src;
+            try {
+                // Broken-alias sources throw here (toJS on unresolved alias) —
+                // a hard block before import mode (design fix #6).
+                src = parseV3Protocol(text);
+            } catch (err) {
+                showError('Cannot read "' + file.name + '" as a v3 protocol',
+                    err.message + (err.code ? '\n\n[' + err.code + ']' : ''));
+                return;
+            }
+            enterImportMode(src, file.name);
+        });
+
+        $('importCancelBtn').addEventListener('click', exitImportMode);
+        $('importCommitBtn').addEventListener('click', commitImport);
+
+        $('importPrefix').addEventListener('change', () => {
+            if (!staging) return;
+            setStagingPrefix(staging, $('importPrefix').value);
+            refreshStagingValidation(staging, experiment);
+            renderImportMode();
+        });
+
+        $('importAddRefs').addEventListener('change', () => {
+            if (!staging) return;
+            staging.addBareRefs = $('importAddRefs').checked;
         });
 
         // Minimum-valid v3 skeleton for the "New (blank)" demo option.
@@ -1504,7 +1687,7 @@
         });
 
         $('exportBtn').addEventListener('click', async () => {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             // Pre-export validation gate. Blocking errors (duplicate anchor
             // names, dangling aliases, duplicate condition names, refs to
             // missing conditions) likely fail to load in MATLAB — surface them
@@ -1541,7 +1724,7 @@
         // skeleton. Reversible: pushUndo first, then load the template while
         // keeping the undo stack so a single Ctrl+Z restores the prior doc.
         $('resetBtn').addEventListener('click', async () => {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             const proceed = await confirmModal({
                 title: 'Reset to blank skeleton?',
                 body: 'This clears the sequence, all conditions, and all variables, ' +
@@ -1850,7 +2033,7 @@
         }
 
         async function onVariableRename(oldName, newName) {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             if (oldName === newName) return;
             if (!newName) {
                 showError('Rename failed', 'Anchor name cannot be empty.');
@@ -1892,7 +2075,7 @@
         }
 
         function onVariableValueEdit(name, rawValue, isNumericInput) {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             const coerced = isNumericInput ? Number(rawValue) : _coerceVarValue(rawValue);
             if (isNumericInput && Number.isNaN(coerced)) {
                 showError('Update failed', 'Value must be a number.');
@@ -1911,7 +2094,7 @@
         }
 
         async function onVariableDelete(name) {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             const refs = findAliasesTo(experiment, name);
             if (refs.length === 0) {
                 if (!confirm('Delete anchor "&' + name + '"?')) return;
@@ -1946,7 +2129,7 @@
         }
 
         function onVariableAdd(name, rawValue) {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             if (!isValidAnchorName(name)) {
                 showError(
                     'Add failed',
@@ -1975,7 +2158,7 @@
         // blur, so one undo step per field visit. No re-render needed — nothing
         // else displays these values.
         function onExperimentInfoEdit(key, rawValue) {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             const value = rawValue.trim();
             const current = experiment.experiment_info[key];
             if (value === (current != null ? String(current) : '')) return; // no-op
@@ -1992,7 +2175,7 @@
 
         // Edit the rig path. Required, so blank is rejected.
         function onRigEdit(rawValue) {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             const value = rawValue.trim();
             if (value === (experiment.rig_path != null ? String(experiment.rig_path) : '')) return;
             if (value === '') {
@@ -2024,7 +2207,7 @@
         // ─── Sequence: + Ref / + Block / drag / delete ─────────────────────
 
         function onAddSeqRef() {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             if (experiment.conditions.length === 0) {
                 showError('Add ref failed', 'No conditions in the library yet. Add a condition first.');
                 return;
@@ -2061,7 +2244,7 @@
         }
 
         function onAddSeqBlock() {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             if (experiment.conditions.length === 0) {
                 showError('Add block failed', 'No conditions in the library yet. Add a condition first.');
                 return;
@@ -2331,83 +2514,466 @@
             return usage;
         }
 
+        // Shared condition-row renderer. Used by the main library (editable +
+        // draggable) and both D4 import panes (yours-locked, theirs read-only).
+        // `opts`: filterText, getUsage(cond,i)->number|null (null = no badge),
+        // isSelected(cond,i)->bool, rowClass(cond,i)->str, rowTitle(cond,i)->str,
+        // onRowClick(cond,i,e), onRowContextMenu(cond,i,e),
+        // extraButtons(cond,i)->Node[] (placed before the usage badge), draggable,
+        // emptyText, noMatchText.
+        function renderConditionList(listEl, conditions, opts = {}) {
+            listEl.innerHTML = '';
+            if (!conditions || conditions.length === 0) {
+                listEl.appendChild(el('div', { class: 'empty-state' },
+                    opts.emptyText || 'No conditions.'));
+                return;
+            }
+            const filter = (opts.filterText || '').trim().toLowerCase();
+            let shown = 0;
+            for (let i = 0; i < conditions.length; i++) {
+                const cond = conditions[i];
+                if (filter && !cond.name.toLowerCase().includes(filter)) continue;
+                const idx = i;
+                const useCount = opts.getUsage ? opts.getUsage(cond, idx) : null;
+                const selected = opts.isSelected ? opts.isSelected(cond, idx) : false;
+                const extraCls = opts.rowClass ? (opts.rowClass(cond, idx) || '') : '';
+                const props = {
+                    class: 'lib-row' + (useCount === 0 ? ' unused' : '') +
+                           (selected ? ' selected' : '') + (extraCls ? ' ' + extraCls : ''),
+                    title: opts.rowTitle ? opts.rowTitle(cond, idx) : ''
+                };
+                if (opts.onRowClick) props.onClick = (e) => opts.onRowClick(cond, idx, e);
+                if (opts.onRowContextMenu) props.onContextMenu = (e) => opts.onRowContextMenu(cond, idx, e);
+                const children = [el('span', { class: 'name' }, cond.name)];
+                if (opts.extraButtons) {
+                    for (const btn of opts.extraButtons(cond, idx)) if (btn) children.push(btn);
+                }
+                if (useCount !== null && useCount !== undefined) {
+                    children.push(el('span', { class: 'usage' }, useCount + '×'));
+                }
+                const row = el('div', props, ...children);
+                if (opts.draggable) {
+                    // Drag source — library row → drop on sequence creates a ref,
+                    // drop on a block's trial strip adds a trial. dataTransfer
+                    // mime distinguishes from sequence-entry drags.
+                    row.setAttribute('draggable', 'true');
+                    row.addEventListener('dragstart', (e) => {
+                        e.dataTransfer.effectAllowed = 'copy';
+                        e.dataTransfer.setData('text/x-library-cond', cond.name);
+                        row.classList.add('dragging');
+                    });
+                    row.addEventListener('dragend', () => {
+                        row.classList.remove('dragging');
+                        document.querySelectorAll('.drop-target, .lib-drop-target, .drop-before, .drop-after').forEach((x) => {
+                            x.classList.remove('drop-target', 'lib-drop-target', 'drop-before', 'drop-after');
+                        });
+                    });
+                }
+                listEl.appendChild(row);
+                shown++;
+            }
+            if (shown === 0) {
+                listEl.appendChild(el('div', { class: 'empty-state' }, opts.noMatchText || 'No matches.'));
+            }
+        }
+
         function renderLibrary() {
+            // Import mode renders the locked "yours" pane via renderImportMode().
+            if (importMode) { renderYoursLockedLibrary(); return; }
             const list = $('libraryList');
-            list.innerHTML = '';
             $('librarySearch').disabled = !experiment;
             $('libCount').textContent = experiment ? experiment.conditions.length : 0;
 
             if (!experiment) {
+                list.innerHTML = '';
                 list.appendChild(el('div', { class: 'empty-state' },
                     'Import a v3 YAML to populate the conditions library.'));
                 return;
             }
 
             const usage = computeUsage();
-            const filter = librarySearchText.trim();
-            let shown = 0;
-            for (let i = 0; i < experiment.conditions.length; i++) {
-                const cond = experiment.conditions[i];
-                if (filter && !cond.name.toLowerCase().includes(filter)) continue;
-                const useCount = usage.get(cond.name) || 0;
-                const condIdx = i;
+            renderConditionList(list, experiment.conditions, {
+                filterText: librarySearchText,
+                getUsage: (cond) => usage.get(cond.name) || 0,
+                isSelected: (cond) => selection && selection.kind === 'condition' && selection.name === cond.name,
+                rowTitle: (cond) => {
+                    const u = usage.get(cond.name) || 0;
+                    return u === 0 ? 'Unreferenced in sequence' : (u + ' reference' + (u === 1 ? '' : 's'));
+                },
+                onRowClick: (cond, idx, e) => {
+                    if (e.target.classList.contains('lib-row-dup')) return;
+                    if (e.target.classList.contains('lib-row-del')) return;
+                    selection = { kind: 'condition', name: cond.name };
+                    renderLibrary(); renderInspector(); renderSequence();
+                },
+                onRowContextMenu: (cond, idx, e) => { e.preventDefault(); onDuplicateCondition(idx); },
+                extraButtons: (cond, idx) => {
+                    const u = usage.get(cond.name) || 0;
+                    return [
+                        el('button', {
+                            class: 'lib-row-dup',
+                            title: 'Duplicate this condition (also right-click)',
+                            onClick: (e) => { e.stopPropagation(); onDuplicateCondition(idx); }
+                        }, 'dup'),
+                        el('button', {
+                            class: 'lib-row-del',
+                            title: u === 0
+                                ? 'Delete this condition from the library'
+                                : 'In use (' + u + '×) — remove from the sequence first',
+                            onClick: (e) => { e.stopPropagation(); onDeleteCondition(idx); }
+                        }, '✕')
+                    ];
+                },
+                draggable: true
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // D4 — cross-library import mode (Milestone 3 UI)
+        //
+        // A thin driver over the M2 staging API (js/v3-import.js). Entering
+        // import mode swaps the three-zone layout: "yours" library → locked,
+        // sequence zone → "theirs" read-only library, inspector → staging-item
+        // detail / theirs preview. Commit applies the whole batch atomically in
+        // one undo step. The UI invents NO new undo/selection/commit logic.
+        // ═══════════════════════════════════════════════════════════════
+
+        // Controls disabled while "yours" is locked (design fix #8 — lock at the
+        // UI, not by suppressing pushUndo, since commit itself pushes one undo).
+        const IMPORT_LOCKED_CONTROLS = [
+            'addCondBtn', 'addRefBtn', 'addBlockBtn', 'exportBtn', 'resetBtn',
+            'undoBtn', 'redoBtn', 'importBtn', 'importFromBtn', 'demoSelect',
+            'settingsToggle', 'librarySearch'
+        ];
+
+        function enterImportMode(srcExperiment, filename) {
+            let buf;
+            try {
+                buf = createStagingBuffer(srcExperiment, filename);
+            } catch (err) {
+                // Duplicate-anchor source (and any other preflight failure) is a
+                // hard block — surface it and stay in normal mode.
+                showError('Cannot import "' + filename + '"',
+                    err.message + (err.code ? '\n\n[' + err.code + ']' : ''));
+                return;
+            }
+            staging = buf;
+            importMode = true;
+            selection = null;
+            // Lock "yours": disable the mutation controls + mute the pane.
+            for (const id of IMPORT_LOCKED_CONTROLS) {
+                const node = $(id);
+                if (node) node.disabled = true;
+            }
+            document.querySelector('.three-zone').classList.add('import-mode');
+            $('importSrcName').textContent = filename;
+            $('importPrefix').value = staging.prefix;
+            $('importAddRefs').checked = staging.addBareRefs;
+            $('importBanner').style.display = 'flex';
+            // Entering import mode mutates nothing — do NOT setDirty (design §7).
+            renderImportMode();
+        }
+
+        function exitImportMode() {
+            importMode = false;
+            staging = null;
+            $('importBanner').style.display = 'none';
+            const tz = document.querySelector('.three-zone');
+            if (tz) tz.classList.remove('import-mode');
+            // Restore zone headers.
+            $('libZoneTitle').textContent = 'Library';
+            $('seqZoneTitle').textContent = 'Experiment Sequence';
+            $('inspectorZoneTitle').textContent = 'Inspector';
+            // Re-enable controls that depend only on a loaded experiment.
+            const hasExp = !!experiment;
+            for (const id of IMPORT_LOCKED_CONTROLS) {
+                const node = $(id);
+                if (!node) continue;
+                if (id === 'undoBtn') node.disabled = undoStack.length === 0;
+                else if (id === 'redoBtn') node.disabled = redoStack.length === 0;
+                else if (id === 'importBtn' || id === 'demoSelect' || id === 'settingsToggle') node.disabled = false;
+                else node.disabled = !hasExp;
+            }
+            renderAll();
+        }
+
+        function renderImportMode() {
+            if (!importMode || !staging) return;
+            $('libZoneTitle').textContent = 'Library (yours — locked)';
+            $('seqZoneTitle').textContent = 'Import source';
+            $('inspectorZoneTitle').textContent = 'Import inspector';
+            $('importStagedCount').textContent = staging.items.length;
+            renderYoursLockedLibrary();
+            renderTheirsLibrary();
+            renderImportInspector();
+        }
+
+        // "Yours" pane: read-only conditions + a "pending additions" sub-list.
+        function renderYoursLockedLibrary() {
+            const list = $('libraryList');
+            list.innerHTML = '';
+            $('libCount').textContent = experiment ? experiment.conditions.length : 0;
+            const yoursHost = el('div', {});
+            renderConditionList(yoursHost, experiment ? experiment.conditions : [], {
+                getUsage: () => null,
+                emptyText: 'No conditions in this protocol yet.'
+            });
+            list.appendChild(yoursHost);
+            renderStagingBuffer(list);
+        }
+
+        // The staged items, shown at the bottom of the locked "yours" pane —
+        // they are pending additions to "yours". Click selects; ✕ removes.
+        function renderStagingBuffer(hostEl) {
+            hostEl.appendChild(el('div', { class: 'staging-subhead' },
+                'Pending additions (' + staging.items.length + ')'));
+            if (staging.items.length === 0) {
+                hostEl.appendChild(el('div', { class: 'empty-state' },
+                    'Click ← Add on a source condition to stage it.'));
+                return;
+            }
+            staging.items.forEach((item, idx) => {
+                const collision = item.conditionNameCollision;
+                const selected = selection && selection.kind === 'staging-item' && selection.stagingIdx === idx;
                 const row = el('div', {
-                    class: 'lib-row' + (useCount === 0 ? ' unused' : '') +
-                           (selection && selection.kind === 'condition' && selection.name === cond.name ? ' selected' : ''),
-                    title: useCount === 0 ? 'Unreferenced in sequence' : (useCount + ' reference' + (useCount === 1 ? '' : 's')),
+                    class: 'lib-row staging-row' + (selected ? ' selected' : ''),
+                    title: 'Imported as "' + item.targetName + '"' +
+                           (collision ? ' — name collides; rename in the inspector' : ''),
                     onClick: (e) => {
-                        if (e.target.classList.contains('lib-row-dup')) return;
                         if (e.target.classList.contains('lib-row-del')) return;
-                        selection = { kind: 'condition', name: cond.name };
-                        renderLibrary(); renderInspector(); renderSequence();
-                    },
-                    onContextMenu: (e) => {
-                        e.preventDefault();
-                        onDuplicateCondition(condIdx);
+                        selection = { kind: 'staging-item', stagingIdx: idx };
+                        renderImportMode();
                     }
                 },
-                    el('span', { class: 'name' }, cond.name),
-                    el('button', {
-                        class: 'lib-row-dup',
-                        title: 'Duplicate this condition (also right-click)',
-                        onClick: (e) => {
-                            e.stopPropagation();
-                            onDuplicateCondition(condIdx);
-                        }
-                    }, 'dup'),
+                    el('span', { class: 'name' }, item.targetName),
+                    collision ? el('span', { class: 'collision-badge', title: 'Name collision' }, 'name ⚠') : null,
                     el('button', {
                         class: 'lib-row-del',
-                        title: useCount === 0
-                            ? 'Delete this condition from the library'
-                            : 'In use (' + useCount + '×) — remove from the sequence first',
+                        title: 'Remove this condition from the staging buffer',
                         onClick: (e) => {
                             e.stopPropagation();
-                            onDeleteCondition(condIdx);
+                            removeFromStaging(staging, idx);
+                            if (selected) selection = null;
+                            renderImportMode();
                         }
-                    }, '✕'),
-                    el('span', { class: 'usage' }, useCount + '×')
+                    }, '✕')
                 );
-                // Drag source — library row → drop on sequence creates a ref,
-                // drop on a block's trial strip adds a trial. dataTransfer
-                // mime distinguishes from sequence-entry drags.
-                row.setAttribute('draggable', 'true');
-                row.addEventListener('dragstart', (e) => {
-                    e.dataTransfer.effectAllowed = 'copy';
-                    e.dataTransfer.setData('text/x-library-cond', cond.name);
-                    row.classList.add('dragging');
-                });
-                row.addEventListener('dragend', () => {
-                    row.classList.remove('dragging');
-                    document.querySelectorAll('.drop-target, .lib-drop-target, .drop-before, .drop-after').forEach((el) => {
-                        el.classList.remove('drop-target', 'lib-drop-target', 'drop-before', 'drop-after');
+                hostEl.appendChild(row);
+            });
+        }
+
+        // "Theirs" pane (in the sequence zone): read-only source conditions, each
+        // with an "← Add" affordance. Already-staged rows are disabled.
+        function renderTheirsLibrary() {
+            const list = $('sequenceList');
+            const conds = staging.src.experiment.conditions || [];
+            $('seqCount').textContent = conds.length;
+            const stagedIdx = new Set(staging.items.map((it) => it.sourceCondIdx));
+            renderConditionList(list, conds, {
+                isSelected: (cond, idx) => selection && selection.kind === 'theirs-preview' && selection.theirsCondIdx === idx,
+                onRowClick: (cond, idx, e) => {
+                    if (e.target.classList.contains('theirs-add')) return;
+                    selection = { kind: 'theirs-preview', theirsCondIdx: idx };
+                    renderImportInspector();
+                    renderTheirsLibrary();
+                },
+                extraButtons: (cond, idx) => {
+                    const staged = stagedIdx.has(idx);
+                    return [el('button', {
+                        class: 'theirs-add',
+                        disabled: staged,
+                        title: staged ? 'Already staged' : 'Stage this condition for import (brings its anchors + plugins)',
+                        onClick: (e) => {
+                            e.stopPropagation();
+                            addToStaging(staging, idx, experiment);
+                            selection = { kind: 'staging-item', stagingIdx: staging.items.length - 1 };
+                            renderImportMode();
+                        }
+                    }, staged ? '✓ staged' : '← Add')];
+                },
+                emptyText: 'Source protocol has no conditions.'
+            });
+        }
+
+        function renderImportInspector() {
+            const body = $('inspectorBody');
+            body.innerHTML = '';
+            if (selection && selection.kind === 'staging-item') {
+                const item = staging.items[selection.stagingIdx];
+                if (item) { renderStagingItemInspector(body, item, selection.stagingIdx); return; }
+            }
+            if (selection && selection.kind === 'theirs-preview') {
+                renderTheirsPreview(body, selection.theirsCondIdx);
+                return;
+            }
+            body.appendChild(el('div', { class: 'empty-state' },
+                'Click a source condition to preview it, or a pending item to edit its import names.'));
+        }
+
+        // Detail panel for one staged condition: editable target name, per-anchor
+        // and per-plugin planned names, plus blocking/soft flags from validation.
+        function renderStagingItemInspector(body, item, idx) {
+            const wrap = el('div', { class: 'staging-insp' });
+            wrap.appendChild(el('div', { class: 'inspector-title' },
+                el('span', { class: 'kind' }, 'Staged'), item.originalName));
+
+            // Target condition name (rewritten into the clone on commit).
+            const nameSec = el('div', { class: 'si-section' });
+            nameSec.appendChild(el('div', { class: 'si-label' }, 'Condition name (in your protocol)'));
+            const nameRow = el('div', { class: 'si-row' });
+            const nameInput = el('input', {
+                type: 'text', class: 'si-input' + (item.conditionNameCollision ? ' invalid' : ''),
+                value: item.targetName,
+                title: 'Name this condition will have after import'
+            });
+            nameInput.addEventListener('change', () => {
+                setItemTargetName(staging, idx, nameInput.value.trim());
+                refreshStagingValidation(staging, experiment);
+                renderImportMode();
+            });
+            nameRow.appendChild(nameInput);
+            nameSec.appendChild(nameRow);
+            if (item.conditionNameCollision) {
+                nameSec.appendChild(el('div', { class: 'si-block' },
+                    '⚠ Name collides with an existing condition. Suggestion: ' + item.conditionNameCollision));
+            }
+            wrap.appendChild(nameSec);
+
+            // Anchors this condition (transitively) depends on.
+            const anchorSec = el('div', { class: 'si-section' });
+            anchorSec.appendChild(el('div', { class: 'si-label' },
+                'Anchors (' + item.anchorRefs.length + ') — namespaced into variables:'));
+            if (item.anchorRefs.length === 0) {
+                anchorSec.appendChild(el('div', { class: 'si-merge' }, 'None.'));
+            } else {
+                for (const srcName of item.anchorRefs) {
+                    const entry = staging.batch.anchorRegistry.get(srcName);
+                    if (!entry) continue;
+                    const row = el('div', { class: 'si-row' });
+                    row.appendChild(el('span', { class: 'si-key' }, '&' + srcName + ' →'));
+                    const inp = el('input', {
+                        type: 'text', class: 'si-input',
+                        value: entry.plannedName,
+                        title: 'Anchor name in your protocol'
                     });
-                });
-                list.appendChild(row);
-                shown++;
+                    inp.addEventListener('change', () => {
+                        setAnchorPlannedName(staging, srcName, inp.value.trim());
+                        refreshStagingValidation(staging, experiment);
+                        renderImportMode();
+                    });
+                    row.appendChild(inp);
+                    anchorSec.appendChild(row);
+                }
             }
-            if (shown === 0) {
-                list.appendChild(el('div', { class: 'empty-state' }, 'No matches.'));
+            wrap.appendChild(anchorSec);
+
+            // Plugins the commands reference (merge vs namespace).
+            const pluginSec = el('div', { class: 'si-section' });
+            pluginSec.appendChild(el('div', { class: 'si-label' },
+                'Plugins (' + item.pluginRefs.length + ')'));
+            if (item.pluginRefs.length === 0) {
+                pluginSec.appendChild(el('div', { class: 'si-merge' }, 'None.'));
+            } else {
+                for (const srcName of item.pluginRefs) {
+                    const entry = staging.batch.pluginRegistry.get(srcName);
+                    if (!entry) continue;
+                    if (entry.action === 'merge') {
+                        pluginSec.appendChild(el('div', { class: 'si-merge', title: 'Same class + config — reuses your existing plugin' },
+                            srcName + ' → merges with your "' + entry.mergeWith + '"'));
+                    } else {
+                        const row = el('div', { class: 'si-row' });
+                        row.appendChild(el('span', { class: 'si-key' }, srcName + ' →'));
+                        const inp = el('input', {
+                            type: 'text', class: 'si-input',
+                            value: entry.plannedName,
+                            title: 'Plugin name in your protocol'
+                        });
+                        inp.addEventListener('change', () => {
+                            setPluginPlannedName(staging, srcName, inp.value.trim());
+                            refreshStagingValidation(staging, experiment);
+                            renderImportMode();
+                        });
+                        row.appendChild(inp);
+                        pluginSec.appendChild(row);
+                    }
+                }
             }
+            wrap.appendChild(pluginSec);
+
+            // Flags: alias-bound plugin_name blocks; unknown command / undeclared
+            // plugin are soft warnings.
+            if (item.aliasBoundPluginNames && item.aliasBoundPluginNames.length) {
+                wrap.appendChild(el('div', { class: 'si-block' },
+                    '⚠ Blocking: plugin_name is alias-bound (*' +
+                    item.aliasBoundPluginNames.join(', *') + '). Use a literal name in the source YAML.'));
+            }
+            if (item.unknownCommandTypes && item.unknownCommandTypes.length) {
+                wrap.appendChild(el('div', { class: 'si-warn' },
+                    'Note: unknown command type(s): ' + item.unknownCommandTypes.join(', ') + ' (imported as-is).'));
+            }
+            if (item.undeclaredPlugins && item.undeclaredPlugins.length) {
+                wrap.appendChild(el('div', { class: 'si-warn' },
+                    'Note: plugin(s) not declared in source: ' + item.undeclaredPlugins.join(', ') + '.'));
+            }
+
+            body.appendChild(wrap);
+        }
+
+        // Read-only preview of a source condition's commands.
+        function renderTheirsPreview(body, idx) {
+            const cond = (staging.src.experiment.conditions || [])[idx];
+            if (!cond) {
+                body.appendChild(el('div', { class: 'empty-state' }, 'Condition not found.'));
+                return;
+            }
+            body.appendChild(el('div', { class: 'inspector-title' },
+                el('span', { class: 'kind' }, 'Source'), cond.name));
+            const wrap = el('div', { class: 'theirs-preview' });
+            wrap.appendChild(el('div', { class: 'si-label' }, 'Commands (' + cond.commands.length + ')'));
+            cond.commands.forEach((cmd) => {
+                const detail = Object.keys(cmd)
+                    .filter((k) => k !== 'type')
+                    .map((k) => k + ': ' + JSON.stringify(cmd[k]))
+                    .join('  ');
+                wrap.appendChild(el('div', { class: 'tp-cmd' },
+                    el('span', { class: 'tp-type' }, cmd.type || '?'),
+                    detail ? '  ' + detail : ''));
+            });
+            body.appendChild(wrap);
+        }
+
+        function commitImport() {
+            if (!staging) return;
+            const validation = refreshStagingValidation(staging, experiment);
+            if (!validation.ok) {
+                const lines = validation.blocking.map((b) => '• ' + b.detail);
+                showError('Cannot commit — resolve ' + validation.blocking.length +
+                    ' conflict(s) first', lines.join('\n'));
+                renderImportMode();
+                return;
+            }
+            // commitStaging does NOT call pushUndo — the UI does, once, so the
+            // whole batch is a single undo step. Push only after validation
+            // passes so a blocked attempt leaves no spurious undo entry.
+            pushUndo();
+            let summary;
+            try {
+                summary = commitStaging(staging, experiment);
+            } catch (err) {
+                // Atomic rollback already restored the doc — drop the undo entry
+                // we just pushed (nothing changed) and surface the error.
+                undoStack.pop();
+                updateUndoUI();
+                showError('Import commit failed',
+                    err.message + (err.code ? '\n\n[' + err.code + ']' : ''));
+                return;
+            }
+            setDirty(true);
+            const firstName = summary.conditionsAdded[0] || null;
+            exitImportMode();
+            if (firstName) selection = { kind: 'condition', name: firstName };
+            renderAll();
+            console.log('[D4 import] committed:', summary);
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -2415,6 +2981,7 @@
         // ═══════════════════════════════════════════════════════════════
 
         function renderSequence() {
+            if (importMode) { renderTheirsLibrary(); return; }
             const list = $('sequenceList');
             list.innerHTML = '';
             $('seqCount').textContent = experiment ? experiment.sequence.length : 0;
@@ -2724,6 +3291,7 @@
         }
 
         function renderInspector() {
+            if (importMode) { renderImportInspector(); return; }
             const body = $('inspectorBody');
             body.innerHTML = '';
 
@@ -3655,7 +4223,7 @@
         }
 
         function onAddCondition() {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             const suggested = autoConditionName();
             const name = prompt('Name for new condition:', suggested);
             if (name === null) return;  // cancelled
@@ -3684,7 +4252,7 @@
         }
 
         function onDuplicateCondition(srcIdx) {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             const src = experiment.conditions[srcIdx];
             if (!src) return;
             // Suggest <name>_2 (or _3 if _2 is taken, etc.)
@@ -3720,7 +4288,7 @@
         }
 
         async function onDeleteCondition(condIdx) {
-            if (!experiment) return;
+            if (!experiment || importMode) return;
             const cond = experiment.conditions[condIdx];
             if (!cond) return;
             // Block deletion while the condition is still referenced — the
