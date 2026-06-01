@@ -149,11 +149,12 @@ import, multi-doc YAML streams, pattern-path validation, a per-anchor
 
 ### Tier 5: polish
 
-- **Phase 8** — write `docs/development/v3-matlab-validation.md` describing the
-  MCP-driven flow that confirms web output loads in MATLAB (the original Phase 1
-  gate item 4, deferred).
-- **Phase 9** — `experiment_designer_v3_quickstart.html`, a step-by-step
-  walkthrough modeled on `experiment_designer_quickstart.html` (the v2 one).
+- **Phase 8** ✅ — `docs/development/v3-matlab-validation.md` describes the
+  MCP-driven flow that confirms web output loads in MATLAB (web side is CI-green;
+  the MATLAB-side script is documented as a manual gate, still to be committed in
+  maDisplayTools).
+- **Phase 9** ✅ — `experiment_designer_v3_quickstart.html` shipped (step-by-step
+  walkthrough incl. the D4 cross-library import flow; linked from the editor header).
 - **Phase 7 leftovers** (optional): params-level anchor cases, deeper
   validation-error matrices. Core Phase 7 shipped in #78 (Suite 31).
 

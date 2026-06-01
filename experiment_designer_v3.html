@@ -68,18 +68,6 @@
             color: var(--accent);
             font-weight: 700;
         }
-        .beta-badge {
-            display: inline-block;
-            padding: 0.1rem 0.5rem;
-            font-size: 0.65rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            background: rgba(41, 182, 246, 0.15);
-            color: var(--beta);
-            border: 1px solid var(--beta);
-            border-radius: 3px;
-        }
         .header-spacer { flex: 1; }
         .header-btn {
             background: var(--surface-2);
@@ -492,7 +480,7 @@
         /* ── 3-zone main area ────────────────────────────────────────── */
         .three-zone {
             display: grid;
-            grid-template-columns: 280px 1fr 360px;
+            grid-template-columns: 320px 1fr 360px;
             flex: 1;
             min-height: 0;
             border-bottom: 1px solid var(--border);
@@ -504,6 +492,17 @@
             min-height: 0;
         }
         .zone:last-child { border-right: none; }
+        /* Left column is split into two stacked panels: Conditions + Variables. */
+        #libraryZone .lib-split {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        #libraryZone .lib-split.lib-split-conditions { flex: 1.5; }
+        #libraryZone .lib-split.lib-split-variables {
+            flex: 1;
+            border-top: 1px solid var(--border);
+        }
         .zone-header {
             padding: 0.5rem 0.75rem;
             background: var(--surface);
@@ -1184,7 +1183,6 @@
     <!-- Header -->
     <div class="app-header">
         <h1>v3 Experiment Designer</h1>
-        <span class="beta-badge">Beta / Editor</span>
         <!-- Dirty indicator lives in the LEFT cluster (before the flex spacer)
              so that when it toggles visible it's absorbed by the spacer and
              does NOT shift the right-aligned action buttons (Undo/Redo/Reset).
@@ -1195,7 +1193,7 @@
         <button id="undoBtn" class="header-btn" disabled title="Undo last edit (Ctrl+Z)">↶ Undo</button>
         <button id="redoBtn" class="header-btn" disabled title="Redo (Ctrl+Y)">↷ Redo</button>
         <button id="resetBtn" class="header-btn" disabled title="Clear everything to a blank minimum-valid v3 skeleton (reversible with Undo)">⟲ Reset</button>
-        <button id="settingsToggle" class="header-btn" title="Show/hide experiment metadata, rig, plugins, variables">Settings ▾</button>
+        <button id="settingsToggle" class="header-btn" title="Show/hide experiment metadata, rig, and plugins">Settings ▾</button>
         <select id="demoSelect" class="header-btn" title="Load a bundled demo YAML or start from a blank skeleton">
             <option value="">Load demo ▾</option>
             <option value="__blank__">New (blank) — minimum-valid v3 skeleton</option>
@@ -1215,6 +1213,7 @@
         <input type="file" id="importFromInput" accept=".yaml,.yml" style="display: none;">
         <button id="importFromBtn" class="header-btn" disabled title="Copy conditions from a second v3 YAML into this one (brings their anchors + plugins along)">Import from YAML…</button>
         <button id="exportBtn" class="header-btn" disabled title="Export the (possibly edited) YAML">Export YAML</button>
+        <a href="experiment_designer_v3_quickstart.html" target="_blank" class="header-btn" style="text-decoration: none; display: inline-flex; align-items: center;" title="Open the v3 Experiment Designer quick-start guide in a new tab">Quick Start</a>
         <a href="index.html" class="header-btn" style="text-decoration: none; display: inline-flex; align-items: center;">← All tools</a>
     </div>
 
@@ -1267,17 +1266,28 @@
 
     <!-- 3-zone main -->
     <div class="three-zone">
-        <!-- LIBRARY -->
+        <!-- LIBRARY (split: Conditions on top, Variables below) -->
         <div class="zone" id="libraryZone">
-            <div class="zone-header">
-                <span id="libZoneTitle">Library</span>
-                <span class="count" id="libCount">0</span>
-                <button id="addCondBtn" class="zone-head-btn" title="Add a new condition (also appends a bare ref to the sequence)" disabled>+ Add</button>
+            <div class="lib-split lib-split-conditions">
+                <div class="zone-header">
+                    <span id="libZoneTitle">Library</span>
+                    <span class="count" id="libCount">0</span>
+                    <button id="addCondBtn" class="zone-head-btn" title="Add a new condition (also appends a bare ref to the sequence)" disabled>+ Add</button>
+                </div>
+                <div class="zone-body">
+                    <input type="text" class="library-search" id="librarySearch" placeholder="Search conditions..." disabled>
+                    <div id="libraryList">
+                        <div class="empty-state">Import a v3 YAML to populate the conditions library.</div>
+                    </div>
+                </div>
             </div>
-            <div class="zone-body">
-                <input type="text" class="library-search" id="librarySearch" placeholder="Search conditions..." disabled>
-                <div id="libraryList">
-                    <div class="empty-state">Import a v3 YAML to populate the conditions library.</div>
+            <div class="lib-split lib-split-variables">
+                <div class="zone-header">
+                    <span>Variables</span>
+                    <span class="count" id="varCount">0</span>
+                </div>
+                <div class="zone-body" id="variablesPanel">
+                    <div class="empty-state">Import a v3 YAML to view its variables (anchors).</div>
                 </div>
             </div>
         </div>
@@ -1322,7 +1332,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.17 | <span id="footerTimestamp">2026-06-01 08:31 ET</span>
+        v3 Experiment Designer v0.18 | <span id="footerTimestamp">2026-06-01 09:10 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1921,38 +1931,55 @@
                 root.appendChild(pluginBox);
             }
 
-            // Variables — inline-editable (Phase 5, v0.10)
-            // Always render the section even when empty so the user can add
-            // the first variable. Complex anchors (maps/seqs) render as
-            // read-only badges; scalar anchors are name + value editable.
-            const varBox = el('div', { class: 'settings-section' });
-            const varCount = experiment.variables ? experiment.variables.length : 0;
-            varBox.appendChild(el('h3', {}, 'Variables (' + varCount + ')'));
+            // Variables moved out of the drawer into the always-visible left-column
+            // panel (#variablesPanel) — see renderVariables(). The drawer now holds
+            // only Experiment Info, Rig, and Plugins.
+        }
+
+        // Variables (anchors) editor — always-visible panel below the conditions
+        // library (was in the Settings drawer through v0.17). Renders into
+        // `hostEl` (#variablesPanel). Complex anchors (maps/seqs) show a read-only
+        // badge; scalar anchors are name + value editable. In import mode the
+        // panel is read-only (the target document is locked — design fix #8).
+        function renderVariables(hostEl) {
+            if (!hostEl) return;
+            hostEl.innerHTML = '';
+            const varCount = experiment && experiment.variables ? experiment.variables.length : 0;
+            const countBadge = $('varCount');
+            if (countBadge) countBadge.textContent = varCount;
+
+            if (!experiment) {
+                hostEl.appendChild(el('div', { class: 'empty-state' },
+                    'Import a v3 YAML to view its variables (anchors).'));
+                return;
+            }
+
+            const locked = importMode;  // target doc is read-only during import
             const table = el('table', { class: 'vars-table' });
-            const thead = el('thead', {}, el('tr', {},
+            table.appendChild(el('thead', {}, el('tr', {},
                 el('th', {}, 'Anchor'),
                 el('th', {}, 'Value'),
                 el('th', { style: 'width: 1.5em;' }, '')
-            ));
-            table.appendChild(thead);
+            )));
             const tbody = el('tbody');
             for (const v of experiment.variables || []) {
                 const isComplex = variableIsComplex(experiment, v.name);
                 const row = el('tr', { class: 'var-row' });
 
-                // Name cell — always editable (rename cascades)
+                // Name cell — editable (rename cascades), read-only while importing.
                 const nameInput = el('input', {
                     type: 'text',
                     value: v.name,
                     class: 'var-name-input',
-                    title: 'Rename anchor. Renaming cascades to every *alias reference.',
+                    disabled: locked,
+                    title: locked
+                        ? 'Locked during import — finish or cancel the import first.'
+                        : 'Rename anchor. Renaming cascades to every *alias reference.',
                 });
-                // change fires on blur, so each visit to the input produces
-                // at most one pushUndo (inside onVariableRename).
                 nameInput.addEventListener('change', () => onVariableRename(v.name, nameInput.value.trim()));
                 row.appendChild(el('td', {}, nameInput));
 
-                // Value cell — editable scalar OR read-only badge for complex
+                // Value cell — editable scalar OR read-only badge for complex.
                 if (isComplex) {
                     row.appendChild(el('td', {},
                         el('span', {
@@ -1966,62 +1993,68 @@
                         type: isNum ? 'number' : 'text',
                         value: isNum ? String(v.value) : String(v.value ?? ''),
                         class: 'var-value-input ' + (isNum ? 'num' : 'str'),
-                        title: 'Edit the anchor value. Every *alias to this anchor will resolve to the new value.',
+                        disabled: locked,
+                        title: locked
+                            ? 'Locked during import — finish or cancel the import first.'
+                            : 'Edit the anchor value. Every *alias to this anchor will resolve to the new value.',
                     });
                     valInput.addEventListener('change', () => onVariableValueEdit(v.name, valInput.value, isNum));
                     row.appendChild(el('td', {}, valInput));
                 }
 
-                // Delete cell
-                const delBtn = el('button', {
-                    class: 'var-del-btn',
-                    title: 'Delete this anchor. Blocked if it has *alias references; the prompt will offer cascade-unbind.',
-                    onClick: () => onVariableDelete(v.name),
-                }, '✕');
-                row.appendChild(el('td', {}, delBtn));
+                // Delete cell — hidden while importing.
+                if (locked) {
+                    row.appendChild(el('td', {}, ''));
+                } else {
+                    row.appendChild(el('td', {}, el('button', {
+                        class: 'var-del-btn',
+                        title: 'Delete this anchor. Blocked if it has *alias references; the prompt will offer cascade-unbind.',
+                        onClick: () => onVariableDelete(v.name),
+                    }, '✕')));
+                }
 
                 tbody.appendChild(row);
             }
 
-            // + Add variable row (always at end)
-            const addRow = el('tr', { class: 'var-add-row' });
-            const addNameInput = el('input', {
-                type: 'text',
-                placeholder: 'new_anchor_name',
-                class: 'var-name-input',
-                title: 'Anchor name (letters, digits, _, -). Pressing Enter or Tab creates the anchor with the value to the right.',
-            });
-            const addValInput = el('input', {
-                type: 'text',
-                placeholder: 'value',
-                class: 'var-value-input',
-                title: 'Initial value. Numeric strings become numbers; everything else stays a string.',
-            });
-            const addBtn = el('button', {
-                class: 'var-add-btn',
-                title: 'Create the new anchor.',
-                onClick: () => {
-                    const name = addNameInput.value.trim();
-                    const val = addValInput.value;
-                    if (!name) return;
-                    onVariableAdd(name, val);
-                    addNameInput.value = '';
-                    addValInput.value = '';
-                    addNameInput.focus();
-                },
-            }, '+ Add');
-            // Enter in either input submits the add
-            const submitOnEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); addBtn.click(); } };
-            addNameInput.addEventListener('keydown', submitOnEnter);
-            addValInput.addEventListener('keydown', submitOnEnter);
-            addRow.appendChild(el('td', {}, addNameInput));
-            addRow.appendChild(el('td', {}, addValInput));
-            addRow.appendChild(el('td', {}, addBtn));
-            tbody.appendChild(addRow);
+            // + Add variable row (always at end) — omitted while importing.
+            if (!locked) {
+                const addRow = el('tr', { class: 'var-add-row' });
+                const addNameInput = el('input', {
+                    type: 'text',
+                    placeholder: 'new_anchor_name',
+                    class: 'var-name-input',
+                    title: 'Anchor name (letters, digits, _, -). Pressing Enter or Tab creates the anchor with the value to the right.',
+                });
+                const addValInput = el('input', {
+                    type: 'text',
+                    placeholder: 'value',
+                    class: 'var-value-input',
+                    title: 'Initial value. Numeric strings become numbers; everything else stays a string.',
+                });
+                const addBtn = el('button', {
+                    class: 'var-add-btn',
+                    title: 'Create the new anchor.',
+                    onClick: () => {
+                        const name = addNameInput.value.trim();
+                        const val = addValInput.value;
+                        if (!name) return;
+                        onVariableAdd(name, val);
+                        addNameInput.value = '';
+                        addValInput.value = '';
+                        addNameInput.focus();
+                    },
+                }, '+ Add');
+                const submitOnEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); addBtn.click(); } };
+                addNameInput.addEventListener('keydown', submitOnEnter);
+                addValInput.addEventListener('keydown', submitOnEnter);
+                addRow.appendChild(el('td', {}, addNameInput));
+                addRow.appendChild(el('td', {}, addValInput));
+                addRow.appendChild(el('td', {}, addBtn));
+                tbody.appendChild(addRow);
+            }
 
             table.appendChild(tbody);
-            varBox.appendChild(table);
-            root.appendChild(varBox);
+            hostEl.appendChild(table);
         }
 
         // ─── Variables editor handlers ─────────────────────────────────────
@@ -2041,7 +2074,7 @@
             if (oldName === newName) return;
             if (!newName) {
                 showError('Rename failed', 'Anchor name cannot be empty.');
-                renderSettings();
+                renderVariables($('variablesPanel'));
                 return;
             }
             if (!isValidAnchorName(newName)) {
@@ -2049,12 +2082,12 @@
                     'Rename failed',
                     'Invalid anchor name: must contain only letters, digits, underscores, and hyphens.'
                 );
-                renderSettings();
+                renderVariables($('variablesPanel'));
                 return;
             }
             if (anchorExists(experiment, newName)) {
                 showError('Rename failed', 'Anchor name "' + newName + '" is already in use.');
-                renderSettings();
+                renderVariables($('variablesPanel'));
                 return;
             }
             const refs = findAliasesTo(experiment, oldName);
@@ -2065,7 +2098,7 @@
                     list: refs.map((r) => '• ' + r.humanLabel),
                     confirmLabel: 'Rename',
                 });
-                if (!proceed) { renderSettings(); return; }
+                if (!proceed) { renderVariables($('variablesPanel')); return; }
             }
             pushUndo();
             try {
@@ -2074,7 +2107,7 @@
                 renderAll();
             } catch (err) {
                 showError('Rename failed', err.message);
-                renderSettings();
+                renderVariables($('variablesPanel'));
             }
         }
 
@@ -2083,7 +2116,7 @@
             const coerced = isNumericInput ? Number(rawValue) : _coerceVarValue(rawValue);
             if (isNumericInput && Number.isNaN(coerced)) {
                 showError('Update failed', 'Value must be a number.');
-                renderSettings();
+                renderVariables($('variablesPanel'));
                 return;
             }
             pushUndo();
@@ -2093,7 +2126,7 @@
                 renderAll();
             } catch (err) {
                 showError('Update failed', err.message);
-                renderSettings();
+                renderVariables($('variablesPanel'));
             }
         }
 
@@ -2708,6 +2741,7 @@
             $('inspectorZoneTitle').textContent = 'Import inspector';
             $('importStagedCount').textContent = staging.items.length;
             renderYoursLockedLibrary();
+            renderVariables($('variablesPanel'));  // read-only while locked
             renderTheirsLibrary();
             renderImportInspector();
         }
@@ -4836,6 +4870,7 @@
         function renderAll() {
             renderSettings();
             renderLibrary();
+            renderVariables($('variablesPanel'));
             renderSequence();
             renderInspector();
             renderTimeline();

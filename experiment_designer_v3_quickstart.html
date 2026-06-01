@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>v3 Experiment Designer Quick Start - PanelDisplayTools</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0f1419;
+            --surface: #1a1f26;
+            --border: #2d3640;
+            --text: #e6edf3;
+            --text-dim: #8b949e;
+            --accent: #00e676;
+            --hover: #00c853;
+        }
+
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--bg);
+            color: var(--text);
+            padding: 2rem;
+            line-height: 1.7;
+        }
+
+        .container {
+            max-width: 820px;
+            margin: 0 auto;
+        }
+
+        .nav-link {
+            display: inline-block;
+            color: var(--text-dim);
+            text-decoration: none;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+            transition: color 0.2s;
+        }
+
+        .nav-link:hover { color: var(--accent); }
+
+        h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 2px solid var(--border);
+        }
+
+        h2 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-top: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        h3 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        p {
+            margin-bottom: 0.75rem;
+            font-size: 0.88rem;
+        }
+
+        .step {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+            position: relative;
+            padding-left: 3.5rem;
+        }
+
+        .step-number {
+            position: absolute;
+            left: 1rem;
+            top: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--accent);
+        }
+
+        .step strong {
+            color: var(--accent);
+        }
+
+        .step p {
+            margin-bottom: 0.4rem;
+        }
+
+        .step p:last-child {
+            margin-bottom: 0;
+        }
+
+        code {
+            background: rgba(0, 230, 118, 0.1);
+            color: var(--accent);
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+        }
+
+        .hint {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            font-style: italic;
+        }
+
+        .layout-diagram {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1.25rem;
+            margin: 1.25rem 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            line-height: 1.5;
+            white-space: pre;
+            overflow-x: auto;
+            color: var(--text-dim);
+        }
+
+        .layout-diagram .hl {
+            color: var(--accent);
+        }
+
+        .key-list {
+            list-style: none;
+            margin: 0.5rem 0 1rem;
+        }
+
+        .key-list li {
+            padding: 0.3rem 0;
+            font-size: 0.85rem;
+        }
+
+        .key-list li code {
+            min-width: 100px;
+            display: inline-block;
+        }
+
+        .tip-box {
+            background: rgba(255, 152, 0, 0.08);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
+            font-size: 0.82rem;
+            color: #ff9800;
+        }
+
+        .tip-box strong { color: #ffb74d; }
+
+        .example-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1rem 1.25rem;
+            margin: 1rem 0;
+        }
+
+        .example-box h4 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.75rem;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        a:hover { color: var(--hover); }
+
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 2px solid var(--border);
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { color: var(--hover); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="experiment_designer_v3.html" class="nav-link">&larr; Back to v3 Experiment Designer</a>
+
+        <h1>v3 Experiment Designer Quick Start</h1>
+        <p class="subtitle">v0.18 | 2026-06-01 09:10 ET — Edit Protocol v3 YAML directly, with anchors and comments preserved on round-trip.</p>
+
+        <p>The v3 Experiment Designer is a <strong>YAML round-trip editor</strong> for Protocol v3.
+        Unlike the v2 designer (which builds a protocol from scratch in a form), v3 loads an existing
+        v3 YAML, lets you edit it through a structured UI, and exports it back — <strong>preserving your
+        anchors, comments, and key order</strong>. The on-disk YAML is the single source of truth.</p>
+
+        <h2>The interface</h2>
+        <p>Three columns over a flattened-timeline preview. The left column is split into a
+        <strong>Library</strong> of conditions and an always-visible <strong>Variables</strong> (anchors) panel.</p>
+
+        <div class="layout-diagram">┌───────────────┬──────────────────────┬─────────────────┐
+│ <span class="hl">LIBRARY</span>       │ <span class="hl">EXPERIMENT SEQUENCE</span>  │ <span class="hl">INSPECTOR</span>       │
+│  conditions   │  ▸ arena check       │  selected       │
+│  (search,     │  ▾ main block        │  condition /    │
+│   + Add)      │      trials, reps    │  block /        │
+├───────────────┤  ▸ posttrial         │  ref details    │
+│ <span class="hl">VARIABLES</span>     │                      │  (edit commands │
+│  &dur_short 3 │                      │   inline)       │
+│  &dur_long 10 │                      │                 │
+│  + Add        │                      │                 │
+├───────────────┴──────────────────────┴─────────────────┤
+│ FLATTENED TIMELINE PREVIEW (every rep × trial expanded) │
+└─────────────────────────────────────────────────────────┘</div>
+
+        <ul class="key-list">
+            <li><code>Library</code> — every condition in the protocol. Click to inspect; drag onto the sequence; <code>+ Add</code> creates one.</li>
+            <li><code>Variables</code> — the <code>variables:</code> anchors. Edit a scalar value or rename an anchor and every <code>*alias</code> updates. Always visible now (no longer hidden in Settings).</li>
+            <li><code>Experiment Sequence</code> — the ordered run: bare <em>refs</em> to conditions and <em>blocks</em> (groups of trials with repetitions / randomize / intertrial).</li>
+            <li><code>Inspector</code> — edits the selected item: a condition's commands, a block's properties, a ref.</li>
+            <li><code>Timeline</code> — a read-only preview of the flattened run order.</li>
+            <li><code>Settings ▾</code> (header) — experiment metadata, the rig path, and the read-only plugins list.</li>
+        </ul>
+
+        <h2>Walkthrough: edit and export a protocol</h2>
+
+        <div class="step">
+            <span class="step-number">1</span>
+            <p><strong>Load a protocol.</strong> Use <code>Import YAML</code> to open your own file, or
+            <code>Load demo ▾</code> to start from a bundled example (e.g. <code>canonical_a</code>).</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">2</span>
+            <p><strong>Inspect a condition.</strong> Click any row in the Library. Its commands appear in the
+            Inspector — <code>controller</code> (trialParams), <code>wait</code>, and <code>plugin</code> commands.
+            Edit fields inline; changes write straight to the YAML model.</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">3</span>
+            <p><strong>Use a Variable (anchor).</strong> In the Variables panel, edit <code>&dur_long</code>'s
+            value — every command that references it via <code>*dur_long</code> resolves to the new value on export.
+            Click <code>+ Add</code> to create a new anchor, or rename one to cascade the change across all references.</p>
+            <p class="hint">Complex anchors (maps / sequences) show a read-only badge — edit those in the YAML directly; renaming still works.</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">4</span>
+            <p><strong>Arrange the sequence.</strong> Drag a Library condition onto the Experiment Sequence to add a
+            ref, use <code>+ Ref</code> / <code>+ Block</code>, reorder by dragging, and edit block repetitions /
+            randomize / intertrial in the Inspector. The Timeline preview updates live.</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">5</span>
+            <p><strong>Export.</strong> <code>Export YAML</code> writes the file back out with your anchors and
+            comments intact. A non-blocking warnings strip flags unused conditions / anchors; a blocking modal
+            catches errors (duplicate names, dangling aliases) before you export.</p>
+        </div>
+
+        <div class="tip-box">
+            <strong>Round-trip safe.</strong> Import → edit → export changes only what you touched. Anchors,
+            inline comments, and key order are preserved, so a diff against the original shows just your edits.
+        </div>
+
+        <h2>Cross-library import (copy conditions between protocols)</h2>
+        <p>Pull conditions out of a <em>second</em> v3 YAML — a sibling lab's protocol, or an older version of
+        your own — into the one you're editing, bringing along the anchors and plugin declarations they depend on.</p>
+
+        <div class="step">
+            <span class="step-number">1</span>
+            <p><strong>Open a source.</strong> With a protocol loaded, click <code>Import from YAML…</code> and pick
+            a second v3 file. The layout swaps: your protocol locks on the left, the source's conditions appear in
+            the middle, and an import inspector opens on the right.</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">2</span>
+            <p><strong>Stage conditions.</strong> Click <code>← Add</code> on a source condition. It joins
+            "Pending additions" — its referenced anchors and plugins come along automatically (transitively).</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">3</span>
+            <p><strong>Adjust names.</strong> Imported anchors and plugins get a <code>prefix__</code> (editable in
+            the banner) so they don't clash with yours; conditions keep their own names. The inspector flags any
+            name collision and suggests a fix. Plugins that match one of yours (same class + config) <em>merge</em>
+            instead of duplicating.</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">4</span>
+            <p><strong>Commit.</strong> <code>Commit import</code> applies the whole batch in one step (one
+            <code>Undo</code> reverts all of it). Imported nodes are stamped <code># imported from &lt;source&gt;</code>.
+            <code>Cancel</code> discards everything and changes nothing.</p>
+        </div>
+
+        <div class="tip-box">
+            <strong>Scope.</strong> Import copies <em>conditions</em> plus their direct dependencies and appends a
+            bare sequence ref so each is runnable. It does not reproduce the source's block membership,
+            repetitions, or intertrial placement — arrange those in your sequence afterward.
+        </div>
+
+        <h2>Key concepts</h2>
+        <ul class="key-list">
+            <li><strong>Condition</strong> — a named list of <code>commands</code> (the unit you reuse). Lives in <code>conditions:</code>.</li>
+            <li><strong>Sequence ref vs. block</strong> — the <code>experiment:</code> list is the run order. A <em>ref</em> is a single condition; a <em>block</em> groups trials with <code>repetitions</code>, <code>randomize</code>, and an optional <code>intertrial</code>.</li>
+            <li><strong>Anchor / alias</strong> — <code>&amp;name value</code> defines a reusable value in <code>variables:</code>; <code>*name</code> references it. Editing the anchor updates every reference.</li>
+            <li><strong>Plugin</strong> — a runtime resource (camera, LED controller) declared in <code>plugins:</code> and called by <code>plugin</code> commands.</li>
+            <li><strong>Controller modes</strong> — Mode 2 (constant rate, <code>frame_rate</code> set, <code>gain</code> 0) vs. Mode 4 (closed-loop, <code>gain</code> set, <code>frame_rate</code> 0).</li>
+        </ul>
+
+        <h2>Keyboard &amp; history</h2>
+        <ul class="key-list">
+            <li><code>Ctrl/Cmd+Z</code> — undo</li>
+            <li><code>Ctrl/Cmd+Y</code> — redo (also <code>Ctrl/Cmd+Shift+Z</code>)</li>
+            <li><code>⟲ Reset</code> — clear to a blank minimum-valid skeleton (reversible with undo)</li>
+        </ul>
+        <p class="hint">Edits are in-memory until you Export — the page warns before close/reload if you have unsaved
+        changes or an import in progress.</p>
+
+        <footer>
+            <p><a href="experiment_designer_v3.html">v3 Experiment Designer</a> | <a href="index.html">PanelDisplayTools</a> | <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">GitHub</a></p>
+        </footer>
+    </div>
+</body>
+</html>
