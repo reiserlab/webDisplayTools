@@ -1332,7 +1332,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.18 | <span id="footerTimestamp">2026-06-01 09:10 ET</span>
+        v3 Experiment Designer v0.19 | <span id="footerTimestamp">2026-06-01 09:26 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1457,7 +1457,11 @@
             if (!experiment || !experiment._doc) return null;
             return {
                 text: experiment._doc.toString(),
-                selection: selection ? JSON.parse(JSON.stringify(selection)) : null
+                selection: selection ? JSON.parse(JSON.stringify(selection)) : null,
+                // Capture the dirty flag too, so undoing back to the loaded state
+                // clears "● edited" (and redo re-asserts it). pushUndo snapshots
+                // BEFORE the mutation, so this records the pre-edit dirty value.
+                dirty: dirty
             };
         }
 
@@ -1479,6 +1483,7 @@
             try {
                 experiment = parseV3Protocol(snap.text);
                 selection = snap.selection;
+                setDirty(!!snap.dirty);
                 renderAll();
             } catch (err) {
                 showError('Undo/redo restore failed', err.message);
