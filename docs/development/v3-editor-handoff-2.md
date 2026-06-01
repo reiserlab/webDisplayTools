@@ -1,9 +1,9 @@
 # v3 Experiment Designer — Handoff for Next Session (Round 2)
 
-**Last updated:** 2026-05-29
-**State:** v0.13 = manual-testing fixes (toolbar reflow + editable settings), on a branch → PR.
-**Editor version:** v3 Experiment Designer **v0.13**
-**`main` HEAD:** `7b9e72e` (#78) — prior `9dca364` (#77)
+**Last updated:** 2026-06-01
+**State:** D4 (cross-library import) shipped — M1+M2 (#84) and M3 UI (#85) merged to `main`. M4 (polish + docs) in progress.
+**Editor version:** v3 Experiment Designer **v0.16** (M4 → v0.17)
+**`main` HEAD:** `5bf08f4` (Merge #85) — D4 M1–M3
 **Pinned upstream:** maDisplayTools `origin/version3` at `649d7ef`
 
 This is the live handoff for the v3 designer. It supersedes the original
@@ -15,19 +15,18 @@ and the known gotchas.
 
 ## 0. TL;DR
 
-The v3 designer is **feature-complete for single-document editing** and merged
-to `main` at v0.12. Phases 1–7 all shipped. Tests green at **arena 10/10,
-v2 137/137, v3 467/467**.
+The v3 designer is **feature-complete for single-document editing** AND now ships
+**D4 (cross-library import)** — Phases 1–7 plus D4 M1–M3 are merged to `main`.
+Tests green at **arena 10/10, v2 137/137, v3 576/576**.
 
 Live: <https://reiserlab.github.io/webDisplayTools/experiment_designer_v3.html>
 
-**Only one substantial feature remains: D4 (cross-library import).** Everything
-else left is polish (a MATLAB-validation doc, a quickstart page) or optional
-tech-debt. See §3.
+**D4 is done** (M1 cross-doc primitives, M2 staging + commit, M3 three-pane UI;
+M4 = polish + docs). The D4 reference now lives in **CLAUDE.md → "v3 Experiment
+Designer — D4 Cross-Library Import"** plus the three `v3-d4-*` docs. What remains
+is polish: a MATLAB-validation doc, a quickstart page, optional tech-debt. See §3.
 
-If the next session is short, good quick wins are in §3 Tier 5 / §4. If it's a
-big one, D4 (§3 Tier 4) is the headline — but read its design + review docs and
-re-run a design pass first.
+If the next session is short, good quick wins are in §3 Tier 5 / §4.
 
 ---
 
@@ -66,6 +65,9 @@ stress test reveals the cliff.
 | #70–#74 | Phase 4 — sequence reorder, +Ref/+Block, drag library→sequence, block trial editing, timeline ribbon, ref↔block convert, missing-trial create | v0.8 |
 | **#77** | Phase 4 cleanup (the 4 Codex bugs) + **Phase 5 Variables editor** + **Phase 6 validation modal / Reset / library delete** | v0.9 → v0.11 |
 | **#78** | **Phase 7 test hardening** + **validation error line numbers** + modal double-bullet fix | v0.12 |
+| #81 | Toolbar-reflow + editable-settings fixes | v0.13 |
+| **#84** | **D4 M1** (cross-doc primitives + node helpers) + **D4 M2** (staging buffer + commit pipeline; suites N1–N10) | v0.14 → v0.15 |
+| **#85** | **D4 M3** — three-pane cross-library import UI (`renderConditionList` extraction, import-mode swap, locking) | v0.16 |
 
 ### What the editor can do today (v0.12)
 
@@ -122,24 +124,28 @@ passthrough; 10 demo fixtures), **plus**:
 
 Phases 1–7 are done. Remaining work, by size:
 
-### Tier 4: D4 — cross-library import (the one big feature, ~5+ days)
+### Tier 4: D4 — cross-library import ✅ SHIPPED (M1–M3 merged; M4 in progress)
 
-> **Executable handoff:** `docs/development/v3-d4-implementation-handoff.md` —
-> milestones with completion gates, the rev-3 fix list, pre-answered open
-> questions, and dynamic-workflow guidance. Start there.
+Pull conditions (+ their anchors and plugin declarations) from one protocol into
+another. **Done across #84 (M1+M2) and #85 (M3).** Reference:
+**CLAUDE.md → "v3 Experiment Designer — D4 Cross-Library Import"**, plus
+`docs/development/v3-d4-design.md` (rev 3),
+`docs/development/v3-d4-implementation-handoff.md`, and
+`docs/development/v3-d4-design-reviews.md`.
 
-Pull conditions/plugins/variables from one protocol into another. Design is
-preserved at `docs/development/v3-d4-design.md` (rev 2) with the review-fix list
-at `docs/development/v3-d4-design-reviews.md`. Before implementing:
+How it landed vs. the original plan:
+1. Rev-2→rev-3 fix list applied; a fresh `codex-plan-review` pass ran before M1.
+2. Plugins **merge by default when class+config match** (Codex-adv's point);
+   anchors namespace by default.
+3. The `applySequenceEdit` reducer refactor (§1) was **NOT** needed — the staging
+   buffer stayed self-contained and commits via the documented node primitives
+   (design §13). The path-based mirror model held.
+4. **M4 (this milestone):** `beforeunload` guard during import mode + these doc
+   updates + footer bump. That completes D4 v1.
 
-1. Apply the rev-2 review fix list (~11 corrections before Milestone 1).
-2. Switch from plugin namespacing to **plugin merge-by-default when class+config
-   match** (Codex-adv's strongest point).
-3. Re-run a Codex design pass on the rev-3 doc.
-4. Expect this to be the trigger for the `applySequenceEdit` reducer refactor
-   (§1) — D4's cross-doc primitives won't fit the current per-helper pattern
-   cleanly. Phase 5's Variables table is the prefix-clutter mitigation D4 needs,
-   so that dependency is satisfied.
+Explicitly **out of scope for D4 v1** (design §12): sequence/block-membership
+import, multi-doc YAML streams, pattern-path validation, a per-anchor
+"merge with existing" toggle. Candidates for a future v1.1.
 
 ### Tier 5: polish
 

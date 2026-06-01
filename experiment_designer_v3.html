@@ -1322,7 +1322,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.16 | <span id="footerTimestamp">2026-06-01 07:47 ET</span>
+        v3 Experiment Designer v0.17 | <span id="footerTimestamp">2026-06-01 08:31 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1426,9 +1426,13 @@
             $('dirtyIndicator').style.display = dirty ? 'inline-block' : 'none';
         }
 
-        // Warn before close/reload if there are unsaved edits.
+        // Warn before close/reload if there are unsaved edits, OR if a
+        // cross-library import is in progress (the staging buffer is not yet
+        // committed and would be lost). Import mode is tracked separately from
+        // `dirty` because entering import mode intentionally does NOT mark the
+        // document dirty (design §7) — only a successful commit does.
         window.addEventListener('beforeunload', (e) => {
-            if (dirty) {
+            if (dirty || importMode) {
                 e.preventDefault();
                 e.returnValue = '';
             }

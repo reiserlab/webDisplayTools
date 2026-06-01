@@ -583,6 +583,85 @@ Filmstrip + lane view:
 - **Phase shallow copy bug**: `{ ...DEFAULT_PHASE }` shares the `commands` array reference between pretrial/intertrial/posttrial. Must use `JSON.parse(JSON.stringify(...))` for deep clone.
 - **Visual editor first-click alert**: The table view's `.btn-row-delete` class overlapped with visual editor delete buttons, causing a "Phase 3" alert on first click. Fixed by giving visual editor buttons a separate `.cmd-delete-btn` class.
 
+## v3 Experiment Designer — D4 Cross-Library Import
+
+`experiment_designer_v3.html` (the v3 editor) lets a user open a **second** v3
+protocol YAML and copy selected conditions — with the anchors and plugin
+declarations they transitively depend on — into the currently-loaded protocol,
+preserving comments/aliases. This is "D4" (the library-copy feature). The v3
+editor's general architecture lives in the handoff docs (see below); this section
+documents D4 specifically.
+
+### Module split
+- **`js/v3-import.js`** (new in D4) — the cross-doc substrate + staging buffer +
+  commit pipeline. **Dual-export** (window global `V3Import` + ES named exports +
+  CommonJS for tests), mirroring `js/protocol-yaml-v3.js`.
+- **`js/protocol-yaml-v3.js`** — D4 added node-based inserters
+  `ensureTopLevelSection`, `docInsertConditionNode`, `docInsertVariableNode`,
+  `docInsertPluginNode` (preserve comments/aliases, unlike the JS-object-building
+  `docInsertCondition`).
+
+### v3-import.js API (what the UI drives)
+- **Primitives:** `collectAliasReferences`, `resolveAlias` (via
+  `alias.resolve(doc)` — **not** name lookup), `cloneNodeAcrossDocs` (one shared
+  `aliasRewriteMap`), `yamlNodeStructuralEquals` + `sortedJson` (recursive key
+  sort, used only on the plugin-merge path).
+- **Staging:** `createStagingBuffer` (duplicate-anchor preflight; filename-derived
+  prefix), `addToStaging` (visited-set transitive anchor closure + per-batch
+  dependency registry), `removeFromStaging`, `setStagingPrefix` (recompute planned
+  names; per-item overrides persist), `setItemTargetName`, `setAnchorPlannedName`,
+  `setPluginPlannedName`, `refreshStagingValidation`, `commitStaging`.
+
+### The anchor/plugin asymmetry (the core product rule)
+- **Anchors namespace by default** (`&dur_short` → `&prefix__dur_short`). They're
+  data aliases — safe to prefix.
+- **Plugins MERGE by default** when `matlab.class` + `config` match (identity =
+  all plugin fields except `name`, plus same `rig` when both are config-less);
+  namespace only on mismatch. Plugins are runtime resources (cameras, controllers)
+  — duplicating one is a real runtime bug. The built-in `log` plugin is always
+  left as-is.
+- Imported nodes are **comment-stamped** `# imported from <source>` for provenance.
+
+### `commitStaging` contract (important for UI wiring)
+- **Atomic:** validates first (throws `V3ImportError` `COMMIT_BLOCKED` with
+  `.blocking`), snapshots `yours._doc.toString()`, and rolls back on any
+  mid-commit throw (`COMMIT_FAILED`). All-or-nothing.
+- **Does NOT call `pushUndo`** — the UI wrapper does, once, so the whole batch is
+  a single undo step. Validate *before* `pushUndo` so a blocked attempt leaves no
+  spurious undo entry; on a `COMMIT_FAILED` throw, `undoStack.pop()` (nothing
+  changed).
+- Handles bare-ref appending internally when `staging.addBareRefs` is true.
+
+### Import-mode UI (in `experiment_designer_v3.html`)
+- `enterImportMode` / `exitImportMode` / `commitImport` swap the three-zone layout:
+  `#libraryZone` → "yours" locked, `#sequenceZone` → read-only "import source"
+  pane, `#inspectorZone` → staging-item detail / source preview. A top
+  `#importBanner` carries the editable prefix, staged count, "append bare refs"
+  toggle, and Cancel/Commit.
+- **`renderConditionList(listEl, conditions, opts)`** is the shared row renderer
+  extracted from `renderLibrary`; reused by the locked "yours" pane and the
+  read-only "theirs" pane. `opts`: `getUsage`, `isSelected`, `onRowClick`,
+  `extraButtons`, `draggable`, `rowClass`, `emptyText`.
+- **Locking (D4 design fix #8):** every target-doc mutation entry point guards on
+  `if (importMode) return` **and** the controls are disabled on enter — never a
+  global `pushUndo` suppression (commit itself pushes the one snapshot). When
+  adding a new mutation handler to the v3 editor, **add an `importMode` guard.**
+- Entering import mode must **not** `setDirty(true)` (cancelling mutates nothing);
+  only a successful commit does. The `beforeunload` guard fires on `dirty ||
+  importMode`.
+
+### Tests + scope
+- `tests/test-protocol-roundtrip-v3.js` suites **N1–N10** cover the whole
+  substrate in Node (no browser). Run `npm test` after any `v3-import.js` or
+  `protocol-yaml-v3.js` change.
+- **Out of scope for D4 v1** (design §12): sequence/block-membership import,
+  multi-doc YAML streams, pattern-path validation, a per-anchor "merge with
+  existing" toggle. Imported conditions are *runnable* (bare ref appended), not
+  behaviorally identical to how the sibling ran them.
+- Authoritative docs: `docs/development/v3-d4-design.md` (rev 3),
+  `docs/development/v3-d4-implementation-handoff.md`,
+  `docs/development/v3-d4-design-reviews.md`.
+
 ## Planning Best Practices
 
 ### Project Size Assessment
