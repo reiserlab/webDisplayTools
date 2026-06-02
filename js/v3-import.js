@@ -38,6 +38,7 @@ import {
     isValidAnchorName,
     anchorExists
 } from './protocol-yaml-v3.js';
+import { WELL_KNOWN_RIG_PLUGIN_NAMES } from './plugin-registry.js';
 
 // Command types the v3 schema knows (mirrors KNOWN_COMMAND_KEYS_BY_TYPE in
 // protocol-yaml-v3.js). Anything else in a condition is an "unknown command
@@ -362,18 +363,30 @@ function createStagingBuffer(srcExperiment, srcFilename, opts) {
     }
     const options = opts || {};
     const prefix = options.prefix !== undefined ? options.prefix : derivePrefix(srcFilename);
+    // Extra canonical plugin names from a loaded TARGET rig (#89). The well-known
+    // names (camera/backlight/temperature) are always treated as canonical; this
+    // set adds any further plugin names the user's loaded rig declares.
+    const rigPluginNames = new Set(Array.isArray(options.rigPluginNames) ? options.rigPluginNames : []);
     return {
         src: { doc: srcExperiment._doc, experiment: srcExperiment, filename: srcFilename || '' },
         prefix: prefix,
+        rigPluginNames: rigPluginNames,
         batch: {
             anchorRegistry: new Map(), // srcName → { srcValueNode, plannedName, override }
-            pluginRegistry: new Map(), // srcName → { srcEntryNode, plannedName, override, action, mergeWith }
+            pluginRegistry: new Map(), // srcName → { srcEntryNode, plannedName, override, action, mergeWith, canonical }
             visitedAnchors: new Set()
         },
         items: [],
         addBareRefs: options.addBareRefs !== undefined ? !!options.addBareRefs : true,
         _yours: null // set on first addToStaging; used by validation refresh
     };
+}
+
+// True when `name` is a rig-canonical plugin name that must never be prefixed on
+// import — a well-known rig key, or one the loaded target rig declares (#89).
+function _isCanonicalRigName(staging, name) {
+    if (WELL_KNOWN_RIG_PLUGIN_NAMES.indexOf(name) !== -1) return true;
+    return !!(staging.rigPluginNames && staging.rigPluginNames.has(name));
 }
 
 // Walk a source value/condition node, registering every transitively-referenced
@@ -403,6 +416,17 @@ function _closeAnchors(staging, seedNode) {
 
 // Decide merge-vs-namespace for a source plugin against yours (broadened identity).
 function _computePluginAction(staging, srcPluginMirror, yoursExperiment) {
+    const name = srcPluginMirror.name;
+    // #89: the rig defines canonical plugin names; never prefix one. Bind to the
+    // canonical name so the plugin inherits the target rig's config at runtime —
+    // even when the target protocol doesn't declare it yet.
+    if (_isCanonicalRigName(staging, name)) {
+        const existing = (yoursExperiment.plugins || []).find((p) => p.name === name);
+        if (existing) {
+            return { action: 'merge', mergeWith: existing.name, plannedName: existing.name };
+        }
+        return { action: 'add', mergeWith: null, plannedName: name, canonical: true };
+    }
     const srcProj = sortedJson(_pluginProjection(srcPluginMirror));
     const srcRig = staging.src.experiment.rig_path;
     const yoursRig = yoursExperiment.rig_path;
@@ -480,7 +504,8 @@ function addToStaging(staging, sourceCondIdx, yoursExperiment) {
                             plannedName: act.plannedName,
                             override: false,
                             action: act.action,
-                            mergeWith: act.mergeWith
+                            mergeWith: act.mergeWith,
+                            canonical: !!act.canonical
                         });
                         // plugin config may reference anchors the condition doesn't
                         if (act.action === 'add') _closeAnchors(staging, srcEntryNode);
@@ -558,7 +583,8 @@ function _rebuildRegistry(staging) {
                     plannedName: act.plannedName,
                     override: false,
                     action: act.action,
-                    mergeWith: act.mergeWith
+                    mergeWith: act.mergeWith,
+                    canonical: !!act.canonical
                 });
                 if (act.action === 'add') _closeAnchors(staging, srcEntryNode);
             }
@@ -592,7 +618,10 @@ function setStagingPrefix(staging, newPrefix) {
         if (!entry.override) entry.plannedName = staging.prefix + name;
     }
     for (const [name, entry] of staging.batch.pluginRegistry) {
-        if (entry.action === 'add' && !entry.override) entry.plannedName = staging.prefix + name;
+        // Canonical rig binds keep their (un-prefixed) name regardless of prefix (#89).
+        if (entry.action === 'add' && !entry.override && !entry.canonical) {
+            entry.plannedName = staging.prefix + name;
+        }
     }
     if (staging._yours) refreshStagingValidation(staging, staging._yours);
     return staging;
@@ -622,6 +651,8 @@ function setAnchorPlannedName(staging, srcAnchorName, newName) {
 function setPluginPlannedName(staging, srcPluginName, newName) {
     const entry = staging.batch.pluginRegistry.get(srcPluginName);
     if (!entry || entry.action !== 'add') return staging;
+    // Canonical rig binds are non-renamable — renaming would re-break rig binding (#89).
+    if (entry.canonical) return staging;
     entry.plannedName = String(newName);
     entry.override = true;
     if (staging._yours) refreshStagingValidation(staging, staging._yours);

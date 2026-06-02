@@ -196,6 +196,36 @@ function parseV3Protocol(yamlText) {
     return experiment;
 }
 
+/**
+ * Parse a RIG YAML string into a plain JS object (rig-aware plugin support, #91).
+ *
+ * Rig files are a different schema from protocols — this is deliberately a thin,
+ * tolerant wrapper over YAML.parse that returns the raw object so callers
+ * (deriveRigPlugins) can read its `plugins:` block. The HTML imports this because
+ * it doesn't import the `yaml` package directly. Malformed YAML throws a clean
+ * V3ParseError (RIG_PARSE_ERROR) instead of a raw module error.
+ *
+ * @param {string} yamlText - raw rig YAML content
+ * @returns {object} parsed rig object (may be {} for empty/comment-only files)
+ * @throws V3ParseError
+ */
+function parseRigYAMLText(yamlText) {
+    if (typeof yamlText !== 'string') {
+        throw new V3ParseError('Expected rig YAML text, got ' + typeof yamlText, 'RIG_PARSE_ERROR');
+    }
+    let data;
+    try {
+        data = YAML.parse(yamlText);
+    } catch (err) {
+        throw new V3ParseError('Rig YAML parse error: ' + err.message, 'RIG_PARSE_ERROR');
+    }
+    if (data == null) return {};
+    if (typeof data !== 'object' || Array.isArray(data)) {
+        throw new V3ParseError('Rig YAML root must be a mapping', 'RIG_PARSE_ERROR');
+    }
+    return data;
+}
+
 function extractExperimentInfo(info) {
     const out = {};
     for (const k of KNOWN_EXPERIMENT_INFO_KEYS) {
@@ -2094,6 +2124,7 @@ function docRemovePlugin(experiment, pluginName) {
 
 const ProtocolV3 = {
     parseV3Protocol,
+    parseRigYAMLText,
     generateV3Protocol,
     validateReferences,
     collectBlockingErrors,
@@ -2150,6 +2181,7 @@ if (typeof module !== 'undefined' && module.exports) {
 // ES module export
 export {
     parseV3Protocol,
+    parseRigYAMLText,
     generateV3Protocol,
     validateReferences,
     collectBlockingErrors,

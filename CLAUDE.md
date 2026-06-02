@@ -662,6 +662,61 @@ documents D4 specifically.
   `docs/development/v3-d4-implementation-handoff.md`,
   `docs/development/v3-d4-design-reviews.md`.
 
+## v3 Experiment Designer — Rig-Aware Plugins (#91) + #89 import fix
+
+`experiment_designer_v3.html` (v0.21+) reads the **rig YAML** the user picks via
+Settings → Rig → Browse… and uses its `plugins:` block to drive the plugin UI, and
+D4 import binds **canonical** rig plugin names instead of prefixing them (closes #89).
+
+### The rig→class mapping (in `js/plugin-registry.js`, pure, no YAML dep)
+- `WELL_KNOWN_RIG_PLUGIN_NAMES = ['backlight', 'camera', 'temperature']` — the
+  canonical rig plugin names. **Note** the rig calls the thermometer `temperature`
+  while the registry key is `thermometer` (class `DAQThermometerPlugin`).
+- `mapRigPluginToBuiltin(rigKey, rigType)` — **tolerant**: match the well-known
+  KEY first (`RIG_PLUGIN_KEY_MAP`), then a normalized `type` (`RIG_PLUGIN_TYPE_MAP`,
+  handles `"LED Controller"`, `"Bias"`/`"BIAS"`), else `null` ("unknown plugin type").
+- `deriveRigPlugins(rigData)` → `{ plugins:[{key,enabled,type,builtinName,matlabClass,mapped}], unmapped }`.
+  Never throws on null/partial input.
+- `diffRigVsProtocol(derived, experiment.plugins)` → `{ unsupported, unused }`,
+  **name-based** (a plugin's declared name must equal the rig key to inherit config).
+- `createPluginEntry(builtinName, overrideName)` — the optional override lets a rig
+  plugin be added under its canonical rig key (e.g. `temperature`) while reusing the
+  built-in's class/defaults. `rigDefined` fields (ip/port) already have empty defaults,
+  so rig-added plugins come out **config-less** by design.
+
+### Rig YAML entry point
+- `parseRigYAMLText(text)` in `js/protocol-yaml-v3.js` — thin `YAML.parse` wrapper;
+  malformed/non-mapping input throws a clean `V3ParseError('RIG_PARSE_ERROR')`. The
+  HTML imports this because it doesn't import the `yaml` package directly.
+
+### HTML wiring
+- Module state `loadedRig = { path, derived }`; `rigIsCurrent()` gates everything on
+  `loadedRig.path === experiment.rig_path` (a manual path edit makes it stale → ignored).
+- The Browse handler is `async` (reads `await f.text()`), then **must call
+  `renderSettings()` itself** — `onRigEdit` doesn't re-render on success and re-picking
+  the same path is a no-op there.
+- Add-plugin dropdown option values are namespaced: `rig:<key>` (canonical add) vs
+  `registry:<builtinName>`. `onAddPlugin(value)` parses the prefix.
+- Mismatch warnings render **inline in Settings → Plugins** (only when `rigIsCurrent()`).
+
+### #89 — canonical import binding (in `js/v3-import.js`)
+- `_computePluginAction()` has a **canonical-name branch at the top**: if the source
+  plugin name is in `WELL_KNOWN_RIG_PLUGIN_NAMES` or `staging.rigPluginNames`, never
+  prefix — merge into an existing same-named target plugin, else add under the
+  canonical name (`{ action:'add', canonical:true }`). The well-known names are an
+  **always-on baseline**, so #89 is fixed even when no rig is loaded.
+- `createStagingBuffer(src, file, { rigPluginNames })` threads extra loaded-rig names
+  (the HTML passes them from `loadedRig` when `rigIsCurrent()`).
+- A `canonical` entry is **non-renamable** — `setPluginPlannedName` and
+  `setStagingPrefix` skip it; the import inspector renders "→ binds to rig plugin X".
+- **When adding a new entry-point that prefixes plugin names, route through the
+  canonical-name check** so #89 doesn't regress.
+
+### Tests
+- `tests/test-protocol-roundtrip-v3.js` suites **N12** (rig parse + tolerant map +
+  `diffRigVsProtocol`, using `tests/fixtures/rigs/*`) and **N13** (#89 canonical
+  import binding). Existing **N9** was updated to assert `camera` is added unprefixed.
+
 ## Planning Best Practices
 
 ### Project Size Assessment

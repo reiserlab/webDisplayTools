@@ -63,7 +63,8 @@ const {
     docInsertConditionNode,
     docInsertVariableNode,
     docInsertPluginNode,
-    docRemovePlugin
+    docRemovePlugin,
+    parseRigYAMLText
 } = require('../js/protocol-yaml-v3.js');
 
 const {
@@ -73,7 +74,10 @@ const {
     listV3PluginNames,
     getV3CommandParams,
     createPluginEntry,
-    LOG_PLUGIN
+    LOG_PLUGIN,
+    mapRigPluginToBuiltin,
+    deriveRigPlugins,
+    diffRigVsProtocol
 } = require('../js/plugin-registry.js');
 
 // D4 — cross-document primitives (M1) + staging/commit pipeline (M2)
@@ -3149,7 +3153,10 @@ console.log('\n--- Suite N9: edge cases ---');
     const st2 = createStagingBuffer(src, 'sib.yaml');
     addToStaging(st2, 0, noPlugins); // sibling check uses camera
     commitStaging(st2, noPlugins);
-    checkTrue('N9: plugins: section created + camera added', noPlugins.plugins.some((p) => p.name === 'sib__camera' || p.name === 'sibling_source__camera'));
+    // #89: `camera` is a canonical rig name — it must be added UN-prefixed so it
+    // inherits the target rig's config at runtime (was sib__camera).
+    checkTrue('N9: plugins: section created + camera added (canonical, unprefixed)', noPlugins.plugins.some((p) => p.name === 'camera'));
+    checkTrue('N9: camera NOT namespaced (#89)', !noPlugins.plugins.some((p) => /__camera$/.test(p.name)));
     checkTrue('N9: no-plugins target re-parses', (() => { try { parseV3Protocol(noPlugins._doc.toString()); return true; } catch (e) { return false; } })());
 
     // zero-alias condition → imports clean, no anchors
@@ -3325,6 +3332,167 @@ console.log('\n--- Suite N11: add/remove plugin from registry ---');
     checkTrue('N11: plugins: section now exists', !!noPlug._doc.getIn(['plugins'], true));
     parseV3Protocol(generateV3Protocol(noPlug)); // must not throw
     pass('N11: no-plugins-key protocol re-parses after add');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Rig-aware plugin assist (#91) + canonical-name import binding (#89)
+// ════════════════════════════════════════════════════════════════════════════
+
+// ─── Suite N12: rig YAML parse + tolerant rig→class mapping ──────────────────
+console.log('\n--- Suite N12: rig-aware plugin parse + mapping ---');
+{
+    const findKey = (derived, key) => derived.plugins.find((p) => p.key === key);
+
+    // (a) test_rig_1 — richest case: backlight + camera ENABLED with type/config.
+    const r1 = deriveRigPlugins(parseRigYAMLText(readFixture('rigs/test_rig_1.yaml')));
+    check('N12a: test_rig_1 has 3 plugins', r1.plugins.length, 3);
+    check('N12a: backlight → LEDControllerPlugin', findKey(r1, 'backlight').matlabClass, 'LEDControllerPlugin');
+    checkTrue('N12a: backlight enabled', findKey(r1, 'backlight').enabled === true);
+    check('N12a: camera (type "Bias") → BiasPlugin', findKey(r1, 'camera').matlabClass, 'BiasPlugin');
+    checkTrue('N12a: camera enabled', findKey(r1, 'camera').enabled === true);
+    check('N12a: temperature → DAQThermometerPlugin', findKey(r1, 'temperature').matlabClass, 'DAQThermometerPlugin');
+    checkTrue('N12a: temperature disabled', findKey(r1, 'temperature').enabled === false);
+    check('N12a: nothing unmapped', r1.unmapped.length, 0);
+
+    // (b) example_rig — schema variation: backlight has NO type (com_port/ir_power),
+    // camera type is "BIAS" (different casing). Tolerant mapping must still resolve.
+    const r2 = deriveRigPlugins(parseRigYAMLText(readFixture('rigs/example_rig.yaml')));
+    check('N12b: backlight maps via KEY despite missing type', findKey(r2, 'backlight').matlabClass, 'LEDControllerPlugin');
+    check('N12b: camera "BIAS" (casing) → BiasPlugin', findKey(r2, 'camera').matlabClass, 'BiasPlugin');
+    check('N12b: temperature maps via key', findKey(r2, 'temperature').matlabClass, 'DAQThermometerPlugin');
+    checkTrue('N12b: all disabled in example_rig', r2.plugins.every((p) => p.enabled === false));
+
+    // (c) test_rig_2 — minimal: all disabled, no config, still mapped via key.
+    const r3 = deriveRigPlugins(parseRigYAMLText(readFixture('rigs/test_rig_2.yaml')));
+    check('N12c: test_rig_2 has 3 plugins', r3.plugins.length, 3);
+    checkTrue('N12c: all mapped via key', r3.plugins.every((p) => p.mapped));
+    checkTrue('N12c: all disabled', r3.plugins.every((p) => p.enabled === false));
+
+    // (d) tolerant fallback + unknown degradation
+    check('N12d: mapRigPluginToBuiltin("camera") → camera', mapRigPluginToBuiltin('camera').builtinName, 'camera');
+    check('N12d: mapRigPluginToBuiltin("temperature") → thermometer', mapRigPluginToBuiltin('temperature').builtinName, 'thermometer');
+    check('N12d: unknown key + known TYPE falls back', mapRigPluginToBuiltin('cam2', 'LED Controller').builtinName, 'backlight');
+    checkTrue('N12d: unknown key + unknown type → null', mapRigPluginToBuiltin('zorp', 'Quantum Flux') === null);
+    const weird = deriveRigPlugins(parseRigYAMLText('plugins:\n  zorp:\n    enabled: true\n    type: "Quantum Flux"\n'));
+    checkTrue('N12d: unmapped plugin surfaced (mapped=false)', findKey(weird, 'zorp').mapped === false);
+    checkTrue('N12d: unmapped key listed in .unmapped', weird.unmapped.includes('zorp'));
+
+    // (e) graceful degradation — never throws on null/partial input
+    check('N12e: deriveRigPlugins(null) → empty', deriveRigPlugins(null).plugins.length, 0);
+    check('N12e: deriveRigPlugins({}) → empty', deriveRigPlugins({}).plugins.length, 0);
+    check('N12e: deriveRigPlugins({plugins:null}) → empty', deriveRigPlugins({ plugins: null }).plugins.length, 0);
+    check('N12e: empty rig text parses to {}', JSON.stringify(parseRigYAMLText('# only a comment\n')), '{}');
+    checkThrows('N12e: malformed rig YAML throws RIG_PARSE_ERROR', () => parseRigYAMLText('a: [b: c: d'), 'RIG_PARSE_ERROR');
+    checkThrows('N12e: non-mapping rig root throws', () => parseRigYAMLText('- a\n- b\n'), 'RIG_PARSE_ERROR');
+
+    // (f) diffRigVsProtocol — mismatch detection (name-based)
+    const d1 = diffRigVsProtocol(r1.plugins, [{ name: 'backlight' }]);
+    check('N12f: backlight declared → not unsupported', d1.unsupported.length, 0);
+    checkTrue('N12f: camera enabled-but-unused flagged', d1.unused.includes('camera'));
+    checkTrue('N12f: disabled temperature not flagged as unused', !d1.unused.includes('temperature'));
+    const d2 = diffRigVsProtocol(r1.plugins, [{ name: 'thermometer' }]);
+    checkTrue('N12f: thermometer name not an enabled rig key → unsupported', d2.unsupported.includes('thermometer'));
+    const d3 = diffRigVsProtocol(r1.plugins, [{ name: 'log' }, { name: 'camera' }, { name: 'backlight' }]);
+    checkTrue('N12f: log excluded from unsupported', !d3.unsupported.includes('log'));
+    check('N12f: all enabled rig plugins declared → none unused', d3.unused.length, 0);
+}
+
+// ─── Suite N13: D4 import binds canonical rig plugin names (#89) ─────────────
+console.log('\n--- Suite N13: import canonical plugin binding (#89) ---');
+{
+    const camSrc = (name) =>
+        mkProtocol({
+            name: name || 'theirs',
+            rig: '/their/rig.yaml',
+            plugins: 'plugins:\n  - {name: camera, type: class, matlab: {class: BiasPlugin}}',
+            conditions:
+                '  - name: cam trial\n    commands:\n      - {type: plugin, plugin_name: camera, command_name: getTimestamp}'
+        });
+
+    // (a) camera-less target: canonical `camera` is added UN-prefixed, never namespaced.
+    const src = parseV3Protocol(camSrc());
+    const yours = parseV3Protocol(
+        mkProtocol({ name: 'yours', rig: '/your/rig.yaml', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+    );
+    const st = createStagingBuffer(src, 'their_lib.yaml');
+    addToStaging(st, 0, yours);
+    const entry = st.batch.pluginRegistry.get('camera');
+    check('N13a: action is add (target lacks camera)', entry.action, 'add');
+    checkTrue('N13a: marked canonical', entry.canonical === true);
+    check('N13a: planned name is canonical (unprefixed)', entry.plannedName, 'camera');
+    const sum = commitStaging(st, yours);
+    checkTrue('N13a: camera reported added', sum.pluginsAdded.includes('camera'));
+    checkTrue('N13a: camera declared with canonical name', yours.plugins.some((p) => p.name === 'camera'));
+    const outA = yours._doc.toString();
+    checkTrue('N13a: plugin_name stays "camera"', /plugin_name:\s*"?camera"?/.test(outA));
+    checkTrue('N13a: NEVER prefixed (#89)', !/their_lib__camera/.test(outA) && !yours.plugins.some((p) => /__camera$/.test(p.name)));
+
+    // (b) target already declares camera → merge (protocol authoritative), no new plugin.
+    const src2 = parseV3Protocol(camSrc());
+    const yoursDecl = parseV3Protocol(
+        mkProtocol({
+            name: 'yours',
+            rig: '/your/rig.yaml',
+            plugins: 'plugins:\n  - {name: camera, type: class, matlab: {class: BiasPlugin}, config: {frame_rate: 60}}',
+            experiment: 'existing',
+            conditions: '  - name: existing\n    commands: [{type: wait, duration: 1}]'
+        })
+    );
+    const st2 = createStagingBuffer(src2, 'their_lib.yaml');
+    addToStaging(st2, 0, yoursDecl);
+    const e2 = st2.batch.pluginRegistry.get('camera');
+    check('N13b: canonical name present in target → merge', e2.action, 'merge');
+    check('N13b: merges with existing camera', e2.mergeWith, 'camera');
+    const pcount = yoursDecl.plugins.length;
+    const sum2 = commitStaging(st2, yoursDecl);
+    check('N13b: no plugin added on canonical merge', yoursDecl.plugins.length, pcount);
+    checkTrue('N13b: merge recorded', sum2.pluginsMerged.includes('camera'));
+    checkTrue('N13b: target camera config preserved (authoritative)', yoursDecl.plugins.find((p) => p.name === 'camera').config.frame_rate === 60);
+
+    // (c) non-canonical custom plugin with no rig support → still namespaced (regression guard).
+    const srcCustom = parseV3Protocol(
+        mkProtocol({
+            name: 'theirs',
+            rig: '/their/rig.yaml',
+            plugins: 'plugins:\n  - {name: widget, type: class, matlab: {class: WidgetPlugin}, config: {chan: 2}}',
+            conditions:
+                '  - name: w trial\n    commands:\n      - {type: plugin, plugin_name: widget, command_name: go}'
+        })
+    );
+    const yoursC = parseV3Protocol(
+        mkProtocol({ name: 'yours', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+    );
+    const stC = createStagingBuffer(srcCustom, 'their_lib.yaml');
+    addToStaging(stC, 0, yoursC);
+    const eC = stC.batch.pluginRegistry.get('widget');
+    check('N13c: non-canonical custom plugin → add', eC.action, 'add');
+    checkTrue('N13c: not marked canonical', !eC.canonical);
+    check('N13c: still namespaced with prefix', eC.plannedName, 'their_lib__widget');
+
+    // (d) opts.rigPluginNames extends the canonical set with loaded-rig names.
+    const srcRig = parseV3Protocol(
+        mkProtocol({
+            name: 'theirs',
+            rig: '/their/rig.yaml',
+            plugins: 'plugins:\n  - {name: specialCam, type: class, matlab: {class: BiasPlugin}}',
+            conditions:
+                '  - name: s trial\n    commands:\n      - {type: plugin, plugin_name: specialCam, command_name: getTimestamp}'
+        })
+    );
+    const yoursR = parseV3Protocol(
+        mkProtocol({ name: 'yours', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+    );
+    const stR = createStagingBuffer(srcRig, 'their_lib.yaml', { rigPluginNames: ['specialCam'] });
+    addToStaging(stR, 0, yoursR);
+    const eR = stR.batch.pluginRegistry.get('specialCam');
+    checkTrue('N13d: rig-declared name marked canonical', eR.canonical === true);
+    check('N13d: rig-declared name not prefixed', eR.plannedName, 'specialCam');
+    // setPluginPlannedName must be a no-op on a canonical bind (can't re-break it).
+    setPluginPlannedName(stR, 'specialCam', 'their_lib__specialCam');
+    check('N13d: canonical bind is non-renamable', stR.batch.pluginRegistry.get('specialCam').plannedName, 'specialCam');
+    // prefix change must not re-prefix a canonical bind either.
+    setStagingPrefix(stR, 'zzz__');
+    check('N13d: prefix change leaves canonical bind alone', stR.batch.pluginRegistry.get('specialCam').plannedName, 'specialCam');
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────

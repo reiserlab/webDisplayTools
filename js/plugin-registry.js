@@ -552,15 +552,18 @@ function getAllCommandOptions(enabledPlugins) {
 /**
  * Create a default plugin config object from a builtin plugin definition.
  *
- * @param {string} pluginName - builtin plugin name
+ * @param {string} pluginName - builtin plugin name (registry key)
+ * @param {string} [overrideName] - optional name for the entry. Used when adding
+ *        a plugin under its canonical RIG key (e.g. the rig calls the thermometer
+ *        `temperature` while the registry key is `thermometer`). Defaults to def.name.
  * @returns {object} plugin definition suitable for experiment.plugins[]
  */
-function createPluginEntry(pluginName) {
+function createPluginEntry(pluginName, overrideName) {
     var def = BUILTIN_PLUGINS[pluginName];
     if (!def) return null;
 
     var entry = {
-        name: def.name,
+        name: overrideName != null && overrideName !== '' ? String(overrideName) : def.name,
         type: def.type
     };
     if (def.matlab) {
@@ -671,6 +674,136 @@ function getV3CommandParams(experiment, type, pluginName, commandName) {
 }
 
 // ════════════════════════════════════════════════════
+// Rig-aware plugin mapping (#91 / #89)
+// ════════════════════════════════════════════════════
+// Rig YAMLs declare the plugins a rig provides under a `plugins:` map, keyed by
+// canonical names (`backlight`, `camera`, `temperature`). An experiment's
+// `plugins:` MUST use those same names to inherit the rig's connection config —
+// so these are also the names D4 import must never prefix. Rig schemas drift
+// (`type: "LED Controller"` vs `com_port`; camera `"Bias"` vs `"BIAS"`), so the
+// rig→class mapping is tolerant: match the well-known key first, fall back to a
+// normalized `type`, and degrade gracefully ("unknown plugin type") when unmapped.
+
+// Canonical rig plugin names — never namespaced on import (the #89 baseline).
+var WELL_KNOWN_RIG_PLUGIN_NAMES = ['backlight', 'camera', 'temperature'];
+
+// Well-known rig KEY → built-in registry key. Note the rig calls the thermometer
+// `temperature`; the registry key is `thermometer`.
+var RIG_PLUGIN_KEY_MAP = {
+    backlight: 'backlight',
+    camera: 'camera',
+    temperature: 'thermometer',
+    thermometer: 'thermometer'
+};
+
+// Normalized `type` string → built-in registry key (fallback when the rig key
+// isn't well-known). Keys are lowercased + stripped of spaces/punctuation.
+var RIG_PLUGIN_TYPE_MAP = {
+    ledcontroller: 'backlight',
+    bias: 'camera',
+    daqthermometer: 'thermometer',
+    thermometer: 'thermometer',
+    temperature: 'thermometer'
+};
+
+function _normalizeRigType(rigType) {
+    if (rigType == null) return '';
+    return String(rigType)
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Map a rig plugin (by its key and optional `type`) to a built-in registry
+ * definition. Key match first, then normalized type. Returns
+ * `{ builtinName, def }` or null when unmapped.
+ */
+function mapRigPluginToBuiltin(rigKey, rigType) {
+    var key = (rigKey == null ? '' : String(rigKey)).toLowerCase();
+    if (RIG_PLUGIN_KEY_MAP[key]) {
+        var bn = RIG_PLUGIN_KEY_MAP[key];
+        return { builtinName: bn, def: BUILTIN_PLUGINS[bn] };
+    }
+    var t = _normalizeRigType(rigType);
+    if (t && RIG_PLUGIN_TYPE_MAP[t]) {
+        var bn2 = RIG_PLUGIN_TYPE_MAP[t];
+        return { builtinName: bn2, def: BUILTIN_PLUGINS[bn2] };
+    }
+    return null;
+}
+
+/**
+ * Derive the plugins a rig supports from a parsed rig YAML object.
+ *
+ * Tolerant by design — a null/partial `rigData`, or a missing/non-object
+ * `plugins:` block, yields an empty result rather than throwing.
+ *
+ * @param {object} rigData - parsed rig YAML (e.g. from parseRigYAMLText)
+ * @returns {{ plugins: Array, unmapped: string[] }} one entry per declared rig
+ *   plugin: { key, enabled, type, builtinName, matlabClass, mapped }. `unmapped`
+ *   lists keys with no recognized class.
+ */
+function deriveRigPlugins(rigData) {
+    var result = { plugins: [], unmapped: [] };
+    if (!rigData || typeof rigData !== 'object') return result;
+    var pluginsObj = rigData.plugins;
+    if (!pluginsObj || typeof pluginsObj !== 'object') return result;
+    var keys = Object.keys(pluginsObj);
+    for (var i = 0; i < keys.length; i++) {
+        var key = keys[i];
+        var cfg = pluginsObj[key] && typeof pluginsObj[key] === 'object' ? pluginsObj[key] : {};
+        var type = cfg.type != null ? cfg.type : null;
+        var mapped = mapRigPluginToBuiltin(key, type);
+        result.plugins.push({
+            key: key,
+            enabled: cfg.enabled === true,
+            type: type,
+            builtinName: mapped ? mapped.builtinName : null,
+            matlabClass: mapped && mapped.def.matlab ? mapped.def.matlab.class : null,
+            mapped: !!mapped
+        });
+        if (!mapped) result.unmapped.push(key);
+    }
+    return result;
+}
+
+/**
+ * Compare a rig's derived plugins against the protocol's declared plugins.
+ * Name-based, because a plugin's declared name MUST equal the rig key to inherit
+ * config (so a name mismatch is a real, actionable flag).
+ *
+ * @param {Array} derivedPlugins - deriveRigPlugins(...).plugins
+ * @param {Array} experimentPlugins - experiment.plugins
+ * @returns {{ unsupported: string[], unused: string[] }}
+ *   unsupported = declared plugin names (excluding `log`) that aren't an ENABLED rig key;
+ *   unused      = ENABLED rig keys the protocol never declares.
+ */
+function diffRigVsProtocol(derivedPlugins, experimentPlugins) {
+    var derived = Array.isArray(derivedPlugins) ? derivedPlugins : [];
+    var declared = Array.isArray(experimentPlugins) ? experimentPlugins : [];
+    var enabledRigKeys = {};
+    for (var i = 0; i < derived.length; i++) {
+        if (derived[i] && derived[i].enabled) enabledRigKeys[derived[i].key] = true;
+    }
+    var declaredNames = {};
+    for (var j = 0; j < declared.length; j++) {
+        if (declared[j] && declared[j].name != null) declaredNames[declared[j].name] = true;
+    }
+    var unsupported = [];
+    for (var k = 0; k < declared.length; k++) {
+        var nm = declared[k] && declared[k].name;
+        if (nm == null || nm === 'log') continue;
+        if (!enabledRigKeys[nm]) unsupported.push(nm);
+    }
+    var unused = [];
+    for (var m = 0; m < derived.length; m++) {
+        var d = derived[m];
+        if (d && d.enabled && !declaredNames[d.key]) unused.push(d.key);
+    }
+    return { unsupported: unsupported, unused: unused };
+}
+
+// ════════════════════════════════════════════════════
 // Exports
 // ════════════════════════════════════════════════════
 
@@ -678,6 +811,7 @@ var PluginRegistry = {
     BUILTIN_PLUGINS: BUILTIN_PLUGINS,
     CONTROLLER_COMMANDS: CONTROLLER_COMMANDS,
     LOG_PLUGIN: LOG_PLUGIN,
+    WELL_KNOWN_RIG_PLUGIN_NAMES: WELL_KNOWN_RIG_PLUGIN_NAMES,
     getPluginCommands: getPluginCommands,
     getCommandParams: getCommandParams,
     getAllCommandOptions: getAllCommandOptions,
@@ -686,7 +820,10 @@ var PluginRegistry = {
     getCommandsForClass: getCommandsForClass,
     getV3PluginCommands: getV3PluginCommands,
     listV3PluginNames: listV3PluginNames,
-    getV3CommandParams: getV3CommandParams
+    getV3CommandParams: getV3CommandParams,
+    mapRigPluginToBuiltin: mapRigPluginToBuiltin,
+    deriveRigPlugins: deriveRigPlugins,
+    diffRigVsProtocol: diffRigVsProtocol
 };
 
 // Browser global
@@ -704,6 +841,7 @@ export {
     BUILTIN_PLUGINS,
     CONTROLLER_COMMANDS,
     LOG_PLUGIN,
+    WELL_KNOWN_RIG_PLUGIN_NAMES,
     getPluginCommands,
     getCommandParams,
     getAllCommandOptions,
@@ -712,6 +850,9 @@ export {
     getCommandsForClass,
     getV3PluginCommands,
     listV3PluginNames,
-    getV3CommandParams
+    getV3CommandParams,
+    mapRigPluginToBuiltin,
+    deriveRigPlugins,
+    diffRigVsProtocol
 };
 export default PluginRegistry;

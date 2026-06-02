@@ -1332,7 +1332,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.20 | <span id="footerTimestamp">2026-06-01 15:25 ET</span>
+        v3 Experiment Designer v0.21 | <span id="footerTimestamp">2026-06-02 11:54 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1385,7 +1385,8 @@
             isValidAnchorName,
             anchorExists,
             docInsertPluginNode,
-            docRemovePlugin
+            docRemovePlugin,
+            parseRigYAMLText
         } from './js/protocol-yaml-v3.js';
 
         import {
@@ -1394,7 +1395,10 @@
             listV3PluginNames,
             getV3CommandParams,
             BUILTIN_PLUGINS,
-            createPluginEntry
+            createPluginEntry,
+            mapRigPluginToBuiltin,
+            deriveRigPlugins,
+            diffRigVsProtocol
         } from './js/plugin-registry.js';
 
         // D4 — cross-library import (Milestone 2 substrate, driven by Milestone 3 UI)
@@ -1426,6 +1430,17 @@
         // (js/v3-import.js); `importMode` swaps the three-zone layout + locks "yours".
         let staging = null;
         let importMode = false;
+
+        // Rig-aware plugin assist (#91). Populated when the user Browse…s a rig
+        // YAML — browsers can't read the rig from its path string alone, so this
+        // only reflects a rig loaded in THIS session. `{ path, derived }` where
+        // `derived` = deriveRigPlugins(...). Treated as current only while
+        // `path === experiment.rig_path` (a manual path edit to a different file
+        // makes it stale → ignored). See rigIsCurrent().
+        let loadedRig = null;
+        function rigIsCurrent() {
+            return !!(loadedRig && experiment && loadedRig.path === experiment.rig_path);
+        }
 
         // Undo/redo: each snapshot is the YAML text + selection. Restoring
         // re-parses, so the doc/JS-model stay in sync. _restoring blocks
@@ -1900,16 +1915,38 @@
                 title: 'Pick a .yaml file to fill in its name. The directory prefix is kept; browsers cannot read full filesystem paths.',
                 onClick: () => rigFile.click(),
             }, 'Browse…');
-            rigFile.addEventListener('change', () => {
+            rigFile.addEventListener('change', async () => {
                 const f = rigFile.files && rigFile.files[0];
                 if (!f) return;
                 const cur = experiment.rig_path || '';
                 const slash = cur.lastIndexOf('/');
                 const dir = slash >= 0 ? cur.slice(0, slash + 1) : '';
                 const newPath = dir + f.name;
+                // Parse the rig's plugins: block so the plugin UI can become
+                // rig-aware (#91). Assist, never block — on any failure we fall
+                // back to plain filename-fill and clear any cached rig.
+                let rigWarn = null;
+                try {
+                    const text = await f.text();
+                    const rigData = parseRigYAMLText(text);
+                    loadedRig = { path: newPath, derived: deriveRigPlugins(rigData) };
+                } catch (err) {
+                    loadedRig = null;
+                    rigWarn = err && err.message ? err.message : String(err);
+                }
                 rigInput.value = newPath;
-                onRigEdit(newPath);
+                onRigEdit(newPath); // commits the path (no-op if unchanged)
                 rigFile.value = '';
+                // onRigEdit doesn't re-render on success, and re-picking the same
+                // path is a no-op there — so refresh the drawer ourselves to reflect
+                // the freshly parsed rig (rig-aware dropdown + mismatch warnings).
+                renderSettings();
+                if (rigWarn) {
+                    showError('Could not read rig plugins',
+                        'Filled in the filename, but couldn\'t parse "' + f.name +
+                        '" as a rig YAML:\n\n' + rigWarn +
+                        '\n\nPlugin suggestions from the rig are unavailable.');
+                }
             });
             rigInner.appendChild(rigInput);
             rigInner.appendChild(browseBtn);
@@ -1959,36 +1996,92 @@
                     pluginBox.appendChild(pluginCard);
                 }
 
+                const declared = new Set(experiment.plugins.map((p) => p.name));
+
+                // Rig-vs-protocol mismatch warnings (#91). Non-blocking — assists,
+                // never rewrites. Only shown when a rig is loaded in this session
+                // and still matches the current rig path.
+                if (rigIsCurrent()) {
+                    const diff = diffRigVsProtocol(loadedRig.derived.plugins, experiment.plugins);
+                    if (diff.unsupported.length || diff.unused.length) {
+                        const warnBox = el('div', {
+                            style: 'margin: 0.4rem 0 0.2rem; padding: 0.4rem 0.55rem; ' +
+                                'background: rgba(255,152,0,0.08); border: 1px solid var(--warn); ' +
+                                'border-radius: 4px; color: var(--warn); font-size: 0.72rem; line-height: 1.5;'
+                        });
+                        warnBox.appendChild(el('div', { style: 'font-weight: 600; margin-bottom: 0.2rem;' },
+                            '⚠ Rig mismatch (non-blocking)'));
+                        for (const nm of diff.unsupported) {
+                            warnBox.appendChild(el('div', { title: 'The loaded rig does not enable a plugin with this name' },
+                                '• "' + nm + '" is declared but not enabled on the loaded rig.'));
+                        }
+                        for (const key of diff.unused) {
+                            warnBox.appendChild(el('div', { title: 'The rig enables this plugin but the protocol never declares it' },
+                                '• rig enables "' + key + '" but this protocol does not use it.'));
+                        }
+                        pluginBox.appendChild(warnBox);
+                    }
+                }
+
                 // Add-plugin control (hidden in import mode — target doc locked).
                 if (!importMode) {
-                    const declared = new Set(experiment.plugins.map((p) => p.name));
-                    const available = Object.keys(BUILTIN_PLUGINS).filter((n) => !declared.has(n));
+                    // Rig-aware options (#91): when a rig is loaded, offer its
+                    // enabled + mapped plugins under their canonical rig key
+                    // (value "rig:<key>"); built-in registry plugins fall to a
+                    // second group (value "registry:<name>"). With no rig loaded,
+                    // it's the flat registry list (value "registry:<name>").
+                    const rigCurrent = rigIsCurrent();
+                    const rigOpts = rigCurrent
+                        ? loadedRig.derived.plugins.filter((p) =>
+                            p.enabled && p.mapped && !declared.has(p.key) && !declared.has(p.builtinName))
+                        : [];
+                    const offeredBuiltins = new Set(rigOpts.map((p) => p.builtinName));
+                    const registryOpts = Object.keys(BUILTIN_PLUGINS).filter(
+                        (n) => !declared.has(n) && !offeredBuiltins.has(n));
+                    const totalAvail = rigOpts.length + registryOpts.length;
+
                     const addRow = el('div',
                         { style: 'display:flex; gap:0.3rem; margin-top:0.5rem;' });
                     const sel = el('select', {
                         style: 'flex:1; background: var(--bg); color: var(--text); ' +
                             'border:1px solid var(--border); border-radius:4px; ' +
                             'padding:0.3rem 0.4rem; font: inherit;',
-                        title: 'Choose a supported plugin to add to this protocol'
+                        title: rigCurrent
+                            ? 'Add a plugin — rig-supported plugins are listed first'
+                            : 'Choose a supported plugin to add to this protocol'
                     });
-                    if (available.length === 0) {
+                    if (totalAvail === 0) {
                         sel.appendChild(el('option', { value: '' },
                             'All supported plugins already added'));
                         sel.disabled = true;
                     } else {
                         sel.appendChild(el('option', { value: '' }, '+ Add plugin…'));
-                        for (const n of available) {
-                            const def = BUILTIN_PLUGINS[n];
-                            const cls = def.matlab ? def.matlab.class
-                                : (def.python ? def.python.class : '');
-                            sel.appendChild(el('option', { value: n },
-                                n + (cls ? ' — ' + cls : '')));
+                        if (rigOpts.length) {
+                            const grp = el('optgroup', { label: 'Supported by rig' });
+                            for (const p of rigOpts) {
+                                grp.appendChild(el('option', { value: 'rig:' + p.key },
+                                    p.key + (p.matlabClass ? ' — ' + p.matlabClass : '')));
+                            }
+                            sel.appendChild(grp);
+                        }
+                        if (registryOpts.length) {
+                            const groupEl = rigCurrent
+                                ? el('optgroup', { label: 'Registry (not in rig)' })
+                                : sel;
+                            for (const n of registryOpts) {
+                                const def = BUILTIN_PLUGINS[n];
+                                const cls = def.matlab ? def.matlab.class
+                                    : (def.python ? def.python.class : '');
+                                groupEl.appendChild(el('option', { value: 'registry:' + n },
+                                    n + (cls ? ' — ' + cls : '')));
+                            }
+                            if (rigCurrent) sel.appendChild(groupEl);
                         }
                     }
                     addRow.appendChild(sel);
                     addRow.appendChild(el('button', {
                         class: 'header-btn',
-                        disabled: available.length === 0,
+                        disabled: totalAvail === 0,
                         title: 'Add the selected plugin (its commands become available immediately)',
                         onClick: () => { if (sel.value) onAddPlugin(sel.value); }
                     }, 'Add'));
@@ -2752,8 +2845,14 @@
 
         function enterImportMode(srcExperiment, filename) {
             let buf;
+            // Extra canonical plugin names from a loaded TARGET rig (#89). The
+            // well-known names (camera/backlight/temperature) are baked into
+            // v3-import; this only adds any further names the loaded rig declares.
+            const rigPluginNames = rigIsCurrent()
+                ? loadedRig.derived.plugins.map((p) => p.key)
+                : null;
             try {
-                buf = createStagingBuffer(srcExperiment, filename);
+                buf = createStagingBuffer(srcExperiment, filename, { rigPluginNames });
             } catch (err) {
                 // Duplicate-anchor source (and any other preflight failure) is a
                 // hard block — surface it and stay in normal mode.
@@ -2985,6 +3084,11 @@
                     if (entry.action === 'merge') {
                         pluginSec.appendChild(el('div', { class: 'si-merge', title: 'Same class + config — reuses your existing plugin' },
                             srcName + ' → merges with your "' + entry.mergeWith + '"'));
+                    } else if (entry.canonical) {
+                        // Canonical rig name — bound un-prefixed so it inherits the
+                        // rig's config; not renamable (would re-break binding, #89).
+                        pluginSec.appendChild(el('div', { class: 'si-merge', title: 'Canonical rig plugin name — bound directly so it inherits the rig config' },
+                            srcName + ' → binds to rig plugin "' + entry.plannedName + '"'));
                     } else {
                         const row = el('div', { class: 'si-row' });
                         row.appendChild(el('span', { class: 'si-key' }, srcName + ' →'));
@@ -4373,16 +4477,36 @@
         // Add a supported plugin (from the registry) to the protocol's plugins:
         // list. Its commands become available in the "Add command" picker as
         // soon as it lands in experiment.plugins[] (listV3PluginNames reads it).
-        function onAddPlugin(pluginName) {
-            if (!experiment || importMode || !pluginName) return;
-            if (experiment.plugins.some((p) => p.name === pluginName)) {
+        // `value` is "rig:<rigKey>" (add under the canonical rig name, with the
+        // mapped built-in's class) or "registry:<builtinName>" (add the built-in
+        // under its own name). A bare "<name>" is accepted as registry for safety.
+        function onAddPlugin(value) {
+            if (!experiment || importMode || !value) return;
+            let builtinName, entryName;
+            const ci = value.indexOf(':');
+            const kind = ci >= 0 ? value.slice(0, ci) : 'registry';
+            const ident = ci >= 0 ? value.slice(ci + 1) : value;
+            if (kind === 'rig') {
+                const mapped = mapRigPluginToBuiltin(ident);
+                if (!mapped) {
+                    showError('Add plugin failed',
+                        'The rig plugin "' + ident + '" has no known plugin class.');
+                    return;
+                }
+                builtinName = mapped.builtinName;
+                entryName = ident; // bind to the canonical rig name
+            } else {
+                builtinName = ident;
+                entryName = ident;
+            }
+            if (experiment.plugins.some((p) => p.name === entryName)) {
                 showError('Add plugin failed',
-                    'A plugin named "' + pluginName + '" is already declared.');
+                    'A plugin named "' + entryName + '" is already declared.');
                 return;
             }
-            const entry = createPluginEntry(pluginName);
+            const entry = createPluginEntry(builtinName, entryName);
             if (!entry) {
-                showError('Add plugin failed', 'Unknown plugin: ' + pluginName);
+                showError('Add plugin failed', 'Unknown plugin: ' + builtinName);
                 return;
             }
             pushUndo();
