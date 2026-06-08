@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>raw serial monitor — wire truth</title>
+        <!--
+          THROWAWAY diagnostic. Opens the controller's serial port directly
+          (no framing, no arena-link) and dumps EVERY inbound byte as hex+ascii,
+          so we can see exactly what's on the wire — e.g. DEBUG_SERIAL text
+          interleaved with the binary protocol. It also scans the stream for a
+          get-controller-info reply (`?? 00 67 <ver> <cap>`) and flags it, so we
+          can confirm the arena IS replying correctly even when debug text breaks
+          the framing. Chrome/Edge only.
+        -->
+        <style>
+            :root {
+                --bg: #0f1419;
+                --surface: #1a1f26;
+                --border: #2d3640;
+                --text: #e6edf3;
+                --dim: #8b949e;
+                --accent: #00e676;
+                --rx: #58a6ff;
+                --err: #ff6b6b;
+                --hit: #ffd166;
+            }
+            * { box-sizing: border-box; }
+            body {
+                margin: 0; background: var(--bg); color: var(--text);
+                font-family: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+                font-size: 13px; line-height: 1.5;
+            }
+            header { padding: 14px 18px; border-bottom: 1px solid var(--border); }
+            h1 { font-size: 15px; margin: 0 0 2px; color: var(--accent); }
+            .sub { color: var(--dim); font-size: 12px; }
+            #banner { background: #3a1d1d; color: var(--err); padding: 10px 18px; border-bottom: 1px solid var(--border); }
+            .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 12px 18px; }
+            button {
+                background: var(--surface); color: var(--text); border: 1px solid var(--border);
+                border-radius: 5px; padding: 7px 11px; font-family: inherit; font-size: 12px; cursor: pointer;
+            }
+            button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+            button:disabled { opacity: 0.4; cursor: not-allowed; }
+            button.primary { background: var(--accent); color: #04140a; border-color: var(--accent); font-weight: 600; }
+            input {
+                background: var(--bg); color: var(--text); border: 1px solid var(--border);
+                border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; width: 220px;
+            }
+            label { color: var(--dim); }
+            #status { font-weight: 600; color: var(--err); }
+            #status.on { color: var(--accent); }
+            #log {
+                background: #0a0e12; border: 1px solid var(--border); border-radius: 6px;
+                margin: 0 18px 18px; padding: 10px; height: 420px; overflow-y: auto;
+                white-space: pre-wrap; word-break: break-word; font-size: 12px;
+            }
+            .l-tx { color: var(--accent); }
+            .l-rx { color: var(--rx); }
+            .l-hit { color: var(--hit); font-weight: 600; }
+            .l-err { color: var(--err); }
+            .l-dim { color: var(--dim); }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1>raw serial monitor</h1>
+            <div class="sub">
+                Dumps every inbound byte as hex + ASCII (no framing). Use it to see DEBUG_SERIAL
+                text on the wire and confirm the controller still replies to commands underneath it.
+            </div>
+        </header>
+
+        <div id="banner" hidden>
+            ⚠ Web Serial unavailable — use Chrome / Edge (desktop).
+        </div>
+
+        <div class="bar">
+            <button id="connect" class="primary" title="Open the controller's serial port (115200)">Connect</button>
+            <button id="disconnect" disabled title="Close the port">Disconnect</button>
+            <span>Status: <span id="status">disconnected</span></span>
+        </div>
+        <div class="bar">
+            <label>send hex</label>
+            <input id="hex" value="01 67" title="Bytes to send (whitespace/0x ignored). 01 67 = get-controller-info" />
+            <button id="send" disabled title="Write these bytes to the port">Send</button>
+            <button id="clear" title="Clear the log">Clear</button>
+            <label style="margin-left:auto"><input type="checkbox" id="autoscan" checked style="width:auto" /> flag <code>?? 00 67</code> replies</label>
+        </div>
+
+        <div id="log"></div>
+
+        <script>
+            'use strict';
+            const $ = (id) => document.getElementById(id);
+            const logEl = $('log');
+            const hex = (b) => Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join(' ');
+            const ascii = (b) =>
+                Array.from(b).map((x) => (x >= 0x20 && x < 0x7f ? String.fromCharCode(x) : '·')).join('');
+
+            function log(text, cls) {
+                const d = document.createElement('div');
+                d.className = 'l-' + (cls || 'dim');
+                d.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+                logEl.appendChild(d);
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+
+            let port = null, reader = null, writer = null, readLoop = null;
+            // Rolling buffer of recent RX bytes, scanned for a controller-info reply.
+            let scan = [];
+
+            if (!('serial' in navigator)) {
+                $('banner').hidden = false;
+                $('connect').disabled = true;
+            }
+
+            function setConnected(on) {
+                $('connect').disabled = on;
+                $('disconnect').disabled = !on;
+                $('send').disabled = !on;
+                const s = $('status');
+                s.textContent = on ? 'connected' : 'disconnected';
+                s.classList.toggle('on', on);
+            }
+
+            // Scan the rolling buffer for `?? 00 67 ver cap` (a get-controller-info
+            // reply) and flag it — proves the arena answered even if debug text
+            // broke the framing.
+            function scanForReply(chunk) {
+                if (!$('autoscan').checked) return;
+                for (const b of chunk) scan.push(b);
+                if (scan.length > 512) scan = scan.slice(scan.length - 512);
+                for (let i = 0; i + 4 < scan.length; i++) {
+                    if (scan[i] === 0x00 && scan[i + 1] === 0x67) {
+                        const len = scan[i - 1], ver = scan[i + 2], cap = scan[i + 3];
+                        log(
+                            `✓ controller-info reply found in stream: len=0x${(len ?? 0)
+                                .toString(16)} status=00 echo=0x67 → version ${ver}, cap 0x${cap
+                                .toString(16).padStart(2, '0')}`,
+                            'hit'
+                        );
+                        scan = scan.slice(i + 4); // consume past it
+                        return;
+                    }
+                }
+            }
+
+            async function pump() {
+                try {
+                    while (port && port.readable && reader) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+                        if (value && value.length) {
+                            log(`<- ${hex(value)}`, 'rx');
+                            log(`   "${ascii(value)}"`, 'dim');
+                            scanForReply(value);
+                        }
+                    }
+                } catch (e) {
+                    if (e.name !== 'AbortError') log('read error: ' + (e.message || e), 'err');
+                }
+            }
+
+            $('connect').onclick = async () => {
+                try {
+                    port = await navigator.serial.requestPort();
+                    await port.open({ baudRate: 115200 });
+                    writer = port.writable.getWriter();
+                    reader = port.readable.getReader();
+                    scan = [];
+                    setConnected(true);
+                    log('-- connected; watching the raw stream', 'dim');
+                    readLoop = pump();
+                } catch (e) {
+                    log('connect: ' + (e.message || e), 'err');
+                    port = null;
+                }
+            };
+
+            $('disconnect').onclick = async () => {
+                setConnected(false);
+                try { if (reader) { await reader.cancel(); reader.releaseLock(); } } catch (_) {}
+                reader = null;
+                try { if (writer) writer.releaseLock(); } catch (_) {}
+                writer = null;
+                try { if (readLoop) await readLoop; } catch (_) {}
+                try { if (port) await port.close(); } catch (_) {}
+                port = null;
+                log('-- disconnected', 'dim');
+            };
+
+            $('send').onclick = async () => {
+                const raw = $('hex').value.replace(/0x/gi, '').replace(/[^0-9a-fA-F]/g, '');
+                if (!raw || raw.length % 2) { log('hex must be whole bytes', 'err'); return; }
+                const bytes = [];
+                for (let i = 0; i < raw.length; i += 2) bytes.push(parseInt(raw.slice(i, i + 2), 16));
+                try {
+                    await writer.write(Uint8Array.from(bytes));
+                    log(`-> ${hex(bytes)}`, 'tx');
+                } catch (e) {
+                    log('write error: ' + (e.message || e), 'err');
+                }
+            };
+
+            $('clear').onclick = () => (logEl.textContent = '');
+            log('ready. Connect, then Send (default 01 67 = get-controller-info).', 'dim');
+        </script>
+    </body>
+</html>
