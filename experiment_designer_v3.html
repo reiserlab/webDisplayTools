@@ -1404,7 +1404,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.23 | <span id="footerTimestamp">2026-06-09 06:30 ET</span>
+        v3 Experiment Designer v0.24 | <span id="footerTimestamp">2026-06-09 06:45 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -4830,14 +4830,29 @@
                     ? 'Auto-stop after ' + durationSec + ' s (or click Stop)'
                     : 'No auto-stop — click Stop to end'
             );
+            // Transparency: the dry-run sends only trialParams, so any other
+            // commands in the condition (waits, allOn/setup) are NOT replayed.
+            // Full per-condition mini-sequences (arena commands + waits) are LAB-97.
+            const otherCmds = (cond.commands || []).filter((c) => c !== cmd);
+            if (otherCmds.length > 0) {
+                const waits = otherCmds.filter((c) => c.type === 'wait').length;
+                list.push(
+                    otherCmds.length +
+                        ' other command' +
+                        (otherCmds.length === 1 ? '' : 's') +
+                        (waits ? ' (incl. ' + waits + ' wait' + (waits === 1 ? '' : 's') + ')' : '') +
+                        ' NOT replayed'
+                );
+            }
             for (const s of skipped) list.push('skipped: ' + s.plugin_name + '.' + s.command_name);
             const ok = await confirmModal({
                 title: 'Run "' + cond.name + '" on the arena?',
                 body:
-                    'Sends ONLY the controller trialParams command. Pattern SD index ' +
+                    'Sends ONLY the trialParams command — any waits or other commands in this ' +
+                    'condition are NOT replayed (full mini-sequence runs come later, LAB-97). Pattern SD index ' +
                     patternId +
                     ' will display — verify your SD card matches (this is the authored index, not yet ' +
-                    'validated against the SD bundle, LAB-91/95). Plugins and waits are skipped.',
+                    'validated against the SD bundle, LAB-91/95).',
                 list,
                 confirmLabel: 'Send to arena',
                 cancelLabel: 'Cancel'
