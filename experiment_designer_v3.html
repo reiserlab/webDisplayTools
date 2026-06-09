@@ -584,6 +584,61 @@
             color: var(--error);
             border-color: #c4514f;
         }
+        /* LAB-94 — per-condition "run on arena" (dry-run) button. */
+        .lib-row .lib-row-run {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            font-family: inherit;
+            font-size: 0.6rem;
+            padding: 0.05rem 0.3rem;
+            margin-left: 0.15rem;
+            border-radius: 3px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.1s;
+        }
+        .lib-row:hover .lib-row-run { opacity: 1; }
+        .lib-row .lib-row-run:hover:not(:disabled) {
+            background: var(--surface-2);
+            color: var(--accent);
+            border-color: var(--border);
+        }
+        .lib-row .lib-row-run:disabled { cursor: not-allowed; }
+        .lib-row:hover .lib-row-run:disabled { opacity: 0.35; }
+
+        /* LAB-94 dry-run status bar — a dedicated element with its own state,
+           updated only by the run handlers (NOT rebuilt by renderAll()). */
+        .run-status {
+            background: rgba(0, 230, 118, 0.06);
+            border-bottom: 1px solid var(--border);
+            padding: 0.35rem 1rem 0.45rem;
+            font-size: 0.72rem;
+            flex-shrink: 0;
+        }
+        .run-status-head { display: flex; align-items: center; gap: 0.5rem; }
+        .run-status-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            flex-shrink: 0;
+        }
+        .run-status-dot.running { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+        .run-status-dot.connected { background: var(--accent); }
+        .run-status-dot.error { background: var(--error); }
+        .run-status-spacer { flex: 1; }
+        .run-status-log {
+            margin-top: 0.3rem;
+            max-height: 84px;
+            overflow-y: auto;
+            color: var(--text-dim);
+            font-size: 0.68rem;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .run-status-log .run-log-err { color: var(--error); }
         .zone-body {
             flex: 1;
             overflow-y: auto;
@@ -1257,6 +1312,21 @@
         </details>
     </div>
 
+    <!-- LAB-94 dry-run / live-control status bar. Dedicated element with its
+         own state — NOT the exportWarnings DOM (which renderAll() rebuilds).
+         Hidden until the first run. Stop/Disconnect stay usable in import mode. -->
+    <div id="runStatus" class="run-status" style="display: none;">
+        <div class="run-status-head">
+            <span class="run-status-dot" id="runStatusDot"></span>
+            <span id="runStatusMsg">Idle</span>
+            <span class="run-status-spacer"></span>
+            <button id="runStopBtn" class="header-btn" title="Stop the running pattern (STOP_DISPLAY 0x30) — best-effort; won't fire if the tab is closed" disabled>Stop</button>
+            <button id="runDisconnectBtn" class="header-btn" title="Close the serial connection to the arena" disabled>Disconnect</button>
+            <button id="runStatusClose" class="header-btn" title="Hide this status bar (only when idle)">✕</button>
+        </div>
+        <div id="runStatusLog" class="run-status-log"></div>
+    </div>
+
     <!-- Settings drawer -->
     <div id="settingsDrawer" class="settings-drawer">
         <div class="settings-drawer-inner" id="settingsContent">
@@ -1332,7 +1402,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.21 | <span id="footerTimestamp">2026-06-02 11:54 ET</span>
+        v3 Experiment Designer v0.22 | <span id="footerTimestamp">2026-06-08 23:40 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1345,6 +1415,15 @@
             </div>
         </div>
     </div>
+
+    <!-- Web Serial substrate + shared runner. Loaded as classic <script src>
+         (window-global dual-export path) — NOT ES import. Classic scripts run
+         before the deferred module below, so window.ArenaWireG6 / ArenaLink /
+         ArenaRunnerG6 are ready when the module evaluates; and globals dodge the
+         catastrophic ES-import-failure-under-GitHub-Pages-cache bug (see CLAUDE.md). -->
+    <script src="js/arena-wire-g6.js"></script>
+    <script src="js/arena-link.js"></script>
+    <script src="js/arena-runner-g6.js"></script>
 
     <script type="module">
         import {
@@ -2800,6 +2879,7 @@
                 onRowClick: (cond, idx, e) => {
                     if (e.target.classList.contains('lib-row-dup')) return;
                     if (e.target.classList.contains('lib-row-del')) return;
+                    if (e.target.classList.contains('lib-row-run')) return;
                     selection = { kind: 'condition', name: cond.name };
                     renderLibrary(); renderInspector(); renderSequence();
                 },
@@ -2807,6 +2887,14 @@
                 extraButtons: (cond, idx) => {
                     const u = usage.get(cond.name) || 0;
                     return [
+                        el('button', {
+                            class: 'lib-row-run',
+                            disabled: !serialSupported,
+                            title: serialSupported
+                                ? 'Run this condition pattern on the arena (dry-run: controller trialParams only — plugins and waits are skipped)'
+                                : 'Web Serial unavailable — use a Chromium-based desktop browser to run on the arena',
+                            onClick: (e) => { e.stopPropagation(); onRunConditionDryRun(idx); }
+                        }, '▶'),
                         el('button', {
                             class: 'lib-row-dup',
                             title: 'Duplicate this condition (also right-click)',
@@ -4584,6 +4672,217 @@
                 showError('Duplicate failed', err.message);
             }
         }
+
+        // ═══════════════════════════════════════════════════════════════
+        // LAB-94 — single-trial "Test pattern" dry-run on the arena.
+        //
+        // Sends ONLY the condition's controller `trialParams` command over Web
+        // Serial (js/arena-link.js + js/arena-wire-g6.js) via the shared
+        // run-state machine (js/arena-runner-g6.js). Plugins and waits are
+        // skipped with a visible warning. Read-only w.r.t. the experiment model:
+        // NO pushUndo / NO setDirty. Run-start is import-mode guarded; Stop and
+        // Disconnect are NOT (a run started before import must stay stoppable).
+        // ═══════════════════════════════════════════════════════════════
+
+        const Wire = window.ArenaWireG6;
+        const RunnerLib = window.ArenaRunnerG6;
+        const serialSupported = !!(window.ArenaLink && window.ArenaLink.isSupported());
+        let arenaLink = null; // lazy ArenaLink singleton (one per page)
+        let arenaRunner = null; // lazy ArenaRunner singleton
+
+        function ensureArena() {
+            if (!arenaLink) {
+                arenaLink = new window.ArenaLink({
+                    onDisconnect: () => {
+                        if (arenaRunner) arenaRunner._clear();
+                        updateRunStatus({ phase: 'disconnected' });
+                    },
+                    onError: (e) => runLog('arena error: ' + (e && (e.message || e)), true)
+                });
+                arenaRunner = new RunnerLib.ArenaRunner(arenaLink, Wire);
+            }
+            return { link: arenaLink, runner: arenaRunner };
+        }
+
+        function runLog(text, isErr) {
+            const logEl = $('runStatusLog');
+            if (!logEl) return;
+            logEl.appendChild(el('div', { class: isErr ? 'run-log-err' : '' }, text));
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function updateRunStatus(s) {
+            $('runStatus').style.display = 'block';
+            const dot = $('runStatusDot');
+            const msg = $('runStatusMsg');
+            const phase = s && s.phase;
+            if (phase === 'connecting') {
+                msg.textContent = 'Connecting to arena…';
+                dot.className = 'run-status-dot';
+            } else if (phase === 'sending') {
+                msg.textContent = 'Sending trial params for "' + (s.conditionName || '') + '"…';
+                dot.className = 'run-status-dot';
+            } else if (phase === 'running') {
+                msg.textContent = 'Running "' + (s.conditionName || '') + '" — pattern displaying';
+                dot.className = 'run-status-dot running';
+                runLog('trial-params ok (status=' + (s.response ? s.response.status : '?') + ')');
+            } else if (phase === 'rejected') {
+                const r = s.response;
+                msg.textContent = 'Controller rejected the command';
+                dot.className = 'run-status-dot error';
+                runLog(
+                    r
+                        ? 'rejected: status=' + r.status
+                        : 'no/garbled response — is the controller on the quiet (non-DEBUG_SERIAL) firmware build?',
+                    true
+                );
+            } else if (phase === 'auto-stopped') {
+                msg.textContent = 'Stopped (duration elapsed)';
+                dot.className = 'run-status-dot connected';
+            } else if (phase === 'stopped') {
+                msg.textContent = 'Stopped';
+                dot.className = 'run-status-dot connected';
+            } else if (phase === 'disconnected') {
+                msg.textContent = 'Disconnected';
+                dot.className = 'run-status-dot';
+            } else if (phase === 'error') {
+                const m = s.error && (s.error.message || s.error);
+                msg.textContent = 'Error: ' + m;
+                dot.className = 'run-status-dot error';
+                runLog('error: ' + m, true);
+            }
+            // Button states reflect live link/runner state.
+            $('runStopBtn').disabled = !(arenaRunner && arenaRunner.active);
+            $('runDisconnectBtn').disabled = !(arenaLink && arenaLink.connected);
+        }
+
+        async function onRunConditionDryRun(condIdx) {
+            // Run-start guard (read-only — NO pushUndo/setDirty).
+            if (!experiment || importMode) return;
+            if (!serialSupported) {
+                showError(
+                    'Web Serial unavailable',
+                    'This browser cannot talk to the arena. Use Chrome, Edge, or another ' +
+                        'Chromium-based desktop browser to run conditions over Web Serial.'
+                );
+                return;
+            }
+            const cond = experiment.conditions[condIdx];
+            if (!cond) return;
+
+            const cmd = RunnerLib.findTrialParams(cond);
+            if (!cmd) {
+                showError(
+                    'No trialParams command',
+                    'Condition "' +
+                        cond.name +
+                        '" has no controller trialParams command to test. Other controller ' +
+                        'commands (allOn/allOff/…), plugins, and waits are not run by the dry-run.'
+                );
+                return;
+            }
+
+            // Resolve the 1-based SD pattern index: pattern_ID if usable, else prompt.
+            let patternId = Number(cmd.pattern_ID);
+            if (!Number.isInteger(patternId) || patternId < 1) {
+                const entered = prompt(
+                    'Condition "' +
+                        cond.name +
+                        '" has no usable pattern_ID.\nEnter the 1-based SD-card pattern index to display:',
+                    ''
+                );
+                if (entered === null) return;
+                patternId = Number(entered);
+                if (!Number.isInteger(patternId) || patternId < 1) {
+                    showError('Invalid pattern index', 'The SD pattern index must be a whole number ≥ 1.');
+                    return;
+                }
+            }
+
+            // Build + validate the wire params up front (synchronous — surfaces
+            // bad mode / negative frame_rate / non-numeric fields clearly).
+            let params;
+            try {
+                params = RunnerLib.buildTrialParams(cmd, { patternId });
+            } catch (e) {
+                showError('Cannot run this condition', e.message);
+                return;
+            }
+            const durationSec = Number(cmd.duration) > 0 ? Number(cmd.duration) : 0;
+            const skipped = RunnerLib.listSkippedPlugins(cond);
+
+            // Confirm-once: show the resolved SD index + params + what is skipped.
+            const list = [];
+            list.push('Pattern SD index: ' + patternId + (cmd.pattern ? '  (' + cmd.pattern + ')' : ''));
+            list.push(
+                'mode ' + params.mode + ' · frame rate ' + params.frameRate + ' · gain ' + params.gain + ' · init pos ' + params.initPos
+            );
+            list.push(
+                durationSec > 0
+                    ? 'Auto-stop after ' + durationSec + ' s (or click Stop)'
+                    : 'No auto-stop — click Stop to end'
+            );
+            for (const s of skipped) list.push('skipped: ' + s.plugin_name + '.' + s.command_name);
+            const ok = await confirmModal({
+                title: 'Run "' + cond.name + '" on the arena?',
+                body:
+                    'Sends ONLY the controller trialParams command. Pattern SD index ' +
+                    patternId +
+                    ' will display — verify your SD card matches (this is the authored index, not yet ' +
+                    'validated against the SD bundle, LAB-91/95). Plugins and waits are skipped.',
+                list,
+                confirmLabel: 'Send to arena',
+                cancelLabel: 'Cancel'
+            });
+            if (!ok) return;
+
+            // Connect-on-demand. The confirm-button click is a fresh user gesture
+            // and connect() is the first await after it resolves, so requestPort()
+            // runs inside that activation.
+            const { link, runner } = ensureArena();
+            $('runStatus').style.display = 'block';
+            $('runStatusLog').innerHTML = '';
+            try {
+                if (!link.connected) {
+                    updateRunStatus({ phase: 'connecting' });
+                    await link.connect();
+                }
+            } catch (e) {
+                updateRunStatus({ phase: 'error', error: e });
+                return;
+            }
+            for (const s of skipped) runLog('skipped in dry-run: ' + s.plugin_name + '.' + s.command_name);
+            try {
+                if (runner.active) await runner.stop(); // replace any prior run
+                await runner.start({ params, durationSec, conditionName: cond.name, onStatus: updateRunStatus });
+            } catch (e) {
+                updateRunStatus({ phase: 'error', error: e });
+            }
+        }
+
+        // Run-status bar controls — Stop/Disconnect are NOT import-mode guarded.
+        $('runStopBtn').addEventListener('click', async () => {
+            if (!arenaRunner) return;
+            try {
+                await arenaRunner.stop();
+                updateRunStatus({ phase: 'stopped' });
+            } catch (e) {
+                updateRunStatus({ phase: 'error', error: e });
+            }
+        });
+        $('runDisconnectBtn').addEventListener('click', async () => {
+            try {
+                if (arenaRunner) await arenaRunner.stop();
+            } catch (_) {}
+            try {
+                if (arenaLink) await arenaLink.close();
+            } catch (_) {}
+            updateRunStatus({ phase: 'disconnected' });
+        });
+        $('runStatusClose').addEventListener('click', () => {
+            if (arenaRunner && arenaRunner.active) return; // don't hide mid-run
+            $('runStatus').style.display = 'none';
+        });
 
         async function onDeleteCondition(condIdx) {
             if (!experiment || importMode) return;
