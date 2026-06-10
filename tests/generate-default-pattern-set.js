@@ -135,6 +135,29 @@ for (const seed of SEEDS) {
     console.log('  staged ' + seed.name + '  (' + seed.description + ')');
 }
 
+// ── external authored .pat sources ──────────────────────────────────────────────
+// Drop real .pat files (e.g. exported from the pattern editor) into
+// patterns/<arena>/_sources/ and re-run: each is ingested in filename order (after
+// the synthetic seeds), geometry-checked against the arena, and re-encoded so its
+// duty becomes 0x80 — so a dim editor export (duty=1) ships at full brightness.
+const SRC_DIR = path.join(OUT_DIR, '_sources');
+if (fs.existsSync(SRC_DIR)) {
+    const files = fs
+        .readdirSync(SRC_DIR)
+        .filter((f) => /\.pat$/i.test(f) && f[0] !== '.')
+        .sort();
+    for (const f of files) {
+        const buf = fs.readFileSync(path.join(SRC_DIR, f));
+        const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+        const item = PS.ingest(set, ab, f, 'builtin', deps);
+        if (!item.valid) {
+            console.error('  FAIL: external ' + f + ' invalid: ' + item.reason);
+            process.exit(1);
+        }
+        console.log('  staged ' + item.name + '  (external: ' + f + ')');
+    }
+}
+
 // ── build the bundle + write the SD-mirror folder ───────────────────────────────
 const bundle = PS.buildBundle(set, { sdDrive: '(copy to the SD card root)' });
 

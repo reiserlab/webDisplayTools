@@ -1,9 +1,9 @@
 {
   "tool": "webDisplayTools/pattern-set",
   "version": 1,
-  "set_id": "20260610_074912",
-  "created_iso": "2026-06-10T07:49:12",
-  "created_unix": 1781092152,
+  "set_id": "20260610_083538",
+  "created_iso": "2026-06-10T08:35:38",
+  "created_unix": 1781094938,
   "arenaConfig": "G6_2x10",
   "source": "builtin",
   "patterns": {
@@ -38,6 +38,18 @@
       "preview": {
         "gs": 16,
         "frames": 20,
+        "rows": 40,
+        "cols": 200
+      },
+      "matlabPath": null
+    },
+    "frame2_h_ccw_200f": {
+      "index": 4,
+      "sd_name": "pat0004.pat",
+      "arenaConfig": "G6_2x10",
+      "preview": {
+        "gs": 16,
+        "frames": 200,
         "rows": 40,
         "cols": 200
       },
