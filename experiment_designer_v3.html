@@ -612,12 +612,14 @@
         /* LAB-94 dry-run status bar — a dedicated element with its own state,
            updated only by the run handlers (NOT rebuilt by renderAll()). */
         .run-status {
-            background: rgba(0, 230, 118, 0.06);
-            border-bottom: 1px solid var(--border);
-            padding: 0.35rem 1rem 0.45rem;
+            background: rgba(0, 230, 118, 0.08);
+            border-top: 2px solid var(--accent);
+            padding: 0.5rem 0.75rem 0.55rem;
             font-size: 0.72rem;
             flex-shrink: 0;
         }
+        .run-status #runStatusMsg { font-weight: 600; color: var(--text); }
+        .run-stop-btn:not(:disabled) { border-color: var(--accent); color: var(--accent); }
         .run-status-head { display: flex; align-items: center; gap: 0.5rem; }
         .run-status-dot {
             width: 9px;
@@ -641,6 +643,28 @@
             word-break: break-word;
         }
         .run-status-log .run-log-err { color: var(--error); }
+        /* LAB-94 inspector "Test on arena" control — the run trigger lives with the
+           params; the status/Stop panel is docked at #runStatus below it. */
+        .arena-test {
+            display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+            margin: 0 0 0.6rem; padding: 0.5rem 0.6rem;
+            background: rgba(0, 230, 118, 0.06);
+            border: 1px solid var(--border); border-radius: 4px;
+        }
+        .arena-test-btn {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 700;
+            padding: 0.35rem 0.7rem; border-radius: 4px; cursor: pointer;
+            background: var(--accent); color: #06210f; border: none;
+        }
+        .arena-test-btn:hover:not(:disabled) { background: #00c853; }
+        .arena-test-btn:disabled { opacity: 0.45; cursor: not-allowed; background: var(--border); color: var(--text-dim); }
+        .arena-test-note { font-size: 0.66rem; color: var(--text-dim); }
+        .arena-test-note.dim { font-style: italic; }
+        /* Passive "web-runnable" badge in the Library — the run control is in the Inspector. */
+        .lib-row-runnable {
+            color: var(--accent); font-size: 0.7rem; margin-left: 0.2rem;
+            opacity: 0.85; cursor: default; user-select: none;
+        }
         .zone-body {
             flex: 1;
             overflow-y: auto;
@@ -1314,20 +1338,8 @@
         </details>
     </div>
 
-    <!-- LAB-94 dry-run / live-control status bar. Dedicated element with its
-         own state — NOT the exportWarnings DOM (which renderAll() rebuilds).
-         Hidden until the first run. Stop/Disconnect stay usable in import mode. -->
-    <div id="runStatus" class="run-status" style="display: none;">
-        <div class="run-status-head">
-            <span class="run-status-dot" id="runStatusDot"></span>
-            <span id="runStatusMsg">Idle</span>
-            <span class="run-status-spacer"></span>
-            <button id="runStopBtn" class="header-btn" title="Stop the running pattern (STOP_DISPLAY 0x30) — best-effort; won't fire if the tab is closed" disabled>Stop</button>
-            <button id="runDisconnectBtn" class="header-btn" title="Close the serial connection to the arena" disabled>Disconnect</button>
-            <button id="runStatusClose" class="header-btn" title="Hide this status bar (only when idle)">✕</button>
-        </div>
-        <div id="runStatusLog" class="run-status-log"></div>
-    </div>
+    <!-- LAB-94 dry-run / live-control panel moved into #inspectorZone (docked at
+         its bottom) so the controller sits with the condition you're testing. -->
 
     <!-- Settings drawer -->
     <div id="settingsDrawer" class="settings-drawer">
@@ -1387,6 +1399,21 @@
             <div class="zone-body" id="inspectorBody">
                 <div class="empty-state">Select a condition in the Library or an entry in the Sequence to view details.</div>
             </div>
+            <!-- LAB-94 dry-run / live-control panel — docked at the inspector bottom.
+                 Its OWN persistent element: renderInspector only clears #inspectorBody,
+                 so a run stays visible + stoppable across condition switches / re-renders.
+                 Stop/Disconnect stay usable in import mode. Hidden until the first run. -->
+            <div id="runStatus" class="run-status" style="display: none;">
+                <div class="run-status-head">
+                    <span class="run-status-dot" id="runStatusDot"></span>
+                    <span id="runStatusMsg">Idle</span>
+                    <span class="run-status-spacer"></span>
+                    <button id="runStopBtn" class="header-btn run-stop-btn" title="Stop the running pattern (STOP_DISPLAY 0x30) — best-effort; won't fire if the tab is closed" disabled>Stop</button>
+                    <button id="runDisconnectBtn" class="header-btn" title="Close the serial connection to the arena" disabled>Disconnect</button>
+                    <button id="runStatusClose" class="header-btn" title="Hide this panel (only when idle)">✕</button>
+                </div>
+                <div id="runStatusLog" class="run-status-log"></div>
+            </div>
         </div>
     </div>
 
@@ -1404,7 +1431,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.24 | <span id="footerTimestamp">2026-06-09 06:45 ET</span>
+        v3 Experiment Designer v0.25 | <span id="footerTimestamp">2026-06-09 19:46 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -2881,7 +2908,6 @@
                 onRowClick: (cond, idx, e) => {
                     if (e.target.classList.contains('lib-row-dup')) return;
                     if (e.target.classList.contains('lib-row-del')) return;
-                    if (e.target.classList.contains('lib-row-run')) return;
                     selection = { kind: 'condition', name: cond.name };
                     renderLibrary(); renderInspector(); renderSequence();
                 },
@@ -2894,13 +2920,12 @@
                     // Plugin-bearing conditions get no ▶ (the web can't drive
                     // camera/backlight, so a run would be misleading).
                     if (RunnerLib.isDryRunEligible(cond)) {
-                        btns.push(el('button', {
-                            class: 'lib-row-run',
-                            disabled: !serialSupported,
-                            title: serialSupported
-                                ? 'Run this condition on the arena (dry-run: sends the controller trialParams command)'
-                                : 'Web Serial unavailable — use a Chromium-based desktop browser to run on the arena',
-                            onClick: (e) => { e.stopPropagation(); onRunConditionDryRun(idx); }
+                        // Passive marker only — the run control lives in the Inspector
+                        // ("▶ Test on arena"). One run entry point avoids a second,
+                        // easy-to-miss button and the import-mode edge cases.
+                        btns.push(el('span', {
+                            class: 'lib-row-runnable',
+                            title: 'Web-runnable — select it, then use “▶ Test on arena” in the Inspector'
                         }, '▶'));
                     }
                     btns.push(el('button', {
@@ -3581,6 +3606,10 @@
         // sequence-ref inlining is presentation, not a separate identity.
         function renderConditionCommands(condIdx) {
             const cond = experiment.conditions[condIdx];
+            const wrap = el('div', {});
+            // LAB-94: per-condition "Test on arena" trigger at the top (the run lives
+            // with the params you edit); the status/Stop panel is docked at #runStatus.
+            wrap.appendChild(renderArenaTestControl(condIdx));
             const section = el('div', { class: 'insp-section' });
             section.appendChild(el('h4', {}, 'Commands (' + cond.commands.length + ')'));
             const total = cond.commands.length;
@@ -3592,7 +3621,39 @@
                 ));
             });
             section.appendChild(renderAddCommandPicker(condIdx));
-            return section;
+            wrap.appendChild(section);
+            return wrap;
+        }
+
+        // LAB-94: the inspector's "Test on arena" control. Eligible = trialParams +
+        // no plugins; ineligible conditions get an inline reason instead of a button
+        // (room the passive library badge doesn't have). Calls onRunConditionDryRun,
+        // which carries the import-mode/Web-Serial guards and the confirm dialog.
+        function renderArenaTestControl(condIdx) {
+            const cond = experiment.conditions[condIdx];
+            const wrap = el('div', { class: 'arena-test' });
+            if (RunnerLib.isDryRunEligible(cond)) {
+                wrap.appendChild(el('button', {
+                    class: 'arena-test-btn',
+                    disabled: !serialSupported || importMode,
+                    title: !serialSupported
+                        ? 'Web Serial unavailable — use a Chromium-based desktop browser'
+                        : (importMode
+                            ? 'Exit import mode to run on the arena'
+                            : 'Send this condition’s trialParams to the arena (controller-only — plugins & waits are not replayed)'),
+                    onClick: () => onRunConditionDryRun(condIdx)
+                }, '▶ Test on arena'));
+                wrap.appendChild(el('span', { class: 'arena-test-note' }, 'trialParams only · status + Stop below'));
+            } else {
+                const plugins = RunnerLib.listSkippedPlugins(cond);
+                const why = !RunnerLib.findTrialParams(cond)
+                    ? 'No trialParams command — nothing to display on the arena.'
+                    : 'Not web-runnable here: ' + plugins.length + ' plugin command' +
+                      (plugins.length === 1 ? '' : 's') + ' the browser can’t drive (' +
+                      plugins.map((p) => p.plugin_name + '.' + p.command_name).join(', ') + ').';
+                wrap.appendChild(el('span', { class: 'arena-test-note dim' }, why));
+            }
+            return wrap;
         }
 
         function renderInspector() {
