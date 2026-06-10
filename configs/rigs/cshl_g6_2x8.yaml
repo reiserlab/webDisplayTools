@@ -1,0 +1,26 @@
+# CSHL G6 rig configuration — 2x8 of 10 (288°)
+#
+# Same as the 2x10 CSHL rig, but for the partial arena with 8 of the 10 columns
+# installed (288° coverage). Drives the arena from the browser over USB/serial;
+# no external plugins.
+#
+# Authored for webDisplayTools. Schema mirrors maDisplayTools configs/rigs/.
+
+format_version: "1.0"
+name: "CSHL G6 2x8of10"
+description: "CSHL course rig — G6 2x8-of-10 arena (288°, 8 columns installed), controller over USB/serial, no external plugins"
+
+# Arena reference (web config name) → getConfig("G6_2x8of10") in js/arena-configs.js.
+# G6_2x8of10 is a 2x10 ring with columns_installed [1..8] — 8 panels per row, 288°.
+# The Pattern Set builder locks its target arena to this and validates patterns as 2x8.
+arena: "G6_2x8of10"
+
+# Controller transport. USB/serial chosen at runtime via the Web Serial port picker;
+# host/port are not used by the web runner (kept for maDisplayTools schema parity).
+controller:
+  host: "0.0.0.0" # not used for serial/USB
+  port: 62222
+
+# No external plugins (no camera/backlight/temperature).
+plugins: {}
+# Note: AO (analog-out) is a controller-native command, not a rig plugin (LAB-80/81/82).

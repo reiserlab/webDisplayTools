@@ -1,0 +1,32 @@
+# CSHL G6 rig configuration — 2x10 (full 360°)
+#
+# Course rig for the G6 web-control workflow ("the web is the runner"): the v3
+# Experiment Designer and the Arena Console drive the arena directly from the
+# browser over USB/serial. No external plugins — CSHL runs the arena alone,
+# without a camera, backlight, or temperature device.
+#
+# Authored for webDisplayTools (LAB-91). Schema mirrors maDisplayTools
+# configs/rigs/ (format_version "1.0").
+
+format_version: "1.0"
+name: "CSHL G6 2x10"
+description: "CSHL course rig — G6 2x10 arena (full 360°), controller over USB/serial, no external plugins"
+
+# Arena reference (web config name). The webDisplayTools v3 designer resolves this
+# via js/arena-configs.js — getConfig("G6_2x10") — and the Pattern Set builder locks
+# its target arena to it (the bundle you build must match the rig's arena). This is a
+# reference by name into the existing web registry, not a copy of any arena geometry.
+arena: "G6_2x10"
+
+# Controller transport. CSHL connects over USB/serial, selected at runtime via the
+# browser's Web Serial port picker — so host/port are NOT used by the web runner.
+# Kept for schema compatibility with maDisplayTools (TCP/Ethernet rigs).
+controller:
+  host: "0.0.0.0" # not used for serial/USB
+  port: 62222
+
+# No external plugins (no camera/backlight/temperature). Empty mapping → the v3
+# designer's rig-aware plugin assist offers nothing (no spurious plugins).
+plugins: {}
+# Note: AO (analog-out) is a controller-native command, not a rig plugin
+# (LAB-80/81/82) — it does not belong in this plugins block.

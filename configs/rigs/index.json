@@ -1,0 +1,19 @@
+{
+  "tool": "webDisplayTools/rig-index",
+  "version": 1,
+  "description": "Built-in rigs offered in the v3 Experiment Designer's Settings → Rig dropdown. Add a rig YAML alongside this file and a matching entry here.",
+  "rigs": [
+    {
+      "name": "cshl_g6_2x10",
+      "label": "CSHL G6 — 2×10 (360°)",
+      "path": "./configs/rigs/cshl_g6_2x10.yaml",
+      "arena": "G6_2x10"
+    },
+    {
+      "name": "cshl_g6_2x8",
+      "label": "CSHL G6 — 2×8 of 10 (288°)",
+      "path": "./configs/rigs/cshl_g6_2x8.yaml",
+      "arena": "G6_2x8of10"
+    }
+  ]
+}

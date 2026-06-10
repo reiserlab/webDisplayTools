@@ -1473,7 +1473,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.26 | <span id="footerTimestamp">2026-06-10 07:48 ET</span>
+        v3 Experiment Designer v0.27 | <span id="footerTimestamp">2026-06-10 15:43 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1618,6 +1618,59 @@
         // current AND its arena resolved. null → the builder is blocked.
         function rigArenaConfig() {
             return rigIsCurrent() && loadedRig.arenaConfig ? loadedRig.arenaConfig : null;
+        }
+
+        // Built-in rigs offered in the Settings → Rig dropdown, from configs/rigs/index.json
+        // (relative fetch → works on GitHub Pages + local server). Loaded once, lazily.
+        let builtinRigs = null; // null = not yet fetched; [] = none / failed
+        let builtinRigsLoading = false;
+        function ensureBuiltinRigs() {
+            if (builtinRigs !== null || builtinRigsLoading) return;
+            builtinRigsLoading = true;
+            fetch('./configs/rigs/index.json', { cache: 'no-store' })
+                .then((r) => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+                .then((j) => { builtinRigs = (j && Array.isArray(j.rigs)) ? j.rigs : []; })
+                .catch(() => { builtinRigs = []; })
+                .finally(() => { builtinRigsLoading = false; renderSettings(); });
+        }
+
+        // Apply a parsed rig (from Browse, the built-in dropdown, or a test hook): cache the
+        // rig-aware plugin/arena info and commit the path. Shared so all entry points agree.
+        function applyRigData(rigData, path) {
+            loadedRig = {
+                path: path,
+                derived: deriveRigPlugins(rigData),
+                arenaConfig: resolveRigArena(rigData),
+                arenaRaw: (rigData && rigData.arena) || null
+            };
+            onRigEdit(path); // commits experiment.rig_path (no-op if unchanged)
+        }
+
+        // Fetch + apply a built-in rig YAML by path (the dropdown handler).
+        async function loadBuiltinRig(path) {
+            try {
+                const resp = await fetch(path, { cache: 'no-store' });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                applyRigData(parseRigYAMLText(await resp.text()), path);
+                renderSettings();
+            } catch (err) {
+                showError('Could not load built-in rig', path + ': ' + (err.message || err));
+            }
+        }
+
+        // date_created standardized to YYYY-MM-DD (local). toISODate coerces an existing
+        // value (ISO with time, or anything Date can parse) to the date part, else ''.
+        const pad2 = (n) => String(n).padStart(2, '0');
+        function todayISO(d) {
+            d = d || new Date();
+            return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+        }
+        function toISODate(v) {
+            if (!v) return '';
+            const m = String(v).match(/^(\d{4}-\d{2}-\d{2})/);
+            if (m) return m[1];
+            const d = new Date(String(v));
+            return isNaN(d.getTime()) ? '' : todayISO(d);
         }
 
         // Undo/redo: each snapshot is the YAML text + selection. Restoring
@@ -2059,6 +2112,31 @@
             for (const k of ['name', 'date_created', 'author', 'pattern_library']) {
                 const row = el('div', { class: 'set-row' });
                 row.appendChild(el('label', {}, k));
+                if (k === 'date_created') {
+                    // Standardized YYYY-MM-DD date input + a Today shortcut.
+                    const dInner = el('div', { class: 'rig-row' });
+                    const dInp = el('input', {
+                        type: 'date',
+                        class: 'settings-input',
+                        value: toISODate(info[k]),
+                        title: 'Creation date (YYYY-MM-DD) — use the picker or the Today button.'
+                    });
+                    dInp.addEventListener('change', () => onExperimentInfoEdit(k, dInp.value));
+                    const todayBtn = el('button', {
+                        class: 'settings-browse-btn',
+                        title: 'Set to today’s date',
+                        onClick: () => {
+                            const t = todayISO();
+                            dInp.value = t;
+                            onExperimentInfoEdit(k, t);
+                        }
+                    }, 'Today');
+                    dInner.appendChild(dInp);
+                    dInner.appendChild(todayBtn);
+                    row.appendChild(dInner);
+                    infoBox.appendChild(row);
+                    continue;
+                }
                 const inp = el('input', {
                     type: 'text',
                     class: 'settings-input',
@@ -2075,6 +2153,29 @@
             // Rig — editable path + Browse helper (v0.13)
             const rigBox = el('div', { class: 'settings-section' });
             rigBox.appendChild(el('h3', {}, 'Rig'));
+
+            // Built-in rig dropdown (from configs/rigs/index.json) — quick-pick the
+            // bundled CSHL rigs; the path field + Browse below handle local/custom files.
+            ensureBuiltinRigs();
+            const rigSelRow = el('div', { class: 'set-row' });
+            rigSelRow.appendChild(el('label', {}, 'built-in rig'));
+            const rigSel = el('select', {
+                class: 'settings-input',
+                title: 'Pick a bundled rig, or use the path / Browse… below for a local file.'
+            });
+            rigSel.appendChild(el('option', { value: '' },
+                builtinRigs === null ? 'loading…' : '— select a built-in rig —'));
+            (builtinRigs || []).forEach((r) => {
+                const opt = el('option', { value: r.path }, r.label || r.name);
+                if (experiment.rig_path === r.path) opt.selected = true;
+                rigSel.appendChild(opt);
+            });
+            rigSel.addEventListener('change', () => {
+                if (rigSel.value) loadBuiltinRig(rigSel.value);
+            });
+            rigSelRow.appendChild(rigSel);
+            rigBox.appendChild(rigSelRow);
+
             const rigRow = el('div', { class: 'set-row' });
             rigRow.appendChild(el('label', {}, 'path (rig YAML loaded by MATLAB)'));
             const rigInner = el('div', { class: 'rig-row' });
@@ -2105,20 +2206,13 @@
                 // back to plain filename-fill and clear any cached rig.
                 let rigWarn = null;
                 try {
-                    const text = await f.text();
-                    const rigData = parseRigYAMLText(text);
-                    loadedRig = {
-                        path: newPath,
-                        derived: deriveRigPlugins(rigData),
-                        arenaConfig: resolveRigArena(rigData),
-                        arenaRaw: (rigData && rigData.arena) || null
-                    };
+                    applyRigData(parseRigYAMLText(await f.text()), newPath);
                 } catch (err) {
                     loadedRig = null;
+                    onRigEdit(newPath); // still commit the filename so the path field updates
                     rigWarn = err && err.message ? err.message : String(err);
                 }
                 rigInput.value = newPath;
-                onRigEdit(newPath); // commits the path (no-op if unchanged)
                 rigFile.value = '';
                 // onRigEdit doesn't re-render on success, and re-picking the same
                 // path is a no-op there — so refresh the drawer ourselves to reflect
@@ -5749,7 +5843,7 @@
                 e.blocked.textContent = '';
                 e.blocked.appendChild(el('div', {}, '⚠ No arena resolved from the rig.'));
                 e.blocked.appendChild(el('div', { style: 'margin-top:0.5rem;color:var(--text-dim);' },
-                    'The Pattern Set builder targets the arena defined by your rig. Open Settings → Rig → Browse… and load a rig whose arena is a known web config (e.g. configs/rigs/cshl_g6.yaml → G6_2x10).'));
+                    'The Pattern Set builder targets the arena defined by your rig. Open Settings → Rig and pick a built-in rig (or Browse… a local one) whose arena is a known web config — e.g. CSHL G6 2×10 → G6_2x10.'));
                 e.arenaSpan.innerHTML = '';
                 e.arenaSpan.appendChild(el('span', { class: 'blocked' }, 'No rig arena'));
                 e.backdrop.classList.add('open');
@@ -6014,16 +6108,9 @@
         // verification of the rig→arena lock + builder.
         window.__designerApplyRigForTest = async (path) => {
             const text = await (await fetch(path, { cache: 'no-store' })).text();
-            const rigData = parseRigYAMLText(text);
-            loadedRig = {
-                path,
-                derived: deriveRigPlugins(rigData),
-                arenaConfig: resolveRigArena(rigData),
-                arenaRaw: (rigData && rigData.arena) || null
-            };
-            if (experiment) onRigEdit(path);
+            applyRigData(parseRigYAMLText(text), path);
             renderSettings();
-            return { arenaConfig: loadedRig.arenaConfig, rigCurrent: rigIsCurrent() };
+            return { arenaConfig: loadedRig && loadedRig.arenaConfig, rigCurrent: rigIsCurrent() };
         };
 
         // Initial empty render
