@@ -5577,6 +5577,14 @@
                 updateRunStatus({ phase: 'error', error: e });
             } finally {
                 seqRunStop();
+                // The run has fully settled here (runSequence's finally already
+                // reset runner.active=false). The terminal 'sequence-complete' /
+                // 'aborted' event fired from INSIDE runSequence while active was
+                // still true, so re-sync the run-control buttons now: re-enable
+                // "▶ Run on arena" and disable Stop after a normal completion.
+                $('runStopBtn').disabled = !(arenaRunner && arenaRunner.active);
+                $('runDisconnectBtn').disabled = !(arenaLink && arenaLink.connected);
+                updateRunSeqBtn();
             }
         }
 
