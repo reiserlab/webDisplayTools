@@ -83,35 +83,39 @@ var CONTROLLER_COMMANDS = {
         label: 'Stop Display',
         description: 'Stop displaying the current pattern'
     },
+    // setPositionX is the Mode-3 FRAME JUMP: it maps to SET_FRAME_POSITION (0x70),
+    // and its `posX` param is a 0-based frame index (NOT a pixel/position offset).
+    // The historical key `posX` is kept for YAML compatibility — only the labels
+    // describe the real behaviour. (setColorDepth was dropped: it mapped to
+    // SWITCH_GRAYSCALE 0x06, which is dropped on G6 — color depth is a property of
+    // the .pat/SD-card header, not a runtime command. A YAML carrying setColorDepth
+    // now has no schema here and is flagged as unsupported by the editor + runner.)
     setPositionX: {
-        label: 'Set Position X',
-        description: 'Set the starting frame for pattern display',
+        label: 'Set Frame (Mode 3)',
+        description:
+            'Mode-3 frame jump — show a specific 0-based frame (SET_FRAME_POSITION 0x70). ' +
+            'Load the pattern first with a trialParams command (frame_rate 0). ' +
+            'Full Mode-3 closed-loop streaming is out of scope.',
         params: {
             posX: {
                 type: 'number',
                 required: true,
-                default: 1,
-                label: 'Position X'
-            }
-        }
-    },
-    setColorDepth: {
-        label: 'Set Color Depth',
-        description: 'Change the arena grayscale value',
-        params: {
-            gs_val: {
-                type: 'select',
-                required: true,
-                default: 2,
-                options: [
-                    { value: 2, label: 'GS2 (binary)' },
-                    { value: 16, label: 'GS16 (4-bit)' }
-                ],
-                label: 'Grayscale'
+                default: 0,
+                label: 'Frame index (0-based)'
             }
         }
     }
 };
+
+/**
+ * Is `name` a known/supported G6 controller command? Used by the editor to flag
+ * unsupported controller commands (e.g. a legacy `setColorDepth`) on the command
+ * card. The arena runner keeps its OWN copy of this set (it must stay import-free),
+ * so this is the authoring-side mirror of the runner's emit list.
+ */
+function isKnownControllerCommand(name) {
+    return Object.prototype.hasOwnProperty.call(CONTROLLER_COMMANDS, name);
+}
 
 // ════════════════════════════════════════════════════
 // Built-in Plugin Definitions
@@ -814,6 +818,7 @@ var PluginRegistry = {
     WELL_KNOWN_RIG_PLUGIN_NAMES: WELL_KNOWN_RIG_PLUGIN_NAMES,
     getPluginCommands: getPluginCommands,
     getCommandParams: getCommandParams,
+    isKnownControllerCommand: isKnownControllerCommand,
     getAllCommandOptions: getAllCommandOptions,
     createPluginEntry: createPluginEntry,
     findPluginDefByClass: findPluginDefByClass,
@@ -844,6 +849,7 @@ export {
     WELL_KNOWN_RIG_PLUGIN_NAMES,
     getPluginCommands,
     getCommandParams,
+    isKnownControllerCommand,
     getAllCommandOptions,
     createPluginEntry,
     findPluginDefByClass,

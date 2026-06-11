@@ -65,7 +65,6 @@ const KNOWN_COMMAND_KEYS_BY_TYPE = {
         'frame_index',
         'frame_rate',
         'gain',
-        'gs_val',
         'posX'
     ],
     wait: ['type', 'duration'],

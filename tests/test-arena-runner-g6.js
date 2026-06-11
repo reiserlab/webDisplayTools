@@ -277,6 +277,294 @@ async function main() {
         checkBytes('auto-stop sent STOP (0x30)', link.sent[link.sent.length - 1], '01 30');
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    // LAB-97: full-sequence runner — pure helpers + executor
+    // ════════════════════════════════════════════════════════════════════
+
+    console.log('\n=== conditionDuration (max(trialParams.duration, sum waits)) ===');
+    check(
+        'trialParams 5s dominates a 3s wait',
+        Runner.conditionDuration({
+            commands: [trialCmd, { type: 'wait', duration: 3 }]
+        }),
+        5
+    );
+    check(
+        'summed waits (3+4) exceed a 2s trialParams',
+        Runner.conditionDuration({
+            commands: [
+                { type: 'controller', command_name: 'trialParams', duration: 2 },
+                { type: 'wait', duration: 3 },
+                { type: 'wait', duration: 4 }
+            ]
+        }),
+        7
+    );
+    check('waits-only condition', Runner.conditionDuration(intertrialCond), 2);
+    check('null condition -> 0', Runner.conditionDuration(null), 0);
+    check(
+        'string durations coerce',
+        Runner.conditionDuration({
+            commands: [{ type: 'controller', command_name: 'trialParams', duration: '5' }]
+        }),
+        5
+    );
+
+    console.log('\n=== flattenStructure (reps × trials, ITI between-not-after) ===');
+    const flattenFixture = {
+        conditions: [
+            { name: 'a', commands: [trialCmd, { type: 'wait', duration: 3 }] }, // dur 5
+            { name: 'b', commands: [{ type: 'wait', duration: 2 }] }, // dur 2
+            { name: 'iti', commands: [{ type: 'wait', duration: 1 }] } // dur 1
+        ],
+        sequence: [
+            { kind: 'ref', condition_name: 'a' },
+            {
+                kind: 'block',
+                name: 'blk',
+                trials: ['a', 'b'],
+                repetitions: 2,
+                randomize: false,
+                intertrial: 'iti'
+            }
+        ]
+    };
+    const flat = Runner.flattenStructure(flattenFixture);
+    // ref a + [a, iti, b, iti, a, iti, b] = 8 steps (4 trials + 3 itis)
+    check('total step count', flat.steps.length, 8);
+    check('step0 is the ref', flat.steps[0].kind, 'ref');
+    check('step0 dur = max(trialParams 5, wait 3)', flat.steps[0].dur, 5);
+    check('step1 is a block-trial', flat.steps[1].kind, 'block-trial');
+    check('step1 conditionName', flat.steps[1].conditionName, 'a');
+    check('step1 rep index', flat.steps[1].rep, 0);
+    check('step1 repsTotal', flat.steps[1].repsTotal, 2);
+    check('step2 is an ITI', flat.steps[2].kind, 'iti');
+    check('step2 ITI conditionName', flat.steps[2].conditionName, 'iti');
+    check('step2 ITI dur', flat.steps[2].dur, 1);
+    check('last step is the final trial (no trailing ITI)', flat.steps[7].kind, 'block-trial');
+    check('last step conditionName', flat.steps[7].conditionName, 'b');
+    check('last step rep index', flat.steps[7].rep, 1);
+    checkBool('hasRandom false for a non-randomized block', flat.hasRandom === false);
+    check('empty/no experiment -> 0 steps', Runner.flattenStructure(null).steps.length, 0);
+
+    console.log('\n=== flattenStructure: randomize honors an injected shuffle (pure) ===');
+    const randFixture = {
+        conditions: [
+            { name: 'x', commands: [] },
+            { name: 'y', commands: [] }
+        ],
+        sequence: [
+            { kind: 'block', name: 'b', trials: ['x', 'y'], repetitions: 1, randomize: true }
+        ]
+    };
+    const nominal = Runner.flattenStructure(randFixture);
+    check('no shuffle -> nominal order [x, y] (0)', nominal.steps[0].conditionName, 'x');
+    check('no shuffle -> nominal order [x, y] (1)', nominal.steps[1].conditionName, 'y');
+    checkBool('hasRandom flagged even without a shuffle', nominal.hasRandom === true);
+    const reversed = Runner.flattenStructure(randFixture, { shuffle: (arr) => arr.reverse() });
+    check('injected reverse shuffle reorders (0)', reversed.steps[0].conditionName, 'y');
+    check('injected reverse shuffle reorders (1)', reversed.steps[1].conditionName, 'x');
+    check(
+        'source trials array NOT mutated by the shuffle',
+        randFixture.sequence[0].trials.join(','),
+        'x,y'
+    );
+
+    console.log('\n=== translateCommand (command → wire-neutral IR) ===');
+    const trTrial = Runner.translateCommand(trialCmd, { patternId: 1 });
+    check('trialParams -> op trialParams', trTrial.op, 'trialParams');
+    check('trialParams -> durationSec carried', trTrial.durationSec, 5);
+    check('trialParams -> params.patternId', trTrial.params.patternId, 1);
+    check('trialParams -> params.mode', trTrial.params.mode, 2);
+    check(
+        'trialParams with null patternId -> error',
+        Runner.translateCommand(trialCmd, { patternId: null }).op,
+        'error'
+    );
+    check(
+        'trialParams with bad mode -> error',
+        Runner.translateCommand(
+            { type: 'controller', command_name: 'trialParams', mode: 5 },
+            {
+                patternId: 1
+            }
+        ).op,
+        'error'
+    );
+    check(
+        'allOn -> op allOn',
+        Runner.translateCommand({ type: 'controller', command_name: 'allOn' }).op,
+        'allOn'
+    );
+    check(
+        'allOff -> op allOff',
+        Runner.translateCommand({ type: 'controller', command_name: 'allOff' }).op,
+        'allOff'
+    );
+    check(
+        'stopDisplay -> op stopDisplay',
+        Runner.translateCommand({ type: 'controller', command_name: 'stopDisplay' }).op,
+        'stopDisplay'
+    );
+    const trPos = Runner.translateCommand({
+        type: 'controller',
+        command_name: 'setPositionX',
+        posX: 3
+    });
+    check('setPositionX -> op setFramePosition', trPos.op, 'setFramePosition');
+    check('setPositionX -> 0-based index passthrough', trPos.index, 3);
+    check(
+        'setPositionX missing posX -> index 0',
+        Runner.translateCommand({ type: 'controller', command_name: 'setPositionX' }).index,
+        0
+    );
+    const trColor = Runner.translateCommand({
+        type: 'controller',
+        command_name: 'setColorDepth',
+        gs_val: 16
+    });
+    check('setColorDepth -> op error (dropped on G6)', trColor.op, 'error');
+    checkBool(
+        'setColorDepth error mentions SWITCH_GRAYSCALE',
+        /SWITCH_GRAYSCALE/.test(trColor.reason)
+    );
+    check(
+        'unknown controller command -> op error',
+        Runner.translateCommand({ type: 'controller', command_name: 'frobnicate' }).op,
+        'error'
+    );
+    const trWait = Runner.translateCommand({ type: 'wait', duration: 3 });
+    check('wait -> op wait', trWait.op, 'wait');
+    check('wait -> durationSec', trWait.durationSec, 3);
+    const trPlugin = Runner.translateCommand({
+        type: 'plugin',
+        plugin_name: 'camera',
+        command_name: 'getTimestamp'
+    });
+    check('plugin -> op skip', trPlugin.op, 'skip');
+    check('plugin skip carries plugin_name', trPlugin.plugin_name, 'camera');
+
+    console.log('\n=== runSequence: happy path (fake link, instant sleep) ===');
+    {
+        const link = makeFakeLink();
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const steps = [
+            { kind: 'ref', conditionName: 'check', label: 'check', seqIdx: 0, dur: 1 },
+            { kind: 'ref', conditionName: 'show', label: 'show', seqIdx: 1, dur: 5 }
+        ];
+        const conditionsByName = new Map([
+            [
+                'check',
+                {
+                    name: 'check',
+                    commands: [
+                        { type: 'controller', command_name: 'allOn' },
+                        { type: 'wait', duration: 1 }
+                    ]
+                }
+            ],
+            ['show', { name: 'show', commands: [trialCmd, { type: 'wait', duration: 2 }] }]
+        ]);
+        const phases = [];
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            sleep: () => Promise.resolve(),
+            onProgress: (s) => phases.push(s.phase)
+        });
+        check('sent exactly 3 frames (allOn, trialParams, final STOP)', link.sent.length, 3);
+        checkBytes('1st send: allOn', link.sent[0], '01 ff');
+        checkBytes('2nd send: trialParams', link.sent[1], '0c 08 02 01 00 0a 00 00 01 00 00 00 00');
+        checkBytes('3rd send: final STOP', link.sent[2], '01 30');
+        checkBool('summary.completed true', summary.completed === true);
+        checkBool('summary.aborted false', summary.aborted === false);
+        check('summary.errors 0', summary.errors, 0);
+        check('summary.skipped 0', summary.skipped, 0);
+        checkBool('emitted sequence-start', phases.includes('sequence-start'));
+        checkBool('emitted trial-running', phases.includes('trial-running'));
+        checkBool('emitted sequence-complete', phases.includes('sequence-complete'));
+        checkBool('runner inactive after a completed run', runner.active === false);
+    }
+
+    console.log(
+        '\n=== runSequence: plugin skipped + unsupported errored, arena cmds still run ==='
+    );
+    {
+        const link = makeFakeLink();
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const steps = [{ kind: 'ref', conditionName: 'mixed', label: 'mixed', seqIdx: 0, dur: 0 }];
+        const conditionsByName = new Map([
+            [
+                'mixed',
+                {
+                    name: 'mixed',
+                    commands: [
+                        { type: 'plugin', plugin_name: 'camera', command_name: 'getTimestamp' },
+                        { type: 'controller', command_name: 'setColorDepth', gs_val: 16 },
+                        { type: 'controller', command_name: 'allOff' }
+                    ]
+                }
+            ]
+        ]);
+        const phases = [];
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            sleep: () => Promise.resolve(),
+            onProgress: (s) => phases.push(s.phase)
+        });
+        check('plugin counted as skipped', summary.skipped, 1);
+        check('setColorDepth counted as error', summary.errors, 1);
+        // allOff (01 00) sent, then the final STOP (01 30). The plugin + setColorDepth
+        // emit NO wire frame.
+        checkBytes('arena allOff still sent', link.sent[0], '01 00');
+        checkBytes('final STOP sent', link.sent[link.sent.length - 1], '01 30');
+        checkBool('emitted a skip phase', phases.includes('skip'));
+        checkBool('emitted an error phase', phases.includes('error'));
+        checkBool('run still completed (proceed-and-skip)', summary.completed === true);
+    }
+
+    console.log('\n=== runSequence: STOP mid-run aborts (no later steps sent) ===');
+    {
+        // A fake link that calls runner.stop() on the first allOn send, so the abort
+        // flag is set before the loop reaches step 1 (cond b's allOff).
+        let triggered = false;
+        let runnerRef = null;
+        const link = {
+            connected: true,
+            sent: [],
+            async send(bytes) {
+                this.sent.push(Array.from(bytes));
+                if (!triggered && bytes[1] === 0xff) {
+                    triggered = true;
+                    runnerRef.stop(); // fire-and-forget; sets _abort synchronously
+                }
+                return new Uint8Array([0x02, 0x00, bytes[1]]);
+            }
+        };
+        runnerRef = new Runner.ArenaRunner(link, Wire);
+        const steps = [
+            { kind: 'ref', conditionName: 'a', label: 'a', seqIdx: 0, dur: 0 },
+            { kind: 'ref', conditionName: 'b', label: 'b', seqIdx: 1, dur: 0 }
+        ];
+        const conditionsByName = new Map([
+            ['a', { name: 'a', commands: [{ type: 'controller', command_name: 'allOn' }] }],
+            ['b', { name: 'b', commands: [{ type: 'controller', command_name: 'allOff' }] }]
+        ]);
+        const summary = await runnerRef.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            sleep: () => Promise.resolve()
+        });
+        checkBool('cond b allOff (01 00) never sent', !link.sent.some((f) => f[1] === 0x00));
+        checkBool('summary.aborted true', summary.aborted === true);
+        checkBool('summary.completed false', summary.completed === false);
+        checkBool('runner inactive after abort', runnerRef.active === false);
+    }
+
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);

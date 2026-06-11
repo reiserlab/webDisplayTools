@@ -1,0 +1,164 @@
+version: 3
+
+# ============================================================================
+# G6 2x10 arena smoke test (LAB-97) — exercises ALL FOUR built-in g6_2x10
+# patterns by name and EVERY legal G6 controller command the web runner emits:
+#   trialParams (mode 2 open-loop + mode 4 closed-loop), allOn, allOff,
+#   stopDisplay, setPositionX (Mode-3 frame jump -> SET_FRAME_POSITION 0x70),
+#   plus client-side waits, a block with repetitions, and an ITI.
+#
+# Patterns are referenced BY NAME so they resolve as W (web / in active set) when
+# the built-in `g6_2x10` pattern set is the active set (Pattern Set… → load the
+# built-in set first). The pattern_ID fallbacks match the built-in manifest
+# indices, so it still runs by SD index (C) if no set is built:
+#   1 all_on · 2 grating_sq · 3 grating_sine · 4 frame2_h_ccw_200f
+#
+# No plugins → nothing is skipped; the whole sequence runs on the arena.
+# Total ~50 s; STOP halts anywhere.
+# ============================================================================
+
+experiment_info:
+  name: "G6 2x10 arena smoke test"
+  author: "webDisplayTools"
+
+rig: "./configs/rigs/cshl_g6_2x10.yaml"
+
+experiment:
+  - "arena_check"
+  - "show_all_on"
+  - "show_grating_sq"
+  - "show_grating_sine"
+  - "show_rotation"
+  - "frame_jump"
+  - "closed_loop"
+  - name: "repeat_block"
+    trials:
+      - "show_grating_sq"
+      - "show_grating_sine"
+    repetitions: 2
+    intertrial: "blank"
+  - "shutdown"
+
+conditions:
+  # allOn then allOff — the simplest panel commands.
+  - name: "arena_check"
+    commands:
+      - type: "controller"
+        command_name: "allOn"
+      - type: "wait"
+        duration: 2
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: 1
+
+  - name: "show_all_on"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "all_on"
+        pattern_ID: 1
+        duration: 3
+        mode: 2
+        frame_index: 0
+        frame_rate: 1
+        gain: 0
+      - type: "wait"
+        duration: 3
+
+  - name: "show_grating_sq"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sq"
+        pattern_ID: 2
+        duration: 4
+        mode: 2
+        frame_index: 0
+        frame_rate: 5
+        gain: 0
+      - type: "wait"
+        duration: 4
+
+  - name: "show_grating_sine"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sine"
+        pattern_ID: 3
+        duration: 4
+        mode: 2
+        frame_index: 0
+        frame_rate: 5
+        gain: 0
+      - type: "wait"
+        duration: 4
+
+  # 200-frame rotation, advanced fast (open-loop, mode 2).
+  - name: "show_rotation"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: 5
+        mode: 2
+        frame_index: 0
+        frame_rate: 30
+        gain: 0
+      - type: "wait"
+        duration: 5
+
+  # Mode-3 FRAME JUMP: load the pattern static (frame_rate 0), then address a
+  # specific 0-based frame with setPositionX (SET_FRAME_POSITION 0x70), then stop.
+  - name: "frame_jump"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: 0
+        mode: 2
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "controller"
+        command_name: "setPositionX"
+        posX: 100
+      - type: "wait"
+        duration: 3
+      - type: "controller"
+        command_name: "stopDisplay"
+
+  # Mode 4 closed-loop: the controller runs the analog loop (frame_rate 0, gain set).
+  # Static on a bench with no analog input — exercises the mode-4 + gain wire path.
+  - name: "closed_loop"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sine"
+        pattern_ID: 3
+        duration: 5
+        mode: 4
+        frame_index: 0
+        frame_rate: 0
+        gain: 10
+      - type: "wait"
+        duration: 5
+
+  # ITI between the block's trials.
+  - name: "blank"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: 2
+
+  - name: "shutdown"
+    commands:
+      - type: "controller"
+        command_name: "stopDisplay"
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: 1

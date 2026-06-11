@@ -1019,9 +1019,6 @@ console.log('\n--- Suite 12: select-typed schema field type preservation ---');
         '        frame_index: 1',
         '        frame_rate: 60',
         '        gain: 0',
-        '      - type: controller',
-        '        command_name: setColorDepth',
-        '        gs_val: 16',
         '      - type: plugin',
         '        plugin_name: log',
         '        command_name: log',
@@ -1035,10 +1032,8 @@ console.log('\n--- Suite 12: select-typed schema field type preservation ---');
     // 1. Initial types preserved through parse
     check('select: trialParams.mode is number', typeof cmds[0].mode, 'number');
     check('select: trialParams.mode value', cmds[0].mode, 2);
-    check('select: setColorDepth.gs_val is number', typeof cmds[1].gs_val, 'number');
-    check('select: setColorDepth.gs_val value', cmds[1].gs_val, 16);
-    check('select: log.level is string', typeof cmds[2].params.level, 'string');
-    check('select: log.level value', cmds[2].params.level, 'DEBUG');
+    check('select: log.level is string', typeof cmds[1].params.level, 'string');
+    check('select: log.level value', cmds[1].params.level, 'DEBUG');
 
     // 2. Schema lookup returns the right type info
     const trialParamsSchema = getV3CommandParams(exp, 'controller', null, 'trialParams');
@@ -1046,10 +1041,10 @@ console.log('\n--- Suite 12: select-typed schema field type preservation ---');
     check('select: trialParams.mode schema.options[0].value type',
         typeof trialParamsSchema.mode.options[0].value, 'number');
 
-    const setColorDepthSchema = getV3CommandParams(exp, 'controller', null, 'setColorDepth');
-    check('select: setColorDepth.gs_val schema.type', setColorDepthSchema.gs_val.type, 'select');
-    check('select: setColorDepth.gs_val schema.options[0].value type',
-        typeof setColorDepthSchema.gs_val.options[0].value, 'number');
+    // setColorDepth was dropped (SWITCH_GRAYSCALE 0x06 is unsupported on G6) — it no
+    // longer has a controller schema, which is how the editor flags it as unsupported.
+    check('dropped: setColorDepth has no controller schema',
+        getV3CommandParams(exp, 'controller', null, 'setColorDepth'), null);
 
     const logSchema = getV3CommandParams(exp, 'plugin', 'log', 'log');
     check('select: log.level schema.type', logSchema.level.type, 'select');
@@ -1058,27 +1053,20 @@ console.log('\n--- Suite 12: select-typed schema field type preservation ---');
 
     // 3. docSet with the right type preserves it through round-trip
     docSet(exp, ['conditions', 0, 'commands', 0, 'mode'], 4);
-    docSet(exp, ['conditions', 0, 'commands', 1, 'gs_val'], 2);
-    docSet(exp, ['conditions', 0, 'commands', 2, 'params', 'level'], 'WARNING');
+    docSet(exp, ['conditions', 0, 'commands', 1, 'params', 'level'], 'WARNING');
 
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
     const r = reparsed.conditions[0].commands;
     check('select: round-trip mode stays number', typeof r[0].mode, 'number');
     check('select: round-trip mode value', r[0].mode, 4);
-    check('select: round-trip gs_val stays number', typeof r[1].gs_val, 'number');
-    check('select: round-trip gs_val value', r[1].gs_val, 2);
-    check('select: round-trip level stays string', typeof r[2].params.level, 'string');
-    check('select: round-trip level value', r[2].params.level, 'WARNING');
+    check('select: round-trip level stays string', typeof r[1].params.level, 'string');
+    check('select: round-trip level value', r[1].params.level, 'WARNING');
 
     // 4. The exported YAML should NOT quote the numeric selects
     const regen = generateV3Protocol(exp);
     checkTrue(
         'select: regen YAML has unquoted numeric mode',
         /mode:\s*4\b/.test(regen)
-    );
-    checkTrue(
-        'select: regen YAML has unquoted numeric gs_val',
-        /gs_val:\s*2\b/.test(regen)
     );
 }
 

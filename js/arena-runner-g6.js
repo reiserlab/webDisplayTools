@@ -1,18 +1,22 @@
 /**
  * arena-runner-g6.js — condition → wire execution helpers + a small run-state
- * machine, shared by the Arena Console (LAB-93) and the v3 Experiment Designer
- * dry-run (LAB-94).
+ * machine, shared by the Arena Console (LAB-93), the v3 single-trial dry-run
+ * (LAB-94), and the v3 full-sequence runner (LAB-97).
  *
- * This is the ONE home for "take a v3 condition's controller trialParams
- * command and drive it on the arena". It sits between the pure wire protocol
+ * This is the ONE home for "take a v3 condition (or whole experiment_structure)
+ * and drive it on the arena". It sits between the pure wire protocol
  * (js/arena-wire-g6.js) and the I/O transport (js/arena-link.js) but contains
  * NO DOM — pages own their own UI. That keeps it Node-testable with a faked
  * link (see tests/test-arena-runner-g6.js).
  *
- * Scope (v0, per the LAB-94 DoD): only the `trialParams` controller command is
- * sent. Other controller commands (allOn/allOff/setPositionX/…), plugins, and
- * waits are NOT executed — this is a "test the pattern", not a full
- * behaviourally-faithful condition run.
+ * Two layers:
+ *   - PURE (no I/O): findTrialParams, buildTrialParams, conditionDuration,
+ *     flattenStructure (experiment_structure → ordered step list, respecting block
+ *     reps + randomize + ITI), translateCommand (one command → a wire-neutral IR).
+ *   - ASYNC executor: ArenaRunner.start (single trial) and ArenaRunner.runSequence
+ *     (walk the flattened steps, replay each condition's commands, host-side trial
+ *     timing). Plugin commands are skipped-with-warning; unsupported controller
+ *     commands (e.g. setColorDepth) error then skip.
  */
 'use strict';
 
@@ -22,8 +26,8 @@ var ArenaRunnerG6 = (function () {
     /**
      * Find the controller `trialParams` command in a condition's command list.
      * IMPORTANT: a condition's controller commands are a family (allOn, allOff,
-     * stopDisplay, setPositionX, setColorDepth, trialParams) — only trialParams
-     * maps to encodeTrialParams, so we must match on command_name, not just
+     * stopDisplay, setPositionX, trialParams) — only trialParams maps to
+     * encodeTrialParams, so we must match on command_name, not just
      * type === 'controller'.
      * @returns {object|null} the trialParams command, or null if none.
      */
@@ -142,15 +146,244 @@ var ArenaRunnerG6 = (function () {
         return { mode, patternId, frameRate, gain, initPos };
     }
 
+    // The controller commands the sequence runner can EMIT on G6, grounded in the
+    // firmware command set (commands.h): trialParams (0x08), allOn (0xFF),
+    // allOff (0x00), stopDisplay (0x30), setPositionX → SET_FRAME_POSITION (0x70).
+    // This mirrors plugin-registry's isKnownControllerCommand, duplicated on purpose
+    // because this module must stay import-free (no sibling imports). Anything else
+    // (e.g. a legacy setColorDepth → SWITCH_GRAYSCALE 0x06, dropped on G6) is an
+    // error, not a silent no-op.
+    const RUNNABLE_CONTROLLER_COMMANDS = [
+        'trialParams',
+        'allOn',
+        'allOff',
+        'stopDisplay',
+        'setPositionX'
+    ];
+
+    /**
+     * The wall-clock duration of a condition, in seconds: max(trialParams.duration,
+     * sum of wait durations). Mirrors the v3 designer's timeline math; pure so the
+     * runner and the timeline preview share ONE definition. Number()-coerces to
+     * defend against string YAML scalars.
+     */
+    function conditionDuration(cond) {
+        if (!cond || !Array.isArray(cond.commands)) return 0;
+        let tp = 0;
+        let wait = 0;
+        for (const c of cond.commands) {
+            if (c && c.type === 'controller' && c.command_name === 'trialParams') {
+                tp = Math.max(tp, Number(c.duration) || 0);
+            }
+            if (c && c.type === 'wait') wait += Number(c.duration) || 0;
+        }
+        return Math.max(tp, wait);
+    }
+
+    /**
+     * Flatten an experiment_structure into the ordered list of steps the runner
+     * (and the timeline preview) execute: refs, block trials × repetitions, and
+     * intertrial (ITI) conditions inserted BETWEEN consecutive trials but NOT after
+     * the final trial of the final rep.
+     *
+     * PURE — takes the parsed `experiment` object, returns { steps, hasRandom }.
+     * `opts.shuffle(arr)` (optional) is applied per-rep to a block's trial order
+     * when the block has `randomize: true`; the timeline preview passes NO shuffle
+     * (nominal order), the run path passes a real shuffle. `opts.conditionDuration`
+     * overrides the duration function (defaults to the module's).
+     *
+     * Step shapes (kind):
+     *   ref         { kind, label, conditionName, seqIdx, dur }
+     *   block-trial { kind, label, conditionName, seqIdx, blockName, trialIdxInBlock,
+     *                 dur, rep, repsTotal, randomize }
+     *   iti         { kind, label, conditionName, seqIdx, blockName, dur }
+     */
+    function flattenStructure(experiment, opts) {
+        opts = opts || {};
+        const durOf =
+            typeof opts.conditionDuration === 'function'
+                ? opts.conditionDuration
+                : conditionDuration;
+        const shuffle = typeof opts.shuffle === 'function' ? opts.shuffle : null;
+        const out = { steps: [], hasRandom: false };
+        if (
+            !experiment ||
+            !Array.isArray(experiment.sequence) ||
+            !Array.isArray(experiment.conditions)
+        ) {
+            return out;
+        }
+        const byName = new Map(experiment.conditions.map((c) => [c.name, c]));
+        const steps = out.steps;
+        for (let seqIdx = 0; seqIdx < experiment.sequence.length; seqIdx++) {
+            const entry = experiment.sequence[seqIdx];
+            if (!entry) continue;
+            if (entry.kind === 'ref') {
+                steps.push({
+                    kind: 'ref',
+                    label: entry.condition_name,
+                    conditionName: entry.condition_name,
+                    seqIdx,
+                    dur: durOf(byName.get(entry.condition_name))
+                });
+            } else if (entry.kind === 'block') {
+                if (entry.randomize) out.hasRandom = true;
+                const reps = entry.repetitions || 1;
+                const iti = entry.intertrial ? byName.get(entry.intertrial) : null;
+                const baseTrials = Array.isArray(entry.trials) ? entry.trials : [];
+                for (let r = 0; r < reps; r++) {
+                    // Randomize per-rep only when a shuffle is supplied (the run
+                    // path). slice() so the source array is never mutated.
+                    const trials =
+                        entry.randomize && shuffle ? shuffle(baseTrials.slice()) : baseTrials;
+                    for (let t = 0; t < trials.length; t++) {
+                        const condName = trials[t];
+                        steps.push({
+                            kind: 'block-trial',
+                            label: condName,
+                            conditionName: condName,
+                            seqIdx,
+                            blockName: entry.name,
+                            trialIdxInBlock: t,
+                            dur: durOf(byName.get(condName)),
+                            rep: r,
+                            repsTotal: reps,
+                            randomize: !!entry.randomize
+                        });
+                        const isLastTrialOfFinalRep = r === reps - 1 && t === trials.length - 1;
+                        if (entry.intertrial && !isLastTrialOfFinalRep) {
+                            steps.push({
+                                kind: 'iti',
+                                label: 'iti: ' + entry.intertrial,
+                                conditionName: entry.intertrial,
+                                seqIdx,
+                                blockName: entry.name,
+                                dur: durOf(iti)
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Translate ONE v3 command into a wire-neutral instruction descriptor (the
+     * "command IR"). PURE and wire-free so it is trivially unit-testable; the
+     * executor (ArenaRunner.runSequence) maps each `op` to an ArenaWireG6 encoder.
+     *
+     * @param {object} cmd  a v3 command ({type:'controller'|'wait'|'plugin', …})
+     * @param {{patternId:(number|null)}} [opts]  resolved 1-based SD index for a
+     *        trialParams command (null/undefined ⇒ unresolvable ⇒ {op:'error'}).
+     * @returns {object} one of:
+     *   { op:'trialParams', params, durationSec }
+     *   { op:'allOn' | 'allOff' | 'stopDisplay' }
+     *   { op:'setFramePosition', index }            // 0-based frame index (Mode 3)
+     *   { op:'wait', durationSec }
+     *   { op:'skip', reason, plugin_name, command_name }   // plugin → not driveable
+     *   { op:'error', reason }                              // unsupported / malformed
+     */
+    function translateCommand(cmd, opts) {
+        opts = opts || {};
+        if (!cmd || !cmd.type) {
+            return { op: 'error', reason: 'Malformed command (missing type).' };
+        }
+        if (cmd.type === 'wait') {
+            return { op: 'wait', durationSec: Number(cmd.duration) || 0 };
+        }
+        if (cmd.type === 'plugin') {
+            return {
+                op: 'skip',
+                reason: 'plugin command (the browser cannot drive plugins)',
+                plugin_name: cmd.plugin_name || '(unnamed)',
+                command_name: cmd.command_name || '(unnamed)'
+            };
+        }
+        if (cmd.type === 'controller') {
+            const name = cmd.command_name;
+            if (name === 'trialParams') {
+                if (opts.patternId === undefined || opts.patternId === null) {
+                    return {
+                        op: 'error',
+                        reason:
+                            'No SD pattern index for trialParams pattern "' +
+                            (cmd.pattern || '(empty)') +
+                            '" — not in the active set and no usable pattern_ID.'
+                    };
+                }
+                let params;
+                try {
+                    params = buildTrialParams(cmd, { patternId: opts.patternId });
+                } catch (e) {
+                    return { op: 'error', reason: e.message };
+                }
+                return {
+                    op: 'trialParams',
+                    params,
+                    durationSec: Number(cmd.duration) > 0 ? Number(cmd.duration) : 0
+                };
+            }
+            if (name === 'allOn') return { op: 'allOn' };
+            if (name === 'allOff') return { op: 'allOff' };
+            if (name === 'stopDisplay') return { op: 'stopDisplay' };
+            if (name === 'setPositionX') {
+                // Mode-3 frame jump: posX is a 0-based frame index → 0x70.
+                const index = Number(cmd.posX);
+                return { op: 'setFramePosition', index: Number.isFinite(index) ? index : 0 };
+            }
+            return {
+                op: 'error',
+                reason:
+                    'Unsupported controller command "' +
+                    (name || '(unnamed)') +
+                    '" — not in the G6 runner palette ' +
+                    '(trialParams/allOn/allOff/stopDisplay/setPositionX).' +
+                    (name === 'setColorDepth'
+                        ? ' setColorDepth maps to SWITCH_GRAYSCALE 0x06, which is dropped on G6 ' +
+                          '(color depth is a .pat/SD-header property, not a runtime command).'
+                        : '')
+            };
+        }
+        return { op: 'error', reason: 'Unknown command type "' + cmd.type + '".' };
+    }
+
+    // ---- timing model (interim host-side) -------------------------------
+
+    /**
+     * TIMING MODEL — interim, host-side (firmware issue
+     * reiserlab/LED-Display_G6_Firmware_Arena#4). The controller-run trial
+     * `duration` is NOT in firmware yet, so the browser drives trial timing: after a
+     * trialParams send acks OK, sleep `durationSec`, then advance to the next
+     * command/step. This function is the ONE place that decides "when is a trial
+     * done".
+     *
+     * SWAP POINT: once #4 lands (trial_params carries a controller-run duration and
+     * the controller signals completion), replace this with a function that AWAITS
+     * the controller's run-complete event instead of sleeping — or inject
+     * `opts.timing` into runSequence. Nothing else in the runner changes.
+     *
+     * Best-effort: a slept/closed tab won't fire the timer, so STOP/abort is the
+     * primary control.
+     *
+     * @param {number} durationSec               trial duration in s (0 ⇒ no wait)
+     * @param {function(number):Promise} sleep    abort-aware sleep(ms)
+     */
+    async function hostSideTrialEnd(durationSec, sleep) {
+        await sleep((Number(durationSec) || 0) * 1000);
+    }
+
     // ---- run-state machine ----------------------------------------------
 
     /**
-     * Owns one active run at a time: the send, the decoded status, and the
-     * best-effort auto-stop timer. A double-click can't queue two trial frames
-     * or two timers because start() rejects while active.
+     * Owns one active run at a time — either a single-trial dry-run (start) or a
+     * whole flattened sequence (runSequence). A double-click can't queue two runs
+     * because both reject while active.
      *
-     * STOP is best-effort: a closed/slept tab won't fire the timer, so manual
-     * stop() is the primary mechanism and the timer is a convenience.
+     * STOP is best-effort: a closed/slept tab won't fire the auto-stop timer or the
+     * host-side trial timing, so manual stop() is the primary mechanism. stop() sets
+     * an abort flag the sequence loop checks before every step and every command,
+     * and resolves any in-progress host-side wait immediately so STOP halts promptly.
      */
     class ArenaRunner {
         /**
@@ -164,9 +397,12 @@ var ArenaRunnerG6 = (function () {
                 throw new Error('ArenaRunner: ArenaWireG6 is not available.');
             }
             this._active = false;
-            this._timer = null;
+            this._timer = null; // single-trial auto-stop timer
             this._conditionName = null;
             this._lastResponse = null;
+            this._abort = false; // sequence abort flag (set by stop()/_clear())
+            this._sleepTimer = null; // in-progress host-side wait timer
+            this._sleepResolve = null; // resolver for the in-progress wait
         }
 
         get active() {
@@ -241,12 +477,16 @@ var ArenaRunnerG6 = (function () {
         }
 
         /**
-         * Stop the active run: clear the timer, mark inactive, and send STOP if
+         * Stop the active run: raise the abort flag, resolve any in-progress
+         * host-side wait, clear the auto-stop timer, mark inactive, and send STOP if
          * the link is connected. Idempotent and NOT import-mode-guarded by the
-         * UI — a run must remain stoppable.
+         * UI — a run must remain stoppable. The sequence loop, if running, observes
+         * the abort flag and unwinds (its own finally also sends STOP — harmless).
          * @returns {Promise<object|null>} the STOP response (or null if offline)
          */
         async stop() {
+            this._abort = true;
+            this._resolveSleep();
             if (this._timer) {
                 clearTimeout(this._timer);
                 this._timer = null;
@@ -259,14 +499,241 @@ var ArenaRunnerG6 = (function () {
             return null;
         }
 
-        /** Clear run-state + timer without sending STOP (used on disconnect/error). */
+        /** Clear run-state without sending STOP (used on disconnect/error). Also
+         *  aborts a running sequence and unblocks its current wait. */
         _clear() {
+            this._abort = true;
+            this._resolveSleep();
             if (this._timer) {
                 clearTimeout(this._timer);
                 this._timer = null;
             }
             this._active = false;
             this._conditionName = null;
+        }
+
+        /** Resolve + clear any in-progress host-side wait (makes STOP prompt). */
+        _resolveSleep() {
+            if (this._sleepTimer) {
+                clearTimeout(this._sleepTimer);
+                this._sleepTimer = null;
+            }
+            if (this._sleepResolve) {
+                const r = this._sleepResolve;
+                this._sleepResolve = null;
+                r();
+            }
+        }
+
+        /**
+         * Abort-aware sleep: resolves after `ms`, OR immediately if already aborted
+         * or stop() fires mid-wait. Only one wait is outstanding at a time (the
+         * sequence loop awaits each in turn).
+         */
+        _sleep(ms) {
+            return new Promise((resolve) => {
+                if (this._abort || !(ms > 0)) {
+                    resolve();
+                    return;
+                }
+                this._sleepResolve = resolve;
+                this._sleepTimer = setTimeout(() => {
+                    this._sleepTimer = null;
+                    this._sleepResolve = null;
+                    resolve();
+                }, ms);
+            });
+        }
+
+        /**
+         * Run a whole flattened sequence on the arena. Walks each step's condition
+         * and replays its command list in order (trialParams / allOn / allOff /
+         * stopDisplay / setPositionX + client-side waits). Plugin commands are
+         * skipped-with-warning; unsupported controller commands (e.g. setColorDepth)
+         * and unresolvable patterns are surfaced as errors then skipped (the
+         * proceed-and-skip policy). Trial timing is host-side (see hostSideTrialEnd).
+         * The abort flag is checked before every step AND every command, so STOP
+         * halts promptly. On completion or abort the finally sends a best-effort STOP.
+         *
+         * @param {object} a
+         * @param {Array}    a.steps             flattenStructure(...).steps
+         * @param {Map}      a.conditionsByName  conditionName → condition object
+         * @param {function} a.resolvePatternId  (trialParamsCmd) ⇒ 1-based SD index | null
+         * @param {function} [a.onProgress]      progress/event callback (see phases below)
+         * @param {function} [a.timing]          async (durationSec, sleep) ⇒ trial end
+         *                                        (defaults to host-side; firmware #4 swap)
+         * @param {function} [a.sleep]           async (ms) ⇒ void (defaults to the
+         *                                        abort-aware _sleep; tests inject instant)
+         * @returns {Promise<{completed:boolean, aborted:boolean, steps:number, errors:number, skipped:number}>}
+         */
+        async runSequence(a) {
+            a = a || {};
+            if (this._active) {
+                throw new Error('A run is already active — stop it first.');
+            }
+            const steps = Array.isArray(a.steps) ? a.steps : [];
+            const conditionsByName = a.conditionsByName || new Map();
+            const resolvePatternId =
+                typeof a.resolvePatternId === 'function' ? a.resolvePatternId : () => null;
+            const timing = typeof a.timing === 'function' ? a.timing : hostSideTrialEnd;
+            const sleep = typeof a.sleep === 'function' ? a.sleep : (ms) => this._sleep(ms);
+            const emit = (s) => {
+                if (typeof a.onProgress === 'function') a.onProgress(s);
+            };
+
+            this._active = true;
+            this._abort = false;
+            const summary = {
+                completed: false,
+                aborted: false,
+                steps: steps.length,
+                errors: 0,
+                skipped: 0
+            };
+
+            try {
+                emit({ phase: 'sequence-start', total: steps.length });
+                for (let i = 0; i < steps.length; i++) {
+                    if (this._abort) break;
+                    const step = steps[i];
+                    const cond = conditionsByName.get(step.conditionName) || null;
+                    this._conditionName = step.conditionName || null;
+                    emit({
+                        phase: 'step-start',
+                        index: i,
+                        total: steps.length,
+                        step,
+                        next: i + 1 < steps.length ? steps[i + 1] : null
+                    });
+                    if (!cond || !Array.isArray(cond.commands)) {
+                        summary.errors++;
+                        emit({
+                            phase: 'error',
+                            index: i,
+                            step,
+                            reason:
+                                'Condition "' +
+                                step.conditionName +
+                                '" not found or has no commands — skipped.'
+                        });
+                        emit({ phase: 'step-done', index: i, total: steps.length, step });
+                        continue;
+                    }
+                    for (const cmd of cond.commands) {
+                        if (this._abort) break;
+                        const ir = translateCommand(cmd, { patternId: resolvePatternId(cmd) });
+                        try {
+                            await this._runIR(ir, { step, index: i, emit, timing, sleep, summary });
+                        } catch (e) {
+                            // A wire/link failure mid-command: surface it and abort
+                            // the run (the finally sends STOP). Don't blindly continue
+                            // past a possible protocol desync.
+                            summary.errors++;
+                            this._abort = true;
+                            emit({
+                                phase: 'error',
+                                index: i,
+                                step,
+                                error: e,
+                                reason: 'send failed: ' + (e && (e.message || e))
+                            });
+                            break;
+                        }
+                    }
+                    emit({ phase: 'step-done', index: i, total: steps.length, step });
+                }
+                summary.aborted = this._abort;
+                summary.completed = !this._abort;
+                emit({ phase: this._abort ? 'aborted' : 'sequence-complete', summary });
+                return summary;
+            } finally {
+                // Best-effort STOP at the end / on abort, then reset run-state.
+                this._active = false;
+                this._conditionName = null;
+                this._resolveSleep();
+                try {
+                    if (this._link && this._link.connected) {
+                        await this._link.send(this._wire.encodeStop());
+                    }
+                } catch (_) {
+                    /* best-effort */
+                }
+            }
+        }
+
+        /**
+         * Execute one command IR over the link: send the matching wire frame and,
+         * for trialParams, apply the host-side trial timing. Skips/errors are
+         * surfaced via emit and do NOT abort the run. Mutates `ctx.summary`.
+         * Throws only on a link/send failure (the caller aborts the run).
+         */
+        async _runIR(ir, ctx) {
+            const { step, index, emit, timing, sleep, summary } = ctx;
+            const W = this._wire;
+            switch (ir.op) {
+                case 'trialParams': {
+                    const frame = await this._link.send(W.encodeTrialParams(ir.params));
+                    const resp = W.decodeResponse(frame);
+                    this._lastResponse = resp;
+                    if (!resp || !resp.ok) {
+                        summary.errors++;
+                        emit({
+                            phase: 'error',
+                            index,
+                            step,
+                            response: resp,
+                            reason: 'controller rejected trialParams'
+                        });
+                        return;
+                    }
+                    emit({
+                        phase: 'trial-running',
+                        index,
+                        step,
+                        response: resp,
+                        durationSec: ir.durationSec
+                    });
+                    // Host-side timing (interim — firmware #4). Abort-aware via sleep.
+                    await timing(ir.durationSec, sleep);
+                    return;
+                }
+                case 'allOn':
+                    await this._link.send(W.encodeAllOn());
+                    emit({ phase: 'command', index, step, op: ir.op });
+                    return;
+                case 'allOff':
+                    await this._link.send(W.encodeAllOff());
+                    emit({ phase: 'command', index, step, op: ir.op });
+                    return;
+                case 'stopDisplay':
+                    await this._link.send(W.encodeStop());
+                    emit({ phase: 'command', index, step, op: ir.op });
+                    return;
+                case 'setFramePosition':
+                    await this._link.send(W.encodeSetFramePosition(ir.index));
+                    emit({ phase: 'command', index, step, op: ir.op, value: ir.index });
+                    return;
+                case 'wait':
+                    await sleep((Number(ir.durationSec) || 0) * 1000);
+                    emit({ phase: 'command', index, step, op: ir.op, value: ir.durationSec });
+                    return;
+                case 'skip':
+                    summary.skipped++;
+                    emit({
+                        phase: 'skip',
+                        index,
+                        step,
+                        reason: ir.reason,
+                        plugin_name: ir.plugin_name,
+                        command_name: ir.command_name
+                    });
+                    return;
+                case 'error':
+                default:
+                    summary.errors++;
+                    emit({ phase: 'error', index, step, reason: ir.reason || 'unknown command' });
+                    return;
+            }
         }
     }
 
@@ -276,6 +743,11 @@ var ArenaRunnerG6 = (function () {
         isDryRunEligible,
         frameIndexToInitPos,
         buildTrialParams,
+        conditionDuration,
+        flattenStructure,
+        translateCommand,
+        hostSideTrialEnd,
+        RUNNABLE_CONTROLLER_COMMANDS,
         ArenaRunner
     };
 })();

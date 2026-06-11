@@ -438,9 +438,10 @@ posttrial:
 #
 # setPositionX - set the starting frame when displaying a pattern (default 1)
 #   Parameters: posX: integer between 1 and number of frames in pattern
+#   (NOTE: on G6 this is the Mode-3 frame jump → SET_FRAME_POSITION 0x70, 0-based.)
 #
-# setColorDepth - change the arena's accepted grayscale value 
-#   Parameters: gs_val: 2 or 16
+# (setColorDepth was dropped: SWITCH_GRAYSCALE 0x06 is not a runtime command on G6;
+#  grayscale is a property of the .pat / SD-card header.)
 #
 # trialParams - start displaying a trial on the G4.1 system
 #   Parameters: mode: integer 2-4 

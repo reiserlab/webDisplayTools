@@ -546,6 +546,10 @@
             cursor: not-allowed;
             opacity: 0.5;
         }
+        /* The full-sequence run trigger — emphasized green, mirrors the inspector's
+           "▶ Test on arena" (Test = one trial; Run = the whole sequence). */
+        .zone-head-btn.run-seq-btn { border-color: var(--accent); font-weight: 700; }
+        .zone-head-btn.run-seq-btn:disabled { border-color: var(--border); font-weight: 400; }
         .lib-row .lib-row-dup {
             background: transparent;
             border: 1px solid transparent;
@@ -619,6 +623,7 @@
             flex-shrink: 0;
         }
         .run-status #runStatusMsg { font-weight: 600; color: var(--text); }
+        .run-status-elapsed { font-size: 0.62rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
         .run-stop-btn:not(:disabled) { border-color: var(--accent); color: var(--accent); }
         .run-status-head { display: flex; align-items: center; gap: 0.5rem; }
         .run-status-dot {
@@ -1341,6 +1346,7 @@
         <button id="settingsToggle" class="header-btn" title="Show/hide experiment metadata, rig, and plugins">Settings ▾</button>
         <select id="demoSelect" class="header-btn" title="Load a bundled demo YAML to explore">
             <option value="">Load demo ▾</option>
+            <option value="tests/fixtures/v3_g6_2x10_smoke.yaml">g6_2x10_smoke — all 4 patterns + every arena command (run on G6)</option>
             <option value="tests/fixtures/v3_canonical_a.yaml">canonical_a — 11 conds, 1 block, 4 anchors</option>
             <option value="tests/fixtures/v3_canonical_b.yaml">canonical_b — same shape (alt trials)</option>
             <option value="tests/fixtures/v3_full_experiment.yaml">full_experiment — 15 conds, 9 trials, 6 anchors</option>
@@ -1448,6 +1454,7 @@
                 <span class="count" id="seqCount">0</span>
                 <button id="addRefBtn" class="zone-head-btn" title="Append a bare reference to an existing condition" disabled>+ Ref</button>
                 <button id="addBlockBtn" class="zone-head-btn" title="Append a new block (group of trials with optional repetition / intertrial)" disabled>+ Block</button>
+                <button id="runSeqBtn" class="zone-head-btn run-seq-btn" title="Run the WHOLE sequence on the arena over Web Serial — conditions × repeats, client-side waits, ITI (controller commands only; plugins are skipped). Trial timing is host-side/best-effort (firmware duration not landed yet) — keep this tab focused; STOP is the primary control." disabled>▶ Run on arena</button>
             </div>
             <div class="zone-body">
                 <div id="sequenceList">
@@ -1472,6 +1479,7 @@
                 <div class="run-status-head">
                     <span class="run-status-dot" id="runStatusDot"></span>
                     <span id="runStatusMsg">Idle</span>
+                    <span id="runStatusElapsed" class="run-status-elapsed"></span>
                     <span class="run-status-spacer"></span>
                     <button id="runStopBtn" class="header-btn run-stop-btn" title="Stop the running pattern (STOP_DISPLAY 0x30) — best-effort; won't fire if the tab is closed" disabled>Stop</button>
                     <button id="runDisconnectBtn" class="header-btn" title="Close the serial connection to the arena" disabled>Disconnect</button>
@@ -1496,7 +1504,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.29 | <span id="footerTimestamp">2026-06-11 07:01 ET</span>
+        v3 Experiment Designer v0.30 | <span id="footerTimestamp">2026-06-11 10:31 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1578,6 +1586,7 @@
             getV3PluginCommands,
             listV3PluginNames,
             getV3CommandParams,
+            isKnownControllerCommand,
             BUILTIN_PLUGINS,
             createPluginEntry,
             mapRigPluginToBuiltin,
@@ -1685,6 +1694,32 @@
             } catch (err) {
                 showError('Could not load built-in rig', path + ': ' + (err.message || err));
             }
+        }
+
+        // On protocol load: if rig_path matches a built-in rig (configs/rigs/index.json),
+        // auto-load it so the arena config resolves and the Pattern Set builder + W/C
+        // pattern resolution work without the user having to re-pick the (already
+        // pre-selected) rig in the dropdown. A non-built-in / local path is left for
+        // Browse… (the browser can't read an arbitrary local filesystem path). Never
+        // marks the doc dirty — onRigEdit is a no-op when the path is unchanged.
+        async function maybeAutoLoadBuiltinRig() {
+            if (!experiment || !experiment.rig_path) return;
+            const want = experiment.rig_path;
+            if (loadedRig && loadedRig.path === want) return; // already resolved
+            if (builtinRigs === null) {
+                try {
+                    const r = await fetch('./configs/rigs/index.json', { cache: 'no-store' });
+                    const j = r.ok ? await r.json() : null;
+                    builtinRigs = j && Array.isArray(j.rigs) ? j.rigs : [];
+                } catch (_) {
+                    builtinRigs = [];
+                }
+            }
+            const match = (builtinRigs || []).find((r) => r.path === want);
+            // The user may have loaded another protocol while we awaited — re-check.
+            if (!match || !experiment || experiment.rig_path !== want) return;
+            await loadBuiltinRig(match.path); // fetch + applyRigData (+ renderSettings)
+            renderAll(); // refresh W/C chips + timeline now that the arena resolves
         }
 
         // date_created standardized to YYYY-MM-DD (local). toISODate coerces an existing
@@ -1865,6 +1900,10 @@
                 // undo stack (so the wipe is reversible); imports/demos clear it.
                 if (!opts.keepUndo) clearUndo();
                 renderAll();
+                // If the protocol's rig is a bundled one, resolve its arena config now
+                // (async, non-blocking) so the Pattern Set builder + W/C resolution work
+                // without re-picking the pre-selected rig. Local paths are left for Browse….
+                maybeAutoLoadBuiltinRig();
                 $('exportBtn').disabled = false;
                 $('resetBtn').disabled = false;
                 $('addCondBtn').disabled = false;
@@ -3185,7 +3224,7 @@
         // Controls disabled while "yours" is locked (design fix #8 — lock at the
         // UI, not by suppressing pushUndo, since commit itself pushes one undo).
         const IMPORT_LOCKED_CONTROLS = [
-            'addCondBtn', 'addRefBtn', 'addBlockBtn', 'exportBtn', 'resetBtn',
+            'addCondBtn', 'addRefBtn', 'addBlockBtn', 'runSeqBtn', 'exportBtn', 'resetBtn',
             'undoBtn', 'redoBtn', 'newBtn', 'importBtn', 'importFromBtn', 'demoSelect',
             'settingsToggle', 'librarySearch'
         ];
@@ -4058,7 +4097,6 @@
             'frame_index': 'number',
             'frame_rate': 'number',
             'gain': 'number',
-            'gs_val': 'number',
             'posX': 'number',
             'command_name': 'string',
             'plugin_name': 'string'
@@ -4134,7 +4172,7 @@
                 }
                 select.addEventListener('change', () => {
                     // Match the picked string back to the option's original
-                    // value type (numeric for mode/gs_val, string for log.level)
+                    // value type (numeric for mode, string for log.level)
                     const picked = schema.options.find((o) => String(o.value) === select.value);
                     if (!picked) return;
                     if (picked.value === value) return;
@@ -5142,14 +5180,48 @@
                 msg.textContent = 'Disconnected';
                 dot.className = 'run-status-dot';
             } else if (phase === 'error') {
-                const m = s.error && (s.error.message || s.error);
-                msg.textContent = 'Error: ' + m;
-                dot.className = 'run-status-dot error';
+                // Shared by the single-trial path ({error}) and per-step sequence
+                // errors ({reason, step}). A step-scoped error is non-fatal
+                // (proceed-and-skip) — log it but keep the run's running indicator;
+                // a fatal/connection error (no step) sets the red dot + message.
+                const m = (s.error && (s.error.message || s.error)) || s.reason || 'unknown error';
                 runLog('error: ' + m, true);
+                if (!s.step) {
+                    msg.textContent = 'Error: ' + m;
+                    dot.className = 'run-status-dot error';
+                }
+            } else if (phase === 'sequence-start') {
+                msg.textContent = 'Running sequence — ' + (s.total || 0) + ' step' + (s.total === 1 ? '' : 's');
+                dot.className = 'run-status-dot running';
+                runLog('▶ sequence started: ' + (s.total || 0) + ' steps · host-side timing (best-effort) · STOP is primary');
+            } else if (phase === 'step-start') {
+                msg.textContent = seqMsg(s);
+                dot.className = 'run-status-dot running';
+            } else if (phase === 'trial-running') {
+                runLog(seqLine(s) + ' → trial running (' + (s.durationSec || 0) + 's host-side)');
+            } else if (phase === 'command') {
+                runLog(seqLine(s) + ' → ' + s.op + (s.value !== undefined ? ' ' + s.value : ''));
+            } else if (phase === 'skip') {
+                const what = s.plugin_name ? s.plugin_name + '.' + s.command_name : (s.step ? s.step.conditionName : '');
+                runLog('skipped ' + what + ' — ' + (s.reason || ''), true);
+            } else if (phase === 'step-done') {
+                // the message already reflects the current step; nothing to do
+            } else if (phase === 'sequence-complete') {
+                const sm = s.summary || {};
+                msg.textContent = 'Sequence complete — ' + (sm.steps || 0) + ' steps' +
+                    (sm.skipped ? ', ' + sm.skipped + ' skipped' : '') +
+                    (sm.errors ? ', ' + sm.errors + ' error' + (sm.errors === 1 ? '' : 's') : '');
+                dot.className = 'run-status-dot connected';
+                runLog('✓ sequence complete');
+            } else if (phase === 'aborted') {
+                msg.textContent = 'Sequence stopped (STOP)';
+                dot.className = 'run-status-dot connected';
+                runLog('■ sequence aborted by STOP');
             }
             // Button states reflect live link/runner state.
             $('runStopBtn').disabled = !(arenaRunner && arenaRunner.active);
             $('runDisconnectBtn').disabled = !(arenaLink && arenaLink.connected);
+            updateRunSeqBtn();
         }
 
         async function onRunConditionDryRun(condIdx) {
@@ -5307,6 +5379,245 @@
             if (arenaRunner && arenaRunner.active) return; // don't hide mid-run
             $('runStatus').style.display = 'none';
         });
+
+        // ── LAB-97: full-sequence runner (host-side timing, no plugins) ──────
+        $('runSeqBtn').addEventListener('click', onRunSequence);
+
+        let seqElapsedTimer = null; // live elapsed clock during a sequence run
+        let seqStartMs = 0;
+
+        // Enable "▶ Run on arena" only when a sequence can actually run. Called from
+        // renderAll (load/edit/import-exit) and updateRunStatus (run transitions);
+        // import mode is handled via IMPORT_LOCKED_CONTROLS too.
+        function updateRunSeqBtn() {
+            const btn = $('runSeqBtn');
+            if (!btn) return;
+            const empty =
+                !experiment || !Array.isArray(experiment.sequence) || experiment.sequence.length === 0;
+            btn.disabled =
+                !serialSupported || importMode || empty || !!(arenaRunner && arenaRunner.active);
+        }
+
+        // 1-based SD index for a trialParams command: prefer the active web set
+        // (LAB-95/96), fall back to the protocol's pattern_ID, else null (the runner
+        // surfaces an error + skips the step — the proceed-and-skip policy).
+        function resolvePatternIdForCmd(cmd) {
+            const id = activeSetIndexByName(cmd.pattern);
+            if (id != null) return id;
+            const pid = Number(cmd.pattern_ID);
+            return Number.isInteger(pid) && pid >= 1 ? pid : null;
+        }
+
+        // Fisher–Yates in place — randomized blocks at run time. The timeline preview
+        // passes NO shuffle, so it stays in nominal order.
+        function shuffleInPlace(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                const tmp = arr[i];
+                arr[i] = arr[j];
+                arr[j] = tmp;
+            }
+            return arr;
+        }
+
+        function fmtDuration(sec) {
+            sec = Math.round(Number(sec) || 0);
+            if (sec < 60) return sec + 's';
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return s === 0 ? m + 'm' : m + 'm ' + s + 's';
+        }
+
+        function fmtElapsed(ms) {
+            const total = Math.floor((Number(ms) || 0) / 1000);
+            const m = Math.floor(total / 60);
+            const s = total % 60;
+            return m + ':' + String(s).padStart(2, '0');
+        }
+
+        // Compact "(block · ITI · rep N/M)" suffix for a step.
+        function seqStepLabel(step) {
+            if (!step) return '';
+            const bits = [];
+            if (step.blockName) bits.push(step.blockName);
+            if (step.kind === 'iti') bits.push('ITI');
+            if (typeof step.rep === 'number' && step.repsTotal) {
+                bits.push('rep ' + (step.rep + 1) + '/' + step.repsTotal);
+            }
+            return bits.length ? ' (' + bits.join(' · ') + ')' : '';
+        }
+
+        // Main status line for a step (step i/total · condition · block/rep · next).
+        function seqMsg(s) {
+            const step = s.step || {};
+            const n = s.index != null ? s.index + 1 : '?';
+            const total = s.total || '?';
+            let m = 'step ' + n + '/' + total + ': ' + (step.conditionName || '') + seqStepLabel(step);
+            if (s.next && s.next.conditionName) m += '  → next: ' + s.next.conditionName;
+            return m;
+        }
+
+        // Short per-step log prefix.
+        function seqLine(s) {
+            const step = s.step || {};
+            const n = s.index != null ? s.index + 1 : '?';
+            return '[' + n + '] ' + (step.conditionName || '');
+        }
+
+        function seqRunStart() {
+            seqStartMs = Date.now();
+            if (seqElapsedTimer) clearInterval(seqElapsedTimer);
+            const tick = () => {
+                const e = $('runStatusElapsed');
+                if (e) e.textContent = '⏱ ' + fmtElapsed(Date.now() - seqStartMs);
+            };
+            tick();
+            seqElapsedTimer = setInterval(tick, 500);
+        }
+
+        function seqRunStop() {
+            if (seqElapsedTimer) {
+                clearInterval(seqElapsedTimer);
+                seqElapsedTimer = null;
+            }
+        }
+
+        // Pre-run check: flatten (nominal), classify every referenced condition, and
+        // show a confirm modal listing what will run / be skipped before connecting.
+        function preRunCheck() {
+            const { steps, hasRandom } = RunnerLib.flattenStructure(experiment);
+            const byName = new Map(experiment.conditions.map((c) => [c.name, c]));
+            const totalDur = steps.reduce((sum, x) => sum + (x.dur || 0), 0);
+            const names = [...new Set(steps.map((x) => x.conditionName))];
+            let wCount = 0;
+            let cCount = 0;
+            const unresolvable = [];
+            const missingConds = [];
+            const pluginSkips = [];
+            const unsupported = [];
+            for (const name of names) {
+                const cond = byName.get(name);
+                if (!cond || !Array.isArray(cond.commands)) {
+                    missingConds.push(name);
+                    continue;
+                }
+                const tp = RunnerLib.findTrialParams(cond);
+                if (tp) {
+                    if (activeSetIndexByName(tp.pattern) != null) wCount++;
+                    else {
+                        const pid = Number(tp.pattern_ID);
+                        if (Number.isInteger(pid) && pid >= 1) cCount++;
+                        else unresolvable.push(name + ' ("' + (tp.pattern || '') + '")');
+                    }
+                }
+                for (const c of cond.commands) {
+                    if (c.type === 'plugin') {
+                        pluginSkips.push(
+                            name + ': ' + (c.plugin_name || '?') + '.' + (c.command_name || '?')
+                        );
+                    }
+                    if (c.type === 'controller' && !isKnownControllerCommand(c.command_name)) {
+                        unsupported.push(name + ': ' + c.command_name);
+                    }
+                }
+            }
+            const list = [];
+            list.push(
+                steps.length + ' step' + (steps.length === 1 ? '' : 's') +
+                    ' · ~' + fmtDuration(totalDur) + ' total (host-side timing, best-effort)'
+            );
+            if (wCount || cCount) {
+                list.push(
+                    wCount + ' web pattern (W, active set) · ' + cCount + ' computer (C, protocol pattern_ID)'
+                );
+            }
+            if (hasRandom) list.push('Randomized block(s): trial order is shuffled at run time');
+            for (const u of unresolvable) list.push('⚠ pattern not resolvable — step SKIPPED: ' + u);
+            for (const m of missingConds) list.push('⚠ missing condition — step SKIPPED: ' + m);
+            if (pluginSkips.length) {
+                list.push(
+                    '⚠ ' + pluginSkips.length + ' plugin command' +
+                        (pluginSkips.length === 1 ? '' : 's') + ' SKIPPED: ' + pluginSkips.join(', ')
+                );
+            }
+            for (const u of unsupported) {
+                list.push('⚠ unsupported controller command (errors + skips): ' + u);
+            }
+            return confirmModal({
+                title: 'Run the whole sequence on the arena?',
+                body:
+                    'Walks the experiment_structure and replays each condition’s controller ' +
+                    'commands + client-side waits over Web Serial. Trial timing is host-side ' +
+                    '(best-effort) until the controller-run duration lands in firmware — keep this ' +
+                    'tab focused; STOP is the primary control. Plugins are skipped (the browser ' +
+                    'cannot drive them).',
+                list,
+                confirmLabel: 'Connect & run',
+                cancelLabel: 'Cancel'
+            });
+        }
+
+        // Entry point for the full-sequence run. Run-START is import-mode guarded and
+        // read-only (no pushUndo/setDirty); Stop/Disconnect stay usable.
+        async function onRunSequence() {
+            if (!experiment || importMode) return;
+            if (!serialSupported) {
+                showError(
+                    'Web Serial unavailable',
+                    'This browser cannot talk to the arena. Use Chrome, Edge, or another ' +
+                        'Chromium-based desktop browser to run the sequence over Web Serial.'
+                );
+                return;
+            }
+            if (!Array.isArray(experiment.sequence) || experiment.sequence.length === 0) {
+                showError('Empty sequence', 'Add conditions or blocks to the sequence before running.');
+                return;
+            }
+            const ok = await preRunCheck();
+            if (!ok) return;
+
+            // Connect-on-demand: the confirm-button click is a fresh user gesture, and
+            // connect() is the first await after it resolves, so requestPort() runs
+            // inside that activation.
+            const { link, runner } = ensureArena();
+            $('runStatus').style.display = 'block';
+            $('runStatusLog').innerHTML = '';
+            try {
+                if (!link.connected) {
+                    updateRunStatus({ phase: 'connecting' });
+                    await link.connect();
+                }
+            } catch (e) {
+                updateRunStatus({ phase: 'error', error: e });
+                return;
+            }
+
+            // Build the flattened steps WITH a per-rep shuffle for randomized blocks.
+            const { steps } = RunnerLib.flattenStructure(experiment, { shuffle: shuffleInPlace });
+            const conditionsByName = new Map(experiment.conditions.map((c) => [c.name, c]));
+            try {
+                if (runner.active) await runner.stop();
+                seqRunStart();
+                await runner.runSequence({
+                    steps,
+                    conditionsByName,
+                    resolvePatternId: resolvePatternIdForCmd,
+                    onProgress: updateRunStatus
+                });
+            } catch (e) {
+                updateRunStatus({ phase: 'error', error: e });
+            } finally {
+                seqRunStop();
+                // The run has fully settled here (runSequence's finally already
+                // reset runner.active=false). The terminal 'sequence-complete' /
+                // 'aborted' event fired from INSIDE runSequence while active was
+                // still true, so re-sync the run-control buttons now: re-enable
+                // "▶ Run on arena" and disable Stop after a normal completion.
+                $('runStopBtn').disabled = !(arenaRunner && arenaRunner.active);
+                $('runDisconnectBtn').disabled = !(arenaLink && arenaLink.connected);
+                updateRunSeqBtn();
+            }
+        }
 
         async function onDeleteCondition(condIdx) {
             if (!experiment || importMode) return;
@@ -5524,6 +5835,16 @@
                 head.appendChild(document.createTextNode('wait'));
             } else {
                 head.appendChild(document.createTextNode(cmd.command_name || ''));
+                // Flag controller commands that aren't in the G6 palette (e.g. a
+                // legacy setColorDepth → SWITCH_GRAYSCALE 0x06, dropped on G6). The
+                // command is preserved on export, but the arena runner will skip it
+                // with an error rather than emit a dropped/no-op opcode.
+                if (cmd.command_name && !isKnownControllerCommand(cmd.command_name)) {
+                    head.appendChild(el('span', {
+                        class: 'raw-badge',
+                        title: 'Unsupported controller command on G6 — preserved on export, but the arena runner will skip it with an error. (e.g. setColorDepth maps to SWITCH_GRAYSCALE 0x06, which was dropped on G6 — color depth is set in the .pat/SD header, not at runtime.)'
+                    }, '⚠ unsupported'));
+                }
             }
             card.appendChild(head);
 
@@ -5555,13 +5876,13 @@
             card.appendChild(actions);
 
             const detailKeys = {
-                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'gs_val', 'posX'],
+                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'posX'],
                 wait: ['duration'],
                 plugin: []
             }[cmd.type] || [];
 
             // Schema for this command's params (controller or plugin). Used so
-            // `mode` / `gs_val` / `level` render as <select> with type-correct
+            // `mode` / `level` render as <select> with type-correct
             // coercion. Falls back to the freeform FIELD_TYPES map.
             const paramsSchema =
                 cmd.type === 'controller'
@@ -5655,65 +5976,20 @@
         // Timeline preview (flattened)
         // ═══════════════════════════════════════════════════════════════
 
+        // Delegates to the shared, unit-tested duration math (js/arena-runner-g6.js)
+        // so the timeline preview and the arena runner agree on every condition's
+        // wall-clock length.
         function condDuration(cond) {
-            if (!cond) return 0;
-            let tp = 0, wait = 0;
-            for (const c of cond.commands) {
-                if (c.type === 'controller' && c.command_name === 'trialParams') tp = Math.max(tp, c.duration || 0);
-                if (c.type === 'wait') wait += (c.duration || 0);
-            }
-            return Math.max(tp, wait);
+            return RunnerLib.conditionDuration(cond);
         }
 
+        // Delegates to the shared, unit-tested flattener (LAB-97). NO shuffle here →
+        // the timeline preview shows the NOMINAL order; the run path
+        // (onRunSequence) passes a real shuffle for randomized blocks. The returned
+        // step shape is identical (kind/label/conditionName/seqIdx/dur/blockName/
+        // trialIdxInBlock/rep), plus repsTotal which the timeline ignores.
         function flattenSequence() {
-            if (!experiment) return { steps: [], hasRandom: false };
-            const byName = new Map(experiment.conditions.map(c => [c.name, c]));
-            const steps = [];
-            let hasRandom = false;
-            for (let seqIdx = 0; seqIdx < experiment.sequence.length; seqIdx++) {
-                const entry = experiment.sequence[seqIdx];
-                if (entry.kind === 'ref') {
-                    steps.push({
-                        kind: 'ref',
-                        label: entry.condition_name,
-                        conditionName: entry.condition_name,
-                        seqIdx,
-                        dur: condDuration(byName.get(entry.condition_name))
-                    });
-                } else if (entry.kind === 'block') {
-                    if (entry.randomize) hasRandom = true;
-                    const iti = entry.intertrial ? byName.get(entry.intertrial) : null;
-                    for (let r = 0; r < entry.repetitions; r++) {
-                        for (let t = 0; t < entry.trials.length; t++) {
-                            const condName = entry.trials[t];
-                            steps.push({
-                                kind: 'block-trial',
-                                label: condName,
-                                conditionName: condName,
-                                seqIdx,
-                                blockName: entry.name,
-                                trialIdxInBlock: t,
-                                dur: condDuration(byName.get(condName)),
-                                rep: r,
-                                randomize: entry.randomize
-                            });
-                            // Intertrial between consecutive trials within a rep (not after last)
-                            const isLastTrialOfFinalRep = (r === entry.repetitions - 1) && (t === entry.trials.length - 1);
-                            if (entry.intertrial && !isLastTrialOfFinalRep) {
-                                steps.push({
-                                    kind: 'iti',
-                                    label: 'iti: ' + entry.intertrial,
-                                    conditionName: entry.intertrial,
-                                    seqIdx,
-                                    blockName: entry.name,
-                                    dur: condDuration(iti)
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-            return { steps, hasRandom };
+            return RunnerLib.flattenStructure(experiment);
         }
 
         // Format seconds as "1m", "15m", "1h 5m" for ruler labels.
@@ -5867,6 +6143,7 @@
             renderInspector();
             renderTimeline();
             renderExportWarnings();
+            updateRunSeqBtn();
         }
 
         // Soft-warn validation banner. Listed in the yellow strip below the

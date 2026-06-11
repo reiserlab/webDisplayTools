@@ -90,7 +90,6 @@ Today `renderEditableField` only branches on `typeHint === 'number'`; `select`
 schema entries fall through to text input. Affects:
 
 - `log.level` (DEBUG / INFO / WARNING / ERROR)
-- `controller.command_name: setColorDepth` → `gs_val` (2 / 16)
 - `controller.command_name: trialParams` → `mode` (2 / 4)
 
 Path: lookup via `getV3CommandParams(experiment, type, pluginName, commandName)`,
