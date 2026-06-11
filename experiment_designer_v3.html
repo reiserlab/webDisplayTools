@@ -453,6 +453,30 @@
             overflow: auto;
         }
         .confirm-modal .body ul li { padding: 0.1rem 0; }
+        /* Dropdown-picker fields (pickConditionModal — +Ref / +Block) */
+        .confirm-modal .body label.pick-label {
+            display: block;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-dim);
+            margin: 0.6rem 0 0.2rem;
+        }
+        .confirm-modal .body label.pick-label:first-child { margin-top: 0; }
+        .confirm-modal .body select.pick-input,
+        .confirm-modal .body input.pick-input {
+            width: 100%;
+            box-sizing: border-box;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            padding: 0.35rem 0.5rem;
+            border-radius: 2px;
+        }
+        .confirm-modal .body select.pick-input:focus,
+        .confirm-modal .body input.pick-input:focus { outline: none; border-color: var(--accent); }
         .confirm-modal .actions {
             display: flex;
             gap: 0.5rem;
@@ -1463,8 +1487,8 @@
             <div class="zone-header">
                 <span id="seqZoneTitle">Experiment Sequence</span>
                 <span class="count" id="seqCount">0</span>
-                <button id="addRefBtn" class="zone-head-btn" title="Append a bare reference to an existing condition" disabled>+ Ref</button>
-                <button id="addBlockBtn" class="zone-head-btn" title="Append a new block (group of trials with optional repetition / intertrial)" disabled>+ Block</button>
+                <button id="addRefBtn" class="zone-head-btn" title="Append a reference to a library condition — pick from a dropdown (or drag a library row into the sequence)" disabled>+ Ref</button>
+                <button id="addBlockBtn" class="zone-head-btn" title="Append a new block — pick the first trial from a dropdown + optional name (then drag more trials in)" disabled>+ Block</button>
                 <button id="runSeqBtn" class="zone-head-btn run-seq-btn" title="Run the WHOLE sequence on the arena over Web Serial — conditions × repeats, client-side waits, ITI (controller commands only; plugins are skipped). Trial timing is host-side/best-effort (firmware duration not landed yet) — keep this tab focused; STOP is the primary control." disabled>▶ Run on arena</button>
             </div>
             <div class="zone-body">
@@ -1515,7 +1539,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.33 | <span id="footerTimestamp">2026-06-11 18:22 ET</span>
+        v3 Experiment Designer v0.34 | <span id="footerTimestamp">2026-06-11 19:07 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -2168,6 +2192,79 @@
             });
         }
 
+        /**
+         * pickConditionModal({title, confirmLabel, withName}) -> Promise<null | {condition, name}>
+         *
+         * Dropdown picker for choosing an existing library condition — replaces the
+         * old free-text prompt() in +Ref / +Block (no typing, no name validation: the
+         * value always comes from the library). `withName: true` (used by +Block) adds
+         * an optional block-name text field (auto-numbered if left blank). Resolves null
+         * on cancel / Esc / backdrop-click. Reuses the confirm-modal chrome + .pick-input CSS.
+         * Caller must guarantee experiment.conditions is non-empty.
+         */
+        function pickConditionModal(opts) {
+            return new Promise((resolve) => {
+                const names = experiment.conditions.map((c) => c.name);
+                const backdrop = el('div', { class: 'confirm-modal-backdrop' });
+                const modal = el('div', { class: 'confirm-modal' });
+                modal.appendChild(el('h3', {}, opts.title || 'Pick a condition'));
+
+                const body = el('div', { class: 'body' });
+                body.appendChild(el('label', { class: 'pick-label' }, 'Condition'));
+                const select = el('select', { class: 'pick-input',
+                    title: 'Pick an existing library condition to reference' });
+                for (const n of names) select.appendChild(el('option', { value: n }, n));
+                body.appendChild(select);
+
+                let nameInput = null;
+                if (opts.withName) {
+                    body.appendChild(el('label', { class: 'pick-label' }, 'Block name (optional)'));
+                    nameInput = el('input', { type: 'text', class: 'pick-input',
+                        placeholder: 'auto-numbered if blank',
+                        title: 'Optional block name; auto-numbered if left empty' });
+                    body.appendChild(nameInput);
+                }
+                modal.appendChild(body);
+
+                const actions = el('div', { class: 'actions' });
+                let resolved = false;
+                const pick = () => ({
+                    condition: select.value,
+                    name: nameInput ? nameInput.value.trim() : undefined
+                });
+                const finish = (result) => {
+                    if (resolved) return;
+                    resolved = true;
+                    document.removeEventListener('keydown', onKey);
+                    backdrop.remove();
+                    resolve(result);
+                };
+                const cancelBtn = el('button', {
+                    onClick: () => finish(null),
+                }, opts.cancelLabel || 'Cancel');
+                const confirmBtn = el('button', {
+                    class: 'primary',
+                    onClick: () => finish(pick()),
+                }, opts.confirmLabel || 'Add');
+                actions.appendChild(cancelBtn);
+                actions.appendChild(confirmBtn);
+                modal.appendChild(actions);
+                backdrop.appendChild(modal);
+                backdrop.addEventListener('click', (e) => {
+                    if (e.target === backdrop) finish(null);
+                });
+                // Esc → cancel; Enter → confirm (unless focus is the name field, where
+                // Enter should also just confirm — single-line input, no newline needed).
+                const onKey = (e) => {
+                    if (e.key === 'Escape') { e.preventDefault(); finish(null); }
+                    else if (e.key === 'Enter') { e.preventDefault(); finish(pick()); }
+                };
+                document.addEventListener('keydown', onKey);
+                document.body.appendChild(backdrop);
+                setTimeout(() => select.focus(), 0);
+            });
+        }
+
         // ═══════════════════════════════════════════════════════════════
         // Settings drawer
         // ═══════════════════════════════════════════════════════════════
@@ -2783,35 +2880,22 @@
 
         // ─── Sequence: + Ref / + Block / drag / delete ─────────────────────
 
-        function onAddSeqRef() {
+        async function onAddSeqRef() {
             if (!experiment || importMode) return;
             if (experiment.conditions.length === 0) {
                 showError('Add ref failed', 'No conditions in the library yet. Add a condition first.');
                 return;
             }
-            const names = experiment.conditions.map((c) => c.name);
-            const suggestion = names[0];
-            const promptText =
-                'Reference which condition?\n\n' +
-                'Available: ' + names.slice(0, 12).join(', ') +
-                (names.length > 12 ? `, ... (${names.length - 12} more)` : '');
-            const name = prompt(promptText, suggestion);
-            if (name === null) return;
-            const trimmed = name.trim();
-            if (!trimmed) {
-                showError('Add ref failed', 'Name cannot be empty.');
-                return;
-            }
-            if (!names.includes(trimmed)) {
-                showError(
-                    'Add ref failed',
-                    'Condition "' + trimmed + '" is not in the library. The ref would be marked missing on import.'
-                );
-                return;
-            }
+            const picked = await pickConditionModal({
+                title: 'Reference a condition',
+                confirmLabel: 'Add ref',
+            });
+            if (!picked) return;
+            // State may have changed while the modal was open (e.g. import mode).
+            if (!experiment || importMode) return;
             pushUndo();
             try {
-                docAppendSequenceEntry(experiment, { kind: 'ref', condition_name: trimmed });
+                docAppendSequenceEntry(experiment, { kind: 'ref', condition_name: picked.condition });
                 setDirty(true);
                 selection = { kind: 'ref', index: experiment.sequence.length - 1 };
                 renderAll();
@@ -2820,36 +2904,28 @@
             }
         }
 
-        function onAddSeqBlock() {
+        async function onAddSeqBlock() {
             if (!experiment || importMode) return;
             if (experiment.conditions.length === 0) {
                 showError('Add block failed', 'No conditions in the library yet. Add a condition first.');
                 return;
             }
-            const names = experiment.conditions.map((c) => c.name);
-            const trial = prompt(
-                'First trial condition for the new block?\n\n' +
-                'Available: ' + names.slice(0, 12).join(', ') +
-                (names.length > 12 ? `, ... (${names.length - 12} more)` : ''),
-                names[0]
-            );
-            if (trial === null) return;
-            const trimmedTrial = trial.trim();
-            if (!trimmedTrial || !names.includes(trimmedTrial)) {
-                showError('Add block failed', 'First trial must be an existing library condition.');
-                return;
-            }
-            const blockName = prompt('Block name (optional, auto-numbered if blank):', '');
-            if (blockName === null) return;
-            const trimmedBlockName = blockName.trim();
+            const picked = await pickConditionModal({
+                title: 'New block',
+                confirmLabel: 'Add block',
+                withName: true,
+            });
+            if (!picked) return;
+            // State may have changed while the modal was open (e.g. import mode).
+            if (!experiment || importMode) return;
             pushUndo();
             try {
                 const entry = {
                     kind: 'block',
-                    trials: [trimmedTrial],
+                    trials: [picked.condition],
                     repetitions: 1
                 };
-                if (trimmedBlockName) entry.name = trimmedBlockName;
+                if (picked.name) entry.name = picked.name;
                 docAppendSequenceEntry(experiment, entry);
                 setDirty(true);
                 selection = { kind: 'block', index: experiment.sequence.length - 1 };
@@ -5938,6 +6014,13 @@
 
             for (const k of detailKeys) {
                 if (cmd[k] === undefined) continue;
+                // pattern_ID is auto-derived from the pattern name for W (web / active-set)
+                // patterns, so it's redundant there — hide it. Keep it visible for C
+                // (computer / MATLAB-path) patterns, where it's the browser-run fallback.
+                if (k === 'pattern_ID' && cmd.type === 'controller' &&
+                    cmd.command_name === 'trialParams' && activeSetIndexByName(cmd.pattern) != null) {
+                    continue;
+                }
                 const fieldSchema = paramsSchema && paramsSchema[k];
                 // LAB-96: the trialParams `pattern` becomes a pick-by-name dropdown +
                 // preview when an active pattern set exists. Gated here so plugin/other
