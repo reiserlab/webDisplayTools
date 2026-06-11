@@ -3483,6 +3483,60 @@ console.log('\n--- Suite N13: import canonical plugin binding (#89) ---');
     check('N13d: prefix change leaves canonical bind alone', stR.batch.pluginRegistry.get('specialCam').plannedName, 'specialCam');
 }
 
+// ─── Suite 31: variables-section ORDERING — the "frozen editor" bug ───────────
+// docCreateVariable must insert `variables:` BEFORE the alias-bearing sections
+// (experiment:/conditions:). When the section was appended at the end (old
+// doc.set), a freshly-created anchor sat AFTER the command alias bound to it, so
+// experiment._doc.toString() threw "Unresolved alias" — which fires from
+// snapshotState() on the NEXT pushUndo, freezing the editor.
+console.log('\n--- Suite 32: variables ordering (frozen-editor bugfix) ---');
+{
+    const yaml = [
+        'version: 3',
+        'experiment_info: {name: t}',
+        'rig: "/tmp/r.yaml"',
+        'experiment: [c1]',
+        'conditions:',
+        '  - name: c1',
+        '    commands:',
+        '      - type: wait',
+        '        duration: 5'
+    ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml); // NO variables: section
+    docCreateVariable(exp, 'pause_short', 1);
+    docBindToAnchor(exp, ['conditions', 0, 'commands', 0, 'duration'], 'pause_short');
+
+    let text = null;
+    let threw = null;
+    try {
+        text = exp._doc.toString();
+    } catch (e) {
+        threw = e.message;
+    }
+    checkTrue(
+        '31.1: toString() does not throw after binding on a no-variables doc',
+        threw === null,
+        threw || ''
+    );
+    if (text) {
+        const ai = text.indexOf('&pause_short');
+        const li = text.indexOf('*pause_short');
+        checkTrue(
+            '31.2: anchor &pause_short precedes alias *pause_short',
+            ai >= 0 && li >= 0 && ai < li,
+            'anchorIdx=' + ai + ' aliasIdx=' + li
+        );
+        checkTrue(
+            '31.3: variables: section sits before conditions:',
+            text.indexOf('\nvariables:') >= 0 &&
+                text.indexOf('\nvariables:') < text.indexOf('\nconditions:'),
+            text.slice(0, 90)
+        );
+        const re = parseV3Protocol(text);
+        check('31.4: rebound field resolves to the anchor value', re.conditions[0].commands[0].duration, 1);
+    }
+}
+
 // ─── Results ────────────────────────────────────────────────────────────────
 console.log('\n=== Results: ' + passedTests + '/' + totalTests + ' passed ===');
 if (failedTests.length > 0) {

@@ -1651,14 +1651,16 @@ function docCreateVariable(experiment, name, value) {
         );
     }
 
-    // Find or create the variables: map. yaml@2's setIn replaces nodes
-    // wholesale, so we create a fresh YAMLMap only if absent.
-    let varsNode = experiment._doc.get('variables', true);
-    if (!varsNode || !Array.isArray(varsNode.items)) {
-        const newMap = experiment._doc.createNode({});
-        experiment._doc.set('variables', newMap);
-        varsNode = experiment._doc.get('variables', true);
-    }
+    // Find or create the variables: map AT THE CANONICAL POSITION (before the
+    // alias-bearing experiment:/conditions: sections). A plain doc.set('variables',…)
+    // APPENDS the section to the END of the root map — after conditions: — so a
+    // freshly-created anchor would sit AFTER any command field that binds to it.
+    // yaml@2 stringifies with verifyAliasOrder (default), so the alias would then
+    // precede its anchor and experiment._doc.toString() would throw "Unresolved
+    // alias" — which fires from snapshotState() on the NEXT pushUndo, breaking
+    // every subsequent mutation + undo (the editor appears frozen). ensureTopLevelSection
+    // splices variables: at the right spot (it's the same helper the D4 importer uses).
+    const varsNode = ensureTopLevelSection(experiment, 'variables', 'map');
 
     // Build the scalar with the anchor attached, then assemble the pair.
     const valueNode = experiment._doc.createNode(value);
