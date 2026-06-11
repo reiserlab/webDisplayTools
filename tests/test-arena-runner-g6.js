@@ -565,6 +565,55 @@ async function main() {
         checkBool('runner inactive after abort', runnerRef.active === false);
     }
 
+    console.log('\n=== runSequence: host-side timing — trial OVERLAPS waits (no double-count) ===');
+    {
+        // Inject a sleep that SUMS requested ms instead of waiting, so we can assert
+        // the total host time per condition == max(trialDuration, sum(waits)).
+        const totalSleptSec = async (commands) => {
+            const link = makeFakeLink();
+            const runner = new Runner.ArenaRunner(link, Wire);
+            let ms = 0;
+            await runner.runSequence({
+                steps: [{ kind: 'ref', conditionName: 'c', label: 'c', seqIdx: 0, dur: 0 }],
+                conditionsByName: new Map([['c', { name: 'c', commands }]]),
+                resolvePatternId: () => 1,
+                sleep: (n) => {
+                    ms += n;
+                    return Promise.resolve();
+                }
+            });
+            return ms / 1000;
+        };
+        const tp = (d) => ({
+            type: 'controller',
+            command_name: 'trialParams',
+            mode: 2,
+            frame_rate: 10,
+            gain: 0,
+            frame_index: 0,
+            duration: d
+        });
+        const w = (d) => ({ type: 'wait', duration: d });
+        const allOn = { type: 'controller', command_name: 'allOn' };
+        check(
+            'trialParams(5)+wait(5) = 5s (overlap, NOT 10)',
+            await totalSleptSec([tp(5), w(5)]),
+            5
+        );
+        check(
+            'trialParams(10)+wait(3) = 10s (waits + 7s top-up)',
+            await totalSleptSec([tp(10), w(3)]),
+            10
+        );
+        check('standalone trialParams(5) = 5s (full top-up)', await totalSleptSec([tp(5)]), 5);
+        check('no trialParams: allOn+wait(2) = 2s', await totalSleptSec([allOn, w(2)]), 2);
+        check(
+            'two waits sum: trialParams(2)+wait(3)+wait(4) = 7s',
+            await totalSleptSec([tp(2), w(3), w(4)]),
+            7
+        );
+    }
+
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);

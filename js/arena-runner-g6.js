@@ -353,10 +353,15 @@ var ArenaRunnerG6 = (function () {
     /**
      * TIMING MODEL — interim, host-side (firmware issue
      * reiserlab/LED-Display_G6_Firmware_Arena#4). The controller-run trial
-     * `duration` is NOT in firmware yet, so the browser drives trial timing: after a
-     * trialParams send acks OK, sleep `durationSec`, then advance to the next
-     * command/step. This function is the ONE place that decides "when is a trial
-     * done".
+     * `duration` is NOT in firmware yet, so the browser holds the trial's display
+     * time. IMPORTANT: a trialParams display OVERLAPS the condition's `wait`
+     * commands (the controller loops the pattern autonomously while the host waits),
+     * so the trial duration is NOT added to the waits. runSequence sleeps the waits
+     * as they occur, then calls this ONCE per condition to "top up" only the
+     * remainder — `max(trialDuration, sum(waits)) - sum(waits)` — giving a
+     * wall-clock of `max(trialDuration, sum(waits))`, matching conditionDuration /
+     * the timeline. (Sleeping per trialParams AND per wait double-counted — the bug
+     * this model fixes.)
      *
      * SWAP POINT: once #4 lands (trial_params carries a controller-run duration and
      * the controller signals completion), replace this with a function that AWAITS
@@ -366,11 +371,11 @@ var ArenaRunnerG6 = (function () {
      * Best-effort: a slept/closed tab won't fire the timer, so STOP/abort is the
      * primary control.
      *
-     * @param {number} durationSec               trial duration in s (0 ⇒ no wait)
-     * @param {function(number):Promise} sleep    abort-aware sleep(ms)
+     * @param {number} remainderSec               trial time left after the waits (0 ⇒ none)
+     * @param {function(number):Promise} sleep     abort-aware sleep(ms)
      */
-    async function hostSideTrialEnd(durationSec, sleep) {
-        await sleep((Number(durationSec) || 0) * 1000);
+    async function hostSideTrialEnd(remainderSec, sleep) {
+        await sleep((Number(remainderSec) || 0) * 1000);
     }
 
     // ---- run-state machine ----------------------------------------------
@@ -619,11 +624,14 @@ var ArenaRunnerG6 = (function () {
                         emit({ phase: 'step-done', index: i, total: steps.length, step });
                         continue;
                     }
+                    // Per-condition timing accumulators: the max trialParams target
+                    // duration and the total time actually slept on wait commands.
+                    const acc = { trialTargetSec: 0, waitedSec: 0 };
                     for (const cmd of cond.commands) {
                         if (this._abort) break;
                         const ir = translateCommand(cmd, { patternId: resolvePatternId(cmd) });
                         try {
-                            await this._runIR(ir, { step, index: i, emit, timing, sleep, summary });
+                            await this._runIR(ir, { step, index: i, emit, sleep, summary, acc });
                         } catch (e) {
                             // A wire/link failure mid-command: surface it and abort
                             // the run (the finally sends STOP). Don't blindly continue
@@ -639,6 +647,15 @@ var ArenaRunnerG6 = (function () {
                             });
                             break;
                         }
+                    }
+                    // Condition-level host-side trial timing: hold so the trial gets
+                    // its full display duration OVERLAPPING the waits (not added to
+                    // them), making wall-clock == max(trialDuration, sum(waits)) — the
+                    // value conditionDuration / the timeline shows. When firmware #4
+                    // lands (controller enforces duration + signals done), this top-up
+                    // is what gets swapped for awaiting that signal.
+                    if (!this._abort && acc.trialTargetSec > acc.waitedSec) {
+                        await timing(acc.trialTargetSec - acc.waitedSec, sleep);
                     }
                     emit({ phase: 'step-done', index: i, total: steps.length, step });
                 }
@@ -668,7 +685,7 @@ var ArenaRunnerG6 = (function () {
          * Throws only on a link/send failure (the caller aborts the run).
          */
         async _runIR(ir, ctx) {
-            const { step, index, emit, timing, sleep, summary } = ctx;
+            const { step, index, emit, sleep, summary, acc } = ctx;
             const W = this._wire;
             switch (ir.op) {
                 case 'trialParams': {
@@ -693,8 +710,15 @@ var ArenaRunnerG6 = (function () {
                         response: resp,
                         durationSec: ir.durationSec
                     });
-                    // Host-side timing (interim — firmware #4). Abort-aware via sleep.
-                    await timing(ir.durationSec, sleep);
+                    // Trial timing is host-side (interim — firmware #4) but does NOT
+                    // block here: the controller displays the pattern autonomously
+                    // while the condition's wait commands run CONCURRENTLY. We only
+                    // record the trial's target duration; runSequence tops up at the
+                    // end of the condition if the waits didn't cover it, so the
+                    // condition's wall-clock == max(trialDuration, sum(waits)) — the
+                    // same value the timeline estimates. (Sleeping here AND on every
+                    // wait double-counted the time.)
+                    acc.trialTargetSec = Math.max(acc.trialTargetSec, Number(ir.durationSec) || 0);
                     return;
                 }
                 case 'allOn':
@@ -715,6 +739,7 @@ var ArenaRunnerG6 = (function () {
                     return;
                 case 'wait':
                     await sleep((Number(ir.durationSec) || 0) * 1000);
+                    acc.waitedSec += Number(ir.durationSec) || 0;
                     emit({ phase: 'command', index, step, op: ir.op, value: ir.durationSec });
                     return;
                 case 'skip':
