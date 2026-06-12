@@ -896,10 +896,18 @@
                         <div id="sf-stream-preview" class="thumb" style="margin-left: auto"></div>
                     </div>
                     <div class="grp-row wrap">
-                        <label title="Uniform full-field brightness level (GS16: 0–15)"
+                        <label
+                            id="sf-level-wrap"
+                            title="Uniform full-field pixel level (GS16: 0–15). Hidden in GS2 — pixels are on/off there."
                             >level
                             <input id="sf-level" type="range" min="0" max="15" value="15" />
                             <span id="sf-level-val" class="mono">15</span>
+                        </label>
+                        <label
+                            title="Per-LED duty cycle written into every streamed panel block — 0–255 brightness (0 = off, 128 ≈ 50%). Applies to all stream frames."
+                            >duty
+                            <input id="sf-duty" type="range" min="0" max="255" value="128" />
+                            <span id="sf-duty-val" class="mono">128</span>
                         </label>
                         <button
                             class="cmd"
@@ -995,7 +1003,7 @@
                 <div id="log"></div>
             </div>
 
-            <footer id="footer">Arena Console v4 | 2026-06-12 07:28 ET</footer>
+            <footer id="footer">Arena Console v4 | 2026-06-12 09:33 ET</footer>
         </div>
 
         <!-- Paste-a-frame modal -->
@@ -1268,6 +1276,7 @@
 
             // ── stream frame ────────────────────────────────────────────────
             let streamGs = 16; // 16 (GS16) or 2 (GS2)
+            let streamDuty = 128; // per-LED duty-cycle byte (0–255) written into each panel block
             // 3×5 pixel font (rows top→bottom; bit2 = left column).
             const FONT = {
                 0: [7, 5, 5, 5, 7],
@@ -1317,7 +1326,7 @@
             }
             function genUniform(level) {
                 const grid = newGrid();
-                grid.fill(streamGs === 2 ? (level > 0 ? 1 : 0) : level);
+                grid.fill(streamGs === 2 ? 1 : level); // GS2 = all-on (brightness via duty); GS16 = level
                 return grid;
             }
             function genPanelMap() {
@@ -1387,7 +1396,8 @@
                     colCount: a.colCount,
                     pixelRows: a.pixelRows,
                     pixelCols: a.pixelCols,
-                    frames: [grid]
+                    frames: [grid],
+                    stretchValues: [streamDuty] // per-LED duty byte → each panel block's last byte
                 };
                 const patArrayBuffer = window.PatEncoder.encode(patData);
                 const buf = new Uint8Array(patArrayBuffer);
@@ -1441,10 +1451,16 @@
                 streamGs = gs;
                 $('gs-16').classList.toggle('seg-on', gs === 16);
                 $('gs-2').classList.toggle('seg-on', gs === 2);
+                // level is a GS16-only pixel value; hide it for GS2 (pixels are on/off there)
+                $('sf-level-wrap').style.display = gs === 2 ? 'none' : '';
             }
             $('gs-16').onclick = () => setGs(16);
             $('gs-2').onclick = () => setGs(2);
             $('sf-level').oninput = () => ($('sf-level-val').textContent = $('sf-level').value);
+            $('sf-duty').oninput = () => {
+                streamDuty = parseInt($('sf-duty').value, 10);
+                $('sf-duty-val').textContent = streamDuty;
+            };
 
             function updateStreamUI() {
                 const ok = streamable();
