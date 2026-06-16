@@ -186,6 +186,25 @@ function main() {
     const arenaRegistry = parseArenaRegistry(registryDir);
     console.log(`  Arena registry: ${JSON.stringify(arenaRegistry)}`);
 
+    // Guard: refuse to emit an empty ARENA_REGISTRY (LAB-111). A missing registry
+    // source means the arena name<->ID map would be silently dropped, regressing
+    // getArenaId/getArenaName and the .pat V2-header arena_id. Fail loudly here so a
+    // bad sync run aborts instead of opening a destructive auto-PR (cf. PR #95, #108).
+    // The caller must fetch configs/arena_registry/index.yaml alongside the arenas
+    // (see .github/workflows/sync-arena-configs.yml).
+    if (Object.keys(arenaRegistry).length === 0) {
+        console.error(
+            `Error: ARENA_REGISTRY parsed empty (looked for ${path.join(registryDir, 'index.yaml')}).`
+        );
+        console.error(
+            'Refusing to generate js/arena-configs.js with an empty registry. Ensure the arena'
+        );
+        console.error(
+            'registry is fetched next to the arenas dir, then re-run. Aborting. [LAB-111]'
+        );
+        process.exit(1);
+    }
+
     const configs = {};
     const files = fs
         .readdirSync(configDir)
