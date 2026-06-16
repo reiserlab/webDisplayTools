@@ -8,7 +8,7 @@
 
 // Panel specifications (from MATLAB design_arena.m)
 const PANEL_SPECS = {
-    'G3': {
+    G3: {
         panel_width_mm: 32,
         panel_depth_mm: 18,
         pixels_per_panel: 8,
@@ -16,7 +16,7 @@ const PANEL_SPECS = {
         pin_dist_mm: 15.24,
         pin_config: 'single'
     },
-    'G4': {
+    G4: {
         panel_width_mm: 40.45,
         panel_depth_mm: 18,
         pixels_per_panel: 16,
@@ -33,7 +33,7 @@ const PANEL_SPECS = {
         pin_config: 'single'
     },
     // Note: G5 is deprecated and no longer supported
-    'G6': {
+    G6: {
         panel_width_mm: 45.4,
         panel_depth_mm: 3.45,
         pixels_per_panel: 20,
@@ -68,7 +68,7 @@ function calculateGeometry(panelType, numPanels, panelsInstalled = null) {
 
     // Calculate geometry
     const alpha = (2 * Math.PI) / numPanels;
-    const cRadius = panelWidth / (Math.tan(alpha / 2)) / 2;
+    const cRadius = panelWidth / Math.tan(alpha / 2) / 2;
     const backCRadius = cRadius + panelDepth;
 
     // Resolution
@@ -112,7 +112,11 @@ function compareGeometry(computed, reference, tolerance = 0.0001) {
 
     const comparisons = [
         { field: 'c_radius_inches', label: 'Inner Radius (in)' },
-        { field: 'back_c_radius_inches', label: 'Outer Radius (in)', refField: 'back_c_radius_inches' },
+        {
+            field: 'back_c_radius_inches',
+            label: 'Outer Radius (in)',
+            refField: 'back_c_radius_inches'
+        },
         { field: 'degs_per_pixel', label: 'Deg/Pixel' },
         { field: 'azimuthal_pixels', label: 'Azimuthal Pixels' }
     ];

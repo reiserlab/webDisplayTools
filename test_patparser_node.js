@@ -12,7 +12,7 @@ try {
     // Check methods
     const methods = Object.keys(PatParser);
     console.log('\nAvailable methods/properties:');
-    methods.forEach(m => {
+    methods.forEach((m) => {
         console.log(`  - ${m}: ${typeof PatParser[m]}`);
     });
 
@@ -29,12 +29,23 @@ try {
 
         // Create a test G6 header
         const headerBytes = Buffer.from([
-            0x47, 0x36, 0x50, 0x54,  // 'G6PT' magic
-            0x14, 0x00,              // 20x20 panels
-            0x00, 0x00, 0x00, 0x01,  // 1 frame
-            0x00, 0x00, 0x00, 0x00,  // row index start
-            0x01,                     // GS2
-            0x00, 0x00               // padding
+            0x47,
+            0x36,
+            0x50,
+            0x54, // 'G6PT' magic
+            0x14,
+            0x00, // 20x20 panels
+            0x00,
+            0x00,
+            0x00,
+            0x01, // 1 frame
+            0x00,
+            0x00,
+            0x00,
+            0x00, // row index start
+            0x01, // GS2
+            0x00,
+            0x00 // padding
         ]);
 
         try {
@@ -54,7 +65,6 @@ try {
     console.log('2. Verify js/pat-parser.js is being served (check Network tab)');
     console.log('3. Try hard refresh (Ctrl+Shift+R)');
     console.log('4. Check if Content Security Policy is blocking the script');
-
 } catch (error) {
     console.error('\n✗ FAILED TO LOAD pat-parser.js');
     console.error('Error:', error.message);

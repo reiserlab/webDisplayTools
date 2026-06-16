@@ -305,7 +305,8 @@ var BUILTIN_PLUGINS = {
         commands: {
             startContinuousLogging: {
                 label: 'Start Continuous Logging',
-                description: 'Begin background acquisition; logs to CSV at sample_rate Hz until stopped (recommended for long experiments).'
+                description:
+                    'Begin background acquisition; logs to CSV at sample_rate Hz until stopped (recommended for long experiments).'
             },
             stopContinuousLogging: {
                 label: 'Stop Continuous Logging',
@@ -372,7 +373,8 @@ var BUILTIN_PLUGINS = {
         commands: {
             connect: {
                 label: 'Connect',
-                description: 'Connect to BIAS camera (use when rig YAML is missing ip, port, or config_file)',
+                description:
+                    'Connect to BIAS camera (use when rig YAML is missing ip, port, or config_file)',
                 params: {
                     ip: {
                         type: 'string',

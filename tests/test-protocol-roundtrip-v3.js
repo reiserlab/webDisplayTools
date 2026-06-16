@@ -348,17 +348,18 @@ checkThrows(
 // Unknown command types passthrough (forward-compat) — preserves type and all
 // fields so future MATLAB additions (branch, loop, etc.) round-trip safely.
 {
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'experiment: [foo]',
-        'conditions:',
-        '  - name: foo',
-        '    commands:',
-        '      - {type: "branch", condition: "x > 0", goto: "next"}',
-        '      - {type: "wait", duration: 1}'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'experiment: [foo]',
+            'conditions:',
+            '  - name: foo',
+            '    commands:',
+            '      - {type: "branch", condition: "x > 0", goto: "next"}',
+            '      - {type: "wait", duration: 1}'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     const cmds = exp.conditions[0].commands;
     check('passthrough: unknown type preserved', cmds[0].type, 'branch');
@@ -466,7 +467,7 @@ checkThrows(
 }
 
 // ─── Test Suite 8b: Full-experiment fixture (Lisa, 2026-05-26) ──────────────
-console.log('\n--- Suite 8b: Lisa\'s full_experiment_test_v3 fixture ---');
+console.log("\n--- Suite 8b: Lisa's full_experiment_test_v3 fixture ---");
 
 {
     const text = readFixture('v3_full_experiment.yaml');
@@ -484,15 +485,18 @@ console.log('\n--- Suite 8b: Lisa\'s full_experiment_test_v3 fixture ---');
     check('full_exp: seq[5] bare ref "shutdown"', exp.sequence[5].condition_name, 'shutdown');
 
     const refs = validateReferences(exp);
-    checkTrue(
-        'full_exp: all references resolve',
-        refs.ok,
-        refs.ok ? '' : refs.errors.join('; ')
-    );
+    checkTrue('full_exp: all references resolve', refs.ok, refs.ok ? '' : refs.errors.join('; '));
 
     // Anchor survival (variable names from Lisa's fixture)
     const regen = generateV3Protocol(exp);
-    for (const anchor of ['IR_power', 'trial_dur', 'fr_rate', 'led_power', 'baseline_wait', 'inter_wait']) {
+    for (const anchor of [
+        'IR_power',
+        'trial_dur',
+        'fr_rate',
+        'led_power',
+        'baseline_wait',
+        'inter_wait'
+    ]) {
         checkTrue('full_exp: anchor &' + anchor + ' in regen', regen.includes('&' + anchor));
         checkTrue('full_exp: alias *' + anchor + ' in regen', regen.includes('*' + anchor));
     }
@@ -569,16 +573,8 @@ console.log('\n--- Suite 9: docSet edits + alias detection ---');
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
 
     const arenaCheckIdx = exp.conditions.findIndex((c) => c.name === 'arena check');
-    const arenaWaitIdx = exp.conditions[arenaCheckIdx].commands.findIndex(
-        (c) => c.type === 'wait'
-    );
-    const aliasPath = [
-        'conditions',
-        arenaCheckIdx,
-        'commands',
-        arenaWaitIdx,
-        'duration'
-    ];
+    const arenaWaitIdx = exp.conditions[arenaCheckIdx].commands.findIndex((c) => c.type === 'wait');
+    const aliasPath = ['conditions', arenaCheckIdx, 'commands', arenaWaitIdx, 'duration'];
 
     checkTrue('alias: nodeIsAliasAt detects *dur_short binding', nodeIsAliasAt(exp, aliasPath));
     check('alias: aliasNameAt returns "dur_short"', aliasNameAt(exp, aliasPath), 'dur_short');
@@ -588,29 +584,16 @@ console.log('\n--- Suite 9: docSet edits + alias detection ---');
     const litWaitIdx = litCond.commands.findIndex((c) => c.type === 'wait');
     const literalPath = ['conditions', litCondIdx, 'commands', litWaitIdx, 'duration'];
 
-    check(
-        'alias: literal scalar returns null aliasName',
-        aliasNameAt(exp, literalPath),
-        null
-    );
-    checkTrue(
-        'alias: literal scalar is NOT detected as alias',
-        !nodeIsAliasAt(exp, literalPath)
-    );
+    check('alias: literal scalar returns null aliasName', aliasNameAt(exp, literalPath), null);
+    checkTrue('alias: literal scalar is NOT detected as alias', !nodeIsAliasAt(exp, literalPath));
 }
 
 {
     // 3. Edit a string field (controller.command_name) — string round-trip
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
     const condIdx = exp.conditions.findIndex((c) => c.name === 'arena check');
-    const ctrlIdx = exp.conditions[condIdx].commands.findIndex(
-        (c) => c.type === 'controller'
-    );
-    docSet(
-        exp,
-        ['conditions', condIdx, 'commands', ctrlIdx, 'command_name'],
-        'allOff'
-    );
+    const ctrlIdx = exp.conditions[condIdx].commands.findIndex((c) => c.type === 'controller');
+    docSet(exp, ['conditions', condIdx, 'commands', ctrlIdx, 'command_name'], 'allOff');
     check(
         'edit: string field JS model',
         exp.conditions[condIdx].commands[ctrlIdx].command_name,
@@ -655,11 +638,7 @@ console.log('\n--- Suite 9: docSet edits + alias detection ---');
         !regen.includes('intertrial: "intertrial"')
     );
     const reparsed = parseV3Protocol(regen);
-    check(
-        'delete: reparsed intertrial is null',
-        reparsed.sequence[blockIdx].intertrial,
-        null
-    );
+    check('delete: reparsed intertrial is null', reparsed.sequence[blockIdx].intertrial, null);
     // Anchors/comments still intact through a delete
     checkTrue('delete: &dur_long preserved', regen.includes('&dur_long'));
     checkTrue('delete: comment block preserved', regen.includes('# EXPERIMENT METADATA'));
@@ -759,19 +738,20 @@ console.log('\n--- Suite 10: v3 plugin registry (class-based lookup + log) ---')
 
 {
     // User can name a plugin anything — class-based lookup still resolves it
-    const customYaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'plugins:',
-        '  - name: my_cam',
-        '    type: class',
-        '    matlab: {class: BiasPlugin}',
-        'experiment: [setup]',
-        'conditions:',
-        '  - name: setup',
-        '    commands: [{type: wait, duration: 1}]'
-    ].join('\n') + '\n';
+    const customYaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'plugins:',
+            '  - name: my_cam',
+            '    type: class',
+            '    matlab: {class: BiasPlugin}',
+            'experiment: [setup]',
+            'conditions:',
+            '  - name: setup',
+            '    commands: [{type: wait, duration: 1}]'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(customYaml);
     const cmds = getV3PluginCommands(exp, 'my_cam');
     checkTrue('custom name: my_cam resolves Bias commands via class', !!cmds.startRecording);
@@ -793,33 +773,46 @@ console.log('\n--- Suite 10: v3 plugin registry (class-based lookup + log) ---')
     checkTrue('params: plugin camera.startRecording has filename param', !!startRec?.filename);
 
     const logParams = getV3CommandParams(exp, 'plugin', 'log', 'log');
-    checkTrue('params: plugin log.log has message + level', !!logParams?.message && !!logParams?.level);
+    checkTrue(
+        'params: plugin log.log has message + level',
+        !!logParams?.message && !!logParams?.level
+    );
 
     const nope = getV3CommandParams(exp, 'plugin', 'camera', 'bogusCommand');
     check('params: unknown plugin command returns null', nope, null);
 }
 
 // ─── Test Suite 10b: Block `repetitions` validation ────────────────────────
-console.log("\n--- Suite 10b: repetitions validation ---");
+console.log('\n--- Suite 10b: repetitions validation ---');
 
 function v3WithReps(repsLiteral) {
-    return [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'experiment:',
-        '  - name: blk',
-        '    trials: [c]',
-        '    repetitions: ' + repsLiteral,
-        'conditions:',
-        '  - name: c',
-        '    commands: [{type: wait, duration: 1}]'
-    ].join('\n') + '\n';
+    return (
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'experiment:',
+            '  - name: blk',
+            '    trials: [c]',
+            '    repetitions: ' + repsLiteral,
+            'conditions:',
+            '  - name: c',
+            '    commands: [{type: wait, duration: 1}]'
+        ].join('\n') + '\n'
+    );
 }
 
 checkThrows('reps validation: rejects 0', () => parseV3Protocol(v3WithReps('0')), 'INVALID_SCHEMA');
-checkThrows('reps validation: rejects -1', () => parseV3Protocol(v3WithReps('-1')), 'INVALID_SCHEMA');
-checkThrows('reps validation: rejects 1.5', () => parseV3Protocol(v3WithReps('1.5')), 'INVALID_SCHEMA');
+checkThrows(
+    'reps validation: rejects -1',
+    () => parseV3Protocol(v3WithReps('-1')),
+    'INVALID_SCHEMA'
+);
+checkThrows(
+    'reps validation: rejects 1.5',
+    () => parseV3Protocol(v3WithReps('1.5')),
+    'INVALID_SCHEMA'
+);
 checkThrows(
     'reps validation: rejects non-numeric string',
     () => parseV3Protocol(v3WithReps('"three"')),
@@ -833,17 +826,18 @@ checkThrows(
 }
 {
     // Omitted → default 1
-    const yamlNoReps = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'experiment:',
-        '  - name: blk',
-        '    trials: [c]',
-        'conditions:',
-        '  - name: c',
-        '    commands: [{type: wait, duration: 1}]'
-    ].join('\n') + '\n';
+    const yamlNoReps =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'experiment:',
+            '  - name: blk',
+            '    trials: [c]',
+            'conditions:',
+            '  - name: c',
+            '    commands: [{type: wait, duration: 1}]'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yamlNoReps);
     check('reps validation: omitted defaults to 1', exp.sequence[0].repetitions, 1);
 }
@@ -891,23 +885,11 @@ console.log('\n--- Suite 11: command add / move / delete ---');
 
     docInsertCommand(exp, condIdx, 1, { type: 'wait', duration: 0.25 });
     check('insert: JS length grew by 1', exp.conditions[condIdx].commands.length, before + 1);
-    check(
-        'insert: at index 1 is the new wait',
-        exp.conditions[condIdx].commands[1].type,
-        'wait'
-    );
-    check(
-        'insert: duration preserved',
-        exp.conditions[condIdx].commands[1].duration,
-        0.25
-    );
+    check('insert: at index 1 is the new wait', exp.conditions[condIdx].commands[1].type, 'wait');
+    check('insert: duration preserved', exp.conditions[condIdx].commands[1].duration, 0.25);
 
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
-    check(
-        'insert: round-trip length',
-        reparsed.conditions[condIdx].commands.length,
-        before + 1
-    );
+    check('insert: round-trip length', reparsed.conditions[condIdx].commands.length, before + 1);
     check(
         'insert: round-trip new command type',
         reparsed.conditions[condIdx].commands[1].type,
@@ -921,7 +903,10 @@ console.log('\n--- Suite 11: command add / move / delete ---');
 
     // Anchors/comments still alive after insert
     const regen = generateV3Protocol(exp);
-    checkTrue('insert: anchors preserved', regen.includes('&dur_short') && regen.includes('*dur_short'));
+    checkTrue(
+        'insert: anchors preserved',
+        regen.includes('&dur_short') && regen.includes('*dur_short')
+    );
     checkTrue('insert: comments preserved', regen.includes('# EXPERIMENT METADATA'));
 }
 
@@ -962,7 +947,11 @@ console.log('\n--- Suite 11: command add / move / delete ---');
 
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
     const reparsedCmds = reparsed.conditions[condIdx].commands;
-    check('move: round-trip last is original first', reparsedCmds[reparsedCmds.length - 1].command_name, origFirstName);
+    check(
+        'move: round-trip last is original first',
+        reparsedCmds[reparsedCmds.length - 1].command_name,
+        origFirstName
+    );
 }
 
 {
@@ -973,10 +962,18 @@ console.log('\n--- Suite 11: command add / move / delete ---');
     docDelete(exp, ['conditions', condIdx, 'commands', 1]); // delete middle (the wait)
 
     check('delete cmd: JS length shrank', exp.conditions[condIdx].commands.length, before - 1);
-    check('delete cmd: middle is now what was last', exp.conditions[condIdx].commands[1].command_name, 'allOff');
+    check(
+        'delete cmd: middle is now what was last',
+        exp.conditions[condIdx].commands[1].command_name,
+        'allOff'
+    );
 
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
-    check('delete cmd: round-trip length', reparsed.conditions[condIdx].commands.length, before - 1);
+    check(
+        'delete cmd: round-trip length',
+        reparsed.conditions[condIdx].commands.length,
+        before - 1
+    );
     // The *dur_short anchor was previously used in the deleted wait; *dur_short
     // is still defined in `variables:` and used by no one (now orphaned).
     // Generation should still succeed.
@@ -1002,30 +999,31 @@ console.log('\n--- Suite 11: command add / move / delete ---');
 console.log('\n--- Suite 12: select-typed schema field type preservation ---');
 
 {
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'experiment: [show]',
-        'conditions:',
-        '  - name: show',
-        '    commands:',
-        '      - type: controller',
-        '        command_name: trialParams',
-        '        pattern: "test.pat"',
-        '        pattern_ID: 1',
-        '        duration: 5',
-        '        mode: 2',
-        '        frame_index: 1',
-        '        frame_rate: 60',
-        '        gain: 0',
-        '      - type: plugin',
-        '        plugin_name: log',
-        '        command_name: log',
-        '        params:',
-        '          message: "starting"',
-        '          level: "DEBUG"'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'experiment: [show]',
+            'conditions:',
+            '  - name: show',
+            '    commands:',
+            '      - type: controller',
+            '        command_name: trialParams',
+            '        pattern: "test.pat"',
+            '        pattern_ID: 1',
+            '        duration: 5',
+            '        mode: 2',
+            '        frame_index: 1',
+            '        frame_rate: 60',
+            '        gain: 0',
+            '      - type: plugin',
+            '        plugin_name: log',
+            '        command_name: log',
+            '        params:',
+            '          message: "starting"',
+            '          level: "DEBUG"'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     const cmds = exp.conditions[0].commands;
 
@@ -1038,18 +1036,27 @@ console.log('\n--- Suite 12: select-typed schema field type preservation ---');
     // 2. Schema lookup returns the right type info
     const trialParamsSchema = getV3CommandParams(exp, 'controller', null, 'trialParams');
     check('select: trialParams.mode schema.type', trialParamsSchema.mode.type, 'select');
-    check('select: trialParams.mode schema.options[0].value type',
-        typeof trialParamsSchema.mode.options[0].value, 'number');
+    check(
+        'select: trialParams.mode schema.options[0].value type',
+        typeof trialParamsSchema.mode.options[0].value,
+        'number'
+    );
 
     // setColorDepth was dropped (SWITCH_GRAYSCALE 0x06 is unsupported on G6) — it no
     // longer has a controller schema, which is how the editor flags it as unsupported.
-    check('dropped: setColorDepth has no controller schema',
-        getV3CommandParams(exp, 'controller', null, 'setColorDepth'), null);
+    check(
+        'dropped: setColorDepth has no controller schema',
+        getV3CommandParams(exp, 'controller', null, 'setColorDepth'),
+        null
+    );
 
     const logSchema = getV3CommandParams(exp, 'plugin', 'log', 'log');
     check('select: log.level schema.type', logSchema.level.type, 'select');
-    check('select: log.level schema.options[0].value type',
-        typeof logSchema.level.options[0].value, 'string');
+    check(
+        'select: log.level schema.options[0].value type',
+        typeof logSchema.level.options[0].value,
+        'string'
+    );
 
     // 3. docSet with the right type preserves it through round-trip
     docSet(exp, ['conditions', 0, 'commands', 0, 'mode'], 4);
@@ -1064,10 +1071,7 @@ console.log('\n--- Suite 12: select-typed schema field type preservation ---');
 
     // 4. The exported YAML should NOT quote the numeric selects
     const regen = generateV3Protocol(exp);
-    checkTrue(
-        'select: regen YAML has unquoted numeric mode',
-        /mode:\s*4\b/.test(regen)
-    );
+    checkTrue('select: regen YAML has unquoted numeric mode', /mode:\s*4\b/.test(regen));
 }
 
 // ─── Test Suite 13: docMoveCommand throws on doc/model divergence ──────────
@@ -1183,14 +1187,17 @@ function makePluginExp() {
     // Reject non-plugin command target
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
     // Pick a condition whose first command is NOT a plugin
-    const condIdx = exp.conditions.findIndex(c => c.commands[0] && c.commands[0].type !== 'plugin');
+    const condIdx = exp.conditions.findIndex(
+        (c) => c.commands[0] && c.commands[0].type !== 'plugin'
+    );
     checkTrue('head: found non-plugin command for reject test', condIdx >= 0);
     checkThrows(
         'head: rejects non-plugin target',
-        () => docSetPluginCommandHead(exp, condIdx, 0, {
-            plugin_name: 'backlight',
-            command_name: 'setRedLEDPower'
-        }),
+        () =>
+            docSetPluginCommandHead(exp, condIdx, 0, {
+                plugin_name: 'backlight',
+                command_name: 'setRedLEDPower'
+            }),
         'INVALID_INPUT'
     );
 }
@@ -1236,7 +1243,11 @@ console.log('\n--- Suite 15: docAddPluginParam (create params: if absent) ---');
     check('add: new param added', cmd.params.extra_field, 'hello');
 
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
-    check('add: round-trip new param', reparsed.conditions[0].commands[0].params.extra_field, 'hello');
+    check(
+        'add: round-trip new param',
+        reparsed.conditions[0].commands[0].params.extra_field,
+        'hello'
+    );
 }
 
 // ─── Test Suite 16: docDeletePluginParam ───────────────────────────────────
@@ -1294,7 +1305,9 @@ console.log('\n--- Suite 16: docDeletePluginParam (params: removed when empty) -
 {
     // Reject non-plugin command
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const condIdx = exp.conditions.findIndex(c => c.commands[0] && c.commands[0].type !== 'plugin');
+    const condIdx = exp.conditions.findIndex(
+        (c) => c.commands[0] && c.commands[0].type !== 'plugin'
+    );
     checkThrows(
         'del: rejects non-plugin target',
         () => docDeletePluginParam(exp, condIdx, 0, 'foo'),
@@ -1323,75 +1336,78 @@ console.log('\n--- Suite 17: collectExportWarnings (soft-warn gate) ---');
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
     docInsertCondition(exp, 'orphan', [{ type: 'wait', duration: 1 }]);
     const { warnings } = collectExportWarnings(exp);
-    const orphanWarn = warnings.find(w => w.kind === 'unused-condition' && w.name === 'orphan');
+    const orphanWarn = warnings.find((w) => w.kind === 'unused-condition' && w.name === 'orphan');
     checkTrue('warn: unused-condition detected', !!orphanWarn);
     checkTrue('warn: orphan message mentions name', orphanWarn.message.includes('orphan'));
 }
 
 {
     // Build a YAML with an unreferenced anchor in variables:
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'variables:',
-        '  used_anchor: &used 5',
-        '  dangling_anchor: &dangling 99',
-        'experiment: [foo]',
-        'conditions:',
-        '  - name: foo',
-        '    commands:',
-        '      - type: wait',
-        '        duration: *used'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'variables:',
+            '  used_anchor: &used 5',
+            '  dangling_anchor: &dangling 99',
+            'experiment: [foo]',
+            'conditions:',
+            '  - name: foo',
+            '    commands:',
+            '      - type: wait',
+            '        duration: *used'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     const { warnings } = collectExportWarnings(exp);
-    const danglingWarn = warnings.find(w => w.kind === 'unused-anchor' && w.name === 'dangling');
+    const danglingWarn = warnings.find((w) => w.kind === 'unused-anchor' && w.name === 'dangling');
     checkTrue('warn: unused-anchor detected', !!danglingWarn);
-    const usedWarn = warnings.find(w => w.kind === 'unused-anchor' && w.name === 'used');
+    const usedWarn = warnings.find((w) => w.kind === 'unused-anchor' && w.name === 'used');
     checkTrue('warn: referenced anchor NOT flagged', !usedWarn);
 }
 
 {
     // Plugin used but not declared in plugins:
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'plugins: []',
-        'experiment: [foo]',
-        'conditions:',
-        '  - name: foo',
-        '    commands:',
-        '      - {type: plugin, plugin_name: ghost, command_name: ping}'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'plugins: []',
+            'experiment: [foo]',
+            'conditions:',
+            '  - name: foo',
+            '    commands:',
+            '      - {type: plugin, plugin_name: ghost, command_name: ping}'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     const { warnings } = collectExportWarnings(exp);
-    const ghost = warnings.find(w => w.kind === 'undeclared-plugin' && w.name === 'ghost');
+    const ghost = warnings.find((w) => w.kind === 'undeclared-plugin' && w.name === 'ghost');
     checkTrue('warn: undeclared-plugin detected', !!ghost);
 
     // log plugin is built-in and should NEVER warn even when undeclared
     const yaml2 = yaml.replace('ghost', 'log').replace('ping', 'log');
     const exp2 = parseV3Protocol(yaml2);
     const w2 = collectExportWarnings(exp2).warnings;
-    checkTrue('warn: log plugin never flagged', !w2.find(w => w.kind === 'undeclared-plugin'));
+    checkTrue('warn: log plugin never flagged', !w2.find((w) => w.kind === 'undeclared-plugin'));
 }
 
 {
     // Raw command card → informational warning
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'experiment: [foo]',
-        'conditions:',
-        '  - name: foo',
-        '    commands:',
-        '      - {type: "loop", count: 5}'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'experiment: [foo]',
+            'conditions:',
+            '  - name: foo',
+            '    commands:',
+            '      - {type: "loop", count: 5}'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     const { warnings } = collectExportWarnings(exp);
-    const rawWarn = warnings.find(w => w.kind === 'raw-command' && w.name === 'loop');
+    const rawWarn = warnings.find((w) => w.kind === 'raw-command' && w.name === 'loop');
     checkTrue('warn: raw-command detected', !!rawWarn);
 }
 
@@ -1437,16 +1453,16 @@ console.log('\n--- Suite 19: docCloneCondition (preserves aliases) ---');
     // After clone, the duplicate must still have the *dur_short alias node,
     // not the resolved literal — otherwise edits to dur_short won't propagate.
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const srcIdx = exp.conditions.findIndex(c => c.name === 'arena check');
+    const srcIdx = exp.conditions.findIndex((c) => c.name === 'arena check');
     checkTrue('clone: arena check source found', srcIdx >= 0);
 
     docCloneCondition(exp, srcIdx, 'arena check copy');
-    const dupIdx = exp.conditions.findIndex(c => c.name === 'arena check copy');
+    const dupIdx = exp.conditions.findIndex((c) => c.name === 'arena check copy');
     checkTrue('clone: duplicate present in JS model', dupIdx >= 0);
 
     // Find the wait command in the duplicate
     const dupCmds = exp.conditions[dupIdx].commands;
-    const dupWaitIdx = dupCmds.findIndex(c => c.type === 'wait');
+    const dupWaitIdx = dupCmds.findIndex((c) => c.type === 'wait');
     checkTrue('clone: wait command in duplicate', dupWaitIdx >= 0);
 
     // The YAML node for the cloned wait's duration must still be an Alias
@@ -1488,7 +1504,11 @@ console.log('\n--- Suite 20: docAppendSequenceEntry (ref + block append) ---');
     check('seq-append: last condition_name', exp.sequence[before].condition_name, 'tail');
 
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
-    check('seq-append: round-trip last is "tail"', reparsed.sequence[before].condition_name, 'tail');
+    check(
+        'seq-append: round-trip last is "tail"',
+        reparsed.sequence[before].condition_name,
+        'tail'
+    );
 }
 
 {
@@ -1570,8 +1590,15 @@ console.log('\n--- Suite 22: docInsertSequenceEntry (insert anywhere) ---');
     docInsertSequenceEntry(exp, 2, { kind: 'ref', condition_name: 'arena check' });
     check('insert-seq: middle places ref', exp.sequence[2].condition_name, 'arena check');
 
-    docInsertSequenceEntry(exp, exp.sequence.length, { kind: 'ref', condition_name: 'arena check' });
-    check('insert-seq: at end appends', exp.sequence[exp.sequence.length - 1].condition_name, 'arena check');
+    docInsertSequenceEntry(exp, exp.sequence.length, {
+        kind: 'ref',
+        condition_name: 'arena check'
+    });
+    check(
+        'insert-seq: at end appends',
+        exp.sequence[exp.sequence.length - 1].condition_name,
+        'arena check'
+    );
 
     // Round-trip stable
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
@@ -1604,7 +1631,11 @@ console.log('\n--- Suite 22: docInsertSequenceEntry (insert anywhere) ---');
     const exp2 = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
     const len2 = exp2.sequence.length;
     docInsertSequenceEntry(exp2, 999, { kind: 'ref', condition_name: 'arena check' });
-    check('insert-seq: too-large idx clamps to length', exp2.sequence[len2].condition_name, 'arena check');
+    check(
+        'insert-seq: too-large idx clamps to length',
+        exp2.sequence[len2].condition_name,
+        'arena check'
+    );
 }
 
 checkThrows(
@@ -1623,18 +1654,18 @@ console.log('\n--- Suite 23: docMoveSequenceEntry (reorder) ---');
     // canonical_a sequence: [ref arena_check, ref start_light, block main_block, ref posttrial]
     // Move idx 0 to idx 2 — order becomes [start_light, main_block, arena_check, posttrial]
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const origNames = exp.sequence.map(e => e.kind === 'ref' ? e.condition_name : e.name);
+    const origNames = exp.sequence.map((e) => (e.kind === 'ref' ? e.condition_name : e.name));
     docMoveSequenceEntry(exp, 0, 2);
     check(
         'move-seq: first moves to position 2',
-        exp.sequence.map(e => e.kind === 'ref' ? e.condition_name : e.name).join('|'),
+        exp.sequence.map((e) => (e.kind === 'ref' ? e.condition_name : e.name)).join('|'),
         [origNames[1], origNames[2], origNames[0], origNames[3]].join('|')
     );
 
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
     check(
         'move-seq: round-trip preserves new order',
-        reparsed.sequence.map(e => e.kind === 'ref' ? e.condition_name : e.name).join('|'),
+        reparsed.sequence.map((e) => (e.kind === 'ref' ? e.condition_name : e.name)).join('|'),
         [origNames[1], origNames[2], origNames[0], origNames[3]].join('|')
     );
 }
@@ -1642,13 +1673,15 @@ console.log('\n--- Suite 23: docMoveSequenceEntry (reorder) ---');
 {
     // No-op cases: same index, out-of-range
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const before = JSON.stringify(exp.sequence.map(e => e.kind === 'ref' ? e.condition_name : e.name));
+    const before = JSON.stringify(
+        exp.sequence.map((e) => (e.kind === 'ref' ? e.condition_name : e.name))
+    );
     docMoveSequenceEntry(exp, 1, 1);
     docMoveSequenceEntry(exp, 99, 0);
     docMoveSequenceEntry(exp, -1, 0);
     check(
         'move-seq: no-op / out-of-range preserves order',
-        JSON.stringify(exp.sequence.map(e => e.kind === 'ref' ? e.condition_name : e.name)),
+        JSON.stringify(exp.sequence.map((e) => (e.kind === 'ref' ? e.condition_name : e.name))),
         before
     );
 }
@@ -1656,7 +1689,7 @@ console.log('\n--- Suite 23: docMoveSequenceEntry (reorder) ---');
 {
     // Doc/model divergence throws
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    exp._doc.delete('experiment');  // nuke the doc-side sequence
+    exp._doc.delete('experiment'); // nuke the doc-side sequence
     let threw = false;
     let code = null;
     try {
@@ -1680,7 +1713,7 @@ console.log('\n--- Suite 24: docRemoveSequenceEntry (delete) ---');
     check('remove-seq: length shrinks', exp.sequence.length, before - 1);
     checkTrue(
         'remove-seq: removed entry gone from JS model',
-        !exp.sequence.some(e => e.kind === 'ref' && e.condition_name === removedName)
+        !exp.sequence.some((e) => e.kind === 'ref' && e.condition_name === removedName)
     );
 
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
@@ -1690,9 +1723,9 @@ console.log('\n--- Suite 24: docRemoveSequenceEntry (delete) ---');
 {
     // Remove a block
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
     docRemoveSequenceEntry(exp, blockIdx);
-    checkTrue('remove-seq-block: block gone', !exp.sequence.some(e => e.kind === 'block'));
+    checkTrue('remove-seq-block: block gone', !exp.sequence.some((e) => e.kind === 'block'));
 }
 
 checkThrows(
@@ -1719,7 +1752,7 @@ console.log('\n--- Suite 25: docInsertTrialInBlock (drop library row on block) -
 {
     // canonical_a has a block at sequence[2] (main block, 7 trials)
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
     const before = exp.sequence[blockIdx].trials.length;
 
     docInsertTrialInBlock(exp, blockIdx, 0, 'arena check');
@@ -1737,25 +1770,25 @@ console.log('\n--- Suite 25: docInsertTrialInBlock (drop library row on block) -
     );
 
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
-    check(
-        'insert-trial: round-trip length',
-        reparsed.sequence[blockIdx].trials.length,
-        before + 3
-    );
+    check('insert-trial: round-trip length', reparsed.sequence[blockIdx].trials.length, before + 3);
 }
 
 {
     // Index clamping
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
     docInsertTrialInBlock(exp, blockIdx, -5, 'arena check');
     check('insert-trial: negative clamps to 0', exp.sequence[blockIdx].trials[0], 'arena check');
 
     const exp2 = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const blockIdx2 = exp2.sequence.findIndex(e => e.kind === 'block');
+    const blockIdx2 = exp2.sequence.findIndex((e) => e.kind === 'block');
     const len = exp2.sequence[blockIdx2].trials.length;
     docInsertTrialInBlock(exp2, blockIdx2, 999, 'arena check');
-    check('insert-trial: too-large clamps to end', exp2.sequence[blockIdx2].trials[len], 'arena check');
+    check(
+        'insert-trial: too-large clamps to end',
+        exp2.sequence[blockIdx2].trials[len],
+        'arena check'
+    );
 }
 
 checkThrows(
@@ -1772,7 +1805,7 @@ checkThrows(
     'insert-trial: rejects empty condName',
     () => {
         const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-        const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+        const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
         docInsertTrialInBlock(exp, blockIdx, 0, '');
     },
     'INVALID_INPUT'
@@ -1783,7 +1816,7 @@ console.log('\n--- Suite 26: docMoveTrialInBlock (reorder trial within block) --
 
 {
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
     const origTrials = exp.sequence[blockIdx].trials.slice();
 
     docMoveTrialInBlock(exp, blockIdx, 0, 2);
@@ -1794,17 +1827,13 @@ console.log('\n--- Suite 26: docMoveTrialInBlock (reorder trial within block) --
     );
 
     const reparsed = parseV3Protocol(generateV3Protocol(exp));
-    check(
-        'move-trial: round-trip new order',
-        reparsed.sequence[blockIdx].trials[2],
-        origTrials[0]
-    );
+    check('move-trial: round-trip new order', reparsed.sequence[blockIdx].trials[2], origTrials[0]);
 }
 
 {
     // No-op / out-of-range
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
     const before = exp.sequence[blockIdx].trials.join('|');
     docMoveTrialInBlock(exp, blockIdx, 1, 1);
     docMoveTrialInBlock(exp, blockIdx, 99, 0);
@@ -1821,7 +1850,7 @@ console.log('\n--- Suite 27: docRemoveTrialFromBlock (✕ on trial chip) ---');
 
 {
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
     const before = exp.sequence[blockIdx].trials.length;
     const removed = exp.sequence[blockIdx].trials[0];
 
@@ -1837,7 +1866,7 @@ checkThrows(
     'remove-trial: rejects out-of-bounds',
     () => {
         const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-        const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+        const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
         docRemoveTrialFromBlock(exp, blockIdx, 999);
     },
     'BAD_PATH'
@@ -1847,17 +1876,18 @@ checkThrows(
     'remove-trial: rejects removing last trial (would leave block empty)',
     () => {
         // Build a synthetic 1-trial block
-        const yaml = [
-            'version: 3',
-            'experiment_info: {name: x}',
-            'rig: "/tmp/r.yaml"',
-            'experiment:',
-            '  - name: blk',
-            '    trials: [only_one]',
-            'conditions:',
-            '  - name: only_one',
-            '    commands: [{type: wait, duration: 1}]'
-        ].join('\n') + '\n';
+        const yaml =
+            [
+                'version: 3',
+                'experiment_info: {name: x}',
+                'rig: "/tmp/r.yaml"',
+                'experiment:',
+                '  - name: blk',
+                '    trials: [only_one]',
+                'conditions:',
+                '  - name: only_one',
+                '    commands: [{type: wait, duration: 1}]'
+            ].join('\n') + '\n';
         const exp = parseV3Protocol(yaml);
         docRemoveTrialFromBlock(exp, 0, 0);
     },
@@ -1890,7 +1920,7 @@ console.log('\n--- Suite 28: docReplaceSequenceEntry (ref↔block convert) ---')
 {
     // Convert a block back to a ref
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const blockIdx = exp.sequence.findIndex(e => e.kind === 'block');
+    const blockIdx = exp.sequence.findIndex((e) => e.kind === 'block');
     const firstTrial = exp.sequence[blockIdx].trials[0];
     docReplaceSequenceEntry(exp, blockIdx, { kind: 'ref', condition_name: firstTrial });
     check('replace: block → ref kind', exp.sequence[blockIdx].kind, 'ref');
@@ -1936,8 +1966,16 @@ console.log('\n--- Suite 29: Variable lifecycle + anchor binding ---');
     const regen = generateV3Protocol(exp);
     checkTrue('var-create: anchor line in regen', /&gain_low\b/.test(regen));
     checkTrue('var-create: value in regen', / 2\b/.test(regen));
-    check('var-create: mirror has new entry name', exp.variables[exp.variables.length - 1].name, 'gain_low');
-    check('var-create: mirror has new entry value', exp.variables[exp.variables.length - 1].value, 2);
+    check(
+        'var-create: mirror has new entry name',
+        exp.variables[exp.variables.length - 1].name,
+        'gain_low'
+    );
+    check(
+        'var-create: mirror has new entry value',
+        exp.variables[exp.variables.length - 1].value,
+        2
+    );
     // Re-parse confirms round-trip integrity
     const exp2 = parseV3Protocol(regen);
     checkTrue(
@@ -1978,7 +2016,11 @@ checkThrows(
 {
     const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
     const refs = findAliasesTo(exp, 'dur_long');
-    checkTrue('var-delete: dur_long has refs (precondition)', refs.length > 0, refs.length + ' refs');
+    checkTrue(
+        'var-delete: dur_long has refs (precondition)',
+        refs.length > 0,
+        refs.length + ' refs'
+    );
     let threw = null;
     try {
         docDeleteVariable(exp, 'dur_long');
@@ -2039,7 +2081,10 @@ checkThrows(
         exp.variables.find((v) => v.name === 'duration_long')?.value,
         10
     );
-    checkTrue('var-rename: old name gone from mirror', !exp.variables.some((v) => v.name === 'dur_long'));
+    checkTrue(
+        'var-rename: old name gone from mirror',
+        !exp.variables.some((v) => v.name === 'dur_long')
+    );
 }
 
 // 29.8 — docRenameVariable rejects collision with existing anchor
@@ -2082,12 +2127,17 @@ checkThrows(
         // Walk JS-mirror path
         let cur = exp;
         for (const k of targetPath) {
-            cur = cur[k === 'conditions' ? k : k];  // identity
+            cur = cur[k === 'conditions' ? k : k]; // identity
             // The above is a defensive walk
         }
         // Direct readout
-        const ci = targetPath[1], cmdi = targetPath[3];
-        check('var-bind: mirror resolved to anchor value', exp.conditions[ci].commands[cmdi].duration, 3);
+        const ci = targetPath[1],
+            cmdi = targetPath[3];
+        check(
+            'var-bind: mirror resolved to anchor value',
+            exp.conditions[ci].commands[cmdi].duration,
+            3
+        );
     }
 }
 
@@ -2128,7 +2178,11 @@ checkThrows(
     const aliasCount = (regen.match(/\*dur_long\b/g) || []).length;
     check('var-setval: alias count unchanged', aliasCount, origAliasCount);
     // Mirror: variable + every aliased path got the new value
-    check('var-setval: variable mirror', exp.variables.find((v) => v.name === 'dur_long').value, 99);
+    check(
+        'var-setval: variable mirror',
+        exp.variables.find((v) => v.name === 'dur_long').value,
+        99
+    );
     // At least one aliased path: walk conditions for any duration === 99
     let found99 = false;
     for (const c of exp.conditions) {
@@ -2146,8 +2200,14 @@ checkThrows(
     const refs = findAliasesTo(exp, 'dur_long');
     const grepCount = (yamlText.match(/\*dur_long\b/g) || []).length;
     check('findAliasesTo: count matches grep', refs.length, grepCount);
-    checkTrue('findAliasesTo: each ref has a path', refs.every((r) => Array.isArray(r.path) && r.path.length > 0));
-    checkTrue('findAliasesTo: each ref has a humanLabel', refs.every((r) => typeof r.humanLabel === 'string'));
+    checkTrue(
+        'findAliasesTo: each ref has a path',
+        refs.every((r) => Array.isArray(r.path) && r.path.length > 0)
+    );
+    checkTrue(
+        'findAliasesTo: each ref has a humanLabel',
+        refs.every((r) => typeof r.humanLabel === 'string')
+    );
 }
 
 // 29.13 — Comments survive a rename
@@ -2164,23 +2224,24 @@ checkThrows(
 // 29.14 — Merge keys cascade on rename (`<<: *foo`)
 {
     // Construct a small YAML inline with a merge-key alias
-    const yamlText = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'variables:',
-        '  base: &base_cfg {a: 1, b: 2}',
-        'experiment:',
-        '  - "arena check"',
-        'conditions:',
-        '  - name: "arena check"',
-        '    commands:',
-        '      - type: wait',
-        '        duration: 1',
-        '        params:',
-        '          <<: *base_cfg',
-        '          c: 3'
-    ].join('\n') + '\n';
+    const yamlText =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'variables:',
+            '  base: &base_cfg {a: 1, b: 2}',
+            'experiment:',
+            '  - "arena check"',
+            'conditions:',
+            '  - name: "arena check"',
+            '    commands:',
+            '      - type: wait',
+            '        duration: 1',
+            '        params:',
+            '          <<: *base_cfg',
+            '          c: 3'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yamlText);
     // Confirm the alias is reachable via findAliasesTo
     const refs = findAliasesTo(exp, 'base_cfg');
@@ -2197,18 +2258,19 @@ checkThrows(
 // 29.15 — variableIsComplex detects map/seq anchors
 {
     // The merge-key fixture's `&base_cfg` is a map → complex
-    const yamlText = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'variables:',
-        '  base: &base_cfg {a: 1}',
-        '  simple: &simple_n 42',
-        'experiment: ["c"]',
-        'conditions:',
-        '  - name: c',
-        '    commands: [{type: wait, duration: 1}]'
-    ].join('\n') + '\n';
+    const yamlText =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'variables:',
+            '  base: &base_cfg {a: 1}',
+            '  simple: &simple_n 42',
+            'experiment: ["c"]',
+            'conditions:',
+            '  - name: c',
+            '    commands: [{type: wait, duration: 1}]'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yamlText);
     checkTrue('var-complex: map anchor is complex', variableIsComplex(exp, 'base_cfg'));
     checkTrue('var-complex: scalar anchor is not complex', !variableIsComplex(exp, 'simple_n'));
@@ -2238,18 +2300,19 @@ console.log('\n--- Suite 30: collectBlockingErrors + library delete ---');
 
 // 30.2 / 30.3 — duplicate anchor name detected (exactly once per name)
 {
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'variables:',
-        '  a: &dup 1',
-        '  b: &dup 2',
-        'experiment: [foo]',
-        'conditions:',
-        '  - name: foo',
-        '    commands: [{type: wait, duration: 1}]'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'variables:',
+            '  a: &dup 1',
+            '  b: &dup 2',
+            'experiment: [foo]',
+            'conditions:',
+            '  - name: foo',
+            '    commands: [{type: wait, duration: 1}]'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     const report = collectBlockingErrors(exp);
     checkTrue('block: duplicate anchor blocks', !report.ok);
@@ -2262,19 +2325,20 @@ console.log('\n--- Suite 30: collectBlockingErrors + library delete ---');
 // valid doc, then stripping the anchor declaration off the _doc while leaving
 // the *alias references intact — exactly the mutation-model state this guards.
 {
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'variables:',
-        '  d: &d 7',
-        'experiment: [foo, bar]',
-        'conditions:',
-        '  - name: foo',
-        '    commands: [{type: wait, duration: *d}]',
-        '  - name: bar',
-        '    commands: [{type: wait, duration: *d}]'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'variables:',
+            '  d: &d 7',
+            'experiment: [foo, bar]',
+            'conditions:',
+            '  - name: foo',
+            '    commands: [{type: wait, duration: *d}]',
+            '  - name: bar',
+            '    commands: [{type: wait, duration: *d}]'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     // Strip the anchor declaration off the variables value node, leaving the
     // two *d aliases dangling.
@@ -2290,17 +2354,18 @@ console.log('\n--- Suite 30: collectBlockingErrors + library delete ---');
 
 // 30.6 — alias to an anchor declared OUTSIDE variables: is NOT flagged
 {
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'experiment: [foo, bar]',
-        'conditions:',
-        '  - name: foo',
-        '    commands: [{type: wait, duration: &dwell 7}]',
-        '  - name: bar',
-        '    commands: [{type: wait, duration: *dwell}]'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'experiment: [foo, bar]',
+            'conditions:',
+            '  - name: foo',
+            '    commands: [{type: wait, duration: &dwell 7}]',
+            '  - name: bar',
+            '    commands: [{type: wait, duration: *dwell}]'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     const report = collectBlockingErrors(exp);
     checkTrue(
@@ -2312,17 +2377,18 @@ console.log('\n--- Suite 30: collectBlockingErrors + library delete ---');
 
 // 30.7 — folds in validateReferences errors (duplicate condition name)
 {
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'experiment: [foo]',
-        'conditions:',
-        '  - name: foo',
-        '    commands: [{type: wait, duration: 1}]',
-        '  - name: foo',
-        '    commands: [{type: wait, duration: 2}]'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'experiment: [foo]',
+            'conditions:',
+            '  - name: foo',
+            '    commands: [{type: wait, duration: 1}]',
+            '  - name: foo',
+            '    commands: [{type: wait, duration: 2}]'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     const report = collectBlockingErrors(exp);
     checkTrue('block: duplicate condition name blocks', !report.ok);
@@ -2346,7 +2412,10 @@ console.log('\n--- Suite 30: collectBlockingErrors + library delete ---');
         threw = true;
     }
     checkTrue('block: no _doc does not throw', !threw);
-    checkTrue('block: no _doc ok matches validateReferences', report.ok === validateReferences(bare).ok);
+    checkTrue(
+        'block: no _doc ok matches validateReferences',
+        report.ok === validateReferences(bare).ok
+    );
 }
 
 // 30.9 / 30.10 — library delete via docDelete: mirror splice + clean round-trip
@@ -2360,7 +2429,10 @@ console.log('\n--- Suite 30: collectBlockingErrors + library delete ---');
     const delIdx = exp.conditions.length - 1;
     docDelete(exp, ['conditions', delIdx]);
     check('lib-del: delete shrank library', exp.conditions.length, origCount);
-    checkTrue('lib-del: deleted name gone from mirror', !exp.conditions.some((c) => c.name === 'tmp_del'));
+    checkTrue(
+        'lib-del: deleted name gone from mirror',
+        !exp.conditions.some((c) => c.name === 'tmp_del')
+    );
 
     const regen = generateV3Protocol(exp);
     checkTrue('lib-del: deleted name absent from regen', !/\btmp_del\b/.test(regen));
@@ -2370,25 +2442,32 @@ console.log('\n--- Suite 30: collectBlockingErrors + library delete ---');
 }
 
 // ─── Test Suite 31: Phase 7 — comments, anchor edge cases, randomize, lines ──
-console.log('\n--- Suite 31: comment preservation + anchor edge cases + randomize + line numbers ---');
+console.log(
+    '\n--- Suite 31: comment preservation + anchor edge cases + randomize + line numbers ---'
+);
 
 // 31.1 — validation error line numbers: duplicate anchor reports its lines
 {
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'variables:',
-        '  a: &dup 1',
-        '  b: &dup 2',
-        'experiment: [foo]',
-        'conditions:',
-        '  - name: foo',
-        '    commands: [{type: wait, duration: 1}]'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'variables:',
+            '  a: &dup 1',
+            '  b: &dup 2',
+            'experiment: [foo]',
+            'conditions:',
+            '  - name: foo',
+            '    commands: [{type: wait, duration: 1}]'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     const dupErr = collectBlockingErrors(exp).errors.find((e) => /Duplicate anchor/.test(e));
-    checkTrue('lines: duplicate-anchor error carries line numbers', /\(lines \d+, \d+\)/.test(dupErr), dupErr);
+    checkTrue(
+        'lines: duplicate-anchor error carries line numbers',
+        /\(lines \d+, \d+\)/.test(dupErr),
+        dupErr
+    );
 }
 
 // 31.2 — dangling alias: still detected via graceful fallback. A dangling
@@ -2396,17 +2475,18 @@ console.log('\n--- Suite 31: comment preservation + anchor edge cases + randomiz
 // so the line-number re-parse can't run — detection must still work without a
 // line number, and collectBlockingErrors must not throw.
 {
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'variables:',
-        '  d: &d 7',
-        'experiment: [foo]',
-        'conditions:',
-        '  - name: foo',
-        '    commands: [{type: wait, duration: *d}]'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'variables:',
+            '  d: &d 7',
+            'experiment: [foo]',
+            'conditions:',
+            '  - name: foo',
+            '    commands: [{type: wait, duration: *d}]'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     const varsNode = exp._doc.get('variables', true);
     for (const pair of varsNode.items) {
@@ -2435,56 +2515,72 @@ console.log('\n--- Suite 31: comment preservation + anchor edge cases + randomiz
 
 // 31.4 — comment preservation at strategic positions (head / section / inline)
 {
-    const yaml = [
-        '# HEAD comment line',
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        '# SECTION comment before variables',
-        'variables:',
-        '  speed: &speed 12  # INLINE trailing comment',
-        'experiment: [foo, bar]',
-        'conditions:',
-        '  # BETWEEN comment before first condition',
-        '  - name: foo',
-        '    commands: [{type: wait, duration: *speed}]',
-        '  - name: bar',
-        '    commands: [{type: wait, duration: 1}]'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            '# HEAD comment line',
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            '# SECTION comment before variables',
+            'variables:',
+            '  speed: &speed 12  # INLINE trailing comment',
+            'experiment: [foo, bar]',
+            'conditions:',
+            '  # BETWEEN comment before first condition',
+            '  - name: foo',
+            '    commands: [{type: wait, duration: *speed}]',
+            '  - name: bar',
+            '    commands: [{type: wait, duration: 1}]'
+        ].join('\n') + '\n';
     const regen = generateV3Protocol(parseV3Protocol(yaml));
     checkTrue('comments: HEAD comment preserved', regen.includes('# HEAD comment line'));
-    checkTrue('comments: SECTION comment preserved', regen.includes('# SECTION comment before variables'));
-    checkTrue('comments: INLINE trailing comment preserved', regen.includes('# INLINE trailing comment'));
-    checkTrue('comments: BETWEEN comment preserved', regen.includes('# BETWEEN comment before first condition'));
+    checkTrue(
+        'comments: SECTION comment preserved',
+        regen.includes('# SECTION comment before variables')
+    );
+    checkTrue(
+        'comments: INLINE trailing comment preserved',
+        regen.includes('# INLINE trailing comment')
+    );
+    checkTrue(
+        'comments: BETWEEN comment preserved',
+        regen.includes('# BETWEEN comment before first condition')
+    );
     // round-trip stability: comment count stable across a second pass
     const c1 = regen.split('\n').filter((l) => l.includes('#')).length;
-    const c2 = generateV3Protocol(parseV3Protocol(regen)).split('\n').filter((l) => l.includes('#')).length;
+    const c2 = generateV3Protocol(parseV3Protocol(regen))
+        .split('\n')
+        .filter((l) => l.includes('#')).length;
     check('comments: count stable on second round-trip', c2, c1);
 }
 
 // 31.5 — two distinct anchors with the SAME value both round-trip independently
 {
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: x}',
-        'rig: "/tmp/r.yaml"',
-        'variables:',
-        '  first: &first 5',
-        '  second: &second 5',
-        'experiment: [foo]',
-        'conditions:',
-        '  - name: foo',
-        '    commands:',
-        '      - {type: wait, duration: *first}',
-        '      - {type: wait, duration: *second}'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'variables:',
+            '  first: &first 5',
+            '  second: &second 5',
+            'experiment: [foo]',
+            'conditions:',
+            '  - name: foo',
+            '    commands:',
+            '      - {type: wait, duration: *first}',
+            '      - {type: wait, duration: *second}'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml);
     const regen = generateV3Protocol(exp);
     checkTrue('anchors-same-value: &first declared', /&first\b/.test(regen));
     checkTrue('anchors-same-value: &second declared', /&second\b/.test(regen));
     checkTrue('anchors-same-value: *first referenced', /\*first\b/.test(regen));
     checkTrue('anchors-same-value: *second referenced', /\*second\b/.test(regen));
-    checkTrue('anchors-same-value: no blocking errors (not treated as dup)', collectBlockingErrors(exp).ok);
+    checkTrue(
+        'anchors-same-value: no blocking errors (not treated as dup)',
+        collectBlockingErrors(exp).ok
+    );
 }
 
 // 31.6 — binding one field leaves an unrelated anchor's references intact
@@ -2496,7 +2592,11 @@ console.log('\n--- Suite 31: comment preservation + anchor edge cases + randomiz
     checkTrue('anchor-isolation: precondition dur_long has refs', longRefs.length > 0);
     docBindToAnchor(exp, longRefs[0].path.slice(), 'dur_short'); // rebind one to dur_short via path
     const shortAfter = findAliasesTo(exp, 'dur_short').length;
-    check('anchor-isolation: dur_short ref count increased by exactly 1', shortAfter, shortBefore + 1);
+    check(
+        'anchor-isolation: dur_short ref count increased by exactly 1',
+        shortAfter,
+        shortBefore + 1
+    );
 }
 
 // 31.7 — randomize:true round-trips (canonical_a block)
@@ -2512,7 +2612,10 @@ console.log('\n--- Suite 31: comment preservation + anchor edge cases + randomiz
 {
     const exp = parseV3Protocol(readFixture('v3_no_randomize.yaml'));
     const block = exp.sequence.find((e) => e.kind === 'block');
-    checkTrue('randomize: no_randomize block parses randomize false', block && block.randomize === false);
+    checkTrue(
+        'randomize: no_randomize block parses randomize false',
+        block && block.randomize === false
+    );
     const regen = generateV3Protocol(exp);
     checkTrue('randomize: explicit false preserved in regen', /randomize:\s*false/.test(regen));
     // repetitions survive too
@@ -2542,7 +2645,10 @@ console.log('\n--- Suite N1: collectAliasReferences ---');
         'N1: aliases are dur_short then dur_long (document order)',
         sources[0] === 'dur_short' && sources[1] === 'dur_long'
     );
-    checkTrue('N1: every collected node is an Alias', aliases.every((a) => YAML.isAlias(a)));
+    checkTrue(
+        'N1: every collected node is an Alias',
+        aliases.every((a) => YAML.isAlias(a))
+    );
 
     // transitive: the &led_settings value node itself contains *color_power
     const ledVal = src._doc.getIn(['variables', 'led_settings'], true);
@@ -2661,7 +2767,10 @@ console.log('\n--- Suite N4: yamlNodeStructuralEquals ---');
         sortedJson({ x: { d: 4, c: 3 } }),
         sortedJson({ x: { c: 3, d: 4 } })
     );
-    checkTrue('N4: sortedJson preserves array order', sortedJson([1, 2, 3]) !== sortedJson([3, 2, 1]));
+    checkTrue(
+        'N4: sortedJson preserves array order',
+        sortedJson([1, 2, 3]) !== sortedJson([3, 2, 1])
+    );
     check('N4: sortedJson handles null', sortedJson({ a: null }), '{"a":null}');
 
     const docA = rawDoc('p:\n  class: BiasPlugin\n  config: {a: 1, b: 2}\n');
@@ -2702,7 +2811,10 @@ console.log('\n--- Suite N5: ensureTopLevelSection ---');
 
     // creates a missing section, placed BEFORE conditions:
     const noVars = parseV3Protocol(readFixture('v3_no_variables.yaml'));
-    checkTrue('N5: precondition — no variables: in fixture', !noVars._doc.getIn(['variables'], true));
+    checkTrue(
+        'N5: precondition — no variables: in fixture',
+        !noVars._doc.getIn(['variables'], true)
+    );
     const created = ensureTopLevelSection(noVars, 'variables', 'map');
     checkTrue('N5: creates a YAMLMap', YAML.isMap(created));
     const out = noVars._doc.toString();
@@ -2831,7 +2943,11 @@ console.log('\n--- Suite N6: node-based splice helpers ---');
 
     // (e) full round-trip stability after a node insert (parse→gen→parse model equal)
     const stable = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
-    const cp = cloneNodeAcrossDocs(src._doc.getIn(['variables', 'color_power'], true), stable._doc, {});
+    const cp = cloneNodeAcrossDocs(
+        src._doc.getIn(['variables', 'color_power'], true),
+        stable._doc,
+        {}
+    );
     docInsertVariableNode(stable, 'sib__color_power', cp);
     const regen = generateV3Protocol(stable);
     const re = parseV3Protocol(regen);
@@ -2879,7 +2995,8 @@ console.log('\n--- Suite N7: staging buffer dry-run ---');
     const planned = [...staging.batch.anchorRegistry.values()].map((e) => e.plannedName).sort();
     checkTrue(
         'N7: anchors planned with prefix',
-        planned.includes('sibling_source__dur_short') && planned.includes('sibling_source__dur_long')
+        planned.includes('sibling_source__dur_short') &&
+            planned.includes('sibling_source__dur_long')
     );
 
     // adjust prefix → non-overridden planned names recompute
@@ -2908,10 +3025,7 @@ console.log('\n--- Suite N7: staging buffer dry-run ---');
     checkTrue('N7: committed condition present', /name:\s*"?sibling check"?/.test(out));
     checkTrue('N7: overridden anchor &my_short emitted', /&my_short\b/.test(out));
     checkTrue('N7: bare ref present in experiment:', /-\s*"?sibling check"?/.test(out));
-    checkTrue(
-        'N7: provenance stamp present',
-        out.includes('# imported from sibling_source.yaml')
-    );
+    checkTrue('N7: provenance stamp present', out.includes('# imported from sibling_source.yaml'));
     checkTrue(
         'N7: committed doc re-parses',
         (() => {
@@ -2953,7 +3067,11 @@ console.log('\n--- Suite N8: conflicts + built-ins ---');
         'N8a: collision suggestion offered',
         stA.items[0].conditionNameCollision === 'sibling check_2'
     );
-    checkThrows('N8a: commit blocked by collision', () => commitStaging(stA, yoursA), 'COMMIT_BLOCKED');
+    checkThrows(
+        'N8a: commit blocked by collision',
+        () => commitStaging(stA, yoursA),
+        'COMMIT_BLOCKED'
+    );
     setItemTargetName(stA, 0, 'sibling check 2');
     checkTrue('N8a: resolved → validation ok', stA._validation.ok);
     const sumA = commitStaging(stA, yoursA);
@@ -3015,7 +3133,11 @@ console.log('\n--- Suite N8: conflicts + built-ins ---');
     );
     const stCl = createStagingBuffer(srcCl, 'their.yaml');
     addToStaging(stCl, 0, yoursCl);
-    check('N8c: config-less + different rig → namespace (not merge)', stCl.batch.pluginRegistry.get('cam').action, 'add');
+    check(
+        'N8c: config-less + different rig → namespace (not merge)',
+        stCl.batch.pluginRegistry.get('cam').action,
+        'add'
+    );
 
     // (d) plugin namespace collision (cross-buffer): planned name already in yours
     const yoursColl = parseV3Protocol(
@@ -3050,7 +3172,10 @@ console.log('\n--- Suite N8: conflicts + built-ins ---');
         })
     );
     const yoursAB = parseV3Protocol(
-        mkProtocol({ name: 'yours', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+        mkProtocol({
+            name: 'yours',
+            conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]'
+        })
     );
     const stAB = createStagingBuffer(srcAB, 'ab.yaml');
     addToStaging(stAB, 0, yoursAB);
@@ -3070,14 +3195,20 @@ console.log('\n--- Suite N8: conflicts + built-ins ---');
         })
     );
     const yoursLog = parseV3Protocol(
-        mkProtocol({ name: 'yours', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+        mkProtocol({
+            name: 'yours',
+            conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]'
+        })
     );
     const stLog = createStagingBuffer(srcLog, 'log.yaml');
     addToStaging(stLog, 0, yoursLog);
     checkTrue('N8f: log not registered as a plugin', !stLog.batch.pluginRegistry.has('log'));
     const sumLog = commitStaging(stLog, yoursLog);
     check('N8f: no plugin added for log', sumLog.pluginsAdded.length, 0);
-    checkTrue('N8f: plugin_name: log preserved verbatim', /plugin_name:\s*"?log"?/.test(yoursLog._doc.toString()));
+    checkTrue(
+        'N8f: plugin_name: log preserved verbatim',
+        /plugin_name:\s*"?log"?/.test(yoursLog._doc.toString())
+    );
 
     // (g) planned anchor-name collision with empty prefix → blocking
     const yoursAnch = parseV3Protocol(readFixture('v3_canonical_a.yaml')); // has &dur_short
@@ -3098,16 +3229,32 @@ console.log('\n--- Suite N8: conflicts + built-ins ---');
         })
     );
     const yoursUnk = parseV3Protocol(
-        mkProtocol({ name: 'yours', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+        mkProtocol({
+            name: 'yours',
+            conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]'
+        })
     );
     const stUnk = createStagingBuffer(srcUnk, 'unk.yaml');
     addToStaging(stUnk, 0, yoursUnk);
-    checkTrue('N8h: unknown command type recorded', stUnk.items[0].unknownCommandTypes.includes('branch'));
+    checkTrue(
+        'N8h: unknown command type recorded',
+        stUnk.items[0].unknownCommandTypes.includes('branch')
+    );
     checkTrue('N8h: unknown command type does NOT block', stUnk._validation.ok);
     const sumUnk = commitStaging(stUnk, yoursUnk);
-    check('N8h: condition with unknown command still imports', sumUnk.conditionsAdded.join(','), 'branchy');
-    checkTrue('N8h: unknown command type surfaced as warning', sumUnk.warnings.some((w) => w.kind === 'unknown-command-type'));
-    checkTrue('N8h: raw command type preserved in output', /type:\s*branch/.test(yoursUnk._doc.toString()));
+    check(
+        'N8h: condition with unknown command still imports',
+        sumUnk.conditionsAdded.join(','),
+        'branchy'
+    );
+    checkTrue(
+        'N8h: unknown command type surfaced as warning',
+        sumUnk.warnings.some((w) => w.kind === 'unknown-command-type')
+    );
+    checkTrue(
+        'N8h: raw command type preserved in output',
+        /type:\s*branch/.test(yoursUnk._doc.toString())
+    );
 
     // (i) transitive alias closure — led_settings pulls in color_power
     const yoursTr = parseV3Protocol(readFixture('v3_no_variables.yaml'));
@@ -3115,7 +3262,8 @@ console.log('\n--- Suite N8: conflicts + built-ins ---');
     addToStaging(stTr, 1, yoursTr); // "sibling led" → params: *led_settings (→ *color_power)
     checkTrue(
         'N8i: transitive closure registers led_settings + color_power',
-        stTr.batch.anchorRegistry.has('led_settings') && stTr.batch.anchorRegistry.has('color_power')
+        stTr.batch.anchorRegistry.has('led_settings') &&
+            stTr.batch.anchorRegistry.has('color_power')
     );
 }
 
@@ -3130,12 +3278,28 @@ console.log('\n--- Suite N9: edge cases ---');
     addToStaging(st1, 0, noVars);
     commitStaging(st1, noVars);
     const o1 = noVars._doc.toString();
-    checkTrue('N9: created variables: precedes conditions:', o1.indexOf('variables:') < o1.indexOf('conditions:'));
-    checkTrue('N9: no-variables target re-parses after import', (() => { try { parseV3Protocol(o1); return true; } catch (e) { return false; } })());
+    checkTrue(
+        'N9: created variables: precedes conditions:',
+        o1.indexOf('variables:') < o1.indexOf('conditions:')
+    );
+    checkTrue(
+        'N9: no-variables target re-parses after import',
+        (() => {
+            try {
+                parseV3Protocol(o1);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        })()
+    );
 
     // no plugins: in target → plugin section created
     const noPlugins = parseV3Protocol(
-        mkProtocol({ name: 'yours', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+        mkProtocol({
+            name: 'yours',
+            conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]'
+        })
     );
     checkTrue('N9: precondition target has no plugins:', noPlugins.plugins.length === 0);
     const st2 = createStagingBuffer(src, 'sib.yaml');
@@ -3143,16 +3307,39 @@ console.log('\n--- Suite N9: edge cases ---');
     commitStaging(st2, noPlugins);
     // #89: `camera` is a canonical rig name — it must be added UN-prefixed so it
     // inherits the target rig's config at runtime (was sib__camera).
-    checkTrue('N9: plugins: section created + camera added (canonical, unprefixed)', noPlugins.plugins.some((p) => p.name === 'camera'));
-    checkTrue('N9: camera NOT namespaced (#89)', !noPlugins.plugins.some((p) => /__camera$/.test(p.name)));
-    checkTrue('N9: no-plugins target re-parses', (() => { try { parseV3Protocol(noPlugins._doc.toString()); return true; } catch (e) { return false; } })());
+    checkTrue(
+        'N9: plugins: section created + camera added (canonical, unprefixed)',
+        noPlugins.plugins.some((p) => p.name === 'camera')
+    );
+    checkTrue(
+        'N9: camera NOT namespaced (#89)',
+        !noPlugins.plugins.some((p) => /__camera$/.test(p.name))
+    );
+    checkTrue(
+        'N9: no-plugins target re-parses',
+        (() => {
+            try {
+                parseV3Protocol(noPlugins._doc.toString());
+                return true;
+            } catch (e) {
+                return false;
+            }
+        })()
+    );
 
     // zero-alias condition → imports clean, no anchors
     const srcZero = parseV3Protocol(
-        mkProtocol({ name: 'theirs', conditions: '  - name: plain\n    commands: [{type: controller, command_name: allOn}, {type: wait, duration: 2}]' })
+        mkProtocol({
+            name: 'theirs',
+            conditions:
+                '  - name: plain\n    commands: [{type: controller, command_name: allOn}, {type: wait, duration: 2}]'
+        })
     );
     const yoursZero = parseV3Protocol(
-        mkProtocol({ name: 'yours', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+        mkProtocol({
+            name: 'yours',
+            conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]'
+        })
     );
     const stZ = createStagingBuffer(srcZero, 'z.yaml');
     addToStaging(stZ, 0, yoursZero);
@@ -3165,11 +3352,15 @@ console.log('\n--- Suite N9: edge cases ---');
         mkProtocol({
             name: 'theirs',
             variables: 'variables:\n  c: &c 1\n  b: &b\n    inner: *c\n  a: &a\n    mid: *b',
-            conditions: '  - name: chain\n    commands:\n      - {type: plugin, plugin_name: log, command_name: dump, params: *a}'
+            conditions:
+                '  - name: chain\n    commands:\n      - {type: plugin, plugin_name: log, command_name: dump, params: *a}'
         })
     );
     const yoursChain = parseV3Protocol(
-        mkProtocol({ name: 'yours', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+        mkProtocol({
+            name: 'yours',
+            conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]'
+        })
     );
     const stC = createStagingBuffer(srcChain, 'chain.yaml');
     addToStaging(stC, 0, yoursChain);
@@ -3180,7 +3371,17 @@ console.log('\n--- Suite N9: edge cases ---');
     const ib = oc.indexOf('&chain__b');
     const ic = oc.indexOf('&chain__c');
     checkTrue('N9: topo order — &c before &b before &a', ic < ib && ib < ia && ic >= 0);
-    checkTrue('N9: depth-3 chain re-parses', (() => { try { parseV3Protocol(oc); return true; } catch (e) { return false; } })());
+    checkTrue(
+        'N9: depth-3 chain re-parses',
+        (() => {
+            try {
+                parseV3Protocol(oc);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        })()
+    );
 
     // self-edge vs genuine cycle in the anchor topo sort (design §5c). A
     // self-referential anchor (&A {self: *A}) is a self-edge → ignored, no false
@@ -3189,7 +3390,10 @@ console.log('\n--- Suite N9: edge cases ---');
     // used as command params can't be JS-mirrored at all — a pre-existing
     // JSON.stringify-of-cycles limit in extractCommand, out of D4's scope).
     const yoursTopo = parseV3Protocol(
-        mkProtocol({ name: 'yours', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+        mkProtocol({
+            name: 'yours',
+            conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]'
+        })
     );
     // self-edge: anchor "n" whose value references *n
     const selfDoc = rawDoc('n: &n {label: leaf}\n');
@@ -3198,7 +3402,9 @@ console.log('\n--- Suite N9: edge cases ---');
     const selfStaging = {
         items: [],
         batch: {
-            anchorRegistry: new Map([['n', { srcValueNode: selfNode, plannedName: 'sib__n', override: false }]]),
+            anchorRegistry: new Map([
+                ['n', { srcValueNode: selfNode, plannedName: 'sib__n', override: false }]
+            ]),
             pluginRegistry: new Map()
         }
     };
@@ -3223,7 +3429,10 @@ console.log('\n--- Suite N9: edge cases ---');
     };
     const cycVal = validateStaging(cycStaging, yoursTopo);
     checkTrue('N9: genuine a↔b cycle is blocked', !cycVal.ok);
-    checkTrue('N9: cycle reported as anchor-cycle', cycVal.blocking.some((b) => b.kind === 'anchor-cycle'));
+    checkTrue(
+        'N9: cycle reported as anchor-cycle',
+        cycVal.blocking.some((b) => b.kind === 'anchor-cycle')
+    );
 
     // failed-commit rollback: sabotage the LATER topo anchor; assert partial mutations reverted
     const yoursRb = parseV3Protocol(readFixture('v3_no_variables.yaml'));
@@ -3231,9 +3440,16 @@ console.log('\n--- Suite N9: edge cases ---');
     addToStaging(stRb, 1, yoursRb); // color_power (first) + led_settings (second)
     const before = yoursRb._doc.toString();
     stRb.batch.anchorRegistry.get('led_settings').srcValueNode = {}; // not cloneable → throws after color_power inserted
-    checkThrows('N9: sabotaged commit throws COMMIT_FAILED', () => commitStaging(stRb, yoursRb), 'COMMIT_FAILED');
+    checkThrows(
+        'N9: sabotaged commit throws COMMIT_FAILED',
+        () => commitStaging(stRb, yoursRb),
+        'COMMIT_FAILED'
+    );
     check('N9: rollback restored yours._doc exactly', yoursRb._doc.toString(), before);
-    checkTrue('N9: rollback restored mirror (no partial anchors)', !yoursRb.variables.some((v) => /^sib(ling_source)?__/.test(v.name)));
+    checkTrue(
+        'N9: rollback restored mirror (no partial anchors)',
+        !yoursRb.variables.some((v) => /^sib(ling_source)?__/.test(v.name))
+    );
 }
 
 // ─── Suite N10: preflight rejection ──────────────────────────────────────────
@@ -3246,20 +3462,38 @@ console.log('\n--- Suite N10: preflight rejection ---');
         conditions: '  - name: c\n    commands: [{type: wait, duration: *dup}]'
     });
     const dupSrc = parseV3Protocol(dupText);
-    check('N10: detectDuplicateAnchors finds the dup', detectDuplicateAnchors(dupSrc._doc).join(','), 'dup');
-    checkThrows('N10: createStagingBuffer rejects duplicate-anchor source', () => createStagingBuffer(dupSrc, 'dup.yaml'), 'DUPLICATE_ANCHOR_SOURCE');
+    check(
+        'N10: detectDuplicateAnchors finds the dup',
+        detectDuplicateAnchors(dupSrc._doc).join(','),
+        'dup'
+    );
+    checkThrows(
+        'N10: createStagingBuffer rejects duplicate-anchor source',
+        () => createStagingBuffer(dupSrc, 'dup.yaml'),
+        'DUPLICATE_ANCHOR_SOURCE'
+    );
 
     // broken-alias source → parseV3Protocol throws (can never enter import mode)
     const brokenText = mkProtocol({
         name: 'theirs',
         conditions: '  - name: c\n    commands: [{type: wait, duration: *missing}]'
     });
-    checkThrows('N10: broken-alias source rejected at parse (cannot enter import)', () => parseV3Protocol(brokenText));
+    checkThrows('N10: broken-alias source rejected at parse (cannot enter import)', () =>
+        parseV3Protocol(brokenText)
+    );
 
     // derivePrefix sanitization
-    check('N10: derivePrefix strips path + ext', derivePrefix('/a/b/Sibling Lab.yaml'), 'Sibling_Lab__');
+    check(
+        'N10: derivePrefix strips path + ext',
+        derivePrefix('/a/b/Sibling Lab.yaml'),
+        'Sibling_Lab__'
+    );
     check('N10: derivePrefix empty for empty name', derivePrefix(''), '');
-    check('N10: suggestUniqueName bumps suffix', suggestUniqueName('x', new Set(['x', 'x_2'])), 'x_3');
+    check(
+        'N10: suggestUniqueName bumps suffix',
+        suggestUniqueName('x', new Set(['x', 'x_2'])),
+        'x_3'
+    );
 }
 
 // ─── Suite N11: add/remove plugin from registry (v0.20 UI feature) ───────────
@@ -3290,7 +3524,10 @@ console.log('\n--- Suite N11: add/remove plugin from registry ---');
     check('N11: mirror plugin name', exp.plugins[0].name, 'temperature');
 
     // Commands now resolve via matlab.class → available in the Add-command picker
-    checkTrue('N11: temperature in listV3PluginNames', listV3PluginNames(exp).includes('temperature'));
+    checkTrue(
+        'N11: temperature in listV3PluginNames',
+        listV3PluginNames(exp).includes('temperature')
+    );
     checkTrue(
         'N11: temperature commands resolve',
         Object.keys(getV3PluginCommands(exp, 'temperature')).length > 0
@@ -3336,54 +3573,137 @@ console.log('\n--- Suite N12: rig-aware plugin parse + mapping ---');
     // (a) test_rig_1 — richest case: backlight + camera ENABLED with type/config.
     const r1 = deriveRigPlugins(parseRigYAMLText(readFixture('rigs/test_rig_1.yaml')));
     check('N12a: test_rig_1 has 3 plugins', r1.plugins.length, 3);
-    check('N12a: backlight → LEDControllerPlugin', findKey(r1, 'backlight').matlabClass, 'LEDControllerPlugin');
+    check(
+        'N12a: backlight → LEDControllerPlugin',
+        findKey(r1, 'backlight').matlabClass,
+        'LEDControllerPlugin'
+    );
     checkTrue('N12a: backlight enabled', findKey(r1, 'backlight').enabled === true);
-    check('N12a: camera (type "Bias") → BiasPlugin', findKey(r1, 'camera').matlabClass, 'BiasPlugin');
+    check(
+        'N12a: camera (type "Bias") → BiasPlugin',
+        findKey(r1, 'camera').matlabClass,
+        'BiasPlugin'
+    );
     checkTrue('N12a: camera enabled', findKey(r1, 'camera').enabled === true);
-    check('N12a: temperature → DAQThermometerPlugin', findKey(r1, 'temperature').matlabClass, 'DAQThermometerPlugin');
+    check(
+        'N12a: temperature → DAQThermometerPlugin',
+        findKey(r1, 'temperature').matlabClass,
+        'DAQThermometerPlugin'
+    );
     checkTrue('N12a: temperature disabled', findKey(r1, 'temperature').enabled === false);
     check('N12a: nothing unmapped', r1.unmapped.length, 0);
 
     // (b) example_rig — schema variation: backlight has NO type (com_port/ir_power),
     // camera type is "BIAS" (different casing). Tolerant mapping must still resolve.
     const r2 = deriveRigPlugins(parseRigYAMLText(readFixture('rigs/example_rig.yaml')));
-    check('N12b: backlight maps via KEY despite missing type', findKey(r2, 'backlight').matlabClass, 'LEDControllerPlugin');
-    check('N12b: camera "BIAS" (casing) → BiasPlugin', findKey(r2, 'camera').matlabClass, 'BiasPlugin');
-    check('N12b: temperature maps via key', findKey(r2, 'temperature').matlabClass, 'DAQThermometerPlugin');
-    checkTrue('N12b: all disabled in example_rig', r2.plugins.every((p) => p.enabled === false));
+    check(
+        'N12b: backlight maps via KEY despite missing type',
+        findKey(r2, 'backlight').matlabClass,
+        'LEDControllerPlugin'
+    );
+    check(
+        'N12b: camera "BIAS" (casing) → BiasPlugin',
+        findKey(r2, 'camera').matlabClass,
+        'BiasPlugin'
+    );
+    check(
+        'N12b: temperature maps via key',
+        findKey(r2, 'temperature').matlabClass,
+        'DAQThermometerPlugin'
+    );
+    checkTrue(
+        'N12b: all disabled in example_rig',
+        r2.plugins.every((p) => p.enabled === false)
+    );
 
     // (c) test_rig_2 — minimal: all disabled, no config, still mapped via key.
     const r3 = deriveRigPlugins(parseRigYAMLText(readFixture('rigs/test_rig_2.yaml')));
     check('N12c: test_rig_2 has 3 plugins', r3.plugins.length, 3);
-    checkTrue('N12c: all mapped via key', r3.plugins.every((p) => p.mapped));
-    checkTrue('N12c: all disabled', r3.plugins.every((p) => p.enabled === false));
+    checkTrue(
+        'N12c: all mapped via key',
+        r3.plugins.every((p) => p.mapped)
+    );
+    checkTrue(
+        'N12c: all disabled',
+        r3.plugins.every((p) => p.enabled === false)
+    );
 
     // (d) tolerant fallback + unknown degradation
-    check('N12d: mapRigPluginToBuiltin("camera") → camera', mapRigPluginToBuiltin('camera').builtinName, 'camera');
-    check('N12d: mapRigPluginToBuiltin("temperature") → temperature', mapRigPluginToBuiltin('temperature').builtinName, 'temperature');
-    check('N12d: legacy "thermometer" rig key still maps → temperature', mapRigPluginToBuiltin('thermometer').builtinName, 'temperature');
-    check('N12d: unknown key + known TYPE falls back', mapRigPluginToBuiltin('cam2', 'LED Controller').builtinName, 'backlight');
-    checkTrue('N12d: unknown key + unknown type → null', mapRigPluginToBuiltin('zorp', 'Quantum Flux') === null);
-    const weird = deriveRigPlugins(parseRigYAMLText('plugins:\n  zorp:\n    enabled: true\n    type: "Quantum Flux"\n'));
-    checkTrue('N12d: unmapped plugin surfaced (mapped=false)', findKey(weird, 'zorp').mapped === false);
+    check(
+        'N12d: mapRigPluginToBuiltin("camera") → camera',
+        mapRigPluginToBuiltin('camera').builtinName,
+        'camera'
+    );
+    check(
+        'N12d: mapRigPluginToBuiltin("temperature") → temperature',
+        mapRigPluginToBuiltin('temperature').builtinName,
+        'temperature'
+    );
+    check(
+        'N12d: legacy "thermometer" rig key still maps → temperature',
+        mapRigPluginToBuiltin('thermometer').builtinName,
+        'temperature'
+    );
+    check(
+        'N12d: unknown key + known TYPE falls back',
+        mapRigPluginToBuiltin('cam2', 'LED Controller').builtinName,
+        'backlight'
+    );
+    checkTrue(
+        'N12d: unknown key + unknown type → null',
+        mapRigPluginToBuiltin('zorp', 'Quantum Flux') === null
+    );
+    const weird = deriveRigPlugins(
+        parseRigYAMLText('plugins:\n  zorp:\n    enabled: true\n    type: "Quantum Flux"\n')
+    );
+    checkTrue(
+        'N12d: unmapped plugin surfaced (mapped=false)',
+        findKey(weird, 'zorp').mapped === false
+    );
     checkTrue('N12d: unmapped key listed in .unmapped', weird.unmapped.includes('zorp'));
 
     // (e) graceful degradation — never throws on null/partial input
     check('N12e: deriveRigPlugins(null) → empty', deriveRigPlugins(null).plugins.length, 0);
     check('N12e: deriveRigPlugins({}) → empty', deriveRigPlugins({}).plugins.length, 0);
-    check('N12e: deriveRigPlugins({plugins:null}) → empty', deriveRigPlugins({ plugins: null }).plugins.length, 0);
-    check('N12e: empty rig text parses to {}', JSON.stringify(parseRigYAMLText('# only a comment\n')), '{}');
-    checkThrows('N12e: malformed rig YAML throws RIG_PARSE_ERROR', () => parseRigYAMLText('a: [b: c: d'), 'RIG_PARSE_ERROR');
-    checkThrows('N12e: non-mapping rig root throws', () => parseRigYAMLText('- a\n- b\n'), 'RIG_PARSE_ERROR');
+    check(
+        'N12e: deriveRigPlugins({plugins:null}) → empty',
+        deriveRigPlugins({ plugins: null }).plugins.length,
+        0
+    );
+    check(
+        'N12e: empty rig text parses to {}',
+        JSON.stringify(parseRigYAMLText('# only a comment\n')),
+        '{}'
+    );
+    checkThrows(
+        'N12e: malformed rig YAML throws RIG_PARSE_ERROR',
+        () => parseRigYAMLText('a: [b: c: d'),
+        'RIG_PARSE_ERROR'
+    );
+    checkThrows(
+        'N12e: non-mapping rig root throws',
+        () => parseRigYAMLText('- a\n- b\n'),
+        'RIG_PARSE_ERROR'
+    );
 
     // (f) diffRigVsProtocol — mismatch detection (name-based)
     const d1 = diffRigVsProtocol(r1.plugins, [{ name: 'backlight' }]);
     check('N12f: backlight declared → not unsupported', d1.unsupported.length, 0);
     checkTrue('N12f: camera enabled-but-unused flagged', d1.unused.includes('camera'));
-    checkTrue('N12f: disabled temperature not flagged as unused', !d1.unused.includes('temperature'));
+    checkTrue(
+        'N12f: disabled temperature not flagged as unused',
+        !d1.unused.includes('temperature')
+    );
     const d2 = diffRigVsProtocol(r1.plugins, [{ name: 'thermometer' }]);
-    checkTrue('N12f: thermometer name not an enabled rig key → unsupported', d2.unsupported.includes('thermometer'));
-    const d3 = diffRigVsProtocol(r1.plugins, [{ name: 'log' }, { name: 'camera' }, { name: 'backlight' }]);
+    checkTrue(
+        'N12f: thermometer name not an enabled rig key → unsupported',
+        d2.unsupported.includes('thermometer')
+    );
+    const d3 = diffRigVsProtocol(r1.plugins, [
+        { name: 'log' },
+        { name: 'camera' },
+        { name: 'backlight' }
+    ]);
     checkTrue('N12f: log excluded from unsupported', !d3.unsupported.includes('log'));
     check('N12f: all enabled rig plugins declared → none unused', d3.unused.length, 0);
 }
@@ -3403,7 +3723,11 @@ console.log('\n--- Suite N13: import canonical plugin binding (#89) ---');
     // (a) camera-less target: canonical `camera` is added UN-prefixed, never namespaced.
     const src = parseV3Protocol(camSrc());
     const yours = parseV3Protocol(
-        mkProtocol({ name: 'yours', rig: '/your/rig.yaml', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+        mkProtocol({
+            name: 'yours',
+            rig: '/your/rig.yaml',
+            conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]'
+        })
     );
     const st = createStagingBuffer(src, 'their_lib.yaml');
     addToStaging(st, 0, yours);
@@ -3413,10 +3737,16 @@ console.log('\n--- Suite N13: import canonical plugin binding (#89) ---');
     check('N13a: planned name is canonical (unprefixed)', entry.plannedName, 'camera');
     const sum = commitStaging(st, yours);
     checkTrue('N13a: camera reported added', sum.pluginsAdded.includes('camera'));
-    checkTrue('N13a: camera declared with canonical name', yours.plugins.some((p) => p.name === 'camera'));
+    checkTrue(
+        'N13a: camera declared with canonical name',
+        yours.plugins.some((p) => p.name === 'camera')
+    );
     const outA = yours._doc.toString();
     checkTrue('N13a: plugin_name stays "camera"', /plugin_name:\s*"?camera"?/.test(outA));
-    checkTrue('N13a: NEVER prefixed (#89)', !/their_lib__camera/.test(outA) && !yours.plugins.some((p) => /__camera$/.test(p.name)));
+    checkTrue(
+        'N13a: NEVER prefixed (#89)',
+        !/their_lib__camera/.test(outA) && !yours.plugins.some((p) => /__camera$/.test(p.name))
+    );
 
     // (b) target already declares camera → merge (protocol authoritative), no new plugin.
     const src2 = parseV3Protocol(camSrc());
@@ -3424,7 +3754,8 @@ console.log('\n--- Suite N13: import canonical plugin binding (#89) ---');
         mkProtocol({
             name: 'yours',
             rig: '/your/rig.yaml',
-            plugins: 'plugins:\n  - {name: camera, type: class, matlab: {class: BiasPlugin}, config: {frame_rate: 60}}',
+            plugins:
+                'plugins:\n  - {name: camera, type: class, matlab: {class: BiasPlugin}, config: {frame_rate: 60}}',
             experiment: 'existing',
             conditions: '  - name: existing\n    commands: [{type: wait, duration: 1}]'
         })
@@ -3438,20 +3769,27 @@ console.log('\n--- Suite N13: import canonical plugin binding (#89) ---');
     const sum2 = commitStaging(st2, yoursDecl);
     check('N13b: no plugin added on canonical merge', yoursDecl.plugins.length, pcount);
     checkTrue('N13b: merge recorded', sum2.pluginsMerged.includes('camera'));
-    checkTrue('N13b: target camera config preserved (authoritative)', yoursDecl.plugins.find((p) => p.name === 'camera').config.frame_rate === 60);
+    checkTrue(
+        'N13b: target camera config preserved (authoritative)',
+        yoursDecl.plugins.find((p) => p.name === 'camera').config.frame_rate === 60
+    );
 
     // (c) non-canonical custom plugin with no rig support → still namespaced (regression guard).
     const srcCustom = parseV3Protocol(
         mkProtocol({
             name: 'theirs',
             rig: '/their/rig.yaml',
-            plugins: 'plugins:\n  - {name: widget, type: class, matlab: {class: WidgetPlugin}, config: {chan: 2}}',
+            plugins:
+                'plugins:\n  - {name: widget, type: class, matlab: {class: WidgetPlugin}, config: {chan: 2}}',
             conditions:
                 '  - name: w trial\n    commands:\n      - {type: plugin, plugin_name: widget, command_name: go}'
         })
     );
     const yoursC = parseV3Protocol(
-        mkProtocol({ name: 'yours', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+        mkProtocol({
+            name: 'yours',
+            conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]'
+        })
     );
     const stC = createStagingBuffer(srcCustom, 'their_lib.yaml');
     addToStaging(stC, 0, yoursC);
@@ -3471,7 +3809,10 @@ console.log('\n--- Suite N13: import canonical plugin binding (#89) ---');
         })
     );
     const yoursR = parseV3Protocol(
-        mkProtocol({ name: 'yours', conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]' })
+        mkProtocol({
+            name: 'yours',
+            conditions: '  - name: x\n    commands: [{type: wait, duration: 1}]'
+        })
     );
     const stR = createStagingBuffer(srcRig, 'their_lib.yaml', { rigPluginNames: ['specialCam'] });
     addToStaging(stR, 0, yoursR);
@@ -3480,10 +3821,18 @@ console.log('\n--- Suite N13: import canonical plugin binding (#89) ---');
     check('N13d: rig-declared name not prefixed', eR.plannedName, 'specialCam');
     // setPluginPlannedName must be a no-op on a canonical bind (can't re-break it).
     setPluginPlannedName(stR, 'specialCam', 'their_lib__specialCam');
-    check('N13d: canonical bind is non-renamable', stR.batch.pluginRegistry.get('specialCam').plannedName, 'specialCam');
+    check(
+        'N13d: canonical bind is non-renamable',
+        stR.batch.pluginRegistry.get('specialCam').plannedName,
+        'specialCam'
+    );
     // prefix change must not re-prefix a canonical bind either.
     setStagingPrefix(stR, 'zzz__');
-    check('N13d: prefix change leaves canonical bind alone', stR.batch.pluginRegistry.get('specialCam').plannedName, 'specialCam');
+    check(
+        'N13d: prefix change leaves canonical bind alone',
+        stR.batch.pluginRegistry.get('specialCam').plannedName,
+        'specialCam'
+    );
 }
 
 // ─── Suite 31: variables-section ORDERING — the "frozen editor" bug ───────────
@@ -3494,17 +3843,18 @@ console.log('\n--- Suite N13: import canonical plugin binding (#89) ---');
 // snapshotState() on the NEXT pushUndo, freezing the editor.
 console.log('\n--- Suite 32: variables ordering (frozen-editor bugfix) ---');
 {
-    const yaml = [
-        'version: 3',
-        'experiment_info: {name: t}',
-        'rig: "/tmp/r.yaml"',
-        'experiment: [c1]',
-        'conditions:',
-        '  - name: c1',
-        '    commands:',
-        '      - type: wait',
-        '        duration: 5'
-    ].join('\n') + '\n';
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: t}',
+            'rig: "/tmp/r.yaml"',
+            'experiment: [c1]',
+            'conditions:',
+            '  - name: c1',
+            '    commands:',
+            '      - type: wait',
+            '        duration: 5'
+        ].join('\n') + '\n';
     const exp = parseV3Protocol(yaml); // NO variables: section
     docCreateVariable(exp, 'pause_short', 1);
     docBindToAnchor(exp, ['conditions', 0, 'commands', 0, 'duration'], 'pause_short');
@@ -3536,7 +3886,11 @@ console.log('\n--- Suite 32: variables ordering (frozen-editor bugfix) ---');
             text.slice(0, 90)
         );
         const re = parseV3Protocol(text);
-        check('31.4: rebound field resolves to the anchor value', re.conditions[0].commands[0].duration, 1);
+        check(
+            '31.4: rebound field resolves to the anchor value',
+            re.conditions[0].commands[0].duration,
+            1
+        );
     }
 }
 

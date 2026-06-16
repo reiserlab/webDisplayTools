@@ -14,8 +14,8 @@ const fs = require('fs');
 const path = require('path');
 const PatternGenerator = require('../js/pattern-editor/tools/generator.js');
 
-const TOLERANCE = 1;  // Pixel value tolerance (±1 for GS16 0-15 range)
-const COORD_TOLERANCE = 0.0001;  // Coordinate tolerance in radians
+const TOLERANCE = 1; // Pixel value tolerance (±1 for GS16 0-15 range)
+const COORD_TOLERANCE = 0.0001; // Coordinate tolerance in radians
 
 let passed = 0;
 let failed = 0;
@@ -82,7 +82,9 @@ function compareFrame(jsFrame, matlabFrame, tolerance, testName) {
         console.error(`FAIL: ${testName}`);
         console.error(`  ${mismatches}/${pixelCount} pixels differ by more than ±${tolerance}`);
         console.error(`  Max difference: ${maxDiff}`);
-        console.error(`  First mismatch at pixel ${firstMismatchIdx}: JS=${jsFrame[firstMismatchIdx]}, MATLAB=${matlabFrame[firstMismatchIdx]}`);
+        console.error(
+            `  First mismatch at pixel ${firstMismatchIdx}: JS=${jsFrame[firstMismatchIdx]}, MATLAB=${matlabFrame[firstMismatchIdx]}`
+        );
         return false;
     }
 }
@@ -138,7 +140,7 @@ if (!refData) {
     console.log('Test 1: Rotation grating self-consistency');
     {
         const params = {
-            spatFreq: Math.PI / 10,  // 20 pixel wavelength
+            spatFreq: Math.PI / 10, // 20 pixel wavelength
             motionType: 'rotation',
             waveform: 'square',
             dutyCycle: 50,
@@ -194,7 +196,7 @@ if (!refData) {
         let shiftCorrect = true;
         for (let f = 1; f < pattern.numFrames && shiftCorrect; f++) {
             for (let c = 0; c < pixelCols; c++) {
-                const sourceCol = ((c - f) % pixelCols + pixelCols) % pixelCols;
+                const sourceCol = (((c - f) % pixelCols) + pixelCols) % pixelCols;
                 if (pattern.frames[f][c] !== pattern.frames[0][sourceCol]) {
                     shiftCorrect = false;
                     break;
@@ -225,8 +227,8 @@ if (!refData) {
         const pattern25 = PatternGenerator.generate('spherical-grating', params25, arenaConfig);
         const pattern75 = PatternGenerator.generate('spherical-grating', params75, arenaConfig);
 
-        const count25 = pattern25.frames[0].filter(v => v === 15).length;
-        const count75 = pattern75.frames[0].filter(v => v === 15).length;
+        const count25 = pattern25.frames[0].filter((v) => v === 15).length;
+        const count75 = pattern75.frames[0].filter((v) => v === 15).length;
 
         // 25% duty should have ~25% high pixels, 75% should have ~75%
         const total = pattern25.frames[0].length;
@@ -297,7 +299,7 @@ if (!refData) {
     console.log('\nTest 6: Anti-aliasing produces intermediate values');
     {
         const paramsNoAA = {
-            spatFreq: 0.65,  // Misaligned with pixel grid
+            spatFreq: 0.65, // Misaligned with pixel grid
             motionType: 'rotation',
             waveform: 'square',
             dutyCycle: 50,
@@ -312,7 +314,11 @@ if (!refData) {
         const paramsWithAA = { ...paramsNoAA, aaSamples: 15 };
 
         const patternNoAA = PatternGenerator.generate('spherical-grating', paramsNoAA, arenaConfig);
-        const patternWithAA = PatternGenerator.generate('spherical-grating', paramsWithAA, arenaConfig);
+        const patternWithAA = PatternGenerator.generate(
+            'spherical-grating',
+            paramsWithAA,
+            arenaConfig
+        );
 
         const uniqueNoAA = new Set(patternNoAA.frames[0]);
         const uniqueWithAA = new Set(patternWithAA.frames[0]);
@@ -320,7 +326,6 @@ if (!refData) {
         assertEqual(uniqueNoAA.size, 2, 'No AA: exactly 2 values');
         assertTrue(uniqueWithAA.size > 2, `With AA: more than 2 values (${uniqueWithAA.size})`);
     }
-
 } else {
     // Run MATLAB reference comparison tests
     console.log(`Loaded reference data with ${refData.testCases.length} test cases\n`);
@@ -358,7 +363,6 @@ if (!refData) {
             const matlabFrame = testCase.referenceFrame;
 
             compareFrame(jsFrame, matlabFrame, TOLERANCE, `${testCase.name} - frame ${frameIdx}`);
-
         } catch (e) {
             failed++;
             console.error(`FAIL: ${testCase.name} - Error: ${e.message}`);

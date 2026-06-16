@@ -312,10 +312,7 @@ function extractCommand(cmd) {
     }
     const t = cmd.type;
     if (typeof t !== 'string' || !t.trim()) {
-        throw new V3ParseError(
-            'Command is missing a string `type` field',
-            'INVALID_SCHEMA'
-        );
+        throw new V3ParseError('Command is missing a string `type` field', 'INVALID_SCHEMA');
     }
     const known = KNOWN_COMMAND_KEYS_BY_TYPE[t];
     if (!known) {
@@ -507,7 +504,10 @@ function collectBlockingErrors(experiment) {
         let scanDoc = experiment._doc;
         let lineOf = () => null;
         try {
-            if (typeof YAML.LineCounter === 'function' && typeof YAML.parseDocument === 'function') {
+            if (
+                typeof YAML.LineCounter === 'function' &&
+                typeof YAML.parseDocument === 'function'
+            ) {
                 const lc = new YAML.LineCounter();
                 scanDoc = YAML.parseDocument(experiment._doc.toString(), { lineCounter: lc });
                 lineOf = (node) =>
@@ -645,7 +645,8 @@ function collectExportWarnings(experiment) {
                     warnings.push({
                         kind: 'unused-anchor',
                         name: name,
-                        message: 'Anchor "&' + name + '" is declared in variables: but never referenced.'
+                        message:
+                            'Anchor "&' + name + '" is declared in variables: but never referenced.'
                     });
                 }
             }
@@ -661,13 +662,19 @@ function collectExportWarnings(experiment) {
     for (const c of experiment.conditions) {
         for (const cmd of c.commands || []) {
             if (cmd.type === 'plugin' && cmd.plugin_name) {
-                if (!declaredPluginNames.has(cmd.plugin_name) && !undeclaredPluginsSeen.has(cmd.plugin_name)) {
+                if (
+                    !declaredPluginNames.has(cmd.plugin_name) &&
+                    !undeclaredPluginsSeen.has(cmd.plugin_name)
+                ) {
                     undeclaredPluginsSeen.add(cmd.plugin_name);
                     warnings.push({
                         kind: 'undeclared-plugin',
                         name: cmd.plugin_name,
                         condition: c.name,
-                        message: 'Plugin "' + cmd.plugin_name + '" is referenced by commands but not declared in plugins:.'
+                        message:
+                            'Plugin "' +
+                            cmd.plugin_name +
+                            '" is referenced by commands but not declared in plugins:.'
                     });
                 }
             }
@@ -682,7 +689,12 @@ function collectExportWarnings(experiment) {
                     kind: 'raw-command',
                     name: cmd.type,
                     condition: c.name,
-                    message: 'Condition "' + c.name + '" contains an unknown command type "' + cmd.type + '" (preserved on export, but designer cannot edit it).'
+                    message:
+                        'Condition "' +
+                        c.name +
+                        '" contains an unknown command type "' +
+                        cmd.type +
+                        '" (preserved on export, but designer cannot edit it).'
                 });
             }
         }
@@ -760,7 +772,9 @@ function nodeIsAliasAt(experiment, path) {
     if (!experiment || !experiment._doc) return false;
     const node = experiment._doc.getIn(path, true);
     if (!node) return false;
-    return YAML.isAlias ? YAML.isAlias(node) : node.type === 'ALIAS' || node.constructor?.name === 'Alias';
+    return YAML.isAlias
+        ? YAML.isAlias(node)
+        : node.type === 'ALIAS' || node.constructor?.name === 'Alias';
 }
 
 /**
@@ -901,11 +915,19 @@ function docSetPluginCommandHead(experiment, condIdx, cmdIdx, newHead) {
     const cmd = cond.commands[cmdIdx];
     if (!cmd || cmd.type !== 'plugin') {
         throw new V3ParseError(
-            'docSetPluginCommandHead: command at [' + condIdx + ',' + cmdIdx + '] is not a plugin command',
+            'docSetPluginCommandHead: command at [' +
+                condIdx +
+                ',' +
+                cmdIdx +
+                '] is not a plugin command',
             'INVALID_INPUT'
         );
     }
-    if (!newHead || typeof newHead.plugin_name !== 'string' || typeof newHead.command_name !== 'string') {
+    if (
+        !newHead ||
+        typeof newHead.plugin_name !== 'string' ||
+        typeof newHead.command_name !== 'string'
+    ) {
         throw new V3ParseError(
             'docSetPluginCommandHead: newHead.plugin_name and newHead.command_name must be strings',
             'INVALID_INPUT'
@@ -925,7 +947,11 @@ function docSetPluginCommandHead(experiment, condIdx, cmdIdx, newHead) {
         plugin_name: newHead.plugin_name,
         command_name: newHead.command_name
     };
-    if (newHead.params && typeof newHead.params === 'object' && Object.keys(newHead.params).length > 0) {
+    if (
+        newHead.params &&
+        typeof newHead.params === 'object' &&
+        Object.keys(newHead.params).length > 0
+    ) {
         newCmd.params = JSON.parse(JSON.stringify(newHead.params));
     }
     const newNode = experiment._doc.createNode(newCmd);
@@ -962,12 +988,19 @@ function docAddPluginParam(experiment, condIdx, cmdIdx, paramKey, paramValue) {
     const cmd = cond.commands[cmdIdx];
     if (!cmd || cmd.type !== 'plugin') {
         throw new V3ParseError(
-            'docAddPluginParam: command at [' + condIdx + ',' + cmdIdx + '] is not a plugin command',
+            'docAddPluginParam: command at [' +
+                condIdx +
+                ',' +
+                cmdIdx +
+                '] is not a plugin command',
             'INVALID_INPUT'
         );
     }
     if (typeof paramKey !== 'string' || !paramKey) {
-        throw new V3ParseError('docAddPluginParam: paramKey must be a non-empty string', 'INVALID_INPUT');
+        throw new V3ParseError(
+            'docAddPluginParam: paramKey must be a non-empty string',
+            'INVALID_INPUT'
+        );
     }
 
     const paramsPath = ['conditions', condIdx, 'commands', cmdIdx, 'params'];
@@ -1003,7 +1036,11 @@ function docDeletePluginParam(experiment, condIdx, cmdIdx, paramKey) {
     const cmd = cond.commands[cmdIdx];
     if (!cmd || cmd.type !== 'plugin') {
         throw new V3ParseError(
-            'docDeletePluginParam: command at [' + condIdx + ',' + cmdIdx + '] is not a plugin command',
+            'docDeletePluginParam: command at [' +
+                condIdx +
+                ',' +
+                cmdIdx +
+                '] is not a plugin command',
             'INVALID_INPUT'
         );
     }
@@ -1043,7 +1080,10 @@ function docInsertCondition(experiment, name, commands) {
         throw new V3ParseError('docInsertCondition: experiment has no _doc handle', 'NO_DOC');
     }
     if (typeof name !== 'string' || !name.trim()) {
-        throw new V3ParseError('docInsertCondition: name must be a non-empty string', 'INVALID_INPUT');
+        throw new V3ParseError(
+            'docInsertCondition: name must be a non-empty string',
+            'INVALID_INPUT'
+        );
     }
     if (experiment.conditions.find((c) => c.name === name)) {
         throw new V3ParseError(
@@ -1089,7 +1129,10 @@ function docCloneCondition(experiment, srcIdx, newName) {
         throw new V3ParseError('docCloneCondition: experiment has no _doc handle', 'NO_DOC');
     }
     if (typeof newName !== 'string' || !newName.trim()) {
-        throw new V3ParseError('docCloneCondition: newName must be a non-empty string', 'INVALID_INPUT');
+        throw new V3ParseError(
+            'docCloneCondition: newName must be a non-empty string',
+            'INVALID_INPUT'
+        );
     }
     const src = experiment.conditions[srcIdx];
     if (!src) {
@@ -1170,16 +1213,22 @@ function _buildSequenceEntry(doc, entry) {
             // without this guard, programmatic build paths (D4, paste-import)
             // would emit invalid YAML and the doc/JS-mirror could diverge
             // (entry.repetitions = 0 → YAML `0` but mirror = 1 via `|| 1`).
-            if (typeof entry.repetitions !== 'number' || !Number.isInteger(entry.repetitions) || entry.repetitions < 1) {
+            if (
+                typeof entry.repetitions !== 'number' ||
+                !Number.isInteger(entry.repetitions) ||
+                entry.repetitions < 1
+            ) {
                 throw new V3ParseError(
-                    '_buildSequenceEntry: invalid repetitions (must be positive integer): ' + JSON.stringify(entry.repetitions),
+                    '_buildSequenceEntry: invalid repetitions (must be positive integer): ' +
+                        JSON.stringify(entry.repetitions),
                     'INVALID_SCHEMA'
                 );
             }
             blockShape.repetitions = entry.repetitions;
         }
         if (entry.randomize === true) blockShape.randomize = true;
-        if (typeof entry.intertrial === 'string' && entry.intertrial) blockShape.intertrial = entry.intertrial;
+        if (typeof entry.intertrial === 'string' && entry.intertrial)
+            blockShape.intertrial = entry.intertrial;
         return {
             node: doc.createNode(blockShape),
             jsEntry: {
@@ -1372,7 +1421,9 @@ function docMoveTrialInBlock(experiment, blockIdx, fromIdx, toIdx) {
     const trialsNode = experiment._doc.getIn(['experiment', blockIdx, 'trials'], true);
     if (!trialsNode || !Array.isArray(trialsNode.items)) {
         throw new V3ParseError(
-            'docMoveTrialInBlock: doc/model divergence — no trials seq at experiment[' + blockIdx + ']',
+            'docMoveTrialInBlock: doc/model divergence — no trials seq at experiment[' +
+                blockIdx +
+                ']',
             'DOC_MODEL_DIVERGENCE'
         );
     }
@@ -1416,7 +1467,9 @@ function docRemoveTrialFromBlock(experiment, blockIdx, trialIdx) {
     const trialsNode = experiment._doc.getIn(['experiment', blockIdx, 'trials'], true);
     if (!trialsNode || !Array.isArray(trialsNode.items)) {
         throw new V3ParseError(
-            'docRemoveTrialFromBlock: doc/model divergence — no trials seq at experiment[' + blockIdx + ']',
+            'docRemoveTrialFromBlock: doc/model divergence — no trials seq at experiment[' +
+                blockIdx +
+                ']',
             'DOC_MODEL_DIVERGENCE'
         );
     }
@@ -1449,7 +1502,6 @@ function docAppendSequenceEntry(experiment, entry) {
     seqNode.items.push(built.node);
     experiment.sequence.push(built.jsEntry);
 }
-
 
 /**
  * docDelete(experiment, path)
@@ -1532,8 +1584,7 @@ function _findVariablePair(experiment, name) {
     for (let i = 0; i < varsNode.items.length; i++) {
         const pair = varsNode.items[i];
         const anchorName = pair.value && pair.value.anchor ? pair.value.anchor : null;
-        const mapKey =
-            pair.key && pair.key.value !== undefined ? pair.key.value : String(pair.key);
+        const mapKey = pair.key && pair.key.value !== undefined ? pair.key.value : String(pair.key);
         const identity = anchorName || mapKey;
         if (identity === name) return { pair, index: i, varsNode };
     }
@@ -1639,7 +1690,8 @@ function docCreateVariable(experiment, name, value) {
     }
     if (!isValidAnchorName(name)) {
         throw new V3ParseError(
-            'docCreateVariable: invalid anchor name ' + JSON.stringify(name) +
+            'docCreateVariable: invalid anchor name ' +
+                JSON.stringify(name) +
                 ' (must match /^[A-Za-z0-9_-]+$/)',
             'INVALID_INPUT'
         );
@@ -1692,15 +1744,15 @@ function docDeleteVariable(experiment, name, opts) {
     const cascade = !!(opts && opts.cascadeUnbind);
     const found = _findVariablePair(experiment, name);
     if (!found) {
-        throw new V3ParseError(
-            'docDeleteVariable: no anchor named "' + name + '"',
-            'BAD_PATH'
-        );
+        throw new V3ParseError('docDeleteVariable: no anchor named "' + name + '"', 'BAD_PATH');
     }
     const refs = findAliasesTo(experiment, name);
     if (refs.length > 0 && !cascade) {
         const err = new V3ParseError(
-            'docDeleteVariable: anchor "' + name + '" still has ' + refs.length +
+            'docDeleteVariable: anchor "' +
+                name +
+                '" still has ' +
+                refs.length +
                 ' reference(s); pass {cascadeUnbind: true} to unbind them first',
             'ANCHOR_HAS_REFS'
         );
@@ -1755,10 +1807,7 @@ function docRenameVariable(experiment, oldName, newName) {
     }
     const found = _findVariablePair(experiment, oldName);
     if (!found) {
-        throw new V3ParseError(
-            'docRenameVariable: no anchor named "' + oldName + '"',
-            'BAD_PATH'
-        );
+        throw new V3ParseError('docRenameVariable: no anchor named "' + oldName + '"', 'BAD_PATH');
     }
     // 1. Rename at the definition site.
     if (found.pair.value) found.pair.value.anchor = newName;
@@ -1798,14 +1847,13 @@ function docSetVariableValue(experiment, name, newValue) {
     }
     const found = _findVariablePair(experiment, name);
     if (!found) {
-        throw new V3ParseError(
-            'docSetVariableValue: no anchor named "' + name + '"',
-            'BAD_PATH'
-        );
+        throw new V3ParseError('docSetVariableValue: no anchor named "' + name + '"', 'BAD_PATH');
     }
     if (variableIsComplex(experiment, name)) {
         throw new V3ParseError(
-            'docSetVariableValue: anchor "' + name + '" is complex (Map/Seq); ' +
+            'docSetVariableValue: anchor "' +
+                name +
+                '" is complex (Map/Seq); ' +
                 'use scalar values only or edit YAML directly',
             'INVALID_INPUT'
         );
@@ -1884,10 +1932,7 @@ function docUnbindAnchor(experiment, path) {
     const node = experiment._doc.getIn(path, true);
     const isAlias = node && (YAML.isAlias?.(node) || node.constructor?.name === 'Alias');
     if (!node || !isAlias) {
-        throw new V3ParseError(
-            'docUnbindAnchor: path does not point to an Alias',
-            'NOT_ALIAS'
-        );
+        throw new V3ParseError('docUnbindAnchor: path does not point to an Alias', 'NOT_ALIAS');
     }
     const anchorName = node.source;
     const varPair = _findVariablePair(experiment, anchorName);
@@ -1958,8 +2003,7 @@ function ensureTopLevelSection(experiment, key, defaultShape) {
     if (keyRank !== -1) {
         for (let i = 0; i < root.items.length; i++) {
             const pair = root.items[i];
-            const k =
-                pair.key && pair.key.value !== undefined ? pair.key.value : String(pair.key);
+            const k = pair.key && pair.key.value !== undefined ? pair.key.value : String(pair.key);
             const rank = KNOWN_TOP_LEVEL_KEYS.indexOf(k);
             if (rank !== -1 && rank > keyRank) {
                 insertAt = i;

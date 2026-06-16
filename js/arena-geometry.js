@@ -35,8 +35,8 @@ function arenaCoordinates(config) {
     const cols = panelSize * numCols;
 
     // Angular spacing
-    const panRad = (2 * Math.PI) / numCircle;  // Radians per panel
-    const pRad = panRad / panelSize;            // Radians per pixel
+    const panRad = (2 * Math.PI) / numCircle; // Radians per panel
+    const pRad = panRad / panelSize; // Radians per pixel
 
     // Initialize coordinate arrays as 2D Float32Array matrices
     const x = new Array(rows);
@@ -67,7 +67,7 @@ function arenaCoordinates(config) {
 
                 // Panel center angle (centered around 0, matching MATLAB)
                 // cphi = -Pan_rad*(Pcols-1)/2 + Pan_rad*panelIdx
-                const panelCenterAngle = -panRad * (numCols - 1) / 2 + panRad * panelIdx;
+                const panelCenterAngle = (-panRad * (numCols - 1)) / 2 + panRad * panelIdx;
 
                 // Pixel offset within panel (centered)
                 // points = (p_rad-Pan_rad)/2:p_rad:(Pan_rad-p_rad)/2
@@ -102,7 +102,7 @@ function arenaCoordinates(config) {
                 const pixelInPanel = c % panelSize;
 
                 // Panel center angle (centered around 0, matching MATLAB)
-                const cphi = -panRad * (numCols - 1) / 2 + panRad * panelIdx;
+                const cphi = (-panRad * (numCols - 1)) / 2 + panRad * panelIdx;
 
                 // Pixel offset along the flat panel face (in radians, converted to linear)
                 const pixelOffsetRad = pRad * (pixelInPanel - (panelSize - 1) / 2);
@@ -265,7 +265,7 @@ function cart2sphere(x, y, z) {
             // Polar angle (theta) - from north pole
             // Handle edge case where rho = 0 (theta is undefined)
             if (rhoVal === 0) {
-                theta[i][j] = 0;  // Convention: theta = 0 when at origin
+                theta[i][j] = 0; // Convention: theta = 0 when at origin
             } else {
                 theta[i][j] = Math.acos(-zVal / rhoVal);
             }

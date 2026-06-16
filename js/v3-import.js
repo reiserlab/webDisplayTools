@@ -366,7 +366,9 @@ function createStagingBuffer(srcExperiment, srcFilename, opts) {
     // Extra canonical plugin names from a loaded TARGET rig (#89). The well-known
     // names (camera/backlight/temperature) are always treated as canonical; this
     // set adds any further plugin names the user's loaded rig declares.
-    const rigPluginNames = new Set(Array.isArray(options.rigPluginNames) ? options.rigPluginNames : []);
+    const rigPluginNames = new Set(
+        Array.isArray(options.rigPluginNames) ? options.rigPluginNames : []
+    );
     return {
         src: { doc: srcExperiment._doc, experiment: srcExperiment, filename: srcFilename || '' },
         prefix: prefix,

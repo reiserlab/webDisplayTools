@@ -63,7 +63,7 @@ console.log('=== arenaCoordinates tests ===\n');
     assertEqual(coords.x.length, 40, 'G6 2x10: x array has 40 rows');
     assertEqual(coords.x[0].length, 200, 'G6 2x10: x[0] has 200 cols');
 
-    const expectedPRad = (2 * Math.PI / 10) / 20;
+    const expectedPRad = (2 * Math.PI) / 10 / 20;
     assertClose(coords.pRad, expectedPRad, TOLERANCE, 'G6 2x10: pRad = 2π/200');
 }
 
@@ -74,8 +74,12 @@ console.log('=== arenaCoordinates tests ===\n');
 
     // Middle rows should have z ≈ 0
     const midRow = Math.floor(coords.rows / 2);
-    assertClose(coords.z[midRow][0] + coords.z[midRow - 1][0], 0, TOLERANCE * 10,
-        'Z coords centered: z[19] + z[20] ≈ 0');
+    assertClose(
+        coords.z[midRow][0] + coords.z[midRow - 1][0],
+        0,
+        TOLERANCE * 10,
+        'Z coords centered: z[19] + z[20] ≈ 0'
+    );
 
     // Bottom row should have negative z, top row positive z
     assertTrue(coords.z[0][0] < 0, 'Bottom row has negative z');
@@ -88,8 +92,8 @@ console.log('=== arenaCoordinates tests ===\n');
     const coords = arenaCoordinates(config);
 
     // For smooth model, x² + y² should = 1 (on unit cylinder)
-    const r = 20;  // arbitrary row
-    const c = 50;  // arbitrary col
+    const r = 20; // arbitrary row
+    const c = 50; // arbitrary col
     const radiusSquared = coords.x[r][c] ** 2 + coords.y[r][c] ** 2;
     assertClose(radiusSquared, 1, TOLERANCE, 'Smooth model: x² + y² = 1');
 }
@@ -104,11 +108,15 @@ console.log('=== arenaCoordinates tests ===\n');
 
     // Poly model should produce different coordinates
     // At panel centers, poly should be closer to center (apothem < radius)
-    const panelCenterCol = 10;  // Center of panel 0
+    const panelCenterCol = 10; // Center of panel 0
     const row = 20;
 
-    const smoothRadius = Math.sqrt(smooth.x[row][panelCenterCol] ** 2 + smooth.y[row][panelCenterCol] ** 2);
-    const polyRadius = Math.sqrt(poly.x[row][panelCenterCol] ** 2 + poly.y[row][panelCenterCol] ** 2);
+    const smoothRadius = Math.sqrt(
+        smooth.x[row][panelCenterCol] ** 2 + smooth.y[row][panelCenterCol] ** 2
+    );
+    const polyRadius = Math.sqrt(
+        poly.x[row][panelCenterCol] ** 2 + poly.y[row][panelCenterCol] ** 2
+    );
 
     assertTrue(polyRadius < smoothRadius, 'Poly model: panel center closer to origin than smooth');
 }
@@ -163,9 +171,18 @@ console.log('\n=== cart2sphere / sphere2cart tests ===\n');
 
 // Test 9: Round-trip conversion
 {
-    const x0 = [[0.5, -0.3], [0.1, 0.8]];
-    const y0 = [[0.7, 0.9], [-0.5, 0.2]];
-    const z0 = [[-0.2, 0.4], [0.6, -0.3]];
+    const x0 = [
+        [0.5, -0.3],
+        [0.1, 0.8]
+    ];
+    const y0 = [
+        [0.7, 0.9],
+        [-0.5, 0.2]
+    ];
+    const z0 = [
+        [-0.2, 0.4],
+        [0.6, -0.3]
+    ];
 
     const spherical = cart2sphere(x0, y0, z0);
     const cartesian = sphere2cart(spherical.phi, spherical.theta, spherical.rho);
@@ -183,9 +200,18 @@ console.log('\n=== rotateCoordinates tests ===\n');
 
 // Test 10: No rotation returns same coordinates
 {
-    const x = [[1, 0], [0, 1]];
-    const y = [[0, 1], [1, 0]];
-    const z = [[0, 0], [0, 0]];
+    const x = [
+        [1, 0],
+        [0, 1]
+    ];
+    const y = [
+        [0, 1],
+        [1, 0]
+    ];
+    const z = [
+        [0, 0],
+        [0, 0]
+    ];
 
     const result = rotateCoordinates(x, y, z, { yaw: 0, pitch: 0, roll: 0 });
 
@@ -226,7 +252,10 @@ console.log('\n=== samplesByPRad tests ===\n');
 
 // Test 13: Single sample returns original value
 {
-    const coord = [[1.0, 2.0], [3.0, 4.0]];
+    const coord = [
+        [1.0, 2.0],
+        [3.0, 4.0]
+    ];
     const result = samplesByPRad(coord, 1, 0.1);
 
     assertEqual(result[0][0][0], 1.0, 'Single sample [0][0]');
@@ -274,7 +303,8 @@ console.log('\n=== Integration test: Arena -> Spherical -> Pattern Coordinates =
 
     // For a smooth cylinder, phi should span approximately [-π, π] around the arena
     // Note: Must manually find min/max since Float32Array.flat() doesn't work like regular arrays
-    let phiMin = Infinity, phiMax = -Infinity;
+    let phiMin = Infinity,
+        phiMax = -Infinity;
     for (let i = 0; i < spherical.phi.length; i++) {
         for (let j = 0; j < spherical.phi[i].length; j++) {
             const v = spherical.phi[i][j];
@@ -286,7 +316,7 @@ console.log('\n=== Integration test: Arena -> Spherical -> Pattern Coordinates =
     assertTrue(phiMax - phiMin > Math.PI, 'Phi spans more than π radians');
 
     // Theta should be around π/2 (equator) for most pixels since z is small
-    const thetaMid = spherical.theta[20][100];  // Middle of arena
+    const thetaMid = spherical.theta[20][100]; // Middle of arena
     assertClose(thetaMid, Math.PI / 2, 0.5, 'Middle theta near π/2 (equator)');
 }
 

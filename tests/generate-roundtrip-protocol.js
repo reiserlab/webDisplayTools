@@ -18,7 +18,12 @@ const path = require('path');
 
 // ─── Import shared modules ──────────────────────────────────────────────────
 
-const { simpleYAMLParse, generateV1Protocol, yamlStr, appendCommand } = require('../js/protocol-yaml.js');
+const {
+    simpleYAMLParse,
+    generateV1Protocol,
+    yamlStr,
+    appendCommand
+} = require('../js/protocol-yaml.js');
 
 // ─── Parse command-line args ────────────────────────────────────────────────
 
@@ -60,7 +65,7 @@ function generateProtocol(version, options) {
 const webPatterns = [
     'web_G41_2x12_gs16_sine_grating_G4.pat',
     'web_G4_4x12_gs16_square_grating_G4.pat',
-    'web_G4_4x12_gs2_square_grating_G4.pat',
+    'web_G4_4x12_gs2_square_grating_G4.pat'
 ];
 
 const testProtocol = {
@@ -80,65 +85,71 @@ const testProtocol = {
             { type: 'controller', command_name: 'allOn' },
             { type: 'wait', duration: 1 },
             { type: 'controller', command_name: 'allOff' },
-            { type: 'wait', duration: 0.5 },
+            { type: 'wait', duration: 0.5 }
         ]
     },
     conditions: [
         {
             id: 'sine_grating_gs16',
-            commands: [{
-                type: 'controller',
-                command_name: 'startG41Trial',
-                pattern: webPatterns[0],
-                pattern_ID: 1,
-                duration: 5,
-                mode: 2,
-                frame_index: 1,
-                frame_rate: 60,
-                gain: 0
-            }]
+            commands: [
+                {
+                    type: 'controller',
+                    command_name: 'startG41Trial',
+                    pattern: webPatterns[0],
+                    pattern_ID: 1,
+                    duration: 5,
+                    mode: 2,
+                    frame_index: 1,
+                    frame_rate: 60,
+                    gain: 0
+                }
+            ]
         },
         {
             id: 'square_grating_gs16',
-            commands: [{
-                type: 'controller',
-                command_name: 'startG41Trial',
-                pattern: webPatterns[1],
-                pattern_ID: 2,
-                duration: 5,
-                mode: 2,
-                frame_index: 1,
-                frame_rate: 10,
-                gain: 0
-            }]
+            commands: [
+                {
+                    type: 'controller',
+                    command_name: 'startG41Trial',
+                    pattern: webPatterns[1],
+                    pattern_ID: 2,
+                    duration: 5,
+                    mode: 2,
+                    frame_index: 1,
+                    frame_rate: 10,
+                    gain: 0
+                }
+            ]
         },
         {
             id: 'square_grating_gs2',
-            commands: [{
-                type: 'controller',
-                command_name: 'startG41Trial',
-                pattern: webPatterns[2],
-                pattern_ID: 3,
-                duration: 3,
-                mode: 2,
-                frame_index: 1,
-                frame_rate: 30,
-                gain: 0
-            }]
-        },
+            commands: [
+                {
+                    type: 'controller',
+                    command_name: 'startG41Trial',
+                    pattern: webPatterns[2],
+                    pattern_ID: 3,
+                    duration: 3,
+                    mode: 2,
+                    frame_index: 1,
+                    frame_rate: 30,
+                    gain: 0
+                }
+            ]
+        }
     ],
     intertrial: {
         include: true,
         commands: [
             { type: 'controller', command_name: 'allOff' },
-            { type: 'wait', duration: 2 },
+            { type: 'wait', duration: 2 }
         ]
     },
     posttrial: {
         include: true,
         commands: [
             { type: 'controller', command_name: 'allOff' },
-            { type: 'wait', duration: 1 },
+            { type: 'wait', duration: 1 }
         ]
     }
 };
@@ -161,7 +172,14 @@ let errors = 0;
 
 function check(label, actual, expected) {
     if (actual !== expected) {
-        console.log('  FAIL: ' + label + ' = ' + JSON.stringify(actual) + ', expected ' + JSON.stringify(expected));
+        console.log(
+            '  FAIL: ' +
+                label +
+                ' = ' +
+                JSON.stringify(actual) +
+                ', expected ' +
+                JSON.stringify(expected)
+        );
         errors++;
     } else {
         console.log('  OK: ' + label + ' = ' + JSON.stringify(actual));
@@ -173,8 +191,16 @@ check('experiment_info.name', parsed.experiment_info.name, testProtocol.name);
 check('arena_info.num_rows', parsed.arena_info.num_rows, testProtocol.num_rows);
 check('arena_info.num_cols', parsed.arena_info.num_cols, testProtocol.num_cols);
 check('arena_info.generation', parsed.arena_info.generation, testProtocol.generation);
-check('experiment_structure.repetitions', parsed.experiment_structure.repetitions, testProtocol.repetitions);
-check('randomization.enabled', parsed.experiment_structure.randomization.enabled, testProtocol.randomization_enabled);
+check(
+    'experiment_structure.repetitions',
+    parsed.experiment_structure.repetitions,
+    testProtocol.repetitions
+);
+check(
+    'randomization.enabled',
+    parsed.experiment_structure.randomization.enabled,
+    testProtocol.randomization_enabled
+);
 
 // Verify conditions
 const conditions = parsed.block && parsed.block.conditions;
@@ -193,9 +219,21 @@ if (!Array.isArray(conditions)) {
         }
         check('condition[' + i + '].id', actual.id, expected.id);
         if (actual.commands && actual.commands[0]) {
-            check('condition[' + i + '].commands[0].pattern', actual.commands[0].pattern, expected.commands[0].pattern);
-            check('condition[' + i + '].commands[0].duration', actual.commands[0].duration, expected.commands[0].duration);
-            check('condition[' + i + '].commands[0].frame_rate', actual.commands[0].frame_rate, expected.commands[0].frame_rate);
+            check(
+                'condition[' + i + '].commands[0].pattern',
+                actual.commands[0].pattern,
+                expected.commands[0].pattern
+            );
+            check(
+                'condition[' + i + '].commands[0].duration',
+                actual.commands[0].duration,
+                expected.commands[0].duration
+            );
+            check(
+                'condition[' + i + '].commands[0].frame_rate',
+                actual.commands[0].frame_rate,
+                expected.commands[0].frame_rate
+            );
         } else {
             console.log('  FAIL: condition ' + i + ' has no commands');
             errors++;
@@ -230,7 +268,7 @@ const manifest = {
         repetitions: testProtocol.repetitions,
         randomization_enabled: testProtocol.randomization_enabled,
         num_conditions: testProtocol.conditions.length,
-        conditions: testProtocol.conditions.map(c => ({
+        conditions: testProtocol.conditions.map((c) => ({
             id: c.id,
             pattern: c.commands[0].pattern,
             pattern_ID: c.commands[0].pattern_ID,
@@ -238,14 +276,14 @@ const manifest = {
             mode: c.commands[0].mode,
             frame_index: c.commands[0].frame_index,
             frame_rate: c.commands[0].frame_rate,
-            gain: c.commands[0].gain,
+            gain: c.commands[0].gain
         })),
         pretrial_include: true,
         pretrial_num_commands: 4,
         intertrial_include: true,
         intertrial_num_commands: 2,
         posttrial_include: true,
-        posttrial_num_commands: 2,
+        posttrial_num_commands: 2
     }
 };
 
@@ -289,10 +327,20 @@ const v2Protocol = {
             { type: 'controller', command_name: 'allOn' },
             { type: 'wait', duration: 1 },
             { type: 'controller', command_name: 'allOff' },
-            { type: 'plugin', plugin_name: 'backlight', command_name: 'setIRLEDPower', params: { power: 50 } },
+            {
+                type: 'plugin',
+                plugin_name: 'backlight',
+                command_name: 'setIRLEDPower',
+                params: { power: 50 }
+            },
             { type: 'plugin', plugin_name: 'backlight', command_name: 'turnOnLED' },
             { type: 'wait', duration: 0.5 },
-            { type: 'plugin', plugin_name: 'camera', command_name: 'startRecording', params: { filename: 'roundtrip_test' } }
+            {
+                type: 'plugin',
+                plugin_name: 'camera',
+                command_name: 'startRecording',
+                params: { filename: 'roundtrip_test' }
+            }
         ]
     },
     conditions: [
@@ -301,14 +349,29 @@ const v2Protocol = {
             commands: [
                 { type: 'plugin', plugin_name: 'camera', command_name: 'getTimestamp' },
                 {
-                    type: 'controller', command_name: 'trialParams',
-                    pattern: webPatterns[0], pattern_ID: 1,
-                    duration: 10, mode: 2, frame_index: 1, frame_rate: 10, gain: 0
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    pattern: webPatterns[0],
+                    pattern_ID: 1,
+                    duration: 10,
+                    mode: 2,
+                    frame_index: 1,
+                    frame_rate: 10,
+                    gain: 0
                 },
                 { type: 'wait', duration: 3 },
-                { type: 'plugin', plugin_name: 'backlight', command_name: 'setRedLEDPower', params: { power: 5, panel_num: 0, pattern: '1010' } },
+                {
+                    type: 'plugin',
+                    plugin_name: 'backlight',
+                    command_name: 'setRedLEDPower',
+                    params: { power: 5, panel_num: 0, pattern: '1010' }
+                },
                 { type: 'wait', duration: 4 },
-                { type: 'plugin', plugin_name: 'backlight', command_name: 'setVisibleBacklightsOff' },
+                {
+                    type: 'plugin',
+                    plugin_name: 'backlight',
+                    command_name: 'setVisibleBacklightsOff'
+                },
                 { type: 'wait', duration: 3 }
             ]
         },
@@ -317,9 +380,15 @@ const v2Protocol = {
             commands: [
                 { type: 'plugin', plugin_name: 'camera', command_name: 'getTimestamp' },
                 {
-                    type: 'controller', command_name: 'trialParams',
-                    pattern: webPatterns[1], pattern_ID: 2,
-                    duration: 5, mode: 2, frame_index: 1, frame_rate: 60, gain: 0
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    pattern: webPatterns[1],
+                    pattern_ID: 2,
+                    duration: 5,
+                    mode: 2,
+                    frame_index: 1,
+                    frame_rate: 60,
+                    gain: 0
                 },
                 { type: 'wait', duration: 5 }
             ]
@@ -329,9 +398,15 @@ const v2Protocol = {
             commands: [
                 { type: 'plugin', plugin_name: 'camera', command_name: 'getTimestamp' },
                 {
-                    type: 'controller', command_name: 'trialParams',
-                    pattern: webPatterns[2], pattern_ID: 3,
-                    duration: 8, mode: 4, frame_index: 1, frame_rate: 0, gain: -90
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    pattern: webPatterns[2],
+                    pattern_ID: 3,
+                    duration: 8,
+                    mode: 4,
+                    frame_index: 1,
+                    frame_rate: 0,
+                    gain: -90
                 },
                 { type: 'wait', duration: 8 }
             ]
@@ -384,7 +459,7 @@ check('v2: cond[0].cmd[1].command_name', v2c0.commands[1].command_name, 'trialPa
 check('v2: cond[0].cmd[1].duration', v2c0.commands[1].duration, 10);
 check('v2: cond[0].cmd[1].pattern', v2c0.commands[1].pattern, webPatterns[0]);
 // Check plugin params roundtrip
-const redCmd = v2c0.commands.find(c => c.command_name === 'setRedLEDPower');
+const redCmd = v2c0.commands.find((c) => c.command_name === 'setRedLEDPower');
 check('v2: redCmd.params.power', redCmd.params.power, 5);
 check('v2: redCmd.params.panel_num', redCmd.params.panel_num, 0);
 check('v2: redCmd.params.pattern', redCmd.params.pattern, '1010');
@@ -418,21 +493,23 @@ const v2Manifest = {
         repetitions: 1,
         randomization_enabled: false,
         num_conditions: 3,
-        conditions: v2Protocol.conditions.map(c => ({
+        conditions: v2Protocol.conditions.map((c) => ({
             id: c.id,
             num_commands: c.commands.length,
-            has_trial_params: c.commands.some(cmd => cmd.command_name === 'trialParams'),
+            has_trial_params: c.commands.some((cmd) => cmd.command_name === 'trialParams'),
             trial_params: (() => {
-                const tp = c.commands.find(cmd => cmd.command_name === 'trialParams');
-                return tp ? {
-                    pattern: tp.pattern,
-                    pattern_ID: tp.pattern_ID,
-                    duration: tp.duration,
-                    mode: tp.mode,
-                    frame_index: tp.frame_index,
-                    frame_rate: tp.frame_rate,
-                    gain: tp.gain
-                } : null;
+                const tp = c.commands.find((cmd) => cmd.command_name === 'trialParams');
+                return tp
+                    ? {
+                          pattern: tp.pattern,
+                          pattern_ID: tp.pattern_ID,
+                          duration: tp.duration,
+                          mode: tp.mode,
+                          frame_index: tp.frame_index,
+                          frame_rate: tp.frame_rate,
+                          gain: tp.gain
+                      }
+                    : null;
             })()
         })),
         pretrial_include: true,

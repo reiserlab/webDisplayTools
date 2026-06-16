@@ -84,39 +84,55 @@ const testProtocol = {
             { type: 'controller', command_name: 'allOn' },
             { type: 'wait', duration: 1 },
             { type: 'controller', command_name: 'allOff' },
-            { type: 'wait', duration: 0.5 },
+            { type: 'wait', duration: 0.5 }
         ]
     },
     conditions: [
         {
             id: 'cond_1',
-            commands: [{
-                type: 'controller', command_name: 'startG41Trial',
-                pattern: 'pat0001.pat', pattern_ID: 1,
-                duration: 5, mode: 2, frame_index: 1, frame_rate: 60, gain: 0
-            }]
+            commands: [
+                {
+                    type: 'controller',
+                    command_name: 'startG41Trial',
+                    pattern: 'pat0001.pat',
+                    pattern_ID: 1,
+                    duration: 5,
+                    mode: 2,
+                    frame_index: 1,
+                    frame_rate: 60,
+                    gain: 0
+                }
+            ]
         },
         {
             id: 'cond_2',
-            commands: [{
-                type: 'controller', command_name: 'startG41Trial',
-                pattern: 'pat0002.pat', pattern_ID: 2,
-                duration: 10, mode: 2, frame_index: 1, frame_rate: 10, gain: 0
-            }]
-        },
+            commands: [
+                {
+                    type: 'controller',
+                    command_name: 'startG41Trial',
+                    pattern: 'pat0002.pat',
+                    pattern_ID: 2,
+                    duration: 10,
+                    mode: 2,
+                    frame_index: 1,
+                    frame_rate: 10,
+                    gain: 0
+                }
+            ]
+        }
     ],
     intertrial: {
         include: true,
         commands: [
             { type: 'controller', command_name: 'allOff' },
-            { type: 'wait', duration: 2 },
+            { type: 'wait', duration: 2 }
         ]
     },
     posttrial: {
         include: true,
         commands: [
             { type: 'controller', command_name: 'allOff' },
-            { type: 'wait', duration: 1 },
+            { type: 'wait', duration: 1 }
         ]
     }
 };
@@ -353,7 +369,7 @@ if (fs.existsSync(path.join(fixturesDir, 'v2_simple_backlight_test.yaml'))) {
     // Check nested params
     const blCond0 = bl.block.conditions[0];
     check('v2_bl: cond[0].commands.length', blCond0.commands.length, 4);
-    const irCmd = blCond0.commands.find(c => c.command_name === 'setIRLEDPower');
+    const irCmd = blCond0.commands.find((c) => c.command_name === 'setIRLEDPower');
     checkType('v2_bl: IR cmd params', irCmd.params, 'object');
     check('v2_bl: IR cmd params.power', irCmd.params.power, 50);
 } else {
@@ -365,7 +381,10 @@ if (fs.existsSync(path.join(fixturesDir, 'v2_simple_backlight_test.yaml'))) {
 console.log('\n--- Suite 7: V2 Full Experiment ---');
 
 if (fs.existsSync(path.join(fixturesDir, 'v2_full_experiment_test.yaml'))) {
-    const fullYaml = fs.readFileSync(path.join(fixturesDir, 'v2_full_experiment_test.yaml'), 'utf8');
+    const fullYaml = fs.readFileSync(
+        path.join(fixturesDir, 'v2_full_experiment_test.yaml'),
+        'utf8'
+    );
     const full = simpleYAMLParse(fullYaml);
 
     check('v2_full: version', full.version, 2);
@@ -381,7 +400,7 @@ if (fs.existsSync(path.join(fixturesDir, 'v2_full_experiment_test.yaml'))) {
     check('v2_full: cond[0].cmd[1].type', c0.commands[1].type, 'controller');
     check('v2_full: cond[0].cmd[1].duration', c0.commands[1].duration, 10);
     // Nested params check
-    const redCmd = c0.commands.find(c => c.command_name === 'setRedLEDPower');
+    const redCmd = c0.commands.find((c) => c.command_name === 'setRedLEDPower');
     checkType('v2_full: redCmd.params', redCmd.params, 'object');
     check('v2_full: redCmd.params.power', redCmd.params.power, 5);
     check('v2_full: redCmd.params.panel_num', redCmd.params.panel_num, 0);
@@ -405,18 +424,18 @@ if (fs.existsSync(path.join(fixturesDir, 'v2_all_possible_plugins.yaml'))) {
     check('v2_all: version', all.version, 2);
     check('v2_all: plugins.length', all.plugins.length, 5);
     // Serial device plugin
-    const serial = all.plugins.find(p => p.type === 'serial_device');
+    const serial = all.plugins.find((p) => p.type === 'serial_device');
     check('v2_all: serial plugin exists', !!serial, true);
     check('v2_all: serial.name', serial.name, 'background_light');
     checkType('v2_all: serial.commands', serial.commands, 'object');
     check('v2_all: serial.commands.reset', serial.commands.reset, 'RESET');
     // Camera plugin with config
-    const cam = all.plugins.find(p => p.name === 'camera');
+    const cam = all.plugins.find((p) => p.name === 'camera');
     checkType('v2_all: camera.config', cam.config, 'object');
     check('v2_all: camera.config.frame_rate', cam.config.frame_rate, 150);
     check('v2_all: camera.config.video_format', cam.config.video_format, 'avi');
     // Script plugin
-    const script = all.plugins.find(p => p.type === 'script');
+    const script = all.plugins.find((p) => p.type === 'script');
     check('v2_all: script plugin exists', !!script, true);
     check('v2_all: script.name', script.name, 'preprocessing');
     // Conditions
@@ -441,7 +460,12 @@ const v2Experiment = {
     rig_path: './configs/rigs/test_rig.yaml',
     plugins: [
         { name: 'backlight', type: 'class', matlab: { class: 'LEDControllerPlugin' } },
-        { name: 'camera', type: 'class', matlab: { class: 'BiasPlugin' }, config: { frame_rate: 100 } }
+        {
+            name: 'camera',
+            type: 'class',
+            matlab: { class: 'BiasPlugin' },
+            config: { frame_rate: 100 }
+        }
     ],
     experiment_structure: {
         repetitions: 2,
@@ -452,8 +476,18 @@ const v2Experiment = {
         commands: [
             { type: 'controller', command_name: 'allOn' },
             { type: 'wait', duration: 1 },
-            { type: 'plugin', plugin_name: 'backlight', command_name: 'setIRLEDPower', params: { power: 50 } },
-            { type: 'plugin', plugin_name: 'camera', command_name: 'startRecording', params: { filename: 'test' } }
+            {
+                type: 'plugin',
+                plugin_name: 'backlight',
+                command_name: 'setIRLEDPower',
+                params: { power: 50 }
+            },
+            {
+                type: 'plugin',
+                plugin_name: 'camera',
+                command_name: 'startRecording',
+                params: { filename: 'test' }
+            }
         ]
     },
     intertrial: {
@@ -476,18 +510,47 @@ const v2Experiment = {
             id: 'grating_with_backlight',
             commands: [
                 { type: 'plugin', plugin_name: 'camera', command_name: 'getTimestamp' },
-                { type: 'controller', command_name: 'trialParams', pattern: 'pat01.pat', pattern_ID: 1, duration: 10, mode: 2, frame_index: 1, frame_rate: 10, gain: 0 },
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    pattern: 'pat01.pat',
+                    pattern_ID: 1,
+                    duration: 10,
+                    mode: 2,
+                    frame_index: 1,
+                    frame_rate: 10,
+                    gain: 0
+                },
                 { type: 'wait', duration: 3 },
-                { type: 'plugin', plugin_name: 'backlight', command_name: 'setRedLEDPower', params: { power: 5, panel_num: 0, pattern: '1010' } },
+                {
+                    type: 'plugin',
+                    plugin_name: 'backlight',
+                    command_name: 'setRedLEDPower',
+                    params: { power: 5, panel_num: 0, pattern: '1010' }
+                },
                 { type: 'wait', duration: 4 },
-                { type: 'plugin', plugin_name: 'backlight', command_name: 'setVisibleBacklightsOff' },
+                {
+                    type: 'plugin',
+                    plugin_name: 'backlight',
+                    command_name: 'setVisibleBacklightsOff'
+                },
                 { type: 'wait', duration: 3 }
             ]
         },
         {
             id: 'closed_loop_test',
             commands: [
-                { type: 'controller', command_name: 'trialParams', pattern: 'pat02.pat', pattern_ID: 2, duration: 5, mode: 4, frame_index: 1, frame_rate: 0, gain: -90 },
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    pattern: 'pat02.pat',
+                    pattern_ID: 2,
+                    duration: 5,
+                    mode: 4,
+                    frame_index: 1,
+                    frame_rate: 0,
+                    gain: -90
+                },
                 { type: 'wait', duration: 5 }
             ]
         }
@@ -529,7 +592,7 @@ check('v2rt: cond[0].cmd[1].duration', rtC0.commands[1].duration, 10);
 check('v2rt: cond[0].cmd[1].mode', rtC0.commands[1].mode, 2);
 check('v2rt: cond[0].cmd[1].pattern', rtC0.commands[1].pattern, 'pat01.pat');
 // Plugin params roundtrip
-const rtRedCmd = rtC0.commands.find(c => c.command_name === 'setRedLEDPower');
+const rtRedCmd = rtC0.commands.find((c) => c.command_name === 'setRedLEDPower');
 checkType('v2rt: redCmd.params', rtRedCmd.params, 'object');
 check('v2rt: redCmd.params.power', rtRedCmd.params.power, 5);
 check('v2rt: redCmd.params.panel_num', rtRedCmd.params.panel_num, 0);
@@ -546,7 +609,11 @@ checkType('v2rt: pretrial.commands', v2Parsed.pretrial.commands, 'array');
 check('v2rt: pretrial.commands.length', v2Parsed.pretrial.commands.length, 4);
 check('v2rt: pretrial.cmd[2].plugin_name', v2Parsed.pretrial.commands[2].plugin_name, 'backlight');
 check('v2rt: pretrial.cmd[2].params.power', v2Parsed.pretrial.commands[2].params.power, 50);
-check('v2rt: pretrial.cmd[3].command_name', v2Parsed.pretrial.commands[3].command_name, 'startRecording');
+check(
+    'v2rt: pretrial.cmd[3].command_name',
+    v2Parsed.pretrial.commands[3].command_name,
+    'startRecording'
+);
 check('v2rt: intertrial.include', v2Parsed.intertrial.include, true);
 check('v2rt: intertrial.commands.length', v2Parsed.intertrial.commands.length, 2);
 check('v2rt: posttrial.include', v2Parsed.posttrial.include, true);
@@ -570,8 +637,12 @@ const emptyParamExperiment = {
         {
             id: 'test_empty',
             commands: [
-                { type: 'plugin', plugin_name: 'backlight', command_name: 'setRedLEDPower',
-                  params: { power: 5, panel_num: 0, pattern: '' } },
+                {
+                    type: 'plugin',
+                    plugin_name: 'backlight',
+                    command_name: 'setRedLEDPower',
+                    params: { power: 5, panel_num: 0, pattern: '' }
+                },
                 { type: 'wait', duration: 3 }
             ]
         }
@@ -599,8 +670,12 @@ const patternExperiment = {
         {
             id: 'test_pattern',
             commands: [
-                { type: 'plugin', plugin_name: 'backlight', command_name: 'setRedLEDPower',
-                  params: { power: 5, panel_num: 0, pattern: '1010' } },
+                {
+                    type: 'plugin',
+                    plugin_name: 'backlight',
+                    command_name: 'setRedLEDPower',
+                    params: { power: 5, panel_num: 0, pattern: '1010' }
+                },
                 { type: 'wait', duration: 3 }
             ]
         }
@@ -612,7 +687,9 @@ const patternExperiment = {
 
 const patYaml = generateV2Protocol(patternExperiment);
 const patParsed = simpleYAMLParse(patYaml);
-const patRedCmd = patParsed.block.conditions[0].commands.find(c => c.command_name === 'setRedLEDPower');
+const patRedCmd = patParsed.block.conditions[0].commands.find(
+    (c) => c.command_name === 'setRedLEDPower'
+);
 check('bug57: pattern roundtrips as string', typeof patRedCmd.params.pattern, 'string');
 check('bug57: pattern value preserved', patRedCmd.params.pattern, '1010');
 
@@ -626,9 +703,16 @@ const filePatternExperiment = {
         {
             id: 'test_quotes',
             commands: [
-                { type: 'controller', command_name: 'trialParams',
-                  pattern: 'C:\\patterns\\my_pat.pat', duration: 5, mode: 2,
-                  frame_index: 1, frame_rate: 10, gain: 0 },
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    pattern: 'C:\\patterns\\my_pat.pat',
+                    duration: 5,
+                    mode: 2,
+                    frame_index: 1,
+                    frame_rate: 10,
+                    gain: 0
+                },
                 { type: 'wait', duration: 5 }
             ]
         }
@@ -640,9 +724,15 @@ const filePatternExperiment = {
 
 const quoteYaml = generateV2Protocol(filePatternExperiment);
 // Single-quoted pattern should preserve backslashes
-check('bug58: pattern uses single quotes', quoteYaml.includes("pattern: 'C:\\patterns\\my_pat.pat'"), true);
+check(
+    'bug58: pattern uses single quotes',
+    quoteYaml.includes("pattern: 'C:\\patterns\\my_pat.pat'"),
+    true
+);
 const quoteParsed = simpleYAMLParse(quoteYaml);
-const quoteTp = quoteParsed.block.conditions[0].commands.find(c => c.command_name === 'trialParams');
+const quoteTp = quoteParsed.block.conditions[0].commands.find(
+    (c) => c.command_name === 'trialParams'
+);
 check('bug58: backslash path roundtrips', quoteTp.pattern, 'C:\\patterns\\my_pat.pat');
 
 // ═══════════════════════════════════════════════════════════════════════════════

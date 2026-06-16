@@ -16,11 +16,11 @@
  * - For display (top-to-bottom), use displayRow = 19 - panelRow
  */
 
-const G6Encoding = (function() {
+const G6Encoding = (function () {
     'use strict';
 
     const PANEL_SIZE = 20;
-    const TOTAL_PIXELS = PANEL_SIZE * PANEL_SIZE;  // 400
+    const TOTAL_PIXELS = PANEL_SIZE * PANEL_SIZE; // 400
     const GS2_BYTES = 50;
     const GS16_BYTES = 200;
 
@@ -54,7 +54,7 @@ const G6Encoding = (function() {
      * @returns {number} Panel row (0 = bottom of panel)
      */
     function displayRowToPanelRow(displayRow) {
-        return (PANEL_SIZE - 1) - displayRow;
+        return PANEL_SIZE - 1 - displayRow;
     }
 
     /**
@@ -63,7 +63,7 @@ const G6Encoding = (function() {
      * @returns {number} Display row (0 = top of screen)
      */
     function panelRowToDisplayRow(panelRow) {
-        return (PANEL_SIZE - 1) - panelRow;
+        return PANEL_SIZE - 1 - panelRow;
     }
 
     /**
@@ -81,8 +81,8 @@ const G6Encoding = (function() {
                 if (pixelArray[row][col] > 0) {
                     const pixelNum = pixelToIndex(row, col);
                     const byteIdx = Math.floor(pixelNum / 8);
-                    const bitPos = 7 - (pixelNum % 8);  // MSB-first
-                    bytes[byteIdx] |= (1 << bitPos);
+                    const bitPos = 7 - (pixelNum % 8); // MSB-first
+                    bytes[byteIdx] |= 1 << bitPos;
                 }
             }
         }
@@ -102,13 +102,13 @@ const G6Encoding = (function() {
 
         for (let row = 0; row < PANEL_SIZE; row++) {
             for (let col = 0; col < PANEL_SIZE; col++) {
-                const val = Math.max(0, Math.min(15, pixelArray[row][col]));  // Clamp to 0-15
+                const val = Math.max(0, Math.min(15, pixelArray[row][col])); // Clamp to 0-15
                 const pixelNum = pixelToIndex(row, col);
                 const byteIdx = Math.floor(pixelNum / 2);
 
                 if (pixelNum % 2 === 0) {
                     // Even pixel -> high nibble
-                    bytes[byteIdx] |= (val << 4);
+                    bytes[byteIdx] |= val << 4;
                 } else {
                     // Odd pixel -> low nibble
                     bytes[byteIdx] |= val;
@@ -126,11 +126,13 @@ const G6Encoding = (function() {
      * @returns {number[][]} 20x20 array where [row][col], row 0 = bottom
      */
     function decodeGS2(bytes) {
-        const pixelArray = Array(PANEL_SIZE).fill(null).map(() => Array(PANEL_SIZE).fill(0));
+        const pixelArray = Array(PANEL_SIZE)
+            .fill(null)
+            .map(() => Array(PANEL_SIZE).fill(0));
 
         for (let pixelNum = 0; pixelNum < TOTAL_PIXELS; pixelNum++) {
             const byteIdx = Math.floor(pixelNum / 8);
-            const bitPos = 7 - (pixelNum % 8);  // MSB-first
+            const bitPos = 7 - (pixelNum % 8); // MSB-first
 
             if ((bytes[byteIdx] & (1 << bitPos)) !== 0) {
                 const { row, col } = indexToPixel(pixelNum);
@@ -148,7 +150,9 @@ const G6Encoding = (function() {
      * @returns {number[][]} 20x20 array where [row][col], row 0 = bottom, values 0-15
      */
     function decodeGS16(bytes) {
-        const pixelArray = Array(PANEL_SIZE).fill(null).map(() => Array(PANEL_SIZE).fill(0));
+        const pixelArray = Array(PANEL_SIZE)
+            .fill(null)
+            .map(() => Array(PANEL_SIZE).fill(0));
 
         for (let pixelNum = 0; pixelNum < TOTAL_PIXELS; pixelNum++) {
             const byteIdx = Math.floor(pixelNum / 2);
@@ -156,10 +160,10 @@ const G6Encoding = (function() {
 
             if (pixelNum % 2 === 0) {
                 // Even pixel -> high nibble
-                val = (bytes[byteIdx] >> 4) & 0x0F;
+                val = (bytes[byteIdx] >> 4) & 0x0f;
             } else {
                 // Odd pixel -> low nibble
-                val = bytes[byteIdx] & 0x0F;
+                val = bytes[byteIdx] & 0x0f;
             }
 
             const { row, col } = indexToPixel(pixelNum);
@@ -180,7 +184,9 @@ const G6Encoding = (function() {
      */
     function encodeFromDisplay(displayArray, mode) {
         // Convert display orientation to panel orientation
-        const panelArray = Array(PANEL_SIZE).fill(null).map(() => Array(PANEL_SIZE).fill(0));
+        const panelArray = Array(PANEL_SIZE)
+            .fill(null)
+            .map(() => Array(PANEL_SIZE).fill(0));
 
         for (let displayRow = 0; displayRow < PANEL_SIZE; displayRow++) {
             const panelRow = displayRowToPanelRow(displayRow);
@@ -225,11 +231,13 @@ const G6Encoding = (function() {
         if (computed.length !== refBytes.length) {
             return {
                 pass: false,
-                differences: [{
-                    type: 'length',
-                    computed: computed.length,
-                    reference: refBytes.length
-                }]
+                differences: [
+                    {
+                        type: 'length',
+                        computed: computed.length,
+                        reference: refBytes.length
+                    }
+                ]
             };
         }
 
@@ -256,7 +264,9 @@ const G6Encoding = (function() {
      * @returns {number[][]} Array filled with zeros
      */
     function createEmptyArray() {
-        return Array(PANEL_SIZE).fill(null).map(() => Array(PANEL_SIZE).fill(0));
+        return Array(PANEL_SIZE)
+            .fill(null)
+            .map(() => Array(PANEL_SIZE).fill(0));
     }
 
     /**
@@ -265,7 +275,9 @@ const G6Encoding = (function() {
      * @returns {number[][]} Array filled with value
      */
     function createFilledArray(value = 1) {
-        return Array(PANEL_SIZE).fill(null).map(() => Array(PANEL_SIZE).fill(value));
+        return Array(PANEL_SIZE)
+            .fill(null)
+            .map(() => Array(PANEL_SIZE).fill(value));
     }
 
     // Public API

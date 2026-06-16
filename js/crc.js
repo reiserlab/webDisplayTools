@@ -53,9 +53,7 @@ const G6CRC = (function () {
         for (let b = 0; b < 256; b++) {
             let crc = b << 8;
             for (let i = 0; i < 8; i++) {
-                crc = crc & 0x8000
-                    ? ((crc << 1) ^ poly) & 0xffff
-                    : (crc << 1) & 0xffff;
+                crc = crc & 0x8000 ? ((crc << 1) ^ poly) & 0xffff : (crc << 1) & 0xffff;
             }
             lut[b] = crc;
         }
@@ -81,9 +79,7 @@ const G6CRC = (function () {
         return c ^ CRC16_CCITT_FALSE_XOROUT;
     }
 
-    const UNIVERSAL_INPUT = new Uint8Array([
-        0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39
-    ]); // "123456789"
+    const UNIVERSAL_INPUT = new Uint8Array([0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39]); // "123456789"
 
     const crc8Check = crc8Autosar(UNIVERSAL_INPUT);
     if (crc8Check !== 0xdf) {

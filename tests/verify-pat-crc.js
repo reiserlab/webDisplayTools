@@ -51,11 +51,26 @@ if (files.length === 0) {
 }
 
 // Suppress noisy console.group/log/warn from parser
-const _g = console.group, _l = console.log, _ge = console.groupEnd, _w = console.warn;
-const mute = () => { console.group = () => {}; console.log = () => {}; console.groupEnd = () => {}; console.warn = () => {}; };
-const unmute = () => { console.group = _g; console.log = _l; console.groupEnd = _ge; console.warn = _w; };
+const _g = console.group,
+    _l = console.log,
+    _ge = console.groupEnd,
+    _w = console.warn;
+const mute = () => {
+    console.group = () => {};
+    console.log = () => {};
+    console.groupEnd = () => {};
+    console.warn = () => {};
+};
+const unmute = () => {
+    console.group = _g;
+    console.log = _l;
+    console.groupEnd = _ge;
+    console.warn = _w;
+};
 
-let pass = 0, fail = 0, skip = 0;
+let pass = 0,
+    fail = 0,
+    skip = 0;
 for (const f of files) {
     const buf = fs.readFileSync(f);
     // Detect G4 vs G6 by magic
@@ -68,7 +83,9 @@ for (const f of files) {
 
     try {
         mute();
-        PatParser.parsePatFile(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), { strict: true });
+        PatParser.parsePatFile(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), {
+            strict: true
+        });
         unmute();
         console.log(`  PASS  ${path.relative(process.cwd(), f)}`);
         pass++;
