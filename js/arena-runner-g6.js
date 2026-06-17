@@ -504,6 +504,15 @@ var ArenaRunnerG6 = (function () {
             return null;
         }
 
+        /** Public abort-without-STOP. Aborts a running sequence and unblocks its
+         *  current host-side wait WITHOUT sending a STOP frame — for use when the
+         *  link is already gone (involuntary disconnect / link error), where a
+         *  STOP send would only error. Prefer this over poking the private
+         *  `_clear()` (ArenaSession calls this on the link's onDisconnect). */
+        abort() {
+            this._clear();
+        }
+
         /** Clear run-state without sending STOP (used on disconnect/error). Also
          *  aborts a running sequence and unblocks its current wait. */
         _clear() {

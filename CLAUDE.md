@@ -88,9 +88,16 @@ npx prettier --write path/to/file.js  # Format single file
 
 **Before committing:** Run `npm run format` on any modified JavaScript files to ensure consistent style.
 
+**⚠ Prettier is scoped to `**/*.js` ONLY — never run `prettier --write` on the `*.html` tools.** The `format`/`format:check` scripts target JS by design. The HTML tools are hand-formatted; their embedded `<script>` blocks do NOT match Prettier's HTML-indentation rules, so `prettier --write some_tool.html` reflows the entire file (e.g. ~8,800-line churn on `experiment_designer_v3.html`). Edit HTML by hand and match the surrounding style. (No CI workflow runs Prettier, so a stray HTML format won't be caught automatically.)
+
 ### Shared Modules
 
 Some JavaScript modules are shared between multiple tools and must support different loading patterns:
+
+**Arena Session — the single connection broker** (`js/arena-session.js`, Stage A of the Arena Studio unification):
+- Owns ONE `ArenaLink` + ONE `ArenaRunner` per page and multicasts the link callbacks (`log`/`error`/`disconnect`) to subscribers via `on(event, fn)`. Run mechanism: `runTrial` / `runSequence` / `stop` / `running`; lifecycle: `connect` / `disconnect` / `connected` / `send`. Page-wide singleton via `ArenaSession.shared()`.
+- **Must stay a classic `<script src>` module** (window-global + CommonJS dual-export, **no bare ES `export`**), loaded AFTER `arena-wire-g6.js` / `arena-link.js` / `arena-runner-g6.js` and BEFORE any `<script type="module">` that reads `window.ArenaSession`. This keeps Connect/STOP/run-state alive even if a stale ES-module import fails (the catastrophic-cache gotcha) — never move connection ownership into the module block.
+- Both `arena_console.html` and `experiment_designer_v3.html` use `window.ArenaSession.shared()` instead of constructing their own `ArenaLink` (the console uses only connect/send/events; the designer uses the run mechanism). On involuntary disconnect the broker calls `runner.abort()` (public, added to `arena-runner-g6.js`) — falling back to the legacy private `_clear()` to tolerate a stale-cache runner. Tests: `tests/test-arena-session.js` (`npm run test:session`).
 
 **Pat-Parser Dual Export Pattern** (`js/pat-parser.js`):
 - Icon generator loads via `<script src="js/pat-parser.js">` → requires `window.PatParser`
