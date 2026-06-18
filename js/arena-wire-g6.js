@@ -47,6 +47,8 @@ const ArenaWireG6 = (function () {
         GET_SPI_CLOCK: 0xC6, // returns uint16 LE current MHz
         GET_FRAMES_SENT: 0x33, // returns uint32 LE frames pushed to panels
         RESET_FRAMES_SENT: 0x34, // zeroes the frames-sent counter
+        GET_FILE_COUNT: 0x80, // returns pattern file count on SD as uint16 LE
+        GET_PATTERN_FILENAME: 0x82, // [03 82 idx_lo idx_hi] 1-based; returns 1-byte-len + filename
         STOP_DISPLAY: 0x30,
         STREAM_FRAME: 0x32, // host-streamed full frame ("FR"+blocks; see encodeStreamFrame)
         SET_ETHERNET_IP: 0xC0, // reserved — not yet implemented
@@ -289,6 +291,20 @@ const ArenaWireG6 = (function () {
         return frame(OPCODES.GET_CONTROLLER_INFO); // 01 C1
     }
 
+    // get-file-count (0x80) — number of *.pat files in /patterns on the SD card.
+    function encodeGetFileCount() {
+        return frame(OPCODES.GET_FILE_COUNT); // 01 80
+    }
+
+    // get-pattern-filename (0x82) — filename for the 1-based pattern index on SD.
+    function encodeGetPatternFilename(index) {
+        requireInt(index, 'index');
+        if (index < 1) {
+            throw new RangeError('index must be >= 1 (1-based), got ' + index);
+        }
+        return frame(OPCODES.GET_PATTERN_FILENAME, u16le(index, 'index')); // 03 82 lo hi
+    }
+
     // ───────────────────────────── decoders ───────────────────────────────
 
     /**
@@ -354,6 +370,24 @@ const ArenaWireG6 = (function () {
         return (m[0] | (m[1] << 8) | (m[2] << 16) | (m[3] << 24)) >>> 0;
     }
 
+    // get-file-count (0x80) reply carries the count as uint16 LE.
+    function decodeFileCount(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 2) return null;
+        return r.payload[0] | (r.payload[1] << 8);
+    }
+
+    // get-pattern-filename (0x82) reply: 1-byte length prefix + ASCII filename chars.
+    function decodePatternFilename(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 1) return null;
+        const len = r.payload[0];
+        if (r.payload.length < 1 + len) return null;
+        let s = '';
+        for (let i = 1; i <= len; i++) s += String.fromCharCode(r.payload[i]);
+        return s;
+    }
+
     // get-ip (0xC1) reply carries the dotted-quad address as ASCII bytes.
     function decodeIp(resp) {
         const r = asResponse(resp);
@@ -389,13 +423,17 @@ const ArenaWireG6 = (function () {
         encodeGetControllerInfo,
         // Alias under the name the handoff lists for the get-info request.
         getControllerInfo: encodeGetControllerInfo,
+        encodeGetFileCount,
+        encodeGetPatternFilename,
 
         // Decoders
         decodeResponse,
         decodeControllerInfo,
         decodeSpiClock,
         decodeFramesSent,
-        decodeIp
+        decodeIp,
+        decodeFileCount,
+        decodePatternFilename
     };
 })();
 

@@ -416,6 +416,23 @@
                 font-weight: 600;
                 margin-bottom: 5px;
                 font-size: 11px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+            #sd-count-badge {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 10px;
+                color: #a6b0bc;
+                cursor: default;
+            }
+            #sd-count-badge.loaded {
+                color: var(--mem-dim);
+                cursor: pointer;
+                text-decoration: underline dotted;
+            }
+            #sd-count-badge.loaded:hover {
+                color: var(--mem-text);
             }
             .mem-body {
                 max-height: 92px;
@@ -989,6 +1006,10 @@
                             title="Patterns in the loaded set (assumed on the SD card)"
                         >
                             SD card
+                            <span
+                                id="sd-count-badge"
+                                title="Pattern files on SD card (GET_FILE_COUNT 0x80). Click to refresh."
+                            >—</span>
                         </div>
                         <div id="sd-list" class="mem-body">
                             <div class="mem-empty">loading…</div>
@@ -1048,7 +1069,7 @@
                 <div id="log"></div>
             </div>
 
-            <footer id="footer">Arena Console v5 | 2026-06-15 12:37 ET</footer>
+            <footer id="footer">Arena Console v5 | 2026-06-17 20:00 ET</footer>
         </div>
 
         <!-- Paste-a-frame modal -->
@@ -1163,10 +1184,13 @@
                 s.textContent = on ? 'connected' : 'disconnected';
                 $('conn').classList.toggle('on', on);
                 $('dot').classList.toggle('on', on);
-                if (!on) {
+                if (on) {
+                    refreshSdCount();
+                } else {
                     stepper.loaded = false;
                     clearAutoStop();
                     stopFilePlay('disconnected');
+                    resetSdCount();
                 }
                 updateStepperUI();
                 updateStreamUI();
@@ -1765,6 +1789,90 @@
                 doStream(pasteParsed.grid, pasteParsed.gs, 'stream pasted frame');
                 closePasteModal();
             };
+
+            // ── SD file count (GET_FILE_COUNT 0x80) ─────────────────────────
+            const sdCountBadge = $('sd-count-badge');
+            function resetSdCount() {
+                sdCountBadge.textContent = '—';
+                sdCountBadge.classList.remove('loaded');
+            }
+            async function refreshSdCount() {
+                const resp = await run(
+                    'get-file-count',
+                    Wire.encodeGetFileCount(),
+                    (r) => {
+                        const n = Wire.decodeFileCount(r);
+                        return n == null ? null : n + ' files';
+                    }
+                );
+                if (resp && resp.ok) {
+                    const n = Wire.decodeFileCount(resp);
+                    if (n != null) {
+                        sdCountBadge.textContent = String(n);
+                        sdCountBadge.classList.add('loaded');
+                        await refreshSdList(n);
+                    }
+                }
+            }
+
+            // Fetch filenames from the controller (0x82) and render them in the SD list.
+            // Shows first 10 files; if count > 10, adds an ellipsis then the last 3
+            // (starting from max(11, count-2) to avoid duplicates).
+            async function refreshSdList(count) {
+                const host = $('sd-list');
+                if (!host) return;
+                if (count === 0) {
+                    host.innerHTML = '<div class="mem-empty">(no patterns on SD)</div>';
+                    return;
+                }
+
+                // Indices to fetch (1-based)
+                const indices = [];
+                for (let i = 1; i <= Math.min(10, count); i++) indices.push(i);
+                let ellipsisAfter = -1;
+                if (count > 10) {
+                    ellipsisAfter = indices.length;
+                    const lastStart = Math.max(11, count - 2);
+                    for (let i = lastStart; i <= count; i++) indices.push(i);
+                }
+
+                host.innerHTML = '<div class="mem-empty">fetching…</div>';
+
+                // Fetch each filename silently (no console log per file)
+                const names = [];
+                for (const idx of indices) {
+                    try {
+                        const raw = await link.send(Wire.encodeGetPatternFilename(idx));
+                        const parsed = Wire.decodeResponse(raw);
+                        names.push(
+                            parsed && parsed.ok ? Wire.decodePatternFilename(parsed) : null
+                        );
+                    } catch (_) {
+                        names.push(null);
+                    }
+                }
+
+                // Render
+                host.innerHTML = '';
+                for (let i = 0; i < indices.length; i++) {
+                    if (ellipsisAfter >= 0 && i === ellipsisAfter) {
+                        const d = document.createElement('div');
+                        d.className = 'sd-row dim';
+                        d.textContent = '…';
+                        host.appendChild(d);
+                    }
+                    const d = document.createElement('div');
+                    d.className = 'sd-row';
+                    const n = names[i];
+                    d.textContent = indices[i] + (n ? ' · ' + n : ' · (error)');
+                    d.title = n || '';
+                    host.appendChild(d);
+                }
+            }
+
+            sdCountBadge.addEventListener('click', () => {
+                if (link.connected) refreshSdCount();
+            });
 
             // ── command dispatch ────────────────────────────────────────────
             const HANDLERS = {
