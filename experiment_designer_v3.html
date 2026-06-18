@@ -6545,31 +6545,27 @@
             else psRenderAvailable();
         }
 
-        // Load the Available list from a manifest.json (built-in or remote).
+        // Load the Available list from a MANIFEST.txt (built-in or remote).
         async function psLoadLibrary() {
             if (psState.source === 'local') { psRenderAvailable(); return; }
             const folder = psArenaFolder(psState.arenaConfig);
-            const url = psBaseUrl() + '/patterns/' + folder + '/manifest.json';
+            const url = psBaseUrl() + '/patterns/' + folder + '/MANIFEST.txt';
             psEl.availList.innerHTML = '';
             psEl.availList.appendChild(el('div', { class: 'ps-empty' }, 'Loading ' + url + ' …'));
             try {
                 const resp = await fetch(url, { cache: 'no-store' });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const manifest = await resp.json();
+                const parsed = window.PatternSet.parseManifestTxt(await resp.text());
                 const base = psBaseUrl() + '/patterns/' + folder + '/patterns/';
-                const arenaOk = !manifest.arenaConfig || manifest.arenaConfig === psState.arenaConfig;
-                psState.available = Object.keys(manifest.patterns || {}).map((name) => {
-                    const p = manifest.patterns[name];
-                    return {
-                        name,
-                        sourceName: name + '.pat',
-                        meta: p.preview || null,
-                        valid: arenaOk,
-                        reason: arenaOk ? null : 'library is for ' + manifest.arenaConfig,
-                        url: base + p.sd_name,
-                        bytes: null
-                    };
-                });
+                psState.available = parsed.patterns.map((p) => ({
+                    name: p.name,
+                    sourceName: p.name + '.pat',
+                    meta: null,
+                    valid: true,
+                    reason: null,
+                    url: base + p.sd_name,
+                    bytes: null
+                }));
             } catch (err) {
                 psState.available = [];
                 psEl.availList.innerHTML = '';
@@ -6726,7 +6722,6 @@
                 const zip = new JSZip();
                 zip.file('MANIFEST.bin', bundle.manifestBin);
                 zip.file('MANIFEST.txt', bundle.manifestTxt);
-                zip.file('manifest.json', JSON.stringify(bundle.manifestJson, null, 2) + '\n');
                 zip.file('README.txt', bundle.readme);
                 const pf = zip.folder('patterns');
                 for (const p of bundle.patterns) pf.file(p.name, p.bytes);

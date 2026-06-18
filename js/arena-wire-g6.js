@@ -54,6 +54,7 @@ const ArenaWireG6 = (function () {
         SET_PATTERN_FILE: 0x85,     // [0x85, idx_lo, idx_hi, len64 LE, data…] upload file (bulk stream)
         DELETE_PATTERN_FILE: 0x86,  // [03 86 idx_lo idx_hi] delete 1-based pattern; idx=0 deletes pattern.temp
         DELETE_ALL_PATTERNS: 0x8F,  // [01 8F] delete all files in /patterns
+        GET_SD_ARCHIVE: 0x8A,       // [01 8A] stream full SD as ZIP; only in ALL_OFF state
         STOP_DISPLAY: 0x30,
         STREAM_FRAME: 0x32, // host-streamed full frame ("FR"+blocks; see encodeStreamFrame)
         SET_ETHERNET_IP: 0xC0, // reserved — not yet implemented
@@ -376,6 +377,12 @@ const ArenaWireG6 = (function () {
         return frame(OPCODES.DELETE_PATTERN_FILE, u16le(index, 'index')); // 03 86 lo hi
     }
 
+    // get-sd-archive (0x8A) — trigger full SD content as a ZIP download.
+    // Only accepted when the display is in ALL_OFF (waiting) state.
+    function encodeGetSdArchive() {
+        return frame(OPCODES.GET_SD_ARCHIVE); // 01 8A
+    }
+
     // ───────────────────────────── decoders ───────────────────────────────
 
     /**
@@ -508,6 +515,7 @@ const ArenaWireG6 = (function () {
         encodeSetPatternFile,
         encodeDeletePatternFile,
         encodeDeleteAllPatterns,
+        encodeGetSdArchive,
 
         // Decoders
         decodeResponse,

@@ -120,9 +120,8 @@ assist shows **no spurious plugins**.
    geometry check; **reject mismatches** with a clear message (a 3×16 pattern on a 2×10
    arena → reject; that's the firmware's `status=8` ARENA_MISMATCH, caught client-side).
 5. **Export a ZIP**: `/patterns/NNN_*.pat` + `README.txt` (copy-to-SD) + a timestamped
-   **`manifest.json`** (`set_id` + timestamp; `name → { index, arenaConfig, preview,
-   matlabPath? }`) + a **marker file** in `/patterns` for the later provenance check
-   (LAB-100).
+   **`MANIFEST.txt`** (`Pattern Count`, `Pattern Set ID` FNV-1a hash of SD filenames,
+   and `Mapping: sd_name <- human_name`) + **`MANIFEST.bin`** (uint16 count + uint32 timestamp LE).
 6. Ship a **pre-built default bundle in-repo** (the start of LAB-90's library).
 
 **Critical tie-ins from this session:**
@@ -130,9 +129,9 @@ assist shows **no spurious plugins**.
   defaults the G6 `duty_cycle` byte to `0x80` — so builder output **renders correctly on
   hardware**. The hand-patch `~/Desktop/g6_sd_card/patch_duty.js` is a **stopgap the
   builder retires**. (Do **not** touch G4/G4.1 "stretch" — see #97.)
-- The **manifest is the single source of truth for name → SD index** — it **retires the
-  dry-run's confirm-once dialog** (`onRunConditionDryRun` currently prompts/guesses
-  because `pattern_ID` ≠ SD index). LAB-95/96 consume `manifest.json` via `js/pattern-set.js`.
+- The **MANIFEST.txt** is the human-readable source of truth for SD state — `Pattern Set ID`
+  (FNV-1a hash over sorted filenames) lets the host detect SD card changes without a full
+  directory listing. Pattern name → SD index lookup uses 0x80/0x82 controller commands.
 - ZIP: pull a zip lib via **CDN** (e.g. JSZip) — consistent with the "dependencies via
   CDN only" rule (CLAUDE.md).
 

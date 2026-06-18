@@ -445,7 +445,7 @@
             #sd-count-badge.loaded:hover {
                 color: var(--mem-text);
             }
-            #sd-upload-btn {
+            #sd-upload-btn, #sd-folder-btn, #sd-archive-btn {
                 font-size: 14px;
                 line-height: 1;
                 padding: 0 5px;
@@ -455,11 +455,11 @@
                 color: var(--mem-dim);
                 cursor: pointer;
             }
-            #sd-upload-btn:hover:not(:disabled) {
+            #sd-upload-btn:hover:not(:disabled), #sd-folder-btn:hover:not(:disabled), #sd-archive-btn:hover:not(:disabled) {
                 border-color: var(--mem-text);
                 color: var(--mem-text);
             }
-            #sd-upload-btn:disabled {
+            #sd-upload-btn:disabled, #sd-folder-btn:disabled, #sd-archive-btn:disabled {
                 opacity: 0.35;
                 cursor: default;
             }
@@ -822,7 +822,7 @@
                             <button
                                 class="stub"
                                 disabled
-                                title="Planned — needs a controller report-card command (LAB-100). The console currently shows the loaded manifest.json in the SD-card box."
+                                title="Planned — needs a controller report-card command (LAB-100)."
                             >
                                 SD card report
                             </button>
@@ -901,7 +901,7 @@
                         <button
                             id="btn-loadset"
                             class="mini"
-                            title="Point at a built SD-bundle FOLDER — the unzipped Export-ZIP from the Pattern Set builder (manifest.json + a patterns/ subfolder). The arena's built-in library loads automatically; use this only for a custom set."
+                            title="Point at a built SD-bundle FOLDER — the unzipped Export-ZIP from the Pattern Set builder (MANIFEST.txt + a patterns/ subfolder). The arena's built-in library loads automatically; use this only for a custom set."
                         >
                             Load set…
                         </button>
@@ -1138,9 +1138,12 @@
                             </table>
                         </div>
                         <div class="sd-upload-row">
-                            <button id="sd-upload-btn" disabled title="Upload a .pat file to the SD card">+</button>
+                            <button id="sd-upload-btn" disabled title="Upload a single .pat file to the SD card">+</button>
+                            <button id="sd-folder-btn" disabled title="Upload all .pat files from a folder to the SD card">[+]</button>
+                            <button id="sd-archive-btn" disabled title="Download entire SD card content (MANIFEST + patterns) as a ZIP archive">&#x2913;</button>
                             <span id="sd-upload-status" class="sd-upload-status"></span>
                             <input type="file" id="pat-file-input" accept=".pat" style="display:none">
+                            <input type="file" id="pat-folder-input" webkitdirectory multiple style="display:none">
                         </div>
                     </div>
                     <div class="mem-box">
@@ -1321,6 +1324,8 @@
                 $('conn').classList.toggle('on', on);
                 $('dot').classList.toggle('on', on);
                 $('sd-upload-btn').disabled = !on;
+                $('sd-folder-btn').disabled = !on;
+                $('sd-archive-btn').disabled = !on;
                 $('sd-purge-btn').disabled = !on;
                 if (on) {
                     refreshSdCount();
@@ -2145,6 +2150,93 @@
                 }
             });
 
+            // ── folder upload ([+] button) ──────────────────────────────────
+            const patFolderInput = $('pat-folder-input');
+
+            $('sd-folder-btn').addEventListener('click', () => {
+                if (!link.connected) return;
+                patFolderInput.click();
+            });
+
+            patFolderInput.addEventListener('change', async () => {
+                const allFiles = Array.from(patFolderInput.files || []);
+                patFolderInput.value = '';
+                if (!allFiles.length || !link.connected) return;
+
+                const patFiles = allFiles.filter((f) => /\.pat$/i.test(f.name));
+                if (!patFiles.length) {
+                    sdUploadStatus.textContent = 'no .pat files found';
+                    return;
+                }
+
+                $('sd-upload-btn').disabled = true;
+                $('sd-folder-btn').disabled = true;
+                $('sd-purge-btn').disabled = true;
+
+                let done = 0, failed = 0;
+                for (const file of patFiles) {
+                    const filename = file.name;
+                    sdUploadStatus.textContent =
+                        'uploading ' + (done + failed + 1) + '/' + patFiles.length +
+                        ' — ' + filename + '…';
+                    try {
+                        const data = new Uint8Array(await file.arrayBuffer());
+
+                        const uploadResp = await run(
+                            'upload ' + filename + ' → pattern.temp',
+                            Wire.encodeSetPatternFile(0, data),
+                            (r) => r && r.ok ? 'ok' : null,
+                            { timeoutMs: 120000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILE }
+                        );
+                        if (!uploadResp || !uploadResp.ok) { failed++; continue; }
+
+                        const renameResp = await run(
+                            'rename → ' + filename,
+                            Wire.encodeSetPatternFilename(0, filename),
+                            (r) => Wire.decodeSetPatternFilenameResponse(r) != null ? 'ok' : null,
+                            { timeoutMs: 10000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILENAME }
+                        );
+                        if (!renameResp || !renameResp.ok) { failed++; continue; }
+
+                        done++;
+                    } catch (e) {
+                        failed++;
+                    }
+                }
+
+                sdUploadStatus.textContent =
+                    done + '/' + patFiles.length + ' uploaded' +
+                    (failed ? ', ' + failed + ' failed' : '');
+                await refreshSdCount();
+                if (link.connected) {
+                    $('sd-upload-btn').disabled = false;
+                    $('sd-folder-btn').disabled = false;
+                    $('sd-purge-btn').disabled = false;
+                }
+            });
+
+            // ── SD archive download ─────────────────────────────────────────
+            $('sd-archive-btn').addEventListener('click', async () => {
+                const status = $('sd-upload-status');
+                $('sd-archive-btn').disabled = true;
+                status.textContent = 'downloading…';
+                try {
+                    const zipBytes = await link.sendBulkRead(Wire.encodeGetSdArchive());
+                    const blob = new Blob([zipBytes], { type: 'application/zip' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'sd_card.zip';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    status.textContent = 'downloaded ' + (zipBytes.length / 1024).toFixed(1) + ' KB';
+                } catch (e) {
+                    status.textContent = 'archive failed: ' + e.message;
+                } finally {
+                    if (link.connected) $('sd-archive-btn').disabled = false;
+                }
+            });
+
             // ── command dispatch ────────────────────────────────────────────
             const HANDLERS = {
                 info: () => run('get-controller-info', Wire.encodeGetControllerInfo(), DECODE.info),
@@ -2685,11 +2777,19 @@
                 }
             });
 
+            function manifestFromParsedTxt(parsed) {
+                const m = { arenaConfig: null, set_id: parsed.pattern_set_id || null, patterns: {} };
+                for (const p of parsed.patterns) {
+                    m.patterns[p.name] = { index: p.index, sd_name: p.sd_name, preview: null, arenaConfig: null };
+                }
+                return m;
+            }
+
             async function loadBuiltin() {
                 try {
-                    const resp = await fetch(BUILTIN_BASE + 'manifest.json', { cache: 'no-store' });
+                    const resp = await fetch(BUILTIN_BASE + 'MANIFEST.txt', { cache: 'no-store' });
                     if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    const m = PS.loadManifestJson(await resp.json());
+                    const m = manifestFromParsedTxt(PS.parseManifestTxt(await resp.text()));
                     activeManifest = m;
                     byteSource = async (sd) => {
                         const r = await fetch(BUILTIN_BASE + 'patterns/' + sd, {
@@ -2699,11 +2799,8 @@
                         return r.arrayBuffer();
                     };
                     previewCache = {};
-                    const cfg = getConfig(m.arenaConfig);
                     setStatus(
                         'built-in · ' +
-                            ((cfg && cfg.label) || m.arenaConfig) +
-                            ' · ' +
                             Object.keys(m.patterns || {}).length +
                             ' patterns' +
                             (m.set_id ? ' · ' + m.set_id : '')
@@ -2722,13 +2819,13 @@
                 const files = Array.from(folderInput.files || []);
                 folderInput.value = '';
                 if (!files.length) return;
-                const manifestFile = files.find((f) => f.name === 'manifest.json');
+                const manifestFile = files.find((f) => f.name === 'MANIFEST.txt');
                 if (!manifestFile) {
-                    setStatus('no manifest.json in that folder', 'err-msg');
+                    setStatus('no MANIFEST.txt in that folder', 'err-msg');
                     return;
                 }
                 try {
-                    const m = PS.loadManifestJson(JSON.parse(await manifestFile.text()));
+                    const m = manifestFromParsedTxt(PS.parseManifestTxt(await manifestFile.text()));
                     const map = {};
                     for (const f of files) map[f.name] = f; // sd_name === base filename
                     activeManifest = m;
@@ -2737,11 +2834,8 @@
                         return f ? f.arrayBuffer() : Promise.reject(new Error('missing ' + sd));
                     };
                     previewCache = {};
-                    const cfg = getConfig(m.arenaConfig);
                     setStatus(
                         'loaded · ' +
-                            ((cfg && cfg.label) || m.arenaConfig || '(unknown arena)') +
-                            ' · ' +
                             Object.keys(m.patterns || {}).length +
                             ' patterns' +
                             (m.set_id ? ' · ' + m.set_id : '')

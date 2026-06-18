@@ -4,8 +4,8 @@
  *
  * Writes patterns/g6_2x10/ in the MATLAB SD convention (via js/pattern-set.js):
  *   patterns/g6_2x10/
- *     MANIFEST.bin   MANIFEST.txt   manifest.json   README.txt
- *     patterns/pat0001.pat pat0002.pat …
+ *     MANIFEST.bin   MANIFEST.txt   README.txt
+ *     patterns/NNN_<name>.pat …
  *
  * This folder is BOTH a ready copy-to-SD bundle AND the "Built-in library" source
  * the Experiment Designer's Pattern Set builder fetches (relative ./patterns/g6_2x10/).
@@ -168,10 +168,6 @@ for (const f of fs.readdirSync(PAT_DIR)) {
 }
 fs.writeFileSync(path.join(OUT_DIR, 'MANIFEST.bin'), Buffer.from(bundle.manifestBin));
 fs.writeFileSync(path.join(OUT_DIR, 'MANIFEST.txt'), bundle.manifestTxt);
-fs.writeFileSync(
-    path.join(OUT_DIR, 'manifest.json'),
-    JSON.stringify(bundle.manifestJson, null, 2) + '\n'
-);
 fs.writeFileSync(path.join(OUT_DIR, 'README.txt'), bundle.readme);
 for (const p of bundle.patterns) {
     fs.writeFileSync(path.join(PAT_DIR, p.name), Buffer.from(p.bytes));
