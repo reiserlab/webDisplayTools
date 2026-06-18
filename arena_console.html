@@ -859,6 +859,14 @@
                     >
                         Disconnect
                     </button>
+                    <button
+                        id="btn-reset"
+                        class="danger"
+                        title="SYSTEM_RESET (0x01) — ack then reboot the controller firmware"
+                        disabled
+                    >
+                        Reset
+                    </button>
                 </div>
             </nav>
 
@@ -1200,7 +1208,7 @@
                 <div id="log"></div>
             </div>
 
-            <footer id="footer">Arena Console v5 | 2026-06-18 12:10 ET</footer>
+            <footer id="footer">Arena Console v5 | 2026-06-18 18:09 ET</footer>
         </div>
 
         <!-- Paste-a-frame modal -->
@@ -1318,6 +1326,7 @@
             function setConnected(on) {
                 $('btn-connect').disabled = on;
                 $('btn-disconnect').disabled = !on;
+                $('btn-reset').disabled = !on;
                 cmdButtons().forEach((b) => (b.disabled = !on));
                 const s = $('status');
                 s.textContent = on ? 'connected' : 'disconnected';
@@ -1410,6 +1419,12 @@
                 }
             };
             $('btn-disconnect').onclick = async () => {
+                await link.close();
+                setConnected(false);
+            };
+            $('btn-reset').onclick = async () => {
+                if (!confirm('Reboot the controller? The USB/TCP link will drop.')) return;
+                await run('system-reset', Wire.encodeSystemReset(), DECODE.ascii);
                 await link.close();
                 setConnected(false);
             };
@@ -2221,7 +2236,7 @@
                 $('sd-archive-btn').disabled = true;
                 status.textContent = 'downloading…';
                 try {
-                    const zipBytes = await link.sendBulkRead(Wire.encodeGetSdArchive());
+                    const zipBytes = await link.sendBulkRead(Wire.encodeGetSdArchive(), { timeoutMs: 300000 });
                     const blob = new Blob([zipBytes], { type: 'application/zip' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');

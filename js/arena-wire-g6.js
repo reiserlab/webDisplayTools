@@ -40,6 +40,7 @@ const ArenaWireG6 = (function () {
     // not the single leading length byte the `frame()` helper emits.
     const OPCODES = {
         ALL_OFF: 0x00,
+        SYSTEM_RESET: 0x01, // software reset — acks then reboots (SCB_AIRCR SYSRESETREQ)
         TRIAL_PARAMS: 0x08, // selects mode + pattern (Modes 2/3/4)
         SET_REFRESH_RATE: 0x16,
         GET_REFRESH_RATE: 0x17, // returns current refresh rate as uint16 LE Hz
@@ -165,6 +166,10 @@ const ArenaWireG6 = (function () {
 
     function encodeStop() {
         return frame(OPCODES.STOP_DISPLAY); // 01 30
+    }
+
+    function encodeSystemReset() {
+        return frame(OPCODES.SYSTEM_RESET); // 01 01
     }
 
     /**
@@ -496,6 +501,7 @@ const ArenaWireG6 = (function () {
         encodeAllOn,
         encodeAllOff,
         encodeStop,
+        encodeSystemReset,
         encodeTrialParams,
         encodeSetFramePosition,
         encodeStreamFrame,
