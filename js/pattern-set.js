@@ -10,9 +10,9 @@
  * Follows the MATLAB SD convention (maDisplayTools/utils/prepare_sd_card.m) so a
  * web-built SD is interchangeable with a MATLAB-built one and verifiable the same
  * way:
- *   - pattern files renamed `pat%04d.pat` (1-based; human name lives in the manifest)
+ *   - pattern files renamed `NNN_<name>.pat` (1-based; human name lives in MANIFEST.txt)
  *   - MANIFEST.bin : uint16 count + uint32 unix timestamp, LITTLE-ENDIAN (Teensy native)
- *   - MANIFEST.txt : human-readable map, CRLF line endings
+ *   - MANIFEST.txt : human-readable map + Pattern Set ID, CRLF line endings
  *   - timestamps   : iso `yyyy-mm-ddTHH:MM:SS` (local), unix `uint32`, file `yyyymmdd_HHMMSS`
  *   - `set_id`     == the `yyyymmdd_HHMMSS` string (the binding key, generated at export)
  *
@@ -267,6 +267,27 @@
     }
 
     // ── manifest writers ───────────────────────────────────────────────────────
+
+    // FNV-1a 32-bit over sorted SD filenames, each followed by '\n'.
+    // Matches the Teensy firmware's patternSetId() in SdManager.cpp.
+    var _imul = Math.imul || function (a, b) {
+        var ah = (a >>> 16) & 0xffff, al = a & 0xffff;
+        var bh = (b >>> 16) & 0xffff, bl = b & 0xffff;
+        return ((al * bh + ah * bl) << 16) | (al * bl);
+    };
+    function computePatternSetId(sdNames) {
+        var h = 2166136261;
+        for (var i = 0; i < sdNames.length; i++) {
+            for (var j = 0; j < sdNames[i].length; j++) {
+                h = (h ^ sdNames[i].charCodeAt(j)) >>> 0;
+                h = _imul(h, 16777619) >>> 0;
+            }
+            h = (h ^ 10) >>> 0;
+            h = _imul(h, 16777619) >>> 0;
+        }
+        return ('00000000' + h.toString(16).toUpperCase()).slice(-8);
+    }
+
     /** MANIFEST.bin: uint16 count + uint32 unix timestamp, little-endian. */
     function buildManifestBin(count, unix) {
         var buf = new ArrayBuffer(6);
@@ -276,45 +297,22 @@
         return new Uint8Array(buf);
     }
 
-    /** MANIFEST.txt: human-readable map, CRLF (matches prepare_sd_card.m). */
+    /** MANIFEST.txt: human-readable map + Pattern Set ID, CRLF (matches prepare_sd_card.m). */
     function buildManifestTxt(set, ts, opts) {
         opts = opts || {};
         var sdDrive = opts.sdDrive || '(copy to the SD card root)';
+        var sdNames = set.items.map(function (it) { return it.sd_name; });
         var lines = [];
         lines.push('Timestamp: ' + ts.iso);
         lines.push('SD Drive: ' + sdDrive);
         lines.push('Pattern Count: ' + set.items.length);
+        lines.push('Pattern Set ID: ' + computePatternSetId(sdNames));
         lines.push('');
         lines.push('Mapping:');
         for (var i = 0; i < set.items.length; i++) {
             lines.push(set.items[i].sd_name + ' <- ' + set.items[i].name);
         }
         return lines.join('\r\n') + '\r\n';
-    }
-
-    /** manifest.json: the web index for the LAB-95/96 pickers (same instant as the .bin). */
-    function buildManifestJson(set, ts) {
-        var patterns = {};
-        for (var i = 0; i < set.items.length; i++) {
-            var it = set.items[i];
-            patterns[it.name] = {
-                index: it.index,
-                sd_name: it.sd_name,
-                arenaConfig: set.arenaConfig,
-                preview: it.preview,
-                matlabPath: it.matlabPath || null
-            };
-        }
-        return {
-            tool: TOOL,
-            version: MANIFEST_VERSION,
-            set_id: ts.file,
-            created_iso: ts.iso,
-            created_unix: ts.unix,
-            arenaConfig: set.arenaConfig,
-            source: set.source,
-            patterns: patterns
-        };
     }
 
     function buildReadme(set, ts) {
@@ -333,7 +331,7 @@
         lines.push('      patterns/');
         lines.push('        ' + ex1);
         lines.push('        ' + ex2 + '  ...');
-        lines.push('      MANIFEST.bin   MANIFEST.txt   manifest.json   README.txt');
+        lines.push('      MANIFEST.bin   MANIFEST.txt   README.txt');
         lines.push('');
         lines.push('  - Do NOT drop a wrapper folder on the card -- "patterns" sits at the root.');
         lines.push('  - Do NOT rename the .pat files -- the NNN_ prefix sets the pattern_ID');
@@ -352,7 +350,7 @@
     /**
      * Produce everything for a bundle ZIP / SD image in one call (used by the
      * designer modal and the Node default-set generator). Validates first.
-     * @returns { ts, set_id, manifestBin, manifestTxt, manifestJson, readme,
+     * @returns { ts, set_id, manifestBin, manifestTxt, readme,
      *            patterns: [{ name: sd_name, bytes: ArrayBuffer }] }
      */
     function buildBundle(set, opts) {
@@ -383,7 +381,6 @@
             set_id: ts.file,
             manifestBin: buildManifestBin(set.items.length, ts.unix),
             manifestTxt: buildManifestTxt(set, ts, opts),
-            manifestJson: buildManifestJson(set, ts),
             readme: buildReadme(set, ts),
             patterns: set.items.map(function (it) {
                 return { name: it.sd_name, bytes: it.bytes };
@@ -391,10 +388,10 @@
         };
     }
 
-    // ── read API (LAB-95/96 pickers) ────────────────────────────────────────────
-    /** Parse a MANIFEST.txt back into { timestamp, count, patterns:[{sd_name,index,name}] }. */
+    // ── read API ────────────────────────────────────────────────────────────────
+    /** Parse a MANIFEST.txt back into { timestamp, count, pattern_set_id, patterns:[{sd_name,index,name}] }. */
     function parseManifestTxt(text) {
-        var out = { timestamp: null, count: null, patterns: [] };
+        var out = { timestamp: null, count: null, pattern_set_id: null, patterns: [] };
         var lines = String(text).split(/\r\n|\n|\r/);
         var inMap = false;
         for (var i = 0; i < lines.length; i++) {
@@ -403,6 +400,8 @@
                 out.timestamp = line.replace(/^Timestamp:\s*/, '').trim();
             } else if (/^Pattern Count:\s*/.test(line)) {
                 out.count = parseInt(line.replace(/^Pattern Count:\s*/, ''), 10);
+            } else if (/^Pattern Set ID:\s*/.test(line)) {
+                out.pattern_set_id = line.replace(/^Pattern Set ID:\s*/, '').trim();
             } else if (/^Mapping:\s*$/.test(line)) {
                 inMap = true;
             } else if (inMap) {
@@ -417,16 +416,6 @@
             }
         }
         return out;
-    }
-
-    function loadManifestJson(json) {
-        return typeof json === 'string' ? JSON.parse(json) : json;
-    }
-
-    /** Resolve a pattern name → 1-based SD index from a manifest.json object. */
-    function resolveIndex(manifest, name) {
-        if (!manifest || !manifest.patterns || !manifest.patterns[name]) return null;
-        return manifest.patterns[name].index;
     }
 
     var PatternSet = {
@@ -447,16 +436,14 @@
         validateGeometry: validateGeometry,
         reencodeForDuty: reencodeForDuty,
         makeTimestamps: makeTimestamps,
+        computePatternSetId: computePatternSetId,
         // manifests / bundle
         buildManifestBin: buildManifestBin,
         buildManifestTxt: buildManifestTxt,
-        buildManifestJson: buildManifestJson,
         buildReadme: buildReadme,
         buildBundle: buildBundle,
         // read API
-        parseManifestTxt: parseManifestTxt,
-        loadManifestJson: loadManifestJson,
-        resolveIndex: resolveIndex
+        parseManifestTxt: parseManifestTxt
     };
 
     // Dual export — browser global + Node (CommonJS). Deliberately NO bare top-level

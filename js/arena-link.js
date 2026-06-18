@@ -95,9 +95,13 @@ const ArenaLink = (function () {
             // pulled off the front as they arrive.
             this._rxBuf = new Uint8Array(0);
             // The single outstanding request, or null. Shape:
-            // { expectedCmd, resolve, reject, timer }. Single-flight: there is
+            // { expectedCmd, resolve, reject, timer, bulkInit? }. Single-flight: there is
             // never more than one.
             this._inflight = null;
+            // Active bulk-read state (set while receiving raw bytes for 0x84). When
+            // non-null, _consumeIncoming routes bytes here instead of frame-parsing.
+            // Shape: { remaining, chunks, resolve, reject, timer }
+            this._bulkRead = null;
             // Serializes concurrent send() callers into one-at-a-time requests.
             this._sendQueue = Promise.resolve();
 
@@ -218,6 +222,106 @@ const ArenaLink = (function () {
             return result;
         }
 
+        /**
+         * Send a request and receive the raw bulk data that the firmware streams
+         * after its standard response header. Designed for 0x84 get-pattern-file:
+         * the firmware sends [length, 0, echo, size_b0..b7] as a normal response
+         * frame, then writes `size` raw bytes directly to the transport without
+         * framing. This method handles both the framed header and the raw bytes,
+         * returning a Promise<Uint8Array> that resolves to the complete file data.
+         *
+         * @param {Uint8Array|number[]} bytes request frame
+         * @param {object} [opts]
+         * @param {number} [opts.timeoutMs=30000] applies to both header and data phases
+         * @returns {Promise<Uint8Array>}
+         */
+        sendBulkRead(bytes, opts) {
+            const run = () => this._sendOneBulkRead(bytes, opts);
+            const result = this._sendQueue.then(run, run);
+            this._sendQueue = result.then(() => {}, () => {});
+            return result;
+        }
+
+        async _sendOneBulkRead(bytes, opts) {
+            if (!this._writer) throw new Error('ArenaLink.sendBulkRead: not connected');
+            const timeoutMs = (opts && opts.timeoutMs) || 30000;
+            const payload = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
+            const expectedCmd =
+                opts && opts.expectedCmd != null ? opts.expectedCmd : payload[1];
+
+            // Create the data promise now so bulkInit can hold its resolve/reject.
+            let dataResolve, dataReject;
+            const dataPromise = new Promise((res, rej) => {
+                dataResolve = res;
+                dataReject = rej;
+            });
+
+            // Wait for the header frame. The inflight entry carries bulkInit so
+            // _consumeIncoming switches to bulk-drain mode atomically when the
+            // header arrives, before any file bytes can be misread as frames.
+            const headerPromise = new Promise((resolve, reject) => {
+                const entry = {
+                    expectedCmd,
+                    resolve,
+                    reject,
+                    timer: null,
+                    bulkInit: { timeoutMs, dataResolve, dataReject },
+                };
+                entry.timer = setTimeout(() => {
+                    if (this._inflight !== entry) return;
+                    this._inflight = null;
+                    this._rxBuf = new Uint8Array(0);
+                    dataReject(new Error('bulk-read header timeout after ' + timeoutMs + ' ms'));
+                    reject(new Error('bulk-read header timeout after ' + timeoutMs + ' ms'));
+                }, timeoutMs);
+                this._inflight = entry;
+            });
+
+            this._log('->', hexDump(payload));
+            try {
+                await this._writer.write(payload);
+            } catch (err) {
+                if (this._inflight) {
+                    clearTimeout(this._inflight.timer);
+                    this._inflight = null;
+                }
+                dataReject(err);
+                throw err;
+            }
+
+            // Wait for _consumeIncoming to resolve the header and set up _bulkRead.
+            await headerPromise;
+
+            // Return the data promise — resolves with Uint8Array when all file bytes
+            // arrive, or rejects on timeout/error. The send queue stays occupied
+            // until the download finishes.
+            return dataPromise;
+        }
+
+        // Drain `chunk` into the active _bulkRead accumulator. Returns the number of
+        // bytes consumed. If remaining reaches 0, resolves the data promise.
+        _drainToBulk(chunk) {
+            const br = this._bulkRead;
+            if (!br || br.remaining <= 0) return 0;
+            const take = Math.min(chunk.length, br.remaining);
+            if (take > 0) br.chunks.push(chunk.slice(0, take));
+            br.remaining -= take;
+            if (br.remaining <= 0) {
+                clearTimeout(br.timer);
+                this._bulkRead = null;
+                let total = 0;
+                for (const c of br.chunks) total += c.length;
+                const out = new Uint8Array(total);
+                let off = 0;
+                for (const c of br.chunks) {
+                    out.set(c, off);
+                    off += c.length;
+                }
+                br.resolve(out);
+            }
+            return take;
+        }
+
         async _sendOne(bytes, opts) {
             if (!this._writer) throw new Error('ArenaLink.send: not connected');
             const timeoutMs = (opts && opts.timeoutMs) || DEFAULT_TIMEOUT_MS;
@@ -319,7 +423,24 @@ const ArenaLink = (function () {
         // outstanding request — but only if its echo_cmd matches. Same framing as
         // the firmware's SerialManager / NetworkManager: first byte = count of
         // bytes that follow.
+        //
+        // When _bulkRead is active (after a 0x84 response header), bytes are
+        // routed directly to the bulk accumulator without frame parsing.
         _consumeIncoming(chunk) {
+            // Fast path: bulk-read mode — drain raw bytes without frame parsing.
+            if (this._bulkRead) {
+                const taken = this._drainToBulk(chunk);
+                if (taken < chunk.length) {
+                    // More bytes than expected (shouldn't happen in practice).
+                    const leftover = chunk.slice(taken);
+                    const merged = new Uint8Array(this._rxBuf.length + leftover.length);
+                    merged.set(this._rxBuf, 0);
+                    merged.set(leftover, this._rxBuf.length);
+                    this._rxBuf = merged;
+                }
+                return;
+            }
+
             const merged = new Uint8Array(this._rxBuf.length + chunk.length);
             merged.set(this._rxBuf, 0);
             merged.set(chunk, this._rxBuf.length);
@@ -356,6 +477,9 @@ const ArenaLink = (function () {
                     // host/firmware desync. Surface it rather than hide it.
                     clearTimeout(entry.timer);
                     this._inflight = null;
+                    if (entry.bulkInit) {
+                        entry.bulkInit.dataReject(new Error('desync during bulk-read header'));
+                    }
                     entry.reject(
                         new Error(
                             'response echo 0x' +
@@ -372,6 +496,55 @@ const ArenaLink = (function () {
 
                 clearTimeout(entry.timer);
                 this._inflight = null;
+
+                // For bulk-read requests: atomically switch to bulk-drain mode
+                // before resolving so no file bytes can be misread as frames.
+                if (entry.bulkInit) {
+                    const status = frame[1];
+                    if (status !== 0 || frame.length < 11) {
+                        entry.bulkInit.dataReject(
+                            new Error('get-pattern-file error: status=' + status)
+                        );
+                        entry.resolve(frame);
+                        continue;
+                    }
+                    // Extract lower 32 bits of the uint64 LE file size (upper 4 = 0 for <4 GB files).
+                    const sz =
+                        ((frame[3] | (frame[4] << 8) | (frame[5] << 16) | (frame[6] << 24)) >>>
+                            0);
+                    if (sz === 0) {
+                        entry.bulkInit.dataResolve(new Uint8Array(0));
+                        entry.resolve(frame);
+                        continue;
+                    }
+                    // Set up bulk drain.
+                    const bi = entry.bulkInit;
+                    const bulkTimer = setTimeout(() => {
+                        if (this._bulkRead) {
+                            const got = sz - this._bulkRead.remaining;
+                            this._bulkRead = null;
+                            bi.dataReject(
+                                new Error(
+                                    'bulk-read data timeout: got ' + got + '/' + sz + ' bytes'
+                                )
+                            );
+                        }
+                    }, bi.timeoutMs);
+                    this._bulkRead = {
+                        remaining: sz,
+                        chunks: [],
+                        resolve: bi.dataResolve,
+                        reject: bi.dataReject,
+                        timer: bulkTimer,
+                    };
+                    // Drain any file bytes that already arrived with the header frame.
+                    const leftover = this._rxBuf;
+                    this._rxBuf = new Uint8Array(0);
+                    entry.resolve(frame);
+                    if (leftover.length > 0) this._drainToBulk(leftover);
+                    return; // bulk mode active — stop frame parsing
+                }
+
                 entry.resolve(frame);
             }
         }
@@ -396,7 +569,14 @@ const ArenaLink = (function () {
                 clearTimeout(this._inflight.timer);
                 const entry = this._inflight;
                 this._inflight = null;
+                if (entry.bulkInit) entry.bulkInit.dataReject(err);
                 entry.reject(err);
+            }
+            if (this._bulkRead) {
+                clearTimeout(this._bulkRead.timer);
+                const br = this._bulkRead;
+                this._bulkRead = null;
+                br.reject(err);
             }
         }
 

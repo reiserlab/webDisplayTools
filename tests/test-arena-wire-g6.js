@@ -174,14 +174,14 @@ checkThrows('stream wrong size 100 throws', () => Wire.encodeStreamFrame(new Uin
 checkThrows('stream wrong size 4063 throws', () => Wire.encodeStreamFrame(new Uint8Array(4063)));
 
 console.log('\n=== decodeResponse framing ===');
-// get-controller-info reply: [len=4, status=0, echo=0x67, version=2, cap=0x11].
+// get-controller-info reply: [len=4, status=0, echo=0xC2, version=2, cap=0x11].
 // length byte = 4 = status + echo + 2 payload bytes.
-const ciFrame = Uint8Array.from([0x04, 0x00, 0x67, 0x02, 0x11]);
+const ciFrame = Uint8Array.from([0x04, 0x00, 0xC2, 0x02, 0x11]);
 const ci = Wire.decodeResponse(ciFrame);
 checkBool('decodeResponse returns object', !!ci);
 check('  .length', ci.length, 4);
 check('  .status', ci.status, 0);
-check('  .echoCmd', ci.echoCmd, 0x67);
+check('  .echoCmd', ci.echoCmd, 0xC2);
 check('  .ok', ci.ok, true);
 checkBytes('  .payload', ci.payload, '02 11');
 
@@ -195,12 +195,12 @@ checkBool('empty frame -> null', Wire.decodeResponse(new Uint8Array([])) === nul
 checkBool('length<2 -> null', Wire.decodeResponse(Uint8Array.from([0x01, 0x00])) === null);
 checkBool(
     'incomplete frame -> null',
-    Wire.decodeResponse(Uint8Array.from([0x05, 0x00, 0x67, 0x02])) === null,
+    Wire.decodeResponse(Uint8Array.from([0x05, 0x00, 0xC2, 0x02])) === null,
     'claims 5 bytes, only 3 present'
 );
 // Regression: a plain number[] must NOT throw (TypedArray.slice rejects a
 // non-typed-array receiver — decodeResponse normalizes to Uint8Array first).
-const ciArr = Wire.decodeResponse([0x04, 0x00, 0x67, 0x02, 0x11]);
+const ciArr = Wire.decodeResponse([0x04, 0x00, 0xC2, 0x02, 0x11]);
 checkBool('decodeResponse(number[]) does not throw', !!ciArr);
 checkBytes('decodeResponse(number[]) payload', ciArr.payload, '02 11');
 
@@ -218,33 +218,55 @@ checkBool(
 // A non-OK controller-info reply must not be decoded as valid metadata.
 checkBool(
     'decodeControllerInfo rejects status!=0',
-    Wire.decodeControllerInfo(Uint8Array.from([0x04, 0x01, 0x67, 0x02, 0x11])) === null
+    Wire.decodeControllerInfo(Uint8Array.from([0x04, 0x01, 0xC2, 0x02, 0x11])) === null
 );
 
-// SPI clock reply: [len=4, status=0, echo=0x18, 20, 0] -> 20 MHz.
-check('decodeSpiClock', Wire.decodeSpiClock(Uint8Array.from([0x04, 0x00, 0x18, 0x14, 0x00])), 20);
+// SPI clock reply: [len=4, status=0, echo=0xC6, 20, 0] -> 20 MHz.
+check('decodeSpiClock', Wire.decodeSpiClock(Uint8Array.from([0x04, 0x00, 0xC6, 0x14, 0x00])), 20);
 checkBool(
     'decodeSpiClock rejects status!=0',
-    Wire.decodeSpiClock(Uint8Array.from([0x04, 0x01, 0x18, 0x14, 0x00])) === null
+    Wire.decodeSpiClock(Uint8Array.from([0x04, 0x01, 0xC6, 0x14, 0x00])) === null
 );
 
 // frames-sent reply: u32 LE. 0x12345678 -> 78 56 34 12.
 check(
     'decodeFramesSent',
-    Wire.decodeFramesSent(Uint8Array.from([0x06, 0x00, 0x19, 0x78, 0x56, 0x34, 0x12])),
+    Wire.decodeFramesSent(Uint8Array.from([0x06, 0x00, 0x33, 0x78, 0x56, 0x34, 0x12])),
     0x12345678
 );
 // High-bit-set value confirms unsigned (>>> 0) handling: 0xFFFFFFFF.
 check(
     'decodeFramesSent unsigned',
-    Wire.decodeFramesSent(Uint8Array.from([0x06, 0x00, 0x19, 0xff, 0xff, 0xff, 0xff])),
+    Wire.decodeFramesSent(Uint8Array.from([0x06, 0x00, 0x33, 0xff, 0xff, 0xff, 0xff])),
     4294967295
 );
 
 // get-ip reply: ASCII payload "10.0.0.5".
 const ipAscii = '10.0.0.5';
-const ipBytes = [ipAscii.length + 2, 0x00, 0x66, ...Array.from(ipAscii, (c) => c.charCodeAt(0))];
+const ipBytes = [ipAscii.length + 2, 0x00, 0xC1, ...Array.from(ipAscii, (c) => c.charCodeAt(0))];
 check('decodeIp', Wire.decodeIp(Uint8Array.from(ipBytes)), '10.0.0.5');
+
+console.log('\n=== set-pattern-filename (0x83) opcode-first framing ===');
+// Short name: [0x83, idx_lo, idx_hi, name_len, chars...] — NO leading length byte.
+// "a.pat" (5 chars), idx=0 → [83 00 00 05 61 2e 70 61 74]
+checkBytes(
+    'encodeSetPatternFilename idx=0 short',
+    Wire.encodeSetPatternFilename(0, 'a.pat'),
+    '83 00 00 05 61 2e 70 61 74'
+);
+// 50-char name (the failing case): length would have been 0x36 > 0x32 in the old framing.
+// With opcode-first, the first byte is always 0x83 regardless of name length.
+const longName = '0019_right_window_yaw_stepsize0.46875_final_G6.pat'; // 50 chars
+const longFrame = Wire.encodeSetPatternFilename(0, longName);
+check('encodeSetPatternFilename long: first byte is opcode 0x83', longFrame[0], 0x83);
+check('encodeSetPatternFilename long: length byte absent (frame.length = 4+name)', longFrame.length, 54);
+check('encodeSetPatternFilename long: name_len byte = 50', longFrame[3], 50);
+checkThrows('encodeSetPatternFilename 64-char name throws', () =>
+    Wire.encodeSetPatternFilename(0, 'a'.repeat(64))
+);
+checkThrows('encodeSetPatternFilename empty name throws', () =>
+    Wire.encodeSetPatternFilename(0, '')
+);
 
 console.log(`\n=== Summary ===\n${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures > 0 ? 1 : 0);

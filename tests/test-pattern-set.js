@@ -189,22 +189,16 @@ console.log('\n=== timestamp formats ===');
     check('unix', ts.unix, Math.floor(d.getTime() / 1000));
 }
 
-// ── 7. manifest.json shape + bundle ──────────────────────────────────────────────
-console.log('\n=== manifest.json + buildBundle ===');
+// ── 7. buildBundle ───────────────────────────────────────────────────────────────
+console.log('\n=== buildBundle ===');
 {
     const set = fresh2x10Set(2);
     const bundle = PS.buildBundle(set);
-    const mj = bundle.manifestJson;
-    check('set_id == file timestamp', mj.set_id, bundle.ts.file);
-    check('manifest tool', mj.tool, 'webDisplayTools/pattern-set');
-    check('manifest arenaConfig', mj.arenaConfig, 'G6_2x10');
-    const firstName = set.items[0].name;
-    check('patterns[name].index', mj.patterns[firstName].index, 1);
-    check('patterns[name].sd_name', mj.patterns[firstName].sd_name, set.items[0].sd_name);
-    check('resolveIndex', PS.resolveIndex(mj, firstName), 1);
     check('bundle exposes 2 pattern files', bundle.patterns.length, 2);
     check('bundle file 1 name', bundle.patterns[0].name, set.items[0].sd_name);
-    checkBool('bundle README mentions SD root', bundle.readme.indexOf('SD card') !== -1);
+    checkBool('bundle README mentions SD card', bundle.readme.indexOf('SD card') !== -1);
+    checkBool('bundle has no manifestJson', !('manifestJson' in bundle));
+    checkBool('MANIFEST.txt has Pattern Set ID', bundle.manifestTxt.indexOf('Pattern Set ID:') !== -1);
     checkThrows('buildBundle refuses an empty set', () =>
         PS.buildBundle(PS.createPatternSet({ arenaConfig: 'G6_2x10' }))
     );

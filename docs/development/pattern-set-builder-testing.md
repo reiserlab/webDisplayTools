@@ -32,9 +32,9 @@ fetched).
 - [ ] **▲ / ▼** reorder → indices and `pat000N` filenames update live.
 - [ ] Edit a Selected name → it's what the manifest mapping uses.
 - [ ] Footer: **"N selected · all valid"**, **Export ZIP** enabled → click → downloads `<set_id>.zip`.
-- [ ] Unzip: contains `MANIFEST.bin`, `MANIFEST.txt`, `manifest.json`, `README.txt`,
-      `patterns/pat0001.pat …`. `MANIFEST.txt` maps `patNNNN.pat <- <name>`;
-      `manifest.json` carries `set_id` (`yyyymmdd_HHMMSS`) + name→index.
+- [ ] Unzip: contains `MANIFEST.bin`, `MANIFEST.txt`, `README.txt`, `patterns/NNN_<name>.pat …`.
+      `MANIFEST.txt` contains `Pattern Count`, `Pattern Set ID` (FNV-1a hash of SD filenames),
+      and `Mapping: NNN_<name>.pat <- <name>`.
 
 ## 5. Validation (reject wrong arena)
 - [ ] Source → **Local files** (confirm the clear) → **Choose .pat files…** → pick a
@@ -43,17 +43,17 @@ fetched).
 
 ## 6. Another repo (optional)
 - [ ] Source → **Another repo** → enter a GitHub **raw** base URL of a webDisplayTools-style
-      repo that has `patterns/g6_2x10/manifest.json` → **Load** → Available populates.
+      repo that has `patterns/g6_2x10/MANIFEST.txt` → **Load** → Available populates.
       (CORS: `raw.githubusercontent.com` works; arbitrary Pages sites may not.)
 
 ## 7. Grow the default set (the "add a pattern" workflow)
 - [ ] Drop a new G6 2×10 `.pat` into `patterns/g6_2x10/_sources/`.
 - [ ] `node tests/generate-default-pattern-set.js` → it's ingested (duty → 128),
-      shipped as the next `patNNNN.pat`, listed in `manifest.json`.
+      shipped as the next `NNN_<name>.pat`, listed in `MANIFEST.txt`.
 - [ ] Reopen the builder → it's in **Available**.
 
 ## 8. Hardware SD round-trip (optional — needs a G6 controller)
-- [ ] Copy `MANIFEST.bin`, `MANIFEST.txt`, `manifest.json` + the `patterns/` folder to the
+- [ ] Copy `MANIFEST.bin`, `MANIFEST.txt` + the `patterns/` folder to the
       **SD card root** (from an exported ZIP, or `patterns/g6_2x10/`). **Seat the card before
       powering on** (firmware mounts SD only at boot).
 - [ ] Connect via `arena_console.html` (or the v3 per-condition dry-run). Send trial-params
