@@ -1539,7 +1539,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.35 | <span id="footerTimestamp">2026-06-11 19:35 ET</span>
+        v3 Experiment Designer v0.36 | <span id="footerTimestamp">2026-06-17 10:46 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1561,6 +1561,7 @@
     <script src="js/arena-wire-g6.js"></script>
     <script src="js/arena-link.js"></script>
     <script src="js/arena-runner-g6.js"></script>
+    <script src="js/arena-session.js"></script>
 
     <!-- LAB-92 Pattern Set builder + LAB-96 pattern picker. pat-encoder.js,
          pattern-set.js, and pat-preview.js are classic-safe (window.PatEncoder /
@@ -5205,24 +5206,20 @@
         // Disconnect are NOT (a run started before import must stay stoppable).
         // ═══════════════════════════════════════════════════════════════
 
-        const Wire = window.ArenaWireG6;
         const RunnerLib = window.ArenaRunnerG6;
-        const serialSupported = !!(window.ArenaLink && window.ArenaLink.isSupported());
-        let arenaLink = null; // lazy ArenaLink singleton (one per page)
-        let arenaRunner = null; // lazy ArenaRunner singleton
+        const serialSupported = !!(window.ArenaSession && window.ArenaSession.isSupported());
 
-        function ensureArena() {
-            if (!arenaLink) {
-                arenaLink = new window.ArenaLink({
-                    onDisconnect: () => {
-                        if (arenaRunner) arenaRunner._clear();
-                        updateRunStatus({ phase: 'disconnected' });
-                    },
-                    onError: (e) => runLog('arena error: ' + (e && (e.message || e)), true)
-                });
-                arenaRunner = new RunnerLib.ArenaRunner(arenaLink, Wire);
-            }
-            return { link: arenaLink, runner: arenaRunner };
+        // One shared connection broker for the page — owns the single ArenaLink +
+        // ArenaRunner (Stage A). The broker handles INVOLUNTARY disconnect itself
+        // (it aborts the runner WITHOUT a STOP send via runner.abort()); we only
+        // reflect its events in the run-status UI here. Defensive null-check so a
+        // missing classic-script (deploy error) can't crash module load — matching
+        // the page's prior tolerance for an absent window.ArenaLink. updateRunStatus
+        // / runLog are declared below (function-hoisted), so subscribing here is OK.
+        const arenaSession = window.ArenaSession ? window.ArenaSession.shared() : null;
+        if (arenaSession) {
+            arenaSession.on('disconnect', () => updateRunStatus({ phase: 'disconnected' }));
+            arenaSession.on('error', (e) => runLog('arena error: ' + (e && (e.message || e)), true));
         }
 
         function runLog(text, isErr) {
@@ -5342,8 +5339,8 @@
                 clearTimelineHighlight();
             }
             // Button states reflect live link/runner state.
-            $('runStopBtn').disabled = !(arenaRunner && arenaRunner.active);
-            $('runDisconnectBtn').disabled = !(arenaLink && arenaLink.connected);
+            $('runStopBtn').disabled = !(arenaSession && arenaSession.running);
+            $('runDisconnectBtn').disabled = !(arenaSession && arenaSession.connected);
             updateRunSeqBtn();
         }
 
@@ -5458,13 +5455,12 @@
             // Connect-on-demand. The confirm-button click is a fresh user gesture
             // and connect() is the first await after it resolves, so requestPort()
             // runs inside that activation.
-            const { link, runner } = ensureArena();
             $('runStatus').style.display = 'block';
             $('runStatusLog').innerHTML = '';
             try {
-                if (!link.connected) {
+                if (!arenaSession.connected) {
                     updateRunStatus({ phase: 'connecting' });
-                    await link.connect();
+                    await arenaSession.connect();
                 }
             } catch (e) {
                 updateRunStatus({ phase: 'error', error: e });
@@ -5472,8 +5468,13 @@
             }
             for (const s of skipped) runLog('skipped in dry-run: ' + s.plugin_name + '.' + s.command_name);
             try {
-                if (runner.active) await runner.stop(); // replace any prior run
-                await runner.start({ params, durationSec, conditionName: cond.name, onStatus: updateRunStatus });
+                // runTrial pre-empts any prior run internally (stop-then-start).
+                await arenaSession.runTrial({
+                    params,
+                    durationSec,
+                    conditionName: cond.name,
+                    onStatus: updateRunStatus
+                });
             } catch (e) {
                 updateRunStatus({ phase: 'error', error: e });
             }
@@ -5481,25 +5482,24 @@
 
         // Run-status bar controls — Stop/Disconnect are NOT import-mode guarded.
         $('runStopBtn').addEventListener('click', async () => {
-            if (!arenaRunner) return;
+            if (!arenaSession) return;
             try {
-                await arenaRunner.stop();
+                await arenaSession.stop();
                 updateRunStatus({ phase: 'stopped' });
             } catch (e) {
                 updateRunStatus({ phase: 'error', error: e });
             }
         });
         $('runDisconnectBtn').addEventListener('click', async () => {
+            // session.disconnect() stops any active run, closes the port, and emits
+            // 'disconnect' → our subscription sets the run-status UI to disconnected.
+            if (!arenaSession) return;
             try {
-                if (arenaRunner) await arenaRunner.stop();
+                await arenaSession.disconnect();
             } catch (_) {}
-            try {
-                if (arenaLink) await arenaLink.close();
-            } catch (_) {}
-            updateRunStatus({ phase: 'disconnected' });
         });
         $('runStatusClose').addEventListener('click', () => {
-            if (arenaRunner && arenaRunner.active) return; // don't hide mid-run
+            if (arenaSession && arenaSession.running) return; // don't hide mid-run
             $('runStatus').style.display = 'none';
         });
 
@@ -5518,7 +5518,7 @@
             const empty =
                 !experiment || !Array.isArray(experiment.sequence) || experiment.sequence.length === 0;
             btn.disabled =
-                !serialSupported || importMode || empty || !!(arenaRunner && arenaRunner.active);
+                !serialSupported || importMode || empty || !!(arenaSession && arenaSession.running);
         }
 
         // 1-based SD index for a trialParams command: prefer the active web set
@@ -5702,13 +5702,12 @@
             // Connect-on-demand: the confirm-button click is a fresh user gesture, and
             // connect() is the first await after it resolves, so requestPort() runs
             // inside that activation.
-            const { link, runner } = ensureArena();
             $('runStatus').style.display = 'block';
             $('runStatusLog').innerHTML = '';
             try {
-                if (!link.connected) {
+                if (!arenaSession.connected) {
                     updateRunStatus({ phase: 'connecting' });
-                    await link.connect();
+                    await arenaSession.connect();
                 }
             } catch (e) {
                 updateRunStatus({ phase: 'error', error: e });
@@ -5719,9 +5718,9 @@
             const { steps } = RunnerLib.flattenStructure(experiment, { shuffle: shuffleInPlace });
             const conditionsByName = new Map(experiment.conditions.map((c) => [c.name, c]));
             try {
-                if (runner.active) await runner.stop();
                 seqRunStart();
-                await runner.runSequence({
+                // runSequence pre-empts any prior run internally.
+                await arenaSession.runSequence({
                     steps,
                     conditionsByName,
                     resolvePatternId: resolvePatternIdForCmd,
@@ -5736,8 +5735,8 @@
                 // 'aborted' event fired from INSIDE runSequence while active was
                 // still true, so re-sync the run-control buttons now: re-enable
                 // "▶ Run on arena" and disable Stop after a normal completion.
-                $('runStopBtn').disabled = !(arenaRunner && arenaRunner.active);
-                $('runDisconnectBtn').disabled = !(arenaLink && arenaLink.connected);
+                $('runStopBtn').disabled = !(arenaSession && arenaSession.running);
+                $('runDisconnectBtn').disabled = !(arenaSession && arenaSession.connected);
                 updateRunSeqBtn();
             }
         }

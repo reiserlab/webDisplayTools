@@ -1207,7 +1207,6 @@
                 </div>
                 <div id="log"></div>
             </div>
-
             <footer id="footer">Arena Console v5 | 2026-06-18 18:09 ET</footer>
         </div>
 
@@ -1255,6 +1254,8 @@
         <!-- Milestone-A substrate + pat-encoder (window-global dual-export path; no build, no ES import). -->
         <script src="js/arena-wire-g6.js"></script>
         <script src="js/arena-link.js"></script>
+        <script src="js/arena-runner-g6.js"></script>
+        <script src="js/arena-session.js"></script>
         <script src="js/pat-encoder.js"></script>
         <script src="js/bin-classifier.js"></script>
         <!-- LAB-95 pattern picker. pattern-set.js + pat-preview.js are classic-safe
@@ -1298,26 +1299,29 @@
             }
 
             // Feature-detect (CLAUDE.md: non-Chromium warning).
-            if (!window.ArenaLink || !window.ArenaLink.isSupported()) {
+            if (!window.ArenaSession || !window.ArenaSession.isSupported()) {
                 $('banner').hidden = false;
                 $('btn-connect').disabled = true;
                 log('Web Serial unavailable — use a Chromium-based desktop browser.', 'err');
             }
 
-            // One ArenaLink instance for the page.
-            const link = new window.ArenaLink({
-                onLog: (msg) => log(msg, /<-/.test(msg) ? 'rx' : /->/.test(msg) ? 'tx' : 'dim'),
-                onError: (e) => log('read-loop error: ' + (e.message || e), 'err'),
-                onDisconnect: () => {
-                    log('-- disconnected (device or port lost)', 'err');
-                    setConnected(false);
-                }
+            // One shared connection broker for the page — owns the single ArenaLink
+            // (+ runner) and multicasts its callbacks. The console uses only the
+            // connection + raw-send surface; the run mechanism is the designer's.
+            const session = window.ArenaSession.shared();
+            session.on('log', (msg) =>
+                log(msg, /<-/.test(msg) ? 'rx' : /->/.test(msg) ? 'tx' : 'dim')
+            );
+            session.on('error', (e) => log('read-loop error: ' + (e.message || e), 'err'));
+            session.on('disconnect', (d) => {
+                if (d && d.involuntary) log('-- disconnected (device or port lost)', 'err');
+                setConnected(false);
             });
 
             // Bridge for the ES-module preview code: fetch a pattern file from the
             // controller via 0x84. Returns a Uint8Array of the raw .pat bytes.
             window.__fetchSdPatternBytes = async function (sdIdx) {
-                return link.sendBulkRead(Wire.encodeGetPatternFile(sdIdx), {
+                return session.sendBulkRead(Wire.encodeGetPatternFile(sdIdx), {
                     timeoutMs: 60000
                 });
             };
@@ -1353,7 +1357,7 @@
             // transport (e.g. { expectedCmd, timeoutMs } for stream frames).
             async function run(label, bytes, decode, opts) {
                 try {
-                    const frame = await link.send(bytes, opts);
+                    const frame = await session.send(bytes, opts);
                     const resp = Wire.decodeResponse(frame);
                     if (!resp) {
                         log(`${label}: no/malformed response frame`, 'err');
@@ -1407,8 +1411,7 @@
             $('btn-connect').onclick = async () => {
                 try {
                     log('requesting serial port…', 'dim');
-                    await link.requestPort();
-                    await link.open();
+                    await session.connect();
                     setConnected(true);
                     log(
                         '-- connected; try "Get info" (Controller menu) for a round-trip check',
@@ -1419,13 +1422,13 @@
                 }
             };
             $('btn-disconnect').onclick = async () => {
-                await link.close();
-                setConnected(false);
+                // session.disconnect() emits 'disconnect' → our subscription sets the UI.
+                await session.disconnect();
             };
             $('btn-reset').onclick = async () => {
                 if (!confirm('Reboot the controller? The USB/TCP link will drop.')) return;
                 await run('system-reset', Wire.encodeSystemReset(), DECODE.ascii);
-                await link.close();
+                await session.disconnect();
                 setConnected(false);
             };
             $('btn-clear').onclick = () => (logEl.textContent = '');
@@ -1490,7 +1493,7 @@
                 } else {
                     cnt.textContent = 'frame – / –';
                 }
-                const en = link.connected && stepper.loaded;
+                const en = session.connected && stepper.loaded;
                 document
                     .querySelectorAll('[data-cmd="prevframe"],[data-cmd="nextframe"]')
                     .forEach((b) => (b.disabled = !en));
@@ -1698,7 +1701,7 @@
             function updateStreamUI() {
                 const ok = streamable();
                 $('sf-stream-note').textContent = ok ? '' : '(needs a 20-panel arena)';
-                const en = link.connected && ok;
+                const en = session.connected && ok;
                 document
                     .querySelectorAll('[data-cmd^="stream-"]')
                     .forEach((b) => (b.disabled = !en));
@@ -1733,7 +1736,7 @@
                 const i = filePlay.idx % filePlay.frames.length;
                 filePlay.idx = i + 1;
                 try {
-                    await link.send(filePlay.frames[i], {
+                    await session.send(filePlay.frames[i], {
                         expectedCmd: Wire.OPCODES.STREAM_FRAME,
                         timeoutMs: 1500
                     });
@@ -1777,10 +1780,15 @@
                             `${file.name}: G6PT .pat, 1 frame ${gs16 ? 'GS16' : 'GS2'} — streaming`,
                             'dim'
                         );
-                        run('stream-file ' + file.name, Wire.encodeStreamFrame(bodies[0]), DECODE.ascii, {
-                            expectedCmd: Wire.OPCODES.STREAM_FRAME,
-                            timeoutMs: 1500
-                        });
+                        run(
+                            'stream-file ' + file.name,
+                            Wire.encodeStreamFrame(bodies[0]),
+                            DECODE.ascii,
+                            {
+                                expectedCmd: Wire.OPCODES.STREAM_FRAME,
+                                timeoutMs: 1500
+                            }
+                        );
                         return;
                     }
                     filePlay.frames = bodies.map((b) => Wire.encodeStreamFrame(b));
@@ -1932,7 +1940,7 @@
                     $('paste-msg').textContent =
                         `OK · GS${pasteParsed.gs} ${pasteParsed.rows}×${pasteParsed.cols}`;
                     $('paste-msg').className = 'small ok-msg';
-                    $('paste-stream').disabled = !(link.connected && streamable());
+                    $('paste-stream').disabled = !(session.connected && streamable());
                 } catch (e) {
                     pasteParsed = null;
                     $('paste-stream').disabled = true;
@@ -1993,7 +2001,7 @@
                 const names = [];
                 for (let idx = 1; idx <= count; idx++) {
                     try {
-                        const raw = await link.send(Wire.encodeGetPatternFilename(idx));
+                        const raw = await session.send(Wire.encodeGetPatternFilename(idx));
                         const parsed = Wire.decodeResponse(raw);
                         names.push(parsed && parsed.ok ? Wire.decodePatternFilename(parsed) : null);
                     } catch (_) {
@@ -2043,22 +2051,23 @@
             }
 
             sdCountBadge.addEventListener('click', () => {
-                if (link.connected) refreshSdCount();
+                if (session.connected) refreshSdCount();
             });
 
             $('sd-purge-btn').addEventListener('click', async () => {
-                if (!link.connected) return;
+                if (!session.connected) return;
                 if (!confirm('Delete ALL patterns from SD card? This cannot be undone.')) return;
                 const resp = await run(
                     'delete-all-patterns',
                     Wire.encodeDeleteAllPatterns(),
-                    (r) => (r && r.ok ? 'done' : null)
+                    (r) => (r && r.ok ? 'done' : null),
+                    { timeoutMs: 30000 }
                 );
                 if (resp && resp.ok) await refreshSdCount();
             });
 
             $('sd-table').addEventListener('click', async (e) => {
-                if (!link.connected) return;
+                if (!session.connected) return;
                 const tr = e.target.closest('tr[data-idx]');
                 if (!tr) return;
                 const idx = parseInt(tr.dataset.idx, 10);
@@ -2088,7 +2097,7 @@
                     btn.disabled = true;
                     log('download ' + idx + ' (' + name + ')…', 'dim');
                     try {
-                        const data = await link.sendBulkRead(
+                        const data = await session.sendBulkRead(
                             Wire.encodeGetPatternFile(idx),
                             { timeoutMs: 60000 }
                         );
@@ -2112,14 +2121,14 @@
             const sdUploadStatus = $('sd-upload-status');
 
             $('sd-upload-btn').addEventListener('click', () => {
-                if (!link.connected) return;
+                if (!session.connected) return;
                 patFileInput.click();
             });
 
             patFileInput.addEventListener('change', async () => {
                 const file = patFileInput.files[0];
                 patFileInput.value = '';
-                if (!file || !link.connected) return;
+                if (!file || !session.connected) return;
 
                 const filename = file.name;
                 sdUploadStatus.textContent = 'uploading…';
@@ -2161,7 +2170,7 @@
                 } catch (e) {
                     sdUploadStatus.textContent = 'error: ' + e.message;
                 } finally {
-                    if (link.connected) $('sd-upload-btn').disabled = false;
+                    if (session.connected) $('sd-upload-btn').disabled = false;
                 }
             });
 
@@ -2169,14 +2178,14 @@
             const patFolderInput = $('pat-folder-input');
 
             $('sd-folder-btn').addEventListener('click', () => {
-                if (!link.connected) return;
+                if (!session.connected) return;
                 patFolderInput.click();
             });
 
             patFolderInput.addEventListener('change', async () => {
                 const allFiles = Array.from(patFolderInput.files || []);
                 patFolderInput.value = '';
-                if (!allFiles.length || !link.connected) return;
+                if (!allFiles.length || !session.connected) return;
 
                 const patFiles = allFiles.filter((f) => /\.pat$/i.test(f.name));
                 if (!patFiles.length) {
@@ -2223,7 +2232,7 @@
                     done + '/' + patFiles.length + ' uploaded' +
                     (failed ? ', ' + failed + ' failed' : '');
                 await refreshSdCount();
-                if (link.connected) {
+                if (session.connected) {
                     $('sd-upload-btn').disabled = false;
                     $('sd-folder-btn').disabled = false;
                     $('sd-purge-btn').disabled = false;
@@ -2236,7 +2245,7 @@
                 $('sd-archive-btn').disabled = true;
                 status.textContent = 'downloading…';
                 try {
-                    const zipBytes = await link.sendBulkRead(Wire.encodeGetSdArchive(), { timeoutMs: 300000 });
+                    const zipBytes = await session.sendBulkRead(Wire.encodeGetSdArchive(), { timeoutMs: 300000 });
                     const blob = new Blob([zipBytes], { type: 'application/zip' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -2248,7 +2257,7 @@
                 } catch (e) {
                     status.textContent = 'archive failed: ' + e.message;
                 } finally {
-                    if (link.connected) $('sd-archive-btn').disabled = false;
+                    if (session.connected) $('sd-archive-btn').disabled = false;
                 }
             });
 
@@ -2395,7 +2404,7 @@
                 if (f) loadStreamFile(f);
             });
             $('cmd-hex').addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && link.connected) sendRawHex();
+                if (e.key === 'Enter' && session.connected) sendRawHex();
             });
 
             // React to the active arena changing (published by the picker module).
