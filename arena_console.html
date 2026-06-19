@@ -1321,7 +1321,7 @@
             // Bridge for the ES-module preview code: fetch a pattern file from the
             // controller via 0x84. Returns a Uint8Array of the raw .pat bytes.
             window.__fetchSdPatternBytes = async function (sdIdx) {
-                return link.sendBulkRead(Wire.encodeGetPatternFile(sdIdx), {
+                return session.sendBulkRead(Wire.encodeGetPatternFile(sdIdx), {
                     timeoutMs: 60000
                 });
             };
@@ -1428,7 +1428,7 @@
             $('btn-reset').onclick = async () => {
                 if (!confirm('Reboot the controller? The USB/TCP link will drop.')) return;
                 await run('system-reset', Wire.encodeSystemReset(), DECODE.ascii);
-                await link.close();
+                await session.disconnect();
                 setConnected(false);
             };
             $('btn-clear').onclick = () => (logEl.textContent = '');
@@ -2001,7 +2001,7 @@
                 const names = [];
                 for (let idx = 1; idx <= count; idx++) {
                     try {
-                        const raw = await link.send(Wire.encodeGetPatternFilename(idx));
+                        const raw = await session.send(Wire.encodeGetPatternFilename(idx));
                         const parsed = Wire.decodeResponse(raw);
                         names.push(parsed && parsed.ok ? Wire.decodePatternFilename(parsed) : null);
                     } catch (_) {
@@ -2051,22 +2051,23 @@
             }
 
             sdCountBadge.addEventListener('click', () => {
-                if (link.connected) refreshSdCount();
+                if (session.connected) refreshSdCount();
             });
 
             $('sd-purge-btn').addEventListener('click', async () => {
-                if (!link.connected) return;
+                if (!session.connected) return;
                 if (!confirm('Delete ALL patterns from SD card? This cannot be undone.')) return;
                 const resp = await run(
                     'delete-all-patterns',
                     Wire.encodeDeleteAllPatterns(),
-                    (r) => (r && r.ok ? 'done' : null)
+                    (r) => (r && r.ok ? 'done' : null),
+                    { timeoutMs: 30000 }
                 );
                 if (resp && resp.ok) await refreshSdCount();
             });
 
             $('sd-table').addEventListener('click', async (e) => {
-                if (!link.connected) return;
+                if (!session.connected) return;
                 const tr = e.target.closest('tr[data-idx]');
                 if (!tr) return;
                 const idx = parseInt(tr.dataset.idx, 10);
@@ -2096,7 +2097,7 @@
                     btn.disabled = true;
                     log('download ' + idx + ' (' + name + ')…', 'dim');
                     try {
-                        const data = await link.sendBulkRead(
+                        const data = await session.sendBulkRead(
                             Wire.encodeGetPatternFile(idx),
                             { timeoutMs: 60000 }
                         );
@@ -2120,14 +2121,14 @@
             const sdUploadStatus = $('sd-upload-status');
 
             $('sd-upload-btn').addEventListener('click', () => {
-                if (!link.connected) return;
+                if (!session.connected) return;
                 patFileInput.click();
             });
 
             patFileInput.addEventListener('change', async () => {
                 const file = patFileInput.files[0];
                 patFileInput.value = '';
-                if (!file || !link.connected) return;
+                if (!file || !session.connected) return;
 
                 const filename = file.name;
                 sdUploadStatus.textContent = 'uploading…';
@@ -2169,7 +2170,7 @@
                 } catch (e) {
                     sdUploadStatus.textContent = 'error: ' + e.message;
                 } finally {
-                    if (link.connected) $('sd-upload-btn').disabled = false;
+                    if (session.connected) $('sd-upload-btn').disabled = false;
                 }
             });
 
@@ -2177,14 +2178,14 @@
             const patFolderInput = $('pat-folder-input');
 
             $('sd-folder-btn').addEventListener('click', () => {
-                if (!link.connected) return;
+                if (!session.connected) return;
                 patFolderInput.click();
             });
 
             patFolderInput.addEventListener('change', async () => {
                 const allFiles = Array.from(patFolderInput.files || []);
                 patFolderInput.value = '';
-                if (!allFiles.length || !link.connected) return;
+                if (!allFiles.length || !session.connected) return;
 
                 const patFiles = allFiles.filter((f) => /\.pat$/i.test(f.name));
                 if (!patFiles.length) {
@@ -2231,7 +2232,7 @@
                     done + '/' + patFiles.length + ' uploaded' +
                     (failed ? ', ' + failed + ' failed' : '');
                 await refreshSdCount();
-                if (link.connected) {
+                if (session.connected) {
                     $('sd-upload-btn').disabled = false;
                     $('sd-folder-btn').disabled = false;
                     $('sd-purge-btn').disabled = false;
@@ -2244,7 +2245,7 @@
                 $('sd-archive-btn').disabled = true;
                 status.textContent = 'downloading…';
                 try {
-                    const zipBytes = await link.sendBulkRead(Wire.encodeGetSdArchive(), { timeoutMs: 300000 });
+                    const zipBytes = await session.sendBulkRead(Wire.encodeGetSdArchive(), { timeoutMs: 300000 });
                     const blob = new Blob([zipBytes], { type: 'application/zip' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -2256,7 +2257,7 @@
                 } catch (e) {
                     status.textContent = 'archive failed: ' + e.message;
                 } finally {
-                    if (link.connected) $('sd-archive-btn').disabled = false;
+                    if (session.connected) $('sd-archive-btn').disabled = false;
                 }
             });
 
