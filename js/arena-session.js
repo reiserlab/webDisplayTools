@@ -193,6 +193,17 @@
             return this._link.send(bytes, opts);
         }
 
+        /**
+         * Bulk-read variant: send a request, then stream response chunks until
+         * the controller signals EOF. See ArenaLink.sendBulkRead for details.
+         * @param {Uint8Array|number[]} bytes
+         * @param {object} [opts] {timeoutMs?}
+         * @returns {Promise<Uint8Array>}
+         */
+        sendBulkRead(bytes, opts) {
+            return this._link.sendBulkRead(bytes, opts);
+        }
+
         /** Convenience accessor for the wire encoder set (callers may also use window.ArenaWireG6). */
         get wire() {
             return this._wire;

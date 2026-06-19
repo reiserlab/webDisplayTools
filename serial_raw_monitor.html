@@ -132,11 +132,11 @@
                 for (const b of chunk) scan.push(b);
                 if (scan.length > 512) scan = scan.slice(scan.length - 512);
                 for (let i = 0; i + 4 < scan.length; i++) {
-                    if (scan[i] === 0x00 && scan[i + 1] === 0x67) {
+                    if (scan[i] === 0x00 && scan[i + 1] === 0xC1) {
                         const len = scan[i - 1], ver = scan[i + 2], cap = scan[i + 3];
                         log(
                             `✓ controller-info reply found in stream: len=0x${(len ?? 0)
-                                .toString(16)} status=00 echo=0x67 → version ${ver}, cap 0x${cap
+                                .toString(16)} status=00 echo=0xC1 → version ${ver}, cap 0x${cap
                                 .toString(16).padStart(2, '0')}`,
                             'hit'
                         );

@@ -40,16 +40,29 @@ const ArenaWireG6 = (function () {
     // not the single leading length byte the `frame()` helper emits.
     const OPCODES = {
         ALL_OFF: 0x00,
+        SYSTEM_RESET: 0x01, // software reset — acks then reboots (SCB_AIRCR SYSRESETREQ)
         TRIAL_PARAMS: 0x08, // selects mode + pattern (Modes 2/3/4)
         SET_REFRESH_RATE: 0x16,
-        SET_SPI_CLOCK: 0x17, // uint16 LE MHz (1..30); echoes applied MHz
-        GET_SPI_CLOCK: 0x18, // returns uint16 LE current MHz
-        GET_FRAMES_SENT: 0x19, // returns uint32 LE frames pushed to panels
-        RESET_FRAMES_SENT: 0x1a, // zeroes the frames-sent counter
+        GET_REFRESH_RATE: 0x17, // returns current refresh rate as uint16 LE Hz
+        SET_SPI_CLOCK: 0xC5, // uint16 LE MHz (1..30); echoes applied MHz
+        GET_SPI_CLOCK: 0xC6, // returns uint16 LE current MHz
+        GET_FRAMES_SENT: 0x33, // returns uint32 LE frames pushed to panels
+        RESET_FRAMES_SENT: 0x34, // zeroes the frames-sent counter
+        GET_FILE_COUNT: 0x80, // returns pattern file count on SD as uint16 LE
+        GET_PATTERN_FILENAME: 0x82, // [03 82 idx_lo idx_hi] 1-based; returns 1-byte-len + filename
+        SET_PATTERN_FILENAME: 0x83, // [0x83, idx_lo, idx_hi, len, chars…] rename; returns new uint16 LE index
+        GET_PATTERN_FILE: 0x84,     // [03 84 idx_lo idx_hi] 1-based; response: uint64 LE size, then raw bytes
+        SET_PATTERN_FILE: 0x85,     // [0x85, idx_lo, idx_hi, len64 LE, data…] upload file (bulk stream)
+        DELETE_PATTERN_FILE: 0x86,  // [03 86 idx_lo idx_hi] delete 1-based pattern; idx=0 deletes pattern.temp
+        DELETE_ALL_PATTERNS: 0x8F,  // [01 8F] delete all files in /patterns
+        GET_SD_ARCHIVE: 0x8A,       // [01 8A] stream full SD as ZIP; only in ALL_OFF state
         STOP_DISPLAY: 0x30,
         STREAM_FRAME: 0x32, // host-streamed full frame ("FR"+blocks; see encodeStreamFrame)
-        GET_ETHERNET_IP: 0x66,
-        GET_CONTROLLER_INFO: 0x67, // returns {version, capability_bitmap}
+        SET_ETHERNET_IP: 0xC0, // reserved — not yet implemented
+        GET_ETHERNET_IP: 0xC1,
+        GET_CONTROLLER_INFO: 0xC2, // returns {version, capability_bitmap}
+        SET_DIAG_OUTPUT: 0xC3, // [len=2,0xC3,on] mute/unmute DEBUG_SERIAL diagnostics
+        GET_DIAG_OUTPUT: 0xC4, // returns current g_dbg_on state (0/1)
         SET_FRAME_POSITION: 0x70, // Mode 3: host-commanded frame index
         ALL_ON: 0xff
     };
@@ -69,7 +82,7 @@ const ArenaWireG6 = (function () {
         CLOSED_LOOP: 4 // analog-in × gain, computed on the controller
     };
 
-    // Capability bitmap bits in the get-controller-info (0x67) reply
+    // Capability bitmap bits in the get-controller-info (0xC2) reply
     // (controller_info.py / main.js, g6_03-controller.md § 5).
     const CAPABILITY_BITS = [
         [0, 'g6_mode'],
@@ -153,6 +166,10 @@ const ArenaWireG6 = (function () {
 
     function encodeStop() {
         return frame(OPCODES.STOP_DISPLAY); // 01 30
+    }
+
+    function encodeSystemReset() {
+        return frame(OPCODES.SYSTEM_RESET); // 01 01
     }
 
     /**
@@ -243,34 +260,132 @@ const ArenaWireG6 = (function () {
         return frame(OPCODES.SET_REFRESH_RATE, u16le(hz, 'hz')); // 03 16 lo hi
     }
 
-    // set-spi-clock (0x17) — panel SPI master clock in whole MHz (u16 LE); echoes
+    // get-refresh-rate (0x17) — read the current re-transmit rate.
+    function encodeGetRefreshRate() {
+        return frame(OPCODES.GET_REFRESH_RATE); // 01 17
+    }
+
+    // get-refresh-rate / set-refresh-rate reply carries the rate as uint16 LE Hz.
+    function decodeRefreshRate(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 2) return null;
+        return r.payload[0] | (r.payload[1] << 8);
+    }
+
+    // set-spi-clock (0xC5) — panel SPI master clock in whole MHz (u16 LE); echoes
     // applied MHz. The firmware clamps to 1..30 MHz, so reject out-of-range here.
     function encodeSetSpiClock(mhz) {
         requireInt(mhz, 'mhz');
         if (mhz < 1 || mhz > 30) {
             throw new RangeError('mhz must be 1..30, got ' + mhz);
         }
-        return frame(OPCODES.SET_SPI_CLOCK, u16le(mhz, 'mhz')); // 03 17 lo hi
+        return frame(OPCODES.SET_SPI_CLOCK, u16le(mhz, 'mhz')); // 03 C5 lo hi
     }
 
     function encodeGetSpiClock() {
-        return frame(OPCODES.GET_SPI_CLOCK); // 01 18
+        return frame(OPCODES.GET_SPI_CLOCK); // 01 C6
     }
 
     function encodeGetFramesSent() {
-        return frame(OPCODES.GET_FRAMES_SENT); // 01 19
+        return frame(OPCODES.GET_FRAMES_SENT); // 01 33
     }
 
     function encodeResetFramesSent() {
-        return frame(OPCODES.RESET_FRAMES_SENT); // 01 1A
+        return frame(OPCODES.RESET_FRAMES_SENT); // 01 34
     }
 
     function encodeGetIp() {
-        return frame(OPCODES.GET_ETHERNET_IP); // 01 66
+        return frame(OPCODES.GET_ETHERNET_IP); // 01 C0
     }
 
     function encodeGetControllerInfo() {
-        return frame(OPCODES.GET_CONTROLLER_INFO); // 01 67
+        return frame(OPCODES.GET_CONTROLLER_INFO); // 01 C1
+    }
+
+    // get-file-count (0x80) — number of *.pat files in /patterns on the SD card.
+    function encodeGetFileCount() {
+        return frame(OPCODES.GET_FILE_COUNT); // 01 80
+    }
+
+    // set-pattern-filename (0x83) — rename pattern at 1-based idx (0 = pattern.temp).
+    // Returns new 1-based uint16 index after re-sort via decodeSetPatternFilenameResponse.
+    // Uses opcode-first framing (same as 0x85): [0x83, idx_lo, idx_hi, name_len, chars…]
+    // NOT frame() — the standard length-prefixed framing overflows for filenames > 45 chars
+    // because the length byte would equal or exceed STREAM_FRAME_CMD (0x32 = 50).
+    function encodeSetPatternFilename(index, name) {
+        requireInt(index, 'index');
+        if (index < 0 || index > 0xffff) {
+            throw new RangeError('index must be 0..65535, got ' + index);
+        }
+        const nameBytes = [];
+        for (let i = 0; i < name.length; i++) nameBytes.push(name.charCodeAt(i) & 0xff);
+        if (nameBytes.length === 0 || nameBytes.length > 63) {
+            throw new RangeError('filename must be 1..63 chars, got ' + nameBytes.length);
+        }
+        const idx = u16le(index, 'index');
+        return new Uint8Array([OPCODES.SET_PATTERN_FILENAME, ...idx, nameBytes.length, ...nameBytes]);
+    }
+
+    // set-pattern-file (0x85) — upload a .pat file. Opcode-first framing (NOT
+    // the standard frame() helper): [0x85, idx_lo, idx_hi, len_b0..b7, data…]
+    // idx = 0 writes to /patterns/pattern.temp; idx >= 1 overwrites that pattern.
+    function encodeSetPatternFile(index, data) {
+        requireInt(index, 'index');
+        if (index < 0 || index > 0xffff) {
+            throw new RangeError('index must be 0..65535, got ' + index);
+        }
+        const fileData = data instanceof Uint8Array ? data : new Uint8Array(data);
+        const len = fileData.length;
+        // [0x85, idx_lo, idx_hi, len_b0..b7, file_data…]
+        const out = new Uint8Array(11 + len);
+        out[0] = OPCODES.SET_PATTERN_FILE;
+        out[1] = index & 0xff;
+        out[2] = (index >> 8) & 0xff;
+        // uint64 LE length — upper 4 bytes are 0 (files < 4 GB in practice).
+        out[3] = len & 0xff;
+        out[4] = (len >> 8) & 0xff;
+        out[5] = (len >> 16) & 0xff;
+        out[6] = (len >> 24) & 0xff;
+        out[7] = 0; out[8] = 0; out[9] = 0; out[10] = 0;
+        out.set(fileData, 11);
+        return out;
+    }
+
+    // get-pattern-filename (0x82) — filename for the 1-based pattern index on SD.
+    function encodeGetPatternFilename(index) {
+        requireInt(index, 'index');
+        if (index < 1) {
+            throw new RangeError('index must be >= 1 (1-based), got ' + index);
+        }
+        return frame(OPCODES.GET_PATTERN_FILENAME, u16le(index, 'index')); // 03 82 lo hi
+    }
+
+    // get-pattern-file (0x84) — request raw content of the 1-based pattern.
+    // Use link.sendBulkRead() (not link.send()) to receive the streaming response.
+    function encodeGetPatternFile(index) {
+        requireInt(index, 'index');
+        if (index < 1) throw new RangeError('index must be >= 1 (1-based), got ' + index);
+        return frame(OPCODES.GET_PATTERN_FILE, u16le(index, 'index')); // 03 84 lo hi
+    }
+
+    // delete-all-patterns (0x8F) — delete every file in /patterns.
+    function encodeDeleteAllPatterns() {
+        return frame(OPCODES.DELETE_ALL_PATTERNS); // 01 8F
+    }
+
+    // delete-pattern-file (0x86) — delete the pattern at 1-based index.
+    // index=0 deletes /patterns/pattern.temp if it exists.
+    function encodeDeletePatternFile(index) {
+        requireInt(index, 'index');
+        if (index < 0 || index > 0xffff)
+            throw new RangeError('index out of range [0, 65535], got ' + index);
+        return frame(OPCODES.DELETE_PATTERN_FILE, u16le(index, 'index')); // 03 86 lo hi
+    }
+
+    // get-sd-archive (0x8A) — trigger full SD content as a ZIP download.
+    // Only accepted when the display is in ALL_OFF (waiting) state.
+    function encodeGetSdArchive() {
+        return frame(OPCODES.GET_SD_ARCHIVE); // 01 8A
     }
 
     // ───────────────────────────── decoders ───────────────────────────────
@@ -309,7 +424,7 @@ const ArenaWireG6 = (function () {
     }
 
     /**
-     * get-controller-info (0x67) reply -> {version, capability, capabilities[]}.
+     * get-controller-info (0xC2) reply -> {version, capability, capabilities[]}.
      * Payload is {version_byte, capability_bitmap}.
      */
     function decodeControllerInfo(resp) {
@@ -323,14 +438,14 @@ const ArenaWireG6 = (function () {
         return { version, capability, capabilities };
     }
 
-    // set/get-spi-clock (0x17/0x18) reply carries the clock as uint16 LE MHz.
+    // set/get-spi-clock (0xC5/0xC6) reply carries the clock as uint16 LE MHz.
     function decodeSpiClock(resp) {
         const r = asResponse(resp);
         if (!r || !r.ok || r.payload.length < 2) return null;
         return r.payload[0] | (r.payload[1] << 8);
     }
 
-    // get-frames-sent (0x19) reply carries the master-sent count as uint32 LE.
+    // get-frames-sent (0x33) reply carries the master-sent count as uint32 LE.
     function decodeFramesSent(resp) {
         const r = asResponse(resp);
         if (!r || !r.ok || r.payload.length < 4) return null;
@@ -338,7 +453,32 @@ const ArenaWireG6 = (function () {
         return (m[0] | (m[1] << 8) | (m[2] << 16) | (m[3] << 24)) >>> 0;
     }
 
-    // get-ip (0x66) reply carries the dotted-quad address as ASCII bytes.
+    // get-file-count (0x80) reply carries the count as uint16 LE.
+    function decodeFileCount(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 2) return null;
+        return r.payload[0] | (r.payload[1] << 8);
+    }
+
+    // set-pattern-filename (0x83) response: uint16 LE new 1-based index.
+    function decodeSetPatternFilenameResponse(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 2) return null;
+        return r.payload[0] | (r.payload[1] << 8);
+    }
+
+    // get-pattern-filename (0x82) reply: 1-byte length prefix + ASCII filename chars.
+    function decodePatternFilename(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 1) return null;
+        const len = r.payload[0];
+        if (r.payload.length < 1 + len) return null;
+        let s = '';
+        for (let i = 1; i <= len; i++) s += String.fromCharCode(r.payload[i]);
+        return s;
+    }
+
+    // get-ip (0xC1) reply carries the dotted-quad address as ASCII bytes.
     function decodeIp(resp) {
         const r = asResponse(resp);
         if (!r || !r.ok || r.payload.length === 0) return null;
@@ -361,6 +501,7 @@ const ArenaWireG6 = (function () {
         encodeAllOn,
         encodeAllOff,
         encodeStop,
+        encodeSystemReset,
         encodeTrialParams,
         encodeSetFramePosition,
         encodeStreamFrame,
@@ -373,13 +514,24 @@ const ArenaWireG6 = (function () {
         encodeGetControllerInfo,
         // Alias under the name the handoff lists for the get-info request.
         getControllerInfo: encodeGetControllerInfo,
+        encodeGetFileCount,
+        encodeGetPatternFilename,
+        encodeSetPatternFilename,
+        encodeGetPatternFile,
+        encodeSetPatternFile,
+        encodeDeletePatternFile,
+        encodeDeleteAllPatterns,
+        encodeGetSdArchive,
 
         // Decoders
         decodeResponse,
         decodeControllerInfo,
         decodeSpiClock,
         decodeFramesSent,
-        decodeIp
+        decodeIp,
+        decodeFileCount,
+        decodePatternFilename,
+        decodeSetPatternFilenameResponse
     };
 })();
 
