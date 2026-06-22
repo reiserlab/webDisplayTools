@@ -63,6 +63,10 @@ const ArenaWireG6 = (function () {
         GET_CONTROLLER_INFO: 0xC2, // returns {version, capability_bitmap}
         SET_DIAG_OUTPUT: 0xC3, // [len=2,0xC3,on] mute/unmute DEBUG_SERIAL diagnostics
         GET_DIAG_OUTPUT: 0xC4, // returns current g_dbg_on state (0/1)
+        SET_AO_VOLTAGE: 0xA0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV
+        GET_AO_VOLTAGE: 0xA1, // [01 A1] returns last commanded AO level as uint16 LE mV
+        SET_DIGITAL_OUT: 0xAA, // [03 AA ch state] DO1 (ch=1, J3/D37) or DO2 (ch=2, J4/D35)
+        GET_DIGITAL_OUT: 0xAB, // [01 AB] returns current state of DO1 and DO2 as two bytes
         SET_FRAME_POSITION: 0x70, // Mode 3: host-commanded frame index
         ALL_ON: 0xff
     };
@@ -388,6 +392,37 @@ const ArenaWireG6 = (function () {
         return frame(OPCODES.GET_SD_ARCHIVE); // 01 8A
     }
 
+    // set-ao-voltage (0xA0) — drive the MCP4725 DAC (BNC J27) to a DC level.
+    // mv: 0–5000 millivolts; 0 drives DAC code 0 (0 V = effectively off).
+    // Firmware converts: dacCode = mv * 4095 / 5000.
+    function encodeSetAoVoltage(mv) {
+        requireInt(mv, 'mv');
+        if (mv < 0 || mv > 5000) {
+            throw new RangeError('mv must be 0..5000, got ' + mv);
+        }
+        return frame(OPCODES.SET_AO_VOLTAGE, u16le(mv, 'mv')); // 03 A0 lo hi
+    }
+
+    // get-ao-voltage (0xA1) — read back the last commanded AO level (mV, uint16 LE).
+    function encodeGetAoVoltage() {
+        return frame(OPCODES.GET_AO_VOLTAGE); // 01 A1
+    }
+
+    // set-digital-out (0xAA) — drive DO1 (BNC J3, D37) or DO2 (BNC J4, D35) HIGH/LOW.
+    // channel: 1 = DO1 (J3), 2 = DO2 (J4)
+    // state: true/1 = HIGH, false/0 = LOW
+    function encodeSetDigitalOut(channel, state) {
+        if (channel !== 1 && channel !== 2)
+            throw new RangeError('channel must be 1 or 2, got ' + channel);
+        return frame(OPCODES.SET_DIGITAL_OUT, [channel, state ? 1 : 0]); // 03 AA ch state
+    }
+
+    // get-digital-out (0xAB) — read current state of both digital outputs.
+    // Response payload: [do1_state, do2_state], each 0 (LOW) or 1 (HIGH).
+    function encodeGetDigitalOut() {
+        return frame(OPCODES.GET_DIGITAL_OUT); // 01 AB
+    }
+
     // ───────────────────────────── decoders ───────────────────────────────
 
     /**
@@ -490,6 +525,20 @@ const ArenaWireG6 = (function () {
         return s;
     }
 
+    // get-digital-out (0xAA) reply: {do1: 0|1, do2: 0|1} or null on error.
+    function decodeDigitalOut(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 2) return null;
+        return { do1: r.payload[0] & 1, do2: r.payload[1] & 1 };
+    }
+
+    // set/get-ao-voltage (0xA0/0xA1) reply carries the commanded level as uint16 LE mV.
+    function decodeAoVoltage(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 2) return null;
+        return r.payload[0] | (r.payload[1] << 8);
+    }
+
     return {
         // Constants
         OPCODES,
@@ -522,6 +571,10 @@ const ArenaWireG6 = (function () {
         encodeDeletePatternFile,
         encodeDeleteAllPatterns,
         encodeGetSdArchive,
+        encodeSetAoVoltage,
+        encodeGetAoVoltage,
+        encodeGetDigitalOut,
+        encodeSetDigitalOut,
 
         // Decoders
         decodeResponse,
@@ -531,7 +584,9 @@ const ArenaWireG6 = (function () {
         decodeIp,
         decodeFileCount,
         decodePatternFilename,
-        decodeSetPatternFilenameResponse
+        decodeSetPatternFilenameResponse,
+        decodeAoVoltage,
+        decodeDigitalOut
     };
 })();
 

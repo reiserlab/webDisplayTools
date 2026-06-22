@@ -1111,6 +1111,57 @@
                     </div>
                 </section>
 
+                <!-- Analog output -->
+                <section class="grp">
+                    <div class="grp-row">
+                        <span class="lbl">analog out</span>
+                        <label title="Target voltage for BNC J27 (MCP4725 DAC). 0–5000 mV. 0 = DAC code 0 (≈ off)."
+                            >mV
+                            <input
+                                id="ao-mv"
+                                type="number"
+                                min="0"
+                                max="5000"
+                                step="1"
+                                value="0"
+                                title="Analog output level: 0–5000 mV"
+                            />
+                        </label>
+                        <button
+                            class="cmd"
+                            data-cmd="set-ao"
+                            disabled
+                            title="SET_AO_VOLTAGE (0xA0) — drive BNC J27 to the specified millivolt level via the MCP4725 DAC"
+                        >
+                            Set
+                        </button>
+                        <button
+                            class="cmd"
+                            data-cmd="get-ao"
+                            disabled
+                            title="GET_AO_VOLTAGE (0xA1) — read back the last commanded AO level (mV)"
+                        >
+                            Get
+                        </button>
+                        <span id="ao-readback" class="mono dim"></span>
+                    </div>
+                </section>
+
+                <!-- Digital outputs -->
+                <section class="grp">
+                    <div class="grp-row">
+                        <span class="lbl">digital out</span>
+                        <label title="DO1 — BNC J3 (Teensy D37, 5 V via U2). SET_DIGITAL_OUT ch=1."
+                            >DO1 (J3) <input id="do1-cb" type="checkbox" class="do-cb" disabled /></label>
+                        <label title="DO2 — BNC J4 (Teensy D35, 5 V via U3). SET_DIGITAL_OUT ch=2."
+                            >DO2 (J4) <input id="do2-cb" type="checkbox" class="do-cb" disabled /></label>
+                        <button class="cmd" data-cmd="get-do" disabled
+                            title="GET_DIGITAL_OUT (0xAA) — read current state of both digital outputs and sync checkboxes">
+                            Get
+                        </button>
+                    </div>
+                </section>
+
                 <!-- Device-memory boxes -->
                 <div class="mem-grid">
                     <div class="mem-box">
@@ -1207,7 +1258,7 @@
                 </div>
                 <div id="log"></div>
             </div>
-            <footer id="footer">Arena Console v5 | 2026-06-18 18:09 ET</footer>
+            <footer id="footer">Arena Console v5 | 2026-06-22 19:10 ET</footer>
         </div>
 
         <!-- Paste-a-frame modal -->
@@ -1340,6 +1391,10 @@
                 $('sd-folder-btn').disabled = !on;
                 $('sd-archive-btn').disabled = !on;
                 $('sd-purge-btn').disabled = !on;
+                document.querySelectorAll('.do-cb').forEach((cb) => {
+                    cb.disabled = !on;
+                    if (!on) cb.checked = false;
+                });
                 if (on) {
                     refreshSdCount();
                 } else {
@@ -1404,7 +1459,17 @@
                     const c = Wire.decodeFramesSent(r);
                     return c == null ? null : c + ' frames';
                 },
-                ascii: (r) => JSON.stringify(asciiOf(r.payload))
+                ascii: (r) => JSON.stringify(asciiOf(r.payload)),
+                ao: (r) => {
+                    const mv = Wire.decodeAoVoltage(r);
+                    return mv == null ? null : mv + ' mV';
+                },
+                do: (r) => {
+                    const s = Wire.decodeDigitalOut(r);
+                    return s == null
+                        ? null
+                        : 'DO1=' + (s.do1 ? 'HIGH' : 'LOW') + ' DO2=' + (s.do2 ? 'HIGH' : 'LOW');
+                }
             };
 
             // ── connection + log tools ──────────────────────────────────────
@@ -2393,9 +2458,63 @@
                     }
                     $('sf-file').click();
                 },
+                'set-ao': () => {
+                    const mv = parseInt($('ao-mv').value, 10);
+                    try {
+                        run('set-ao-voltage ' + mv, Wire.encodeSetAoVoltage(mv), DECODE.ao).then((r) => {
+                            if (r && r.ok) {
+                                const echo = Wire.decodeAoVoltage(r);
+                                if (echo != null) $('ao-readback').textContent = echo + ' mV';
+                            }
+                        });
+                    } catch (e) {
+                        log('set-ao-voltage (encode rejected): ' + e.message, 'err');
+                    }
+                },
+                'get-ao': () =>
+                    run('get-ao-voltage', Wire.encodeGetAoVoltage(), DECODE.ao).then((r) => {
+                        if (r && r.ok) {
+                            const mv = Wire.decodeAoVoltage(r);
+                            if (mv != null) $('ao-readback').textContent = mv + ' mV';
+                        }
+                    }),
+                'get-do': () =>
+                    run('get-digital-out', Wire.encodeGetDigitalOut(), DECODE.do).then((r) => {
+                        if (r && r.ok) {
+                            const s = Wire.decodeDigitalOut(r);
+                            if (s != null) {
+                                $('do1-cb').checked = !!s.do1;
+                                $('do2-cb').checked = !!s.do2;
+                            }
+                        }
+                    }),
                 'send-raw': () => sendRawHex()
             };
             cmdButtons().forEach((b) => (b.onclick = HANDLERS[b.dataset.cmd]));
+
+            // Digital output checkboxes
+            $('do1-cb').addEventListener('change', () => {
+                try {
+                    run(
+                        'set-digital-out ch=1 ' + ($('do1-cb').checked ? 'HIGH' : 'LOW'),
+                        Wire.encodeSetDigitalOut(1, $('do1-cb').checked),
+                        null
+                    );
+                } catch (e) {
+                    log('set-digital-out (encode rejected): ' + e.message, 'err');
+                }
+            });
+            $('do2-cb').addEventListener('change', () => {
+                try {
+                    run(
+                        'set-digital-out ch=2 ' + ($('do2-cb').checked ? 'HIGH' : 'LOW'),
+                        Wire.encodeSetDigitalOut(2, $('do2-cb').checked),
+                        null
+                    );
+                } catch (e) {
+                    log('set-digital-out (encode rejected): ' + e.message, 'err');
+                }
+            });
 
             // file picker → host-stream; Enter in the hex box → send verbatim
             $('sf-file').addEventListener('change', () => {
