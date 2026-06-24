@@ -44,29 +44,29 @@ const ArenaWireG6 = (function () {
         TRIAL_PARAMS: 0x08, // selects mode + pattern (Modes 2/3/4)
         SET_REFRESH_RATE: 0x16,
         GET_REFRESH_RATE: 0x17, // returns current refresh rate as uint16 LE Hz
-        SET_SPI_CLOCK: 0xC5, // uint16 LE MHz (1..30); echoes applied MHz
-        GET_SPI_CLOCK: 0xC6, // returns uint16 LE current MHz
+        SET_SPI_CLOCK: 0xc5, // uint16 LE MHz (1..30); echoes applied MHz
+        GET_SPI_CLOCK: 0xc6, // returns uint16 LE current MHz
         GET_FRAMES_SENT: 0x33, // returns uint32 LE frames pushed to panels
         RESET_FRAMES_SENT: 0x34, // zeroes the frames-sent counter
         GET_FILE_COUNT: 0x80, // returns pattern file count on SD as uint16 LE
         GET_PATTERN_FILENAME: 0x82, // [03 82 idx_lo idx_hi] 1-based; returns 1-byte-len + filename
         SET_PATTERN_FILENAME: 0x83, // [0x83, idx_lo, idx_hi, len, chars…] rename; returns new uint16 LE index
-        GET_PATTERN_FILE: 0x84,     // [03 84 idx_lo idx_hi] 1-based; response: uint64 LE size, then raw bytes
-        SET_PATTERN_FILE: 0x85,     // [0x85, idx_lo, idx_hi, len64 LE, data…] upload file (bulk stream)
-        DELETE_PATTERN_FILE: 0x86,  // [03 86 idx_lo idx_hi] delete 1-based pattern; idx=0 deletes pattern.temp
-        DELETE_ALL_PATTERNS: 0x8F,  // [01 8F] delete all files in /patterns
-        GET_SD_ARCHIVE: 0x8A,       // [01 8A] stream full SD as ZIP; only in ALL_OFF state
+        GET_PATTERN_FILE: 0x84, // [03 84 idx_lo idx_hi] 1-based; response: uint64 LE size, then raw bytes
+        SET_PATTERN_FILE: 0x85, // [0x85, idx_lo, idx_hi, len64 LE, data…] upload file (bulk stream)
+        DELETE_PATTERN_FILE: 0x86, // [03 86 idx_lo idx_hi] delete 1-based pattern; idx=0 deletes pattern.temp
+        DELETE_ALL_PATTERNS: 0x8f, // [01 8F] delete all files in /patterns
+        GET_SD_ARCHIVE: 0x8a, // [01 8A] stream full SD as ZIP; only in ALL_OFF state
         STOP_DISPLAY: 0x30,
         STREAM_FRAME: 0x32, // host-streamed full frame ("FR"+blocks; see encodeStreamFrame)
-        SET_ETHERNET_IP: 0xC0, // reserved — not yet implemented
-        GET_ETHERNET_IP: 0xC1,
-        GET_CONTROLLER_INFO: 0xC2, // returns {version, capability_bitmap}
-        SET_DIAG_OUTPUT: 0xC3, // [len=2,0xC3,on] mute/unmute DEBUG_SERIAL diagnostics
-        GET_DIAG_OUTPUT: 0xC4, // returns current g_dbg_on state (0/1)
-        SET_AO_VOLTAGE: 0xA0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV
-        GET_AO_VOLTAGE: 0xA1, // [01 A1] returns last commanded AO level as uint16 LE mV
-        SET_DIGITAL_OUT: 0xAA, // [03 AA ch state] DO1 (ch=1, J3/D37) or DO2 (ch=2, J4/D35)
-        GET_DIGITAL_OUT: 0xAB, // [01 AB] returns current state of DO1 and DO2 as two bytes
+        SET_ETHERNET_IP: 0xc0, // reserved — not yet implemented
+        GET_ETHERNET_IP: 0xc1,
+        GET_CONTROLLER_INFO: 0xc2, // returns {version, capability_bitmap}
+        SET_DIAG_OUTPUT: 0xc3, // [len=2,0xC3,on] mute/unmute DEBUG_SERIAL diagnostics
+        GET_DIAG_OUTPUT: 0xc4, // returns current g_dbg_on state (0/1)
+        SET_AO_VOLTAGE: 0xa0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV
+        GET_AO_VOLTAGE: 0xa1, // [01 A1] returns last commanded AO level as uint16 LE mV
+        SET_DIGITAL_OUT: 0xaa, // [03 AA ch state] DO1 (ch=1, J3/D37) or DO2 (ch=2, J4/D35)
+        GET_DIGITAL_OUT: 0xab, // [01 AB] returns current state of DO1 and DO2 as two bytes
         SET_FRAME_POSITION: 0x70, // Mode 3: host-commanded frame index
         ALL_ON: 0xff
     };
@@ -327,7 +327,12 @@ const ArenaWireG6 = (function () {
             throw new RangeError('filename must be 1..63 chars, got ' + nameBytes.length);
         }
         const idx = u16le(index, 'index');
-        return new Uint8Array([OPCODES.SET_PATTERN_FILENAME, ...idx, nameBytes.length, ...nameBytes]);
+        return new Uint8Array([
+            OPCODES.SET_PATTERN_FILENAME,
+            ...idx,
+            nameBytes.length,
+            ...nameBytes
+        ]);
     }
 
     // set-pattern-file (0x85) — upload a .pat file. Opcode-first framing (NOT
@@ -350,7 +355,10 @@ const ArenaWireG6 = (function () {
         out[4] = (len >> 8) & 0xff;
         out[5] = (len >> 16) & 0xff;
         out[6] = (len >> 24) & 0xff;
-        out[7] = 0; out[8] = 0; out[9] = 0; out[10] = 0;
+        out[7] = 0;
+        out[8] = 0;
+        out[9] = 0;
+        out[10] = 0;
         out.set(fileData, 11);
         return out;
     }
@@ -525,7 +533,7 @@ const ArenaWireG6 = (function () {
         return s;
     }
 
-    // get-digital-out (0xAA) reply: {do1: 0|1, do2: 0|1} or null on error.
+    // get-digital-out (0xAB) reply: {do1: 0|1, do2: 0|1} or null on error.
     function decodeDigitalOut(resp) {
         const r = asResponse(resp);
         if (!r || !r.ok || r.payload.length < 2) return null;
