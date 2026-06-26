@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>G6 Panel Serial Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0f1419; --surface: #1a1f26; --border: #2d3640; --text: #e6edf3;
+    --text-dim: #8b949e; --accent: #00e676; --hover: #00c853; --card-hover: #252b33;
+    --warn: #ff9800; --err: #ff5252;
+  }
+
+  body {
+    font-family: 'IBM Plex Mono', monospace; background: var(--bg); color: var(--text);
+    min-height: 100vh; padding: 2.5rem 1.25rem; line-height: 1.6;
+  }
+  .container { max-width: 760px; margin: 0 auto; }
+
+  header { text-align: center; margin-bottom: 2.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid var(--border); }
+  h1 { font-family: 'JetBrains Mono', monospace; font-size: 2.4rem; font-weight: 700; color: var(--accent); }
+  .subtitle { color: var(--text-dim); font-size: .95rem; margin-top: .6rem; }
+  .home-link { display: inline-block; margin-top: 1rem; color: var(--text-dim); font-size: .8rem; text-decoration: none; }
+  .home-link:hover { color: var(--accent); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem 1.75rem; margin-bottom: 1.25rem; }
+  .card h2 { font-family: 'JetBrains Mono', monospace; font-size: 1.15rem; color: var(--accent); font-weight: 700; margin-bottom: 1rem; }
+  p { margin-bottom: .75rem; }
+  .card p:last-child { margin-bottom: 0; }
+
+  button {
+    font-family: inherit; font-size: .95rem; cursor: pointer; border-radius: 6px;
+    border: 1px solid var(--border); padding: .65rem 1.2rem; background: var(--surface);
+    color: var(--text); transition: all .2s ease;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); background: var(--card-hover); }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 700; }
+  button.primary:hover:not(:disabled) { background: var(--hover); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  .row { display: flex; gap: .6rem; align-items: center; }
+  input[type=text] {
+    flex: 1; font-family: 'JetBrains Mono', monospace; font-size: .9rem; padding: .6rem .8rem;
+    border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0, 230, 118, .2); }
+  input[type=text]:disabled { opacity: .5; }
+
+  .note { border-radius: 6px; padding: .8rem 1rem; font-size: .85rem; line-height: 1.55; margin-top: 1rem; }
+  .note.info { color: var(--text-dim); background: var(--bg); border: 1px solid var(--border); }
+  .note.warn { color: var(--warn); background: rgba(255, 152, 0, .1); border: 1px solid rgba(255, 152, 0, .4); }
+  .note strong { color: var(--text); }
+  kbd {
+    font-family: 'JetBrains Mono', monospace; font-size: .8rem; background: var(--bg);
+    border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px;
+    padding: .05rem .45rem; color: var(--accent); font-weight: 700;
+  }
+  code { font-family: 'JetBrains Mono', monospace; font-size: .85em; background: var(--bg); padding: .1rem .35rem; border-radius: 4px; }
+
+  .log-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  #log {
+    font-family: 'JetBrains Mono', monospace; font-size: .78rem; line-height: 1.5;
+    white-space: pre-wrap; word-break: break-word; background: #0a0e13; color: var(--text-dim);
+    border: 1px solid var(--border); border-radius: 6px; padding: .9rem; height: 320px; overflow: auto;
+  }
+  #status { margin-top: .75rem; font-size: .9rem; }
+  .status-ok { color: var(--accent); font-weight: 600; }
+  .status-err { color: var(--err); font-weight: 600; }
+  .sent { color: var(--accent); }
+  #unsupported { display: none; }
+
+  footer { text-align: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid var(--border); color: var(--text-dim); font-size: .8rem; }
+  footer a { color: var(--text-dim); text-decoration: none; }
+  footer a:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>G6 Panel Serial Monitor</h1>
+    <p class="subtitle">Read a panel’s USB log live in the browser — a quick “is it alive?” check.</p>
+    <a class="home-link" href="index.html">← all web tools</a>
+  </header>
+
+  <div id="unsupported" class="card">
+    <h2>⚠ Browser not supported</h2>
+    <p class="note warn"><strong>This browser can’t talk to serial devices.</strong> This monitor needs
+      <strong>Web Serial</strong>, available only in <strong>Chrome</strong> or <strong>Edge</strong> on
+      desktop. Please reopen this page there.</p>
+  </div>
+
+  <div id="app">
+    <div class="card">
+      <h2>Connect</h2>
+      <p>Plug in a panel that is <strong>running firmware</strong> (USB-serial mode — not BOOTSEL), then
+        connect and pick its port in the chooser.</p>
+      <button id="connect-btn" class="primary">Connect panel (serial)</button>
+      <p id="status"></p>
+      <div class="note info">
+        Tip: tap <kbd>RUN</kbd> (reset) on the panel after connecting to capture its boot banner
+        (firmware version, <code>predef</code> status, <code>clk_sys</code>, any <code>FATAL</code>).
+        <strong>Production firmware only emits logs</strong> and ignores input. The <strong>BCM self-test</strong>
+        build adds a command console — try <code>?</code> for help, <code>i</code> for the banner, or
+        <code>e0</code> to make the panel show the <code>ERR</code> glyph.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Send a line</h2>
+      <div class="row">
+        <input id="send-input" type="text" placeholder="e.g.  ?   or   e0   (BCM self-test build only)" disabled />
+        <button id="send-btn" disabled>Send</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="log-head">
+        <h2 style="margin: 0;">Serial log</h2>
+        <button id="clear-btn">Clear</button>
+      </div>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <footer>
+    <a href="https://github.com/reiserlab/LED-Display_G6_Firmware_Panel" target="_blank">Firmware</a> ·
+    <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">GitHub</a> ·
+    <a href="https://github.com/reiserlab" target="_blank">Reiser Lab</a>
+  </footer>
+</div>
+<script type="module" src="./panel_monitor.js"></script>
+</body>
+</html>
