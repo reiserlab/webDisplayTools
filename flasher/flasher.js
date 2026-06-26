@@ -291,10 +291,10 @@ async function verifyBuild(b) {
   const granted = await navigator.usb.getDevices();
   const match = granted.find((d) => d.vendorId === RP_VID && want && (d.productName || "").startsWith(want));
   if (match) {
-    setStatus(`Verified: ${match.productName} ✓`, "status-ok");
+    setStatus(`Verified: ${match.productName} ✓ — ready for the next panel.`, "status-ok");
     log(`Verified panel reports "${match.productName}".`, "status-ok");
   } else {
-    setStatus(`Flashed ${b.label || b.file}. Confirm the panel boots as expected.`, "status-ok");
+    setStatus(`Flashed ${b.label || b.file} ✓ — ready for the next panel (confirm it boots).`, "status-ok");
     log("Flash complete. (Auto-verify needs a re-grant; confirm the panel visually.)");
   }
 }
@@ -351,7 +351,6 @@ async function onFlashClick() {
       setStatus("That panel is not in BOOTSEL mode.", "status-err");
       log(`Picked device "${device.productName || "?"}" (pid 0x${device.productId.toString(16)}). ` +
           "Put it in BOOTSEL (hold BOOT, plug in or tap RUN), then retry.", "status-err");
-      $("flash-btn").disabled = false;
       return;
     }
 
@@ -376,9 +375,12 @@ async function onFlashClick() {
     if (pb) { const s = await pb.getStatus(); if (s) extra = ` [PICOBOOT: ${s}]`; }
     setStatus(`Failed: ${err.message}`, "status-err");
     log(`ERROR: ${err.message}${extra}`, "status-err");
-    $("flash-btn").disabled = false;
   } finally {
     if (pb) await pb.close();
+    $("progress").hidden = true;
+    // Re-arm for the next panel — re-flashing the SAME build is the common batch
+    // case, so don't make the operator toggle the dropdown to re-enable the button.
+    $("flash-btn").disabled = !chosenFile;
   }
 }
 

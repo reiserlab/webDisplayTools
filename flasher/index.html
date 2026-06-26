@@ -153,6 +153,8 @@
 
   .fine { font-size: .78rem; color: var(--text-dim); line-height: 1.5; margin-top: .7rem; }
   .fine.warn { color: var(--warn); }
+  .fine a { color: var(--accent); }
+  .fine strong { color: var(--text); }
   details ol { margin: .4rem 0 .4rem 1.2rem; }
   details li { margin-bottom: .3rem; }
 
@@ -213,6 +215,10 @@
     <div class="card">
       <h2>Activity log</h2>
       <div id="log"></div>
+      <p class="fine">Programmed a panel? Open the
+        <a href="../panel_monitor.html">Panel Serial Monitor</a> to confirm it boots clean (production
+        firmware is log-only — no LED test over USB). For a visual LED test, flash a
+        <strong>Panel self-test</strong> build above, then re-flash production.</p>
     </div>
   </div>
 
