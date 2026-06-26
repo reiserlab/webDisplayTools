@@ -281,6 +281,42 @@ async function verifyBuild(b) {
   }
 }
 
+// --- Live panel status (popup-free; reflects already-granted devices) -----------
+// WebUSB can't silently enumerate ungranted devices (browser security), but
+// getDevices() lists ones the user has authorized — e.g. after a flash, or the
+// one-time "Grant access" link below — and stays current as they attach/detach.
+// We poll ~1 Hz and listen for connect/disconnect. Each USB identity (running
+// firmware = pid 0x0009, BOOTSEL = pid 0x000f) is granted separately.
+async function refreshPanelStatus() {
+  const el = $("panel-status");
+  if (!el || !navigator.usb) return;
+  let devs = [];
+  try { devs = await navigator.usb.getDevices(); } catch { return; }
+  const panels = devs.filter((d) => d.vendorId === RP_VID);
+  const boot = panels.find((d) => d.productId === 0x000f);
+  const app = panels.find((d) => d.productId !== 0x000f);
+
+  let key, cls, html;
+  if (boot) {
+    key = "boot"; cls = "ok"; html = "● Panel in BOOTSEL — ready to flash";
+  } else if (app) {
+    key = "app:" + (app.productName || ""); cls = "dim";
+    html = `● Panel running firmware${app.productName ? ` (${app.productName})` : ""} — hold BOOT + tap RUN for BOOTSEL`;
+  } else {
+    key = "none"; cls = "dim";
+    html = `○ No panel detected. <a id="grant-link">Grant access</a> to watch one here (one-time).`;
+  }
+  if (el.dataset.key === key) return; // only re-render on a state change
+  el.dataset.key = key;
+  el.className = cls;
+  el.innerHTML = html;
+  const g = $("grant-link");
+  if (g) g.onclick = async () => {
+    try { await navigator.usb.requestDevice({ filters: [{ vendorId: RP_VID }] }); } catch { /* cancelled */ }
+    el.dataset.key = ""; refreshPanelStatus();
+  };
+}
+
 // --- UI wiring ------------------------------------------------------------------
 async function onFlashClick() {
   const b = chosenFile ? firmware.byFile[chosenFile] : null;
@@ -336,6 +372,13 @@ function main() {
   }
   $("build-select").addEventListener("change", onBuildChange);
   $("flash-btn").addEventListener("click", onFlashClick);
+
+  // Live panel detection — no popup once a panel has been granted.
+  refreshPanelStatus();
+  setInterval(refreshPanelStatus, 1000);
+  navigator.usb.addEventListener("connect", refreshPanelStatus);
+  navigator.usb.addEventListener("disconnect", refreshPanelStatus);
+
   resolveFirmware().catch((e) => {
     $("build-meta").textContent = "unavailable";
     log(`Could not resolve firmware catalog: ${e.message}`, "status-err");

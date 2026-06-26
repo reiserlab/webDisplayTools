@@ -147,6 +147,17 @@
   }
   footer a { color: var(--text-dim); text-decoration: none; }
   footer a:hover { color: var(--accent); }
+  footer .version { font-family: 'JetBrains Mono', monospace; margin-bottom: .4rem; }
+
+  .fine { font-size: .78rem; color: var(--text-dim); line-height: 1.5; margin-top: .7rem; }
+  .fine.warn { color: var(--warn); }
+  details ol { margin: .4rem 0 .4rem 1.2rem; }
+  details li { margin-bottom: .3rem; }
+
+  #panel-status { font-size: .85rem; margin-bottom: .85rem; }
+  #panel-status.ok { color: var(--accent); font-weight: 600; }
+  #panel-status.dim { color: var(--text-dim); }
+  #panel-status a { color: var(--accent); cursor: pointer; text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -167,44 +178,34 @@
   <div id="app">
     <div class="card">
       <h2><span class="step-n">1</span> Choose the firmware build</h2>
-      <label class="field-label" for="build-select">Build</label>
       <select id="build-select" disabled>
         <option>resolving catalog…</option>
       </select>
       <p id="build-meta">resolving latest…</p>
       <p id="build-note" class="note warn" hidden></p>
-      <p class="note warn">Flashing the wrong <em>revision</em> (v0.2.1 vs v0.3.1) produces a non-working
-        panel — re-flash with the correct one. If unsure, check the board.</p>
+      <p class="fine warn">⚠ Wrong revision (v0.2.1 vs v0.3.1) → non-working panel; re-flash the correct one.</p>
       <details>
-        <summary>How do I tell which revision I have?</summary>
-        <p>Read the revision printed on the PCB silkscreen / label (<code>v0.2.1</code> vs
-        <code>v0.3.1</code>). A panel already running firmware also reports its revision — this tool
-        verifies it for you after flashing.</p>
+        <summary>Which revision do I have?</summary>
+        <p>Read the rev on the PCB silkscreen / label (<code>v0.2.1</code> vs <code>v0.3.1</code>). A panel
+        already running firmware reports its rev; this tool verifies it after flashing.</p>
       </details>
     </div>
 
     <div class="card">
-      <h2><span class="step-n">2</span> Put the panel in BOOTSEL</h2>
-      <p>The panel has two buttons: <kbd>BOOT</kbd> and <kbd>RUN</kbd> (reset). To enter the bootloader:</p>
-      <div class="note info">
-        <ol>
-          <li><strong>Cable unplugged:</strong> hold <kbd>BOOT</kbd>, plug in the USB cable, then release
-            <kbd>BOOT</kbd>.</li>
-          <li><strong>Already plugged in:</strong> hold <kbd>BOOT</kbd>, tap <kbd>RUN</kbd> once, then
-            release <kbd>BOOT</kbd>.</li>
-        </ol>
-        <p style="margin-top:.6rem;">The panel stops appearing as a serial device and re-appears as the
-          <strong>RP2350 bootloader</strong>. Then use <kbd>Connect &amp; flash</kbd> below and select it in
-          the browser’s device chooser. (If the chooser is empty, the panel isn’t in BOOTSEL yet — repeat
-          the steps above.)</p>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><span class="step-n">3</span> Connect &amp; flash</h2>
+      <h2><span class="step-n">2</span> Connect &amp; flash</h2>
+      <p id="panel-status" class="dim">Checking for a panel…</p>
       <button id="flash-btn" class="primary" disabled>Connect &amp; flash panel</button>
       <progress id="progress" value="0" max="100" hidden></progress>
       <p id="status"></p>
+      <details>
+        <summary>Panel not in BOOTSEL? How to enter it</summary>
+        <p>The panel has two buttons: <kbd>BOOT</kbd> and <kbd>RUN</kbd> (reset).</p>
+        <ol>
+          <li><strong>Unplugged:</strong> hold <kbd>BOOT</kbd>, plug in USB, release <kbd>BOOT</kbd>.</li>
+          <li><strong>Plugged in:</strong> hold <kbd>BOOT</kbd>, tap <kbd>RUN</kbd> once, release <kbd>BOOT</kbd>.</li>
+        </ol>
+        <p>It then re-appears as the RP2350 bootloader. An empty device chooser means it isn’t in BOOTSEL yet.</p>
+      </details>
     </div>
 
     <div class="card">
@@ -214,9 +215,12 @@
   </div>
 
   <footer>
-    <a href="https://github.com/reiserlab/LED-Display_G6_Firmware_Panel" target="_blank">Firmware</a> ·
-    <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">GitHub</a> ·
-    <a href="https://github.com/reiserlab" target="_blank">Reiser Lab</a>
+    <p class="version">G6 Panel Flasher v0.1 | 2026-06-26 ET</p>
+    <p>
+      <a href="https://github.com/reiserlab/LED-Display_G6_Firmware_Panel" target="_blank">Firmware</a> ·
+      <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">GitHub</a> ·
+      <a href="https://github.com/reiserlab" target="_blank">Reiser Lab</a>
+    </p>
   </footer>
 </div>
 <script type="module" src="./flasher.js"></script>
