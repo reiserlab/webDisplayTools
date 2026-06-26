@@ -25,9 +25,6 @@ const FLASH_XIP_BASE = 0x10000000;
 const SECTOR = 4096;           // RP2350 flash erase granularity
 const WRITE_CHUNK = 256;       // PICOBOOT WRITE granularity (UF2 payloads are 256B)
 
-// rev -> expected USB product string prefix (set in panel/platformio.ini).
-const REV_PRODUCT = { "v0.2.1": "G6 Panel v0.2", "v0.3.1": "G6 Panel v0.3" };
-
 // --- PICOBOOT command framing ---------------------------------------------------
 const PICOBOOT_MAGIC = 0x431fd10b;
 const CMD = {
@@ -210,61 +207,85 @@ async function flashBlocks(pb, blocks, onProgress) {
   try { await pb.reboot(); } catch { /* device drops as it reboots — expected */ }
 }
 
-// --- Firmware resolution (firmware repo's GitHub Pages, same-origin) -------------
-let firmware = { version: null, byRev: {} }; // rev -> uf2 download url
+// --- Firmware catalog (firmware repo's GitHub Pages, same-origin) ----------------
+// manifest.json is a build CATALOG: artifacts[] = { rev, variant, label, file,
+// sha256, usb_product, default }, plus top-level version / commit / built. The
+// dropdown is populated straight from it, so new builds appear automatically.
+let firmware = { version: null, commit: "", built: "", builds: [], byFile: {} };
+let chosenFile = null;
 
 async function resolveFirmware() {
-  // no-store: always pick up the newest release the firmware repo published,
-  // not a cached manifest.
+  // no-store: always pick up the newest catalog the firmware repo published.
   const res = await fetch(`${FW_BASE}/manifest.json`, { cache: "no-store" });
   if (!res.ok) throw new Error(`manifest.json HTTP ${res.status}`);
-  const manifest = await res.json();
-  firmware.version = manifest.version || "(unknown)";
-  for (const a of manifest.artifacts || []) {
-    firmware.byRev[a.rev] = `${FW_BASE}/${a.file}`;
+  const m = await res.json();
+  firmware.version = m.version || "(unknown)";
+  firmware.commit = m.commit || "";
+  firmware.built = m.built || "";
+  firmware.builds = m.artifacts || [];
+  firmware.byFile = Object.fromEntries(firmware.builds.map((b) => [b.file, b]));
+
+  populateBuilds();
+  const id = [firmware.version, firmware.commit, firmware.built].filter(Boolean).join("  ·  ");
+  $("build-meta").textContent = id || "(no metadata)";
+  log(`Firmware ${id} — ${firmware.builds.length} build(s): ` +
+      firmware.builds.map((b) => b.label || `${b.rev}/${b.variant}`).join(", "));
+}
+
+// Fill the dropdown from the catalog and select the manifest's default build.
+function populateBuilds() {
+  const sel = $("build-select");
+  sel.innerHTML = "";
+  for (const b of firmware.builds) {
+    const o = document.createElement("option");
+    o.value = b.file;
+    o.textContent = b.label || `${b.rev} — ${b.variant}`;
+    if (b.default) o.selected = true;
+    sel.appendChild(o);
   }
-  $("fw-version").textContent = firmware.version;
-  log(`Firmware release: ${firmware.version} (revs: ${Object.keys(firmware.byRev).join(", ")})`);
+  sel.disabled = firmware.builds.length === 0;
+  onBuildChange();
+}
+
+// Sync state + UI to the selected build: enable Flash and caution on non-production builds.
+function onBuildChange() {
+  chosenFile = $("build-select").value || null;
+  const b = chosenFile ? firmware.byFile[chosenFile] : null;
+  $("flash-btn").disabled = !b;
+  const note = $("build-note");
+  if (b && b.variant && b.variant !== "production") {
+    note.hidden = false;
+    note.innerHTML = `<strong>${b.label || b.variant}</strong> is a bench / bring-up build: it runs a ` +
+      `visible self-test and has <em>no SPI ingest</em>. Re-flash a <strong>Production</strong> build ` +
+      `before deploying the panel.`;
+  } else {
+    note.hidden = true;
+  }
+  setStatus("");
 }
 
 // --- Verify after flash ---------------------------------------------------------
 // After REBOOT2 the panel re-enumerates as the firmware USB-serial device. We can't
 // silently re-grab it (WebUSB needs a user gesture per device), so confirm via the
 // product string of any already-granted device, else ask the operator to confirm.
-async function verifyRev(rev) {
-  const want = REV_PRODUCT[rev];
+async function verifyBuild(b) {
+  const want = b.usb_product || "";
   const granted = await navigator.usb.getDevices();
-  const match = granted.find((d) => d.vendorId === RP_VID && (d.productName || "").startsWith(want));
+  const match = granted.find((d) => d.vendorId === RP_VID && want && (d.productName || "").startsWith(want));
   if (match) {
     setStatus(`Verified: ${match.productName} ✓`, "status-ok");
     log(`Verified panel reports "${match.productName}".`, "status-ok");
   } else {
-    setStatus(`Flashed ${rev}. Confirm the panel boots its normal pattern.`, "status-ok");
-    log("Flash complete. (Auto-verify needs a re-grant; visually confirm the panel runs.)");
+    setStatus(`Flashed ${b.label || b.file}. Confirm the panel boots as expected.`, "status-ok");
+    log("Flash complete. (Auto-verify needs a re-grant; confirm the panel visually.)");
   }
 }
 
 // --- UI wiring ------------------------------------------------------------------
-let chosenRev = null;
-
-function setupRevButtons() {
-  for (const btn of document.querySelectorAll("#rev-group button")) {
-    btn.addEventListener("click", () => {
-      chosenRev = btn.dataset.rev;
-      for (const b of document.querySelectorAll("#rev-group button"))
-        b.setAttribute("aria-pressed", String(b === btn));
-      $("flash-btn").disabled = !(chosenRev && firmware.byRev[chosenRev]);
-      if (chosenRev && !firmware.byRev[chosenRev])
-        setStatus(`Latest firmware has no ${chosenRev} build.`, "status-err");
-      else setStatus("");
-    });
-  }
-}
-
 async function onFlashClick() {
-  if (!chosenRev) return;
-  const url = firmware.byRev[chosenRev];
-  if (!url) { setStatus(`No firmware for ${chosenRev}.`, "status-err"); return; }
+  const b = chosenFile ? firmware.byFile[chosenFile] : null;
+  if (!b) return;
+  const url = `${FW_BASE}/${b.file}`;
 
   let device, pb;
   try {
@@ -275,12 +296,12 @@ async function onFlashClick() {
     if (device.productId !== 0x000f) {
       setStatus("That panel is not in BOOTSEL mode.", "status-err");
       log(`Picked device "${device.productName || "?"}" (pid 0x${device.productId.toString(16)}). ` +
-          "Unplug it, hold BOOTSEL while plugging back in, then retry.", "status-err");
+          "Put it in BOOTSEL (hold BOOT, plug in or tap RUN), then retry.", "status-err");
       $("flash-btn").disabled = false;
       return;
     }
 
-    log(`Downloading firmware ${chosenRev}…`);
+    log(`Downloading ${b.label || b.file}…`);
     const uf2 = await (await fetch(url)).arrayBuffer();
     const blocks = parseUF2(uf2);
     log(`UF2: ${blocks.length} blocks (${(blocks.length * 256 / 1024).toFixed(0)} KiB).`);
@@ -290,10 +311,10 @@ async function onFlashClick() {
 
     const prog = $("progress");
     prog.hidden = false; prog.value = 0;
-    setStatus(`Flashing ${chosenRev}…`);
+    setStatus(`Flashing ${b.label || b.file}…`);
     await flashBlocks(pb, blocks, (f) => { prog.value = Math.round(f * 100); });
 
-    await verifyRev(chosenRev);
+    await verifyBuild(b);
   } catch (err) {
     // A bulk stall surfaces as an opaque "transfer error"; ask the bootrom what
     // actually went wrong (e.g. INVALID_CMD_LENGTH, BAD_ALIGNMENT).
@@ -313,11 +334,11 @@ function main() {
     $("app").style.display = "none";
     return;
   }
-  setupRevButtons();
+  $("build-select").addEventListener("change", onBuildChange);
   $("flash-btn").addEventListener("click", onFlashClick);
   resolveFirmware().catch((e) => {
-    $("fw-version").textContent = "unavailable";
-    log(`Could not resolve latest firmware: ${e.message}`, "status-err");
+    $("build-meta").textContent = "unavailable";
+    log(`Could not resolve firmware catalog: ${e.message}`, "status-err");
   });
 }
 

@@ -86,12 +86,15 @@
   button.primary:hover:not(:disabled) { background: var(--hover); }
   button:disabled { opacity: .4; cursor: not-allowed; }
 
-  .rev-group { display: flex; gap: .75rem; margin: .5rem 0 1rem; }
-  .rev-group button { flex: 1; padding: .85rem; font-weight: 600; }
-  .rev-group button[aria-pressed="true"] {
-    border-color: var(--accent); color: var(--accent);
-    box-shadow: inset 0 0 0 2px rgba(0, 230, 118, .25);
+  .field-label { display: block; font-size: .8rem; color: var(--text-dim); margin-bottom: .4rem; }
+  select {
+    width: 100%; font-family: inherit; font-size: .95rem; cursor: pointer;
+    padding: .7rem .85rem; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text);
   }
+  select:hover:not(:disabled) { border-color: var(--accent); }
+  select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0, 230, 118, .2); }
+  select:disabled { opacity: .5; cursor: not-allowed; }
 
   .note { border-radius: 6px; padding: .8rem 1rem; font-size: .85rem; line-height: 1.55; }
   .note.warn { color: var(--warn); background: rgba(255, 152, 0, .1); border: 1px solid rgba(255, 152, 0, .4); }
@@ -121,8 +124,11 @@
   progress::-webkit-progress-value { background: var(--accent); }
   progress::-moz-progress-bar { background: var(--accent); }
 
-  #fw-line { color: var(--text-dim); font-size: .85rem; margin-top: 1rem; }
-  #fw-version { color: var(--text); font-weight: 600; }
+  #build-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: .78rem;
+    color: var(--text-dim); margin-top: .6rem;
+  }
+  #build-note { margin-top: .9rem; }
 
   #log {
     font-family: 'JetBrains Mono', monospace; font-size: .78rem; line-height: 1.5;
@@ -160,13 +166,15 @@
 
   <div id="app">
     <div class="card">
-      <h2><span class="step-n">1</span> Pick the panel revision</h2>
-      <div class="rev-group" id="rev-group">
-        <button data-rev="v0.2.1" aria-pressed="false">v0.2.1</button>
-        <button data-rev="v0.3.1" aria-pressed="false">v0.3.1</button>
-      </div>
-      <p class="note warn">Flashing the <em>wrong</em> revision produces a non-working panel (it must then
-        be re-flashed with the correct one). If unsure, check the board.</p>
+      <h2><span class="step-n">1</span> Choose the firmware build</h2>
+      <label class="field-label" for="build-select">Build</label>
+      <select id="build-select" disabled>
+        <option>resolving catalog…</option>
+      </select>
+      <p id="build-meta">resolving latest…</p>
+      <p id="build-note" class="note warn" hidden></p>
+      <p class="note warn">Flashing the wrong <em>revision</em> (v0.2.1 vs v0.3.1) produces a non-working
+        panel — re-flash with the correct one. If unsure, check the board.</p>
       <details>
         <summary>How do I tell which revision I have?</summary>
         <p>Read the revision printed on the PCB silkscreen / label (<code>v0.2.1</code> vs
@@ -195,7 +203,6 @@
     <div class="card">
       <h2><span class="step-n">3</span> Connect &amp; flash</h2>
       <button id="flash-btn" class="primary" disabled>Connect &amp; flash panel</button>
-      <p id="fw-line">Firmware: <span id="fw-version">resolving latest…</span></p>
       <progress id="progress" value="0" max="100" hidden></progress>
       <p id="status"></p>
     </div>
