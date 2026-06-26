@@ -14,7 +14,13 @@
 // reference before production use.
 
 const RP_VID = 0x2e8a;
-const FW_REPO = "reiserlab/LED-Display_G6_Firmware_Panel";
+// Firmware is served from the firmware repo's GitHub Pages, NOT its GitHub
+// Release. Release-asset downloads (release-assets.githubusercontent.com) send
+// no CORS header, so a browser fetch() of them is blocked. This Pages site and
+// the flasher both live on reiserlab.github.io, so fetching here is SAME-ORIGIN
+// — no CORS at all. (The g6-flash CLI still uses the Release; non-browser
+// clients don't enforce CORS.) Published by the firmware repo's release.yml.
+const FW_BASE = "https://reiserlab.github.io/LED-Display_G6_Firmware_Panel";
 const FLASH_XIP_BASE = 0x10000000;
 const SECTOR = 4096;           // RP2350 flash erase granularity
 const WRITE_CHUNK = 256;       // PICOBOOT WRITE granularity (UF2 payloads are 256B)
@@ -167,16 +173,18 @@ async function flashBlocks(pb, blocks, onProgress) {
   try { await pb.reboot(); } catch { /* device drops as it reboots — expected */ }
 }
 
-// --- Firmware resolution (latest GitHub Release) --------------------------------
+// --- Firmware resolution (firmware repo's GitHub Pages, same-origin) -------------
 let firmware = { version: null, byRev: {} }; // rev -> uf2 download url
 
 async function resolveFirmware() {
-  const rel = await (await fetch(`https://api.github.com/repos/${FW_REPO}/releases/latest`)).json();
-  const assets = Object.fromEntries((rel.assets || []).map((a) => [a.name, a.browser_download_url]));
-  const manifest = await (await fetch(assets["manifest.json"])).json();
-  firmware.version = manifest.version || rel.tag_name;
+  // no-store: always pick up the newest release the firmware repo published,
+  // not a cached manifest.
+  const res = await fetch(`${FW_BASE}/manifest.json`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`manifest.json HTTP ${res.status}`);
+  const manifest = await res.json();
+  firmware.version = manifest.version || "(unknown)";
   for (const a of manifest.artifacts || []) {
-    if (assets[a.file]) firmware.byRev[a.rev] = assets[a.file];
+    firmware.byRev[a.rev] = `${FW_BASE}/${a.file}`;
   }
   $("fw-version").textContent = firmware.version;
   log(`Firmware release: ${firmware.version} (revs: ${Object.keys(firmware.byRev).join(", ")})`);
