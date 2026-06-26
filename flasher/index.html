@@ -95,6 +95,8 @@
   select:hover:not(:disabled) { border-color: var(--accent); }
   select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0, 230, 118, .2); }
   select:disabled { opacity: .5; cursor: not-allowed; }
+  select optgroup { color: var(--text-dim); font-style: italic; background: var(--surface); }
+  select option { color: var(--text); background: var(--surface); font-style: normal; }
 
   .note { border-radius: 6px; padding: .8rem 1rem; font-size: .85rem; line-height: 1.55; }
   .note.warn { color: var(--warn); background: rgba(255, 152, 0, .1); border: 1px solid rgba(255, 152, 0, .4); }

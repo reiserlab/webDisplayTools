@@ -232,16 +232,34 @@ async function resolveFirmware() {
       firmware.builds.map((b) => b.label || `${b.rev}/${b.variant}`).join(", "));
 }
 
-// Fill the dropdown from the catalog and select the manifest's default build.
+// Section label for a build, so the dropdown groups Production vs testing/debug
+// builds under <optgroup>s (otherwise the self-test builds hide behind the
+// collapsed default). Unknown variants fall back to a generic section.
+const SECTION = { production: "Production firmware", bcmtest: "Panel self-test" };
+const sectionOf = (b) => SECTION[b.variant] || "Other builds";
+
+// Fill the dropdown from the catalog, grouped by section, and select the
+// manifest's default build.
 function populateBuilds() {
   const sel = $("build-select");
   sel.innerHTML = "";
+  const groups = new Map();   // insertion order = catalog order (production first)
   for (const b of firmware.builds) {
-    const o = document.createElement("option");
-    o.value = b.file;
-    o.textContent = b.label || `${b.rev} — ${b.variant}`;
-    if (b.default) o.selected = true;
-    sel.appendChild(o);
+    const s = sectionOf(b);
+    if (!groups.has(s)) groups.set(s, []);
+    groups.get(s).push(b);
+  }
+  for (const [label, items] of groups) {
+    const og = document.createElement("optgroup");
+    og.label = label;
+    for (const b of items) {
+      const o = document.createElement("option");
+      o.value = b.file;
+      o.textContent = b.label || `${b.rev} — ${b.variant}`;
+      if (b.default) o.selected = true;
+      og.appendChild(o);
+    }
+    sel.appendChild(og);
   }
   sel.disabled = firmware.builds.length === 0;
   onBuildChange();
