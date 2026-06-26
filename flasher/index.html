@@ -248,18 +248,20 @@
   </footer>
 </div>
 
-<!-- Optional post-flash test: opens after a flash to read the panel's boot banner. -->
+<!-- Optional post-flash check: opens after a flash to confirm the panel is alive. -->
 <div id="test-modal" class="modal" hidden>
   <div class="modal-card">
-    <h2>Test the panel? <span class="muted">(optional)</span></h2>
-    <p class="fine">The panel rebooted into firmware. Read its boot banner to confirm it programmed and
-      boots clean — then <kbd>Done</kbd> to flash the next one. <em>(Production firmware is log-only; this
-      won’t light the LEDs — for a visual test, flash a Panel self-test build.)</em></p>
+    <h2>Check the panel <span class="muted">(optional)</span></h2>
+    <p class="fine">The panel rebooted into firmware. <strong>Connect</strong> to confirm it’s alive — if the
+      port opens, it’s running. A <strong>Panel self-test</strong> build streams its banner + pattern-cycle
+      log here; production firmware is quiet after boot, so an open connection is itself the all-clear.
+      Then <kbd>Done</kbd> to flash the next one.</p>
     <div class="modal-row">
-      <button id="test-connect" class="primary">Connect &amp; read boot log</button>
+      <button id="test-connect" class="primary">Connect to panel</button>
       <button id="test-done">Done</button>
     </div>
-    <p class="fine">Tip: tap <kbd>RUN</kbd> on the panel to (re)print the banner.</p>
+    <p class="fine"><strong>Don’t press RESET / RUN</strong> while connected — it drops the USB link. To grab
+      a fresh boot banner, power-cycle the panel (unplug/replug); this reconnects automatically.</p>
     <div id="test-log" class="log-mini"></div>
   </div>
 </div>

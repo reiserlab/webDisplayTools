@@ -67,9 +67,21 @@ async function connect() {
   keepReading = true;
   setConnected(true);
   const info = port.getInfo ? port.getInfo() : {};
-  setStatus("Connected. Tap RUN (reset) on the panel to capture its boot banner.", "status-ok");
+  setStatus("Connected — panel is running firmware. (Don’t press RESET/RUN: it drops the USB link.)", "status-ok");
   log(`--- connected (VID 0x${(info.usbVendorId || RP_VID).toString(16)}, ${BAUD} baud) ---\n`, "status-ok");
   readLoop();
+}
+
+// A reset / power-cycle re-enumerates the port; reopen and resume reading. For
+// self-test builds (which wait for the host) this recaptures the fresh banner.
+async function reopenIfDropped() {
+  if (keepReading && port && !port.readable) {
+    try {
+      await port.open({ baudRate: BAUD });
+      log("\n--- reconnected ---\n", "status-ok");
+      readLoop();
+    } catch { /* not ready yet; another connect event will retry */ }
+  }
 }
 
 async function disconnect() {
@@ -108,10 +120,12 @@ function main() {
   $("send-btn").addEventListener("click", sendLine);
   $("send-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendLine(); });
   $("clear-btn").addEventListener("click", () => { $("log").textContent = ""; });
-  // Re-cancel cleanly if the panel is unplugged mid-session.
-  navigator.serial.addEventListener("disconnect", (e) => {
-    if (port && e.target === port) disconnect();
+  // Survive a panel reset / power-cycle: note the drop and auto-reconnect rather
+  // than tearing the session down (the user's Disconnect button does that).
+  navigator.serial.addEventListener("disconnect", () => {
+    if (keepReading && port) log("\n--- panel disconnected (reset / power-cycle); waiting… ---\n", "status-err");
   });
+  navigator.serial.addEventListener("connect", reopenIfDropped);
 }
 
 main();

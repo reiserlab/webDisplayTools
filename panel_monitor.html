@@ -101,11 +101,12 @@
       <button id="connect-btn" class="primary">Connect panel (serial)</button>
       <p id="status"></p>
       <div class="note info">
-        Tip: tap <kbd>RUN</kbd> (reset) on the panel after connecting to capture its boot banner
-        (firmware version, <code>predef</code> status, <code>clk_sys</code>, any <code>FATAL</code>).
-        <strong>Production firmware only emits logs</strong> and ignores input. The <strong>BCM self-test</strong>
-        build adds a command console — try <code>?</code> for help, <code>i</code> for the banner, or
-        <code>e0</code> to make the panel show the <code>ERR</code> glyph.
+        <strong>Don’t press RESET / RUN</strong> — it re-enumerates the USB device and drops the link.
+        (This monitor auto-reconnects if it does.) <strong>Production firmware</strong> prints its banner
+        once at boot — before any host is attached, so it isn’t capturable over USB; the open connection
+        is the all-clear, and it’s log-only afterward. The <strong>BCM self-test</strong> build waits for
+        the host and adds a command console — try <code>?</code> for help, <code>i</code> to (re)print the
+        banner, or <code>e0</code> to show the <code>ERR</code> glyph (all without a reset).
       </div>
     </div>
 

@@ -385,12 +385,14 @@ async function onFlashClick() {
   }
 }
 
-// --- Optional post-flash test (inline boot-banner readout over Web Serial) ------
-// Opens automatically after a flash: the panel has rebooted into firmware, so we
-// read its USB-serial boot banner (predef / clk_sys / FATAL) — confirms it
-// programmed and boots clean. Auto-attaches to an already-granted panel port (no
-// popup); otherwise one tap grants it. "Done" closes the port and re-arms the
-// flasher for the next panel. (Production firmware is log-only — no LED test here.)
+// --- Optional post-flash check (inline liveness over Web Serial) ----------------
+// Opens automatically after a flash. The panel has rebooted into firmware, so a
+// serial port that OPENS = the panel is alive and running. NOTE: a USB-CDC reset
+// (the RUN button) drops + re-enumerates the device, so we do NOT ask the user to
+// press it — instead we auto-reconnect on connect events, which also recovers the
+// banner for self-test builds (they wait for the host before printing; production
+// prints once at boot, before any host is attached, so its banner isn't capturable
+// over USB). "Done" closes the port and re-arms the flasher for the next panel.
 let testPort = null, testReader = null, testReading = false;
 
 function tlog(text, cls) {
@@ -424,7 +426,8 @@ async function startTest(port) {
     await port.open({ baudRate: 115200 });
     testPort = port; testReading = true;
     $("test-connect").disabled = true;
-    tlog("Connected. Tap RUN on the panel to (re)print its boot banner.\n", "status-ok");
+    tlog("✓ Connected — the panel is running firmware (alive).\n", "status-ok");
+    tlog("Self-test builds stream their output below. Production firmware is quiet after boot — the open connection is the all-clear.\n");
     readTest();
   } catch (err) {
     tlog(`Could not open serial port: ${err.message}\n`, "status-err");
@@ -453,7 +456,19 @@ async function readTest() {
         }
       } finally { testReader.releaseLock(); testReader = null; }
     }
-  } catch { /* port closed */ }
+  } catch { /* port closed (e.g. reset/power-cycle) — reopened by serial 'connect' */ }
+}
+
+// On a reset/power-cycle the port re-enumerates; reopen it and resume reading. For
+// self-test builds (which wait for the host) this recaptures the fresh banner.
+async function reopenTestIfDropped() {
+  if (testReading && testPort && !testPort.readable) {
+    try {
+      await testPort.open({ baudRate: 115200 });
+      tlog("\n— reconnected —\n", "status-ok");
+      readTest();
+    } catch { /* not ready yet; another connect event will retry */ }
+  }
 }
 
 async function testDone() {
@@ -482,6 +497,14 @@ function main() {
   setInterval(refreshPanelStatus, 1000);
   navigator.usb.addEventListener("connect", refreshPanelStatus);
   navigator.usb.addEventListener("disconnect", refreshPanelStatus);
+
+  // Keep the test readout alive across a panel reset / power-cycle.
+  if ("serial" in navigator) {
+    navigator.serial.addEventListener("disconnect", () => {
+      if (testReading && testPort) tlog("\n— panel disconnected (reset / power-cycle); waiting…\n", "status-err");
+    });
+    navigator.serial.addEventListener("connect", reopenTestIfDropped);
+  }
 
   resolveFirmware().catch((e) => {
     $("build-meta").textContent = "unavailable";
