@@ -4,12 +4,13 @@
 Reads FicTrac records from a socket, maps each one to an arena *frame index*, and
 pushes that index to browser clients over a WebSocket. `arena_console.html` applies
 the index via SET_FRAME_POSITION (Mode 3). In the reverse direction the browser
-sends JSON log events back over the same socket; the bridge appends them to a file
-— a browser can't write local files freely, but this local process can.
+sends JSON control + log messages back over the same socket; the bridge applies
+config live and appends log events to a file — a browser can't write local files
+freely or reconfigure a socket, but this local process can.
 
   FicTrac ──(UDP recv / TCP client)──▶ bridge ──(ws://host:port)──▶ arena_console.html
-                                          │  ◀── {"type":"log",…} ──┘
-                                          └── append to --log file
+                                          │  ◀── config / log ──────┘
+                                          └── append to log file
 
 Transport roles match real FicTrac (so the same bridge works with fictrac_sim.py):
   --proto udp (default): FicTrac sends datagrams; the bridge binds and receives.
@@ -18,6 +19,9 @@ Transport roles match real FicTrac (so the same bridge works with fictrac_sim.py
 WebSocket message schema (also documented in README.md):
   bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>}
   browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
+                     {"type":"config", "fictrac_port":<int>, "gain":<float>,
+                                       "offset":<float>, "frames":<int>}  (any subset)
+                     {"type":"log_control", "enabled":<bool>}   (open/close the log file)
                      {"type":"log",   "event":<str>, ...arbitrary, "ms":<int>}
 
 The FicTrac → frame-index policy lives in frame_index_from_fictrac(); edit that one
@@ -28,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime
 import json
 import math
 import signal
@@ -36,8 +41,6 @@ import time
 
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
-
-TWO_PI = 2.0 * math.pi
 
 
 def now_ms() -> int:
@@ -50,28 +53,30 @@ def now_ms() -> int:
 def frame_index_from_fictrac(fields: list[float], n_frames: int, gain: float, offset: float) -> int:
     """Map one FicTrac record to a 0-based arena frame index in [0, n_frames).
 
-    Default policy: drive the frame by the animal's integrated heading (FicTrac
-    field 17 → 0-based index 16), wrapped to one revolution across the whole
-    pattern. `gain` scales heading→pattern coupling; `offset` (radians) rotates
-    the zero. Replace the body to use position (fields 15-16), speed (field 19),
-    or any combination.
+    Default policy: drive the frame from the animal's integrated heading (FicTrac
+    field 17 → 0-based index 16, radians). `gain` is **degrees of heading per frame
+    index** — e.g. a pattern with 200 azimuthal positions over 360° gives
+    360/200 = 1.8; a negative gain reverses the coupling direction. `offset` shifts
+    the zero (degrees). Replace the body to use position (fields 15-16), speed
+    (field 19), or any combination.
     """
-    heading = fields[16]
-    frac = ((heading * gain + offset) / TWO_PI) % 1.0
-    idx = int(frac * n_frames)
-    return max(0, min(n_frames - 1, idx))
+    if not gain:
+        return 0
+    heading_deg = math.degrees(fields[16])
+    idx = round((heading_deg + offset) / gain)
+    return idx % n_frames  # Python % is non-negative, so negative gain wraps cleanly
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # WebSocket hub — coalescing broadcast (always the latest index, never a backlog).
 # ─────────────────────────────────────────────────────────────────────────────
 class Hub:
-    def __init__(self, log: "LogWriter") -> None:
+    def __init__(self, on_message) -> None:
         self._latest: dict | None = None
         self._version = 0
         self._cond = asyncio.Condition()
         self._clients = 0
-        self._log = log
+        self._on_message = on_message  # async fn(raw) for inbound browser messages
 
     @property
     def clients(self) -> int:
@@ -115,22 +120,50 @@ class Hub:
             pass
 
     async def _recv_loop(self, websocket) -> None:
-        """Per-client loop: log inbound browser messages to the --log file."""
+        """Per-client loop: hand inbound browser messages to the dispatcher."""
         try:
             async for raw in websocket:
-                self._log.write_inbound(raw)
+                await self._on_message(raw)
         except ConnectionClosed:
             pass
 
 
 class LogWriter:
-    """Appends one JSON line per event to --log (no-op when --log is unset)."""
+    """Appends one JSON line per event to a log file.
+
+    The browser's "log fictrac" toggle starts a **fresh timestamped file on every
+    activation** (start_new_log). A standalone --log PATH keeps a single file.
+    """
 
     def __init__(self, path: str | None, log_frames: bool) -> None:
-        self._fh = open(path, "a", buffering=1, encoding="utf-8") if path else None
+        self._explicit = path  # fixed --log path (standalone), else None
+        self._fh = None
         self.log_frames = log_frames
-        if self._fh:
-            self._emit({"type": "session", "event": "bridge_start", "ms": now_ms()})
+        if path:
+            self._open(path, "bridge_start")
+
+    @property
+    def active(self) -> bool:
+        return self._fh is not None
+
+    def _open(self, name: str, event: str) -> None:
+        self._fh = open(name, "a", buffering=1, encoding="utf-8")
+        self._emit({"type": "session", "event": event, "file": name, "ms": now_ms()})
+        print(f"[log] writing to {name}", file=sys.stderr)
+
+    def start_new_log(self) -> None:
+        """Begin a fresh timestamped log file — one per logging activation.
+
+        With an explicit --log path, keep that single file (append + a marker)."""
+        if self._explicit:
+            if not self._fh:
+                self._open(self._explicit, "logging_started")
+            else:
+                self._emit({"type": "session", "event": "logging_started", "ms": now_ms()})
+            return
+        self.close()
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + f"{now_ms() % 1000:03d}"
+        self._open(f"arena-log-{ts}.jsonl", "logging_started")
 
     def _emit(self, obj: dict) -> None:
         if self._fh:
@@ -150,12 +183,19 @@ class LogWriter:
         self._emit(obj)
 
     def write_frame(self, msg: dict, fields: list[float]) -> None:
-        if self._fh and self.log_frames:
-            self._emit({"type": "frame_out", "dir": "bridge→browser", **msg, "fictrac": fields})
+        # Store EVERY received FicTrac frame (number + timestamp) whenever logging is
+        # active — regardless of whether the browser is applying frames. --log-frames
+        # additionally records the full 25-field record.
+        if not self._fh:
+            return
+        rec = {"type": "fictrac_frame", "seq": msg["seq"], "index": msg["index"], "t": msg["t"]}
+        if self.log_frames:
+            rec["fictrac"] = fields
+        self._emit(rec)
 
     def close(self) -> None:
         if self._fh:
-            self._emit({"type": "session", "event": "bridge_stop", "ms": now_ms()})
+            self._emit({"type": "session", "event": "logging_stopped", "ms": now_ms()})
             self._fh.close()
             self._fh = None
 
@@ -249,17 +289,103 @@ async def read_tcp(host: str, port: int, queue: asyncio.Queue) -> None:
         backoff = min(backoff * 2, 5.0)
 
 
+class InputManager:
+    """Owns the FicTrac reader task so the browser can re-bind it to a new port."""
+
+    def __init__(self, proto: str, host: str, port: int, queue: asyncio.Queue) -> None:
+        self.proto = proto
+        self.host = host
+        self.port = port
+        self.queue = queue
+        self._task: asyncio.Task | None = None
+
+    def _reader(self):
+        fn = read_udp if self.proto == "udp" else read_tcp
+        return fn(self.host, self.port, self.queue)
+
+    def start(self) -> None:
+        self._task = asyncio.create_task(self._reader())
+
+    async def rebind(self, port: int) -> None:
+        if port == self.port:
+            return
+        print(f"[in] re-binding FicTrac input {self.port} → {port}", file=sys.stderr)
+        self.port = port
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        self.start()
+
+    async def stop(self) -> None:
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+
+
 async def consume(queue: asyncio.Queue, pipeline: Pipeline) -> None:
     while True:
         line = await queue.get()
         await pipeline.handle_line(line)
 
 
+def make_dispatcher(pipeline: Pipeline, log: LogWriter, inputs: InputManager):
+    """Build the async handler for inbound browser messages."""
+
+    async def dispatch(raw) -> None:
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
+        try:
+            obj = json.loads(raw)
+        except json.JSONDecodeError:
+            log.write_inbound(raw)
+            return
+        kind = obj.get("type")
+
+        if kind == "config":
+            applied = {}
+            if obj.get("gain") is not None:
+                pipeline.gain = float(obj["gain"])
+                applied["gain"] = pipeline.gain
+            if obj.get("offset") is not None:
+                pipeline.offset = float(obj["offset"])
+                applied["offset"] = pipeline.offset
+            if obj.get("frames"):
+                pipeline.n_frames = max(1, int(obj["frames"]))
+                applied["frames"] = pipeline.n_frames
+            if obj.get("fictrac_port"):
+                await inputs.rebind(int(obj["fictrac_port"]))
+                applied["fictrac_port"] = inputs.port
+            print(f"[cfg] applied {applied}", file=sys.stderr)
+            log.write_inbound(raw)
+        elif kind == "log_control":
+            if obj.get("enabled"):
+                log.start_new_log()  # fresh timestamped file per activation
+                log.write_inbound(raw)
+            else:
+                log.write_inbound(raw)
+                log.close()
+        else:
+            # {"type":"log", ...} and anything else → straight to the log file.
+            log.write_inbound(raw)
+
+    return dispatch
+
+
 async def run(args: argparse.Namespace) -> None:
     log = LogWriter(args.log, args.log_frames)
-    hub = Hub(log)
-    pipeline = Pipeline(hub, log, args.frames, args.gain, args.offset)
     queue: asyncio.Queue[str] = asyncio.Queue()
+    # pipeline ↔ hub is a cycle (hub's dispatcher reconfigures the pipeline; the
+    # pipeline publishes to the hub), so build the pipeline first and wire the hub in.
+    pipeline = Pipeline(None, log, args.frames, args.gain, args.offset)
+    inputs = InputManager(args.proto, args.in_host, args.in_port, queue)
+    hub = Hub(make_dispatcher(pipeline, log, inputs))
+    pipeline.hub = hub
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -269,16 +395,14 @@ async def run(args: argparse.Namespace) -> None:
         except NotImplementedError:  # e.g. Windows
             pass
 
-    reader = read_udp if args.proto == "udp" else read_tcp
-    tasks = [
-        asyncio.create_task(reader(args.in_host, args.in_port, queue)),
-        asyncio.create_task(consume(queue, pipeline)),
-    ]
+    inputs.start()
+    consumer = asyncio.create_task(consume(queue, pipeline))
 
     async with serve(hub.serve_client, args.ws_host, args.ws_port):
         print(
             f"[ws] serving ws://{args.ws_host}:{args.ws_port}  "
-            f"(frames={args.frames}, proto={args.proto}, log={args.log or 'off'})",
+            f"(proto={args.proto}, fictrac_port={args.in_port}, frames={args.frames}, "
+            f"gain={args.gain:g}, log={args.log or 'on-demand'})",
             file=sys.stderr,
         )
         await stop.wait()
@@ -287,9 +411,9 @@ async def run(args: argparse.Namespace) -> None:
         f"\n[bridge] shutting down (parsed={pipeline.parsed}, skipped={pipeline.skipped})",
         file=sys.stderr,
     )
-    for t in tasks:
-        t.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True)
+    consumer.cancel()
+    await inputs.stop()
+    await asyncio.gather(consumer, return_exceptions=True)
     log.close()
 
 
@@ -297,13 +421,13 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--proto", choices=("udp", "tcp"), default="udp", help="FicTrac transport (default: udp)")
     p.add_argument("--in-host", default="127.0.0.1", help="FicTrac source: UDP bind / TCP connect host (default: 127.0.0.1)")
-    p.add_argument("--in-port", type=int, default=60000, help="FicTrac source port (default: 60000)")
+    p.add_argument("--in-port", type=int, default=60000, help="FicTrac source port; re-bindable from the browser (default: 60000)")
     p.add_argument("--ws-host", default="127.0.0.1", help="WebSocket bind host (default: 127.0.0.1)")
     p.add_argument("--ws-port", type=int, default=8765, help="WebSocket port (default: 8765)")
-    p.add_argument("--frames", type=int, default=60, help="frame count of the loaded pattern (default: 60)")
-    p.add_argument("--gain", type=float, default=1.0, help="heading→pattern coupling gain (default: 1.0)")
-    p.add_argument("--offset", type=float, default=0.0, help="heading offset in radians (default: 0.0)")
-    p.add_argument("--log", default=None, help="append browser log events (JSONL) to this file")
+    p.add_argument("--frames", type=int, default=200, help="frame count of the loaded pattern; the index modulus (default: 200)")
+    p.add_argument("--gain", type=float, default=1.8, help="degrees of heading per frame index, e.g. 360/200=1.8 (default: 1.8)")
+    p.add_argument("--offset", type=float, default=0.0, help="heading offset in degrees (default: 0.0)")
+    p.add_argument("--log", default=None, help="append browser log events (JSONL) to this file (else opened on demand)")
     p.add_argument("--log-frames", action="store_true", help="also log every outbound frame + source fields")
     args = p.parse_args(argv)
 

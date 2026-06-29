@@ -1039,12 +1039,6 @@
                         >
                             Connect
                         </button>
-                        <label
-                            title="When on, each frame index pushed by the bridge is applied via SET_FRAME_POSITION (0x70). Requires a pattern loaded in Mode 3 — use ‘frame · m3 → Load’ above."
-                        >
-                            <input id="cl-apply" type="checkbox" />
-                            apply frames
-                        </label>
                         <span id="cl-status" class="mono dim">disconnected</span>
                         <span
                             id="cl-stat"
@@ -1052,6 +1046,38 @@
                             style="margin-left: auto"
                             title="rx = frames received from bridge · applied = frames sent to the arena · drop = coalesced (superseded) frames · rate"
                         ></span>
+                    </div>
+                    <div class="grp-row wrap">
+                        <label
+                            title="When on, each frame index pushed by the bridge is applied to the arena via SET_FRAME_POSITION (0x70). Requires a pattern loaded in Mode 3 — use ‘frame · m3 → Load’ above."
+                        >
+                            <input id="cl-apply" type="checkbox" disabled />
+                            activate fictrac
+                        </label>
+                        <label
+                            title="UDP/TCP port the bridge listens on for FicTrac data. Sent to the bridge live; it re-binds its FicTrac input."
+                            >at port
+                            <input
+                                id="cl-fport"
+                                type="number"
+                                min="1"
+                                max="65535"
+                                value="60000"
+                                style="width: 6em"
+                            />
+                        </label>
+                        <label
+                            title="When on, log this FicTrac session to the bridge — every received frame (number + timestamp) and every command sent to the arena. Each activation starts a new timestamped log file."
+                        >
+                            <input id="cl-log" type="checkbox" disabled />
+                            log fictrac
+                        </label>
+                        <label
+                            title="Heading degrees per frame index. 360/200 = 1.8 maps one azimuthal pixel per index for a 200-position pattern; negative reverses direction. Sent to the bridge live."
+                            >gain
+                            <input id="cl-gain" type="number" step="0.1" value="1.8" style="width: 5em" />
+                        </label>
+                        <span id="cl-gain-presets" class="seg" title="Gain presets"></span>
                     </div>
                 </section>
 
@@ -1324,7 +1350,7 @@
                 </div>
                 <div id="log"></div>
             </div>
-            <footer id="footer">Arena Console v6 | 2026-06-29 11:30 ET</footer>
+            <footer id="footer">Arena Console v6 | 2026-06-29 16:58 ET</footer>
         </div>
 
         <!-- Paste-a-frame modal -->
@@ -1647,15 +1673,19 @@
             }
 
             // ── closed-loop bridge (FicTrac → WebSocket → mode-3 stepping) ──
-            // A WebSocket client that receives {type:'frame',index} from the local
-            // bridge (fictrac-bridge/bridge.py) and applies each index via the same
-            // SET_FRAME_POSITION path as the manual stepper. Coalescing: only the
-            // newest index is ever in flight — superseded indices are dropped, so a
-            // fast feed never backs up behind the serial link. Independent of the
-            // serial connection (its own button, not a .cmd).
+            // A WebSocket client for the local bridge (fictrac-bridge/bridge.py).
+            //  • receives {type:'frame',index} and applies each via the same
+            //    SET_FRAME_POSITION path as the manual stepper (coalesced: only the
+            //    newest index is ever in flight, so a fast feed never backs up).
+            //  • "logging" wraps session.send so every arena command is timestamped
+            //    and shipped to the bridge's log file.
+            //  • pushes {type:'config', fictrac_port, gain, frames} so the bridge
+            //    re-binds its FicTrac input and remaps live.
+            // Independent of the serial connection (its own button, not a .cmd).
             const clBridge = {
                 ws: null,
                 apply: false,
+                logging: false,
                 pending: null, // newest index awaiting send (coalesced)
                 inFlight: false,
                 recv: 0,
@@ -1665,6 +1695,13 @@
                 rateTimer: null,
                 lastLogMs: 0
             };
+
+            // Gain presets — degrees of heading per frame index. Add entries here to
+            // grow the button row (rendered into #cl-gain-presets below).
+            const CL_GAIN_PRESETS = [
+                { label: '1.8', value: 1.8, title: '360°/200 — one azimuthal pixel per index (forward)' },
+                { label: '−1.8', value: -1.8, title: '360°/200 reversed (backward)' }
+            ];
 
             function clSetStatus(text, color) {
                 const el = $('cl-status');
@@ -1684,14 +1721,48 @@
                 clBridge.lastLogMs = now;
                 log(text, cls);
             }
-            function clSendLog(obj) {
+            // Raw send (control messages: hello / config / log_control).
+            function clWsSend(obj) {
                 const ws = clBridge.ws;
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     try {
-                        ws.send(JSON.stringify({ type: 'log', ...obj }));
+                        ws.send(JSON.stringify(obj));
                     } catch (e) {
                         /* a closing socket can throw on send — ignore */
                     }
+                }
+            }
+            // Log entry — only emitted while the logging checkbox is on.
+            function clLog(obj) {
+                if (clBridge.logging) clWsSend({ type: 'log', ...obj });
+            }
+            // First few bytes of a command frame, for the command log.
+            function clHead(bytes) {
+                if (!bytes || !bytes.length) return '';
+                const n = Math.min(8, bytes.length);
+                const parts = [];
+                for (let i = 0; i < n; i++) parts.push(bytes[i].toString(16).padStart(2, '0'));
+                return parts.join(' ') + (bytes.length > n ? ' …' : '');
+            }
+            // Push the current FicTrac port + gain (+ loaded frame count) to the bridge.
+            function clSendConfig() {
+                const port = parseInt($('cl-fport').value, 10);
+                const gain = parseFloat($('cl-gain').value);
+                const cfg = { type: 'config' };
+                if (Number.isFinite(port)) cfg.fictrac_port = port;
+                if (Number.isFinite(gain)) cfg.gain = gain;
+                if (stepper.loaded && stepper.frames != null) cfg.frames = stepper.frames;
+                clWsSend(cfg);
+            }
+            // Enable/disable the live controls that only make sense while connected.
+            function clSetControlsEnabled(on) {
+                $('cl-apply').disabled = !on;
+                $('cl-log').disabled = !on;
+                if (!on) {
+                    $('cl-apply').checked = false;
+                    $('cl-log').checked = false;
+                    clBridge.apply = false;
+                    clBridge.logging = false;
                 }
             }
 
@@ -1726,13 +1797,14 @@
                         const i = clampFrame(clBridge.pending);
                         clBridge.pending = null;
                         try {
+                            // session.send is wrapped below, so this is captured by the
+                            // command log when logging is on — no separate log call here.
                             await session.send(Wire.encodeSetFramePosition(i));
                             stepper.index = i;
                             clBridge.applied++;
                             $('sf-idx').value = i;
                             updateStepperUI();
                             clUpdateReadout();
-                            clSendLog({ event: 'frame_applied', index: i, ms: Date.now() });
                         } catch (e) {
                             clThrottledLog('bridge set-frame failed: ' + (e.message || e), 'err');
                         }
@@ -1741,6 +1813,71 @@
                     clBridge.inFlight = false;
                 }
             }
+
+            // Wrap the shared transport so the logging checkbox can capture EVERY
+            // arena interaction (not just closed-loop frames), each timestamped.
+            (function installArenaCommandLogging() {
+                const origSend = session.send.bind(session);
+                session.send = async function (bytes, opts) {
+                    const t = Date.now();
+                    let resp = null;
+                    let errMsg = null;
+                    try {
+                        resp = await origSend(bytes, opts);
+                        return resp;
+                    } catch (e) {
+                        errMsg = (e && e.message) || String(e);
+                        throw e;
+                    } finally {
+                        if (clBridge.logging) {
+                            let status = null;
+                            let echo = null;
+                            let ok = null;
+                            try {
+                                const d = resp && resp.length ? Wire.decodeResponse(resp) : null;
+                                if (d) {
+                                    status = d.status;
+                                    echo = d.echoCmd;
+                                    ok = d.ok;
+                                }
+                            } catch (e) {
+                                /* undecodable response — log the request anyway */
+                            }
+                            clLog({
+                                event: 'arena_command',
+                                t,
+                                dt: Date.now() - t,
+                                len: bytes ? bytes.length : 0,
+                                head: clHead(bytes),
+                                status,
+                                echo,
+                                ok,
+                                error: errMsg
+                            });
+                        }
+                    }
+                };
+                if (typeof session.sendBulkRead === 'function') {
+                    const origBulk = session.sendBulkRead.bind(session);
+                    session.sendBulkRead = async function (bytes, opts) {
+                        const t = Date.now();
+                        try {
+                            return await origBulk(bytes, opts);
+                        } finally {
+                            // payload can be megabytes (pattern/firmware) — log the request only
+                            if (clBridge.logging) {
+                                clLog({
+                                    event: 'arena_bulk_read',
+                                    t,
+                                    dt: Date.now() - t,
+                                    len: bytes ? bytes.length : 0,
+                                    head: clHead(bytes)
+                                });
+                            }
+                        }
+                    };
+                }
+            })();
 
             function clConnect() {
                 const url = $('cl-url').value.trim();
@@ -1764,7 +1901,9 @@
                 ws.onopen = () => {
                     clSetStatus('connected', 'var(--accent)');
                     log('bridge: connected to ' + url, 'info');
-                    clSendLog({ event: 'hello', client: 'arena_console', v: 1 });
+                    clWsSend({ type: 'hello', client: 'arena_console', v: 1 });
+                    clSendConfig();
+                    clSetControlsEnabled(true);
                     clBridge.rateTimer = setInterval(() => {
                         clBridge.rateHz = clBridge.rateCount;
                         clBridge.rateCount = 0;
@@ -1789,9 +1928,24 @@
                         clBridge.rateTimer = null;
                     }
                     clBridge.ws = null;
+                    clSetControlsEnabled(false);
                     clUpdateReadout();
                 };
             }
+
+            // Render the gain preset buttons (array-driven; see CL_GAIN_PRESETS).
+            CL_GAIN_PRESETS.forEach((p) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'seg-btn';
+                b.textContent = p.label;
+                b.title = p.title;
+                b.addEventListener('click', () => {
+                    $('cl-gain').value = p.value;
+                    if (clBridge.ws) clSendConfig();
+                });
+                $('cl-gain-presets').appendChild(b);
+            });
 
             $('cl-conn').addEventListener('click', () => {
                 if (clBridge.ws) clBridge.ws.close();
@@ -1799,12 +1953,30 @@
             });
             $('cl-apply').addEventListener('change', (e) => {
                 clBridge.apply = e.target.checked;
-                if (clBridge.apply && !stepper.loaded) {
-                    log(
-                        'bridge: load a pattern in mode 3 (frame · m3 → Load) before applying frames',
-                        'info'
-                    );
+                if (clBridge.apply) {
+                    clSendConfig();
+                    if (!stepper.loaded) {
+                        log(
+                            'bridge: load a pattern in mode 3 (frame · m3 → Load) before activating fictrac',
+                            'info'
+                        );
+                    }
                 }
+            });
+            $('cl-log').addEventListener('change', (e) => {
+                clBridge.logging = e.target.checked;
+                clWsSend({ type: 'log_control', enabled: clBridge.logging });
+                log(
+                    'bridge: fictrac logging ' +
+                        (clBridge.logging ? 'on (new log file started)' : 'off'),
+                    'info'
+                );
+            });
+            $('cl-fport').addEventListener('change', () => {
+                if (clBridge.ws) clSendConfig();
+            });
+            $('cl-gain').addEventListener('change', () => {
+                if (clBridge.ws) clSendConfig();
             });
 
             // ── stream frame ────────────────────────────────────────────────
@@ -2783,6 +2955,8 @@
                         stepper.loaded = !!(r && r.ok);
                         if (stepper.loaded) $('sf-idx').value = 0;
                         updateStepperUI();
+                        // tell the bridge the loaded pattern's frame count (index modulus)
+                        if (stepper.loaded && clBridge.ws) clSendConfig();
                     });
                 },
                 trial: () => {
