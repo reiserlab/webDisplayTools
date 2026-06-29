@@ -4,3 +4,10 @@ temp_configs/
 .codex-review/
 # Local browser-test artifacts (canonical patterns live in maDisplayTools/patterns/web_generated/)
 test_patterns/
+# pixi environment for the fictrac-bridge workspace (pixi.toml + pixi.lock are tracked)
+.pixi/*
+!.pixi/config.toml
+# Python + bridge run artifacts (fictrac-bridge/)
+__pycache__/
+*.pyc
+*.jsonl

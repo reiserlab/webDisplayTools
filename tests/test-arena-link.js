@@ -170,10 +170,10 @@ function setup(opts) {
 }
 
 // Canonical request encoders + matching response frames.
-const REQ_INFO = '01 C2';
-const REQ_SPI = '01 C6';
-const RESP_INFO = Uint8Array.from([0x04, 0x00, 0xC2, 0x02, 0x11]); // echo 0xC2
-const RESP_SPI = Uint8Array.from([0x04, 0x00, 0xC6, 0x14, 0x00]); // echo 0xC6
+const REQ_INFO = '01 c2';
+const REQ_SPI = '01 c6';
+const RESP_INFO = Uint8Array.from([0x04, 0x00, 0xc2, 0x02, 0x11]); // echo 0xC2
+const RESP_SPI = Uint8Array.from([0x04, 0x00, 0xc6, 0x14, 0x00]); // echo 0xC6
 
 async function main() {
     console.log('=== feature detection ===');
@@ -201,7 +201,7 @@ async function main() {
         checkBytes('request written to port', writer.writes[0], REQ_INFO);
         reader.push(RESP_INFO);
         const frame = await p;
-        checkBytes('resolves with response frame', frame, '04 00 C1 02 11');
+        checkBytes('resolves with response frame', frame, '04 00 c2 02 11');
         const info = Wire.decodeControllerInfo(Wire.decodeResponse(frame));
         checkBool('frame decodes (version=2)', info && info.version === 2);
         await link.close();
@@ -213,7 +213,7 @@ async function main() {
     {
         const { link, reader } = setup();
         await link.connect();
-        const p = link.send(Wire.encodeGetControllerInfo()); // expects echo 0x67
+        const p = link.send(Wire.encodeGetControllerInfo()); // expects echo 0xc2
         await flush();
         reader.push(RESP_SPI); // echo 0xC6 — wrong
         await checkRejects('mismatched echo rejects as desync', p, /desync/);
@@ -228,9 +228,9 @@ async function main() {
         await flush();
         reader.push([0x04, 0x00]); // first half of the frame
         await flush();
-        reader.push([0xC2, 0x02, 0x11]); // second half
+        reader.push([0xc2, 0x02, 0x11]); // second half
         const frame = await p;
-        checkBytes('split frame reassembled', frame, '04 00 C2 02 11');
+        checkBytes('split frame reassembled', frame, '04 00 c2 02 11');
         await link.close();
     }
 
@@ -245,7 +245,7 @@ async function main() {
         await flush();
         reader.push(RESP_INFO); // the real reply
         const frame = await p;
-        checkBytes('runts skipped, real frame resolves', frame, '04 00 67 02 11');
+        checkBytes('runts skipped, real frame resolves', frame, '04 00 c2 02 11');
         await link.close();
     }
 
@@ -261,7 +261,7 @@ async function main() {
         await flush();
         reader.push(RESP_INFO);
         const frame = await p2;
-        checkBytes('send works again after a timeout', frame, '04 00 67 02 11');
+        checkBytes('send works again after a timeout', frame, '04 00 c2 02 11');
         await link.close();
     }
 
@@ -269,16 +269,16 @@ async function main() {
     {
         const { link, reader } = setup();
         await link.connect();
-        const p1 = link.send(Wire.encodeGetControllerInfo(), { timeoutMs: 20 }); // echo 67
+        const p1 = link.send(Wire.encodeGetControllerInfo(), { timeoutMs: 20 }); // echo c2
         await flush();
         await checkRejects('first request times out', p1, /timeout/);
-        reader.push(RESP_INFO); // the tardy echo-67 reply — no request waiting, dropped
+        reader.push(RESP_INFO); // the tardy echo-c2 reply — no request waiting, dropped
         await flush();
-        const p2 = link.send(Wire.encodeGetSpiClock()); // echo 18
+        const p2 = link.send(Wire.encodeGetSpiClock()); // echo c6
         await flush();
-        reader.push(RESP_SPI); // echo 18
+        reader.push(RESP_SPI); // echo c6
         const frame = await p2;
-        checkBytes('next request gets its OWN reply, not the stale one', frame, '04 00 18 14 00');
+        checkBytes('next request gets its OWN reply, not the stale one', frame, '04 00 c6 14 00');
         await link.close();
     }
 
@@ -286,8 +286,8 @@ async function main() {
     {
         const { link, reader, writer } = setup();
         await link.connect();
-        const p1 = link.send(Wire.encodeGetControllerInfo()); // echo 67
-        const p2 = link.send(Wire.encodeGetSpiClock()); // echo 18
+        const p1 = link.send(Wire.encodeGetControllerInfo()); // echo c2
+        const p2 = link.send(Wire.encodeGetSpiClock()); // echo c6
         await flush();
         checkBool('only the first request is written', writer.writes.length === 1);
         checkBytes('first write is get-info', writer.writes[0], REQ_INFO);
@@ -298,8 +298,8 @@ async function main() {
         checkBytes('second write is get-spi', writer.writes[1], REQ_SPI);
         reader.push(RESP_SPI);
         const f2 = await p2;
-        checkBytes('p1 resolved with get-info reply', f1, '04 00 67 02 11');
-        checkBytes('p2 resolved with get-spi reply', f2, '04 00 18 14 00');
+        checkBytes('p1 resolved with get-info reply', f1, '04 00 c2 02 11');
+        checkBytes('p2 resolved with get-spi reply', f2, '04 00 c6 14 00');
         await link.close();
     }
 

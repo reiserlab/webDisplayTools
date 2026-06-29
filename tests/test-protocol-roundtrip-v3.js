@@ -102,8 +102,11 @@ const {
     commitStaging
 } = require('../js/v3-import.js');
 
-// yaml@2 itself (for building raw source docs in import tests)
-const YAML = require('yaml');
+// yaml@2 itself (for building raw source docs in import tests). Loaded from the
+// vendored browser build — the same file the browser uses via its import map — so
+// the suite needs no npm install. require() of an ES module needs Node >= 22.12
+// (pinned in pixi.toml).
+const YAML = require('../js/vendor/yaml/browser/dist/index.js');
 
 // ─── Counters & helpers ─────────────────────────────────────────────────────
 

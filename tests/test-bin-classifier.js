@@ -65,9 +65,15 @@ check('classifyBin(unknown size) = null', Bin.classifyBin(new Uint8Array(123), 1
 // ── isPat ─────────────────────────────────────────────────────────────────
 const patHeader = (rows, cols, gsVal, numFrames) => {
     const h = new Uint8Array(18);
-    h[0] = 0x47; h[1] = 0x36; h[2] = 0x50; h[3] = 0x54; // "G6PT"
-    h[6] = numFrames & 0xff; h[7] = (numFrames >> 8) & 0xff; // frames LE16
-    h[8] = rows; h[9] = cols; h[10] = gsVal; // rows, cols, gs_val
+    h[0] = 0x47;
+    h[1] = 0x36;
+    h[2] = 0x50;
+    h[3] = 0x54; // "G6PT"
+    h[6] = numFrames & 0xff;
+    h[7] = (numFrames >> 8) & 0xff; // frames LE16
+    h[8] = rows;
+    h[9] = cols;
+    h[10] = gsVal; // rows, cols, gs_val
     return h;
 };
 check('isPat true for G6PT', Bin.isPat(patHeader(2, 10, 2, 1)));
@@ -87,15 +93,22 @@ check('isPat false when too short', Bin.isPat(new Uint8Array([0x47, 0x36])) === 
     // stamp each frame's FR prefix so we can confirm the slice offsets
     for (let f = 0; f < numFrames; f++) {
         const off = 18 + f * stride;
-        buf[off] = 0x46; buf[off + 1] = 0x52; // "FR"
+        buf[off] = 0x46;
+        buf[off + 1] = 0x52; // "FR"
         buf[off + 2] = f; // index lo — used as a slice-offset marker
     }
     const { gs16, numPanels, bodies } = Bin.patFrameBodies(buf);
     check('patFrameBodies gs16 = true', gs16 === true);
     check('patFrameBodies numPanels = 20', numPanels === 20);
     check('patFrameBodies frame count = 3', bodies.length === 3);
-    check('each body is 4064 B', bodies.every((b) => b.length === bodyLen));
-    check('bodies sliced at the right offsets', bodies.every((b, f) => b[2] === f));
+    check(
+        'each body is 4064 B',
+        bodies.every((b) => b.length === bodyLen)
+    );
+    check(
+        'bodies sliced at the right offsets',
+        bodies.every((b, f) => b[2] === f)
+    );
     check('CRC-16 trailer excluded from bodies', bodies[0].length === stride - 2);
 }
 

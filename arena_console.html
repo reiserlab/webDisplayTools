@@ -1021,6 +1021,40 @@
                     </div>
                 </section>
 
+                <!-- Closed-loop bridge (FicTrac → WebSocket → mode-3 frame stepping) -->
+                <section class="grp">
+                    <div class="grp-row wrap">
+                        <span class="lbl">bridge</span>
+                        <input
+                            id="cl-url"
+                            type="text"
+                            value="ws://localhost:8765"
+                            style="width: 15em"
+                            title="WebSocket URL of the local FicTrac bridge (fictrac-bridge/bridge.py). Default ws://localhost:8765. Independent of the serial link."
+                        />
+                        <button
+                            id="cl-conn"
+                            type="button"
+                            title="Connect to / disconnect from the local bridge WebSocket. Does not touch the serial connection."
+                        >
+                            Connect
+                        </button>
+                        <label
+                            title="When on, each frame index pushed by the bridge is applied via SET_FRAME_POSITION (0x70). Requires a pattern loaded in Mode 3 — use ‘frame · m3 → Load’ above."
+                        >
+                            <input id="cl-apply" type="checkbox" />
+                            apply frames
+                        </label>
+                        <span id="cl-status" class="mono dim">disconnected</span>
+                        <span
+                            id="cl-stat"
+                            class="mono dim small"
+                            style="margin-left: auto"
+                            title="rx = frames received from bridge · applied = frames sent to the arena · drop = coalesced (superseded) frames · rate"
+                        ></span>
+                    </div>
+                </section>
+
                 <!-- Stream frame -->
                 <section class="grp">
                     <div class="grp-row">
@@ -1290,7 +1324,7 @@
                 </div>
                 <div id="log"></div>
             </div>
-            <footer id="footer">Arena Console v6 | 2026-06-27 00:37 ET</footer>
+            <footer id="footer">Arena Console v6 | 2026-06-29 11:30 ET</footer>
         </div>
 
         <!-- Paste-a-frame modal -->
@@ -1611,6 +1645,167 @@
                 run('set-frame ' + i, Wire.encodeSetFramePosition(i), DECODE.ascii);
                 updateStepperUI();
             }
+
+            // ── closed-loop bridge (FicTrac → WebSocket → mode-3 stepping) ──
+            // A WebSocket client that receives {type:'frame',index} from the local
+            // bridge (fictrac-bridge/bridge.py) and applies each index via the same
+            // SET_FRAME_POSITION path as the manual stepper. Coalescing: only the
+            // newest index is ever in flight — superseded indices are dropped, so a
+            // fast feed never backs up behind the serial link. Independent of the
+            // serial connection (its own button, not a .cmd).
+            const clBridge = {
+                ws: null,
+                apply: false,
+                pending: null, // newest index awaiting send (coalesced)
+                inFlight: false,
+                recv: 0,
+                applied: 0,
+                rateCount: 0,
+                rateHz: 0,
+                rateTimer: null,
+                lastLogMs: 0
+            };
+
+            function clSetStatus(text, color) {
+                const el = $('cl-status');
+                el.textContent = text;
+                el.style.color = color || '';
+            }
+            function clUpdateReadout() {
+                const open = clBridge.ws && clBridge.ws.readyState === WebSocket.OPEN;
+                const drop = Math.max(0, clBridge.recv - clBridge.applied);
+                $('cl-stat').textContent = open
+                    ? `rx ${clBridge.recv} · applied ${clBridge.applied} · drop ${drop} · ~${clBridge.rateHz} Hz`
+                    : '';
+            }
+            function clThrottledLog(text, cls) {
+                const now = Date.now();
+                if (now - clBridge.lastLogMs < 500) return;
+                clBridge.lastLogMs = now;
+                log(text, cls);
+            }
+            function clSendLog(obj) {
+                const ws = clBridge.ws;
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try {
+                        ws.send(JSON.stringify({ type: 'log', ...obj }));
+                    } catch (e) {
+                        /* a closing socket can throw on send — ignore */
+                    }
+                }
+            }
+
+            function clOnFrame(index) {
+                if (!Number.isFinite(index)) return;
+                clBridge.recv++;
+                clBridge.rateCount++;
+                clBridge.pending = index; // coalesce — only the newest index matters
+                clUpdateReadout();
+                if (!clBridge.apply) return;
+                if (!stepper.loaded) {
+                    clThrottledLog(
+                        'bridge: load a pattern in mode 3 first (frame · m3 → Load)',
+                        'err'
+                    );
+                    return;
+                }
+                if (!session.connected) return;
+                clApplyLoop();
+            }
+
+            async function clApplyLoop() {
+                if (clBridge.inFlight) return; // a drain loop is already running
+                clBridge.inFlight = true;
+                try {
+                    while (
+                        clBridge.pending != null &&
+                        clBridge.apply &&
+                        session.connected &&
+                        stepper.loaded
+                    ) {
+                        const i = clampFrame(clBridge.pending);
+                        clBridge.pending = null;
+                        try {
+                            await session.send(Wire.encodeSetFramePosition(i));
+                            stepper.index = i;
+                            clBridge.applied++;
+                            $('sf-idx').value = i;
+                            updateStepperUI();
+                            clUpdateReadout();
+                            clSendLog({ event: 'frame_applied', index: i, ms: Date.now() });
+                        } catch (e) {
+                            clThrottledLog('bridge set-frame failed: ' + (e.message || e), 'err');
+                        }
+                    }
+                } finally {
+                    clBridge.inFlight = false;
+                }
+            }
+
+            function clConnect() {
+                const url = $('cl-url').value.trim();
+                if (!url) {
+                    log('bridge: enter a WebSocket URL', 'err');
+                    return;
+                }
+                let ws;
+                try {
+                    ws = new WebSocket(url);
+                } catch (e) {
+                    log('bridge: bad URL — ' + (e.message || e), 'err');
+                    return;
+                }
+                clBridge.ws = ws;
+                clBridge.recv = 0;
+                clBridge.applied = 0;
+                clBridge.pending = null;
+                clSetStatus('connecting…', '');
+                $('cl-conn').textContent = 'Disconnect';
+                ws.onopen = () => {
+                    clSetStatus('connected', 'var(--accent)');
+                    log('bridge: connected to ' + url, 'info');
+                    clSendLog({ event: 'hello', client: 'arena_console', v: 1 });
+                    clBridge.rateTimer = setInterval(() => {
+                        clBridge.rateHz = clBridge.rateCount;
+                        clBridge.rateCount = 0;
+                        clUpdateReadout();
+                    }, 1000);
+                };
+                ws.onmessage = (ev) => {
+                    let msg;
+                    try {
+                        msg = JSON.parse(ev.data);
+                    } catch (e) {
+                        return; // ignore non-JSON
+                    }
+                    if (msg && msg.type === 'frame') clOnFrame(msg.index);
+                };
+                ws.onerror = () => clSetStatus('error', 'var(--err)');
+                ws.onclose = () => {
+                    clSetStatus('disconnected', '');
+                    $('cl-conn').textContent = 'Connect';
+                    if (clBridge.rateTimer) {
+                        clearInterval(clBridge.rateTimer);
+                        clBridge.rateTimer = null;
+                    }
+                    clBridge.ws = null;
+                    clUpdateReadout();
+                };
+            }
+
+            $('cl-conn').addEventListener('click', () => {
+                if (clBridge.ws) clBridge.ws.close();
+                else clConnect();
+            });
+            $('cl-apply').addEventListener('change', (e) => {
+                clBridge.apply = e.target.checked;
+                if (clBridge.apply && !stepper.loaded) {
+                    log(
+                        'bridge: load a pattern in mode 3 (frame · m3 → Load) before applying frames',
+                        'info'
+                    );
+                }
+            });
 
             // ── stream frame ────────────────────────────────────────────────
             let streamGs = 16; // 16 (GS16) or 2 (GS2)

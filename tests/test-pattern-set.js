@@ -25,6 +25,16 @@ const deps = { parsePatFile: PatParser.parsePatFile, encode: PatEncoder.encode, 
 
 const FIX_2x10 = path.join(__dirname, '../test_patterns/web_G6_2x10_gs2_square_grating_G6.pat');
 const FIX_3x16 = path.join(__dirname, '../test_patterns/web_G6_3x16_full_gs16_sine_grating_G6.pat');
+// The .pat fixtures are gitignored local artifacts (not committed). Skip — rather
+// than crash — when they're absent so the aggregate `pixi run test` stays green in
+// a clean checkout. They live under maDisplayTools/patterns/web_generated/ (see the
+// repo .gitignore); copy the two below into test_patterns/ to run this suite.
+if (!fs.existsSync(FIX_2x10) || !fs.existsSync(FIX_3x16)) {
+    console.log('SKIP test-pattern-set: fixtures absent (test_patterns/*.pat are gitignored).');
+    console.log('  Provide test_patterns/web_G6_2x10_gs2_square_grating_G6.pat and');
+    console.log('  test_patterns/web_G6_3x16_full_gs16_sine_grating_G6.pat to run this suite.');
+    process.exit(0);
+}
 const bytes2x10 = fs.readFileSync(FIX_2x10);
 const bytes3x16 = fs.readFileSync(FIX_3x16);
 
@@ -198,7 +208,10 @@ console.log('\n=== buildBundle ===');
     check('bundle file 1 name', bundle.patterns[0].name, set.items[0].sd_name);
     checkBool('bundle README mentions SD card', bundle.readme.indexOf('SD card') !== -1);
     checkBool('bundle has no manifestJson', !('manifestJson' in bundle));
-    checkBool('MANIFEST.txt has Pattern Set ID', bundle.manifestTxt.indexOf('Pattern Set ID:') !== -1);
+    checkBool(
+        'MANIFEST.txt has Pattern Set ID',
+        bundle.manifestTxt.indexOf('Pattern Set ID:') !== -1
+    );
     checkThrows('buildBundle refuses an empty set', () =>
         PS.buildBundle(PS.createPatternSet({ arenaConfig: 'G6_2x10' }))
     );
