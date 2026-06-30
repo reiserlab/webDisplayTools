@@ -256,45 +256,99 @@ async function flashBlocks(pb, blocks, onProgress) {
     }
 }
 
-// --- Firmware catalog (firmware repo's GitHub Pages, same-origin) ----------------
-// manifest.json is a build CATALOG: artifacts[] = { rev, variant, label, file,
-// sha256, usb_product, default }, plus top-level version / commit / built. The
-// dropdown is populated straight from it, so new builds appear automatically.
+// --- Firmware catalog -----------------------------------------------------------
+// Builds come from two sources, merged in this order:
+//   1. LOCAL_BUILDS below — UF2s committed under flasher/firmware/ and served
+//      from THIS site (same-origin, no CORS, no network). These appear first.
+//   2. The firmware repo's GitHub Pages manifest.json (FW_BASE) — the published
+//      build CATALOG: artifacts[] = { rev, variant, label, file, sha256,
+//      usb_product, default }, plus top-level version / commit / built.
+// The dropdown is populated straight from the merged list, so new published
+// builds still appear automatically.
 let firmware = { version: null, commit: '', built: '', builds: [], byFile: {} };
 let chosenFile = null;
 
+// Locally-built firmware shipped with the flasher. The Pages catalog has no ISP
+// build, so the production-with-ISP/OTA images (built from the firmware repo's
+// `panel-isp` branch via `pixi run build31` / `build21`) are committed here and
+// flashed straight from this origin. `local: true` makes onFlashClick() fetch
+// `file` relative to this page instead of from FW_BASE; `section` pins them to
+// their own optgroup at the top of the dropdown.
+const LOCAL_BUILDS = [
+    {
+        rev: 'v0.3.1',
+        variant: 'production',
+        section: 'Local builds (Production + ISP)',
+        label: 'v0.3.1 ISP Production',
+        file: 'firmware/g6-panel-v0.3.1-isp.uf2',
+        usb_product: 'G6 Panel v0.3',
+        local: true,
+        default: true
+    },
+    {
+        rev: 'v0.2.1',
+        variant: 'production',
+        section: 'Local builds (Production + ISP)',
+        label: 'v0.2.1 ISP Production',
+        file: 'firmware/g6-panel-v0.2.1-isp.uf2',
+        usb_product: 'G6 Panel v0.2',
+        local: true,
+        default: false
+    }
+];
+
 async function resolveFirmware() {
-    // no-store: always pick up the newest catalog the firmware repo published.
-    const res = await fetch(`${FW_BASE}/manifest.json`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`manifest.json HTTP ${res.status}`);
-    const m = await res.json();
-    firmware.version = m.version || '(unknown)';
-    firmware.commit = m.commit || '';
-    firmware.built = m.built || '';
-    firmware.builds = m.artifacts || [];
+    // The local builds always appear (and lead), independent of the network. The
+    // remote catalog is best-effort: if Pages is unreachable we still flash local.
+    let remote = [];
+    let meta = { version: null, commit: '', built: '' };
+    try {
+        // no-store: always pick up the newest catalog the firmware repo published.
+        const res = await fetch(`${FW_BASE}/manifest.json`, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`manifest.json HTTP ${res.status}`);
+        const m = await res.json();
+        meta = { version: m.version || '(unknown)', commit: m.commit || '', built: m.built || '' };
+        remote = m.artifacts || [];
+    } catch (e) {
+        log(`Remote catalog unavailable (${e.message}); showing local builds only.`, 'status-err');
+    }
+
+    // Exactly one option may be the selected default (a <select> keeps the LAST
+    // selected). When a local build is the default, clear the remote defaults so
+    // the local one wins.
+    if (LOCAL_BUILDS.some((b) => b.default)) {
+        remote = remote.map((b) => (b.default ? { ...b, default: false } : b));
+    }
+
+    firmware.version = meta.version;
+    firmware.commit = meta.commit;
+    firmware.built = meta.built;
+    firmware.builds = [...LOCAL_BUILDS, ...remote];
     firmware.byFile = Object.fromEntries(firmware.builds.map((b) => [b.file, b]));
 
     populateBuilds();
     const id = [firmware.version, firmware.commit, firmware.built].filter(Boolean).join('  ·  ');
-    $('build-meta').textContent = id || '(no metadata)';
+    $('build-meta').textContent = id || '(local builds only)';
     log(
-        `Firmware ${id} — ${firmware.builds.length} build(s): ` +
+        `Firmware ${id || '(local only)'} — ${firmware.builds.length} build(s): ` +
             firmware.builds.map((b) => b.label || `${b.rev}/${b.variant}`).join(', ')
     );
 }
 
 // Section label for a build, so the dropdown groups Production vs testing/debug
 // builds under <optgroup>s (otherwise the self-test builds hide behind the
-// collapsed default). Unknown variants fall back to a generic section.
+// collapsed default). A build may pin its own `section` (local builds do, to
+// lead the list); otherwise the variant maps to a section, falling back to a
+// generic one.
 const SECTION = { production: 'Production firmware', bcmtest: 'Panel self-test' };
-const sectionOf = (b) => SECTION[b.variant] || 'Other builds';
+const sectionOf = (b) => b.section || SECTION[b.variant] || 'Other builds';
 
 // Fill the dropdown from the catalog, grouped by section, and select the
 // manifest's default build.
 function populateBuilds() {
     const sel = $('build-select');
     sel.innerHTML = '';
-    const groups = new Map(); // insertion order = catalog order (production first)
+    const groups = new Map(); // insertion order: local builds first, then catalog order
     for (const b of firmware.builds) {
         const s = sectionOf(b);
         if (!groups.has(s)) groups.set(s, []);
@@ -410,7 +464,9 @@ async function refreshPanelStatus() {
 async function onFlashClick() {
     const b = chosenFile ? firmware.byFile[chosenFile] : null;
     if (!b) return;
-    const url = `${FW_BASE}/${b.file}`;
+    // Local builds are served from this origin (file is relative to this page);
+    // remote builds come from the firmware repo's Pages catalog.
+    const url = b.local ? b.file : `${FW_BASE}/${b.file}`;
 
     let device, pb;
     try {
