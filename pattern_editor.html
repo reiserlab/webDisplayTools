@@ -1706,7 +1706,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.37 | 2026-07-01 00:47 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.39 | 2026-07-01 07:49 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1793,18 +1793,6 @@
                     </div>
 
                     <div class="section-title">Parameters</div>
-
-                    <!-- Global per-LED brightness = the duty_cycle byte written to every
-                         panel block of the .pat (0-255, 128 = 50%). This is the HARDWARE
-                         brightness knob, applied to all frames. It is NOT the spatial
-                         grating "Duty (%)" below. See issue #97. -->
-                    <div class="control-group" id="patBrightnessGroup">
-                        <label for="patBrightness" title="Per-LED duty cycle byte written to the .pat file (0-255, 128 = 50% brightness). Applies to all frames. Separate from the spatial grating 'Duty (%)'.">Brightness / duty (0–255)</label>
-                        <div style="display: flex; gap: 0.5rem; align-items: center;">
-                            <input type="range" id="patBrightness" min="0" max="255" value="128" step="1" style="flex: 1;" title="Per-LED duty cycle byte (0-255, 128 = 50% brightness). Applies to all frames.">
-                            <input type="number" id="patBrightnessNum" min="0" max="255" value="128" step="1" style="width: 64px;" title="Per-LED duty cycle byte (0-255)">
-                        </div>
-                    </div>
 
                     <!-- Common grating/sine params -->
                     <div id="gratingParams">
@@ -2130,6 +2118,21 @@
                     <div id="imageQuantizationInfo" style="padding: 0.5rem; background: var(--bg); border-radius: 4px; font-size: 0.65rem; color: var(--text-dim);">
                         GS16: Maps 0-255 to 0-15<br>
                         GS2: Threshold at 128 (0=dark, 1=bright)
+                    </div>
+                </div>
+            </div>
+
+            <!-- Global per-LED brightness = the duty_cycle byte written to every panel
+                 block of the .pat (0-255, 128 = 50%). Lives here (above Save, not in the
+                 Generate tab) because it is read at SAVE time and applies to EVERY
+                 pattern-creation path: Generate, Animate, Combine, Image. Distinct from
+                 the spatial grating "Duty (%)" in the Generate tab. See issue #97. -->
+            <div class="pat-brightness-bar" style="border-top: 1px solid var(--border); margin-top: 0.5rem; padding-top: 0.75rem;">
+                <div class="control-group" id="patBrightnessGroup">
+                    <label for="patBrightness" title="Per-LED duty cycle byte written to the .pat file (0-255, 128 = 50% brightness). Applies to all frames and every pattern type (Generate, Animate, Combine, Image). Separate from the spatial grating 'Duty (%)'.">Brightness / duty (0–255)</label>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="range" id="patBrightness" min="0" max="255" value="128" step="1" style="flex: 1;" title="Per-LED duty cycle byte (0-255, 128 = 50% brightness). Applies to all frames and all pattern types.">
+                        <input type="number" id="patBrightnessNum" min="0" max="255" value="128" step="1" style="width: 64px;" title="Per-LED duty cycle byte (0-255)">
                     </div>
                 </div>
             </div>
@@ -2694,6 +2697,7 @@
             // Generate button and pattern type change
             document.getElementById('generateBtn').addEventListener('click', handleGenerate);
             document.getElementById('patternType').addEventListener('change', updatePatternTypeUI);
+            document.getElementById('gsMode').addEventListener('change', updateGsLevelBounds);
 
             // Spherical grating controls
             document.getElementById('motionType').addEventListener('change', updateMotionTypeUI);
@@ -4680,6 +4684,23 @@
             }
         }
 
+        // Constrain the High/Low pixel-level inputs to the selected grayscale mode.
+        // GS2 pixels are 0-1, GS16 pixels are 0-15. Without this, GS2 keeps the
+        // GS16 default High=15, which fails pattern validation ("out of range:
+        // 15 (max 1)") and aborts generation — the "can't make a GS2 pattern" bug.
+        function updateGsLevelBounds() {
+            const gs = parseInt(document.getElementById('gsMode').value, 10);
+            const max = gs === 2 ? 1 : 15;
+            const hi = document.getElementById('highLevel');
+            const lo = document.getElementById('lowLevel');
+            hi.max = max;
+            lo.max = max;
+            hi.title = `High brightness level (0-${max})`;
+            lo.title = `Low brightness level (0-${max})`;
+            if (parseInt(hi.value, 10) > max) hi.value = max;
+            if (parseInt(lo.value, 10) > max) lo.value = max;
+        }
+
         // ---- Global brightness = per-LED duty_cycle byte (0-255) ----
         // The last byte of every .pat panel block; 128 = 50% hardware brightness.
         // This is DISTINCT from the spatial grating "Duty (%)" (fraction of ON pixels).
@@ -6372,6 +6393,7 @@
             updateClipboardUI();
             updateDefaultFrames();  // Set initial frames based on default arena
             updatePatternTypeUI();  // Set initial pattern type UI visibility
+            updateGsLevelBounds();  // Sync High/Low bounds to the initial grayscale mode
             updateG3ButtonStates(); // Disable save/load for G3 arenas
 
             // Re-render 2D view on window resize to scale to fill available space
