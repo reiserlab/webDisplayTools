@@ -238,7 +238,10 @@ const ArenaLink = (function () {
         sendBulkRead(bytes, opts) {
             const run = () => this._sendOneBulkRead(bytes, opts);
             const result = this._sendQueue.then(run, run);
-            this._sendQueue = result.then(() => {}, () => {});
+            this._sendQueue = result.then(
+                () => {},
+                () => {}
+            );
             return result;
         }
 
@@ -246,8 +249,7 @@ const ArenaLink = (function () {
             if (!this._writer) throw new Error('ArenaLink.sendBulkRead: not connected');
             const timeoutMs = (opts && opts.timeoutMs) || 30000;
             const payload = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
-            const expectedCmd =
-                opts && opts.expectedCmd != null ? opts.expectedCmd : payload[1];
+            const expectedCmd = opts && opts.expectedCmd != null ? opts.expectedCmd : payload[1];
 
             // Create the data promise now so bulkInit can hold its resolve/reject.
             let dataResolve, dataReject;
@@ -265,7 +267,7 @@ const ArenaLink = (function () {
                     resolve,
                     reject,
                     timer: null,
-                    bulkInit: { timeoutMs, dataResolve, dataReject },
+                    bulkInit: { timeoutMs, dataResolve, dataReject }
                 };
                 entry.timer = setTimeout(() => {
                     if (this._inflight !== entry) return;
@@ -510,8 +512,7 @@ const ArenaLink = (function () {
                     }
                     // Extract lower 32 bits of the uint64 LE file size (upper 4 = 0 for <4 GB files).
                     const sz =
-                        ((frame[3] | (frame[4] << 8) | (frame[5] << 16) | (frame[6] << 24)) >>>
-                            0);
+                        (frame[3] | (frame[4] << 8) | (frame[5] << 16) | (frame[6] << 24)) >>> 0;
                     if (sz === 0) {
                         entry.bulkInit.dataResolve(new Uint8Array(0));
                         entry.resolve(frame);
@@ -535,7 +536,7 @@ const ArenaLink = (function () {
                         chunks: [],
                         resolve: bi.dataResolve,
                         reject: bi.dataReject,
-                        timer: bulkTimer,
+                        timer: bulkTimer
                     };
                     // Drain any file bytes that already arrived with the header frame.
                     const leftover = this._rxBuf;

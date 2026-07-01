@@ -1,0 +1,26 @@
+[workspace]
+authors = ["Frank Loesche <loeschef@janelia.hhmi.org>"]
+channels = ["conda-forge"]
+name = "g6-webdisplaytools"
+platforms = ["linux-64", "osx-arm64", "win-64", "osx-64"]
+version = "0.1.0"
+
+[tasks]
+# ── FicTrac closed-loop bridge (see fictrac-bridge/README.md) ───────────────
+# Forward args after `--`, e.g.  pixi run bridge -- --proto tcp --frames 60 --log run.jsonl
+bridge = "python fictrac-bridge/bridge.py"
+sim = "python fictrac-bridge/fictrac_sim.py"
+
+# ── JS dev tooling (Node + Prettier come from conda-forge — no npm) ─────────
+# The full test suite. yaml is vendored (js/vendor/yaml), so no package install.
+# The v3 suite pulls in ESM modules that `import 'yaml'`; --import maps that bare
+# specifier to the vendored copy (tests/vendor-yaml.register.mjs).
+test = "node tests/validate-arena-calculations.js && node tests/test-protocol-roundtrip.js && node --import ./tests/vendor-yaml.register.mjs tests/test-protocol-roundtrip-v3.js && node tests/test-arena-wire-g6.js && node tests/test-arena-link.js && node tests/test-arena-runner-g6.js && node tests/test-arena-session.js && node tests/test-run-log.js && node tests/test-bin-classifier.js && node tests/test-pattern-set.js && node tests/test-pat-preview.js"
+format = "prettier --write \"**/*.js\""
+format-check = "prettier --check \"**/*.js\""
+
+[dependencies]
+python = ">=3.10"
+websockets = ">=12"  # closed-loop bridge; on conda-forge → conda dep, not pypi
+nodejs = ">=22.12"   # JS test runner; require() of the ESM yaml build needs >=22.12
+prettier = ">=3.8"   # JS formatter (replaces the npm devDependency)

@@ -60,17 +60,36 @@ When editing web tools, audit all buttons and controls in the modified code sect
 - All web tools are standalone single-page HTML files
 - No build process required
 - Vanilla JavaScript preferred
-- Dependencies via CDN only (Three.js, etc.)
+- Dependencies via CDN or vendored under `js/vendor/` (e.g. `yaml`); no runtime npm
 - Web outputs must match MATLAB outputs exactly
+
+### Dev environment (pixi — the only tool you install)
+
+Dev tooling is managed by **pixi** (`pixi.toml` at the repo root). pixi provides
+Node, Prettier, Python, and `websockets` from conda-forge — **there is no npm,
+`package.json`, or `node_modules`.** A contributor only installs pixi.
+
+```bash
+pixi install          # one-time: provisions Node + Prettier + Python
+pixi run test         # full JS test suite (node)
+pixi run format       # Prettier --write over **/*.js
+pixi run format-check # Prettier --check (matches the old CI check)
+pixi run bridge       # FicTrac closed-loop bridge (see fictrac-bridge/)
+pixi run sim          # FicTrac data simulator
+```
+
+The test suite's only third-party JS dep, `yaml`, is **vendored** (browser build
+only) at `js/vendor/yaml/browser/` and serves both the browser (via the import
+map in `experiment_designer_v3.html`) and Node — no Node-specific build is
+committed. The v3 modules `import 'yaml'` (a bare specifier); under Node that's
+resolved to the vendored browser build by `tests/vendor-yaml.register.mjs` (a
+`--import` resolve hook), which the `test` task wires in for the v3 suite.
+`require()`-ing that ESM build is why `nodejs >= 22.12` is pinned. When bumping
+the vendored `yaml`, replace only `js/vendor/yaml/browser/` (+ `LICENSE`).
 
 ### Code Formatting
 
 This project uses **Prettier** for consistent JavaScript formatting. Configuration is in `.prettierrc`.
-
-**Setup:**
-```bash
-npm install           # Install Prettier (first time only)
-```
 
 **Style rules:**
 - Single quotes (`'string'`)
@@ -81,12 +100,12 @@ npm install           # Install Prettier (first time only)
 
 **Commands:**
 ```bash
-npm run format        # Format all JS files
-npm run format:check  # Check formatting (for CI)
-npx prettier --write path/to/file.js  # Format single file
+pixi run format       # Format all JS files
+pixi run format-check # Check formatting
+pixi run prettier --write path/to/file.js  # Format a single file
 ```
 
-**Before committing:** Run `npm run format` on any modified JavaScript files to ensure consistent style.
+**Before committing:** Run `pixi run format` on any modified JavaScript files to ensure consistent style.
 
 **⚠ Prettier is scoped to `**/*.js` ONLY — never run `prettier --write` on the `*.html` tools.** The `format`/`format:check` scripts target JS by design. The HTML tools are hand-formatted; their embedded `<script>` blocks do NOT match Prettier's HTML-indentation rules, so `prettier --write some_tool.html` reflows the entire file (e.g. ~8,800-line churn on `experiment_designer_v3.html`). Edit HTML by hand and match the surrounding style. (No CI workflow runs Prettier, so a stray HTML format won't be caught automatically.)
 
@@ -97,7 +116,7 @@ Some JavaScript modules are shared between multiple tools and must support diffe
 **Arena Session — the single connection broker** (`js/arena-session.js`, Stage A of the Arena Studio unification):
 - Owns ONE `ArenaLink` + ONE `ArenaRunner` per page and multicasts the link callbacks (`log`/`error`/`disconnect`) to subscribers via `on(event, fn)`. Run mechanism: `runTrial` / `runSequence` / `stop` / `running`; lifecycle: `connect` / `disconnect` / `connected` / `send`. Page-wide singleton via `ArenaSession.shared()`.
 - **Must stay a classic `<script src>` module** (window-global + CommonJS dual-export, **no bare ES `export`**), loaded AFTER `arena-wire-g6.js` / `arena-link.js` / `arena-runner-g6.js` and BEFORE any `<script type="module">` that reads `window.ArenaSession`. This keeps Connect/STOP/run-state alive even if a stale ES-module import fails (the catastrophic-cache gotcha) — never move connection ownership into the module block.
-- Both `arena_console.html` and `experiment_designer_v3.html` use `window.ArenaSession.shared()` instead of constructing their own `ArenaLink` (the console uses only connect/send/events; the designer uses the run mechanism). On involuntary disconnect the broker calls `runner.abort()` (public, added to `arena-runner-g6.js`) — falling back to the legacy private `_clear()` to tolerate a stale-cache runner. Tests: `tests/test-arena-session.js` (`npm run test:session`).
+- Both `arena_console.html` and `experiment_designer_v3.html` use `window.ArenaSession.shared()` instead of constructing their own `ArenaLink` (the console uses only connect/send/events; the designer uses the run mechanism). On involuntary disconnect the broker calls `runner.abort()` (public, added to `arena-runner-g6.js`) — falling back to the legacy private `_clear()` to tolerate a stale-cache runner. Tests: `tests/test-arena-session.js` (`pixi run test` runs the full suite; run a single file with `pixi run node tests/test-arena-session.js`).
 
 **Pat-Parser Dual Export Pattern** (`js/pat-parser.js`):
 - Icon generator loads via `<script src="js/pat-parser.js">` → requires `window.PatParser`
@@ -659,7 +678,7 @@ documents D4 specifically.
 
 ### Tests + scope
 - `tests/test-protocol-roundtrip-v3.js` suites **N1–N10** cover the whole
-  substrate in Node (no browser). Run `npm test` after any `v3-import.js` or
+  substrate in Node (no browser). Run `pixi run test` after any `v3-import.js` or
   `protocol-yaml-v3.js` change.
 - **Out of scope for D4 v1** (design §12): sequence/block-membership import,
   multi-doc YAML streams, pattern-path validation, a per-anchor "merge with

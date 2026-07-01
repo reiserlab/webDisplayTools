@@ -13,8 +13,9 @@ on:
       - 'tests/generate-roundtrip-protocol.js'
       - 'tests/fixtures/v2_*.yaml'
       - 'tests/fixtures/v3_*.yaml'
-      - 'package.json'
-      - 'package-lock.json'
+      - 'js/vendor/yaml/**'
+      - 'tests/vendor-yaml.register.mjs'
+      - 'tests/vendor-yaml.hooks.mjs'
       - '.github/workflows/validate-protocol-roundtrip.yml'
   pull_request:
     paths:
@@ -28,8 +29,9 @@ on:
       - 'tests/generate-roundtrip-protocol.js'
       - 'tests/fixtures/v2_*.yaml'
       - 'tests/fixtures/v3_*.yaml'
-      - 'package.json'
-      - 'package-lock.json'
+      - 'js/vendor/yaml/**'
+      - 'tests/vendor-yaml.register.mjs'
+      - 'tests/vendor-yaml.hooks.mjs'
   workflow_dispatch:
 
 jobs:
@@ -45,14 +47,13 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Run v2 protocol roundtrip tests
         run: node tests/test-protocol-roundtrip.js
 
       - name: Run v3 protocol roundtrip tests
-        run: node tests/test-protocol-roundtrip-v3.js
+        # yaml is vendored (js/vendor/yaml); --import maps the bare 'yaml' specifier
+        # used by the v3 ESM modules to the vendored copy — no npm install needed.
+        run: node --import ./tests/vendor-yaml.register.mjs tests/test-protocol-roundtrip-v3.js
 
       - name: Generate v2 roundtrip YAML (smoke test)
         run: node tests/generate-roundtrip-protocol.js --outdir /tmp/roundtrip-output

@@ -270,11 +270,15 @@
 
     // FNV-1a 32-bit over sorted SD filenames, each followed by '\n'.
     // Matches the Teensy firmware's patternSetId() in SdManager.cpp.
-    var _imul = Math.imul || function (a, b) {
-        var ah = (a >>> 16) & 0xffff, al = a & 0xffff;
-        var bh = (b >>> 16) & 0xffff, bl = b & 0xffff;
-        return ((al * bh + ah * bl) << 16) | (al * bl);
-    };
+    var _imul =
+        Math.imul ||
+        function (a, b) {
+            var ah = (a >>> 16) & 0xffff,
+                al = a & 0xffff;
+            var bh = (b >>> 16) & 0xffff,
+                bl = b & 0xffff;
+            return ((al * bh + ah * bl) << 16) | (al * bl);
+        };
     function computePatternSetId(sdNames) {
         var h = 2166136261;
         for (var i = 0; i < sdNames.length; i++) {
@@ -301,7 +305,9 @@
     function buildManifestTxt(set, ts, opts) {
         opts = opts || {};
         var sdDrive = opts.sdDrive || '(copy to the SD card root)';
-        var sdNames = set.items.map(function (it) { return it.sd_name; });
+        var sdNames = set.items.map(function (it) {
+            return it.sd_name;
+        });
         var lines = [];
         lines.push('Timestamp: ' + ts.iso);
         lines.push('SD Drive: ' + sdDrive);

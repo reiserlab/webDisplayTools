@@ -17,115 +17,143 @@ let reader = null;
 let keepReading = false;
 
 function log(text, cls) {
-  const el = $("log");
-  const span = document.createElement("span");
-  if (cls) span.className = cls;
-  span.textContent = text;
-  el.appendChild(span);
-  el.scrollTop = el.scrollHeight;
+    const el = $('log');
+    const span = document.createElement('span');
+    if (cls) span.className = cls;
+    span.textContent = text;
+    el.appendChild(span);
+    el.scrollTop = el.scrollHeight;
 }
-function setStatus(msg, cls) { const s = $("status"); s.textContent = msg; s.className = cls || ""; }
+function setStatus(msg, cls) {
+    const s = $('status');
+    s.textContent = msg;
+    s.className = cls || '';
+}
 
 function setConnected(on) {
-  $("connect-btn").textContent = on ? "Disconnect" : "Connect panel (serial)";
-  $("send-input").disabled = !on;
-  $("send-btn").disabled = !on;
+    $('connect-btn').textContent = on ? 'Disconnect' : 'Connect panel (serial)';
+    $('send-input').disabled = !on;
+    $('send-btn').disabled = !on;
 }
 
 async function readLoop() {
-  const dec = new TextDecoder();
-  try {
-    while (keepReading && port && port.readable) {
-      reader = port.readable.getReader();
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;                       // reader cancelled
-          if (value) log(dec.decode(value, { stream: true }));
+    const dec = new TextDecoder();
+    try {
+        while (keepReading && port && port.readable) {
+            reader = port.readable.getReader();
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break; // reader cancelled
+                    if (value) log(dec.decode(value, { stream: true }));
+                }
+            } finally {
+                reader.releaseLock();
+                reader = null;
+            }
         }
-      } finally {
-        reader.releaseLock();
-        reader = null;
-      }
+    } catch (err) {
+        log(`\n[read error: ${err.message}]\n`, 'status-err');
     }
-  } catch (err) {
-    log(`\n[read error: ${err.message}]\n`, "status-err");
-  }
 }
 
 async function connect() {
-  try {
-    port = await navigator.serial.requestPort({ filters: [{ usbVendorId: RP_VID }] });
-    await port.open({ baudRate: BAUD });
-  } catch (err) {
-    setStatus(err.name === "NotFoundError"
-      ? "No panel selected. Pick the panel’s serial port in the chooser."
-      : `Could not open serial port: ${err.message}`, "status-err");
-    port = null;
-    return;
-  }
-  keepReading = true;
-  setConnected(true);
-  const info = port.getInfo ? port.getInfo() : {};
-  setStatus("Connected — panel is running firmware. (Don’t press RESET/RUN: it drops the USB link.)", "status-ok");
-  log(`--- connected (VID 0x${(info.usbVendorId || RP_VID).toString(16)}, ${BAUD} baud) ---\n`, "status-ok");
-  readLoop();
+    try {
+        port = await navigator.serial.requestPort({ filters: [{ usbVendorId: RP_VID }] });
+        await port.open({ baudRate: BAUD });
+    } catch (err) {
+        setStatus(
+            err.name === 'NotFoundError'
+                ? 'No panel selected. Pick the panel’s serial port in the chooser.'
+                : `Could not open serial port: ${err.message}`,
+            'status-err'
+        );
+        port = null;
+        return;
+    }
+    keepReading = true;
+    setConnected(true);
+    const info = port.getInfo ? port.getInfo() : {};
+    setStatus(
+        'Connected — panel is running firmware. (Don’t press RESET/RUN: it drops the USB link.)',
+        'status-ok'
+    );
+    log(
+        `--- connected (VID 0x${(info.usbVendorId || RP_VID).toString(16)}, ${BAUD} baud) ---\n`,
+        'status-ok'
+    );
+    readLoop();
 }
 
 // A reset / power-cycle re-enumerates the port; reopen and resume reading. For
 // self-test builds (which wait for the host) this recaptures the fresh banner.
 async function reopenIfDropped() {
-  if (keepReading && port && !port.readable) {
-    try {
-      await port.open({ baudRate: BAUD });
-      log("\n--- reconnected ---\n", "status-ok");
-      readLoop();
-    } catch { /* not ready yet; another connect event will retry */ }
-  }
+    if (keepReading && port && !port.readable) {
+        try {
+            await port.open({ baudRate: BAUD });
+            log('\n--- reconnected ---\n', 'status-ok');
+            readLoop();
+        } catch {
+            /* not ready yet; another connect event will retry */
+        }
+    }
 }
 
 async function disconnect() {
-  keepReading = false;
-  try { if (reader) await reader.cancel(); } catch { /* ignore */ }
-  try { if (port) await port.close(); } catch { /* ignore */ }
-  port = null;
-  setConnected(false);
-  setStatus("Disconnected.");
-  log("\n--- disconnected ---\n");
+    keepReading = false;
+    try {
+        if (reader) await reader.cancel();
+    } catch {
+        /* ignore */
+    }
+    try {
+        if (port) await port.close();
+    } catch {
+        /* ignore */
+    }
+    port = null;
+    setConnected(false);
+    setStatus('Disconnected.');
+    log('\n--- disconnected ---\n');
 }
 
 async function sendLine() {
-  const input = $("send-input");
-  const text = input.value;
-  if (!port || !port.writable) return;
-  const writer = port.writable.getWriter();
-  try {
-    await writer.write(new TextEncoder().encode(text + "\n"));
-    log(`> ${text}\n`, "sent");
-    input.value = "";
-  } catch (err) {
-    log(`\n[write error: ${err.message}]\n`, "status-err");
-  } finally {
-    writer.releaseLock();
-  }
+    const input = $('send-input');
+    const text = input.value;
+    if (!port || !port.writable) return;
+    const writer = port.writable.getWriter();
+    try {
+        await writer.write(new TextEncoder().encode(text + '\n'));
+        log(`> ${text}\n`, 'sent');
+        input.value = '';
+    } catch (err) {
+        log(`\n[write error: ${err.message}]\n`, 'status-err');
+    } finally {
+        writer.releaseLock();
+    }
 }
 
 function main() {
-  if (!("serial" in navigator)) {
-    $("unsupported").style.display = "block";
-    $("app").style.display = "none";
-    return;
-  }
-  $("connect-btn").addEventListener("click", () => (port ? disconnect() : connect()));
-  $("send-btn").addEventListener("click", sendLine);
-  $("send-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendLine(); });
-  $("clear-btn").addEventListener("click", () => { $("log").textContent = ""; });
-  // Survive a panel reset / power-cycle: note the drop and auto-reconnect rather
-  // than tearing the session down (the user's Disconnect button does that).
-  navigator.serial.addEventListener("disconnect", () => {
-    if (keepReading && port) log("\n--- panel disconnected (reset / power-cycle); waiting… ---\n", "status-err");
-  });
-  navigator.serial.addEventListener("connect", reopenIfDropped);
+    if (!('serial' in navigator)) {
+        $('unsupported').style.display = 'block';
+        $('app').style.display = 'none';
+        return;
+    }
+    $('connect-btn').addEventListener('click', () => (port ? disconnect() : connect()));
+    $('send-btn').addEventListener('click', sendLine);
+    $('send-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') sendLine();
+    });
+    $('clear-btn').addEventListener('click', () => {
+        $('log').textContent = '';
+    });
+    // Survive a panel reset / power-cycle: note the drop and auto-reconnect rather
+    // than tearing the session down (the user's Disconnect button does that).
+    navigator.serial.addEventListener('disconnect', () => {
+        if (keepReading && port)
+            log('\n--- panel disconnected (reset / power-cycle); waiting… ---\n', 'status-err');
+    });
+    navigator.serial.addEventListener('connect', reopenIfDropped);
 }
 
 main();

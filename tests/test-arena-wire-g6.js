@@ -67,15 +67,15 @@ console.log('=== Simple command frames (all_on.py / main.js) ===');
 checkBytes('encodeAllOn', Wire.encodeAllOn(), '01 ff');
 checkBytes('encodeAllOff', Wire.encodeAllOff(), '01 00');
 checkBytes('encodeStop', Wire.encodeStop(), '01 30');
-checkBytes('encodeGetIp', Wire.encodeGetIp(), '01 66');
-checkBytes('encodeGetControllerInfo', Wire.encodeGetControllerInfo(), '01 67');
-checkBytes('getControllerInfo (alias)', Wire.getControllerInfo(), '01 67');
-checkBytes('encodeGetSpiClock', Wire.encodeGetSpiClock(), '01 18');
-checkBytes('encodeGetFramesSent', Wire.encodeGetFramesSent(), '01 19');
-checkBytes('encodeResetFramesSent', Wire.encodeResetFramesSent(), '01 1a');
+checkBytes('encodeGetIp', Wire.encodeGetIp(), '01 c1');
+checkBytes('encodeGetControllerInfo', Wire.encodeGetControllerInfo(), '01 c2');
+checkBytes('getControllerInfo (alias)', Wire.getControllerInfo(), '01 c2');
+checkBytes('encodeGetSpiClock', Wire.encodeGetSpiClock(), '01 c6');
+checkBytes('encodeGetFramesSent', Wire.encodeGetFramesSent(), '01 33');
+checkBytes('encodeResetFramesSent', Wire.encodeResetFramesSent(), '01 34');
 
 console.log('\n=== uint16 set-commands (main.js framing) ===');
-checkBytes('encodeSetSpiClock(20)', Wire.encodeSetSpiClock(20), '03 17 14 00');
+checkBytes('encodeSetSpiClock(20)', Wire.encodeSetSpiClock(20), '03 c5 14 00');
 checkBytes('encodeSetRefreshRate(100)', Wire.encodeSetRefreshRate(100), '03 16 64 00');
 checkBytes('encodeSetRefreshRate(200)', Wire.encodeSetRefreshRate(200), '03 16 c8 00');
 checkBytes('encodeSetFramePosition(10)', Wire.encodeSetFramePosition(10), '03 70 0a 00');
@@ -142,8 +142,8 @@ checkThrows('patternId 0 throws', () => Wire.encodeTrialParams({ patternId: 0 })
 // SPI clock is clamped to 1..30 MHz on the firmware.
 checkThrows('SPI clock 0 throws', () => Wire.encodeSetSpiClock(0));
 checkThrows('SPI clock 31 throws', () => Wire.encodeSetSpiClock(31));
-checkBytes('SPI clock 1 ok', Wire.encodeSetSpiClock(1), '03 17 01 00');
-checkBytes('SPI clock 30 ok', Wire.encodeSetSpiClock(30), '03 17 1e 00');
+checkBytes('SPI clock 1 ok', Wire.encodeSetSpiClock(1), '03 c5 01 00');
+checkBytes('SPI clock 30 ok', Wire.encodeSetSpiClock(30), '03 c5 1e 00');
 
 console.log('\n=== stream-frame (0x32) — firmware SerialManager stream header ===');
 check('OPCODES.STREAM_FRAME', Wire.OPCODES.STREAM_FRAME, 0x32);
