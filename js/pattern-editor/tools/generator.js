@@ -216,7 +216,10 @@ const PatternGenerator = {
             }
 
             frames.push(frame);
-            stretchValues.push(1);
+            // Per-LED duty_cycle byte written to the .pat (0-255, 128 = 50%).
+            // Caller passes params.stretch from the editor's brightness control;
+            // 128 default keeps patterns visible on hardware (see pat-encoder.js).
+            stretchValues.push(params.stretch ?? 128);
         }
 
         return {
@@ -278,7 +281,10 @@ const PatternGenerator = {
             }
 
             frames.push(frame);
-            stretchValues.push(1);
+            // Per-LED duty_cycle byte written to the .pat (0-255, 128 = 50%).
+            // Caller passes params.stretch from the editor's brightness control;
+            // 128 default keeps patterns visible on hardware (see pat-encoder.js).
+            stretchValues.push(params.stretch ?? 128);
         }
 
         return {
@@ -468,7 +474,10 @@ const PatternGenerator = {
             }
 
             frames.push(frame);
-            stretchValues.push(1);
+            // Per-LED duty_cycle byte written to the .pat (0-255, 128 = 50%).
+            // Caller passes params.stretch from the editor's brightness control;
+            // 128 default keeps patterns visible on hardware (see pat-encoder.js).
+            stretchValues.push(params.stretch ?? 128);
         }
 
         return {
@@ -787,7 +796,10 @@ const PatternGenerator = {
             }
 
             frames.push(frame);
-            stretchValues.push(1);
+            // Per-LED duty_cycle byte written to the .pat (0-255, 128 = 50%).
+            // Caller passes params.stretch from the editor's brightness control;
+            // 128 default keeps patterns visible on hardware (see pat-encoder.js).
+            stretchValues.push(params.stretch ?? 128);
         }
 
         return {
@@ -948,7 +960,10 @@ const PatternGenerator = {
             }
 
             frames.push(frame);
-            stretchValues.push(1);
+            // Per-LED duty_cycle byte written to the .pat (0-255, 128 = 50%).
+            // Caller passes params.stretch from the editor's brightness control;
+            // 128 default keeps patterns visible on hardware (see pat-encoder.js).
+            stretchValues.push(params.stretch ?? 128);
         }
 
         return {
@@ -996,7 +1011,10 @@ const PatternGenerator = {
             const brightness = low < high ? low + i : low - i;
             frame.fill(brightness);
             frames.push(frame);
-            stretchValues.push(1);
+            // Per-LED duty_cycle byte written to the .pat (0-255, 128 = 50%).
+            // Caller passes params.stretch from the editor's brightness control;
+            // 128 default keeps patterns visible on hardware (see pat-encoder.js).
+            stretchValues.push(params.stretch ?? 128);
         }
 
         return {

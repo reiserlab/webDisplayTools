@@ -1706,7 +1706,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.36 | 2026-06-12 07:54 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.37 | 2026-07-01 00:47 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1793,6 +1793,18 @@
                     </div>
 
                     <div class="section-title">Parameters</div>
+
+                    <!-- Global per-LED brightness = the duty_cycle byte written to every
+                         panel block of the .pat (0-255, 128 = 50%). This is the HARDWARE
+                         brightness knob, applied to all frames. It is NOT the spatial
+                         grating "Duty (%)" below. See issue #97. -->
+                    <div class="control-group" id="patBrightnessGroup">
+                        <label for="patBrightness" title="Per-LED duty cycle byte written to the .pat file (0-255, 128 = 50% brightness). Applies to all frames. Separate from the spatial grating 'Duty (%)'.">Brightness / duty (0–255)</label>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <input type="range" id="patBrightness" min="0" max="255" value="128" step="1" style="flex: 1;" title="Per-LED duty cycle byte (0-255, 128 = 50% brightness). Applies to all frames.">
+                            <input type="number" id="patBrightnessNum" min="0" max="255" value="128" step="1" style="width: 64px;" title="Per-LED duty cycle byte (0-255)">
+                        </div>
+                    </div>
 
                     <!-- Common grating/sine params -->
                     <div id="gratingParams">
@@ -2298,7 +2310,7 @@
 
                 <div class="stretch-control" style="display: flex; align-items: center; gap: 0.25rem; padding: 0 0.5rem; border-left: 1px solid var(--border);">
                     <label style="font-size: 0.75rem; color: var(--text-dim);">Stretch:</label>
-                    <input type="number" id="stretchValue" value="1" min="1" max="255" step="1" style="width: 50px; padding: 0.2rem 0.4rem; font-size: 0.75rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                    <input type="number" id="stretchValue" value="128" min="0" max="255" step="1" title="Per-frame per-LED duty cycle byte (0-255, 128 = 50%). The global Brightness control sets all frames at once." style="width: 50px; padding: 0.2rem 0.4rem; font-size: 0.75rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
                 </div>
 
                 <button class="play-btn" id="playBtn" title="Play/Pause">▶</button>
@@ -2795,6 +2807,10 @@
             // Stretch value input
             document.getElementById('stretchValue').addEventListener('change', handleStretchChange);
 
+            // Global brightness (per-LED duty_cycle byte) — range + number stay in sync
+            document.getElementById('patBrightness').addEventListener('input', e => applyGlobalBrightness(parseInt(e.target.value, 10)));
+            document.getElementById('patBrightnessNum').addEventListener('input', e => applyGlobalBrightness(parseInt(e.target.value, 10)));
+
             // Image converter initialization
             initImageConverter();
 
@@ -3173,6 +3189,9 @@
                 state.isDirty = false;
                 state.editor.currentFrame = 0;
 
+                // Reflect the loaded pattern's baked duty_cycle in the brightness control
+                syncGlobalBrightnessFromPattern();
+
                 // Resolve arena config: V2 header is authoritative, dimension-match is fallback
                 let matchingConfig = null;
 
@@ -3250,7 +3269,7 @@
                 pixelRows: state.pattern.pixelRows,
                 pixelCols: state.pattern.pixelCols,
                 frames: state.pattern.frames,
-                stretchValues: state.pattern.stretchValues || new Array(state.pattern.numFrames).fill(1),
+                stretchValues: state.pattern.stretchValues || new Array(state.pattern.numFrames).fill(getPatBrightness()),
                 // V2 header metadata
                 generation_id: getGenerationId(gen),
                 arena_id: configName ? getArenaId(gen, configName) : 0,
@@ -3334,7 +3353,7 @@
                 pixelRows: pixelRows,
                 pixelCols: pixelCols,
                 frames: [new Uint8Array(pixelRows * pixelCols)],
-                stretchValues: [1]
+                stretchValues: [getPatBrightness()]
             };
 
             state.filename = 'untitled.pat';
@@ -3671,7 +3690,9 @@
             let params = {
                 high: highLevel,
                 low: lowLevel,
-                gsMode: gsMode
+                gsMode: gsMode,
+                // Per-LED duty_cycle byte (0-255, 128 = 50%) baked into every frame.
+                stretch: getPatBrightness()
             };
 
             let pattern;
@@ -4428,7 +4449,7 @@
                 pixelRows: entry.pixelRows,
                 pixelCols: entry.pixelCols,
                 frames: [new Uint8Array(entry.frame)],
-                stretchValues: [1]
+                stretchValues: [getPatBrightness()]
             };
 
             state.editor.editingClipboardId = id;
@@ -4650,27 +4671,63 @@
             const stretchInput = document.getElementById('stretchValue');
             if (state.pattern) {
                 frameInfo.textContent = `${state.editor.currentFrame + 1} / ${state.pattern.numFrames}`;
-                // Update stretch value display
-                const stretch = state.pattern.stretchValues?.[state.editor.currentFrame] || 1;
+                // Update stretch value display (per-LED duty_cycle byte for this frame)
+                const stretch = state.pattern.stretchValues?.[state.editor.currentFrame] ?? getPatBrightness();
                 stretchInput.value = stretch;
             } else {
                 frameInfo.textContent = '— / —';
-                stretchInput.value = 1;
+                stretchInput.value = getPatBrightness();
             }
+        }
+
+        // ---- Global brightness = per-LED duty_cycle byte (0-255) ----
+        // The last byte of every .pat panel block; 128 = 50% hardware brightness.
+        // This is DISTINCT from the spatial grating "Duty (%)" (fraction of ON pixels).
+        // Legacy code baked a fixed 1 (~0.4%), which renders blank on hardware (issue #97).
+        function getPatBrightness() {
+            const el = document.getElementById('patBrightness');
+            let v = el ? parseInt(el.value, 10) : 128;
+            if (isNaN(v)) v = 128;
+            return Math.max(0, Math.min(255, v));
+        }
+
+        // Global control: set the duty_cycle byte for EVERY frame of the current pattern.
+        function applyGlobalBrightness(v) {
+            v = isNaN(v) ? 128 : Math.max(0, Math.min(255, v));
+            const range = document.getElementById('patBrightness');
+            const num = document.getElementById('patBrightnessNum');
+            if (range) range.value = v;
+            if (num) num.value = v;
+            if (state.pattern) {
+                const n = state.pattern.numFrames || state.pattern.stretchValues?.length || 1;
+                state.pattern.stretchValues = new Array(n).fill(v);
+                state.isDirty = true;
+                updateStatus();
+                updateFrameInfo();
+            }
+        }
+
+        // Reflect a loaded pattern's baked duty_cycle back into the slider.
+        function syncGlobalBrightnessFromPattern() {
+            const v = state.pattern?.stretchValues?.[0] ?? 128;
+            const range = document.getElementById('patBrightness');
+            const num = document.getElementById('patBrightnessNum');
+            if (range) range.value = v;
+            if (num) num.value = v;
         }
 
         function handleStretchChange(e) {
             if (!state.pattern) return;
 
             const newStretch = parseInt(e.target.value);
-            if (isNaN(newStretch) || newStretch < 1) {
-                e.target.value = 1;
+            if (isNaN(newStretch) || newStretch < 0 || newStretch > 255) {
+                e.target.value = getPatBrightness();
                 return;
             }
 
             // Initialize stretchValues if not present
             if (!state.pattern.stretchValues) {
-                state.pattern.stretchValues = new Array(state.pattern.numFrames).fill(1);
+                state.pattern.stretchValues = new Array(state.pattern.numFrames).fill(getPatBrightness());
             }
 
             state.pattern.stretchValues[state.editor.currentFrame] = newStretch;
@@ -5448,7 +5505,7 @@
                 pixelRows: pixelRows,
                 pixelCols: pixelCols,
                 frames: frames,
-                stretchValues: new Array(totalFrames).fill(1)
+                stretchValues: new Array(totalFrames).fill(getPatBrightness())
             };
 
             // Generate filename based on motion type
@@ -5768,7 +5825,7 @@
                 pixelRows: pixelRows,
                 pixelCols: pixelCols,
                 frames: frames,
-                stretchValues: new Array(frames.length).fill(1)
+                stretchValues: new Array(frames.length).fill(getPatBrightness())
             };
 
             state.filename = `animation_${frames.length}f.pat`;
