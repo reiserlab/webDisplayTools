@@ -8,8 +8,13 @@ on:
       - 'js/protocol-yaml.js'
       - 'js/protocol-yaml-v3.js'
       - 'js/plugin-registry.js'
+      - 'js/arena-wire-g6.js'
+      - 'js/arena-runner-g6.js'
       - 'tests/test-protocol-roundtrip.js'
       - 'tests/test-protocol-roundtrip-v3.js'
+      - 'tests/test-plugin-registry.js'
+      - 'tests/test-arena-wire-g6.js'
+      - 'tests/test-arena-runner-g6.js'
       - 'tests/generate-roundtrip-protocol.js'
       - 'tests/fixtures/v2_*.yaml'
       - 'tests/fixtures/v3_*.yaml'
@@ -24,8 +29,13 @@ on:
       - 'js/protocol-yaml.js'
       - 'js/protocol-yaml-v3.js'
       - 'js/plugin-registry.js'
+      - 'js/arena-wire-g6.js'
+      - 'js/arena-runner-g6.js'
       - 'tests/test-protocol-roundtrip.js'
       - 'tests/test-protocol-roundtrip-v3.js'
+      - 'tests/test-plugin-registry.js'
+      - 'tests/test-arena-wire-g6.js'
+      - 'tests/test-arena-runner-g6.js'
       - 'tests/generate-roundtrip-protocol.js'
       - 'tests/fixtures/v2_*.yaml'
       - 'tests/fixtures/v3_*.yaml'
@@ -54,6 +64,17 @@ jobs:
         # yaml is vendored (js/vendor/yaml); --import maps the bare 'yaml' specifier
         # used by the v3 ESM modules to the vendored copy — no npm install needed.
         run: node --import ./tests/vendor-yaml.register.mjs tests/test-protocol-roundtrip-v3.js
+
+      - name: Run plugin-registry unit tests
+        # clampToSchema + isG6OnlyCommand. plugin-registry.js is ESM; require()-of-ESM
+        # needs Node >= 22.12 (satisfied by node-version 24 above).
+        run: node tests/test-plugin-registry.js
+
+      - name: Run G6 wire encoder tests
+        run: node tests/test-arena-wire-g6.js
+
+      - name: Run G6 sequence runner tests
+        run: node tests/test-arena-runner-g6.js
 
       - name: Generate v2 roundtrip YAML (smoke test)
         run: node tests/generate-roundtrip-protocol.js --outdir /tmp/roundtrip-output
