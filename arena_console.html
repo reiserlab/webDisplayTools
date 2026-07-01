@@ -1350,7 +1350,7 @@
                 </div>
                 <div id="log"></div>
             </div>
-            <footer id="footer">Arena Console v6 | 2026-07-01 12:17 ET</footer>
+            <footer id="footer">Arena Console v6 | 2026-07-01 12:50 ET</footer>
         </div>
 
         <!-- Paste-a-frame modal -->
@@ -2453,7 +2453,10 @@
                     (r) => {
                         const n = Wire.decodeFileCount(r);
                         return n == null ? null : n + ' files';
-                    }
+                    },
+                    // First read after connect: the SD can be slow to spin up, and the
+                    // 500 ms ArenaLink default would fail the count (empty SD list).
+                    { timeoutMs: 2000 }
                 );
                 if (resp && resp.ok) {
                     const n = Wire.decodeFileCount(resp);
@@ -2477,11 +2480,16 @@
 
                 tbody.innerHTML = '<tr><td colspan="3" class="mem-empty">fetching…</td></tr>';
 
-                // Fetch each filename silently (no console log per file)
+                // Fetch each filename silently (no console log per file). Use a generous
+                // per-read timeout: right after connect the SD can be slow to respond, and
+                // the 500 ms ArenaLink default left "(error)" rows / an empty picker (the
+                // "SD list didn't load on connect" bug).
                 const names = [];
                 for (let idx = 1; idx <= count; idx++) {
                     try {
-                        const raw = await session.send(Wire.encodeGetPatternFilename(idx));
+                        const raw = await session.send(Wire.encodeGetPatternFilename(idx), {
+                            timeoutMs: 2000
+                        });
                         const parsed = Wire.decodeResponse(raw);
                         names.push(parsed && parsed.ok ? Wire.decodePatternFilename(parsed) : null);
                     } catch (_) {
