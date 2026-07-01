@@ -4,6 +4,8 @@
  * Provides:
  *   - BUILTIN_PLUGINS: definitions for LEDControllerPlugin, BiasPlugin
  *   - CONTROLLER_COMMANDS: controller command definitions
+ *   - G6_ONLY_COMMANDS / isG6OnlyCommand(name): controller commands valid only
+ *     on the G6 controller board (setAnalogOut, setDigitalOut)
  *   - getPluginCommands(pluginName): get available commands for a plugin
  *   - getCommandParams(pluginName, commandName): get parameter schema
  *   - getAllCommandOptions(enabledPlugins): get all available commands for dropdowns
@@ -104,6 +106,52 @@ var CONTROLLER_COMMANDS = {
                 label: 'Frame index (0-based)'
             }
         }
+    },
+    // ── G6-only I/O commands (see G6_ONLY_COMMANDS below) ─────────────────────
+    // These drive hardware on the G6 controller board itself (not a plugin
+    // device), so they are controller commands. They are instantaneous — they
+    // send one wire frame and do NOT advance the sequence clock.
+    setAnalogOut: {
+        label: 'Set Analog Out (G6)',
+        description:
+            'Drive BNC J27 (MCP4725 DAC) to a DC level. G6 controller only ' +
+            '(SET_AO_VOLTAGE 0xA0).',
+        params: {
+            mv: {
+                type: 'number',
+                required: true,
+                default: 0,
+                label: 'Voltage (mV): 0–5000'
+            }
+        }
+    },
+    setDigitalOut: {
+        label: 'Set Digital Out (G6)',
+        description:
+            'Drive DO1 (BNC J3) or DO2 (BNC J4) TTL output HIGH/LOW. G6 ' +
+            'controller only (SET_DIGITAL_OUT 0xAA).',
+        params: {
+            channel: {
+                type: 'select',
+                required: true,
+                default: 1,
+                options: [
+                    { value: 1, label: 'DO1 (J3)' },
+                    { value: 2, label: 'DO2 (J4)' }
+                ],
+                label: 'Channel'
+            },
+            state: {
+                type: 'select',
+                required: true,
+                default: 0,
+                options: [
+                    { value: 0, label: 'LOW' },
+                    { value: 1, label: 'HIGH' }
+                ],
+                label: 'State'
+            }
+        }
     }
 };
 
@@ -115,6 +163,19 @@ var CONTROLLER_COMMANDS = {
  */
 function isKnownControllerCommand(name) {
     return Object.prototype.hasOwnProperty.call(CONTROLLER_COMMANDS, name);
+}
+
+/**
+ * Controller commands that are ONLY valid on the G6 controller board (they drive
+ * G6-specific hardware). Absence from this set means the command is supported on
+ * all generations — so existing commands need no annotation. Used by the editor
+ * to hide/flag these on a non-G6 rig, and to soft-warn on export.
+ */
+var G6_ONLY_COMMANDS = new Set(['setAnalogOut', 'setDigitalOut']);
+
+/** Is `name` a controller command restricted to the G6 controller board? */
+function isG6OnlyCommand(name) {
+    return G6_ONLY_COMMANDS.has(name);
 }
 
 // ════════════════════════════════════════════════════
@@ -825,6 +886,8 @@ var PluginRegistry = {
     getPluginCommands: getPluginCommands,
     getCommandParams: getCommandParams,
     isKnownControllerCommand: isKnownControllerCommand,
+    G6_ONLY_COMMANDS: G6_ONLY_COMMANDS,
+    isG6OnlyCommand: isG6OnlyCommand,
     getAllCommandOptions: getAllCommandOptions,
     createPluginEntry: createPluginEntry,
     findPluginDefByClass: findPluginDefByClass,
@@ -856,6 +919,8 @@ export {
     getPluginCommands,
     getCommandParams,
     isKnownControllerCommand,
+    G6_ONLY_COMMANDS,
+    isG6OnlyCommand,
     getAllCommandOptions,
     createPluginEntry,
     findPluginDefByClass,

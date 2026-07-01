@@ -1,0 +1,44 @@
+version: 3
+
+# ============================================================================
+# G6 analog/digital output smoke test — exercises the two G6-only controller
+# commands (setAnalogOut → SET_AO_VOLTAGE 0xA0, setDigitalOut → SET_DIGITAL_OUT
+# 0xAA) interleaved with a trialParams and waits. Both are instantaneous (no
+# duration, no clock advance). Targets a G6 rig so the commands are legal.
+# ============================================================================
+
+experiment_info:
+  name: "G6 analog/digital output smoke test"
+  author: "webDisplayTools"
+
+rig: "./configs/rigs/cshl_g6_2x10.yaml"
+
+experiment:
+  - "trigger_and_show"
+
+conditions:
+  # Raise DO1, set the DAC to 2.5 V, show a pattern, then drop DO1 back low.
+  - name: "trigger_and_show"
+    commands:
+      - type: "controller"
+        command_name: "setDigitalOut"
+        channel: 1
+        state: 1
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 2500
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sq"
+        pattern_ID: 2
+        duration: 3
+        mode: 2
+        frame_index: 0
+        frame_rate: 5
+        gain: 0
+      - type: "wait"
+        duration: 3
+      - type: "controller"
+        command_name: "setDigitalOut"
+        channel: 1
+        state: 0

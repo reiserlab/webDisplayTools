@@ -1623,6 +1623,7 @@
             listV3PluginNames,
             getV3CommandParams,
             isKnownControllerCommand,
+            isG6OnlyCommand,
             BUILTIN_PLUGINS,
             createPluginEntry,
             mapRigPluginToBuiltin,
@@ -1692,6 +1693,17 @@
         // current AND its arena resolved. null → the builder is blocked.
         function rigArenaConfig() {
             return rigIsCurrent() && loadedRig.arenaConfig ? loadedRig.arenaConfig : null;
+        }
+        // Resolved arena generation ('G6','G4.1','G4','G3') when an in-session rig is
+        // current and its arena is a known config; null when unknown (no in-session
+        // rig loaded, or a path/unknown arena). Used to gate G6-only controller
+        // commands: we hide them ONLY when the generation is known AND non-G6 — an
+        // unknown generation still shows them (the export warning + runner skip are
+        // the backstops), so the common "rig is just a path" case isn't over-hidden.
+        function rigGeneration() {
+            const name = rigArenaConfig();
+            const cfg = name ? getConfig(name) : null;
+            return cfg && cfg.arena ? cfg.arena.generation : null;
         }
 
         // Built-in rigs offered in the Settings → Rig dropdown, from configs/rigs/index.json
@@ -5818,7 +5830,11 @@
 
             // Controller commands
             const ctrlGroup = el('optgroup', { label: 'Controller' });
+            const ctrlGen = rigGeneration();
             for (const [name, def] of Object.entries(CONTROLLER_COMMANDS)) {
+                // Hide G6-only commands only when the arena generation is KNOWN and
+                // non-G6. Unknown generation still offers them (see rigGeneration()).
+                if (isG6OnlyCommand(name) && ctrlGen && ctrlGen !== 'G6') continue;
                 ctrlGroup.appendChild(el('option', { value: 'controller:' + name }, name));
             }
             select.appendChild(ctrlGroup);
@@ -5966,6 +5982,17 @@
                         class: 'raw-badge',
                         title: 'Unsupported controller command on G6 — preserved on export, but the arena runner will skip it with an error. (e.g. setColorDepth maps to SWITCH_GRAYSCALE 0x06, which was dropped on G6 — color depth is set in the .pat/SD header, not at runtime.)'
                     }, '⚠ unsupported'));
+                } else if (cmd.command_name && isG6OnlyCommand(cmd.command_name)) {
+                    // G6-only command on a KNOWN non-G6 arena: preserved on export,
+                    // but the runner will skip it. Only badged when the generation
+                    // is resolved and non-G6 (unknown generation shows no badge).
+                    const g6Gen = rigGeneration();
+                    if (g6Gen && g6Gen !== 'G6') {
+                        head.appendChild(el('span', {
+                            class: 'raw-badge',
+                            title: 'G6-only command on a ' + g6Gen + ' arena — drives hardware on the G6 controller board (BNC AO/DO). Preserved on export, but the arena runner will skip it.'
+                        }, '⚠ G6-only'));
+                    }
                 }
             }
             card.appendChild(head);
@@ -5998,7 +6025,7 @@
             card.appendChild(actions);
 
             const detailKeys = {
-                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'posX'],
+                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'posX', 'mv', 'channel', 'state'],
                 wait: ['duration'],
                 plugin: []
             }[cmd.type] || [];
@@ -6290,7 +6317,7 @@
                 banner.style.display = 'none';
                 return;
             }
-            const { warnings, totalCount } = collectExportWarnings(experiment);
+            const { warnings, totalCount } = collectExportWarnings(experiment, rigGeneration());
             if (totalCount === 0) {
                 banner.style.display = 'none';
                 return;

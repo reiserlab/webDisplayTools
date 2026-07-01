@@ -3897,6 +3897,63 @@ console.log('\n--- Suite 32: variables ordering (frozen-editor bugfix) ---');
     }
 }
 
+// ─── Suite 33: G6-only I/O commands (setAnalogOut / setDigitalOut) ──────────
+console.log('\n--- Suite 33: G6-only analog/digital output commands ---');
+{
+    const text = readFixture('v3_g6_io.yaml');
+    const exp1 = parseV3Protocol(text);
+    const regen = generateV3Protocol(exp1);
+    const exp2 = parseV3Protocol(regen);
+
+    check('33.1: version', exp1.version, 3);
+    check('33.2: single condition', exp1.conditions.length, 1);
+
+    const cmds = exp1.conditions[0].commands;
+    const dOn = cmds.find((c) => c.command_name === 'setDigitalOut' && c.state === 1);
+    const ao = cmds.find((c) => c.command_name === 'setAnalogOut');
+    const dOff = cmds.find((c) => c.command_name === 'setDigitalOut' && c.state === 0);
+
+    checkTrue('33.3: setDigitalOut (HIGH) parsed', !!dOn);
+    check('33.4: setDigitalOut channel preserved', dOn && dOn.channel, 1);
+    check('33.5: setDigitalOut state=1 preserved', dOn && dOn.state, 1);
+    checkTrue('33.6: setAnalogOut parsed', !!ao);
+    check('33.7: setAnalogOut mv preserved', ao && ao.mv, 2500);
+    checkTrue('33.8: setDigitalOut (LOW) parsed', !!dOff);
+    check('33.9: setDigitalOut state=0 preserved', dOff && dOff.state, 0);
+
+    // Fields must NOT be swallowed into _unknownKeys (they're first-class keys).
+    checkTrue(
+        '33.10: mv is not an unknown key',
+        !(ao && ao._unknownKeys && 'mv' in ao._unknownKeys)
+    );
+
+    // parse → generate → parse is stable
+    checkTrue(
+        '33.11: parse → generate → parse data model stable',
+        JSON.stringify(dropDoc(exp1)) === JSON.stringify(dropDoc(exp2))
+    );
+    checkTrue('33.12: mv survives in regen YAML', regen.includes('mv: 2500'));
+    checkTrue('33.13: channel survives in regen YAML', /channel: 1/.test(regen));
+
+    // Export warnings: G6-only command warns on a non-G6 arena, not on G6.
+    const warnG6 = collectExportWarnings(exp1, 'G6');
+    const warnG41 = collectExportWarnings(exp1, 'G4.1');
+    const warnNone = collectExportWarnings(exp1); // no generation → no g6 warning
+    const g6Warns = (w) => w.warnings.filter((x) => x.kind === 'g6-only-command');
+    check('33.14: no g6-only warning on G6', g6Warns(warnG6).length, 0);
+    check('33.15: two g6-only warnings on G4.1 (AO + DO)', g6Warns(warnG41).length, 2);
+    check('33.16: no g6-only warning when generation unknown', g6Warns(warnNone).length, 0);
+    checkTrue(
+        '33.17: warning names the command + generation',
+        g6Warns(warnG41).some((x) => x.name === 'setAnalogOut' && /G4\.1/.test(x.message))
+    );
+
+    // Instantaneous: neither command contributes a duration (only trialParams
+    // duration 3 + wait 3 count). We assert no duration field leaked onto them.
+    checkTrue('33.18: setAnalogOut has no duration field', ao && ao.duration === undefined);
+    checkTrue('33.19: setDigitalOut has no duration field', dOn && dOn.duration === undefined);
+}
+
 // ─── Results ────────────────────────────────────────────────────────────────
 console.log('\n=== Results: ' + passedTests + '/' + totalTests + ' passed ===');
 if (failedTests.length > 0) {

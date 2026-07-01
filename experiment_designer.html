@@ -1430,6 +1430,13 @@ function createCommandFromSelectValue(value) {
         if (parts[1] === 'trialParams') {
             cmd.pattern = ''; cmd.pattern_ID = 1; cmd.duration = 5;
             cmd.mode = 2; cmd.frame_index = 1; cmd.frame_rate = 60; cmd.gain = 0;
+        } else if (parts[1] === 'setAnalogOut') {
+            // G6-only: default 0 mV. Params round-trip on export; inline editing
+            // is v3-designer only (v2 table doesn't render per-command params).
+            cmd.mv = 0;
+        } else if (parts[1] === 'setDigitalOut') {
+            // G6-only: default DO1 (channel 1) LOW (state 0).
+            cmd.channel = 1; cmd.state = 0;
         }
         return cmd;
     } else if (parts[0] === 'wait') {

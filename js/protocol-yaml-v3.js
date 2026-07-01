@@ -65,11 +65,21 @@ const KNOWN_COMMAND_KEYS_BY_TYPE = {
         'frame_index',
         'frame_rate',
         'gain',
-        'posX'
+        'posX',
+        // G6-only I/O commands (setAnalogOut / setDigitalOut)
+        'mv',
+        'channel',
+        'state'
     ],
     wait: ['type', 'duration'],
     plugin: ['type', 'plugin_name', 'command_name', 'params']
 };
+
+// Controller commands valid ONLY on the G6 controller board. Mirrors
+// plugin-registry's G6_ONLY_COMMANDS (authoritative source) — duplicated on
+// purpose because this module stays plugin-registry-agnostic. Used by
+// collectExportWarnings to soft-warn when such a command targets a non-G6 arena.
+const G6_ONLY_COMMAND_NAMES = ['setAnalogOut', 'setDigitalOut'];
 
 const KNOWN_PLUGIN_KEYS = [
     'name',
@@ -591,7 +601,7 @@ function collectBlockingErrors(experiment) {
  *
  * Returns { warnings: [{kind, message, ...meta}], totalCount }. Never throws.
  */
-function collectExportWarnings(experiment) {
+function collectExportWarnings(experiment, arenaGeneration) {
     const warnings = [];
     if (!experiment || !Array.isArray(experiment.conditions)) {
         return { warnings, totalCount: 0 };
@@ -696,6 +706,35 @@ function collectExportWarnings(experiment) {
                         cmd.type +
                         '" (preserved on export, but designer cannot edit it).'
                 });
+            }
+        }
+    }
+
+    // 5. G6-only controller commands on a non-G6 arena (soft warning only).
+    // Skipped unless the caller passes a resolved generation (the pure module
+    // can't resolve the rig itself). Never blocks export — forward-compat.
+    if (arenaGeneration && arenaGeneration !== 'G6') {
+        const seen = new Set();
+        for (const c of experiment.conditions) {
+            for (const cmd of c.commands || []) {
+                if (
+                    cmd.type === 'controller' &&
+                    G6_ONLY_COMMAND_NAMES.indexOf(cmd.command_name) !== -1 &&
+                    !seen.has(cmd.command_name)
+                ) {
+                    seen.add(cmd.command_name);
+                    warnings.push({
+                        kind: 'g6-only-command',
+                        name: cmd.command_name,
+                        condition: c.name,
+                        message:
+                            'Command "' +
+                            cmd.command_name +
+                            '" is G6-only but the arena is ' +
+                            arenaGeneration +
+                            '. It will be skipped by the arena runner.'
+                    });
+                }
             }
         }
     }

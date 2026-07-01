@@ -303,6 +303,16 @@ function appendCommand(lines, cmd, indentLevel) {
     if (cmd.gain !== undefined) {
         lines.push(ind + '  gain: ' + cmd.gain);
     }
+    // G6-only I/O command fields (setAnalogOut / setDigitalOut)
+    if (cmd.mv !== undefined) {
+        lines.push(ind + '  mv: ' + cmd.mv);
+    }
+    if (cmd.channel !== undefined) {
+        lines.push(ind + '  channel: ' + cmd.channel);
+    }
+    if (cmd.state !== undefined) {
+        lines.push(ind + '  state: ' + cmd.state);
+    }
     // Plugin params (nested key-value)
     if (cmd.params && typeof cmd.params === 'object') {
         var paramInd = ind + '    ';
