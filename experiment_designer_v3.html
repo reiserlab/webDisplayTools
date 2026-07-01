@@ -1404,6 +1404,7 @@
             <option value="">Load demo ▾</option>
             <option value="tests/fixtures/v3_g6_2x10_smoke.yaml">g6_2x10_smoke — all 4 patterns + every arena command (run on G6)</option>
             <option value="tests/fixtures/v3_g6_io_bench.yaml">g6_io_bench — analog/digital out, no pattern/SD (run on G6)</option>
+            <option value="tests/fixtures/v3_fictrac_closed_loop.yaml">fictrac_closed_loop — FicTrac closed-loop + open-loop (needs bridge + G6)</option>
             <option value="tests/fixtures/v3_canonical_a.yaml">canonical_a — 11 conds, 1 block, 4 anchors</option>
             <option value="tests/fixtures/v3_canonical_b.yaml">canonical_b — same shape (alt trials)</option>
             <option value="tests/fixtures/v3_full_experiment.yaml">full_experiment — 15 conds, 9 trials, 6 anchors</option>
@@ -1511,7 +1512,7 @@
                 <span class="count" id="seqCount">0</span>
                 <button id="addRefBtn" class="zone-head-btn" title="Append a reference to a library condition — pick from a dropdown (or drag a library row into the sequence)" disabled>+ Ref</button>
                 <button id="addBlockBtn" class="zone-head-btn" title="Append a new block — pick the first trial from a dropdown + optional name (then drag more trials in)" disabled>+ Block</button>
-                <button id="runSeqBtn" class="zone-head-btn run-seq-btn" title="Run the WHOLE sequence on the arena over Web Serial — conditions × repeats, client-side waits, ITI (controller commands only; plugins are skipped). Trial timing is host-side/best-effort (firmware duration not landed yet) — keep this tab focused; STOP is the primary control." disabled>▶ Run on arena</button>
+                <button id="runSeqBtn" class="zone-head-btn run-seq-btn" title="Run the WHOLE sequence on the arena over Web Serial — conditions × repeats, client-side waits, ITI. Controller commands + the fictrac/log plugins run; other plugins are skipped. Trial timing is host-side/best-effort (firmware duration not landed yet) — keep this tab focused; STOP is the primary control." disabled>▶ Run on arena</button>
             </div>
             <div class="zone-body">
                 <div id="sequenceList">
@@ -1542,6 +1543,33 @@
                     <button id="runDisconnectBtn" class="header-btn" title="Close the serial connection to the arena" disabled>Disconnect</button>
                     <button id="runStatusClose" class="header-btn" title="Hide this panel (only when idle)">✕</button>
                 </div>
+                <!-- FicTrac bridge (fly-on-ball closed-loop + open-loop recording).
+                     Shown when the experiment declares a `fictrac` plugin. The runner
+                     drives/records via the shared FicTracBridgeClient (session.bridge);
+                     the run also auto-connects this at start. -->
+                <div id="fictracPanel" style="display: none; border-top: 1px solid var(--border); padding: 0.4rem 0; margin-top: 0.3rem; flex-direction: column; gap: 0.3rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.7rem;">
+                        <span style="text-transform: uppercase; color: var(--text-dim); letter-spacing: 0.5px;">FicTrac bridge</span>
+                        <input id="ftUrl" type="text" value="ws://localhost:8765"
+                            title="WebSocket URL of the local FicTrac bridge (fictrac-bridge/bridge.py). Default ws://localhost:8765."
+                            style="flex: 1; min-width: 10em; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 0.2rem 0.4rem; font: inherit;">
+                        <button id="ftConn" class="header-btn"
+                            title="Connect to / disconnect from the local FicTrac bridge WebSocket. The run also auto-connects at start.">Connect</button>
+                        <span id="ftStatus" class="run-status-elapsed">disconnected</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; font-size: 0.7rem;">
+                        <label title="Log every arena command + FicTrac frame to the bridge's unified JSONL (one clock). On by default so no experiment is untracked.">
+                            <input id="ftLog" type="checkbox" checked> log to bridge</label>
+                        <span id="ftNotLogging" style="display: none; color: #ff6b6b; font-weight: 600;">⚠ NOT LOGGING</span>
+                        <label title="UDP/TCP port the bridge listens on for FicTrac. Pushed live; the bridge re-binds its input.">port
+                            <input id="ftPort" type="number" min="1" max="65535" value="60000"
+                                style="width: 6em; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 0.2rem 0.3rem; font: inherit;"></label>
+                        <label title="Heading degrees per frame index (360/200 = 1.8 ⇒ one azimuthal pixel/index; negative reverses). Pushed live.">gain
+                            <input id="ftGain" type="number" step="0.1" value="1.8"
+                                style="width: 5em; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 0.2rem 0.3rem; font: inherit;"></label>
+                        <span id="ftStat" class="run-status-elapsed"></span>
+                    </div>
+                </div>
                 <div id="runStatusLog" class="run-status-log"></div>
             </div>
         </div>
@@ -1561,7 +1589,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.39 | <span id="footerTimestamp">2026-07-01 13:21 ET</span>
+        v3 Experiment Designer v0.40 | <span id="footerTimestamp">2026-07-01 15:09 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -1583,6 +1611,7 @@
     <script src="js/arena-wire-g6.js"></script>
     <script src="js/arena-link.js"></script>
     <script src="js/arena-runner-g6.js"></script>
+    <script src="js/fictrac-bridge-client.js"></script>
     <script src="js/arena-session.js"></script>
 
     <!-- LAB-92 Pattern Set builder + LAB-96 pattern picker. pat-encoder.js,
@@ -5307,6 +5336,111 @@
             arenaSession.on('error', (e) => runLog('arena error: ' + (e && (e.message || e)), true));
         }
 
+        // ── FicTrac closed-loop (fly-on-ball) ────────────────────────────────
+        // The `fictrac` plugin is the first runner-driven device plugin. The runner
+        // maps its commands (startClosedLoop/stopClosedLoop/startRecording/…) into
+        // apply/log toggles on the shared FicTracBridgeClient (session.bridge). The
+        // bridge is ALSO the single default-on logger, so we auto-connect it at run
+        // start whenever a fictrac plugin is declared or "log to bridge" is on.
+        const ftBridge = arenaSession ? arenaSession.bridge : null;
+
+        // Plugin names in this experiment whose class is FicTracPlugin (name-based,
+        // tolerant of the canonical `fictrac` name too). Passed to runSequence so the
+        // runner knows which plugin commands to execute vs skip.
+        function experimentFictracPluginNames() {
+            if (!experiment || !Array.isArray(experiment.plugins)) return [];
+            return experiment.plugins
+                .filter(
+                    (p) =>
+                        p &&
+                        ((p.matlab && p.matlab.class === 'FicTracPlugin') || p.name === 'fictrac')
+                )
+                .map((p) => p.name);
+        }
+        function experimentHasFictrac() {
+            return experimentFictracPluginNames().length > 0;
+        }
+        // Resolve a trialParams command's pattern frame count (the Mode-3 index
+        // modulus the bridge needs) from the active web set.
+        function resolvePatternFramesForCmd(cmd) {
+            const it = activeSetItemByName(cmd && cmd.pattern);
+            return it && Number.isFinite(it.frames) ? it.frames : null;
+        }
+
+        // Push the panel's FicTrac config (port/gain) to the bridge.
+        function ftSendConfig() {
+            if (!ftBridge) return;
+            const port = parseInt($('ftPort').value, 10);
+            const gain = parseFloat($('ftGain').value);
+            const cfg = {};
+            if (Number.isFinite(port)) cfg.fictrac_port = port;
+            if (Number.isFinite(gain)) cfg.gain = gain;
+            ftBridge.setConfig(cfg);
+        }
+        // Reflect logging/connection state in the "⚠ NOT LOGGING" indicator.
+        function updateFtNotLogging() {
+            const warn = $('ftNotLogging');
+            if (!warn) return;
+            const wantLog = $('ftLog') && $('ftLog').checked;
+            const logging = !!(ftBridge && ftBridge.connected && ftBridge.logging);
+            warn.style.display = wantLog && !logging ? '' : 'none';
+        }
+        // Show the panel when the experiment declares a fictrac plugin.
+        function updateFictracPanel() {
+            const panel = $('fictracPanel');
+            if (!panel) return;
+            const on = experimentHasFictrac();
+            panel.style.display = on ? 'flex' : 'none';
+            if (on) $('runStatus').style.display = 'block';
+            updateFtNotLogging();
+        }
+
+        if (ftBridge) {
+            // The designer has no manual stepper — the bridge mods indices to `frames`
+            // itself, so a plain gate on the serial link is enough.
+            ftBridge.setCanApply(() => arenaSession.connected);
+            ftBridge.on('status', (text) => {
+                if ($('ftStatus')) $('ftStatus').textContent = text;
+                if ($('ftConn')) {
+                    $('ftConn').textContent =
+                        text === 'connected' || text === 'connecting…' ? 'Disconnect' : 'Connect';
+                }
+                updateFtNotLogging();
+            });
+            ftBridge.on('stats', (s) => {
+                if ($('ftStat')) {
+                    $('ftStat').textContent = ftBridge.connected
+                        ? 'rx ' + s.recv + ' · applied ' + s.applied + ' · ~' + s.rateHz + ' Hz'
+                        : '';
+                }
+            });
+            ftBridge.on('log', (msg, kind) => runLog('bridge: ' + msg, kind === 'err'));
+            $('ftConn').addEventListener('click', () => {
+                if (ftBridge.connected) {
+                    ftBridge.disconnect();
+                    return;
+                }
+                const url = ($('ftUrl').value || '').trim();
+                if (!url) {
+                    runLog('bridge: enter a WebSocket URL', true);
+                    return;
+                }
+                ftSendConfig();
+                if ($('ftLog').checked) ftBridge.setLogging(true);
+                ftBridge.connect(url);
+            });
+            $('ftLog').addEventListener('change', (e) => {
+                if (ftBridge.connected) ftBridge.setLogging(e.target.checked);
+                updateFtNotLogging();
+            });
+            $('ftPort').addEventListener('change', () => {
+                if (ftBridge.connected) ftSendConfig();
+            });
+            $('ftGain').addEventListener('change', () => {
+                if (ftBridge.connected) ftSendConfig();
+            });
+        }
+
         function runLog(text, isErr) {
             const logEl = $('runStatusLog');
             if (!logEl) return;
@@ -5404,6 +5538,9 @@
                 runLog(seqLine(s) + ' → trial running (' + (s.durationSec || 0) + 's host-side)');
             } else if (phase === 'command') {
                 runLog(seqLine(s) + ' → ' + s.op + (s.value !== undefined ? ' ' + s.value : ''));
+            } else if (phase === 'log') {
+                // built-in `log` plugin executed by the runner → bridge log + here
+                runLog('📝 ' + (s.level || 'INFO') + ': ' + (s.message || ''));
             } else if (phase === 'skip') {
                 const what = s.plugin_name ? s.plugin_name + '.' + s.command_name : (s.step ? s.step.conditionName : '');
                 runLog('skipped ' + what + ' — ' + (s.reason || ''), true);
@@ -5647,11 +5784,17 @@
                         else unresolvable.push(name + ' ("' + (tp.pattern || '') + '")');
                     }
                 }
+                const ftNames = new Set(experimentFictracPluginNames());
                 for (const c of cond.commands) {
                     if (c.type === 'plugin') {
-                        pluginSkips.push(
-                            name + ': ' + (c.plugin_name || '?') + '.' + (c.command_name || '?')
-                        );
+                        // The built-in `log` plugin and `fictrac` commands are EXECUTED
+                        // by the runner now (not skipped) — don't list them as skips.
+                        const executed = c.plugin_name === 'log' || ftNames.has(c.plugin_name);
+                        if (!executed) {
+                            pluginSkips.push(
+                                name + ': ' + (c.plugin_name || '?') + '.' + (c.command_name || '?')
+                            );
+                        }
                     }
                     if (c.type === 'controller' && !isKnownControllerCommand(c.command_name)) {
                         unsupported.push(name + ': ' + c.command_name);
@@ -5687,8 +5830,9 @@
                     'Walks the experiment_structure and replays each condition’s controller ' +
                         'commands + client-side waits over Web Serial. Trial timing is host-side ' +
                         '(best-effort) until the controller-run duration lands in firmware — keep this ' +
-                        'tab focused; STOP is the primary control. Plugins are skipped (the browser ' +
-                        'cannot drive them).',
+                        'tab focused; STOP is the primary control. The fictrac + log plugins are ' +
+                        'executed by the runner; all other plugins are skipped (the browser cannot ' +
+                        'drive them).',
                 list,
                 confirmLabel: opts.confirmLabel || 'Connect & run',
                 cancelLabel: 'Cancel'
@@ -5738,6 +5882,27 @@
                 updateRunStatus({ phase: 'error', error: e });
                 return;
             }
+            // Auto-connect the FicTrac bridge (Decision 7) so a fictrac run is logged
+            // from the first command — even without an explicit fictrac.connect.
+            // Gated on the experiment DECLARING a fictrac plugin: a non-fictrac run
+            // must NOT touch the bridge (the "log to bridge" checkbox lives in the
+            // hidden fictrac panel and defaults on — default-on logging for ALL
+            // sessions is LAB-144, not here). Best-effort: a missing bridge never
+            // blocks the run (the ⚠ NOT LOGGING indicator shows).
+            const ftNames = experimentFictracPluginNames();
+            if (ftBridge && !ftBridge.connected && ftNames.length) {
+                const wantLog = $('ftLog') && $('ftLog').checked;
+                ftSendConfig();
+                if (wantLog) ftBridge.setLogging(true);
+                ftBridge.connect(($('ftUrl').value || 'ws://localhost:8765').trim());
+                // give the socket a moment to open so the opening events are logged
+                for (let i = 0; i < 20 && !ftBridge.connected; i++) {
+                    await new Promise((r) => setTimeout(r, 25));
+                }
+                if (wantLog && !ftBridge.connected) {
+                    runLog('bridge: not connected — this run will NOT be logged to disk', true);
+                }
+            }
             try {
                 seqRunStart();
                 // runSequence pre-empts any prior run internally.
@@ -5745,6 +5910,8 @@
                     steps,
                     conditionsByName,
                     resolvePatternId: resolvePatternIdForCmd,
+                    resolvePatternFrames: resolvePatternFramesForCmd,
+                    fictracPluginNames: new Set(ftNames),
                     onProgress: updateRunStatus
                 });
             } catch (e) {
@@ -6312,6 +6479,7 @@
             renderTimeline();
             renderExportWarnings();
             updateRunSeqBtn();
+            updateFictracPanel();
         }
 
         // Soft-warn validation banner. Listed in the yellow strip below the

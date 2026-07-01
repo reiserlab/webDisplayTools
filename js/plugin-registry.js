@@ -54,7 +54,8 @@ var CONTROLLER_COMMANDS = {
                 default: 2,
                 options: [
                     { value: 2, label: 'Mode 2 - Constant Rate' },
-                    { value: 4, label: 'Mode 4 - Closed Loop' }
+                    { value: 3, label: 'Mode 3 - Host-stepped (FicTrac / frame jump)' },
+                    { value: 4, label: 'Mode 4 - Closed Loop (analog)' }
                 ],
                 label: 'Mode'
             },
@@ -558,6 +559,94 @@ var BUILTIN_PLUGINS = {
                 description: 'Disconnect from BIAS camera'
             }
         }
+    },
+
+    // FicTrac closed-loop (fly-on-ball). WEB-FIRST: executed by the web runner via
+    // the local Python bridge (fictrac-bridge/bridge.py) + Mode-3 host-stepping.
+    // matlab.class is forward-looking — MATLAB has no FicTracPlugin yet (its only
+    // closed-loop is analog Mode 4), so this YAML runs on the web runner today.
+    // Apply (drive the arena) and record (log FicTrac) are independent: closed-loop
+    // drives via startClosedLoop/stopClosedLoop; open-loop just records while the
+    // arena runs its own commands (startRecording/stopRecording are log markers —
+    // the bridge logs every FicTrac frame it receives regardless).
+    fictrac: {
+        name: 'fictrac',
+        label: 'FicTrac closed-loop',
+        type: 'class',
+        matlab: { class: 'FicTracPlugin' },
+        color: '#7c5cff', // violet for UI
+        configFields: {
+            bridge_url: {
+                type: 'string',
+                label: 'Bridge WebSocket URL',
+                default: 'ws://localhost:8765',
+                placeholder: 'ws://localhost:8765'
+            },
+            fictrac_port: {
+                type: 'number',
+                label: 'FicTrac port',
+                default: 60000,
+                placeholder: '60000'
+            },
+            proto: {
+                type: 'select',
+                label: 'FicTrac transport',
+                default: 'udp',
+                options: [
+                    { value: 'udp', label: 'UDP' },
+                    { value: 'tcp', label: 'TCP' }
+                ]
+            },
+            gain: {
+                type: 'number',
+                label: 'Gain (deg heading / frame index)',
+                default: 1.8,
+                placeholder: '1.8'
+            },
+            offset: {
+                type: 'number',
+                label: 'Heading offset (deg)',
+                default: 0
+            }
+        },
+        commands: {
+            connect: {
+                label: 'Connect bridge',
+                description:
+                    'Open the FicTrac bridge WebSocket and push config. Idempotent; the runner also auto-connects at run start.'
+            },
+            disconnect: {
+                label: 'Disconnect bridge',
+                description: 'Close the FicTrac bridge WebSocket.'
+            },
+            startClosedLoop: {
+                label: 'Start closed-loop',
+                description:
+                    'Drive the arena from FicTrac (Mode-3 host-stepping). Requires a Mode-3 pattern displayed (a preceding trialParams mode 3).',
+                params: {
+                    gain: {
+                        type: 'number',
+                        required: false,
+                        default: 1.8,
+                        label: 'Gain override (deg/index)',
+                        placeholder: 'default: plugin config gain'
+                    }
+                }
+            },
+            stopClosedLoop: {
+                label: 'Stop closed-loop',
+                description: 'Stop driving the arena from FicTrac (FicTrac keeps being logged).'
+            },
+            startRecording: {
+                label: 'Start recording (open-loop)',
+                description:
+                    'Mark the start of an open-loop FicTrac-recorded window. The arena is NOT driven by FicTrac; run your own commands (e.g. Mode-2 stim) while FicTrac is logged in parallel.'
+            },
+            stopRecording: {
+                label: 'Stop recording (open-loop)',
+                description: 'Mark the end of an open-loop FicTrac-recorded window.'
+            }
+        }
     }
 };
 
@@ -819,7 +908,12 @@ function getV3CommandParams(experiment, type, pluginName, commandName) {
 // normalized `type`, and degrade gracefully ("unknown plugin type") when unmapped.
 
 // Canonical rig plugin names — never namespaced on import (the #89 baseline).
-var WELL_KNOWN_RIG_PLUGIN_NAMES = ['backlight', 'camera', 'temperature'];
+// `fictrac` is a physical fly-on-ball capability (a ball + FicTrac tracker), so a
+// rig declares it only when the tracker is present — distinct from the logging
+// bridge, which every web-runner rig uses regardless. A rig that lacks `fictrac`
+// therefore flags a fictrac-using experiment as unsupported (diffRigVsProtocol),
+// so you can't author a closed-loop run you can't run on that setup.
+var WELL_KNOWN_RIG_PLUGIN_NAMES = ['backlight', 'camera', 'temperature', 'fictrac'];
 
 // Well-known rig KEY → built-in registry key. The DAQ thermometer is keyed
 // `temperature` (matching the rig + experiment YAML); the legacy `thermometer`
@@ -828,7 +922,8 @@ var RIG_PLUGIN_KEY_MAP = {
     backlight: 'backlight',
     camera: 'camera',
     temperature: 'temperature',
-    thermometer: 'temperature'
+    thermometer: 'temperature',
+    fictrac: 'fictrac'
 };
 
 // Normalized `type` string → built-in registry key (fallback when the rig key
@@ -838,7 +933,9 @@ var RIG_PLUGIN_TYPE_MAP = {
     bias: 'camera',
     daqthermometer: 'temperature',
     thermometer: 'temperature',
-    temperature: 'temperature'
+    temperature: 'temperature',
+    fictrac: 'fictrac',
+    balltracker: 'fictrac'
 };
 
 function _normalizeRigType(rigType) {

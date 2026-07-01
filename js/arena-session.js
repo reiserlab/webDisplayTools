@@ -58,6 +58,11 @@
                 o.LinkClass || (typeof window !== 'undefined' ? window.ArenaLink : undefined);
             const RunnerLib =
                 o.RunnerLib || (typeof window !== 'undefined' ? window.ArenaRunnerG6 : undefined);
+            // Optional: the FicTrac bridge client (js/fictrac-bridge-client.js). Only
+            // needed to drive/log FicTrac; absent ⇒ fictrac ops degrade gracefully.
+            const BridgeClientLib =
+                o.BridgeClientLib ||
+                (typeof window !== 'undefined' ? window.FicTracBridgeClient : undefined);
             if (!LinkClass)
                 throw new Error('ArenaSession: window.ArenaLink not loaded (check <script> order)');
             if (!RunnerLib)
@@ -85,7 +90,17 @@
                     this._emit('state');
                 }
             });
-            this._runner = new RunnerLib.ArenaRunner(this._link, this._wire);
+            // The FicTrac bridge client. Its applyFrame routes through THIS session's
+            // send() (not the bare link) so the command logger (below) captures the
+            // streamed SET_FRAME_POSITION frames too. Consumers (console / designer)
+            // override clampFrame / canApply and drive connect/apply/logging via
+            // .bridge. Null when the module isn't loaded — the runner tolerates it.
+            this._bridge = BridgeClientLib
+                ? new BridgeClientLib({
+                      applyFrame: (i) => this.send(this._wire.encodeSetFramePosition(i))
+                  })
+                : null;
+            this._runner = new RunnerLib.ArenaRunner(this._link, this._wire, this._bridge);
         }
 
         /** Web Serial available? (Chromium-desktop only.) Gate every connect UI on this. */
@@ -190,7 +205,62 @@
          * @returns {Promise<Uint8Array>}
          */
         send(bytes, opts) {
-            return this._link.send(bytes, opts);
+            const p = this._link.send(bytes, opts);
+            // Bridge-as-single-logger (default-on): when logging is active, post every
+            // arena command to the bridge's unified JSONL — timestamped on the browser
+            // side (t) and again by the bridge on receipt (rx_ms), so arena events and
+            // FicTrac frames share one clock. Attaches to a branch of the promise so
+            // the caller still sees the original resolution/rejection.
+            if (this._bridge && this._bridge.logging) {
+                const t = typeof Date !== 'undefined' ? Date.now() : 0;
+                p.then(
+                    (resp) => this._logCommand(bytes, t, resp, null),
+                    (err) => this._logCommand(bytes, t, null, err)
+                );
+            }
+            return p;
+        }
+
+        /** The FicTrac bridge client (or null if the module isn't loaded). */
+        get bridge() {
+            return this._bridge;
+        }
+
+        // First few bytes of a command frame as hex (for the command log).
+        _head(bytes) {
+            if (!bytes || !bytes.length) return '';
+            const n = Math.min(8, bytes.length);
+            const parts = [];
+            for (let i = 0; i < n; i++) parts.push(bytes[i].toString(16).padStart(2, '0'));
+            return parts.join(' ') + (bytes.length > n ? ' …' : '');
+        }
+
+        // Append one arena_command entry to the bridge log (decodes the reply if any).
+        _logCommand(bytes, t, resp, err) {
+            let status = null;
+            let echo = null;
+            let ok = null;
+            try {
+                const d = resp && resp.length ? this._wire.decodeResponse(resp) : null;
+                if (d) {
+                    status = d.status;
+                    echo = d.echoCmd;
+                    ok = d.ok;
+                }
+            } catch (_) {
+                /* undecodable reply — log the request anyway */
+            }
+            this._bridge.log({
+                event: 'arena_command',
+                t,
+                dt: (typeof Date !== 'undefined' ? Date.now() : 0) - t,
+                len: bytes ? bytes.length : 0,
+                head: this._head(bytes),
+                status,
+                echo,
+                ok,
+                error: err ? err.message || String(err) : null
+            });
         }
 
         /**
@@ -260,6 +330,8 @@
                 steps: args.steps,
                 conditionsByName: args.conditionsByName,
                 resolvePatternId: args.resolvePatternId,
+                resolvePatternFrames: args.resolvePatternFrames,
+                fictracPluginNames: args.fictracPluginNames,
                 timing: args.timing,
                 sleep: args.sleep,
                 onProgress: (s) => this._onRunStatus(s, args.onProgress)
@@ -274,10 +346,44 @@
         }
 
         // Forward a runner status/progress event to the broadcast channel + per-call sink.
+        // Also route the SEMANTIC event to the bridge log (default-on logger): stim
+        // type + timing + all protocol commands, on the bridge clock, interleaved with
+        // FicTrac frames — the analysis-grade record (no raw byte-heads).
         _onRunStatus(s, perCall) {
+            if (this._bridge && this._bridge.logging) {
+                this._bridge.log({ event: 'runner', ...this._sanitizeRunStatus(s) });
+            }
             this._emit('runstatus', s);
             this._emit('state');
             if (perCall) perCall(s);
+        }
+
+        // Pick JSON-safe, analysis-relevant fields off a runner status event (drops
+        // Error objects / response Uint8Arrays; keeps trialParams params, op/value, etc.).
+        _sanitizeRunStatus(s) {
+            const out = {};
+            if (!s || typeof s !== 'object') return out;
+            const keys = [
+                'phase',
+                'index',
+                'total',
+                'op',
+                'value',
+                'reason',
+                'message',
+                'level',
+                'durationSec',
+                'conditionName'
+            ];
+            for (const k of keys) if (s[k] !== undefined) out[k] = s[k];
+            if (s.params && typeof s.params === 'object') out.params = s.params;
+            if (s.step && s.step.conditionName) out.condition = s.step.conditionName;
+            if (s.response && typeof s.response === 'object') {
+                out.status = s.response.status;
+                out.ok = s.response.ok;
+            }
+            if (s.error) out.error = s.error.message || String(s.error);
+            return out;
         }
     }
 

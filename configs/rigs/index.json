@@ -14,6 +14,12 @@
       "label": "CSHL G6 — 2×8 of 10 (288°)",
       "path": "./configs/rigs/cshl_g6_2x8.yaml",
       "arena": "G6_2x8of10"
+    },
+    {
+      "name": "cshl_g6_2x10_ball",
+      "label": "CSHL G6 — 2×10 fly-on-ball (FicTrac)",
+      "path": "./configs/rigs/cshl_g6_2x10_ball.yaml",
+      "arena": "G6_2x10"
     }
   ]
 }

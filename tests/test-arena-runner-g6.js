@@ -693,6 +693,156 @@ async function main() {
         );
     }
 
+    console.log('\n=== FicTrac + log plugin: translateCommand ===');
+    {
+        const fic = new Set(['fictrac']);
+        const t = (name, params) =>
+            Runner.translateCommand(
+                { type: 'plugin', plugin_name: 'fictrac', command_name: name, params },
+                { fictracPluginNames: fic }
+            );
+        check('connect -> fictracConnect', t('connect').op, 'fictracConnect');
+        check('disconnect -> fictracDisconnect', t('disconnect').op, 'fictracDisconnect');
+        const scl = t('startClosedLoop', { gain: 3.6 });
+        check('startClosedLoop -> fictracApply', scl.op, 'fictracApply');
+        checkBool('startClosedLoop on=true', scl.on === true);
+        check('startClosedLoop carries gain override', scl.gain, 3.6);
+        check('stopClosedLoop -> on=false', t('stopClosedLoop').on, false);
+        check('startRecording -> fictracMark', t('startRecording').op, 'fictracMark');
+        check('startRecording event', t('startRecording').event, 'startRecording');
+        check('unknown fictrac cmd -> skip', t('frobnicate').op, 'skip');
+        // built-in log plugin executes regardless of fictrac names
+        const lg = Runner.translateCommand(
+            {
+                type: 'plugin',
+                plugin_name: 'log',
+                command_name: 'log',
+                params: { message: 'hi', level: 'WARNING' }
+            },
+            {}
+        );
+        check('log plugin -> logMessage', lg.op, 'logMessage');
+        check('logMessage carries message', lg.message, 'hi');
+        check('logMessage carries level', lg.level, 'WARNING');
+        // a fictrac command WITHOUT the names set falls back to skip
+        check(
+            'fictrac cmd w/o names -> skip',
+            Runner.translateCommand(
+                { type: 'plugin', plugin_name: 'fictrac', command_name: 'connect' },
+                {}
+            ).op,
+            'skip'
+        );
+        // any OTHER plugin still skips
+        check(
+            'camera plugin -> skip',
+            Runner.translateCommand(
+                { type: 'plugin', plugin_name: 'camera', command_name: 'x' },
+                { fictracPluginNames: fic }
+            ).op,
+            'skip'
+        );
+    }
+
+    console.log('\n=== FicTrac closed-loop: runSequence drives the bridge ===');
+    {
+        const makeFakeBridge = () => ({
+            logging: true,
+            configs: [],
+            logs: [],
+            applyStates: [],
+            connectCalls: 0,
+            disconnectCalls: 0,
+            connect() {
+                this.connectCalls++;
+            },
+            disconnect() {
+                this.disconnectCalls++;
+            },
+            setApply(on) {
+                this.applyStates.push(!!on);
+            },
+            setConfig(cfg) {
+                this.configs.push(cfg);
+            },
+            log(obj) {
+                this.logs.push(obj);
+            }
+        });
+        const link = makeFakeLink();
+        const bridge = makeFakeBridge();
+        const runner = new Runner.ArenaRunner(link, Wire, bridge);
+        const steps = [{ kind: 'ref', conditionName: 'cl', label: 'cl', seqIdx: 0, dur: 2 }];
+        const conditionsByName = new Map([
+            [
+                'cl',
+                {
+                    name: 'cl',
+                    commands: [
+                        {
+                            type: 'controller',
+                            command_name: 'trialParams',
+                            mode: 3,
+                            frame_rate: 0,
+                            gain: 0,
+                            frame_index: 0,
+                            duration: 2,
+                            pattern: 'p'
+                        },
+                        { type: 'plugin', plugin_name: 'fictrac', command_name: 'connect' },
+                        {
+                            type: 'plugin',
+                            plugin_name: 'fictrac',
+                            command_name: 'startClosedLoop',
+                            params: { gain: 3.6 }
+                        },
+                        { type: 'wait', duration: 2 },
+                        { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' },
+                        {
+                            type: 'plugin',
+                            plugin_name: 'log',
+                            command_name: 'log',
+                            params: { message: 'done' }
+                        }
+                    ]
+                }
+            ]
+        ]);
+        let slept = 0;
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            resolvePatternFrames: (cmd) => (cmd.command_name === 'trialParams' ? 60 : null),
+            fictracPluginNames: new Set(['fictrac']),
+            sleep: (ms) => {
+                slept += ms;
+                return Promise.resolve();
+            }
+        });
+        check('bridge.connect called once', bridge.connectCalls, 1);
+        checkBool(
+            'apply toggled true then false',
+            JSON.stringify(bridge.applyStates) === JSON.stringify([true, false]),
+            bridge.applyStates.join(',')
+        );
+        checkBool(
+            'pushed frames=60 modulus on startClosedLoop',
+            bridge.configs.some((c) => c.frames === 60)
+        );
+        checkBool(
+            'pushed gain override 3.6',
+            bridge.configs.some((c) => c.gain === 3.6)
+        );
+        checkBool(
+            'log message routed to bridge',
+            bridge.logs.some((l) => l.event === 'log' && l.message === 'done')
+        );
+        check('no skips (fictrac + log executed)', summary.skipped, 0);
+        check('no errors', summary.errors, 0);
+        check('closed-loop timing = 2s (fictrac ops add no time)', slept, 2000);
+    }
+
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);

@@ -278,8 +278,11 @@ var ArenaRunnerG6 = (function () {
      * executor (ArenaRunner.runSequence) maps each `op` to an ArenaWireG6 encoder.
      *
      * @param {object} cmd  a v3 command ({type:'controller'|'wait'|'plugin', …})
-     * @param {{patternId:(number|null)}} [opts]  resolved 1-based SD index for a
+     * @param {object} [opts]
+     * @param {number|null} [opts.patternId]  resolved 1-based SD index for a
      *        trialParams command (null/undefined ⇒ unresolvable ⇒ {op:'error'}).
+     * @param {Set<string>} [opts.fictracPluginNames]  plugin names whose class is
+     *        FicTracPlugin — such plugin commands become fictrac* ops (else skip).
      * @returns {object} one of:
      *   { op:'trialParams', params, durationSec }
      *   { op:'allOn' | 'allOff' | 'stopDisplay' }
@@ -287,7 +290,11 @@ var ArenaRunnerG6 = (function () {
      *   { op:'setAnalogOut', mv }                    // G6-only, 0–5000 mV (0xA0)
      *   { op:'setDigitalOut', channel, state }       // G6-only, ch 1|2, state 0|1 (0xAA)
      *   { op:'wait', durationSec }
-     *   { op:'skip', reason, plugin_name, command_name }   // plugin → not driveable
+     *   { op:'logMessage', message, level }          // built-in log plugin → bridge log
+     *   { op:'fictracConnect' | 'fictracDisconnect' }        // FicTrac bridge lifecycle
+     *   { op:'fictracApply', on, gain }              // start/stop Mode-3 closed-loop
+     *   { op:'fictracMark', event }                  // open-loop record window marker
+     *   { op:'skip', reason, plugin_name, command_name }   // other plugin → not driveable
      *   { op:'error', reason }                              // unsupported / malformed
      */
     function translateCommand(cmd, opts) {
@@ -299,11 +306,58 @@ var ArenaRunnerG6 = (function () {
             return { op: 'wait', durationSec: Number(cmd.duration) || 0 };
         }
         if (cmd.type === 'plugin') {
+            const pname = cmd.plugin_name || '(unnamed)';
+            const cname = cmd.command_name || '(unnamed)';
+            const params = cmd.params || {};
+            // The built-in `log` plugin is EXECUTED (Decision 6): its message is
+            // written to the unified bridge log. Always, independent of fictrac names.
+            if (cmd.plugin_name === 'log') {
+                return {
+                    op: 'logMessage',
+                    message: params.message != null ? String(params.message) : '',
+                    level: params.level || 'INFO'
+                };
+            }
+            // FicTrac is the first runner-driven device plugin. The caller passes the
+            // set of plugin names whose class is FicTracPlugin (opts.fictracPluginNames).
+            const fictracNames = opts.fictracPluginNames;
+            const isFictrac =
+                fictracNames &&
+                typeof fictracNames.has === 'function' &&
+                fictracNames.has(cmd.plugin_name);
+            if (isFictrac) {
+                switch (cname) {
+                    case 'connect':
+                        return { op: 'fictracConnect' };
+                    case 'disconnect':
+                        return { op: 'fictracDisconnect' };
+                    case 'startClosedLoop':
+                        return {
+                            op: 'fictracApply',
+                            on: true,
+                            gain: Number.isFinite(Number(params.gain)) ? Number(params.gain) : null
+                        };
+                    case 'stopClosedLoop':
+                        return { op: 'fictracApply', on: false };
+                    case 'startRecording':
+                    case 'stopRecording':
+                        return { op: 'fictracMark', event: cname };
+                    default:
+                        return {
+                            op: 'skip',
+                            reason: 'unknown fictrac command "' + cname + '"',
+                            plugin_name: pname,
+                            command_name: cname
+                        };
+                }
+            }
+            // Any other plugin: skipped-with-warning (unchanged — the browser can't
+            // drive arbitrary MATLAB-side plugins).
             return {
                 op: 'skip',
                 reason: 'plugin command (the browser cannot drive plugins)',
-                plugin_name: cmd.plugin_name || '(unnamed)',
-                command_name: cmd.command_name || '(unnamed)'
+                plugin_name: pname,
+                command_name: cname
             };
         }
         if (cmd.type === 'controller') {
@@ -435,13 +489,17 @@ var ArenaRunnerG6 = (function () {
         /**
          * @param {object} link  an ArenaLink-like object with .send(bytes) and .connected
          * @param {object} [wire] the ArenaWireG6 module (defaults to window.ArenaWireG6)
+         * @param {object} [bridge] a FicTracBridgeClient-like object (connect/disconnect/
+         *        setApply/setConfig/log). Optional — only needed to execute fictrac
+         *        plugin commands; without it those ops degrade to a logged note.
          */
-        constructor(link, wire) {
+        constructor(link, wire, bridge) {
             this._link = link;
             this._wire = wire || (typeof window !== 'undefined' ? window.ArenaWireG6 : null);
             if (!this._wire) {
                 throw new Error('ArenaRunner: ArenaWireG6 is not available.');
             }
+            this._bridge = bridge || null;
             this._active = false;
             this._timer = null; // single-trial auto-stop timer
             this._conditionName = null;
@@ -603,7 +661,9 @@ var ArenaRunnerG6 = (function () {
         /**
          * Run a whole flattened sequence on the arena. Walks each step's condition
          * and replays its command list in order (trialParams / allOn / allOff /
-         * stopDisplay / setPositionX + client-side waits). Plugin commands are
+         * stopDisplay / setPositionX + client-side waits). The built-in `log` plugin
+         * and `fictrac` plugin commands are EXECUTED (log → bridge log; fictrac →
+         * closed/open-loop via the bridge client); all OTHER plugin commands are
          * skipped-with-warning; unsupported controller commands (e.g. setColorDepth)
          * and unresolvable patterns are surfaced as errors then skipped (the
          * proceed-and-skip policy). Trial timing is host-side (see hostSideTrialEnd).
@@ -614,6 +674,9 @@ var ArenaRunnerG6 = (function () {
          * @param {Array}    a.steps             flattenStructure(...).steps
          * @param {Map}      a.conditionsByName  conditionName → condition object
          * @param {function} a.resolvePatternId  (trialParamsCmd) ⇒ 1-based SD index | null
+         * @param {function} [a.resolvePatternFrames] (trialParamsCmd) ⇒ frame count | null
+         *                                        (Mode-3 index modulus for closed-loop)
+         * @param {Set|Array} [a.fictracPluginNames]  plugin names whose class is FicTracPlugin
          * @param {function} [a.onProgress]      progress/event callback (see phases below)
          * @param {function} [a.timing]          async (durationSec, sleep) ⇒ trial end
          *                                        (defaults to host-side; firmware #4 swap)
@@ -630,6 +693,14 @@ var ArenaRunnerG6 = (function () {
             const conditionsByName = a.conditionsByName || new Map();
             const resolvePatternId =
                 typeof a.resolvePatternId === 'function' ? a.resolvePatternId : () => null;
+            const resolvePatternFrames =
+                typeof a.resolvePatternFrames === 'function' ? a.resolvePatternFrames : () => null;
+            const fictracPluginNames =
+                a.fictracPluginNames instanceof Set
+                    ? a.fictracPluginNames
+                    : Array.isArray(a.fictracPluginNames)
+                      ? new Set(a.fictracPluginNames)
+                      : null;
             const timing = typeof a.timing === 'function' ? a.timing : hostSideTrialEnd;
             const sleep = typeof a.sleep === 'function' ? a.sleep : (ms) => this._sleep(ms);
             const emit = (s) => {
@@ -676,10 +747,20 @@ var ArenaRunnerG6 = (function () {
                     }
                     // Per-condition timing accumulators: the max trialParams target
                     // duration and the total time actually slept on wait commands.
-                    const acc = { trialTargetSec: 0, waitedSec: 0 };
+                    // fictracFrames tracks the current Mode-3 pattern's frame count
+                    // (index modulus) so a following fictrac.startClosedLoop can push
+                    // the right modulus to the bridge.
+                    const acc = { trialTargetSec: 0, waitedSec: 0, fictracFrames: null };
                     for (const cmd of cond.commands) {
                         if (this._abort) break;
-                        const ir = translateCommand(cmd, { patternId: resolvePatternId(cmd) });
+                        const ir = translateCommand(cmd, {
+                            patternId: resolvePatternId(cmd),
+                            fictracPluginNames
+                        });
+                        if (cmd.type === 'controller' && cmd.command_name === 'trialParams') {
+                            const f = Number(resolvePatternFrames(cmd));
+                            if (Number.isFinite(f) && f > 0) acc.fictracFrames = f;
+                        }
                         try {
                             await this._runIR(ir, { step, index: i, emit, sleep, summary, acc });
                         } catch (e) {
@@ -758,6 +839,7 @@ var ArenaRunnerG6 = (function () {
                         index,
                         step,
                         response: resp,
+                        params: ir.params,
                         durationSec: ir.durationSec
                     });
                     // Trial timing is host-side (interim — firmware #4) but does NOT
@@ -805,6 +887,55 @@ var ArenaRunnerG6 = (function () {
                     await sleep((Number(ir.durationSec) || 0) * 1000);
                     acc.waitedSec += Number(ir.durationSec) || 0;
                     emit({ phase: 'command', index, step, op: ir.op, value: ir.durationSec });
+                    return;
+                // ---- FicTrac (the first runner-driven device plugin) ----------
+                // These ops are INSTANTANEOUS: they toggle the bridge client's apply
+                // flag / push config / emit a log marker. Duration is held by the
+                // surrounding wait/trialParams; the Mode-3 apply loop streams frames
+                // in the background on the bridge client's WS events. They do NOT
+                // touch the timing accumulators.
+                case 'fictracConnect':
+                    if (this._bridge) {
+                        try {
+                            this._bridge.connect();
+                        } catch (_) {
+                            /* best-effort; the designer also auto-connects at run start */
+                        }
+                    }
+                    emit({ phase: 'command', index, step, op: ir.op });
+                    return;
+                case 'fictracDisconnect':
+                    if (this._bridge) {
+                        try {
+                            this._bridge.disconnect();
+                        } catch (_) {
+                            /* best-effort */
+                        }
+                    }
+                    emit({ phase: 'command', index, step, op: ir.op });
+                    return;
+                case 'fictracApply':
+                    if (this._bridge) {
+                        if (ir.on) {
+                            const cfg = {};
+                            if (Number.isFinite(acc.fictracFrames)) cfg.frames = acc.fictracFrames;
+                            if (ir.gain != null) cfg.gain = ir.gain;
+                            if (Object.keys(cfg).length) this._bridge.setConfig(cfg);
+                            this._bridge.setApply(true);
+                        } else {
+                            this._bridge.setApply(false);
+                        }
+                    }
+                    emit({ phase: 'command', index, step, op: ir.op, value: !!ir.on });
+                    return;
+                case 'fictracMark':
+                    if (this._bridge) this._bridge.log({ event: ir.event });
+                    emit({ phase: 'command', index, step, op: ir.op, value: ir.event });
+                    return;
+                case 'logMessage':
+                    if (this._bridge)
+                        this._bridge.log({ event: 'log', message: ir.message, level: ir.level });
+                    emit({ phase: 'log', index, step, message: ir.message, level: ir.level });
                     return;
                 case 'skip':
                     summary.skipped++;

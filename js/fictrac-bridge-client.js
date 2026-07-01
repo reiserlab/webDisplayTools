@@ -1,0 +1,332 @@
+/**
+ * fictrac-bridge-client.js — the shared WebSocket client for the local FicTrac
+ * bridge (fictrac-bridge/bridge.py).
+ *
+ * Extracted verbatim-in-spirit from arena_console.html's `clBridge` so BOTH the
+ * console and the v3 designer's web runner drive ONE tested code path. The client
+ * is DOM-agnostic: it knows nothing about buttons or the stepper — the consumer
+ * injects `applyFrame(index)` (how to push a frame to the arena) and `clampFrame`
+ * / `canApply` policy, and subscribes to events for UI.
+ *
+ * WHAT THE BRIDGE SPEAKS (see fictrac-bridge/README.md):
+ *   bridge → us:  {"type":"frame","index":<int>,"seq":<int>,"t":<ms>}
+ *   us → bridge:  {"type":"hello","client":...,"v":1}
+ *                 {"type":"config","fictrac_port":..,"gain":..,"offset":..,"frames":..}
+ *                 {"type":"log_control","enabled":<bool>}   (opens/closes the log file)
+ *                 {"type":"log", ...}                        (an event to append)
+ *
+ * APPLY vs LOGGING are INDEPENDENT (per the open-loop requirement):
+ *   - apply   = drive the arena (stream SET_FRAME_POSITION via applyFrame). Off ⇒
+ *               FicTrac is still received/logged but the arena is untouched.
+ *   - logging = tell the bridge to record this session to its JSONL file.
+ * The apply loop is COALESCED + SINGLE-FLIGHT: only the newest index is ever in
+ * flight, so a fast feed never backs up behind USB latency.
+ *
+ * LOADING: classic <script src> only — window-global + CommonJS dual-export, NO
+ * ES `export` (same rule as arena-session.js — dodge the catastrophic
+ * ES-import-failure-under-stale-cache bug; see CLAUDE.md).
+ *
+ * EVENTS (subscribe with .on(event, fn) — returns an unsubscribe fn):
+ *   'status'  (text:string, kind:string)   — connection status changed
+ *   'stats'   (stats:object)               — {recv, applied, drop, rateHz} updated
+ *   'frame'   (index:int)                  — a frame index arrived (pre-apply)
+ *   'applied' (index:int)                  — a frame was applied to the arena
+ *   'blocked' (reason:string)              — a frame could not be applied (canApply false)
+ *   'log'     (msg:string, kind:string)    — human-readable trace line
+ */
+(function (global) {
+    'use strict';
+
+    const EVENTS = ['status', 'stats', 'frame', 'applied', 'blocked', 'log'];
+
+    class FicTracBridgeClient {
+        /**
+         * @param {object} [opts]
+         * @param {function(number):Promise} [opts.applyFrame]  push a frame index to
+         *        the arena (e.g. i => session.send(wire.encodeSetFramePosition(i))).
+         *        Required to actually drive; without it apply is a no-op.
+         * @param {function(number):number} [opts.clampFrame]   clamp an index into range
+         * @param {function():boolean} [opts.canApply]          gate: may we apply now?
+         *        (console: () => stepper.loaded && session.connected). Default: always.
+         * @param {function} [opts.WebSocketImpl]  WebSocket ctor (default global WebSocket) — injectable for tests
+         * @param {function():number} [opts.now]   clock (default Date.now) — injectable for tests
+         */
+        constructor(opts) {
+            const o = opts || {};
+            this._applyFrame = typeof o.applyFrame === 'function' ? o.applyFrame : null;
+            this._clampFrame = typeof o.clampFrame === 'function' ? o.clampFrame : (i) => i;
+            this._canApply = typeof o.canApply === 'function' ? o.canApply : () => true;
+            this._WS = o.WebSocketImpl || (typeof WebSocket !== 'undefined' ? WebSocket : null);
+            this._now = typeof o.now === 'function' ? o.now : () => Date.now();
+
+            this._handlers = {};
+            EVENTS.forEach((e) => (this._handlers[e] = new Set()));
+
+            this._ws = null;
+            this._apply = false;
+            this._logging = false;
+            this._pending = null; // newest index awaiting send (coalesced)
+            this._inFlight = false; // a drain loop is running
+            this._recv = 0;
+            this._applied = 0;
+            this._rateCount = 0;
+            this._rateHz = 0;
+            this._rateTimer = null;
+            this._lastBlockedMs = 0;
+
+            // Bridge config (mirrors the console inputs). Sent on connect + on change.
+            this._config = { fictrac_port: 60000, gain: 1.8, offset: 0, frames: null };
+        }
+
+        // ---- events ----------------------------------------------------------
+        on(event, fn) {
+            if (!this._handlers[event])
+                throw new Error('FicTracBridgeClient: unknown event "' + event + '"');
+            this._handlers[event].add(fn);
+            return () => this.off(event, fn);
+        }
+        off(event, fn) {
+            if (this._handlers[event]) this._handlers[event].delete(fn);
+        }
+        _emit(event, ...args) {
+            const set = this._handlers[event];
+            if (!set) return;
+            for (const fn of Array.from(set)) {
+                try {
+                    fn(...args);
+                } catch (_) {
+                    /* a subscriber must not break the client or siblings */
+                }
+            }
+        }
+
+        // ---- state -----------------------------------------------------------
+        get connected() {
+            return !!(this._ws && this._ws.readyState === 1 /* OPEN */);
+        }
+        get apply() {
+            return this._apply;
+        }
+        get logging() {
+            return this._logging;
+        }
+        get config() {
+            return Object.assign({}, this._config);
+        }
+        get stats() {
+            return {
+                recv: this._recv,
+                applied: this._applied,
+                drop: Math.max(0, this._recv - this._applied),
+                rateHz: this._rateHz
+            };
+        }
+
+        // ---- connection ------------------------------------------------------
+        /**
+         * Open the bridge WebSocket. Idempotent: if already open, does nothing.
+         * @param {string} [url]  ws:// URL; remembered so a later connect() reconnects.
+         */
+        connect(url) {
+            if (url) this._url = url;
+            if (this.connected) return;
+            if (!this._url) {
+                this._emit('log', 'bridge: no URL to connect to', 'err');
+                return;
+            }
+            if (!this._WS) {
+                this._emit('log', 'bridge: WebSocket unavailable in this environment', 'err');
+                return;
+            }
+            let ws;
+            try {
+                ws = new this._WS(this._url);
+            } catch (e) {
+                this._emit('log', 'bridge: bad URL — ' + (e && (e.message || e)), 'err');
+                return;
+            }
+            this._ws = ws;
+            this._recv = 0;
+            this._applied = 0;
+            this._pending = null;
+            this._emit('status', 'connecting…', 'dim');
+            ws.onopen = () => {
+                this._emit('status', 'connected', 'accent');
+                this._emit('log', 'bridge: connected to ' + this._url, 'info');
+                this._send({ type: 'hello', client: 'webDisplayTools', v: 1 });
+                this.sendConfig();
+                if (this._logging) this._send({ type: 'log_control', enabled: true });
+                this._startRateTimer();
+                this._emit('stats', this.stats);
+            };
+            ws.onmessage = (ev) => {
+                let msg;
+                try {
+                    msg = JSON.parse(ev.data);
+                } catch (_) {
+                    return; // ignore non-JSON
+                }
+                if (msg && msg.type === 'frame') this.handleFrame(msg.index);
+            };
+            ws.onerror = () => this._emit('status', 'error', 'err');
+            ws.onclose = () => {
+                this._stopRateTimer();
+                this._ws = null;
+                this._emit('status', 'disconnected', 'dim');
+                this._emit('stats', this.stats);
+            };
+        }
+
+        /** Close the bridge WebSocket (idempotent). */
+        disconnect() {
+            if (this._ws) {
+                try {
+                    this._ws.close();
+                } catch (_) {
+                    /* closing socket can throw — ignore */
+                }
+            }
+            this._ws = null;
+            this._stopRateTimer();
+        }
+
+        // ---- config / logging ------------------------------------------------
+        /** Merge config (any subset of fictrac_port/gain/offset/frames) and push if connected. */
+        setConfig(partial) {
+            if (partial && typeof partial === 'object') {
+                for (const k of ['fictrac_port', 'gain', 'offset', 'frames']) {
+                    if (partial[k] !== undefined && partial[k] !== null)
+                        this._config[k] = partial[k];
+                }
+            }
+            this.sendConfig();
+        }
+        /** Push the current config to the bridge (no-op when disconnected). */
+        sendConfig() {
+            const cfg = { type: 'config' };
+            const c = this._config;
+            if (Number.isFinite(c.fictrac_port)) cfg.fictrac_port = c.fictrac_port;
+            if (Number.isFinite(c.gain)) cfg.gain = c.gain;
+            if (Number.isFinite(c.offset)) cfg.offset = c.offset;
+            if (Number.isFinite(c.frames)) cfg.frames = c.frames;
+            this._send(cfg);
+        }
+
+        /** Set the clamp policy (index → in-range index). Consumer-specific. */
+        setClampFrame(fn) {
+            if (typeof fn === 'function') this._clampFrame = fn;
+        }
+        /** Set the apply gate (may we drive the arena right now?). Consumer-specific. */
+        setCanApply(fn) {
+            if (typeof fn === 'function') this._canApply = fn;
+        }
+        /** Set how a frame index reaches the arena. Consumer-specific. */
+        setApplyFrame(fn) {
+            if (typeof fn === 'function') this._applyFrame = fn;
+        }
+
+        /**
+         * Enable/disable driving the arena from FicTrac frames (Mode-3 streaming).
+         * Enabling does NOT flush a stale pending index (matches the console) — the
+         * next incoming frame drives, so we never apply a heading from before activation.
+         */
+        setApply(on) {
+            this._apply = !!on;
+        }
+
+        /** Turn the bridge's session log file on/off (sends log_control). */
+        setLogging(on) {
+            this._logging = !!on;
+            this._send({ type: 'log_control', enabled: this._logging });
+        }
+
+        /** Append an event to the bridge log (only when logging is on + connected). */
+        log(obj) {
+            if (this._logging && this.connected) {
+                this._send(Object.assign({ type: 'log' }, obj));
+            }
+        }
+
+        // ---- frame handling (the coalesced single-flight apply loop) ---------
+        /**
+         * A frame index arrived from the bridge. Counts it, coalesces it as the
+         * newest pending index, and (if applying + permitted) drains it to the arena.
+         * PUBLIC so tests can drive it without a live WebSocket.
+         */
+        handleFrame(index) {
+            if (!Number.isFinite(index)) return;
+            this._recv++;
+            this._rateCount++;
+            this._pending = index; // coalesce — only the newest index matters
+            this._emit('frame', index);
+            this._emit('stats', this.stats);
+            if (!this._apply) return;
+            if (!this._applyFrame) return;
+            if (!this._canApply()) {
+                const now = this._now();
+                if (now - this._lastBlockedMs >= 500) {
+                    this._lastBlockedMs = now;
+                    this._emit('blocked', 'cannot apply frame (no pattern loaded / disconnected)');
+                }
+                return;
+            }
+            this._drain();
+        }
+
+        async _drain() {
+            if (this._inFlight) return; // a drain loop is already running
+            this._inFlight = true;
+            try {
+                while (this._pending != null && this._apply && this._canApply()) {
+                    const i = this._clampFrame(this._pending);
+                    this._pending = null;
+                    try {
+                        await this._applyFrame(i);
+                        this._applied++;
+                        this._emit('applied', i);
+                        this._emit('stats', this.stats);
+                    } catch (e) {
+                        this._emit('log', 'bridge apply failed: ' + (e && (e.message || e)), 'err');
+                    }
+                }
+            } finally {
+                this._inFlight = false;
+            }
+        }
+
+        // ---- internals -------------------------------------------------------
+        _send(obj) {
+            const ws = this._ws;
+            if (ws && ws.readyState === 1 /* OPEN */) {
+                try {
+                    ws.send(JSON.stringify(obj));
+                } catch (_) {
+                    /* a closing socket can throw on send — ignore */
+                }
+            }
+        }
+        _startRateTimer() {
+            if (this._rateTimer || typeof setInterval === 'undefined') return;
+            this._rateTimer = setInterval(() => {
+                this._rateHz = this._rateCount;
+                this._rateCount = 0;
+                this._emit('stats', this.stats);
+            }, 1000);
+        }
+        _stopRateTimer() {
+            if (this._rateTimer && typeof clearInterval !== 'undefined') {
+                clearInterval(this._rateTimer);
+            }
+            this._rateTimer = null;
+            this._rateHz = 0;
+        }
+    }
+
+    // Dual-export: CommonJS (Node tests) + window global (classic <script src>).
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = FicTracBridgeClient;
+    }
+    if (typeof global !== 'undefined') {
+        global.FicTracBridgeClient = FicTracBridgeClient;
+    }
+})(typeof window !== 'undefined' ? window : this);

@@ -1,0 +1,121 @@
+version: 3
+
+# ============================================================================
+# FicTrac fly-on-ball demo (web-runner). Exercises the `fictrac` plugin the web
+# runner executes via the local bridge (fictrac-bridge/bridge.py) + Mode-3
+# host-stepping. Two participation modes:
+#   • CLOSED-LOOP — the arena is driven by FicTrac heading (Mode 3): a Mode-3
+#     trialParams loads the pattern, startClosedLoop streams frames for the wait,
+#     stopClosedLoop ends it.
+#   • OPEN-LOOP  — FicTrac is only LOGGED while the arena runs its own Mode-2
+#     stim (startRecording … stopRecording); FicTrac does not drive anything.
+#
+# The bridge is the single default-on logger, so every arena command + FicTrac
+# frame lands in one JSONL on one clock. fictrac.connect is placed first; the
+# designer also auto-connects at run start, so a forgotten connect never loses
+# the opening events.
+#
+# NOTE (web-first): MATLAB has no FicTracPlugin yet (its closed-loop is analog
+# Mode 4), so this protocol currently runs on the WEB runner only.
+#
+# Patterns are the built-in g6_2x10 set. CLOSED-LOOP uses frame2_h_ccw_200f
+# (index 4) — a 200-frame full azimuthal ROTATION, so FicTrac heading → frame
+# index maps 1:1 to the arena rotating with the fly (gain 1.8 = 360/200, one
+# azimuth pixel per index). Load that Pattern Set first so patterns resolve as W
+# AND the exact 200-frame modulus is pushed to the bridge. OPEN-LOOP uses
+# grating_sq (index 2) as a plain Mode-2 stim while FicTrac is logged.
+# ============================================================================
+
+experiment_info:
+  name: "FicTrac fly-on-ball demo"
+  author: "webDisplayTools"
+
+rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
+
+plugins:
+  - name: "fictrac"
+    type: "class"
+    matlab:
+      class: "FicTracPlugin"
+    config:
+      bridge_url: "ws://localhost:8765"
+      fictrac_port: 60000
+      proto: "udp"
+      gain: 1.8
+      offset: 0
+
+experiment:
+  - "fictrac_setup"
+  - "closed_loop_rotation"
+  - "open_loop_grating"
+  - "fictrac_shutdown"
+
+conditions:
+  # Connect the bridge + annotate the log. (Auto-connect at run start also covers
+  # this, but an explicit connect is reproducible in the protocol.)
+  - name: "fictrac_setup"
+    commands:
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "connect"
+      - type: "plugin"
+        plugin_name: "log"
+        command_name: "log"
+        params:
+          message: "fictrac closed-loop demo starting"
+          level: "INFO"
+
+  # CLOSED-LOOP: a 200-frame ROTATION displayed in Mode 3, then FicTrac heading
+  # drives the frame index for 10 s (the host streams SET_FRAME_POSITION via the
+  # bridge). frame index = azimuthal position, so the arena rotates with the fly.
+  - name: "closed_loop_rotation"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: 10
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: 1.8
+      - type: "wait"
+        duration: 10
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  # OPEN-LOOP: FicTrac is only LOGGED (not driving). The arena runs its own Mode-2
+  # grating for 10 s; startRecording/stopRecording mark the logged window.
+  - name: "open_loop_grating"
+    commands:
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startRecording"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sq"
+        pattern_ID: 2
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: 5
+        gain: 0
+      - type: "wait"
+        duration: 10
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopRecording"
+
+  - name: "fictrac_shutdown"
+    commands:
+      - type: "controller"
+        command_name: "stopDisplay"
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "disconnect"

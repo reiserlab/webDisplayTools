@@ -3647,6 +3647,37 @@ console.log('\n--- Suite N12: rig-aware plugin parse + mapping ---');
         mapRigPluginToBuiltin('thermometer').builtinName,
         'temperature'
     );
+    // fictrac: physical fly-on-ball capability. Maps by key + by type; a
+    // fictrac-using experiment is flagged unsupported on a rig that lacks it.
+    check(
+        'N12d: mapRigPluginToBuiltin("fictrac") → fictrac',
+        mapRigPluginToBuiltin('fictrac').builtinName,
+        'fictrac'
+    );
+    check(
+        'N12d: fictrac maps via TYPE "FicTrac" too',
+        mapRigPluginToBuiltin('ball', 'FicTrac').builtinName,
+        'fictrac'
+    );
+    const rigBall = deriveRigPlugins(
+        parseRigYAMLText('plugins:\n  fictrac:\n    enabled: true\n    type: "fictrac"\n')
+    );
+    checkTrue(
+        'N12d: fictrac rig plugin → FicTracPlugin + enabled',
+        findKey(rigBall, 'fictrac').mapped &&
+            findKey(rigBall, 'fictrac').matlabClass === 'FicTracPlugin' &&
+            findKey(rigBall, 'fictrac').enabled === true
+    );
+    checkTrue(
+        'N12d: fictrac experiment UNSUPPORTED on a no-fictrac rig',
+        diffRigVsProtocol(deriveRigPlugins(parseRigYAMLText('plugins: {}\n')).plugins, [
+            { name: 'fictrac' }
+        ]).unsupported.includes('fictrac')
+    );
+    checkTrue(
+        'N12d: fictrac experiment SUPPORTED on a fly-on-ball rig',
+        !diffRigVsProtocol(rigBall.plugins, [{ name: 'fictrac' }]).unsupported.includes('fictrac')
+    );
     check(
         'N12d: unknown key + known TYPE falls back',
         mapRigPluginToBuiltin('cam2', 'LED Controller').builtinName,
