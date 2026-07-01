@@ -533,6 +533,7 @@ const ArenaLink = (function () {
                     }, bi.timeoutMs);
                     this._bulkRead = {
                         remaining: sz,
+                        total: sz,
                         chunks: [],
                         resolve: bi.dataResolve,
                         reject: bi.dataReject,
@@ -570,14 +571,29 @@ const ArenaLink = (function () {
                 clearTimeout(this._inflight.timer);
                 const entry = this._inflight;
                 this._inflight = null;
-                if (entry.bulkInit) entry.bulkInit.dataReject(err);
+                if (entry.bulkInit) {
+                    const base = err && err.message ? err.message : String(err);
+                    entry.bulkInit.dataReject(
+                        new Error(base + ' — bulk download aborted before header (0 bytes)')
+                    );
+                }
                 entry.reject(err);
             }
             if (this._bulkRead) {
                 clearTimeout(this._bulkRead.timer);
                 const br = this._bulkRead;
                 this._bulkRead = null;
-                br.reject(err);
+                // Report how far the bulk (0x84) download got before the link
+                // dropped — for a device reset (Break) mid-download, the byte
+                // count ≈ the firmware's buffer limit, which pinpoints the bug.
+                const total = br.total || 0;
+                const got = total - br.remaining;
+                const base = err && err.message ? err.message : String(err);
+                br.reject(
+                    new Error(
+                        base + ' — bulk download aborted after ' + got + '/' + total + ' bytes'
+                    )
+                );
             }
         }
 
