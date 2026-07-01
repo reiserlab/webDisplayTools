@@ -363,5 +363,60 @@ const failFlash = Wire.decodeProgramPanelResponse(Uint8Array.from(failFrame));
 checkBool('decodeProgramPanelResponse failure ok=false', failFlash && failFlash.ok === false);
 check('decodeProgramPanelResponse failure message', failFlash && failFlash.message, failAscii);
 
+console.log('\n=== get-pattern-info (0x88) — issue #18 ===');
+check('OPCODES.GET_PATTERN_INFO', Wire.OPCODES.GET_PATTERN_INFO, 0x88);
+// [03 88 idx_lo idx_hi], 1-based. 1 -> 01 00; 258 = 0x0102 exercises the hi byte.
+checkBytes('encodeGetPatternInfo(1)', Wire.encodeGetPatternInfo(1), '03 88 01 00');
+checkBytes('encodeGetPatternInfo(258)', Wire.encodeGetPatternInfo(258), '03 88 02 01');
+checkThrows('encodeGetPatternInfo(0) throws (1-based)', () => Wire.encodeGetPatternInfo(0));
+// decodePatternInfo: 12-byte LE payload
+//   frame_count u16 · gs u8 · rows u8 · cols u8 · arena u8 · obs u8 · file_size u32 · stretch u8
+// length byte = 2 + 12 = 0x0E. Values: frames 258, GS2, 2x10, arena 5, obs 9,
+// file_size 91904 (0x00016700 LE), stretch 0xAB.
+const piFrame = Uint8Array.from([
+    0x0e, 0x00, 0x88,
+    0x02, 0x01, 0x02, 0x02, 0x0a, 0x05, 0x09, 0x00, 0x67, 0x01, 0x00, 0xab
+]);
+const pi = Wire.decodePatternInfo(piFrame);
+checkBool('decodePatternInfo returns object', !!pi);
+check('  .frameCount', pi && pi.frameCount, 258);
+check('  .gsVal', pi && pi.gsVal, 2);
+check('  .rows', pi && pi.rows, 2);
+check('  .cols', pi && pi.cols, 10);
+check('  .arenaId', pi && pi.arenaId, 5);
+check('  .observerId', pi && pi.observerId, 9);
+check('  .fileSize', pi && pi.fileSize, 91904);
+check('  .stretch', pi && pi.stretch, 0xab);
+checkBool(
+    'decodePatternInfo rejects status!=0',
+    Wire.decodePatternInfo(Uint8Array.from([0x0e, 0x01, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])) === null
+);
+checkBool(
+    'decodePatternInfo short payload -> null',
+    Wire.decodePatternInfo(Uint8Array.from([0x03, 0x00, 0x88, 0x02])) === null
+);
+
+console.log('\n=== set/get-panel-display-mode (0x1B / 0x1C) — issue #19 ===');
+check('OPCODES.SET_PANEL_DISPLAY_MODE', Wire.OPCODES.SET_PANEL_DISPLAY_MODE, 0x1b);
+check('OPCODES.GET_PANEL_DISPLAY_MODE', Wire.OPCODES.GET_PANEL_DISPLAY_MODE, 0x1c);
+check('PANEL_DISPLAY_MODE_NAMES[0]', Wire.PANEL_DISPLAY_MODE_NAMES[0], 'oneshot');
+check('PANEL_DISPLAY_MODE_NAMES[1]', Wire.PANEL_DISPLAY_MODE_NAMES[1], 'persist');
+check('PANEL_DISPLAY_MODE_NAMES[3]', Wire.PANEL_DISPLAY_MODE_NAMES[3], 'gated');
+// set: [02 1B mode].
+checkBytes('encodeSetPanelDisplayMode(0)', Wire.encodeSetPanelDisplayMode(0), '02 1b 00');
+checkBytes('encodeSetPanelDisplayMode(1)', Wire.encodeSetPanelDisplayMode(1), '02 1b 01');
+checkBytes('encodeSetPanelDisplayMode(3)', Wire.encodeSetPanelDisplayMode(3), '02 1b 03');
+checkThrows('encodeSetPanelDisplayMode(4) throws', () => Wire.encodeSetPanelDisplayMode(4));
+checkThrows('encodeSetPanelDisplayMode(-1) throws', () => Wire.encodeSetPanelDisplayMode(-1));
+// get: [01 1C].
+checkBytes('encodeGetPanelDisplayMode', Wire.encodeGetPanelDisplayMode(), '01 1c');
+// decode: single mode byte from a 0x1C reply [03 00 1C mode] or 0x1B echo.
+check('decodePanelDisplayMode(0x1C=2)', Wire.decodePanelDisplayMode(Uint8Array.from([0x03, 0x00, 0x1c, 0x02])), 2);
+check('decodePanelDisplayMode(0x1B echo=1)', Wire.decodePanelDisplayMode(Uint8Array.from([0x03, 0x00, 0x1b, 0x01])), 1);
+checkBool(
+    'decodePanelDisplayMode rejects status!=0',
+    Wire.decodePanelDisplayMode(Uint8Array.from([0x03, 0x01, 0x1c, 0x02])) === null
+);
+
 console.log(`\n=== Summary ===\n${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures > 0 ? 1 : 0);

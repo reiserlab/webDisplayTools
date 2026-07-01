@@ -1706,7 +1706,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.39 | 2026-07-01 07:49 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.40 | 2026-07-01 12:33 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -2639,6 +2639,7 @@
                 const oldConfig = state.arena.configName;
                 state.arena.configName = e.target.value;
                 state.arena.config = getConfig(e.target.value);
+                updateBrightnessVisibility();  // Brightness (duty) is G6-only
 
                 // Clear clipboards if arena changed (dimensions may differ)
                 if (oldConfig !== e.target.value) {
@@ -3273,7 +3274,7 @@
                 pixelRows: state.pattern.pixelRows,
                 pixelCols: state.pattern.pixelCols,
                 frames: state.pattern.frames,
-                stretchValues: state.pattern.stretchValues || new Array(state.pattern.numFrames).fill(getPatBrightness()),
+                stretchValues: state.pattern.stretchValues || new Array(state.pattern.numFrames).fill(getStretchByte(state.pattern.generation)),
                 // V2 header metadata
                 generation_id: getGenerationId(gen),
                 arena_id: configName ? getArenaId(gen, configName) : 0,
@@ -3357,7 +3358,7 @@
                 pixelRows: pixelRows,
                 pixelCols: pixelCols,
                 frames: [new Uint8Array(pixelRows * pixelCols)],
-                stretchValues: [getPatBrightness()]
+                stretchValues: [getStretchByte(config.arena.generation)]
             };
 
             state.filename = 'untitled.pat';
@@ -3695,8 +3696,9 @@
                 high: highLevel,
                 low: lowLevel,
                 gsMode: gsMode,
-                // Per-LED duty_cycle byte (0-255, 128 = 50%) baked into every frame.
-                stretch: getPatBrightness()
+                // Last panel-block byte, generation-aware: G6 = per-LED duty_cycle
+                // (0-255) from the Brightness control; G4/G4.1 = legacy stretch (1).
+                stretch: getStretchByte(arena.generation)
             };
 
             let pattern;
@@ -4453,7 +4455,7 @@
                 pixelRows: entry.pixelRows,
                 pixelCols: entry.pixelCols,
                 frames: [new Uint8Array(entry.frame)],
-                stretchValues: [getPatBrightness()]
+                stretchValues: [getStretchByte(entry.generation)]
             };
 
             state.editor.editingClipboardId = id;
@@ -4676,11 +4678,11 @@
             if (state.pattern) {
                 frameInfo.textContent = `${state.editor.currentFrame + 1} / ${state.pattern.numFrames}`;
                 // Update stretch value display (per-LED duty_cycle byte for this frame)
-                const stretch = state.pattern.stretchValues?.[state.editor.currentFrame] ?? getPatBrightness();
+                const stretch = state.pattern.stretchValues?.[state.editor.currentFrame] ?? getStretchByte(state.pattern.generation);
                 stretchInput.value = stretch;
             } else {
                 frameInfo.textContent = '— / —';
-                stretchInput.value = getPatBrightness();
+                stretchInput.value = getStretchByte();
             }
         }
 
@@ -4710,6 +4712,28 @@
             let v = el ? parseInt(el.value, 10) : 128;
             if (isNaN(v)) v = 128;
             return Math.max(0, Math.min(255, v));
+        }
+
+        // Generation of the thing being edited/saved: current pattern first, else
+        // the selected arena. Governs the meaning of the last panel-block byte.
+        function currentGeneration() {
+            if (state.pattern && state.pattern.generation) return state.pattern.generation;
+            return state.arena?.config?.arena?.generation || 'G6';
+        }
+
+        // Value baked into the .pat's last panel-block byte, per generation:
+        //  - G6: per-LED duty_cycle (0-255) from the Brightness control.
+        //  - G4/G4.1/G3: legacy 'stretch' byte (default 1) — a DIFFERENT concept
+        //    (encoded as (stretch<<1) in the command byte); NOT brightness. See #97.
+        function getStretchByte(gen) {
+            const g = gen || currentGeneration();
+            return g === 'G6' ? getPatBrightness() : 1;
+        }
+
+        // The Brightness/duty control only applies to G6; hide it otherwise.
+        function updateBrightnessVisibility() {
+            const bar = document.querySelector('.pat-brightness-bar');
+            if (bar) bar.style.display = currentGeneration() === 'G6' ? '' : 'none';
         }
 
         // Global control: set the duty_cycle byte for EVERY frame of the current pattern.
@@ -4742,13 +4766,13 @@
 
             const newStretch = parseInt(e.target.value);
             if (isNaN(newStretch) || newStretch < 0 || newStretch > 255) {
-                e.target.value = getPatBrightness();
+                e.target.value = getStretchByte(state.pattern.generation);
                 return;
             }
 
             // Initialize stretchValues if not present
             if (!state.pattern.stretchValues) {
-                state.pattern.stretchValues = new Array(state.pattern.numFrames).fill(getPatBrightness());
+                state.pattern.stretchValues = new Array(state.pattern.numFrames).fill(getStretchByte(state.pattern.generation));
             }
 
             state.pattern.stretchValues[state.editor.currentFrame] = newStretch;
@@ -5526,7 +5550,7 @@
                 pixelRows: pixelRows,
                 pixelCols: pixelCols,
                 frames: frames,
-                stretchValues: new Array(totalFrames).fill(getPatBrightness())
+                stretchValues: new Array(totalFrames).fill(getStretchByte(generation))
             };
 
             // Generate filename based on motion type
@@ -5846,7 +5870,7 @@
                 pixelRows: pixelRows,
                 pixelCols: pixelCols,
                 frames: frames,
-                stretchValues: new Array(frames.length).fill(getPatBrightness())
+                stretchValues: new Array(frames.length).fill(getStretchByte(generation))
             };
 
             state.filename = `animation_${frames.length}f.pat`;
@@ -6157,6 +6181,7 @@
         // ============================================
         function updateStatus() {
             document.getElementById('statusFilename').textContent = state.filename || 'No pattern';
+            updateBrightnessVisibility();  // keep Brightness (G6-only) in sync with the current pattern
 
             if (state.pattern) {
                 document.getElementById('statusDimensions').textContent =
@@ -6394,6 +6419,7 @@
             updateDefaultFrames();  // Set initial frames based on default arena
             updatePatternTypeUI();  // Set initial pattern type UI visibility
             updateGsLevelBounds();  // Sync High/Low bounds to the initial grayscale mode
+            updateBrightnessVisibility();  // Show Brightness only for G6 arenas
             updateG3ButtonStates(); // Disable save/load for G3 arenas
 
             // Re-render 2D view on window resize to scale to fill available space

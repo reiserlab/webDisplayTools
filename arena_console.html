@@ -401,6 +401,48 @@
             @keyframes spin-preview {
                 to { transform: rotate(360deg); }
             }
+            /* GET_PATTERN_INFO (0x88) preview: a compact metadata card with a
+               reserved slot for a future single-frame thumbnail (Tier 2). */
+            .pat-meta-wrap {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .pat-meta-thumb {
+                width: 56px;
+                height: 56px;
+                flex: 0 0 auto;
+                border-radius: 5px;
+                border: 1px dashed var(--border);
+                background: var(--bg);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--dim);
+                font-size: 9px;
+                line-height: 1.1;
+                text-align: center;
+            }
+            .pat-meta-card {
+                border-collapse: collapse;
+                font-size: 11px;
+                font-family: 'JetBrains Mono', monospace;
+            }
+            .pat-meta-card th,
+            .pat-meta-card td {
+                padding: 1px 0;
+                text-align: left;
+                white-space: nowrap;
+                vertical-align: top;
+            }
+            .pat-meta-card th {
+                color: var(--dim);
+                font-weight: 400;
+                padding-right: 8px;
+            }
+            .pat-meta-card td {
+                color: var(--text);
+            }
             #tp-pat[readonly] {
                 opacity: 0.55;
                 cursor: not-allowed;
@@ -754,6 +796,37 @@
                             >
                                 Reset frames sent
                             </button>
+                            <div class="menu-sep">Panel display mode</div>
+                            <div class="menu-row">
+                                <label title="Sticky panel display mode applied to every forwarded/synthesized frame (SD, streamed, ALL_ON). Uncommon — most patterns just use the default.">Mode</label>
+                                <select
+                                    id="panel-mode"
+                                    title="0 oneshot / 1 persist / 2 triggered / 3 gated. Triggered/gated need an EINT trigger line the Slim controller lacks today (wire-complete, not yet exercisable)."
+                                >
+                                    <option value="0">Oneshot</option>
+                                    <option value="1" selected>Persistent</option>
+                                    <option value="2">Triggered</option>
+                                    <option value="3">Gated</option>
+                                </select>
+                                <button
+                                    class="cmd menu-item"
+                                    data-cmd="setpanelmode"
+                                    disabled
+                                    style="width: auto"
+                                    title="SET_PANEL_DISPLAY_MODE (0x1B) — apply the selected mode (sticky; echoes it back)"
+                                >
+                                    Set
+                                </button>
+                                <button
+                                    class="cmd menu-item"
+                                    data-cmd="getpanelmode"
+                                    disabled
+                                    style="width: auto"
+                                    title="GET_PANEL_DISPLAY_MODE (0x1C) — read the current panel display mode"
+                                >
+                                    Get
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -1470,6 +1543,18 @@
                 });
             };
 
+            // Bridge for the ES-module preview code: cheap pattern metadata via
+            // GET_PATTERN_INFO (0x88). A small framed reply (no 0x84 bulk read →
+            // no stall), so it is safe to fire on connect / dropdown change.
+            // Returns the decoded {frameCount, gsVal, rows, cols, arenaId,
+            // observerId, fileSize, stretch} object, or null on error.
+            window.__fetchPatternInfo = async function (sdIdx) {
+                const frame = await session.send(Wire.encodeGetPatternInfo(sdIdx));
+                const resp = Wire.decodeResponse(frame);
+                if (!resp || !resp.ok) return null;
+                return Wire.decodePatternInfo(resp);
+            };
+
             const cmdButtons = () => Array.from(document.querySelectorAll('.cmd'));
             function setConnected(on) {
                 $('btn-connect').disabled = on;
@@ -1564,6 +1649,10 @@
                     const hz = Wire.decodeRefreshRate(r);
                     return hz == null ? null : hz + ' Hz';
                 },
+                panelMode: (r) => {
+                    const m = Wire.decodePanelDisplayMode(r);
+                    return m == null ? null : m + ' (' + (Wire.PANEL_DISPLAY_MODE_NAMES[m] || '?') + ')';
+                },
                 frames: (r) => {
                     const c = Wire.decodeFramesSent(r);
                     return c == null ? null : c + ' frames';
@@ -1591,6 +1680,9 @@
                         '-- connected; try "Get info" (Controller menu) for a round-trip check',
                         'info'
                     );
+                    // Reflect the controller's current panel display mode into the
+                    // dropdown (GET 0x1C). Cheap framed query; best-effort.
+                    HANDLERS.getpanelmode();
                 } catch (e) {
                     log('connect: ' + (e.message || e), 'err');
                 }
@@ -2300,7 +2392,10 @@
                     (r) => {
                         const n = Wire.decodeFileCount(r);
                         return n == null ? null : n + ' files';
-                    }
+                    },
+                    // First read after connect: the SD can be slow to spin up, and the
+                    // 500 ms ArenaLink default would fail the count (empty SD list).
+                    { timeoutMs: 2000 }
                 );
                 if (resp && resp.ok) {
                     const n = Wire.decodeFileCount(resp);
@@ -2324,11 +2419,16 @@
 
                 tbody.innerHTML = '<tr><td colspan="3" class="mem-empty">fetching…</td></tr>';
 
-                // Fetch each filename silently (no console log per file)
+                // Fetch each filename silently (no console log per file). Use a generous
+                // per-read timeout: right after connect the SD can be slow to respond, and
+                // the 500 ms ArenaLink default left "(error)" rows / an empty picker (the
+                // "SD list didn't load on connect" bug).
                 const names = [];
                 for (let idx = 1; idx <= count; idx++) {
                     try {
-                        const raw = await session.send(Wire.encodeGetPatternFilename(idx));
+                        const raw = await session.send(Wire.encodeGetPatternFilename(idx), {
+                            timeoutMs: 2000
+                        });
                         const parsed = Wire.decodeResponse(raw);
                         names.push(parsed && parsed.ok ? Wire.decodePatternFilename(parsed) : null);
                     } catch (_) {
@@ -2771,6 +2871,24 @@
                     }
                 },
                 getrate: () => run('get-refresh-rate', Wire.encodeGetRefreshRate(), DECODE.refreshRate),
+                setpanelmode: () => {
+                    const mode = parseInt($('panel-mode').value, 10);
+                    try {
+                        run('set-panel-display-mode ' + mode, Wire.encodeSetPanelDisplayMode(mode), DECODE.panelMode);
+                    } catch (e) {
+                        log('set-panel-display-mode (encode rejected): ' + e.message, 'err');
+                    }
+                },
+                getpanelmode: async () => {
+                    const resp = await run(
+                        'get-panel-display-mode',
+                        Wire.encodeGetPanelDisplayMode(),
+                        DECODE.panelMode
+                    );
+                    // Reflect the controller's current mode into the dropdown.
+                    const m = resp && resp.ok ? Wire.decodePanelDisplayMode(resp) : null;
+                    if (m != null) $('panel-mode').value = String(m);
+                },
                 setframe: () => {
                     const i = parseInt($('sf-idx').value, 10);
                     if (Number.isNaN(i)) {
@@ -3304,6 +3422,64 @@
                 return s;
             }
 
+            // GET_PATTERN_INFO (0x88) metadata card — a compact table next to a
+            // reserved thumbnail slot. `info` is the decoded 0x88 reply (see the
+            // window.__fetchPatternInfo bridge). The empty .pat-meta-thumb slot is
+            // where the deferred Tier-2 single-frame thumbnail will drop in.
+            function metaCard(info) {
+                const wrap = document.createElement('div');
+                wrap.className = 'pat-meta-wrap';
+
+                const thumb = document.createElement('div');
+                thumb.className = 'pat-meta-thumb';
+                thumb.textContent = 'no\nthumb';
+                thumb.title = 'Thumbnail preview is planned (a bounded GET_PATTERN_FRAME read); metadata only for now.';
+                wrap.appendChild(thumb);
+
+                const table = document.createElement('table');
+                table.className = 'pat-meta-card';
+                const gsLabel = info.gsVal === 1 ? 'GS2' : info.gsVal === 2 ? 'GS16' : 'GS?';
+                const rows = [
+                    ['frames', String(info.frameCount)],
+                    ['grayscale', gsLabel],
+                    ['grid', info.rows + '×' + info.cols],
+                    ['arena id', String(info.arenaId)],
+                    ['observer id', String(info.observerId)],
+                    ['file size', (info.fileSize / 1024).toFixed(1) + ' KB'],
+                    ['stretch', String(info.stretch)]
+                ];
+                for (const [k, v] of rows) {
+                    const tr = document.createElement('tr');
+                    const th = document.createElement('th');
+                    th.textContent = k;
+                    const td = document.createElement('td');
+                    td.textContent = v;
+                    tr.appendChild(th);
+                    tr.appendChild(td);
+                    table.appendChild(tr);
+                }
+                wrap.appendChild(table);
+                return wrap;
+            }
+
+            // Fetch + render the 0x88 metadata card for a live SD pattern. Cheap
+            // framed read (no 0x84 bulk → no stall). Nonce-guarded so fast dropdown
+            // changes discard stale replies. This replaces the disabled 0x84
+            // auto-preview (renderSdPreview) for the picker.
+            async function renderSdMetaCard(sdIdx) {
+                if (typeof window.__fetchPatternInfo !== 'function') return;
+                const nonce = ++sdPreviewNonce;
+                previewHost.innerHTML = '<span class="pat-preview-spinner"></span>';
+                try {
+                    const info = await window.__fetchPatternInfo(sdIdx);
+                    if (sdPreviewNonce !== nonce) return; // selection changed while fetching
+                    previewHost.innerHTML = '';
+                    previewHost.appendChild(info ? metaCard(info) : metaSpan({}));
+                } catch (e) {
+                    if (sdPreviewNonce === nonce) previewHost.innerHTML = '';
+                }
+            }
+
             // Live SD card name→index map; populated by the classic script via
             // window.__populateFromSdCard when no manifest is active.
             let sdNameToIndex = {};
@@ -3333,22 +3509,22 @@
                 nameSel.value = entries[0].name;
                 tpPat.value = entries[0].idx;
                 lockPat(false);
-                // AUTO-PREVIEW DISABLED: renderSdPreview() does a 0x84 bulk read, which
-                // crashes the arena link (firmware bulk-send fault) — and it fired on every
-                // connect. The pattern index is already set above (tpPat.value), so Load
-                // (0x03 / TRIAL_PARAMS mode 3) still works; we just don't auto-download.
-                // Re-enable via the cheap GET_PATTERN_INFO opcode (Firmware_Arena follow-up).
-                // renderSdPreview(entries[0].idx);
+                // Cheap metadata preview via GET_PATTERN_INFO (0x88) — a small
+                // framed read, NOT the 0x84 bulk download that stalled the link
+                // and had to be disabled here. (Full-frame thumbnail is deferred;
+                // see renderSdPreview / the .pat-meta-thumb slot.)
+                renderSdMetaCard(entries[0].idx);
             };
 
             nameSel.addEventListener('change', () => {
                 const name = nameSel.value;
                 const sdIdx = sdNameToIndex[name];
                 if (sdIdx != null) {
-                    // SD card mode: set the pattern index directly. Live preview
-                    // (renderSdPreview → 0x84 bulk read) disabled — it crashes the link.
+                    // SD card mode: set the pattern index directly + show cheap
+                    // 0x88 metadata (renderSdMetaCard). The 0x84 bulk preview stays
+                    // disabled — it stalled the link.
                     tpPat.value = sdIdx;
-                    // renderSdPreview(sdIdx);
+                    renderSdMetaCard(sdIdx);
                 } else if (activeManifest) {
                     // Manifest mode: resolve name → index + preview via manifest.
                     applyPick(name);
