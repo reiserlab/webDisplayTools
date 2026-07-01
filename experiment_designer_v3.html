@@ -1309,6 +1309,28 @@
             z-index: 100;
         }
         .modal-backdrop.open { display: flex; }
+        /* Transient clamp/notice toast (bottom-center). */
+        #miniToast {
+            position: fixed;
+            bottom: 1.2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(1rem);
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            padding: 0.5rem 0.9rem;
+            font-size: 0.82rem;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.18s ease, transform 0.18s ease;
+            z-index: 200;
+        }
+        #miniToast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
         .modal {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -1624,6 +1646,7 @@
             getV3CommandParams,
             isKnownControllerCommand,
             isG6OnlyCommand,
+            clampToSchema,
             BUILTIN_PLUGINS,
             createPluginEntry,
             mapRigPluginToBuiltin,
@@ -2140,6 +2163,23 @@
         $('errorModal').addEventListener('click', (e) => {
             if (e.target.id === 'errorModal') $('errorModal').classList.remove('open');
         });
+
+        // Lightweight transient toast (bottom-center) for non-blocking notices
+        // like "value clamped". Lives on <body> so it survives the inspector
+        // re-render that follows a docSet.
+        let _toastTimer = null;
+        function showToast(msg) {
+            let t = $('miniToast');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = 'miniToast';
+                document.body.appendChild(t);
+            }
+            t.textContent = msg;
+            t.classList.add('show');
+            if (_toastTimer) clearTimeout(_toastTimer);
+            _toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+        }
 
         /**
          * confirmModal({title, body, list, confirmLabel, cancelLabel}) -> Promise<boolean>
@@ -4202,6 +4242,21 @@
             'plugin_name': 'string'
         };
 
+        // Hover tooltip for a numeric field: names the allowable range + integer
+        // constraint from the schema so the user knows the limits before typing.
+        function numFieldTooltip(label, schema) {
+            const base = (schema && schema.label) || label;
+            if (!schema) return 'Edit ' + label;
+            const bits = [];
+            const hasMin = typeof schema.min === 'number';
+            const hasMax = typeof schema.max === 'number';
+            if (hasMin && hasMax) bits.push('allowed ' + schema.min + '–' + schema.max);
+            else if (hasMin) bits.push('min ' + schema.min);
+            else if (hasMax) bits.push('max ' + schema.max);
+            if (schema.integer) bits.push('integer');
+            return bits.length ? base + ' — ' + bits.join(', ') : 'Edit ' + base;
+        }
+
         // Render a single editable scalar field. If the underlying YAML node is
         // an Alias, show a read-only badge instead of an input. Otherwise, an
         // input that calls docSet() on commit.
@@ -4301,10 +4356,21 @@
             const input = el('input', {
                 type: inputType,
                 class: 'field-edit ' + (typeHint === 'number' ? 'num' : 'str'),
-                value: typeof value === 'string' ? value : String(value),
-                title: 'Edit ' + label
+                value: typeof value === 'string' ? value : String(value)
             });
-            if (typeHint === 'number') input.step = 'any';
+            // Numeric range hints from the schema: enforce with native min/max/step,
+            // surface the allowed range in the hover tooltip, and clamp on commit so
+            // out-of-range values can't be entered. numSchema is null for freeform
+            // number fields (no schema) → behaves as before (NaN guard only).
+            const numSchema = schema && schema.type === 'number' ? schema : null;
+            if (typeHint === 'number') {
+                input.step = numSchema && numSchema.integer ? '1' : (numSchema && numSchema.step) || 'any';
+                if (numSchema && typeof numSchema.min === 'number') input.min = String(numSchema.min);
+                if (numSchema && typeof numSchema.max === 'number') input.max = String(numSchema.max);
+                input.title = numFieldTooltip(label, numSchema);
+            } else {
+                input.title = 'Edit ' + label;
+            }
 
             // Snapshot on commit-with-actual-change. Captures the pre-edit
             // state so a single Ctrl+Z reverts the whole field visit. Browser
@@ -4324,7 +4390,14 @@
                         input.value = String(value);
                         return;
                     }
-                    coerced = n;
+                    // Clamp/round to the schema's range so illegal values can't be
+                    // committed; tell the user what was corrected.
+                    const c = clampToSchema(n, numSchema);
+                    coerced = c.value;
+                    if (c.changed) {
+                        input.value = String(coerced);
+                        showToast((numSchema && numSchema.label ? numSchema.label : label) + ': ' + c.reason);
+                    }
                 }
                 if (coerced === value) return;
                 pushUndo();
@@ -6036,7 +6109,9 @@
             const paramsSchema =
                 cmd.type === 'controller'
                     ? getV3CommandParams(experiment, 'controller', null, cmd.command_name)
-                    : null;
+                    : cmd.type === 'wait'
+                      ? { duration: { type: 'number', min: 0, step: 0.1, label: 'Duration (s)' } }
+                      : null;
 
             for (const k of detailKeys) {
                 if (cmd[k] === undefined) continue;

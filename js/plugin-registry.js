@@ -35,12 +35,17 @@ var CONTROLLER_COMMANDS = {
                 type: 'number',
                 required: true,
                 default: 1,
+                min: 1,
+                max: 65535,
+                integer: true,
                 label: 'Pattern ID'
             },
             duration: {
                 type: 'number',
                 required: true,
                 default: 5,
+                min: 0,
+                step: 0.1,
                 label: 'Duration (s)'
             },
             mode: {
@@ -57,19 +62,28 @@ var CONTROLLER_COMMANDS = {
                 type: 'number',
                 required: true,
                 default: 1,
+                min: 0,
+                max: 65535,
+                integer: true,
                 label: 'Frame index'
             },
             frame_rate: {
                 type: 'number',
                 required: true,
                 default: 60,
+                min: 0,
+                max: 65535,
+                integer: true,
                 label: 'Frame rate (Hz)'
             },
             gain: {
                 type: 'number',
                 required: true,
                 default: 0,
-                label: 'Gain'
+                min: -128,
+                max: 127,
+                integer: true,
+                label: 'Gain (int8)'
             }
         }
     },
@@ -103,6 +117,9 @@ var CONTROLLER_COMMANDS = {
                 type: 'number',
                 required: true,
                 default: 0,
+                min: 0,
+                max: 65535,
+                integer: true,
                 label: 'Frame index (0-based)'
             }
         }
@@ -121,7 +138,10 @@ var CONTROLLER_COMMANDS = {
                 type: 'number',
                 required: true,
                 default: 0,
-                label: 'Voltage (mV): 0–5000'
+                min: 0,
+                max: 5000,
+                integer: true,
+                label: 'Voltage (mV)'
             }
         }
     },
@@ -178,6 +198,40 @@ function isG6OnlyCommand(name) {
     return G6_ONLY_COMMANDS.has(name);
 }
 
+/**
+ * Coerce a numeric value to a param schema's constraints (integer / min / max).
+ * Pure — the designer calls this on commit to make out-of-range values
+ * impossible to enter (clamp-to-legal). Non-numeric input or a schema without
+ * numeric bounds is returned unchanged.
+ *
+ * @param {number|string} value  the raw entered value
+ * @param {object} schema        a param schema ({ type, min, max, integer, ... })
+ * @returns {{ value:*, changed:boolean, reason:(string|null) }}
+ *   `value` is the corrected value; `changed` is true if it differs from the
+ *   input; `reason` is a short human note (e.g. 'clamped to max 5000') or null.
+ */
+function clampToSchema(value, schema) {
+    const n = Number(value);
+    if (!schema || schema.type !== 'number' || !Number.isFinite(n)) {
+        return { value: value, changed: false, reason: null };
+    }
+    let out = n;
+    let reason = null;
+    if (schema.integer && !Number.isInteger(out)) {
+        out = Math.round(out);
+        reason = 'rounded to integer';
+    }
+    if (typeof schema.min === 'number' && out < schema.min) {
+        out = schema.min;
+        reason = 'raised to minimum ' + schema.min;
+    }
+    if (typeof schema.max === 'number' && out > schema.max) {
+        out = schema.max;
+        reason = 'clamped to maximum ' + schema.max;
+    }
+    return { value: out, changed: out !== n, reason: reason };
+}
+
 // ════════════════════════════════════════════════════
 // Built-in Plugin Definitions
 // ════════════════════════════════════════════════════
@@ -215,6 +269,7 @@ var BUILTIN_PLUGINS = {
                         default: 50,
                         min: 0,
                         max: 100,
+                        integer: true,
                         label: 'Power (0-100)'
                     }
                 }
@@ -229,12 +284,15 @@ var BUILTIN_PLUGINS = {
                         default: 5,
                         min: 0,
                         max: 100,
+                        integer: true,
                         label: 'Power (0-100)'
                     },
                     panel_num: {
                         type: 'number',
                         required: false,
                         default: 0,
+                        min: 0,
+                        integer: true,
                         label: 'Panel # (0=all)'
                     },
                     pattern: {
@@ -256,12 +314,15 @@ var BUILTIN_PLUGINS = {
                         default: 5,
                         min: 0,
                         max: 100,
+                        integer: true,
                         label: 'Power (0-100)'
                     },
                     panel_num: {
                         type: 'number',
                         required: false,
                         default: 0,
+                        min: 0,
+                        integer: true,
                         label: 'Panel # (0=all)'
                     },
                     pattern: {
@@ -283,12 +344,15 @@ var BUILTIN_PLUGINS = {
                         default: 5,
                         min: 0,
                         max: 100,
+                        integer: true,
                         label: 'Power (0-100)'
                     },
                     panel_num: {
                         type: 'number',
                         required: false,
                         default: 0,
+                        min: 0,
+                        integer: true,
                         label: 'Panel # (0=all)'
                     },
                     pattern: {
@@ -888,6 +952,7 @@ var PluginRegistry = {
     isKnownControllerCommand: isKnownControllerCommand,
     G6_ONLY_COMMANDS: G6_ONLY_COMMANDS,
     isG6OnlyCommand: isG6OnlyCommand,
+    clampToSchema: clampToSchema,
     getAllCommandOptions: getAllCommandOptions,
     createPluginEntry: createPluginEntry,
     findPluginDefByClass: findPluginDefByClass,
@@ -921,6 +986,7 @@ export {
     isKnownControllerCommand,
     G6_ONLY_COMMANDS,
     isG6OnlyCommand,
+    clampToSchema,
     getAllCommandOptions,
     createPluginEntry,
     findPluginDefByClass,
