@@ -1,0 +1,37 @@
+version: 3
+
+# G6 analog/digital output bench test — pure I/O, NO trialParams, so it runs with
+# no pattern/SD-card dependency. Select the condition, then "▶ Run this condition"
+# (or Run on arena). Expect: DO1 (BNC J3) HIGH for the whole run; J27 steps
+# 0 → 2.5 V → 0 V; DO1 back LOW.
+
+experiment_info:
+  name: "G6 AO/DO bench test"
+  author: "webDisplayTools"
+
+rig: "./configs/rigs/cshl_g6_2x10.yaml"
+
+experiment:
+  - "io_test"
+
+conditions:
+  - name: "io_test"
+    commands:
+      - type: "controller"
+        command_name: "setDigitalOut"
+        channel: 1
+        state: 1
+      - type: "wait"
+        duration: 3
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 2500
+      - type: "wait"
+        duration: 3
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 0
+      - type: "controller"
+        command_name: "setDigitalOut"
+        channel: 1
+        state: 0
