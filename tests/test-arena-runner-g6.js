@@ -433,6 +433,53 @@ async function main() {
         Runner.translateCommand({ type: 'controller', command_name: 'frobnicate' }).op,
         'error'
     );
+    // G6-only I/O commands
+    const trAO = Runner.translateCommand({
+        type: 'controller',
+        command_name: 'setAnalogOut',
+        mv: 2500
+    });
+    check('setAnalogOut -> op setAnalogOut', trAO.op, 'setAnalogOut');
+    check('setAnalogOut -> mv passthrough', trAO.mv, 2500);
+    check(
+        'setAnalogOut out-of-range mv -> error',
+        Runner.translateCommand({ type: 'controller', command_name: 'setAnalogOut', mv: 6000 }).op,
+        'error'
+    );
+    check(
+        'setAnalogOut non-integer mv -> error',
+        Runner.translateCommand({ type: 'controller', command_name: 'setAnalogOut', mv: 12.5 }).op,
+        'error'
+    );
+    const trDO = Runner.translateCommand({
+        type: 'controller',
+        command_name: 'setDigitalOut',
+        channel: 2,
+        state: 1
+    });
+    check('setDigitalOut -> op setDigitalOut', trDO.op, 'setDigitalOut');
+    check('setDigitalOut -> channel passthrough', trDO.channel, 2);
+    check('setDigitalOut -> state passthrough', trDO.state, 1);
+    check(
+        'setDigitalOut bad channel -> error',
+        Runner.translateCommand({
+            type: 'controller',
+            command_name: 'setDigitalOut',
+            channel: 3,
+            state: 0
+        }).op,
+        'error'
+    );
+    check(
+        'setDigitalOut bad state -> error',
+        Runner.translateCommand({
+            type: 'controller',
+            command_name: 'setDigitalOut',
+            channel: 1,
+            state: 2
+        }).op,
+        'error'
+    );
     const trWait = Runner.translateCommand({ type: 'wait', duration: 3 });
     check('wait -> op wait', trWait.op, 'wait');
     check('wait -> durationSec', trWait.durationSec, 3);
@@ -485,6 +532,38 @@ async function main() {
         checkBool('emitted trial-running', phases.includes('trial-running'));
         checkBool('emitted sequence-complete', phases.includes('sequence-complete'));
         checkBool('runner inactive after a completed run', runner.active === false);
+    }
+
+    console.log('\n=== runSequence: G6-only I/O commands emit the right wire frames ===');
+    {
+        const link = makeFakeLink();
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const steps = [{ kind: 'ref', conditionName: 'io', label: 'io', seqIdx: 0, dur: 0 }];
+        const conditionsByName = new Map([
+            [
+                'io',
+                {
+                    name: 'io',
+                    commands: [
+                        { type: 'controller', command_name: 'setDigitalOut', channel: 2, state: 1 },
+                        { type: 'controller', command_name: 'setAnalogOut', mv: 2500 }
+                    ]
+                }
+            ]
+        ]);
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            sleep: () => Promise.resolve()
+        });
+        // setDigitalOut(2,1) -> 03 aa 02 01 ; setAnalogOut(2500=0x09C4) -> 03 a0 c4 09 ;
+        // then the final STOP.
+        checkBytes('1st send: setDigitalOut(2,HIGH)', link.sent[0], '03 aa 02 01');
+        checkBytes('2nd send: setAnalogOut(2500 mV)', link.sent[1], '03 a0 c4 09');
+        checkBytes('final STOP sent', link.sent[link.sent.length - 1], '01 30');
+        check('no errors for valid I/O commands', summary.errors, 0);
+        check('no skips for valid I/O commands', summary.skipped, 0);
     }
 
     console.log(

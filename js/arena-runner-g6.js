@@ -148,17 +148,21 @@ var ArenaRunnerG6 = (function () {
 
     // The controller commands the sequence runner can EMIT on G6, grounded in the
     // firmware command set (commands.h): trialParams (0x08), allOn (0xFF),
-    // allOff (0x00), stopDisplay (0x30), setPositionX → SET_FRAME_POSITION (0x70).
-    // This mirrors plugin-registry's isKnownControllerCommand, duplicated on purpose
-    // because this module must stay import-free (no sibling imports). Anything else
-    // (e.g. a legacy setColorDepth → SWITCH_GRAYSCALE 0x06, dropped on G6) is an
-    // error, not a silent no-op.
+    // allOff (0x00), stopDisplay (0x30), setPositionX → SET_FRAME_POSITION (0x70),
+    // setAnalogOut → SET_AO_VOLTAGE (0xA0), setDigitalOut → SET_DIGITAL_OUT (0xAA).
+    // The last two are G6-only (native G6-controller BNC I/O); the runner is G6-only
+    // so no extra guard is needed. This mirrors plugin-registry's
+    // isKnownControllerCommand, duplicated on purpose because this module must stay
+    // import-free (no sibling imports). Anything else (e.g. a legacy setColorDepth →
+    // SWITCH_GRAYSCALE 0x06, dropped on G6) is an error, not a silent no-op.
     const RUNNABLE_CONTROLLER_COMMANDS = [
         'trialParams',
         'allOn',
         'allOff',
         'stopDisplay',
-        'setPositionX'
+        'setPositionX',
+        'setAnalogOut',
+        'setDigitalOut'
     ];
 
     /**
@@ -280,6 +284,8 @@ var ArenaRunnerG6 = (function () {
      *   { op:'trialParams', params, durationSec }
      *   { op:'allOn' | 'allOff' | 'stopDisplay' }
      *   { op:'setFramePosition', index }            // 0-based frame index (Mode 3)
+     *   { op:'setAnalogOut', mv }                    // G6-only, 0–5000 mV (0xA0)
+     *   { op:'setDigitalOut', channel, state }       // G6-only, ch 1|2, state 0|1 (0xAA)
      *   { op:'wait', durationSec }
      *   { op:'skip', reason, plugin_name, command_name }   // plugin → not driveable
      *   { op:'error', reason }                              // unsupported / malformed
@@ -331,6 +337,41 @@ var ArenaRunnerG6 = (function () {
                 // Mode-3 frame jump: posX is a 0-based frame index → 0x70.
                 const index = Number(cmd.posX);
                 return { op: 'setFramePosition', index: Number.isFinite(index) ? index : 0 };
+            }
+            if (name === 'setAnalogOut') {
+                // G6-only: drive BNC J27 DAC (SET_AO_VOLTAGE 0xA0), 0–5000 mV.
+                const mv = Number(cmd.mv);
+                if (!Number.isInteger(mv) || mv < 0 || mv > 5000) {
+                    return {
+                        op: 'error',
+                        reason:
+                            'setAnalogOut mv must be an integer 0–5000 (millivolts), got ' +
+                            JSON.stringify(cmd.mv)
+                    };
+                }
+                return { op: 'setAnalogOut', mv };
+            }
+            if (name === 'setDigitalOut') {
+                // G6-only: drive DO1 (J3) / DO2 (J4) TTL (SET_DIGITAL_OUT 0xAA).
+                const channel = Number(cmd.channel);
+                const state = Number(cmd.state);
+                if (channel !== 1 && channel !== 2) {
+                    return {
+                        op: 'error',
+                        reason:
+                            'setDigitalOut channel must be 1 (DO1/J3) or 2 (DO2/J4), got ' +
+                            JSON.stringify(cmd.channel)
+                    };
+                }
+                if (state !== 0 && state !== 1) {
+                    return {
+                        op: 'error',
+                        reason:
+                            'setDigitalOut state must be 0 (LOW) or 1 (HIGH), got ' +
+                            JSON.stringify(cmd.state)
+                    };
+                }
+                return { op: 'setDigitalOut', channel, state };
             }
             return {
                 op: 'error',
@@ -745,6 +786,20 @@ var ArenaRunnerG6 = (function () {
                 case 'setFramePosition':
                     await this._link.send(W.encodeSetFramePosition(ir.index));
                     emit({ phase: 'command', index, step, op: ir.op, value: ir.index });
+                    return;
+                case 'setAnalogOut':
+                    await this._link.send(W.encodeSetAoVoltage(ir.mv));
+                    emit({ phase: 'command', index, step, op: ir.op, value: ir.mv });
+                    return;
+                case 'setDigitalOut':
+                    await this._link.send(W.encodeSetDigitalOut(ir.channel, ir.state));
+                    emit({
+                        phase: 'command',
+                        index,
+                        step,
+                        op: ir.op,
+                        value: { channel: ir.channel, state: ir.state }
+                    });
                     return;
                 case 'wait':
                     await sleep((Number(ir.durationSec) || 0) * 1000);

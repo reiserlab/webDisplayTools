@@ -82,6 +82,15 @@ checkBytes('encodeSetFramePosition(10)', Wire.encodeSetFramePosition(10), '03 70
 // index 258 = 0x0102 exercises the high byte of the u16 LE.
 checkBytes('encodeSetFramePosition(258)', Wire.encodeSetFramePosition(258), '03 70 02 01');
 
+console.log('\n=== G6 analog/digital output (0xA0 / 0xAA) ===');
+// set-ao-voltage (0xA0): mv as u16 LE. 2500 = 0x09C4 -> lo C4, hi 09.
+checkBytes('encodeSetAoVoltage(2500)', Wire.encodeSetAoVoltage(2500), '03 a0 c4 09');
+checkBytes('encodeSetAoVoltage(0)', Wire.encodeSetAoVoltage(0), '03 a0 00 00');
+checkBytes('encodeSetAoVoltage(5000)', Wire.encodeSetAoVoltage(5000), '03 a0 88 13');
+// set-digital-out (0xAA): [channel, state].
+checkBytes('encodeSetDigitalOut(1,1)', Wire.encodeSetDigitalOut(1, 1), '03 aa 01 01');
+checkBytes('encodeSetDigitalOut(2,0)', Wire.encodeSetDigitalOut(2, 0), '03 aa 02 00');
+
 console.log('\n=== trial-params (0x08) — golden vectors from play_pattern.py ===');
 // Mode 2, pattern 1, 30 fps, init 0 — the canonical golden vector.
 checkBytes(
@@ -128,6 +137,9 @@ checkThrows('patternId 70000 throws', () => Wire.encodeTrialParams({ patternId: 
 checkThrows('frame position -1 throws', () => Wire.encodeSetFramePosition(-1));
 checkThrows('frame position 70000 throws', () => Wire.encodeSetFramePosition(70000));
 checkThrows('non-integer mhz throws', () => Wire.encodeSetSpiClock(20.5));
+checkThrows('ao voltage 6000 mV throws', () => Wire.encodeSetAoVoltage(6000));
+checkThrows('ao voltage -1 mV throws', () => Wire.encodeSetAoVoltage(-1));
+checkThrows('digital out channel 3 throws', () => Wire.encodeSetDigitalOut(3, 1));
 
 console.log('\n=== firmware domain validation (modes 2/3/4, patternId>=1, SPI 1..30) ===');
 // Firmware only accepts modes 2/3/4 — fail fast instead of emitting a bad frame.
