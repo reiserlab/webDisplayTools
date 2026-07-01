@@ -571,7 +571,8 @@
             opacity: 0.5;
         }
         /* The full-sequence run trigger — emphasized green, mirrors the inspector's
-           "▶ Test on arena" (Test = one trial; Run = the whole sequence). */
+           "▶ Run this condition" (one condition vs. the whole sequence; both replay
+           all commands + waits in order). */
         .zone-head-btn.run-seq-btn { border-color: var(--accent); font-weight: 700; }
         .zone-head-btn.run-seq-btn:disabled { border-color: var(--border); font-weight: 400; }
         .lib-row .lib-row-dup {
@@ -612,10 +613,8 @@
             color: var(--error);
             border-color: #c4514f;
         }
-        /* LAB-94 — per-condition "run on arena" (dry-run) button. Rendered only
-           on dry-run-eligible conditions (trialParams + no plugins), so it
-           doubles as an always-visible "web-runnable" badge (unlike the
-           hover-only dup/del). */
+        /* Per-condition "run on arena" button style (currently the live control is
+           the inspector's .arena-test-btn; this class is retained for reuse). */
         .lib-row .lib-row-run {
             background: transparent;
             border: 1px solid transparent;
@@ -1561,7 +1560,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.37 | <span id="footerTimestamp">2026-07-01 00:57 ET</span>
+        v3 Experiment Designer v0.38 | <span id="footerTimestamp">2026-07-01 12:50 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -4037,7 +4036,8 @@
         function renderArenaTestControl(condIdx) {
             const cond = experiment.conditions[condIdx];
             const wrap = el('div', { class: 'arena-test' });
-            if (RunnerLib.isDryRunEligible(cond)) {
+            const hasCommands = cond && Array.isArray(cond.commands) && cond.commands.length > 0;
+            if (hasCommands) {
                 wrap.appendChild(el('button', {
                     class: 'arena-test-btn',
                     disabled: !serialSupported || importMode,
@@ -4045,18 +4045,17 @@
                         ? 'Web Serial unavailable — use a Chromium-based desktop browser'
                         : (importMode
                             ? 'Exit import mode to run on the arena'
-                            : 'Send this condition’s trialParams to the arena (controller-only — plugins & waits are not replayed)'),
+                            : 'Run this whole condition on the arena — controller commands + waits in order (plugins skipped)'),
                     onClick: () => onRunConditionDryRun(condIdx)
-                }, '▶ Test on arena'));
-                wrap.appendChild(el('span', { class: 'arena-test-note' }, 'trialParams only · status + Stop below'));
-            } else {
+                }, '▶ Run this condition'));
                 const plugins = RunnerLib.listSkippedPlugins(cond);
-                const why = !RunnerLib.findTrialParams(cond)
-                    ? 'No trialParams command — nothing to display on the arena.'
-                    : 'Not web-runnable here: ' + plugins.length + ' plugin command' +
-                      (plugins.length === 1 ? '' : 's') + ' the browser can’t drive (' +
-                      plugins.map((p) => p.plugin_name + '.' + p.command_name).join(', ') + ').';
-                wrap.appendChild(el('span', { class: 'arena-test-note dim' }, why));
+                wrap.appendChild(el('span', { class: 'arena-test-note' },
+                    plugins.length
+                        ? 'whole condition · ' + plugins.length + ' plugin cmd' +
+                          (plugins.length === 1 ? '' : 's') + ' skipped · status + Stop below'
+                        : 'whole condition · status + Stop below'));
+            } else {
+                wrap.appendChild(el('span', { class: 'arena-test-note dim' }, 'No commands in this condition to run.'));
             }
             return wrap;
         }
@@ -5429,8 +5428,15 @@
             updateRunSeqBtn();
         }
 
+        // Run ONE condition end-to-end on the arena — the whole command list (in
+        // order), not just its trialParams. Reuses the full-sequence runner via a
+        // single-condition step list so waits, allOn/allOff, setAnalogOut/
+        // setDigitalOut, and setPositionX all replay; plugin commands are skipped
+        // with a visible warning (the browser can't drive them). Read-only w.r.t.
+        // the experiment model (NO pushUndo/setDirty); run-start is import-mode
+        // guarded (Stop/Disconnect are not). Was the LAB-94 trialParams-only
+        // "dry-run"; broadened once the LAB-97 sequence runner landed.
         async function onRunConditionDryRun(condIdx) {
-            // Run-start guard (read-only — NO pushUndo/setDirty).
             if (!experiment || importMode) return;
             if (!serialSupported) {
                 showError(
@@ -5442,127 +5448,39 @@
             }
             const cond = experiment.conditions[condIdx];
             if (!cond) return;
-
-            const cmd = RunnerLib.findTrialParams(cond);
-            if (!cmd) {
-                showError(
-                    'No trialParams command',
-                    'Condition "' +
-                        cond.name +
-                        '" has no controller trialParams command to test. Other controller ' +
-                        'commands (allOn/allOff/…), plugins, and waits are not run by the dry-run.'
-                );
+            if (!Array.isArray(cond.commands) || cond.commands.length === 0) {
+                showError('Empty condition', 'Condition "' + cond.name + '" has no commands to run.');
                 return;
             }
 
-            // Resolve the 1-based SD pattern index. Preferred: the pattern name is in the
-            // active set (LAB-96) → a trustworthy, validated index. Fallback: a loaded
-            // YAML's explicit pattern_ID (legacy / MATLAB-only) — used but flagged. The
-            // raw-index prompt (the "confirm-once index dialog") is retired.
-            let patternId = activeSetIndexByName(cmd.pattern);
-            let resolvedFrom = 'set';
-            const setLabel = psState.set && psState.set.set_id ? psState.set.set_id : 'active set';
-            if (patternId == null) {
-                patternId = Number(cmd.pattern_ID);
-                resolvedFrom = 'protocol';
-                if (!Number.isInteger(patternId) || patternId < 1) {
-                    showError(
-                        'No SD pattern index',
-                        'Condition "' + cond.name + '" has a computer/MATLAB pattern "' +
-                            (cmd.pattern || '(empty)') + '" that is not in the active web set, ' +
-                            'and no usable pattern_ID. Add it to the set in the Pattern Set builder ' +
-                            '(so it becomes a web pattern), or set a 1-based pattern_ID in the protocol.'
-                    );
-                    return;
+            // A one-step sequence pointing at this condition — same step shape
+            // flattenStructure emits for a bare ref, so the runner treats it
+            // exactly like one sequence step.
+            const steps = [
+                {
+                    kind: 'ref',
+                    label: cond.name,
+                    conditionName: cond.name,
+                    seqIdx: 0,
+                    dur: RunnerLib.conditionDuration(cond)
                 }
-            }
+            ];
+            const conditionsByName = new Map([[cond.name, cond]]);
 
-            // Build + validate the wire params up front (synchronous — surfaces
-            // bad mode / negative frame_rate / non-numeric fields clearly).
-            let params;
-            try {
-                params = RunnerLib.buildTrialParams(cmd, { patternId });
-            } catch (e) {
-                showError('Cannot run this condition', e.message);
-                return;
-            }
-            const durationSec = Number(cmd.duration) > 0 ? Number(cmd.duration) : 0;
-            const skipped = RunnerLib.listSkippedPlugins(cond);
-
-            // Show the resolved SD index (validated against the active set, or flagged
-            // as coming from the protocol) + params + what is skipped.
-            const list = [];
-            list.push(
-                resolvedFrom === 'set'
-                    ? "Pattern '" + cmd.pattern + "' → SD index " + patternId + ' (set ' + setLabel + ')'
-                    : 'Pattern SD index ' + patternId +
-                      (cmd.pattern ? "  ('" + cmd.pattern + "', from the protocol — not in the active set)" : ' (from the protocol)')
-            );
-            list.push(
-                'mode ' + params.mode + ' · frame rate ' + params.frameRate + ' · gain ' + params.gain + ' · init pos ' + params.initPos
-            );
-            list.push(
-                durationSec > 0
-                    ? 'Auto-stop after ' + durationSec + ' s (or click Stop)'
-                    : 'No auto-stop — click Stop to end'
-            );
-            // Transparency: the dry-run sends only trialParams, so any other
-            // commands in the condition (waits, allOn/setup) are NOT replayed.
-            // Full per-condition mini-sequences (arena commands + waits) are LAB-97.
-            const otherCmds = (cond.commands || []).filter((c) => c !== cmd);
-            if (otherCmds.length > 0) {
-                const waits = otherCmds.filter((c) => c.type === 'wait').length;
-                list.push(
-                    otherCmds.length +
-                        ' other command' +
-                        (otherCmds.length === 1 ? '' : 's') +
-                        (waits ? ' (incl. ' + waits + ' wait' + (waits === 1 ? '' : 's') + ')' : '') +
-                        ' NOT replayed'
-                );
-            }
-            for (const s of skipped) list.push('skipped: ' + s.plugin_name + '.' + s.command_name);
-            const ok = await confirmModal({
-                title: 'Run "' + cond.name + '" on the arena?',
+            const ok = await preRunCheck({
+                steps,
+                hasRandom: false,
+                title: 'Run condition “' + cond.name + '” on the arena?',
                 body:
-                    'Sends ONLY the trialParams command — any waits or other commands in this ' +
-                    'condition are NOT replayed (full mini-sequence runs come later, LAB-97). ' +
-                    (resolvedFrom === 'set'
-                        ? "Pattern '" + cmd.pattern + "' resolves to SD index " + patternId +
-                          ' in the active set — make sure that set’s SD card is in the arena.'
-                        : 'SD index ' + patternId + ' comes from the protocol’s pattern_ID (the pattern ' +
-                          'is not in an active set) — verify your SD card matches.'),
-                list,
-                confirmLabel: 'Send to arena',
-                cancelLabel: 'Cancel'
+                    'Replays this condition’s controller commands + client-side waits over Web ' +
+                    'Serial, in order. Trial timing is host-side (best-effort); keep this tab ' +
+                    'focused — STOP is the primary control. Plugins are skipped (the browser ' +
+                    'cannot drive them).',
+                confirmLabel: 'Connect & run'
             });
             if (!ok) return;
 
-            // Connect-on-demand. The confirm-button click is a fresh user gesture
-            // and connect() is the first await after it resolves, so requestPort()
-            // runs inside that activation.
-            $('runStatus').style.display = 'block';
-            $('runStatusLog').innerHTML = '';
-            try {
-                if (!arenaSession.connected) {
-                    updateRunStatus({ phase: 'connecting' });
-                    await arenaSession.connect();
-                }
-            } catch (e) {
-                updateRunStatus({ phase: 'error', error: e });
-                return;
-            }
-            for (const s of skipped) runLog('skipped in dry-run: ' + s.plugin_name + '.' + s.command_name);
-            try {
-                // runTrial pre-empts any prior run internally (stop-then-start).
-                await arenaSession.runTrial({
-                    params,
-                    durationSec,
-                    conditionName: cond.name,
-                    onStatus: updateRunStatus
-                });
-            } catch (e) {
-                updateRunStatus({ phase: 'error', error: e });
-            }
+            await runStepsOnArena(steps, conditionsByName);
         }
 
         // Run-status bar controls — Stop/Disconnect are NOT import-mode guarded.
@@ -5692,8 +5610,18 @@
 
         // Pre-run check: flatten (nominal), classify every referenced condition, and
         // show a confirm modal listing what will run / be skipped before connecting.
-        function preRunCheck() {
-            const { steps, hasRandom } = RunnerLib.flattenStructure(experiment);
+        // Pre-run confirm. With no opts it flattens the whole experiment (the
+        // "Run on arena" path); pass { steps, hasRandom, title, body, confirmLabel }
+        // to scope it to a subset — e.g. a single condition's "Run this condition".
+        function preRunCheck(opts) {
+            opts = opts || {};
+            let steps = opts.steps;
+            let hasRandom = opts.hasRandom;
+            if (!steps) {
+                const f = RunnerLib.flattenStructure(experiment);
+                steps = f.steps;
+                hasRandom = f.hasRandom;
+            }
             const byName = new Map(experiment.conditions.map((c) => [c.name, c]));
             const totalDur = steps.reduce((sum, x) => sum + (x.dur || 0), 0);
             const names = [...new Set(steps.map((x) => x.conditionName))];
@@ -5752,15 +5680,16 @@
                 list.push('⚠ unsupported controller command (errors + skips): ' + u);
             }
             return confirmModal({
-                title: 'Run the whole sequence on the arena?',
+                title: opts.title || 'Run the whole sequence on the arena?',
                 body:
+                    opts.body ||
                     'Walks the experiment_structure and replays each condition’s controller ' +
-                    'commands + client-side waits over Web Serial. Trial timing is host-side ' +
-                    '(best-effort) until the controller-run duration lands in firmware — keep this ' +
-                    'tab focused; STOP is the primary control. Plugins are skipped (the browser ' +
-                    'cannot drive them).',
+                        'commands + client-side waits over Web Serial. Trial timing is host-side ' +
+                        '(best-effort) until the controller-run duration lands in firmware — keep this ' +
+                        'tab focused; STOP is the primary control. Plugins are skipped (the browser ' +
+                        'cannot drive them).',
                 list,
-                confirmLabel: 'Connect & run',
+                confirmLabel: opts.confirmLabel || 'Connect & run',
                 cancelLabel: 'Cancel'
             });
         }
@@ -5784,9 +5713,19 @@
             const ok = await preRunCheck();
             if (!ok) return;
 
-            // Connect-on-demand: the confirm-button click is a fresh user gesture, and
-            // connect() is the first await after it resolves, so requestPort() runs
-            // inside that activation.
+            // Build the flattened steps WITH a per-rep shuffle for randomized blocks.
+            // (Sync work only before runStepsOnArena's connect(), so the confirm-click
+            // user gesture still covers requestPort().)
+            const { steps } = RunnerLib.flattenStructure(experiment, { shuffle: shuffleInPlace });
+            const conditionsByName = new Map(experiment.conditions.map((c) => [c.name, c]));
+            await runStepsOnArena(steps, conditionsByName);
+        }
+
+        // Shared run driver for both "Run on arena" (whole sequence) and the
+        // inspector's "Run this condition" (a single-condition step list). Connects
+        // on demand (the confirm-button click is the user gesture), runs the steps
+        // via the shared runner, and re-syncs the run-control buttons on settle.
+        async function runStepsOnArena(steps, conditionsByName) {
             $('runStatus').style.display = 'block';
             $('runStatusLog').innerHTML = '';
             try {
@@ -5798,10 +5737,6 @@
                 updateRunStatus({ phase: 'error', error: e });
                 return;
             }
-
-            // Build the flattened steps WITH a per-rep shuffle for randomized blocks.
-            const { steps } = RunnerLib.flattenStructure(experiment, { shuffle: shuffleInPlace });
-            const conditionsByName = new Map(experiment.conditions.map((c) => [c.name, c]));
             try {
                 seqRunStart();
                 // runSequence pre-empts any prior run internally.
@@ -5818,8 +5753,7 @@
                 // The run has fully settled here (runSequence's finally already
                 // reset runner.active=false). The terminal 'sequence-complete' /
                 // 'aborted' event fired from INSIDE runSequence while active was
-                // still true, so re-sync the run-control buttons now: re-enable
-                // "▶ Run on arena" and disable Stop after a normal completion.
+                // still true, so re-sync the run-control buttons now.
                 $('runStopBtn').disabled = !(arenaSession && arenaSession.running);
                 $('runDisconnectBtn').disabled = !(arenaSession && arenaSession.connected);
                 updateRunSeqBtn();
