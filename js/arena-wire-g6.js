@@ -44,12 +44,15 @@ const ArenaWireG6 = (function () {
         TRIAL_PARAMS: 0x08, // selects mode + pattern (Modes 2/3/4)
         SET_REFRESH_RATE: 0x16,
         GET_REFRESH_RATE: 0x17, // returns current refresh rate as uint16 LE Hz
+        SET_PANEL_DISPLAY_MODE: 0x1b, // [02 1B mode] 0=oneshot 1=persist 2=triggered 3=gated; sticky
+        GET_PANEL_DISPLAY_MODE: 0x1c, // [01 1C] returns current panel display mode as single byte
         SET_SPI_CLOCK: 0xc5, // uint16 LE MHz (1..30); echoes applied MHz
         GET_SPI_CLOCK: 0xc6, // returns uint16 LE current MHz
         GET_FRAMES_SENT: 0x33, // returns uint32 LE frames pushed to panels
         RESET_FRAMES_SENT: 0x34, // zeroes the frames-sent counter
         GET_FILE_COUNT: 0x80, // returns pattern file count on SD as uint16 LE
         GET_PATTERN_FILENAME: 0x82, // [03 82 idx_lo idx_hi] 1-based; returns 1-byte-len + filename
+        GET_PATTERN_INFO: 0x88, // [03 88 idx_lo idx_hi] 1-based; framed reply: header metadata + frame-0 stretch (cheap preview)
         SET_PATTERN_FILENAME: 0x83, // [0x83, idx_lo, idx_hi, len, chars…] rename; returns new uint16 LE index
         GET_PATTERN_FILE: 0x84, // [03 84 idx_lo idx_hi] 1-based; response: uint64 LE size, then raw bytes
         SET_PATTERN_FILE: 0x85, // [0x85, idx_lo, idx_hi, len64 LE, data…] upload file (bulk stream)
@@ -90,6 +93,12 @@ const ArenaWireG6 = (function () {
         SHOW_FRAME: 3, // host sets the frame via SET_FRAME_POSITION
         CLOSED_LOOP: 4 // analog-in × gain, computed on the controller
     };
+
+    // Panel display modes (set/get-panel-display-mode 0x1B/0x1C low 2 bits).
+    // Index === wire value; use PANEL_DISPLAY_MODE_NAMES[mode] for labels. Only
+    // oneshot/persist are physically exercisable today — triggered/gated need an
+    // EINT trigger line the Slim controller lacks (wire-complete, not yet wired).
+    const PANEL_DISPLAY_MODE_NAMES = ['oneshot', 'persist', 'triggered', 'gated'];
 
     // Capability bitmap bits in the get-controller-info (0xC2) reply
     // (controller_info.py / main.js, g6_03-controller.md § 5).
@@ -281,6 +290,30 @@ const ArenaWireG6 = (function () {
         return r.payload[0] | (r.payload[1] << 8);
     }
 
+    // set-panel-display-mode (0x1B) — sticky panel display mode applied to every
+    // frame the controller forwards/synthesizes (SD, streamed, ALL_ON). mode:
+    // 0 oneshot / 1 persist / 2 triggered / 3 gated. Echoes the mode byte back.
+    function encodeSetPanelDisplayMode(mode) {
+        requireInt(mode, 'mode');
+        if (mode < 0 || mode > 3) {
+            throw new RangeError('mode must be 0..3 (oneshot/persist/triggered/gated), got ' + mode);
+        }
+        return frame(OPCODES.SET_PANEL_DISPLAY_MODE, [mode]); // 02 1B mode
+    }
+
+    // get-panel-display-mode (0x1C) — read the current sticky panel display mode.
+    function encodeGetPanelDisplayMode() {
+        return frame(OPCODES.GET_PANEL_DISPLAY_MODE); // 01 1C
+    }
+
+    // set/get-panel-display-mode (0x1B/0x1C) reply carries the mode as a single
+    // byte (0..3). Returns the mode number, or null on error / short payload.
+    function decodePanelDisplayMode(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 1) return null;
+        return r.payload[0];
+    }
+
     // set-spi-clock (0xC5) — panel SPI master clock in whole MHz (u16 LE); echoes
     // applied MHz. The firmware clamps to 1..30 MHz, so reject out-of-range here.
     function encodeSetSpiClock(mhz) {
@@ -422,6 +455,16 @@ const ArenaWireG6 = (function () {
             throw new RangeError('index must be >= 1 (1-based), got ' + index);
         }
         return frame(OPCODES.GET_PATTERN_FILENAME, u16le(index, 'index')); // 03 82 lo hi
+    }
+
+    // get-pattern-info (0x88) — cheap header metadata for the 1-based pattern:
+    // frame count, grayscale, geometry, arena/observer id, file size, and the
+    // first frame's panel-0 stretch. A small framed reply (NOT the 0x84 bulk
+    // path), so it sidesteps the bulk-download stall and needs no ALL_OFF.
+    function encodeGetPatternInfo(index) {
+        requireInt(index, 'index');
+        if (index < 1) throw new RangeError('index must be >= 1 (1-based), got ' + index);
+        return frame(OPCODES.GET_PATTERN_INFO, u16le(index, 'index')); // 03 88 lo hi
     }
 
     // get-pattern-file (0x84) — request raw content of the 1-based pattern.
@@ -573,6 +616,26 @@ const ArenaWireG6 = (function () {
         return s;
     }
 
+    // get-pattern-info (0x88) reply: 12-byte little-endian payload
+    //   frame_count u16 · gs u8 · rows u8 · cols u8 · arena u8 · observer u8
+    //   · file_size u32 · stretch u8
+    // Returns a structured object, or null on error / short payload.
+    function decodePatternInfo(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 12) return null;
+        const p = r.payload;
+        return {
+            frameCount: p[0] | (p[1] << 8),
+            gsVal: p[2],
+            rows: p[3],
+            cols: p[4],
+            arenaId: p[5],
+            observerId: p[6],
+            fileSize: (p[7] | (p[8] << 8) | (p[9] << 16) | (p[10] << 24)) >>> 0,
+            stretch: p[11]
+        };
+    }
+
     // get-ip (0xC1) reply carries the dotted-quad address as ASCII bytes.
     function decodeIp(resp) {
         const r = asResponse(resp);
@@ -648,6 +711,7 @@ const ArenaWireG6 = (function () {
         // Constants
         OPCODES,
         MODES,
+        PANEL_DISPLAY_MODE_NAMES,
         CAPABILITY_BITS,
         STREAM_FRAME_BYTES,
 
@@ -660,6 +724,8 @@ const ArenaWireG6 = (function () {
         encodeSetFramePosition,
         encodeStreamFrame,
         encodeSetRefreshRate,
+        encodeSetPanelDisplayMode,
+        encodeGetPanelDisplayMode,
         encodeSetSpiClock,
         encodeGetSpiClock,
         encodeGetFramesSent,
@@ -670,6 +736,7 @@ const ArenaWireG6 = (function () {
         getControllerInfo: encodeGetControllerInfo,
         encodeGetFileCount,
         encodeGetPatternFilename,
+        encodeGetPatternInfo,
         encodeSetPatternFilename,
         encodeGetPatternFile,
         encodeSetPatternFile,
@@ -689,10 +756,12 @@ const ArenaWireG6 = (function () {
         decodeResponse,
         decodeControllerInfo,
         decodeSpiClock,
+        decodePanelDisplayMode,
         decodeFramesSent,
         decodeIp,
         decodeFileCount,
         decodePatternFilename,
+        decodePatternInfo,
         decodeSetPatternFilenameResponse,
         decodeAoVoltage,
         decodeDigitalOut,
