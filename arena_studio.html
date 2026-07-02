@@ -296,7 +296,9 @@
   #consoleFields{flex:1 0 auto;display:flex;flex-direction:column;min-width:0}
   #cLogGroup{flex:1 1 auto;display:flex;flex-direction:column;min-height:170px;margin-bottom:0}
   #cLogGroup .crow{flex:0 0 auto}
-  #cLogGroup .clog{flex:1 1 auto;height:auto;min-height:110px}
+  /* flex-basis 0 (NOT auto): the log's CONTENT must never drive the page
+     height — it fills whatever space is free and scrolls internally. */
+  #cLogGroup .clog{flex:1 1 0;height:auto;min-height:110px}
 
   .pmodal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:200}
   .pmodal[hidden]{display:none}
@@ -2287,7 +2289,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.2 | 2026-07-02 08:07 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
+<footer id="footer">Arena Studio v0.2 | 2026-07-02 08:09 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
