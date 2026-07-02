@@ -2210,7 +2210,7 @@
         <summary class="gh">panel firmware <span class="op">· 0xE0 upload · 0xC8 flash · 0xC9 verify · 0xE3 info</span><span class="sum" id="cFwSum">flash · verify · batch</span></summary>
         <div class="cbody">
           <div class="crow"><span class="lbl">.bin</span>
-            <button class="pill" data-cmd="cfwpick" title="Upload a panel firmware .bin to the controller SD (/firmware/panel.bin, 0xE0)">Choose…</button>
+            <button class="pill" data-cmd="cfwpick" title="Choose a panel firmware image — official ISP builds (this site + the published catalog, refreshed on open) or a local .bin — and upload it to the controller SD (/firmware/panel.bin, 0xE0)">Choose…</button>
             <span class="dim" id="cFwName">no file</span>
             <input id="cFwInput" type="file" accept=".bin" style="display:none">
             <button class="pill" data-cmd="cfwinfo" title="GET_FIRMWARE_INFO 0xE3 — version footer of the image on the SD">Info</button></div>
@@ -2270,6 +2270,25 @@
   </div>
 </div>
 
+<!-- panel-firmware chooser modal (Console) -->
+<div class="pmodal" id="fwModal" hidden>
+  <div class="pmodal-box">
+    <div class="pmodal-h"><span>Panel firmware → SD <code>/firmware/panel.bin</code></span><button class="pill" id="fwModalClose" title="Close without uploading">✕</button></div>
+    <div class="dim" style="font-size:11px;margin:6px 0">
+      Official ISP images — served from this site + the firmware repo's published catalog
+      (refreshed every time this opens) — or a local .bin. Images carry a 32-byte
+      <code>G6PANFW</code> footer (version · CRC-32 · size) that flash/verify depend on.
+    </div>
+    <div id="fwModalList" style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto;margin:8px 0"></div>
+    <div style="display:flex;align-items:center;gap:9px;margin-top:10px">
+      <button class="pill" id="fwModalLocal" title="Pick a .bin from this computer instead">📂 Load local .bin…</button>
+      <span class="dim" id="fwModalStatus" style="font-size:11px"></span>
+      <span class="spacer" style="flex:1"></span>
+      <button class="pill" id="fwModalCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- paste-frame modal (Console) -->
 <div class="pmodal" id="pasteModal" hidden>
   <div class="pmodal-box">
@@ -2289,7 +2308,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.2 | 2026-07-02 08:09 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
+<footer id="footer">Arena Studio v0.2 | 2026-07-02 09:31 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2804,7 +2823,7 @@
             if (r && Wire.decodeResponse(r) && Wire.decodeResponse(r).ok) sdRefresh();
         }),
         // panel firmware
-        cfwpick: () => { if (!ispBusy()) $('cFwInput').click(); },
+        cfwpick: () => { if (!ispBusy()) openFwModal(); },
         cfwinfo: () => readFirmwareInfo(),
         cispbatch: () => { if (Studio.ispBatchRun) Studio.ispBatchRun(); },
         cispstop: () => { if (Studio.ispBatchStop) Studio.ispBatchStop(); },
@@ -3052,19 +3071,111 @@
         sdRefresh();
     });
     // firmware upload (0xE0)
-    $('cFwInput').addEventListener('change', async () => {
-        const f = $('cFwInput').files[0]; $('cFwInput').value = '';
-        if (!f || !connected()) return;
+    // ---- panel-firmware chooser: official catalog + local .bin --------------
+    // "Official" images merge two sources (mirrors the flasher's catalog):
+    //   1. Footered ISP .bins committed under flasher/firmware/ on THIS site
+    //      (same-origin, offline-safe) — built by the panel repo's
+    //      panel/tools/make_isp_image.py from the panel-isp production builds.
+    //   2. Any *.bin artifacts in the firmware repo's published Pages
+    //      manifest.json — refreshed every time the modal opens, so images
+    //      published later appear here with no Studio change. (Today that
+    //      catalog is UF2-only; the filter simply yields nothing.)
+    const FW_PAGES_BASE = 'https://reiserlab.github.io/LED-Display_G6_Firmware_Panel';
+    const FW_LOCAL_BINS = [
+        { label: 'v0.3.1 ISP Production', file: 'flasher/firmware/g6-panel-v0.3.1-isp.bin', note: 'build dd7d3f9a · this site', isDefault: true },
+        { label: 'v0.2.1 ISP Production', file: 'flasher/firmware/g6-panel-v0.2.1-isp.bin', note: 'build dd7d3f9a · this site' }
+    ];
+    // 32-byte ISP footer: {magic "G6PANFW\0", version[16] ASCII, crc32 LE, size LE}.
+    function parseIspFooter(data) {
+        if (!data || data.length < 32) return null;
+        const f = data.subarray(data.length - 32);
+        for (let i = 0; i < 7; i++) if (f[i] !== 'G6PANFW'.charCodeAt(i)) return null;
+        if (f[7] !== 0) return null;
+        let version = '';
+        for (let i = 8; i < 24 && f[i]; i++) version += String.fromCharCode(f[i]);
+        const dv = new DataView(f.buffer, f.byteOffset);
+        return { version, crc32: dv.getUint32(24, true), imageSize: dv.getUint32(28, true) };
+    }
+    // The ONE upload path (official fetch + local file both land here):
+    // footer check → quiesce → 0xE0 bulk → CRC echo → 0xE3 info refresh.
+    async function uploadFirmwareBytes(name, data) {
+        if (!connected()) { clog('connect first', 'err'); return; }
+        const footer = parseIspFooter(data);
+        if (!footer &&
+            !confirm(name + ' has no valid G6PANFW footer — flash/verify will not work.\n' +
+                'Upload it to the SD anyway?')) return;
+        if (footer) clog(name + ': ISP image ' + footer.imageSize + ' B · build «' + footer.version + '»', 'info');
         await quiesceDisplay(); // 0xE0 requires the display stopped
-        $('cFwName').textContent = 'uploading ' + f.name + '…';
+        $('cFwName').textContent = 'uploading ' + name + '…';
         try {
-            const data = new Uint8Array(await f.arrayBuffer());
-            const up = await send(Wire.encodeSetFirmwareFile(data), 'SET_FIRMWARE_FILE 0xE0 · ' + f.name, { timeoutMs: 120000, expectedCmd: Wire.OPCODES.SET_FIRMWARE_FILE });
+            const up = await send(Wire.encodeSetFirmwareFile(data), 'SET_FIRMWARE_FILE 0xE0 · ' + name, { timeoutMs: 120000, expectedCmd: Wire.OPCODES.SET_FIRMWARE_FILE });
             const crc = up && Wire.decodeSetFirmwareFileResponse(up);
             $('cFwName').textContent = crc != null ? 'uploaded (CRC-32 0x' + crc.toString(16).padStart(8, '0') + ')' : 'upload failed';
             if (crc != null) readFirmwareInfo();
         } catch (e) { $('cFwName').textContent = 'error: ' + e.message; }
+    }
+    $('cFwInput').addEventListener('change', async () => {
+        const f = $('cFwInput').files[0]; $('cFwInput').value = '';
+        if (!f) return;
+        await uploadFirmwareBytes(f.name, new Uint8Array(await f.arrayBuffer()));
     });
+
+    function fwModalStatus(text) { $('fwModalStatus').textContent = text || ''; }
+    function closeFwModal() { $('fwModal').hidden = true; }
+    function fwRow(entry) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:9px';
+        const use = document.createElement('button');
+        use.className = 'pill';
+        use.textContent = entry.isDefault ? 'Use ✦' : 'Use';
+        use.title = 'Fetch this image and upload it to the controller SD (0xE0)' + (entry.isDefault ? ' — recommended build' : '');
+        use.addEventListener('click', async () => {
+            fwModalStatus('fetching ' + entry.label + '…');
+            try {
+                const res = await fetch(entry.file, { cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = new Uint8Array(await res.arrayBuffer());
+                closeFwModal();
+                await uploadFirmwareBytes(entry.file.split('/').pop(), data);
+            } catch (e) { fwModalStatus('fetch failed: ' + (e.message || e)); }
+        });
+        const label = document.createElement('b');
+        label.textContent = entry.label;
+        const note = document.createElement('span');
+        note.className = 'dim';
+        note.style.fontSize = '11px';
+        note.textContent = entry.note || '';
+        row.appendChild(use); row.appendChild(label); row.appendChild(note);
+        return row;
+    }
+    async function openFwModal() {
+        const list = $('fwModalList');
+        list.innerHTML = '';
+        FW_LOCAL_BINS.forEach((e) => list.appendChild(fwRow(e)));
+        fwModalStatus('checking the published catalog…');
+        $('fwModal').hidden = false;
+        try {
+            const res = await fetch(FW_PAGES_BASE + '/manifest.json', { cache: 'no-store' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const man = await res.json();
+            const bins = (man.artifacts || []).filter((a) => /\.bin$/i.test(a.file || ''));
+            for (const a of bins) {
+                list.appendChild(fwRow({
+                    label: a.label || a.file,
+                    file: FW_PAGES_BASE + '/' + a.file,
+                    note: 'published catalog · ' + (man.version || '') + (a.rev ? ' · ' + a.rev : '')
+                }));
+            }
+            fwModalStatus(bins.length
+                ? 'catalog: ' + bins.length + ' published image(s)'
+                : 'published catalog has no .bin ISP images yet (UF2-only) — using this site\'s copies');
+        } catch (e) {
+            fwModalStatus('published catalog unreachable (' + (e.message || e) + ') — using this site\'s copies');
+        }
+    }
+    $('fwModalClose').addEventListener('click', closeFwModal);
+    $('fwModalCancel').addEventListener('click', closeFwModal);
+    $('fwModalLocal').addEventListener('click', () => { closeFwModal(); $('cFwInput').click(); });
 
     // delegated click dispatch
     $('consoleView').addEventListener('click', (e) => {
