@@ -38,13 +38,13 @@ exports (shared module — healed all pages at once).
 
 ## Retirement gate — "we're happy with the Studio" means ALL of:
 
-1. **Bench parity checklist passes on hardware**: SD CRUD (upload/download/
-   delete/purge/ZIP), single + batch ISP flash/verify (incl. show-on-arena
-   blink + final map), stream-frame suite, FicTrac bridge + closed loop, and —
-   the biggest still-untested surface — the **Run path end-to-end**: open
-   protocol → Test experiment → STOP mid-sequence → gated Run experiment with
-   metadata → run-log ⬇ Save (.json + .txt).
-2. **At least one real recorded experiment** done through the Studio.
+1. **Bench parity checklist passes on hardware** — ✅ **largely PASSED
+   2026-07-02** (user bench session: Tier 1 fix re-tests, Tier 2 Run path
+   end-to-end incl. STOP mid-sequence + recorded run + run-log save, Tier 3
+   firmware/ISP round incl. batch + show-on-arena blink). Still open from
+   Tier 4: stream-frame suite / paste / .bin-.pat play, SD download + ZIP,
+   AO/DO from the Studio, FicTrac bridge, Purge.
+2. **At least one real recorded experiment** — ✅ covered by the Tier-2 pass.
 3. **Colleague sign-off** (circulate like the wireframes; #panels).
 4. `?mode=console` honored in URL state (✅ done 2026-07-02) so redirect
    deep-links land correctly.
