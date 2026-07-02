@@ -2250,7 +2250,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.2 | 2026-07-02 00:07 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
+<footer id="footer">Arena Studio v0.2 | 2026-07-02 01:06 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2634,6 +2634,21 @@
         fn();
     }
 
+    // The firmware refuses SD-write + ISP commands (0x8D/0xE0/0x8A/0xC8/0xC9)
+    // unless the display is stopped (state ALL_OFF — CE_DISPLAY_ACTIVE with
+    // "Stop display before …" otherwise). STOP_DISPLAY also BLANKS the panels
+    // (they latch their last frame, so the controller pushes a dark frame).
+    // Call before every guarded command; best-effort.
+    async function quiesceDisplay() {
+        if (!session || !session.connected) return;
+        try {
+            await session.send(Wire.encodeStop(), { timeoutMs: 2000 });
+            clog('› STOP_DISPLAY 0x30 (display must be stopped for SD/ISP ops)', 'info');
+        } catch (e) {
+            clog('quiesce (stop display) failed: ' + (e.message || e), 'err');
+        }
+    }
+
     const num = (id) => Number($(id).value);
 
     // ---- command dispatch ----
@@ -2690,6 +2705,7 @@
         csdfolder: () => $('cSdFolder2').click(),
         csdarchive: async () => {
             if (!connected()) return;
+            await quiesceDisplay(); // 0x8A requires the display stopped
             $('cSdUpStatus').textContent = 'downloading ZIP…';
             try {
                 const zip = await session.sendBulkRead(Wire.encodeGetSdArchive(), { timeoutMs: 300000 });
@@ -2711,6 +2727,7 @@
             const panel = num('cFwAddr');
             if (!Number.isInteger(panel) || panel < 1 || panel > 20) { clog('flash: enter a valid panel number (1–20)', 'err'); return; }
             if (!confirm('Reflash panel ' + panel + ' from /firmware/panel.bin?\nThe panel is reprogrammed over SPI and reboots. Do NOT power off mid-flash.')) return;
+            await quiesceDisplay(); // 0xC8 requires the display stopped
             $('cFwName').textContent = 'flashing panel ' + panel + '…';
             const r = await send(Wire.encodeG6ProgramPanel(panel), 'G6_PROGRAM_PANEL 0xC8 · panel ' + panel, { timeoutMs: 45000, expectedCmd: Wire.OPCODES.G6_PROGRAM_PANEL });
             const v = r && Wire.decodeProgramPanelResponse(r);
@@ -2720,6 +2737,7 @@
             if (!connected()) return;
             const panel = num('cFwAddr');
             if (!Number.isInteger(panel) || panel < 1 || panel > 20) { clog('verify: enter a valid panel number (1–20)', 'err'); return; }
+            await quiesceDisplay(); // 0xC9 requires the display stopped
             $('cFwName').textContent = 'verifying panel ' + panel + '…';
             const r = await send(Wire.encodeG6VerifyPanel(panel), 'G6_VERIFY_PANEL 0xC9 · panel ' + panel, { timeoutMs: 10000, expectedCmd: Wire.OPCODES.G6_VERIFY_PANEL });
             const v = r && Wire.decodeProgramPanelResponse(r);
@@ -2858,6 +2876,7 @@
     $('cSdFile').addEventListener('change', async () => {
         const f = $('cSdFile').files[0]; $('cSdFile').value = '';
         if (!f || !connected()) return;
+        await quiesceDisplay(); // 0x8D requires the display stopped
         $('cSdUpStatus').textContent = 'uploading…';
         try {
             const data = new Uint8Array(await f.arrayBuffer());
@@ -2873,6 +2892,7 @@
         const files = Array.from($('cSdFolder2').files || []).filter((f) => /\.pat$/i.test(f.name));
         $('cSdFolder2').value = '';
         if (!files.length || !connected()) return;
+        await quiesceDisplay(); // 0x8D requires the display stopped
         let done = 0, failed = 0;
         for (const f of files) {
             $('cSdUpStatus').textContent = 'uploading ' + (done + failed + 1) + '/' + files.length + '…';
@@ -2892,6 +2912,7 @@
     $('cFwInput').addEventListener('change', async () => {
         const f = $('cFwInput').files[0]; $('cFwInput').value = '';
         if (!f || !connected()) return;
+        await quiesceDisplay(); // 0xE0 requires the display stopped
         $('cFwName').textContent = 'uploading ' + f.name + '…';
         try {
             const data = new Uint8Array(await f.arrayBuffer());

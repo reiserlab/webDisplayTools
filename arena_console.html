@@ -1387,7 +1387,7 @@
                             <input id="fw-batch-verify" type="checkbox" checked /> verify each
                         </label>
                         <label class="small" id="fw-batch-show-wrap"
-                            title="Light programmed panels bright and pending panels dim on the arena as it runs (20-panel arenas only).">
+                            title="Blink a progress map on the arena between panels (done bright · pending dim · failed checker), and leave the final map lit when the batch ends. The display must be stopped DURING each flash (firmware), so the map blinks rather than persists. 20-panel arenas only.">
                             <input id="fw-batch-show" type="checkbox" checked /> show on arena
                         </label>
                     </div>
@@ -1521,7 +1521,7 @@
                 </div>
                 <div id="log"></div>
             </div>
-            <footer id="footer">Arena Console v7 | 2026-07-01 20:51 ET</footer>
+            <footer id="footer">Arena Console v8 | 2026-07-02 01:06 ET</footer>
         </div>
 
         <!-- Paste-a-frame modal -->
@@ -2757,6 +2757,7 @@
                 fwStatus.textContent = 'uploading…';
                 $('fw-upload-btn').disabled = true;
                 try {
+                    await ispQuiesce(); // 0xE0 needs the display stopped (CE_DISPLAY_ACTIVE)
                     const data = new Uint8Array(await file.arrayBuffer());
                     // set-firmware-file (0xE0): bulk upload → /firmware/panel.bin.
                     // Reply payload is the uint32 LE CRC-32 of the stored bytes.
@@ -2803,6 +2804,7 @@
                 fwStatus.textContent = 'flashing panel ' + panel + '…';
                 $('fw-flash-btn').disabled = true;
                 try {
+                    await ispQuiesce(); // 0xC8 needs the display stopped (CE_DISPLAY_ACTIVE)
                     // g6-program-panel (0xC8): long-running (panel stages to LittleFS,
                     // reboots, OTA stub installs — ~20 s), so allow a generous timeout.
                     const resp = await run(
@@ -2835,6 +2837,7 @@
                 fwStatus.textContent = 'verifying panel ' + panel + '…';
                 $('fw-verify-btn').disabled = true;
                 try {
+                    await ispQuiesce(); // 0xC9 needs the display stopped (CE_DISPLAY_ACTIVE)
                     // g6-verify-panel (0xC9): CRC the running app flash vs the SD footer.
                     const resp = await run(
                         'g6-verify-panel ' + panel,
@@ -2862,6 +2865,23 @@
             let ispAbort = false; // Stop requested (takes effect after current panel)
             let ispReportText = ''; // last run's plain-text report (Copy report)
             const ispSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+            // The firmware refuses ISP + SD-write commands (0xC8/0xC9/0xE0/0x8D/0x8A)
+            // unless the display is stopped (state ALL_OFF → CE_DISPLAY_ACTIVE with
+            // "Stop display before flashing a panel" otherwise). STOP_DISPLAY also
+            // BLANKS the panels — they hold their last frame, so the firmware pushes
+            // a dark frame on stop. Quiesce before every guarded command; best-effort.
+            async function ispQuiesce() {
+                if (!session.connected) return;
+                try {
+                    await session.send(Wire.encodeStop(), {
+                        expectedCmd: Wire.OPCODES.STOP_DISPLAY,
+                        timeoutMs: 2000
+                    });
+                } catch (e) {
+                    log('quiesce (stop display) failed: ' + (e.message || e), 'dim');
+                }
+            }
 
             // Parse "1-20" / "1,3,5-8" → sorted unique ints in [1..255] (255 is the
             // G6_PROGRAM_PANEL u8 wire ceiling, NOT an arena limit). null = invalid.
@@ -2993,7 +3013,11 @@
             }
 
             // Best-effort progress frame — never let a failed stream abort the batch.
-            async function pushIspStatus(states) {
+            // Streaming sets the display active, and the ISP commands REQUIRE it
+            // stopped (see ispQuiesce) — panels blank on stop, so the map can only
+            // BLINK between panels: stream, hold ~0.7 s, quiesce. The final frame
+            // (opts.final, nothing guarded runs after it) stays lit as the report.
+            async function pushIspStatus(states, opts) {
                 if (!$('fw-batch-show').checked || !streamable()) return;
                 try {
                     const { bytes } = buildFrame(genIspStatusFrame(states), 16);
@@ -3003,6 +3027,11 @@
                     });
                 } catch (e) {
                     log('isp progress frame failed: ' + (e.message || e), 'dim');
+                    return;
+                }
+                if (!(opts && opts.final)) {
+                    await ispSleep(700);
+                    await ispQuiesce();
                 }
             }
 
@@ -3080,6 +3109,10 @@
                 states.forEach((s) => (byPanel[s.panel] = s));
                 $('fw-batch-report-wrap').style.display = '';
                 renderIspReport(states);
+                // ALWAYS stop the display first — a pattern left running (trial
+                // params, stream, All on) makes every 0xC8/0xC9 fail with
+                // CE_DISPLAY_ACTIVE, independent of the show-on-arena toggle.
+                await ispQuiesce();
                 await pushIspStatus(states);
 
                 let nVerified = 0;
@@ -3181,6 +3214,9 @@
                     $('fw-batch-status').textContent = summary;
                     log('isp batch — ' + summary, nBad ? 'err' : 'info');
                     ispReportText = buildIspReportText(states, summary);
+                    // Batch is over — leave the final report map lit on the arena
+                    // (no guarded command follows; All off / Stop clears it).
+                    await pushIspStatus(states, { final: true });
                 }
             }
 
@@ -3194,7 +3230,7 @@
                 const wrap = $('fw-batch-show-wrap');
                 if (wrap)
                     wrap.title = ok
-                        ? 'Light programmed panels bright and pending panels dim on the arena as it runs (20-panel arenas only).'
+                        ? 'Blink a progress map on the arena between panels (done bright · pending dim · failed checker), and leave the final map lit when the batch ends. The display must be stopped DURING each flash (firmware), so the map blinks rather than persists. 20-panel arenas only.'
                         : 'Progress display needs a 20-panel arena (e.g. G6_2x10); the batch still runs without it.';
             }
             document.addEventListener('arena:changed', updateIspShowUI);
