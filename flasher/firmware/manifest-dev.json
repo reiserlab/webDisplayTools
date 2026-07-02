@@ -1,0 +1,55 @@
+{
+  "version": "dev-23d66af (isp-progress-display, pre-release)",
+  "commit": "23d66af",
+  "built": "2026-07-02",
+  "artifacts": [
+    {
+      "rev": "v0.3.1",
+      "variant": "production",
+      "env": "pico_v031",
+      "label": "v0.3.1 \u2014 Production +ISP-progress (dev 23d66af)",
+      "file": "g6-panel-v0.3.1-progress-23d66af.uf2",
+      "sha256": "f9fc7bc81409e6ac4ddaa7ee55c0555caa9f90276bfda6f0d4724ff6ce852f4d",
+      "usb_product": "G6 Panel v0.3",
+      "isp_file": "g6-panel-v0.3.1-isp-progress-23d66af.bin",
+      "isp_sha256": "8ef068fc669ffd7f267ae625c03c2ad1a198b829f42090271b5a20b970a308a8",
+      "default": true
+    },
+    {
+      "rev": "v0.2.1",
+      "variant": "production",
+      "env": "pico_v021",
+      "label": "v0.2.1 \u2014 Production +ISP-progress (dev 23d66af)",
+      "file": "g6-panel-v0.2.1-progress-23d66af.uf2",
+      "sha256": "d06b593942785041e2229d4dbaaf7b5d3756adf1df3079ca1ca007491e60c2c4",
+      "usb_product": "G6 Panel v0.2",
+      "isp_file": "g6-panel-v0.2.1-isp-progress-23d66af.bin",
+      "isp_sha256": "cbb6207dc658dea008371bddd7d69f3307ee660852f767b9df3402830192f18d",
+      "default": false
+    },
+    {
+      "rev": "v0.3.1",
+      "variant": "production",
+      "env": "pico_v031",
+      "label": "v0.3.1 \u2014 Production fleet build (dd7d3f9, no progress UI)",
+      "file": null,
+      "sha256": null,
+      "usb_product": "G6 Panel v0.3",
+      "isp_file": "g6-panel-v0.3.1-isp-fleet-dd7d3f9.bin",
+      "isp_sha256": "6602d256ca2880af47ecb5dc175e5c86d750b5f2f154f2b66944893879677823",
+      "default": false
+    },
+    {
+      "rev": "v0.2.1",
+      "variant": "production",
+      "env": "pico_v021",
+      "label": "v0.2.1 \u2014 Production fleet build (dd7d3f9, no progress UI)",
+      "file": null,
+      "sha256": null,
+      "usb_product": "G6 Panel v0.2",
+      "isp_file": "g6-panel-v0.2.1-isp-fleet-dd7d3f9.bin",
+      "isp_sha256": "ebf47dd22ac8d072dbe3cede4cd2d987bf1a222c9a6eb93def98ff51acae9884",
+      "default": false
+    }
+  ]
+}
