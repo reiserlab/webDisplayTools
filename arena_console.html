@@ -572,6 +572,50 @@
                 width: 22px;
                 text-align: center;
             }
+            /* In-System ISP Programmer batch report (dark-theme table, not the
+               white .mem-box variant — so it defines its own header background). */
+            .isp-report-wrap {
+                max-height: 200px;
+                overflow-y: auto;
+                margin-top: 4px;
+            }
+            .isp-report {
+                width: 100%;
+                border-collapse: collapse;
+                table-layout: fixed;
+                font-size: 11px;
+            }
+            .isp-report th {
+                text-align: left;
+                color: var(--dim);
+                font-weight: 600;
+                border-bottom: 1px solid var(--border);
+                padding: 2px 4px;
+                position: sticky;
+                top: 0;
+                background: var(--surface);
+                font-size: 10px;
+            }
+            .isp-report td {
+                padding: 2px 4px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .isp-report td.ir-idx {
+                width: 3em;
+                color: var(--dim);
+                text-align: right;
+                padding-right: 6px;
+            }
+            .isp-report td.ir-detail {
+                color: var(--dim);
+            }
+            .ir-pending { color: var(--dim); }
+            .ir-active  { color: var(--rx); }
+            .ir-ok      { color: var(--accent); }
+            .ir-warn    { color: #e3b341; }
+            .ir-fail    { color: var(--err); }
             .sd-del-btn, .sd-down-btn {
                 background: none;
                 border: none;
@@ -1327,6 +1371,60 @@
                     </div>
                 </section>
 
+                <!-- In-System ISP Programmer: batch-program a range/list of panels
+                     from /firmware/panel.bin, with a per-panel report. -->
+                <section class="grp" id="fw-batch-grp">
+                    <div class="grp-row wrap">
+                        <span class="lbl">ISP all</span>
+                        <label class="small"
+                            title="Panels to program — a range (1-20) or list (1,3,5-8). Panels that aren't present time out and are skipped.">panels
+                            <input id="fw-batch-range" type="text" value="1-20"
+                                placeholder="e.g. 1-20 or 1,3,5-8" class="mono" style="width:9em"
+                                title="Panels to program — a range (1-20) or list (1,3,5-8). Panels that aren't present time out and are skipped." />
+                        </label>
+                        <label class="small"
+                            title="Verify each panel's CRC (0xC9) right after flashing; the report marks it confirmed vs flashed-only.">
+                            <input id="fw-batch-verify" type="checkbox" checked /> verify each
+                        </label>
+                        <label class="small" id="fw-batch-show-wrap"
+                            title="Light programmed panels bright and pending panels dim on the arena as it runs (20-panel arenas only).">
+                            <input id="fw-batch-show" type="checkbox" checked /> show on arena
+                        </label>
+                    </div>
+                    <div class="grp-row">
+                        <button id="fw-batch-btn" disabled
+                            title="Flash /firmware/panel.bin to every panel in the set over SPI ISP (0xC8), verify (0xC9), retrying once on failure. ~20 s/panel — do not power off.">
+                            Program set
+                        </button>
+                        <button id="fw-batch-stop-btn" disabled
+                            title="Stop after the current panel finishes (cannot interrupt an in-flight ~20 s flash).">
+                            Stop
+                        </button>
+                        <button id="fw-batch-copy-btn" style="display:none"
+                            title="Copy the programming report to the clipboard.">
+                            Copy report
+                        </button>
+                        <span id="fw-batch-status" class="sd-upload-status"></span>
+                    </div>
+                    <div class="isp-report-wrap" id="fw-batch-report-wrap" style="display:none">
+                        <table class="isp-report">
+                            <colgroup>
+                                <col style="width:3em">
+                                <col style="width:7em">
+                                <col>
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th class="ir-idx">#</th>
+                                    <th>result</th>
+                                    <th>detail</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fw-batch-report"></tbody>
+                        </table>
+                    </div>
+                </section>
+
                 <!-- Device-memory boxes -->
                 <div class="mem-grid">
                     <div class="mem-box">
@@ -1423,7 +1521,7 @@
                 </div>
                 <div id="log"></div>
             </div>
-            <footer id="footer">Arena Console v6 | 2026-07-01 15:09 ET</footer>
+            <footer id="footer">Arena Console v7 | 2026-07-01 20:51 ET</footer>
         </div>
 
         <!-- Paste-a-frame modal -->
@@ -1573,6 +1671,10 @@
                 $('fw-info-btn').disabled = !on;
                 $('fw-flash-btn').disabled = !on;
                 $('fw-verify-btn').disabled = !on;
+                $('fw-batch-btn').disabled = !on;
+                // A running batch bails on !session.connected each iteration; just
+                // reflect the button state here (Stop is meaningless when idle/down).
+                if (!on) $('fw-batch-stop-btn').disabled = true;
                 if (!on) $('fw-status').textContent = '';
                 document.querySelectorAll('.do-cb').forEach((cb) => {
                     cb.disabled = !on;
@@ -2414,6 +2516,11 @@
                 if (!tbody) return;
                 if (count === 0) {
                     tbody.innerHTML = '<tr><td colspan="3" class="mem-empty">(no patterns on SD)</td></tr>';
+                    // Keep the top pattern picker in lockstep: an empty SD must clear
+                    // the tp-pat-name dropdown too (the "clear SD didn't clear the
+                    // dropdown" bug). __populateFromSdCard([]) renders "(no patterns)".
+                    if (typeof window.__populateFromSdCard === 'function')
+                        window.__populateFromSdCard([]);
                     return;
                 }
 
@@ -2744,6 +2851,368 @@
                     fwStatus.textContent = 'error: ' + (e.message || e);
                 } finally {
                     if (session.connected) $('fw-verify-btn').disabled = false;
+                }
+            });
+
+            // ── In-System ISP Programmer: batch program a range/list of panels ──
+            // Host-side loop over the existing single-panel opcodes (0xC8 flash /
+            // 0xC9 verify) with retry-once-then-skip, a per-panel report, and an
+            // optional live "done/pending" status map drawn on the arena.
+            let ispRunning = false; // a batch is walking the panel set
+            let ispAbort = false; // Stop requested (takes effect after current panel)
+            let ispReportText = ''; // last run's plain-text report (Copy report)
+            const ispSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+            // Parse "1-20" / "1,3,5-8" → sorted unique ints in [1..255] (255 is the
+            // G6_PROGRAM_PANEL u8 wire ceiling, NOT an arena limit). null = invalid.
+            function parsePanelRange(text) {
+                if (!text) return null;
+                const out = new Set();
+                for (const tok of text.split(',')) {
+                    const t = tok.trim();
+                    if (!t) continue;
+                    const m = t.match(/^(\d+)\s*(?:-\s*(\d+))?$/);
+                    if (!m) return null;
+                    let lo = parseInt(m[1], 10);
+                    let hi = m[2] != null ? parseInt(m[2], 10) : lo;
+                    if (hi < lo) {
+                        const tmp = lo;
+                        lo = hi;
+                        hi = tmp;
+                    }
+                    if (lo < 1 || hi > 255) return null;
+                    for (let n = lo; n <= hi; n++) out.add(n);
+                }
+                if (!out.size) return null;
+                return Array.from(out).sort((a, b) => a - b);
+            }
+
+            // Compact a sorted list back to "1-8,11,13-20" for the confirm dialog.
+            function fmtRange(panels) {
+                const parts = [];
+                let i = 0;
+                while (i < panels.length) {
+                    let j = i;
+                    while (j + 1 < panels.length && panels[j + 1] === panels[j] + 1) j++;
+                    parts.push(i === j ? String(panels[i]) : panels[i] + '-' + panels[j]);
+                    i = j + 1;
+                }
+                return parts.join(',');
+            }
+
+            function ispStateView(state) {
+                switch (state) {
+                    case 'pending':
+                        return { cls: 'ir-pending', label: 'pending' };
+                    case 'flashing':
+                        return { cls: 'ir-active', label: 'flashing…' };
+                    case 'verifying':
+                        return { cls: 'ir-active', label: 'verifying…' };
+                    case 'verified':
+                        return { cls: 'ir-ok', label: '✓ verified' };
+                    case 'flashed':
+                        return { cls: 'ir-ok', label: '✓ flashed' };
+                    case 'mismatch':
+                        return { cls: 'ir-warn', label: '⚠ mismatch' };
+                    case 'failed':
+                        return { cls: 'ir-fail', label: '✗ failed' };
+                    case 'skipped':
+                        return { cls: 'ir-fail', label: '⤼ skipped' };
+                    default:
+                        return { cls: 'ir-pending', label: state };
+                }
+            }
+
+            function renderIspReport(states) {
+                const tb = $('fw-batch-report');
+                tb.innerHTML = '';
+                for (const s of states) {
+                    const view = ispStateView(s.state);
+                    const tr = document.createElement('tr');
+                    const tdIdx = document.createElement('td');
+                    tdIdx.className = 'ir-idx';
+                    tdIdx.textContent = s.panel;
+                    const tdRes = document.createElement('td');
+                    tdRes.className = view.cls;
+                    tdRes.textContent = view.label;
+                    const tdDet = document.createElement('td');
+                    tdDet.className = 'ir-detail';
+                    tdDet.textContent = s.detail || '';
+                    tdDet.title = s.detail || '';
+                    tr.appendChild(tdIdx);
+                    tr.appendChild(tdRes);
+                    tr.appendChild(tdDet);
+                    tb.appendChild(tr);
+                }
+            }
+
+            function buildIspReportText(states, summary) {
+                const lines = ['In-System ISP Programmer report', summary, ''];
+                for (const s of states)
+                    lines.push(
+                        'panel ' +
+                            s.panel +
+                            '\t' +
+                            ispStateView(s.state).label +
+                            (s.detail ? '\t' + s.detail : '')
+                    );
+                return lines.join('\n');
+            }
+
+            // Map a report state to an arena fill category for the status map.
+            function ispArenaCat(state) {
+                if (state === 'verified' || state === 'flashed') return 'done';
+                if (state === 'mismatch' || state === 'failed' || state === 'skipped') return 'bad';
+                return 'idle'; // pending / flashing / verifying
+            }
+
+            // GS16 status frame: done panels solid-bright, bad panels a checker
+            // marker, everything else dim. Panels outside the 20-panel layout are
+            // simply not drawn.
+            function genIspStatusFrame(states) {
+                const a = activeArena();
+                const grid = newGrid();
+                const nPanels = a.rowCount * a.colCount;
+                for (const s of states) {
+                    const n = s.panel;
+                    if (n < 1 || n > nPanels) continue;
+                    const pr = Math.floor((n - 1) / a.colCount);
+                    const pc = (n - 1) % a.colCount;
+                    const cat = ispArenaCat(s.state);
+                    for (let y = 0; y < 20; y++) {
+                        for (let x = 0; x < 20; x++) {
+                            let v;
+                            if (cat === 'done') v = 15;
+                            else if (cat === 'bad') v = ((x >> 1) + (y >> 1)) % 2 === 0 ? 15 : 0;
+                            else v = 2;
+                            setPx(grid, a, pr * 20 + y, pc * 20 + x, v);
+                        }
+                    }
+                }
+                return grid;
+            }
+
+            // Best-effort progress frame — never let a failed stream abort the batch.
+            async function pushIspStatus(states) {
+                if (!$('fw-batch-show').checked || !streamable()) return;
+                try {
+                    const { bytes } = buildFrame(genIspStatusFrame(states), 16);
+                    await session.send(bytes, {
+                        expectedCmd: Wire.OPCODES.STREAM_FRAME,
+                        timeoutMs: 1500
+                    });
+                } catch (e) {
+                    log('isp progress frame failed: ' + (e.message || e), 'dim');
+                }
+            }
+
+            // Send a flash/verify command; log a one-liner and return a structured
+            // { ok, message, timeout } so the loop can retry vs. skip.
+            async function ispSend(label, bytes, expectedCmd, timeoutMs) {
+                try {
+                    const frame = await session.send(bytes, { expectedCmd, timeoutMs });
+                    const resp = Wire.decodeResponse(frame);
+                    const v = Wire.decodeProgramPanelResponse(resp);
+                    if (resp)
+                        log(
+                            label +
+                                ': status=' +
+                                resp.status +
+                                ' ok=' +
+                                resp.ok +
+                                (v && v.message ? '  «' + v.message + '»' : ''),
+                            resp.ok ? 'info' : 'err'
+                        );
+                    if (!v) return { ok: false, message: 'malformed response', timeout: false };
+                    return { ok: v.ok, message: v.message, timeout: false };
+                } catch (e) {
+                    const msg = e && e.message ? e.message : String(e);
+                    const isTimeout = /timeout/i.test(msg);
+                    log(label + ': ' + msg, 'err');
+                    return { ok: false, message: isTimeout ? 'timeout' : msg, timeout: isTimeout };
+                }
+            }
+
+            async function runBatchProgram() {
+                if (!session.connected || ispRunning) return;
+                const panels = parsePanelRange($('fw-batch-range').value);
+                if (!panels || !panels.length) {
+                    log('program set: enter a panel range like 1-20 or 1,3,5-8', 'err');
+                    return;
+                }
+                // Precheck a firmware image is present on the SD (the "single bin on
+                // the SD card" precondition). readFirmwareInfo() also updates fw-status.
+                const fi = await readFirmwareInfo();
+                if (!fi || !fi.ok) {
+                    if (
+                        !confirm(
+                            'No firmware image detected on the controller SD (/firmware/panel.bin).\n' +
+                                'Upload a .bin first, or click OK to try anyway.'
+                        )
+                    )
+                        return;
+                }
+                const verify = $('fw-batch-verify').checked;
+                const est = Math.ceil((panels.length * (20 + (verify ? 2 : 0))) / 60);
+                if (
+                    !confirm(
+                        'Program ' +
+                            panels.length +
+                            ' panel(s) [' +
+                            fmtRange(panels) +
+                            '] from /firmware/panel.bin?\n' +
+                            'Each panel is reflashed over SPI and reboots (~20 s). Do NOT power off mid-flash.\n' +
+                            'Estimated time ~' +
+                            est +
+                            ' min.'
+                    )
+                )
+                    return;
+
+                ispRunning = true;
+                ispAbort = false;
+                $('fw-batch-btn').disabled = true;
+                $('fw-batch-stop-btn').disabled = false;
+                $('fw-batch-copy-btn').style.display = 'none';
+
+                const states = panels.map((p) => ({ panel: p, state: 'pending', detail: '' }));
+                const byPanel = {};
+                states.forEach((s) => (byPanel[s.panel] = s));
+                $('fw-batch-report-wrap').style.display = '';
+                renderIspReport(states);
+                await pushIspStatus(states);
+
+                let nVerified = 0;
+                let nFlashed = 0;
+                let nBad = 0;
+                try {
+                    for (let i = 0; i < panels.length; i++) {
+                        if (ispAbort || !session.connected) break;
+                        const panel = panels[i];
+                        const st = byPanel[panel];
+                        $('fw-batch-status').textContent =
+                            'programming panel ' +
+                            panel +
+                            ' (' +
+                            (i + 1) +
+                            '/' +
+                            panels.length +
+                            ')…';
+                        st.state = 'flashing';
+                        st.detail = '';
+                        renderIspReport(states);
+                        await pushIspStatus(states);
+
+                        // Flash with one retry on timeout/failure.
+                        let flashed = false;
+                        let lastMsg = '';
+                        for (let attempt = 1; attempt <= 2 && !flashed; attempt++) {
+                            if (attempt === 2) {
+                                st.detail = 'retry…';
+                                renderIspReport(states);
+                                await ispSleep(400);
+                            }
+                            const r = await ispSend(
+                                'g6-program-panel ' + panel + (attempt === 2 ? ' (retry)' : ''),
+                                Wire.encodeG6ProgramPanel(panel),
+                                Wire.OPCODES.G6_PROGRAM_PANEL,
+                                45000
+                            );
+                            if (r.ok) {
+                                flashed = true;
+                                lastMsg = r.message;
+                            } else {
+                                lastMsg = r.message || (r.timeout ? 'timeout' : 'error');
+                            }
+                        }
+
+                        if (!flashed) {
+                            st.state = 'skipped';
+                            st.detail = lastMsg || 'no response';
+                            nBad++;
+                            renderIspReport(states);
+                            await pushIspStatus(states);
+                            await ispSleep(300);
+                            continue;
+                        }
+
+                        if (verify && !ispAbort && session.connected) {
+                            st.state = 'verifying';
+                            renderIspReport(states);
+                            const v = await ispSend(
+                                'g6-verify-panel ' + panel,
+                                Wire.encodeG6VerifyPanel(panel),
+                                Wire.OPCODES.G6_VERIFY_PANEL,
+                                10000
+                            );
+                            if (v.ok) {
+                                st.state = 'verified';
+                                st.detail = v.message || 'CRC match';
+                                nVerified++;
+                            } else {
+                                st.state = 'mismatch';
+                                st.detail = v.message || (v.timeout ? 'verify timeout' : 'no match');
+                                nBad++;
+                            }
+                        } else {
+                            st.state = 'flashed';
+                            st.detail = lastMsg;
+                            nFlashed++;
+                        }
+                        renderIspReport(states);
+                        await pushIspStatus(states);
+                        await ispSleep(300); // settle before hitting the next panel
+                    }
+                } finally {
+                    ispRunning = false;
+                    $('fw-batch-stop-btn').disabled = true;
+                    if (session.connected) $('fw-batch-btn').disabled = false;
+                    $('fw-batch-copy-btn').style.display = '';
+                    const summary =
+                        'Done: ' +
+                        nVerified +
+                        ' verified, ' +
+                        nFlashed +
+                        ' flashed, ' +
+                        nBad +
+                        ' failed/skipped of ' +
+                        panels.length +
+                        (ispAbort ? ' (stopped)' : '');
+                    $('fw-batch-status').textContent = summary;
+                    log('isp batch — ' + summary, nBad ? 'err' : 'info');
+                    ispReportText = buildIspReportText(states, summary);
+                }
+            }
+
+            // Disable the "show on arena" toggle when the arena isn't the 20-panel
+            // layout STREAM_FRAME requires (the batch still runs, just without the map).
+            function updateIspShowUI() {
+                const cb = $('fw-batch-show');
+                if (!cb) return;
+                const ok = streamable();
+                cb.disabled = !ok;
+                const wrap = $('fw-batch-show-wrap');
+                if (wrap)
+                    wrap.title = ok
+                        ? 'Light programmed panels bright and pending panels dim on the arena as it runs (20-panel arenas only).'
+                        : 'Progress display needs a 20-panel arena (e.g. G6_2x10); the batch still runs without it.';
+            }
+            document.addEventListener('arena:changed', updateIspShowUI);
+            updateIspShowUI();
+
+            $('fw-batch-btn').addEventListener('click', runBatchProgram);
+            $('fw-batch-stop-btn').addEventListener('click', () => {
+                if (!ispRunning) return;
+                ispAbort = true;
+                $('fw-batch-status').textContent = 'stopping after current panel…';
+            });
+            $('fw-batch-copy-btn').addEventListener('click', async () => {
+                if (!ispReportText) return;
+                try {
+                    await navigator.clipboard.writeText(ispReportText);
+                    $('fw-batch-status').textContent = 'report copied';
+                } catch (e) {
+                    log('copy failed: ' + (e.message || e), 'err');
                 }
             });
 
