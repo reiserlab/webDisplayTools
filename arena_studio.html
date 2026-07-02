@@ -2259,7 +2259,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.2 | 2026-07-02 01:27 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
+<footer id="footer">Arena Studio v0.2 | 2026-07-02 02:19 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2684,10 +2684,12 @@
             }),
         cpatinfo: async () => {
             const resp = await send(Wire.encodeGetPatternInfo(num('cPat')), 'GET_PATTERN_INFO 0x88 idx ' + num('cPat'));
-            // decodePatternInfo fields: frameCount/gsVal/rows/cols/fileSize/stretch (#130)
+            // decodePatternInfo fields: frameCount/gsVal/rows/cols/fileSize/stretch (#130).
+            // gsVal is the raw .pat header code: 1 = GS2 (binary), 2 = GS16 (4-bit).
             const info = resp && Wire.decodePatternInfo(resp);
+            const gsLabel = info ? (info.gsVal === 1 ? 'GS2' : info.gsVal === 2 ? 'GS16' : 'GS?') : '';
             $('cPatInfo').textContent = info
-                ? info.frameCount + ' fr · GS' + info.gsVal + ' · ' + info.cols + '×' + info.rows +
+                ? info.frameCount + ' fr · ' + gsLabel + ' · ' + info.cols + '×' + info.rows +
                   ' panels · ' + (info.fileSize / 1024).toFixed(1) + ' KB · stretch ' + info.stretch
                 : 'no reply';
         },
@@ -2851,7 +2853,13 @@
         const count = resp ? Wire.decodeFileCount(resp) : null;
         $('cSdCount').textContent = count != null ? count + ' patterns' : '—';
         $('cSdSum').textContent = 'SD (' + (count || 0) + ')';
-        if (!count) { tbody.innerHTML = '<tr><td colspan="3" class="dim">(no patterns on SD)</td></tr>'; return; }
+        if (!count) {
+            tbody.innerHTML = '<tr><td colspan="3" class="dim">(no patterns on SD)</td></tr>';
+            // An emptied card must also empty the picker (stale name→index after
+            // Purge all / deletes would send trial params for missing patterns).
+            if (typeof Studio.onSdListing === 'function') Studio.onSdListing([]);
+            return;
+        }
         const names = [];
         for (let i = 1; i <= count; i++) {
             try { const raw = await session.send(Wire.encodeGetPatternFilename(i), { timeoutMs: 2000 }); const p = Wire.decodeResponse(raw); names.push(p && p.ok ? Wire.decodePatternFilename(p) : null); }
@@ -3362,7 +3370,7 @@ async function loadBuiltinPatternSet() {
 // rebuild the picker so name→index matches the CARD, not a stale web manifest.
 // Uploads/deletes re-run sdRefresh, so the picker tracks every change.
 Studio.onSdListing = function (names) {
-    if (!Array.isArray(names) || !names.length) return; // empty SD → keep web fallback
+    if (!Array.isArray(names)) return;
     const m = {
         source: 'sd',
         arenaConfig: (Studio.consoleArena && Studio.consoleArena.arenaConfig) || 'G6_2x10',
@@ -3373,11 +3381,11 @@ Studio.onSdListing = function (names) {
         if (!nm) return; // unreadable filename — index still selectable via cPat
         m.patterns[nm] = { index: i + 1, sd_name: nm, preview: null };
     });
-    if (!Object.keys(m.patterns).length) return;
-    Studio.patternSet = m;
+    const n = Object.keys(m.patterns).length;
+    Studio.patternSet = m; // once listed, the CARD owns the picker — even empty
     patPreviewCache = {};
-    cPatStatus('SD card · ' + Object.keys(m.patterns).length + ' patterns');
-    populatePatDropdown();
+    cPatStatus(n ? 'SD card · ' + n + ' patterns' : 'SD card empty — upload .pats or use a raw pat idx');
+    populatePatDropdown(); // empty set clears the dropdown + unlocks cPat
 };
 function wirePatPicker() {
     const sel = $('cPatName');
