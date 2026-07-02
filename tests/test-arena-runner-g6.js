@@ -708,8 +708,9 @@ async function main() {
         checkBool('startClosedLoop on=true', scl.on === true);
         check('startClosedLoop carries gain override', scl.gain, 3.6);
         check('stopClosedLoop -> on=false', t('stopClosedLoop').on, false);
-        check('startRecording -> fictracMark', t('startRecording').op, 'fictracMark');
-        check('startRecording event', t('startRecording').event, 'startRecording');
+        // recording was removed from the fictrac plugin: it now falls through to
+        // the unknown-command skip (driving the arena is the only real command).
+        check('removed startRecording -> skip', t('startRecording').op, 'skip');
         check('unknown fictrac cmd -> skip', t('frobnicate').op, 'skip');
         // built-in log plugin executes regardless of fictrac names
         const lg = Runner.translateCommand(

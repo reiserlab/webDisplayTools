@@ -293,7 +293,6 @@ var ArenaRunnerG6 = (function () {
      *   { op:'logMessage', message, level }          // built-in log plugin → bridge log
      *   { op:'fictracConnect' | 'fictracDisconnect' }        // FicTrac bridge lifecycle
      *   { op:'fictracApply', on, gain }              // start/stop Mode-3 closed-loop
-     *   { op:'fictracMark', event }                  // open-loop record window marker
      *   { op:'skip', reason, plugin_name, command_name }   // other plugin → not driveable
      *   { op:'error', reason }                              // unsupported / malformed
      */
@@ -339,9 +338,6 @@ var ArenaRunnerG6 = (function () {
                         };
                     case 'stopClosedLoop':
                         return { op: 'fictracApply', on: false };
-                    case 'startRecording':
-                    case 'stopRecording':
-                        return { op: 'fictracMark', event: cname };
                     default:
                         return {
                             op: 'skip',
@@ -889,8 +885,8 @@ var ArenaRunnerG6 = (function () {
                     emit({ phase: 'command', index, step, op: ir.op, value: ir.durationSec });
                     return;
                 // ---- FicTrac (the first runner-driven device plugin) ----------
-                // These ops are INSTANTANEOUS: they toggle the bridge client's apply
-                // flag / push config / emit a log marker. Duration is held by the
+                // These ops are INSTANTANEOUS: they open/close the bridge or toggle
+                // its apply flag / push config. Duration is held by the
                 // surrounding wait/trialParams; the Mode-3 apply loop streams frames
                 // in the background on the bridge client's WS events. They do NOT
                 // touch the timing accumulators.
@@ -927,10 +923,6 @@ var ArenaRunnerG6 = (function () {
                         }
                     }
                     emit({ phase: 'command', index, step, op: ir.op, value: !!ir.on });
-                    return;
-                case 'fictracMark':
-                    if (this._bridge) this._bridge.log({ event: ir.event });
-                    emit({ phase: 'command', index, step, op: ir.op, value: ir.event });
                     return;
                 case 'logMessage':
                     if (this._bridge)

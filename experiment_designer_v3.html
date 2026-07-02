@@ -5338,8 +5338,8 @@
 
         // ── FicTrac closed-loop (fly-on-ball) ────────────────────────────────
         // The `fictrac` plugin is the first runner-driven device plugin. The runner
-        // maps its commands (startClosedLoop/stopClosedLoop/startRecording/…) into
-        // apply/log toggles on the shared FicTracBridgeClient (session.bridge). The
+        // maps its commands (connect/disconnect/startClosedLoop/stopClosedLoop) into
+        // apply toggles on the shared FicTracBridgeClient (session.bridge). The
         // bridge is ALSO the single default-on logger, so we auto-connect it at run
         // start whenever a fictrac plugin is declared or "log to bridge" is on.
         const ftBridge = arenaSession ? arenaSession.bridge : null;
