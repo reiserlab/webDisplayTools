@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Arena Studio — wireframe v2 (concept)</title>
+<style>
+  :root{
+    --bg:#0f1419; --surface:#1a1f26; --surface2:#141a20; --border:#2d3640;
+    --text:#e6edf3; --dim:#8b949e; --accent:#00e676; --hover:#00c853;
+    --danger:#ff5252; --warn:#e3a008; --beta:#4aa8ff; --rec:#ff5252;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+    --head:'JetBrains Mono',var(--mono);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;
+       display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  button{font-family:var(--mono);cursor:pointer}
+  .dim{color:var(--dim)}
+  .pill{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:5px;padding:5px 10px;font-size:12px}
+  .pill:hover{border-color:var(--accent)}
+  .spacer{flex:1}
+
+  /* ===== RIBBON 1 — SESSION / ARENA ===== */
+  .session-bar{flex:0 0 auto;display:flex;align-items:center;gap:13px;height:52px;
+               padding:0 14px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .brand{font-family:var(--head);font-weight:700;letter-spacing:.5px;color:var(--accent);font-size:15px;white-space:nowrap}
+  .brand .v{color:var(--dim);font-weight:400;font-size:11px;margin-left:6px}
+  .status{display:flex;align-items:center;gap:7px;font-size:12px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--danger);box-shadow:0 0 6px var(--danger)}
+  body.connected .dot{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+  .arena{color:var(--dim);font-size:11.5px}
+  .arena b{color:var(--text);font-weight:600}
+  .fw{}
+  body:not(.connected) .fw{display:none}
+  .tgt{font-style:italic}
+  body.connected .tgt{display:none}
+  .run-inline{font-size:11px;color:var(--accent);display:none;align-items:center;gap:6px}
+  body.running .run-inline{display:flex}
+  .run-inline.rec{color:var(--rec);font-weight:700}
+  .run-inline .bar{width:84px;height:5px;border-radius:3px;background:#0a3a20;overflow:hidden}
+  .run-inline .bar i{display:block;height:100%;width:42%;background:currentColor}
+  .stop{background:var(--danger);border:0;color:#2a0000;font-weight:700;border-radius:6px;padding:8px 15px;font-size:12px;opacity:.45;pointer-events:none}
+  body.connected .stop{opacity:1;pointer-events:auto}
+  .connect{background:var(--accent);border:0;color:#06210f;font-weight:700;border-radius:6px;padding:8px 15px;font-size:12px}
+  body.connected .connect{background:transparent;border:1px solid var(--border);color:var(--dim);font-weight:400}
+  .gear{font-size:16px;color:var(--dim);background:transparent;border:0;padding:4px 8px}
+
+  /* ===== RIBBON 2 — PROTOCOL / DOCUMENT ===== */
+  .doc-bar{flex:0 0 auto;display:flex;align-items:center;gap:14px;height:46px;
+           padding:0 14px;background:var(--surface2);border-bottom:1px solid var(--border)}
+  .doc-name{font-family:var(--head);font-weight:700;font-size:13px;white-space:nowrap}
+  .chip{font-family:var(--mono);font-size:11px;font-weight:600;border-radius:20px;padding:2px 9px;border:1px solid;white-space:nowrap}
+  .chip.saved{color:var(--accent);border-color:var(--accent);background:rgba(0,230,118,.08)}
+  .chip.edited,.chip.untitled-chip{display:none}
+  .chip.edited{color:var(--warn);border-color:var(--warn);background:rgba(227,160,8,.08)}
+  .chip.untitled-chip{color:var(--warn);border-color:var(--warn);background:rgba(227,160,8,.08)}
+  body.unsaved:not(.untitled) .chip.saved{display:none}
+  body.unsaved:not(.untitled) .chip.edited{display:inline-block}
+  body.untitled .chip.saved{display:none}
+  body.untitled .chip.untitled-chip{display:inline-block}
+  .doc-summary{color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ribbon-btn{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;font-size:12px}
+  .ribbon-btn:hover{border-color:var(--accent)}
+  /* Run mode = a single 'Open protocol' button; Edit mode = the full File ▾ menu. */
+  body.editmode .open-proto-btn{display:none}
+  body:not(.editmode) #fileMenu{display:none}
+  .filemenu{position:relative}
+  .filemenu .menu{position:absolute;top:118%;left:0;background:var(--surface);border:1px solid var(--border);
+        border-radius:7px;min-width:230px;padding:4px;display:none;z-index:60;box-shadow:0 8px 22px rgba(0,0,0,.55)}
+  .filemenu.open .menu{display:block}
+  .filemenu .menu button{display:block;width:100%;text-align:left;background:transparent;border:0;color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px}
+  .filemenu .menu button:hover{background:var(--surface2)}
+  .filemenu .menu .sep{height:1px;background:var(--border);margin:4px 2px}
+  .seg{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+  .seg button{background:transparent;border:0;color:var(--dim);padding:6px 15px;font-size:12px}
+  .seg button.on{background:var(--accent);color:#06210f;font-weight:700}
+  .seg button.edit.on{background:#26405e;color:#cfe6ff}
+
+  /* ===== BODY ===== */
+  .body-wrap{flex:1 1 auto;position:relative;overflow:auto;min-height:0}
+
+  /* RUN view */
+  .run-view{max-width:940px;margin:0 auto;padding:34px 24px 80px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 22px;margin-bottom:16px}
+  .ro-note{font-size:11px;color:var(--dim);font-style:italic;margin-bottom:16px;text-align:center}
+  .launch{margin:0}
+  .btn-run{width:100%;background:var(--accent);color:#06210f;border:0;border-radius:10px;font-family:var(--head);font-weight:700;font-size:18px;padding:20px;letter-spacing:.3px}
+  .btn-run:hover{background:var(--hover)}
+  .btn-run .hint{display:none;font-size:11px;font-weight:400;margin-top:5px}
+  body:not(.connected) .btn-run,body.connected.unsaved .btn-run{background:#0e2a1a;color:#3f7d5c;cursor:not-allowed}
+  body:not(.connected) .btn-run .hint.nc{display:block;color:#5b8f72}
+  body.connected.unsaved .btn-run .hint.uns{display:block;color:var(--warn)}
+  .dryrun-link{display:inline-block;margin-top:9px;color:var(--dim);font-size:11.5px;background:transparent;border:0;text-decoration:underline}
+  .dryrun-link:hover{color:var(--text)}
+  .test-card .lead{font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-bottom:10px}
+  .trial-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--dim)}
+  .trial-row select,.trial-row input{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-family:var(--mono);font-size:12px}
+  .thumb{width:42px;height:42px;border:1px solid var(--border);border-radius:5px;background:repeating-conic-gradient(#1f6f45 0 25%,#0e3a24 0 50%) 50%/14px 14px;flex:0 0 auto}
+  .btn-test{background:transparent;border:1px solid var(--beta);color:var(--beta);border-radius:6px;padding:8px 14px;font-weight:600}
+  .seqlist h3{font-family:var(--head);font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 10px}
+  .seqrow{display:flex;align-items:center;gap:12px;padding:9px 12px;border:1px solid var(--border);border-radius:7px;margin-bottom:7px;background:var(--surface2)}
+  .seqrow .idx{color:var(--dim);font-size:11px;width:22px}
+  .seqrow .nm{flex:1;font-size:13px}
+  .seqrow .du{color:var(--dim);font-size:11px}
+  .seqrow .play{background:transparent;border:1px solid var(--beta);color:var(--beta);border-radius:5px;padding:4px 11px;font-size:12px}
+  .edit-link{display:inline-block;margin-top:4px;color:var(--beta);font-size:12px;background:transparent;border:0;padding:6px 0;text-decoration:underline}
+
+  /* EDIT view */
+  .edit-view{display:none;height:100%;flex-direction:column}
+  body.editmode .run-view{display:none}
+  body.editmode .edit-view{display:flex}
+  .edit-toolbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .edit-toolbar .grp{display:flex;gap:6px;align-items:center}
+  .edit-toolbar .sep{width:1px;height:20px;background:var(--border);margin:0 4px}
+  .three-zone{flex:1;display:grid;grid-template-columns:260px 1fr 320px;gap:1px;background:var(--border);min-height:0}
+  .zone{background:var(--surface);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .zone-h{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim)}
+  .zone-h .cnt{background:var(--surface2);border-radius:10px;padding:1px 7px;font-size:10px}
+  .zone-h .mini{margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:2px 8px;font-size:11px}
+  .zone-b{padding:10px;overflow:auto;font-size:12px}
+  .litem{padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface2)}
+  .litem.sel{border-color:var(--accent)}
+  .litem .t{font-size:12px}.litem .s{color:var(--dim);font-size:10px}
+  .split-h{font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);padding:8px 12px;border-bottom:1px solid var(--border);border-top:1px solid var(--border);background:var(--surface2)}
+  .field{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12px}
+  .field .lk{color:var(--beta);cursor:pointer}
+  .field input,.field select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 7px;font-family:var(--mono);font-size:12px;width:120px}
+  .timeline{flex:0 0 auto;border-top:1px solid var(--border);background:var(--surface2);padding:8px 12px}
+  .timeline .h{font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-bottom:6px}
+  .film{display:flex;gap:2px;height:26px}
+  .film .blk{height:100%;border-radius:3px}.film .cond{background:#1f6f45}.film .iti{background:#3a3f47}
+
+  /* DOCK */
+  .dock{flex:0 0 auto;background:var(--surface);border-top:1px solid var(--border)}
+  .dock-bar{display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;font-size:12px}
+  .dock-bar .caret{transition:transform .15s}
+  body.dockopen .dock-bar .caret{transform:rotate(90deg)}
+  .dock-bar .dim{margin-left:auto;font-size:11px}
+  .dock-body{display:none;border-top:1px solid var(--border);height:250px;flex-direction:column}
+  body.dockopen .dock-body{display:flex}
+  .dock-tabs{display:flex;gap:2px;padding:6px 10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .dock-tabs button{background:transparent;border:0;color:var(--dim);padding:7px 13px;font-size:12px;border-bottom:2px solid transparent}
+  .dock-tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
+  .dock-tabs button.runlogtab.on{border-bottom-color:var(--rec)}
+  .dock-pane{padding:14px;overflow:auto;flex:1;font-size:12px}
+  .dock-pane[hidden]{display:none}
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .row label{color:var(--dim);font-size:12px;display:flex;align-items:center;gap:6px}
+  .row input[type=number],.row input[type=text],.row select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:5px 7px;font-family:var(--mono);font-size:12px}
+  .lbl{font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);min-width:64px}
+  .seg2{display:flex;border:1px solid var(--border);border-radius:5px;overflow:hidden}
+  .seg2 button{background:transparent;border:0;color:var(--dim);padding:5px 12px;font-size:11px}
+  .seg2 button.on{background:var(--accent);color:#06210f;font-weight:700}
+  .logbox{background:#0a0e12;border:1px solid var(--border);border-radius:5px;padding:8px;height:100px;overflow:auto;font-size:11px;color:#9fe8c0;white-space:pre-wrap;font-family:var(--mono)}
+  .memgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .membox{border:1px solid var(--border);border-radius:6px;overflow:hidden}
+  .memh{background:var(--surface2);padding:6px 10px;font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim)}
+  .memb{padding:8px 10px;font-size:11px;color:var(--dim);line-height:1.8}
+  .runlog-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:11px;flex-wrap:wrap}
+  .runlog-head .tag{font-weight:700;border-radius:4px;padding:2px 8px;font-size:10px}
+  .runlog-head .tag.exp{background:var(--rec);color:#2a0000}
+  .runlog-head .tag.test{background:var(--border);color:var(--dim)}
+  .runlog-head .ctr{color:var(--dim)}
+  .runlog-head .acts{margin-left:auto;display:flex;gap:6px}
+  .runlog-box{height:150px}
+  .runlog-saved{margin-top:8px;font-size:11px;color:var(--accent);display:none}
+  .runlog-saved.show{display:block}
+
+  footer{flex:0 0 auto;padding:5px 14px;font-size:10px;color:var(--dim);background:var(--surface);border-top:1px solid var(--border)}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:200}
+  .modal-bg.show{display:flex}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:10px;width:460px;max-width:92vw;padding:20px 22px}
+  .modal h3{font-family:var(--head);margin:0 0 4px;font-size:16px}
+  .modal .sub{color:var(--dim);font-size:11.5px;margin-bottom:14px}
+  .mrow{margin-bottom:12px}
+  .mrow label{display:block;font-size:11px;color:var(--dim);margin-bottom:4px}
+  .mrow input,.mrow textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:7px 9px;font-family:var(--mono);font-size:12.5px}
+  .mrow textarea{resize:vertical;min-height:48px}
+  .mrow .req{color:var(--warn)}
+  .prov{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:9px 11px;font-size:11px;color:var(--dim);line-height:1.7;margin-bottom:14px}
+  .prov b{color:var(--text);font-weight:600}.prov .sha{color:var(--accent)}
+  .modal-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+  .modal-acts .go{background:var(--accent);border:0;color:#06210f;font-weight:700;border-radius:6px;padding:8px 16px}
+
+  .dev{position:fixed;right:12px;bottom:42px;z-index:50;display:flex;gap:6px}
+  body.annot .ann{display:inline-flex !important}
+  .ann{display:none;align-items:center;justify-content:center;background:var(--warn);color:#241a00;font-weight:700;font-size:10px;width:16px;height:16px;border-radius:50%;margin-left:6px;cursor:help;vertical-align:middle;transition:transform .1s}
+  .ann:hover{background:var(--accent);transform:scale(1.2)}
+  #annTip{position:fixed;max-width:300px;background:#0a0e12;color:var(--text);border:1px solid var(--accent);border-radius:7px;padding:9px 11px;font-size:11.5px;line-height:1.55;box-shadow:0 6px 22px rgba(0,0,0,.6);z-index:1000;white-space:normal;opacity:0;visibility:hidden;transition:opacity .1s;pointer-events:none}
+  #annTip.show{opacity:1;visibility:visible}
+</style>
+</head>
+<body class="connected">
+
+<!-- ===== RIBBON 1 — SESSION / ARENA (always shows the target arena/rig) ===== -->
+<div class="session-bar">
+  <span class="brand">Arena Studio<span class="v">v2 wireframe</span></span>
+  <span class="status"><span class="dot"></span><span id="statusTxt">connected</span></span>
+  <span class="arena"><b>G6 2×10</b> · rig <b>test_rig_1</b><span class="fw"> · fw v1</span><span class="tgt"> (target)</span></span>
+  <span class="ann" data-tip="SESSION ribbon = the arena context. It always names the arena + rig this protocol targets — even when DISCONNECTED (shown as 'target') — so you always know what hardware this is for. When connected it adds fw and confirms the live device.">①</span>
+
+  <span class="spacer"></span>
+  <span class="run-inline" id="runInline">▸ running…</span>
+  <button class="stop" onclick="stopRun()">■ STOP</button>
+  <span class="ann" data-tip="ONE global STOP (0x30). During an experiment, STOP (or a cable-pull) writes an ABORTED terminal event and still exports the partial run log.">②</span>
+  <button class="connect" onclick="toggleConn()" id="connectBtn">Disconnect</button>
+  <button class="gear" data-tip="⚙ All tools · Quick Start · Diagnostics (Get info / IP / frames · SPI · Refresh). The old Controller/Debug menubars fold in here.">⚙</button>
+  <span class="ann" data-tip="Controller/Debug fold into ⚙ → Diagnostics; the firmware-gated stub buttons are gone.">③</span>
+</div>
+
+<!-- ===== RIBBON 2 — PROTOCOL / DOCUMENT (the global current protocol, persists across Run/Edit) ===== -->
+<div class="doc-bar">
+  <span id="docName" class="doc-name">📄 looming_v3.yaml</span>
+  <span class="chip saved">saved ✓ · a1b2c3</span>
+  <span class="chip edited">● edited — save to run</span>
+  <span class="chip untitled-chip">unsaved — new protocol</span>
+  <span class="ann" data-tip="PROTOCOL ribbon = the ONE current document. It persists identically across Run and Edit, so you never lose track of what you're working on. A brand-new doc reads '📄 untitled · unsaved' (no name) — you can Test it, but Save (which gives it a name + content hash) is required before you can Run it as an experiment. (Try File ▾ → New, and the ✎ toggle bottom-right.)">④</span>
+
+  <span id="docSummary" class="doc-summary">9 conditions · 1 block · 4 variables · ≈ 4:30 · 2 plugins</span>
+  <span class="ann" data-tip="The protocol summary (conditions · block · variables · duration · plugins) lives here on the document ribbon, visible in BOTH modes — it replaces the old summary box inside the Run launcher.">⑤</span>
+
+  <span class="spacer"></span>
+
+  <!-- Run mode: a single Open button (loading a protocol to run is the only file action you need). -->
+  <button class="ribbon-btn open-proto-btn" onclick="openProto()">📂 Open protocol</button>
+  <!-- Edit mode: the full File ▾ menu. -->
+  <div class="filemenu" id="fileMenu">
+    <button class="ribbon-btn" onclick="toggleFileMenu(event)">File ▾</button>
+    <div class="menu">
+      <button onclick="newDoc()">New protocol</button>
+      <button onclick="openProto()">Open… (Import YAML)</button>
+      <button onclick="saveProtocol()">Save</button>
+      <button onclick="closeFileMenu()">Save a copy… (Export)</button>
+      <div class="sep"></div>
+      <button onclick="closeFileMenu()">Import from another protocol… (D4)</button>
+    </div>
+  </div>
+  <span class="ann" data-tip="Run mode keeps it simple: a single '📂 Open protocol' button — loading a protocol to run is the only file action you need here. The full File ▾ menu (New / Save / Save-a-copy / Import-from) appears ONLY in Edit, where you're authoring.">⑥</span>
+
+  <div class="seg" id="modeSeg">
+    <button class="on" data-mode="run" onclick="setMode('run')">▶ Run</button>
+    <button class="edit" data-mode="edit" onclick="setMode('edit')">✎ Edit</button>
+  </div>
+  <span class="ann" data-tip="Run | Edit are two VIEWS of the same document on this ribbon — not two separate tools. Switching modes never changes which protocol you hold; the identity above stays put. Shared links open in Run.">⑦</span>
+</div>
+
+<!-- ===== BODY ===== -->
+<div class="body-wrap">
+  <!-- RUN view -->
+  <div class="run-view">
+    <div class="ro-note">Read-only — switch to ✎ Edit (top right) to change this protocol.</div>
+    <div class="card">
+      <div class="launch">
+        <button class="btn-run" onclick="onRunExperiment()">▶ Run experiment
+          <span class="hint nc">Connect to run</span>
+          <span class="hint uns">Edit → Save to run as experiment</span>
+        </button>
+        <button class="dryrun-link" onclick="dryRun()">Dry-run sequence (test — not logged) →</button>
+        <span class="ann" data-tip="▶ Run experiment = recorded: needs a SAVED protocol (see the doc ribbon), captures metadata, writes a log. The quiet 'Dry-run (test — not logged)' runs the same sequence on the arena for checking — no save, no record.">⑧</span>
+      </div>
+    </div>
+    <div class="card test-card">
+      <div class="lead">quick test — drives the arena, not recorded</div>
+      <div class="trial-row">
+        <span>test one trial:</span>
+        <div class="thumb"></div>
+        <select><option>grating_15px</option><option>looming_disc</option><option>off</option></select>
+        <span>for</span><input type="number" value="5" style="width:54px"><span>s</span>
+        <button class="btn-test">▶ Test trial</button>
+        <span class="ann" data-tip="A Test: pattern picked by NAME + preview, runs on the arena to check — never logged, edited/unsaved protocols OK. Raw mode/index/rate/gain live in Edit + the Console advanced row.">⑨</span>
+      </div>
+    </div>
+    <div class="card seqlist">
+      <h3>Sequence · test any single condition ▶</h3>
+      <div class="seqrow"><span class="idx">1</span><span class="nm">baseline_off</span><span class="du">3 s</span><button class="play" title="Test this one condition (not logged)">▶</button></div>
+      <div class="seqrow"><span class="idx">2</span><span class="nm">grating_15px_cw</span><span class="du">10 s</span><button class="play" title="Test this one condition (not logged)">▶</button></div>
+      <div class="seqrow"><span class="idx">3</span><span class="nm">looming_disc_fast</span><span class="du">6 s</span><button class="play" title="Test this one condition (not logged)">▶</button></div>
+      <div class="seqrow"><span class="idx">4</span><span class="nm">intertrial_gray</span><span class="du">3 s</span><button class="play" title="Test this one condition (not logged)">▶</button></div>
+    </div>
+    <button class="edit-link" onclick="setMode('edit')">✎ Edit this protocol →</button>
+  </div>
+
+  <!-- EDIT view -->
+  <div class="edit-view">
+    <div class="edit-toolbar">
+      <div class="grp"><button class="pill">↶ Undo</button><button class="pill">↷ Redo</button><button class="pill">⟲ Reset</button></div>
+      <div class="sep"></div>
+      <div class="grp"><button class="pill">Settings ▾</button><button class="pill">Pattern Set…</button></div>
+      <span class="ann" data-tip="Slim Edit toolbar — only AUTHORING tools (Undo/Redo/Reset, Settings, Pattern Set). All file ops (New/Open/Save/Export/Import-from) moved to File ▾ on the document ribbon, and the ● edited state lives in the doc chip up there.">⑩</span>
+      <span class="spacer"></span>
+      <span class="dim" style="font-size:11px">Editing — changes won't run as an experiment until you Save (File ▾)</span>
+    </div>
+    <div class="three-zone">
+      <div class="zone">
+        <div class="zone-h"><span>Library</span><span class="cnt">9</span><button class="mini">+ Add</button></div>
+        <div class="zone-b" style="flex:1">
+          <div class="litem"><div class="t">baseline_off</div><div class="s">controller · allOff</div></div>
+          <div class="litem sel"><div class="t">grating_15px_cw</div><div class="s">controller · trialParams mode 2</div></div>
+          <div class="litem"><div class="t">looming_disc_fast</div><div class="s">controller · trialParams mode 3</div></div>
+          <div class="litem"><div class="t">closed_loop_bar</div><div class="s">controller · trialParams mode 4</div></div>
+        </div>
+        <div class="split-h">Variables · 4</div>
+        <div class="zone-b" style="max-height:110px">
+          <div class="field"><span>dur_short</span><span>3</span></div>
+          <div class="field"><span>dur_long</span><span>10</span></div>
+          <div class="field"><span>gain_cw</span><span>20</span></div>
+        </div>
+      </div>
+      <div class="zone">
+        <div class="zone-h"><span>Experiment Sequence</span><span class="cnt">1 block</span><button class="mini">+ Ref</button><button class="mini">+ Block</button></div>
+        <div class="zone-b">
+          <div class="litem"><div class="t">▸ Block: main (×3, randomized)</div><div class="s">3 trials + intertrial</div></div>
+          <div class="litem" style="margin-left:16px"><div class="t">→ grating_15px_cw</div></div>
+          <div class="litem" style="margin-left:16px"><div class="t">→ looming_disc_fast</div></div>
+          <div class="litem" style="margin-left:16px"><div class="t">→ closed_loop_bar</div></div>
+          <div class="litem" style="margin-left:16px;border-style:dashed"><div class="s">intertrial: intertrial_gray</div></div>
+        </div>
+        <span class="ann" data-tip="The v3 'Run on arena' button is gone from this zone — running is unified into the top launcher + per-row ▶, so there's one run mechanism.">⑪</span>
+      </div>
+      <div class="zone">
+        <div class="zone-h"><span>Inspector · grating_15px_cw</span></div>
+        <div class="zone-b">
+          <div class="split-h" style="border-top:0">trialParams (controller)</div>
+          <div class="field"><span>pattern</span><select><option>grating_15px</option></select></div>
+          <div class="field"><span>mode</span><select><option>2 open-loop</option><option>3 show-frame</option><option>4 closed-loop</option></select></div>
+          <div class="field"><span>duration <span class="lk">🔗</span></span><input value="dur_long → 10"></div>
+          <div class="field"><span>frame rate</span><input value="30"></div>
+          <div class="field"><span>gain</span><input value="0" disabled></div>
+          <span class="ann" data-tip="Raw trial-params (mode/rate/gain/init) live HERE in Edit only. 🔗 binds a value to a Variable; mode greys irrelevant fields.">⑫</span>
+        </div>
+      </div>
+    </div>
+    <div class="timeline">
+      <div class="h">Flattened Timeline Preview</div>
+      <div class="film">
+        <div class="blk cond" style="width:60px"></div><div class="blk iti" style="width:24px"></div>
+        <div class="blk cond" style="width:120px"></div><div class="blk iti" style="width:24px"></div>
+        <div class="blk cond" style="width:80px"></div><div class="blk iti" style="width:24px"></div>
+        <div class="blk cond" style="width:120px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DOCK -->
+<div class="dock">
+  <div class="dock-bar" onclick="toggleDock()">
+    <span class="caret">▸</span><span>Manual / Console</span>
+    <span class="ann" data-tip="The entire low-level surface, bound to the same connection — reachable in Run AND Edit, even mid-run. The Run log streams here live during a recorded run.">⑬</span>
+    <span class="dim">run log · all on · frame stepper · stream test frames · raw bytes · device memory</span>
+  </div>
+  <div class="dock-body">
+    <div class="dock-tabs">
+      <button class="runlogtab" onclick="dockTab(0)">Run log</button>
+      <button class="on" onclick="dockTab(1)">Quick test</button>
+      <button onclick="dockTab(2)">Frame stepper</button>
+      <button onclick="dockTab(3)">Stream frames</button>
+      <button onclick="dockTab(4)">Raw + log</button>
+      <button onclick="dockTab(5)">Device memory</button>
+    </div>
+    <div class="dock-pane" data-pane="0" hidden>
+      <div class="runlog-head">
+        <span class="tag exp" id="rlTag">EXPERIMENT</span>
+        <span class="ctr" id="rlCtr">run a1b2 · idle</span>
+        <span class="acts"><button class="pill">Clear</button><button class="pill">Copy</button><button class="pill">⬇ Save</button></span>
+        <span class="ann" data-tip="Live run log — every runner event is timestamped here as it happens, with a metadata header. Auto-exports as runlog.json + .txt (local file) at the end. Dry-runs are tagged TEST and not exported.">⑭</span>
+      </div>
+      <div class="logbox runlog-box" id="runlogBox"><span class="dim">No run yet. Click ▶ Run experiment (Run view) to start a recorded run and watch the log fill here.</span></div>
+      <div class="runlog-saved" id="rlSaved"></div>
+    </div>
+    <div class="dock-pane" data-pane="1">
+      <div class="row"><span class="lbl">display</span>
+        <button class="pill">All on</button><button class="pill">All off</button>
+        <select><option>Test pattern ▾ (panel map)</option><option>orientation</option><option>checker</option></select>
+        <label>level <input type="range" min="0" max="15" value="15" style="width:90px"></label></div>
+      <div class="row" style="border-top:1px dashed var(--border);padding-top:12px"><span class="lbl">advanced</span>
+        <label>mode <select><option>2</option><option>3</option><option>4</option></select></label>
+        <label>SD idx <input type="number" value="1" style="width:54px"></label>
+        <label>rate <input type="number" value="30" style="width:60px"></label>
+        <label>gain <input type="number" value="0" style="width:54px"></label>
+        <button class="pill">Send trial params</button></div>
+    </div>
+    <div class="dock-pane" data-pane="2" hidden>
+      <div class="row"><span class="lbl">frame · m3</span><button class="pill">Load</button><button class="pill">◀</button>
+        <input type="number" value="0" style="width:60px"><button class="pill">Go</button><button class="pill">▶</button><span class="dim">frame – / –</span></div>
+    </div>
+    <div class="dock-pane" data-pane="3" hidden>
+      <div class="row"><span class="lbl">stream</span><span class="seg2"><button class="on">GS16</button><button>GS2</button></span>
+        <label>duty <input type="range" min="0" max="255" value="128" style="width:90px"></label>
+        <button class="pill">Full-field</button><button class="pill">Paste frame…</button>
+        <label>fps <input type="number" value="30" style="width:54px"></label><button class="pill">Load .bin/.pat…</button></div>
+    </div>
+    <div class="dock-pane" data-pane="4" hidden>
+      <div class="row"><span class="lbl">raw</span><input type="text" placeholder="hex bytes, e.g. 01 66" style="min-width:200px">
+        <button class="pill">Send</button><span class="spacer"></span><button class="pill">Clear</button><button class="pill">Copy</button><button class="pill">Save</button></div>
+      <div class="logbox">› 01 67  GET_CONTROLLER_INFO
+‹ status 0 · fw v1 · G6 · 2×10
+› 01 FF  ALL_ON   ‹ ok</div>
+    </div>
+    <div class="dock-pane" data-pane="5" hidden>
+      <div class="memgrid">
+        <div class="membox"><div class="memh">SD card</div><div class="memb">1 · grating_15px<br>2 · looming_disc<br>3 · off</div></div>
+        <div class="membox"><div class="memh">PS-RAM</div><div class="memb">grating_15px · 1 fr · 0x0000<br>— reported by controller —</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>Arena Studio — concept wireframe v2 · not wired to hardware · 2026-06-17 ET &nbsp;|&nbsp; ⊕ reveal callouts (hover ① for the why) · ✎ toggle the saved-protocol gate · Run = just Open · Edit = full File ▾ menu</footer>
+
+<div class="dev">
+  <button class="pill" onclick="toggleEdited()" title="Demo: flip the loaded protocol between saved and edited to see the experiment-run gate">✎ simulate edit</button>
+  <button class="pill" onclick="document.body.classList.toggle('annot')">⊕ callouts</button>
+</div>
+<div id="annTip"></div>
+
+<!-- Run-metadata modal -->
+<div class="modal-bg" id="metaModal">
+  <div class="modal">
+    <h3>Start experiment run</h3>
+    <div class="sub">This is a recorded run — it will capture metadata and write a log.</div>
+    <div class="mrow"><label>Experimenter <span class="req">*</span></label><input id="mExp" value="mreiser"></div>
+    <div class="mrow"><label>Fly genotype <span class="req">*</span></label>
+      <input id="mGeno" list="genoList" placeholder="e.g. w;UAS-CsChrimson">
+      <datalist id="genoList"><option>w;UAS-CsChrimson</option><option>w;+;GMR-Gal4</option><option>Canton-S</option></datalist></div>
+    <div class="mrow"><label>Notes</label><textarea id="mNotes" placeholder="temperature, fly age, anything odd…"></textarea></div>
+    <div class="prov">auto-captured: <b>looming_v3.yaml</b> · sha256 <span class="sha">a1b2c3…</span><br>
+      G6 2×10 · rig test_rig_1 · fw v1 · timestamp <b>2026-06-17T14:32:05-04:00</b></div>
+    <div class="modal-acts">
+      <button class="pill" onclick="closeMeta()">Cancel</button>
+      <button class="go" onclick="startExperiment()">Start experiment run</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const docName=document.getElementById('docName'), docSummary=document.getElementById('docSummary');
+  function setMode(m){
+    document.body.classList.toggle('editmode', m==='edit');
+    document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on', b.dataset.mode===m));
+  }
+  function toggleConn(){
+    const on=document.body.classList.toggle('connected');
+    document.getElementById('statusTxt').textContent = on?'connected':'disconnected';
+    document.getElementById('connectBtn').textContent = on?'Disconnect':'Connect';
+    if(!on) stopRun();
+  }
+  function toggleDock(){ document.body.classList.toggle('dockopen'); }
+  function dockTab(i){
+    document.body.classList.add('dockopen');
+    document.querySelectorAll('.dock-tabs button').forEach((b,j)=>b.classList.toggle('on', j===i));
+    document.querySelectorAll('.dock-pane').forEach(p=>p.hidden = (+p.dataset.pane!==i));
+  }
+  // document state (the global current protocol)
+  function setDoc(state){ // 'saved' | 'edited' | 'untitled'
+    document.body.classList.toggle('unsaved', state!=='saved');
+    document.body.classList.toggle('untitled', state==='untitled');
+    docName.textContent = state==='untitled' ? '📄 untitled' : '📄 looming_v3.yaml';
+    docSummary.textContent = state==='untitled'
+      ? 'new — add conditions in Edit'
+      : '9 conditions · 1 block · 4 variables · ≈ 4:30 · 2 plugins';
+  }
+  function toggleEdited(){ setDoc(document.body.classList.contains('unsaved') ? 'saved' : 'edited'); }
+  function saveProtocol(){ setDoc('saved'); closeFileMenu(); }
+  function newDoc(){ setDoc('untitled'); closeFileMenu(); setMode('edit'); }
+  function openProto(){ setDoc('saved'); closeFileMenu(); setMode('run'); }
+  // File menu
+  function toggleFileMenu(e){ e.stopPropagation(); document.getElementById('fileMenu').classList.toggle('open'); }
+  function closeFileMenu(){ document.getElementById('fileMenu').classList.remove('open'); }
+  document.addEventListener('click', (e)=>{ if(!e.target.closest('#fileMenu')) closeFileMenu(); });
+
+  // run / experiment / log (mock)
+  let logTimer=null;
+  function onRunExperiment(){
+    if(!document.body.classList.contains('connected')) return;
+    if(document.body.classList.contains('unsaved')) return;
+    document.getElementById('metaModal').classList.add('show');
+  }
+  function closeMeta(){ document.getElementById('metaModal').classList.remove('show'); }
+  function startExperiment(){
+    const exp=(document.getElementById('mExp').value||'').trim();
+    const geno=(document.getElementById('mGeno').value||'').trim();
+    if(!exp||!geno){ alert('Experimenter and genotype are required.'); return; }
+    closeMeta();
+    beginRun(true, {exp, geno});
+  }
+  function dryRun(){ if(document.body.classList.contains('connected')) beginRun(false, null); }
+  function beginRun(isExperiment, meta){
+    document.body.classList.add('running');
+    const inline=document.getElementById('runInline');
+    inline.classList.toggle('rec', isExperiment);
+    dockTab(0);
+    const tag=document.getElementById('rlTag'), ctr=document.getElementById('rlCtr'),
+          box=document.getElementById('runlogBox'), saved=document.getElementById('rlSaved');
+    tag.className='tag '+(isExperiment?'exp':'test');
+    tag.textContent=isExperiment?'EXPERIMENT':'TEST — not logged';
+    saved.classList.remove('show');
+    const lines = isExperiment ? [
+      'meta: run a1b2 · looming_v3.yaml (sha a1b2c3…) · '+meta.exp+' · '+meta.geno,
+      '14:32:05  ▸ sequence start — 9 conditions, 15 steps (host-timed)',
+      '14:32:05  ▸ [1/15] baseline_off — allOff',
+      '14:32:08  ▸ [2/15] grating_15px_cw — trialParams mode 2, pat 1, 30fps  (10 s, host-timed)',
+      '14:32:18  ▸ [3/15] intertrial_gray — wait 3 s',
+      '14:32:21  ▸ [4/15] looming_disc_fast — trialParams mode 3, pat 2  (6 s)',
+      '   … steps 5–15 …',
+      '14:36:35  ■ sequence complete — 15/15 steps · 0 errors · 0 skipped'
+    ] : [
+      'TEST dry-run — not logged · looming_v3.yaml',
+      '14:40:00  ▸ sequence start — 15 steps (host-timed)',
+      '14:40:00  ▸ [1/15] baseline_off — allOff',
+      '   … runs on the arena, nothing recorded …',
+      '14:44:30  ■ sequence complete'
+    ];
+    box.textContent=''; let i=0; clearInterval(logTimer);
+    logTimer=setInterval(()=>{
+      if(i>=lines.length){
+        clearInterval(logTimer);
+        if(isExperiment){ saved.textContent='⬇ auto-saved  looming_v3__'+meta.exp+'__2026-06-17T14-32-05__a1b2.runlog.json (+ .txt)'; saved.classList.add('show'); }
+        document.body.classList.remove('running'); return;
+      }
+      box.textContent += (box.textContent?'\n':'')+lines[i++];
+      box.scrollTop=box.scrollHeight;
+      const m=lines[i-1].match(/\[(\d+)\/15\]/);
+      if(m){ inline.innerHTML=(isExperiment?'REC ● ':'▸ ')+'trial '+m[1]+'/15'+(isExperiment?'':' (test)')+' <span class="bar"><i></i></span>'; ctr.textContent='run a1b2 · step '+m[1]+'/15 · 0 err · 0 skip'; }
+    }, 700);
+  }
+  function stopRun(){
+    if(!document.body.classList.contains('running')){ document.body.classList.remove('running'); return; }
+    clearInterval(logTimer);
+    const box=document.getElementById('runlogBox'), saved=document.getElementById('rlSaved');
+    const wasExp=document.getElementById('rlTag').classList.contains('exp');
+    box.textContent+='\n14:33:10  ■ ABORTED by STOP'; box.scrollTop=box.scrollHeight;
+    if(wasExp){ saved.textContent='⬇ auto-saved (PARTIAL, ABORTED)  looming_v3__mreiser__…__a1b2.runlog.json'; saved.classList.add('show'); }
+    document.body.classList.remove('running');
+  }
+
+  (function wireCalloutTips(){
+    const tip=document.getElementById('annTip');
+    document.querySelectorAll('.ann, .gear').forEach((a)=>{
+      if(!a.getAttribute('data-tip')) return;
+      a.addEventListener('mouseenter', ()=>{
+        tip.textContent=a.getAttribute('data-tip')||''; tip.classList.add('show');
+        const r=a.getBoundingClientRect();
+        let left=r.left+r.width/2-tip.offsetWidth/2;
+        left=Math.max(8, Math.min(left, window.innerWidth-tip.offsetWidth-8));
+        let top=r.bottom+8;
+        if(top+tip.offsetHeight>window.innerHeight-8) top=r.top-tip.offsetHeight-8;
+        tip.style.left=left+'px'; tip.style.top=Math.max(8,top)+'px';
+      });
+      a.addEventListener('mouseleave', ()=> tip.classList.remove('show'));
+    });
+  })();
+</script>
+</body>
+</html>

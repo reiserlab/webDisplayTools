@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Arena Studio — wireframe v4 (concept)</title>
+<style>
+  :root{
+    --bg:#0f1419; --surface:#1a1f26; --surface2:#141a20; --border:#2d3640;
+    --text:#e6edf3; --dim:#8b949e; --accent:#00e676; --hover:#00c853;
+    --danger:#ff5252; --warn:#e3a008; --beta:#4aa8ff; --rec:#ff5252;
+    --mode:#00e676; --modec:#062a16;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+    --head:'JetBrains Mono',var(--mono);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;
+       display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  button{font-family:var(--mono);cursor:pointer}
+  .dim{color:var(--dim)}
+  .pill{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:5px;padding:5px 10px;font-size:12px}
+  .pill:hover{border-color:var(--accent)}
+  .spacer{flex:1}
+
+  /* ===== RIBBON 1 — SESSION / ARENA ===== */
+  .session-bar{flex:0 0 auto;display:flex;align-items:center;gap:13px;height:52px;
+               padding:0 14px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .brand{font-family:var(--head);font-weight:700;letter-spacing:.5px;color:var(--accent);font-size:15px;white-space:nowrap}
+  .brand .v{color:var(--dim);font-weight:400;font-size:11px;margin-left:6px}
+  .status{display:flex;align-items:center;gap:7px;font-size:12px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--danger);box-shadow:0 0 6px var(--danger)}
+  body.connected .dot{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+  .arena{color:var(--dim);font-size:11.5px}
+  .arena b{color:var(--text);font-weight:600}
+  body:not(.connected) .fw{display:none}
+  .tgt{font-style:italic}
+  body.connected .tgt{display:none}
+  .run-inline{font-size:11px;color:var(--accent);display:none;align-items:center;gap:6px}
+  body.running .run-inline{display:flex}
+  .run-inline.rec{color:var(--rec);font-weight:700}
+  .run-inline .bar{width:84px;height:5px;border-radius:3px;background:#0a3a20;overflow:hidden}
+  .run-inline .bar i{display:block;height:100%;width:42%;background:currentColor}
+  /* Disconnect lives ALONE in the session ribbon (H1: STOP is NOT next to it). */
+  .connect{background:var(--accent);border:0;color:#06210f;font-weight:700;border-radius:6px;padding:8px 15px;font-size:12px}
+  body.connected .connect{background:transparent;border:1px solid var(--border);color:var(--dim);font-weight:400}
+  .gear{font-size:16px;color:var(--dim);background:transparent;border:0;padding:4px 8px}
+
+  /* ===== RIBBON 2 — PROTOCOL / DOCUMENT ===== */
+  .doc-bar{flex:0 0 auto;display:flex;align-items:center;gap:12px;height:46px;
+           padding:0 14px;background:var(--surface2);border-bottom:1px solid var(--border)}
+  .doc-name{font-family:var(--head);font-weight:700;font-size:13px;white-space:nowrap}
+  .chip{font-family:var(--mono);font-size:11px;font-weight:600;border-radius:20px;padding:2px 9px;border:1px solid;white-space:nowrap}
+  .chip.saved{color:var(--accent);border-color:var(--accent);background:rgba(0,230,118,.08)}
+  .chip.edited,.chip.untitled-chip{display:none}
+  .chip.edited{color:var(--warn);border-color:var(--warn);background:rgba(227,160,8,.08)}
+  .chip.untitled-chip{color:var(--warn);border-color:var(--warn);background:rgba(227,160,8,.08)}
+  body.unsaved:not(.untitled) .chip.saved{display:none}
+  body.unsaved:not(.untitled) .chip.edited{display:inline-block}
+  body.untitled .chip.saved{display:none}
+  body.untitled .chip.untitled-chip{display:inline-block}
+  /* H5: small persistent read-only lock chip (Run mode only), replaces the old banner */
+  .chip.lock{color:var(--dim);border-color:var(--border);background:var(--surface)}
+  body.editmode .chip.lock{display:none}
+  /* v4: one consistent cue for features that are mocked here but NOT yet shipped (PRs in review) */
+  .planned{border:1px dashed var(--warn);color:var(--warn);background:rgba(227,160,8,.08);border-radius:20px;padding:1px 7px;font-size:10px;font-weight:600;white-space:nowrap;cursor:help}
+  .doc-summary{color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ribbon-btn{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px 12px;font-size:12px;white-space:nowrap}
+  .ribbon-btn:hover{border-color:var(--accent)}
+  body.editmode .open-proto-btn{display:none}
+  body:not(.editmode) #fileMenu{display:none}
+  .filemenu{position:relative}
+  .filemenu .menu{position:absolute;top:118%;right:0;background:var(--surface);border:1px solid var(--border);
+        border-radius:7px;min-width:268px;padding:4px;display:none;z-index:60;box-shadow:0 8px 22px rgba(0,0,0,.55)}
+  .filemenu.open .menu{display:block}
+  .filemenu .menu button{display:block;width:100%;text-align:left;background:transparent;border:0;color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px}
+  .filemenu .menu button:hover{background:var(--surface2)}
+  .filemenu .menu .sep{height:1px;background:var(--border);margin:4px 2px}
+  /* F6 — GitHub save target block inside File menu */
+  .gh-block{padding:7px 10px;font-size:11.5px;color:var(--dim)}
+  .gh-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+  .gh-signin{background:transparent;border:1px solid var(--border);color:var(--beta);border-radius:5px;padding:3px 9px;font-size:11px;width:auto!important;display:inline-block!important;text-align:center!important}
+  .gh-who{color:var(--accent);font-weight:600;display:none}
+  body.ghauth .gh-signin{display:none!important}
+  body.ghauth .gh-who{display:inline}
+  .gh-check{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text);width:auto!important}
+  .gh-check input{accent-color:var(--accent)}
+  body:not(.ghauth) .gh-check{opacity:.45;cursor:not-allowed}
+  .gh-dest{font-size:10.5px;color:var(--dim);margin-top:5px;padding-left:2px}
+  /* segmented Run|Edit toggle — ONE consistent muted-blue active state, so the group looks identical
+     whether Run or Edit is active (was bright-green for Run vs blue for Edit — that was the mismatch). */
+  /* fills the ribbon height (align-self:stretch) → active segment is a full-height tab in ANY position,
+     so Edit (middle) reads the same as Run (first) / Console (last) — no "short floating middle button" */
+  .seg{display:flex;align-self:stretch;margin:5px 0;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+  .seg button{display:flex;align-items:center;background:transparent;border:0;color:var(--dim);padding:0 15px;font-size:12px}
+  .seg button + button{border-left:1px solid var(--bg)}
+  .seg button.on{background:#26405e;color:#cfe6ff;font-weight:700}
+  /* Console is a bench SURFACE, not a third document-view — a heavier divider before it */
+  .seg button.console{border-left-width:2px}
+  .seg button.console.on{background:rgba(0,230,118,.12);color:var(--accent)}
+
+  /* ===== BODY ===== */
+  .body-wrap{flex:1 1 auto;position:relative;overflow:auto;min-height:0}
+
+  /* RUN view */
+  .run-view{max-width:980px;margin:0 auto;padding:14px 24px 24px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:11px}
+  .launch-card{padding:9px 12px}
+  .launch-row{display:flex;gap:10px;align-items:stretch}
+  /* idle Run = solid (discoverable) green; the LOUD/animated state is reserved for RUNNING (F2). Compact (~half height). */
+  .btn-run{flex:1;background:var(--accent);color:#06210f;border:0;border-radius:8px;font-family:var(--head);font-weight:700;font-size:15px;padding:11px;letter-spacing:.3px}
+  .btn-run:hover{background:var(--hover)}
+  .btn-run .hint{display:none;font-size:10px;font-weight:400;margin-top:3px}
+  body:not(.connected) .btn-run,body.connected.unsaved .btn-run{background:#0e2a1a;color:#3f7d5c;cursor:not-allowed}
+  body:not(.connected) .btn-run .hint.nc{display:block;color:#5b8f72}
+  body.connected.unsaved .btn-run .hint.uns{display:block;color:var(--warn)}
+  .btn-testexp{flex:0 0 196px;background:transparent;border:1px solid var(--beta);color:var(--beta);border-radius:8px;font-family:var(--head);font-weight:700;font-size:13px;padding:8px 12px;letter-spacing:.2px}
+  .btn-testexp:hover{background:rgba(74,168,255,.08)}
+  .btn-testexp .sub{display:block;font-size:9.5px;font-weight:400;color:var(--dim);margin-top:2px}
+  body:not(.connected) .btn-testexp{opacity:.4;cursor:not-allowed}
+  body.running .launch-row{display:none}
+  /* RUNNING panel — the loud state lives HERE (F2) */
+  .running-panel{display:none;align-items:center;gap:14px;background:#06210f;border:1px solid var(--accent);border-radius:8px;padding:10px 16px}
+  body.running .running-panel{display:flex}
+  body.running.testing .running-panel{background:#0a1a2e;border-color:var(--beta)}
+  .running-panel .rp-lead{font-family:var(--head);font-weight:700;font-size:16px;color:var(--accent);display:flex;align-items:center;gap:9px}
+  body.running.testing .rp-lead{color:var(--beta)}
+  .running-panel .rp-lead .blip{width:11px;height:11px;border-radius:50%;background:var(--rec);box-shadow:0 0 8px var(--rec);animation:pulse 1s infinite}
+  body.running.testing .rp-lead .blip{background:var(--beta);box-shadow:0 0 8px var(--beta)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .running-panel .rp-prog{flex:1;height:8px;border-radius:5px;background:#0a3a20;overflow:hidden}
+  .running-panel .rp-prog i{display:block;height:100%;width:42%;background:var(--accent);transition:width .4s}
+  body.running.testing .rp-prog i{background:var(--beta)}
+  /* loud STOP, only present while running (F2/H1) */
+  .btn-stop{background:var(--danger);border:0;color:#2a0000;font-weight:700;border-radius:8px;padding:9px 22px;font-size:14px;font-family:var(--head)}
+  .btn-stop:hover{filter:brightness(1.1)}
+
+  /* plugins live on the protocol ribbon as a hover (not a Run-view card) */
+  .plug-hover{font-size:11px;color:var(--beta);border:1px solid rgba(74,168,255,.4);background:rgba(74,168,255,.06);border-radius:20px;padding:2px 9px;cursor:help;white-space:nowrap}
+  .plug-hover:hover{border-color:var(--beta)}
+
+  /* sequence list with F1 chips */
+  .seqlist h3{font-family:var(--head);font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 12px}
+  .blockhead{display:flex;align-items:center;gap:12px;padding:9px 12px;border:1px solid var(--border);border-radius:7px;margin-bottom:9px;background:var(--surface2)}
+  .blockhead .bt{font-family:var(--head);font-size:12px;color:var(--text)}
+  .blockhead .meta{color:var(--dim);font-size:11px}
+  .compo{display:flex;gap:2px;height:14px;flex:0 0 auto;border-radius:3px;overflow:hidden}
+  .compo span{width:26px;height:100%}
+  .seqrow{position:relative;display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:7px;margin-bottom:7px;background:var(--surface2);transition:border-color .2s,background .2s}
+  .seqrow.nested{margin-left:18px}
+  .seqrow .idx{color:var(--dim);font-size:11px;width:18px}
+  .seqrow .nm{font-size:13px;min-width:150px}
+  .kchips{display:flex;gap:5px;flex-wrap:wrap;flex:1}
+  .kchip{font-size:10px;border-radius:4px;padding:1px 7px;border:1px solid;white-space:nowrap}
+  .kchip.mode{color:var(--mode);border-color:rgba(0,230,118,.5);background:rgba(0,230,118,.07)}
+  .kchip.dur{color:var(--text);border-color:var(--border);background:var(--surface)}
+  .kchip.fps{color:var(--beta);border-color:rgba(74,168,255,.4);background:rgba(74,168,255,.06)}
+  .kchip.plug{color:var(--beta);border-color:rgba(74,168,255,.4)}
+  .seqrow .play{background:transparent;border:1px solid var(--beta);color:var(--beta);border-radius:5px;padding:4px 12px;font-size:12px;font-weight:600}
+  .seqrow .play:hover{background:rgba(74,168,255,.08)}
+  /* live "you are here" highlight while a run steps through the sequence */
+  .seqrow.active{border-color:var(--accent);background:rgba(0,230,118,.10)}
+  .seqrow.active .nm{color:var(--accent);font-weight:600}
+  .seqrow.active .idx{color:var(--accent)}
+  .seqrow.active::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);animation:pulse 1s infinite}
+  .blockhead.active{border-color:var(--accent)}
+  body.testing .seqrow.active{border-color:var(--beta);background:rgba(74,168,255,.10)}
+  body.testing .seqrow.active .nm,body.testing .seqrow.active .idx{color:var(--beta)}
+  body.testing .seqrow.active::before{background:var(--beta)}
+  body.testing .blockhead.active{border-color:var(--beta)}
+
+  /* EDIT view */
+  .edit-view,.console-view{display:none;height:100%;flex-direction:column}
+  body.editmode .run-view,body.consolemode .run-view{display:none}
+  body.editmode .edit-view{display:flex}
+  body.consolemode .console-view{display:flex}
+  /* CONSOLE view — the full PControl surface as stacked groups, un-cramped (no Pro-tools disclosure) */
+  .console-view{overflow:auto;padding:14px 18px;gap:12px}
+  .cgroup{flex:0 0 auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:12px 14px}
+  .cgroup .gh{font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .cgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .cgrid .membox{margin:0}
+  .edit-toolbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .edit-toolbar .grp{display:flex;gap:6px;align-items:center}
+  .edit-toolbar .sep{width:1px;height:20px;background:var(--border);margin:0 4px}
+  .three-zone{flex:1;display:grid;grid-template-columns:260px 1fr 320px;gap:1px;background:var(--border);min-height:0}
+  .zone{background:var(--surface);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .zone-h{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim)}
+  .zone-h .cnt{background:var(--surface2);border-radius:10px;padding:1px 7px;font-size:10px}
+  .zone-h .mini{margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:2px 8px;font-size:11px}
+  .zone-b{padding:10px;overflow:auto;font-size:12px}
+  .litem{padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface2)}
+  .litem.sel{border-color:var(--accent)}
+  .litem .t{font-size:12px}.litem .s{color:var(--dim);font-size:10px}
+  .litem .ekchips{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+  .split-h{font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);padding:8px 12px;border-bottom:1px solid var(--border);border-top:1px solid var(--border);background:var(--surface2)}
+  .field{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12px}
+  .field .lk{color:var(--beta);cursor:pointer}
+  .field input,.field select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 7px;font-family:var(--mono);font-size:12px;width:120px}
+  .timeline{flex:0 0 auto;border-top:1px solid var(--border);background:var(--surface2);padding:8px 12px}
+  .timeline .h{font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-bottom:6px}
+  .film{display:flex;gap:2px;height:26px}
+  .film .blk{height:100%;border-radius:3px}.film .cond{background:#1f6f45}.film .iti{background:#3a3f47}
+
+  /* ===== v4: bottom dock removed. Run-log → a strip inside Run; Device/bench → the Console view. ===== */
+  .run-log-strip{flex:0 0 auto;margin-top:12px;display:flex;flex-direction:column;height:208px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .dock-h{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid var(--border);font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim)}
+  .dock-h .acts{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .dock-pane{padding:12px;overflow:auto;flex:1;font-size:12px}
+  /* Run log header */
+  .runlog-head{display:flex;align-items:center;gap:9px;margin-bottom:8px;font-size:11px;flex-wrap:wrap}
+  .runlog-head .tag{font-weight:700;border-radius:4px;padding:2px 8px;font-size:10px}
+  .runlog-head .tag.exp{background:var(--rec);color:#2a0000}
+  .runlog-head .tag.test{background:var(--border);color:var(--dim)}
+  .runlog-head .ctr{color:var(--dim)}
+  /* dock STOP — in the Run/console view; muted until running */
+  .dock-stop{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:3px 12px;font-size:11px;font-weight:700;opacity:.5;pointer-events:none}
+  body.running .dock-stop{background:var(--danger);border-color:var(--danger);color:#2a0000;opacity:1;pointer-events:auto}
+  .logbox{background:#0a0e12;border:1px solid var(--border);border-radius:5px;padding:8px;overflow:auto;font-size:11px;color:#9fe8c0;white-space:pre-wrap;font-family:var(--mono);flex:1;min-height:0}
+  .runlog-saved{margin-top:8px;font-size:11px;color:var(--accent);display:none}
+  .runlog-saved.show{display:block}
+  /* Device column */
+  .dev-tabs{display:flex;align-items:center;gap:8px}
+  .dev-tabs .protab{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:3px 10px;font-size:11px}
+  body.protools .dev-tabs .protab{border-color:var(--accent);color:var(--accent)}
+  .protools-wrap{display:none}
+  body.protools .protools-wrap{display:block}
+  body.protools .devmem-default{display:none}
+  .pt-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin:-2px -2px 10px;flex-wrap:wrap}
+  .pt-tabs button{background:transparent;border:0;color:var(--dim);padding:6px 10px;font-size:11px;border-bottom:2px solid transparent}
+  .pt-tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
+  .pt-pane[hidden]{display:none}
+  .row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:11px}
+  .row label{color:var(--dim);font-size:11px;display:flex;align-items:center;gap:6px}
+  .row input[type=number],.row input[type=text],.row select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:5px 7px;font-family:var(--mono);font-size:11px}
+  .lbl{font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);min-width:58px}
+  .seg2{display:flex;border:1px solid var(--border);border-radius:5px;overflow:hidden}
+  .seg2 button{background:transparent;border:0;color:var(--dim);padding:4px 11px;font-size:11px}
+  .seg2 button.on{background:var(--accent);color:#06210f;font-weight:700}
+  .membox{border:1px solid var(--border);border-radius:6px;overflow:hidden}
+  .memh{background:var(--surface2);padding:6px 10px;font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim)}
+  .memb{padding:8px 10px;font-size:11px;color:var(--dim);line-height:1.8}
+  /* compact device-memory store: one at a time (SD card default), flick to PS-RAM */
+  .memswitch{max-width:300px}
+  .memswitch .memh{padding:5px 6px}
+  .memseg button{padding:3px 11px;font-size:10px}
+  .memb[hidden]{display:none}
+
+  footer{flex:0 0 auto;padding:5px 14px;font-size:10px;color:var(--dim);background:var(--surface);border-top:1px solid var(--border)}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:200}
+  .modal-bg.show{display:flex}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:10px;width:460px;max-width:92vw;padding:20px 22px}
+  .modal h3{font-family:var(--head);margin:0 0 4px;font-size:16px}
+  .modal .sub{color:var(--dim);font-size:11.5px;margin-bottom:14px}
+  .mrow{margin-bottom:12px}
+  .mrow label{display:block;font-size:11px;color:var(--dim);margin-bottom:4px}
+  .mrow input,.mrow textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:7px 9px;font-family:var(--mono);font-size:12.5px}
+  .mrow textarea{resize:vertical;min-height:48px}
+  .mrow .req{color:var(--warn)}
+  .prov{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:9px 11px;font-size:11px;color:var(--dim);line-height:1.7;margin-bottom:14px}
+  .prov b{color:var(--text);font-weight:600}.prov .sha{color:var(--accent)}
+  .srclink{font-size:10.5px;color:var(--beta);text-decoration:none;font-weight:400;margin-left:7px}
+  .srclink:hover{text-decoration:underline}
+  .modal .srcnote{font-size:10.5px;color:var(--dim);margin:-6px 0 14px}
+  .modal .srcnote a{color:var(--beta);text-decoration:none}
+  .modal .srcnote a:hover{text-decoration:underline}
+  .modal-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+  .modal-acts .go{background:var(--accent);border:0;color:#06210f;font-weight:700;border-radius:6px;padding:8px 16px}
+
+  .dev{position:fixed;right:12px;bottom:42px;z-index:50;display:flex;gap:6px}
+  body.annot .ann{display:inline-flex !important}
+  .ann{display:none;align-items:center;justify-content:center;background:var(--warn);color:#241a00;font-weight:700;font-size:10px;width:16px;height:16px;border-radius:50%;margin-left:6px;cursor:help;vertical-align:middle;transition:transform .1s}
+  .ann:hover{background:var(--accent);transform:scale(1.2)}
+  #annTip{position:fixed;max-width:300px;background:#0a0e12;color:var(--text);border:1px solid var(--accent);border-radius:7px;padding:9px 11px;font-size:11.5px;line-height:1.55;box-shadow:0 6px 22px rgba(0,0,0,.6);z-index:1000;white-space:normal;opacity:0;visibility:hidden;transition:opacity .1s;pointer-events:none}
+  #annTip.show{opacity:1;visibility:visible}
+</style>
+</head>
+<body class="connected">
+
+<!-- ===== RIBBON 1 — SESSION / ARENA (always shows the target arena/rig) ===== -->
+<div class="session-bar">
+  <span class="brand">Arena Studio<span class="v">v4 wireframe</span></span>
+  <span class="status"><span class="dot"></span><span id="statusTxt">connected</span></span>
+  <span class="arena"><b>G6 2×10</b> · rig <b>test_rig_1</b><span class="fw"> · fw v1</span><span class="tgt"> (target)</span></span>
+  <span class="ann" data-tip="SESSION ribbon = the arena context. It always names the arena + rig this protocol targets — even when DISCONNECTED (shown as 'target') — so you always know what hardware this is for. When connected it adds fw and confirms the live device.">①</span>
+
+  <span class="spacer"></span>
+  <span class="run-inline" id="runInline">▸ running…</span>
+  <!-- H1: STOP is NOT here. Disconnect sits alone, so it can't be confused with STOP. -->
+  <button class="connect" onclick="toggleConn()" id="connectBtn">Disconnect</button>
+  <span class="ann" data-tip="H1 fix: STOP is no longer next to Disconnect. The ribbon only holds Disconnect — STOP appears down by the running experiment and in the Run-log header, only once a run starts, so it can't be hit by accident.">②</span>
+  <button class="gear" data-tip="⚙ All tools · Quick Start · Diagnostics (Get info / IP / frames · SPI · Refresh). The old Controller/Debug menubars fold in here.">⚙</button>
+  <span class="ann" data-tip="Controller/Debug fold into ⚙ → Diagnostics; the firmware-gated stub buttons are gone.">③</span>
+</div>
+
+<!-- ===== RIBBON 2 — PROTOCOL / DOCUMENT (the global current protocol, persists across Run/Edit) ===== -->
+<div class="doc-bar">
+  <span id="docName" class="doc-name">📄 looming_v3.yaml</span>
+  <span class="chip saved">saved ✓ · a1b2c3</span>
+  <span class="chip edited">● edited — save to run</span>
+  <span class="chip untitled-chip">unsaved — new protocol</span>
+  <span class="chip lock" title="Read-only in Run mode — switch to ✎ Edit to change it">🔒 read-only</span>
+  <span class="ann" data-tip="H5 fix: the wordy 'read-only' banner is gone. This small 🔒 chip is the always-on cue that Run mode can't change the protocol — it disappears in Edit. PROTOCOL ribbon = the ONE current document; it persists identically across Run and Edit.">④</span>
+
+  <span id="docSummary" class="doc-summary">9 conditions · 1 block · 4 variables · ≈ 4:30</span>
+  <span class="plug-hover" data-tip="Plugins this protocol uses (hover for what's expected): • backlight — LED controller / IR backlight • camera — BIAS video capture • temperature — DAQ thermometer (NI DAQ). Configured in ✎ Edit → Settings. (Kept off the Run body to save room; they live here as a hover.)">⚡ Plugins · 3</span>
+  <span class="ann" data-tip="The protocol summary (conditions · block · variables · duration) lives here on the document ribbon, visible in BOTH modes. Plugins moved to the ⚡ hover beside it.">⑤</span>
+
+  <span class="spacer"></span>
+
+  <!-- Run mode: a single Open button. -->
+  <button class="ribbon-btn open-proto-btn" onclick="openProto()">📂 Open protocol</button>
+  <!-- Edit mode: the full File ▾ menu (with F6 GitHub save target). -->
+  <div class="filemenu" id="fileMenu">
+    <button class="ribbon-btn" onclick="toggleFileMenu(event)">File ▾</button>
+    <div class="menu">
+      <button onclick="newDoc()">New protocol</button>
+      <button onclick="openProto()">Open… (Import YAML)</button>
+      <button id="saveItem" onclick="saveProtocol()">Save → local file</button>
+      <div class="sep"></div>
+      <!-- F6 — Save target: checkbox is visible + reversible; GitHub sign-in auto-checks it. -->
+      <div class="gh-block">
+        <div class="gh-row">
+          <span>GitHub:</span>
+          <button class="gh-signin" onclick="ghSignIn(event)">Sign in…</button>
+          <span class="gh-who">✓ @mreiser</span>
+          <span class="planned" data-tip="Planned — not in the shipped tools. GitHub sign-in + PR-on-save + repo-backed metadata dropdowns are a concept here; today Save means a local .yaml download.">◷ planned</span>
+        </div>
+        <label class="gh-check"><input type="checkbox" id="ghPR" onchange="updateSaveLabel()"> Save as Pull Request</label>
+        <div class="gh-dest" id="ghDest">→ writes a local .yaml file (sign in to GitHub to open a PR instead)</div>
+      </div>
+      <div class="sep"></div>
+      <button onclick="closeFileMenu()">Import from another protocol… (D4)</button>
+    </div>
+  </div>
+  <span class="ann" data-tip="F6: Save target is a visible, reversible choice. Signed out → Save writes a local .yaml. Sign in to GitHub and the 'Save as Pull Request' box auto-checks → Save opens a PR (the web-only authoring path). Uncheck any time to go back to a local file.">⑥</span>
+
+  <div class="seg" id="modeSeg">
+    <button class="on" data-mode="run" onclick="setMode('run')">▶ Run</button>
+    <button class="edit" data-mode="edit" onclick="setMode('edit')">✎ Edit</button>
+    <button class="console" data-mode="console" onclick="setMode('console')">⛭ Console</button>
+  </div>
+  <span class="ann" data-tip="Run | Edit are two VIEWS of the same protocol. Console (after the divider) is a different kind of thing — a bench surface for the live arena, independent of the protocol. All three share the one connection. (Planned: a shared-connection broker, PR #112 — today each tool still opens its own Web Serial port.)">⑦</span>
+</div>
+
+<!-- ===== BODY ===== -->
+<div class="body-wrap">
+  <!-- RUN view -->
+  <div class="run-view">
+    <div class="card launch-card">
+      <!-- idle launcher: Run (green, always logs) + Test experiment (blue, not recorded). No dry-run link. -->
+      <div class="launch-row">
+        <button class="btn-run" onclick="onRunExperiment()">▶ Run experiment
+          <span class="hint nc">Connect to run</span>
+          <span class="hint uns">Edit → Save to run as experiment</span>
+        </button>
+        <button class="btn-testexp" onclick="beginRun(false,null)">▶ Test experiment
+          <span class="sub">not recorded</span>
+        </button>
+      </div>
+      <div style="margin-top:9px"><span class="kchip dur hostbadge" data-tip="Honest about the runner today: trial timing is host-side / best-effort until firmware #4 lands, and plugin commands (backlight / camera / temperature) are skipped by the browser runner with a warning. The live timestamped log + step-highlight below ARE shipped.">⏱ host-timed · plugins skipped</span></div>
+      <!-- running state: the loud panel + STOP live here (F2/H1) -->
+      <div class="running-panel">
+        <span class="rp-lead"><span class="blip"></span><span id="rpLeadTxt">REC · running experiment</span></span>
+        <span class="rp-prog"><i id="rpBar"></i></span>
+        <span class="dim" id="rpStep" style="font-size:11px">step 2 / 15</span>
+        <button class="btn-stop" onclick="stopRun()">■ STOP</button>
+      </div>
+      <span class="ann" data-tip="F3/H4: 'dry-run' link is gone. Two buttons — green ▶ Run experiment (always recorded, writes a log) and blue ▶ Test experiment (whole sequence, not recorded). F2: the loud green/red state only appears while a run is actually going, and STOP shows up right here.">⑧</span>
+    </div>
+
+    <div class="card seqlist">
+      <h3>Sequence · test any single condition ▶</h3>
+      <!-- F1: a BLOCK shows composition + count + total duration (not per-condition detail) -->
+      <div class="blockhead">
+        <span class="bt">▸ Block: main</span>
+        <span class="compo" title="composition: 3 conditions, color-coded by mode">
+          <span style="background:#1f6f45"></span><span style="background:#2f6f8f"></span><span style="background:#7a5f2f"></span></span>
+        <span class="meta">×3 randomized · 3 conditions · ≈ 4:12 total</span>
+        <span class="ann" data-tip="F1: a block ≠ a condition. A block/sequence shows a color-coded composition strip, how many conditions it holds, the repeat count, and its TOTAL duration — not crammed-in per-condition detail.">⑩</span>
+      </div>
+      <!-- F1: a CONDITION shows mode · duration · framerate chips -->
+      <div class="seqrow nested" data-cond="baseline_off"><span class="idx">1</span><span class="nm">baseline_off</span>
+        <span class="kchips"><span class="kchip mode">allOff</span><span class="kchip dur">3 s</span></span>
+        <button class="play" title="Test this one condition on the arena (single trial; gated — needs trialParams + no plugins)">▶ Test on arena</button></div>
+      <div class="seqrow nested" data-cond="grating_15px_cw"><span class="idx">2</span><span class="nm">grating_15px_cw</span>
+        <span class="kchips"><span class="kchip mode">mode 2 · open-loop</span><span class="kchip dur">10 s</span><span class="kchip fps">30 fps</span></span>
+        <button class="play" title="Test this one condition on the arena (single trial; gated — needs trialParams + no plugins)">▶ Test on arena</button></div>
+      <div class="seqrow nested" data-cond="looming_disc_fast"><span class="idx">3</span><span class="nm">looming_disc_fast</span>
+        <span class="kchips"><span class="kchip mode">mode 3 · show-frame</span><span class="kchip dur">6 s</span></span>
+        <button class="play" title="Test this one condition on the arena (single trial; gated — needs trialParams + no plugins)">▶ Test on arena</button></div>
+      <div class="seqrow nested" data-cond="intertrial_gray" style="border-style:dashed"><span class="idx">—</span><span class="nm dim">intertrial_gray</span>
+        <span class="kchips"><span class="kchip dur">3 s</span></span>
+        <button class="play" title="Test this one condition on the arena (single trial; gated — needs trialParams + no plugins)">▶ Test on arena</button></div>
+    </div>
+
+    <!-- RUN-LOG STRIP — the live run record, pinned to the bottom of Run (v4: split out of the old dock; Run only) -->
+    <div class="run-log-strip">
+      <div class="dock-h">
+        <span>Run log</span>
+        <span class="ann" data-tip="The Run log is SHIPPED — live timestamped runner events + the step-highlight above, exactly like the real designer's run-status panel. It lives in Run only (switch to ⛭ Console for the bench tools). All on / All off are here so the common 'is it wired?' check doesn't need a mode switch. The JSON/TXT auto-export (◷) is planned (PR #113).">⑭</span>
+        <span class="acts">
+          <button class="dock-stop" onclick="stopRun()">■ STOP</button>
+          <button class="pill" title="Quick 'is it wired?' sanity check — turn all LEDs on">All on</button>
+          <button class="pill" title="All off">All off</button>
+          <button class="pill">Clear</button>
+          <button class="pill" title="Copy log to clipboard">Copy</button>
+          <button class="pill" title="Planned: auto-save the run as runlog.json + .txt (PR #113). The live log itself is shipped.">⬇ Save</button>
+          <span class="planned" data-tip="Planned (PR #113): the run-log JSON/TXT download + the metadata header aren't wired into the shipped tools yet. The live timestamped log + step-highlight ARE shipped.">◷ planned</span>
+        </span>
+      </div>
+      <div class="dock-pane">
+        <div class="runlog-head">
+          <span class="tag exp" id="rlTag">EXPERIMENT</span>
+          <span class="ctr" id="rlCtr">run a1b2 · idle</span>
+        </div>
+        <div class="logbox" id="runlogBox"><span class="dim">No run yet. Click ▶ Run experiment to start a recorded run and watch the log fill here. (▶ Test experiment runs the same sequence un-recorded.)</span></div>
+        <div class="runlog-saved" id="rlSaved"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT view -->
+  <div class="edit-view">
+    <div class="edit-toolbar">
+      <div class="grp"><button class="pill">↶ Undo</button><button class="pill">↷ Redo</button><button class="pill">⟲ Reset</button></div>
+      <div class="sep"></div>
+      <div class="grp"><button class="pill">Settings ▾</button><button class="pill">Pattern Set…</button></div>
+      <span class="ann" data-tip="Slim Edit toolbar — only AUTHORING tools (Undo/Redo/Reset, Settings, Pattern Set). All file ops moved to File ▾ on the document ribbon; the ● edited state lives in the doc chip up there.">⑪</span>
+      <span class="spacer"></span>
+      <span class="dim" style="font-size:11px">Editing — changes won't run as an experiment until you Save (File ▾)</span>
+    </div>
+    <div class="three-zone">
+      <div class="zone">
+        <div class="zone-h"><span>Library</span><span class="cnt">9</span><button class="mini">+ Add</button></div>
+        <div class="zone-b" style="flex:1">
+          <div class="litem"><div class="t">baseline_off</div><div class="s">controller · allOff</div>
+            <div class="ekchips"><span class="kchip mode">allOff</span><span class="kchip plug">⚡ temperature</span></div></div>
+          <div class="litem sel"><div class="t">grating_15px_cw</div><div class="s">controller · trialParams</div>
+            <div class="ekchips"><span class="kchip mode">mode 2</span><span class="kchip dur">10 s</span><span class="kchip fps">30 fps</span></div></div>
+          <div class="litem"><div class="t">looming_disc_fast</div><div class="s">controller · trialParams</div>
+            <div class="ekchips"><span class="kchip mode">mode 3</span><span class="kchip dur">6 s</span><span class="kchip plug">⚡ camera</span></div></div>
+          <div class="litem"><div class="t">closed_loop_bar</div><div class="s">controller · trialParams</div>
+            <div class="ekchips"><span class="kchip mode">mode 4</span><span class="kchip dur">12 s</span></div></div>
+        </div>
+        <div class="split-h">Variables · 4</div>
+        <div class="zone-b" style="max-height:110px">
+          <div class="field"><span>dur_short</span><span>3</span></div>
+          <div class="field"><span>dur_long</span><span>10</span></div>
+          <div class="field"><span>gain_cw</span><span>20</span></div>
+        </div>
+      </div>
+      <div class="zone">
+        <div class="zone-h"><span>Experiment Sequence</span><span class="cnt">1 block</span><button class="mini">+ Ref</button><button class="mini">+ Block</button></div>
+        <div class="zone-b">
+          <div class="blockhead">
+            <span class="bt">▸ main</span>
+            <span class="compo"><span style="background:#1f6f45"></span><span style="background:#2f6f8f"></span><span style="background:#7a5f2f"></span></span>
+            <span class="meta">×3 · 3 conditions · ≈ 4:12</span>
+          </div>
+          <div class="litem" style="margin-left:16px"><div class="t">→ grating_15px_cw</div></div>
+          <div class="litem" style="margin-left:16px"><div class="t">→ looming_disc_fast</div></div>
+          <div class="litem" style="margin-left:16px"><div class="t">→ closed_loop_bar</div></div>
+          <div class="litem" style="margin-left:16px;border-style:dashed"><div class="s">intertrial: intertrial_gray</div></div>
+        </div>
+        <span class="ann" data-tip="The v3 'Run on arena' button is gone from this zone — running is unified into the Run launcher + per-row ▶, so there's exactly one run mechanism and one STOP.">⑫</span>
+      </div>
+      <div class="zone">
+        <div class="zone-h"><span>Inspector · grating_15px_cw</span></div>
+        <div class="zone-b">
+          <div class="split-h" style="border-top:0">trialParams (controller)</div>
+          <div class="field"><span>pattern</span><select><option>grating_15px</option></select></div>
+          <div class="field"><span>mode</span><select><option>2 open-loop</option><option>3 show-frame</option><option>4 closed-loop</option></select></div>
+          <div class="field"><span>duration <span class="lk">🔗</span></span><input value="dur_long → 10"></div>
+          <div class="field"><span>frame rate</span><input value="30"></div>
+          <div class="field"><span>gain</span><input value="0" disabled></div>
+          <div class="field"><span>init pos <span class="dim">(mode 3)</span></span><input value="0"></div>
+          <span class="ann" data-tip="Raw trial-params (mode/rate/gain/init pos) live HERE in Edit only. 'init pos' seeds the Mode-3 host frame start (SET_FRAME_POSITION, opcode 0x70 — shipped via setPositionX). 🔗 binds a value to a Variable; mode greys irrelevant fields. These feed the F1 chips shown in Run.">⑬</span>
+        </div>
+      </div>
+    </div>
+    <div class="timeline">
+      <div class="h">Flattened Timeline Preview</div>
+      <div class="film">
+        <div class="blk cond" style="width:60px"></div><div class="blk iti" style="width:24px"></div>
+        <div class="blk cond" style="width:120px"></div><div class="blk iti" style="width:24px"></div>
+        <div class="blk cond" style="width:80px"></div><div class="blk iti" style="width:24px"></div>
+        <div class="blk cond" style="width:120px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CONSOLE view (NEW in v4) — the full PControl bench surface, its own view ===== -->
+  <div class="console-view">
+    <div class="cgroup" style="border-style:dashed;border-color:var(--beta);padding:9px 14px">
+      <div class="gh" style="color:var(--beta);margin:0">⛭ Console — bench surface
+        <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400;margin-left:6px">drives the arena directly over the live connection · independent of the loaded protocol · the low-level / foot-gun controls live behind this door (not under the Run launcher)</span></div>
+    </div>
+
+    <div class="cgrid">
+      <div class="cgroup">
+        <div class="gh">display</div>
+        <div class="row"><button class="pill">All on</button><button class="pill">All off</button>
+          <select><option>panel map</option><option>orientation (U/D · L/R)</option><option>checkerboard</option><option>full-field</option></select>
+          <button class="pill">Send</button></div>
+      </div>
+      <div class="cgroup">
+        <div class="gh">device memory</div>
+        <div class="devmem-default">
+          <div class="membox memswitch" style="max-width:none">
+            <div class="memh"><span class="seg2 memseg">
+              <button class="on" onclick="memView(event,'sd')">SD card</button>
+              <button onclick="memView(event,'psram')">PS-RAM</button></span></div>
+            <div class="memb" data-mem="sd">1 · grating_15px<br>2 · looming_disc<br>3 · off <span class="dim">— from active pattern-set manifest</span></div>
+            <div class="memb" data-mem="psram" hidden>grating_15px · 1 fr · 0x0000<br><span class="dim">— reported by controller (placeholder)</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cgroup">
+      <div class="gh">pattern + trial params <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">· TRIAL_PARAMS 0x08 · pattern by name → SD index</span></div>
+      <div class="row"><span class="lbl">pattern</span>
+        <select style="min-width:180px"><option>grating_15px</option><option>looming_disc</option><option>off</option></select>
+        <span style="width:38px;height:38px;border:1px solid var(--border);border-radius:5px;background:repeating-conic-gradient(#1f6f45 0 25%,#0e3a24 0 50%) 50%/12px 12px;display:inline-block" title="preview thumbnail (from the pattern-set)"></span>
+        <span class="dim">→ SD idx 1</span>
+        <button class="pill" title="Load a pattern-set ZIP (manifest.json + patterns/): names → SD indices + preview thumbnails">Load set…</button></div>
+      <div class="row" style="border-top:1px dashed var(--border);padding-top:12px"><span class="lbl">params</span>
+        <label>mode <select><option>2 open-loop</option><option>3 show-frame</option><option>4 closed-loop</option></select></label>
+        <label>rate <input type="number" value="30" style="width:54px"></label>
+        <label>gain <input type="number" value="0" style="width:48px"></label>
+        <label>init pos <input type="number" value="0" style="width:48px" title="mode-3 start frame (SET_FRAME_POSITION 0x70)"></label>
+        <label>dur (s) <input type="number" value="5" style="width:48px"></label>
+        <button class="pill">Send trial params</button></div>
+    </div>
+
+    <div class="cgroup">
+      <div class="gh">frame stepper <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">· mode 3, rate 0 → SET_FRAME_POSITION 0x70</span></div>
+      <div class="row"><span class="lbl">frame</span><button class="pill">Load</button><button class="pill">◀</button>
+        <input type="number" value="0" style="width:54px"><button class="pill">Go</button><button class="pill">▶</button><span class="dim">frame – / –</span></div>
+    </div>
+
+    <div class="cgroup">
+      <div class="gh">stream frame <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">· STREAM_FRAME 0x32 (host-streamed)</span></div>
+      <div class="row"><span class="lbl">depth</span><span class="seg2"><button class="on">GS16</button><button>GS2</button></span>
+        <label>level <input type="range" min="0" max="15" value="15" style="width:90px"> <span class="dim">15/15</span></label>
+        <label>duty <input type="range" min="0" max="255" value="128" style="width:90px"></label></div>
+      <div class="row"><span class="lbl">send</span>
+        <button class="pill">Full-field</button><button class="pill">Panel map</button><button class="pill">Orientation</button><button class="pill">Checker</button>
+        <button class="pill" title="Load .bin or .pat and host-stream it. Classifier auto-detects: raw pixels / panel blocks / full frame / multi-frame G6PT .pat (played at fps).">Load .bin/.pat…</button></div>
+    </div>
+
+    <div class="cgroup">
+      <div class="gh">raw + log <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">· GET_CONTROLLER_INFO 0x67</span></div>
+      <div class="row"><span class="lbl">raw</span><input type="text" placeholder="hex bytes, e.g. 01 66" style="min-width:200px">
+        <button class="pill">Send</button><span class="spacer"></span><button class="pill">Clear</button><button class="pill">Copy</button><button class="pill">Save</button></div>
+      <div class="logbox" style="height:84px;flex:0 0 auto">› 01 67  GET_CONTROLLER_INFO
+‹ status 0 · fw v1
+› 01 FF  ALL_ON   ‹ ok</div>
+    </div>
+  </div>
+</div>
+
+<footer>Arena Studio — concept wireframe v4 · not wired to hardware · 2026-06-30 13:41 ET &nbsp;|&nbsp; <span class="planned">◷ planned</span> = mocked, not yet shipped (PR in review) &nbsp;|&nbsp; ? Help (hover ① for the why) · ✎ simulate edit · ⛭ Console = 3rd view · 🐙 GitHub</footer>
+
+<div class="dev">
+  <button class="pill" onclick="toggleEdited()" title="Demo: flip the loaded protocol between saved and edited to see the experiment-run gate">✎ simulate edit</button>
+  <button class="pill" onclick="toggleGh()" title="Demo: flip GitHub sign-in to see Save switch between local file and PR">🐙 GitHub</button>
+  <button class="pill" onclick="document.body.classList.toggle('annot')">? Help</button>
+</div>
+<div id="annTip"></div>
+
+<!-- Run-metadata modal -->
+<div class="modal-bg" id="metaModal">
+  <div class="modal">
+    <h3>Start experiment run</h3>
+    <div class="sub">This is a recorded run — it will capture metadata and write a log. <span class="planned" data-tip="Planned — not in the shipped tools yet. Metadata capture, the repo-backed dropdowns below, and the run-log export are mocked here (PRs #112/#113). Today the designer runs the sequence without recording.">◷ planned</span></div>
+    <div class="mrow"><label>Experimenter <span class="req">*</span>
+        <a class="srclink" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/people.yaml" target="_blank" rel="noopener">↗ source list</a></label>
+      <input id="mExp" value="mreiser" list="expList">
+      <datalist id="expList"><option>mreiser</option><option>taylorl</option><option>santosh</option><option>biondig</option></datalist></div>
+    <div class="mrow"><label>Fly genotype <span class="req">*</span>
+        <a class="srclink" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/genotypes.yaml" target="_blank" rel="noopener">↗ source list</a></label>
+      <input id="mGeno" list="genoList" placeholder="e.g. w;UAS-CsChrimson">
+      <datalist id="genoList"><option>w;UAS-CsChrimson</option><option>w;+;GMR-Gal4</option><option>Canton-S</option></datalist></div>
+    <div class="srcnote">Dropdown options are read from controlled-vocabulary files in the repo — add an entry by editing
+      <a href="https://github.com/reiserlab/webDisplayTools/tree/main/configs/metadata" target="_blank" rel="noopener">configs/metadata/ ↗</a> (PR).</div>
+    <div class="mrow"><label>Notes</label><textarea id="mNotes" placeholder="temperature, fly age, anything odd…"></textarea></div>
+    <div class="prov">auto-captured: <b>looming_v3.yaml</b> · sha256 <span class="sha">a1b2c3…</span><br>
+      G6 2×10 · rig test_rig_1 · fw v1 · timestamp <b>2026-06-17T14:32:05-04:00</b></div>
+    <div class="modal-acts">
+      <button class="pill" onclick="closeMeta()">Cancel</button>
+      <button class="go" onclick="startExperiment()">Start experiment run</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const docName=document.getElementById('docName'), docSummary=document.getElementById('docSummary');
+  function setMode(m){
+    document.body.classList.toggle('editmode', m==='edit');
+    document.body.classList.toggle('consolemode', m==='console');
+    document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on', b.dataset.mode===m));
+  }
+  function toggleConn(){
+    const on=document.body.classList.toggle('connected');
+    document.getElementById('statusTxt').textContent = on?'connected':'disconnected';
+    document.getElementById('connectBtn').textContent = on?'Disconnect':'Connect';
+    if(!on) stopRun();
+  }
+  // F5 dock: pro-tools disclosure + sub-tabs
+  function toggleProtools(){ document.body.classList.toggle('protools'); }
+  // device-memory store toggle (SD card default, flick to PS-RAM)
+  function memView(e, which){
+    e.stopPropagation();
+    document.querySelectorAll('.memseg button').forEach(b=>b.classList.toggle('on', b===e.currentTarget));
+    document.querySelectorAll('.devmem-default .memb').forEach(m=>{ m.hidden = (m.dataset.mem!==which); });
+  }
+  function ptTab(i){
+    document.body.classList.add('protools');
+    document.querySelectorAll('.pt-tabs button').forEach((b,j)=>b.classList.toggle('on', j===i));
+    document.querySelectorAll('.pt-pane').forEach(p=>p.hidden = (+p.dataset.pt!==i));
+  }
+  // document state (the global current protocol)
+  function setDoc(state){ // 'saved' | 'edited' | 'untitled'
+    document.body.classList.toggle('unsaved', state!=='saved');
+    document.body.classList.toggle('untitled', state==='untitled');
+    docName.textContent = state==='untitled' ? '📄 untitled' : '📄 looming_v3.yaml';
+    docSummary.textContent = state==='untitled'
+      ? 'new — add conditions in Edit'
+      : '9 conditions · 1 block · 4 variables · ≈ 4:30';
+  }
+  function toggleEdited(){ setDoc(document.body.classList.contains('unsaved') ? 'saved' : 'edited'); }
+  function saveProtocol(){ setDoc('saved'); closeFileMenu(); }
+  function newDoc(){ setDoc('untitled'); closeFileMenu(); setMode('edit'); }
+  function openProto(){ setDoc('saved'); closeFileMenu(); setMode('run'); }
+  // File menu
+  function toggleFileMenu(e){ e.stopPropagation(); document.getElementById('fileMenu').classList.toggle('open'); }
+  function closeFileMenu(){ document.getElementById('fileMenu').classList.remove('open'); }
+  document.addEventListener('click', (e)=>{ if(!e.target.closest('#fileMenu')) closeFileMenu(); });
+
+  // F6 — GitHub auth + Save target checkbox (visible, reversible)
+  function ghSignIn(e){ e&&e.stopPropagation(); document.body.classList.add('ghauth'); document.getElementById('ghPR').checked=true; updateSaveLabel(); }
+  function toggleGh(){
+    const on=document.body.classList.toggle('ghauth');
+    document.getElementById('ghPR').checked=on; // sign-in auto-checks; sign-out unchecks
+    updateSaveLabel();
+  }
+  function updateSaveLabel(){
+    const pr=document.getElementById('ghPR').checked && document.body.classList.contains('ghauth');
+    document.getElementById('saveItem').textContent = pr ? 'Save → open Pull Request' : 'Save → local file';
+    document.getElementById('ghDest').textContent = pr
+      ? '→ commits to a branch + opens a PR on reiserlab/webDisplayTools'
+      : (document.body.classList.contains('ghauth')
+          ? '→ writes a local .yaml file (check the box to open a PR instead)'
+          : '→ writes a local .yaml file (sign in to GitHub to open a PR instead)');
+  }
+
+  // live sequence highlight (the condition/block currently running)
+  function highlightSeq(name){
+    document.querySelectorAll('.run-view .seqrow').forEach(r=>r.classList.toggle('active', !!name && r.dataset.cond===name));
+  }
+  function clearSeqHighlight(){
+    document.querySelectorAll('.run-view .active').forEach(e=>e.classList.remove('active'));
+  }
+
+  // run / experiment / log (mock)
+  let logTimer=null;
+  function onRunExperiment(){
+    if(!document.body.classList.contains('connected')) return;
+    if(document.body.classList.contains('unsaved')) return;
+    document.getElementById('metaModal').classList.add('show');
+  }
+  function closeMeta(){ document.getElementById('metaModal').classList.remove('show'); }
+  function startExperiment(){
+    const exp=(document.getElementById('mExp').value||'').trim();
+    const geno=(document.getElementById('mGeno').value||'').trim();
+    if(!exp||!geno){ alert('Experimenter and genotype are required.'); return; }
+    closeMeta();
+    beginRun(true, {exp, geno});
+  }
+  function beginRun(isExperiment, meta){
+    if(!document.body.classList.contains('connected')) return;
+    if(isExperiment && document.body.classList.contains('unsaved')) return;
+    document.body.classList.add('running');
+    document.body.classList.toggle('testing', !isExperiment);
+    document.querySelectorAll('.run-view .blockhead').forEach(b=>b.classList.add('active')); // highlight the running block
+    document.getElementById('rpLeadTxt').textContent = isExperiment ? 'REC · running experiment' : 'TEST · running (not recorded)';
+    const inline=document.getElementById('runInline');
+    inline.classList.toggle('rec', isExperiment);
+    const tag=document.getElementById('rlTag'), ctr=document.getElementById('rlCtr'),
+          box=document.getElementById('runlogBox'), saved=document.getElementById('rlSaved'),
+          bar=document.getElementById('rpBar'), step=document.getElementById('rpStep');
+    tag.className='tag '+(isExperiment?'exp':'test');
+    tag.textContent=isExperiment?'EXPERIMENT':'TEST — not logged';
+    saved.classList.remove('show');
+    const lines = isExperiment ? [
+      'meta: run a1b2 · looming_v3.yaml (sha a1b2c3…) · '+meta.exp+' · '+meta.geno,
+      '14:32:05  ▸ sequence start — 9 conditions, 15 steps (host-timed)',
+      '14:32:05  ▸ [1/15] baseline_off — allOff',
+      '14:32:08  ▸ [2/15] grating_15px_cw — trialParams mode 2, pat 1, 30fps  (10 s, host-timed)',
+      '14:32:18  ▸ [3/15] looming_disc_fast — trialParams mode 3, pat 2 · ⚡ camera.trigger  (6 s)',
+      '14:32:24  ▸ [4/15] intertrial_gray — wait 3 s',
+      '   … repeating block (steps 5–15) …',
+      '14:36:35  ■ sequence complete — 15/15 steps · 0 errors · 0 skipped'
+    ] : [
+      'TEST — not logged · looming_v3.yaml',
+      '14:40:00  ▸ sequence start — 15 steps (host-timed)',
+      '14:40:00  ▸ [1/15] baseline_off — allOff',
+      '14:40:03  ▸ [2/15] grating_15px_cw — mode 2  (10 s)',
+      '14:40:13  ▸ [3/15] looming_disc_fast — mode 3  (6 s)',
+      '14:40:19  ▸ [4/15] intertrial_gray — wait 3 s',
+      '   … runs on the arena, nothing recorded …',
+      '14:44:30  ■ sequence complete'
+    ];
+    box.textContent=''; let i=0; clearInterval(logTimer);
+    logTimer=setInterval(()=>{
+      if(i>=lines.length){
+        clearInterval(logTimer);
+        if(isExperiment){ saved.textContent='◷ planned (PR #113) · would auto-save  looming_v3__'+meta.exp+'__2026-06-30T13-41-00__a1b2.runlog.json (+ .txt)'; saved.classList.add('show'); }
+        clearSeqHighlight();
+        document.body.classList.remove('running'); document.body.classList.remove('testing'); return;
+      }
+      box.textContent += (box.textContent?'\n':'')+lines[i++];
+      box.scrollTop=box.scrollHeight;
+      const m=lines[i-1].match(/\[(\d+)\/15\]\s+(\S+)/);
+      if(m){
+        highlightSeq(m[2]); // light up the condition row currently running
+        inline.innerHTML=(isExperiment?'REC ● ':'▸ ')+'trial '+m[1]+'/15'+(isExperiment?'':' (test)')+' <span class="bar"><i></i></span>';
+        ctr.textContent='run a1b2 · step '+m[1]+'/15 · 0 err · 0 skip';
+        step.textContent='step '+m[1]+' / 15';
+        bar.style.width=Math.round(m[1]/15*100)+'%';
+      }
+    }, 700);
+  }
+  function stopRun(){
+    if(!document.body.classList.contains('running')){ document.body.classList.remove('running'); document.body.classList.remove('testing'); return; }
+    clearInterval(logTimer);
+    const box=document.getElementById('runlogBox'), saved=document.getElementById('rlSaved');
+    const wasExp=document.getElementById('rlTag').classList.contains('exp');
+    box.textContent+='\n14:33:10  ■ ABORTED by STOP'; box.scrollTop=box.scrollHeight;
+    if(wasExp){ saved.textContent='◷ planned (PR #113) · would auto-save (PARTIAL, ABORTED)  looming_v3__mreiser__…__a1b2.runlog.json'; saved.classList.add('show'); }
+    clearSeqHighlight();
+    document.body.classList.remove('running'); document.body.classList.remove('testing');
+  }
+
+  (function wireCalloutTips(){
+    const tip=document.getElementById('annTip');
+    document.querySelectorAll('.ann, .gear, .plug-hover, .planned, .hostbadge').forEach((a)=>{
+      if(!a.getAttribute('data-tip')) return;
+      a.addEventListener('mouseenter', ()=>{
+        tip.textContent=a.getAttribute('data-tip')||''; tip.classList.add('show');
+        const r=a.getBoundingClientRect();
+        let left=r.left+r.width/2-tip.offsetWidth/2;
+        left=Math.max(8, Math.min(left, window.innerWidth-tip.offsetWidth-8));
+        let top=r.bottom+8;
+        if(top+tip.offsetHeight>window.innerHeight-8) top=r.top-tip.offsetHeight-8;
+        tip.style.left=left+'px'; tip.style.top=Math.max(8,top)+'px';
+      });
+      a.addEventListener('mouseleave', ()=> tip.classList.remove('show'));
+    });
+  })();
+  updateSaveLabel();
+</script>
+</body>
+</html>
