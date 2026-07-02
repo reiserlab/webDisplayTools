@@ -351,7 +351,9 @@
             font-weight: 700;
         }
         .edit-view .header-spacer { flex: 1; }
-        .edit-view .header-btn {
+        /* .ps-modal-backdrop twin: the Pattern Set modal is body-appended (outside
+           .edit-view) but its footer buttons reuse .header-btn. */
+        .edit-view .header-btn, .ps-modal-backdrop .header-btn {
             background: var(--surface-2);
             color: var(--text);
             border: 1px solid var(--border);
@@ -361,10 +363,10 @@
             cursor: pointer;
             border-radius: 3px;
         }
-        .edit-view .header-btn:hover { background: var(--border); border-color: var(--accent); color: var(--accent); }
-        .edit-view .header-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .edit-view .header-btn.primary { background: rgba(0, 230, 118, 0.1); border-color: var(--accent); color: var(--accent); }
-        .edit-view .header-btn.primary:hover { background: rgba(0, 230, 118, 0.2); }
+        .edit-view .header-btn:hover, .ps-modal-backdrop .header-btn:hover { background: var(--border); border-color: var(--accent); color: var(--accent); }
+        .edit-view .header-btn:disabled, .ps-modal-backdrop .header-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .edit-view .header-btn.primary, .ps-modal-backdrop .header-btn.primary { background: rgba(0, 230, 118, 0.1); border-color: var(--accent); color: var(--accent); }
+        .edit-view .header-btn.primary:hover, .ps-modal-backdrop .header-btn.primary:hover { background: rgba(0, 230, 118, 0.2); }
         .edit-view select.header-btn { max-width: 260px; }
         .edit-view select.header-btn:focus { outline: none; border-color: var(--accent); }
 
@@ -2417,13 +2419,21 @@
         el.innerHTML = html;
     }
 
+    // A never-saved doc (New protocol / Reset skeleton) has no on-disk artifact
+    // to anchor provenance — same predicate drives the run gate AND the
+    // untitled chip so they cannot diverge.
+    function isUntitledDoc(doc) {
+        return !doc || !doc.filename || /^(untitled|blank)\b/i.test(doc.filename);
+    }
+    Studio.isUntitledDoc = isUntitledDoc;
+
     function updateRunGate() {
         const doc = Studio.currentDoc;
         const gate = Meta.canRunExperiment({
             connected: !!(Studio.session && Studio.session.connected),
             hasProtocol: !!doc,
             dirty: false,
-            unsaved: doc ? doc.source === 'local-unsaved' : false,
+            unsaved: doc ? (doc.source === 'local-unsaved' || isUntitledDoc(doc)) : false,
             experimenter: $('mExp').value,
             genotype: $('mGeno').value
         });
@@ -3543,6 +3553,12 @@ function fictracPluginNames(exp) {
 // document; opening a protocol delegates to it, and Studio.syncFromEditor
 // recomputes all studio-side state (Run view, chips, provenance sha).
 Studio.loadProtocol = async function (text, filename, source) {
+    // D4 lock: during a cross-library import the target doc is frozen — a load
+    // here would clobber it AND the undo stacks under live staging (§6 audit).
+    if (Studio.importMode) {
+        Studio.showBanner('An import is in progress — Commit or Cancel it (Edit view banner) before opening another protocol.');
+        return false;
+    }
     try {
         const exp = parseV3Protocol(text);
         const refs = validateReferences(exp);
@@ -3562,7 +3578,8 @@ Studio.loadProtocol = async function (text, filename, source) {
         Studio.showBanner('Editor module failed to load — cannot open the protocol.');
         return false;
     }
-    if (Studio.currentDoc && Studio.currentDoc.source === 'local-unsaved' &&
+    const unappliedYaml = Studio.editor.hasUnappliedYaml && Studio.editor.hasUnappliedYaml();
+    if (((Studio.currentDoc && Studio.currentDoc.source === 'local-unsaved') || unappliedYaml) &&
         !confirm('Discard unsaved edits and open "' + (filename || 'protocol') + '"?')) {
         return false;
     }
@@ -3606,7 +3623,7 @@ Studio.syncFromEditor = async function (info) {
     doc.sha256 = sha;
     // body classes + top bar
     document.body.classList.add('hasproto');
-    document.body.classList.toggle('untitled', !doc.filename || /^untitled/i.test(doc.filename));
+    document.body.classList.toggle('untitled', Studio.isUntitledDoc(doc));
     document.body.classList.toggle('unsaved', doc.source === 'local-unsaved');
     $('docName').textContent = '📄 ' + doc.filename;
     $('docName').title = doc.filename;
@@ -3829,8 +3846,22 @@ function currentSaveText() {
         ? doc.experiment._doc.toString()
         : doc.loadedText || '';
 }
+// An untitled/blank doc has no real filename — ask for one before the first
+// save so the saved artifact (the provenance anchor) is identifiable and the
+// run gate can open. Returns false if the user cancels.
+function ensureSaveFilename(doc) {
+    if (!doc || !Studio.isUntitledDoc(doc)) return true;
+    const expName =
+        (doc.experiment && doc.experiment.experiment_info && doc.experiment.experiment_info.name) ||
+        'protocol';
+    const name = prompt('Save as (.yaml filename):', GH.slug(expName) + '.yaml');
+    if (!name) return false;
+    doc.filename = /\.ya?ml$/i.test(name.trim()) ? name.trim() : name.trim() + '.yaml';
+    return true;
+}
 function saveLocal() {
     const doc = Studio.currentDoc;
+    if (!ensureSaveFilename(doc)) return;
     const blob = new Blob([currentSaveText()], { type: 'text/yaml' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -3841,7 +3872,7 @@ function saveLocal() {
     URL.revokeObjectURL(a.href);
     if (doc) {
         doc.baseSource = 'committed';
-        if (Studio.editor) Studio.editor.markSaved(); // → setDirty(false) → source/class/gate
+        if (Studio.editor) Studio.editor.markSaved(doc.filename); // → setDirty(false) → source/class/gate
         else { doc.source = 'committed'; document.body.classList.remove('unsaved'); Studio.updateRunGate(); }
     }
     Studio.rawLog('saved local file: ' + ((doc && doc.filename) || 'protocol.yaml'), 'info');
@@ -3851,11 +3882,15 @@ async function saveViaPR() {
     const doc = Studio.currentDoc;
     const token = ghToken();
     if (!token) { Studio.showBanner('Sign in to GitHub first.'); return; }
+    if (!ensureSaveFilename(doc)) return;
     const base = (doc.filename || 'protocol.yaml').replace(/\.ya?ml$/i, '');
     const path = 'protocols/' + GH.slug(base) + '.yaml';
     const runId = window.StudioMeta.makeRunId();
     const branch = GH.branchName(base, runId);
     const text = currentSaveText();
+    // sha over the EXACT uploaded text — never a possibly-stale doc.sha256
+    const textSha = await sha256Hex(text);
+    doc.sha256 = textSha;
     Studio.rawLog('GitHub: opening PR for ' + path + ' on ' + branch + '…', 'info');
     try {
         const repo = await GH.run(fetch, GH.reqGetRepo(GH_OWNER, GH_REPO, token));
@@ -3876,13 +3911,13 @@ async function saveViaPR() {
         if (!put.ok) throw new Error('file write failed (' + put.status + ')');
         const pr = await GH.run(fetch, GH.reqCreatePull(GH_OWNER, GH_REPO, {
             title: 'Protocol: ' + base, head: branch, base: baseBranch,
-            body: 'Committed from Arena Studio.\n\n- file: `' + path + '`\n- run_id: `' + runId + '`\n- sha256: `' + doc.sha256 + '`'
+            body: 'Committed from Arena Studio.\n\n- file: `' + path + '`\n- run_id: `' + runId + '`\n- sha256: `' + textSha + '`'
         }, token));
         if (!pr.ok) throw new Error('PR open failed (' + pr.status + ')');
         Studio.rawLog('✓ PR opened: ' + pr.data.html_url, 'info');
         Studio.showBanner('PR opened — ' + pr.data.html_url);
         doc.baseSource = 'committed';
-        if (Studio.editor) Studio.editor.markSaved();
+        if (Studio.editor) Studio.editor.markSaved(doc.filename);
         else { doc.source = 'committed'; document.body.classList.remove('unsaved'); Studio.updateRunGate(); }
     } catch (e) {
         if (String(e.message).includes('token invalid')) { sessionStorage.removeItem('studio_gh_pat'); localStorage.removeItem('studio_gh_pat'); document.body.classList.remove('ghauth'); }
@@ -4124,6 +4159,10 @@ async function initFromUrl() {
         let redoStack = [];
         let _restoring = false;
         const UNDO_LIMIT = 50;
+        // The serialized text of the last load/save — dirty means "current text
+        // differs from this", so undo/redo across a Save re-flag correctly
+        // instead of replaying a snapshot-captured dirty bit.
+        let savedText = null;
 
         function setDirty(val) {
             dirty = !!val;
@@ -4135,6 +4174,20 @@ async function initFromUrl() {
                 sdoc.source = dirty ? 'local-unsaved' : (sdoc.baseSource || 'local');
                 document.body.classList.toggle('unsaved', sdoc.source === 'local-unsaved');
                 window.Studio.updateRunGate();
+            }
+            // Every dirty-flip funnels here — including the targeted-re-render
+            // mutation paths (inspector/settings/block edits) that never call
+            // renderAll — so this is where the studio-side derived state (sha,
+            // provenance chip, Run-view sequence) is kept honest. Idempotent +
+            // seq-guarded in syncFromEditor; the double call from renderAll paths
+            // is harmless.
+            if (experiment && window.Studio.syncFromEditor) {
+                window.Studio.syncFromEditor({
+                    experiment: experiment,
+                    filename: lastFilename,
+                    dirty: dirty,
+                    isLoad: false
+                });
             }
         }
 
@@ -4192,7 +4245,9 @@ async function initFromUrl() {
             try {
                 experiment = parseV3Protocol(snap.text);
                 selection = snap.selection;
-                setDirty(!!snap.dirty);
+                // dirty = "differs from the last load/save", NOT the snapshot's
+                // captured flag — undoing past a Save must re-flag as unsaved.
+                setDirty(savedText != null ? snap.text !== savedText : !!snap.dirty);
                 renderAll();
             } catch (err) {
                 showError('Undo/redo restore failed', err.message);
@@ -4290,6 +4345,8 @@ async function initFromUrl() {
                 experiment = parsed;
                 lastFilename = sourceName;
                 selection = null;
+                // A load is the new dirty baseline (see savedText / restoreSnapshot).
+                savedText = experiment._doc ? experiment._doc.toString() : null;
                 setDirty(false);
                 // Reset reuses this loader but wants the prior doc kept on the
                 // undo stack (so the wipe is reversible); imports/demos clear it.
@@ -4661,6 +4718,13 @@ async function initFromUrl() {
         // ═══════════════════════════════════════════════════════════════
 
         $('settingsToggle').addEventListener('click', () => {
+            // The drawer is force-hidden on the YAML tab — switch back first so
+            // the toggle never silently flips hidden state (prompts on unapplied
+            // YAML edits; if the user cancels, don't toggle).
+            if (yamlTabActive()) {
+                switchEditTab('designer');
+                if (yamlTabActive()) return;
+            }
             $('settingsDrawer').classList.toggle('open');
         });
 
@@ -8840,7 +8904,11 @@ async function initFromUrl() {
             load: (text, filename, source) => loadYamlText(text, filename, { source: source }),
             newProtocol: () => $('newBtn').click(),
             hasUnappliedYaml: hasUnappliedYaml,
-            markSaved: () => setDirty(false),
+            markSaved: (filename) => {
+                if (filename) lastFilename = filename; // e.g. untitled → prompted save-as name
+                savedText = experiment && experiment._doc ? experiment._doc.toString() : null;
+                setDirty(false);
+            },
             serialize: () => (experiment && experiment._doc ? experiment._doc.toString() : null)
         };
 
