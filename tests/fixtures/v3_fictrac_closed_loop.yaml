@@ -7,8 +7,8 @@ version: 3
 #   • CLOSED-LOOP — the arena is driven by FicTrac heading (Mode 3): a Mode-3
 #     trialParams loads the pattern, startClosedLoop streams frames for the wait,
 #     stopClosedLoop ends it.
-#   • OPEN-LOOP  — FicTrac is only LOGGED while the arena runs its own Mode-2
-#     stim (startRecording … stopRecording); FicTrac does not drive anything.
+#   • OPEN-LOOP  — FicTrac is only LOGGED (continuously by the bridge, no per-trial
+#     command) while the arena runs its own Mode-2 stim; FicTrac drives nothing.
 #
 # The bridge is the single default-on logger, so every arena command + FicTrac
 # frame lands in one JSONL on one clock. fictrac.connect is placed first; the
@@ -90,13 +90,11 @@ conditions:
         plugin_name: "fictrac"
         command_name: "stopClosedLoop"
 
-  # OPEN-LOOP: FicTrac is only LOGGED (not driving). The arena runs its own Mode-2
-  # grating for 10 s; startRecording/stopRecording mark the logged window.
+  # OPEN-LOOP: FicTrac is not driving — the arena runs its own Mode-2 grating for
+  # 10 s. No fictrac command is needed: the bridge logs every FicTrac frame
+  # continuously once connected, so the fly's behaviour is recorded in parallel.
   - name: "open_loop_grating"
     commands:
-      - type: "plugin"
-        plugin_name: "fictrac"
-        command_name: "startRecording"
       - type: "controller"
         command_name: "trialParams"
         pattern: "grating_sq"
@@ -108,9 +106,6 @@ conditions:
         gain: 0
       - type: "wait"
         duration: 10
-      - type: "plugin"
-        plugin_name: "fictrac"
-        command_name: "stopRecording"
 
   - name: "fictrac_shutdown"
     commands:

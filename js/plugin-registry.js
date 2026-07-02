@@ -565,10 +565,10 @@ var BUILTIN_PLUGINS = {
     // the local Python bridge (fictrac-bridge/bridge.py) + Mode-3 host-stepping.
     // matlab.class is forward-looking — MATLAB has no FicTracPlugin yet (its only
     // closed-loop is analog Mode 4), so this YAML runs on the web runner today.
-    // Apply (drive the arena) and record (log FicTrac) are independent: closed-loop
-    // drives via startClosedLoop/stopClosedLoop; open-loop just records while the
-    // arena runs its own commands (startRecording/stopRecording are log markers —
-    // the bridge logs every FicTrac frame it receives regardless).
+    // Driving the arena is the plugin's only real command: closed-loop applies
+    // FicTrac frames via startClosedLoop/stopClosedLoop. Recording is NOT a command
+    // — the bridge logs every FicTrac frame it receives continuously once connected,
+    // so an open-loop trial just runs the arena's own commands with no fictrac call.
     fictrac: {
         name: 'fictrac',
         label: 'FicTrac closed-loop',
@@ -636,15 +636,6 @@ var BUILTIN_PLUGINS = {
             stopClosedLoop: {
                 label: 'Stop closed-loop',
                 description: 'Stop driving the arena from FicTrac (FicTrac keeps being logged).'
-            },
-            startRecording: {
-                label: 'Start recording (open-loop)',
-                description:
-                    'Mark the start of an open-loop FicTrac-recorded window. The arena is NOT driven by FicTrac; run your own commands (e.g. Mode-2 stim) while FicTrac is logged in parallel.'
-            },
-            stopRecording: {
-                label: 'Stop recording (open-loop)',
-                description: 'Mark the end of an open-loop FicTrac-recorded window.'
             }
         }
     }
