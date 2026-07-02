@@ -2308,7 +2308,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.2 | 2026-07-02 09:31 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
+<footer id="footer">Arena Studio v0.2 | 2026-07-02 13:11 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -3122,19 +3122,32 @@
 
     function fwModalStatus(text) { $('fwModalStatus').textContent = text || ''; }
     function closeFwModal() { $('fwModal').hidden = true; }
+    async function sha256HexOf(bytes) {
+        const buf = await crypto.subtle.digest('SHA-256', bytes);
+        return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    }
     function fwRow(entry) {
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:9px';
         const use = document.createElement('button');
         use.className = 'pill';
         use.textContent = entry.isDefault ? 'Use ✦' : 'Use';
-        use.title = 'Fetch this image and upload it to the controller SD (0xE0)' + (entry.isDefault ? ' — recommended build' : '');
+        use.title = 'Fetch this image and upload it to the controller SD (0xE0)' + (entry.isDefault ? ' — recommended build' : '') + (entry.sha256 ? ' — sha256-verified after fetch' : '');
         use.addEventListener('click', async () => {
             fwModalStatus('fetching ' + entry.label + '…');
             try {
                 const res = await fetch(entry.file, { cache: 'no-store' });
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 const data = new Uint8Array(await res.arrayBuffer());
+                // Published entries carry isp_sha256 — refuse a corrupt/truncated
+                // fetch outright (a bad image bricks nothing, but wastes a flash).
+                if (entry.sha256) {
+                    const got = await sha256HexOf(data);
+                    if (got !== String(entry.sha256).toLowerCase()) {
+                        fwModalStatus('sha256 MISMATCH for ' + entry.label + ' — not uploading (fetch corrupt/stale?)');
+                        return;
+                    }
+                }
                 closeFwModal();
                 await uploadFirmwareBytes(entry.file.split('/').pop(), data);
             } catch (e) { fwModalStatus('fetch failed: ' + (e.message || e)); }
@@ -3158,17 +3171,23 @@
             const res = await fetch(FW_PAGES_BASE + '/manifest.json', { cache: 'no-store' });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const man = await res.json();
-            const bins = (man.artifacts || []).filter((a) => /\.bin$/i.test(a.file || ''));
+            // Release schema: production entries carry isp_file/isp_sha256 (the
+            // footered <slug>-isp.bin published alongside the manifest — the
+            // footer's version field is the release tag). Legacy fallback: any
+            // artifact whose `file` is itself a .bin.
+            const bins = (man.artifacts || []).filter((a) => a.isp_file || /\.bin$/i.test(a.file || ''));
             for (const a of bins) {
+                const rel = a.isp_file || a.file;
                 list.appendChild(fwRow({
-                    label: a.label || a.file,
-                    file: FW_PAGES_BASE + '/' + a.file,
-                    note: 'published catalog · ' + (man.version || '') + (a.rev ? ' · ' + a.rev : '')
+                    label: (a.label || rel) + (a.isp_file ? ' (ISP)' : ''),
+                    file: FW_PAGES_BASE + '/' + rel,
+                    sha256: a.isp_file ? a.isp_sha256 : a.sha256,
+                    note: 'published · ' + (man.version || '') + (a.rev ? ' · ' + a.rev : '')
                 }));
             }
             fwModalStatus(bins.length
-                ? 'catalog: ' + bins.length + ' published image(s)'
-                : 'published catalog has no .bin ISP images yet (UF2-only) — using this site\'s copies');
+                ? 'catalog: ' + bins.length + ' published ISP image(s) · release ' + (man.version || '?')
+                : 'published catalog has no ISP images yet — using this site\'s copies');
         } catch (e) {
             fwModalStatus('published catalog unreachable (' + (e.message || e) + ') — using this site\'s copies');
         }
