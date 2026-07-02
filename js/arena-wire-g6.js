@@ -296,7 +296,9 @@ const ArenaWireG6 = (function () {
     function encodeSetPanelDisplayMode(mode) {
         requireInt(mode, 'mode');
         if (mode < 0 || mode > 3) {
-            throw new RangeError('mode must be 0..3 (oneshot/persist/triggered/gated), got ' + mode);
+            throw new RangeError(
+                'mode must be 0..3 (oneshot/persist/triggered/gated), got ' + mode
+            );
         }
         return frame(OPCODES.SET_PANEL_DISPLAY_MODE, [mode]); // 02 1B mode
     }
@@ -724,6 +726,7 @@ const ArenaWireG6 = (function () {
         encodeSetFramePosition,
         encodeStreamFrame,
         encodeSetRefreshRate,
+        encodeGetRefreshRate,
         encodeSetPanelDisplayMode,
         encodeGetPanelDisplayMode,
         encodeSetSpiClock,
@@ -756,6 +759,7 @@ const ArenaWireG6 = (function () {
         decodeResponse,
         decodeControllerInfo,
         decodeSpiClock,
+        decodeRefreshRate,
         decodePanelDisplayMode,
         decodeFramesSent,
         decodeIp,

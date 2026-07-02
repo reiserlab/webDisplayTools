@@ -240,6 +240,19 @@ checkBool(
     Wire.decodeSpiClock(Uint8Array.from([0x04, 0x01, 0xc6, 0x14, 0x00])) === null
 );
 
+// Refresh-rate pair: encoder AND decoder were defined but missing from the
+// export list — "Get refresh rate" silently threw in both consoles.
+checkBytes('encodeGetRefreshRate', Wire.encodeGetRefreshRate(), '01 17');
+check(
+    'decodeRefreshRate',
+    Wire.decodeRefreshRate(Uint8Array.from([0x04, 0x00, 0x17, 0xe8, 0x03])),
+    1000
+);
+checkBool(
+    'decodeRefreshRate rejects status!=0',
+    Wire.decodeRefreshRate(Uint8Array.from([0x04, 0x01, 0x17, 0xe8, 0x03])) === null
+);
+
 // frames-sent reply: u32 LE. 0x12345678 -> 78 56 34 12.
 check(
     'decodeFramesSent',
@@ -374,8 +387,7 @@ checkThrows('encodeGetPatternInfo(0) throws (1-based)', () => Wire.encodeGetPatt
 // length byte = 2 + 12 = 0x0E. Values: frames 258, GS2, 2x10, arena 5, obs 9,
 // file_size 91904 (0x00016700 LE), stretch 0xAB.
 const piFrame = Uint8Array.from([
-    0x0e, 0x00, 0x88,
-    0x02, 0x01, 0x02, 0x02, 0x0a, 0x05, 0x09, 0x00, 0x67, 0x01, 0x00, 0xab
+    0x0e, 0x00, 0x88, 0x02, 0x01, 0x02, 0x02, 0x0a, 0x05, 0x09, 0x00, 0x67, 0x01, 0x00, 0xab
 ]);
 const pi = Wire.decodePatternInfo(piFrame);
 checkBool('decodePatternInfo returns object', !!pi);
@@ -389,7 +401,9 @@ check('  .fileSize', pi && pi.fileSize, 91904);
 check('  .stretch', pi && pi.stretch, 0xab);
 checkBool(
     'decodePatternInfo rejects status!=0',
-    Wire.decodePatternInfo(Uint8Array.from([0x0e, 0x01, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])) === null
+    Wire.decodePatternInfo(
+        Uint8Array.from([0x0e, 0x01, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    ) === null
 );
 checkBool(
     'decodePatternInfo short payload -> null',
@@ -411,8 +425,16 @@ checkThrows('encodeSetPanelDisplayMode(-1) throws', () => Wire.encodeSetPanelDis
 // get: [01 1C].
 checkBytes('encodeGetPanelDisplayMode', Wire.encodeGetPanelDisplayMode(), '01 1c');
 // decode: single mode byte from a 0x1C reply [03 00 1C mode] or 0x1B echo.
-check('decodePanelDisplayMode(0x1C=2)', Wire.decodePanelDisplayMode(Uint8Array.from([0x03, 0x00, 0x1c, 0x02])), 2);
-check('decodePanelDisplayMode(0x1B echo=1)', Wire.decodePanelDisplayMode(Uint8Array.from([0x03, 0x00, 0x1b, 0x01])), 1);
+check(
+    'decodePanelDisplayMode(0x1C=2)',
+    Wire.decodePanelDisplayMode(Uint8Array.from([0x03, 0x00, 0x1c, 0x02])),
+    2
+);
+check(
+    'decodePanelDisplayMode(0x1B echo=1)',
+    Wire.decodePanelDisplayMode(Uint8Array.from([0x03, 0x00, 0x1b, 0x01])),
+    1
+);
 checkBool(
     'decodePanelDisplayMode rejects status!=0',
     Wire.decodePanelDisplayMode(Uint8Array.from([0x03, 0x01, 0x1c, 0x02])) === null

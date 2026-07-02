@@ -2098,18 +2098,18 @@
         <span class="dim" id="cPatSetStatus">loading built-in library…</span>
         <input id="cPatFolder" type="file" webkitdirectory directory style="display:none">
       </div>
+      <div class="crow"><span class="lbl">info</span>
+        <span class="dim" id="cPatInfo" title="GET_PATTERN_INFO (0x88) — refreshes automatically when the pattern selection or pat idx changes">—</span>
+        <button class="pill" data-cmd="cpatinfo" title="Re-query GET_PATTERN_INFO (0x88) for the pat idx below (logged)">↻</button>
+      </div>
       <div class="crow"><span class="lbl">params</span>
         <label>mode <select id="cMode"><option value="2">2 open-loop</option><option value="3">3 show-frame</option><option value="4">4 closed-loop</option></select></label>
         <label>pat idx <input id="cPat" type="number" min="1" value="1" style="width:56px" title="1-based SD index"></label>
         <label>rate <input id="cRate" type="number" value="30" style="width:54px"></label>
         <label>gain <input id="cGain" type="number" value="0" style="width:48px"></label>
         <label>init <input id="cInit" type="number" value="0" style="width:48px" title="mode-3 start frame (SET_FRAME_POSITION 0x70)"></label>
-        <label>dur (s) <input id="cDur" type="number" value="0" style="width:48px" title="host-timed auto-stop; 0 = run until Stop"></label>
-        <button class="pill" data-cmd="ctrial" title="Send TRIAL_PARAMS (0x08)">Send trial params</button>
-      </div>
-      <div class="crow" style="border-top:1px dashed var(--border);padding-top:9px"><span class="lbl">info</span>
-        <button class="pill" data-cmd="cpatinfo" title="GET_PATTERN_INFO (0x88) for the pat idx above">Get pattern info</button>
-        <span class="dim" id="cPatInfo">—</span>
+        <label>dur (s) <input id="cDur" type="number" min="0" step="0.1" value="0" style="width:48px" title="host-timed auto-stop: sends STOP_DISPLAY after this many seconds; 0 = run until Stop"></label>
+        <button class="pill" data-cmd="ctrial" title="Send TRIAL_PARAMS (0x08); dur > 0 arms a host-timed STOP">Send trial params</button>
       </div>
     </div>
 
@@ -2259,7 +2259,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.2 | 2026-07-02 02:19 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
+<footer id="footer">Arena Studio v0.2 | 2026-07-02 07:37 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2651,12 +2651,25 @@
         fn();
     }
 
+    // Host-timed auto-stop for "Send trial params" dur > 0 (approximate —
+    // controller-timed duration arrives with firmware #4). Cleared by anything
+    // that changes what the display is doing.
+    let autoStopTimer = null;
+    function clearAutoStop() {
+        if (autoStopTimer) {
+            clearTimeout(autoStopTimer);
+            autoStopTimer = null;
+        }
+    }
+    Studio.clearConsoleAutoStop = clearAutoStop; // Run-path pre-emption (module block)
+
     // The firmware refuses SD-write + ISP commands (0x8D/0xE0/0x8A/0xC8/0xC9)
     // unless the display is stopped (state ALL_OFF — CE_DISPLAY_ACTIVE with
     // "Stop display before …" otherwise). STOP_DISPLAY also BLANKS the panels
     // (they latch their last frame, so the controller pushes a dark frame).
     // Call before every guarded command; best-effort.
     async function quiesceDisplay() {
+        clearAutoStop(); // an explicit stop supersedes any pending auto-stop
         if (!session || !session.connected) return;
         try {
             await session.send(Wire.encodeStop(), { timeoutMs: 2000 });
@@ -2671,30 +2684,28 @@
     // ---- command dispatch ----
     const handlers = {
         // display essentials
-        callon: () => guardDestructive(() => send(Wire.encodeAllOn(), 'ALL_ON 0xFF')),
-        calloff: () => guardDestructive(() => send(Wire.encodeAllOff(), 'ALL_OFF 0x00')),
-        cstop: () => send(Wire.encodeStop(), 'STOP_DISPLAY 0x30'),
-        // trial params
+        callon: () => guardDestructive(() => { clearAutoStop(); send(Wire.encodeAllOn(), 'ALL_ON 0xFF'); }),
+        calloff: () => guardDestructive(() => { clearAutoStop(); send(Wire.encodeAllOff(), 'ALL_OFF 0x00'); }),
+        cstop: () => { clearAutoStop(); send(Wire.encodeStop(), 'STOP_DISPLAY 0x30'); },
+        // trial params — dur > 0 ARMS a host-timed STOP (it used to only log a hint)
         ctrial: () =>
-            guardDestructive(() => {
+            guardDestructive(async () => {
+                clearAutoStop();
                 const p = { mode: num('cMode'), patternId: num('cPat'), frameRate: num('cRate'), gain: num('cGain'), initPos: num('cInit') };
-                send(Wire.encodeTrialParams(p), 'TRIAL_PARAMS 0x08 mode ' + p.mode + ' pat ' + p.patternId);
+                const r = await send(Wire.encodeTrialParams(p), 'TRIAL_PARAMS 0x08 mode ' + p.mode + ' pat ' + p.patternId);
                 const dur = num('cDur');
-                if (dur > 0) clog('(host-timed auto-stop in ' + dur + 's — send STOP or All off to end)', 'info');
+                const d = r && Wire.decodeResponse(r);
+                if (dur > 0 && d && d.ok) {
+                    autoStopTimer = setTimeout(() => {
+                        autoStopTimer = null;
+                        send(Wire.encodeStop(), 'STOP_DISPLAY 0x30 (auto-stop after ' + dur + ' s, host-timed)');
+                    }, dur * 1000);
+                }
             }),
-        cpatinfo: async () => {
-            const resp = await send(Wire.encodeGetPatternInfo(num('cPat')), 'GET_PATTERN_INFO 0x88 idx ' + num('cPat'));
-            // decodePatternInfo fields: frameCount/gsVal/rows/cols/fileSize/stretch (#130).
-            // gsVal is the raw .pat header code: 1 = GS2 (binary), 2 = GS16 (4-bit).
-            const info = resp && Wire.decodePatternInfo(resp);
-            const gsLabel = info ? (info.gsVal === 1 ? 'GS2' : info.gsVal === 2 ? 'GS16' : 'GS?') : '';
-            $('cPatInfo').textContent = info
-                ? info.frameCount + ' fr · ' + gsLabel + ' · ' + info.cols + '×' + info.rows +
-                  ' panels · ' + (info.fileSize / 1024).toFixed(1) + ' KB · stretch ' + info.stretch
-                : 'no reply';
-        },
+        cpatinfo: () => refreshPatInfo(false),
         // frame stepper (0x70)
         cframeload: async () => {
+            clearAutoStop(); // a mode-3 load replaces any pending timed trial
             const pat = num('cPat');
             await send(Wire.encodeTrialParams({ mode: 3, patternId: pat, frameRate: 0, gain: 0, initPos: 0 }), 'load Mode 3 · pat ' + pat);
             // pull frame count so the stepper + FicTrac clamp know the range
@@ -2834,6 +2845,53 @@
 
     // ---- SD card + firmware helpers (hardware ops; bench-verified) ----
     function connected() { return !!(session && session.connected); }
+
+    // GET_PATTERN_INFO (0x88) for the current pat idx. quiet=true is the auto
+    // path (dropdown pick / idx edit — direct send, no log spam); the ↻ button
+    // uses the logged path. Seq guard: a stale reply must not overwrite a newer pick.
+    let patInfoSeq = 0;
+    async function refreshPatInfo(quiet) {
+        const el = $('cPatInfo');
+        if (!el) return;
+        if (!connected()) { el.textContent = '— (connect for pattern info)'; return; }
+        const idx = num('cPat');
+        if (!Number.isInteger(idx) || idx < 1) { el.textContent = '—'; return; }
+        const seq = ++patInfoSeq;
+        let info = null;
+        try {
+            const r = quiet
+                ? await session.send(Wire.encodeGetPatternInfo(idx), { timeoutMs: 2000 })
+                : await send(Wire.encodeGetPatternInfo(idx), 'GET_PATTERN_INFO 0x88 idx ' + idx);
+            info = r && Wire.decodePatternInfo(r);
+        } catch (_) { /* best-effort */ }
+        if (seq !== patInfoSeq) return;
+        // fields: frameCount/gsVal/rows/cols/fileSize/stretch (#130);
+        // gsVal is the raw .pat header code: 1 = GS2 (binary), 2 = GS16 (4-bit).
+        const gsLabel = info ? (info.gsVal === 1 ? 'GS2' : info.gsVal === 2 ? 'GS16' : 'GS?') : '';
+        el.textContent = info
+            ? info.frameCount + ' fr · ' + gsLabel + ' · ' + info.cols + '×' + info.rows +
+              ' panels · ' + (info.fileSize / 1024).toFixed(1) + ' KB · stretch ' + info.stretch
+            : 'no reply for pat idx ' + idx;
+    }
+    Studio.refreshPatternInfo = () => refreshPatInfo(true); // module block: on dropdown pick
+    $('cPat').addEventListener('change', () => refreshPatInfo(true));
+
+    // Bring-up: pull the controller's ACTUAL settings into the UI once per
+    // connection — the hardcoded defaults (SPI 20 MHz / 1000 Hz / persist / 0 mV)
+    // are guesses and can mislead the bench.
+    async function initFromController() {
+        const q = async (bytes) => { try { return await session.send(bytes, { timeoutMs: 2000 }); } catch (_) { return null; } };
+        const got = [];
+        const rr = Wire.decodeRefreshRate(await q(Wire.encodeGetRefreshRate()));
+        if (rr != null) { $('cRrHz').value = String(rr); got.push('refresh ' + rr + ' Hz'); }
+        const spi = Wire.decodeSpiClock(await q(Wire.encodeGetSpiClock()));
+        if (spi != null) { $('cSpiMhz').value = String(spi); got.push('SPI ' + spi + ' MHz'); }
+        const pm = Wire.decodePanelDisplayMode(await q(Wire.encodeGetPanelDisplayMode()));
+        if (pm != null) { $('cPanelMode').value = String(pm); got.push('panel mode ' + (Wire.PANEL_DISPLAY_MODE_NAMES[pm] || pm)); }
+        const mv = Wire.decodeAoVoltage(await q(Wire.encodeGetAoVoltage()));
+        if (mv != null) { $('cAoMv').value = String(mv); $('cIoSum').textContent = 'A0 ' + mv + ' mV'; got.push('A0 ' + mv + ' mV'); }
+        if (got.length) clog('init from controller: ' + got.join(' · '), 'info');
+    }
     function downloadBlob(bytes, name, mime) {
         const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
@@ -3049,13 +3107,14 @@
         $('consoleFields').disabled = !on;
         $('consoleHint').textContent = on ? 'live — drives the arena directly' : 'connect to enable';
         if (!on && $('cFtApply')) $('cFtApply').disabled = true;
-        // Auto-list the SD once per connection (parity with the standalone
-        // console) so the device-memory table + count are populated on arrival.
+        // Once per connection: init the UI from the controller's real settings,
+        // then auto-list the SD (parity with the standalone console). The SD
+        // listing repopulates the picker, which auto-refreshes pattern info.
         if (on && !sdListedThisConnection) {
             sdListedThisConnection = true;
-            sdRefresh();
+            initFromController().then(() => sdRefresh());
         }
-        if (!on) sdListedThisConnection = false;
+        if (!on) { sdListedThisConnection = false; clearAutoStop(); }
     }
     if (session) session.on('state', syncEnabled);
     syncEnabled();
@@ -3299,6 +3358,7 @@ function applyPatPick(name) {
     const idx = Studio.patternIndexByName(name);
     if (idx != null && $('cPat')) $('cPat').value = idx; // trial-params reads cPat
     renderPatThumb(name);
+    if (Studio.refreshPatternInfo) Studio.refreshPatternInfo(); // 0x88, quiet
 }
 async function renderPatThumb(name) {
     const host = $('cPatThumb');
@@ -3909,6 +3969,8 @@ function startRunLog(isExperiment) {
 }
 
 async function runSteps(steps, conditionsByName, exp) {
+    // A pending console auto-stop firing mid-run would kill the sequence.
+    if (Studio.clearConsoleAutoStop) Studio.clearConsoleAutoStop();
     const ftNames = fictracPluginNames(exp);
     try {
         // NOTE: do NOT pass onProgress — the session broadcasts 'runstatus' which
