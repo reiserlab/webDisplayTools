@@ -43,6 +43,14 @@ checkBool(
 d = U.decode('?mode=edit', { allowedKeys: ALLOWED });
 check('mode=edit honored with no p', d.state.mode, 'edit');
 
+// console is always honored — bench links are connect-gated + protocol-agnostic,
+// so even a shared p does NOT force it back to Run (that rule is edit-only).
+d = U.decode('?mode=console', { allowedKeys: ALLOWED });
+check('mode=console honored', d.state.mode, 'console');
+d = U.decode('?p=looming_v3&mode=console', { allowedKeys: ALLOWED });
+check('mode=console honored with shared p', d.state.mode, 'console');
+check('p still resolved alongside console', d.state.p, 'looming_v3');
+
 d = U.decode('?p=g6_2x10_smoke&lib=looming_v3&dock=raw&set=g6_2x10', { allowedKeys: ALLOWED });
 check('lib resolved', d.state.lib, 'looming_v3');
 check('dock enum', d.state.dock, 'raw');
@@ -84,6 +92,7 @@ check(
 );
 check('run mode omitted (default)', U.encode({ mode: 'run' }), '');
 check('edit mode kept', U.encode({ mode: 'edit', p: 'x', source: 'committed' }), '?mode=edit&p=x');
+check('console mode kept', U.encode({ mode: 'console' }), '?mode=console');
 // Local (file-picked) doc is NOT shareable → p/set omitted.
 check('local doc omits p', U.encode({ mode: 'run', p: 'x', set: 'y', source: 'local' }), '');
 check('closed dock omitted', U.encode({ dock: 'closed' }), '');

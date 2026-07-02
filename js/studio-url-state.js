@@ -7,11 +7,12 @@
  * locally file-picked YAML has NO shareable URL, so encode() omits p/set when
  * the doc is local. Running-experiment progress is deliberately NOT encoded.
  *
- * Security: decode() clamps `mode` to run|edit, drops unknown enum values, and
- * rejects path-traversal even though paths come from a committed registry
- * (belt-and-suspenders: a malformed committed index must not fetch arbitrary
- * URLs). Shared links always open in Run (newbie-safety) — `edit` is honored
- * only when no p/lib is present (the authoring browser's own link).
+ * Security: decode() clamps `mode` to run|edit|console, drops unknown enum
+ * values, and rejects path-traversal even though paths come from a committed
+ * registry (belt-and-suspenders: a malformed committed index must not fetch
+ * arbitrary URLs). A shared PRIMARY protocol (`p`) forces `edit` back to Run
+ * (newbie-safety — never open someone's shared protocol in an editable view);
+ * `console` is always honored (bench links; connect-gated, protocol-agnostic).
  *
  * LOADING: classic <script src> (window-global + CommonJS dual-export, no ES
  * `export`).
@@ -19,7 +20,7 @@
 (function (global) {
     'use strict';
 
-    const MODES = ['run', 'edit'];
+    const MODES = ['run', 'edit', 'console'];
     const DOCKS = ['closed', 'quick', 'stepper', 'stream', 'raw', 'mem'];
     // A committed protocol/pattern-set key: conservative slug, no separators.
     const KEY_RE = /^[A-Za-z0-9_-]{1,64}$/;

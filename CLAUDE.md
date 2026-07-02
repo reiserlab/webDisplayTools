@@ -158,6 +158,65 @@ configs.forEach(name => {
 
 This pattern has caused bugs multiple times. Always use `config.name` for the value and `config.label` for display text.
 
+## Arena Studio (`arena_studio.html`) — the primary tool
+
+**Policy (2026-07-02):** the Studio is the **primary development path**. The
+standalone tools it absorbed — `arena_console.html` and
+`experiment_designer_v3.html` — are in **maintenance mode**: bug/safety fixes
+only, no new features. Do NOT dual-implement features for parity; record the
+delta in **`docs/development/arena-studio-parity.md`** (the ledger + the
+retirement gate — the standalones eventually become redirect stubs to
+`arena_studio.html?mode=console` / `?mode=edit`). Prefer pushing logic into
+shared dual-export `js/` modules whenever a feature is touched — a shared-module
+fix flows to every page automatically; two hand-written HTML pages never will.
+
+### Architecture (one page, three script layers)
+
+1. **Classic substrate** (`<script src>`): wire/link/runner/session/run-log/
+   pattern-set/pat-encoder/pat-preview/bin-classifier + `js/studio-*.js`
+   helpers. Connection + STOP must stay here (ES-import-failure gotcha).
+2. **Classic Studio shell + ConsoleView** (inline classic scripts): `window.Studio`
+   (`session` = the ONE `ArenaSession.shared()`, `mode`, `importMode`,
+   `canMutate()`, `rawLog`/`clog`, `onRunStatus` — the single runstatus sink),
+   plus all Console bench handlers.
+3. **ONE `<script type="module">` block**: shared imports at top (duplicate
+   import bindings are a module-level SyntaxError — there is exactly one import
+   set for the spine AND the embedded designer), Studio run/file/GitHub code,
+   the **embedded v3 designer as an IIFE** (`(function EditView() {...})()`),
+   then `initFromUrl()` last.
+
+### Rules when editing the Studio
+
+- **§6 chokepoint:** `pushUndo()` returns `Studio.canMutate()` (= Edit mode and
+  not importMode) and every designer mutation site is `if (!pushUndo()) return;`.
+  Any NEW protocol-mutation entry point must go through it (or `_pushUndoSnapshot()`
+  + an explicit Edit-mode gate, as `commitImport` does). Never add a mutation
+  path that skips the gate; the tripwire `console.warn` is the audit.
+- **Doc state has one source of truth:** the embedded designer's `experiment`
+  (`_doc`). `Studio.syncFromEditor` (called from `renderAll`, `loadYamlText`,
+  and `setDirty`) recomputes `Studio.currentDoc` (sha over `_doc.toString()`,
+  rig, source), the top-bar chips, and the Run-view sequence. `dirty` means
+  "text ≠ last load/save" (`savedText` baseline), NOT a snapshot-captured flag.
+- **Display quiesce:** firmware refuses SD-write + ISP commands
+  (0x8D/0xE0/0x8A/0xC8/0xC9) unless the display is stopped (`CE_DISPLAY_ACTIVE`,
+  status 10). Any new handler for a guarded op must `await quiesceDisplay()`
+  first. STOP also blanks panels (they latch frames) — a persistent on-arena
+  display during ISP is impossible on current firmware; progress maps blink.
+- **Console conventions:** SD listing owns the pattern picker once connected
+  (`Studio.onSdListing`); the web library is thumbnails-only. `send()` logs the
+  firmware's ASCII error payload on non-ok status — keep that for new ops.
+  New `.cmenu` popups: the document click-away closer ignores clicks inside
+  `.cmenu-pop`; one-shot `.cmenu-item`s (not in a `.cmenu-row`) auto-close.
+- **Wire module exports:** `js/arena-wire-g6.js` defines more than it exports —
+  when adding encoders/decoders, add them to the export list AND a test; audit
+  with `Object.keys(require('./js/arena-wire-g6.js'))` vs the page's `Wire.*`
+  uses (a missing export throws silently inside async handlers).
+- URL state: `js/studio-url-state.js` (`mode` ∈ run|edit|console; a shared `p`
+  forces `edit`→Run, never `console`). The write side of
+  [#107](https://github.com/reiserlab/webDisplayTools/issues/107) (URL updates
+  on navigation) is not yet wired.
+- Bump the footer version/timestamp on every edit; never Prettier the HTML.
+
 ## CI/CD Validation
 
 Web calculations are validated against MATLAB reference data:
