@@ -2259,7 +2259,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.2 | 2026-07-02 01:17 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
+<footer id="footer">Arena Studio v0.2 | 2026-07-02 01:27 ET · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint)</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2684,9 +2684,11 @@
             }),
         cpatinfo: async () => {
             const resp = await send(Wire.encodeGetPatternInfo(num('cPat')), 'GET_PATTERN_INFO 0x88 idx ' + num('cPat'));
+            // decodePatternInfo fields: frameCount/gsVal/rows/cols/fileSize/stretch (#130)
             const info = resp && Wire.decodePatternInfo(resp);
             $('cPatInfo').textContent = info
-                ? info.frames + ' fr · ' + (info.grayscale === 2 ? 'GS2' : 'GS16') + ' · ' + (info.numCols || '?') + '×' + (info.numRows || '?')
+                ? info.frameCount + ' fr · GS' + info.gsVal + ' · ' + info.cols + '×' + info.rows +
+                  ' panels · ' + (info.fileSize / 1024).toFixed(1) + ' KB · stretch ' + info.stretch
                 : 'no reply';
         },
         // frame stepper (0x70)
@@ -2697,7 +2699,7 @@
             try {
                 const r = await session.send(Wire.encodeGetPatternInfo(pat));
                 const info = Wire.decodePatternInfo(r);
-                consoleState.frameCount = info && Number.isFinite(info.frames) ? info.frames : null;
+                consoleState.frameCount = info && Number.isFinite(info.frameCount) ? info.frameCount : null;
             } catch (e) { consoleState.frameCount = null; }
             consoleState.stepperLoaded = true;
             $('cStepState').textContent = 'loaded pat ' + pat + (consoleState.frameCount ? ' · ' + consoleState.frameCount + ' fr' : '') + ' · 0x70';
@@ -2864,6 +2866,9 @@
                 '<td><button class="sd-down" title="Download (0x84)">D</button><button class="sd-del" title="Delete (0x86)">×</button></td>';
             tbody.appendChild(tr);
         }
+        // Hand the live listing to the pattern picker (module block): the CARD
+        // owns name→index once connected — uploads/deletes re-run this.
+        if (typeof Studio.onSdListing === 'function') Studio.onSdListing(names);
     }
     async function readFirmwareInfo() {
         if (!connected()) return;
@@ -2946,6 +2951,11 @@
         if (!btn || btn.disabled) return;
         const cmd = btn.dataset.cmd;
         if (handlers[cmd]) { e.preventDefault(); handlers[cmd](e); }
+        // One-shot menu items (Get info / Reset …) close their menu after
+        // firing; row items (Set/Get beside an input) keep it open for editing.
+        if (btn.classList.contains('cmenu-item') && !btn.closest('.cmenu-row')) {
+            document.querySelectorAll('.cmenu.open').forEach((m) => m.classList.remove('open'));
+        }
     });
     // expose the console trace logger so the module block (stream) can write here
     Studio.clog = clog;
@@ -2963,7 +2973,12 @@
             if (!wasOpen) menu.classList.add('open');
         });
     });
-    document.addEventListener('click', () => document.querySelectorAll('.cmenu.open').forEach((m) => m.classList.remove('open')));
+    // Click-away closer — but clicks INSIDE a menu popup must NOT close it
+    // (the Controller/Debug menus hold editable inputs + Set/Get buttons).
+    document.addEventListener('click', (e) => {
+        if (e.target.closest && e.target.closest('.cmenu-pop')) return;
+        document.querySelectorAll('.cmenu.open').forEach((m) => m.classList.remove('open'));
+    });
 
     // expand / collapse all
     $('cExpandAll').addEventListener('click', () => document.querySelectorAll('.console-view details.cgroup').forEach((d) => (d.open = true)));
@@ -3211,12 +3226,25 @@ async function populateMetaDatalists() {
 }
 
 // ---- pattern set / name picker (Console) + Run pattern resolution ----
-// Studio.patternSet = { patterns: { name: { index, sd_name, preview } } } | null.
+// Studio.patternSet = { source:'sd'|'manifest', patterns: { name: { index, sd_name, preview } } } | null.
+//
+// TWO layers, deliberately separate:
+//  · The PICKER (dropdown + cPat index + Run name→index resolution) follows the
+//    LIVE SD LISTING whenever one exists — the card is the source of truth for
+//    what index a name has (uploads/deletes re-order it). Falls back to the
+//    built-in web manifest (or a Load set… folder) when never connected.
+//  · PREVIEW BYTES can only come from the web side (built-in library / picked
+//    folder) — the thumbnail is best-effort and matched by filename; an
+//    SD-only pattern simply has no thumb.
 const PS = window.PatternSet;
 const PP = window.PatPreview;
 const BUILTIN_BASE = './patterns/g6_2x10/';
 Studio.patternSet = null;
-let patByteSource = null; // (sd_name) => Promise<ArrayBuffer>
+const webPreviewBySdName = new Map(); // filename → () => Promise<ArrayBuffer>
+function patByteSource(sd) {
+    const f = webPreviewBySdName.get(sd);
+    return f ? f() : Promise.reject(new Error('no local copy of ' + sd));
+}
 let patPreviewCache = {};
 
 function arenaForConfig(cfg) {
@@ -3269,7 +3297,10 @@ async function renderPatThumb(name) {
     if (host) host.innerHTML = '';
     const m = Studio.patternSet;
     const p = m && m.patterns[name];
-    if (!p || !patByteSource || !PP || !host) return;
+    if (!p || !PP || !host) return;
+    host.title = webPreviewBySdName.has(p.sd_name)
+        ? 'Pattern preview (hover a multi-frame pattern to animate)'
+        : 'No preview — this pattern exists only on the SD card (Load set… a matching folder for thumbnails)';
     try {
         let sampled = patPreviewCache[name];
         if (!sampled) {
@@ -3300,12 +3331,24 @@ async function loadBuiltinPatternSet() {
         const resp = await fetch(BUILTIN_BASE + 'MANIFEST.txt', { cache: 'no-store' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const m = manifestFromTxt(PS.parseManifestTxt(await resp.text()), 'G6_2x10');
+        m.source = 'manifest';
+        for (const n of Object.keys(m.patterns)) {
+            const sd = m.patterns[n].sd_name;
+            webPreviewBySdName.set(sd, async () => {
+                const r = await fetch(BUILTIN_BASE + 'patterns/' + sd, { cache: 'no-store' });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.arrayBuffer();
+            });
+        }
+        // The live SD listing owns the picker once connected — the manifest is
+        // only the never-connected fallback (+ the preview-bytes source above).
+        if (Studio.patternSet && Studio.patternSet.source === 'sd') {
+            patPreviewCache = {};
+            const sel = $('cPatName');
+            if (sel && sel.value) renderPatThumb(sel.value);
+            return;
+        }
         Studio.patternSet = m;
-        patByteSource = async (sd) => {
-            const r = await fetch(BUILTIN_BASE + 'patterns/' + sd, { cache: 'no-store' });
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.arrayBuffer();
-        };
         patPreviewCache = {};
         cPatStatus('built-in · ' + Object.keys(m.patterns).length + ' patterns' + (m.set_id ? ' · ' + m.set_id : ''));
         populatePatDropdown();
@@ -3314,6 +3357,28 @@ async function loadBuiltinPatternSet() {
         if ($('cPat')) $('cPat').readOnly = false;
     }
 }
+
+// The Console's SD listing (classic block, sdRefresh) hands the filenames here:
+// rebuild the picker so name→index matches the CARD, not a stale web manifest.
+// Uploads/deletes re-run sdRefresh, so the picker tracks every change.
+Studio.onSdListing = function (names) {
+    if (!Array.isArray(names) || !names.length) return; // empty SD → keep web fallback
+    const m = {
+        source: 'sd',
+        arenaConfig: (Studio.consoleArena && Studio.consoleArena.arenaConfig) || 'G6_2x10',
+        set_id: 'SD card',
+        patterns: {}
+    };
+    names.forEach((nm, i) => {
+        if (!nm) return; // unreadable filename — index still selectable via cPat
+        m.patterns[nm] = { index: i + 1, sd_name: nm, preview: null };
+    });
+    if (!Object.keys(m.patterns).length) return;
+    Studio.patternSet = m;
+    patPreviewCache = {};
+    cPatStatus('SD card · ' + Object.keys(m.patterns).length + ' patterns');
+    populatePatDropdown();
+};
 function wirePatPicker() {
     const sel = $('cPatName');
     if (sel) sel.addEventListener('change', () => applyPatPick(sel.value));
@@ -3322,15 +3387,27 @@ function wirePatPicker() {
         const files = Array.from(folder.files || []);
         folder.value = '';
         if (!files.length) return;
-        const manifestFile = files.find((f) => f.name === 'MANIFEST.txt');
-        if (!manifestFile) { cPatStatus('no MANIFEST.txt in that folder'); return; }
         try {
-            const m = manifestFromTxt(PS.parseManifestTxt(await manifestFile.text()), (Studio.consoleArena && Studio.consoleArena.arenaConfig) || 'G6_2x10');
-            const map = {};
-            for (const f of files) map[f.name] = f;
-            Studio.patternSet = m;
-            patByteSource = (sd) => { const f = map[sd]; return f ? f.arrayBuffer() : Promise.reject(new Error('missing ' + sd)); };
+            // Every .pat in the folder becomes a preview-bytes source (matched by
+            // filename — works for SD listings and manifests alike).
+            for (const f of files) {
+                if (/\.pat$/i.test(f.name)) webPreviewBySdName.set(f.name, () => f.arrayBuffer());
+            }
             patPreviewCache = {};
+            // With a live SD listing, the folder only supplies thumbnails; the
+            // picker keeps following the card.
+            if (Studio.patternSet && Studio.patternSet.source === 'sd') {
+                cPatStatus('SD card · ' + Object.keys(Studio.patternSet.patterns).length +
+                    ' patterns · previews from folder');
+                const sel = $('cPatName');
+                if (sel && sel.value) renderPatThumb(sel.value);
+                return;
+            }
+            const manifestFile = files.find((f) => f.name === 'MANIFEST.txt');
+            if (!manifestFile) { cPatStatus('no MANIFEST.txt in that folder (previews loaded anyway)'); return; }
+            const m = manifestFromTxt(PS.parseManifestTxt(await manifestFile.text()), (Studio.consoleArena && Studio.consoleArena.arenaConfig) || 'G6_2x10');
+            m.source = 'manifest';
+            Studio.patternSet = m;
             cPatStatus('loaded · ' + Object.keys(m.patterns).length + ' patterns' + (m.set_id ? ' · ' + m.set_id : ''));
             populatePatDropdown();
         } catch (e) { cPatStatus('load failed: ' + (e.message || e)); }
