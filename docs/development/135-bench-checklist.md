@@ -86,6 +86,20 @@ drifting grating).
 
 ## E. Extended I/O command set (fw branch `feat/dio-roles-ao-modes`, io_ext)
 
+> **2026-07-03 bench run (automated):** the rig was flashed with the
+> `teensy41` (debug) build of `feat/dio-roles-ao-modes` and the firmware
+> repo's hardware suite ran against it over USB serial — the new
+> `tests/test_io_roles.py` (role machine round-trip, 1-based-port rejection,
+> 0xAA auto-promote + both refusals with remedy text, AO frame_number DAC
+> ramp on a 200-frame pattern ±4 mV, 0xA0/0xA2 refusals, GET_ANALOG_IN
+> shape/range) and the updated `test_get_controller_info` (8-byte reply,
+> io_ext bit, real MAC) ALL PASS: 24/24, plus 44 passed / 3 skipped on the
+> non-destructive regression sweep (signed frame rate, panel modes, diag,
+> stream triggers). SD-destructive suites (sd_files/lab79/lab82/gh18) were
+> deliberately NOT run — they DELETE_ALL_PATTERNS. The SD gained one file
+> (`conftest.pat`, the test pattern) — delete via Console if unwanted.
+> Remaining below = instrument/eyeball items only.
+
 The web apply-path isn't wired yet — drive these via Console → raw hex. Flash
 the `feat/dio-roles-ao-modes` build (it stacks on the MAC branch).
 
