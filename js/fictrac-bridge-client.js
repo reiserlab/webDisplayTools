@@ -10,10 +10,12 @@
  *
  * WHAT THE BRIDGE SPEAKS (see fictrac-bridge/README.md):
  *   bridge → us:  {"type":"frame","index":<int>,"seq":<int>,"t":<ms>}
+ *                 {"type":"log_export_result","name":..,"content":..}  (or {"error":..})
  *   us → bridge:  {"type":"hello","client":...,"v":1}
  *                 {"type":"config","fictrac_port":..,"gain":..,"offset":..,"frames":..}
  *                 {"type":"log_control","enabled":<bool>}   (opens/closes the log file)
  *                 {"type":"log", ...}                        (an event to append)
+ *                 {"type":"log_export"}                      (close + stream back the log)
  *
  * APPLY vs LOGGING are INDEPENDENT (per the open-loop requirement):
  *   - apply   = drive the arena (stream SET_FRAME_POSITION via applyFrame). Off ⇒
@@ -67,6 +69,7 @@
             this._logging = false;
             this._pending = null; // newest index awaiting send (coalesced)
             this._inFlight = false; // a drain loop is running
+            this._exportPending = null; // single-in-flight log_export request
             this._recv = 0;
             this._applied = 0;
             this._rateCount = 0;
@@ -167,11 +170,13 @@
                     return; // ignore non-JSON
                 }
                 if (msg && msg.type === 'frame') this.handleFrame(msg.index);
+                else if (msg && msg.type === 'log_export_result') this._handleExportResult(msg);
             };
             ws.onerror = () => this._emit('status', 'error', 'err');
             ws.onclose = () => {
                 this._stopRateTimer();
                 this._ws = null;
+                this._settleExport('reject', new Error('bridge disconnected during log export'));
                 this._emit('status', 'disconnected', 'dim');
                 this._emit('stats', this.stats);
             };
@@ -245,6 +250,56 @@
             if (this._logging && this.connected) {
                 this._send(Object.assign({ type: 'log' }, obj));
             }
+        }
+
+        /**
+         * Ask the bridge for the current/most-recent log file (log_export →
+         * log_export_result). The bridge CLOSES the active log first, so call
+         * this at run completion (after the last log() event). The first
+         * request/response pair in the protocol: single-in-flight — concurrent
+         * calls share one Promise. Resolves {name, content}; rejects when
+         * disconnected, on a bridge-side error, or after `timeoutMs` (15s
+         * default — the file streams back as ONE message, so this is one
+         * round-trip, not a transfer loop).
+         * @param {number} [timeoutMs]
+         * @returns {Promise<{name: string|null, content: string}>}
+         */
+        exportLog(timeoutMs) {
+            if (this._exportPending) return this._exportPending.promise;
+            if (!this.connected) {
+                return Promise.reject(new Error('bridge not connected — no log to export'));
+            }
+            const pending = {};
+            pending.promise = new Promise((resolve, reject) => {
+                pending.resolve = resolve;
+                pending.reject = reject;
+            });
+            pending.timer = setTimeout(() => {
+                this._settleExport('reject', new Error('log export timed out'));
+            }, timeoutMs || 15000);
+            this._exportPending = pending;
+            this._send({ type: 'log_export' });
+            return pending.promise;
+        }
+
+        _handleExportResult(msg) {
+            if (msg && msg.error) {
+                this._settleExport('reject', new Error('bridge: ' + msg.error));
+            } else {
+                this._settleExport('resolve', {
+                    name: (msg && msg.name) || null,
+                    content: String((msg && msg.content) != null ? msg.content : '')
+                });
+            }
+        }
+
+        _settleExport(how, arg) {
+            const p = this._exportPending;
+            if (!p) return;
+            this._exportPending = null;
+            if (p.timer && typeof clearTimeout !== 'undefined') clearTimeout(p.timer);
+            if (how === 'resolve') p.resolve(arg);
+            else p.reject(arg);
         }
 
         // ---- frame handling (the coalesced single-flight apply loop) ---------

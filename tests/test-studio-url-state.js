@@ -188,6 +188,102 @@ const rtRig = U.decode(
 check('round-trip rig', rtRig.state.rig, 'cshl_g6_2x10');
 check('round-trip rig mode', rtRig.state.mode, 'console');
 
+// ── repo param (course pipeline: ?repo=owner/name re-scopes p to a path) ─────
+console.log('=== repo param ===');
+const REPO = 'reiserlab/cshl-2026-course-data';
+checkBool('isSafeRepo ok', U.isSafeRepo(REPO), REPO);
+checkBool('isSafeRepo rejects bare owner', !U.isSafeRepo('reiserlab'), 'no name');
+checkBool('isSafeRepo rejects extra segment', !U.isSafeRepo('a/b/c'), 'a/b/c');
+checkBool('isSafeRepo rejects dotdot', !U.isSafeRepo('a/b..c'), 'dotdot');
+checkBool('isSafeRepo rejects leading hyphen owner', !U.isSafeRepo('-evil/repo'), '-evil');
+checkBool('isSafeRepoPath ok', U.isSafeRepoPath('protocols/bench03/looming.yaml'), 'bench path');
+checkBool('isSafeRepoPath shared ok', U.isSafeRepoPath('protocols/shared/loom.yml'), 'shared');
+checkBool('isSafeRepoPath flat ok', U.isSafeRepoPath('protocols/looming.yaml'), 'flat');
+checkBool('isSafeRepoPath rejects ./-prefix', !U.isSafeRepoPath('./protocols/x.yaml'), './');
+checkBool(
+    'isSafeRepoPath rejects non-protocols',
+    !U.isSafeRepoPath('runlogs/bench03/x.yaml'),
+    'runlogs'
+);
+checkBool('isSafeRepoPath rejects .pat', !U.isSafeRepoPath('protocols/bench03/x.pat'), '.pat');
+checkBool('isSafeRepoPath rejects traversal', !U.isSafeRepoPath('protocols/../js/x.yaml'), '..');
+
+// decode: repo present ⇒ p is a PATH (no registry allowlist applies).
+d = U.decode('?repo=' + REPO + '&p=protocols/bench03/looming.yaml', { allowedKeys: ALLOWED });
+check('repo resolved', d.state.repo, REPO);
+check('p is a repo path', d.state.p, 'protocols/bench03/looming.yaml');
+checkBool('no warnings for repo-path p', d.warnings.length === 0, d.warnings.join('|'));
+// still forces Run for a shared link (newbie-safety applies to course links too).
+d = U.decode('?repo=' + REPO + '&p=protocols/bench03/looming.yaml&mode=edit', {});
+check('repo-shared link forces Run', d.state.mode, 'run');
+// bad path with repo present is dropped.
+d = U.decode('?repo=' + REPO + '&p=' + encodeURIComponent('../../etc/passwd'), {});
+check('repo-mode traversal p dropped', d.state.p, undefined);
+checkBool(
+    'repo-mode bad p warns as path',
+    d.warnings.some((w) => /invalid repo path/.test(w)),
+    d.warnings.join('|')
+);
+// a registry KEY under repo-mode is not a valid path ⇒ dropped.
+d = U.decode('?repo=' + REPO + '&p=looming_v3', { allowedKeys: ALLOWED });
+check('registry key invalid in repo mode', d.state.p, undefined);
+// bad repo is dropped AND p falls back to registry-key semantics.
+d = U.decode('?repo=not-a-repo-ref!&p=looming_v3', { allowedKeys: ALLOWED });
+check('bad repo dropped', d.state.repo, undefined);
+check('p falls back to key semantics', d.state.p, 'looming_v3');
+checkBool(
+    'bad repo warns',
+    d.warnings.some((w) => /invalid owner\/name/.test(w)),
+    d.warnings.join('|')
+);
+// no repo ⇒ a path-shaped p is rejected as before (unchanged registry rule).
+d = U.decode('?p=' + encodeURIComponent('protocols/bench03/looming.yaml'), {
+    allowedKeys: ALLOWED
+});
+check('path-shaped p without repo rejected', d.state.p, undefined);
+
+// encode: repo emitted only alongside a valid repo path.
+check(
+    'repo+path encode',
+    U.encode({ mode: 'run', repo: REPO, p: 'protocols/bench03/looming.yaml', source: 'committed' }),
+    '?repo=' + REPO + '&p=protocols/bench03/looming.yaml'
+);
+check(
+    'repo without valid path omitted',
+    U.encode({ mode: 'run', repo: REPO, p: 'looming_v3', source: 'committed' }),
+    '?p=looming_v3'
+);
+check('repo alone omitted', U.encode({ mode: 'run', repo: REPO }), '');
+
+// encodeApp: repo+repoPath provenance wins over protocolKey.
+check(
+    'encodeApp repo provenance',
+    U.encodeApp({ mode: 'run', repo: REPO, repoPath: 'protocols/bench03/looming.yaml' }),
+    '?repo=' + REPO + '&p=protocols/bench03/looming.yaml'
+);
+check(
+    'encodeApp repo + rig + mode',
+    U.encodeApp({
+        mode: 'console',
+        repo: REPO,
+        repoPath: 'protocols/shared/loom.yaml',
+        rigKey: 'cshl_g6_2x10'
+    }),
+    '?mode=console&repo=' + REPO + '&p=protocols/shared/loom.yaml&rig=cshl_g6_2x10'
+);
+check(
+    'encodeApp without repoPath ignores repo',
+    U.encodeApp({ mode: 'run', repo: REPO, protocolKey: 'looming_v3' }),
+    '?p=looming_v3'
+);
+// round-trip: repo link survives encodeApp → decode.
+const rtRepo = U.decode(
+    U.encodeApp({ mode: 'run', repo: REPO, repoPath: 'protocols/bench03/looming.yaml' }),
+    {}
+);
+check('round-trip repo', rtRepo.state.repo, REPO);
+check('round-trip repo path', rtRepo.state.p, 'protocols/bench03/looming.yaml');
+
 // ── navMode (popstate: literal mode, NO shared-p force) ──────────────────────
 console.log('=== navMode ===');
 check('empty search → run', U.navMode(''), 'run');

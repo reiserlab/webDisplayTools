@@ -18,11 +18,14 @@ Transport roles match real FicTrac (so the same bridge works with fictrac_sim.py
 
 WebSocket message schema (also documented in README.md):
   bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>}
+                     {"type":"log_export_result", "name":<str>, "content":<str>}
+                       (reply to log_export; {"error":<str>} when nothing was written)
   browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
                      {"type":"config", "fictrac_port":<int>, "gain":<float>,
                                        "offset":<float>, "frames":<int>}  (any subset)
                      {"type":"log_control", "enabled":<bool>}   (open/close the log file)
                      {"type":"log",   "event":<str>, ...arbitrary, "ms":<int>}
+                     {"type":"log_export"}   (close the active log, stream it back whole)
 
 The FicTrac → frame-index policy lives in frame_index_from_fictrac(); edit that one
 function to change closed-loop behaviour.
@@ -35,12 +38,18 @@ import asyncio
 import datetime
 import json
 import math
+import os
 import signal
 import sys
 import time
 
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
+
+# Inbound WebSocket message cap. The library default is 1 MiB — raised so a
+# multi-MB payload never kills the socket; sized to match the log_export
+# replies we stream the other way (one experiment log as ONE message).
+WS_MAX_SIZE = 16 * 1024 * 1024
 
 
 def now_ms() -> int:
@@ -120,10 +129,14 @@ class Hub:
             pass
 
     async def _recv_loop(self, websocket) -> None:
-        """Per-client loop: hand inbound browser messages to the dispatcher."""
+        """Per-client loop: hand inbound browser messages to the dispatcher.
+
+        The websocket rides along so request/response messages (log_export)
+        can reply DIRECTLY to the asking client — the hub's broadcast path
+        coalesces to the newest frame and would drop a one-shot reply."""
         try:
             async for raw in websocket:
-                await self._on_message(raw)
+                await self._on_message(raw, websocket)
         except ConnectionClosed:
             pass
 
@@ -133,12 +146,17 @@ class LogWriter:
 
     The browser's "log fictrac" toggle starts a **fresh timestamped file on every
     activation** (start_new_log). A standalone --log PATH keeps a single file.
+    On-demand files land in --log-dir (default: the process CWD).
     """
 
-    def __init__(self, path: str | None, log_frames: bool) -> None:
+    def __init__(self, path: str | None, log_frames: bool, log_dir: str | None = None) -> None:
         self._explicit = path  # fixed --log path (standalone), else None
+        self._dir = log_dir or ""
         self._fh = None
+        self._name: str | None = None  # current-or-most-recent file (export target)
         self.log_frames = log_frames
+        if self._dir:
+            os.makedirs(self._dir, exist_ok=True)
         if path:
             self._open(path, "bridge_start")
 
@@ -148,6 +166,7 @@ class LogWriter:
 
     def _open(self, name: str, event: str) -> None:
         self._fh = open(name, "a", buffering=1, encoding="utf-8")
+        self._name = name
         self._emit({"type": "session", "event": event, "file": name, "ms": now_ms()})
         print(f"[log] writing to {name}", file=sys.stderr)
 
@@ -163,7 +182,24 @@ class LogWriter:
             return
         self.close()
         ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + f"{now_ms() % 1000:03d}"
-        self._open(f"arena-log-{ts}.jsonl", "logging_started")
+        self._open(os.path.join(self._dir, f"arena-log-{ts}.jsonl"), "logging_started")
+
+    def export_current(self) -> tuple[str | None, str | None]:
+        """Close the active log (if open) and return (basename, content) of the
+        current-or-most-recent file — (None, None) when nothing was ever
+        written or the file can't be read. Closing first guarantees the
+        exported content is complete + flushed; a retry after close re-reads
+        the same file."""
+        if self._fh:
+            self.close()
+        if not self._name:
+            return None, None
+        try:
+            with open(self._name, "r", encoding="utf-8") as fh:
+                return os.path.basename(self._name), fh.read()
+        except OSError as exc:
+            print(f"[log] export failed for {self._name}: {exc}", file=sys.stderr)
+            return None, None
 
     def _emit(self, obj: dict) -> None:
         if self._fh:
@@ -337,7 +373,7 @@ async def consume(queue: asyncio.Queue, pipeline: Pipeline) -> None:
 def make_dispatcher(pipeline: Pipeline, log: LogWriter, inputs: InputManager):
     """Build the async handler for inbound browser messages."""
 
-    async def dispatch(raw) -> None:
+    async def dispatch(raw, websocket=None) -> None:
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8", errors="replace")
         try:
@@ -370,6 +406,23 @@ def make_dispatcher(pipeline: Pipeline, log: LogWriter, inputs: InputManager):
             else:
                 log.write_inbound(raw)
                 log.close()
+        elif kind == "log_export":
+            # Close + stream the whole log back to the ASKING client only.
+            name, content = log.export_current()
+            if name is not None:
+                reply = {"type": "log_export_result", "name": name, "content": content}
+            else:
+                reply = {"type": "log_export_result", "error": "no log file has been written"}
+            if websocket is not None:
+                try:
+                    await websocket.send(json.dumps(reply))
+                except ConnectionClosed:
+                    pass
+            print(
+                f"[log] export → {name or 'nothing'}"
+                + (f" ({len(content)} chars)" if content else ""),
+                file=sys.stderr,
+            )
         else:
             # {"type":"log", ...} and anything else → straight to the log file.
             log.write_inbound(raw)
@@ -378,7 +431,7 @@ def make_dispatcher(pipeline: Pipeline, log: LogWriter, inputs: InputManager):
 
 
 async def run(args: argparse.Namespace) -> None:
-    log = LogWriter(args.log, args.log_frames)
+    log = LogWriter(args.log, args.log_frames, args.log_dir)
     queue: asyncio.Queue[str] = asyncio.Queue()
     # pipeline ↔ hub is a cycle (hub's dispatcher reconfigures the pipeline; the
     # pipeline publishes to the hub), so build the pipeline first and wire the hub in.
@@ -398,7 +451,7 @@ async def run(args: argparse.Namespace) -> None:
     inputs.start()
     consumer = asyncio.create_task(consume(queue, pipeline))
 
-    async with serve(hub.serve_client, args.ws_host, args.ws_port):
+    async with serve(hub.serve_client, args.ws_host, args.ws_port, max_size=WS_MAX_SIZE):
         print(
             f"[ws] serving ws://{args.ws_host}:{args.ws_port}  "
             f"(proto={args.proto}, fictrac_port={args.in_port}, frames={args.frames}, "
@@ -428,6 +481,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--gain", type=float, default=1.8, help="degrees of heading per frame index, e.g. 360/200=1.8 (default: 1.8)")
     p.add_argument("--offset", type=float, default=0.0, help="heading offset in degrees (default: 0.0)")
     p.add_argument("--log", default=None, help="append browser log events (JSONL) to this file (else opened on demand)")
+    p.add_argument("--log-dir", default=None, help="directory for on-demand arena-log-*.jsonl files (default: CWD; created if missing)")
     p.add_argument("--log-frames", action="store_true", help="also log every outbound frame + source fields")
     args = p.parse_args(argv)
 

@@ -92,6 +92,17 @@
   .gh-check input{accent-color:var(--accent)}
   body:not(.ghauth) .gh-check{opacity:.45;cursor:not-allowed}
   .gh-dest{font-size:10.5px;color:var(--dim);margin-top:5px;padding-left:2px}
+  .gh-row label{flex:0 0 62px;color:var(--dim)}
+  .gh-row input[type=text]{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:3px 7px;font-size:11px;font-family:inherit}
+  /* course-pipeline picker modal (Open from library… / Open from course repo…) */
+  .picker-overlay{position:fixed;inset:0;background:rgba(6,10,14,.65);z-index:900;display:flex;align-items:center;justify-content:center}
+  .picker-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;min-width:380px;max-width:560px;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .picker-title{padding:11px 14px;font-weight:700;font-size:13px;border-bottom:1px solid var(--border)}
+  .picker-list{overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:2px}
+  .picker-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;background:transparent;border:0;color:var(--text);padding:7px 10px;border-radius:6px;text-align:left;font-size:12.5px;cursor:pointer}
+  .picker-item:hover{background:var(--surface2)}
+  .picker-item .sub{font-size:10.5px;color:var(--dim)}
+  .picker-foot{padding:8px 12px;border-top:1px solid var(--border);text-align:right}
   .seg{display:flex;align-self:center;height:30px;border:1px solid var(--border);border-radius:6px;overflow:hidden;flex:0 0 auto}
   .seg button{display:flex;align-items:center;background:transparent;border:0;color:var(--dim);padding:0 11px;font-size:12px}
   .seg button + button{border-left:1px solid var(--bg)}
@@ -1702,6 +1713,7 @@
     <button class="pill" id="sessionRigLock" title="Session rig is locked — click to unlock (changing it alters what geometry gets streamed to the hardware)">🔒</button>
   </label>
   <span class="chip rig-mismatch" id="rigMismatch" style="display:none" title="Session (bench) rig differs from the loaded protocol's rig: field — the bench geometry wins for Console/stream operations; the protocol still runs with its own rig. Unlock the rig selector to reconcile, or load a matching protocol.">⚠ bench ≠ protocol</span>
+  <span class="chip rig-mismatch" id="benchMacChip" style="display:none" title="The connected controller's MAC (0xC2) does not match the course roster's entry for this bench id — the wrong bench id would namespace saves/run-logs under another bench. See instructor.">⚠ bench ≠ roster</span>
   <span class="arena" id="deviceLine" title="Arena geometry of the SESSION rig (left) — what stream/ISP/paste operations target. Firmware appears only when connected (from GET_CONTROLLER_INFO 0xC2)."><b>—</b></span>
 
   <span class="sep-v"></span>
@@ -1723,7 +1735,10 @@
     <div class="menu">
       <button id="fmNew">New protocol</button>
       <button id="fmOpen">Open… (Import YAML)</button>
+      <button id="fmOpenLibrary" title="Pick a committed protocol from this site's own registry (protocols/index.json)">Open from library…</button>
+      <button id="fmOpenCourse" title="List this bench's saves (protocols/&lt;bench-id&gt;/) and promoted shared protocols (protocols/shared/) in the course-data repo">Open from course repo…</button>
       <button id="fmSave">Save → local file</button>
+      <button id="fmPromote" title="Copy this bench's saved protocol (+ its _patterns/) to protocols/shared/ in the course repo — blocked if a DIFFERENT file already exists under the same name">Promote to shared (course)…</button>
       <div class="sep"></div>
       <div class="gh-block">
         <div class="gh-row">
@@ -1731,7 +1746,10 @@
           <button class="gh-signin" id="ghSignInBtn">Sign in…</button>
           <span class="gh-who" id="ghWho"></span>
         </div>
-        <label class="gh-check"><input type="checkbox" id="ghPR"> Save as Pull Request</label>
+        <div class="gh-row"><label for="ghRepoInput">Repo</label><input type="text" id="ghRepoInput" placeholder="reiserlab/webDisplayTools" title="Target GitHub repo (owner/name) for saves — point at the course-data repo (e.g. reiserlab/cshl-2026-course-data) during a course; stored in this browser's localStorage"></div>
+        <div class="gh-row"><label for="ghBenchId">Bench id</label><input type="text" id="ghBenchId" placeholder="e.g. bench03" title="Instructor-set bench identity — namespaces course-repo protocol saves (protocols/&lt;bench-id&gt;/) and run-log commits (runlogs/&lt;bench-id&gt;/); stored in this browser's localStorage"></div>
+        <label class="gh-check"><input type="checkbox" id="ghPR" title="Save opens a branch + Pull Request on the target repo (review-gated — the default for reiserlab/webDisplayTools)"> Save as Pull Request</label>
+        <label class="gh-check"><input type="checkbox" id="ghDirect" title="Save commits straight to the target repo's default branch — no branch, no PR. Course-repo mode: safe there because bench-id namespacing means no two rigs write the same file"> Commit directly to default branch</label>
         <div class="gh-dest" id="ghDest">→ writes a local .yaml file (sign in to GitHub to open a PR instead)</div>
       </div>
     </div>
@@ -1758,6 +1776,15 @@
 
 <input type="file" id="fileInput" accept=".yaml,.yml" style="display:none" />
 <div class="banner" id="banner"></div>
+
+<!-- picker modal (Open from library… / Open from course repo…) -->
+<div class="picker-overlay" id="pickerOverlay" style="display:none">
+  <div class="picker-box">
+    <div class="picker-title" id="pickerTitle">Open…</div>
+    <div class="picker-list" id="pickerList"></div>
+    <div class="picker-foot"><button class="pill" id="pickerCancel" title="Close without opening anything">Cancel</button></div>
+  </div>
+</div>
 
 <!-- ===== BODY ===== -->
 <div class="body-wrap">
@@ -2366,7 +2393,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.4 | 2026-07-03 14:55 ET · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-03 15:36 ET · course data pipeline: repo/bench-id settings + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), roster.yaml prefill + MAC cross-check chip, missing-pattern preflight, Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2394,7 +2421,7 @@
 <script>
 'use strict';
 (function () {
-    const TOOL_VERSION = 'Arena Studio v0.4';
+    const TOOL_VERSION = 'Arena Studio v0.5';
     const $ = (id) => document.getElementById(id);
     const Wire = window.ArenaWireG6;
     const RunLog = window.RunLog;
@@ -2419,6 +2446,31 @@
     };
     Studio.canMutate = () => Meta.canMutate({ mode: Studio.mode, importMode: Studio.importMode });
     window.Studio = Studio;
+
+    // ---- GitHub token + course-repo settings (CSHL pipeline) ------------------
+    // Single source of truth, defined HERE (classic) so the run-log auto-commit
+    // works even if the module block failed to load. The File ▾ gh-block UI
+    // (module side) writes these localStorage keys.
+    Studio.ghToken = function () {
+        return sessionStorage.getItem('studio_gh_pat') || localStorage.getItem('studio_gh_pat') || null;
+    };
+    Studio.courseSettings = function () {
+        const raw = (localStorage.getItem('studio_gh_repo') || '').trim();
+        const m = /^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/.exec(raw);
+        return {
+            repo: m && !raw.includes('..') ? { owner: m[1], name: m[2], full: raw } : null,
+            direct: localStorage.getItem('studio_gh_direct') === '1',
+            benchId: (localStorage.getItem('studio_bench_id') || '').trim()
+        };
+    };
+    // RIG-ID: the instructor-set bench id — namespaces course-repo protocol
+    // saves and run-log commits. Identity comes from THIS (not the controller
+    // MAC, which only cross-checks it against roster.yaml at connect).
+    Object.defineProperty(Studio, 'rigId', {
+        get() {
+            return Studio.courseSettings().benchId || null;
+        }
+    });
 
     // ---- unified log: raw transport trace (console 'log' events) --------------
     function rawLine(text, cls) {
@@ -2514,7 +2566,75 @@
         }
         $('rlCtr').textContent =
             (log.meta.run_id || 'run') + ' · ' + (log.summary ? log.summary.outcome : 'done');
+        maybeCommitRunLog(log, summary); // course pipeline — async, best-effort
     }
+
+    // ---- course-repo run-log auto-commit (CSHL pipeline) -----------------------
+    // On COMPLETED recorded runs only: export the bridge's JSONL — the canonical
+    // run artifact (run_metadata line + every runner/arena/FicTrac event) — and
+    // direct-commit it as ONE file under runlogs/<bench-id>/. Aborted or
+    // disconnected runs never auto-commit (deliberate: a partial run is bench
+    // debris until someone decides otherwise). Filename STAMP is colon-free —
+    // a raw ISO ':' breaks git checkout on Windows clones.
+    async function maybeCommitRunLog(log, summary) {
+        if (!log || log.intent !== 'experiment') return;
+        const outcome = (summary && summary.outcome) || (log.summary && log.summary.outcome) || 'UNKNOWN';
+        if (outcome === 'ABORTED_BY_USER' || outcome === 'DISCONNECTED') {
+            rawLine('run log NOT committed (' + outcome + ')', 'warn');
+            return;
+        }
+        const GH = window.StudioGitHub;
+        const cs = Studio.courseSettings();
+        const token = Studio.ghToken();
+        if (!GH || !cs.direct || !cs.repo || !token) return; // course pipeline not configured — normal lab use
+        if (!cs.benchId) {
+            showBanner('Run log NOT committed: bench id not set — see instructor (File ▾ → Bench id).');
+            return;
+        }
+        const bridge = Studio.session && Studio.session.bridge;
+        if (!bridge || !bridge.connected) {
+            showBanner('Run log NOT committed: bridge disconnected — the log file remains on the bridge machine.');
+            return;
+        }
+        let exported;
+        try {
+            exported = await bridge.exportLog();
+        } catch (e) {
+            showBanner('Run-log export failed (' + (e && e.message ? e.message : e) + ') — saved locally only, on the bridge machine.');
+            return;
+        }
+        const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        const proto = GH.slug(String(log.meta.protocol_filename || 'protocol').replace(/\.ya?ml$/i, ''));
+        const who = GH.slug(log.meta.experimenter || 'unknown');
+        const path =
+            'runlogs/' + cs.benchId + '/' +
+            proto + '__' + who + '__' + stamp + '__' + (log.meta.run_id || 'run') + '.jsonl';
+        rawLine('committing run log → ' + cs.repo.full + ' · ' + path + ' (' + exported.content.length + ' chars)…', 'info');
+        try {
+            const res = await GH.directCommit(fetch, {
+                owner: cs.repo.owner,
+                repo: cs.repo.name,
+                token: token,
+                path: path,
+                message: 'runlog: ' + proto + ' on ' + cs.benchId + ' (run ' + (log.meta.run_id || '?') + ')',
+                contentText: exported.content
+            });
+            if (!res.ok) throw new Error(res.error || 'HTTP ' + res.status);
+            rawLine('✓ run log committed: ' + path, 'info');
+            showBanner('✓ Run log committed to ' + cs.repo.full + ' — ' + path);
+            const saved = $('rlSaved');
+            if (saved) saved.textContent += ' · ✓ committed to course repo';
+        } catch (e) {
+            rawLine('run-log commit FAILED: ' + (e && e.message ? e.message : e), 'err');
+            // Accurate because the run gate guarantees the bridge was up: its
+            // on-disk file exists even when GitHub is unreachable.
+            showBanner('Run log commit failed (' + (e && e.message ? e.message : e) +
+                ') — saved locally only, on the bridge machine (' + (exported.name || 'bridge log') + ').');
+        }
+    }
+    // Exposed for bench verification + manual re-commit after a failed
+    // auto-commit (the bridge re-serves the same file until the next run).
+    Studio._maybeCommitRunLog = maybeCommitRunLog;
 
     // ---- top-bar state binding ------------------------------------------------
     function refreshState() {
@@ -2565,13 +2685,21 @@
 
     function updateRunGate() {
         const doc = Studio.currentDoc;
+        const bridge = Studio.session && Studio.session.bridge;
         const gate = Meta.canRunExperiment({
             connected: !!(Studio.session && Studio.session.connected),
             hasProtocol: !!doc,
             dirty: false,
             unsaved: doc ? (doc.source === 'local-unsaved' || isUntitledDoc(doc)) : false,
             experimenter: $('mExp').value,
-            genotype: $('mGeno').value
+            genotype: $('mGeno').value,
+            // Universal run logging: the bridge is THE recorded-run logger — a
+            // dead bridge blocks loudly here instead of losing data silently.
+            bridgeConnected: !!(bridge && bridge.connected),
+            // Preflight: every sequence-referenced pattern must resolve NOW
+            // (an unresolvable name would otherwise fail MID-run). Module-side
+            // helper; optional-guarded for the stale-cache gotcha.
+            missingPatterns: Studio.missingPatternNames ? Studio.missingPatternNames(doc) : []
         });
         const runBtn = $('btnRunExp');
         runBtn.disabled = !gate.ok;
@@ -2580,6 +2708,10 @@
         testBtn.disabled = !(Studio.session && Studio.session.connected && doc);
     }
     Studio.updateRunGate = updateRunGate;
+    // The gate tracks the bridge live (connect/disconnect flips the reason).
+    if (Studio.session && Studio.session.bridge) {
+        Studio.session.bridge.on('status', () => updateRunGate());
+    }
 
     // ---- connection ----------------------------------------------------------
     async function toggleConnect() {
@@ -2613,6 +2745,10 @@
                     if (ctl) ctl.textContent = Studio.controllerId || '— (needs fw with MAC in 0xC2)';
                 }
             } catch (e) { /* older fw / no reply — fine */ }
+            // Course pipeline connect-time hook (module block): roster fetch →
+            // experimenter pre-fill + MAC cross-check chip. Optional-guarded so
+            // connect survives a failed module load (stale-cache gotcha).
+            if (Studio.onConnected) { try { await Studio.onConnected(); } catch (e) { /* logged inside */ } }
             refreshState();
         } catch (e) {
             showBanner('Connect failed: ' + (e && e.message ? e.message : e));
@@ -2652,11 +2788,17 @@
     // Edit). New shareable state must flow through encodeApp + this function.
     Studio._urlSuppress = false; // initFromUrl/popstate wrap their setMode calls
     Studio._pendingProtocolKey = null; // registry-key handoff, see loadProtocol
+    Studio._pendingRepoRef = null; // course-repo {repo,path} handoff, same bracket
     Studio.updateUrl = function (opts) {
         if (Studio._urlSuppress || !window.StudioUrlState) return;
+        const repoRef = Studio.currentDoc && Studio.currentDoc.repoRef;
         const q = window.StudioUrlState.encodeApp({
             mode: Studio.mode,
             protocolKey: Studio.currentDoc && Studio.currentDoc.protocolKey,
+            // Course-repo provenance (?repo=owner/name&p=<path>): set by a
+            // validated ?repo= load or an in-app course-repo open/save.
+            repo: repoRef ? repoRef.repo : null,
+            repoPath: repoRef ? repoRef.path : null,
             // #135: only an EXPLICIT session-rig selection is shareable; a rig
             // derived from the loaded protocol is redundant with `p` (clean URL).
             rigKey: Studio.currentRig && Studio.currentRig.explicit ? Studio.currentRig.name : null
@@ -3919,6 +4061,82 @@ async function populateMetaDatalists() {
     }
 }
 
+// ---- course roster (rig-id ↔ experimenter ↔ MAC) at connect -----------------
+// roster.yaml lives at the course-data repo ROOT: format_version + a people:
+// list of {id, name, rig_id, mac} (same id/name convention as
+// configs/metadata/people.yaml). Instructor-edited day-of. This IS the
+// experimenter list for a course session — it replaces the people.yaml
+// datalist while a course repo is configured; people.yaml stays the general
+// lab vocabulary. Identity is the BENCH ID; the controller MAC (0xC2, may be
+// null on older fw) only cross-checks it — mismatch shows a warning chip.
+Studio.onConnected = async function () {
+    try {
+        await fetchCourseRoster();
+    } catch (e) {
+        Studio.rawLog('course roster check failed: ' + (e && e.message ? e.message : e), 'warn');
+    }
+};
+async function fetchCourseRoster() {
+    const chip = $('benchMacChip');
+    if (chip) chip.style.display = 'none';
+    const cs = Studio.courseSettings();
+    const token = ghToken();
+    if (!cs.repo || !token) return; // no course repo configured — nothing to do
+    let entries;
+    try {
+        const res = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, 'roster.yaml', null, token));
+        if (!res.ok) {
+            Studio.rawLog('course roster: no roster.yaml in ' + cs.repo.full + ' (HTTP ' + res.status + ')', 'warn');
+            return;
+        }
+        const data = YAML.parse(new TextDecoder().decode(res.bytes));
+        entries = (data && (data.people || data.roster)) || [];
+    } catch (e) {
+        Studio.rawLog('course roster: unreadable — ' + (e && e.message ? e.message : e), 'warn');
+        return;
+    }
+    if (!Array.isArray(entries) || !entries.length) return;
+    // Course datalist: the roster's names drive the experimenter dropdown.
+    const expList = $('expList');
+    if (expList) {
+        expList.innerHTML = '';
+        entries.forEach((p) => {
+            if (!p || !(p.id || p.name)) return;
+            const o = document.createElement('option');
+            o.value = p.id || p.name;
+            if (p.name && p.id) o.label = p.name;
+            expList.appendChild(o);
+        });
+        const note = $('mSrcNote');
+        if (note) note.textContent = 'Experimenter list from the course roster (' + cs.repo.full + '/roster.yaml).';
+    }
+    if (!cs.benchId) return;
+    const mine = entries.find((p) => p && p.rig_id === cs.benchId);
+    if (!mine) {
+        Studio.rawLog('course roster: no entry for bench id "' + cs.benchId + '" — experimenter not pre-filled', 'warn');
+        return;
+    }
+    // Pre-fill (typo-proofing) — never clobber something already typed.
+    const exp = $('mExp');
+    if (exp && !exp.value.trim() && (mine.id || mine.name)) {
+        exp.value = mine.id || mine.name;
+        Studio.rawLog('experimenter pre-filled from roster: ' + exp.value + ' (bench ' + cs.benchId + ')', 'info');
+        Studio.updateRunGate();
+    }
+    // MAC cross-check — bench id claims bench03 but the controller matches
+    // another bench's entry ⇒ chip. Tolerant: old fw reports no MAC.
+    const mac = Studio.controllerId;
+    if (chip && mac && mine.mac) {
+        const norm = (s) => String(s).toUpperCase().replace(/[^0-9A-F]/g, '');
+        if (norm(mac) !== norm(mine.mac)) {
+            chip.style.display = 'inline-block';
+            chip.title = 'Controller MAC ' + mac + ' ≠ roster entry for ' + cs.benchId + ' (' + mine.mac +
+                ') — a wrong bench id would namespace saves/run-logs under another bench. See instructor.';
+            Studio.rawLog('⚠ roster: bench id ' + cs.benchId + ' lists MAC ' + mine.mac + ' but the controller reports ' + mac, 'warn');
+        }
+    }
+}
+
 // ---- pattern set / name picker (Console) + Run pattern resolution ----
 // Studio.patternSet = { source:'sd'|'manifest', patterns: { name: { index, sd_name, preview } } } | null.
 //
@@ -3954,6 +4172,34 @@ Studio.patternFramesByName = function (name) {
     const m = Studio.patternSet;
     const p = m && m.patterns && m.patterns[name];
     return p && p.preview && Number.isFinite(p.preview.frames) ? p.preview.frames : null;
+};
+// Recorded-run preflight (course pipeline): pattern names the SEQUENCE
+// actually reaches that resolve to nothing — same resolution the runner uses
+// (name via the SD-first picker, else a raw pattern_ID). Non-empty blocks
+// the run gate with a message naming the Console SD-upload fix.
+Studio.missingPatternNames = function (doc) {
+    if (!doc || !doc.experiment || !RunnerLib) return [];
+    const exp = doc.experiment;
+    let reachable;
+    try {
+        const flat = RunnerLib.flattenStructure(exp); // no shuffle — set only
+        reachable = new Set(flat.steps.map((s) => s.conditionName).filter(Boolean));
+    } catch (_) {
+        reachable = new Set(((exp.conditions || []).map((c) => c && c.name)).filter(Boolean));
+    }
+    const missing = new Set();
+    const scan = (cmds) => {
+        (cmds || []).forEach((cmd) => {
+            if (!cmd || (cmd.pattern == null && cmd.pattern_ID == null)) return;
+            if (resolvePatternIdForCmd(cmd) == null) {
+                missing.add(cmd.pattern != null ? String(cmd.pattern) : '#' + cmd.pattern_ID);
+            }
+        });
+    };
+    (exp.conditions || []).forEach((c) => {
+        if (c && reachable.has(c.name)) scan(c.commands);
+    });
+    return Array.from(missing);
 };
 
 function manifestFromTxt(parsed, arenaConfig) {
@@ -4073,6 +4319,7 @@ Studio.onSdListing = function (names) {
     patPreviewCache = {};
     cPatStatus(n ? 'SD card · ' + n + ' patterns' : 'SD card empty — upload .pats or use a raw pat idx');
     populatePatDropdown(); // empty set clears the dropdown + unlocks cPat
+    Studio.updateRunGate(); // the missing-pattern preflight tracks the SD listing
 };
 function wirePatPicker() {
     const sel = $('cPatName');
@@ -4688,12 +4935,16 @@ Studio.loadProtocol = async function (text, filename, source, opts) {
     // stash (#107) brackets EXACTLY this call: every early return above stays
     // clear of it, and editor.load → loadYamlText → syncFromEditor's isLoad
     // branch is fully synchronous — that's what makes the handoff race-free.
+    // repoRef (course pipeline) rides the same bracket: {repo:'owner/name',
+    // path:'protocols/…'} provenance for docs opened from a course-data repo.
     Studio._pendingProtocolKey = (opts && opts.key) || null;
+    Studio._pendingRepoRef = (opts && opts.repoRef) || null;
     let ok;
     try {
         ok = Studio.editor.load(text, filename || 'untitled.yaml', source || 'committed');
     } finally {
         Studio._pendingProtocolKey = null;
+        Studio._pendingRepoRef = null;
     }
     if (!ok) return false;
     Studio.setMode('run', { push: false }); // programmatic — part of the load, not a view nav
@@ -4714,7 +4965,8 @@ Studio.syncFromEditor = async function (info) {
         doc = Studio.currentDoc = {
             filename: info.filename || 'untitled.yaml',
             baseSource: info.source || 'local',
-            protocolKey: null
+            protocolKey: null,
+            repoRef: null
         };
     }
     doc.experiment = exp;
@@ -4727,6 +4979,9 @@ Studio.syncFromEditor = async function (info) {
         // the key, so edits/saves keep provenance. (Reset + undo restores the
         // old text WITHOUT the key — conservative loss, never a wrong key.)
         doc.protocolKey = Studio._pendingProtocolKey || null;
+        // Course-repo provenance rides the same handoff (mutually exclusive
+        // with protocolKey by construction — a doc has ONE source).
+        doc.repoRef = Studio._pendingRepoRef || null;
     }
     doc.source = info.dirty ? 'local-unsaved' : doc.baseSource;
     // Doc identity → replace, never push. Still in the synchronous prefix:
@@ -4857,7 +5112,7 @@ Studio.beginRun = async function (isExperiment) {
     const conditionsByName = new Map((exp.conditions || []).map((c) => [c.name, c]));
     startRunLog(isExperiment);
     document.body.classList.toggle('testing', !isExperiment);
-    await runSteps(steps, conditionsByName, exp);
+    await runSteps(steps, conditionsByName, exp, isExperiment);
 };
 
 Studio.runCondition = async function (name) {
@@ -4872,7 +5127,7 @@ Studio.runCondition = async function (name) {
     const conditionsByName = new Map([[name, cond]]);
     startRunLog(false); // per-condition test is never recorded
     document.body.classList.add('testing');
-    await runSteps(steps, conditionsByName, doc.experiment);
+    await runSteps(steps, conditionsByName, doc.experiment, false);
 };
 
 function startRunLog(isExperiment) {
@@ -4900,26 +5155,29 @@ function startRunLog(isExperiment) {
     $('runInline').classList.toggle('rec', isExperiment);
 }
 
-async function runSteps(steps, conditionsByName, exp) {
+async function runSteps(steps, conditionsByName, exp, isExperiment) {
     // A pending console auto-stop firing mid-run would kill the sequence.
     if (Studio.clearConsoleAutoStop) Studio.clearConsoleAutoStop();
     const ftNames = fictracPluginNames(exp);
-    // FicTrac auto-connect (ported from the standalone designer — it got lost
-    // in the embed): when the experiment declares a fictrac plugin, connect
-    // the bridge BEFORE the run so fictrac.connect/startClosedLoop commands
-    // and the default-on JSONL logging actually do something. The runner's
-    // fictracConnect op calls bridge.connect() with NO url, so the url must be
-    // primed here (console field, default ws://localhost:8765); port/gain come
-    // from the protocol's plugin config.
+    // The bridge is the UNIVERSAL run logger (course pipeline): every sequence
+    // run — with or without a fictrac plugin — connects it and enables JSONL
+    // logging, so no experiment is silently untracked. Recorded runs are
+    // additionally GATED on the bridge (canRunExperiment.bridgeConnected);
+    // test runs stay best-effort. A declared fictrac plugin still contributes
+    // its port/gain config (closed-loop Mode 3). The runner's fictracConnect
+    // op calls bridge.connect() with NO url, so the url is primed here
+    // (console field, default ws://localhost:8765).
     const bridge = Studio.session && Studio.session.bridge;
-    if (ftNames.length && bridge) {
-        const plug = (exp.plugins || []).find((p) => p && ftNames.includes(p.name));
-        const pcfg = (plug && plug.config) || {};
-        const cfg = {};
-        if (Number.isFinite(Number(pcfg.fictrac_port))) cfg.fictrac_port = Number(pcfg.fictrac_port);
-        if (Number.isFinite(Number(pcfg.gain))) cfg.gain = Number(pcfg.gain);
-        if (Object.keys(cfg).length) bridge.setConfig(cfg);
-        bridge.setLogging(true); // default-on: no experiment untracked
+    if (bridge) {
+        if (ftNames.length) {
+            const plug = (exp.plugins || []).find((p) => p && ftNames.includes(p.name));
+            const pcfg = (plug && plug.config) || {};
+            const cfg = {};
+            if (Number.isFinite(Number(pcfg.fictrac_port))) cfg.fictrac_port = Number(pcfg.fictrac_port);
+            if (Number.isFinite(Number(pcfg.gain))) cfg.gain = Number(pcfg.gain);
+            if (Object.keys(cfg).length) bridge.setConfig(cfg);
+        }
+        bridge.setLogging(true); // universal default-on: no experiment untracked
         if ($('cFtLog')) $('cFtLog').checked = true; // keep the console toggle honest
         const ftUrl = ((($('cFtUrl') || {}).value) || 'ws://localhost:8765').trim();
         if (!bridge.connected) {
@@ -4929,9 +5187,10 @@ async function runSteps(steps, conditionsByName, exp) {
             }
         }
         const ftMsg = bridge.connected
-            ? 'fictrac bridge connected (' + ftUrl + ') · logging to JSONL'
-            : 'fictrac bridge NOT connected (' + ftUrl +
-              ') — closed-loop + JSONL logging INACTIVE. Start it (`pixi run bridge`) and re-run.';
+            ? 'bridge connected (' + ftUrl + ') · run logging to JSONL' + (ftNames.length ? ' · fictrac closed-loop armed' : '')
+            : 'bridge NOT connected (' + ftUrl + ') — ' +
+              (ftNames.length ? 'closed-loop + ' : '') +
+              'JSONL run logging INACTIVE. Start it (`pixi run bridge`) and re-run.';
         Studio.rawLog((bridge.connected ? '' : '⚠ ') + ftMsg, bridge.connected ? 'info' : 'err');
         // Also into the RECORDED transcript — a saved runlog.txt must be
         // self-documenting about whether the bridge was live (bench finding:
@@ -4941,6 +5200,14 @@ async function runSteps(steps, conditionsByName, exp) {
                 level: bridge.connected ? 'INFO' : 'WARN',
                 message: ftMsg
             });
+        }
+        // Metadata injection: one run_metadata JSONL line near the top of the
+        // bridge log (setLogging(true) above rotated a fresh file server-side;
+        // messages ride the same socket FIFO, so this lands right after the
+        // logging_started marker). The committed artifact is self-describing.
+        if (isExperiment && bridge.connected && Studio.activeRunLog) {
+            bridge.log(Object.assign({ event: 'run_metadata', rig_id: Studio.rigId || null },
+                Studio.activeRunLog.meta));
         }
     }
     try {
@@ -4993,13 +5260,18 @@ $('fmNew').addEventListener('click', () => {
     Studio.setMode('edit');
     Studio.editor.newProtocol(); // designer New: dirty-confirm + blank skeleton
 });
-// ---- Save (local file, or GitHub PR when signed in + checked) ----
+// ---- Save (local file, GitHub PR, or course-repo direct commit) ----
 const GH_OWNER = 'reiserlab';
 const GH_REPO = 'webDisplayTools';
 const GH = window.StudioGitHub;
 
 function ghToken() {
-    return sessionStorage.getItem('studio_gh_pat') || localStorage.getItem('studio_gh_pat') || null;
+    return Studio.ghToken(); // single source (classic shell) — see courseSettings
+}
+// The save TARGET repo: the File ▾ setting when present, else the site repo.
+function ghTargetRepo() {
+    const cs = Studio.courseSettings();
+    return cs.repo || { owner: GH_OWNER, name: GH_REPO, full: GH_OWNER + '/' + GH_REPO };
 }
 function currentSaveText() {
     const doc = Studio.currentDoc;
@@ -5047,6 +5319,7 @@ async function saveViaPR() {
     const token = ghToken();
     if (!token) { Studio.showBanner('Sign in to GitHub first.'); return; }
     if (!ensureSaveFilename(doc)) return;
+    const tgt = ghTargetRepo();
     const base = (doc.filename || 'protocol.yaml').replace(/\.ya?ml$/i, '');
     const path = 'protocols/' + GH.slug(base) + '.yaml';
     const runId = window.StudioMeta.makeRunId();
@@ -5055,31 +5328,32 @@ async function saveViaPR() {
     // sha over the EXACT uploaded text — never a possibly-stale doc.sha256
     const textSha = await sha256Hex(text);
     doc.sha256 = textSha;
-    Studio.rawLog('GitHub: opening PR for ' + path + ' on ' + branch + '…', 'info');
+    Studio.rawLog('GitHub: opening PR for ' + path + ' on ' + tgt.full + ' ' + branch + '…', 'info');
     try {
-        const repo = await GH.run(fetch, GH.reqGetRepo(GH_OWNER, GH_REPO, token));
+        const repo = await GH.run(fetch, GH.reqGetRepo(tgt.owner, tgt.name, token));
         if (!repo.ok) throw new Error('repo read failed (' + repo.status + (repo.status === 401 ? ' — token invalid' : '') + ')');
         const baseBranch = repo.data.default_branch;
-        const ref = await GH.run(fetch, GH.reqGetRef(GH_OWNER, GH_REPO, baseBranch, token));
+        const ref = await GH.run(fetch, GH.reqGetRef(tgt.owner, tgt.name, baseBranch, token));
         if (!ref.ok) throw new Error('base ref read failed');
         const baseSha = ref.data.object.sha;
-        const cr = await GH.run(fetch, GH.reqCreateRef(GH_OWNER, GH_REPO, branch, baseSha, token));
+        const cr = await GH.run(fetch, GH.reqCreateRef(tgt.owner, tgt.name, branch, baseSha, token));
         if (!cr.ok && cr.status !== 422) throw new Error('branch create failed (' + cr.status + ')');
         // create-vs-update: look for an existing blob on the new branch
         let existingSha;
-        const cur = await GH.run(fetch, GH.reqGetContents(GH_OWNER, GH_REPO, path, branch, token));
+        const cur = await GH.run(fetch, GH.reqGetContents(tgt.owner, tgt.name, path, branch, token));
         if (cur.ok && cur.data && cur.data.sha) existingSha = cur.data.sha;
-        const put = await GH.run(fetch, GH.reqPutContents(GH_OWNER, GH_REPO, path, {
+        const put = await GH.run(fetch, GH.reqPutContents(tgt.owner, tgt.name, path, {
             message: 'Add/update protocol ' + base + ' via Arena Studio', contentText: text, branch, sha: existingSha
         }, token));
         if (!put.ok) throw new Error('file write failed (' + put.status + ')');
-        const pr = await GH.run(fetch, GH.reqCreatePull(GH_OWNER, GH_REPO, {
+        const pr = await GH.run(fetch, GH.reqCreatePull(tgt.owner, tgt.name, {
             title: 'Protocol: ' + base, head: branch, base: baseBranch,
             body: 'Committed from Arena Studio.\n\n- file: `' + path + '`\n- run_id: `' + runId + '`\n- sha256: `' + textSha + '`'
         }, token));
         if (!pr.ok) throw new Error('PR open failed (' + pr.status + ')');
         Studio.rawLog('✓ PR opened: ' + pr.data.html_url, 'info');
         Studio.showBanner('PR opened — ' + pr.data.html_url);
+        doc.repoRef = null; // PR provenance is the registry's business, not ?repo=
         doc.baseSource = 'committed';
         if (Studio.editor) Studio.editor.markSaved(doc.filename);
         else { doc.source = 'committed'; document.body.classList.remove('unsaved'); Studio.updateRunGate(); }
@@ -5091,18 +5365,71 @@ async function saveViaPR() {
     }
 }
 
+// Course-repo direct commit (CSHL write mode): protocols/<bench-id>/<name>.yaml
+// straight onto the default branch — no branch, no PR. Safe because bench-id
+// namespacing means no two rigs ever write the same file; blocked with a
+// clear notice when the bench id is unset (never a silently-colliding name).
+async function saveViaDirectCommit() {
+    const doc = Studio.currentDoc;
+    const token = ghToken();
+    const cs = Studio.courseSettings();
+    if (!token) { Studio.showBanner('Sign in to GitHub first.'); return; }
+    if (!cs.repo) { Studio.showBanner('Set the target repo (owner/name) in File ▾ first.'); return; }
+    if (!cs.benchId) {
+        Studio.showBanner('Course-repo save blocked: bench id not set — see instructor (File ▾ → Bench id).');
+        return;
+    }
+    if (!ensureSaveFilename(doc)) return;
+    const base = (doc.filename || 'protocol.yaml').replace(/\.ya?ml$/i, '');
+    const path = 'protocols/' + cs.benchId + '/' + GH.slug(base) + '.yaml';
+    const text = currentSaveText();
+    const textSha = await sha256Hex(text);
+    doc.sha256 = textSha;
+    Studio.rawLog('GitHub: direct-committing ' + path + ' to ' + cs.repo.full + '…', 'info');
+    try {
+        const res = await GH.directCommit(fetch, {
+            owner: cs.repo.owner,
+            repo: cs.repo.name,
+            token: token,
+            path: path,
+            message: 'protocol: ' + GH.slug(base) + ' from ' + cs.benchId + ' via Arena Studio',
+            contentText: text
+        });
+        if (!res.ok) {
+            throw new Error((res.error || 'HTTP ' + res.status) + (res.status === 401 ? ' — token invalid' : ''));
+        }
+        Studio.rawLog('✓ committed ' + path + ' → ' + cs.repo.full + ' (' + res.branch + (res.updated ? ', updated' : ', new') + ')', 'info');
+        Studio.showBanner('✓ Saved to ' + cs.repo.full + ' — ' + path);
+        doc.repoRef = { repo: cs.repo.full, path: path }; // course provenance → ?repo= link
+        doc.protocolKey = null; // a repo-saved doc is no longer the registry copy
+        doc.baseSource = 'committed';
+        if (Studio.editor) Studio.editor.markSaved(doc.filename);
+        else { doc.source = 'committed'; document.body.classList.remove('unsaved'); Studio.updateRunGate(); }
+        Studio.updateUrl({ push: false });
+    } catch (e) {
+        if (String(e.message).includes('token invalid')) { sessionStorage.removeItem('studio_gh_pat'); localStorage.removeItem('studio_gh_pat'); document.body.classList.remove('ghauth'); }
+        Studio.rawLog('course-repo save failed: ' + e.message + ' — saving locally instead.', 'err');
+        Studio.showBanner('Course-repo save failed (' + e.message + '); saved a local file instead.');
+        saveLocal();
+    }
+}
+
 // The ONE save path — File ▾ → Save AND the Edit toolbar's 💾 Save. Writes a
-// local .yaml (or opens a GitHub PR when signed in + box checked) and marks
-// the doc saved (markSaved → dirty clears → the recorded-run gate opens).
-// Distinct from the Edit toolbar's "Export YAML", which downloads a
-// REGENERATED roundtrip copy and marks nothing saved.
+// local .yaml, opens a GitHub PR, or direct-commits to the course repo
+// (signed in + the matching File ▾ box checked) and marks the doc saved
+// (markSaved → dirty clears → the recorded-run gate opens). Distinct from the
+// Edit toolbar's "Export YAML", which downloads a REGENERATED roundtrip copy
+// and marks nothing saved.
 Studio.saveCurrent = function () {
     if (!Studio.currentDoc) { Studio.showBanner('Open a protocol first.'); return; }
     if (Studio.editor && Studio.editor.hasUnappliedYaml()) {
         Studio.showBanner('The YAML tab has unapplied edits — Apply or Revert them first.');
         return;
     }
-    if (document.body.classList.contains('ghauth') && $('ghPR').checked) saveViaPR();
+    const auth = document.body.classList.contains('ghauth');
+    const cs = Studio.courseSettings();
+    if (auth && cs.direct && cs.repo) saveViaDirectCommit();
+    else if (auth && $('ghPR').checked) saveViaPR();
     else saveLocal();
 };
 $('fmSave').addEventListener('click', () => {
@@ -5113,9 +5440,12 @@ $('fmSave').addEventListener('click', () => {
 $('ghSignInBtn').addEventListener('click', async (e) => {
     e.stopPropagation();
     const pat = prompt(
-        'Paste a GitHub fine-grained personal access token for ' + GH_OWNER + '/' + GH_REPO +
+        'Paste a GitHub fine-grained personal access token for ' + ghTargetRepo().full +
         '\n(Contents: read/write + Pull requests: read/write).\n\n' +
-        'Stored in sessionStorage (cleared when this tab closes). Do NOT use "remember" on a shared machine.'
+        'Stored in sessionStorage (cleared when this tab closes). The follow-up ' +
+        '"remember" option keeps it in localStorage — REQUIRED for course bench ' +
+        'setup (a sessionStorage-only token evaporates when the tab closes); ' +
+        'do NOT use it on a personal shared machine.'
     );
     if (!pat) return;
     try {
@@ -5123,34 +5453,289 @@ $('ghSignInBtn').addEventListener('click', async (e) => {
         if (!res.ok) throw new Error('token rejected (' + res.status + ')');
         const user = await res.json();
         sessionStorage.setItem('studio_gh_pat', pat.trim());
-        if (confirm('Remember this token on THIS browser (localStorage)? Only on a private machine.')) {
+        if (confirm('Remember this token on THIS browser (localStorage)?\nYES for a course bench (survives tab close); NO on a personal shared machine.')) {
             localStorage.setItem('studio_gh_pat', pat.trim());
         }
         document.body.classList.add('ghauth');
         $('ghWho').textContent = '✓ @' + (user.login || 'user');
-        $('ghPR').checked = true;
+        if (!($('ghDirect') && $('ghDirect').checked)) $('ghPR').checked = true;
         updateSaveLabel();
     } catch (err) {
         Studio.showBanner('GitHub sign-in failed: ' + err.message);
     }
 });
 function updateSaveLabel() {
-    const pr = document.body.classList.contains('ghauth') && $('ghPR').checked;
-    $('ghDest').textContent = pr ? '→ commits to a branch + opens a Pull Request' : '→ writes a local .yaml file (sign in to GitHub to open a PR instead)';
-    $('fmSave').textContent = pr ? 'Save → Pull Request' : 'Save → local file';
+    const auth = document.body.classList.contains('ghauth');
+    const cs = Studio.courseSettings();
+    const direct = auth && cs.direct && cs.repo;
+    const pr = !direct && auth && $('ghPR').checked;
+    if (direct) {
+        $('ghDest').textContent = '→ commits straight to ' + cs.repo.full + ' /protocols/' +
+            (cs.benchId || '⚠ set bench id') + '/ (default branch, no PR)';
+        $('fmSave').textContent = 'Save → course repo';
+    } else if (pr) {
+        $('ghDest').textContent = '→ commits to a branch + opens a Pull Request on ' + ghTargetRepo().full;
+        $('fmSave').textContent = 'Save → Pull Request';
+    } else {
+        $('ghDest').textContent = '→ writes a local .yaml file (sign in to GitHub to open a PR instead)';
+        $('fmSave').textContent = 'Save → local file';
+    }
 }
-$('ghPR').addEventListener('change', updateSaveLabel);
+// PR vs direct-commit are mutually exclusive write modes — checking one
+// clears the other (the last checked box wins).
+$('ghPR').addEventListener('change', () => {
+    if ($('ghPR').checked && $('ghDirect') && $('ghDirect').checked) {
+        $('ghDirect').checked = false;
+        localStorage.setItem('studio_gh_direct', '0');
+    }
+    updateSaveLabel();
+});
+// ---- course-repo settings (repo / bench id / direct-commit) — localStorage ----
+function wireCourseSettings() {
+    const repoIn = $('ghRepoInput');
+    const direct = $('ghDirect');
+    const bench = $('ghBenchId');
+    if (!repoIn || !direct || !bench) return;
+    repoIn.value = localStorage.getItem('studio_gh_repo') || '';
+    direct.checked = localStorage.getItem('studio_gh_direct') === '1';
+    bench.value = localStorage.getItem('studio_bench_id') || '';
+    repoIn.addEventListener('change', () => {
+        const v = repoIn.value.trim();
+        if (v && !(window.StudioUrlState && window.StudioUrlState.isSafeRepo(v))) {
+            Studio.showBanner('Repo must be owner/name — e.g. reiserlab/cshl-2026-course-data.');
+            repoIn.value = localStorage.getItem('studio_gh_repo') || '';
+            return;
+        }
+        if (v) localStorage.setItem('studio_gh_repo', v);
+        else localStorage.removeItem('studio_gh_repo');
+        updateSaveLabel();
+    });
+    direct.addEventListener('change', () => {
+        localStorage.setItem('studio_gh_direct', direct.checked ? '1' : '0');
+        if (direct.checked && $('ghPR').checked) $('ghPR').checked = false;
+        updateSaveLabel();
+    });
+    bench.addEventListener('change', () => {
+        const v = bench.value.trim();
+        if (v) localStorage.setItem('studio_bench_id', v);
+        else localStorage.removeItem('studio_bench_id');
+        updateSaveLabel();
+    });
+    // Keep the menu open while typing in its inputs (the document-level
+    // click-away closer must not eat clicks into the fields).
+    [repoIn, bench].forEach((el) => el.addEventListener('click', (e) => e.stopPropagation()));
+}
+wireCourseSettings();
 // Restore an existing session token on load.
 if (ghToken()) {
     fetch('https://api.github.com/user', { headers: GH.headers(ghToken()) })
         .then((r) => (r.ok ? r.json() : null))
-        .then((u) => { if (u) { document.body.classList.add('ghauth'); $('ghWho').textContent = '✓ @' + (u.login || 'user'); $('ghPR').checked = true; updateSaveLabel(); } })
+        .then((u) => {
+            if (u) {
+                document.body.classList.add('ghauth');
+                $('ghWho').textContent = '✓ @' + (u.login || 'user');
+                if (!($('ghDirect') && $('ghDirect').checked)) $('ghPR').checked = true;
+                updateSaveLabel();
+            }
+        })
         .catch(() => {});
 }
+updateSaveLabel(); // reflect stored course settings even before sign-in
 
 // (The interim raw-YAML editor became the Edit view's YAML tab — see the
 // embedded designer IIFE below.)
 
+// ---- pickers: Open from library… / Open from course repo… ------------------
+// One shared modal; items = [{label, sub, value}]. Both pickers end in
+// Studio.loadProtocol with the provenance opts that drive the shareable URL
+// (registry key vs course-repo path).
+function showPicker(title, items, onPick) {
+    const ov = $('pickerOverlay');
+    $('pickerTitle').textContent = title;
+    const list = $('pickerList');
+    list.innerHTML = '';
+    if (!items.length) {
+        list.innerHTML = '<div class="dim" style="padding:8px">Nothing found.</div>';
+    }
+    items.forEach((it) => {
+        const b = document.createElement('button');
+        b.className = 'picker-item';
+        b.title = it.tooltip || 'Open ' + it.label;
+        b.innerHTML = '<b>' + escapeHtml(it.label) + '</b>' +
+            (it.sub ? '<span class="sub">' + escapeHtml(it.sub) + '</span>' : '');
+        b.addEventListener('click', () => {
+            hidePicker();
+            onPick(it.value);
+        });
+        list.appendChild(b);
+    });
+    ov.style.display = 'flex';
+}
+function hidePicker() {
+    $('pickerOverlay').style.display = 'none';
+}
+$('pickerCancel').addEventListener('click', hidePicker);
+$('pickerOverlay').addEventListener('click', (e) => {
+    if (e.target === $('pickerOverlay')) hidePicker();
+});
+
+// v0 library picker (proposal doc): the site's own committed registry.
+$('fmOpenLibrary').addEventListener('click', async () => {
+    $('fileMenu').classList.remove('open');
+    let idx = [];
+    try {
+        const res = await fetch('./protocols/index.json', { cache: 'no-store' });
+        if (res.ok) idx = (await res.json()).protocols || [];
+    } catch (_) { /* offline */ }
+    showPicker(
+        'Open from library (site registry)',
+        idx.map((p) => ({ label: p.label || p.key, sub: p.key, tooltip: p.description || '', value: p })),
+        async (entry) => {
+            if (!window.StudioUrlState.isSafePath(entry.path)) {
+                Studio.showBanner('Registry entry has an unsafe path — not loading it.');
+                return;
+            }
+            try {
+                const res = await fetch(entry.path, { cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                await Studio.loadProtocol(await res.text(), entry.path.split('/').pop(), 'committed', { key: entry.key });
+            } catch (e) {
+                Studio.showBanner('Protocol fetch failed: ' + (e && e.message ? e.message : e));
+            }
+        }
+    );
+});
+
+// Course-repo picker: THIS bench's saves + promoted shared protocols. The
+// GitHub Contents API returns a JSON ARRAY for a directory path — this is the
+// array-aware consumer (every other reqGetContents consumer reads one file).
+$('fmOpenCourse').addEventListener('click', async () => {
+    $('fileMenu').classList.remove('open');
+    const cs = Studio.courseSettings();
+    const token = ghToken();
+    if (!cs.repo) { Studio.showBanner('Set the course repo (owner/name) in File ▾ first.'); return; }
+    if (!token) { Studio.showBanner('Sign in to GitHub first.'); return; }
+    const dirs = [];
+    if (cs.benchId) dirs.push('protocols/' + cs.benchId);
+    dirs.push('protocols/shared');
+    const items = [];
+    for (const dir of dirs) {
+        try {
+            const res = await GH.run(fetch, GH.reqGetContents(cs.repo.owner, cs.repo.name, dir, null, token));
+            if (res.ok && Array.isArray(res.data)) {
+                res.data
+                    .filter((f) => f && f.type === 'file' && /\.ya?ml$/i.test(f.name))
+                    .forEach((f) => items.push({ label: f.name, sub: dir + '/', value: f.path }));
+            }
+        } catch (_) { /* 404 before the first save is normal */ }
+    }
+    showPicker('Open from course repo (' + cs.repo.full + ')', items, (path) =>
+        openFromCourseRepo(cs.repo, path, token)
+    );
+});
+
+async function openFromCourseRepo(repo, path, token) {
+    try {
+        const res = await GH.runBytes(fetch, GH.reqGetContentsRaw(repo.owner, repo.name, path, null, token));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = new TextDecoder().decode(res.bytes);
+        const ok = await Studio.loadProtocol(text, path.split('/').pop(), 'committed', {
+            repoRef: { repo: repo.full, path: path }
+        });
+        if (ok) registerRepoPatternPreviews(repo, path, token); // async, best-effort
+    } catch (e) {
+        Studio.showBanner('Course-repo open failed: ' + (e && e.message ? e.message : e));
+    }
+}
+
+// Repo-hosted .pat previews: register byte sources for the protocol's
+// colocated _patterns/ dir so thumbnails render for patterns that live only
+// in the course repo (not on this rig's SD / built-in manifest). RAW media
+// type deliberately — the JSON Contents API omits `content` for files >1MB
+// and .pat files can exceed that.
+async function registerRepoPatternPreviews(repo, protoPath, token) {
+    const dir = protoPath.replace(/\.ya?ml$/i, '') + '_patterns';
+    try {
+        const res = await GH.run(fetch, GH.reqGetContents(repo.owner, repo.name, dir, null, token));
+        if (!res.ok || !Array.isArray(res.data)) return;
+        let n = 0;
+        res.data
+            .filter((f) => f && f.type === 'file' && /\.pat$/i.test(f.name))
+            .forEach((f) => {
+                n++;
+                webPreviewBySdName.set(f.name, async () => {
+                    const r = await GH.runBytes(fetch, GH.reqGetContentsRaw(repo.owner, repo.name, f.path, null, token));
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.bytes.buffer;
+                });
+            });
+        if (n) Studio.rawLog('course repo: ' + n + ' pattern preview(s) wired from ' + dir + '/', 'info');
+    } catch (_) { /* no colocated patterns — fine */ }
+}
+
+// ---- promote-to-shared (course pipeline) ------------------------------------
+// Copies protocols/<bench-id>/<name>.yaml (+ its _patterns/*.pat) to
+// protocols/shared/ — direct commit, no PR (no mid-course review queue). The
+// hash-compare guard stands in for content-addressing: promoting must never
+// silently clobber a DIFFERENT same-named shared file (two students, same
+// protocol name — the likelier collision).
+async function putSharedGuarded(repo, token, path, bytes, message) {
+    const cur = await GH.runBytes(fetch, GH.reqGetContentsRaw(repo.owner, repo.name, path, null, token));
+    if (cur.ok && cur.bytes && GH.bytesEqual(cur.bytes, bytes)) {
+        return { ok: true, skipped: true }; // identical — idempotent re-promote
+    }
+    if (cur.ok && cur.bytes) {
+        throw new Error('a DIFFERENT file already exists at ' + path + ' — rename your protocol and promote again');
+    }
+    const res = await GH.directCommit(fetch, {
+        owner: repo.owner, repo: repo.name, token: token, path: path,
+        message: message, contentBytes: bytes
+    });
+    if (!res.ok) throw new Error(res.error || 'HTTP ' + res.status);
+    return res;
+}
+$('fmPromote').addEventListener('click', async () => {
+    $('fileMenu').classList.remove('open');
+    const cs = Studio.courseSettings();
+    const token = ghToken();
+    const doc = Studio.currentDoc;
+    if (!cs.repo || !token) { Studio.showBanner('Course repo + GitHub sign-in required to promote.'); return; }
+    if (!cs.benchId) { Studio.showBanner('Promote blocked: bench id not set — see instructor.'); return; }
+    if (!doc || Studio.isUntitledDoc(doc)) { Studio.showBanner('Open (and save) a protocol first.'); return; }
+    const base = GH.slug((doc.filename || 'protocol.yaml').replace(/\.ya?ml$/i, ''));
+    const srcYaml = 'protocols/' + cs.benchId + '/' + base + '.yaml';
+    const srcPatDir = 'protocols/' + cs.benchId + '/' + base + '_patterns';
+    Studio.rawLog('promote: ' + srcYaml + ' → protocols/shared/ …', 'info');
+    try {
+        const yaml = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, srcYaml, null, token));
+        if (!yaml.ok) {
+            throw new Error(yaml.status === 404
+                ? srcYaml + ' not found — Save to the course repo first, then promote'
+                : 'read failed (HTTP ' + yaml.status + ')');
+        }
+        // Guard + copy the YAML, then every colocated pattern.
+        const done = [];
+        const r0 = await putSharedGuarded(cs.repo, token, 'protocols/shared/' + base + '.yaml', yaml.bytes,
+            'promote: ' + base + ' from ' + cs.benchId);
+        done.push(base + '.yaml' + (r0.skipped ? ' (already shared)' : ''));
+        const list = await GH.run(fetch, GH.reqGetContents(cs.repo.owner, cs.repo.name, srcPatDir, null, token));
+        if (list.ok && Array.isArray(list.data)) {
+            for (const f of list.data.filter((x) => x && x.type === 'file' && /\.pat$/i.test(x.name))) {
+                const pat = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, f.path, null, token));
+                if (!pat.ok) throw new Error('pattern read failed: ' + f.path + ' (HTTP ' + pat.status + ')');
+                const rp = await putSharedGuarded(cs.repo, token,
+                    'protocols/shared/' + base + '_patterns/' + f.name, pat.bytes,
+                    'promote: ' + base + ' pattern ' + f.name + ' from ' + cs.benchId);
+                done.push(f.name + (rp.skipped ? ' (already shared)' : ''));
+            }
+        }
+        Studio.rawLog('✓ promoted to protocols/shared/: ' + done.join(', '), 'info');
+        Studio.showBanner('✓ Promoted to shared — ' + done.length + ' file(s): ' + done.join(', '));
+    } catch (e) {
+        Studio.rawLog('promote failed: ' + (e && e.message ? e.message : e), 'err');
+        Studio.showBanner('Promote blocked: ' + (e && e.message ? e.message : e));
+    }
+});
 
 // ---- URL state (#107) on load ----
 async function initFromUrl() {
@@ -5190,7 +5775,21 @@ async function initFromUrl() {
         warnings
             .filter((w) => !(ownMode && /opened in Run/.test(w)))
             .forEach((w) => Studio.rawLog(w, 'warn'));
-        if (state.p) {
+        if (state.repo && state.p) {
+            // Course-repo link: `p` is a repo-relative protocols/ PATH here
+            // (decode validated both). Access rides whatever PAT this browser
+            // holds — a signed-out bench gets a pointer, not the file.
+            const token = ghToken();
+            const rm = /^([^/]+)\/(.+)$/.exec(state.repo);
+            if (!token) {
+                // The finally-block canonicalizes (scrubs) the URL, so "reload"
+                // would NOT retry — point at the picker, which relists the repo.
+                Studio.showBanner('This link opens ' + state.p + ' from ' + state.repo +
+                    ' — sign in (File ▾ → GitHub), then File ▾ → "Open from course repo…" to open it.');
+            } else if (rm) {
+                await openFromCourseRepo({ owner: rm[1], name: rm[2], full: state.repo }, state.p, token);
+            }
+        } else if (state.p) {
             const entry = protoIndex.find((p) => p.key === state.p);
             if (entry && window.StudioUrlState.isSafePath(entry.path)) {
                 try {
