@@ -3771,7 +3771,7 @@ Studio.applyRigIo = async function (opts) {
                 clog('rig io: Digital IO ' + ch + ' default failed: ' + (e.message || e), 'err');
             }
         } else if (r !== 'off') {
-            clog('rig io: Digital IO ' + d.port + ' role "' + r + '" is firmware-gated — skipped', 'warn');
+            clog('rig io: Digital IO ' + d.port + ' role "' + r + '" not applied — fw io_ext shipped but bench-pending; web apply-path (0xAC) lands after validation', 'warn');
         }
     }
     const aoRole = roleOf('cIoRoleAo', io.ao.role);
@@ -3786,10 +3786,10 @@ Studio.applyRigIo = async function (opts) {
             clog('rig io: AO default failed: ' + (e.message || e), 'err');
         }
     } else if (aoRole === 'frame_number') {
-        clog('rig io: AO role "frame_number" is firmware-gated — skipped', 'warn');
+        clog('rig io: AO role "frame_number" not applied — fw io_ext shipped (0xA3) but bench-pending; web apply-path lands after validation', 'warn');
     }
     if (roleOf('cIoRoleAi', io.ai.role) === 'in') {
-        clog('rig io: AI "in" (closed-loop analog input) is untested/firmware-gated — nothing applied', 'warn');
+        clog('rig io: AI "in" not applied — Mode-4 front-end calibration TBD (bench)', 'warn');
     }
     if (applied.length) {
         clog('rig io defaults applied (' + (Studio.currentRig && Studio.currentRig.name) + '): ' + applied.join(' · '), 'info');

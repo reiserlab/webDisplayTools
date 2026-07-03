@@ -33,20 +33,24 @@ plugins: {}
 
 # Controller I/O roles + power-on defaults (#135). Applied by the Arena Studio
 # at connect (and logged to the run log); the Console's Controller ▾ menu can
-# override roles per session. Roles the firmware can't do yet (in_trigger,
-# out_debug_framescan, ao frame_number, ai in) are schema-valid but greyed out
-# in the UI and never applied.
+# override roles per session. Bench-pending roles (in_trigger,
+# out_debug_framescan, ao frame_number, ai in — fw io_ext shipped, validation
+# + web apply-path pending) are greyed in the UI and not applied yet.
 io:
   dio: # ports 1 and 2 = the board BNCs silkscreened "Digital IO 1 (5V)" / "Digital IO 2 (5V)"
     #    (port number == silkscreen number == SET_DIGITAL_OUT 0xAA channel)
+    # Course defaults (2026-07-03): IO1 carries the SPI frame-transmission
+    # debug envelope (scope-friendly stimulus timing); IO2 left off (firmware
+    # boots it as the EINT trigger route — declare in_trigger when a trigger
+    # source is actually cabled).
     - port: 1
-      role: off # off | in_trigger | out_programmable | out_debug_framescan
+      role: out_debug_framescan # off | in_trigger | out_programmable | out_debug_framescan
       default: 0 # 0|1 — outputs only, driven at connect (SET_DIGITAL_OUT 0xAA)
     - port: 2
       role: off
       default: 0
   ai:
-    role: off # off | in (closed-loop analog input — untested, fw-gated)
+    role: off # off | in (bench-pending: Mode-4 front-end calibration TBD)
   ao:
-    role: off # off | programmable (SET_AO_VOLTAGE 0xA0) | frame_number (fw-gated)
-    # default: 5.0            # volts at connect — some hardware expects 5 V idle
+    role: programmable # off | programmable (0xA0) | frame_number (bench-pending)
+    default: 5.0 # volts at connect — this hardware idles at 5 V

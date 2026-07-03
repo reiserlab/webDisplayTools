@@ -34,17 +34,20 @@ plugins:
 # Note: AO (analog-out) is a controller-native command, not a rig plugin.
 
 # Controller I/O roles + power-on defaults (#135) — see cshl_g6_2x10.yaml for
-# the full schema comments. All off = nothing driven at connect.
+# the full schema comments. Course defaults (2026-07-03): "Digital IO 1 (5V)"
+# carries the SPI frame-transmission debug envelope (scope-friendly stimulus
+# timing; no experimental plans for these BNCs), AO idles at 5 V.
 io:
   dio: # ports 1/2 = board BNCs "Digital IO 1 (5V)" / "Digital IO 2 (5V)"
     - port: 1
-      role: off # off | in_trigger | out_programmable | out_debug_framescan
+      role: out_debug_framescan # HIGH during each frame's SPI transmission (fw io_ext; bench-pending)
       default: 0
     - port: 2
-      role: off
+      role: off # firmware boots this port as the EINT trigger route (in_trigger);
+      # declare in_trigger here when a trigger source is actually cabled
       default: 0
   ai:
-    role: off # off | in (fw-gated)
+    role: off # off | in (bench-pending: Mode-4 front-end calibration TBD)
   ao:
-    role: off # off | programmable | frame_number (fw-gated)
-    # default: 5.0            # volts at connect — some hardware expects 5 V idle
+    role: programmable # driven to `default` at connect (SET_AO_VOLTAGE 0xA0)
+    default: 5.0 # volts — this hardware idles at 5 V
