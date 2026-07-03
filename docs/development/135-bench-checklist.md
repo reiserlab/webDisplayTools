@@ -99,6 +99,12 @@ drifting grating).
 > deliberately NOT run — they DELETE_ALL_PATTERNS. The SD gained one file
 > (`conftest.pat`, the test pattern) — delete via Console if unwanted.
 > Remaining below = instrument/eyeball items only.
+>
+> **AD3-CONFIRMED same day (user, bench):** the Digital IO 1 framescan
+> envelope pulses, and Analog Out sits at 5.00 V (the rig-YAML idle default).
+> Still open: session-rig mismatch chip walkthrough (§B), reverse-playback
+> visual (§C2), power-cycle boot defaults (`01 AD` → `[02 xx 01 xx]`), and
+> trigger-input into Digital IO 2 (deferred with the AI input tests).
 
 The web apply-path isn't wired yet — drive these via Console → raw hex. Flash
 the `feat/dio-roles-ao-modes` build (it stacks on the MAC branch).
