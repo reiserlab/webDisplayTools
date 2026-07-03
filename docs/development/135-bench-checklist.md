@@ -1,5 +1,12 @@
 # #135 session rig + firmware MAC — bench-test checklist
 
+> **BENCH SIGN-OFF 2026-07-03 (user):** everything testable passed — automated
+> hardware suite (24/24 io_ext + 44 regression), AD3 checks (framescan
+> envelope, AO 5 V idle), reboot-restores-defaults, and the Studio-driven
+> items. Not tested: the greyed "bench-pending" role CONTROLS (they await the
+> web apply-path — the firmware beneath them passed via pytest/raw-hex), and
+> the deferred input-side items (Digital IO 2 trigger pulses, AI calibration).
+
 Session-1 gate (2026-07-03): everything below must pass on real hardware
 before #135 is declared done (per the bench-parity discipline in
 `arena-studio-parity.md`). Software-side verification (unit tests + headless
