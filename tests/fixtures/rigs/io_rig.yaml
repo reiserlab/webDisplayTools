@@ -1,0 +1,23 @@
+# Rig fixture for the #135 io: block — G6 controller I/O roles + power-on
+# defaults (parseRigIo, suite N12b). Mirrors cshl_g6_2x10.yaml plus a fully
+# populated io: block including a fw-gated role and a 5 V AO idle default.
+format_version: "1.0"
+name: "IO test rig"
+description: "Fixture: io: block coverage — roles, defaults, fw-gated entries"
+arena: "G6_2x10"
+controller:
+  host: "0.0.0.0"
+  port: 62222
+plugins: {}
+io:
+  dio:
+    - port: 0
+      role: out_programmable
+      default: 1
+    - port: 1
+      role: out_debug_framescan   # fw-gated: not implemented in firmware yet
+  ai:
+    role: in                      # fw-gated: closed-loop analog input, untested
+  ao:
+    role: programmable
+    default: 5.0                  # volts at connect — this hardware idles at 5 V

@@ -133,6 +133,61 @@ check(
 check('empty state', U.encodeApp({}), '');
 check('no arg', U.encodeApp(), '');
 
+// ── rig param (#135: session/bench rig) ──────────────────────────────────────
+console.log('=== rig param ===');
+const RIGS = ['cshl_g6_2x10', 'cshl_g6_2x8', 'cshl_g6_2x10_ball'];
+d = U.decode('?rig=cshl_g6_2x10', { allowedKeys: ALLOWED, allowedRigs: RIGS });
+check('rig resolved', d.state.rig, 'cshl_g6_2x10');
+check('rig alone has no mode implication', d.state.mode, 'run');
+d = U.decode('?rig=cshl_g6_2x10&mode=console', { allowedRigs: RIGS });
+check('rig + console coexist', d.state.mode, 'console');
+check('rig kept alongside console', d.state.rig, 'cshl_g6_2x10');
+d = U.decode('?p=looming_v3&rig=cshl_g6_2x8', { allowedKeys: ALLOWED, allowedRigs: RIGS });
+check('rig + shared p coexist', d.state.rig, 'cshl_g6_2x8');
+check('shared p still forces Run with rig present', d.state.mode, 'run');
+d = U.decode('?rig=not_a_rig', { allowedRigs: RIGS });
+check('unknown rig dropped', d.state.rig, undefined);
+checkBool(
+    'unknown rig warns',
+    d.warnings.some((w) => /not a known rig/.test(w)),
+    d.warnings.join('|')
+);
+d = U.decode('?rig=' + encodeURIComponent('../evil'), { allowedRigs: RIGS });
+check('traversal rig rejected', d.state.rig, undefined);
+d = U.decode('?rig=anything_safe'); // no allowedRigs → shape-only validation (same as p)
+check('rig accepted shape-only without allowlist', d.state.rig, 'anything_safe');
+// encode: rig is bench identity — kept even for a local doc (unlike p/set).
+check(
+    'local doc keeps rig, omits p',
+    U.encode({ mode: 'run', p: 'x', rig: 'cshl_g6_2x10', source: 'local' }),
+    '?rig=cshl_g6_2x10'
+);
+// encodeApp: rigKey = explicit selection only (caller passes null for derived).
+check(
+    'explicit rig encoded',
+    U.encodeApp({ mode: 'run', protocolKey: 'looming_v3', rigKey: 'cshl_g6_2x10' }),
+    '?p=looming_v3&rig=cshl_g6_2x10'
+);
+check(
+    'derived rig (null rigKey) omitted',
+    U.encodeApp({ mode: 'run', protocolKey: 'looming_v3', rigKey: null }),
+    '?p=looming_v3'
+);
+check(
+    'rig-only bookmark',
+    U.encodeApp({ mode: 'run', protocolKey: null, rigKey: 'cshl_g6_2x8' }),
+    '?rig=cshl_g6_2x8'
+);
+// round-trip: rig survives encodeApp → decode.
+const rtRig = U.decode(
+    U.encodeApp({ mode: 'console', protocolKey: null, rigKey: 'cshl_g6_2x10' }),
+    {
+        allowedRigs: RIGS
+    }
+);
+check('round-trip rig', rtRig.state.rig, 'cshl_g6_2x10');
+check('round-trip rig mode', rtRig.state.mode, 'console');
+
 // ── navMode (popstate: literal mode, NO shared-p force) ──────────────────────
 console.log('=== navMode ===');
 check('empty search → run', U.navMode(''), 'run');

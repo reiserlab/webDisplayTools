@@ -77,7 +77,9 @@ const {
     LOG_PLUGIN,
     mapRigPluginToBuiltin,
     deriveRigPlugins,
-    diffRigVsProtocol
+    diffRigVsProtocol,
+    parseRigIo,
+    RIG_IO_ROLES
 } = require('../js/plugin-registry.js');
 
 // D4 — cross-document primitives (M1) + staging/commit pipeline (M2)
@@ -3740,6 +3742,80 @@ console.log('\n--- Suite N12: rig-aware plugin parse + mapping ---');
     ]);
     checkTrue('N12f: log excluded from unsupported', !d3.unsupported.includes('log'));
     check('N12f: all enabled rig plugins declared → none unused', d3.unused.length, 0);
+}
+
+// ─── Suite N12io: rig io: block — roles + power-on defaults (#135) ───────────
+console.log('\n--- Suite N12io: rig io: block (#135) ---');
+{
+    // (a) full fixture: both ports, fw-gated roles, 5 V AO idle.
+    const io = parseRigIo(parseRigYAMLText(readFixture('rigs/io_rig.yaml')));
+    check('N12io-a: port 0 role', io.dio[0].role, 'out_programmable');
+    check('N12io-a: port 0 default high', io.dio[0].default, 1);
+    check('N12io-a: port 1 fw-gated role kept', io.dio[1].role, 'out_debug_framescan');
+    check('N12io-a: port 1 default (unset) → 0', io.dio[1].default, 0);
+    check('N12io-a: ai role in', io.ai.role, 'in');
+    check('N12io-a: ao role programmable', io.ao.role, 'programmable');
+    check('N12io-a: ao default 5 V (volts, not mV)', io.ao.default, 5);
+    check('N12io-a: clean fixture has no warnings', io.warnings.length, 0);
+
+    // (b) graceful degradation — the never-throws contract.
+    const off = parseRigIo(null);
+    check('N12io-b: null rigData → port 0 off', off.dio[0].role, 'off');
+    check('N12io-b: null rigData → ao off', off.ao.role, 'off');
+    check('N12io-b: null rigData → ao default null', off.ao.default, null);
+    check('N12io-b: missing io: block → all off', parseRigIo({ arena: 'G6_2x10' }).ai.role, 'off');
+    check('N12io-b: io: not a mapping → all off', parseRigIo({ io: 'yes' }).dio[1].role, 'off');
+    // existing rig fixtures (no io: block) parse to all-off without warnings
+    const legacy = parseRigIo(parseRigYAMLText(readFixture('rigs/test_rig_1.yaml')));
+    check('N12io-b: legacy rig (no io:) → all off', legacy.dio[0].role, 'off');
+    check('N12io-b: legacy rig (no io:) → no warnings', legacy.warnings.length, 0);
+
+    // (c) malformed entries degrade to off WITH a warning.
+    const bad = parseRigIo({
+        io: {
+            dio: [{ port: 7, role: 'out_programmable' }, { port: 0, role: 'sideways' }, 'junk'],
+            ai: { role: 'telepathy' },
+            ao: { role: 'programmable', default: 'lots' }
+        }
+    });
+    check('N12io-c: out-of-range port ignored', bad.dio[1].role, 'off');
+    check('N12io-c: unknown dio role → off', bad.dio[0].role, 'off');
+    check('N12io-c: unknown ai role → off', bad.ai.role, 'off');
+    check('N12io-c: non-numeric ao default → null', bad.ao.default, null);
+    check('N12io-c: four warnings, one per fault', bad.warnings.length, 4);
+    checkTrue(
+        'N12io-c: warning names the bad role',
+        bad.warnings.some((w) => /sideways/.test(w)),
+        bad.warnings.join(' | ')
+    );
+
+    // (d) value clamping.
+    const clamp = parseRigIo({
+        io: {
+            dio: [{ port: 0, role: 'out_programmable', default: true }],
+            ao: { role: 'programmable', default: 9 }
+        }
+    });
+    check('N12io-d: boolean default → 1', clamp.dio[0].default, 1);
+    check('N12io-d: ao default clamped to 5 V', clamp.ao.default, 5);
+    checkTrue(
+        'N12io-d: clamp warns',
+        clamp.warnings.some((w) => /clamped/.test(w))
+    );
+
+    // (e) role vocabularies exported for the UI (fw-gated greying).
+    checkTrue('N12io-e: RIG_IO_ROLES.dio lists all four roles', RIG_IO_ROLES.dio.length === 4);
+    checkTrue(
+        'N12io-e: fw-gated roles are a subset of the role lists',
+        RIG_IO_ROLES.fwGated.dio.every((r) => RIG_IO_ROLES.dio.includes(r)) &&
+            RIG_IO_ROLES.fwGated.ao.every((r) => RIG_IO_ROLES.ao.includes(r)) &&
+            RIG_IO_ROLES.fwGated.ai.every((r) => RIG_IO_ROLES.ai.includes(r))
+    );
+    checkTrue(
+        'N12io-e: the apply-at-connect roles are NOT fw-gated',
+        !RIG_IO_ROLES.fwGated.dio.includes('out_programmable') &&
+            !RIG_IO_ROLES.fwGated.ao.includes('programmable')
+    );
 }
 
 // ─── Suite N13: D4 import binds canonical rig plugin names (#89) ─────────────

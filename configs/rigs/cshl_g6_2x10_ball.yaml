@@ -32,3 +32,19 @@ plugins:
     bridge_url: "ws://localhost:8765"
     fictrac_port: 60000
 # Note: AO (analog-out) is a controller-native command, not a rig plugin.
+
+# Controller I/O roles + power-on defaults (#135) — see cshl_g6_2x10.yaml for
+# the full schema comments. All off = nothing driven at connect.
+io:
+  dio:
+    - port: 0
+      role: off # off | in_trigger | out_programmable | out_debug_framescan
+      default: 0
+    - port: 1
+      role: off
+      default: 0
+  ai:
+    role: off # off | in (fw-gated)
+  ao:
+    role: off # off | programmable | frame_number (fw-gated)
+    # default: 5.0            # volts at connect — some hardware expects 5 V idle

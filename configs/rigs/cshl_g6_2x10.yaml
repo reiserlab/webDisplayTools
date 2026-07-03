@@ -30,3 +30,22 @@ controller:
 plugins: {}
 # Note: AO (analog-out) is a controller-native command, not a rig plugin
 # (LAB-80/81/82) — it does not belong in this plugins block.
+
+# Controller I/O roles + power-on defaults (#135). Applied by the Arena Studio
+# at connect (and logged to the run log); the Console's Controller ▾ menu can
+# override roles per session. Roles the firmware can't do yet (in_trigger,
+# out_debug_framescan, ao frame_number, ai in) are schema-valid but greyed out
+# in the UI and never applied.
+io:
+  dio: # the G6 controller's two DIO ports (wire channels DO1/DO2 = port+1)
+    - port: 0
+      role: off # off | in_trigger | out_programmable | out_debug_framescan
+      default: 0 # 0|1 — outputs only, driven at connect (SET_DIGITAL_OUT 0xAA)
+    - port: 1
+      role: off
+      default: 0
+  ai:
+    role: off # off | in (closed-loop analog input — untested, fw-gated)
+  ao:
+    role: off # off | programmable (SET_AO_VOLTAGE 0xA0) | frame_number (fw-gated)
+    # default: 5.0            # volts at connect — some hardware expects 5 V idle

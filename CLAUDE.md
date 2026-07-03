@@ -207,6 +207,19 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   firmware's ASCII error payload on non-ok status — keep that for new ops.
   New `.cmenu` popups: the document click-away closer ignores clicks inside
   `.cmenu-pop`; one-shot `.cmenu-item`s (not in a `.cmenu-row`) auto-close.
+- **Session rig (#135, v0.4):** `Studio.currentRig` (`{name, arenaConfig,
+  explicit}`) is THE bench rig for all three views — one top-bar selector,
+  locked by default. Always change it via the module block's
+  `setSessionRig(name, {explicit})`, never by assigning `Studio.currentRig`:
+  it enforces explicit-beats-derived (a protocol load never overrides a
+  user/`?rig=` choice — the mismatch chip surfaces disagreement instead),
+  invalidates the rig-`io:` cache, and mirrors explicit picks into the URL
+  (`encodeApp`'s `rigKey`; derived rigs stay out — clean-URL rule). Console
+  geometry consumers read `Studio.currentRig.arenaConfig`. Rig `io:` power-on
+  defaults: `parseRigIo` (js/plugin-registry.js, tolerant, suite N12io) +
+  `Studio.applyRigIo()` (module block; called from `initFromController`,
+  optional-guarded so connect survives a failed module load). fw-gated roles
+  come from `RIG_IO_ROLES.fwGated` — grey them in UI, never send them.
 - **Wire module exports:** `js/arena-wire-g6.js` defines more than it exports —
   when adding encoders/decoders, add them to the export list AND a test; audit
   with `Object.keys(require('./js/arena-wire-g6.js'))` vs the page's `Wire.*`

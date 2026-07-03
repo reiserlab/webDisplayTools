@@ -173,19 +173,43 @@ preview". Colocation fixes the data-availability problem:
   `.pat`. In-app rendering still prefers the `.pat` — GIFs are presentation,
   never the source of truth.
 
-## Open questions (answer during review)
+## Open questions — ANSWERED (2026-07-03 course-pipeline review)
 
-1. Default mental model: **per-user** repo or **per-lab** repo? (changes the
-   template/fork story and whether PRs are the norm)
-2. Own repo: direct commit or always-PR?
-3. Does this site's built-in registry stay the demo/curriculum home while user
-   work lives in user repos? (assumed yes)
-4. Is the repo association per-browser (localStorage) only, or encoded into
-   shared URLs by default (`?repo=` on every share)?
-5. SD packing: confirm content-addressed names (option b) vs firmware
-   subdirectories (option a — needs a fw capability check); suffix format
-   (`<name>.<sha8>.pat`?); and how strict the preflight is before a *recorded*
-   run — warn or block?
-6. Previews: is live `.pat` rendering enough for v1/v2, or are CI-generated
-   GIFs (GitHub-browsable stimuli, doc embeds) worth the pipeline from the
-   start?
+Answered during the CSHL course-pipeline interview + plan review. The full
+decision record lives as a comment on
+[#135](https://github.com/reiserlab/webDisplayTools/issues/135); the reviewed
+build plan splits the work into Session 1 (#135 rig identity + firmware MAC)
+and Session 2 (course data pipeline). Answers below are scoped to the course;
+the generic per-user story stays as sketched in the phases above.
+
+1. **Per-user vs per-lab: per-course shared repo.** ONE dedicated course-data
+   repo (e.g. `reiserlab/cshl-2026-course-data`), 7 fixed bench rigs, one
+   shared fine-grained PAT (instructor-installed per bench, localStorage;
+   students never see the token). Writes are namespaced by an
+   **instructor-set bench id** (`bench03`) — NOT the rig-config name (only 3
+   arena-TYPE configs are shared across 7 benches, so a name-derived id
+   collides) and NOT a MAC slug (MAC is a roster *cross-check* via 0xC2, not
+   identity). The generic per-user template-repo story is deferred, unchanged.
+2. **Direct commit for the course repo, via a Settings checkbox** ("commit
+   directly to default branch" — exactly the v1 sketch). Safe because rig-id
+   namespacing means no two rigs write the same path; promote-to-shared is the
+   exception and gets a hash-compare-before-overwrite guard.
+   `reiserlab/webDisplayTools` keeps branch+PR as the default.
+3. **Yes** — the site registry (`protocols/index.json`) stays the read-only
+   demo/curriculum home, unchanged; course work lives in the course repo.
+4. **Per-browser localStorage is the operating mode**; `?repo=owner/name` is
+   still built (shape-validated, no allowlist — access gated by the PAT the
+   browser holds). With `repo` present, `p` becomes a repo-relative *path*
+   with a new validator (the existing `SAFE_PATH_RE` targets the document's
+   `rig:` field and doesn't match repo paths).
+5. **SD packing deferred past the course.** Course week = pre-matched SD
+   cards + the existing manual Console upload (0x8D + 0x83 rename) for
+   student patterns. Preflight is a **block**, not a warn: a recorded run
+   refuses to start when a `pattern:` name doesn't resolve in the SD-first
+   picker, with the message naming the Console upload as the remedy.
+   Content-addressed names (option b) remain the recommended follow-on.
+6. **Live `.pat` rendering is enough** — single middle-frame render through
+   the existing `generatePatternIcon`/`PatPreview` pipeline, plus a
+   repo-byte-source fetcher using the raw media type
+   (`Accept: application/vnd.github.raw`; the contents API omits `content`
+   for files >1 MB). CI-generated GIFs stay an optional Tier-2 follow-on.

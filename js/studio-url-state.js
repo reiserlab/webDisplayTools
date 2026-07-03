@@ -1,11 +1,20 @@
 /**
  * studio-url-state.js — Arena Studio URL state codec (#107, DOM-free, testable).
  *
- * Encodes/decodes the shareable link params: mode / p / lib / set.
+ * Encodes/decodes the shareable link params: mode / p / lib / set / rig.
  * Shareability boundary (design §9): `p`/`lib` resolve ONLY to committed
  * protocol keys (validated against protocols/index.json by the caller); a
  * locally file-picked YAML has NO shareable URL, so encode() omits p/set when
  * the doc is local. Running-experiment progress is deliberately NOT encoded.
+ *
+ * `rig` (#135): the SESSION (bench) rig, validated against
+ * configs/rigs/index.json names by the caller (allowedRigs) — a per-setup
+ * bookmark, never an override of the protocol's own rig: field. It has no
+ * mode implications and is independent of `p` (a rig that disagrees with the
+ * loaded protocol raises the Studio's mismatch chip, never a silent
+ * reconcile). Encoded only for EXPLICIT selections (user unlock-and-pick or
+ * an incoming ?rig=); a session rig merely derived from the loaded protocol
+ * is redundant with `p` and stays out of the URL (clean-URL rule).
  *
  * WRITE SIDE (#107): the Studio mirrors state back into the URL via
  * encodeApp() — pushState for user view (mode) changes, replaceState for
@@ -55,12 +64,14 @@
     /**
      * Decode a location.search string into validated state + warnings.
      * @param {string} search  e.g. '?p=looming_v3&mode=edit'
-     * @param {object} [opts]   {allowedKeys?: string[]} committed protocol keys
+     * @param {object} [opts]   {allowedKeys?: string[], allowedRigs?: string[]}
+     *                          committed protocol keys / known rig names
      * @returns {{state: object, warnings: string[]}}
      */
     function decode(search, opts) {
         const o = opts || {};
         const allowed = o.allowedKeys ? new Set(o.allowedKeys) : null;
+        const allowedRigs = o.allowedRigs ? new Set(o.allowedRigs) : null;
         const warnings = [];
         const params = new URLSearchParams(search || '');
         const state = {};
@@ -101,13 +112,24 @@
             else warnings.push('Ignored set=' + set);
         }
 
+        // rig — session/bench rig (#135), registry-validated like `p`.
+        const rig = params.get('rig');
+        if (rig != null) {
+            if (!isSafeKey(rig)) warnings.push('Ignored rig=' + rig + ' (invalid key)');
+            else if (allowedRigs && !allowedRigs.has(rig))
+                warnings.push('Ignored rig=' + rig + ' (not a known rig)');
+            else state.rig = rig;
+        }
+
         return { state: state, warnings: warnings };
     }
 
     /**
      * Encode a state object to a query string (leading '?', or '' if empty).
-     * A local (non-committed) doc omits p/set — they aren't shareable.
-     * @param {object} state {mode, p, lib, set, source?: 'local'|'committed'}
+     * A local (non-committed) doc omits p/set — they aren't shareable. `rig`
+     * is bench identity, NOT doc state — emitted whenever present (the caller
+     * only passes an explicit selection), regardless of doc locality.
+     * @param {object} state {mode, p, lib, set, rig, source?: 'local'|'committed'}
      */
     function encode(state) {
         const s = state || {};
@@ -117,6 +139,7 @@
         if (!local && isSafeKey(s.p)) params.set('p', s.p);
         if (isSafeKey(s.lib)) params.set('lib', s.lib);
         if (!local && isSafeKey(s.set)) params.set('set', s.set);
+        if (isSafeKey(s.rig)) params.set('rig', s.rig);
         const q = params.toString();
         return q ? '?' + q : '';
     }
@@ -127,8 +150,10 @@
      * plain local save flips baseSource to 'committed'; key-presence is the
      * only safe "this doc is the committed one" signal). `p` = registry
      * provenance: emitted whenever the doc was loaded from the registry, even
-     * if since edited (see header).
-     * @param {object} app {mode, protocolKey}
+     * if since edited (see header). `rigKey` must be the EXPLICIT session-rig
+     * selection or null — the caller (Studio.updateUrl) passes null for a rig
+     * merely derived from the loaded protocol (clean-URL rule, #135).
+     * @param {object} app {mode, protocolKey, rigKey}
      * @returns {string} query string (leading '?', or '' when all defaults)
      */
     function encodeApp(app) {
@@ -136,6 +161,7 @@
         return encode({
             mode: a.mode,
             p: a.protocolKey || undefined,
+            rig: a.rigKey || undefined,
             source: a.protocolKey ? 'committed' : 'local'
         });
     }
