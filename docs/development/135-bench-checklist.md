@@ -102,9 +102,12 @@ drifting grating).
 >
 > **AD3-CONFIRMED same day (user, bench):** the Digital IO 1 framescan
 > envelope pulses, and Analog Out sits at 5.00 V (the rig-YAML idle default).
+> Also confirmed: reboot restores boot defaults (SPI 25 MHz / refresh 300 Hz)
+> after the test suite had left 10 MHz / 60 Hz behind — that suite defect is
+> fixed (fw `e051a5c`, round-trip tests now restore prior values).
 > Still open: session-rig mismatch chip walkthrough (§B), reverse-playback
-> visual (§C2), power-cycle boot defaults (`01 AD` → `[02 xx 01 xx]`), and
-> trigger-input into Digital IO 2 (deferred with the AI input tests).
+> visual (§C2), `01 AD` after power-cycle → `[02 xx 01 xx]` (DIO boot roles),
+> and trigger-input into Digital IO 2 (deferred with the AI input tests).
 
 The web apply-path isn't wired yet — drive these via Console → raw hex. Flash
 the `feat/dio-roles-ao-modes` build (it stacks on the MAC branch).
