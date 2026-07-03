@@ -7,9 +7,14 @@
 > in_trigger/framescan), boot = IO1 out-LOW / IO2 in_trigger, AO frame_number
 > normalized 0–5 V, framescan = an SPI-transmission ENVELOPE (LOW→HIGH for the
 > whole per-frame transfer→LOW), capability bit 5 `io_ext` (bitmap 0x23).
-> Remaining: bench validation (checklist §E), Mode-4/AI front-end calibration,
-> the WEB apply-path (applyRigIo → 0xAC; un-grey roles on `io_ext`), and the
-> g6_03 spec sync. The review below is kept as the design record.
+> Bench validation passed same day (checklist §E) and the WEB apply-path is
+> now wired too: wire encoders/decoders for 0xAC/0xAD/0xA3/0xA4,
+> `applyRigIo` sends declared roles on io_ext controllers (rig `off` = don't
+> touch, preserving fw boot roles), role options un-grey by capability
+> detection, and the Console gained Analog-In + Read-roles readouts.
+> Remaining: Mode-4/AI front-end calibration (+ un-lock `ai: in`), trigger
+> pulse-semantics bench check, and the g6_03 spec sync. The review below is
+> kept as the design record.
 
 What the fw-gated `io:` roles need from `LED-Display_G6_Firmware_Arena`,
 grounded in the current code (branch `feat/controller-info-mac-0xc2`, which

@@ -2083,9 +2083,9 @@
             <label title="The BNC silkscreened 'Digital IO 1 (5V)' on the controller (J3; rig io: port 1 = 0xAA channel 1)">Digital IO 1</label>
             <select id="cIoRoleDio1" title="'Digital IO 1 (5V)' role — session-local override of the rig's io: declaration">
               <option value="off">off</option>
-              <option value="in_trigger" disabled title="Firmware support shipped (SET_DIO_ROLE 0xAC, io_ext capability bit — fw branch feat/dio-roles-ao-modes) but bench-unverified and the web apply-path isn't wired yet. Bench-test via Console raw hex; un-greys after validation.">in_trigger (bench-pending)</option>
+              <option value="in_trigger" disabled title="Needs io_ext firmware (0xC2 capability bit 5) — enables automatically when the connected controller advertises it.">in_trigger</option>
               <option value="out_programmable">out_programmable</option>
-              <option value="out_debug_framescan" disabled title="Firmware support shipped (SET_DIO_ROLE 0xAC role 3 — a scope envelope HIGH for the whole SPI transmission of each frame; fw branch feat/dio-roles-ao-modes) but bench-unverified and the web apply-path isn't wired yet.">out_debug_framescan (bench-pending)</option>
+              <option value="out_debug_framescan" disabled title="Needs io_ext firmware (0xC2 capability bit 5) — enables automatically when the connected controller advertises it.">out_debug_framescan</option>
             </select>
             <span class="dim" id="cIoDefDio1" title="rig default for this port"></span>
           </div>
@@ -2093,9 +2093,9 @@
             <label title="The BNC silkscreened 'Digital IO 2 (5V)' on the controller (J4; rig io: port 2 = 0xAA channel 2). With the J30 shunt installed this BNC is also the hardware trigger route to the panels' EINT net (panel display modes triggered/gated).">Digital IO 2</label>
             <select id="cIoRoleDio2" title="'Digital IO 2 (5V)' role — session-local override of the rig's io: declaration">
               <option value="off">off</option>
-              <option value="in_trigger" disabled title="Firmware support shipped (SET_DIO_ROLE 0xAC, io_ext capability bit — fw branch feat/dio-roles-ao-modes) but bench-unverified and the web apply-path isn't wired yet. Bench-test via Console raw hex; un-greys after validation.">in_trigger (bench-pending)</option>
+              <option value="in_trigger" disabled title="Needs io_ext firmware (0xC2 capability bit 5) — enables automatically when the connected controller advertises it.">in_trigger</option>
               <option value="out_programmable">out_programmable</option>
-              <option value="out_debug_framescan" disabled title="Firmware support shipped (SET_DIO_ROLE 0xAC role 3 — a scope envelope HIGH for the whole SPI transmission of each frame; fw branch feat/dio-roles-ao-modes) but bench-unverified and the web apply-path isn't wired yet.">out_debug_framescan (bench-pending)</option>
+              <option value="out_debug_framescan" disabled title="Needs io_ext firmware (0xC2 capability bit 5) — enables automatically when the connected controller advertises it.">out_debug_framescan</option>
             </select>
             <span class="dim" id="cIoDefDio2" title="rig default for this port"></span>
           </div>
@@ -2104,7 +2104,7 @@
             <select id="cIoRoleAo" title="'Analog Out (0-5V)' role — session-local override of the rig's io: declaration">
               <option value="off">off</option>
               <option value="programmable">programmable</option>
-              <option value="frame_number" disabled title="Firmware support shipped (SET_AO_MODE 0xA3: DAC = 0–5 V normalized frame position; fw branch feat/dio-roles-ao-modes) but bench-unverified and the web apply-path isn't wired yet.">frame_number (bench-pending)</option>
+              <option value="frame_number" disabled title="Needs io_ext firmware (0xC2 capability bit 5) — enables automatically when the connected controller advertises it.">frame_number</option>
             </select>
             <span class="dim" id="cIoDefAo" title="rig default (volts at connect)"></span>
           </div>
@@ -2117,7 +2117,8 @@
             <span class="dim" id="cIoDefAi"></span>
           </div>
           <div class="cmenu-row">
-            <button class="cmenu-item" data-cmd="cioapply" style="width:auto" title="Apply the rig's power-on I/O defaults now, using the session roles above (DO via SET_DIGITAL_OUT 0xAA, AO via SET_AO_VOLTAGE 0xA0). Runs automatically at connect; each applied value is logged.">Apply rig defaults</button>
+            <button class="cmenu-item" data-cmd="cioapply" style="width:auto" title="Apply the rig's power-on I/O defaults now, using the session roles above (roles via SET_DIO_ROLE 0xAC on io_ext firmware; DO via 0xAA, AO via 0xA0/0xA3). Runs automatically at connect; each applied value is logged.">Apply rig defaults</button>
+            <button class="cmenu-item" data-cmd="cioget" style="width:auto" title="GET_DIO_ROLE 0xAD — log both ports' current roles + live pin levels (the BNC level in input roles; needs io_ext firmware)">Read roles</button>
             <span class="dim" id="cIoRigSrc"></span>
           </div>
         </div>
@@ -2245,12 +2246,16 @@
       </details>
 
       <details class="cgroup">
-        <summary class="gh">hardware I/O <span class="op">· 0x1B/0x1C · 0xA0 · 0xAA (G6)</span><span class="sum" id="cIoSum">AO – · DIO –</span></summary>
+        <summary class="gh">hardware I/O <span class="op">· 0x1B/0x1C · 0xA0 · 0xA4 · 0xAA (G6)</span><span class="sum" id="cIoSum">AO – · DIO –</span></summary>
         <div class="cbody">
           <div class="crow"><span class="lbl" title="The BNC silkscreened 'Analog Out (0-5V)' on the controller board (J27)">analog out</span><input id="cAoMv" type="number" value="0" style="width:64px" title="Analog Out level in millivolts (board BNC 'Analog Out (0-5V)')"><span class="dim">mV (0–5000)</span>
             <button class="pill" data-cmd="caoset" title="SET_AO_VOLTAGE 0xA0">Set</button>
             <button class="pill" data-cmd="caoget" title="GET_AO_VOLTAGE 0xA1">Get</button>
             <span class="dim" id="cAoRead"></span></div>
+          <div class="crow"><span class="lbl" title="The BNCs silkscreened 'Analog In 1 (±10V)' / 'Analog In 2 (±10V)' (J28/J29). Front-end calibration is TBD — treat readings as bench diagnostics, and note reading-vs-meter pairs for the calibration record.">analog in</span>
+            <button class="pill" data-cmd="caiget" title="GET_ANALOG_IN 0xA4 — read both ±10V inputs (needs io_ext firmware)">Read</button>
+            <span class="dim" id="cAiRead">—</span>
+            <span class="dim" style="font-size:10.5px">±10V front-end · uncalibrated</span></div>
           <div class="crow" style="margin-bottom:0"><span class="lbl" title="The BNCs silkscreened 'Digital IO 1 (5V)' / 'Digital IO 2 (5V)' on the controller board, driven as TTL outputs (channel number == BNC label number)">digital io</span>
             <select id="cDoCh" style="width:110px" title="Which BNC to drive — names match the board silkscreen"><option value="1">Digital IO 1</option><option value="2">Digital IO 2</option></select>
             <span class="seg2"><button id="cDoLow" class="on" data-cmd="cdolow">LOW</button><button id="cDoHigh" data-cmd="cdohigh">HIGH</button></span>
@@ -2361,7 +2366,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.4 | 2026-07-03 14:01 ET · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based; fw io_ext roles bench-pending) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.4 | 2026-07-03 14:55 ET · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2595,6 +2600,9 @@
                 const info = Wire.decodeControllerInfo(resp);
                 if (info) {
                     Studio.firmware = 'v' + info.version;
+                    // Capability names (e.g. 'io_ext') — gates the rig-I/O
+                    // role apply-path + Console readouts per connection.
+                    Studio.capabilities = info.capabilities || [];
                     // Physical-setup identity (Teensy unique ID → Ethernet MAC);
                     // null until the firmware appends it to the 0xC2 reply.
                     Studio.controllerId = info.mac || null;
@@ -3013,12 +3021,34 @@
             const d = resp && Wire.decodeResponse(resp);
             if (d && d.ok && d.payload.length >= 2) $('cIoSum').textContent = 'DIO1 ' + d.payload[0] + ' · DIO2 ' + d.payload[1];
         },
+        // io_ext reads (0xA4 / 0xAD) — guarded: pre-io_ext firmware treats
+        // unknown opcodes as errors AND raises a CE glyph on the arena.
+        caiget: async () => {
+            if (!Studio.capabilities || !Studio.capabilities.includes('io_ext')) {
+                clog('analog in: controller lacks io_ext (0xC2 bit 5) — needs fw feat/dio-roles-ao-modes or later', 'warn');
+                return;
+            }
+            const resp = await send(Wire.encodeGetAnalogIn(), 'GET_ANALOG_IN 0xA4');
+            const a = resp && Wire.decodeAnalogIn(resp);
+            if (a) $('cAiRead').textContent = 'AI1 ' + a.ain1Mv + ' mV · AI2 ' + a.ain2Mv + ' mV';
+        },
+        cioget: async () => {
+            if (!Studio.capabilities || !Studio.capabilities.includes('io_ext')) {
+                clog('dio roles: controller lacks io_ext (0xC2 bit 5) — needs fw feat/dio-roles-ao-modes or later', 'warn');
+                return;
+            }
+            const resp = await send(Wire.encodeGetDioRole(), 'GET_DIO_ROLE 0xAD');
+            const ports = resp && Wire.decodeDioRole(resp);
+            if (ports) clog('  ' + ports.map((p) =>
+                'Digital IO ' + p.port + ': ' + p.role + ' · ' + (p.level ? 'HIGH' : 'LOW')).join(' — '), 'info');
+        },
         // Controller ▾ menu
         info: async () => {
             const resp = await send(Wire.encodeGetControllerInfo(), 'GET_CONTROLLER_INFO 0xC2');
             const info = resp && Wire.decodeControllerInfo(resp);
             if (info) {
                 Studio.firmware = 'v' + info.version;
+                Studio.capabilities = info.capabilities || [];
                 Studio.controllerId = info.mac || Studio.controllerId || null;
                 if ($('pvCtl')) $('pvCtl').textContent = Studio.controllerId || '— (needs fw with MAC in 0xC2)';
                 Studio.refreshState();
@@ -3719,6 +3749,31 @@ function fetchRigIo() {
     rigIo = { name: name, promise: p };
     return p;
 }
+// io_ext capability (0xC2 bit 5): the connected firmware supports
+// SET_DIO_ROLE/GET_DIO_ROLE/SET_AO_MODE/GET_ANALOG_IN. Set at connect.
+function hasIoExt() {
+    return Array.isArray(Studio.capabilities) && Studio.capabilities.includes('io_ext');
+}
+// Enable/disable the capability-gated role options to match the CONNECTED
+// firmware (never version-guessing). AI 'in' stays disabled regardless —
+// the ±10V front-end calibration is TBD (bench).
+function updateRigIoGating() {
+    const on = hasIoExt();
+    const gate = (selId, value, title) => {
+        const sel = $(selId);
+        if (!sel) return;
+        const opt = Array.from(sel.options).find((o) => o.value === value);
+        if (!opt) return;
+        opt.disabled = !on;
+        opt.title = on ? title
+            : 'Needs io_ext firmware (0xC2 capability bit 5) — connect a controller running feat/dio-roles-ao-modes or later.';
+    };
+    gate('cIoRoleDio1', 'in_trigger', 'Input role — on Digital IO 2 this is the EINT trigger route (J30); pulse-semantics bench validation pending.');
+    gate('cIoRoleDio2', 'in_trigger', 'Input role — the EINT trigger route to the panels (J30 shunt); pulse-semantics bench validation pending.');
+    gate('cIoRoleDio1', 'out_debug_framescan', 'Scope envelope: HIGH exactly while each frame\'s SPI transmission runs (bench-verified).');
+    gate('cIoRoleDio2', 'out_debug_framescan', 'Scope envelope: HIGH exactly while each frame\'s SPI transmission runs. NOTE: with the J30 shunt installed this also pulses the panels\' EINT net.');
+    gate('cIoRoleAo', 'frame_number', 'DAC tracks the SD-pattern frame position, 0 V = frame 0 .. 5 V = last frame (bench-verified).');
+}
 // Sync the Controller ▾ "Rig I/O" rows to the session rig: role selects get
 // the rig-declared roles (they stay session-local overrides until the rig
 // changes again), dim annotations show the declared power-on defaults.
@@ -3736,6 +3791,7 @@ async function renderRigIoMenu() {
     $('cIoDefAo').textContent = io.ao.role === 'programmable' && io.ao.default != null ? 'default ' + io.ao.default + ' V' : '';
     $('cIoDefAi').textContent = '';
     $('cIoRigSrc').textContent = forRig ? 'from rig: ' + forRig : '';
+    updateRigIoGating();
 }
 // Apply the rig's power-on I/O defaults over the live connection (DO via
 // SET_DIGITAL_OUT 0xAA, AO via SET_AO_VOLTAGE 0xA0), honoring session-local
@@ -3759,25 +3815,54 @@ Studio.applyRigIo = async function (opts) {
         const el = $(id);
         return el && el.value ? el.value : fallback;
     };
+    updateRigIoGating(); // capabilities are known once connected
+    const ext = hasIoExt();
     const applied = [];
     for (const d of io.dio) {
         const r = roleOf(d.port === 1 ? 'cIoRoleDio1' : 'cIoRoleDio2', d.role);
-        const ch = d.port; // io: port == 0xAA channel == board "Digital IO n (5V)" label
-        if (r === 'out_programmable') {
+        const ch = d.port; // io: port == wire channel == board "Digital IO n (5V)" label
+        if (r === 'off') continue; // off = DON'T TOUCH (keeps fw boot roles, e.g. port 2 in_trigger)
+        if (ext) {
+            // Explicit role first (SET_DIO_ROLE 0xAC), then the level for outputs.
+            try {
+                await Studio.session.send(Wire.encodeSetDioRole(ch, r), { timeoutMs: 2000 });
+                if (r === 'out_programmable') {
+                    await Studio.session.send(Wire.encodeSetDigitalOut(ch, d.default), { timeoutMs: 2000 });
+                    applied.push('Digital IO ' + ch + '←' + (d.default ? 'HIGH' : 'LOW'));
+                } else {
+                    applied.push('Digital IO ' + ch + '→' + r);
+                }
+            } catch (e) {
+                clog('rig io: Digital IO ' + ch + ' role "' + r + '" failed: ' + (e.message || e), 'err');
+            }
+        } else if (r === 'out_programmable') {
+            // Pre-io_ext firmware drives outputs directly (0xAA auto-promotes).
             try {
                 await Studio.session.send(Wire.encodeSetDigitalOut(ch, d.default), { timeoutMs: 2000 });
                 applied.push('Digital IO ' + ch + '←' + (d.default ? 'HIGH' : 'LOW'));
             } catch (e) {
                 clog('rig io: Digital IO ' + ch + ' default failed: ' + (e.message || e), 'err');
             }
-        } else if (r !== 'off') {
-            clog('rig io: Digital IO ' + d.port + ' role "' + r + '" not applied — fw io_ext shipped but bench-pending; web apply-path (0xAC) lands after validation', 'warn');
+        } else {
+            clog('rig io: Digital IO ' + ch + ' role "' + r + '" not applied — controller lacks io_ext (0xC2 bit 5)', 'warn');
         }
     }
     const aoRole = roleOf('cIoRoleAo', io.ao.role);
-    if (aoRole === 'programmable' && io.ao.default != null) {
+    if (ext && aoRole === 'frame_number') {
+        try {
+            await Studio.session.send(Wire.encodeSetAoMode(1), { timeoutMs: 2000 });
+            applied.push('Analog Out→frame_number');
+        } catch (e) {
+            clog('rig io: AO frame_number failed: ' + (e.message || e), 'err');
+        }
+    } else if (aoRole === 'frame_number') {
+        clog('rig io: AO role "frame_number" not applied — controller lacks io_ext (0xC2 bit 5)', 'warn');
+    } else if (aoRole === 'programmable' && io.ao.default != null) {
         const mv = Math.round(io.ao.default * 1000);
         try {
+            // On io_ext firmware, clear a possibly-stale frame_number mode first
+            // (0xA0 is refused while it's active); idempotent when already 0.
+            if (ext) await Studio.session.send(Wire.encodeSetAoMode(0), { timeoutMs: 2000 });
             await Studio.session.send(Wire.encodeSetAoVoltage(mv), { timeoutMs: 2000 });
             applied.push('Analog Out←' + io.ao.default + ' V');
             if ($('cAoMv')) $('cAoMv').value = String(mv);
@@ -3785,8 +3870,6 @@ Studio.applyRigIo = async function (opts) {
         } catch (e) {
             clog('rig io: AO default failed: ' + (e.message || e), 'err');
         }
-    } else if (aoRole === 'frame_number') {
-        clog('rig io: AO role "frame_number" not applied — fw io_ext shipped (0xA3) but bench-pending; web apply-path lands after validation', 'warn');
     }
     if (roleOf('cIoRoleAi', io.ai.role) === 'in') {
         clog('rig io: AI "in" not applied — Mode-4 front-end calibration TBD (bench)', 'warn');
