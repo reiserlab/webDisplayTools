@@ -77,4 +77,8 @@ pattern sets, etc.), with merge/PR back — generalizing today's hardcoded
 `reiserlab/webDisplayTools` `saveViaPR`. Needs its own design round (auth
 model, repo picker, content layout, private-repo API access; `?p=` grows a
 repo dimension — `encodeApp` extends, the registry fetch is already
-pluggable). Tracked as a future arc, NOT part of #107.
+pluggable). Tracked as a future arc, NOT part of #107. **Lean proposal to
+review: `docs/development/studio-github-save-proposal.md`.** The session-rig +
+`?rig=` + rig I/O-defaults arc is specced in
+[#135](https://github.com/reiserlab/webDisplayTools/issues/135) (addendum
+comment, 2026-07-03 — sized for one session).
