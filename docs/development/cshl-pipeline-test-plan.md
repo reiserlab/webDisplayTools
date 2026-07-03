@@ -36,16 +36,60 @@ setup and the couple of deferred hardware items.
 
 Do these once before the test week. Budget ~1–2 h the first time.
 
-### P1. Guest account + shared PAT
-- Create a dedicated GitHub account for the course (e.g. handle `cshl-2026` —
-  usernames can't contain spaces, so "CSHL 2026" becomes the *display name*).
-- Add it to the repo: **Settings → Collaborators → Add** `reiserlab/cshl-2026-course-data`
-  with **Write**. (Or ask me to run `gh api -X PUT
-  /repos/reiserlab/cshl-2026-course-data/collaborators/<handle> -f permission=push`
-  once the handle exists.)
-- From that account, generate a **fine-grained PAT** scoped to **only this
-  repo**, permission **Contents: Read and write**. This one token goes on all
-  benches. Students never see it.
+### P1. Guest account + shared PAT (step by step)
+
+The benches share ONE token so students never handle credentials. Put that
+token on a dedicated course account (not a personal one) so it can be revoked
+in one place and its writes are attributed to a course identity.
+
+**1a. Create the guest GitHub account** (browser, ~5 min)
+1. Sign out of GitHub (or use a private window).
+2. Go to <https://github.com/signup>.
+3. **Username**: GitHub usernames cannot contain spaces, so "CSHL 2026" can't
+   be the handle — use e.g. **`cshl-2026`** (checked 2026-07-03: available).
+   Set the *display name* to "CSHL 2026" later under Settings → Profile.
+4. **Email**: use a course/shared inbox you control (needed for the
+   verification code and for password resets). A personal alias works too.
+5. Verify the email, finish signup. Skip the paid plan (Free is fine; private
+   repos allow unlimited collaborators on Free).
+6. (Recommended) Settings → Password and authentication → enable 2FA, and
+   store the recovery codes with the shared inbox.
+
+**1b. Add the guest account as a collaborator** (from *your* account)
+- GitHub UI: `reiserlab/cshl-2026-course-data` → **Settings → Collaborators and
+  teams → Add people** → enter `cshl-2026` → role **Write** → send invite.
+- Or CLI:
+  ```
+  gh api -X PUT /repos/reiserlab/cshl-2026-course-data/collaborators/cshl-2026 \
+    -f permission=push
+  ```
+  (I can run this for you once the account exists — just tell me the handle.)
+- **The guest account must accept the invite**: sign in as `cshl-2026`, open
+  the emailed invitation (or <https://github.com/notifications>), Accept.
+- Org note: if `reiserlab` restricts outside collaborators, an org owner may
+  need to approve the invite first.
+
+**1c. Generate the shared fine-grained PAT** (signed in as `cshl-2026`)
+1. Settings → Developer settings → **Fine-grained tokens** → **Generate new
+   token**.
+2. **Token name**: `cshl-2026-benches`.
+3. **Expiration**: set it to just past the course (e.g. the Monday after) so a
+   forgotten token can't linger.
+4. **Resource owner**: `cshl-2026` (the guest account itself).
+5. **Repository access** → **Only select repositories** →
+   `reiserlab/cshl-2026-course-data`. (If the repo isn't listed, the invite in
+   1b wasn't accepted yet.)
+6. **Permissions** → Repository permissions → **Contents: Read and write**
+   (leave everything else "No access"). Metadata auto-selects read-only —
+   that's fine.
+7. Generate; **copy the `github_pat_…` string now** (shown once). Store it in
+   the shared inbox / a password manager.
+8. This single token is what you paste into each bench in P3. Students never
+   see it.
+
+**1d. Revoke path** (know it before the course): signed in as `cshl-2026` →
+Developer settings → Fine-grained tokens → the token → **Revoke**. All benches
+stop writing immediately; issue a new one and re-paste per P3.
 
 ### P2. Repo — DONE
 - `reiserlab/cshl-2026-course-data` exists (private), seeded with `README.md`,
@@ -215,6 +259,58 @@ not silently clobbered.
 **4.4 Large pattern.** Push a `.pat` > 1 MB (long GS16 pattern). → Commits and
 re-reads byte-exact via the raw media type. (Most G6 patterns are < 1 MB; the
 Contents JSON path handles those, raw handles the big ones.)
+
+---
+
+## File size limits (measured 2026-07-03)
+
+Logs are the largest files, so the ceiling matters. There are two size-
+sensitive hops; I measured both against the real services:
+
+| Hop | Verified up to | Binding limit |
+|---|---|---|
+| Bridge → browser (WebSocket `log_export`) | **50 MB round-trips fine** | not the bottleneck |
+| Browser → GitHub (`directCommit` PUT) | **35 MiB OK; 40 MiB rejected** | **~35 MiB per file** |
+
+**The binding constraint is GitHub's Contents API: ~35 MiB per committed
+file.** Measured: 5 / 10 / 25 / 30 / 35 MiB all commit (201) and pull back
+byte-exact via the raw media type; 40 / 50 / 75 / 100 MiB all fail with HTTP
+422 *"Sorry, the file is too large to be processed. Consider creating/updating
+the file in a local clone and pushing it to GitHub."* The true cutoff sits
+between 35 and 40 MiB. (The WebSocket `log_export` hop was tested to 50 MB with
+no issue — the bridge's `WS_MAX_SIZE` only caps *inbound* browser→bridge
+messages, which are tiny; the outbound export is uncapped and memory-bound.)
+
+**What that means for logs.** One committed file = **one experiment**: the
+Studio rotates a fresh bridge log on every recorded-run start (`setLogging(true)`
+→ new `arena-log-*.jsonl`), so the relevant size is *per run*, not per session.
+Rough back-of-envelope with default logging (frame index + timestamp per
+FicTrac frame, ~65 bytes/line):
+
+- 100 Hz × 10 min ≈ 6000 lines/min → **~4 MB per 10-minute run** — comfortable.
+- A ~90-minute continuous run would approach the ceiling; a typical trial does not.
+- `bridge.py --log-frames` (full 25-field record per frame) is **~3–4× larger**
+  and could blow the ceiling on a long run — **leave it off for the course**
+  (it's off by default). It's a debugging switch, not a course setting.
+
+**Failure is graceful, never data loss.** If a run log ever exceeds the ceiling,
+`directCommit` gets the 422 and the Studio shows *"Run log commit failed … saved
+locally only, on the bridge machine"* — the full `arena-log-*.jsonl` still exists
+in the bridge's working dir (or `--log-dir`). You can push it later from a local
+clone (plain `git push` allows up to 100 MB/file, well above the API path).
+
+**If logs do get too big**, in rough order of preference:
+1. Keep runs bounded (per-run rotation already does most of this).
+2. Never enable `--log-frames` for course runs.
+3. Trim event verbosity or decimate per-frame telemetry (deferred design item —
+   measure real course logs first; the 4 MB/10-min estimate suggests it won't be
+   needed).
+4. Binary-encode the frame stream (larger change; last resort).
+
+**Test it yourself (Part 3 follow-on):** after a real run, check the committed
+`.jsonl` size on GitHub. If you want to probe the ceiling again, do it in a
+throwaway repo — big blobs stay in git history permanently even after the file
+is deleted, so don't probe against the course repo.
 
 ---
 
