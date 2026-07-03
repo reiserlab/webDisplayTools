@@ -1,6 +1,12 @@
 # Studio → GitHub save: lean proposal (for review)
 
-**Status: PROPOSAL (2026-07-03) — not scheduled. Review + edit before any build.**
+**Status: DECIDED for the near term (2026-07-03) — specialized to the CSHL
+course-data pipeline.** The generic per-user arc below stands as written, but
+the scheduled build (two sessions; course in one week) targets ONE shared
+course-data repo written to by 7 fixed-bench rigs. The open questions are
+answered at the bottom of this doc; the full decision record is a comment on
+issue #135 and the reviewed build plan
+(`~/.claude/plans/adaptive-hopping-island.md`).
 Requested during the #107 write-side session ("our eventual plan is to be able
 to merge onto a github repo … a per-user repo, which would hold all the YAML,
 patterns, etc."). Related: parity-doc Direction note, issue #107 (URL state),
@@ -173,19 +179,37 @@ preview". Colocation fixes the data-availability problem:
   `.pat`. In-app rendering still prefers the `.pat` — GIFs are presentation,
   never the source of truth.
 
-## Open questions (answer during review)
+## Open questions — ANSWERED 2026-07-03 (course-pipeline review + interview)
 
-1. Default mental model: **per-user** repo or **per-lab** repo? (changes the
-   template/fork story and whether PRs are the norm)
-2. Own repo: direct commit or always-PR?
-3. Does this site's built-in registry stay the demo/curriculum home while user
-   work lives in user repos? (assumed yes)
-4. Is the repo association per-browser (localStorage) only, or encoded into
-   shared URLs by default (`?repo=` on every share)?
-5. SD packing: confirm content-addressed names (option b) vs firmware
-   subdirectories (option a — needs a fw capability check); suffix format
-   (`<name>.<sha8>.pat`?); and how strict the preflight is before a *recorded*
-   run — warn or block?
-6. Previews: is live `.pat` rendering enough for v1/v2, or are CI-generated
-   GIFs (GitHub-browsable stimuli, doc embeds) worth the pipeline from the
-   start?
+1. **Per-user or per-lab repo?** Near-term: neither exactly — ONE shared
+   course-data repo (e.g. `reiserlab/cshl-2026-course-data`) written to by 7
+   fixed-bench rigs under a shared PAT, namespaced per bench
+   (`protocols/<rig-id>/`, `runlogs/<rig-id>/`). The rig-id is an
+   **instructor-set bench id** stored in localStorage — `configs/rigs/` holds
+   only arena-TYPE configs shared across benches, so a rig-name-derived id
+   would collide. Generic per-user repos remain the later v1+ shape.
+2. **Direct commit or always-PR?** The v1 checkbox is adopted: Settings gains
+   repo `owner/name` + **"commit directly to default branch"**. The course
+   repo runs direct-commit (bench-id namespacing makes same-file writes
+   structurally impossible; promote-to-shared adds
+   hash-compare-before-overwrite on the YAML and every `.pat`).
+   `reiserlab/webDisplayTools` keeps branch+PR as the default. The direct
+   orchestration is NEW code — today's only flow is create-branch → PUT → PR.
+3. **Site registry stays the demo/curriculum home?** Yes — read-only,
+   unchanged.
+4. **Repo association per-browser or in URLs?** Both: the localStorage
+   setting AND `?repo=owner/name` ship now. With `repo` present, `p` becomes
+   a repo-relative path with a NEW validator (the existing `SAFE_PATH_RE`
+   targets the document's `rig:` field and does not match repo paths).
+5. **SD packing + preflight strictness?** Content-addressed SD names (option
+   b) are deferred past the course. The course-week invariant is enforced by
+   a **blocking** preflight instead: a recorded run refuses to start when a
+   `pattern:` name doesn't resolve in the SD-first picker, with the message
+   naming the remedy (Console SD upload). Student-modified patterns reach the
+   repo via a NEW pattern_editor "push to course repo" action and reach the
+   SD via the existing Console upload; one-click repo→SD sync is a named
+   post-course follow-on.
+6. **Previews: live rendering or CI GIFs?** Live `.pat` rendering (Tier 1)
+   only for now — a repo byte-source fetcher (raw media type; the contents
+   API omits `content` for files >1 MB) feeding the existing
+   `generatePatternIcon`/`PatPreview` pipeline. CI GIFs (Tier 2) deferred.
