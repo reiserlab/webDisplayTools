@@ -128,7 +128,9 @@ benches. Work through [`135-bench-checklist.md`](135-bench-checklist.md):
 - **§B** session rig lock across Run/Edit/Console + `?rig=`
 - **§C** rig `io:` power-on defaults (DIO roles, AO 5 V idle)
 - **§E** extended I/O command set (io_ext capability gating)
-- **§C2** negative `frame_rate` Mode-2 reverse — **still open**, verify when convenient
+- **§C2** negative `frame_rate` Mode-2 reverse — **Console path bench-verified
+  (2026-07-03); the editor→Run path is still to do** (author a protocol with
+  `frame_rate: -30`, run it, confirm reverse playback)
 - **§D** regression sweep
 
 Deferred (not blocking the course): Digital IO 2 trigger-pulse semantics and
