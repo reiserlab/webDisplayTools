@@ -2078,30 +2078,30 @@
             <button class="cmenu-item" data-cmd="setpanelmode" style="width:auto" title="SET_PANEL_DISPLAY_MODE (0x1B)">Set</button>
             <button class="cmenu-item" data-cmd="getpanelmode" style="width:auto" title="GET_PANEL_DISPLAY_MODE (0x1C)">Get</button>
           </div>
-          <div class="cmenu-sep" title="Rig-declared controller I/O roles + power-on defaults (rig YAML io: block, #135). Applied automatically at connect; the role selectors are SESSION-LOCAL overrides — they never edit the rig YAML. Greyed roles need firmware that doesn't exist yet.">Rig I/O — session roles</div>
+          <div class="cmenu-sep" title="Rig-declared controller I/O roles + power-on defaults (rig YAML io: block, #135). Applied automatically at connect; the role selectors are SESSION-LOCAL overrides — they never edit the rig YAML. Greyed roles need firmware that doesn't exist yet. Names match the board's BNC silkscreen.">Rig I/O — session roles</div>
           <div class="cmenu-row">
-            <label title="DIO port 0 (wire channel DO1, 0xAA)">DO1 role</label>
-            <select id="cIoRoleD0" title="DIO port 0 role — session-local override of the rig's io: declaration">
+            <label title="The BNC silkscreened 'Digital IO 1 (5V)' on the controller (J3; rig io: port 1 = 0xAA channel 1)">Digital IO 1</label>
+            <select id="cIoRoleDio1" title="'Digital IO 1 (5V)' role — session-local override of the rig's io: declaration">
               <option value="off">off</option>
               <option value="in_trigger" disabled title="firmware-gated: input-trigger semantics are not implemented in controller firmware yet">in_trigger (needs fw)</option>
               <option value="out_programmable">out_programmable</option>
               <option value="out_debug_framescan" disabled title="firmware-gated: DIO wired to frame-scan timing is not implemented in controller firmware yet">out_debug_framescan (needs fw)</option>
             </select>
-            <span class="dim" id="cIoDefD0" title="rig default for this port"></span>
+            <span class="dim" id="cIoDefDio1" title="rig default for this port"></span>
           </div>
           <div class="cmenu-row">
-            <label title="DIO port 1 (wire channel DO2, 0xAA)">DO2 role</label>
-            <select id="cIoRoleD1" title="DIO port 1 role — session-local override of the rig's io: declaration">
+            <label title="The BNC silkscreened 'Digital IO 2 (5V)' on the controller (J4; rig io: port 2 = 0xAA channel 2). With the J30 shunt installed this BNC is also the hardware trigger route to the panels' EINT net (panel display modes triggered/gated).">Digital IO 2</label>
+            <select id="cIoRoleDio2" title="'Digital IO 2 (5V)' role — session-local override of the rig's io: declaration">
               <option value="off">off</option>
               <option value="in_trigger" disabled title="firmware-gated: input-trigger semantics are not implemented in controller firmware yet">in_trigger (needs fw)</option>
               <option value="out_programmable">out_programmable</option>
               <option value="out_debug_framescan" disabled title="firmware-gated: DIO wired to frame-scan timing is not implemented in controller firmware yet">out_debug_framescan (needs fw)</option>
             </select>
-            <span class="dim" id="cIoDefD1" title="rig default for this port"></span>
+            <span class="dim" id="cIoDefDio2" title="rig default for this port"></span>
           </div>
           <div class="cmenu-row">
-            <label title="Analog out (0xA0)">AO role</label>
-            <select id="cIoRoleAo" title="Analog-out role — session-local override of the rig's io: declaration">
+            <label title="The BNC silkscreened 'Analog Out (0-5V)' on the controller (J27, MCP4725 DAC, 0xA0)">Analog Out</label>
+            <select id="cIoRoleAo" title="'Analog Out (0-5V)' role — session-local override of the rig's io: declaration">
               <option value="off">off</option>
               <option value="programmable">programmable</option>
               <option value="frame_number" disabled title="firmware-gated: AO frame_number encoding needs a firmware mode that doesn't exist yet">frame_number (needs fw)</option>
@@ -2109,7 +2109,7 @@
             <span class="dim" id="cIoDefAo" title="rig default (volts at connect)"></span>
           </div>
           <div class="cmenu-row">
-            <label title="Analog in (closed-loop input)">AI role</label>
+            <label title="The BNCs silkscreened 'Analog In 1 (±10V)' / 'Analog In 2 (±10V)' on the controller (Mode-4 closed-loop samples Analog In 1 / AIN0)">Analog In</label>
             <select id="cIoRoleAi" title="Analog-in role — session-local override of the rig's io: declaration">
               <option value="off">off</option>
               <option value="in" disabled title="firmware-gated/untested: closed-loop analog input needs bench validation before the Studio drives it">in (needs fw)</option>
@@ -2245,14 +2245,14 @@
       </details>
 
       <details class="cgroup">
-        <summary class="gh">hardware I/O <span class="op">· 0x1B/0x1C · 0xA0 · 0xAA (G6)</span><span class="sum" id="cIoSum">A0 – · DO –</span></summary>
+        <summary class="gh">hardware I/O <span class="op">· 0x1B/0x1C · 0xA0 · 0xAA (G6)</span><span class="sum" id="cIoSum">AO – · DIO –</span></summary>
         <div class="cbody">
-          <div class="crow"><span class="lbl">analog out</span><input id="cAoMv" type="number" value="0" style="width:64px"><span class="dim">mV (0–5000)</span>
+          <div class="crow"><span class="lbl" title="The BNC silkscreened 'Analog Out (0-5V)' on the controller board (J27)">analog out</span><input id="cAoMv" type="number" value="0" style="width:64px" title="Analog Out level in millivolts (board BNC 'Analog Out (0-5V)')"><span class="dim">mV (0–5000)</span>
             <button class="pill" data-cmd="caoset" title="SET_AO_VOLTAGE 0xA0">Set</button>
             <button class="pill" data-cmd="caoget" title="GET_AO_VOLTAGE 0xA1">Get</button>
             <span class="dim" id="cAoRead"></span></div>
-          <div class="crow" style="margin-bottom:0"><span class="lbl">digital out</span>
-            <select id="cDoCh" style="width:64px"><option value="1">DO1</option><option value="2">DO2</option></select>
+          <div class="crow" style="margin-bottom:0"><span class="lbl" title="The BNCs silkscreened 'Digital IO 1 (5V)' / 'Digital IO 2 (5V)' on the controller board, driven as TTL outputs (channel number == BNC label number)">digital io</span>
+            <select id="cDoCh" style="width:110px" title="Which BNC to drive — names match the board silkscreen"><option value="1">Digital IO 1</option><option value="2">Digital IO 2</option></select>
             <span class="seg2"><button id="cDoLow" class="on" data-cmd="cdolow">LOW</button><button id="cDoHigh" data-cmd="cdohigh">HIGH</button></span>
             <button class="pill" data-cmd="cdoset" title="SET_DIGITAL_OUT 0xAA">Set</button>
             <button class="pill" data-cmd="cdoget" title="GET_DIGITAL_OUT 0xAB">Get</button></div>
@@ -2361,7 +2361,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.4 | 2026-07-03 12:23 ET · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults (#135) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.4 | 2026-07-03 13:10 ET · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2998,19 +2998,20 @@
             const resp = await send(Wire.encodeGetAoVoltage(), 'GET_AO_VOLTAGE 0xA1');
             const mv = resp && Wire.decodeAoVoltage ? Wire.decodeAoVoltage(resp) : null;
             $('cAoRead').textContent = mv != null ? mv + ' mV' : '';
-            $('cIoSum').textContent = 'A0 ' + (mv != null ? mv : '–') + ' mV';
+            $('cIoSum').textContent = 'AO ' + (mv != null ? mv : '–') + ' mV';
         },
         cdolow: (e) => segPick(e, 'cDoLow', 'cDoHigh'),
         cdohigh: (e) => segPick(e, 'cDoHigh', 'cDoLow'),
         cdoset: () => {
             const ch = num('cDoCh');
             const state = $('cDoHigh').classList.contains('on') ? 1 : 0;
-            send(Wire.encodeSetDigitalOut(ch, state), 'SET_DIGITAL_OUT 0xAA DO' + ch + ' ' + (state ? 'HIGH' : 'LOW'));
+            // "Digital IO n" = the board's BNC silkscreen; channel == label number.
+            send(Wire.encodeSetDigitalOut(ch, state), 'SET_DIGITAL_OUT 0xAA Digital IO ' + ch + ' ' + (state ? 'HIGH' : 'LOW'));
         },
         cdoget: async () => {
             const resp = await send(Wire.encodeGetDigitalOut(), 'GET_DIGITAL_OUT 0xAB');
             const d = resp && Wire.decodeResponse(resp);
-            if (d && d.ok && d.payload.length >= 2) $('cIoSum').textContent = 'DO1 ' + d.payload[0] + ' · DO2 ' + d.payload[1];
+            if (d && d.ok && d.payload.length >= 2) $('cIoSum').textContent = 'DIO1 ' + d.payload[0] + ' · DIO2 ' + d.payload[1];
         },
         // Controller ▾ menu
         info: async () => {
@@ -3120,7 +3121,7 @@
         const pm = Wire.decodePanelDisplayMode(await q(Wire.encodeGetPanelDisplayMode()));
         if (pm != null) { $('cPanelMode').value = String(pm); got.push('panel mode ' + (Wire.PANEL_DISPLAY_MODE_NAMES[pm] || pm)); }
         const mv = Wire.decodeAoVoltage(await q(Wire.encodeGetAoVoltage()));
-        if (mv != null) { $('cAoMv').value = String(mv); $('cIoSum').textContent = 'A0 ' + mv + ' mV'; got.push('A0 ' + mv + ' mV'); }
+        if (mv != null) { $('cAoMv').value = String(mv); $('cIoSum').textContent = 'AO ' + mv + ' mV'; got.push('AO ' + mv + ' mV'); }
         // Persistent SD firmware state — "the arena is loaded with <release>"
         // (handoff §5); the footer version field carries the release tag.
         const fi = Wire.decodeFirmwareInfo(await q(Wire.encodeGetFirmwareInfo()));
@@ -3722,16 +3723,16 @@ function fetchRigIo() {
 // the rig-declared roles (they stay session-local overrides until the rig
 // changes again), dim annotations show the declared power-on defaults.
 async function renderRigIoMenu() {
-    if (!$('cIoRoleD0')) return;
+    if (!$('cIoRoleDio1')) return;
     const forRig = Studio.currentRig && Studio.currentRig.name;
     const io = (await fetchRigIo()) || parseRigIo(null); // null fetch → all off
     if ((Studio.currentRig && Studio.currentRig.name) !== forRig) return; // superseded
-    $('cIoRoleD0').value = io.dio[0].role;
-    $('cIoRoleD1').value = io.dio[1].role;
+    $('cIoRoleDio1').value = io.dio[0].role;
+    $('cIoRoleDio2').value = io.dio[1].role;
     $('cIoRoleAo').value = io.ao.role;
     $('cIoRoleAi').value = io.ai.role;
-    $('cIoDefD0').textContent = io.dio[0].role === 'out_programmable' ? 'default ' + (io.dio[0].default ? 'HIGH' : 'LOW') : '';
-    $('cIoDefD1').textContent = io.dio[1].role === 'out_programmable' ? 'default ' + (io.dio[1].default ? 'HIGH' : 'LOW') : '';
+    $('cIoDefDio1').textContent = io.dio[0].role === 'out_programmable' ? 'default ' + (io.dio[0].default ? 'HIGH' : 'LOW') : '';
+    $('cIoDefDio2').textContent = io.dio[1].role === 'out_programmable' ? 'default ' + (io.dio[1].default ? 'HIGH' : 'LOW') : '';
     $('cIoDefAo').textContent = io.ao.role === 'programmable' && io.ao.default != null ? 'default ' + io.ao.default + ' V' : '';
     $('cIoDefAi').textContent = '';
     $('cIoRigSrc').textContent = forRig ? 'from rig: ' + forRig : '';
@@ -3760,17 +3761,17 @@ Studio.applyRigIo = async function (opts) {
     };
     const applied = [];
     for (const d of io.dio) {
-        const r = roleOf(d.port === 0 ? 'cIoRoleD0' : 'cIoRoleD1', d.role);
-        const ch = d.port + 1; // rig io: ports 0/1 → wire channels DO1/DO2
+        const r = roleOf(d.port === 1 ? 'cIoRoleDio1' : 'cIoRoleDio2', d.role);
+        const ch = d.port; // io: port == 0xAA channel == board "Digital IO n (5V)" label
         if (r === 'out_programmable') {
             try {
                 await Studio.session.send(Wire.encodeSetDigitalOut(ch, d.default), { timeoutMs: 2000 });
-                applied.push('DO' + ch + '←' + (d.default ? 'HIGH' : 'LOW'));
+                applied.push('Digital IO ' + ch + '←' + (d.default ? 'HIGH' : 'LOW'));
             } catch (e) {
-                clog('rig io: DO' + ch + ' default failed: ' + (e.message || e), 'err');
+                clog('rig io: Digital IO ' + ch + ' default failed: ' + (e.message || e), 'err');
             }
         } else if (r !== 'off') {
-            clog('rig io: DIO port ' + d.port + ' role "' + r + '" is firmware-gated — skipped', 'warn');
+            clog('rig io: Digital IO ' + d.port + ' role "' + r + '" is firmware-gated — skipped', 'warn');
         }
     }
     const aoRole = roleOf('cIoRoleAo', io.ao.role);
@@ -3778,9 +3779,9 @@ Studio.applyRigIo = async function (opts) {
         const mv = Math.round(io.ao.default * 1000);
         try {
             await Studio.session.send(Wire.encodeSetAoVoltage(mv), { timeoutMs: 2000 });
-            applied.push('AO←' + io.ao.default + ' V');
+            applied.push('Analog Out←' + io.ao.default + ' V');
             if ($('cAoMv')) $('cAoMv').value = String(mv);
-            if ($('cIoSum')) $('cIoSum').textContent = 'A0 ' + mv + ' mV';
+            if ($('cIoSum')) $('cIoSum').textContent = 'AO ' + mv + ' mV';
         } catch (e) {
             clog('rig io: AO default failed: ' + (e.message || e), 'err');
         }

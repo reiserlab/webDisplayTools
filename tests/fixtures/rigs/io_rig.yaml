@@ -10,11 +10,11 @@ controller:
   port: 62222
 plugins: {}
 io:
-  dio:
-    - port: 0
+  dio: # ports 1/2 = board BNCs "Digital IO 1 (5V)" / "Digital IO 2 (5V)" (1-based, == 0xAA channel)
+    - port: 1
       role: out_programmable
       default: 1
-    - port: 1
+    - port: 2
       role: out_debug_framescan   # fw-gated: not implemented in firmware yet
   ai:
     role: in                      # fw-gated: closed-loop analog input, untested

@@ -3747,12 +3747,16 @@ console.log('\n--- Suite N12: rig-aware plugin parse + mapping ---');
 // ─── Suite N12io: rig io: block — roles + power-on defaults (#135) ───────────
 console.log('\n--- Suite N12io: rig io: block (#135) ---');
 {
-    // (a) full fixture: both ports, fw-gated roles, 5 V AO idle.
+    // (a) full fixture: both ports, fw-gated roles, 5 V AO idle. Ports are
+    // 1-BASED — matching the board silkscreen ("Digital IO 1/2 (5V)") and the
+    // 0xAA wire channel, so one number names the BNC everywhere.
     const io = parseRigIo(parseRigYAMLText(readFixture('rigs/io_rig.yaml')));
-    check('N12io-a: port 0 role', io.dio[0].role, 'out_programmable');
-    check('N12io-a: port 0 default high', io.dio[0].default, 1);
-    check('N12io-a: port 1 fw-gated role kept', io.dio[1].role, 'out_debug_framescan');
-    check('N12io-a: port 1 default (unset) → 0', io.dio[1].default, 0);
+    check('N12io-a: ports are 1-based (silkscreen numbering)', io.dio[0].port, 1);
+    check('N12io-a: second slot is port 2', io.dio[1].port, 2);
+    check('N12io-a: port 1 role', io.dio[0].role, 'out_programmable');
+    check('N12io-a: port 1 default high', io.dio[0].default, 1);
+    check('N12io-a: port 2 fw-gated role kept', io.dio[1].role, 'out_debug_framescan');
+    check('N12io-a: port 2 default (unset) → 0', io.dio[1].default, 0);
     check('N12io-a: ai role in', io.ai.role, 'in');
     check('N12io-a: ao role programmable', io.ao.role, 'programmable');
     check('N12io-a: ao default 5 V (volts, not mV)', io.ao.default, 5);
@@ -3760,7 +3764,7 @@ console.log('\n--- Suite N12io: rig io: block (#135) ---');
 
     // (b) graceful degradation — the never-throws contract.
     const off = parseRigIo(null);
-    check('N12io-b: null rigData → port 0 off', off.dio[0].role, 'off');
+    check('N12io-b: null rigData → port 1 off', off.dio[0].role, 'off');
     check('N12io-b: null rigData → ao off', off.ao.role, 'off');
     check('N12io-b: null rigData → ao default null', off.ao.default, null);
     check('N12io-b: missing io: block → all off', parseRigIo({ arena: 'G6_2x10' }).ai.role, 'off');
@@ -3770,19 +3774,31 @@ console.log('\n--- Suite N12io: rig io: block (#135) ---');
     check('N12io-b: legacy rig (no io:) → all off', legacy.dio[0].role, 'off');
     check('N12io-b: legacy rig (no io:) → no warnings', legacy.warnings.length, 0);
 
-    // (c) malformed entries degrade to off WITH a warning.
+    // (c) malformed entries degrade to off WITH a warning. port: 0 is the
+    // 0-based trap (the early #135 sketch used it) — rejected with a warning
+    // that names the silkscreen convention, never silently remapped.
     const bad = parseRigIo({
         io: {
-            dio: [{ port: 7, role: 'out_programmable' }, { port: 0, role: 'sideways' }, 'junk'],
+            dio: [
+                { port: 7, role: 'out_programmable' },
+                { port: 0, role: 'out_programmable' },
+                { port: 1, role: 'sideways' },
+                'junk'
+            ],
             ai: { role: 'telepathy' },
             ao: { role: 'programmable', default: 'lots' }
         }
     });
     check('N12io-c: out-of-range port ignored', bad.dio[1].role, 'off');
     check('N12io-c: unknown dio role → off', bad.dio[0].role, 'off');
+    checkTrue(
+        'N12io-c: 0-based port rejected, warning names the silkscreen',
+        bad.warnings.some((w) => /port "0"/.test(w) && /Digital IO 1\/2/.test(w)),
+        bad.warnings.join(' | ')
+    );
     check('N12io-c: unknown ai role → off', bad.ai.role, 'off');
     check('N12io-c: non-numeric ao default → null', bad.ao.default, null);
-    check('N12io-c: four warnings, one per fault', bad.warnings.length, 4);
+    check('N12io-c: five warnings, one per fault', bad.warnings.length, 5);
     checkTrue(
         'N12io-c: warning names the bad role',
         bad.warnings.some((w) => /sideways/.test(w)),
@@ -3792,7 +3808,7 @@ console.log('\n--- Suite N12io: rig io: block (#135) ---');
     // (d) value clamping.
     const clamp = parseRigIo({
         io: {
-            dio: [{ port: 0, role: 'out_programmable', default: true }],
+            dio: [{ port: 1, role: 'out_programmable', default: true }],
             ao: { role: 'programmable', default: 9 }
         }
     });

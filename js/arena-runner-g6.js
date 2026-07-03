@@ -402,7 +402,8 @@ var ArenaRunnerG6 = (function () {
                 return { op: 'setAnalogOut', mv };
             }
             if (name === 'setDigitalOut') {
-                // G6-only: drive DO1 (J3) / DO2 (J4) TTL (SET_DIGITAL_OUT 0xAA).
+                // G6-only: drive the "Digital IO 1/2 (5V)" BNCs (J3/J4) as TTL outputs
+                // (SET_DIGITAL_OUT 0xAA; channel == board silkscreen number).
                 const channel = Number(cmd.channel);
                 const state = Number(cmd.state);
                 if (channel !== 1 && channel !== 2) {

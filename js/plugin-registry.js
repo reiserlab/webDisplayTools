@@ -132,8 +132,8 @@ var CONTROLLER_COMMANDS = {
     setAnalogOut: {
         label: 'Set Analog Out (G6)',
         description:
-            'Drive BNC J27 (MCP4725 DAC) to a DC level. G6 controller only ' +
-            '(SET_AO_VOLTAGE 0xA0).',
+            'Drive the "Analog Out (0-5V)" BNC (J27, MCP4725 DAC) to a DC level. ' +
+            'G6 controller only (SET_AO_VOLTAGE 0xA0).',
         params: {
             mv: {
                 type: 'number',
@@ -149,16 +149,17 @@ var CONTROLLER_COMMANDS = {
     setDigitalOut: {
         label: 'Set Digital Out (G6)',
         description:
-            'Drive DO1 (BNC J3) or DO2 (BNC J4) TTL output HIGH/LOW. G6 ' +
-            'controller only (SET_DIGITAL_OUT 0xAA).',
+            'Drive the "Digital IO 1 (5V)" or "Digital IO 2 (5V)" BNC (board ' +
+            'silkscreen names; J3/J4) HIGH/LOW as a TTL output. G6 controller ' +
+            'only (SET_DIGITAL_OUT 0xAA; channel number == BNC label number).',
         params: {
             channel: {
                 type: 'select',
                 required: true,
                 default: 1,
                 options: [
-                    { value: 1, label: 'DO1 (J3)' },
-                    { value: 2, label: 'DO2 (J4)' }
+                    { value: 1, label: 'Digital IO 1 (5V)' },
+                    { value: 2, label: 'Digital IO 2 (5V)' }
                 ],
                 label: 'Channel'
             },
@@ -1060,18 +1061,24 @@ function _rigIoRole(raw, allowed, label, warnings) {
  * `rigData` or missing `io:` block yields everything off/0; malformed entries
  * degrade to off with a warning string — never throws.
  *
+ * Port numbering is 1-BASED, matching the controller board's BNC silkscreen
+ * ("Digital IO 1 (5V)" / "Digital IO 2 (5V)") AND the SET_DIGITAL_OUT (0xAA)
+ * wire channel — one number everywhere, no off-by-one to remember. (An early
+ * #135 sketch used 0-based ports; adjusted 2026-07-03 against the physical
+ * board before anything shipped.)
+ *
  * @param {object} rigData - parsed rig YAML (e.g. from parseRigYAMLText)
  * @returns {{ dio: Array, ai: object, ao: object, warnings: string[] }}
- *   dio = exactly two entries (G6 ports 0 and 1; wire channels DO1/DO2 are
- *   port+1): { port, role, default(0|1) }. ai = { role }. ao = { role,
- *   default } with `default` in VOLTS (nullable; wire 0xA0 takes mV) — some
- *   hardware expects a 5 V idle, so an authored default is applied at connect.
+ *   dio = exactly two entries (ports 1 and 2 == silkscreen == 0xAA channel):
+ *   { port, role, default(0|1) }. ai = { role }. ao = { role, default } with
+ *   `default` in VOLTS (nullable; wire 0xA0 takes mV) — some hardware expects
+ *   a 5 V idle, so an authored default is applied at connect.
  */
 function parseRigIo(rigData) {
     var result = {
         dio: [
-            { port: 0, role: 'off', default: 0 },
-            { port: 1, role: 'off', default: 0 }
+            { port: 1, role: 'off', default: 0 },
+            { port: 2, role: 'off', default: 0 }
         ],
         ai: { role: 'off' },
         ao: { role: 'off', default: null },
@@ -1086,13 +1093,15 @@ function parseRigIo(rigData) {
         var entry = dioList[i] && typeof dioList[i] === 'object' ? dioList[i] : null;
         if (!entry) continue;
         var port = Number(entry.port);
-        if (port !== 0 && port !== 1) {
+        if (port !== 1 && port !== 2) {
             result.warnings.push(
-                'ignored dio entry with port "' + entry.port + '" (G6 has ports 0 and 1)'
+                'ignored dio entry with port "' +
+                    entry.port +
+                    '" (ports are 1 and 2, matching the board\'s "Digital IO 1/2 (5V)" BNC labels)'
             );
             continue;
         }
-        var slot = result.dio[port];
+        var slot = result.dio[port - 1];
         slot.role = _rigIoRole(entry.role, RIG_IO_ROLES.dio, 'dio port ' + port, result.warnings);
         // default is outputs-only; clamp anything truthy-numeric/boolean to 0|1.
         if (entry.default != null)

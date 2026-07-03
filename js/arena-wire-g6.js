@@ -513,8 +513,9 @@ const ArenaWireG6 = (function () {
         return frame(OPCODES.GET_AO_VOLTAGE); // 01 A1
     }
 
-    // set-digital-out (0xAA) — drive DO1 (BNC J3, D37) or DO2 (BNC J4, D35) HIGH/LOW.
-    // channel: 1 = DO1 (J3), 2 = DO2 (J4)
+    // set-digital-out (0xAA) — drive a "Digital IO n (5V)" BNC HIGH/LOW as a TTL output.
+    // channel: 1 = "Digital IO 1 (5V)" (J3, D37), 2 = "Digital IO 2 (5V)" (J4, D35) —
+    // channel number == board silkscreen number == rig io: port number.
     // state: true/1 = HIGH, false/0 = LOW
     function encodeSetDigitalOut(channel, state) {
         if (channel !== 1 && channel !== 2)

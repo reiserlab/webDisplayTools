@@ -28,11 +28,11 @@ plugins: {}
 # Controller I/O roles + power-on defaults (#135) — see cshl_g6_2x10.yaml for
 # the full schema comments. All off = nothing driven at connect.
 io:
-  dio:
-    - port: 0
+  dio: # ports 1/2 = board BNCs "Digital IO 1 (5V)" / "Digital IO 2 (5V)"
+    - port: 1
       role: off # off | in_trigger | out_programmable | out_debug_framescan
       default: 0
-    - port: 1
+    - port: 2
       role: off
       default: 0
   ai:

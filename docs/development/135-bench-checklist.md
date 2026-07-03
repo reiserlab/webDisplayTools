@@ -44,13 +44,15 @@ Studio v0.4 served via `.claude/nocache-server.py` (port 8091), hard refresh.
 ## C. Rig io: power-on defaults
 
 Temporarily edit `configs/rigs/cshl_g6_2x10.yaml` on the bench copy:
-`dio[0]` → `role: out_programmable, default: 1`; `ao` →
-`role: programmable, default: 5.0`. Hard refresh.
+`dio` `port: 1` → `role: out_programmable, default: 1`; `ao` →
+`role: programmable, default: 5.0`. Hard refresh. (Ports are 1-based ==
+board silkscreen == 0xAA channel.)
 
 - [ ] Connect → run log shows
-      `rig io defaults applied (cshl_g6_2x10): DO1←HIGH · AO←5 V`.
-- [ ] Meter/scope: DO1 (BNC J3) reads TTL HIGH; AO (BNC J27) reads ~5.0 V
-      **immediately after connect** (the 5 V-idle hardware case).
+      `rig io defaults applied (cshl_g6_2x10): Digital IO 1←HIGH · Analog Out←5 V`.
+- [ ] Meter/scope: the BNC silkscreened "Digital IO 1 (5V)" reads TTL HIGH;
+      "Analog Out (0-5V)" reads ~5.0 V **immediately after connect** (the
+      5 V-idle hardware case).
 - [ ] Console → hardware I/O → analog out field shows `5000` mV (read-back
       happened after the default was applied).
 - [ ] Controller ▾ → Rig I/O rows show `out_programmable` / `default HIGH`

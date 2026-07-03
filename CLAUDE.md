@@ -220,6 +220,11 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `Studio.applyRigIo()` (module block; called from `initFromController`,
   optional-guarded so connect survives a failed module load). fw-gated roles
   come from `RIG_IO_ROLES.fwGated` — grey them in UI, never send them.
+  **DIO naming convention:** the board BNC silkscreen is the vocabulary —
+  "Digital IO 1 (5V)" / "Digital IO 2 (5V)" — and rig `io:` `port` is 1-BASED,
+  equal to both the silkscreen number and the 0xAA wire channel (one number
+  everywhere; `parseRigIo` rejects `port: 0` with a warning). Label new I/O UI
+  with the silkscreen names, not DO1/DO2/J3/J4 refdes.
 - **Wire module exports:** `js/arena-wire-g6.js` defines more than it exports —
   when adding encoders/decoders, add them to the export list AND a test; audit
   with `Object.keys(require('./js/arena-wire-g6.js'))` vs the page's `Wire.*`

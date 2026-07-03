@@ -37,11 +37,12 @@ plugins: {}
 # out_debug_framescan, ao frame_number, ai in) are schema-valid but greyed out
 # in the UI and never applied.
 io:
-  dio: # the G6 controller's two DIO ports (wire channels DO1/DO2 = port+1)
-    - port: 0
+  dio: # ports 1 and 2 = the board BNCs silkscreened "Digital IO 1 (5V)" / "Digital IO 2 (5V)"
+    #    (port number == silkscreen number == SET_DIGITAL_OUT 0xAA channel)
+    - port: 1
       role: off # off | in_trigger | out_programmable | out_debug_framescan
       default: 0 # 0|1 — outputs only, driven at connect (SET_DIGITAL_OUT 0xAA)
-    - port: 1
+    - port: 2
       role: off
       default: 0
   ai:
