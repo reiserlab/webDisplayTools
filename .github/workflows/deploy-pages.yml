@@ -17,11 +17,12 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
+# build and deploy are SEPARATE jobs on purpose: deploy-pages@v4 hard-fails if
+# a run holds more than one "github-pages" artifact, so a re-run of a combined
+# job (which re-uploads) can never succeed. Split, "Re-run failed jobs" after a
+# transient Pages error re-runs only deploy — the single artifact is reused.
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -38,6 +39,13 @@ jobs:
           # Upload entire repository
           path: '.'
 
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
