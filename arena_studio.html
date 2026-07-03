@@ -2172,7 +2172,7 @@
       <div class="crow"><span class="lbl">params</span>
         <label>mode <select id="cMode"><option value="2">2 open-loop</option><option value="3">3 show-frame</option><option value="4">4 closed-loop</option></select></label>
         <label>pat idx <input id="cPat" type="number" min="1" value="1" style="width:56px" title="1-based SD index"></label>
-        <label>rate <input id="cRate" type="number" value="30" style="width:54px"></label>
+        <label title="Frame-advance rate in Hz: −32768–32767. Negative plays Mode 2 in REVERSE (G4-style count-down; needs fw ≥ 2026-06-25 / ee74c33 — older fw treats it as a huge forward rate). Sign ignored in Modes 3/4.">rate <input id="cRate" type="number" min="-32768" max="32767" value="30" style="width:54px"></label>
         <label>gain <input id="cGain" type="number" value="0" style="width:48px"></label>
         <label>init <input id="cInit" type="number" value="0" style="width:48px" title="mode-3 start frame (SET_FRAME_POSITION 0x70)"></label>
         <label>dur (s) <input id="cDur" type="number" min="0" step="0.1" value="0" style="width:48px" title="host-timed auto-stop: sends STOP_DISPLAY after this many seconds; 0 = run until Stop"></label>
@@ -2361,7 +2361,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.4 | 2026-07-03 13:10 ET · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.4 | 2026-07-03 13:37 ET · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->

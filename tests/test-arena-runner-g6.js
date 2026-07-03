@@ -5,7 +5,8 @@
  * Web Serial). These pin the behaviours the Codex plan-review flagged:
  *   - numeric coercion of string YAML scalars (mode "2" must work)
  *   - findTrialParams must skip allOn/allOff and match command_name
- *   - negative frame_rate / bad mode throw clear errors
+ *   - bad mode throws a clear error; negative frame_rate passes through
+ *     SIGNED (Mode-2 reverse playback, fw ee74c33+ / fw issue #4)
  *   - single-flight start(), idempotent stop(), best-effort auto-stop timer
  *
  * Run: node tests/test-arena-runner-g6.js   (wired into `npm test`)
@@ -203,13 +204,20 @@ async function main() {
         '0c 08 02 01 00 0a 00 00 01 00 00 00 00'
     );
 
+    // NEGATIVE frame_rate = Mode-2 reverse playback (fw ee74c33+, fw #4) —
+    // the runner passes the sign through; the encoder emits int16 LE.
+    const pRev = Runner.buildTrialParams({ mode: 2, frame_rate: -5 }, { patternId: 1 });
+    check('negative frame_rate passes through signed', pRev.frameRate, -5);
+    checkBytes(
+        'reverse rate -5 encodes as int16 LE FB FF',
+        Wire.encodeTrialParams(pRev),
+        '0c 08 02 01 00 fb ff 00 00 00 00 00 00'
+    );
+
     console.log('\n=== buildTrialParams: clear throws ===');
     checkThrows('mode 5 throws', () => Runner.buildTrialParams({ mode: 5 }, { patternId: 1 }));
     checkThrows('mode "closed_loop" (non-numeric) throws', () =>
         Runner.buildTrialParams({ mode: 'closed_loop' }, { patternId: 1 })
-    );
-    checkThrows('negative frame_rate throws', () =>
-        Runner.buildTrialParams({ mode: 2, frame_rate: -5 }, { patternId: 1 })
     );
     checkThrows('patternId 0 throws', () => Runner.buildTrialParams({ mode: 2 }, { patternId: 0 }));
     checkThrows('missing patternId throws', () => Runner.buildTrialParams({ mode: 2 }, {}));

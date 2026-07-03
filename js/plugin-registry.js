@@ -68,14 +68,18 @@ var CONTROLLER_COMMANDS = {
                 integer: true,
                 label: 'Frame index'
             },
+            // int16 on the wire (fw ee74c33+, fw issue #4): negative plays
+            // Mode 2 in REVERSE (G4-style count-down); sign ignored in Modes
+            // 3/4. Max is 32767, NOT 65535 — since the firmware went signed,
+            // larger unsigned values would silently alias to reverse rates.
             frame_rate: {
                 type: 'number',
                 required: true,
                 default: 60,
-                min: 0,
-                max: 65535,
+                min: -32768,
+                max: 32767,
                 integer: true,
-                label: 'Frame rate (Hz)'
+                label: 'Frame rate (Hz, − = reverse)'
             },
             gain: {
                 type: 'number',

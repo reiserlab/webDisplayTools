@@ -126,6 +126,22 @@ checkBytes(
     Wire.encodeTrialParams({ mode: 3, patternId: 300, initPos: 513 }),
     '0c 08 03 2c 01 00 00 00 01 02 00 00 00'
 );
+// NEGATIVE frame_rate = Mode-2 REVERSE (fw reads int16 since ee74c33, fw #4).
+// -2 Hz -> int16 LE FE FF — the two's-complement must-pin case for the rate.
+checkBytes(
+    'trial mode2 rate -2 (reverse) -> FE FF',
+    Wire.encodeTrialParams({ mode: 2, patternId: 1, frameRate: -2, initPos: 0 }),
+    '0c 08 02 01 00 fe ff 00 00 00 00 00 00'
+);
+// int16 boundaries: -30 -> E2 FF (G4-ish reverse rate), 32767 -> FF 7F, -32768 -> 00 80.
+checkBytes(
+    'trial mode2 rate -30 -> E2 FF',
+    Wire.encodeTrialParams({ mode: 2, patternId: 1, frameRate: -30 }),
+    '0c 08 02 01 00 e2 ff 00 00 00 00 00 00'
+);
+check('rate 32767 lo byte', Wire.encodeTrialParams({ frameRate: 32767 })[5], 0xff);
+check('rate 32767 hi byte', Wire.encodeTrialParams({ frameRate: 32767 })[6], 0x7f);
+check('rate -32768 hi byte', Wire.encodeTrialParams({ frameRate: -32768 })[6], 0x80);
 // Length byte is always 0x0C (12 bytes follow: cmd + 11 params); total = 13 B.
 check('trial frame total length', Wire.encodeTrialParams().length, 13);
 check('trial length byte', Wire.encodeTrialParams()[0], 0x0c);
@@ -134,6 +150,15 @@ console.log('\n=== encoder range validation (throws) ===');
 checkThrows('gain -129 throws', () => Wire.encodeTrialParams({ gain: -129 }));
 checkThrows('gain 128 throws', () => Wire.encodeTrialParams({ gain: 128 }));
 checkThrows('patternId 70000 throws', () => Wire.encodeTrialParams({ patternId: 70000 }));
+// frame_rate is int16 now: 32768..65535 would ALIAS to reverse rates on the
+// signed firmware — must throw, not silently encode (they were legal as u16).
+checkThrows('rate 32768 throws (would alias to reverse)', () =>
+    Wire.encodeTrialParams({ frameRate: 32768 })
+);
+checkThrows('rate 65535 throws (was legal as u16)', () =>
+    Wire.encodeTrialParams({ frameRate: 65535 })
+);
+checkThrows('rate -32769 throws', () => Wire.encodeTrialParams({ frameRate: -32769 }));
 checkThrows('frame position -1 throws', () => Wire.encodeSetFramePosition(-1));
 checkThrows('frame position 70000 throws', () => Wire.encodeSetFramePosition(70000));
 checkThrows('non-integer mhz throws', () => Wire.encodeSetSpiClock(20.5));

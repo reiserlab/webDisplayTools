@@ -102,9 +102,11 @@ var ArenaRunnerG6 = (function () {
      * that yield string scalars) and throws a CLEAR Error on values the wire
      * can't represent, before the encoder's terser RangeError would fire:
      *   - mode ∉ {2,3,4}
-     *   - negative frame_rate (reverse playback — not supported over the wire yet)
      *   - non-integer / < 1 patternId
-     * Gain is coerced; encodeTrialParams enforces the int8 range.
+     * Gain is coerced; encodeTrialParams enforces the int8 range. frame_rate
+     * is passed through SIGNED — negative plays Mode 2 in reverse (G4-style
+     * count-down; fw ee74c33+, fw issue #4), sign ignored by firmware in
+     * Modes 3/4; encodeTrialParams enforces the int16 range.
      *
      * @param {object} cmd  the trialParams controller command
      * @param {{patternId:number}} opts  the resolved 1-based SD index
@@ -124,13 +126,6 @@ var ArenaRunnerG6 = (function () {
         }
 
         const frameRate = cmd.frame_rate === undefined ? 0 : toNumber(cmd.frame_rate, 'frame_rate');
-        if (frameRate < 0) {
-            throw new Error(
-                'Negative frame_rate (' +
-                    frameRate +
-                    ', reverse playback) is not supported over the wire yet.'
-            );
-        }
 
         const gain = cmd.gain === undefined ? 0 : toNumber(cmd.gain, 'gain');
         const initPos = frameIndexToInitPos(cmd.frame_index);

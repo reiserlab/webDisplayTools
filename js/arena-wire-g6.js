@@ -89,7 +89,7 @@ const ArenaWireG6 = (function () {
     // Display modes (trial-params `mode` byte). 5 = stream is set via a
     // different command and is not encodable here.
     const MODES = {
-        OPEN_LOOP: 2, // host-free frame advance at frame_rate
+        OPEN_LOOP: 2, // host-free frame advance at frame_rate (negative = reverse)
         SHOW_FRAME: 3, // host sets the frame via SET_FRAME_POSITION
         CLOSED_LOOP: 4 // analog-in × gain, computed on the controller
     };
@@ -148,6 +148,19 @@ const ArenaWireG6 = (function () {
         return value & 0xff;
     }
 
+    // Validate a signed int16 and return [lo, hi] little-endian two's
+    // complement. e.g. -2 -> [0xFE, 0xFF]. Used for trial-params frame_rate,
+    // which firmware reads as int16 (fw #4, ee74c33: negative = Mode-2
+    // reverse). NOTE this also REJECTS 32768..65535 — since the firmware went
+    // signed, those unsigned values would silently alias to reverse rates.
+    function i16le(value, name) {
+        requireInt(value, name);
+        if (value < -32768 || value > 32767) {
+            throw new RangeError(name + ' must be -32768..32767 (int16), got ' + value);
+        }
+        return [value & 0xff, (value >> 8) & 0xff];
+    }
+
     // Validate a trial-params display mode. The firmware only accepts 2/3/4 and
     // rejects anything else with a controller-side error glyph, so we fail fast
     // here rather than emit a known-bad frame.
@@ -201,7 +214,9 @@ const ArenaWireG6 = (function () {
      * @param {object} p
      * @param {number} [p.mode=2]       display mode (2 open / 3 show-frame / 4 closed)
      * @param {number} [p.patternId=1]  1-based pattern id (Nth .pat in /patterns)
-     * @param {number} [p.frameRate=0]  frame-advance rate in Hz (Mode 2)
+     * @param {number} [p.frameRate=0]  frame-advance rate in Hz, int16 — negative
+     *                                  plays Mode 2 in REVERSE (G4-style count-down;
+     *                                  fw ee74c33+); sign ignored in Modes 3/4
      * @param {number} [p.gain=0]       signed int8 velocity gain (×10 fps/V in Mode 4)
      * @param {number} [p.initPos=0]    initial frame index (0-based)
      */
@@ -214,7 +229,7 @@ const ArenaWireG6 = (function () {
             throw new RangeError('patternId must be >= 1 (1-based), got ' + patternId);
         }
         const pat = u16le(patternId, 'patternId');
-        const rate = u16le(p.frameRate === undefined ? 0 : p.frameRate, 'frameRate');
+        const rate = i16le(p.frameRate === undefined ? 0 : p.frameRate, 'frameRate');
         const gain = int8Byte(p.gain === undefined ? 0 : p.gain, 'gain');
         const init = u16le(p.initPos === undefined ? 0 : p.initPos, 'initPos');
         // mode, pat(2), rate(2), gain, init(2), reserved(3) = 11 param bytes.

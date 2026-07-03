@@ -64,6 +64,26 @@ board silkscreen == 0xAA channel.)
 - [ ] Revert the YAML → reconnect → log shows no `rig io defaults applied`
       line (all-off rig is a no-op).
 
+## C2. Negative frame_rate — Mode-2 reverse playback (fw #4 / ee74c33)
+
+Firmware `main` reads trial-params `frame_rate` as **int16** (negative =
+reverse); web tools now encode it signed. Never bench-verified on either side.
+Use a multi-frame pattern with an obvious direction (e.g. panel-map or a
+drifting grating).
+
+- [ ] Console → params: `mode 2`, `rate 5` → frames advance forward (baseline).
+- [ ] Same pattern, `rate -5` → frames count DOWN (G4-style reverse), wrapping
+      from frame 0 to the last frame.
+- [ ] `rate -30` vs `rate 30`: same speed, opposite directions.
+- [ ] `rate 0` still shows a static frame (no motion).
+- [ ] GET_FRAME_POSITION (0x72) polls a DECREASING index during reverse play
+      (Controller ▾ / raw hex `01 72` if no button).
+- [ ] A recorded run from a protocol with `frame_rate: -30` starts (run gate +
+      runner no longer reject the sign) and the stimulus moves in reverse.
+- [ ] OLD firmware caveat check (any pre-2026-06-25 build, if one is still on
+      a bench): negative rates there alias to a huge forward rate — confirm
+      the web tooltip's warning matches reality before the course.
+
 ## D. Regression sweep (things this session touched)
 
 - [ ] Stream figures (full-field / panel map / orientation / checker) on the

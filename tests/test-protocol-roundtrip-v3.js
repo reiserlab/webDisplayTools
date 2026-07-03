@@ -73,6 +73,7 @@ const {
     getV3PluginCommands,
     listV3PluginNames,
     getV3CommandParams,
+    clampToSchema,
     createPluginEntry,
     LOG_PLUGIN,
     mapRigPluginToBuiltin,
@@ -4075,6 +4076,64 @@ console.log('\n--- Suite 33: G6-only analog/digital output commands ---');
     // duration 3 + wait 3 count). We assert no duration field leaked onto them.
     checkTrue('33.18: setAnalogOut has no duration field', ao && ao.duration === undefined);
     checkTrue('33.19: setDigitalOut has no duration field', dOn && dOn.duration === undefined);
+}
+
+// ─── Suite 34: negative frame_rate = Mode-2 reverse (fw ee74c33, fw #4) ─────
+console.log('\n--- Suite 34: negative frame_rate (Mode-2 reverse playback) ---');
+{
+    // Round-trip: a negative rate must survive parse → regen → parse as a
+    // signed number (older tooling clamped/rejected it; firmware reads int16).
+    const text = [
+        'version: 3',
+        '',
+        'experiment_info:',
+        '  name: "reverse playback"',
+        '',
+        'rig: "./configs/rigs/cshl_g6_2x10.yaml"',
+        '',
+        'experiment:',
+        '  - "reverse"',
+        '',
+        'conditions:',
+        '  - name: "reverse"',
+        '    commands:',
+        '      - type: "controller"',
+        '        command_name: "trialParams"',
+        '        pattern: "grating_sq"',
+        '        pattern_ID: 2',
+        '        duration: 3',
+        '        mode: 2',
+        '        frame_index: 0',
+        '        frame_rate: -30',
+        '        gain: 0',
+        ''
+    ].join('\n');
+    const exp = parseV3Protocol(text);
+    const tp = exp.conditions[0].commands[0];
+    check('34.1: frame_rate parses signed', tp.frame_rate, -30);
+    const regen = generateV3Protocol(exp);
+    checkTrue(
+        '34.2: negative rate survives regen',
+        /frame_rate: -30/.test(regen),
+        regen.slice(0, 60)
+    );
+    check(
+        '34.3: re-parse matches',
+        parseV3Protocol(regen).conditions[0].commands[0].frame_rate,
+        -30
+    );
+    check('34.4: no blocking errors', collectBlockingErrors(exp).errors.length, 0);
+
+    // Schema (clamp-to-legal in the designer): negatives are in-range now, and
+    // the max dropped to 32767 — a u16-era 65535 would alias to reverse on the
+    // signed firmware, so the clamp must catch it.
+    const schema = getV3CommandParams(exp, 'controller', null, 'trialParams').frame_rate;
+    check('34.5: schema min is -32768', schema.min, -32768);
+    check('34.6: schema max is 32767 (not 65535)', schema.max, 32767);
+    check('34.7: clamp keeps -30', clampToSchema(-30, schema).value, -30);
+    checkTrue('34.7b: in-range value unchanged', clampToSchema(-30, schema).changed === false);
+    check('34.8: clamp pulls -40000 up to -32768', clampToSchema(-40000, schema).value, -32768);
+    check('34.9: clamp pulls u16-era 65535 down to 32767', clampToSchema(65535, schema).value, 32767);
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────
