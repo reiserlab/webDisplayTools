@@ -2083,9 +2083,9 @@
             <label title="The BNC silkscreened 'Digital IO 1 (5V)' on the controller (J3; rig io: port 1 = 0xAA channel 1)">Digital IO 1</label>
             <select id="cIoRoleDio1" title="'Digital IO 1 (5V)' role — session-local override of the rig's io: declaration">
               <option value="off">off</option>
-              <option value="in_trigger" disabled title="firmware-gated: input-trigger semantics are not implemented in controller firmware yet">in_trigger (needs fw)</option>
+              <option value="in_trigger" disabled title="Firmware support shipped (SET_DIO_ROLE 0xAC, io_ext capability bit — fw branch feat/dio-roles-ao-modes) but bench-unverified and the web apply-path isn't wired yet. Bench-test via Console raw hex; un-greys after validation.">in_trigger (bench-pending)</option>
               <option value="out_programmable">out_programmable</option>
-              <option value="out_debug_framescan" disabled title="firmware-gated: DIO wired to frame-scan timing is not implemented in controller firmware yet">out_debug_framescan (needs fw)</option>
+              <option value="out_debug_framescan" disabled title="Firmware support shipped (SET_DIO_ROLE 0xAC role 3 — a scope envelope HIGH for the whole SPI transmission of each frame; fw branch feat/dio-roles-ao-modes) but bench-unverified and the web apply-path isn't wired yet.">out_debug_framescan (bench-pending)</option>
             </select>
             <span class="dim" id="cIoDefDio1" title="rig default for this port"></span>
           </div>
@@ -2093,9 +2093,9 @@
             <label title="The BNC silkscreened 'Digital IO 2 (5V)' on the controller (J4; rig io: port 2 = 0xAA channel 2). With the J30 shunt installed this BNC is also the hardware trigger route to the panels' EINT net (panel display modes triggered/gated).">Digital IO 2</label>
             <select id="cIoRoleDio2" title="'Digital IO 2 (5V)' role — session-local override of the rig's io: declaration">
               <option value="off">off</option>
-              <option value="in_trigger" disabled title="firmware-gated: input-trigger semantics are not implemented in controller firmware yet">in_trigger (needs fw)</option>
+              <option value="in_trigger" disabled title="Firmware support shipped (SET_DIO_ROLE 0xAC, io_ext capability bit — fw branch feat/dio-roles-ao-modes) but bench-unverified and the web apply-path isn't wired yet. Bench-test via Console raw hex; un-greys after validation.">in_trigger (bench-pending)</option>
               <option value="out_programmable">out_programmable</option>
-              <option value="out_debug_framescan" disabled title="firmware-gated: DIO wired to frame-scan timing is not implemented in controller firmware yet">out_debug_framescan (needs fw)</option>
+              <option value="out_debug_framescan" disabled title="Firmware support shipped (SET_DIO_ROLE 0xAC role 3 — a scope envelope HIGH for the whole SPI transmission of each frame; fw branch feat/dio-roles-ao-modes) but bench-unverified and the web apply-path isn't wired yet.">out_debug_framescan (bench-pending)</option>
             </select>
             <span class="dim" id="cIoDefDio2" title="rig default for this port"></span>
           </div>
@@ -2104,7 +2104,7 @@
             <select id="cIoRoleAo" title="'Analog Out (0-5V)' role — session-local override of the rig's io: declaration">
               <option value="off">off</option>
               <option value="programmable">programmable</option>
-              <option value="frame_number" disabled title="firmware-gated: AO frame_number encoding needs a firmware mode that doesn't exist yet">frame_number (needs fw)</option>
+              <option value="frame_number" disabled title="Firmware support shipped (SET_AO_MODE 0xA3: DAC = 0–5 V normalized frame position; fw branch feat/dio-roles-ao-modes) but bench-unverified and the web apply-path isn't wired yet.">frame_number (bench-pending)</option>
             </select>
             <span class="dim" id="cIoDefAo" title="rig default (volts at connect)"></span>
           </div>
@@ -2112,7 +2112,7 @@
             <label title="The BNCs silkscreened 'Analog In 1 (±10V)' / 'Analog In 2 (±10V)' on the controller (Mode-4 closed-loop samples Analog In 1 / AIN0)">Analog In</label>
             <select id="cIoRoleAi" title="Analog-in role — session-local override of the rig's io: declaration">
               <option value="off">off</option>
-              <option value="in" disabled title="firmware-gated/untested: closed-loop analog input needs bench validation before the Studio drives it">in (needs fw)</option>
+              <option value="in" disabled title="Mode-4 closed-loop sampling exists and GET_ANALOG_IN (0xA4) now reads both ±10V channels (fw branch feat/dio-roles-ao-modes), but the front-end calibration is TBD — needs bench validation before the Studio drives it.">in (bench-pending)</option>
             </select>
             <span class="dim" id="cIoDefAi"></span>
           </div>
@@ -2361,7 +2361,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.4 | 2026-07-03 13:37 ET · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.4 | 2026-07-03 14:01 ET · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based; fw io_ext roles bench-pending) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->

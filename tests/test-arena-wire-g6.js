@@ -271,6 +271,16 @@ check(
     ).mac,
     '04:E9:E5:AB:CD:12'
 );
+// Capability bit 5 = io_ext (SET_DIO_ROLE 0xAC / GET_DIO_ROLE 0xAD /
+// SET_AO_MODE 0xA3 / GET_ANALOG_IN 0xA4) — fw feat/dio-roles-ao-modes
+// advertises 0x23; hosts detect the DIO-role machinery by this bit.
+check(
+    'decodeControllerInfo io_ext capability (0x23)',
+    Wire.decodeControllerInfo(Uint8Array.from([0x04, 0x00, 0xc2, 0x01, 0x23])).capabilities.join(
+        ','
+    ),
+    'g6_mode,v2_local_storage,io_ext'
+);
 
 // SPI clock reply: [len=4, status=0, echo=0xC6, 20, 0] -> 20 MHz.
 check('decodeSpiClock', Wire.decodeSpiClock(Uint8Array.from([0x04, 0x00, 0xc6, 0x14, 0x00])), 20);

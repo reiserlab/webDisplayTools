@@ -84,6 +84,38 @@ drifting grating).
       a bench): negative rates there alias to a huge forward rate — confirm
       the web tooltip's warning matches reality before the course.
 
+## E. Extended I/O command set (fw branch `feat/dio-roles-ao-modes`, io_ext)
+
+The web apply-path isn't wired yet — drive these via Console → raw hex. Flash
+the `feat/dio-roles-ao-modes` build (it stacks on the MAC branch).
+
+- [ ] Connect → controller-info log line shows `io_ext` in the caps list
+      (capability bitmap 0x23).
+- [ ] **Boot contention fix:** power-cycle, then `01 AD` (GET_DIO_ROLE) →
+      `[role1=2, level1, role2=1, level2]` — port 1 out_programmable, port 2
+      in_trigger. Feed a 5 V level into "Digital IO 2 (5V)": `01 AD` again —
+      level2 follows the BNC (live trigger readback, no contention heating).
+- [ ] **External trigger still works** (J30 installed): panel display mode
+      triggered/gated (`0x1B`) + pulses into Digital IO 2 → panels gate/step
+      as before the refactor.
+- [ ] **0xAA refusal:** `03 AA 02 01` (drive Digital IO 2 while in_trigger) →
+      status 1, ASCII "role is in_trigger - SET_DIO_ROLE (0xAC)…" in the log;
+      the trigger route is UNAFFECTED afterwards (`01 AD` unchanged).
+- [ ] **Auto-promote:** `03 AC 01 00` (port 1 → off), then `03 AA 01 01` →
+      succeeds and `01 AD` shows role1=2 (off auto-promoted); BNC reads 5 V.
+- [ ] **Framescan envelope:** `03 AC 01 03` (port 1 → out_debug_framescan),
+      display any pattern → scope on "Digital IO 1 (5V)": LOW between frames,
+      HIGH exactly spanning each frame's SPI transmission (pulse width ≈
+      transfer time; rep rate = refresh rate). Envelope present in ALL_ON /
+      stream / pattern modes.
+- [ ] **AO frame_number:** `02 A3 01`, run a pattern Mode 2 → "Analog Out
+      (0-5V)" ramps 0→5 V once per pattern loop (sawtooth; reversed rate →
+      reversed sawtooth). `03 A0 88 13` (SET_AO_VOLTAGE 5000 mV) or any 0xA2
+      while active → status-1 refusal. `02 A3 00` restores programmable AO.
+- [ ] **GET_ANALOG_IN:** `01 A4` → two int16 LE mV values; feed a known DC
+      level into each "Analog In n (±10V)" BNC and note the reading vs meter
+      (calibration TBD — record the offset/scale for the g6_03 cal item).
+
 ## D. Regression sweep (things this session touched)
 
 - [ ] Stream figures (full-field / panel map / orientation / checker) on the

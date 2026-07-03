@@ -1,5 +1,16 @@
 # #135 rig I/O — exact firmware changes needed (review, 2026-07-03)
 
+> **STATUS UPDATE (2026-07-03, same day):** changes 0–3 and the 0xA4/capability
+> parts of 4 are IMPLEMENTED on firmware branch `feat/dio-roles-ao-modes`
+> (commit `81d427d`, stacked on the MAC branch; both envs build) with the
+> user's decisions: 0xAA auto-promotes `off` ports (refuses
+> in_trigger/framescan), boot = IO1 out-LOW / IO2 in_trigger, AO frame_number
+> normalized 0–5 V, framescan = an SPI-transmission ENVELOPE (LOW→HIGH for the
+> whole per-frame transfer→LOW), capability bit 5 `io_ext` (bitmap 0x23).
+> Remaining: bench validation (checklist §E), Mode-4/AI front-end calibration,
+> the WEB apply-path (applyRigIo → 0xAC; un-grey roles on `io_ext`), and the
+> g6_03 spec sync. The review below is kept as the design record.
+
 What the fw-gated `io:` roles need from `LED-Display_G6_Firmware_Arena`,
 grounded in the current code (branch `feat/controller-info-mac-0xc2`, which
 already carries the Session-1 MAC change). Written against the physical board

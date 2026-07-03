@@ -107,7 +107,11 @@ const ArenaWireG6 = (function () {
         [1, 'v2_local_storage'],
         [2, 'mode_1_tsi'],
         [3, 'v3_triggered'],
-        [4, 'v3_gated']
+        [4, 'v3_gated'],
+        // Extended I/O command set (#135): SET_DIO_ROLE 0xAC / GET_DIO_ROLE
+        // 0xAD / SET_AO_MODE 0xA3 / GET_ANALOG_IN 0xA4 — hosts detect the
+        // DIO-role machinery by this bit, not by firmware-version guessing.
+        [5, 'io_ext']
     ];
 
     // ───────────────────────── validation helpers ─────────────────────────
