@@ -155,7 +155,6 @@
   .btn-testexp .sub{display:block;font-size:9.5px;font-weight:400;color:var(--dim);margin-top:2px}
   .btn-testexp[disabled]{opacity:.4;cursor:not-allowed}
   body.running .launch-row{display:none}
-  .launch-note{display:flex;align-items:center;gap:8px;margin-top:7px}
   /* Run-view FicTrac bridge strip — mirrors the Console's shared bridge; stays
      visible during a run so the closed-loop indicator can light. */
   .run-bridge{display:flex;align-items:center;gap:9px;margin-top:9px;font-size:12px;flex-wrap:wrap}
@@ -168,7 +167,6 @@
   .run-bridge .rb-cl{margin-left:auto;font-family:var(--head);font-size:11px;letter-spacing:.4px;color:var(--dim);opacity:.45;transition:color .2s,opacity .2s}
   .run-bridge .rb-cl.active{color:var(--accent);opacity:1;text-shadow:0 0 8px rgba(0,230,118,.7);animation:pulse 1.1s infinite}
   .pat-warn{margin-top:7px;font-size:11.5px;color:var(--warn);background:rgba(227,160,8,.08);border:1px solid rgba(227,160,8,.35);border-radius:6px;padding:6px 9px;line-height:1.4}
-  .kchip.hostbadge{cursor:help}
   .running-panel{display:none;align-items:center;gap:14px;background:#06210f;border:1px solid var(--accent);border-radius:8px;padding:8px 14px}
   body.running .running-panel{display:flex}
   body.running.testing .running-panel{background:#0a1a2e;border-color:var(--beta)}
@@ -180,6 +178,10 @@
   .running-panel .rp-prog{flex:1;height:8px;border-radius:5px;background:#0a3a20;overflow:hidden}
   .running-panel .rp-prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
   body.running.testing .rp-prog i{background:var(--beta)}
+  /* step count (top) + elapsed/total timer (below), beside the progress bar */
+  .running-panel .rp-meta{display:flex;flex-direction:column;gap:2px;font-size:11px;line-height:1.25;min-width:96px}
+  .running-panel #rpTimer{font-variant-numeric:tabular-nums;color:var(--accent)}
+  body.running.testing .running-panel #rpTimer{color:var(--beta)}
   .btn-stop{background:var(--danger);border:0;color:#2a0000;font-weight:700;border-radius:8px;padding:8px 20px;font-size:14px;font-family:var(--head)}
   .btn-stop:hover{filter:brightness(1.1)}
   .plug-hover{font-size:11px;color:var(--beta);border:1px solid rgba(74,168,255,.4);background:rgba(74,168,255,.06);border-radius:20px;padding:2px 8px;cursor:help;white-space:nowrap}
@@ -1843,14 +1845,14 @@
             <span class="sub">not recorded</span>
           </button>
         </div>
-        <div class="launch-note">
-          <span class="kchip dur hostbadge" title="Trial timing is host-side / best-effort until firmware #4 lands. Plugin commands are skipped by the runner with a warning — EXCEPT log and fictrac, which the runner DOES execute (fictrac = closed-loop Mode 3).">⏱ host-timed · plugins skipped (log + fictrac run)</span>
-        </div>
         <div class="pat-warn" id="runPatWarn" style="display:none"></div>
         <div class="running-panel">
           <span class="rp-lead"><span class="blip"></span><span id="rpLeadTxt">running</span></span>
           <span class="rp-prog"><i id="rpBar"></i></span>
-          <span class="dim" id="rpStep" style="font-size:11px"></span>
+          <span class="rp-meta">
+            <span class="dim" id="rpStep"></span>
+            <span class="dim" id="rpTimer" title="Elapsed / estimated total time (host-timed) — updates every second">0:00 / —</span>
+          </span>
           <button class="btn-stop" id="btnStopRun">■ STOP</button>
         </div>
         <!-- FicTrac bridge — same shared connection as the Console; gain/closed-loop
@@ -2465,7 +2467,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.5 | 2026-07-04 13:04 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired; per-file confirm log + settle pause + 1 retry for reliability), manual "⇪ Push log" to re-commit a run log the auto-commit skipped/failed, io_ext caps resolved before the rig-I/O apply (no first-connect race) + role options re-gate on GET_CONTROLLER_INFO + "Apply I/O roles" honors session overrides, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run view has a FicTrac bridge strip (connect + live counts mirrored from the Console, one shared connection; closed-loop indicator pulses green while active; gain/config stay in Console) and hides the per-condition "▶ Test" buttons during a run, Run-view log fills to the window bottom (sequence list scrolls when short), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-04 13:21 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired; per-file confirm log + settle pause + 1 retry for reliability), manual "⇪ Push log" to re-commit a run log the auto-commit skipped/failed, io_ext caps resolved before the rig-I/O apply (no first-connect race) + role options re-gate on GET_CONTROLLER_INFO + "Apply I/O roles" honors session overrides, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run view has a FicTrac bridge strip (connect + live counts mirrored from the Console, one shared connection; closed-loop indicator pulses green while active; gain/config stay in Console), a live elapsed/estimated-total run timer under the step counter, and hides the per-condition "▶ Test" buttons during a run, Run-view log fills to the window bottom (sequence list scrolls when short), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2623,6 +2625,34 @@
         return String(s).replace(/["\\]/g, '\\$&');
     }
 
+    // ---- run timer: elapsed / estimated-total, ticks every second ----
+    // total is a host-timed ESTIMATE (sum of step durations); the live clock is
+    // wall-time since run start. Started by beginRun/runCondition (which know the
+    // total), stopped by refreshState when running clears (covers complete/abort/
+    // disconnect + single-condition tests, logged or not).
+    let _runTimerIv = null;
+    function _fmtRunClock(sec) {
+        sec = Math.max(0, Math.round(sec));
+        return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+    }
+    function startRunTimer(totalSec) {
+        stopRunTimer();
+        Studio._runStartMs = Date.now();
+        Studio._runTotalSec = totalSec > 0 ? totalSec : 0;
+        const tick = () => {
+            const el = $('rpTimer');
+            if (!el) return;
+            const elapsed = (Date.now() - Studio._runStartMs) / 1000;
+            el.textContent = _fmtRunClock(elapsed) + ' / ' + (Studio._runTotalSec ? _fmtRunClock(Studio._runTotalSec) : '—');
+        };
+        tick();
+        _runTimerIv = setInterval(tick, 1000);
+    }
+    function stopRunTimer() {
+        if (_runTimerIv) { clearInterval(_runTimerIv); _runTimerIv = null; }
+    }
+    Studio.startRunTimer = startRunTimer;
+
     function onRunFinished(summary) {
         const log = Studio.activeRunLog;
         clearSeqHighlight();
@@ -2736,6 +2766,7 @@
         const running = !!(Studio.session && Studio.session.running);
         document.body.classList.toggle('connected', connected);
         document.body.classList.toggle('running', running);
+        if (!running) stopRunTimer(); // freeze the run clock when the run ends (any path)
         $('connectBtn').textContent = connected ? 'Disconnect' : 'Connect';
         $('statusTxt').textContent = connected ? 'connected' : 'disconnected';
         updateDeviceLine();
@@ -5491,6 +5522,14 @@ Studio.beginRun = async function (isExperiment) {
     const conditionsByName = new Map((exp.conditions || []).map((c) => [c.name, c]));
     startRunLog(isExperiment);
     document.body.classList.toggle('testing', !isExperiment);
+    // Estimated total = sum of step durations (host-timed); the timer ticks
+    // wall-time since now. Best-effort — steps whose condition isn't found add 0.
+    let totalSec = 0;
+    for (const st of steps) {
+        const c = conditionsByName.get(st.conditionName);
+        if (c) totalSec += RunnerLib.conditionDuration(c) || 0;
+    }
+    if (Studio.startRunTimer) Studio.startRunTimer(totalSec);
     await runSteps(steps, conditionsByName, exp, isExperiment);
 };
 
@@ -5506,6 +5545,7 @@ Studio.runCondition = async function (name) {
     const conditionsByName = new Map([[name, cond]]);
     startRunLog(false); // per-condition test is never recorded
     document.body.classList.add('testing');
+    if (Studio.startRunTimer) Studio.startRunTimer(RunnerLib.conditionDuration(cond) || 0);
     await runSteps(steps, conditionsByName, doc.experiment, false);
 };
 
