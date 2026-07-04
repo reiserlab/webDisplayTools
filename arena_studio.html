@@ -2422,7 +2422,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.5 | 2026-07-04 08:13 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-04 08:44 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -4324,14 +4324,32 @@ function arenaForConfig(cfg) {
     const c = cfg ? getConfig(cfg) : null;
     return c && c.arena;
 }
-Studio.patternIndexByName = function (name) {
+// The card stores pattern files as `NNN_<name>.pat` — the zero-padded index
+// pins the firmware's SD-scan order (== pattern_ID) and the >8.3 name forces a
+// FAT long-filename entry (js/pattern-set.js:242). Protocols, though, reference
+// the LOGICAL name (`all_on`). Normalize a raw SD filename to that logical
+// name for name↔SD reconciliation: drop a leading index prefix and the .pat
+// extension. Robust to one card holding several protocols' sets (each set's
+// 1-based prefixes collide globally, but the names stay unique + resolvable).
+function sdLogicalName(fn) {
+    return String(fn == null ? '' : fn)
+        .replace(/\.pat$/i, '')
+        .replace(/^\d+[_-]/, '');
+}
+Studio.sdLogicalName = sdLogicalName;
+// Look up a pattern entry by name: exact logical-name match first, then
+// tolerate a raw filename / prefixed / extensioned reference by normalizing.
+function patEntry(name) {
     const m = Studio.patternSet;
-    const p = m && m.patterns && m.patterns[name];
+    if (!m || !m.patterns) return null;
+    return m.patterns[name] || m.patterns[sdLogicalName(name)] || null;
+}
+Studio.patternIndexByName = function (name) {
+    const p = patEntry(name);
     return p && p.index != null ? p.index : null;
 };
 Studio.patternFramesByName = function (name) {
-    const m = Studio.patternSet;
-    const p = m && m.patterns && m.patterns[name];
+    const p = patEntry(name);
     return p && p.preview && Number.isFinite(p.preview.frames) ? p.preview.frames : null;
 };
 // Recorded-run preflight (course pipeline): pattern names the SEQUENCE
@@ -4501,7 +4519,10 @@ Studio.onSdListing = function (names) {
     };
     names.forEach((nm, i) => {
         if (!nm) return; // unreadable filename — index still selectable via cPat
-        m.patterns[nm] = { index: i + 1, sd_name: nm, preview: null };
+        // Key by the LOGICAL name (strip the NNN_ index prefix + .pat) so a
+        // protocol's `pattern: "all_on"` resolves against `001_all_on.pat` on
+        // the card; keep the raw filename as sd_name for preview bytes + upload.
+        m.patterns[sdLogicalName(nm)] = { index: i + 1, sd_name: nm, preview: null };
     });
     const n = Object.keys(m.patterns).length;
     Studio.patternSet = m; // once listed, the CARD owns the picker — even empty
