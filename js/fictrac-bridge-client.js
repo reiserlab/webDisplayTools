@@ -34,12 +34,13 @@
  *   'frame'   (index:int)                  — a frame index arrived (pre-apply)
  *   'applied' (index:int)                  — a frame was applied to the arena
  *   'blocked' (reason:string)              — a frame could not be applied (canApply false)
+ *   'apply'   (on:bool)                     — closed-loop apply was enabled/disabled
  *   'log'     (msg:string, kind:string)    — human-readable trace line
  */
 (function (global) {
     'use strict';
 
-    const EVENTS = ['status', 'stats', 'frame', 'applied', 'blocked', 'log'];
+    const EVENTS = ['status', 'stats', 'frame', 'applied', 'blocked', 'apply', 'log'];
 
     class FicTracBridgeClient {
         /**
@@ -236,7 +237,10 @@
          * next incoming frame drives, so we never apply a heading from before activation.
          */
         setApply(on) {
-            this._apply = !!on;
+            const next = !!on;
+            const changed = next !== this._apply;
+            this._apply = next;
+            if (changed) this._emit('apply', this._apply);
         }
 
         /** Turn the bridge's session log file on/off (sends log_control). */

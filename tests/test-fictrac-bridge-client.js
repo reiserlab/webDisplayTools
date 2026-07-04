@@ -73,6 +73,18 @@ async function main() {
         check('applies once enabled', applied, [7]);
     }
 
+    console.log("\n=== 'apply' event fires on setApply transitions (closed-loop indicator) ===");
+    {
+        const client = new FicTracBridgeClient({});
+        const events = [];
+        client.on('apply', (on) => events.push(on));
+        client.setApply(true); // false → true
+        client.setApply(true); // no change → no event
+        client.setApply(false); // true → false
+        check('apply event only on change', events, [true, false]);
+        checkBool('apply getter reflects state', client.apply === false);
+    }
+
     console.log('\n=== canApply gate blocks + emits blocked ===');
     {
         const applied = [];
