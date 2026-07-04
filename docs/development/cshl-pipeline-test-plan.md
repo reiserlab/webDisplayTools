@@ -9,16 +9,19 @@ you can budget time. Two arcs shipped:
   bench-signed-off** (2026-07-03); this plan references them, doesn't repeat
   them.
 - **Session 2 (course data pipeline, Arena Studio v0.5 + Pattern Editor
-  v0.9.41)** — the GitHub course-data flow. This is the arc that still needs a
-  real end-to-end pass on hardware.
+  v0.9.42)** — the GitHub course-data flow, including the Console **Upload ▾**
+  menu that fills the SD card straight from the course repo (or the library, or
+  a local file/folder). This is the arc that still needs a real end-to-end pass
+  on hardware.
 
 ## Where the risk actually is (what's verified vs. what isn't)
 
 | Layer | Status |
 |---|---|
-| Unit / logic (761 checks, `pixi run test`) | ✅ passing |
+| Unit / logic (763 checks, `pixi run test`) | ✅ passing |
 | Browser behavior against a **mocked** GitHub API | ✅ verified (dev session) |
 | **Live** push/pull to `reiserlab/cshl-2026-course` (protocol, .pat, promote+guard, runlog, roster, >1 MB) | ✅ verified via the real API (dev session, artifacts cleaned) |
+| Console **Upload ▾** fills the SD from the repo/library (fetch + list verified; 0x8D/0x83 SD write is proven separately) | ⛔ combined path not yet on hardware (Part 3 / 2.12) |
 | Session-1 hardware (MAC, rig lock, framescan, AO idle, DIO boot) | ✅ bench-signed-off (135 checklist) |
 | **Full end-to-end on YOUR bench: connect → run → auto-commit runlog** | ⛔ **not yet — this is the main thing to do** |
 | Multi-browser / multi-bench concurrency | ⛔ not yet |
@@ -115,8 +118,11 @@ Expected: the save label reads **"Save → course repo"** and the destination
 line names `…/protocols/<bench-id>/`.
 
 Console note: the **Debug ▾** menu (SPI clock, refresh rate, **Reset
-controller**) is likewise **locked by default** — click **Unlock** inside it to
-use those advanced controls; it re-locks on the next load.
+controller**) and the lower half of the **Controller ▾** menu (**panel display
+mode** + **rig I/O** roles) are likewise **locked by default** — click
+**Unlock** inside each to use those advanced controls; they re-lock on the next
+load. To switch course accounts on a bench, unlock the GitHub block and use
+**Sign out** (clears the stored token), then sign in with the new PAT.
 
 ### P4. Bridge + SD + firmware (per bench)
 - `pixi run bridge` running on the bench machine (the run gate requires it).
@@ -124,7 +130,11 @@ use those advanced controls; it re-locks on the next load.
   closed-loop test; **a plain `pixi run bridge` with no fly is enough to
   exercise the whole logging + commit pipeline.**
 - SD card loaded with the curriculum patterns (names must match what the
-  protocols reference — see the preflight test P?/2.7).
+  protocols reference — see the preflight test 2.7). You can load them straight
+  from the repo now: **Console → device memory → SD card → Upload ▾ → From
+  course repo**, pick the protocol, and its colocated `_patterns/` set uploads
+  to the card (see 2.12). The `NNN_` filename prefixes are preserved, so the SD
+  scan order (= pattern_ID) stays correct.
 - Controller flashed from firmware `main` (post-#137: MAC in 0xC2 + io_ext).
 
 ---
@@ -184,11 +194,16 @@ Selecting one loads it and reproduces the `?repo=…` URL.
 **2.6 Open-from-library.** File ▾ → **"Open from library…"** → lists the site's
 own curriculum (`protocols/index.json`), loads read-only with `?p=<key>`.
 
-**2.7 Missing-pattern preflight.** Load a protocol that references a pattern
-NOT on this bench's SD (or pull the SD).
-→ The green **Run experiment** button is disabled with
-"Pattern "X" not on SD — upload it via Console → SD upload…". Upload/refresh
-→ the block clears.
+**2.7 Missing-pattern preflight + name-mismatch warning.** Load a protocol that
+references a pattern NOT on this bench's SD (or pull the SD).
+→ The green **Run experiment** button is disabled, naming the unresolved
+pattern and pointing at the Console SD upload. Fill the SD (2.12: **Upload ▾ →
+From course repo**) or Refresh → the block clears. SD names are matched by
+*logical* name, so `all_on` resolves against `001_all_on.pat` on the card.
+→ Separately, if a pattern NAME isn't on the SD but the command still carries a
+numeric `pattern_ID`, the run is **not** blocked — it falls back to that index
+— but a non-blocking **warning** flags it (it would play whatever sits at that
+index, not the named pattern). Both only consider sequence-reachable conditions.
 
 **2.8 Bridge gate.** With `pixi run bridge` **stopped**, try to arm a recorded
 run. → Blocked: "Bridge not connected — recorded runs are logged through it".
@@ -210,6 +225,25 @@ thumbnail renders (repo byte-source preview).
 **2.11 `?repo=` share link, signed out.** Open a `?repo=…&p=…` link in a
 browser with no token. → A banner points you to sign in + "Open from course
 repo…" (it does not silently fail).
+
+**2.12 Fill the SD from the course repo (Upload ▾).** Connect the arena.
+Console → device memory → SD card → **Upload ▾** (the button is disabled until
+connected):
+- **Pattern set (folder) → From course repo…** → pick a protocol → its whole
+  colocated `_patterns/` set uploads to the card (per-file progress in the
+  status line), then the SD list refreshes. **Single pattern → From course
+  repo…** picks one file from a protocol's set instead.
+- **From library…** does the same against the site's own curriculum
+  (`protocols/index.json` → the tools repo's `_patterns/`); **From local
+  file/folder…** uploads off the bench disk. Library/repo sources need GitHub
+  sign-in (a banner says so if you're signed out); an empty/missing
+  `_patterns/` reports "No colocated patterns for this protocol".
+→ Uploaded filenames keep their `NNN_` prefix (SD scan order preserved), the
+picker previews render straight from the just-uploaded bytes (the old
+"Load set…" folder step is retired), and 2.7's preflight now resolves the
+pattern. **This is the new "fill the SD from the repo" capability** — the
+combined fetch→SD-write path is the one thing to confirm on real hardware
+(Part 3).
 
 ---
 
@@ -334,8 +368,10 @@ above are how you verify each hop.
 ### UC1 — Instructor sets up a bench (once per bench, pre-course)
 Sign in with the shared PAT (remember it) → set repo + bench id + direct
 commit → connect the arena (roster prefills the experimenter, MAC chip confirms
-the right controller) → start `pixi run bridge`. The bench is now a course
-kiosk: students never touch tokens or settings.
+the right controller) → **pre-load the curriculum patterns onto the SD**
+(Console → device memory → Upload ▾ → From course repo → pick each curriculum
+protocol; its `_patterns/` upload in one step) → start `pixi run bridge`. The
+bench is now a course kiosk: students never touch tokens or settings.
 
 ### UC2 — Student runs a pre-loaded curriculum protocol (the bulk of the week)
 Student opens a curriculum protocol ("Open from library…" or a shared
@@ -346,12 +382,14 @@ auto-commits to `runlogs/<bench-id>/`. **Nothing to configure — it just runs
 and records.** This is 80% of course activity.
 
 ### UC3 — Student modifies a pattern and runs it
-Pattern Editor → tweak a grating → **⇪ Push to course repo** (lands in
-`protocols/<bench-id>/<proto>_patterns/`) for provenance. To actually display
-it: **Console → SD upload** the `.pat` onto this bench's card (manual for the
-course week). Back in Run view, the preflight now resolves the pattern → run →
-the log (with the modified pattern's name) auto-commits. Repo→SD one-click sync
-is the named post-course follow-on.
+Pattern Editor → tweak a grating (or build a frame animation and hit the pane's
+**💾 Save .pat**) → **⇪ Push to course repo** (lands in
+`protocols/<bench-id>/<proto>_patterns/`) for provenance. To display it, pull
+the set onto this bench's card: **Console → device memory → Upload ▾ → From
+course repo → pick the protocol** — its `_patterns/` upload to the SD in one
+step (the repo→SD sync that used to be a post-course follow-on now ships,
+per protocol). Back in Run view, the preflight resolves the pattern → run → the
+log (with the modified pattern's name) auto-commits.
 
 ### UC4 — Student authors/modifies a protocol
 Edit view → change conditions/sequence → **Save** (→ `protocols/<bench-id>/`).
