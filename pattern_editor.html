@@ -27,6 +27,9 @@
     <script src="js/pat-encoder.js"></script>
     <script src="js/arena-geometry.js"></script>
     <script src="js/pattern-editor/tools/generator.js"></script>
+    <!-- course pipeline: GitHub request builders for "push to course repo"
+         (classic dual-export module — same file Arena Studio uses) -->
+    <script src="js/studio-github.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -1706,7 +1709,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.40 | 2026-07-01 12:33 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.42 | 2026-07-04 11:53 ET — Frame Animation pane: one-click 💾 Save .pat (saveFrameAnimationAsPat → handleSave; fixes the undefined savePatternFile ReferenceError). Course pipeline: ⇪ Push to course repo (direct commit to protocols/&lt;bench-id&gt;/&lt;protocol&gt;_patterns/, reuses Arena Studio's saved GitHub settings) — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1970,6 +1973,7 @@
                                 <button class="btn secondary" id="addAllFramesBtn" style="flex: 1;">+ Add All Frames</button>
                                 <button class="btn secondary" id="clearSequenceBtn" style="flex: 1;">Clear Sequence</button>
                             </div>
+                            <button class="btn" id="saveAnimationBtn" style="width: 100%; margin-top: 0.5rem;" title="Build the pattern from this frame sequence and download it as a .pat file (one step)">💾 Save .pat</button>
                         </div>
                     </div>
                 </div>
@@ -2140,7 +2144,8 @@
             <!-- File Operations -->
             <div class="file-operations">
                 <div class="file-buttons">
-                    <button class="btn" id="saveBtn">SAVE</button>
+                    <button class="btn" id="saveBtn" title="Encode the current pattern as a .pat file and download it">SAVE</button>
+                    <button class="btn" id="pushRepoBtn" title="Commit the current pattern to the course-data repo at protocols/<bench-id>/<protocol>_patterns/ — uses the GitHub token, repo, and bench id configured in Arena Studio (File ▾) on this browser">⇪ PUSH TO COURSE REPO</button>
                 </div>
             </div>
         </div>
@@ -2597,6 +2602,7 @@
             document.getElementById('fileInput').addEventListener('change', handleFileLoad);
 
             document.getElementById('saveBtn').addEventListener('click', handleSave);
+            document.getElementById('pushRepoBtn').addEventListener('click', handlePushToRepo);
             document.getElementById('newBtn').addEventListener('click', handleNew);
 
             document.getElementById('renameBtn').addEventListener('click', () => {
@@ -2802,6 +2808,7 @@
             // Frame animation buttons
             document.getElementById('addAllFramesBtn').addEventListener('click', addAllClipboardFramesToSequence);
             document.getElementById('clearSequenceBtn').addEventListener('click', clearFrameAnimationSequence);
+            document.getElementById('saveAnimationBtn').addEventListener('click', saveFrameAnimationAsPat);
 
             // Frame shifting buttons
             document.getElementById('clearShiftingFrameBtn').addEventListener('click', clearShiftingFrame);
@@ -3256,13 +3263,15 @@
             e.target.value = '';
         }
 
-        function handleSave() {
+        // Convert state.pattern to the PatEncoder (V2 headers) format + the
+        // arena-prefixed filename — shared by SAVE (download) and PUSH TO
+        // COURSE REPO (direct commit). Returns null (after alerting) when
+        // there is no pattern.
+        function buildPatternDataForSave() {
             if (!state.pattern) {
                 alert('No pattern to save');
-                return;
+                return null;
             }
-
-            // Convert state.pattern to format expected by PatEncoder (V2 headers)
             const gen = state.pattern.generation;
             const configName = document.getElementById('arenaConfigStatus').value;
             const patternData = {
@@ -3280,17 +3289,79 @@
                 arena_id: configName ? getArenaId(gen, configName) : 0,
                 observer_id: 0
             };
+            const filename = addArenaPrefix(state.filename || 'pattern.pat');
+            return { patternData, filename };
+        }
 
-            // Build filename with arena config prefix
-            const baseFilename = state.filename || 'pattern.pat';
-            const filename = addArenaPrefix(baseFilename);
-            PatEncoder.downloadPattern(patternData, filename);
+        function handleSave() {
+            const built = buildPatternDataForSave();
+            if (!built) return;
+            PatEncoder.downloadPattern(built.patternData, built.filename);
 
             state.isDirty = false;
-            state.filename = filename;  // Update to include prefix
+            state.filename = built.filename;  // Update to include prefix
             updateStatus();
 
-            console.log('Saved pattern:', filename);
+            console.log('Saved pattern:', built.filename);
+        }
+
+        // ---- push to course repo (CSHL pipeline) ----
+        // Direct-commits the encoded .pat to the course-data repo under
+        // protocols/<bench-id>/<protocol>_patterns/. Reuses the SAME
+        // localStorage settings Arena Studio's File ▾ block writes (PAT +
+        // repo + bench id are same-origin), so there is no auth UI here.
+        // Getting the pattern ONTO the SD stays manual for the course week:
+        // Arena Studio → Console → SD upload.
+        async function handlePushToRepo() {
+            const GH = window.StudioGitHub;
+            if (!GH) {
+                alert('GitHub module failed to load — hard-refresh and retry.');
+                return;
+            }
+            const token = sessionStorage.getItem('studio_gh_pat') || localStorage.getItem('studio_gh_pat');
+            const repoRaw = (localStorage.getItem('studio_gh_repo') || '').trim();
+            const benchId = (localStorage.getItem('studio_bench_id') || '').trim();
+            const rm = /^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/.exec(repoRaw);
+            if (!token || !rm || repoRaw.includes('..')) {
+                alert('Course repo not configured on this browser.\nOpen Arena Studio → File ▾ → sign in to GitHub and set the repo (owner/name), then retry.');
+                return;
+            }
+            if (!benchId) {
+                alert('Push blocked: bench id not set — see instructor (Arena Studio → File ▾ → Bench id).');
+                return;
+            }
+            const built = buildPatternDataForSave();
+            if (!built) return;
+            const protoRaw = prompt(
+                'Attach this pattern to which protocol?\n' +
+                'It will be committed to protocols/' + benchId + '/<protocol>_patterns/' + built.filename,
+                'my_protocol'
+            );
+            if (!protoRaw) return;
+            const proto = GH.slug(protoRaw.replace(/\.ya?ml$/i, ''));
+            const path = 'protocols/' + benchId + '/' + proto + '_patterns/' + built.filename;
+            const btn = document.getElementById('pushRepoBtn');
+            btn.disabled = true;
+            try {
+                const bytes = new Uint8Array(PatEncoder.encode(built.patternData));
+                const res = await GH.directCommit(fetch, {
+                    owner: rm[1],
+                    repo: rm[2],
+                    token: token,
+                    path: path,
+                    message: 'pattern: ' + built.filename + ' for ' + proto + ' from ' + benchId + ' via Pattern Editor',
+                    contentBytes: bytes
+                });
+                if (!res.ok) throw new Error(res.error || 'HTTP ' + res.status);
+                console.log('Pushed pattern to course repo:', path);
+                alert('✓ Committed to ' + repoRaw + '\n' + path +
+                    '\n\nTo run it on the arena, upload it to the SD via Arena Studio → Console → SD upload.');
+            } catch (err) {
+                console.error('Push to course repo failed:', err);
+                alert('Push failed: ' + err.message + '\nThe pattern was NOT committed — use SAVE for a local copy.');
+            } finally {
+                btn.disabled = false;
+            }
         }
 
         /**
@@ -5909,9 +5980,11 @@
             // Build pattern from sequence first
             previewFrameAnimation();
 
-            // Then trigger save
+            // Then trigger the shared .pat save handler (encode + download).
+            // (Was savePatternFile() — a function that doesn't exist, so this
+            // threw ReferenceError; handleSave() is the #saveBtn handler.)
             if (state.pattern) {
-                savePatternFile();
+                handleSave();
             }
         }
 

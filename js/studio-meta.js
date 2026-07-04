@@ -84,9 +84,14 @@
 
     /**
      * Is the green "Run experiment" (recorded) action allowed? Requires a live
-     * connection, both required metadata fields, and a saved (non-dirty) protocol.
+     * connection, a live FicTrac bridge (the universal run logger — a dead
+     * bridge must block loudly, not lose data silently), both required
+     * metadata fields, a saved (non-dirty) protocol, and every referenced
+     * pattern resolvable on the SD (missingPatterns preflight — an
+     * unresolvable name would otherwise fail MID-run).
      * Returns {ok, reason} so the UI can show a disabled-with-reason tooltip.
-     * The blue "Test experiment" path ignores this (needs only `connected`).
+     * The blue "Test experiment" path ignores this (needs only `connected`);
+     * Console/bench quick ops stay ungated.
      */
     function canRunExperiment(s) {
         const st = s || {};
@@ -98,6 +103,21 @@
             return { ok: false, reason: 'Experimenter is required' };
         if (!String(st.genotype || '').trim())
             return { ok: false, reason: 'Fly genotype is required' };
+        if (!st.bridgeConnected)
+            return {
+                ok: false,
+                reason: 'Bridge not connected — recorded runs are logged through it (pixi run bridge)'
+            };
+        if (Array.isArray(st.missingPatterns) && st.missingPatterns.length) {
+            const names = st.missingPatterns.map((n) => '"' + n + '"').join(', ');
+            return {
+                ok: false,
+                reason:
+                    'Pattern ' +
+                    names +
+                    ' not on SD — upload it via Console → SD upload, then reconnect'
+            };
+        }
         return { ok: true, reason: '' };
     }
 

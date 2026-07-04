@@ -1,10 +1,22 @@
 # Studio → GitHub save: lean proposal (for review)
 
-**Status: PROPOSAL (2026-07-03) — not scheduled. Review + edit before any build.**
-Requested during the #107 write-side session ("our eventual plan is to be able
-to merge onto a github repo … a per-user repo, which would hold all the YAML,
-patterns, etc."). Related: parity-doc Direction note, issue #107 (URL state),
-issue #135 (session rig).
+**Status: COURSE SCOPE SHIPPED (2026-07-03, Session 2 — Arena Studio v0.5).**
+The course-pipeline slice of this proposal is implemented; the generic
+per-user/template-repo phases below remain the unbuilt follow-on. Shipped:
+repo owner/name + bench-id settings + "commit directly to default branch"
+(File ▾ gh-block, localStorage), `directCommit()` orchestration + binary-safe
+base64 + `runlogs/` allowlist + root `roster.yaml` read in
+`js/studio-github.js`, universal bridge run-logging (recorded runs gated on a
+live bridge; `run_metadata` line; auto-commit of the exported bridge JSONL to
+`runlogs/<bench-id>/<proto>__<exp>__<STAMP>__<run_id>.jsonl`), roster
+prefill + MAC cross-check chip, missing-pattern preflight block, "Open from
+library…" / "Open from course repo…" pickers, promote-to-shared with the
+hash-compare guard, `?repo=owner/name&p=<path>` links, and the pattern
+editor's "⇪ Push to course repo".
+Originally requested during the #107 write-side session ("our eventual plan is
+to be able to merge onto a github repo … a per-user repo, which would hold all
+the YAML, patterns, etc."). Related: parity-doc Direction note, issue #107
+(URL state), issue #135 (session rig).
 
 ## Where we are today
 
@@ -183,7 +195,7 @@ and Session 2 (course data pipeline). Answers below are scoped to the course;
 the generic per-user story stays as sketched in the phases above.
 
 1. **Per-user vs per-lab: per-course shared repo.** ONE dedicated course-data
-   repo (e.g. `reiserlab/cshl-2026-course-data`), 7 fixed bench rigs, one
+   repo (e.g. `reiserlab/cshl-2026-course`), 7 fixed bench rigs, one
    shared fine-grained PAT (instructor-installed per bench, localStorage;
    students never see the token). Writes are namespaced by an
    **instructor-set bench id** (`bench03`) — NOT the rig-config name (only 3

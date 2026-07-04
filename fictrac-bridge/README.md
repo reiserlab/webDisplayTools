@@ -102,25 +102,37 @@ FicTrac's `doc/data_header.txt`.
 
 ```
 bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>}
+                   {"type":"log_export_result", "name":<str>, "content":<str>}
+                     (reply to log_export; {"error":<str>} when nothing was written)
 browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
                    {"type":"config", "fictrac_port":<int>, "gain":<float>,
                                      "offset":<float>, "frames":<int>}  (any subset)
                    {"type":"log_control", "enabled":<bool>}   (open the log file)
                    {"type":"log", "event":<str>, ...arbitrary fields, "ms":<int>}
+                   {"type":"log_export"}   (close the active log, stream it back whole)
 ```
 
 The bridge always broadcasts the **latest** frame to each client and drops
 superseded indices rather than queuing them, so a slow consumer never builds a
 backlog. A `config` message applies `gain`/`offset`/`frames` immediately and
 re-binds the FicTrac input when `fictrac_port` changes. `log_control{enabled:true}`
-**starts a new timestamped log file** (false closes it). While logging is active the
-bridge records, as JSON lines:
+**starts a new timestamped log file** (false closes it; `--log-dir` picks where
+on-demand files land, default CWD). While logging is active the bridge records,
+as JSON lines:
 
 - `{"type":"fictrac_frame", "seq":<frame#>, "index":<int>, "t":<ms>}` — **every**
   FicTrac record it receives (before WS coalescing), independent of whether the
   browser is applying frames. `--log-frames` adds the full 25-field record.
 - inbound browser `log` messages (e.g. `{"event":"arena_command", ...}` for every
-  Web Serial command), each stamped with `dir` and `rx_ms`.
+  Web Serial command, or Arena Studio's `{"event":"run_metadata", ...}` header
+  line at recorded-run start), each stamped with `dir` and `rx_ms`.
+
+`log_export` (Arena Studio's course pipeline) **closes** the active log —
+guaranteeing complete, flushed content — and streams the whole file back to the
+asking client as ONE `log_export_result` message (re-export after close re-reads
+the same file, so a failed commit can retry). Message size is capped at 16 MiB
+(`WS_MAX_SIZE`, up from the library's 1 MiB default) so a multi-MB experiment
+log transfers without chunking.
 
 ## Customising the closed-loop policy
 

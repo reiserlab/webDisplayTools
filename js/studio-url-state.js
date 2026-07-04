@@ -1,11 +1,16 @@
 /**
  * studio-url-state.js — Arena Studio URL state codec (#107, DOM-free, testable).
  *
- * Encodes/decodes the shareable link params: mode / p / lib / set / rig.
+ * Encodes/decodes the shareable link params: mode / p / lib / set / rig / repo.
  * Shareability boundary (design §9): `p`/`lib` resolve ONLY to committed
  * protocol keys (validated against protocols/index.json by the caller); a
  * locally file-picked YAML has NO shareable URL, so encode() omits p/set when
  * the doc is local. Running-experiment progress is deliberately NOT encoded.
+ *
+ * `repo` (course pipeline): `?repo=owner/name` re-scopes `p` from a registry
+ * KEY to a repo-relative protocols/ PATH (dual meaning gated on repo's
+ * presence — e.g. `?repo=reiserlab/cshl-2026-course-data&p=protocols/bench03/
+ * looming.yaml`). Shape-validated only; the browser's PAT gates real access.
  *
  * `rig` (#135): the SESSION (bench) rig, validated against
  * configs/rigs/index.json names by the caller (allowedRigs) — a per-setup
@@ -48,6 +53,13 @@
     const KEY_RE = /^[A-Za-z0-9_-]{1,64}$/;
     // A safe committed path under an allowed dir — no traversal, no scheme.
     const SAFE_PATH_RE = /^\.\/(protocols|configs)\/[\w./-]+\.ya?ml$/;
+    // A GitHub repo ref (?repo=owner/name). Shape-only — no allowlist; actual
+    // access is gated by whichever PAT the browser holds.
+    const REPO_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
+    // `p` when ?repo= is present: a repo-RELATIVE protocol path (no leading ./,
+    // unlike SAFE_PATH_RE which validates a document's rig: field). Only
+    // protocols/ is loadable — e.g. protocols/bench03/looming.yaml.
+    const REPO_PATH_RE = /^protocols\/[\w.-]+(?:\/[\w.-]+)*\.ya?ml$/;
 
     function isSafeKey(k) {
         return typeof k === 'string' && KEY_RE.test(k);
@@ -59,6 +71,17 @@
         if (p.includes('..') || p.includes('\\')) return false;
         if (/^\//.test(p) || /^[a-z]+:/i.test(p) || p.startsWith('//')) return false;
         return SAFE_PATH_RE.test(p);
+    }
+
+    function isSafeRepo(r) {
+        return typeof r === 'string' && !r.includes('..') && REPO_RE.test(r);
+    }
+
+    // Repo-relative protocol path (the ?repo= meaning of `p`).
+    function isSafeRepoPath(p) {
+        if (typeof p !== 'string' || !p) return false;
+        if (p.includes('..') || p.includes('\\') || p.startsWith('/')) return false;
+        return REPO_PATH_RE.test(p);
     }
 
     /**
@@ -76,19 +99,41 @@
         const params = new URLSearchParams(search || '');
         const state = {};
 
-        // p / lib — committed keys only.
-        for (const key of ['p', 'lib']) {
-            const v = params.get(key);
-            if (v == null) continue;
-            if (!isSafeKey(v)) {
-                warnings.push('Ignored ' + key + '=' + v + ' (invalid key)');
-                continue;
+        // repo — a course/shared data repo (owner/name). Parsed FIRST because
+        // it redefines what `p` means below.
+        const repo = params.get('repo');
+        if (repo != null) {
+            if (isSafeRepo(repo)) state.repo = repo;
+            else warnings.push('Ignored repo=' + repo + ' (invalid owner/name)');
+        }
+
+        // p — contextual (#course pipeline): a registry KEY without ?repo=, a
+        // repo-relative protocols/ PATH with it (no registry allowlist applies
+        // to a non-curated repo — the PAT gates actual access).
+        const pv = params.get('p');
+        if (pv != null) {
+            if (state.repo) {
+                if (isSafeRepoPath(pv)) state.p = pv;
+                else warnings.push('Ignored p=' + pv + ' (invalid repo path)');
+            } else if (!isSafeKey(pv)) {
+                warnings.push('Ignored p=' + pv + ' (invalid key)');
+            } else if (allowed && !allowed.has(pv)) {
+                warnings.push('Ignored p=' + pv + ' (not a known protocol)');
+            } else {
+                state.p = pv;
             }
-            if (allowed && !allowed.has(v)) {
-                warnings.push('Ignored ' + key + '=' + v + ' (not a known protocol)');
-                continue;
+        }
+
+        // lib — committed registry keys only (D4 import source), repo-agnostic.
+        const lv = params.get('lib');
+        if (lv != null) {
+            if (!isSafeKey(lv)) {
+                warnings.push('Ignored lib=' + lv + ' (invalid key)');
+            } else if (allowed && !allowed.has(lv)) {
+                warnings.push('Ignored lib=' + lv + ' (not a known protocol)');
+            } else {
+                state.lib = lv;
             }
-            state[key] = v;
         }
 
         // mode — clamp; shared links (a `p`/`lib` present) always open in Run.
@@ -128,19 +173,29 @@
      * Encode a state object to a query string (leading '?', or '' if empty).
      * A local (non-committed) doc omits p/set — they aren't shareable. `rig`
      * is bench identity, NOT doc state — emitted whenever present (the caller
-     * only passes an explicit selection), regardless of doc locality.
-     * @param {object} state {mode, p, lib, set, rig, source?: 'local'|'committed'}
+     * only passes an explicit selection), regardless of doc locality. `repo`
+     * is emitted ONLY alongside a valid repo-path `p` (a repo ref without a
+     * document to point at is bench localStorage config, not URL state).
+     * @param {object} state {mode, p, lib, set, rig, repo, source?: 'local'|'committed'}
      */
     function encode(state) {
         const s = state || {};
         const params = new URLSearchParams();
         const local = s.source === 'local';
+        const repoMode = !local && isSafeRepo(s.repo) && isSafeRepoPath(s.p);
         if (s.mode && s.mode !== 'run' && MODES.includes(s.mode)) params.set('mode', s.mode);
-        if (!local && isSafeKey(s.p)) params.set('p', s.p);
+        if (repoMode) {
+            params.set('repo', s.repo);
+            params.set('p', s.p);
+        } else if (!local && isSafeKey(s.p)) {
+            params.set('p', s.p);
+        }
         if (isSafeKey(s.lib)) params.set('lib', s.lib);
         if (!local && isSafeKey(s.set)) params.set('set', s.set);
         if (isSafeKey(s.rig)) params.set('rig', s.rig);
-        const q = params.toString();
+        // URLSearchParams percent-encodes '/', which is legal un-encoded in a
+        // query string (RFC 3986) — keep repo/path params human-readable.
+        const q = params.toString().replace(/%2F/gi, '/');
         return q ? '?' + q : '';
     }
 
@@ -153,11 +208,23 @@
      * if since edited (see header). `rigKey` must be the EXPLICIT session-rig
      * selection or null — the caller (Studio.updateUrl) passes null for a rig
      * merely derived from the loaded protocol (clean-URL rule, #135).
-     * @param {object} app {mode, protocolKey, rigKey}
+     * `repo`+`repoPath` are course-repo provenance (set only by a validated
+     * ?repo=&p= load or an in-app course-repo open) and take precedence over
+     * `protocolKey` — a doc can't be both registry- and repo-sourced.
+     * @param {object} app {mode, protocolKey, rigKey, repo, repoPath}
      * @returns {string} query string (leading '?', or '' when all defaults)
      */
     function encodeApp(app) {
         const a = app || {};
+        if (a.repo && a.repoPath) {
+            return encode({
+                mode: a.mode,
+                repo: a.repo,
+                p: a.repoPath,
+                rig: a.rigKey || undefined,
+                source: 'committed'
+            });
+        }
         return encode({
             mode: a.mode,
             p: a.protocolKey || undefined,
@@ -179,7 +246,17 @@
         return MODES.includes(mode) ? mode : 'run';
     }
 
-    const StudioUrlState = { encode, encodeApp, navMode, decode, isSafeKey, isSafePath, MODES };
+    const StudioUrlState = {
+        encode,
+        encodeApp,
+        navMode,
+        decode,
+        isSafeKey,
+        isSafePath,
+        isSafeRepo,
+        isSafeRepoPath,
+        MODES
+    };
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = StudioUrlState;

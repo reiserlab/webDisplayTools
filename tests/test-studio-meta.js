@@ -95,7 +95,9 @@ const okState = {
     dirty: false,
     unsaved: false,
     experimenter: 'mreiser',
-    genotype: 'Canton-S'
+    genotype: 'Canton-S',
+    bridgeConnected: true,
+    missingPatterns: []
 };
 check('all satisfied → ok', M.canRunExperiment(okState).ok, true);
 check(
@@ -115,6 +117,42 @@ check(
     false
 );
 check('missing genotype → false', M.canRunExperiment({ ...okState, genotype: '' }).ok, false);
+// Universal bridge logging (course pipeline): a dead bridge blocks loudly.
+check('dead bridge blocks', M.canRunExperiment({ ...okState, bridgeConnected: false }).ok, false);
+checkBool(
+    'dead bridge reason names the bridge',
+    /[Bb]ridge/.test(M.canRunExperiment({ ...okState, bridgeConnected: false }).reason),
+    M.canRunExperiment({ ...okState, bridgeConnected: false }).reason
+);
+checkBool(
+    'bridge omitted entirely blocks too',
+    !M.canRunExperiment({ ...okState, bridgeConnected: undefined }).ok,
+    'strict gate'
+);
+// Missing-pattern preflight: unresolvable names block BEFORE the run starts.
+const missing = M.canRunExperiment({ ...okState, missingPatterns: ['loom_20deg'] });
+check('missing pattern blocks', missing.ok, false);
+checkBool(
+    'reason names the pattern + SD upload fix',
+    /loom_20deg/.test(missing.reason) && /SD upload/.test(missing.reason),
+    missing.reason
+);
+check(
+    'empty missing list passes',
+    M.canRunExperiment({ ...okState, missingPatterns: [] }).ok,
+    true
+);
+check(
+    'absent missing list passes (callers not computing it)',
+    M.canRunExperiment({ ...okState, missingPatterns: undefined }).ok,
+    true
+);
+// Reason priority: metadata prompts come before the bridge/pattern checks.
+check(
+    'experimenter outranks bridge',
+    M.canRunExperiment({ ...okState, experimenter: '', bridgeConnected: false }).reason,
+    'Experimenter is required'
+);
 
 // ── sha256 parity ────────────────────────────────────────────────────────────
 // The HTML computes crypto.subtle.digest('SHA-256', TextEncoder().encode(text));

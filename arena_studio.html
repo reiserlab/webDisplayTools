@@ -73,8 +73,12 @@
   .run-inline .bar i{display:block;height:100%;width:0;background:currentColor;transition:width .3s}
   .ribbon-btn{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 11px;font-size:12px;white-space:nowrap}
   .ribbon-btn:hover{border-color:var(--accent)}
-  body.editmode .open-proto-btn{display:none}
-  body:not(.editmode) #fileMenu{display:none}
+  /* File ▾ is the single open/save affordance in all three views (the bare
+     "Open" button was ambiguous — the menu shows WHAT you can open). Write +
+     GitHub-settings items are Edit-only (.edit-only, hidden outside Edit); the
+     "open" items (import / library / course repo) show everywhere. */
+  .open-proto-btn{display:none}
+  body:not(.editmode) #fileMenu .edit-only{display:none}
   .filemenu{position:relative}
   .filemenu .menu{position:absolute;top:120%;right:0;background:var(--surface);border:1px solid var(--border);
         border-radius:7px;min-width:288px;padding:4px;display:none;z-index:60;box-shadow:0 8px 22px rgba(0,0,0,.55)}
@@ -83,15 +87,46 @@
   .filemenu .menu button:hover{background:var(--surface2)}
   .filemenu .menu .sep{height:1px;background:var(--border);margin:4px 2px}
   .gh-block{padding:7px 10px;font-size:11.5px;color:var(--dim)}
+  /* GitHub settings are visible in every view (so the bench config is always
+     legible) but LOCKED by default — grayed + inputs disabled — so students
+     can't change the token/repo/bench id. The 🔒 toggle unlocks for setup. */
+  .gh-block.gh-locked{opacity:.72}
+  .gh-spacer{flex:1}
+  .gh-lock{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;flex:0 0 auto}
+  .gh-block:not(.gh-locked) .gh-lock{color:var(--accent);border-color:var(--accent)}
   .gh-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
   .gh-signin{background:transparent;border:1px solid var(--border);color:var(--beta);border-radius:5px;padding:3px 9px;font-size:11px}
   .gh-who{color:var(--accent);font-weight:600;display:none}
+  .gh-signout{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:3px 9px;font-size:11px;display:none}
   body.ghauth .gh-signin{display:none}
   body.ghauth .gh-who{display:inline}
+  body.ghauth .gh-signout{display:inline}
   .gh-check{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text)}
   .gh-check input{accent-color:var(--accent)}
   body:not(.ghauth) .gh-check{opacity:.45;cursor:not-allowed}
   .gh-dest{font-size:10.5px;color:var(--dim);margin-top:5px;padding-left:2px}
+  .gh-row label{flex:0 0 62px;color:var(--dim)}
+  .gh-row input[type=text]{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:3px 7px;font-size:11px;font-family:inherit}
+  /* course-pipeline picker modal (Open from library… / Open from course repo…) */
+  .picker-overlay{position:fixed;inset:0;background:rgba(6,10,14,.65);z-index:900;display:flex;align-items:center;justify-content:center}
+  .picker-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;min-width:380px;max-width:560px;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .picker-title{padding:11px 14px;font-weight:700;font-size:13px;border-bottom:1px solid var(--border)}
+  .picker-list{overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:2px}
+  .picker-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;background:transparent;border:0;color:var(--text);padding:7px 10px;border-radius:6px;text-align:left;font-size:12.5px;cursor:pointer}
+  .picker-item:hover{background:var(--surface2)}
+  /* run-log upload modal — greys the screen while exporting/committing so a
+     push (auto or manual) is never mysterious; holds the exact error on failure */
+  .rlup-overlay{position:fixed;inset:0;background:rgba(6,10,14,.8);z-index:1000;display:flex;align-items:center;justify-content:center}
+  .rlup-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;min-width:300px;max-width:520px;padding:22px 26px;text-align:center;box-shadow:0 14px 44px rgba(0,0,0,.6)}
+  .rlup-spin{width:30px;height:30px;margin:2px auto 12px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:rlup-rot .8s linear infinite}
+  @keyframes rlup-rot{to{transform:rotate(360deg)}}
+  .rlup-title{font-family:var(--head);font-weight:700;font-size:15px;color:var(--text)}
+  .rlup-msg{margin-top:8px;font-size:12px;color:var(--dim);word-break:break-word;line-height:1.45;white-space:pre-line}
+  .rlup-msg.ok{color:var(--accent)}
+  .rlup-msg.err{color:var(--danger)}
+  .rlup-box button{margin-top:14px}
+  .picker-item .sub{font-size:10.5px;color:var(--dim)}
+  .picker-foot{padding:8px 12px;border-top:1px solid var(--border);text-align:right}
   .seg{display:flex;align-self:center;height:30px;border:1px solid var(--border);border-radius:6px;overflow:hidden;flex:0 0 auto}
   .seg button{display:flex;align-items:center;background:transparent;border:0;color:var(--dim);padding:0 11px;font-size:12px}
   .seg button + button{border-left:1px solid var(--bg)}
@@ -112,10 +147,13 @@
   .body-wrap{flex:1 1 auto;position:relative;overflow:auto;min-height:0}
 
   /* RUN view: launcher+seq on the left, metadata rail on the right */
-  .run-view{display:grid;grid-template-columns:1fr 300px;gap:14px;max-width:1180px;margin:0 auto;padding:12px 20px 20px;align-items:start}
+  /* Fill the viewport: the single grid row takes all the height (minmax(0,1fr)
+     lets it shrink for internal scroll), so the left column can flex its log
+     down to the footer. The meta-panel stays top-aligned (align-self:start). */
+  .run-view{display:grid;grid-template-columns:1fr 300px;grid-template-rows:minmax(0,1fr);gap:14px;max-width:1180px;margin:0 auto;padding:12px 20px 20px;align-items:start;height:100%}
   body.editmode .run-view,body.consolemode .run-view{display:none}
   @media (max-width:860px){.run-view{grid-template-columns:1fr}}
-  .run-main{min-width:0}
+  .run-main{min-width:0;align-self:stretch;display:flex;flex-direction:column;min-height:0}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:10px}
   .launch-card{padding:8px 12px}
   .launch-row{display:flex;gap:10px;align-items:stretch}
@@ -128,8 +166,18 @@
   .btn-testexp .sub{display:block;font-size:9.5px;font-weight:400;color:var(--dim);margin-top:2px}
   .btn-testexp[disabled]{opacity:.4;cursor:not-allowed}
   body.running .launch-row{display:none}
-  .launch-note{display:flex;align-items:center;gap:8px;margin-top:7px}
-  .kchip.hostbadge{cursor:help}
+  /* Run-view FicTrac bridge strip — mirrors the Console's shared bridge; stays
+     visible during a run so the closed-loop indicator can light. */
+  .run-bridge{display:flex;align-items:center;gap:9px;margin-top:9px;font-size:12px;flex-wrap:wrap}
+  .run-bridge .rb-dot{width:9px;height:9px;border-radius:50%;background:#40484f;flex:0 0 auto;transition:background .2s,box-shadow .2s}
+  .run-bridge .rb-dot.on{background:var(--accent);box-shadow:0 0 7px var(--accent)}
+  .run-bridge .rb-lbl{font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim)}
+  .run-bridge .rb-count{font-size:11px;color:var(--dim)}
+  .run-bridge #rbConnBtn{padding:3px 10px}
+  /* closed-loop label: very light by default, bright-green pulsing when active */
+  .run-bridge .rb-cl{margin-left:auto;font-family:var(--head);font-size:11px;letter-spacing:.4px;color:var(--dim);opacity:.45;transition:color .2s,opacity .2s}
+  .run-bridge .rb-cl.active{color:var(--accent);opacity:1;text-shadow:0 0 8px rgba(0,230,118,.7);animation:pulse 1.1s infinite}
+  .pat-warn{margin-top:7px;font-size:11.5px;color:var(--warn);background:rgba(227,160,8,.08);border:1px solid rgba(227,160,8,.35);border-radius:6px;padding:6px 9px;line-height:1.4}
   .running-panel{display:none;align-items:center;gap:14px;background:#06210f;border:1px solid var(--accent);border-radius:8px;padding:8px 14px}
   body.running .running-panel{display:flex}
   body.running.testing .running-panel{background:#0a1a2e;border-color:var(--beta)}
@@ -141,10 +189,19 @@
   .running-panel .rp-prog{flex:1;height:8px;border-radius:5px;background:#0a3a20;overflow:hidden}
   .running-panel .rp-prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
   body.running.testing .rp-prog i{background:var(--beta)}
+  /* step count (top) + elapsed/total timer (below), beside the progress bar */
+  .running-panel .rp-meta{display:flex;flex-direction:column;gap:2px;font-size:11px;line-height:1.25;min-width:96px}
+  .running-panel #rpTimer{font-variant-numeric:tabular-nums;color:var(--accent)}
+  body.running.testing .running-panel #rpTimer{color:var(--beta)}
   .btn-stop{background:var(--danger);border:0;color:#2a0000;font-weight:700;border-radius:8px;padding:8px 20px;font-size:14px;font-family:var(--head)}
   .btn-stop:hover{filter:brightness(1.1)}
   .plug-hover{font-size:11px;color:var(--beta);border:1px solid rgba(74,168,255,.4);background:rgba(74,168,255,.06);border-radius:20px;padding:2px 8px;cursor:help;white-space:nowrap}
 
+  /* The sequence list takes its natural height on a tall window (leaving the
+     rest for the log) but shrinks + scrolls internally on a short one, so the
+     run log always fills the space down to the footer without pushing off. */
+  .seqlist{flex:1 1 auto;min-height:110px;display:flex;flex-direction:column;overflow:hidden}
+  #seqBody{flex:1 1 auto;overflow:auto;min-height:0}
   .seqlist h3{font-family:var(--head);font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 8px}
   .blockhead{display:flex;align-items:center;gap:12px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;margin-bottom:6px;background:var(--surface2)}
   .blockhead .bt{font-family:var(--head);font-size:12px;color:var(--text)}
@@ -161,6 +218,9 @@
   .kchip.io{color:var(--warn);border-color:rgba(227,160,8,.5);background:rgba(227,160,8,.07)}
   .seqrow .play{background:transparent;border:1px solid var(--beta);color:var(--beta);border-radius:5px;padding:4px 12px;font-size:12px;font-weight:600}
   .seqrow .play:hover{background:rgba(74,168,255,.08)}
+  /* per-row single-condition test buttons are hidden while an experiment runs
+     (they'd be a distracting mid-run foot-gun; STOP lives in the running panel) */
+  body.running .seqrow .play{display:none}
   .seqrow.active{border-color:var(--accent);background:rgba(0,230,118,.10)}
   .seqrow.active .nm{color:var(--accent);font-weight:600}
   .seqrow.active .idx{color:var(--accent)}
@@ -170,7 +230,7 @@
   body.testing .seqrow.active::before{background:var(--beta)}
 
   /* ===== metadata SIDE PANEL (replaces the modal) ===== */
-  .meta-panel{position:sticky;top:12px}
+  .meta-panel{position:sticky;top:12px;align-self:stretch;min-height:0;max-height:100%;overflow-y:auto}
   body.running .meta-panel .mp-run-note{display:block}
   .mp-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px}
   .mp-card h4{font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 8px}
@@ -179,6 +239,8 @@
   .mp-field .req{color:var(--warn)}
   .mp-field input,.mp-field textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-family:var(--mono);font-size:12px}
   .mp-field textarea{resize:vertical;min-height:44px}
+  /* Notes: roomy by default (plenty of space on the Run screen); still resizable */
+  #mNotes{min-height:38vh}
   .mp-field.invalid input{border-color:var(--danger)}
   .mp-field .hint{font-size:10px;color:var(--danger);margin-top:3px;display:none}
   .mp-field.invalid .hint{display:block}
@@ -190,8 +252,11 @@
   .mp-note{font-size:10px;color:var(--dim);margin-top:6px}
 
   /* ===== RUN-LOG STRIP ===== */
-  .run-log-strip{margin-top:8px;display:flex;flex-direction:column;height:190px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
-  body.log-collapsed .run-log-strip{height:auto}
+  /* Bottom-anchored run log: capped at 40% of viewport height so it never grows
+     to squeeze the launch card + sequence above; the sequence takes the flexible
+     middle (flex:1) and the logbox scrolls inside this cap. */
+  .run-log-strip{margin-top:8px;display:flex;flex-direction:column;flex:0 1 auto;max-height:40vh;min-height:150px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  body.log-collapsed .run-log-strip{flex:0 0 auto;min-height:0;height:auto}
   body.log-collapsed .dock-pane{display:none}
   .dock-h{display:flex;align-items:center;gap:9px;padding:7px 12px;border-bottom:1px solid var(--border);font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim)}
   body.log-collapsed .dock-h{border-bottom:0}
@@ -242,6 +307,10 @@
   .cmenu-row label{color:var(--dim);font-size:11px;min-width:64px}
   .cmenu-row input,.cmenu-row select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 6px;font-family:var(--mono);font-size:11px;width:80px}
   .cmenu-sep{font-family:var(--head);font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);padding:6px 9px 3px;border-top:1px solid var(--border);margin-top:4px}
+  /* Debug ▾ is locked by default (kiosk-safe): SPI/refresh/reset stay disabled
+     until the instructor clicks Unlock, so students can't reset them by accident. */
+  .dbg-lockrow,.ctl-lockrow{border-bottom:1px solid var(--border);margin-bottom:3px;padding-bottom:6px}
+  #dbgMenu:not(.dbg-locked) .dbg-lockrow label,#ctlMenu:not(.ctl-locked) .ctl-lockrow label{color:var(--accent)}
   .cmenu-btn.danger{border-color:rgba(255,82,82,.5);color:var(--danger)}
   .cgroup{flex:0 0 auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:9px 12px;margin-bottom:8px}
   .cgroup .gh{font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-bottom:7px;display:flex;align-items:center;gap:8px}
@@ -1702,6 +1771,7 @@
     <button class="pill" id="sessionRigLock" title="Session rig is locked — click to unlock (changing it alters what geometry gets streamed to the hardware)">🔒</button>
   </label>
   <span class="chip rig-mismatch" id="rigMismatch" style="display:none" title="Session (bench) rig differs from the loaded protocol's rig: field — the bench geometry wins for Console/stream operations; the protocol still runs with its own rig. Unlock the rig selector to reconcile, or load a matching protocol.">⚠ bench ≠ protocol</span>
+  <span class="chip rig-mismatch" id="benchMacChip" style="display:none" title="The connected controller's MAC (0xC2) does not match the course roster's entry for this bench id — the wrong bench id would namespace saves/run-logs under another bench. See instructor.">⚠ bench ≠ roster</span>
   <span class="arena" id="deviceLine" title="Arena geometry of the SESSION rig (left) — what stream/ISP/paste operations target. Firmware appears only when connected (from GET_CONTROLLER_INFO 0xC2)."><b>—</b></span>
 
   <span class="sep-v"></span>
@@ -1721,17 +1791,26 @@
   <div class="filemenu" id="fileMenu">
     <button class="ribbon-btn" id="fileMenuBtn">File ▾</button>
     <div class="menu">
-      <button id="fmNew">New protocol</button>
+      <button id="fmNew" class="edit-only">New protocol</button>
       <button id="fmOpen">Open… (Import YAML)</button>
-      <button id="fmSave">Save → local file</button>
+      <button id="fmOpenLibrary" title="Pick a committed protocol from this site's own registry (protocols/index.json)">Open from library…</button>
+      <button id="fmOpenCourse" title="List this bench's saves (protocols/&lt;bench-id&gt;/) and promoted shared protocols (protocols/shared/) in the course-data repo">Open from course repo…</button>
+      <button id="fmSave" class="edit-only">Save → local file</button>
+      <button id="fmPromote" class="edit-only" title="Copy this bench's saved protocol (+ its _patterns/) to protocols/shared/ in the course repo — blocked if a DIFFERENT file already exists under the same name">Promote to shared (course)…</button>
       <div class="sep"></div>
-      <div class="gh-block">
+      <div class="gh-block gh-locked" id="ghBlock">
         <div class="gh-row">
           <span>GitHub:</span>
           <button class="gh-signin" id="ghSignInBtn">Sign in…</button>
           <span class="gh-who" id="ghWho"></span>
+          <button class="gh-signout" id="ghSignOutBtn" title="Sign out — clear the stored token so a different account/token can be used">Sign out</button>
+          <span class="gh-spacer"></span>
+          <button class="gh-lock" id="ghLock" title="Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / bench id">🔒</button>
         </div>
-        <label class="gh-check"><input type="checkbox" id="ghPR"> Save as Pull Request</label>
+        <div class="gh-row"><label for="ghRepoInput">Repo</label><input type="text" id="ghRepoInput" placeholder="reiserlab/webDisplayTools" title="Target GitHub repo (owner/name) for saves — point at the course-data repo (e.g. reiserlab/cshl-2026-course) during a course; stored in this browser's localStorage"></div>
+        <div class="gh-row"><label for="ghBenchId">Bench id</label><input type="text" id="ghBenchId" placeholder="e.g. bench03" title="Instructor-set bench identity — namespaces course-repo protocol saves (protocols/&lt;bench-id&gt;/) and run-log commits (runlogs/&lt;bench-id&gt;/); stored in this browser's localStorage"></div>
+        <label class="gh-check"><input type="checkbox" id="ghPR" title="Save opens a branch + Pull Request on the target repo (review-gated — the default for reiserlab/webDisplayTools)"> Save as Pull Request</label>
+        <label class="gh-check"><input type="checkbox" id="ghDirect" title="Save commits straight to the target repo's default branch — no branch, no PR. Course-repo mode: safe there because bench-id namespacing means no two rigs write the same file"> Commit directly to default branch</label>
         <div class="gh-dest" id="ghDest">→ writes a local .yaml file (sign in to GitHub to open a PR instead)</div>
       </div>
     </div>
@@ -1759,6 +1838,25 @@
 <input type="file" id="fileInput" accept=".yaml,.yml" style="display:none" />
 <div class="banner" id="banner"></div>
 
+<!-- picker modal (Open from library… / Open from course repo…) -->
+<div class="picker-overlay" id="pickerOverlay" style="display:none">
+  <div class="picker-box">
+    <div class="picker-title" id="pickerTitle">Open…</div>
+    <div class="picker-list" id="pickerList"></div>
+    <div class="picker-foot"><button class="pill" id="pickerCancel" title="Close without opening anything">Cancel</button></div>
+  </div>
+</div>
+
+<!-- run-log upload modal (auto commit at run end + manual "⇪ Push log") -->
+<div class="rlup-overlay" id="rlUploadOverlay" style="display:none">
+  <div class="rlup-box">
+    <div class="rlup-spin" id="rlUploadSpin"></div>
+    <div class="rlup-title" id="rlUploadTitle">Uploading run log…</div>
+    <div class="rlup-msg" id="rlUploadMsg"></div>
+    <button class="pill" id="rlUploadClose" style="display:none">Close</button>
+  </div>
+</div>
+
 <!-- ===== BODY ===== -->
 <div class="body-wrap">
   <!-- RUN view -->
@@ -1773,14 +1871,26 @@
             <span class="sub">not recorded</span>
           </button>
         </div>
-        <div class="launch-note">
-          <span class="kchip dur hostbadge" title="Trial timing is host-side / best-effort until firmware #4 lands. Plugin commands are skipped by the runner with a warning — EXCEPT log and fictrac, which the runner DOES execute (fictrac = closed-loop Mode 3).">⏱ host-timed · plugins skipped (log + fictrac run)</span>
-        </div>
+        <div class="pat-warn" id="runPatWarn" style="display:none"></div>
         <div class="running-panel">
           <span class="rp-lead"><span class="blip"></span><span id="rpLeadTxt">running</span></span>
           <span class="rp-prog"><i id="rpBar"></i></span>
-          <span class="dim" id="rpStep" style="font-size:11px"></span>
+          <span class="rp-meta">
+            <span class="dim" id="rpStep"></span>
+            <span class="dim" id="rpTimer" title="Elapsed / estimated total time (host-timed) — updates every second">0:00 / —</span>
+          </span>
           <button class="btn-stop" id="btnStopRun">■ STOP</button>
+        </div>
+        <!-- FicTrac bridge — same shared connection as the Console; gain/closed-loop
+             config stays in the Console. Always visible (incl. during a run) so the
+             closed-loop indicator can light up. -->
+        <div class="run-bridge" id="runBridge" title="FicTrac bridge — the recorded-run logger + closed-loop source. Shares ONE connection with the Console (state stays in sync between views); gain / closed-loop settings live in the Console.">
+          <span class="rb-dot" id="rbDot"></span>
+          <span class="rb-lbl">bridge</span>
+          <button class="pill" id="rbConnBtn" title="Connect / disconnect the FicTrac bridge (ws://localhost:8765 by default; the URL is set in the Console)">Connect</button>
+          <span class="dim" id="rbStatus">disconnected</span>
+          <span class="dim rb-count" id="rbCount"></span>
+          <span class="rb-cl" id="rbClosedLoop" title="Closed-loop (FicTrac Mode 3/4) — lights green while a trial or experiment is driving the arena from FicTrac">closed-loop</span>
         </div>
       </div>
 
@@ -1801,6 +1911,7 @@
             <button class="pill" id="btnLogClear">Clear</button>
             <button class="pill" id="btnLogCopy" title="Copy log to clipboard">Copy</button>
             <button class="pill" id="btnLogSave" title="Download the recorded run log (.json + .txt)" disabled>⬇ Save</button>
+            <button class="pill" id="btnLogPush" title="Push this run's log to the course repo (runlogs/&lt;bench-id&gt;/) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one." disabled>⇪ Push log</button>
           </span>
         </div>
         <div class="dock-pane">
@@ -1820,7 +1931,7 @@
         <h4>Run details</h4>
         <div class="mp-field" id="mfExp">
           <label>Experimenter <span class="req">*</span>
-            <a class="srclink" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/people.yaml" target="_blank" rel="noopener">↗ source</a>
+            <a class="srclink" id="mExpSrc" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/people.yaml" target="_blank" rel="noopener">↗ source</a>
           </label>
           <input id="mExp" list="expList" placeholder="who is running this?" autocomplete="off">
           <datalist id="expList"></datalist>
@@ -1828,7 +1939,7 @@
         </div>
         <div class="mp-field" id="mfGeno">
           <label>Fly genotype <span class="req">*</span>
-            <a class="srclink" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/genotypes.yaml" target="_blank" rel="noopener">↗ source</a>
+            <a class="srclink" id="mGenoSrc" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/genotypes.yaml" target="_blank" rel="noopener">↗ source</a>
           </label>
           <input id="mGeno" list="genoList" placeholder="e.g. w;UAS-CsChrimson" autocomplete="off">
           <datalist id="genoList"></datalist>
@@ -1908,7 +2019,6 @@
         <strong>Editing.</strong> Scalar fields, sequence layout, and Variables are all editable. Click the
         <span style="color: var(--beta);">🔗</span> icon next to any value to bind it to an anchor, or open
         <strong>Settings</strong> to manage the Variables table directly.
-        Need v2? <a href="experiment_designer.html">Open the v2 Experiment Designer</a>.
     </div>
 
     <!-- D4 import-mode banner — global controls for the staging buffer.
@@ -2061,13 +2171,17 @@
 
     <!-- Restored Controller ▾ / Debug ▾ dropdown menus (uncommon controls) -->
     <div class="cmenubar">
-      <div class="cmenu" data-cmenu>
+      <div class="cmenu" data-cmenu id="ctlMenu">
         <button class="cmenu-btn" title="Controller queries (run on demand)">Controller ▾</button>
         <div class="cmenu-pop">
           <button class="cmenu-item" data-cmd="info" title="GET_CONTROLLER_INFO (0xC2) — firmware version + capability bitmap">Get info</button>
           <button class="cmenu-item" data-cmd="ip" title="GET_ETHERNET_IP (0xC1)">Get IP</button>
           <button class="cmenu-item" data-cmd="frames" title="GET_FRAMES_SENT (0x33)">Get frames sent</button>
           <button class="cmenu-item" data-cmd="resetframes" title="RESET_FRAMES_SENT (0x34)">Reset frames sent</button>
+          <div class="cmenu-row ctl-lockrow" title="Advanced controls — panel display mode + rig I/O roles. Locked by default so students don't change the bench's display/I/O setup by accident.">
+            <label>🔒 advanced — locked</label>
+            <button class="cmenu-item" id="ctlLock" style="width:auto" title="Advanced controls (panel display mode + rig I/O) are LOCKED (kiosk-safe) — click to unlock">Unlock</button>
+          </div>
           <div class="cmenu-sep">Panel display mode</div>
           <div class="cmenu-row">
             <label title="Sticky panel display mode applied to forwarded/synthesized frames">Mode</label>
@@ -2117,15 +2231,19 @@
             <span class="dim" id="cIoDefAi"></span>
           </div>
           <div class="cmenu-row">
-            <button class="cmenu-item" data-cmd="cioapply" style="width:auto" title="Apply the rig's power-on I/O defaults now, using the session roles above (roles via SET_DIO_ROLE 0xAC on io_ext firmware; DO via 0xAA, AO via 0xA0/0xA3). Runs automatically at connect; each applied value is logged.">Apply rig defaults</button>
+            <button class="cmenu-item" data-cmd="cioapply" style="width:auto" title="Send the I/O roles shown above to the controller now — the rig's power-on defaults, OR your session-local overrides if you changed a selector (roles via SET_DIO_ROLE 0xAC on io_ext firmware; DO via 0xAA, AO via 0xA0/0xA3). Runs automatically at connect; each applied value is logged. Overrides never edit the rig YAML.">Apply I/O roles</button>
             <button class="cmenu-item" data-cmd="cioget" style="width:auto" title="GET_DIO_ROLE 0xAD — log both ports' current roles + live pin levels (the BNC level in input roles; needs io_ext firmware)">Read roles</button>
             <span class="dim" id="cIoRigSrc"></span>
           </div>
         </div>
       </div>
-      <div class="cmenu" data-cmenu>
+      <div class="cmenu" data-cmenu id="dbgMenu">
         <button class="cmenu-btn" title="Advanced / debug settings">Debug ▾</button>
         <div class="cmenu-pop">
+          <div class="cmenu-row dbg-lockrow" title="These are advanced/danger controls (SPI clock, refresh rate, controller reset). Locked by default so they aren't changed by accident.">
+            <label>🔒 advanced — locked</label>
+            <button class="cmenu-item" id="dbgLock" style="width:auto" title="Debug controls are LOCKED (kiosk-safe) — click to unlock SPI / Refresh / Reset controller">Unlock</button>
+          </div>
           <div class="cmenu-row">
             <label title="SPI master clock">SPI MHz</label>
             <input id="cSpiMhz" type="number" min="1" max="30" value="20" title="SPI clock: 1–30 MHz">
@@ -2160,11 +2278,9 @@
     <div class="cgroup">
       <div class="gh">pattern + trial params <span class="op">· TRIAL_PARAMS 0x08 · GET_PATTERN_INFO 0x88 · by name → SD idx</span></div>
       <div class="crow"><span class="lbl">pattern</span>
-        <button class="pill" data-cmd="cloadset" title="Load a pattern-set FOLDER (MANIFEST.txt + patterns/) — names resolve to 1-based SD indices with preview thumbnails">Load set…</button>
-        <select id="cPatName" style="min-width:190px" title="Pattern by name — drives the SD index sent in trial params"></select>
+        <select id="cPatName" style="min-width:190px" title="Pattern by name — from the SD listing when connected (else the built-in library); drives the SD index sent in trial params. Upload patterns via device memory → Upload ▾."></select>
         <span class="thumb" id="cPatThumb" title="Pattern preview (hover a multi-frame pattern to animate)"></span>
         <span class="dim" id="cPatSetStatus">loading built-in library…</span>
-        <input id="cPatFolder" type="file" webkitdirectory directory style="display:none">
       </div>
       <div class="crow"><span class="lbl">info</span>
         <span class="dim" id="cPatInfo" title="GET_PATTERN_INFO (0x88) — refreshes automatically when the pattern selection or pat idx changes">—</span>
@@ -2208,8 +2324,19 @@
           <div class="memb" data-mem="sd">
             <div class="crow" style="margin-bottom:6px">
               <button class="pill" data-cmd="csdlist" title="GET_FILE_COUNT 0x80 + names">Refresh</button>
-              <button class="pill" data-cmd="csdupload" title="Upload a .pat (SET_PATTERN_FILE 0x8D + rename 0x83)">Upload .pat…</button>
-              <button class="pill" data-cmd="csdfolder" title="Upload every .pat in a folder">Upload folder…</button>
+              <div class="cmenu" data-cmenu id="sdUploadMenu">
+                <button class="cmenu-btn" title="Upload pattern(s) to the SD card — a single .pat or a whole pattern set, from a local file/folder, this site's library, or the course repo (SET_PATTERN_FILE 0x8D + rename 0x83)">Upload ▾</button>
+                <div class="cmenu-pop">
+                  <div class="cmenu-sep">Single pattern (.pat)</div>
+                  <button class="cmenu-item" data-cmd="csdup_local_file" title="Pick one .pat file from this computer and upload it">From local file…</button>
+                  <button class="cmenu-item" data-cmd="csdup_lib_file" title="Pick a library protocol, then one pattern from its colocated set (needs GitHub sign-in)">From library…</button>
+                  <button class="cmenu-item" data-cmd="csdup_repo_file" title="Pick a course-repo protocol, then one pattern from its colocated set (needs GitHub sign-in + course repo)">From course repo…</button>
+                  <div class="cmenu-sep">Pattern set (folder)</div>
+                  <button class="cmenu-item" data-cmd="csdup_local_folder" title="Pick a folder — every .pat inside is uploaded">From local folder…</button>
+                  <button class="cmenu-item" data-cmd="csdup_lib_folder" title="Pick a library protocol — its whole colocated _patterns/ set uploads (needs GitHub sign-in)">From library…</button>
+                  <button class="cmenu-item" data-cmd="csdup_repo_folder" title="Pick a course-repo protocol — its whole colocated _patterns/ set uploads (needs GitHub sign-in + course repo)">From course repo…</button>
+                </div>
+              </div>
               <button class="pill" data-cmd="csdarchive" title="Download the whole SD as a ZIP (GET_SD_ARCHIVE 0x8A)">↙ ZIP</button>
               <button class="pill danger" data-cmd="csdpurge" title="Delete ALL patterns (DELETE_ALL_PATTERNS 0x8F)">Purge all</button>
               <input id="cSdFile" type="file" accept=".pat" style="display:none">
@@ -2366,7 +2493,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.4 | 2026-07-03 14:55 ET · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-04 13:49 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired; per-file confirm log + settle pause + 1 retry for reliability), manual "⇪ Push log" to re-commit a run log the auto-commit skipped/failed (with a screen-greying upload modal that holds the exact error on failure; export timeout now names a stale bridge build), io_ext caps resolved before the rig-I/O apply (no first-connect race) + role options re-gate on GET_CONTROLLER_INFO + "Apply I/O roles" honors session overrides, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run view has a FicTrac bridge strip (connect + live counts mirrored from the Console, one shared connection; closed-loop indicator pulses green while active; gain/config stay in Console), a live elapsed/estimated-total run timer under the step counter, and hides the per-condition "▶ Test" buttons during a run, Run-view log is capped at 40vh (bottom-anchored, never squeezes the launch card + sequence; sequence takes the flexible middle) and Notes defaults roomy (~38vh, meta-panel scrolls), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2394,7 +2521,7 @@
 <script>
 'use strict';
 (function () {
-    const TOOL_VERSION = 'Arena Studio v0.4';
+    const TOOL_VERSION = 'Arena Studio v0.5';
     const $ = (id) => document.getElementById(id);
     const Wire = window.ArenaWireG6;
     const RunLog = window.RunLog;
@@ -2419,6 +2546,31 @@
     };
     Studio.canMutate = () => Meta.canMutate({ mode: Studio.mode, importMode: Studio.importMode });
     window.Studio = Studio;
+
+    // ---- GitHub token + course-repo settings (CSHL pipeline) ------------------
+    // Single source of truth, defined HERE (classic) so the run-log auto-commit
+    // works even if the module block failed to load. The File ▾ gh-block UI
+    // (module side) writes these localStorage keys.
+    Studio.ghToken = function () {
+        return sessionStorage.getItem('studio_gh_pat') || localStorage.getItem('studio_gh_pat') || null;
+    };
+    Studio.courseSettings = function () {
+        const raw = (localStorage.getItem('studio_gh_repo') || '').trim();
+        const m = /^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/.exec(raw);
+        return {
+            repo: m && !raw.includes('..') ? { owner: m[1], name: m[2], full: raw } : null,
+            direct: localStorage.getItem('studio_gh_direct') === '1',
+            benchId: (localStorage.getItem('studio_bench_id') || '').trim()
+        };
+    };
+    // RIG-ID: the instructor-set bench id — namespaces course-repo protocol
+    // saves and run-log commits. Identity comes from THIS (not the controller
+    // MAC, which only cross-checks it against roster.yaml at connect).
+    Object.defineProperty(Studio, 'rigId', {
+        get() {
+            return Studio.courseSettings().benchId || null;
+        }
+    });
 
     // ---- unified log: raw transport trace (console 'log' events) --------------
     function rawLine(text, cls) {
@@ -2499,12 +2651,43 @@
         return String(s).replace(/["\\]/g, '\\$&');
     }
 
+    // ---- run timer: elapsed / estimated-total, ticks every second ----
+    // total is a host-timed ESTIMATE (sum of step durations); the live clock is
+    // wall-time since run start. Started by beginRun/runCondition (which know the
+    // total), stopped by refreshState when running clears (covers complete/abort/
+    // disconnect + single-condition tests, logged or not).
+    let _runTimerIv = null;
+    function _fmtRunClock(sec) {
+        sec = Math.max(0, Math.round(sec));
+        return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+    }
+    function startRunTimer(totalSec) {
+        stopRunTimer();
+        Studio._runStartMs = Date.now();
+        Studio._runTotalSec = totalSec > 0 ? totalSec : 0;
+        const tick = () => {
+            const el = $('rpTimer');
+            if (!el) return;
+            const elapsed = (Date.now() - Studio._runStartMs) / 1000;
+            el.textContent = _fmtRunClock(elapsed) + ' / ' + (Studio._runTotalSec ? _fmtRunClock(Studio._runTotalSec) : '—');
+        };
+        tick();
+        _runTimerIv = setInterval(tick, 1000);
+    }
+    function stopRunTimer() {
+        if (_runTimerIv) { clearInterval(_runTimerIv); _runTimerIv = null; }
+    }
+    Studio.startRunTimer = startRunTimer;
+
     function onRunFinished(summary) {
         const log = Studio.activeRunLog;
         clearSeqHighlight();
         if (!log) return;
         const btn = $('btnLogSave');
         if (btn) btn.disabled = false;
+        // Enable manual push only for recorded runs (Test runs never commit).
+        const pbtn = $('btnLogPush');
+        if (pbtn) pbtn.disabled = (log.intent !== 'experiment');
         const saved = $('rlSaved');
         if (saved) {
             saved.textContent =
@@ -2514,7 +2697,119 @@
         }
         $('rlCtr').textContent =
             (log.meta.run_id || 'run') + ' · ' + (log.summary ? log.summary.outcome : 'done');
+        maybeCommitRunLog(log, summary); // course pipeline — async, best-effort
     }
+
+    // ---- run-log upload modal — greys the screen during export+commit so a push
+    // (auto or manual) is never mysterious, and HOLDS the exact error on failure.
+    function showUploadModal(title, opts) {
+        opts = opts || {};
+        const ov = $('rlUploadOverlay');
+        if (!ov) return;
+        $('rlUploadTitle').textContent = title;
+        const msg = $('rlUploadMsg');
+        msg.textContent = opts.msg || '';
+        msg.className = 'rlup-msg' + (opts.error ? ' err' : opts.ok ? ' ok' : '');
+        $('rlUploadSpin').style.display = opts.busy ? 'block' : 'none';
+        $('rlUploadClose').style.display = opts.busy ? 'none' : 'inline-block';
+        ov.style.display = 'flex';
+    }
+    function hideUploadModal() { const ov = $('rlUploadOverlay'); if (ov) ov.style.display = 'none'; }
+
+    // ---- course-repo run-log auto-commit (CSHL pipeline) -----------------------
+    // On COMPLETED recorded runs only: export the bridge's JSONL — the canonical
+    // run artifact (run_metadata line + every runner/arena/FicTrac event) — and
+    // direct-commit it as ONE file under runlogs/<bench-id>/. Aborted or
+    // disconnected runs never auto-commit (deliberate: a partial run is bench
+    // debris until someone decides otherwise). Filename STAMP is colon-free —
+    // a raw ISO ':' breaks git checkout on Windows clones.
+    async function maybeCommitRunLog(log, summary) {
+        if (!log || log.intent !== 'experiment') return;
+        const outcome = (summary && summary.outcome) || (log.summary && log.summary.outcome) || 'UNKNOWN';
+        if (outcome === 'ABORTED_BY_USER' || outcome === 'DISCONNECTED') {
+            // A partial run isn't auto-committed, but the bridge still holds the
+            // file — the operator can push it deliberately with "⇪ Push log".
+            rawLine('run log NOT auto-committed (' + outcome + ') — click "⇪ Push log" to commit it anyway', 'warn');
+            return;
+        }
+        await commitRunLog(log, {});
+    }
+    // Shared export+commit core (auto + manual). opts.manual → user-initiated:
+    // louder banners, and it's reached even for aborted/disconnected runs (which
+    // the auto path skips). The bridge must still be connected — it re-serves the
+    // last run's file until the next run starts.
+    async function commitRunLog(log, opts) {
+        opts = opts || {};
+        if (!log) { if (opts.manual) showBanner('No run log yet — run an experiment first.'); return; }
+        const GH = window.StudioGitHub;
+        const cs = Studio.courseSettings();
+        const token = Studio.ghToken();
+        if (!GH || !cs.direct || !cs.repo || !token) {
+            if (opts.manual) showBanner('Run log not pushed: course repo not configured (File ▾ → sign in, set repo, tick "Commit directly to default branch").');
+            return; // course pipeline not configured — normal lab use
+        }
+        // Course pipeline is engaged (token + repo + direct) — from here every
+        // outcome is shown in the modal so a push is never silent/mysterious.
+        showUploadModal('Uploading run log…', { busy: true, msg: 'preparing…' });
+        if (!cs.benchId) {
+            showUploadModal('Run log not committed', { error: true, msg: 'Bench id not set — see instructor (File ▾ → Bench id).' });
+            return;
+        }
+        const bridge = Studio.session && Studio.session.bridge;
+        if (!bridge || !bridge.connected) {
+            showUploadModal('Run log not committed', { error: true,
+                msg: 'Bridge disconnected — the log file remains on the bridge machine. Reconnect the bridge (it re-serves the last run) and push again, or commit it from a local clone.' });
+            return;
+        }
+        let exported;
+        try {
+            showUploadModal('Uploading run log…', { busy: true, msg: 'exporting from the bridge…' });
+            exported = await bridge.exportLog();
+        } catch (e) {
+            const m = (e && e.message ? e.message : String(e));
+            rawLine('run-log export FAILED: ' + m, 'err');
+            showUploadModal('Run-log export failed', { error: true, msg: m + '\n\nThe log stays on the bridge machine — nothing lost.' });
+            return;
+        }
+        const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        const proto = GH.slug(String(log.meta.protocol_filename || 'protocol').replace(/\.ya?ml$/i, ''));
+        const who = GH.slug(log.meta.experimenter || 'unknown');
+        const path =
+            'runlogs/' + cs.benchId + '/' +
+            proto + '__' + who + '__' + stamp + '__' + (log.meta.run_id || 'run') + '.jsonl';
+        rawLine((opts.manual ? 'pushing' : 'committing') + ' run log → ' + cs.repo.full + ' · ' + path + ' (' + exported.content.length + ' chars)…', 'info');
+        showUploadModal('Uploading run log…', { busy: true, msg: 'committing to ' + cs.repo.full + '\n' + path });
+        try {
+            const res = await GH.directCommit(fetch, {
+                owner: cs.repo.owner,
+                repo: cs.repo.name,
+                token: token,
+                path: path,
+                message: 'runlog: ' + proto + ' on ' + cs.benchId + ' (run ' + (log.meta.run_id || '?') + ')',
+                contentText: exported.content
+            });
+            if (!res.ok) throw new Error(res.error || 'HTTP ' + res.status);
+            rawLine('✓ run log committed: ' + path, 'info');
+            showUploadModal('✓ Run log committed', { ok: true, msg: cs.repo.full + '\n' + path });
+            setTimeout(hideUploadModal, 1800); // auto-dismiss on success
+            const saved = $('rlSaved');
+            if (saved && !/committed to course repo/.test(saved.textContent)) saved.textContent += ' · ✓ committed to course repo';
+        } catch (e) {
+            const m = (e && e.message ? e.message : String(e));
+            rawLine('run-log commit FAILED: ' + m, 'err');
+            // Accurate because the run gate guarantees the bridge was up: its
+            // on-disk file exists even when GitHub is unreachable.
+            showUploadModal('Run-log upload failed', { error: true,
+                msg: m + '\n\nSaved locally on the bridge machine (' + (exported.name || 'bridge log') + ') — push it from a clone if needed.' });
+        }
+    }
+    // Exposed for bench verification + manual re-commit after a failed
+    // auto-commit (the bridge re-serves the same file until the next run).
+    Studio._maybeCommitRunLog = maybeCommitRunLog;
+    // Manual "⇪ Push log" button: commit the LAST run's log regardless of
+    // outcome — for when auto-commit was skipped (aborted/disconnected/laggy) or
+    // failed. Bypasses the outcome guard; still needs the bridge connected.
+    Studio.commitRunLogNow = () => commitRunLog(Studio.activeRunLog, { manual: true });
 
     // ---- top-bar state binding ------------------------------------------------
     function refreshState() {
@@ -2522,6 +2817,7 @@
         const running = !!(Studio.session && Studio.session.running);
         document.body.classList.toggle('connected', connected);
         document.body.classList.toggle('running', running);
+        if (!running) stopRunTimer(); // freeze the run clock when the run ends (any path)
         $('connectBtn').textContent = connected ? 'Disconnect' : 'Connect';
         $('statusTxt').textContent = connected ? 'connected' : 'disconnected';
         updateDeviceLine();
@@ -2565,21 +2861,48 @@
 
     function updateRunGate() {
         const doc = Studio.currentDoc;
+        const bridge = Studio.session && Studio.session.bridge;
         const gate = Meta.canRunExperiment({
             connected: !!(Studio.session && Studio.session.connected),
             hasProtocol: !!doc,
             dirty: false,
             unsaved: doc ? (doc.source === 'local-unsaved' || isUntitledDoc(doc)) : false,
             experimenter: $('mExp').value,
-            genotype: $('mGeno').value
+            genotype: $('mGeno').value,
+            // Universal run logging: the bridge is THE recorded-run logger — a
+            // dead bridge blocks loudly here instead of losing data silently.
+            bridgeConnected: !!(bridge && bridge.connected),
+            // Preflight: every sequence-referenced pattern must resolve NOW
+            // (an unresolvable name would otherwise fail MID-run). Module-side
+            // helper; optional-guarded for the stale-cache gotcha.
+            missingPatterns: Studio.missingPatternNames ? Studio.missingPatternNames(doc) : []
         });
         const runBtn = $('btnRunExp');
         runBtn.disabled = !gate.ok;
         $('runHint').textContent = gate.ok ? '' : gate.reason;
         const testBtn = $('btnTestExp');
         testBtn.disabled = !(Studio.session && Studio.session.connected && doc);
+        // Non-blocking warning: a pattern NAME doesn't match the SD but a
+        // pattern_ID fallback resolves — the run proceeds playing that index,
+        // NOT the named pattern (silent-wrong-pattern footgun). Distinct from
+        // the missing-pattern BLOCK above (which fires when nothing resolves).
+        const warnEl = $('runPatWarn');
+        if (warnEl) {
+            const unresolved = Studio.unresolvedPatternNames ? Studio.unresolvedPatternNames(doc) : [];
+            if (unresolved.length) {
+                warnEl.textContent = '⚠ pattern ' + unresolved.map((n) => '"' + n + '"').join(', ') +
+                    ' not on the SD by name — the run will fall back to the numeric pattern_ID (whatever sits at that index), which may not be the intended pattern. Upload it via Console → SD upload, or fix the reference.';
+                warnEl.style.display = '';
+            } else {
+                warnEl.style.display = 'none';
+            }
+        }
     }
     Studio.updateRunGate = updateRunGate;
+    // The gate tracks the bridge live (connect/disconnect flips the reason).
+    if (Studio.session && Studio.session.bridge) {
+        Studio.session.bridge.on('status', () => updateRunGate());
+    }
 
     // ---- connection ----------------------------------------------------------
     async function toggleConnect() {
@@ -2611,8 +2934,15 @@
                         (info.mac ? ' · id ' + info.mac : ''), 'info');
                     const ctl = $('pvCtl');
                     if (ctl) ctl.textContent = Studio.controllerId || '— (needs fw with MAC in 0xC2)';
+                    // Un-grey the fw-gated rig-I/O roles now that caps are known
+                    // (the role menu may have rendered before this reply landed).
+                    if (Studio.updateRigIoGating) Studio.updateRigIoGating();
                 }
             } catch (e) { /* older fw / no reply — fine */ }
+            // Course pipeline connect-time hook (module block): roster fetch →
+            // experimenter pre-fill + MAC cross-check chip. Optional-guarded so
+            // connect survives a failed module load (stale-cache gotcha).
+            if (Studio.onConnected) { try { await Studio.onConnected(); } catch (e) { /* logged inside */ } }
             refreshState();
         } catch (e) {
             showBanner('Connect failed: ' + (e && e.message ? e.message : e));
@@ -2652,11 +2982,17 @@
     // Edit). New shareable state must flow through encodeApp + this function.
     Studio._urlSuppress = false; // initFromUrl/popstate wrap their setMode calls
     Studio._pendingProtocolKey = null; // registry-key handoff, see loadProtocol
+    Studio._pendingRepoRef = null; // course-repo {repo,path} handoff, same bracket
     Studio.updateUrl = function (opts) {
         if (Studio._urlSuppress || !window.StudioUrlState) return;
+        const repoRef = Studio.currentDoc && Studio.currentDoc.repoRef;
         const q = window.StudioUrlState.encodeApp({
             mode: Studio.mode,
             protocolKey: Studio.currentDoc && Studio.currentDoc.protocolKey,
+            // Course-repo provenance (?repo=owner/name&p=<path>): set by a
+            // validated ?repo= load or an in-app course-repo open/save.
+            repo: repoRef ? repoRef.repo : null,
+            repoPath: repoRef ? repoRef.path : null,
             // #135: only an EXPLICIT session-rig selection is shareable; a rig
             // derived from the loaded protocol is redundant with `p` (clean URL).
             rigKey: Studio.currentRig && Studio.currentRig.explicit ? Studio.currentRig.name : null
@@ -2729,6 +3065,10 @@
     $('btnLogSave').addEventListener('click', () => {
         if (Studio.activeRunLog && RunLog.download) RunLog.download(Studio.activeRunLog);
     });
+    $('btnLogPush').addEventListener('click', () => {
+        if (Studio.commitRunLogNow) Studio.commitRunLogNow();
+    });
+    $('rlUploadClose').addEventListener('click', hideUploadModal);
 
     // ---- top-bar buttons ------------------------------------------------------
     $('connectBtn').addEventListener('click', toggleConnect);
@@ -2954,8 +3294,14 @@
         cmemsd: (e) => memView(e, 'sd'),
         cmempsram: (e) => memView(e, 'psram'),
         cpsram: () => clog('PS-RAM: no controller report command yet (placeholder)', 'info'),
-        csdupload: () => $('cSdFile').click(),
-        csdfolder: () => $('cSdFolder2').click(),
+        // Upload ▾ menu — local sources open a file/folder picker; library/repo
+        // sources delegate to the module block (needs GH + protocol pickers).
+        csdup_local_file: () => $('cSdFile').click(),
+        csdup_local_folder: () => $('cSdFolder2').click(),
+        csdup_lib_file: () => Studio.uploadFromSource && Studio.uploadFromSource('library', 'file'),
+        csdup_lib_folder: () => Studio.uploadFromSource && Studio.uploadFromSource('library', 'folder'),
+        csdup_repo_file: () => Studio.uploadFromSource && Studio.uploadFromSource('repo', 'file'),
+        csdup_repo_folder: () => Studio.uploadFromSource && Studio.uploadFromSource('repo', 'folder'),
         csdarchive: async () => {
             if (!connected()) return;
             await quiesceDisplay(); // 0x8A requires the display stopped
@@ -3052,6 +3398,7 @@
                 Studio.controllerId = info.mac || Studio.controllerId || null;
                 if ($('pvCtl')) $('pvCtl').textContent = Studio.controllerId || '— (needs fw with MAC in 0xC2)';
                 Studio.refreshState();
+                if (Studio.updateRigIoGating) Studio.updateRigIoGating(); // refresh fw-gated role options
                 clog('  fw v' + info.version + ' · caps [' + info.capabilities.join(', ') + ']' +
                     (info.mac ? ' · id ' + info.mac : ' · (no MAC in reply — older fw)'), 'info');
             }
@@ -3080,8 +3427,6 @@
         // depth toggles (also set the module-block stream depth)
         cgs16: (e) => { segPick(e, 'cGs16', 'cGs2'); if (Studio.setStreamGs) Studio.setStreamGs(16); if ($('cLevel')) $('cLevel').parentElement.style.opacity = '1'; },
         cgs2: (e) => { segPick(e, 'cGs2', 'cGs16'); if (Studio.setStreamGs) Studio.setStreamGs(2); },
-        // pattern-set folder load (picker logic lives in the module block)
-        cloadset: () => $('cPatFolder').click(),
         // stream test figures (builders live in the module block)
         cstreamff: () => Studio.doStream && Studio.doStream('fullfield'),
         cstreampm: () => Studio.doStream && Studio.doStream('panelmap'),
@@ -3127,7 +3472,7 @@
         const gsLabel = info ? (info.gsVal === 1 ? 'GS2' : info.gsVal === 2 ? 'GS16' : 'GS?') : '';
         el.textContent = info
             ? info.frameCount + ' fr · ' + gsLabel + ' · ' + info.cols + '×' + info.rows +
-              ' panels · ' + (info.fileSize / 1024).toFixed(1) + ' KB · stretch ' + info.stretch
+              ' panels · ' + (info.fileSize / 1024).toFixed(1) + ' KB · duty cycle ' + info.stretch
             : 'no reply for pat idx ' + idx;
     }
     Studio.refreshPatternInfo = () => refreshPatInfo(true); // module block: on dropdown pick
@@ -3226,41 +3571,86 @@
             finally { e.target.disabled = false; }
         }
     });
-    // SD single-file upload (0x8D + rename 0x83)
+    // One SD .pat write: SET_PATTERN_FILE 0x8D upload + SET_PATTERN_FILENAME
+    // 0x83 rename (both must succeed). Quiet path (session.send) — the batch
+    // wrapper owns the status line + per-file error log.
+    async function sdUploadOne(name, bytes) {
+        const up = await session.send(Wire.encodeSetPatternFile(0, bytes), { timeoutMs: 120000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILE });
+        if (!((Wire.decodeResponse(up) || {}).ok)) return { ok: false, error: 'write rejected (0x8D)' };
+        const rn = await session.send(Wire.encodeSetPatternFilename(0, name), { timeoutMs: 10000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILENAME });
+        if (Wire.decodeSetPatternFilenameResponse(rn) == null) return { ok: false, error: 'rename failed (0x83)' };
+        return { ok: true };
+    }
+    // The ONE SD-upload path for every Upload ▾ source (local file/folder,
+    // library, course repo). files = [{ name, bytes:Uint8Array }] — bytes are
+    // already fetched. Names keep any NNN_ prefix so the SD scan order (=
+    // pattern_ID) is preserved. srcLabel tags the progress readout.
+    async function sdUploadFiles(files, srcLabel) {
+        files = (files || []).filter((f) => f && f.name && f.bytes && f.bytes.length);
+        const tag = srcLabel ? ' (' + srcLabel + ')' : '';
+        if (!files.length) { $('cSdUpStatus').textContent = 'nothing to upload' + tag; return { done: 0, failed: 0 }; }
+        if (!connected()) { clog('SD upload: connect first', 'err'); return { done: 0, failed: 0 }; }
+        await quiesceDisplay(); // 0x8D requires the display stopped
+        // Breathing room between writes: the controller commits each .pat to the
+        // SD (FAT + long-filename entry) before it's ready for the next; back-to-
+        // back writes of a LARGE file could be dropped while it's still busy
+        // (bench: the 813 KB pattern failed in a batch but uploaded fine alone).
+        const GAP_MS = 750;      // settle after each successful write
+        const RETRY_GAP_MS = 1500; // longer settle before a single retry
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        let done = 0, failed = 0;
+        const uploaded = [];
+        clog('SD upload: ' + files.length + ' file(s)' + tag + '…', 'info');
+        for (let i = 0; i < files.length; i++) {
+            const f = files[i];
+            const pos = (i + 1) + '/' + files.length;
+            const kb = (f.bytes.length / 1024).toFixed(1) + ' KB';
+            $('cSdUpStatus').textContent = 'uploading ' + pos + tag + ' — ' + f.name + '…';
+            let r = null;
+            try {
+                r = await sdUploadOne(f.name, f.bytes);
+            } catch (e) { r = { ok: false, error: (e && e.message ? e.message : String(e)) }; }
+            if (!r.ok) {
+                // One retry after a longer settle — rescues a large file dropped
+                // while the controller was still committing the previous one.
+                clog('SD … ' + pos + '  ' + f.name + ' — ' + r.error + '; retrying in ' + (RETRY_GAP_MS / 1000) + 's…', 'warn');
+                await sleep(RETRY_GAP_MS);
+                try { r = await sdUploadOne(f.name, f.bytes); }
+                catch (e) { r = { ok: false, error: (e && e.message ? e.message : String(e)) }; }
+            }
+            if (r.ok) {
+                done++; uploaded.push(f);
+                clog('SD ✓ ' + pos + '  ' + f.name + '  (' + kb + ')', 'info');
+            } else {
+                failed++;
+                clog('SD ✗ ' + pos + '  ' + f.name + ' — ' + r.error, 'err');
+            }
+            if (i < files.length - 1) await sleep(GAP_MS); // let the controller settle
+        }
+        $('cSdUpStatus').textContent = done + '/' + files.length + ' uploaded' + tag + (failed ? ', ' + failed + ' failed' : '');
+        clog('SD upload done' + tag + ': ' + done + '/' + files.length + (failed ? ' (' + failed + ' failed)' : ''), failed ? 'warn' : 'info');
+        // Wire the uploaded bytes as picker preview sources (module block) BEFORE
+        // the refresh rebuilds the picker — thumbnails come straight from the
+        // upload, for every source, replacing the old "Load set…" folder step.
+        if (uploaded.length && Studio.registerUploadedPreviews) Studio.registerUploadedPreviews(uploaded);
+        sdRefresh();
+        return { done, failed };
+    }
+    Studio.sdUploadFiles = sdUploadFiles; // module block (library/repo sources) drives this
+    // SD single-file upload (local source)
     $('cSdFile').addEventListener('change', async () => {
         const f = $('cSdFile').files[0]; $('cSdFile').value = '';
-        if (!f || !connected()) return;
-        await quiesceDisplay(); // 0x8D requires the display stopped
-        $('cSdUpStatus').textContent = 'uploading…';
-        try {
-            const data = new Uint8Array(await f.arrayBuffer());
-            const up = await send(Wire.encodeSetPatternFile(0, data), 'SET_PATTERN_FILE 0x8D · ' + f.name, { timeoutMs: 120000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILE });
-            if (!(up && Wire.decodeResponse(up).ok)) { $('cSdUpStatus').textContent = 'upload failed'; return; }
-            const rn = await send(Wire.encodeSetPatternFilename(0, f.name), 'rename → ' + f.name, { timeoutMs: 10000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILENAME });
-            if (rn == null || Wire.decodeSetPatternFilenameResponse(rn) == null) { $('cSdUpStatus').textContent = 'rename failed'; return; }
-            $('cSdUpStatus').textContent = ''; sdRefresh();
-        } catch (e) { $('cSdUpStatus').textContent = 'error: ' + e.message; }
+        if (!f) return;
+        await sdUploadFiles([{ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) }], 'local');
     });
-    // SD folder (batch) upload
+    // SD folder (batch) upload (local source)
     $('cSdFolder2').addEventListener('change', async () => {
-        const files = Array.from($('cSdFolder2').files || []).filter((f) => /\.pat$/i.test(f.name));
+        const picked = Array.from($('cSdFolder2').files || []).filter((f) => /\.pat$/i.test(f.name));
         $('cSdFolder2').value = '';
-        if (!files.length || !connected()) return;
-        await quiesceDisplay(); // 0x8D requires the display stopped
-        let done = 0, failed = 0;
-        for (const f of files) {
-            $('cSdUpStatus').textContent = 'uploading ' + (done + failed + 1) + '/' + files.length + '…';
-            try {
-                const data = new Uint8Array(await f.arrayBuffer());
-                const up = await session.send(Wire.encodeSetPatternFile(0, data), { timeoutMs: 120000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILE });
-                if (!(Wire.decodeResponse(up) || {}).ok) { failed++; continue; }
-                const rn = await session.send(Wire.encodeSetPatternFilename(0, f.name), { timeoutMs: 10000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILENAME });
-                if (Wire.decodeSetPatternFilenameResponse(rn) == null) { failed++; continue; }
-                done++;
-            } catch (e) { failed++; }
-        }
-        $('cSdUpStatus').textContent = done + '/' + files.length + ' uploaded' + (failed ? ', ' + failed + ' failed' : '');
-        sdRefresh();
+        if (!picked.length) { $('cSdUpStatus').textContent = 'no .pat files in that folder'; return; }
+        const files = [];
+        for (const f of picked) files.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+        await sdUploadFiles(files, 'local folder');
     });
     // firmware upload (0xE0)
     // ---- panel-firmware chooser: official catalogs + local .bin -------------
@@ -3483,6 +3873,54 @@
         document.querySelectorAll('.cmenu.open').forEach((m) => m.classList.remove('open'));
     });
 
+    // Debug ▾ kiosk lock: SPI/refresh Set/Get + Reset controller are disabled
+    // by default so students can't change or reboot the controller by accident.
+    // The instructor clicks Unlock to use them; re-locks on the next load. The
+    // Unlock button (no data-cmd) is never disabled.
+    (function wireDebugLock() {
+        const menu = $('dbgMenu');
+        const lockBtn = $('dbgLock');
+        if (!menu || !lockBtn) return;
+        const label = menu.querySelector('.dbg-lockrow label');
+        function applyDbgLock(locked) {
+            menu.classList.toggle('dbg-locked', locked);
+            menu.querySelectorAll('#cSpiMhz, #cRrHz, .cmenu-item[data-cmd]').forEach((el) => {
+                el.disabled = locked;
+            });
+            lockBtn.textContent = locked ? 'Unlock' : 'Lock';
+            if (label) label.textContent = locked ? '🔒 advanced — locked' : '🔓 advanced — unlocked';
+        }
+        lockBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            applyDbgLock(!menu.classList.contains('dbg-locked'));
+        });
+        applyDbgLock(true); // default locked on every load
+    })();
+
+    // Controller ▾ advanced lock: panel display mode + rig I/O roles are locked
+    // by default so students can't change the bench's display/I/O setup. The
+    // Unlock button (no data-cmd) is never disabled; the top query items (Get
+    // info / IP / frames) stay usable. Same fieldset caveat as the Debug lock.
+    (function wireCtlLock() {
+        const menu = $('ctlMenu');
+        const lockBtn = $('ctlLock');
+        if (!menu || !lockBtn) return;
+        const label = menu.querySelector('.ctl-lockrow label');
+        function applyCtlLock(locked) {
+            menu.classList.toggle('ctl-locked', locked);
+            menu.querySelectorAll('#cPanelMode, #cIoRoleDio1, #cIoRoleDio2, #cIoRoleAo, #cIoRoleAi, [data-cmd="setpanelmode"], [data-cmd="getpanelmode"], [data-cmd="cioapply"], [data-cmd="cioget"]').forEach((el) => {
+                el.disabled = locked;
+            });
+            lockBtn.textContent = locked ? 'Unlock' : 'Lock';
+            if (label) label.textContent = locked ? '🔒 advanced — locked' : '🔓 advanced — unlocked';
+        }
+        lockBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            applyCtlLock(!menu.classList.contains('ctl-locked'));
+        });
+        applyCtlLock(true); // default locked on every load
+    })();
+
     // expand / collapse all
     $('cExpandAll').addEventListener('click', () => document.querySelectorAll('.console-view details.cgroup').forEach((d) => (d.open = true)));
     $('cCollapseAll').addEventListener('click', () => document.querySelectorAll('.console-view details.cgroup').forEach((d) => (d.open = false)));
@@ -3535,6 +3973,30 @@
         $('cFtLog').addEventListener('change', (e) => bridge.setLogging(e.target.checked));
         $('cFtGain').addEventListener('change', () => { if (bridge.connected) ftSendConfig(); });
         $('cFtPort').addEventListener('change', () => { if (bridge.connected) ftSendConfig(); });
+
+        // ---- Run-view bridge mirror ------------------------------------------
+        // Same shared bridge → the Run strip and the Console box are always in
+        // sync (both subscribe to the one client's events), even when switching
+        // views. Only connect + status + live counts + a closed-loop indicator
+        // are exposed here; gain / closed-loop config stay in the Console.
+        function refreshRunBridge() {
+            const on = bridge.connected;
+            const dot = $('rbDot'), conn = $('rbConnBtn'), st = $('rbStatus'), cnt = $('rbCount'), cl = $('rbClosedLoop');
+            if (dot) dot.classList.toggle('on', on);
+            if (conn) conn.textContent = on ? 'Disconnect' : 'Connect';
+            if (st) st.textContent = on ? 'connected' : 'disconnected';
+            const s = bridge.stats;
+            if (cnt) cnt.textContent = (on && s && s.recv) ? 'rx ' + s.recv + ' · applied ' + s.applied : '';
+            if (cl) cl.classList.toggle('active', on && bridge.apply); // 'apply' = closed-loop live
+        }
+        bridge.on('status', refreshRunBridge);
+        bridge.on('stats', refreshRunBridge);
+        bridge.on('apply', refreshRunBridge);
+        if ($('rbConnBtn')) $('rbConnBtn').addEventListener('click', () => {
+            if (bridge.connected) { bridge.disconnect(); }
+            else { ftSendConfig(); bridge.connect(($('cFtUrl').value || 'ws://localhost:8765').trim()); }
+        });
+        refreshRunBridge();
     })();
 
     // enable/disable the whole console surface on connection state
@@ -3551,7 +4013,14 @@
             sdListedThisConnection = true;
             initFromController().then(() => sdRefresh());
         }
-        if (!on) { sdListedThisConnection = false; clearAutoStop(); }
+        if (!on) {
+            sdListedThisConnection = false;
+            clearAutoStop();
+            // Forget the controller's capabilities so the NEXT connect re-detects
+            // io_ext (avoids stale caps gating the rig-I/O roles for a swapped rig).
+            Studio.capabilities = null;
+            if (Studio.updateRigIoGating) Studio.updateRigIoGating();
+        }
     }
     if (session) session.on('state', syncEnabled);
     syncEnabled();
@@ -3755,6 +4224,27 @@ function fetchRigIo() {
 function hasIoExt() {
     return Array.isArray(Studio.capabilities) && Studio.capabilities.includes('io_ext');
 }
+// Make sure Studio.capabilities is populated before we gate on it. The 'state'
+// event that triggers applyRigIo (via initFromController) can fire BEFORE the
+// Connect button's awaited GET_CONTROLLER_INFO has set capabilities — so on
+// first connect applyRigIo would otherwise see none, wrongly skip the io_ext
+// roles, and log a spurious "lacks io_ext" warning. Fetch 0xC2 here if they're
+// not known yet (capabilities is reset to null on disconnect, so every connect
+// re-detects). Sends are FIFO-queued (arena-link.js), so a duplicate 0xC2 is safe.
+async function ensureCapabilities() {
+    if (Array.isArray(Studio.capabilities)) return;
+    if (!Studio.session || !Studio.session.connected) return;
+    try {
+        const info = Wire.decodeControllerInfo(
+            await Studio.session.send(Wire.encodeGetControllerInfo(), { timeoutMs: 2000 })
+        );
+        if (info) {
+            Studio.capabilities = info.capabilities || [];
+            if (info.mac && !Studio.controllerId) Studio.controllerId = info.mac;
+        }
+    } catch (_) { /* older fw / no reply — hasIoExt() stays false */ }
+}
+Studio.updateRigIoGating = function () { updateRigIoGating(); }; // classic shell re-gates on caps change
 // Enable/disable the capability-gated role options to match the CONNECTED
 // firmware (never version-guessing). AI 'in' stays disabled regardless —
 // the ±10V front-end calibration is TBD (bench).
@@ -3816,6 +4306,7 @@ Studio.applyRigIo = async function (opts) {
         const el = $(id);
         return el && el.value ? el.value : fallback;
     };
+    await ensureCapabilities(); // race guard: caps may not be set yet at connect
     updateRigIoGating(); // capabilities are known once connected
     const ext = hasIoExt();
     const applied = [];
@@ -3920,6 +4411,151 @@ async function populateMetaDatalists() {
     }
 }
 
+// ---- course roster (rig-id ↔ experimenter ↔ MAC) at connect -----------------
+// roster.yaml lives at the course-data repo ROOT: format_version + a people:
+// list of {id, name, rig_id, mac} (same id/name convention as
+// configs/metadata/people.yaml). Instructor-edited day-of. This IS the
+// experimenter list for a course session — it replaces the people.yaml
+// datalist while a course repo is configured; people.yaml stays the general
+// lab vocabulary. Identity is the BENCH ID; the controller MAC (0xC2, may be
+// null on older fw) only cross-checks it — mismatch shows a warning chip.
+// Load the course-repo metadata (experimenter roster + genotype list +
+// source links). This is GitHub data, NOT arena data — it must load whenever
+// "course-repo mode" is active (a token + a repo are set), independent of any
+// arena connection. Called on sign-in, on repo change, at page load, and again
+// on connect (where the roster's MAC cross-check finally has a controller MAC).
+// Roster + genotypes are independent reads; one failing must not skip the other.
+Studio.refreshCourseMeta = async function () {
+    try {
+        await fetchCourseRoster();
+    } catch (e) {
+        Studio.rawLog('course roster check failed: ' + (e && e.message ? e.message : e), 'warn');
+    }
+    try {
+        await fetchCourseGenotypes();
+    } catch (e) {
+        Studio.rawLog('course genotypes check failed: ' + (e && e.message ? e.message : e), 'warn');
+    }
+};
+// Kept as the connect-time hook name (arena connect → refresh, now with a MAC).
+Studio.onConnected = function () {
+    return Studio.refreshCourseMeta();
+};
+// Web blob URL for a course-repo file (best-effort provenance link; the course
+// repo's default branch is main). Cosmetic — a wrong branch only 404s the link.
+function courseFileUrl(cs, path) {
+    return 'https://github.com/' + cs.repo.owner + '/' + cs.repo.name + '/blob/main/' + path;
+}
+async function fetchCourseRoster() {
+    const chip = $('benchMacChip');
+    if (chip) chip.style.display = 'none';
+    const cs = Studio.courseSettings();
+    const token = ghToken();
+    if (!cs.repo || !token) return; // no course repo configured — nothing to do
+    let entries;
+    try {
+        const res = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, 'roster.yaml', null, token));
+        if (!res.ok) {
+            Studio.rawLog('course roster: no roster.yaml in ' + cs.repo.full + ' (HTTP ' + res.status + ')', 'warn');
+            return;
+        }
+        const data = YAML.parse(new TextDecoder().decode(res.bytes));
+        entries = (data && (data.people || data.roster)) || [];
+    } catch (e) {
+        Studio.rawLog('course roster: unreadable — ' + (e && e.message ? e.message : e), 'warn');
+        return;
+    }
+    if (!Array.isArray(entries) || !entries.length) return;
+    // Course datalist: the roster's names drive the experimenter dropdown.
+    const expList = $('expList');
+    if (expList) {
+        expList.innerHTML = '';
+        entries.forEach((p) => {
+            if (!p || !(p.id || p.name)) return;
+            const o = document.createElement('option');
+            o.value = p.id || p.name;
+            if (p.name && p.id) o.label = p.name;
+            expList.appendChild(o);
+        });
+        const note = $('mSrcNote');
+        if (note) note.textContent = 'Experimenter list from the course roster (' + cs.repo.full + '/roster.yaml).';
+        // The "↗ source" link now points at the ACTIVE source (the roster),
+        // not the default lab people.yaml.
+        const link = $('mExpSrc');
+        if (link) {
+            link.href = courseFileUrl(cs, 'roster.yaml');
+            link.title = 'Course roster — experimenter list (' + cs.repo.full + '/roster.yaml)';
+        }
+    }
+    if (!cs.benchId) return;
+    const mine = entries.find((p) => p && p.rig_id === cs.benchId);
+    if (!mine) {
+        Studio.rawLog('course roster: no entry for bench id "' + cs.benchId + '" — experimenter not pre-filled', 'warn');
+        return;
+    }
+    // Pre-fill (typo-proofing) — never clobber something already typed.
+    const exp = $('mExp');
+    if (exp && !exp.value.trim() && (mine.id || mine.name)) {
+        exp.value = mine.id || mine.name;
+        Studio.rawLog('experimenter pre-filled from roster: ' + exp.value + ' (bench ' + cs.benchId + ')', 'info');
+        Studio.updateRunGate();
+    }
+    // MAC cross-check — bench id claims bench03 but the controller matches
+    // another bench's entry ⇒ chip. Tolerant: old fw reports no MAC.
+    const mac = Studio.controllerId;
+    if (chip && mac && mine.mac) {
+        const norm = (s) => String(s).toUpperCase().replace(/[^0-9A-F]/g, '');
+        if (norm(mac) !== norm(mine.mac)) {
+            chip.style.display = 'inline-block';
+            chip.title = 'Controller MAC ' + mac + ' ≠ roster entry for ' + cs.benchId + ' (' + mine.mac +
+                ') — a wrong bench id would namespace saves/run-logs under another bench. See instructor.';
+            Studio.rawLog('⚠ roster: bench id ' + cs.benchId + ' lists MAC ' + mine.mac + ' but the controller reports ' + mac, 'warn');
+        }
+    }
+}
+
+// ---- course genotype list -------------------------------------------------
+// When a course repo is configured, its root-level genotypes.yaml (a
+// `genotypes:` list, same shape as configs/metadata/genotypes.yaml) becomes
+// the fly-genotype vocabulary for the session — replacing the lab-wide list
+// and repointing the "↗ source" link. Independent of bench id / roster.
+async function fetchCourseGenotypes() {
+    const cs = Studio.courseSettings();
+    const token = ghToken();
+    if (!cs.repo || !token) return; // no course repo — keep the lab-wide list
+    let list;
+    try {
+        const res = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, 'genotypes.yaml', null, token));
+        if (!res.ok) {
+            Studio.rawLog('course genotypes: no genotypes.yaml in ' + cs.repo.full + ' (HTTP ' + res.status + ') — using the lab list', 'warn');
+            return;
+        }
+        const data = YAML.parse(new TextDecoder().decode(res.bytes));
+        list = (data && data.genotypes) || [];
+    } catch (e) {
+        Studio.rawLog('course genotypes: unreadable — ' + (e && e.message ? e.message : e), 'warn');
+        return;
+    }
+    if (!Array.isArray(list) || !list.length) return;
+    const genoList = $('genoList');
+    if (genoList) {
+        genoList.innerHTML = '';
+        list.forEach((g) => {
+            const val = typeof g === 'string' ? g : (g && (g.name || g.id)) || '';
+            if (!val) return;
+            const o = document.createElement('option');
+            o.value = val;
+            genoList.appendChild(o);
+        });
+    }
+    const link = $('mGenoSrc');
+    if (link) {
+        link.href = courseFileUrl(cs, 'genotypes.yaml');
+        link.title = 'Course genotype list (' + cs.repo.full + '/genotypes.yaml)';
+    }
+    Studio.rawLog('genotype list from the course repo (' + cs.repo.full + '/genotypes.yaml, ' + list.length + ' entries)', 'info');
+}
+
 // ---- pattern set / name picker (Console) + Run pattern resolution ----
 // Studio.patternSet = { source:'sd'|'manifest', patterns: { name: { index, sd_name, preview } } } | null.
 //
@@ -3927,10 +4563,11 @@ async function populateMetaDatalists() {
 //  · The PICKER (dropdown + cPat index + Run name→index resolution) follows the
 //    LIVE SD LISTING whenever one exists — the card is the source of truth for
 //    what index a name has (uploads/deletes re-order it). Falls back to the
-//    built-in web manifest (or a Load set… folder) when never connected.
-//  · PREVIEW BYTES can only come from the web side (built-in library / picked
-//    folder) — the thumbnail is best-effort and matched by filename; an
-//    SD-only pattern simply has no thumb.
+//    built-in web manifest when never connected.
+//  · PREVIEW BYTES can only come from the web side (built-in library, or bytes
+//    seen this session via Upload ▾ / an opened course-repo protocol) — the
+//    thumbnail is best-effort, matched by filename; an SD pattern whose bytes
+//    were never seen this session simply has no thumb.
 const PS = window.PatternSet;
 const PP = window.PatPreview;
 const BUILTIN_BASE = './patterns/g6_2x10/';
@@ -3946,15 +4583,89 @@ function arenaForConfig(cfg) {
     const c = cfg ? getConfig(cfg) : null;
     return c && c.arena;
 }
-Studio.patternIndexByName = function (name) {
+// The card stores pattern files as `NNN_<name>.pat` — the zero-padded index
+// pins the firmware's SD-scan order (== pattern_ID) and the >8.3 name forces a
+// FAT long-filename entry (js/pattern-set.js:242). Protocols, though, reference
+// the LOGICAL name (`all_on`). Normalize a raw SD filename to that logical
+// name for name↔SD reconciliation: drop a leading index prefix and the .pat
+// extension. Robust to one card holding several protocols' sets (each set's
+// 1-based prefixes collide globally, but the names stay unique + resolvable).
+function sdLogicalName(fn) {
+    return String(fn == null ? '' : fn)
+        .replace(/\.pat$/i, '')
+        .replace(/^\d+[_-]/, '');
+}
+Studio.sdLogicalName = sdLogicalName;
+// Look up a pattern entry by name: exact logical-name match first, then
+// tolerate a raw filename / prefixed / extensioned reference by normalizing.
+function patEntry(name) {
     const m = Studio.patternSet;
-    const p = m && m.patterns && m.patterns[name];
+    if (!m || !m.patterns) return null;
+    return m.patterns[name] || m.patterns[sdLogicalName(name)] || null;
+}
+Studio.patternIndexByName = function (name) {
+    const p = patEntry(name);
     return p && p.index != null ? p.index : null;
 };
 Studio.patternFramesByName = function (name) {
-    const m = Studio.patternSet;
-    const p = m && m.patterns && m.patterns[name];
+    const p = patEntry(name);
     return p && p.preview && Number.isFinite(p.preview.frames) ? p.preview.frames : null;
+};
+// Recorded-run preflight (course pipeline): pattern names the SEQUENCE
+// actually reaches that resolve to nothing — same resolution the runner uses
+// (name via the SD-first picker, else a raw pattern_ID). Non-empty blocks
+// the run gate with a message naming the Console SD-upload fix.
+Studio.missingPatternNames = function (doc) {
+    if (!doc || !doc.experiment || !RunnerLib) return [];
+    const exp = doc.experiment;
+    let reachable;
+    try {
+        const flat = RunnerLib.flattenStructure(exp); // no shuffle — set only
+        reachable = new Set(flat.steps.map((s) => s.conditionName).filter(Boolean));
+    } catch (_) {
+        reachable = new Set(((exp.conditions || []).map((c) => c && c.name)).filter(Boolean));
+    }
+    const missing = new Set();
+    const scan = (cmds) => {
+        (cmds || []).forEach((cmd) => {
+            if (!cmd || (cmd.pattern == null && cmd.pattern_ID == null)) return;
+            if (resolvePatternIdForCmd(cmd) == null) {
+                missing.add(cmd.pattern != null ? String(cmd.pattern) : '#' + cmd.pattern_ID);
+            }
+        });
+    };
+    (exp.conditions || []).forEach((c) => {
+        if (c && reachable.has(c.name)) scan(c.commands);
+    });
+    return Array.from(missing);
+};
+// NON-blocking warning set (course pipeline): a command carries a pattern
+// NAME that doesn't resolve on the SD, yet the run still proceeds via the
+// numeric pattern_ID fallback — so it silently plays whatever sits at that
+// index, NOT the named pattern. (missingPatternNames catches the harder case
+// where nothing resolves at all → that BLOCKS.) These deserve a heads-up.
+Studio.unresolvedPatternNames = function (doc) {
+    if (!doc || !doc.experiment || !RunnerLib) return [];
+    const exp = doc.experiment;
+    let reachable;
+    try {
+        reachable = new Set(RunnerLib.flattenStructure(exp).steps.map((s) => s.conditionName).filter(Boolean));
+    } catch (_) {
+        reachable = new Set(((exp.conditions || []).map((c) => c && c.name)).filter(Boolean));
+    }
+    const warn = new Set();
+    (exp.conditions || []).forEach((c) => {
+        if (!c || !reachable.has(c.name)) return;
+        (c.commands || []).forEach((cmd) => {
+            if (!cmd || typeof cmd.pattern !== 'string' || !cmd.pattern) return;
+            // name not on the SD/manifest, but the command still resolves (via
+            // pattern_ID) → it will run the fallback index, not the named one.
+            if (Studio.patternIndexByName(cmd.pattern) == null && resolvePatternIdForCmd(cmd) != null) {
+                warn.add(cmd.pattern);
+            }
+        });
+    });
+    return Array.from(warn);
 };
 
 function manifestFromTxt(parsed, arenaConfig) {
@@ -3996,7 +4707,7 @@ async function renderPatThumb(name) {
     if (!p || !PP || !host) return;
     host.title = webPreviewBySdName.has(p.sd_name)
         ? 'Pattern preview (hover a multi-frame pattern to animate)'
-        : 'No preview — this pattern exists only on the SD card (Load set… a matching folder for thumbnails)';
+        : 'No preview — this pattern is on the SD card but its bytes were not seen this session (upload it via Upload ▾, or open its course-repo protocol, for a thumbnail)';
     try {
         let sampled = patPreviewCache[name];
         if (!sampled) {
@@ -4021,6 +4732,27 @@ async function renderPatThumb(name) {
         }
     } catch (e) { /* preview is best-effort */ }
 }
+// Register just-uploaded pattern bytes as picker preview sources, keyed by the
+// on-card filename (== the name we rename to via 0x83). Called by the classic
+// shell's sdUploadFiles right after a successful write, for EVERY source (local
+// file/folder, library, course repo) — so thumbnails + hover-animation come
+// straight from the uploaded set. This is what lets the old "Load set…" folder
+// step go away: uploading already yields the bytes a preview needs. Re-renders
+// the current selection if it now has a source. files = [{ name, bytes:Uint8Array }].
+Studio.registerUploadedPreviews = function (files) {
+    (files || []).forEach((f) => {
+        if (!f || !f.name || !f.bytes) return;
+        const u8 = f.bytes;
+        // Snapshot a standalone ArrayBuffer (guard against a subarray view).
+        const buf = u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength
+            ? u8.buffer
+            : u8.slice().buffer;
+        webPreviewBySdName.set(f.name, () => Promise.resolve(buf));
+    });
+    patPreviewCache = {}; // drop cached renders so the new sources take effect
+    const sel = $('cPatName');
+    if (sel && sel.value) renderPatThumb(sel.value);
+};
 async function loadBuiltinPatternSet() {
     if (!PS || typeof PS.parseManifestTxt !== 'function') { cPatStatus('pattern-set module unavailable'); return; }
     try {
@@ -4049,7 +4781,7 @@ async function loadBuiltinPatternSet() {
         cPatStatus('built-in · ' + Object.keys(m.patterns).length + ' patterns' + (m.set_id ? ' · ' + m.set_id : ''));
         populatePatDropdown();
     } catch (e) {
-        cPatStatus('built-in library unavailable — use Load set… or a raw pat idx');
+        cPatStatus('built-in library unavailable — upload a set via Upload ▾ or use a raw pat idx');
         if ($('cPat')) $('cPat').readOnly = false;
     }
 }
@@ -4067,47 +4799,23 @@ Studio.onSdListing = function (names) {
     };
     names.forEach((nm, i) => {
         if (!nm) return; // unreadable filename — index still selectable via cPat
-        m.patterns[nm] = { index: i + 1, sd_name: nm, preview: null };
+        // Key by the LOGICAL name (strip the NNN_ index prefix + .pat) so a
+        // protocol's `pattern: "all_on"` resolves against `001_all_on.pat` on
+        // the card; keep the raw filename as sd_name for preview bytes + upload.
+        m.patterns[sdLogicalName(nm)] = { index: i + 1, sd_name: nm, preview: null };
     });
     const n = Object.keys(m.patterns).length;
     Studio.patternSet = m; // once listed, the CARD owns the picker — even empty
     patPreviewCache = {};
     cPatStatus(n ? 'SD card · ' + n + ' patterns' : 'SD card empty — upload .pats or use a raw pat idx');
     populatePatDropdown(); // empty set clears the dropdown + unlocks cPat
+    Studio.updateRunGate(); // the missing-pattern preflight tracks the SD listing
 };
 function wirePatPicker() {
     const sel = $('cPatName');
     if (sel) sel.addEventListener('change', () => applyPatPick(sel.value));
-    const folder = $('cPatFolder');
-    if (folder) folder.addEventListener('change', async () => {
-        const files = Array.from(folder.files || []);
-        folder.value = '';
-        if (!files.length) return;
-        try {
-            // Every .pat in the folder becomes a preview-bytes source (matched by
-            // filename — works for SD listings and manifests alike).
-            for (const f of files) {
-                if (/\.pat$/i.test(f.name)) webPreviewBySdName.set(f.name, () => f.arrayBuffer());
-            }
-            patPreviewCache = {};
-            // With a live SD listing, the folder only supplies thumbnails; the
-            // picker keeps following the card.
-            if (Studio.patternSet && Studio.patternSet.source === 'sd') {
-                cPatStatus('SD card · ' + Object.keys(Studio.patternSet.patterns).length +
-                    ' patterns · previews from folder');
-                const sel = $('cPatName');
-                if (sel && sel.value) renderPatThumb(sel.value);
-                return;
-            }
-            const manifestFile = files.find((f) => f.name === 'MANIFEST.txt');
-            if (!manifestFile) { cPatStatus('no MANIFEST.txt in that folder (previews loaded anyway)'); return; }
-            const m = manifestFromTxt(PS.parseManifestTxt(await manifestFile.text()), (Studio.currentRig && Studio.currentRig.arenaConfig) || 'G6_2x10');
-            m.source = 'manifest';
-            Studio.patternSet = m;
-            cPatStatus('loaded · ' + Object.keys(m.patterns).length + ' patterns' + (m.set_id ? ' · ' + m.set_id : ''));
-            populatePatDropdown();
-        } catch (e) { cPatStatus('load failed: ' + (e.message || e)); }
-    });
+    // (Pattern-set previews now come from device memory → Upload ▾, which
+    // registers uploaded bytes as preview sources — see Studio.registerUploadedPreviews.)
 }
 
 // ---- stream frame (host-streamed test figures) — ported from arena_console ----
@@ -4689,12 +5397,16 @@ Studio.loadProtocol = async function (text, filename, source, opts) {
     // stash (#107) brackets EXACTLY this call: every early return above stays
     // clear of it, and editor.load → loadYamlText → syncFromEditor's isLoad
     // branch is fully synchronous — that's what makes the handoff race-free.
+    // repoRef (course pipeline) rides the same bracket: {repo:'owner/name',
+    // path:'protocols/…'} provenance for docs opened from a course-data repo.
     Studio._pendingProtocolKey = (opts && opts.key) || null;
+    Studio._pendingRepoRef = (opts && opts.repoRef) || null;
     let ok;
     try {
         ok = Studio.editor.load(text, filename || 'untitled.yaml', source || 'committed');
     } finally {
         Studio._pendingProtocolKey = null;
+        Studio._pendingRepoRef = null;
     }
     if (!ok) return false;
     Studio.setMode('run', { push: false }); // programmatic — part of the load, not a view nav
@@ -4715,7 +5427,8 @@ Studio.syncFromEditor = async function (info) {
         doc = Studio.currentDoc = {
             filename: info.filename || 'untitled.yaml',
             baseSource: info.source || 'local',
-            protocolKey: null
+            protocolKey: null,
+            repoRef: null
         };
     }
     doc.experiment = exp;
@@ -4728,6 +5441,9 @@ Studio.syncFromEditor = async function (info) {
         // the key, so edits/saves keep provenance. (Reset + undo restores the
         // old text WITHOUT the key — conservative loss, never a wrong key.)
         doc.protocolKey = Studio._pendingProtocolKey || null;
+        // Course-repo provenance rides the same handoff (mutually exclusive
+        // with protocolKey by construction — a doc has ONE source).
+        doc.repoRef = Studio._pendingRepoRef || null;
     }
     doc.source = info.dirty ? 'local-unsaved' : doc.baseSource;
     // Doc identity → replace, never push. Still in the synchronous prefix:
@@ -4834,9 +5550,10 @@ function seqRow(name, cond, nested) {
     row.innerHTML =
         '<span class="idx">▸</span><span class="nm">' + escapeHtml(name || '?') + '</span>' +
         '<span class="kchips">' + chips + '</span>' +
-        '<button class="play">▶ Test on arena</button>';
+        '<button class="play" title="Test this single condition on the arena">▶ Test</button>';
     row.querySelector('.play').addEventListener('click', (e) => {
         e.stopPropagation();
+        if (Studio.session && Studio.session.running) return; // no per-row tests mid-run
         Studio.runCondition(name);
     });
     return row;
@@ -4858,7 +5575,15 @@ Studio.beginRun = async function (isExperiment) {
     const conditionsByName = new Map((exp.conditions || []).map((c) => [c.name, c]));
     startRunLog(isExperiment);
     document.body.classList.toggle('testing', !isExperiment);
-    await runSteps(steps, conditionsByName, exp);
+    // Estimated total = sum of step durations (host-timed); the timer ticks
+    // wall-time since now. Best-effort — steps whose condition isn't found add 0.
+    let totalSec = 0;
+    for (const st of steps) {
+        const c = conditionsByName.get(st.conditionName);
+        if (c) totalSec += RunnerLib.conditionDuration(c) || 0;
+    }
+    if (Studio.startRunTimer) Studio.startRunTimer(totalSec);
+    await runSteps(steps, conditionsByName, exp, isExperiment);
 };
 
 Studio.runCondition = async function (name) {
@@ -4873,7 +5598,8 @@ Studio.runCondition = async function (name) {
     const conditionsByName = new Map([[name, cond]]);
     startRunLog(false); // per-condition test is never recorded
     document.body.classList.add('testing');
-    await runSteps(steps, conditionsByName, doc.experiment);
+    if (Studio.startRunTimer) Studio.startRunTimer(RunnerLib.conditionDuration(cond) || 0);
+    await runSteps(steps, conditionsByName, doc.experiment, false);
 };
 
 function startRunLog(isExperiment) {
@@ -4901,26 +5627,29 @@ function startRunLog(isExperiment) {
     $('runInline').classList.toggle('rec', isExperiment);
 }
 
-async function runSteps(steps, conditionsByName, exp) {
+async function runSteps(steps, conditionsByName, exp, isExperiment) {
     // A pending console auto-stop firing mid-run would kill the sequence.
     if (Studio.clearConsoleAutoStop) Studio.clearConsoleAutoStop();
     const ftNames = fictracPluginNames(exp);
-    // FicTrac auto-connect (ported from the standalone designer — it got lost
-    // in the embed): when the experiment declares a fictrac plugin, connect
-    // the bridge BEFORE the run so fictrac.connect/startClosedLoop commands
-    // and the default-on JSONL logging actually do something. The runner's
-    // fictracConnect op calls bridge.connect() with NO url, so the url must be
-    // primed here (console field, default ws://localhost:8765); port/gain come
-    // from the protocol's plugin config.
+    // The bridge is the UNIVERSAL run logger (course pipeline): every sequence
+    // run — with or without a fictrac plugin — connects it and enables JSONL
+    // logging, so no experiment is silently untracked. Recorded runs are
+    // additionally GATED on the bridge (canRunExperiment.bridgeConnected);
+    // test runs stay best-effort. A declared fictrac plugin still contributes
+    // its port/gain config (closed-loop Mode 3). The runner's fictracConnect
+    // op calls bridge.connect() with NO url, so the url is primed here
+    // (console field, default ws://localhost:8765).
     const bridge = Studio.session && Studio.session.bridge;
-    if (ftNames.length && bridge) {
-        const plug = (exp.plugins || []).find((p) => p && ftNames.includes(p.name));
-        const pcfg = (plug && plug.config) || {};
-        const cfg = {};
-        if (Number.isFinite(Number(pcfg.fictrac_port))) cfg.fictrac_port = Number(pcfg.fictrac_port);
-        if (Number.isFinite(Number(pcfg.gain))) cfg.gain = Number(pcfg.gain);
-        if (Object.keys(cfg).length) bridge.setConfig(cfg);
-        bridge.setLogging(true); // default-on: no experiment untracked
+    if (bridge) {
+        if (ftNames.length) {
+            const plug = (exp.plugins || []).find((p) => p && ftNames.includes(p.name));
+            const pcfg = (plug && plug.config) || {};
+            const cfg = {};
+            if (Number.isFinite(Number(pcfg.fictrac_port))) cfg.fictrac_port = Number(pcfg.fictrac_port);
+            if (Number.isFinite(Number(pcfg.gain))) cfg.gain = Number(pcfg.gain);
+            if (Object.keys(cfg).length) bridge.setConfig(cfg);
+        }
+        bridge.setLogging(true); // universal default-on: no experiment untracked
         if ($('cFtLog')) $('cFtLog').checked = true; // keep the console toggle honest
         const ftUrl = ((($('cFtUrl') || {}).value) || 'ws://localhost:8765').trim();
         if (!bridge.connected) {
@@ -4930,9 +5659,10 @@ async function runSteps(steps, conditionsByName, exp) {
             }
         }
         const ftMsg = bridge.connected
-            ? 'fictrac bridge connected (' + ftUrl + ') · logging to JSONL'
-            : 'fictrac bridge NOT connected (' + ftUrl +
-              ') — closed-loop + JSONL logging INACTIVE. Start it (`pixi run bridge`) and re-run.';
+            ? 'bridge connected (' + ftUrl + ') · run logging to JSONL' + (ftNames.length ? ' · fictrac closed-loop armed' : '')
+            : 'bridge NOT connected (' + ftUrl + ') — ' +
+              (ftNames.length ? 'closed-loop + ' : '') +
+              'JSONL run logging INACTIVE. Start it (`pixi run bridge`) and re-run.';
         Studio.rawLog((bridge.connected ? '' : '⚠ ') + ftMsg, bridge.connected ? 'info' : 'err');
         // Also into the RECORDED transcript — a saved runlog.txt must be
         // self-documenting about whether the bridge was live (bench finding:
@@ -4942,6 +5672,14 @@ async function runSteps(steps, conditionsByName, exp) {
                 level: bridge.connected ? 'INFO' : 'WARN',
                 message: ftMsg
             });
+        }
+        // Metadata injection: one run_metadata JSONL line near the top of the
+        // bridge log (setLogging(true) above rotated a fresh file server-side;
+        // messages ride the same socket FIFO, so this lands right after the
+        // logging_started marker). The committed artifact is self-describing.
+        if (isExperiment && bridge.connected && Studio.activeRunLog) {
+            bridge.log(Object.assign({ event: 'run_metadata', rig_id: Studio.rigId || null },
+                Studio.activeRunLog.meta));
         }
     }
     try {
@@ -4994,13 +5732,18 @@ $('fmNew').addEventListener('click', () => {
     Studio.setMode('edit');
     Studio.editor.newProtocol(); // designer New: dirty-confirm + blank skeleton
 });
-// ---- Save (local file, or GitHub PR when signed in + checked) ----
+// ---- Save (local file, GitHub PR, or course-repo direct commit) ----
 const GH_OWNER = 'reiserlab';
 const GH_REPO = 'webDisplayTools';
 const GH = window.StudioGitHub;
 
 function ghToken() {
-    return sessionStorage.getItem('studio_gh_pat') || localStorage.getItem('studio_gh_pat') || null;
+    return Studio.ghToken(); // single source (classic shell) — see courseSettings
+}
+// The save TARGET repo: the File ▾ setting when present, else the site repo.
+function ghTargetRepo() {
+    const cs = Studio.courseSettings();
+    return cs.repo || { owner: GH_OWNER, name: GH_REPO, full: GH_OWNER + '/' + GH_REPO };
 }
 function currentSaveText() {
     const doc = Studio.currentDoc;
@@ -5048,6 +5791,7 @@ async function saveViaPR() {
     const token = ghToken();
     if (!token) { Studio.showBanner('Sign in to GitHub first.'); return; }
     if (!ensureSaveFilename(doc)) return;
+    const tgt = ghTargetRepo();
     const base = (doc.filename || 'protocol.yaml').replace(/\.ya?ml$/i, '');
     const path = 'protocols/' + GH.slug(base) + '.yaml';
     const runId = window.StudioMeta.makeRunId();
@@ -5056,31 +5800,32 @@ async function saveViaPR() {
     // sha over the EXACT uploaded text — never a possibly-stale doc.sha256
     const textSha = await sha256Hex(text);
     doc.sha256 = textSha;
-    Studio.rawLog('GitHub: opening PR for ' + path + ' on ' + branch + '…', 'info');
+    Studio.rawLog('GitHub: opening PR for ' + path + ' on ' + tgt.full + ' ' + branch + '…', 'info');
     try {
-        const repo = await GH.run(fetch, GH.reqGetRepo(GH_OWNER, GH_REPO, token));
+        const repo = await GH.run(fetch, GH.reqGetRepo(tgt.owner, tgt.name, token));
         if (!repo.ok) throw new Error('repo read failed (' + repo.status + (repo.status === 401 ? ' — token invalid' : '') + ')');
         const baseBranch = repo.data.default_branch;
-        const ref = await GH.run(fetch, GH.reqGetRef(GH_OWNER, GH_REPO, baseBranch, token));
+        const ref = await GH.run(fetch, GH.reqGetRef(tgt.owner, tgt.name, baseBranch, token));
         if (!ref.ok) throw new Error('base ref read failed');
         const baseSha = ref.data.object.sha;
-        const cr = await GH.run(fetch, GH.reqCreateRef(GH_OWNER, GH_REPO, branch, baseSha, token));
+        const cr = await GH.run(fetch, GH.reqCreateRef(tgt.owner, tgt.name, branch, baseSha, token));
         if (!cr.ok && cr.status !== 422) throw new Error('branch create failed (' + cr.status + ')');
         // create-vs-update: look for an existing blob on the new branch
         let existingSha;
-        const cur = await GH.run(fetch, GH.reqGetContents(GH_OWNER, GH_REPO, path, branch, token));
+        const cur = await GH.run(fetch, GH.reqGetContents(tgt.owner, tgt.name, path, branch, token));
         if (cur.ok && cur.data && cur.data.sha) existingSha = cur.data.sha;
-        const put = await GH.run(fetch, GH.reqPutContents(GH_OWNER, GH_REPO, path, {
+        const put = await GH.run(fetch, GH.reqPutContents(tgt.owner, tgt.name, path, {
             message: 'Add/update protocol ' + base + ' via Arena Studio', contentText: text, branch, sha: existingSha
         }, token));
         if (!put.ok) throw new Error('file write failed (' + put.status + ')');
-        const pr = await GH.run(fetch, GH.reqCreatePull(GH_OWNER, GH_REPO, {
+        const pr = await GH.run(fetch, GH.reqCreatePull(tgt.owner, tgt.name, {
             title: 'Protocol: ' + base, head: branch, base: baseBranch,
             body: 'Committed from Arena Studio.\n\n- file: `' + path + '`\n- run_id: `' + runId + '`\n- sha256: `' + textSha + '`'
         }, token));
         if (!pr.ok) throw new Error('PR open failed (' + pr.status + ')');
         Studio.rawLog('✓ PR opened: ' + pr.data.html_url, 'info');
         Studio.showBanner('PR opened — ' + pr.data.html_url);
+        doc.repoRef = null; // PR provenance is the registry's business, not ?repo=
         doc.baseSource = 'committed';
         if (Studio.editor) Studio.editor.markSaved(doc.filename);
         else { doc.source = 'committed'; document.body.classList.remove('unsaved'); Studio.updateRunGate(); }
@@ -5092,18 +5837,71 @@ async function saveViaPR() {
     }
 }
 
+// Course-repo direct commit (CSHL write mode): protocols/<bench-id>/<name>.yaml
+// straight onto the default branch — no branch, no PR. Safe because bench-id
+// namespacing means no two rigs ever write the same file; blocked with a
+// clear notice when the bench id is unset (never a silently-colliding name).
+async function saveViaDirectCommit() {
+    const doc = Studio.currentDoc;
+    const token = ghToken();
+    const cs = Studio.courseSettings();
+    if (!token) { Studio.showBanner('Sign in to GitHub first.'); return; }
+    if (!cs.repo) { Studio.showBanner('Set the target repo (owner/name) in File ▾ first.'); return; }
+    if (!cs.benchId) {
+        Studio.showBanner('Course-repo save blocked: bench id not set — see instructor (File ▾ → Bench id).');
+        return;
+    }
+    if (!ensureSaveFilename(doc)) return;
+    const base = (doc.filename || 'protocol.yaml').replace(/\.ya?ml$/i, '');
+    const path = 'protocols/' + cs.benchId + '/' + GH.slug(base) + '.yaml';
+    const text = currentSaveText();
+    const textSha = await sha256Hex(text);
+    doc.sha256 = textSha;
+    Studio.rawLog('GitHub: direct-committing ' + path + ' to ' + cs.repo.full + '…', 'info');
+    try {
+        const res = await GH.directCommit(fetch, {
+            owner: cs.repo.owner,
+            repo: cs.repo.name,
+            token: token,
+            path: path,
+            message: 'protocol: ' + GH.slug(base) + ' from ' + cs.benchId + ' via Arena Studio',
+            contentText: text
+        });
+        if (!res.ok) {
+            throw new Error((res.error || 'HTTP ' + res.status) + (res.status === 401 ? ' — token invalid' : ''));
+        }
+        Studio.rawLog('✓ committed ' + path + ' → ' + cs.repo.full + ' (' + res.branch + (res.updated ? ', updated' : ', new') + ')', 'info');
+        Studio.showBanner('✓ Saved to ' + cs.repo.full + ' — ' + path);
+        doc.repoRef = { repo: cs.repo.full, path: path }; // course provenance → ?repo= link
+        doc.protocolKey = null; // a repo-saved doc is no longer the registry copy
+        doc.baseSource = 'committed';
+        if (Studio.editor) Studio.editor.markSaved(doc.filename);
+        else { doc.source = 'committed'; document.body.classList.remove('unsaved'); Studio.updateRunGate(); }
+        Studio.updateUrl({ push: false });
+    } catch (e) {
+        if (String(e.message).includes('token invalid')) { sessionStorage.removeItem('studio_gh_pat'); localStorage.removeItem('studio_gh_pat'); document.body.classList.remove('ghauth'); }
+        Studio.rawLog('course-repo save failed: ' + e.message + ' — saving locally instead.', 'err');
+        Studio.showBanner('Course-repo save failed (' + e.message + '); saved a local file instead.');
+        saveLocal();
+    }
+}
+
 // The ONE save path — File ▾ → Save AND the Edit toolbar's 💾 Save. Writes a
-// local .yaml (or opens a GitHub PR when signed in + box checked) and marks
-// the doc saved (markSaved → dirty clears → the recorded-run gate opens).
-// Distinct from the Edit toolbar's "Export YAML", which downloads a
-// REGENERATED roundtrip copy and marks nothing saved.
+// local .yaml, opens a GitHub PR, or direct-commits to the course repo
+// (signed in + the matching File ▾ box checked) and marks the doc saved
+// (markSaved → dirty clears → the recorded-run gate opens). Distinct from the
+// Edit toolbar's "Export YAML", which downloads a REGENERATED roundtrip copy
+// and marks nothing saved.
 Studio.saveCurrent = function () {
     if (!Studio.currentDoc) { Studio.showBanner('Open a protocol first.'); return; }
     if (Studio.editor && Studio.editor.hasUnappliedYaml()) {
         Studio.showBanner('The YAML tab has unapplied edits — Apply or Revert them first.');
         return;
     }
-    if (document.body.classList.contains('ghauth') && $('ghPR').checked) saveViaPR();
+    const auth = document.body.classList.contains('ghauth');
+    const cs = Studio.courseSettings();
+    if (auth && cs.direct && cs.repo) saveViaDirectCommit();
+    else if (auth && $('ghPR').checked) saveViaPR();
     else saveLocal();
 };
 $('fmSave').addEventListener('click', () => {
@@ -5114,9 +5912,12 @@ $('fmSave').addEventListener('click', () => {
 $('ghSignInBtn').addEventListener('click', async (e) => {
     e.stopPropagation();
     const pat = prompt(
-        'Paste a GitHub fine-grained personal access token for ' + GH_OWNER + '/' + GH_REPO +
+        'Paste a GitHub fine-grained personal access token for ' + ghTargetRepo().full +
         '\n(Contents: read/write + Pull requests: read/write).\n\n' +
-        'Stored in sessionStorage (cleared when this tab closes). Do NOT use "remember" on a shared machine.'
+        'Stored in sessionStorage (cleared when this tab closes). The follow-up ' +
+        '"remember" option keeps it in localStorage — REQUIRED for course bench ' +
+        'setup (a sessionStorage-only token evaporates when the tab closes); ' +
+        'do NOT use it on a personal shared machine.'
     );
     if (!pat) return;
     try {
@@ -5124,34 +5925,476 @@ $('ghSignInBtn').addEventListener('click', async (e) => {
         if (!res.ok) throw new Error('token rejected (' + res.status + ')');
         const user = await res.json();
         sessionStorage.setItem('studio_gh_pat', pat.trim());
-        if (confirm('Remember this token on THIS browser (localStorage)? Only on a private machine.')) {
+        if (confirm('Remember this token on THIS browser (localStorage)?\nYES for a course bench (survives tab close); NO on a personal shared machine.')) {
             localStorage.setItem('studio_gh_pat', pat.trim());
         }
         document.body.classList.add('ghauth');
         $('ghWho').textContent = '✓ @' + (user.login || 'user');
-        $('ghPR').checked = true;
+        if (!($('ghDirect') && $('ghDirect').checked)) $('ghPR').checked = true;
         updateSaveLabel();
+        // Now that we're authed, load the course metadata (roster/genotypes/
+        // links) immediately — no arena connection required.
+        if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
     } catch (err) {
         Studio.showBanner('GitHub sign-in failed: ' + err.message);
     }
 });
+// Sign out — clear the token (both storages), drop authed state, and restore
+// the lab-wide metadata defaults. Gated by the gh-block lock like sign-in.
+$('ghSignOutBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    sessionStorage.removeItem('studio_gh_pat');
+    localStorage.removeItem('studio_gh_pat');
+    document.body.classList.remove('ghauth');
+    $('ghWho').textContent = '';
+    // Back to the lab-wide vocabularies + public source links.
+    if ($('mExpSrc')) $('mExpSrc').href = 'https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/people.yaml';
+    if ($('mGenoSrc')) $('mGenoSrc').href = 'https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/genotypes.yaml';
+    if (typeof populateMetaDatalists === 'function') populateMetaDatalists();
+    updateSaveLabel();
+    Studio.rawLog('signed out of GitHub — token cleared; metadata back to lab defaults', 'info');
+});
 function updateSaveLabel() {
-    const pr = document.body.classList.contains('ghauth') && $('ghPR').checked;
-    $('ghDest').textContent = pr ? '→ commits to a branch + opens a Pull Request' : '→ writes a local .yaml file (sign in to GitHub to open a PR instead)';
-    $('fmSave').textContent = pr ? 'Save → Pull Request' : 'Save → local file';
+    const auth = document.body.classList.contains('ghauth');
+    const cs = Studio.courseSettings();
+    const direct = auth && cs.direct && cs.repo;
+    const pr = !direct && auth && $('ghPR').checked;
+    if (direct) {
+        $('ghDest').textContent = '→ commits straight to ' + cs.repo.full + ' /protocols/' +
+            (cs.benchId || '⚠ set bench id') + '/ (default branch, no PR)';
+        $('fmSave').textContent = 'Save → course repo';
+    } else if (pr) {
+        $('ghDest').textContent = '→ commits to a branch + opens a Pull Request on ' + ghTargetRepo().full;
+        $('fmSave').textContent = 'Save → Pull Request';
+    } else {
+        $('ghDest').textContent = '→ writes a local .yaml file (sign in to GitHub to open a PR instead)';
+        $('fmSave').textContent = 'Save → local file';
+    }
 }
-$('ghPR').addEventListener('change', updateSaveLabel);
+// PR vs direct-commit are mutually exclusive write modes — checking one
+// clears the other (the last checked box wins).
+$('ghPR').addEventListener('change', () => {
+    if ($('ghPR').checked && $('ghDirect') && $('ghDirect').checked) {
+        $('ghDirect').checked = false;
+        localStorage.setItem('studio_gh_direct', '0');
+    }
+    updateSaveLabel();
+});
+// ---- course-repo settings (repo / bench id / direct-commit) — localStorage ----
+function wireCourseSettings() {
+    const repoIn = $('ghRepoInput');
+    const direct = $('ghDirect');
+    const bench = $('ghBenchId');
+    if (!repoIn || !direct || !bench) return;
+    repoIn.value = localStorage.getItem('studio_gh_repo') || '';
+    direct.checked = localStorage.getItem('studio_gh_direct') === '1';
+    bench.value = localStorage.getItem('studio_bench_id') || '';
+    repoIn.addEventListener('change', () => {
+        const v = repoIn.value.trim();
+        if (v && !(window.StudioUrlState && window.StudioUrlState.isSafeRepo(v))) {
+            Studio.showBanner('Repo must be owner/name — e.g. reiserlab/cshl-2026-course.');
+            repoIn.value = localStorage.getItem('studio_gh_repo') || '';
+            return;
+        }
+        if (v) localStorage.setItem('studio_gh_repo', v);
+        else localStorage.removeItem('studio_gh_repo');
+        updateSaveLabel();
+        // Repo changed → re-pull that repo's metadata (roster/genotypes/links).
+        if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
+    });
+    direct.addEventListener('change', () => {
+        localStorage.setItem('studio_gh_direct', direct.checked ? '1' : '0');
+        if (direct.checked && $('ghPR').checked) $('ghPR').checked = false;
+        updateSaveLabel();
+    });
+    bench.addEventListener('change', () => {
+        const v = bench.value.trim();
+        if (v) localStorage.setItem('studio_bench_id', v);
+        else localStorage.removeItem('studio_bench_id');
+        updateSaveLabel();
+    });
+    // Keep the menu open while typing in its inputs (the document-level
+    // click-away closer must not eat clicks into the fields).
+    [repoIn, bench].forEach((el) => el.addEventListener('click', (e) => e.stopPropagation()));
+    // Kiosk lock: the GitHub settings are visible in every view but LOCKED by
+    // default (disabled + grayed) so students can't change the token/repo/
+    // bench id. The instructor clicks 🔓 to configure, then it re-locks on the
+    // next load. The 🔒 button itself is never disabled.
+    const ghBlock = $('ghBlock');
+    const ghLock = $('ghLock');
+    const lockTargets = () => [$('ghSignInBtn'), $('ghSignOutBtn'), repoIn, bench, $('ghPR'), direct];
+    function applyGhLock(locked) {
+        if (ghBlock) ghBlock.classList.toggle('gh-locked', locked);
+        lockTargets().forEach((el) => { if (el) el.disabled = locked; });
+        if (ghLock) {
+            ghLock.textContent = locked ? '🔒' : '🔓';
+            ghLock.title = locked
+                ? 'Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / bench id'
+                : 'Bench GitHub settings UNLOCKED — set them, then click to re-lock (locks again on reload)';
+        }
+    }
+    if (ghLock) {
+        ghLock.addEventListener('click', (e) => {
+            e.stopPropagation();
+            applyGhLock(!ghBlock.classList.contains('gh-locked'));
+        });
+    }
+    applyGhLock(true); // default locked on every load
+}
+wireCourseSettings();
 // Restore an existing session token on load.
 if (ghToken()) {
     fetch('https://api.github.com/user', { headers: GH.headers(ghToken()) })
         .then((r) => (r.ok ? r.json() : null))
-        .then((u) => { if (u) { document.body.classList.add('ghauth'); $('ghWho').textContent = '✓ @' + (u.login || 'user'); $('ghPR').checked = true; updateSaveLabel(); } })
+        .then((u) => {
+            if (u) {
+                document.body.classList.add('ghauth');
+                $('ghWho').textContent = '✓ @' + (u.login || 'user');
+                if (!($('ghDirect') && $('ghDirect').checked)) $('ghPR').checked = true;
+                updateSaveLabel();
+                // Already signed in on load → pull course metadata now (no
+                // arena connection needed).
+                if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
+            }
+        })
         .catch(() => {});
 }
+updateSaveLabel(); // reflect stored course settings even before sign-in
 
 // (The interim raw-YAML editor became the Edit view's YAML tab — see the
 // embedded designer IIFE below.)
 
+// ---- pickers: Open from library… / Open from course repo… ------------------
+// One shared modal; items = [{label, sub, value}]. Both pickers end in
+// Studio.loadProtocol with the provenance opts that drive the shareable URL
+// (registry key vs course-repo path).
+function showPicker(title, items, onPick) {
+    const ov = $('pickerOverlay');
+    $('pickerTitle').textContent = title;
+    const list = $('pickerList');
+    list.innerHTML = '';
+    if (!items.length) {
+        list.innerHTML = '<div class="dim" style="padding:8px">Nothing found.</div>';
+    }
+    items.forEach((it) => {
+        const b = document.createElement('button');
+        b.className = 'picker-item';
+        b.title = it.tooltip || 'Open ' + it.label;
+        b.innerHTML = '<b>' + escapeHtml(it.label) + '</b>' +
+            (it.sub ? '<span class="sub">' + escapeHtml(it.sub) + '</span>' : '');
+        b.addEventListener('click', () => {
+            hidePicker();
+            onPick(it.value);
+        });
+        list.appendChild(b);
+    });
+    ov.style.display = 'flex';
+}
+function hidePicker() {
+    $('pickerOverlay').style.display = 'none';
+}
+$('pickerCancel').addEventListener('click', hidePicker);
+$('pickerOverlay').addEventListener('click', (e) => {
+    if (e.target === $('pickerOverlay')) hidePicker();
+});
+
+// v0 library picker (proposal doc): the site's own committed registry.
+$('fmOpenLibrary').addEventListener('click', async () => {
+    $('fileMenu').classList.remove('open');
+    let idx = [];
+    try {
+        const res = await fetch('./protocols/index.json', { cache: 'no-store' });
+        if (res.ok) idx = (await res.json()).protocols || [];
+    } catch (_) { /* offline */ }
+    showPicker(
+        'Open from library (site registry)',
+        idx.map((p) => ({ label: p.label || p.key, sub: p.key, tooltip: p.description || '', value: p })),
+        async (entry) => {
+            if (!window.StudioUrlState.isSafePath(entry.path)) {
+                Studio.showBanner('Registry entry has an unsafe path — not loading it.');
+                return;
+            }
+            try {
+                const res = await fetch(entry.path, { cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                await Studio.loadProtocol(await res.text(), entry.path.split('/').pop(), 'committed', { key: entry.key });
+            } catch (e) {
+                Studio.showBanner('Protocol fetch failed: ' + (e && e.message ? e.message : e));
+            }
+        }
+    );
+});
+
+// Course-repo picker: THIS bench's saves + promoted shared protocols. The
+// GitHub Contents API returns a JSON ARRAY for a directory path — this is the
+// array-aware consumer (every other reqGetContents consumer reads one file).
+$('fmOpenCourse').addEventListener('click', async () => {
+    $('fileMenu').classList.remove('open');
+    const cs = Studio.courseSettings();
+    const token = ghToken();
+    if (!cs.repo) { Studio.showBanner('Set the course repo (owner/name) in File ▾ first.'); return; }
+    if (!token) { Studio.showBanner('Sign in to GitHub first.'); return; }
+    const dirs = [];
+    if (cs.benchId) dirs.push('protocols/' + cs.benchId);
+    dirs.push('protocols/shared');
+    const items = [];
+    for (const dir of dirs) {
+        try {
+            const res = await GH.run(fetch, GH.reqGetContents(cs.repo.owner, cs.repo.name, dir, null, token));
+            if (res.ok && Array.isArray(res.data)) {
+                res.data
+                    .filter((f) => f && f.type === 'file' && /\.ya?ml$/i.test(f.name))
+                    .forEach((f) => items.push({ label: f.name, sub: dir + '/', value: f.path }));
+            }
+        } catch (_) { /* 404 before the first save is normal */ }
+    }
+    showPicker('Open from course repo (' + cs.repo.full + ')', items, (path) =>
+        openFromCourseRepo(cs.repo, path, token)
+    );
+});
+
+async function openFromCourseRepo(repo, path, token) {
+    try {
+        const res = await GH.runBytes(fetch, GH.reqGetContentsRaw(repo.owner, repo.name, path, null, token));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = new TextDecoder().decode(res.bytes);
+        const ok = await Studio.loadProtocol(text, path.split('/').pop(), 'committed', {
+            repoRef: { repo: repo.full, path: path }
+        });
+        if (ok) registerRepoPatternPreviews(repo, path, token); // async, best-effort
+    } catch (e) {
+        Studio.showBanner('Course-repo open failed: ' + (e && e.message ? e.message : e));
+    }
+}
+
+// Repo-hosted .pat previews: register byte sources for the protocol's
+// colocated _patterns/ dir so thumbnails render for patterns that live only
+// in the course repo (not on this rig's SD / built-in manifest). RAW media
+// type deliberately — the JSON Contents API omits `content` for files >1MB
+// and .pat files can exceed that.
+async function registerRepoPatternPreviews(repo, protoPath, token) {
+    const dir = protoPath.replace(/\.ya?ml$/i, '') + '_patterns';
+    try {
+        const res = await GH.run(fetch, GH.reqGetContents(repo.owner, repo.name, dir, null, token));
+        if (!res.ok || !Array.isArray(res.data)) return;
+        let n = 0;
+        res.data
+            .filter((f) => f && f.type === 'file' && /\.pat$/i.test(f.name))
+            .forEach((f) => {
+                n++;
+                webPreviewBySdName.set(f.name, async () => {
+                    const r = await GH.runBytes(fetch, GH.reqGetContentsRaw(repo.owner, repo.name, f.path, null, token));
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.bytes.buffer;
+                });
+            });
+        if (n) Studio.rawLog('course repo: ' + n + ' pattern preview(s) wired from ' + dir + '/', 'info');
+    } catch (_) { /* no colocated patterns — fine */ }
+}
+
+// ---- Upload ▾: library / course-repo pattern-set sources --------------------
+// The Console SD "Upload ▾" menu's library/repo items land here. Both browse a
+// PROTOCOL, resolve its colocated _patterns/ set via the GitHub Contents API,
+// then hand {name, bytes} files to Studio.sdUploadFiles (classic shell → 0x8D/
+// 0x83). source ∈ 'library' | 'repo'; mode ∈ 'file' (pick one) | 'folder' (all).
+// Library origin = the canonical public tools repo (GH_OWNER/GH_REPO); repo
+// origin = the signed-in course repo. Both need a token — headers() has no anon
+// path and the whole course flow is signed-in; a clear banner covers the gap.
+async function listProtocolsForUpload(source, token) {
+    if (source === 'repo') {
+        const cs = Studio.courseSettings();
+        if (!cs.repo) { Studio.showBanner('Set the course repo (owner/name) in File ▾ first.'); return null; }
+        const owner = cs.repo.owner, repo = cs.repo.name;
+        const dirs = [];
+        if (cs.benchId) dirs.push('protocols/' + cs.benchId);
+        dirs.push('protocols/shared');
+        const items = [];
+        for (const dir of dirs) {
+            try {
+                const res = await GH.run(fetch, GH.reqGetContents(owner, repo, dir, null, token));
+                if (res.ok && Array.isArray(res.data)) {
+                    res.data
+                        .filter((f) => f && f.type === 'file' && /\.ya?ml$/i.test(f.name))
+                        .forEach((f) => items.push({ label: f.name, sub: dir + '/', value: { owner, repo, path: f.path } }));
+                }
+            } catch (_) { /* 404 before the first save is normal */ }
+        }
+        return { origin: cs.repo.full, items };
+    }
+    // library — the site's committed registry (protocols/index.json), resolved
+    // against the canonical public repo for _patterns/ enumeration.
+    let idx = [];
+    try {
+        const res = await fetch('./protocols/index.json', { cache: 'no-store' });
+        if (res.ok) idx = (await res.json()).protocols || [];
+    } catch (_) { /* offline */ }
+    const items = idx
+        .filter((p) => p && p.path && window.StudioUrlState.isSafePath(p.path))
+        .map((p) => ({
+            label: p.label || p.key, sub: p.key, tooltip: p.description || '',
+            // index.json paths are site-relative (./protocols/foo.yaml) → repo path
+            value: { owner: GH_OWNER, repo: GH_REPO, path: p.path.replace(/^\.?\//, '') }
+        }));
+    return { origin: GH_OWNER + '/' + GH_REPO + ' (library)', items };
+}
+
+// Resolve a protocol's colocated _patterns/*.pat via the Contents API. Returns
+// [{ name, size, fetchBytes:()=>Promise<Uint8Array> }] in filename order (the
+// NNN_ prefix sorts to SD scan order). fetchBytes uses the RAW media type — the
+// JSON Contents API omits `content` for files >1MB and .pat files exceed that.
+async function resolveUploadPatternSet(sel, token) {
+    const dir = sel.path.replace(/\.ya?ml$/i, '') + '_patterns';
+    const res = await GH.run(fetch, GH.reqGetContents(sel.owner, sel.repo, dir, null, token));
+    if (!res.ok || !Array.isArray(res.data)) return { dir, files: [] };
+    const files = res.data
+        .filter((f) => f && f.type === 'file' && /\.pat$/i.test(f.name))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .map((f) => ({
+            name: f.name,
+            size: f.size,
+            fetchBytes: async () => {
+                const r = await GH.runBytes(fetch, GH.reqGetContentsRaw(sel.owner, sel.repo, f.path, null, token));
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.bytes;
+            }
+        }));
+    return { dir, files };
+}
+
+Studio.uploadFromSource = async function (source, mode) {
+    const token = ghToken();
+    const srcLabel = source === 'repo' ? 'course repo' : 'library';
+    if (!token) {
+        Studio.showBanner('Sign in to GitHub first to upload patterns from the ' + srcLabel + '.');
+        return;
+    }
+    let listing;
+    try {
+        listing = await listProtocolsForUpload(source, token);
+    } catch (e) {
+        Studio.showBanner('Could not list ' + srcLabel + ' protocols: ' + (e && e.message ? e.message : e));
+        return;
+    }
+    if (!listing) return; // banner already shown (e.g. course repo not set)
+    const verb = mode === 'file' ? 'pick a pattern' : 'upload its pattern set';
+    showPicker(
+        'Upload from ' + srcLabel + ' — pick a protocol to ' + verb + ' (' + listing.origin + ')',
+        listing.items,
+        (sel) => onUploadProtocolPicked(sel, mode, srcLabel, token)
+    );
+};
+
+async function onUploadProtocolPicked(sel, mode, srcLabel, token) {
+    let set;
+    try {
+        $('cSdUpStatus').textContent = 'reading ' + srcLabel + ' pattern set…';
+        set = await resolveUploadPatternSet(sel, token);
+    } catch (e) {
+        $('cSdUpStatus').textContent = '';
+        Studio.showBanner('Pattern-set read failed: ' + (e && e.message ? e.message : e));
+        return;
+    }
+    if (!set.files.length) {
+        $('cSdUpStatus').textContent = '';
+        Studio.showBanner('No colocated patterns for this protocol (' + set.dir + '/ is empty or missing).');
+        return;
+    }
+    if (mode === 'folder') {
+        await fetchAndUpload(set.files, srcLabel + ' set');
+        return;
+    }
+    // single-pattern: a second picker over the .pat files in the set
+    $('cSdUpStatus').textContent = '';
+    const items = set.files.map((f) => ({
+        label: f.name,
+        sub: f.size != null ? (f.size / 1024).toFixed(1) + ' KB' : '',
+        value: f
+    }));
+    showPicker('Upload — pick a pattern from ' + set.dir.split('/').pop() + '/', items,
+        (f) => fetchAndUpload([f], srcLabel));
+}
+
+// Fetch bytes for the chosen entries, then hand them to the classic-shell SD
+// uploader. A per-file fetch failure drops that file (logged) instead of
+// aborting the whole set.
+async function fetchAndUpload(entries, srcLabel) {
+    const files = [];
+    for (let i = 0; i < entries.length; i++) {
+        $('cSdUpStatus').textContent = 'fetching ' + (i + 1) + '/' + entries.length + ' from ' + srcLabel + '…';
+        try {
+            files.push({ name: entries[i].name, bytes: await entries[i].fetchBytes() });
+        } catch (e) {
+            Studio.rawLog('upload: fetch failed for ' + entries[i].name + ' — ' + (e && e.message ? e.message : e), 'err');
+        }
+    }
+    if (!files.length) { $('cSdUpStatus').textContent = 'fetch failed — nothing to upload'; return; }
+    if (!Studio.sdUploadFiles) { Studio.showBanner('SD uploader unavailable — reload the page.'); return; }
+    await Studio.sdUploadFiles(files, srcLabel);
+}
+
+// ---- promote-to-shared (course pipeline) ------------------------------------
+// Copies protocols/<bench-id>/<name>.yaml (+ its _patterns/*.pat) to
+// protocols/shared/ — direct commit, no PR (no mid-course review queue). The
+// hash-compare guard stands in for content-addressing: promoting must never
+// silently clobber a DIFFERENT same-named shared file (two students, same
+// protocol name — the likelier collision).
+async function putSharedGuarded(repo, token, path, bytes, message) {
+    const cur = await GH.runBytes(fetch, GH.reqGetContentsRaw(repo.owner, repo.name, path, null, token));
+    if (cur.ok && cur.bytes && GH.bytesEqual(cur.bytes, bytes)) {
+        return { ok: true, skipped: true }; // identical — idempotent re-promote
+    }
+    if (cur.ok && cur.bytes) {
+        throw new Error('a DIFFERENT file already exists at ' + path + ' — rename your protocol and promote again');
+    }
+    const res = await GH.directCommit(fetch, {
+        owner: repo.owner, repo: repo.name, token: token, path: path,
+        message: message, contentBytes: bytes
+    });
+    if (!res.ok) throw new Error(res.error || 'HTTP ' + res.status);
+    return res;
+}
+$('fmPromote').addEventListener('click', async () => {
+    $('fileMenu').classList.remove('open');
+    const cs = Studio.courseSettings();
+    const token = ghToken();
+    const doc = Studio.currentDoc;
+    if (!cs.repo || !token) { Studio.showBanner('Course repo + GitHub sign-in required to promote.'); return; }
+    if (!cs.benchId) { Studio.showBanner('Promote blocked: bench id not set — see instructor.'); return; }
+    if (!doc || Studio.isUntitledDoc(doc)) { Studio.showBanner('Open (and save) a protocol first.'); return; }
+    const base = GH.slug((doc.filename || 'protocol.yaml').replace(/\.ya?ml$/i, ''));
+    const srcYaml = 'protocols/' + cs.benchId + '/' + base + '.yaml';
+    const srcPatDir = 'protocols/' + cs.benchId + '/' + base + '_patterns';
+    Studio.rawLog('promote: ' + srcYaml + ' → protocols/shared/ …', 'info');
+    try {
+        const yaml = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, srcYaml, null, token));
+        if (!yaml.ok) {
+            throw new Error(yaml.status === 404
+                ? srcYaml + ' not found — Save to the course repo first, then promote'
+                : 'read failed (HTTP ' + yaml.status + ')');
+        }
+        // Guard + copy the YAML, then every colocated pattern.
+        const done = [];
+        const r0 = await putSharedGuarded(cs.repo, token, 'protocols/shared/' + base + '.yaml', yaml.bytes,
+            'promote: ' + base + ' from ' + cs.benchId);
+        done.push(base + '.yaml' + (r0.skipped ? ' (already shared)' : ''));
+        const list = await GH.run(fetch, GH.reqGetContents(cs.repo.owner, cs.repo.name, srcPatDir, null, token));
+        if (list.ok && Array.isArray(list.data)) {
+            for (const f of list.data.filter((x) => x && x.type === 'file' && /\.pat$/i.test(x.name))) {
+                const pat = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, f.path, null, token));
+                if (!pat.ok) throw new Error('pattern read failed: ' + f.path + ' (HTTP ' + pat.status + ')');
+                const rp = await putSharedGuarded(cs.repo, token,
+                    'protocols/shared/' + base + '_patterns/' + f.name, pat.bytes,
+                    'promote: ' + base + ' pattern ' + f.name + ' from ' + cs.benchId);
+                done.push(f.name + (rp.skipped ? ' (already shared)' : ''));
+            }
+        }
+        Studio.rawLog('✓ promoted to protocols/shared/: ' + done.join(', '), 'info');
+        Studio.showBanner('✓ Promoted to shared — ' + done.length + ' file(s): ' + done.join(', '));
+    } catch (e) {
+        Studio.rawLog('promote failed: ' + (e && e.message ? e.message : e), 'err');
+        Studio.showBanner('Promote blocked: ' + (e && e.message ? e.message : e));
+    }
+});
 
 // ---- URL state (#107) on load ----
 async function initFromUrl() {
@@ -5191,7 +6434,21 @@ async function initFromUrl() {
         warnings
             .filter((w) => !(ownMode && /opened in Run/.test(w)))
             .forEach((w) => Studio.rawLog(w, 'warn'));
-        if (state.p) {
+        if (state.repo && state.p) {
+            // Course-repo link: `p` is a repo-relative protocols/ PATH here
+            // (decode validated both). Access rides whatever PAT this browser
+            // holds — a signed-out bench gets a pointer, not the file.
+            const token = ghToken();
+            const rm = /^([^/]+)\/(.+)$/.exec(state.repo);
+            if (!token) {
+                // The finally-block canonicalizes (scrubs) the URL, so "reload"
+                // would NOT retry — point at the picker, which relists the repo.
+                Studio.showBanner('This link opens ' + state.p + ' from ' + state.repo +
+                    ' — sign in (File ▾ → GitHub), then File ▾ → "Open from course repo…" to open it.');
+            } else if (rm) {
+                await openFromCourseRepo({ owner: rm[1], name: rm[2], full: state.repo }, state.p, token);
+            }
+        } else if (state.p) {
             const entry = protoIndex.find((p) => p.key === state.p);
             if (entry && window.StudioUrlState.isSafePath(entry.path)) {
                 try {

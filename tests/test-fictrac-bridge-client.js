@@ -73,6 +73,18 @@ async function main() {
         check('applies once enabled', applied, [7]);
     }
 
+    console.log("\n=== 'apply' event fires on setApply transitions (closed-loop indicator) ===");
+    {
+        const client = new FicTracBridgeClient({});
+        const events = [];
+        client.on('apply', (on) => events.push(on));
+        client.setApply(true); // false → true
+        client.setApply(true); // no change → no event
+        client.setApply(false); // true → false
+        check('apply event only on change', events, [true, false]);
+        checkBool('apply getter reflects state', client.apply === false);
+    }
+
     console.log('\n=== canApply gate blocks + emits blocked ===');
     {
         const applied = [];
@@ -140,6 +152,81 @@ async function main() {
         await tick();
         check('non-finite indices ignored', applied, []);
         check('recv not incremented', client.stats.recv, 0);
+    }
+
+    // Minimal WebSocket double for the export request/response pair.
+    class FakeWS {
+        constructor(url) {
+            FakeWS.last = this;
+            this.url = url;
+            this.readyState = 0;
+            this.sent = [];
+        }
+        send(s) {
+            this.sent.push(JSON.parse(s));
+        }
+        close() {
+            this.readyState = 3;
+            if (this.onclose) this.onclose();
+        }
+        open() {
+            this.readyState = 1;
+            if (this.onopen) this.onopen();
+        }
+        message(obj) {
+            if (this.onmessage) this.onmessage({ data: JSON.stringify(obj) });
+        }
+    }
+
+    console.log('\n=== exportLog (log_export request/response) ===');
+    {
+        const client = new FicTracBridgeClient({ WebSocketImpl: FakeWS });
+        // disconnected ⇒ immediate reject
+        let rejected = null;
+        await client.exportLog().catch((e) => (rejected = e.message));
+        checkBool('disconnected export rejects', /not connected/.test(rejected), rejected);
+
+        client.connect('ws://localhost:8765');
+        const ws = FakeWS.last;
+        ws.open();
+        const p1 = client.exportLog(5000);
+        const p2 = client.exportLog(5000);
+        checkBool('single-in-flight shares the promise', p1 === p2, 'same promise');
+        checkBool(
+            'log_export sent once',
+            ws.sent.filter((m) => m.type === 'log_export').length === 1,
+            JSON.stringify(ws.sent)
+        );
+        ws.message({ type: 'log_export_result', name: 'arena-log-x.jsonl', content: '{"a":1}\n' });
+        const got = await p1;
+        check('resolves name', got.name, 'arena-log-x.jsonl');
+        check('resolves content', got.content, '{"a":1}\n');
+
+        // a second export after settle sends a fresh request
+        const p3 = client.exportLog(5000);
+        checkBool(
+            'new request after settle',
+            ws.sent.filter((m) => m.type === 'log_export').length === 2,
+            'sent again'
+        );
+        ws.message({ type: 'log_export_result', error: 'no log file has been written' });
+        let err3 = null;
+        await p3.catch((e) => (err3 = e.message));
+        checkBool('bridge error rejects', /no log file/.test(err3), err3);
+
+        // timeout path
+        const p4 = client.exportLog(10);
+        let err4 = null;
+        await p4.catch((e) => (err4 = e.message));
+        checkBool('timeout rejects', /timed out/.test(err4), err4);
+
+        // disconnect-while-pending path
+        const p5 = client.exportLog(5000);
+        ws.close();
+        let err5 = null;
+        await p5.catch((e) => (err5 = e.message));
+        checkBool('disconnect rejects pending export', /disconnected/.test(err5), err5);
+        client.disconnect();
     }
 
     console.log('\n=== Summary ===');
