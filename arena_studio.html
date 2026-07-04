@@ -1858,6 +1858,7 @@
             <button class="pill" id="btnLogClear">Clear</button>
             <button class="pill" id="btnLogCopy" title="Copy log to clipboard">Copy</button>
             <button class="pill" id="btnLogSave" title="Download the recorded run log (.json + .txt)" disabled>⬇ Save</button>
+            <button class="pill" id="btnLogPush" title="Push this run's log to the course repo (runlogs/&lt;bench-id&gt;/) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one." disabled>⇪ Push log</button>
           </span>
         </div>
         <div class="dock-pane">
@@ -2177,7 +2178,7 @@
             <span class="dim" id="cIoDefAi"></span>
           </div>
           <div class="cmenu-row">
-            <button class="cmenu-item" data-cmd="cioapply" style="width:auto" title="Apply the rig's power-on I/O defaults now, using the session roles above (roles via SET_DIO_ROLE 0xAC on io_ext firmware; DO via 0xAA, AO via 0xA0/0xA3). Runs automatically at connect; each applied value is logged.">Apply rig defaults</button>
+            <button class="cmenu-item" data-cmd="cioapply" style="width:auto" title="Send the I/O roles shown above to the controller now — the rig's power-on defaults, OR your session-local overrides if you changed a selector (roles via SET_DIO_ROLE 0xAC on io_ext firmware; DO via 0xAA, AO via 0xA0/0xA3). Runs automatically at connect; each applied value is logged. Overrides never edit the rig YAML.">Apply I/O roles</button>
             <button class="cmenu-item" data-cmd="cioget" style="width:auto" title="GET_DIO_ROLE 0xAD — log both ports' current roles + live pin levels (the BNC level in input roles; needs io_ext firmware)">Read roles</button>
             <span class="dim" id="cIoRigSrc"></span>
           </div>
@@ -2439,7 +2440,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.5 | 2026-07-04 11:47 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired), File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run-view log fills to the window bottom (sequence list scrolls when short), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-04 12:48 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired; per-file confirm log + settle pause + 1 retry for reliability), manual "⇪ Push log" to re-commit a run log the auto-commit skipped/failed, io_ext caps resolved before the rig-I/O apply (no first-connect race) + role options re-gate on GET_CONTROLLER_INFO + "Apply I/O roles" honors session overrides, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run-view log fills to the window bottom (sequence list scrolls when short), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2603,6 +2604,9 @@
         if (!log) return;
         const btn = $('btnLogSave');
         if (btn) btn.disabled = false;
+        // Enable manual push only for recorded runs (Test runs never commit).
+        const pbtn = $('btnLogPush');
+        if (pbtn) pbtn.disabled = (log.intent !== 'experiment');
         const saved = $('rlSaved');
         if (saved) {
             saved.textContent =
@@ -2626,20 +2630,35 @@
         if (!log || log.intent !== 'experiment') return;
         const outcome = (summary && summary.outcome) || (log.summary && log.summary.outcome) || 'UNKNOWN';
         if (outcome === 'ABORTED_BY_USER' || outcome === 'DISCONNECTED') {
-            rawLine('run log NOT committed (' + outcome + ')', 'warn');
+            // A partial run isn't auto-committed, but the bridge still holds the
+            // file — the operator can push it deliberately with "⇪ Push log".
+            rawLine('run log NOT auto-committed (' + outcome + ') — click "⇪ Push log" to commit it anyway', 'warn');
             return;
         }
+        await commitRunLog(log, {});
+    }
+    // Shared export+commit core (auto + manual). opts.manual → user-initiated:
+    // louder banners, and it's reached even for aborted/disconnected runs (which
+    // the auto path skips). The bridge must still be connected — it re-serves the
+    // last run's file until the next run starts.
+    async function commitRunLog(log, opts) {
+        opts = opts || {};
+        if (!log) { if (opts.manual) showBanner('No run log yet — run an experiment first.'); return; }
         const GH = window.StudioGitHub;
         const cs = Studio.courseSettings();
         const token = Studio.ghToken();
-        if (!GH || !cs.direct || !cs.repo || !token) return; // course pipeline not configured — normal lab use
+        if (!GH || !cs.direct || !cs.repo || !token) {
+            if (opts.manual) showBanner('Run log not pushed: course repo not configured (File ▾ → sign in, set repo, tick "Commit directly to default branch").');
+            return; // course pipeline not configured — normal lab use
+        }
         if (!cs.benchId) {
             showBanner('Run log NOT committed: bench id not set — see instructor (File ▾ → Bench id).');
             return;
         }
         const bridge = Studio.session && Studio.session.bridge;
         if (!bridge || !bridge.connected) {
-            showBanner('Run log NOT committed: bridge disconnected — the log file remains on the bridge machine.');
+            showBanner('Run log NOT committed: bridge disconnected — the log file remains on the bridge machine.' +
+                (opts.manual ? ' Reconnect the bridge (it re-serves the last run) and push again, or commit it from a local clone.' : ''));
             return;
         }
         let exported;
@@ -2655,7 +2674,7 @@
         const path =
             'runlogs/' + cs.benchId + '/' +
             proto + '__' + who + '__' + stamp + '__' + (log.meta.run_id || 'run') + '.jsonl';
-        rawLine('committing run log → ' + cs.repo.full + ' · ' + path + ' (' + exported.content.length + ' chars)…', 'info');
+        rawLine((opts.manual ? 'pushing' : 'committing') + ' run log → ' + cs.repo.full + ' · ' + path + ' (' + exported.content.length + ' chars)…', 'info');
         try {
             const res = await GH.directCommit(fetch, {
                 owner: cs.repo.owner,
@@ -2669,7 +2688,7 @@
             rawLine('✓ run log committed: ' + path, 'info');
             showBanner('✓ Run log committed to ' + cs.repo.full + ' — ' + path);
             const saved = $('rlSaved');
-            if (saved) saved.textContent += ' · ✓ committed to course repo';
+            if (saved && !/committed to course repo/.test(saved.textContent)) saved.textContent += ' · ✓ committed to course repo';
         } catch (e) {
             rawLine('run-log commit FAILED: ' + (e && e.message ? e.message : e), 'err');
             // Accurate because the run gate guarantees the bridge was up: its
@@ -2681,6 +2700,10 @@
     // Exposed for bench verification + manual re-commit after a failed
     // auto-commit (the bridge re-serves the same file until the next run).
     Studio._maybeCommitRunLog = maybeCommitRunLog;
+    // Manual "⇪ Push log" button: commit the LAST run's log regardless of
+    // outcome — for when auto-commit was skipped (aborted/disconnected/laggy) or
+    // failed. Bypasses the outcome guard; still needs the bridge connected.
+    Studio.commitRunLogNow = () => commitRunLog(Studio.activeRunLog, { manual: true });
 
     // ---- top-bar state binding ------------------------------------------------
     function refreshState() {
@@ -2804,6 +2827,9 @@
                         (info.mac ? ' · id ' + info.mac : ''), 'info');
                     const ctl = $('pvCtl');
                     if (ctl) ctl.textContent = Studio.controllerId || '— (needs fw with MAC in 0xC2)';
+                    // Un-grey the fw-gated rig-I/O roles now that caps are known
+                    // (the role menu may have rendered before this reply landed).
+                    if (Studio.updateRigIoGating) Studio.updateRigIoGating();
                 }
             } catch (e) { /* older fw / no reply — fine */ }
             // Course pipeline connect-time hook (module block): roster fetch →
@@ -2931,6 +2957,9 @@
     });
     $('btnLogSave').addEventListener('click', () => {
         if (Studio.activeRunLog && RunLog.download) RunLog.download(Studio.activeRunLog);
+    });
+    $('btnLogPush').addEventListener('click', () => {
+        if (Studio.commitRunLogNow) Studio.commitRunLogNow();
     });
 
     // ---- top-bar buttons ------------------------------------------------------
@@ -3261,6 +3290,7 @@
                 Studio.controllerId = info.mac || Studio.controllerId || null;
                 if ($('pvCtl')) $('pvCtl').textContent = Studio.controllerId || '— (needs fw with MAC in 0xC2)';
                 Studio.refreshState();
+                if (Studio.updateRigIoGating) Studio.updateRigIoGating(); // refresh fw-gated role options
                 clog('  fw v' + info.version + ' · caps [' + info.capabilities.join(', ') + ']' +
                     (info.mac ? ' · id ' + info.mac : ' · (no MAC in reply — older fw)'), 'info');
             }
@@ -3453,16 +3483,44 @@
         if (!files.length) { $('cSdUpStatus').textContent = 'nothing to upload' + tag; return { done: 0, failed: 0 }; }
         if (!connected()) { clog('SD upload: connect first', 'err'); return { done: 0, failed: 0 }; }
         await quiesceDisplay(); // 0x8D requires the display stopped
+        // Breathing room between writes: the controller commits each .pat to the
+        // SD (FAT + long-filename entry) before it's ready for the next; back-to-
+        // back writes of a LARGE file could be dropped while it's still busy
+        // (bench: the 813 KB pattern failed in a batch but uploaded fine alone).
+        const GAP_MS = 750;      // settle after each successful write
+        const RETRY_GAP_MS = 1500; // longer settle before a single retry
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
         let done = 0, failed = 0;
         const uploaded = [];
-        for (const f of files) {
-            $('cSdUpStatus').textContent = 'uploading ' + (done + failed + 1) + '/' + files.length + tag + '…';
+        clog('SD upload: ' + files.length + ' file(s)' + tag + '…', 'info');
+        for (let i = 0; i < files.length; i++) {
+            const f = files[i];
+            const pos = (i + 1) + '/' + files.length;
+            const kb = (f.bytes.length / 1024).toFixed(1) + ' KB';
+            $('cSdUpStatus').textContent = 'uploading ' + pos + tag + ' — ' + f.name + '…';
+            let r = null;
             try {
-                const r = await sdUploadOne(f.name, f.bytes);
-                if (r.ok) { done++; uploaded.push(f); } else { failed++; clog('SD upload: ' + f.name + ' — ' + r.error, 'err'); }
-            } catch (e) { failed++; clog('SD upload: ' + f.name + ' — ' + (e && e.message ? e.message : e), 'err'); }
+                r = await sdUploadOne(f.name, f.bytes);
+            } catch (e) { r = { ok: false, error: (e && e.message ? e.message : String(e)) }; }
+            if (!r.ok) {
+                // One retry after a longer settle — rescues a large file dropped
+                // while the controller was still committing the previous one.
+                clog('SD … ' + pos + '  ' + f.name + ' — ' + r.error + '; retrying in ' + (RETRY_GAP_MS / 1000) + 's…', 'warn');
+                await sleep(RETRY_GAP_MS);
+                try { r = await sdUploadOne(f.name, f.bytes); }
+                catch (e) { r = { ok: false, error: (e && e.message ? e.message : String(e)) }; }
+            }
+            if (r.ok) {
+                done++; uploaded.push(f);
+                clog('SD ✓ ' + pos + '  ' + f.name + '  (' + kb + ')', 'info');
+            } else {
+                failed++;
+                clog('SD ✗ ' + pos + '  ' + f.name + ' — ' + r.error, 'err');
+            }
+            if (i < files.length - 1) await sleep(GAP_MS); // let the controller settle
         }
         $('cSdUpStatus').textContent = done + '/' + files.length + ' uploaded' + tag + (failed ? ', ' + failed + ' failed' : '');
+        clog('SD upload done' + tag + ': ' + done + '/' + files.length + (failed ? ' (' + failed + ' failed)' : ''), failed ? 'warn' : 'info');
         // Wire the uploaded bytes as picker preview sources (module block) BEFORE
         // the refresh rebuilds the picker — thumbnails come straight from the
         // upload, for every source, replacing the old "Load set…" folder step.
@@ -3822,7 +3880,14 @@
             sdListedThisConnection = true;
             initFromController().then(() => sdRefresh());
         }
-        if (!on) { sdListedThisConnection = false; clearAutoStop(); }
+        if (!on) {
+            sdListedThisConnection = false;
+            clearAutoStop();
+            // Forget the controller's capabilities so the NEXT connect re-detects
+            // io_ext (avoids stale caps gating the rig-I/O roles for a swapped rig).
+            Studio.capabilities = null;
+            if (Studio.updateRigIoGating) Studio.updateRigIoGating();
+        }
     }
     if (session) session.on('state', syncEnabled);
     syncEnabled();
@@ -4026,6 +4091,27 @@ function fetchRigIo() {
 function hasIoExt() {
     return Array.isArray(Studio.capabilities) && Studio.capabilities.includes('io_ext');
 }
+// Make sure Studio.capabilities is populated before we gate on it. The 'state'
+// event that triggers applyRigIo (via initFromController) can fire BEFORE the
+// Connect button's awaited GET_CONTROLLER_INFO has set capabilities — so on
+// first connect applyRigIo would otherwise see none, wrongly skip the io_ext
+// roles, and log a spurious "lacks io_ext" warning. Fetch 0xC2 here if they're
+// not known yet (capabilities is reset to null on disconnect, so every connect
+// re-detects). Sends are FIFO-queued (arena-link.js), so a duplicate 0xC2 is safe.
+async function ensureCapabilities() {
+    if (Array.isArray(Studio.capabilities)) return;
+    if (!Studio.session || !Studio.session.connected) return;
+    try {
+        const info = Wire.decodeControllerInfo(
+            await Studio.session.send(Wire.encodeGetControllerInfo(), { timeoutMs: 2000 })
+        );
+        if (info) {
+            Studio.capabilities = info.capabilities || [];
+            if (info.mac && !Studio.controllerId) Studio.controllerId = info.mac;
+        }
+    } catch (_) { /* older fw / no reply — hasIoExt() stays false */ }
+}
+Studio.updateRigIoGating = function () { updateRigIoGating(); }; // classic shell re-gates on caps change
 // Enable/disable the capability-gated role options to match the CONNECTED
 // firmware (never version-guessing). AI 'in' stays disabled regardless —
 // the ±10V front-end calibration is TBD (bench).
@@ -4087,6 +4173,7 @@ Studio.applyRigIo = async function (opts) {
         const el = $(id);
         return el && el.value ? el.value : fallback;
     };
+    await ensureCapabilities(); // race guard: caps may not be set yet at connect
     updateRigIoGating(); // capabilities are known once connected
     const ext = hasIoExt();
     const applied = [];
