@@ -14,6 +14,11 @@
       "path": "./protocols/fictrac_closed_loop.yaml"
     },
     {
+      "key": "fictrac_direction_test",
+      "label": "FicTrac closed-loop + open-loop direction/speed test (~5.5 min)",
+      "path": "./protocols/fictrac_direction_test.yaml"
+    },
+    {
       "key": "full_experiment",
       "label": "Full experiment (blocks, plugins, ITI)",
       "path": "./protocols/full_experiment.yaml"

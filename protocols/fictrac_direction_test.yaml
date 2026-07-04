@@ -1,0 +1,283 @@
+version: 3
+
+# ============================================================================
+# FicTrac closed-loop + open-loop direction/speed test (web runner).
+#
+# Uses ONLY the built-in g6_2x10 patterns already on the SD card — no new
+# patterns needed:
+#   2 grating_sq · 3 grating_sine · 4 frame2_h_ccw_200f
+#
+# BLOCK 1 — OPEN LOOP (Mode 2), ~4 min:
+#   both gratings (sq, sine) × 3 speeds (5/15/30 Hz) × 2 directions
+#   (forward = +frame_rate, reverse = −frame_rate) = 12 trials × 10 s = 120 s,
+#   repeated 2× = 240 s. Reverse uses NEGATIVE frame_rate (int16, fw #4) — this
+#   is the first test of the reverse path driven from a YAML protocol via Run
+#   (the Console path was already bench-verified).
+#
+# BLOCK 2 — CLOSED LOOP (Mode 3 + FicTrac), ~1.5 min:
+#   frame2_h_ccw_200f (a 200-frame full-azimuth rotation) host-stepped by FicTrac
+#   heading through the bridge; gain 1.8 = 360/200 (one azimuth pixel per index),
+#   30 s per trial, repeated 3× = 90 s.
+#
+# Total ≈ 5.5 min. Needs the FicTrac bridge running (`pixi run bridge`); with no
+# fly, `pixi run sim` supplies synthetic heading for the closed-loop block.
+# NOTE (web-first): MATLAB has no FicTracPlugin (its closed-loop is analog
+# Mode 4), so the closed-loop block runs on the WEB runner only.
+# ============================================================================
+
+experiment_info:
+  name: "FicTrac closed-loop + open-loop direction/speed test"
+  author: "webDisplayTools"
+
+rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
+
+plugins:
+  - name: "fictrac"
+    type: "class"
+    matlab:
+      class: "FicTracPlugin"
+    config:
+      bridge_url: "ws://localhost:8765"
+      fictrac_port: 60000
+      proto: "udp"
+      gain: 1.8
+      offset: 0
+
+experiment:
+  - "fictrac_setup"
+  - name: "open_loop_gratings"
+    trials:
+      - "sq_fwd_05"
+      - "sq_fwd_15"
+      - "sq_fwd_30"
+      - "sq_rev_05"
+      - "sq_rev_15"
+      - "sq_rev_30"
+      - "sine_fwd_05"
+      - "sine_fwd_15"
+      - "sine_fwd_30"
+      - "sine_rev_05"
+      - "sine_rev_15"
+      - "sine_rev_30"
+    repetitions: 2
+  - name: "closed_loop_ball"
+    trials:
+      - "closed_loop_rotation"
+    repetitions: 3
+  - "fictrac_shutdown"
+
+conditions:
+  # ---- setup: connect the bridge + annotate the log --------------------------
+  - name: "fictrac_setup"
+    commands:
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "connect"
+      - type: "plugin"
+        plugin_name: "log"
+        command_name: "log"
+        params:
+          message: "closed-loop + open-loop direction/speed test starting"
+          level: "INFO"
+
+  # ---- BLOCK 1: open-loop drifting gratings (Mode 2) -------------------------
+  # frame_rate is the frame-advance rate in Hz; its SIGN is the drift direction
+  # (+ forward, − reverse). Each trial: trialParams (mode 2, gain 0) + a matching
+  # 10 s wait (the wait advances the host clock; duration arms the fw auto-stop).
+
+  # grating_sq (pattern 2) — forward
+  - name: "sq_fwd_05"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sq"
+        pattern_ID: 2
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: 5
+        gain: 0
+      - type: "wait"
+        duration: 10
+  - name: "sq_fwd_15"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sq"
+        pattern_ID: 2
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: 15
+        gain: 0
+      - type: "wait"
+        duration: 10
+  - name: "sq_fwd_30"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sq"
+        pattern_ID: 2
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: 30
+        gain: 0
+      - type: "wait"
+        duration: 10
+  # grating_sq (pattern 2) — reverse (negative frame_rate)
+  - name: "sq_rev_05"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sq"
+        pattern_ID: 2
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: -5
+        gain: 0
+      - type: "wait"
+        duration: 10
+  - name: "sq_rev_15"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sq"
+        pattern_ID: 2
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: -15
+        gain: 0
+      - type: "wait"
+        duration: 10
+  - name: "sq_rev_30"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sq"
+        pattern_ID: 2
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: -30
+        gain: 0
+      - type: "wait"
+        duration: 10
+
+  # grating_sine (pattern 3) — forward
+  - name: "sine_fwd_05"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sine"
+        pattern_ID: 3
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: 5
+        gain: 0
+      - type: "wait"
+        duration: 10
+  - name: "sine_fwd_15"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sine"
+        pattern_ID: 3
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: 15
+        gain: 0
+      - type: "wait"
+        duration: 10
+  - name: "sine_fwd_30"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sine"
+        pattern_ID: 3
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: 30
+        gain: 0
+      - type: "wait"
+        duration: 10
+  # grating_sine (pattern 3) — reverse (negative frame_rate)
+  - name: "sine_rev_05"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sine"
+        pattern_ID: 3
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: -5
+        gain: 0
+      - type: "wait"
+        duration: 10
+  - name: "sine_rev_15"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sine"
+        pattern_ID: 3
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: -15
+        gain: 0
+      - type: "wait"
+        duration: 10
+  - name: "sine_rev_30"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sine"
+        pattern_ID: 3
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: -30
+        gain: 0
+      - type: "wait"
+        duration: 10
+
+  # ---- BLOCK 2: closed-loop rotation (Mode 3 + FicTrac) ----------------------
+  # A 200-frame azimuthal rotation loaded static in Mode 3; FicTrac heading then
+  # drives the frame index for 30 s (host streams SET_FRAME_POSITION via the
+  # bridge). gain 1.8 = 360°/200 frames, so the arena rotates with the fly.
+  - name: "closed_loop_rotation"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: 30
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: 1.8
+      - type: "wait"
+        duration: 30
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  # ---- shutdown --------------------------------------------------------------
+  - name: "fictrac_shutdown"
+    commands:
+      - type: "controller"
+        command_name: "stopDisplay"
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "disconnect"
