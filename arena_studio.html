@@ -2224,11 +2224,9 @@
     <div class="cgroup">
       <div class="gh">pattern + trial params <span class="op">· TRIAL_PARAMS 0x08 · GET_PATTERN_INFO 0x88 · by name → SD idx</span></div>
       <div class="crow"><span class="lbl">pattern</span>
-        <button class="pill" data-cmd="cloadset" title="Load a pattern-set FOLDER (MANIFEST.txt + patterns/) — names resolve to 1-based SD indices with preview thumbnails">Load set…</button>
-        <select id="cPatName" style="min-width:190px" title="Pattern by name — drives the SD index sent in trial params"></select>
+        <select id="cPatName" style="min-width:190px" title="Pattern by name — from the SD listing when connected (else the built-in library); drives the SD index sent in trial params. Upload patterns via device memory → Upload ▾."></select>
         <span class="thumb" id="cPatThumb" title="Pattern preview (hover a multi-frame pattern to animate)"></span>
         <span class="dim" id="cPatSetStatus">loading built-in library…</span>
-        <input id="cPatFolder" type="file" webkitdirectory directory style="display:none">
       </div>
       <div class="crow"><span class="lbl">info</span>
         <span class="dim" id="cPatInfo" title="GET_PATTERN_INFO (0x88) — refreshes automatically when the pattern selection or pat idx changes">—</span>
@@ -2272,8 +2270,19 @@
           <div class="memb" data-mem="sd">
             <div class="crow" style="margin-bottom:6px">
               <button class="pill" data-cmd="csdlist" title="GET_FILE_COUNT 0x80 + names">Refresh</button>
-              <button class="pill" data-cmd="csdupload" title="Upload a .pat (SET_PATTERN_FILE 0x8D + rename 0x83)">Upload .pat…</button>
-              <button class="pill" data-cmd="csdfolder" title="Upload every .pat in a folder">Upload folder…</button>
+              <div class="cmenu" data-cmenu id="sdUploadMenu">
+                <button class="cmenu-btn" title="Upload pattern(s) to the SD card — a single .pat or a whole pattern set, from a local file/folder, this site's library, or the course repo (SET_PATTERN_FILE 0x8D + rename 0x83)">Upload ▾</button>
+                <div class="cmenu-pop">
+                  <div class="cmenu-sep">Single pattern (.pat)</div>
+                  <button class="cmenu-item" data-cmd="csdup_local_file" title="Pick one .pat file from this computer and upload it">From local file…</button>
+                  <button class="cmenu-item" data-cmd="csdup_lib_file" title="Pick a library protocol, then one pattern from its colocated set (needs GitHub sign-in)">From library…</button>
+                  <button class="cmenu-item" data-cmd="csdup_repo_file" title="Pick a course-repo protocol, then one pattern from its colocated set (needs GitHub sign-in + course repo)">From course repo…</button>
+                  <div class="cmenu-sep">Pattern set (folder)</div>
+                  <button class="cmenu-item" data-cmd="csdup_local_folder" title="Pick a folder — every .pat inside is uploaded">From local folder…</button>
+                  <button class="cmenu-item" data-cmd="csdup_lib_folder" title="Pick a library protocol — its whole colocated _patterns/ set uploads (needs GitHub sign-in)">From library…</button>
+                  <button class="cmenu-item" data-cmd="csdup_repo_folder" title="Pick a course-repo protocol — its whole colocated _patterns/ set uploads (needs GitHub sign-in + course repo)">From course repo…</button>
+                </div>
+              </div>
               <button class="pill" data-cmd="csdarchive" title="Download the whole SD as a ZIP (GET_SD_ARCHIVE 0x8A)">↙ ZIP</button>
               <button class="pill danger" data-cmd="csdpurge" title="Delete ALL patterns (DELETE_ALL_PATTERNS 0x8F)">Purge all</button>
               <input id="cSdFile" type="file" accept=".pat" style="display:none">
@@ -2430,7 +2439,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.5 | 2026-07-04 08:56 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run-view log fills to the window bottom (sequence list scrolls when short), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-04 11:47 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired), File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run-view log fills to the window bottom (sequence list scrolls when short), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -3148,8 +3157,14 @@
         cmemsd: (e) => memView(e, 'sd'),
         cmempsram: (e) => memView(e, 'psram'),
         cpsram: () => clog('PS-RAM: no controller report command yet (placeholder)', 'info'),
-        csdupload: () => $('cSdFile').click(),
-        csdfolder: () => $('cSdFolder2').click(),
+        // Upload ▾ menu — local sources open a file/folder picker; library/repo
+        // sources delegate to the module block (needs GH + protocol pickers).
+        csdup_local_file: () => $('cSdFile').click(),
+        csdup_local_folder: () => $('cSdFolder2').click(),
+        csdup_lib_file: () => Studio.uploadFromSource && Studio.uploadFromSource('library', 'file'),
+        csdup_lib_folder: () => Studio.uploadFromSource && Studio.uploadFromSource('library', 'folder'),
+        csdup_repo_file: () => Studio.uploadFromSource && Studio.uploadFromSource('repo', 'file'),
+        csdup_repo_folder: () => Studio.uploadFromSource && Studio.uploadFromSource('repo', 'folder'),
         csdarchive: async () => {
             if (!connected()) return;
             await quiesceDisplay(); // 0x8A requires the display stopped
@@ -3274,8 +3289,6 @@
         // depth toggles (also set the module-block stream depth)
         cgs16: (e) => { segPick(e, 'cGs16', 'cGs2'); if (Studio.setStreamGs) Studio.setStreamGs(16); if ($('cLevel')) $('cLevel').parentElement.style.opacity = '1'; },
         cgs2: (e) => { segPick(e, 'cGs2', 'cGs16'); if (Studio.setStreamGs) Studio.setStreamGs(2); },
-        // pattern-set folder load (picker logic lives in the module block)
-        cloadset: () => $('cPatFolder').click(),
         // stream test figures (builders live in the module block)
         cstreamff: () => Studio.doStream && Studio.doStream('fullfield'),
         cstreampm: () => Studio.doStream && Studio.doStream('panelmap'),
@@ -3420,41 +3433,58 @@
             finally { e.target.disabled = false; }
         }
     });
-    // SD single-file upload (0x8D + rename 0x83)
-    $('cSdFile').addEventListener('change', async () => {
-        const f = $('cSdFile').files[0]; $('cSdFile').value = '';
-        if (!f || !connected()) return;
-        await quiesceDisplay(); // 0x8D requires the display stopped
-        $('cSdUpStatus').textContent = 'uploading…';
-        try {
-            const data = new Uint8Array(await f.arrayBuffer());
-            const up = await send(Wire.encodeSetPatternFile(0, data), 'SET_PATTERN_FILE 0x8D · ' + f.name, { timeoutMs: 120000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILE });
-            if (!(up && Wire.decodeResponse(up).ok)) { $('cSdUpStatus').textContent = 'upload failed'; return; }
-            const rn = await send(Wire.encodeSetPatternFilename(0, f.name), 'rename → ' + f.name, { timeoutMs: 10000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILENAME });
-            if (rn == null || Wire.decodeSetPatternFilenameResponse(rn) == null) { $('cSdUpStatus').textContent = 'rename failed'; return; }
-            $('cSdUpStatus').textContent = ''; sdRefresh();
-        } catch (e) { $('cSdUpStatus').textContent = 'error: ' + e.message; }
-    });
-    // SD folder (batch) upload
-    $('cSdFolder2').addEventListener('change', async () => {
-        const files = Array.from($('cSdFolder2').files || []).filter((f) => /\.pat$/i.test(f.name));
-        $('cSdFolder2').value = '';
-        if (!files.length || !connected()) return;
+    // One SD .pat write: SET_PATTERN_FILE 0x8D upload + SET_PATTERN_FILENAME
+    // 0x83 rename (both must succeed). Quiet path (session.send) — the batch
+    // wrapper owns the status line + per-file error log.
+    async function sdUploadOne(name, bytes) {
+        const up = await session.send(Wire.encodeSetPatternFile(0, bytes), { timeoutMs: 120000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILE });
+        if (!((Wire.decodeResponse(up) || {}).ok)) return { ok: false, error: 'write rejected (0x8D)' };
+        const rn = await session.send(Wire.encodeSetPatternFilename(0, name), { timeoutMs: 10000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILENAME });
+        if (Wire.decodeSetPatternFilenameResponse(rn) == null) return { ok: false, error: 'rename failed (0x83)' };
+        return { ok: true };
+    }
+    // The ONE SD-upload path for every Upload ▾ source (local file/folder,
+    // library, course repo). files = [{ name, bytes:Uint8Array }] — bytes are
+    // already fetched. Names keep any NNN_ prefix so the SD scan order (=
+    // pattern_ID) is preserved. srcLabel tags the progress readout.
+    async function sdUploadFiles(files, srcLabel) {
+        files = (files || []).filter((f) => f && f.name && f.bytes && f.bytes.length);
+        const tag = srcLabel ? ' (' + srcLabel + ')' : '';
+        if (!files.length) { $('cSdUpStatus').textContent = 'nothing to upload' + tag; return { done: 0, failed: 0 }; }
+        if (!connected()) { clog('SD upload: connect first', 'err'); return { done: 0, failed: 0 }; }
         await quiesceDisplay(); // 0x8D requires the display stopped
         let done = 0, failed = 0;
+        const uploaded = [];
         for (const f of files) {
-            $('cSdUpStatus').textContent = 'uploading ' + (done + failed + 1) + '/' + files.length + '…';
+            $('cSdUpStatus').textContent = 'uploading ' + (done + failed + 1) + '/' + files.length + tag + '…';
             try {
-                const data = new Uint8Array(await f.arrayBuffer());
-                const up = await session.send(Wire.encodeSetPatternFile(0, data), { timeoutMs: 120000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILE });
-                if (!(Wire.decodeResponse(up) || {}).ok) { failed++; continue; }
-                const rn = await session.send(Wire.encodeSetPatternFilename(0, f.name), { timeoutMs: 10000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILENAME });
-                if (Wire.decodeSetPatternFilenameResponse(rn) == null) { failed++; continue; }
-                done++;
-            } catch (e) { failed++; }
+                const r = await sdUploadOne(f.name, f.bytes);
+                if (r.ok) { done++; uploaded.push(f); } else { failed++; clog('SD upload: ' + f.name + ' — ' + r.error, 'err'); }
+            } catch (e) { failed++; clog('SD upload: ' + f.name + ' — ' + (e && e.message ? e.message : e), 'err'); }
         }
-        $('cSdUpStatus').textContent = done + '/' + files.length + ' uploaded' + (failed ? ', ' + failed + ' failed' : '');
+        $('cSdUpStatus').textContent = done + '/' + files.length + ' uploaded' + tag + (failed ? ', ' + failed + ' failed' : '');
+        // Wire the uploaded bytes as picker preview sources (module block) BEFORE
+        // the refresh rebuilds the picker — thumbnails come straight from the
+        // upload, for every source, replacing the old "Load set…" folder step.
+        if (uploaded.length && Studio.registerUploadedPreviews) Studio.registerUploadedPreviews(uploaded);
         sdRefresh();
+        return { done, failed };
+    }
+    Studio.sdUploadFiles = sdUploadFiles; // module block (library/repo sources) drives this
+    // SD single-file upload (local source)
+    $('cSdFile').addEventListener('change', async () => {
+        const f = $('cSdFile').files[0]; $('cSdFile').value = '';
+        if (!f) return;
+        await sdUploadFiles([{ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) }], 'local');
+    });
+    // SD folder (batch) upload (local source)
+    $('cSdFolder2').addEventListener('change', async () => {
+        const picked = Array.from($('cSdFolder2').files || []).filter((f) => /\.pat$/i.test(f.name));
+        $('cSdFolder2').value = '';
+        if (!picked.length) { $('cSdUpStatus').textContent = 'no .pat files in that folder'; return; }
+        const files = [];
+        for (const f of picked) files.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+        await sdUploadFiles(files, 'local folder');
     });
     // firmware upload (0xE0)
     // ---- panel-firmware chooser: official catalogs + local .bin -------------
@@ -4313,10 +4343,11 @@ async function fetchCourseGenotypes() {
 //  · The PICKER (dropdown + cPat index + Run name→index resolution) follows the
 //    LIVE SD LISTING whenever one exists — the card is the source of truth for
 //    what index a name has (uploads/deletes re-order it). Falls back to the
-//    built-in web manifest (or a Load set… folder) when never connected.
-//  · PREVIEW BYTES can only come from the web side (built-in library / picked
-//    folder) — the thumbnail is best-effort and matched by filename; an
-//    SD-only pattern simply has no thumb.
+//    built-in web manifest when never connected.
+//  · PREVIEW BYTES can only come from the web side (built-in library, or bytes
+//    seen this session via Upload ▾ / an opened course-repo protocol) — the
+//    thumbnail is best-effort, matched by filename; an SD pattern whose bytes
+//    were never seen this session simply has no thumb.
 const PS = window.PatternSet;
 const PP = window.PatPreview;
 const BUILTIN_BASE = './patterns/g6_2x10/';
@@ -4456,7 +4487,7 @@ async function renderPatThumb(name) {
     if (!p || !PP || !host) return;
     host.title = webPreviewBySdName.has(p.sd_name)
         ? 'Pattern preview (hover a multi-frame pattern to animate)'
-        : 'No preview — this pattern exists only on the SD card (Load set… a matching folder for thumbnails)';
+        : 'No preview — this pattern is on the SD card but its bytes were not seen this session (upload it via Upload ▾, or open its course-repo protocol, for a thumbnail)';
     try {
         let sampled = patPreviewCache[name];
         if (!sampled) {
@@ -4481,6 +4512,27 @@ async function renderPatThumb(name) {
         }
     } catch (e) { /* preview is best-effort */ }
 }
+// Register just-uploaded pattern bytes as picker preview sources, keyed by the
+// on-card filename (== the name we rename to via 0x83). Called by the classic
+// shell's sdUploadFiles right after a successful write, for EVERY source (local
+// file/folder, library, course repo) — so thumbnails + hover-animation come
+// straight from the uploaded set. This is what lets the old "Load set…" folder
+// step go away: uploading already yields the bytes a preview needs. Re-renders
+// the current selection if it now has a source. files = [{ name, bytes:Uint8Array }].
+Studio.registerUploadedPreviews = function (files) {
+    (files || []).forEach((f) => {
+        if (!f || !f.name || !f.bytes) return;
+        const u8 = f.bytes;
+        // Snapshot a standalone ArrayBuffer (guard against a subarray view).
+        const buf = u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength
+            ? u8.buffer
+            : u8.slice().buffer;
+        webPreviewBySdName.set(f.name, () => Promise.resolve(buf));
+    });
+    patPreviewCache = {}; // drop cached renders so the new sources take effect
+    const sel = $('cPatName');
+    if (sel && sel.value) renderPatThumb(sel.value);
+};
 async function loadBuiltinPatternSet() {
     if (!PS || typeof PS.parseManifestTxt !== 'function') { cPatStatus('pattern-set module unavailable'); return; }
     try {
@@ -4509,7 +4561,7 @@ async function loadBuiltinPatternSet() {
         cPatStatus('built-in · ' + Object.keys(m.patterns).length + ' patterns' + (m.set_id ? ' · ' + m.set_id : ''));
         populatePatDropdown();
     } catch (e) {
-        cPatStatus('built-in library unavailable — use Load set… or a raw pat idx');
+        cPatStatus('built-in library unavailable — upload a set via Upload ▾ or use a raw pat idx');
         if ($('cPat')) $('cPat').readOnly = false;
     }
 }
@@ -4542,36 +4594,8 @@ Studio.onSdListing = function (names) {
 function wirePatPicker() {
     const sel = $('cPatName');
     if (sel) sel.addEventListener('change', () => applyPatPick(sel.value));
-    const folder = $('cPatFolder');
-    if (folder) folder.addEventListener('change', async () => {
-        const files = Array.from(folder.files || []);
-        folder.value = '';
-        if (!files.length) return;
-        try {
-            // Every .pat in the folder becomes a preview-bytes source (matched by
-            // filename — works for SD listings and manifests alike).
-            for (const f of files) {
-                if (/\.pat$/i.test(f.name)) webPreviewBySdName.set(f.name, () => f.arrayBuffer());
-            }
-            patPreviewCache = {};
-            // With a live SD listing, the folder only supplies thumbnails; the
-            // picker keeps following the card.
-            if (Studio.patternSet && Studio.patternSet.source === 'sd') {
-                cPatStatus('SD card · ' + Object.keys(Studio.patternSet.patterns).length +
-                    ' patterns · previews from folder');
-                const sel = $('cPatName');
-                if (sel && sel.value) renderPatThumb(sel.value);
-                return;
-            }
-            const manifestFile = files.find((f) => f.name === 'MANIFEST.txt');
-            if (!manifestFile) { cPatStatus('no MANIFEST.txt in that folder (previews loaded anyway)'); return; }
-            const m = manifestFromTxt(PS.parseManifestTxt(await manifestFile.text()), (Studio.currentRig && Studio.currentRig.arenaConfig) || 'G6_2x10');
-            m.source = 'manifest';
-            Studio.patternSet = m;
-            cPatStatus('loaded · ' + Object.keys(m.patterns).length + ' patterns' + (m.set_id ? ' · ' + m.set_id : ''));
-            populatePatDropdown();
-        } catch (e) { cPatStatus('load failed: ' + (e.message || e)); }
-    });
+    // (Pattern-set previews now come from device memory → Upload ▾, which
+    // registers uploaded bytes as preview sources — see Studio.registerUploadedPreviews.)
 }
 
 // ---- stream frame (host-streamed test figures) — ported from arena_console ----
@@ -5936,6 +5960,146 @@ async function registerRepoPatternPreviews(repo, protoPath, token) {
             });
         if (n) Studio.rawLog('course repo: ' + n + ' pattern preview(s) wired from ' + dir + '/', 'info');
     } catch (_) { /* no colocated patterns — fine */ }
+}
+
+// ---- Upload ▾: library / course-repo pattern-set sources --------------------
+// The Console SD "Upload ▾" menu's library/repo items land here. Both browse a
+// PROTOCOL, resolve its colocated _patterns/ set via the GitHub Contents API,
+// then hand {name, bytes} files to Studio.sdUploadFiles (classic shell → 0x8D/
+// 0x83). source ∈ 'library' | 'repo'; mode ∈ 'file' (pick one) | 'folder' (all).
+// Library origin = the canonical public tools repo (GH_OWNER/GH_REPO); repo
+// origin = the signed-in course repo. Both need a token — headers() has no anon
+// path and the whole course flow is signed-in; a clear banner covers the gap.
+async function listProtocolsForUpload(source, token) {
+    if (source === 'repo') {
+        const cs = Studio.courseSettings();
+        if (!cs.repo) { Studio.showBanner('Set the course repo (owner/name) in File ▾ first.'); return null; }
+        const owner = cs.repo.owner, repo = cs.repo.name;
+        const dirs = [];
+        if (cs.benchId) dirs.push('protocols/' + cs.benchId);
+        dirs.push('protocols/shared');
+        const items = [];
+        for (const dir of dirs) {
+            try {
+                const res = await GH.run(fetch, GH.reqGetContents(owner, repo, dir, null, token));
+                if (res.ok && Array.isArray(res.data)) {
+                    res.data
+                        .filter((f) => f && f.type === 'file' && /\.ya?ml$/i.test(f.name))
+                        .forEach((f) => items.push({ label: f.name, sub: dir + '/', value: { owner, repo, path: f.path } }));
+                }
+            } catch (_) { /* 404 before the first save is normal */ }
+        }
+        return { origin: cs.repo.full, items };
+    }
+    // library — the site's committed registry (protocols/index.json), resolved
+    // against the canonical public repo for _patterns/ enumeration.
+    let idx = [];
+    try {
+        const res = await fetch('./protocols/index.json', { cache: 'no-store' });
+        if (res.ok) idx = (await res.json()).protocols || [];
+    } catch (_) { /* offline */ }
+    const items = idx
+        .filter((p) => p && p.path && window.StudioUrlState.isSafePath(p.path))
+        .map((p) => ({
+            label: p.label || p.key, sub: p.key, tooltip: p.description || '',
+            // index.json paths are site-relative (./protocols/foo.yaml) → repo path
+            value: { owner: GH_OWNER, repo: GH_REPO, path: p.path.replace(/^\.?\//, '') }
+        }));
+    return { origin: GH_OWNER + '/' + GH_REPO + ' (library)', items };
+}
+
+// Resolve a protocol's colocated _patterns/*.pat via the Contents API. Returns
+// [{ name, size, fetchBytes:()=>Promise<Uint8Array> }] in filename order (the
+// NNN_ prefix sorts to SD scan order). fetchBytes uses the RAW media type — the
+// JSON Contents API omits `content` for files >1MB and .pat files exceed that.
+async function resolveUploadPatternSet(sel, token) {
+    const dir = sel.path.replace(/\.ya?ml$/i, '') + '_patterns';
+    const res = await GH.run(fetch, GH.reqGetContents(sel.owner, sel.repo, dir, null, token));
+    if (!res.ok || !Array.isArray(res.data)) return { dir, files: [] };
+    const files = res.data
+        .filter((f) => f && f.type === 'file' && /\.pat$/i.test(f.name))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .map((f) => ({
+            name: f.name,
+            size: f.size,
+            fetchBytes: async () => {
+                const r = await GH.runBytes(fetch, GH.reqGetContentsRaw(sel.owner, sel.repo, f.path, null, token));
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.bytes;
+            }
+        }));
+    return { dir, files };
+}
+
+Studio.uploadFromSource = async function (source, mode) {
+    const token = ghToken();
+    const srcLabel = source === 'repo' ? 'course repo' : 'library';
+    if (!token) {
+        Studio.showBanner('Sign in to GitHub first to upload patterns from the ' + srcLabel + '.');
+        return;
+    }
+    let listing;
+    try {
+        listing = await listProtocolsForUpload(source, token);
+    } catch (e) {
+        Studio.showBanner('Could not list ' + srcLabel + ' protocols: ' + (e && e.message ? e.message : e));
+        return;
+    }
+    if (!listing) return; // banner already shown (e.g. course repo not set)
+    const verb = mode === 'file' ? 'pick a pattern' : 'upload its pattern set';
+    showPicker(
+        'Upload from ' + srcLabel + ' — pick a protocol to ' + verb + ' (' + listing.origin + ')',
+        listing.items,
+        (sel) => onUploadProtocolPicked(sel, mode, srcLabel, token)
+    );
+};
+
+async function onUploadProtocolPicked(sel, mode, srcLabel, token) {
+    let set;
+    try {
+        $('cSdUpStatus').textContent = 'reading ' + srcLabel + ' pattern set…';
+        set = await resolveUploadPatternSet(sel, token);
+    } catch (e) {
+        $('cSdUpStatus').textContent = '';
+        Studio.showBanner('Pattern-set read failed: ' + (e && e.message ? e.message : e));
+        return;
+    }
+    if (!set.files.length) {
+        $('cSdUpStatus').textContent = '';
+        Studio.showBanner('No colocated patterns for this protocol (' + set.dir + '/ is empty or missing).');
+        return;
+    }
+    if (mode === 'folder') {
+        await fetchAndUpload(set.files, srcLabel + ' set');
+        return;
+    }
+    // single-pattern: a second picker over the .pat files in the set
+    $('cSdUpStatus').textContent = '';
+    const items = set.files.map((f) => ({
+        label: f.name,
+        sub: f.size != null ? (f.size / 1024).toFixed(1) + ' KB' : '',
+        value: f
+    }));
+    showPicker('Upload — pick a pattern from ' + set.dir.split('/').pop() + '/', items,
+        (f) => fetchAndUpload([f], srcLabel));
+}
+
+// Fetch bytes for the chosen entries, then hand them to the classic-shell SD
+// uploader. A per-file fetch failure drops that file (logged) instead of
+// aborting the whole set.
+async function fetchAndUpload(entries, srcLabel) {
+    const files = [];
+    for (let i = 0; i < entries.length; i++) {
+        $('cSdUpStatus').textContent = 'fetching ' + (i + 1) + '/' + entries.length + ' from ' + srcLabel + '…';
+        try {
+            files.push({ name: entries[i].name, bytes: await entries[i].fetchBytes() });
+        } catch (e) {
+            Studio.rawLog('upload: fetch failed for ' + entries[i].name + ' — ' + (e && e.message ? e.message : e), 'err');
+        }
+    }
+    if (!files.length) { $('cSdUpStatus').textContent = 'fetch failed — nothing to upload'; return; }
+    if (!Studio.sdUploadFiles) { Studio.showBanner('SD uploader unavailable — reload the page.'); return; }
+    await Studio.sdUploadFiles(files, srcLabel);
 }
 
 // ---- promote-to-shared (course pipeline) ------------------------------------
