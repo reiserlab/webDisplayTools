@@ -279,7 +279,13 @@
                 pending.reject = reject;
             });
             pending.timer = setTimeout(() => {
-                this._settleExport('reject', new Error('log export timed out'));
+                this._settleExport(
+                    'reject',
+                    new Error(
+                        'log export timed out — no log_export reply from the bridge. ' +
+                            'The running bridge may be an older build; restart `pixi run bridge` from the current version.'
+                    )
+                );
             }, timeoutMs || 15000);
             this._exportPending = pending;
             this._send({ type: 'log_export' });

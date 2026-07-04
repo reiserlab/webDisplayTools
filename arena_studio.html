@@ -114,6 +114,17 @@
   .picker-list{overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:2px}
   .picker-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;background:transparent;border:0;color:var(--text);padding:7px 10px;border-radius:6px;text-align:left;font-size:12.5px;cursor:pointer}
   .picker-item:hover{background:var(--surface2)}
+  /* run-log upload modal — greys the screen while exporting/committing so a
+     push (auto or manual) is never mysterious; holds the exact error on failure */
+  .rlup-overlay{position:fixed;inset:0;background:rgba(6,10,14,.8);z-index:1000;display:flex;align-items:center;justify-content:center}
+  .rlup-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;min-width:300px;max-width:520px;padding:22px 26px;text-align:center;box-shadow:0 14px 44px rgba(0,0,0,.6)}
+  .rlup-spin{width:30px;height:30px;margin:2px auto 12px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:rlup-rot .8s linear infinite}
+  @keyframes rlup-rot{to{transform:rotate(360deg)}}
+  .rlup-title{font-family:var(--head);font-weight:700;font-size:15px;color:var(--text)}
+  .rlup-msg{margin-top:8px;font-size:12px;color:var(--dim);word-break:break-word;line-height:1.45;white-space:pre-line}
+  .rlup-msg.ok{color:var(--accent)}
+  .rlup-msg.err{color:var(--danger)}
+  .rlup-box button{margin-top:14px}
   .picker-item .sub{font-size:10.5px;color:var(--dim)}
   .picker-foot{padding:8px 12px;border-top:1px solid var(--border);text-align:right}
   .seg{display:flex;align-self:center;height:30px;border:1px solid var(--border);border-radius:6px;overflow:hidden;flex:0 0 auto}
@@ -1831,6 +1842,16 @@
   </div>
 </div>
 
+<!-- run-log upload modal (auto commit at run end + manual "⇪ Push log") -->
+<div class="rlup-overlay" id="rlUploadOverlay" style="display:none">
+  <div class="rlup-box">
+    <div class="rlup-spin" id="rlUploadSpin"></div>
+    <div class="rlup-title" id="rlUploadTitle">Uploading run log…</div>
+    <div class="rlup-msg" id="rlUploadMsg"></div>
+    <button class="pill" id="rlUploadClose" style="display:none">Close</button>
+  </div>
+</div>
+
 <!-- ===== BODY ===== -->
 <div class="body-wrap">
   <!-- RUN view -->
@@ -2467,7 +2488,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.5 | 2026-07-04 13:21 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired; per-file confirm log + settle pause + 1 retry for reliability), manual "⇪ Push log" to re-commit a run log the auto-commit skipped/failed, io_ext caps resolved before the rig-I/O apply (no first-connect race) + role options re-gate on GET_CONTROLLER_INFO + "Apply I/O roles" honors session overrides, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run view has a FicTrac bridge strip (connect + live counts mirrored from the Console, one shared connection; closed-loop indicator pulses green while active; gain/config stay in Console), a live elapsed/estimated-total run timer under the step counter, and hides the per-condition "▶ Test" buttons during a run, Run-view log fills to the window bottom (sequence list scrolls when short), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-04 13:31 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired; per-file confirm log + settle pause + 1 retry for reliability), manual "⇪ Push log" to re-commit a run log the auto-commit skipped/failed (with a screen-greying upload modal that holds the exact error on failure; export timeout now names a stale bridge build), io_ext caps resolved before the rig-I/O apply (no first-connect race) + role options re-gate on GET_CONTROLLER_INFO + "Apply I/O roles" honors session overrides, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run view has a FicTrac bridge strip (connect + live counts mirrored from the Console, one shared connection; closed-loop indicator pulses green while active; gain/config stay in Console), a live elapsed/estimated-total run timer under the step counter, and hides the per-condition "▶ Test" buttons during a run, Run-view log fills to the window bottom (sequence list scrolls when short), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2674,6 +2695,22 @@
         maybeCommitRunLog(log, summary); // course pipeline — async, best-effort
     }
 
+    // ---- run-log upload modal — greys the screen during export+commit so a push
+    // (auto or manual) is never mysterious, and HOLDS the exact error on failure.
+    function showUploadModal(title, opts) {
+        opts = opts || {};
+        const ov = $('rlUploadOverlay');
+        if (!ov) return;
+        $('rlUploadTitle').textContent = title;
+        const msg = $('rlUploadMsg');
+        msg.textContent = opts.msg || '';
+        msg.className = 'rlup-msg' + (opts.error ? ' err' : opts.ok ? ' ok' : '');
+        $('rlUploadSpin').style.display = opts.busy ? 'block' : 'none';
+        $('rlUploadClose').style.display = opts.busy ? 'none' : 'inline-block';
+        ov.style.display = 'flex';
+    }
+    function hideUploadModal() { const ov = $('rlUploadOverlay'); if (ov) ov.style.display = 'none'; }
+
     // ---- course-repo run-log auto-commit (CSHL pipeline) -----------------------
     // On COMPLETED recorded runs only: export the bridge's JSONL — the canonical
     // run artifact (run_metadata line + every runner/arena/FicTrac event) — and
@@ -2706,21 +2743,27 @@
             if (opts.manual) showBanner('Run log not pushed: course repo not configured (File ▾ → sign in, set repo, tick "Commit directly to default branch").');
             return; // course pipeline not configured — normal lab use
         }
+        // Course pipeline is engaged (token + repo + direct) — from here every
+        // outcome is shown in the modal so a push is never silent/mysterious.
+        showUploadModal('Uploading run log…', { busy: true, msg: 'preparing…' });
         if (!cs.benchId) {
-            showBanner('Run log NOT committed: bench id not set — see instructor (File ▾ → Bench id).');
+            showUploadModal('Run log not committed', { error: true, msg: 'Bench id not set — see instructor (File ▾ → Bench id).' });
             return;
         }
         const bridge = Studio.session && Studio.session.bridge;
         if (!bridge || !bridge.connected) {
-            showBanner('Run log NOT committed: bridge disconnected — the log file remains on the bridge machine.' +
-                (opts.manual ? ' Reconnect the bridge (it re-serves the last run) and push again, or commit it from a local clone.' : ''));
+            showUploadModal('Run log not committed', { error: true,
+                msg: 'Bridge disconnected — the log file remains on the bridge machine. Reconnect the bridge (it re-serves the last run) and push again, or commit it from a local clone.' });
             return;
         }
         let exported;
         try {
+            showUploadModal('Uploading run log…', { busy: true, msg: 'exporting from the bridge…' });
             exported = await bridge.exportLog();
         } catch (e) {
-            showBanner('Run-log export failed (' + (e && e.message ? e.message : e) + ') — saved locally only, on the bridge machine.');
+            const m = (e && e.message ? e.message : String(e));
+            rawLine('run-log export FAILED: ' + m, 'err');
+            showUploadModal('Run-log export failed', { error: true, msg: m + '\n\nThe log stays on the bridge machine — nothing lost.' });
             return;
         }
         const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
@@ -2730,6 +2773,7 @@
             'runlogs/' + cs.benchId + '/' +
             proto + '__' + who + '__' + stamp + '__' + (log.meta.run_id || 'run') + '.jsonl';
         rawLine((opts.manual ? 'pushing' : 'committing') + ' run log → ' + cs.repo.full + ' · ' + path + ' (' + exported.content.length + ' chars)…', 'info');
+        showUploadModal('Uploading run log…', { busy: true, msg: 'committing to ' + cs.repo.full + '\n' + path });
         try {
             const res = await GH.directCommit(fetch, {
                 owner: cs.repo.owner,
@@ -2741,15 +2785,17 @@
             });
             if (!res.ok) throw new Error(res.error || 'HTTP ' + res.status);
             rawLine('✓ run log committed: ' + path, 'info');
-            showBanner('✓ Run log committed to ' + cs.repo.full + ' — ' + path);
+            showUploadModal('✓ Run log committed', { ok: true, msg: cs.repo.full + '\n' + path });
+            setTimeout(hideUploadModal, 1800); // auto-dismiss on success
             const saved = $('rlSaved');
             if (saved && !/committed to course repo/.test(saved.textContent)) saved.textContent += ' · ✓ committed to course repo';
         } catch (e) {
-            rawLine('run-log commit FAILED: ' + (e && e.message ? e.message : e), 'err');
+            const m = (e && e.message ? e.message : String(e));
+            rawLine('run-log commit FAILED: ' + m, 'err');
             // Accurate because the run gate guarantees the bridge was up: its
             // on-disk file exists even when GitHub is unreachable.
-            showBanner('Run log commit failed (' + (e && e.message ? e.message : e) +
-                ') — saved locally only, on the bridge machine (' + (exported.name || 'bridge log') + ').');
+            showUploadModal('Run-log upload failed', { error: true,
+                msg: m + '\n\nSaved locally on the bridge machine (' + (exported.name || 'bridge log') + ') — push it from a clone if needed.' });
         }
     }
     // Exposed for bench verification + manual re-commit after a failed
@@ -3017,6 +3063,7 @@
     $('btnLogPush').addEventListener('click', () => {
         if (Studio.commitRunLogNow) Studio.commitRunLogNow();
     });
+    $('rlUploadClose').addEventListener('click', hideUploadModal);
 
     // ---- top-bar buttons ------------------------------------------------------
     $('connectBtn').addEventListener('click', toggleConnect);
