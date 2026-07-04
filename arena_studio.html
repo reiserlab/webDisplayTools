@@ -1807,7 +1807,7 @@
           <span class="gh-spacer"></span>
           <button class="gh-lock" id="ghLock" title="Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / bench id">🔒</button>
         </div>
-        <div class="gh-row"><label for="ghRepoInput">Repo</label><input type="text" id="ghRepoInput" placeholder="reiserlab/webDisplayTools" title="Target GitHub repo (owner/name) for saves — point at the course-data repo (e.g. reiserlab/cshl-2026-course) during a course; stored in this browser's localStorage"></div>
+        <div class="gh-row"><label for="ghRepoInput">Repo</label><input type="text" id="ghRepoInput" placeholder="reiserlab/cshl-2026-course" title="Target GitHub repo (owner/name) for saves — defaults to the course-data repo (reiserlab/cshl-2026-course); type another owner/name to override. Stored in this browser's localStorage"></div>
         <div class="gh-row"><label for="ghBenchId">Bench id</label><input type="text" id="ghBenchId" placeholder="e.g. bench03" title="Instructor-set bench identity — namespaces course-repo protocol saves (protocols/&lt;bench-id&gt;/) and run-log commits (runlogs/&lt;bench-id&gt;/); stored in this browser's localStorage"></div>
         <label class="gh-check"><input type="checkbox" id="ghPR" title="Save opens a branch + Pull Request on the target repo (review-gated — the default for reiserlab/webDisplayTools)"> Save as Pull Request</label>
         <label class="gh-check"><input type="checkbox" id="ghDirect" title="Save commits straight to the target repo's default branch — no branch, no PR. Course-repo mode: safe there because bench-id namespacing means no two rigs write the same file"> Commit directly to default branch</label>
@@ -2493,7 +2493,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.5 | 2026-07-04 17:53 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired; per-file confirm log + settle pause + 1 retry for reliability), manual "⇪ Push log" to re-commit a run log the auto-commit skipped/failed (with a screen-greying upload modal that holds the exact error on failure; export timeout now names a stale bridge build), io_ext caps resolved before the rig-I/O apply (no first-connect race) + role options re-gate on GET_CONTROLLER_INFO + "Apply I/O roles" honors session overrides, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run view has a FicTrac bridge strip (connect + live counts mirrored from the Console, one shared connection; closed-loop indicator pulses green while active; gain/config stay in Console; runner-driven closed-loop now applies FicTrac frames — the shared-bridge apply gate allows apply while a run is in flight, not only when the Console stepper is loaded), a live elapsed/estimated-total run timer under the step counter, and hides the per-condition "▶ Test" buttons during a run, Run-view log is capped at 40vh (bottom-anchored, never squeezes the launch card + sequence; sequence takes the flexible middle) and Notes defaults roomy (~38vh, meta-panel scrolls), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-04 18:13 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out; Repo defaults to reiserlab/cshl-2026-course, overridable) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired; per-file confirm log + settle pause + 1 retry for reliability), manual "⇪ Push log" to re-commit a run log the auto-commit skipped/failed (with a screen-greying upload modal that holds the exact error on failure; export timeout now names a stale bridge build), io_ext caps resolved before the rig-I/O apply (no first-connect race) + role options re-gate on GET_CONTROLLER_INFO + "Apply I/O roles" honors session overrides, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run view has a FicTrac bridge strip (connect + live counts mirrored from the Console, one shared connection; closed-loop indicator pulses green while active; gain/config stay in Console; runner-driven closed-loop now applies FicTrac frames — the shared-bridge apply gate allows apply while a run is in flight, not only when the Console stepper is loaded), a live elapsed/estimated-total run timer under the step counter, and hides the per-condition "▶ Test" buttons during a run, Run-view log is capped at 40vh (bottom-anchored, never squeezes the launch card + sequence; sequence takes the flexible middle) and Notes defaults roomy (~38vh, meta-panel scrolls), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2554,8 +2554,13 @@
     Studio.ghToken = function () {
         return sessionStorage.getItem('studio_gh_pat') || localStorage.getItem('studio_gh_pat') || null;
     };
+    // Default course-data repo — pre-filled in the sign-in Repo field and used
+    // by courseSettings when the bench hasn't set its own, so the course flow
+    // (save/open-course/runlogs/roster/genotypes) targets it out of the box.
+    // Overridable: type another owner/name and it's stored in localStorage.
+    Studio.DEFAULT_COURSE_REPO = 'reiserlab/cshl-2026-course';
     Studio.courseSettings = function () {
-        const raw = (localStorage.getItem('studio_gh_repo') || '').trim();
+        const raw = (localStorage.getItem('studio_gh_repo') || Studio.DEFAULT_COURSE_REPO).trim();
         const m = /^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/.exec(raw);
         return {
             repo: m && !raw.includes('..') ? { owner: m[1], name: m[2], full: raw } : null,
@@ -5994,14 +5999,14 @@ function wireCourseSettings() {
     const direct = $('ghDirect');
     const bench = $('ghBenchId');
     if (!repoIn || !direct || !bench) return;
-    repoIn.value = localStorage.getItem('studio_gh_repo') || '';
+    repoIn.value = localStorage.getItem('studio_gh_repo') || Studio.DEFAULT_COURSE_REPO;
     direct.checked = localStorage.getItem('studio_gh_direct') === '1';
     bench.value = localStorage.getItem('studio_bench_id') || '';
     repoIn.addEventListener('change', () => {
         const v = repoIn.value.trim();
         if (v && !(window.StudioUrlState && window.StudioUrlState.isSafeRepo(v))) {
             Studio.showBanner('Repo must be owner/name — e.g. reiserlab/cshl-2026-course.');
-            repoIn.value = localStorage.getItem('studio_gh_repo') || '';
+            repoIn.value = localStorage.getItem('studio_gh_repo') || Studio.DEFAULT_COURSE_REPO;
             return;
         }
         if (v) localStorage.setItem('studio_gh_repo', v);
