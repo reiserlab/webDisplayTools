@@ -11,19 +11,28 @@ you can budget time. Two arcs shipped:
 - **Session 2 (course data pipeline, Arena Studio v0.5 + Pattern Editor
   v0.9.42)** — the GitHub course-data flow, including the Console **Upload ▾**
   menu that fills the SD card straight from the course repo (or the library, or
-  a local file/folder). This is the arc that still needs a real end-to-end pass
-  on hardware.
+  a local file/folder). **The full spine was bench-verified 2026-07-04**: two
+  recorded runs on bench01 each produced a run-scoped log that auto-committed to
+  `runlogs/bench01/` (196 KB each, distinct run_ids, `logging_started` →
+  `logging_stopped` bookends — no cross-run bleed).
+
+> **⚠ Run the CURRENT `bridge.py`.** The `log_export` handler + per-run file
+> rotation live in this pipeline (they were NOT on `main` before this merge). A
+> bench running an older `pixi run bridge` will fail every run-log export (15 s
+> timeout) and, if it logs at all, never rotates (→ one giant file). After
+> merging: `git pull` on each bench and **restart `pixi run bridge`** from the
+> updated tree. The Studio's upload modal names this failure explicitly.
 
 ## Where the risk actually is (what's verified vs. what isn't)
 
 | Layer | Status |
 |---|---|
-| Unit / logic (763 checks, `pixi run test`) | ✅ passing |
+| Unit / logic (765 checks, `pixi run test`) | ✅ passing |
 | Browser behavior against a **mocked** GitHub API | ✅ verified (dev session) |
 | **Live** push/pull to `reiserlab/cshl-2026-course` (protocol, .pat, promote+guard, runlog, roster, >1 MB) | ✅ verified via the real API (dev session, artifacts cleaned) |
-| Console **Upload ▾** fills the SD from the repo/library (fetch + list verified; 0x8D/0x83 SD write is proven separately) | ⛔ combined path not yet on hardware (Part 3 / 2.12) |
+| Console **Upload ▾** fills the SD from the repo (per-file confirm + retry) | ✅ bench-used 2026-07-04 (fills the card from a protocol's `_patterns/`) |
 | Session-1 hardware (MAC, rig lock, framescan, AO idle, DIO boot) | ✅ bench-signed-off (135 checklist) |
-| **Full end-to-end on YOUR bench: connect → run → auto-commit runlog** | ⛔ **not yet — this is the main thing to do** |
+| **Full end-to-end: connect → run → run-scoped log auto-commit** | ✅ **bench-verified 2026-07-04 (2 runs, bench01) — with the current bridge** |
 | Multi-browser / multi-bench concurrency | ⛔ not yet |
 | Guest account + shared PAT on real benches | ⛔ human setup (see Prereqs) |
 | Negative `frame_rate` Mode-2 reverse (fw #4) | ⛔ 135 checklist §C2, still open |
@@ -260,17 +269,28 @@ roster) + genotype, confirm the sequence + patterns resolve (no preflight
 block). Green **Run experiment** should be enabled.
 
 **3.2 Run.** Click **Run experiment**. Watch:
-- The run log streams runner phases; the bridge log records in parallel.
+- The run log streams runner phases; the bridge log records in parallel. The
+  bridge strip (below the Run/Test buttons) shows live `rx / applied` counts; the
+  **closed-loop** label pulses green during a Mode-3/4 trial. A run timer
+  (elapsed / estimated total) ticks under the step counter. The run log is
+  capped at 40 % of the window so it never squeezes the sequence.
 - At start, a `run_metadata` line is sent to the bridge (run id, experimenter,
-  protocol sha, rig id, arena config).
+  protocol sha, rig id, arena config), and the bridge **rotates a fresh file** so
+  the log is scoped to exactly this run.
 
 **3.3 Complete.** Let the sequence finish (don't STOP).
 → On completion the Studio exports the bridge log and **auto-commits** it to
-`runlogs/<bench-id>/<protocol>__<experimenter>__<stamp>__<runid>.jsonl`,
-with a banner "✓ Run log committed…". Open it on GitHub and confirm:
-- the `run_metadata` line is near the top,
-- the runner phase events + any FicTrac frames are present,
+`runlogs/<bench-id>/<protocol>__<experimenter>__<stamp>__<runid>.jsonl` — a
+screen-greying **upload modal** shows progress and ends on "✓ Run log committed"
+(or holds the exact error, e.g. a stale-bridge export timeout). Open it on GitHub
+and confirm:
+- the `run_metadata` line is near the top (right after `logging_started`),
+- the runner phase events + FicTrac frames are present, `logging_stopped` at the end,
+- the size reflects just this run (a ~50 s smoke run ≈ 196 KB; two runs of the
+  same protocol are near-identical size — that's reproducibility, not bleed),
 - the filename has **no colons** (Windows-clone safe).
+- If the auto-commit was skipped/failed, **⇪ Push log** (run-log strip) re-commits
+  the last run's log while the bridge is still connected.
 
 **3.4 Abort does NOT commit.** Start another run, hit **STOP** mid-sequence.
 → Run log shows aborted; **no** file is committed to `runlogs/`. (Aborted and
