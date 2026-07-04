@@ -195,7 +195,7 @@ and Session 2 (course data pipeline). Answers below are scoped to the course;
 the generic per-user story stays as sketched in the phases above.
 
 1. **Per-user vs per-lab: per-course shared repo.** ONE dedicated course-data
-   repo (e.g. `reiserlab/cshl-2026-course-data`), 7 fixed bench rigs, one
+   repo (e.g. `reiserlab/cshl-2026-course`), 7 fixed bench rigs, one
    shared fine-grained PAT (instructor-installed per bench, localStorage;
    students never see the token). Writes are namespaced by an
    **instructor-set bench id** (`bench03`) — NOT the rig-config name (only 3

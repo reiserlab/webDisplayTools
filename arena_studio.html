@@ -87,6 +87,13 @@
   .filemenu .menu button:hover{background:var(--surface2)}
   .filemenu .menu .sep{height:1px;background:var(--border);margin:4px 2px}
   .gh-block{padding:7px 10px;font-size:11.5px;color:var(--dim)}
+  /* GitHub settings are visible in every view (so the bench config is always
+     legible) but LOCKED by default — grayed + inputs disabled — so students
+     can't change the token/repo/bench id. The 🔒 toggle unlocks for setup. */
+  .gh-block.gh-locked{opacity:.72}
+  .gh-spacer{flex:1}
+  .gh-lock{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;flex:0 0 auto}
+  .gh-block:not(.gh-locked) .gh-lock{color:var(--accent);border-color:var(--accent)}
   .gh-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
   .gh-signin{background:transparent;border:1px solid var(--border);color:var(--beta);border-radius:5px;padding:3px 9px;font-size:11px}
   .gh-who{color:var(--accent);font-weight:600;display:none}
@@ -257,6 +264,10 @@
   .cmenu-row label{color:var(--dim);font-size:11px;min-width:64px}
   .cmenu-row input,.cmenu-row select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 6px;font-family:var(--mono);font-size:11px;width:80px}
   .cmenu-sep{font-family:var(--head);font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);padding:6px 9px 3px;border-top:1px solid var(--border);margin-top:4px}
+  /* Debug ▾ is locked by default (kiosk-safe): SPI/refresh/reset stay disabled
+     until the instructor clicks Unlock, so students can't reset them by accident. */
+  .dbg-lockrow{border-bottom:1px solid var(--border);margin-bottom:3px;padding-bottom:6px}
+  #dbgMenu:not(.dbg-locked) .dbg-lockrow label{color:var(--accent)}
   .cmenu-btn.danger{border-color:rgba(255,82,82,.5);color:var(--danger)}
   .cgroup{flex:0 0 auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:9px 12px;margin-bottom:8px}
   .cgroup .gh{font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-bottom:7px;display:flex;align-items:center;gap:8px}
@@ -1743,14 +1754,16 @@
       <button id="fmOpenCourse" title="List this bench's saves (protocols/&lt;bench-id&gt;/) and promoted shared protocols (protocols/shared/) in the course-data repo">Open from course repo…</button>
       <button id="fmSave" class="edit-only">Save → local file</button>
       <button id="fmPromote" class="edit-only" title="Copy this bench's saved protocol (+ its _patterns/) to protocols/shared/ in the course repo — blocked if a DIFFERENT file already exists under the same name">Promote to shared (course)…</button>
-      <div class="sep edit-only"></div>
-      <div class="gh-block edit-only">
+      <div class="sep"></div>
+      <div class="gh-block gh-locked" id="ghBlock">
         <div class="gh-row">
           <span>GitHub:</span>
           <button class="gh-signin" id="ghSignInBtn">Sign in…</button>
           <span class="gh-who" id="ghWho"></span>
+          <span class="gh-spacer"></span>
+          <button class="gh-lock" id="ghLock" title="Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / bench id">🔒</button>
         </div>
-        <div class="gh-row"><label for="ghRepoInput">Repo</label><input type="text" id="ghRepoInput" placeholder="reiserlab/webDisplayTools" title="Target GitHub repo (owner/name) for saves — point at the course-data repo (e.g. reiserlab/cshl-2026-course-data) during a course; stored in this browser's localStorage"></div>
+        <div class="gh-row"><label for="ghRepoInput">Repo</label><input type="text" id="ghRepoInput" placeholder="reiserlab/webDisplayTools" title="Target GitHub repo (owner/name) for saves — point at the course-data repo (e.g. reiserlab/cshl-2026-course) during a course; stored in this browser's localStorage"></div>
         <div class="gh-row"><label for="ghBenchId">Bench id</label><input type="text" id="ghBenchId" placeholder="e.g. bench03" title="Instructor-set bench identity — namespaces course-repo protocol saves (protocols/&lt;bench-id&gt;/) and run-log commits (runlogs/&lt;bench-id&gt;/); stored in this browser's localStorage"></div>
         <label class="gh-check"><input type="checkbox" id="ghPR" title="Save opens a branch + Pull Request on the target repo (review-gated — the default for reiserlab/webDisplayTools)"> Save as Pull Request</label>
         <label class="gh-check"><input type="checkbox" id="ghDirect" title="Save commits straight to the target repo's default branch — no branch, no PR. Course-repo mode: safe there because bench-id namespacing means no two rigs write the same file"> Commit directly to default branch</label>
@@ -2153,9 +2166,13 @@
           </div>
         </div>
       </div>
-      <div class="cmenu" data-cmenu>
+      <div class="cmenu" data-cmenu id="dbgMenu">
         <button class="cmenu-btn" title="Advanced / debug settings">Debug ▾</button>
         <div class="cmenu-pop">
+          <div class="cmenu-row dbg-lockrow" title="These are advanced/danger controls (SPI clock, refresh rate, controller reset). Locked by default so they aren't changed by accident.">
+            <label>🔒 advanced — locked</label>
+            <button class="cmenu-item" id="dbgLock" style="width:auto" title="Debug controls are LOCKED (kiosk-safe) — click to unlock SPI / Refresh / Reset controller">Unlock</button>
+          </div>
           <div class="cmenu-row">
             <label title="SPI master clock">SPI MHz</label>
             <input id="cSpiMhz" type="number" min="1" max="30" value="20" title="SPI clock: 1–30 MHz">
@@ -2396,7 +2413,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.5 | 2026-07-04 07:36 ET · course data pipeline: repo/bench-id settings + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), roster.yaml prefill + MAC cross-check chip, course genotypes.yaml + dynamic source links, missing-pattern preflight, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-04 07:56 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), roster.yaml prefill + MAC cross-check chip, course genotypes.yaml + dynamic source links, missing-pattern preflight, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ locked by default, Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -3626,6 +3643,30 @@
         if (e.target.closest && e.target.closest('.cmenu-pop')) return;
         document.querySelectorAll('.cmenu.open').forEach((m) => m.classList.remove('open'));
     });
+
+    // Debug ▾ kiosk lock: SPI/refresh Set/Get + Reset controller are disabled
+    // by default so students can't change or reboot the controller by accident.
+    // The instructor clicks Unlock to use them; re-locks on the next load. The
+    // Unlock button (no data-cmd) is never disabled.
+    (function wireDebugLock() {
+        const menu = $('dbgMenu');
+        const lockBtn = $('dbgLock');
+        if (!menu || !lockBtn) return;
+        const label = menu.querySelector('.dbg-lockrow label');
+        function applyDbgLock(locked) {
+            menu.classList.toggle('dbg-locked', locked);
+            menu.querySelectorAll('#cSpiMhz, #cRrHz, .cmenu-item[data-cmd]').forEach((el) => {
+                el.disabled = locked;
+            });
+            lockBtn.textContent = locked ? 'Unlock' : 'Lock';
+            if (label) label.textContent = locked ? '🔒 advanced — locked' : '🔓 advanced — unlocked';
+        }
+        lockBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            applyDbgLock(!menu.classList.contains('dbg-locked'));
+        });
+        applyDbgLock(true); // default locked on every load
+    })();
 
     // expand / collapse all
     $('cExpandAll').addEventListener('click', () => document.querySelectorAll('.console-view details.cgroup').forEach((d) => (d.open = true)));
@@ -5566,7 +5607,7 @@ function wireCourseSettings() {
     repoIn.addEventListener('change', () => {
         const v = repoIn.value.trim();
         if (v && !(window.StudioUrlState && window.StudioUrlState.isSafeRepo(v))) {
-            Studio.showBanner('Repo must be owner/name — e.g. reiserlab/cshl-2026-course-data.');
+            Studio.showBanner('Repo must be owner/name — e.g. reiserlab/cshl-2026-course.');
             repoIn.value = localStorage.getItem('studio_gh_repo') || '';
             return;
         }
@@ -5588,6 +5629,30 @@ function wireCourseSettings() {
     // Keep the menu open while typing in its inputs (the document-level
     // click-away closer must not eat clicks into the fields).
     [repoIn, bench].forEach((el) => el.addEventListener('click', (e) => e.stopPropagation()));
+    // Kiosk lock: the GitHub settings are visible in every view but LOCKED by
+    // default (disabled + grayed) so students can't change the token/repo/
+    // bench id. The instructor clicks 🔓 to configure, then it re-locks on the
+    // next load. The 🔒 button itself is never disabled.
+    const ghBlock = $('ghBlock');
+    const ghLock = $('ghLock');
+    const lockTargets = () => [$('ghSignInBtn'), repoIn, bench, $('ghPR'), direct];
+    function applyGhLock(locked) {
+        if (ghBlock) ghBlock.classList.toggle('gh-locked', locked);
+        lockTargets().forEach((el) => { if (el) el.disabled = locked; });
+        if (ghLock) {
+            ghLock.textContent = locked ? '🔒' : '🔓';
+            ghLock.title = locked
+                ? 'Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / bench id'
+                : 'Bench GitHub settings UNLOCKED — set them, then click to re-lock (locks again on reload)';
+        }
+    }
+    if (ghLock) {
+        ghLock.addEventListener('click', (e) => {
+            e.stopPropagation();
+            applyGhLock(!ghBlock.classList.contains('gh-locked'));
+        });
+    }
+    applyGhLock(true); // default locked on every load
 }
 wireCourseSettings();
 // Restore an existing session token on load.

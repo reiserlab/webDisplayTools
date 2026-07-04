@@ -18,7 +18,7 @@ you can budget time. Two arcs shipped:
 |---|---|
 | Unit / logic (761 checks, `pixi run test`) | ✅ passing |
 | Browser behavior against a **mocked** GitHub API | ✅ verified (dev session) |
-| **Live** push/pull to `reiserlab/cshl-2026-course-data` (protocol, .pat, promote+guard, runlog, roster, >1 MB) | ✅ verified via the real API (dev session, artifacts cleaned) |
+| **Live** push/pull to `reiserlab/cshl-2026-course` (protocol, .pat, promote+guard, runlog, roster, >1 MB) | ✅ verified via the real API (dev session, artifacts cleaned) |
 | Session-1 hardware (MAC, rig lock, framescan, AO idle, DIO boot) | ✅ bench-signed-off (135 checklist) |
 | **Full end-to-end on YOUR bench: connect → run → auto-commit runlog** | ⛔ **not yet — this is the main thing to do** |
 | Multi-browser / multi-bench concurrency | ⛔ not yet |
@@ -56,11 +56,11 @@ in one place and its writes are attributed to a course identity.
    store the recovery codes with the shared inbox.
 
 **1b. Add the guest account as a collaborator** (from *your* account)
-- GitHub UI: `reiserlab/cshl-2026-course-data` → **Settings → Collaborators and
+- GitHub UI: `reiserlab/cshl-2026-course` → **Settings → Collaborators and
   teams → Add people** → enter `cshl-2026` → role **Write** → send invite.
 - Or CLI:
   ```
-  gh api -X PUT /repos/reiserlab/cshl-2026-course-data/collaborators/cshl-2026 \
+  gh api -X PUT /repos/reiserlab/cshl-2026-course/collaborators/cshl-2026 \
     -f permission=push
   ```
   (I can run this for you once the account exists — just tell me the handle.)
@@ -77,7 +77,7 @@ in one place and its writes are attributed to a course identity.
    forgotten token can't linger.
 4. **Resource owner**: `cshl-2026` (the guest account itself).
 5. **Repository access** → **Only select repositories** →
-   `reiserlab/cshl-2026-course-data`. (If the repo isn't listed, the invite in
+   `reiserlab/cshl-2026-course`. (If the repo isn't listed, the invite in
    1b wasn't accepted yet.)
 6. **Permissions** → Repository permissions → **Contents: Read and write**
    (leave everything else "No access"). Metadata auto-selects read-only —
@@ -92,22 +92,31 @@ Developer settings → Fine-grained tokens → the token → **Revoke**. All ben
 stop writing immediately; issue a new one and re-paste per P3.
 
 ### P2. Repo — DONE
-- `reiserlab/cshl-2026-course-data` exists (private), seeded with `README.md`,
-  `roster.yaml` (4 test students: michael/frank/isabel/anna_marie), and the
+- `reiserlab/cshl-2026-course` exists (private), seeded with `README.md`,
+  `roster.yaml` (test entries: michael/frank/isabel/hannah_marie + guest) and a
+  course `genotypes.yaml` (lab set + wild-type + none), plus the
   `protocols/shared/` + `runlogs/` skeleton. Edit `roster.yaml` for the real
   bench layout when known.
 - ⚠ **Do NOT enable branch protection** on `main` — benches commit directly.
 
 ### P3. Per-bench Studio config (repeat on each bench laptop)
-Arena Studio → **File ▾**:
-1. GitHub **Sign in…** → paste the shared PAT → answer **YES** to "Remember
+Arena Studio → **File ▾** (the GitHub settings are visible in all views but
+**locked by default** — kiosk-safe so students can't change them):
+1. Click the **🔒 lock** in the GitHub block to **unlock** it (🔓).
+2. GitHub **Sign in…** → paste the shared PAT → answer **YES** to "Remember
    this token" (localStorage; a sessionStorage-only token dies when the tab
    closes — a classic footgun for a kiosk bench).
-2. **Repo** = `reiserlab/cshl-2026-course-data`.
-3. **Bench id** = `bench01`…`bench07` (must match `roster.yaml`).
-4. Check **"Commit directly to default branch"**.
+3. **Repo** = `reiserlab/cshl-2026-course`.
+4. **Bench id** = `bench01`…`bench07` (must match `roster.yaml`).
+5. Check **"Commit directly to default branch"**.
+6. Click the lock again to **re-lock** (🔒). It re-locks automatically on the
+   next page load, so students can't alter the token/repo/bench id.
 Expected: the save label reads **"Save → course repo"** and the destination
 line names `…/protocols/<bench-id>/`.
+
+Console note: the **Debug ▾** menu (SPI clock, refresh rate, **Reset
+controller**) is likewise **locked by default** — click **Unlock** inside it to
+use those advanced controls; it re-locks on the next load.
 
 ### P4. Bridge + SD + firmware (per bench)
 - `pixi run bridge` running on the bench machine (the run gate requires it).
@@ -152,8 +161,9 @@ code regression.
 
 **2.2 Roster prefill + datalist.** Connect the arena (bench id = `bench01`).
 → Experimenter auto-fills **michael**; the experimenter dropdown lists
-michael/frank/isabel/anna_marie; the "source" note names
-`…/roster.yaml`.
+michael/frank/isabel/hannah_marie/guest; the genotype dropdown shows the
+course list (incl. wild-type / none); both "↗ source" links point at the
+course repo's `roster.yaml` / `genotypes.yaml`.
 
 **2.3 MAC cross-check chip.** With bench id = `bench01` on the dev-bench
 controller (MAC `04:E9:E5:12:91:E2`) → **no chip**. Temporarily set the bench
@@ -164,7 +174,7 @@ and reconnect → amber **⚠ bench ≠ roster**.
 **2.4 Save a protocol → course repo.** Open any protocol (📂 or "Open from
 library…"), fill experimenter+genotype, **File ▾ → Save**.
 → Banner "✓ Saved to …/protocols/`<bench-id>`/`<name>`.yaml"; the URL becomes
-`?repo=reiserlab/cshl-2026-course-data&p=protocols/<bench-id>/<name>.yaml`.
+`?repo=reiserlab/cshl-2026-course&p=protocols/<bench-id>/<name>.yaml`.
 Confirm the file appears in the repo on GitHub.
 
 **2.5 Open from course repo.** File ▾ → **"Open from course repo…"**.
