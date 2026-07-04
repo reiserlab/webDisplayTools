@@ -73,8 +73,12 @@
   .run-inline .bar i{display:block;height:100%;width:0;background:currentColor;transition:width .3s}
   .ribbon-btn{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 11px;font-size:12px;white-space:nowrap}
   .ribbon-btn:hover{border-color:var(--accent)}
-  body.editmode .open-proto-btn{display:none}
-  body:not(.editmode) #fileMenu{display:none}
+  /* File ▾ is the single open/save affordance in all three views (the bare
+     "Open" button was ambiguous — the menu shows WHAT you can open). Write +
+     GitHub-settings items are Edit-only (.edit-only, hidden outside Edit); the
+     "open" items (import / library / course repo) show everywhere. */
+  .open-proto-btn{display:none}
+  body:not(.editmode) #fileMenu .edit-only{display:none}
   .filemenu{position:relative}
   .filemenu .menu{position:absolute;top:120%;right:0;background:var(--surface);border:1px solid var(--border);
         border-radius:7px;min-width:288px;padding:4px;display:none;z-index:60;box-shadow:0 8px 22px rgba(0,0,0,.55)}
@@ -1733,14 +1737,14 @@
   <div class="filemenu" id="fileMenu">
     <button class="ribbon-btn" id="fileMenuBtn">File ▾</button>
     <div class="menu">
-      <button id="fmNew">New protocol</button>
+      <button id="fmNew" class="edit-only">New protocol</button>
       <button id="fmOpen">Open… (Import YAML)</button>
       <button id="fmOpenLibrary" title="Pick a committed protocol from this site's own registry (protocols/index.json)">Open from library…</button>
       <button id="fmOpenCourse" title="List this bench's saves (protocols/&lt;bench-id&gt;/) and promoted shared protocols (protocols/shared/) in the course-data repo">Open from course repo…</button>
-      <button id="fmSave">Save → local file</button>
-      <button id="fmPromote" title="Copy this bench's saved protocol (+ its _patterns/) to protocols/shared/ in the course repo — blocked if a DIFFERENT file already exists under the same name">Promote to shared (course)…</button>
-      <div class="sep"></div>
-      <div class="gh-block">
+      <button id="fmSave" class="edit-only">Save → local file</button>
+      <button id="fmPromote" class="edit-only" title="Copy this bench's saved protocol (+ its _patterns/) to protocols/shared/ in the course repo — blocked if a DIFFERENT file already exists under the same name">Promote to shared (course)…</button>
+      <div class="sep edit-only"></div>
+      <div class="gh-block edit-only">
         <div class="gh-row">
           <span>GitHub:</span>
           <button class="gh-signin" id="ghSignInBtn">Sign in…</button>
@@ -1847,7 +1851,7 @@
         <h4>Run details</h4>
         <div class="mp-field" id="mfExp">
           <label>Experimenter <span class="req">*</span>
-            <a class="srclink" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/people.yaml" target="_blank" rel="noopener">↗ source</a>
+            <a class="srclink" id="mExpSrc" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/people.yaml" target="_blank" rel="noopener">↗ source</a>
           </label>
           <input id="mExp" list="expList" placeholder="who is running this?" autocomplete="off">
           <datalist id="expList"></datalist>
@@ -1855,7 +1859,7 @@
         </div>
         <div class="mp-field" id="mfGeno">
           <label>Fly genotype <span class="req">*</span>
-            <a class="srclink" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/genotypes.yaml" target="_blank" rel="noopener">↗ source</a>
+            <a class="srclink" id="mGenoSrc" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/genotypes.yaml" target="_blank" rel="noopener">↗ source</a>
           </label>
           <input id="mGeno" list="genoList" placeholder="e.g. w;UAS-CsChrimson" autocomplete="off">
           <datalist id="genoList"></datalist>
@@ -1935,7 +1939,6 @@
         <strong>Editing.</strong> Scalar fields, sequence layout, and Variables are all editable. Click the
         <span style="color: var(--beta);">🔗</span> icon next to any value to bind it to an anchor, or open
         <strong>Settings</strong> to manage the Variables table directly.
-        Need v2? <a href="experiment_designer.html">Open the v2 Experiment Designer</a>.
     </div>
 
     <!-- D4 import-mode banner — global controls for the staging buffer.
@@ -2393,7 +2396,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.5 | 2026-07-03 15:36 ET · course data pipeline: repo/bench-id settings + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), roster.yaml prefill + MAC cross-check chip, missing-pattern preflight, Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-04 07:36 ET · course data pipeline: repo/bench-id settings + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), roster.yaml prefill + MAC cross-check chip, course genotypes.yaml + dynamic source links, missing-pattern preflight, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -3269,7 +3272,7 @@
         const gsLabel = info ? (info.gsVal === 1 ? 'GS2' : info.gsVal === 2 ? 'GS16' : 'GS?') : '';
         el.textContent = info
             ? info.frameCount + ' fr · ' + gsLabel + ' · ' + info.cols + '×' + info.rows +
-              ' panels · ' + (info.fileSize / 1024).toFixed(1) + ' KB · stretch ' + info.stretch
+              ' panels · ' + (info.fileSize / 1024).toFixed(1) + ' KB · duty cycle ' + info.stretch
             : 'no reply for pat idx ' + idx;
     }
     Studio.refreshPatternInfo = () => refreshPatInfo(true); // module block: on dropdown pick
@@ -4070,12 +4073,24 @@ async function populateMetaDatalists() {
 // lab vocabulary. Identity is the BENCH ID; the controller MAC (0xC2, may be
 // null on older fw) only cross-checks it — mismatch shows a warning chip.
 Studio.onConnected = async function () {
+    // Roster + genotypes are independent course-repo reads; one failing must
+    // not skip the other, so each gets its own guard.
     try {
         await fetchCourseRoster();
     } catch (e) {
         Studio.rawLog('course roster check failed: ' + (e && e.message ? e.message : e), 'warn');
     }
+    try {
+        await fetchCourseGenotypes();
+    } catch (e) {
+        Studio.rawLog('course genotypes check failed: ' + (e && e.message ? e.message : e), 'warn');
+    }
 };
+// Web blob URL for a course-repo file (best-effort provenance link; the course
+// repo's default branch is main). Cosmetic — a wrong branch only 404s the link.
+function courseFileUrl(cs, path) {
+    return 'https://github.com/' + cs.repo.owner + '/' + cs.repo.name + '/blob/main/' + path;
+}
 async function fetchCourseRoster() {
     const chip = $('benchMacChip');
     if (chip) chip.style.display = 'none';
@@ -4109,6 +4124,13 @@ async function fetchCourseRoster() {
         });
         const note = $('mSrcNote');
         if (note) note.textContent = 'Experimenter list from the course roster (' + cs.repo.full + '/roster.yaml).';
+        // The "↗ source" link now points at the ACTIVE source (the roster),
+        // not the default lab people.yaml.
+        const link = $('mExpSrc');
+        if (link) {
+            link.href = courseFileUrl(cs, 'roster.yaml');
+            link.title = 'Course roster — experimenter list (' + cs.repo.full + '/roster.yaml)';
+        }
     }
     if (!cs.benchId) return;
     const mine = entries.find((p) => p && p.rig_id === cs.benchId);
@@ -4135,6 +4157,48 @@ async function fetchCourseRoster() {
             Studio.rawLog('⚠ roster: bench id ' + cs.benchId + ' lists MAC ' + mine.mac + ' but the controller reports ' + mac, 'warn');
         }
     }
+}
+
+// ---- course genotype list -------------------------------------------------
+// When a course repo is configured, its root-level genotypes.yaml (a
+// `genotypes:` list, same shape as configs/metadata/genotypes.yaml) becomes
+// the fly-genotype vocabulary for the session — replacing the lab-wide list
+// and repointing the "↗ source" link. Independent of bench id / roster.
+async function fetchCourseGenotypes() {
+    const cs = Studio.courseSettings();
+    const token = ghToken();
+    if (!cs.repo || !token) return; // no course repo — keep the lab-wide list
+    let list;
+    try {
+        const res = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, 'genotypes.yaml', null, token));
+        if (!res.ok) {
+            Studio.rawLog('course genotypes: no genotypes.yaml in ' + cs.repo.full + ' (HTTP ' + res.status + ') — using the lab list', 'warn');
+            return;
+        }
+        const data = YAML.parse(new TextDecoder().decode(res.bytes));
+        list = (data && data.genotypes) || [];
+    } catch (e) {
+        Studio.rawLog('course genotypes: unreadable — ' + (e && e.message ? e.message : e), 'warn');
+        return;
+    }
+    if (!Array.isArray(list) || !list.length) return;
+    const genoList = $('genoList');
+    if (genoList) {
+        genoList.innerHTML = '';
+        list.forEach((g) => {
+            const val = typeof g === 'string' ? g : (g && (g.name || g.id)) || '';
+            if (!val) return;
+            const o = document.createElement('option');
+            o.value = val;
+            genoList.appendChild(o);
+        });
+    }
+    const link = $('mGenoSrc');
+    if (link) {
+        link.href = courseFileUrl(cs, 'genotypes.yaml');
+        link.title = 'Course genotype list (' + cs.repo.full + '/genotypes.yaml)';
+    }
+    Studio.rawLog('genotype list from the course repo (' + cs.repo.full + '/genotypes.yaml, ' + list.length + ' entries)', 'info');
 }
 
 // ---- pattern set / name picker (Console) + Run pattern resolution ----

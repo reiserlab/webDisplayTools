@@ -34,8 +34,9 @@
     const API = 'https://api.github.com';
     const API_VERSION = '2022-11-28';
     const WRITABLE_PREFIXES = ['protocols/', 'runlogs/', 'configs/metadata/'];
-    // Read-only extras: exact paths readable but never writable (course roster).
-    const READABLE_EXACT = ['roster.yaml'];
+    // Read-only extras: exact root paths readable but never writable — the
+    // course roster + genotype vocabulary (instructor-edited on GitHub).
+    const READABLE_EXACT = ['roster.yaml', 'genotypes.yaml'];
 
     // UTF-8-safe base64 (Node Buffer or browser btoa+encodeURIComponent).
     function b64(text) {

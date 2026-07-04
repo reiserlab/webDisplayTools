@@ -76,10 +76,12 @@ check('roster NOT writable', G.isAllowedPath('roster.yaml'), false);
 
 console.log('=== isAllowedReadPath ===');
 check('roster readable', G.isAllowedReadPath('roster.yaml'), true);
+check('genotypes readable', G.isAllowedReadPath('genotypes.yaml'), true);
 check('writable paths readable', G.isAllowedReadPath('protocols/shared/x.yaml'), true);
 check('runlogs readable', G.isAllowedReadPath('runlogs/bench03/x.jsonl'), true);
 check('other dir still blocked', G.isAllowedReadPath('js/evil.js'), false);
 check('nested roster blocked', G.isAllowedReadPath('secrets/roster.yaml'), false);
+check('genotypes NOT writable', G.isAllowedPath('genotypes.yaml'), false);
 check('traversal blocked', G.isAllowedReadPath('roster.yaml/../js/evil.js'), false);
 
 // ── branch naming ────────────────────────────────────────────────────────────
