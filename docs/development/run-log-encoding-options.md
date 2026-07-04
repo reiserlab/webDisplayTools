@@ -44,6 +44,21 @@ standard lab-frame convention — worth a 10-second bench check (walk the ball
 straight → `fwd` dominates; spin in place → `yaw` dominates) to confirm signs
 before the course.
 
+### Every frame row also carries identity + timing
+
+The 4 fields above are the *behaviour*. Each frame row keeps them **in addition
+to** the frame's identity + timing — **not instead of**:
+
+| key     | source        | meaning                                                                                                            |
+| ------- | ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `ms`    | bridge clock  | timestamp, stored as **relative ms since run start** (the absolute epoch start is logged once in `run_metadata`)   |
+| `index` | arena         | the frame index the controller **displayed** at that instant — needed to correlate behaviour with what the fly saw |
+| `seq`   | FicTrac       | FicTrac's own frame counter — lets you detect **dropped frames**; the one field you may drop (~8 B) if you don't need that QC |
+
+So a full frame row is **`ms, seq, index, side, fwd, yaw, hd`** (7 values). The
+size estimates below already include `index` + timestamp; `seq` adds ~8 B/frame
+(~0.35 MB over a 15-min run) if kept.
+
 Optional add-ons: cols 15–16 (integrated x/y position) for the 2-D walking path;
 the full 25 columns for archival/QC.
 
@@ -81,10 +96,10 @@ a JSON event; otherwise it's a CSV frame per the declared schema.
 ```jsonl
 {"type":"logging_started","file":"arena-log-20260704-134533-129.jsonl","ms":1783187133129}
 {"type":"run_metadata","run_id":"nkts77qj","experimenter":"michael","genotype":"Canton-S","rig_id":"bench01","protocol_filename":"g6_2x10_smoke.yaml","t0_ms":1783187133129,"ball_radius_mm":4.5,"fps":50}
-{"type":"frame_schema","cols":["ms","index","side","fwd","yaw","hd"]}
-0,64,-0.0123,0.0345,0.0082,1.2345
-20,64,-0.0110,0.0361,0.0075,1.2352
-40,65,-0.0098,0.0357,0.0069,1.2359
+{"type":"frame_schema","cols":["ms","seq","index","side","fwd","yaw","hd"]}
+0,1054712,64,-0.0123,0.0345,0.0082,1.2345
+20,1054713,64,-0.0110,0.0361,0.0075,1.2352
+40,1054714,65,-0.0098,0.0357,0.0069,1.2359
 {"type":"runner","phase":"sequence-complete","rx_ms":1783187183251}
 {"type":"logging_stopped","ms":1783187183252}
 ```
@@ -92,8 +107,9 @@ a JSON event; otherwise it's a CSV frame per the declared schema.
 - **Self-describing** — `frame_schema` gives column order; `run_metadata` carries
   the epoch start, ball radius, and fps needed to convert to real units.
 - **Streamable** — the bridge writes each frame row as it arrives (no buffering).
-- **~1.8 MB / 15-min run**, far under the 35 MB ceiling even at 2× the frame rate
-  or 3× the duration.
+- **~2.2 MB / 15-min run** with `seq` kept (~1.8 MB — table row #5 — if `seq` is
+  dropped), far under the 35 MB ceiling even at 2× the frame rate or 3× the
+  duration.
 
 ## Open questions
 
@@ -107,8 +123,9 @@ a JSON event; otherwise it's a CSV frame per the declared schema.
    reprocessing later needs a dropped column?
 4. **gzip** — acceptable to opt into `.jsonl.gz` for long runs, or must every
    committed log stay plain text on GitHub?
-5. **Precision / `seq`** — OK to round floats to ~5 sig figs and drop the FicTrac
-   `seq` counter (keep it only if frame-drop detection matters)?
+5. **Precision** — OK to round floats to ~5 sig figs? (`seq`, `index`, and the
+   timestamp are all **kept** per frame alongside the 4 behavioural fields; `seq`
+   is the only droppable one, ~8 B/frame, if dropped-frame QC isn't needed.)
 
 ## References
 
