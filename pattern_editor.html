@@ -1709,7 +1709,7 @@
 <body>
     <!-- Development Banner -->
     <div class="dev-banner">
-        🚧 Pattern Editor v0.9.41 | 2026-07-03 15:36 ET — course pipeline: ⇪ Push to course repo (direct commit to protocols/&lt;bench-id&gt;/&lt;protocol&gt;_patterns/, reuses Arena Studio's saved GitHub settings) — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+        🚧 Pattern Editor v0.9.42 | 2026-07-04 11:53 ET — Frame Animation pane: one-click 💾 Save .pat (saveFrameAnimationAsPat → handleSave; fixes the undefined savePatternFile ReferenceError). Course pipeline: ⇪ Push to course repo (direct commit to protocols/&lt;bench-id&gt;/&lt;protocol&gt;_patterns/, reuses Arena Studio's saved GitHub settings) — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
     </div>
 
     <div class="app-container">
@@ -1973,6 +1973,7 @@
                                 <button class="btn secondary" id="addAllFramesBtn" style="flex: 1;">+ Add All Frames</button>
                                 <button class="btn secondary" id="clearSequenceBtn" style="flex: 1;">Clear Sequence</button>
                             </div>
+                            <button class="btn" id="saveAnimationBtn" style="width: 100%; margin-top: 0.5rem;" title="Build the pattern from this frame sequence and download it as a .pat file (one step)">💾 Save .pat</button>
                         </div>
                     </div>
                 </div>
@@ -2807,6 +2808,7 @@
             // Frame animation buttons
             document.getElementById('addAllFramesBtn').addEventListener('click', addAllClipboardFramesToSequence);
             document.getElementById('clearSequenceBtn').addEventListener('click', clearFrameAnimationSequence);
+            document.getElementById('saveAnimationBtn').addEventListener('click', saveFrameAnimationAsPat);
 
             // Frame shifting buttons
             document.getElementById('clearShiftingFrameBtn').addEventListener('click', clearShiftingFrame);
@@ -5978,9 +5980,11 @@
             // Build pattern from sequence first
             previewFrameAnimation();
 
-            // Then trigger save
+            // Then trigger the shared .pat save handler (encode + download).
+            // (Was savePatternFile() — a function that doesn't exist, so this
+            // threw ReferenceError; handleSave() is the #saveBtn handler.)
             if (state.pattern) {
-                savePatternFile();
+                handleSave();
             }
         }
 
