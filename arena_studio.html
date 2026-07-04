@@ -97,8 +97,10 @@
   .gh-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
   .gh-signin{background:transparent;border:1px solid var(--border);color:var(--beta);border-radius:5px;padding:3px 9px;font-size:11px}
   .gh-who{color:var(--accent);font-weight:600;display:none}
+  .gh-signout{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:3px 9px;font-size:11px;display:none}
   body.ghauth .gh-signin{display:none}
   body.ghauth .gh-who{display:inline}
+  body.ghauth .gh-signout{display:inline}
   .gh-check{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text)}
   .gh-check input{accent-color:var(--accent)}
   body:not(.ghauth) .gh-check{opacity:.45;cursor:not-allowed}
@@ -151,6 +153,7 @@
   .btn-testexp[disabled]{opacity:.4;cursor:not-allowed}
   body.running .launch-row{display:none}
   .launch-note{display:flex;align-items:center;gap:8px;margin-top:7px}
+  .pat-warn{margin-top:7px;font-size:11.5px;color:var(--warn);background:rgba(227,160,8,.08);border:1px solid rgba(227,160,8,.35);border-radius:6px;padding:6px 9px;line-height:1.4}
   .kchip.hostbadge{cursor:help}
   .running-panel{display:none;align-items:center;gap:14px;background:#06210f;border:1px solid var(--accent);border-radius:8px;padding:8px 14px}
   body.running .running-panel{display:flex}
@@ -266,8 +269,8 @@
   .cmenu-sep{font-family:var(--head);font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);padding:6px 9px 3px;border-top:1px solid var(--border);margin-top:4px}
   /* Debug ▾ is locked by default (kiosk-safe): SPI/refresh/reset stay disabled
      until the instructor clicks Unlock, so students can't reset them by accident. */
-  .dbg-lockrow{border-bottom:1px solid var(--border);margin-bottom:3px;padding-bottom:6px}
-  #dbgMenu:not(.dbg-locked) .dbg-lockrow label{color:var(--accent)}
+  .dbg-lockrow,.ctl-lockrow{border-bottom:1px solid var(--border);margin-bottom:3px;padding-bottom:6px}
+  #dbgMenu:not(.dbg-locked) .dbg-lockrow label,#ctlMenu:not(.ctl-locked) .ctl-lockrow label{color:var(--accent)}
   .cmenu-btn.danger{border-color:rgba(255,82,82,.5);color:var(--danger)}
   .cgroup{flex:0 0 auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:9px 12px;margin-bottom:8px}
   .cgroup .gh{font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-bottom:7px;display:flex;align-items:center;gap:8px}
@@ -1760,6 +1763,7 @@
           <span>GitHub:</span>
           <button class="gh-signin" id="ghSignInBtn">Sign in…</button>
           <span class="gh-who" id="ghWho"></span>
+          <button class="gh-signout" id="ghSignOutBtn" title="Sign out — clear the stored token so a different account/token can be used">Sign out</button>
           <span class="gh-spacer"></span>
           <button class="gh-lock" id="ghLock" title="Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / bench id">🔒</button>
         </div>
@@ -1820,6 +1824,7 @@
         <div class="launch-note">
           <span class="kchip dur hostbadge" title="Trial timing is host-side / best-effort until firmware #4 lands. Plugin commands are skipped by the runner with a warning — EXCEPT log and fictrac, which the runner DOES execute (fictrac = closed-loop Mode 3).">⏱ host-timed · plugins skipped (log + fictrac run)</span>
         </div>
+        <div class="pat-warn" id="runPatWarn" style="display:none"></div>
         <div class="running-panel">
           <span class="rp-lead"><span class="blip"></span><span id="rpLeadTxt">running</span></span>
           <span class="rp-prog"><i id="rpBar"></i></span>
@@ -2104,13 +2109,17 @@
 
     <!-- Restored Controller ▾ / Debug ▾ dropdown menus (uncommon controls) -->
     <div class="cmenubar">
-      <div class="cmenu" data-cmenu>
+      <div class="cmenu" data-cmenu id="ctlMenu">
         <button class="cmenu-btn" title="Controller queries (run on demand)">Controller ▾</button>
         <div class="cmenu-pop">
           <button class="cmenu-item" data-cmd="info" title="GET_CONTROLLER_INFO (0xC2) — firmware version + capability bitmap">Get info</button>
           <button class="cmenu-item" data-cmd="ip" title="GET_ETHERNET_IP (0xC1)">Get IP</button>
           <button class="cmenu-item" data-cmd="frames" title="GET_FRAMES_SENT (0x33)">Get frames sent</button>
           <button class="cmenu-item" data-cmd="resetframes" title="RESET_FRAMES_SENT (0x34)">Reset frames sent</button>
+          <div class="cmenu-row ctl-lockrow" title="Advanced controls — panel display mode + rig I/O roles. Locked by default so students don't change the bench's display/I/O setup by accident.">
+            <label>🔒 advanced — locked</label>
+            <button class="cmenu-item" id="ctlLock" style="width:auto" title="Advanced controls (panel display mode + rig I/O) are LOCKED (kiosk-safe) — click to unlock">Unlock</button>
+          </div>
           <div class="cmenu-sep">Panel display mode</div>
           <div class="cmenu-row">
             <label title="Sticky panel display mode applied to forwarded/synthesized frames">Mode</label>
@@ -2413,7 +2422,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.5 | 2026-07-04 07:56 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), roster.yaml prefill + MAC cross-check chip, course genotypes.yaml + dynamic source links, missing-pattern preflight, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ locked by default, Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-04 08:13 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2726,6 +2735,21 @@
         $('runHint').textContent = gate.ok ? '' : gate.reason;
         const testBtn = $('btnTestExp');
         testBtn.disabled = !(Studio.session && Studio.session.connected && doc);
+        // Non-blocking warning: a pattern NAME doesn't match the SD but a
+        // pattern_ID fallback resolves — the run proceeds playing that index,
+        // NOT the named pattern (silent-wrong-pattern footgun). Distinct from
+        // the missing-pattern BLOCK above (which fires when nothing resolves).
+        const warnEl = $('runPatWarn');
+        if (warnEl) {
+            const unresolved = Studio.unresolvedPatternNames ? Studio.unresolvedPatternNames(doc) : [];
+            if (unresolved.length) {
+                warnEl.textContent = '⚠ pattern ' + unresolved.map((n) => '"' + n + '"').join(', ') +
+                    ' not on the SD by name — the run will fall back to the numeric pattern_ID (whatever sits at that index), which may not be the intended pattern. Upload it via Console → SD upload, or fix the reference.';
+                warnEl.style.display = '';
+            } else {
+                warnEl.style.display = 'none';
+            }
+        }
     }
     Studio.updateRunGate = updateRunGate;
     // The gate tracks the bridge live (connect/disconnect flips the reason).
@@ -3668,6 +3692,30 @@
         applyDbgLock(true); // default locked on every load
     })();
 
+    // Controller ▾ advanced lock: panel display mode + rig I/O roles are locked
+    // by default so students can't change the bench's display/I/O setup. The
+    // Unlock button (no data-cmd) is never disabled; the top query items (Get
+    // info / IP / frames) stay usable. Same fieldset caveat as the Debug lock.
+    (function wireCtlLock() {
+        const menu = $('ctlMenu');
+        const lockBtn = $('ctlLock');
+        if (!menu || !lockBtn) return;
+        const label = menu.querySelector('.ctl-lockrow label');
+        function applyCtlLock(locked) {
+            menu.classList.toggle('ctl-locked', locked);
+            menu.querySelectorAll('#cPanelMode, #cIoRoleDio1, #cIoRoleDio2, #cIoRoleAo, #cIoRoleAi, [data-cmd="setpanelmode"], [data-cmd="getpanelmode"], [data-cmd="cioapply"], [data-cmd="cioget"]').forEach((el) => {
+                el.disabled = locked;
+            });
+            lockBtn.textContent = locked ? 'Unlock' : 'Lock';
+            if (label) label.textContent = locked ? '🔒 advanced — locked' : '🔓 advanced — unlocked';
+        }
+        lockBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            applyCtlLock(!menu.classList.contains('ctl-locked'));
+        });
+        applyCtlLock(true); // default locked on every load
+    })();
+
     // expand / collapse all
     $('cExpandAll').addEventListener('click', () => document.querySelectorAll('.console-view details.cgroup').forEach((d) => (d.open = true)));
     $('cCollapseAll').addEventListener('click', () => document.querySelectorAll('.console-view details.cgroup').forEach((d) => (d.open = false)));
@@ -4113,9 +4161,13 @@ async function populateMetaDatalists() {
 // datalist while a course repo is configured; people.yaml stays the general
 // lab vocabulary. Identity is the BENCH ID; the controller MAC (0xC2, may be
 // null on older fw) only cross-checks it — mismatch shows a warning chip.
-Studio.onConnected = async function () {
-    // Roster + genotypes are independent course-repo reads; one failing must
-    // not skip the other, so each gets its own guard.
+// Load the course-repo metadata (experimenter roster + genotype list +
+// source links). This is GitHub data, NOT arena data — it must load whenever
+// "course-repo mode" is active (a token + a repo are set), independent of any
+// arena connection. Called on sign-in, on repo change, at page load, and again
+// on connect (where the roster's MAC cross-check finally has a controller MAC).
+// Roster + genotypes are independent reads; one failing must not skip the other.
+Studio.refreshCourseMeta = async function () {
     try {
         await fetchCourseRoster();
     } catch (e) {
@@ -4126,6 +4178,10 @@ Studio.onConnected = async function () {
     } catch (e) {
         Studio.rawLog('course genotypes check failed: ' + (e && e.message ? e.message : e), 'warn');
     }
+};
+// Kept as the connect-time hook name (arena connect → refresh, now with a MAC).
+Studio.onConnected = function () {
+    return Studio.refreshCourseMeta();
 };
 // Web blob URL for a course-repo file (best-effort provenance link; the course
 // repo's default branch is main). Cosmetic — a wrong branch only 404s the link.
@@ -4305,6 +4361,34 @@ Studio.missingPatternNames = function (doc) {
         if (c && reachable.has(c.name)) scan(c.commands);
     });
     return Array.from(missing);
+};
+// NON-blocking warning set (course pipeline): a command carries a pattern
+// NAME that doesn't resolve on the SD, yet the run still proceeds via the
+// numeric pattern_ID fallback — so it silently plays whatever sits at that
+// index, NOT the named pattern. (missingPatternNames catches the harder case
+// where nothing resolves at all → that BLOCKS.) These deserve a heads-up.
+Studio.unresolvedPatternNames = function (doc) {
+    if (!doc || !doc.experiment || !RunnerLib) return [];
+    const exp = doc.experiment;
+    let reachable;
+    try {
+        reachable = new Set(RunnerLib.flattenStructure(exp).steps.map((s) => s.conditionName).filter(Boolean));
+    } catch (_) {
+        reachable = new Set(((exp.conditions || []).map((c) => c && c.name)).filter(Boolean));
+    }
+    const warn = new Set();
+    (exp.conditions || []).forEach((c) => {
+        if (!c || !reachable.has(c.name)) return;
+        (c.commands || []).forEach((cmd) => {
+            if (!cmd || typeof cmd.pattern !== 'string' || !cmd.pattern) return;
+            // name not on the SD/manifest, but the command still resolves (via
+            // pattern_ID) → it will run the fallback index, not the named one.
+            if (Studio.patternIndexByName(cmd.pattern) == null && resolvePatternIdForCmd(cmd) != null) {
+                warn.add(cmd.pattern);
+            }
+        });
+    });
+    return Array.from(warn);
 };
 
 function manifestFromTxt(parsed, arenaConfig) {
@@ -5565,9 +5649,27 @@ $('ghSignInBtn').addEventListener('click', async (e) => {
         $('ghWho').textContent = '✓ @' + (user.login || 'user');
         if (!($('ghDirect') && $('ghDirect').checked)) $('ghPR').checked = true;
         updateSaveLabel();
+        // Now that we're authed, load the course metadata (roster/genotypes/
+        // links) immediately — no arena connection required.
+        if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
     } catch (err) {
         Studio.showBanner('GitHub sign-in failed: ' + err.message);
     }
+});
+// Sign out — clear the token (both storages), drop authed state, and restore
+// the lab-wide metadata defaults. Gated by the gh-block lock like sign-in.
+$('ghSignOutBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    sessionStorage.removeItem('studio_gh_pat');
+    localStorage.removeItem('studio_gh_pat');
+    document.body.classList.remove('ghauth');
+    $('ghWho').textContent = '';
+    // Back to the lab-wide vocabularies + public source links.
+    if ($('mExpSrc')) $('mExpSrc').href = 'https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/people.yaml';
+    if ($('mGenoSrc')) $('mGenoSrc').href = 'https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/genotypes.yaml';
+    if (typeof populateMetaDatalists === 'function') populateMetaDatalists();
+    updateSaveLabel();
+    Studio.rawLog('signed out of GitHub — token cleared; metadata back to lab defaults', 'info');
 });
 function updateSaveLabel() {
     const auth = document.body.classList.contains('ghauth');
@@ -5614,6 +5716,8 @@ function wireCourseSettings() {
         if (v) localStorage.setItem('studio_gh_repo', v);
         else localStorage.removeItem('studio_gh_repo');
         updateSaveLabel();
+        // Repo changed → re-pull that repo's metadata (roster/genotypes/links).
+        if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
     });
     direct.addEventListener('change', () => {
         localStorage.setItem('studio_gh_direct', direct.checked ? '1' : '0');
@@ -5635,7 +5739,7 @@ function wireCourseSettings() {
     // next load. The 🔒 button itself is never disabled.
     const ghBlock = $('ghBlock');
     const ghLock = $('ghLock');
-    const lockTargets = () => [$('ghSignInBtn'), repoIn, bench, $('ghPR'), direct];
+    const lockTargets = () => [$('ghSignInBtn'), $('ghSignOutBtn'), repoIn, bench, $('ghPR'), direct];
     function applyGhLock(locked) {
         if (ghBlock) ghBlock.classList.toggle('gh-locked', locked);
         lockTargets().forEach((el) => { if (el) el.disabled = locked; });
@@ -5665,6 +5769,9 @@ if (ghToken()) {
                 $('ghWho').textContent = '✓ @' + (u.login || 'user');
                 if (!($('ghDirect') && $('ghDirect').checked)) $('ghPR').checked = true;
                 updateSaveLabel();
+                // Already signed in on load → pull course metadata now (no
+                // arena connection needed).
+                if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
             }
         })
         .catch(() => {});
