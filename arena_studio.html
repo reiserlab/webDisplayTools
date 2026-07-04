@@ -200,7 +200,7 @@
   /* The sequence list takes its natural height on a tall window (leaving the
      rest for the log) but shrinks + scrolls internally on a short one, so the
      run log always fills the space down to the footer without pushing off. */
-  .seqlist{flex:0 1 auto;min-height:110px;display:flex;flex-direction:column;overflow:hidden}
+  .seqlist{flex:1 1 auto;min-height:110px;display:flex;flex-direction:column;overflow:hidden}
   #seqBody{flex:1 1 auto;overflow:auto;min-height:0}
   .seqlist h3{font-family:var(--head);font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 8px}
   .blockhead{display:flex;align-items:center;gap:12px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;margin-bottom:6px;background:var(--surface2)}
@@ -230,7 +230,7 @@
   body.testing .seqrow.active::before{background:var(--beta)}
 
   /* ===== metadata SIDE PANEL (replaces the modal) ===== */
-  .meta-panel{position:sticky;top:12px}
+  .meta-panel{position:sticky;top:12px;align-self:stretch;min-height:0;max-height:100%;overflow-y:auto}
   body.running .meta-panel .mp-run-note{display:block}
   .mp-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px}
   .mp-card h4{font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 8px}
@@ -239,6 +239,8 @@
   .mp-field .req{color:var(--warn)}
   .mp-field input,.mp-field textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-family:var(--mono);font-size:12px}
   .mp-field textarea{resize:vertical;min-height:44px}
+  /* Notes: roomy by default (plenty of space on the Run screen); still resizable */
+  #mNotes{min-height:38vh}
   .mp-field.invalid input{border-color:var(--danger)}
   .mp-field .hint{font-size:10px;color:var(--danger);margin-top:3px;display:none}
   .mp-field.invalid .hint{display:block}
@@ -250,7 +252,10 @@
   .mp-note{font-size:10px;color:var(--dim);margin-top:6px}
 
   /* ===== RUN-LOG STRIP ===== */
-  .run-log-strip{margin-top:8px;display:flex;flex-direction:column;flex:1 1 auto;min-height:190px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  /* Bottom-anchored run log: capped at 40% of viewport height so it never grows
+     to squeeze the launch card + sequence above; the sequence takes the flexible
+     middle (flex:1) and the logbox scrolls inside this cap. */
+  .run-log-strip{margin-top:8px;display:flex;flex-direction:column;flex:0 1 auto;max-height:40vh;min-height:150px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
   body.log-collapsed .run-log-strip{flex:0 0 auto;min-height:0;height:auto}
   body.log-collapsed .dock-pane{display:none}
   .dock-h{display:flex;align-items:center;gap:9px;padding:7px 12px;border-bottom:1px solid var(--border);font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim)}
@@ -2488,7 +2493,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.5 | 2026-07-04 13:31 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired; per-file confirm log + settle pause + 1 retry for reliability), manual "⇪ Push log" to re-commit a run log the auto-commit skipped/failed (with a screen-greying upload modal that holds the exact error on failure; export timeout now names a stale bridge build), io_ext caps resolved before the rig-I/O apply (no first-connect race) + role options re-gate on GET_CONTROLLER_INFO + "Apply I/O roles" honors session overrides, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run view has a FicTrac bridge strip (connect + live counts mirrored from the Console, one shared connection; closed-loop indicator pulses green while active; gain/config stay in Console), a live elapsed/estimated-total run timer under the step counter, and hides the per-condition "▶ Test" buttons during a run, Run-view log fills to the window bottom (sequence list scrolls when short), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
+<footer id="footer">Arena Studio v0.5 | 2026-07-04 13:49 ET · course data pipeline: repo/bench-id settings (visible-but-locked in all views, GitHub sign-in/out) + direct commit (protocols/&lt;bench-id&gt;/ + runlogs/&lt;bench-id&gt;/), universal bridge run-logging (gated recorded runs, run_metadata line, auto-commit of the exported JSONL), course roster.yaml + genotypes.yaml + dynamic source links (load on sign-in, no arena needed), MAC cross-check chip, missing-pattern preflight (block) + name-mismatch warning, SD pattern names matched by logical name (NNN_ index prefix + .pat tolerated, so one card holds several protocols' sets), Console SD Upload ▾ (single pattern or whole set — from local file/folder, library, or course repo, picked by protocol; uploaded bytes feed picker previews, so "Load set…" is retired; per-file confirm log + settle pause + 1 retry for reliability), manual "⇪ Push log" to re-commit a run log the auto-commit skipped/failed (with a screen-greying upload modal that holds the exact error on failure; export timeout now names a stale bridge build), io_ext caps resolved before the rig-I/O apply (no first-connect race) + role options re-gate on GET_CONTROLLER_INFO + "Apply I/O roles" honors session overrides, File ▾ in all views (Open pickers everywhere; write/settings Edit-only), Console Debug ▾ + Controller ▾ advanced (panel mode / rig I/O) locked by default, Run view has a FicTrac bridge strip (connect + live counts mirrored from the Console, one shared connection; closed-loop indicator pulses green while active; gain/config stay in Console), a live elapsed/estimated-total run timer under the step counter, and hides the per-condition "▶ Test" buttons during a run, Run-view log is capped at 40vh (bottom-anchored, never squeezes the launch card + sequence; sequence takes the flexible middle) and Notes defaults roomy (~38vh, meta-panel scrolls), Open from library/course repo pickers, promote-to-shared with hash guard, ?repo= links · session rig (top bar, locked) + mismatch chip + ?rig= + rig io: power-on defaults incl. roles via SET_DIO_ROLE/SET_AO_MODE on io_ext firmware, capability-gated (#135; I/O names match the board silkscreen — Digital IO 1/2, ports 1-based) · negative frame_rate = Mode-2 reverse (int16, fw #4) · Run + unified run-log + metadata · full Console (bench) · full three-zone Edit (embedded v3 designer + YAML tab, §6 canMutate chokepoint) · URL state r/w (#107) · Edit 💾 Save</footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
