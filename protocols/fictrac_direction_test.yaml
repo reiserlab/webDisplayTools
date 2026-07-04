@@ -9,20 +9,30 @@ version: 3
 #
 # BLOCK 1 — OPEN LOOP (Mode 2), ~4 min:
 #   both gratings (sq, sine) × 3 speeds (5/15/30 Hz) × 2 directions
-#   (forward = +frame_rate, reverse = −frame_rate) = 12 trials × 10 s = 120 s,
-#   repeated 2× = 240 s. Reverse uses NEGATIVE frame_rate (int16, fw #4) — this
-#   is the first test of the reverse path driven from a YAML protocol via Run
-#   (the Console path was already bench-verified).
+#   (forward = +frame_rate, reverse = −frame_rate) = 12 trials, repeated 2×.
+#   Each trial displays for `open_dur` seconds. Reverse uses NEGATIVE frame_rate
+#   (int16, fw #4).
 #
 # BLOCK 2 — CLOSED LOOP (Mode 3 + FicTrac), ~1.5 min:
 #   frame2_h_ccw_200f (a 200-frame full-azimuth rotation) host-stepped by FicTrac
 #   heading through the bridge; gain 1.8 = 360/200 (one azimuth pixel per index),
-#   30 s per trial, repeated 3× = 90 s.
+#   `cl_dur` seconds per trial, repeated 3×.
 #
-# Total ≈ 5.5 min. Needs the FicTrac bridge running (`pixi run bridge`); with no
-# fly, `pixi run sim` supplies synthetic heading for the closed-loop block.
-# NOTE (web-first): MATLAB has no FicTracPlugin (its closed-loop is analog
-# Mode 4), so the closed-loop block runs on the WEB runner only.
+# DURATION knobs (`variables:` below): change ONE number to rescale a block.
+#   open_dur → every open-loop trial · cl_dur → the closed-loop trial.
+#
+# TIMING — no redundant waits. The web runner holds each trial for its
+# trialParams `duration` on the HOST (the firmware auto-stop, issue #4, isn't
+# landed), so a plain display trial needs NO `wait` — the open-loop trials are
+# just a trialParams, and `open_dur` is their single duration knob. The
+# closed-loop trial DOES need a wait: it brackets the closed-loop hold
+# (startClosedLoop → wait → stopClosedLoop), so `cl_dur` drives both its
+# trialParams duration and that wait.
+#
+# Total ≈ 5.5 min at defaults. Needs the FicTrac bridge (`pixi run bridge`);
+# with no fly, `pixi run sim` supplies synthetic heading for the closed-loop
+# block. NOTE (web-first): MATLAB has no FicTracPlugin (its closed-loop is
+# analog Mode 4), so the closed-loop block runs on the WEB runner only.
 # ============================================================================
 
 experiment_info:
@@ -45,12 +55,10 @@ plugins:
 
 variables:
   # ── Speed knobs ────────────────────────────────────────────────────────────
-  # Each knob drives BOTH duration fields of its trials at once: the trialParams
-  # `duration` (arms the firmware auto-stop) AND the paired `wait` (advances the
-  # host clock). Those two MUST stay equal — a condition's wall-clock is
-  # max(trialParams.duration, sum(waits)) — so they share ONE anchor. Change the
-  # number here (or in the Edit view's Variables panel) to rescale the whole
-  # block; editing only one of the pair leaves the block pinned at the larger.
+  # Change the number here (or in the Edit view's Variables panel) to rescale a
+  # whole block. Open-loop trials have a single duration field (no wait), so
+  # open_dur is unambiguous. The closed-loop trial binds BOTH its trialParams
+  # duration and its bracketing wait to cl_dur, so they move together.
   open_dur: &open_dur 10 # Block 1 open-loop grating trials (10 s each)
   cl_dur: &cl_dur 30 # Block 2 closed-loop rotation trials (30 s each)
 
@@ -85,8 +93,9 @@ conditions:
 
   # ---- BLOCK 1: open-loop drifting gratings (Mode 2) -------------------------
   # frame_rate is the frame-advance rate in Hz; its SIGN is the drift direction
-  # (+ forward, − reverse). Each trial: trialParams (mode 2, gain 0) + a matching
-  # 10 s wait (the wait advances the host clock; duration arms the fw auto-stop).
+  # (+ forward, − reverse). No `wait`: the runner holds the trial for `duration`
+  # (= open_dur) host-side, so each open-loop trial is a single trialParams with
+  # one duration knob.
 
   # grating_sq (pattern 2) — forward
   - name: "sq_fwd_05"
@@ -100,8 +109,6 @@ conditions:
         frame_index: 0
         frame_rate: 5
         gain: 0
-      - type: "wait"
-        duration: *open_dur
   - name: "sq_fwd_15"
     commands:
       - type: "controller"
@@ -113,8 +120,6 @@ conditions:
         frame_index: 0
         frame_rate: 15
         gain: 0
-      - type: "wait"
-        duration: *open_dur
   - name: "sq_fwd_30"
     commands:
       - type: "controller"
@@ -126,8 +131,6 @@ conditions:
         frame_index: 0
         frame_rate: 30
         gain: 0
-      - type: "wait"
-        duration: *open_dur
   # grating_sq (pattern 2) — reverse (negative frame_rate)
   - name: "sq_rev_05"
     commands:
@@ -140,8 +143,6 @@ conditions:
         frame_index: 0
         frame_rate: -5
         gain: 0
-      - type: "wait"
-        duration: *open_dur
   - name: "sq_rev_15"
     commands:
       - type: "controller"
@@ -153,8 +154,6 @@ conditions:
         frame_index: 0
         frame_rate: -15
         gain: 0
-      - type: "wait"
-        duration: *open_dur
   - name: "sq_rev_30"
     commands:
       - type: "controller"
@@ -166,8 +165,6 @@ conditions:
         frame_index: 0
         frame_rate: -30
         gain: 0
-      - type: "wait"
-        duration: *open_dur
 
   # grating_sine (pattern 3) — forward
   - name: "sine_fwd_05"
@@ -181,8 +178,6 @@ conditions:
         frame_index: 0
         frame_rate: 5
         gain: 0
-      - type: "wait"
-        duration: *open_dur
   - name: "sine_fwd_15"
     commands:
       - type: "controller"
@@ -194,8 +189,6 @@ conditions:
         frame_index: 0
         frame_rate: 15
         gain: 0
-      - type: "wait"
-        duration: *open_dur
   - name: "sine_fwd_30"
     commands:
       - type: "controller"
@@ -207,8 +200,6 @@ conditions:
         frame_index: 0
         frame_rate: 30
         gain: 0
-      - type: "wait"
-        duration: *open_dur
   # grating_sine (pattern 3) — reverse (negative frame_rate)
   - name: "sine_rev_05"
     commands:
@@ -221,8 +212,6 @@ conditions:
         frame_index: 0
         frame_rate: -5
         gain: 0
-      - type: "wait"
-        duration: *open_dur
   - name: "sine_rev_15"
     commands:
       - type: "controller"
@@ -234,8 +223,6 @@ conditions:
         frame_index: 0
         frame_rate: -15
         gain: 0
-      - type: "wait"
-        duration: *open_dur
   - name: "sine_rev_30"
     commands:
       - type: "controller"
@@ -247,13 +234,13 @@ conditions:
         frame_index: 0
         frame_rate: -30
         gain: 0
-      - type: "wait"
-        duration: *open_dur
 
   # ---- BLOCK 2: closed-loop rotation (Mode 3 + FicTrac) ----------------------
   # A 200-frame azimuthal rotation loaded static in Mode 3; FicTrac heading then
-  # drives the frame index for 30 s (host streams SET_FRAME_POSITION via the
-  # bridge). gain 1.8 = 360°/200 frames, so the arena rotates with the fly.
+  # drives the frame index for `cl_dur` s (host streams SET_FRAME_POSITION via
+  # the bridge). gain 1.8 = 360°/200 frames, so the arena rotates with the fly.
+  # The `wait` is load-bearing here — it holds closed-loop ACTIVE for cl_dur
+  # before stopClosedLoop fires (drop it and the stop would fire immediately).
   - name: "closed_loop_rotation"
     commands:
       - type: "controller"
