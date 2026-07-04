@@ -43,6 +43,17 @@ plugins:
       gain: 1.8
       offset: 0
 
+variables:
+  # ── Speed knobs ────────────────────────────────────────────────────────────
+  # Each knob drives BOTH duration fields of its trials at once: the trialParams
+  # `duration` (arms the firmware auto-stop) AND the paired `wait` (advances the
+  # host clock). Those two MUST stay equal — a condition's wall-clock is
+  # max(trialParams.duration, sum(waits)) — so they share ONE anchor. Change the
+  # number here (or in the Edit view's Variables panel) to rescale the whole
+  # block; editing only one of the pair leaves the block pinned at the larger.
+  open_dur: &open_dur 10 # Block 1 open-loop grating trials (10 s each)
+  cl_dur: &cl_dur 30 # Block 2 closed-loop rotation trials (30 s each)
+
 experiment:
   - name: "open_loop_gratings"
     trials:
@@ -84,39 +95,39 @@ conditions:
         command_name: "trialParams"
         pattern: "grating_sq"
         pattern_ID: 2
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: 5
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
   - name: "sq_fwd_15"
     commands:
       - type: "controller"
         command_name: "trialParams"
         pattern: "grating_sq"
         pattern_ID: 2
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: 15
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
   - name: "sq_fwd_30"
     commands:
       - type: "controller"
         command_name: "trialParams"
         pattern: "grating_sq"
         pattern_ID: 2
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: 30
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
   # grating_sq (pattern 2) — reverse (negative frame_rate)
   - name: "sq_rev_05"
     commands:
@@ -124,39 +135,39 @@ conditions:
         command_name: "trialParams"
         pattern: "grating_sq"
         pattern_ID: 2
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: -5
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
   - name: "sq_rev_15"
     commands:
       - type: "controller"
         command_name: "trialParams"
         pattern: "grating_sq"
         pattern_ID: 2
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: -15
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
   - name: "sq_rev_30"
     commands:
       - type: "controller"
         command_name: "trialParams"
         pattern: "grating_sq"
         pattern_ID: 2
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: -30
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
 
   # grating_sine (pattern 3) — forward
   - name: "sine_fwd_05"
@@ -165,39 +176,39 @@ conditions:
         command_name: "trialParams"
         pattern: "grating_sine"
         pattern_ID: 3
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: 5
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
   - name: "sine_fwd_15"
     commands:
       - type: "controller"
         command_name: "trialParams"
         pattern: "grating_sine"
         pattern_ID: 3
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: 15
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
   - name: "sine_fwd_30"
     commands:
       - type: "controller"
         command_name: "trialParams"
         pattern: "grating_sine"
         pattern_ID: 3
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: 30
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
   # grating_sine (pattern 3) — reverse (negative frame_rate)
   - name: "sine_rev_05"
     commands:
@@ -205,39 +216,39 @@ conditions:
         command_name: "trialParams"
         pattern: "grating_sine"
         pattern_ID: 3
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: -5
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
   - name: "sine_rev_15"
     commands:
       - type: "controller"
         command_name: "trialParams"
         pattern: "grating_sine"
         pattern_ID: 3
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: -15
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
   - name: "sine_rev_30"
     commands:
       - type: "controller"
         command_name: "trialParams"
         pattern: "grating_sine"
         pattern_ID: 3
-        duration: 10
+        duration: *open_dur
         mode: 2
         frame_index: 0
         frame_rate: -30
         gain: 0
       - type: "wait"
-        duration: 10
+        duration: *open_dur
 
   # ---- BLOCK 2: closed-loop rotation (Mode 3 + FicTrac) ----------------------
   # A 200-frame azimuthal rotation loaded static in Mode 3; FicTrac heading then
@@ -249,7 +260,7 @@ conditions:
         command_name: "trialParams"
         pattern: "frame2_h_ccw_200f"
         pattern_ID: 4
-        duration: 30
+        duration: *cl_dur
         mode: 3
         frame_index: 0
         frame_rate: 0
@@ -260,7 +271,7 @@ conditions:
         params:
           gain: 1.8
       - type: "wait"
-        duration: 30
+        duration: *cl_dur
       - type: "plugin"
         plugin_name: "fictrac"
         command_name: "stopClosedLoop"
