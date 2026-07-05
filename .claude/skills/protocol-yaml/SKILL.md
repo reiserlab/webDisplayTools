@@ -75,7 +75,10 @@ given frame is baked into the pattern by a phase shift at design time, so the "f
 is a per-pattern property — e.g. a 200-frame stripe built so frame 0 = object *behind* the
 fly and frame **100** = *directly in front* → set `frame_index: 100`. (On the 2×10 rig the
 column over panel 8 is behind the fly; the opposite column is in front. Confirm the
-azimuth↔frame mapping per pattern.)
+azimuth↔frame mapping per pattern.) **Why this alignment:** patterns are phase-shifted so
+frame 0/1 lands at the center of column 8 (behind the fly) — that makes the position index
+map directly to azimuth, so recorded position data plots straight into a histogram with no
+unwrapping needed in analysis. Keep the convention when building new fixation patterns.
 
 `frame_index` is **0-based** (`0` = the first frame). `duration` is in **seconds** as a
 **float** — fractional and sub-second are fine (`0.1`, `0.25`, `1.5`), preserved exactly
