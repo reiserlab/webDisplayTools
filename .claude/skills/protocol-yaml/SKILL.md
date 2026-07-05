@@ -68,6 +68,15 @@ it does NOT advance the protocol clock. Only `wait` commands do. Therefore:
 | 3 | position / host-stepped | `frame_index` (start frame); frames driven by `setPositionX` or the **FicTrac closed loop** (web) | `frame_rate: 0`, `gain: 0` |
 | 4 | analog closed-loop | `gain`, `frame_index` | `frame_rate: 0` (MATLAB/analog rig path) |
 
+**Start position (`frame_index`):** most trials use `0` (the pattern's default start).
+**Exception — stripe-fixation / object-orientation (open-loop) trials:** start with the
+object *in front of* the fly, which is usually **not** frame 0. Where the object sits at a
+given frame is baked into the pattern by a phase shift at design time, so the "front" frame
+is a per-pattern property — e.g. a 200-frame stripe built so frame 0 = object *behind* the
+fly and frame **100** = *directly in front* → set `frame_index: 100`. (On the 2×10 rig the
+column over panel 8 is behind the fly; the opposite column is in front. Confirm the
+azimuth↔frame mapping per pattern.)
+
 `frame_index` is **0-based** (`0` = the first frame). `duration` is in **seconds** as a
 **float** — fractional and sub-second are fine (`0.1`, `0.25`, `1.5`), preserved exactly
 through parse/save; no whole-second quantization and no upper bound (60–300 s trials are
