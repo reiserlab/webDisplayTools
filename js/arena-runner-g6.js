@@ -103,14 +103,16 @@ var ArenaRunnerG6 = (function () {
      * can't represent, before the encoder's terser RangeError would fire:
      *   - mode ∉ {2,3,4}
      *   - non-integer / < 1 patternId
-     * Gain is coerced; encodeTrialParams enforces the int8 range. frame_rate
+     * Gain is coerced; encodeTrialParams enforces the int16 range. frame_rate
      * is passed through SIGNED — negative plays Mode 2 in reverse (G4-style
      * count-down; fw ee74c33+, fw issue #4), sign ignored by firmware in
-     * Modes 3/4; encodeTrialParams enforces the int16 range.
+     * Modes 3/4; encodeTrialParams enforces the int16 range. duration is
+     * seconds (same convention as conditionDuration's wait/trialParams math);
+     * encodeTrialParams converts to 10 ms ticks on the wire.
      *
      * @param {object} cmd  the trialParams controller command
      * @param {{patternId:number}} opts  the resolved 1-based SD index
-     * @returns {{mode:number, patternId:number, frameRate:number, gain:number, initPos:number}}
+     * @returns {{mode:number, patternId:number, frameRate:number, gain:number, initPos:number, duration:number}}
      */
     function buildTrialParams(cmd, opts) {
         cmd = cmd || {};
@@ -129,6 +131,7 @@ var ArenaRunnerG6 = (function () {
 
         const gain = cmd.gain === undefined ? 0 : toNumber(cmd.gain, 'gain');
         const initPos = frameIndexToInitPos(cmd.frame_index);
+        const duration = cmd.duration === undefined ? 0 : toNumber(cmd.duration, 'duration');
 
         const patternId = toNumber(opts.patternId, 'patternId');
         if (!Number.isInteger(patternId) || patternId < 1) {
@@ -138,7 +141,7 @@ var ArenaRunnerG6 = (function () {
             );
         }
 
-        return { mode, patternId, frameRate, gain, initPos };
+        return { mode, patternId, frameRate, gain, initPos, duration };
     }
 
     // The controller commands the sequence runner can EMIT on G6, grounded in the
@@ -505,6 +508,9 @@ var ArenaRunnerG6 = (function () {
      * the controller signals completion), replace this with a function that AWAITS
      * the controller's run-complete event instead of sleeping — or inject
      * `opts.timing` into runSequence. Nothing else in the runner changes.
+     * The wire-side duration now exists (buildTrialParams/encodeTrialParams), so
+     * the swap is unblocked whenever it's picked up — this function is untouched
+     * for now (host-side timing stays authoritative; see plan scope decision).
      *
      * Best-effort: a slept/closed tab won't fire the timer, so STOP/abort is the
      * primary control.

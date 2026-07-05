@@ -295,7 +295,7 @@
          * Run a SINGLE trial (LAB-94 dry-run): sends only trialParams, arms an
          * optional host-timed auto-stop. Pre-empts any active run first.
          * @param {object} a
-         * @param {object} a.params              encodeTrialParams arg {mode,patternId,frameRate,gain,initPos}
+         * @param {object} a.params              encodeTrialParams arg {mode,patternId,frameRate,initPos,gain,duration}
          * @param {number} [a.durationSec]        >0 arms a host-side auto-stop
          * @param {string} [a.conditionName]
          * @param {Function} [a.onStatus]         per-call status sink (also broadcast as 'runstatus')

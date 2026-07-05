@@ -188,11 +188,12 @@ async function main() {
     check('frameRate', p.frameRate, 10);
     check('gain', p.gain, 0);
     check('initPos (from frame_index 1)', p.initPos, 1);
-    // The encoded frame must match the wire golden vector.
+    check('duration', p.duration, 5);
+    // The encoded frame must match the wire golden vector (duration=5s -> 500 ticks -> F4 01).
     checkBytes(
         'encodeTrialParams(mapped)',
         Wire.encodeTrialParams(p),
-        '0c 08 02 01 00 0a 00 00 01 00 00 00 00'
+        '0c 08 02 01 00 0a 00 01 00 00 00 f4 01'
     );
 
     // THE coercion test: string scalars (as a YAML parser might yield) must work.
@@ -201,7 +202,7 @@ async function main() {
     checkBytes(
         'string-typed fields coerce to the same frame',
         Wire.encodeTrialParams(ps),
-        '0c 08 02 01 00 0a 00 00 01 00 00 00 00'
+        '0c 08 02 01 00 0a 00 01 00 00 00 00 00'
     );
 
     // NEGATIVE frame_rate = Mode-2 reverse playback (fw ee74c33+, fw #4) —
@@ -233,7 +234,7 @@ async function main() {
         checkBytes(
             'sent the trialParams frame',
             link.sent[0],
-            '0c 08 02 01 00 0a 00 00 01 00 00 00 00'
+            '0c 08 02 01 00 0a 00 01 00 00 00 f4 01'
         );
         check('conditionName tracked', runner.conditionName, 'sine_grating');
 
@@ -530,7 +531,7 @@ async function main() {
         });
         check('sent exactly 3 frames (allOn, trialParams, final STOP)', link.sent.length, 3);
         checkBytes('1st send: allOn', link.sent[0], '01 ff');
-        checkBytes('2nd send: trialParams', link.sent[1], '0c 08 02 01 00 0a 00 00 01 00 00 00 00');
+        checkBytes('2nd send: trialParams', link.sent[1], '0c 08 02 01 00 0a 00 01 00 00 00 f4 01');
         checkBytes('3rd send: final STOP', link.sent[2], '01 30');
         checkBool('summary.completed true', summary.completed === true);
         checkBool('summary.aborted false', summary.aborted === false);
