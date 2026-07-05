@@ -1834,8 +1834,10 @@
   .console-view .log-drawer{flex:1 1 0;display:flex;flex-direction:column;min-height:90px;padding:6px 2px 2px}
   .console-view .log-drawer .clog{flex:1 1 0;height:auto;min-height:0}
   body.clogHidden .console-view .log-drawer,body.clogHidden .console-view .log-resizer{display:none}
-  /* top-bar link to the Pattern Designer (an <a> dressed as a ribbon button) */
-  a.pd-link{text-decoration:none;display:inline-flex;align-items:center;white-space:nowrap}
+  /* top-bar links dressed as ribbon buttons (Pattern Designer ⇄, Other tools) */
+  a.pd-link,a.other-tools{text-decoration:none;display:inline-flex;align-items:center;white-space:nowrap}
+  a.other-tools{color:var(--dim)}
+  a.other-tools:hover{color:var(--text)}
   /* ===== v6 Settings diet: read-only rows, rig chips, Advanced… details ===== */
   .edit-view .set-ro{font-size:0.82rem;color:var(--text);padding:3px 0}
   .edit-view .set-ro.set-ok{color:var(--accent)}
@@ -1933,8 +1935,8 @@
     </div>
   </div>
 
-  <a class="ribbon-btn pd-link" id="pdLink" href="pattern_editor.html" target="_blank" rel="opener"
-     title="Open the Pattern Designer in a new tab — hands over this session's arena + repo; your GitHub sign-in carries over">Patterns ↗</a>
+  <a class="ribbon-btn pd-link" id="pdLink" href="pattern_editor.html" rel="opener"
+     title="Switch to the Pattern Designer — reuses its tab if one is open (your work there is kept); a first click opens it set to this session's arena + repo, sign-in carried over">Pattern Designer ↗</a>
 
   <div class="seg" id="modeSeg">
     <button class="on" data-mode="run">▶ Run</button>
@@ -1946,16 +1948,8 @@
 
   <button class="help-btn" id="helpBtn" title="Help — turn on, then hover any control for a plain-language explanation">?</button>
 
-  <div class="gear" id="gearMenu">
-    <button class="gear-btn" id="gearBtn" title="Tools · Diagnostics">⚙</button>
-    <div class="menu">
-      <div class="sep"></div>
-      <a href="index.html">↗ All tools</a>
-      <a href="pattern_editor.html">↗ Pattern Designer</a>
-      <a href="experiment_designer_v3.html">↗ v3 Experiment Designer</a>
-      <a href="arena_console.html">↗ Arena Console</a>
-    </div>
-  </div>
+  <a class="ribbon-btn other-tools" id="otherToolsLink" href="index.html" target="wdt-index"
+     title="All web tools (the index page) — opens in its own reused tab, so the Studio keeps its arena connection">Other tools</a>
 </div>
 
 <input type="file" id="fileInput" accept=".yaml,.yml" style="display:none" />
@@ -2113,7 +2107,7 @@
              and the File ▾ menu items proxy-click them (guarded on .disabled).
              Toolbar = tabs · ● edited · ↶ ↷ · Settings. Save = File ▾ / Ctrl+S. -->
         <button id="resetBtn" class="header-btn" disabled hidden title="Clear everything to a blank minimum-valid v3 skeleton (reversible with Undo)">⟲ Reset</button>
-        <button id="settingsToggle" class="header-btn" title="Show/hide experiment settings — name, experimenter, rig, pattern set">Settings ▾</button>
+        <button id="settingsToggle" class="header-btn" title="Show/hide experiment settings — name, experimenter, rig, pattern set">⚙ Settings ▾</button>
         <select id="demoSelect" class="header-btn" hidden title="Load a bundled demo YAML to explore">
             <option value="">Load demo ▾</option>
             <option value="tests/fixtures/v3_g6_2x10_smoke.yaml">g6_2x10_smoke — all 4 patterns + every arena command (run on G6)</option>
@@ -2632,7 +2626,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.7 | 2026-07-05 12:32 ET · Edit toolbar + Settings diet · Console tool rail · ? Help mode · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.7 | 2026-07-05 13:40 ET · Edit toolbar + Settings diet · Console tool rail · ? Help mode · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -3215,11 +3209,11 @@
     $('rlUploadClose').addEventListener('click', hideUploadModal);
 
     // ---- top-bar buttons ------------------------------------------------------
+    // (the ⚙ gear menu is gone — its links became the always-visible
+    // "Pattern Designer ↗" + "Other tools"; legacy tools live on the index)
     $('connectBtn').addEventListener('click', toggleConnect);
-    $('gearBtn').addEventListener('click', (e) => { e.stopPropagation(); $('gearMenu').classList.toggle('open'); });
     $('fileMenuBtn').addEventListener('click', (e) => { e.stopPropagation(); $('fileMenu').classList.toggle('open'); });
     document.addEventListener('click', () => {
-        $('gearMenu').classList.remove('open');
         $('fileMenu').classList.remove('open');
     });
     document.querySelectorAll('#modeSeg button').forEach((b) =>
@@ -11961,8 +11955,8 @@ initFromUrl();
     '#modeSeg [data-mode="edit"]': 'Edit view — inspect or change the open protocol: its conditions, sequence and settings, or the YAML text itself.',
     '#modeSeg [data-mode="console"]': 'Console — hands-on arena control: pick a pattern, play trials, step frames, test the display.',
     '#connectBtn': 'Pick the arena’s USB port and connect. Nothing on the bench works until connected. Use Chrome or Edge.',
-    '#gearBtn': 'Links to the other web tools.',
-    '#pdLink': 'Open the Pattern Designer in a new tab to make or edit patterns. It arrives already set to this session’s arena and repo, with your GitHub sign-in carried over.',
+    '#otherToolsLink': 'All the other web tools (the index page). Opens in its own tab, so the Studio keeps its arena connection.',
+    '#pdLink': 'Switch to the Pattern Designer to make or edit patterns. Reuses its tab if one is open (your work there is kept); a first click opens it set to this session’s arena and repo, with your GitHub sign-in carried over.',
     /* File ▾ */
     '#fmNew': 'Start a new, empty protocol (Edit view).',
     '#fmOpen': 'Open a protocol file (.yaml) from this computer. It opens in the Editor so you can look it over first.',
@@ -12143,19 +12137,37 @@ initFromUrl();
     else hideTip();
   });
 
-  // "Patterns ↗" — hand the session arena + repo to the Pattern Designer.
-  // The href is (re)built at click time so it always reflects the CURRENT
-  // session rig + course repo; the GitHub token needs no URL (same-origin
-  // storage + the new tab's sessionStorage copy carry it).
-  var pdLink=document.getElementById('pdLink');
-  if(pdLink) pdLink.addEventListener('click', function(){
+  // ── Studio ⇄ Designer first-class linking ─────────────────────────────
+  // Each page names its own tab; the counterpart's link FOCUSES that tab when
+  // it already shows the right page (no reload — the Studio keeps its serial
+  // connection, the Designer keeps unsaved work) and only navigates/opens
+  // otherwise. First open hands over the session arena + repo in the URL
+  // (token needs no URL — same-origin storage + the tab's sessionStorage copy).
+  window.name = 'arena-studio';
+  function pdUrl(){
     var q=[];
     var arena=window.Studio && Studio.currentRig && Studio.currentRig.arenaConfig;
     if(arena) q.push('arena='+encodeURIComponent(arena));
     var repo=(localStorage.getItem('studio_gh_repo')||'').trim();
     if(repo) q.push('repo='+encodeURIComponent(repo));
-    pdLink.href='pattern_editor.html'+(q.length?'?'+q.join('&'):'');
-  });
+    return 'pattern_editor.html'+(q.length?'?'+q.join('&'):'');
+  }
+  var pdLink=document.getElementById('pdLink');
+  if(pdLink){
+    // keep href fresh for middle-click / open-in-new-tab gestures
+    pdLink.addEventListener('pointerdown', function(){ pdLink.href = pdUrl(); });
+    pdLink.addEventListener('click', function(e){
+      e.preventDefault();
+      var w=null;
+      try { w = window.open('', 'pattern-designer'); } catch(_) {}
+      try {
+        if (w && w.location && /pattern_editor/.test(w.location.pathname || '')) { w.focus(); return; }
+      } catch(_) { /* treat as fresh */ }
+      var url = pdUrl();
+      if (w) { try { w.location.href = url; w.focus(); return; } catch(_) {} }
+      window.open(url, 'pattern-designer');
+    });
+  }
 
   dim(); updateSelName();
   setTimeout(pickerRebuilt, 1300);

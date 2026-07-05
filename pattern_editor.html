@@ -1763,11 +1763,14 @@
         <div class="tools-panel">
             <div class="tools-header">
                 <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <a href="index.html" title="Back to Tools" style="color: var(--text-dim); text-decoration: none; font-size: 0.85rem;">← Tools</a>
                     <h1 style="margin: 0;">Pattern Designer</h1>
                     <button class="quick-start-btn" id="quickStartBtn" title="Open Quick Start Guide">quick<br>start</button>
                 </div>
                 <div class="subtitle">Create and edit arena patterns</div>
+                <div style="margin-top: 0.35rem; display: flex; gap: 0.9rem; align-items: baseline;">
+                    <a id="asLink" href="arena_studio.html" title="Switch to the Arena Studio — reuses its tab if one is open (its arena connection is kept); otherwise opens it" style="color: var(--accent); text-decoration: none; font-size: 0.85rem; font-weight: 600;">Arena Studio ↗</a>
+                    <a href="index.html" target="wdt-index" title="All web tools (the index page) — opens in its own reused tab" style="color: var(--text-dim); text-decoration: none; font-size: 0.8rem;">Other tools</a>
+                </div>
             </div>
 
             <!-- Tool Tabs -->
@@ -2434,7 +2437,7 @@
         </div>
     </div>
 
-    <footer class="pd-footer">Pattern Designer v0.10 | 2026-07-05 10:17 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/)">GitHub</a></footer>
+    <footer class="pd-footer">Pattern Designer v0.10 | 2026-07-05 13:40 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/)">GitHub</a></footer>
 
     <!-- Hidden file input -->
     <input type="file" id="fileInput" accept=".pat" style="display: none;">
@@ -2712,6 +2715,23 @@
                 openFromRepo();
             });
             document.getElementById('pdPickerCancel').addEventListener('click', closePdPicker);
+
+            // Studio ⇄ Designer first-class linking: this tab is NAMED so the
+            // Studio's "Pattern Designer ↗" can focus it instead of opening
+            // duplicates; the reverse link below focuses an existing Studio tab
+            // (keeping its arena connection + any run) and only opens a fresh
+            // one when none exists.
+            window.name = 'pattern-designer';
+            document.getElementById('asLink').addEventListener('click', (e) => {
+                e.preventDefault();
+                let w = null;
+                try { w = window.open('', 'arena-studio'); } catch (_) { /* ignore */ }
+                try {
+                    if (w && w.location && /arena_studio/.test(w.location.pathname || '')) { w.focus(); return; }
+                } catch (_) { /* treat as fresh */ }
+                if (w) { try { w.location.href = 'arena_studio.html'; w.focus(); return; } catch (_) { /* fall through */ } }
+                window.open('arena_studio.html', 'arena-studio');
+            });
 
             // Save to Repo… destination modal
             document.getElementById('repoSaveCancel').addEventListener('click', () => {

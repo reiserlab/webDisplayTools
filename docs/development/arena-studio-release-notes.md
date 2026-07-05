@@ -34,6 +34,13 @@ history lives here. Newest first. (Per-session engineering detail stays in
 - Footer link now points at the **GitHub repo** (this release-notes file lives there
   under docs/development/). The Pattern Designer lost its orange top banner — it has
   the same one-line version/date/GitHub footer as the other tools now.
+- **Studio ⇄ Designer are first-class neighbors**: an always-visible
+  "Pattern Designer ↗" in the Studio's top bar and "Arena Studio ↗" in the Designer's
+  header. The links reuse each other's tab — clicking focuses the existing tab instead
+  of opening duplicates, so the Studio keeps its arena connection and the Designer
+  keeps unsaved work; only a first click opens a tab (handing over arena + repo).
+  The ⚙ gear menu is gone — replaced by an "Other tools" link on both pages (one
+  reused index tab); its glyph moved onto the Editor's "⚙ Settings ▾" button.
 
 ## v0.6 — 2026-07-04 · Console de-clutter (tool rail)
 
