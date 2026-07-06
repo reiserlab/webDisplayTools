@@ -13,6 +13,22 @@ use the **`protocol-yaml`** skill.
 Modular LED **arena displays** for *Drosophila* vision. Current generation = **G6**; G4/G4.1
 still supported (maDisplayTools spans both); G5 deprecated; G2/G3 legacy.
 
+## 📖 Primary G6 documentation — start here
+
+The authoritative G6 system reference lives in the **umbrella repo**
+(`reiserlab/Modular-LED-Display`). It is more current than any single tool's `CLAUDE.md` and
+supersedes the older maDisplayTools roadmap — **read it first** for anything touching the
+panel/controller wire protocols, LED mapping, the `.pat` file format, or the arena↔firmware
+interface.
+
+- **In-progress full protocol docs — the source of truth for every G6 subsystem** →
+  **https://github.com/reiserlab/Modular-LED-Display/tree/main/docs/development**
+  `g6_00-architecture` · `g6_01-panel-protocol` · `g6_02-led-mapping` · `g6_03-controller` ·
+  `g6_04-pattern-file-format` · `g6_05-host-software` · `g6_06-arena-firmware-interface`
+  (+ `g6_arena_configs.h`, `g6_docs-open-issues`).
+- **Rendered docs site** (published subset, MkDocs) →
+  **https://reiserlab.github.io/Modular-LED-Display/**
+
 ## The repos
 
 ### Web + experiment control (the hub)
@@ -46,7 +62,7 @@ still supported (maDisplayTools spans both); G5 deprecated; G2/G3 legacy.
 | repo | role |
 |---|---|
 | **mbreiser/bias** | BIAS camera control — the `camera` / BiasPlugin target in protocols. |
-| **reiserlab/Modular-LED-Display** | Umbrella: aggregates the display repos as submodules and **hosts the primary G6 documentation site** → https://reiserlab.github.io/Modular-LED-Display/ (MkDocs source in `docs/`). **The most important reference for G6.** |
+| **reiserlab/Modular-LED-Display** | Umbrella: aggregates the display repos as submodules and **hosts the primary G6 documentation** — the full per-subsystem protocol docs in [`docs/development/`](https://github.com/reiserlab/Modular-LED-Display/tree/main/docs/development) + the rendered site https://reiserlab.github.io/Modular-LED-Display/. **The most important reference for G6** (see the top of this skill). |
 | **reiserlab/Fly-Lab-Gear** | Lab tools/methods sharing (formerly Component-Designs). |
 
 ## Essential conventions (one-liners → depth in webDisplayTools/CLAUDE.md)
@@ -96,7 +112,7 @@ still supported (maDisplayTools spans both); G5 deprecated; G2/G3 legacy.
 
 ## Pointers (go here for depth)
 
-- **Primary G6 documentation** → the umbrella docs site **https://reiserlab.github.io/Modular-LED-Display/** (MkDocs source: `docs/` in `reiserlab/Modular-LED-Display`) — the current, authoritative G6 hardware/system reference.
+- **Primary G6 documentation** (see the top of this skill) → `docs/development/` in `reiserlab/Modular-LED-Display` (the full per-subsystem protocol docs) + the rendered site https://reiserlab.github.io/Modular-LED-Display/.
 - **Web architecture / conventions / gotchas** → `webDisplayTools/CLAUDE.md` (auto-loaded here).
 - **Protocol + pattern authoring** → `.claude/skills/protocol-yaml/SKILL.md` (+ its validator).
 - **End-to-end workflow** (blank screen → recorded run) → `docs/protocol-pattern-workflow.md`.
