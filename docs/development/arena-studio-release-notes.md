@@ -70,6 +70,9 @@ history lives here. Newest first. (Per-session engineering detail stays in
   highlighted step now auto-scrolls into view (it used to drop below the fold on long
   sequences), and the Run-view log gained a drag divider that snaps to a few heights — the
   same behavior as the Console log.
+- **Console log "hide" collapses to the bottom** (2026-07-06): the ▾ hide-log control now lets
+  the panels expand and drops the "▴ show log" strip to the bottom of the window, instead of
+  leaving a blanked drawer where the log used to be.
 
 ## v0.6 — 2026-07-04 · Console de-clutter (tool rail)
 
