@@ -1911,6 +1911,7 @@
       <button id="fmOpenCourse" title="List this bench's saves (protocols/&lt;bench-id&gt;/) and promoted shared protocols (protocols/shared/) in the course-data repo">Open from Repo…</button>
       <button id="fmOpenDemo" class="edit-only" title="Load a bundled demo protocol to explore — same list the designer's Load demo ▾ used to hold">Open demo…</button>
       <button id="fmSave" class="edit-only">Save → local file</button>
+      <button id="fmSaveAs" class="edit-only" title="Save under a NEW filename. In the course repo it checks first — if that name already exists you choose to replace it or pick another (never a silent overwrite)">Save as… (new filename)</button>
       <button id="fmSaveCopy" class="edit-only" title="Download a regenerated copy (*_roundtrip.yaml) for diffing/MATLAB checks — does NOT mark the protocol saved">Save copy (download)…</button>
       <button id="fmPromote" class="edit-only" title="Copy this bench's saved protocol (+ its _patterns/) to protocols/shared/ in the course repo — blocked if a DIFFERENT file already exists under the same name">Promote to shared (course)…</button>
       <div class="sep"></div>
@@ -2626,7 +2627,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.7 | 2026-07-05 13:47 ET · Edit toolbar + Settings diet · Console tool rail · ? Help mode · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.7 | 2026-07-05 21:39 ET · Edit toolbar + Settings diet · Console tool rail · ? Help mode · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -6033,6 +6034,35 @@ async function saveViaPR() {
 // straight onto the default branch — no branch, no PR. Safe because bench-id
 // namespacing means no two rigs ever write the same file; blocked with a
 // clear notice when the bench id is unset (never a silently-colliding name).
+// Repo overwrite guard: derive the target path from doc.filename; if a file
+// already exists there AND it is NOT the one this doc tracks as its own origin
+// (doc.repoRef, set on every successful commit), force a choice — replace it,
+// pick another name, or cancel — so a Save (or Save as…) NEVER silently
+// clobbers a different protocol. Returns the final path, or null to cancel;
+// may update doc.filename when the user renames. A re-save to the doc's own
+// path skips the prompt (that's a normal update, not a clobber).
+async function resolveRepoSaveTarget(cs, doc, token) {
+    let base = (doc.filename || 'protocol.yaml').replace(/\.ya?ml$/i, '');
+    for (;;) {
+        const path = 'protocols/' + cs.benchId + '/' + GH.slug(base) + '.yaml';
+        let exists = false;
+        try {
+            const chk = await GH.run(fetch, GH.reqGetContents(cs.repo.owner, cs.repo.name, path, null, token));
+            exists = !!(chk && chk.ok && chk.data && chk.data.sha);
+        } catch (_) { exists = false; }
+        const own = !!(doc.repoRef && doc.repoRef.repo === cs.repo.full && doc.repoRef.path === path);
+        if (!exists || own) { doc.filename = base + '.yaml'; return path; }
+        const replace = confirm(
+            '"' + path + '" already exists in ' + cs.repo.full + '.\n\n' +
+            'OK = replace that file.\n' +
+            'Cancel = save under a different name.');
+        if (replace) { doc.filename = base + '.yaml'; return path; }
+        const nn = prompt('New .yaml filename:', base + '_v2.yaml');
+        if (!nn || !nn.trim()) return null; // fully cancelled
+        base = nn.trim().replace(/\.ya?ml$/i, '');
+    }
+}
+
 async function saveViaDirectCommit() {
     const doc = Studio.currentDoc;
     const token = ghToken();
@@ -6044,8 +6074,9 @@ async function saveViaDirectCommit() {
         return;
     }
     if (!ensureSaveFilename(doc)) return;
+    const path = await resolveRepoSaveTarget(cs, doc, token);
+    if (!path) { Studio.rawLog('save cancelled — a file with that name already exists.', 'info'); return; }
     const base = (doc.filename || 'protocol.yaml').replace(/\.ya?ml$/i, '');
-    const path = 'protocols/' + cs.benchId + '/' + GH.slug(base) + '.yaml';
     const text = currentSaveText();
     const textSha = await sha256Hex(text);
     doc.sha256 = textSha;
@@ -6102,6 +6133,27 @@ Studio.saveCurrent = function () {
 };
 $('fmSave').addEventListener('click', () => {
     $('fileMenu').classList.remove('open');
+    Studio.saveCurrent();
+});
+// Save as… — adopt a new filename, then run the normal save. In the course
+// repo the overwrite guard (resolveRepoSaveTarget) then fires if the new name
+// already exists; a local save just downloads under the new name. Cancelling
+// the prompt changes nothing (provenance untouched — repoRef is only compared,
+// never cleared here).
+$('fmSaveAs').addEventListener('click', () => {
+    $('fileMenu').classList.remove('open');
+    const doc = Studio.currentDoc;
+    if (!doc) { Studio.showBanner('Open a protocol first.'); return; }
+    if (Studio.editor && Studio.editor.hasUnappliedYaml && Studio.editor.hasUnappliedYaml()) {
+        Studio.showBanner('The YAML tab has unapplied edits — Apply or Revert them first.');
+        return;
+    }
+    const curBase = (doc.filename || '').replace(/\.ya?ml$/i, '');
+    const suggested = curBase ||
+        GH.slug((doc.experiment && doc.experiment.experiment_info && doc.experiment.experiment_info.name) || 'protocol');
+    const name = prompt('Save as — new .yaml filename:', suggested + '.yaml');
+    if (!name || !name.trim()) return;
+    doc.filename = /\.ya?ml$/i.test(name.trim()) ? name.trim() : name.trim() + '.yaml';
     Studio.saveCurrent();
 });
 

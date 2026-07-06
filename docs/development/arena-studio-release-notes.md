@@ -34,6 +34,11 @@ history lives here. Newest first. (Per-session engineering detail stays in
 - Footer link now points at the **GitHub repo** (this release-notes file lives there
   under docs/development/). The Pattern Designer lost its orange top banner — it has
   the same one-line version/date/GitHub footer as the other tools now.
+- **Save as… + repo overwrite guard**: File ▾ → *Save as…* saves under a new filename.
+  Any course-repo save now checks first — if a file with that name already exists and it
+  isn't the one you're editing, it stops and makes you choose (Replace it / pick another
+  name / Cancel) instead of silently overwriting. A plain Save back to the file's own name
+  is unaffected (silent update, as before).
 - **Build pattern set… knows the course repo** (#150): a "Course repo" source lists the
   shared `patterns/` library and this protocol's `_patterns/` folder; **Add referenced**
   seeds the set from the protocol's own pattern names (unresolved names reported loudly);
