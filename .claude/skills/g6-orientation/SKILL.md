@@ -24,7 +24,7 @@ still supported (maDisplayTools spans both); G5 deprecated; G2/G3 legacy.
 ### Reference tool suites (other language bindings)
 | repo | role |
 |---|---|
-| **reiserlab/maDisplayTools** | **MATLAB** tools (G4+). The reference executor — **web output must match MATLAB exactly** (CI validates, tol 1e-4). Unified MATLAB+web roadmap: `docs/development/G4G6_ROADMAP.md` (+ `_SESSIONS.md`). |
+| **reiserlab/maDisplayTools** | **MATLAB** tools (G4+). The reference executor — **web output must match MATLAB exactly** (CI validates, tol 1e-4). (Its `docs/development/G4G6_ROADMAP.md` is largely historical now — use the umbrella docs for current G6.) |
 | **reiserlab/LED-Display_pyDisplayTools** (pyDisplayTools) | **Python** tools for the displays. |
 
 ### G6 firmware (what the web connects to over USB)
@@ -46,7 +46,7 @@ still supported (maDisplayTools spans both); G5 deprecated; G2/G3 legacy.
 | repo | role |
 |---|---|
 | **mbreiser/bias** | BIAS camera control — the `camera` / BiasPlugin target in protocols. |
-| **reiserlab/Modular-LED-Display** | Umbrella: aggregates the display repos as submodules + generates unified docs. |
+| **reiserlab/Modular-LED-Display** | Umbrella: aggregates the display repos as submodules and **hosts the primary G6 documentation site** → https://reiserlab.github.io/Modular-LED-Display/ (MkDocs source in `docs/`). **The most important reference for G6.** |
 | **reiserlab/Fly-Lab-Gear** | Lab tools/methods sharing (formerly Component-Designs). |
 
 ## Essential conventions (one-liners → depth in webDisplayTools/CLAUDE.md)
@@ -96,10 +96,10 @@ still supported (maDisplayTools spans both); G5 deprecated; G2/G3 legacy.
 
 ## Pointers (go here for depth)
 
+- **Primary G6 documentation** → the umbrella docs site **https://reiserlab.github.io/Modular-LED-Display/** (MkDocs source: `docs/` in `reiserlab/Modular-LED-Display`) — the current, authoritative G6 hardware/system reference.
 - **Web architecture / conventions / gotchas** → `webDisplayTools/CLAUDE.md` (auto-loaded here).
 - **Protocol + pattern authoring** → `.claude/skills/protocol-yaml/SKILL.md` (+ its validator).
 - **End-to-end workflow** (blank screen → recorded run) → `docs/protocol-pattern-workflow.md`.
 - **Arena Studio internals** → `docs/development/arena-studio-handover.md`, `arena-studio-release-notes.md`.
-- **Unified MATLAB + web roadmap** → `maDisplayTools/docs/development/G4G6_ROADMAP.md` (+ `_SESSIONS.md`).
 - **Firmware / hardware** → the `LED-Display_G6_*` repos above; vendor dev `iorodeo/g6_firmware_devel`.
-- **Cross-repo docs** → `reiserlab/Modular-LED-Display`.
+- **MATLAB roadmap** (largely historical — kept for context) → `maDisplayTools/docs/development/G4G6_ROADMAP.md`.
