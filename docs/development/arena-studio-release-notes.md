@@ -4,6 +4,18 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.29 — 2026-07-07 · Metadata vocabs come from the connected course repo
+
+- **The connected course repo is now the source of truth for all metadata
+  vocabularies.** When signed in to the configured repo, fly **age / sex / fly-number**
+  load from its root-level `ages.yaml` / `sexes.yaml` / `fly_numbers.yaml` (joining
+  experimenter `roster.yaml` and `genotypes.yaml`, which already did this), and each
+  ↗ source link repoints to the repo. **Offline / not signed in → the webDisplayTools
+  site library** (`configs/metadata/*.yaml`) is the fallback. The rule is documented
+  in CLAUDE.md; new controlled vocabs must follow it (`fetchCourseVocab`).
+- Seeded the three vocab files into `reiserlab/cshl-2026-course` so instructors curate
+  the pick-lists there.
+
 ## v0.28 — 2026-07-07 · Scope mode maximizes the canvas
 
 - **Scope controls (win / span / ball / auto-Y / clear) now ride the dock header

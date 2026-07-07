@@ -207,6 +207,21 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   firmware's ASCII error payload on non-ok status — keep that for new ops.
   New `.cmenu` popups: the document click-away closer ignores clicks inside
   `.cmenu-pop`; one-shot `.cmenu-item`s (not in a `.cmenu-row`) auto-close.
+- **Metadata / controlled-vocab sourcing (THE rule):** when a **course repo is
+  configured AND signed in**, ALL metadata vocabularies load from that repo (its
+  root-level YAML) and their ↗ source links repoint there — the connected repo is
+  the source of truth. When not (offline / not signed in), fall back to the
+  **webDisplayTools site library** at `configs/metadata/*.yaml`. Today this covers
+  experimenter (`roster.yaml`), genotype (`genotypes.yaml`), and fly age/sex/number
+  (`ages.yaml`/`sexes.yaml`/`fly_numbers.yaml`). Wiring: `populateMetaDatalists()`
+  loads the site fallback at page start; `Studio.refreshCourseMeta()` (on sign-in /
+  repo change / connect) overrides from the repo via `fetchCourseRoster` /
+  `fetchCourseGenotypes` / the generic `fetchCourseVocab(file, key, srcId, apply)`.
+  **Any NEW controlled vocab MUST follow this course-first, site-fallback pattern:**
+  add a site YAML under `configs/metadata/`, load it in `populateMetaDatalists`, AND
+  add a `fetchCourseVocab(...)` call in `refreshCourseMeta` + seed the file into the
+  course repo root. The course repo (`reiserlab/cshl-2026-course`) is PRIVATE, so
+  the course override needs a token; the site files are same-origin (always work).
 - **Session rig (#135, v0.4):** `Studio.currentRig` (`{name, arenaConfig,
   explicit}`) is THE bench rig for all three views — one top-bar selector,
   locked by default. Always change it via the module block's

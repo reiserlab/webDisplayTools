@@ -2798,7 +2798,7 @@
   <a class="ql-link" id="qlPatterns" target="_blank" rel="noopener">patterns</a>
 </div>
 
-<footer id="footer">Arena Studio v0.28 | 2026-07-07 15:01 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.29 | 2026-07-07 15:36 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -5395,8 +5395,9 @@ async function populateMetaDatalists() {
     const genos = await loadVocab('./configs/metadata/genotypes.yaml', 'genotypes');
     if (people) renderPeopleVocab(people);
     if (genos) renderGenoVocab(genos);
-    // Fly age / sex / fly-number — same controlled-vocab pattern, site-local YAML
-    // (no course-repo override; these lists are stable). Optional fields.
+    // Fly age / sex / fly-number — the site library is the FALLBACK here; when a
+    // course repo is configured + signed in, refreshCourseMeta() overrides these
+    // from the repo (CLAUDE.md metadata rule). Optional fields.
     const ages = await loadVocab('./configs/metadata/ages.yaml', 'ages');
     const sexes = await loadVocab('./configs/metadata/sexes.yaml', 'sexes');
     const flyNums = await loadVocab('./configs/metadata/fly_numbers.yaml', 'fly_numbers');
@@ -5432,6 +5433,21 @@ Studio.refreshCourseMeta = async function () {
         await fetchCourseGenotypes();
     } catch (e) {
         Studio.rawLog('course genotypes check failed: ' + (e && e.message ? e.message : e), 'warn');
+    }
+    // Fly age / sex / fly-number — same course-first rule (course repo when signed
+    // in, else the site library loaded at page start). See CLAUDE.md metadata rule.
+    try {
+        await fetchCourseVocab('ages.yaml', 'ages', 'mAgeSrc', (l) =>
+            fillMetaSelect($('mAge'), l, '— select age —')
+        );
+        await fetchCourseVocab('sexes.yaml', 'sexes', 'mSexSrc', (l) =>
+            fillMetaSelect($('mSex'), l, '— select sex —')
+        );
+        await fetchCourseVocab('fly_numbers.yaml', 'fly_numbers', 'mFlyNumSrc', (l) =>
+            fillMetaSelect($('mFlyNum'), l.map(String), '— select fly # —')
+        );
+    } catch (e) {
+        Studio.rawLog('course metadata (age/sex/fly#) check failed: ' + (e && e.message ? e.message : e), 'warn');
     }
 };
 // Kept as the connect-time hook name (arena connect → refresh, now with a MAC).
@@ -5532,6 +5548,40 @@ async function fetchCourseGenotypes() {
         link.title = 'Course genotype list (' + cs.repo.full + '/genotypes.yaml)';
     }
     Studio.rawLog('genotype list from the course repo (' + cs.repo.full + '/genotypes.yaml, ' + list.length + ' entries)', 'info');
+}
+
+// ---- generic course-repo vocab (CLAUDE.md rule: connected repo is the source of
+// truth for metadata; the site library is the offline fallback) ---------------
+// When a course repo is configured AND signed in, load `<file>` (a `<key>:` list)
+// from the repo root, apply(list) into the control, and repoint its ↗ source link.
+// No repo / no token / missing file / empty list ⇒ keep whatever the site-local
+// loader (populateMetaDatalists) already set. Used for age/sex/fly-number; the
+// roster + genotypes have their own (older) copies of this shape above.
+async function fetchCourseVocab(file, key, srcId, apply) {
+    const cs = Studio.courseSettings();
+    const token = ghToken();
+    if (!cs.repo || !token) return; // not connected to a repo — keep the lab list
+    let list;
+    try {
+        const res = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, file, null, token));
+        if (!res.ok) {
+            Studio.rawLog('course ' + key + ': no ' + file + ' in ' + cs.repo.full + ' (HTTP ' + res.status + ') — using the lab list', 'warn');
+            return;
+        }
+        const data = YAML.parse(new TextDecoder().decode(res.bytes));
+        list = (data && data[key]) || [];
+    } catch (e) {
+        Studio.rawLog('course ' + key + ': unreadable — ' + (e && e.message ? e.message : e), 'warn');
+        return;
+    }
+    if (!Array.isArray(list) || !list.length) return;
+    apply(list);
+    const link = $(srcId);
+    if (link) {
+        link.href = courseFileUrl(cs, file);
+        link.title = 'Course ' + key + ' list (' + cs.repo.full + '/' + file + ')';
+    }
+    Studio.rawLog(key + ' list from the course repo (' + cs.repo.full + '/' + file + ', ' + list.length + ' entries)', 'info');
 }
 
 // ---- pattern set / name picker (Console) + Run pattern resolution ----
