@@ -3216,7 +3216,13 @@
     });
 
     // ---- log strip controls ---------------------------------------------------
-    $('logChev').addEventListener('click', () => document.body.classList.toggle('log-collapsed'));
+    // Run log starts COLLAPSED (a first look shouldn't be a wall of transport hex);
+    // opening it is one click on the ▸ chevron, and that choice is remembered here.
+    if (localStorage.getItem('studio_runlog_collapsed') !== '0') document.body.classList.add('log-collapsed');
+    $('logChev').addEventListener('click', () => {
+        const collapsed = document.body.classList.toggle('log-collapsed');
+        localStorage.setItem('studio_runlog_collapsed', collapsed ? '1' : '0');
+    });
     $('btnLogClear').addEventListener('click', () => {
         const box = $('runlogBox');
         box.innerHTML = '<span class="dim">cleared</span>';
