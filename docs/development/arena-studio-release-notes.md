@@ -4,6 +4,16 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.11 — 2026-07-07 · Run log: paired two-color TX/RX lines
+
+- **The run log pairs each command with its reply on one line, in two colors.** Data sent
+  to the controller (TX, ›) is cyan and the reply coming back (RX, ‹) is green, shown
+  together on a single line — more compact and the direction of flow is obvious at a glance.
+  A command with no reply stays on its own line, and non-transport lines (bridge, errors,
+  run events) are unchanged. (Closed-loop FicTrac frames don't flood this log — they go to
+  the bridge's data file; the live oscilloscope view, planned separately, is where you'll
+  watch that stream.)
+
 ## v0.10 — 2026-07-07 · BuckPuck LED-drive command (author LED brightness in %)
 
 - **New `LED drive (% intensity)` protocol command.** Instead of programming the LED with a

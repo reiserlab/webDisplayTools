@@ -295,6 +295,8 @@
   .logbox .l-err{color:var(--danger)}
   .logbox .l-warn{color:var(--warn)}
   .logbox .l-info{color:var(--dim)}
+  .logbox .l-tx{color:#7fd0ff}
+  .logbox .l-rx{color:#9fe8c0}
   .runlog-saved{margin-top:7px;font-size:11px;color:var(--accent);display:none}
   .runlog-saved.show{display:block}
 
@@ -2643,7 +2645,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.10 | 2026-07-07 00:34 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.11 | 2026-07-07 00:41 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2742,6 +2744,50 @@
         box.scrollTop = box.scrollHeight;
     }
     Studio.rawLog = rawLine;
+
+    // ---- paired transport trace ------------------------------------------------
+    // A command (TX ›, cyan) and its reply (RX ‹, green) share ONE line in two
+    // colors — compact, and the direction of flow is obvious. A TX with no reply,
+    // or any non-RX line arriving next, flushes cleanly; a lone RX prints on its
+    // own line. Only the raw 'log' transport events use this; rawLine stays the
+    // general one-line appender (recorded-run events, bridge, errors).
+    let _pendTxLine = null;
+    function logTransport(m) {
+        const box = $('runlogBox');
+        if (!box) return;
+        const isTx = /(^|\s)›|->|tx/i.test(m);
+        const isRx = /(^|\s)‹|<-|rx/i.test(m);
+        // Pair an RX onto the pending TX line (guard against a cleared log box).
+        if (isRx && _pendTxLine && _pendTxLine.parentNode === box) {
+            const sep = document.createElement('span');
+            sep.className = 'l-info';
+            sep.textContent = '   ';
+            const rx = document.createElement('span');
+            rx.className = 'l-rx';
+            rx.textContent = m;
+            _pendTxLine.appendChild(sep);
+            _pendTxLine.appendChild(rx);
+            _pendTxLine = null;
+            box.scrollTop = box.scrollHeight;
+            return;
+        }
+        _pendTxLine = null;
+        if (isTx) {
+            if (box.firstChild && box.firstChild.classList && box.firstChild.classList.contains('dim')) {
+                box.textContent = '';
+            }
+            const div = document.createElement('div');
+            const tx = document.createElement('span');
+            tx.className = 'l-tx';
+            tx.textContent = m;
+            div.appendChild(tx);
+            box.appendChild(div);
+            _pendTxLine = div; // await its reply to pair on the same line
+            box.scrollTop = box.scrollHeight;
+            return;
+        }
+        rawLine(m, isRx ? 'rx' : 'info');
+    }
 
     // ---- unified log: recorded-run stream (run-log.js accumulator) ------------
     function renderRunEvent(ev) {
@@ -3261,10 +3307,7 @@
     if (Studio.session) {
         Studio.session.on('state', refreshState);
         Studio.session.on('runstatus', (s) => Studio.onRunStatus(s));
-        Studio.session.on('log', (m) => {
-            const cls = /(^|\s)‹|<-|rx/i.test(m) ? '' : /(^|\s)›|->|tx/i.test(m) ? '' : 'info';
-            rawLine(m, cls);
-        });
+        Studio.session.on('log', (m) => logTransport(m));
         Studio.session.on('error', (e) => rawLine('error: ' + (e && e.message ? e.message : e), 'err'));
         // FicTrac bridge lifecycle into the unified run log — a run that expects
         // the bridge must not fail SILENTLY when it's absent (bench finding).
