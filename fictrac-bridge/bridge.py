@@ -256,6 +256,17 @@ class Pipeline:
         if not line:
             return
         parts = line.split(",")
+        # Real FicTrac's live UDP/TCP socket output prefixes every record with a
+        # message-type tag — "FT" for a good frame, "FT_BADFR" (or similar) when
+        # it couldn't track — that does NOT appear in offline .dat logs or in
+        # fictrac_sim.py's synthetic output. Strip it before parsing floats; a
+        # non-"FT" tag means a bad/skipped frame with no usable data.
+        tag = parts[0].strip()
+        if tag[:2].upper() == "FT":
+            if tag != "FT":
+                self.skipped += 1
+                return
+            parts = parts[1:]
         try:
             fields = [float(p) for p in parts]
         except ValueError:

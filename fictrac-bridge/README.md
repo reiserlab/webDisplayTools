@@ -96,7 +96,13 @@ sock_port : 60000
 FicTrac's default build emits **UDP** datagrams (`--proto udp`). The alternate
 `SocketRecorder_*.src` build is a **TCP server** (`--proto tcp`). Either way each
 record is the 25-field, comma-separated, newline-terminated line documented in
-FicTrac's `doc/data_header.txt`.
+FicTrac's `doc/data_header.txt` — **prefixed with a message-type tag** (`FT, ` for
+a good frame, `FT_BADFR, ` for one it couldn't track) that only appears on the
+live socket output, not in offline `.dat` logs. `bridge.py` strips the `FT` tag
+and skips `FT_BADFR` frames; `fictrac_sim.py`'s synthetic/generated output has no
+tag (it mirrors the `.dat` format), so it won't catch a regression here — test
+against a real FicTrac capture (or a recording with the tag prepended) if you
+touch this parsing path.
 
 ## WebSocket message schema
 
