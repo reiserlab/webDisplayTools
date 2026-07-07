@@ -98,17 +98,29 @@ Required epoch types:
 
 ## 6. Shared kinematic contract
 
-The dashboard and live oscilloscope must use the same derivation code and defaults:
+The dashboard and live oscilloscope MUST use the same derivation code and defaults.
+**As built (Arena Studio v0.15, 2026-07-07) that code is [`js/kinematics.js`](../../js/kinematics.js)**
+— the dashboard imports the same module; do not fork the math.
 
-- FicTrac heading field: zero-based col 16, radians.
-- FicTrac forward field: zero-based col 19, cumulative radians.
-- Turning velocity: windowed OLS slope of unwrapped heading, converted to deg/s.
-- Forward velocity: windowed OLS slope of integrated forward motion; convert to mm/s
-  only when ball radius is known, otherwise retain rad/s and mark calibration missing.
-- Default velocity window: 0.25 s.
-- Default output grid: 10 Hz for scope; dashboard can also derive at native/sample-aligned
-  resolution but should use the same math for comparable views.
+- Input = the **`behavior_v1`** compact state `[ms, fc, idx, ft, x, y, hd]` (bridge
+  WS frame + logged row; issue #140 comment 4900650706). `x`/`y` = integrated
+  lab-frame position (cols 15/16, rad); `hd` = integrated heading (col 17, rad);
+  `ft` = FicTrac timestamp (col 22) as relative ms — the derivative time base.
+- Turning velocity: OLS slope (live) / central difference (offline) of **unwrapped
+  heading**, → deg/s.
+- Forward velocity: **project dx/dy onto heading** — `forward = (dx·cos h + dy·sin h)/dt`
+  (rad/s), × ball radius ⇒ mm/s when known (else retain rad/s, mark calibration
+  missing). Side velocity = `-dx·sin h + dy·cos h`. This REPLACES the earlier
+  "col-19 integrated forward motion" idea; timing uses `ft` (col 22), **never** col-24
+  `dt` (unrecoverable across a skipped frame — Frank, #143).
+- Offline default derivative = **central differences** (`Kinematics.centralDiff`):
+  `dt_s=(ft[i+1]-ft[i-1])/1000`, `dx=x[i+1]-x[i-1]`, etc.; edges left undefined.
+  Live smoothed trace = **windowed OLS** (`Kinematics.windowedDerived`), default
+  0.25 s window, stamped at the window center.
+- Default output grid: 10 Hz for the scope; the dashboard may also derive at
+  native/sample-aligned resolution but must use the same functions for comparable views.
 - Scope and dashboard use identical channel colors, units, and row order.
+- Fixture tests with known slopes: `tests/test-kinematics.js` (keep both clients honest).
 
 ## 7. Protocol families
 

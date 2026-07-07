@@ -4,6 +4,31 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.15 — 2026-07-07 · Live oscilloscope (watch the fly's behavior during a run)
+
+- **The Run-view dock now offers a live oscilloscope.** A `Log | Scope | —` switch in
+  the dock header flips the bottom pane between the run log and a scrolling, 3-channel
+  scope: **turning rate** (°/s), **forward velocity** (mm/s) and **heading** (°),
+  built up in real time from the FicTrac bridge. It replaces squinting at numbers
+  flying by in the log during closed loop. Read-only, so it's fully available to
+  students in safe mode.
+- **Overlays line up with the traces:** condition boundaries (dashed lines + labels),
+  the visual-stimulus interval (green band), and the LED/opto interval (red band under
+  the traces) — all on the shared time axis.
+- **Controls:** smoothing window (default 0.25 s), time span (10 s / 30 s / 1 min /
+  5 min), fly-on-ball diameter (defaults from the rig's `ball_diameter_mm`, else 9 mm),
+  auto-Y, and clear. Heading is fixed to ±180°; the velocity rows auto-scale.
+- **Same numbers the analysis dashboard will plot.** The live scope and the offline
+  dashboard share one derivation module (`js/kinematics.js`) and one compact data
+  contract (`behavior_v1` = `[ms, fc, idx, ft, x, y, hd]`), so what you watch live is
+  what you'll analyze later — same channels, units, and sign conventions. Forward
+  velocity is computed by projecting the ball's motion onto heading; timing uses the
+  FicTrac frame timestamp (robust to dropped frames).
+- **Bridge:** `pixi run bridge` now forwards those behavioral fields to the browser
+  and logs the compact `behavior_v1` row by default (the full 25-column record stays
+  available via `--log-frames`). Restart the bridge from the current version to get
+  the scope data.
+
 ## v0.14 — 2026-07-07 · Safe mode (student-friendly default; advanced behind a password)
 
 - **The Studio now opens in a locked-down "safe mode" by default.** A plain load shows a

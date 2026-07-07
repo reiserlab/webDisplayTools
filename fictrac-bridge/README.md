@@ -107,7 +107,11 @@ touch this parsing path.
 ## WebSocket message schema
 
 ```
-bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>}
+bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>,
+                    "ms":<int>, "fc":<int>, "idx":<int>, "ft":<ms|null>,
+                    "x":<rad>, "y":<rad>, "hd":<rad>}
+                     (the behavior_v1 fields — ms/fc/idx/ft/x/y/hd — drive the live
+                      oscilloscope; index/seq/t stay for back-compatibility)
                    {"type":"log_export_result", "name":<str>, "content":<str>}
                      (reply to log_export; {"error":<str>} when nothing was written)
 browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
@@ -122,13 +126,22 @@ The bridge always broadcasts the **latest** frame to each client and drops
 superseded indices rather than queuing them, so a slow consumer never builds a
 backlog. A `config` message applies `gain`/`offset`/`frames` immediately and
 re-binds the FicTrac input when `fictrac_port` changes. `log_control{enabled:true}`
-**starts a new timestamped log file** (false closes it; `--log-dir` picks where
-on-demand files land, default CWD). While logging is active the bridge records,
-as JSON lines:
+**starts a new timestamped log file** and re-zeroes the behavior_v1 `ms`/`ft`
+clocks (false closes it; `--log-dir` picks where on-demand files land, default CWD).
+The log is **uniform NDJSON** — one JSON value per line; a reader parses each line
+and dispatches on `Array.isArray` (frame array vs event object). While logging is
+active the bridge records:
 
-- `{"type":"fictrac_frame", "seq":<frame#>, "index":<int>, "t":<ms>}` — **every**
-  FicTrac record it receives (before WS coalescing), independent of whether the
-  browser is applying frames. `--log-frames` adds the full 25-field record.
+- a one-time schema line `{"type":"frame_schema","level":"behavior_v1",
+  "cols":["ms","fc","idx","ft","x","y","hd"]}`, then **every** FicTrac record it
+  receives (before WS coalescing) as the positional array `[ms, fc, idx, ft, x, y, hd]`
+  — `ms` bridge-relative ms, `fc` FicTrac frame counter (col 1), `idx` displayed
+  arena index, `ft` FicTrac timestamp (col 22) as relative ms (**not** col-24 dt,
+  which can't recover elapsed time across a dropped frame), `x`/`y`/`hd` integrated
+  position + heading (rad, 5-decimal). The live scope + offline dashboard recompute
+  every derived channel (turning/forward/side/speed/dir) from this via
+  `js/kinematics.js`. `--log-frames` switches to the full 25-column record
+  (`{"type":"fictrac_frame", ..., "fictrac":[…25…]}`) for debug/archival.
 - inbound browser `log` messages (e.g. `{"event":"arena_command", ...}` for every
   Web Serial command, or Arena Studio's `{"event":"run_metadata", ...}` header
   line at recorded-run start), each stamped with `dir` and `rx_ms`.
@@ -169,7 +182,7 @@ sends it automatically when you load a Mode-3 pattern.
 | `--gain` | `1.8` | Degrees of heading per frame index (360/200); negative reverses. Re-settable live. |
 | `--offset` | `0.0` | Heading offset in degrees. |
 | `--log PATH` | on demand | Append log events (JSONL). If unset, opened when the browser enables logging. |
-| `--log-frames` | off | Also log every outbound frame + source fields. |
+| `--log-frames` | off | Log the FULL 25-column FicTrac record per frame (debug/archival) instead of the default compact `behavior_v1` array `[ms,fc,idx,ft,x,y,hd]`. |
 
 ## Replaying a recorded FicTrac log
 

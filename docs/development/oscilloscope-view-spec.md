@@ -1,6 +1,20 @@
 # Live Oscilloscope View — Specification
 
-**Status:** Spec only — NOT yet implemented. Written for a future session/agent.
+**Status:** ✅ IMPLEMENTED in Arena Studio v0.15 (2026-07-07). As-built notes below.
+
+> **As built (2026-07-07) — the §3 data contract changed.** Per the #140 decision
+> (comment 4900650706) the bridge now forwards + logs the **`behavior_v1`** schema
+> `[ms, fc, idx, ft, x, y, hd]` (not the `heading`/`fwd` set drafted in §3). Forward
+> velocity is derived by **projecting dx/dy onto heading** (from `x`/`y`/`hd`), and
+> the derivative time base is **`ft` = FicTrac col-22 timestamp** (differenced),
+> never col-24 `dt` (Frank, #143). The shared math lives in **`js/kinematics.js`**
+> (`centralDiff` = simple offline central-difference; `windowedDerived` = the
+> smoothed live OLS path) with `tests/test-kinematics.js`. The bridge WS payload and
+> `behavior_v1` log rows are produced in `fictrac-bridge/bridge.py`; the client
+> re-emits a `'sample'` event (`js/fictrac-bridge-client.js`). Everything else below
+> (rows, overlays, dock, autoscale, window/span controls) shipped as written.
+
+**Original spec (design record) follows.**
 **Owner:** Reiser Lab (CSHL course). **Target:** `arena_studio.html` Run view.
 **Related in-flight work:** BuckPuck LED plugin (`LED_AO_drive`), safe mode, run-log
 compaction — see "Interactions" below.

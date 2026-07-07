@@ -17,7 +17,11 @@ Transport roles match real FicTrac (so the same bridge works with fictrac_sim.py
   --proto tcp:           FicTrac's TCP variant is a server; the bridge connects to it.
 
 WebSocket message schema (also documented in README.md):
-  bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>}
+  bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>,
+                      "ms":<int>, "fc":<int>, "idx":<int>, "ft":<ms|null>,
+                      "x":<rad>, "y":<rad>, "hd":<rad>}
+                       (the `behavior_v1` fields drive the live oscilloscope; the
+                        legacy index/seq/t keys are kept for back-compatibility)
                      {"type":"log_export_result", "name":<str>, "content":<str>}
                        (reply to log_export; {"error":<str>} when nothing was written)
   browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
@@ -29,6 +33,17 @@ WebSocket message schema (also documented in README.md):
 
 The FicTrac → frame-index policy lives in frame_index_from_fictrac(); edit that one
 function to change closed-loop behaviour.
+
+FRAME LOGGING has two levels (issue #140), both uniform NDJSON — a reader does one
+JSON.parse() per line and dispatches on Array.isArray (frame array vs event object):
+  - behavior_v1 (DEFAULT): a one-time {"type":"frame_schema","level":"behavior_v1",
+    "cols":["ms","fc","idx","ft","x","y","hd"]} header, then each frame as the
+    positional array [ms, fc, idx, ft, x, y, hd]. Compact behavioral state the live
+    scope + offline dashboard recompute all derived channels from (see js/kinematics.js).
+    ft = FicTrac timestamp (col 22) as relative ms — NOT col-24 dt, which cannot
+    recover elapsed time across a frame dropped before logging (Frank, #143).
+  - full (--log-frames): the whole 25-column record under a "fictrac" key (debug/archival).
+Session/runner events stay JSON objects on their own lines. `minimal` and gzip are deferred.
 """
 
 from __future__ import annotations
@@ -50,6 +65,11 @@ from websockets.exceptions import ConnectionClosed
 # multi-MB payload never kills the socket; sized to match the log_export
 # replies we stream the other way (one experiment log as ONE message).
 WS_MAX_SIZE = 16 * 1024 * 1024
+
+# behavior_v1 — the default logged frame schema (issue #140). Positional-array
+# rows in this column order; the live scope + offline dashboard recompute every
+# derived channel (turning/forward/side/speed/dir) from this compact state.
+BEHAVIOR_V1_COLS = ["ms", "fc", "idx", "ft", "x", "y", "hd"]
 
 
 def now_ms() -> int:
@@ -168,6 +188,10 @@ class LogWriter:
         self._fh = open(name, "a", buffering=1, encoding="utf-8")
         self._name = name
         self._emit({"type": "session", "event": event, "file": name, "ms": now_ms()})
+        # behavior_v1 logs lead with a one-time schema line so the positional
+        # frame arrays are self-describing (full mode stays keyed objects).
+        if not self.log_frames:
+            self._emit({"type": "frame_schema", "level": "behavior_v1", "cols": BEHAVIOR_V1_COLS})
         print(f"[log] writing to {name}", file=sys.stderr)
 
     def start_new_log(self) -> None:
@@ -201,9 +225,11 @@ class LogWriter:
             print(f"[log] export failed for {self._name}: {exc}", file=sys.stderr)
             return None, None
 
-    def _emit(self, obj: dict) -> None:
+    def _emit(self, obj) -> None:
+        # Compact separators are mandatory for the frame rows (issue #140 size
+        # audit) and harmless for event objects — one line per JSON value.
         if self._fh:
-            self._fh.write(json.dumps(obj) + "\n")
+            self._fh.write(json.dumps(obj, separators=(",", ":")) + "\n")
 
     def write_inbound(self, raw: str | bytes) -> None:
         if not self._fh:
@@ -218,16 +244,18 @@ class LogWriter:
         obj.setdefault("rx_ms", now_ms())
         self._emit(obj)
 
-    def write_frame(self, msg: dict, fields: list[float]) -> None:
-        # Store EVERY received FicTrac frame (number + timestamp) whenever logging is
-        # active — regardless of whether the browser is applying frames. --log-frames
-        # additionally records the full 25-field record.
+    def write_frame(self, beh: dict, fields: list[float]) -> None:
+        # Store EVERY received FicTrac frame whenever logging is active — regardless
+        # of whether the browser is applying frames. Default = behavior_v1 positional
+        # array; --log-frames = the full 25-field record (debug/archival).
         if not self._fh:
             return
-        rec = {"type": "fictrac_frame", "seq": msg["seq"], "index": msg["index"], "t": msg["t"]}
         if self.log_frames:
+            rec = {"type": "fictrac_frame", "seq": beh["fc"], "index": beh["idx"], "t": beh["ms"]}
             rec["fictrac"] = fields
-        self._emit(rec)
+            self._emit(rec)
+        else:
+            self._emit([beh[c] for c in BEHAVIOR_V1_COLS])  # [ms, fc, idx, ft, x, y, hd]
 
     def close(self) -> None:
         if self._fh:
@@ -250,6 +278,15 @@ class Pipeline:
         self.offset = offset
         self.parsed = 0
         self.skipped = 0
+        # behavior_v1 relative clocks: `ms` counts bridge wall-clock ms since run
+        # start; `ft` counts FicTrac's own timestamp (col 22) since the first frame.
+        self.t0_ms = now_ms()
+        self.ft0: float | None = None
+
+    def reset_base(self) -> None:
+        """Re-zero the behavior_v1 relative clocks at a run boundary (log start)."""
+        self.t0_ms = now_ms()
+        self.ft0 = None
 
     async def handle_line(self, line: str) -> None:
         line = line.strip()
@@ -277,9 +314,29 @@ class Pipeline:
             return
         self.parsed += 1
         index = frame_index_from_fictrac(fields, self.n_frames, self.gain, self.offset)
-        msg = {"type": "frame", "index": index, "seq": int(fields[0]), "t": now_ms()}
+        # behavior_v1 compact state (issue #140): the live scope + offline dashboard
+        # recompute every derived channel from these. ft = col-22 timestamp
+        # (fields[21]) as relative ms rounded to 0.1 ms — NOT col-24 dt. x/y = lab
+        # integrated position (fields 14/15), hd = integrated heading (field 16),
+        # all rad at fixed 5-decimal precision (small frame-to-frame deltas survive).
+        has_ft = len(fields) > 21
+        if self.ft0 is None and has_ft:
+            self.ft0 = fields[21]
+        ft_rel = round(fields[21] - self.ft0, 1) if (has_ft and self.ft0 is not None) else None
+        beh = {
+            "ms": int(now_ms() - self.t0_ms),
+            "fc": int(fields[0]),
+            "idx": index,
+            "ft": ft_rel,
+            "x": round(fields[14], 5),
+            "y": round(fields[15], 5),
+            "hd": round(fields[16], 5),
+        }
+        # Legacy index/seq/t kept alongside the behavior_v1 fields for back-compat.
+        msg = {"type": "frame", "index": index, "seq": beh["fc"], "t": now_ms()}
+        msg.update(beh)
         await self.hub.publish(msg)
-        self.log.write_frame(msg, fields)
+        self.log.write_frame(beh, fields)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -412,6 +469,7 @@ def make_dispatcher(pipeline: Pipeline, log: LogWriter, inputs: InputManager):
             log.write_inbound(raw)
         elif kind == "log_control":
             if obj.get("enabled"):
+                pipeline.reset_base()  # zero behavior_v1 ms/ft at the run boundary
                 log.start_new_log()  # fresh timestamped file per activation
                 log.write_inbound(raw)
             else:
@@ -493,7 +551,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--offset", type=float, default=0.0, help="heading offset in degrees (default: 0.0)")
     p.add_argument("--log", default=None, help="append browser log events (JSONL) to this file (else opened on demand)")
     p.add_argument("--log-dir", default=None, help="directory for on-demand arena-log-*.jsonl files (default: CWD; created if missing)")
-    p.add_argument("--log-frames", action="store_true", help="also log every outbound frame + source fields")
+    p.add_argument("--log-frames", action="store_true", help="log the FULL 25-column FicTrac record per frame (debug/archival); default logs the compact behavior_v1 array [ms,fc,idx,ft,x,y,hd]")
     args = p.parse_args(argv)
 
     if args.frames <= 0:

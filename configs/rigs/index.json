@@ -7,7 +7,8 @@
       "name": "cshl_g6_2x10_ball",
       "label": "CSHL G6 — 2×10 fly-on-ball (FicTrac)",
       "path": "./configs/rigs/cshl_g6_2x10_ball.yaml",
-      "arena": "G6_2x10"
+      "arena": "G6_2x10",
+      "ball_diameter_mm": 9
     },
     {
       "name": "cshl_g6_2x10",

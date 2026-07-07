@@ -311,6 +311,27 @@
   body.log-collapsed .log-chev::before{content:'▸'}
   .dock-h .acts{margin-left:auto;display:flex;gap:6px;align-items:center}
   .dock-pane{padding:10px 12px;overflow:auto;flex:1;font-size:12px;display:flex;flex-direction:column;min-height:0}
+  /* ===== Bottom dock: Log | Scope | — (oscilloscope-view-spec §2). The dock
+     shows the run Log OR the live Scope OR collapses; all three reuse the strip's
+     resize/collapse machinery. Log ⇄ Scope are mutually-exclusive renderings. ===== */
+  .dock-seg{height:22px}
+  .dock-seg button{padding:0 9px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px}
+  body.dock-scope .dock-pane{display:none}          /* Scope active → hide the log pane */
+  /* Scope needs vertical room for 3 stacked traces — taller default than the log
+     (still user-resizable via the strip's drag handle). */
+  body.dock-scope .run-view .run-log-strip{min-height:260px;max-height:60vh}
+  body:not(.dock-scope) .dock-scope-pane{display:none}
+  body.log-collapsed .dock-scope-pane{display:none} /* collapsed → hide both panes */
+  body.dock-scope .dock-h .log-only{display:none}   /* log-only actions hidden in Scope */
+  .dock-scope-pane{flex:1;min-height:0;display:flex;flex-direction:column;padding:6px 8px 4px}
+  .scope-ctrls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-bottom:4px}
+  .scope-ctrls label{display:flex;align-items:center;gap:4px}
+  .scope-ctrls input[type=number]{width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font-size:11px}
+  .scope-ctrls select{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font-size:11px}
+  .scope-ctrls .pill.on{background:var(--accent);color:#06210f;border-color:var(--accent)}
+  .scope-status{margin-left:auto;font-style:italic}
+  .scope-canvas-wrap{flex:1;min-height:60px;position:relative}
+  #scopeCanvas{width:100%;height:100%;display:block}
   .runlog-head{display:flex;align-items:center;gap:9px;margin-bottom:7px;font-size:11px;flex-wrap:wrap}
   .runlog-head .tag{font-weight:700;border-radius:4px;padding:2px 8px;font-size:10px}
   .runlog-head .tag.exp{background:var(--rec);color:#2a0000}
@@ -2071,16 +2092,19 @@
       <!-- RUN-LOG STRIP -->
       <div class="run-log-strip">
         <div class="dock-h">
-          <button class="log-chev" id="logChev" title="Collapse / expand the run log"></button>
-          <span>Run log</span>
+          <div class="seg dock-seg" id="dockSeg" title="Bottom dock — the run Log, the live Scope (behavior traces), or collapse">
+            <button data-dock="log" class="on" title="Run log — transport + run events">Log</button>
+            <button data-dock="scope" title="Live oscilloscope — turning / forward / heading traces from FicTrac">Scope</button>
+            <button data-dock="collapsed" title="Collapse the dock">—</button>
+          </div>
           <span class="acts">
             <button class="dock-stop" id="btnStopDock">■ STOP</button>
             <button class="pill" id="btnAllOn" title="Quick 'is it wired?' check — turn all LEDs on (ALL_ON 0xFF)">All on</button>
             <button class="pill" id="btnAllOff" title="All off (ALL_OFF 0x00)">All off</button>
-            <button class="pill" id="btnLogClear">Clear</button>
-            <button class="pill" id="btnLogCopy" title="Copy log to clipboard">Copy</button>
-            <button class="pill" id="btnLogSave" title="Download the recorded run log (.json + .txt)" disabled>⬇ Save</button>
-            <button class="pill" id="btnLogPush" title="Push this run's log to the course repo (runlogs/&lt;bench-id&gt;/) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one." disabled>⇪ Push log</button>
+            <button class="pill log-only" id="btnLogClear">Clear</button>
+            <button class="pill log-only" id="btnLogCopy" title="Copy log to clipboard">Copy</button>
+            <button class="pill log-only" id="btnLogSave" title="Download the recorded run log (.json + .txt)" disabled>⬇ Save</button>
+            <button class="pill log-only" id="btnLogPush" title="Push this run's log to the course repo (runlogs/&lt;bench-id&gt;/) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one." disabled>⇪ Push log</button>
           </span>
         </div>
         <div class="dock-pane">
@@ -2090,6 +2114,27 @@
           </div>
           <div class="logbox" id="runlogBox"><span class="dim">No run yet. Click ▶ Run experiment to start a recorded run, or ▶ Test experiment to run un-recorded.</span></div>
           <div class="runlog-saved" id="rlSaved"></div>
+        </div>
+        <!-- SCOPE PANE (oscilloscope-view-spec.md) — a live 3-channel scrolling
+             view of the fly's behavior; same channels/units the offline dashboard
+             plots. Read-only ⇒ fully permitted in safe mode. -->
+        <div class="dock-scope-pane" id="scopePane">
+          <div class="scope-ctrls">
+            <label title="Smoothing window for the velocity traces (windowed least-squares slope, centered). Default 0.25 s.">win <input id="scopeWin" type="number" min="0.05" max="5" step="0.05" value="0.25"> s</label>
+            <label title="Time span shown (the scrolling X range)">span
+              <select id="scopeSpan">
+                <option value="10">10 s</option>
+                <option value="30" selected>30 s</option>
+                <option value="60">1 min</option>
+                <option value="300">5 min</option>
+              </select>
+            </label>
+            <label title="Fly-on-ball diameter (mm) — converts forward velocity to mm/s. Defaults to the rig's ball_diameter_mm, else 9 mm.">ball ⌀ <input id="scopeBallDia" type="number" min="1" max="50" step="0.5" value="9"> mm</label>
+            <button class="pill on" id="scopeAutoY" title="Auto-scale each row's Y axis to its data">auto-Y</button>
+            <button class="pill" id="scopeClear" title="Clear the scope buffer">clear</button>
+            <span class="scope-status" id="scopeStatus">waiting for FicTrac bridge…</span>
+          </div>
+          <div class="scope-canvas-wrap"><canvas id="scopeCanvas"></canvas></div>
         </div>
       </div>
     </div>
@@ -2681,7 +2726,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.14 | 2026-07-07 01:59 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.15 | 2026-07-07 02:32 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2701,6 +2746,7 @@
 <script src="js/studio-meta.js"></script>
 <script src="js/studio-url-state.js"></script>
 <script src="js/studio-runlog-adapter.js"></script>
+<script src="js/kinematics.js"></script> <!-- shared scope/dashboard kinematic derivations -->
 <script src="js/studio-github.js"></script>
 
 <!-- ============================================================ -->
@@ -2869,6 +2915,8 @@
         }
         // forward to the Edit view (timeline "you are here" highlight)
         if (typeof Studio.editRunStatus === 'function') Studio.editRunStatus(s);
+        // feed the live oscilloscope's overlays (condition/visual/LED spans) + run reset
+        if (window.Scope && window.Scope.onRunStatus) window.Scope.onRunStatus(s);
         // feed the recorded-run accumulator
         if (Studio.activeRunLog) {
             const r = Adapter.feedRunStatus(Studio.activeRunLog, s);
@@ -3440,14 +3488,293 @@
         catch (e) { rawLine('all-off error: ' + e.message, 'err'); }
     });
 
+    // ---- Live oscilloscope (Run-view dock; docs/development/oscilloscope-view-spec.md) ----
+    // A scrolling 3-channel scope — turning rate / forward velocity / heading —
+    // derived from the FicTrac bridge's behavior_v1 samples via the SHARED
+    // js/kinematics.js, so the live view and the offline analysis dashboard compute
+    // the SAME channels the SAME way (same names/units/colours/row order). It is
+    // read-only ⇒ fully permitted in safe mode (students watch, can't disrupt).
+    // Time base: the display X axis is the sample `ms` (bridge-relative, which also
+    // aligns the runner/opto overlays); velocity dt comes from `ft` (the FicTrac
+    // col-22 timestamp) inside kinematics — robust to skipped frames.
+    const Scope = (function () {
+        const Kin = window.Kinematics;
+        const ROWS = [
+            { key: 'turning_deg_s', label: 'turning', unit: '°/s', color: '#00e676' },
+            { key: 'forward_mm_s', label: 'forward', unit: 'mm/s', color: '#4aa3ff' },
+            { key: 'heading_deg', label: 'heading', unit: '°', color: '#ffb300', fixed: [-180, 180], wrap: true }
+        ];
+        let canvas = null, ctx = null, cwrap = null, cssW = 0, cssH = 0, dpr = 1;
+        let raw = []; // behavior_v1 samples {ms, ft, x, y, hd, idx, fc}
+        const ov = { cond: [], visual: [], led: [] };
+        let ledOpen = null, visOpen = null;
+        let lastMs = 0, lastWall = 0; // map browser-clock overlay events → sample ms
+        let running = false, rafId = null, subbed = false;
+        const cfg = { windowMs: 250, spanS: 30, ballDiaMm: 9, autoY: true };
+
+        function currentBallDia() {
+            const oride = parseFloat(localStorage.getItem('studio_scope_ball_dia_mm'));
+            if (isFinite(oride) && oride > 0) return oride; // user override wins
+            const rig = Studio.currentRig && Studio.currentRig.ballDiameterMm;
+            if (typeof rig === 'number' && rig > 0) return rig; // rig YAML / index value
+            return 9; // default fly-on-ball diameter (mm)
+        }
+        function applyRigBallDiameter() {
+            cfg.ballDiaMm = currentBallDia();
+            const el = document.getElementById('scopeBallDia');
+            if (el) el.value = cfg.ballDiaMm;
+        }
+        function subscribeBridge() {
+            if (subbed) return;
+            const b = Studio.session && Studio.session.bridge;
+            if (!b || !b.on) return; // bridge not ready — retried on start()
+            b.on('sample', (s) => pushSample(s));
+            subbed = true;
+        }
+        function init() {
+            canvas = document.getElementById('scopeCanvas');
+            cwrap = document.querySelector('.scope-canvas-wrap');
+            if (!canvas) return;
+            ctx = canvas.getContext('2d');
+            const win = document.getElementById('scopeWin');
+            if (win) win.addEventListener('change', () => { const v = parseFloat(win.value); if (isFinite(v) && v > 0) cfg.windowMs = v * 1000; });
+            const span = document.getElementById('scopeSpan');
+            if (span) span.addEventListener('change', () => { cfg.spanS = parseInt(span.value, 10) || 30; });
+            const ball = document.getElementById('scopeBallDia');
+            if (ball) ball.addEventListener('change', () => {
+                const v = parseFloat(ball.value);
+                if (isFinite(v) && v > 0) { localStorage.setItem('studio_scope_ball_dia_mm', String(v)); cfg.ballDiaMm = v; }
+            });
+            const auto = document.getElementById('scopeAutoY');
+            if (auto) auto.addEventListener('click', () => { cfg.autoY = !cfg.autoY; auto.classList.toggle('on', cfg.autoY); });
+            const clr = document.getElementById('scopeClear');
+            if (clr) clr.addEventListener('click', reset);
+            applyRigBallDiameter();
+            subscribeBridge();
+        }
+        function pushSample(s) {
+            if (!s || !isFinite(s.hd)) return;
+            const ms = typeof s.ms === 'number' ? s.ms : raw.length ? raw[raw.length - 1].ms + 10 : 0;
+            const ft = typeof s.ft === 'number' ? s.ft : ms;
+            raw.push({ ms, ft, x: +s.x || 0, y: +s.y || 0, hd: +s.hd, idx: s.idx, fc: s.fc });
+            lastMs = ms;
+            lastWall = Date.now();
+            if (raw.length > 250000) raw.splice(0, raw.length - 250000); // memory backstop (~20 min @ 200 Hz)
+        }
+        // Overlay events arrive on the browser clock; map them onto the sample `ms`
+        // axis via the latest sample's correspondence (accurate to ~1 frame).
+        function overlayMs() {
+            return raw.length ? lastMs + (Date.now() - lastWall) : 0;
+        }
+        function reset() {
+            raw = [];
+            ov.cond = []; ov.visual = []; ov.led = [];
+            ledOpen = null; visOpen = null; lastMs = 0;
+        }
+        function onRunStatus(s) {
+            if (!s || !s.phase) return;
+            if (s.phase === 'sequence-start') { reset(); return; }
+            const t = overlayMs();
+            if (s.phase === 'step-start') {
+                const nm = (s.step && (s.step.conditionName || s.step.label)) || 'step ' + ((s.index || 0) + 1);
+                ov.cond.push({ ms: t, label: nm });
+                if (visOpen) { visOpen.endMs = t; visOpen = null; } // close prior open visual span
+            } else if (s.phase === 'command') {
+                if (s.op === 'trialParams') {
+                    const dur = typeof s.value === 'number' ? s.value : null; // durationSec
+                    visOpen = { startMs: t, endMs: dur != null ? t + dur * 1000 : null };
+                    ov.visual.push(visOpen);
+                } else if (s.op === 'setAnalogOut') {
+                    // LED (BuckPuck) drive: mv>0 opens a red box, mv==0 closes it.
+                    const mv = typeof s.value === 'number' ? s.value : 0;
+                    if (mv > 0) { if (!ledOpen) { ledOpen = { startMs: t, endMs: null }; ov.led.push(ledOpen); } }
+                    else if (ledOpen) { ledOpen.endMs = t; ledOpen = null; }
+                }
+            } else if (s.phase === 'sequence-complete' || s.phase === 'aborted') {
+                if (ledOpen) { ledOpen.endMs = t; ledOpen = null; }
+                if (visOpen) { visOpen.endMs = t; visOpen = null; }
+            }
+        }
+        function sizeCanvas() {
+            if (!canvas || !cwrap) return false;
+            dpr = window.devicePixelRatio || 1;
+            const w = cwrap.clientWidth, h = cwrap.clientHeight;
+            if (w <= 0 || h <= 0) return false;
+            if (w !== cssW || h !== cssH) {
+                cssW = w; cssH = h;
+                canvas.width = Math.round(w * dpr);
+                canvas.height = Math.round(h * dpr);
+            }
+            return true;
+        }
+        function fmt(v) {
+            if (v == null || !isFinite(v)) return '–';
+            const a = Math.abs(v);
+            return a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : v.toFixed(2);
+        }
+        function computeSeries(t0, t1) {
+            const step = 100; // 10 Hz output grid
+            const ballR = Kin.ballRadiusMm(cfg.ballDiaMm);
+            const out = { turning_deg_s: [], forward_mm_s: [], heading_deg: [] };
+            const start = Math.ceil(t0 / step) * step;
+            const end = t1 - cfg.windowMs / 2; // only fully-centred points (spec §4)
+            for (let c = start; c <= end; c += step) {
+                const d = Kin.windowedDerived(raw, c, { windowMs: cfg.windowMs, ballRadiusMm: ballR });
+                out.turning_deg_s.push(d ? { ms: c, v: d.turning_deg_s } : null);
+                out.forward_mm_s.push(d ? { ms: c, v: d.forward_mm_s } : null);
+                out.heading_deg.push(d ? { ms: c, v: d.heading_deg } : null);
+            }
+            return out;
+        }
+        function lastFinite(pts) {
+            for (let i = pts.length - 1; i >= 0; i--) if (pts[i] && isFinite(pts[i].v)) return pts[i].v;
+            return null;
+        }
+        function render() {
+            if (!sizeCanvas()) return;
+            const W = cssW, H = cssH;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, W, H);
+            const padL = 46, padR = 8, padT = 14, ledH = 9, xAxisH = 12;
+            const plotW = Math.max(10, W - padL - padR);
+            const plotTop = padT, plotBottom = H - ledH - xAxisH, plotH = Math.max(30, plotBottom - plotTop);
+            const gap = 6, rowH = (plotH - 2 * gap) / 3;
+            const tNow = raw.length ? raw[raw.length - 1].ms : 0;
+            const spanMs = cfg.spanS * 1000, t0 = tNow - spanMs, t1 = tNow;
+            const xOf = (ms) => padL + ((ms - t0) / spanMs) * plotW;
+            const clipX = (ms) => Math.max(padL, Math.min(padL + plotW, xOf(ms)));
+            const statusEl = document.getElementById('scopeStatus');
+            const b = Studio.session && Studio.session.bridge;
+            if (statusEl) {
+                statusEl.textContent = raw.length
+                    ? 'FicTrac ' + ((b && b.stats && b.stats.rateHz) || 0) + ' Hz · ' + raw.length + ' samples · ⌀' + cfg.ballDiaMm + ' mm'
+                    : b && b.connected
+                        ? 'bridge up — waiting for FicTrac frames…'
+                        : 'waiting for FicTrac bridge (Console → FicTrac, then run closed-loop)';
+            }
+            const series = raw.length ? computeSeries(t0, t1) : null;
+            // visual (green) spans behind the rows
+            ov.visual.forEach((v) => {
+                const e = v.endMs != null ? v.endMs : t1;
+                if (e < t0 || v.startMs > t1) return;
+                const x0 = clipX(v.startMs), x1 = clipX(e);
+                ctx.fillStyle = 'rgba(0,230,118,0.10)';
+                ctx.fillRect(x0, plotTop, Math.max(1, x1 - x0), plotH);
+            });
+            ROWS.forEach((row, i) => drawRow(row, series ? series[row.key] : null, plotTop + i * (rowH + gap), rowH, padL, plotW, xOf));
+            // condition boundaries (dashed vertical + label at top)
+            ctx.setLineDash([3, 3]);
+            ov.cond.forEach((c) => {
+                if (c.ms < t0 || c.ms > t1) return;
+                const x = xOf(c.ms);
+                ctx.strokeStyle = 'rgba(230,237,243,0.30)'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, plotBottom); ctx.stroke();
+                ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace'; ctx.textAlign = 'left';
+                ctx.fillText(String(c.label).slice(0, 18), x + 2, plotTop - 4);
+            });
+            ctx.setLineDash([]);
+            // LED (red) band under the rows
+            const ledY = plotBottom + 2;
+            ctx.fillStyle = '#8b949e'; ctx.font = '8px monospace'; ctx.textAlign = 'right';
+            ctx.fillText('LED', padL - 3, ledY + ledH - 1);
+            ov.led.forEach((l) => {
+                const e = l.endMs != null ? l.endMs : t1;
+                if (e < t0 || l.startMs > t1) return;
+                const x0 = clipX(l.startMs), x1 = clipX(e);
+                ctx.fillStyle = 'rgba(255,64,64,0.6)';
+                ctx.fillRect(x0, ledY, Math.max(1, x1 - x0), ledH - 2);
+            });
+            // x-axis time ticks (seconds relative to now)
+            ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+            const tickStep = cfg.spanS <= 10 ? 2 : cfg.spanS <= 30 ? 5 : cfg.spanS <= 60 ? 10 : 60;
+            for (let s = 0; s <= cfg.spanS; s += tickStep) {
+                const x = xOf(t1 - s * 1000);
+                if (x < padL - 1) continue;
+                ctx.fillText('-' + s + 's', x, H - 2);
+            }
+        }
+        function drawRow(row, pts, top, h, padL, plotW, xOf) {
+            const bottom = top + h;
+            ctx.strokeStyle = 'rgba(45,54,64,0.9)'; ctx.lineWidth = 1;
+            ctx.strokeRect(padL, top, plotW, h);
+            let lo, hi;
+            if (row.fixed) { lo = row.fixed[0]; hi = row.fixed[1]; }
+            else {
+                let mx = 1e-6;
+                if (pts) pts.forEach((p) => { if (p && isFinite(p.v)) mx = Math.max(mx, Math.abs(p.v)); });
+                mx *= 1.1;
+                lo = -mx; hi = mx;
+            }
+            const yOf = (v) => bottom - ((v - lo) / (hi - lo)) * h;
+            if (lo < 0 && hi > 0) {
+                ctx.strokeStyle = 'rgba(139,148,158,0.22)';
+                ctx.beginPath(); ctx.moveTo(padL, yOf(0)); ctx.lineTo(padL + plotW, yOf(0)); ctx.stroke();
+            }
+            if (pts) {
+                ctx.strokeStyle = row.color; ctx.lineWidth = 1.4; ctx.beginPath();
+                let pen = false, prev = null;
+                pts.forEach((p) => {
+                    if (!p || !isFinite(p.v)) { pen = false; prev = null; return; }
+                    if (row.wrap && prev != null && Math.abs(p.v - prev) > 180) pen = false; // break across the ±180 seam
+                    const x = xOf(p.ms), y = yOf(p.v);
+                    if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
+                    prev = p.v;
+                });
+                ctx.stroke();
+            }
+            ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+            ctx.fillText(fmt(hi), padL - 3, top + 8);
+            ctx.fillText(fmt(lo), padL - 3, bottom - 2);
+            const cur = pts ? lastFinite(pts) : null;
+            ctx.fillStyle = row.color; ctx.font = '10px monospace'; ctx.textAlign = 'left';
+            ctx.fillText(row.label + (cur != null ? '  ' + fmt(cur) + ' ' + row.unit : '  ' + row.unit), padL + 4, top + 10);
+        }
+        function loop() {
+            if (!running) return;
+            render();
+            rafId = requestAnimationFrame(loop);
+        }
+        function start() {
+            subscribeBridge();
+            if (running) return;
+            running = true;
+            loop();
+        }
+        function stop() {
+            running = false;
+            if (rafId) cancelAnimationFrame(rafId);
+            rafId = null;
+        }
+        return { init, start, stop, reset, pushSample, onRunStatus, applyRigBallDiameter };
+    })();
+    window.Scope = Scope;
+    Scope.init();
+
+    // ---- bottom dock: Log | Scope | — (oscilloscope-view-spec §2) -------------
+    // The dock shows the run Log, the live Scope, or collapses (reusing the strip's
+    // resize/collapse machinery). Log ⇄ Scope are mutually-exclusive renderings; it
+    // starts collapsed (a first look shouldn't be a wall of transport hex).
+    function setDockView(view) {
+        if (view !== 'log' && view !== 'scope' && view !== 'collapsed') view = 'log';
+        Studio.dockView = view;
+        document.body.classList.toggle('log-collapsed', view === 'collapsed');
+        document.body.classList.toggle('dock-scope', view === 'scope');
+        document.querySelectorAll('#dockSeg button').forEach((b) => b.classList.toggle('on', b.dataset.dock === view));
+        localStorage.setItem('studio_dock_view', view);
+        if (view === 'scope') Scope.start(); else Scope.stop();
+    }
+    Studio.setDockView = setDockView;
+    document.querySelectorAll('#dockSeg button').forEach((b) => b.addEventListener('click', () => setDockView(b.dataset.dock)));
+    (function initDockView() {
+        // Remembered dock view, else migrate the legacy runlog-collapsed flag.
+        let v = localStorage.getItem('studio_dock_view');
+        if (v !== 'log' && v !== 'scope' && v !== 'collapsed') {
+            v = localStorage.getItem('studio_runlog_collapsed') === '0' ? 'log' : 'collapsed';
+        }
+        setDockView(v);
+    })();
+
     // ---- log strip controls ---------------------------------------------------
-    // Run log starts COLLAPSED (a first look shouldn't be a wall of transport hex);
-    // opening it is one click on the ▸ chevron, and that choice is remembered here.
-    if (localStorage.getItem('studio_runlog_collapsed') !== '0') document.body.classList.add('log-collapsed');
-    $('logChev').addEventListener('click', () => {
-        const collapsed = document.body.classList.toggle('log-collapsed');
-        localStorage.setItem('studio_runlog_collapsed', collapsed ? '1' : '0');
-    });
     $('btnLogClear').addEventListener('click', () => {
         const box = $('runlogBox');
         box.innerHTML = '<span class="dim">cleared</span>';
@@ -4567,6 +4894,7 @@ async function populateSessionRig() {
         o.value = r.name;
         o.textContent = r.label || r.name;
         o.dataset.arena = r.arena || '';
+        o.dataset.ball = r.ball_diameter_mm != null ? r.ball_diameter_mm : ''; // fly-on-ball ⌀ (mm) for the scope
         sel.appendChild(o);
     });
     sel.addEventListener('change', () => setSessionRig(sel.value, { explicit: true }));
@@ -4601,14 +4929,17 @@ function setSessionRig(rigName, opts) {
         return false;
     }
     sel.value = rigName;
+    const ballDia = parseFloat(opt.dataset.ball);
     Studio.currentRig = {
         name: opt.value,
         arenaConfig: opt.dataset.arena || null,
+        ballDiameterMm: isFinite(ballDia) && ballDia > 0 ? ballDia : null, // fly-on-ball ⌀ for the scope
         explicit: o.explicit ? true : !!(cur && cur.explicit)
     };
     invalidateRigIo();
     renderRigIoMenu();
     updateIspShowUI(); // the batch progress map needs a 20-panel layout
+    if (window.Scope && window.Scope.applyRigBallDiameter) window.Scope.applyRigBallDiameter(); // scope forward-velocity calibration
     Studio.refreshState(); // device line + mismatch chip
     Studio.updateUrl({ push: false }); // rig identity → replace, never push (#107 rules)
     return true;
