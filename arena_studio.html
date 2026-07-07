@@ -359,6 +359,7 @@
   .scope-status{margin-left:auto;font-style:italic}
   .scope-canvas-wrap{flex:1;min-height:60px;position:relative}
   #scopeCanvas{width:100%;height:100%;display:block}
+  .scope-tip{position:absolute;pointer-events:none;background:rgba(15,20,25,0.96);border:1px solid var(--border);color:var(--text);font:11px/1.35 monospace;padding:2px 7px;border-radius:4px;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:6;box-shadow:0 4px 14px rgba(0,0,0,.5)}
   .runlog-head{display:flex;align-items:center;gap:9px;margin-bottom:7px;font-size:11px;flex-wrap:wrap}
   .runlog-head .tag{font-weight:700;border-radius:4px;padding:2px 8px;font-size:10px}
   .runlog-head .tag.exp{background:var(--rec);color:#2a0000}
@@ -2804,7 +2805,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.35 | 2026-07-07 19:15 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.36 | 2026-07-07 19:33 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3701,6 +3702,7 @@
         let ledOpen = null, visOpen = null;
         let lastMs = 0, lastWall = 0; // map browser-clock overlay events → sample ms
         let running = false, rafId = null, subbed = false;
+        let lastGeom = null, tipEl = null; // last render's x-mapping + hover tooltip
         const cfg = { windowMs: 250, spanS: 30, ballDiaMm: 9, autoY: true };
         // Held per-row Y ranges: while auto-Y is ON each render restores the row's
         // scale from its data and re-stores it here; when auto-Y is OFF the trace
@@ -3747,8 +3749,32 @@
             if (auto) auto.addEventListener('click', () => { cfg.autoY = !cfg.autoY; auto.classList.toggle('on', cfg.autoY); });
             const clr = document.getElementById('scopeClear');
             if (clr) clr.addEventListener('click', reset);
+            // Hover-to-reveal: the trial-name labels are truncated/thinned, so hovering
+            // the plot shows the FULL condition name for whichever trial the cursor is
+            // within (looked up from the last render's x-mapping).
+            canvas.addEventListener('mousemove', onHover);
+            canvas.addEventListener('mouseleave', () => { if (tipEl) tipEl.style.display = 'none'; });
             applyRigBallDiameter();
             subscribeBridge();
+        }
+        function onHover(e) {
+            if (!lastGeom || !ov.cond.length || !cwrap) { if (tipEl) tipEl.style.display = 'none'; return; }
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const g = lastGeom;
+            if (mx < g.padL || mx > g.padL + g.plotW) { if (tipEl) tipEl.style.display = 'none'; return; }
+            const mt = g.t0 + ((mx - g.padL) / g.plotW) * g.spanMs; // cursor time (ms)
+            // the trial the cursor is within = latest boundary at/before the cursor time
+            let best = null;
+            for (const c of ov.cond) { if (c.ms <= mt && (!best || c.ms > best.ms)) best = c; }
+            if (!best) { if (tipEl) tipEl.style.display = 'none'; return; }
+            if (!tipEl) { tipEl = document.createElement('div'); tipEl.className = 'scope-tip'; cwrap.appendChild(tipEl); }
+            tipEl.textContent = best.label;
+            tipEl.style.display = 'block';
+            // keep the tip inside the wrap
+            const maxLeft = cwrap.clientWidth - tipEl.offsetWidth - 4;
+            tipEl.style.left = Math.max(2, Math.min(mx + 10, maxLeft)) + 'px';
+            tipEl.style.top = '2px';
         }
         function pushSample(s) {
             if (!s || !isFinite(s.hd)) return;
@@ -3946,6 +3972,8 @@
                 if (x < padL - 1) continue;
                 ctx.fillText('-' + s + 's', x, H - 3);
             }
+            // Stash the x-mapping so the hover handler can hit-test trial boundaries.
+            lastGeom = { padL, plotW, t0, spanMs, t1 };
         }
         function drawRow(row, pts, top, h, padL, plotW, xOf) {
             const bottom = top + h;

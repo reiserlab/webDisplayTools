@@ -4,6 +4,12 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.36 — 2026-07-07 · Scope: hover to reveal full trial name
+
+- **Hover the scope to reveal the full condition name** for whichever trial the cursor
+  is over — the header labels are truncated/thinned for space, so this recovers the
+  complete name on demand without cluttering the plot.
+
 ## v0.35 — 2026-07-07 · Scope label layout polish
 
 - **Live value readouts (turning / forward / heading) moved to the bottom of each
