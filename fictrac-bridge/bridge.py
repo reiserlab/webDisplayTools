@@ -70,6 +70,13 @@ from websockets.exceptions import ConnectionClosed
 # replies we stream the other way (one experiment log as ONE message).
 WS_MAX_SIZE = 16 * 1024 * 1024
 
+# Bridge build tag. Bump when the wire/log schema changes so a rig can confirm at a
+# glance which bridge it's running: `pixi run bridge -- --version` prints it, and it
+# leads the startup banner. (An OLD bridge has no --version flag → argparse errors,
+# which is itself the tell.) "behavior_v1" here means frames carry ms/fc/idx/ft/x/y/hd
+# with `ft` normalized ns→ms — i.e. the live scope + dashboard will work.
+BRIDGE_VERSION = "2.0 · behavior_v1 (ns→ms ft, x/y/hd frames)"
+
 # behavior_v1 — the default logged frame schema (issue #140). Positional-array
 # rows in this column order; the live scope + offline dashboard recompute every
 # derived channel (turning/forward/side/speed/dir) from this compact state.
@@ -561,8 +568,8 @@ async def run(args: argparse.Namespace) -> None:
     async with serve(hub.serve_client, args.ws_host, args.ws_port, max_size=WS_MAX_SIZE):
         print(
             f"[ws] serving ws://{args.ws_host}:{args.ws_port}  "
-            f"(proto={args.proto}, fictrac_port={args.in_port}, frames={args.frames}, "
-            f"gain={args.gain:g}, log={args.log or 'on-demand'})",
+            f"(bridge {BRIDGE_VERSION}; proto={args.proto}, fictrac_port={args.in_port}, "
+            f"frames={args.frames}, gain={args.gain:g}, log={args.log or 'on-demand'})",
             file=sys.stderr,
         )
         await stop.wait()
@@ -579,6 +586,9 @@ async def run(args: argparse.Namespace) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    # An OLD bridge lacks this flag, so `pixi run bridge -- --version` erroring with
+    # "unrecognized arguments: --version" is itself proof the checkout is stale.
+    p.add_argument("--version", action="version", version=f"fictrac-bridge {BRIDGE_VERSION}")
     p.add_argument("--proto", choices=("udp", "tcp"), default="udp", help="FicTrac transport (default: udp)")
     p.add_argument("--in-host", default="127.0.0.1", help="FicTrac source: UDP bind / TCP connect host (default: 127.0.0.1)")
     p.add_argument("--in-port", type=int, default=60000, help="FicTrac source port; re-bindable from the browser (default: 60000)")
