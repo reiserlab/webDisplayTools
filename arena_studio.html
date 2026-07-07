@@ -4933,7 +4933,10 @@ async function renderPatThumb(name) {
                 iconOpts: { width: 48, height: 48, backgroundColor: '#141a20', innerRadiusRatio: 0.4, padding: 2, showGaps: false, showOutlines: false }
             });
             patPreviewCache[name] = sampled;
-            p.preview = { frames: (sampled.frames || []).length };
+            // preview.frames must be the TRUE pattern frame count (the Mode-3 index
+            // modulus the closed-loop bridge needs), NOT the ≤10 sampled-thumbnail
+            // count — the closed-loop resolver reads this (patternFramesByName).
+            p.preview = { frames: parsed.numFrames };
         }
         if (!sampled.frames || !sampled.frames.length) return;
         const img = document.createElement('img');

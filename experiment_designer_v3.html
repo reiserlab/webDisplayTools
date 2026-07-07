@@ -1589,7 +1589,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.40 | <span id="footerTimestamp">2026-07-01 15:09 ET</span>
+        v3 Experiment Designer v0.41 | <span id="footerTimestamp">2026-07-06 23:40 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -5364,7 +5364,11 @@
         // modulus the bridge needs) from the active web set.
         function resolvePatternFramesForCmd(cmd) {
             const it = activeSetItemByName(cmd && cmd.pattern);
-            return it && Number.isFinite(it.frames) ? it.frames : null;
+            // TRUE frame count = the parsed .pat's numFrames (the Mode-3 index modulus
+            // the closed-loop bridge needs). A set item has no top-level `.frames` —
+            // reading it always yielded null, so no correct modulus reached the bridge.
+            const n = it && it.parsed ? it.parsed.numFrames : null;
+            return Number.isFinite(n) ? n : null;
         }
 
         // Push the panel's FicTrac config (port/gain) to the bridge.
