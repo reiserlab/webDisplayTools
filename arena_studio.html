@@ -2804,7 +2804,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.32 | 2026-07-07 18:22 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.33 | 2026-07-07 18:31 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3842,7 +3842,7 @@
             const W = cssW, H = cssH;
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.clearRect(0, 0, W, H);
-            const padL = 52, padR = 8, padT = 18, xAxisH = 16;
+            const padL = 52, padR = 8, padT = 30, xAxisH = 16;
             const plotW = Math.max(10, W - padL - padR);
             const plotTop = padT, plotBottom = H - xAxisH, plotH = Math.max(30, plotBottom - plotTop);
             const gap = 6, rowH = (plotH - 2 * gap) / 3;
@@ -3890,24 +3890,52 @@
                 const x0 = clipX(l.startMs), x1 = clipX(e);
                 ctx.fillStyle = 'rgba(255,64,140,0.15)';
                 ctx.fillRect(x0, plotTop, Math.max(1, x1 - x0), plotH);
-                // LED power/level label at the top of the box (e.g. "50%").
+                // LED power/level label at the top of the box (e.g. "50%") — the
+                // pink box already says it's the LED, so just the level reads cleaner.
                 if (l.label) {
                     ctx.fillStyle = 'rgba(255,120,170,0.95)';
                     ctx.font = 'bold 11px monospace';
                     ctx.textAlign = 'left';
-                    ctx.fillText('LED ' + l.label, x0 + 3, plotTop + 11);
+                    ctx.fillText(l.label, x0 + 3, plotTop + 11);
                 }
             });
             // ── DATA ROWS ────────────────────────────────────────────────────
             ROWS.forEach((row, i) => drawRow(row, series ? series[row.key] : null, plotTop + i * (rowH + gap), rowH, padL, plotW, xOf));
-            // ── TRIAL BOUNDARIES: bright white, solid, a touch thicker, on top ─
+            // ── TRIAL BOUNDARIES: bright white lines (always) + names in a 2-row
+            //    header lane. The line always marks WHERE a trial starts; the name
+            //    is drawn only when it won't overlap the previous name in its row,
+            //    so names thin out gracefully as the span grows instead of colliding
+            //    into an unreadable smear. Two staggered rows + a dark backing let
+            //    ~2× as many names show, legibly, before thinning kicks in.
+            ctx.lineWidth = 2;
             ov.cond.forEach((c) => {
                 if (c.ms < t0 || c.ms > t1) return;
                 const x = xOf(c.ms);
-                ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.lineWidth = 2;
+                ctx.strokeStyle = 'rgba(255,255,255,0.92)';
                 ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, plotBottom); ctx.stroke();
-                ctx.fillStyle = '#e6edf3'; ctx.font = '11px monospace'; ctx.textAlign = 'left';
-                ctx.fillText(String(c.label).slice(0, 18), x + 3, plotTop - 5);
+            });
+            // labels in a separate pass so lines never draw over a backing box
+            ctx.font = 'bold 11px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+            const laneY = [plotTop - 18, plotTop - 5]; // two stacked rows above the plot
+            const laneRight = [-Infinity, -Infinity];  // right edge of last label per row
+            ov.cond.forEach((c) => {
+                if (c.ms < t0 || c.ms > t1) return;
+                const x = xOf(c.ms);
+                let txt = String(c.label);
+                if (txt.length > 16) txt = txt.slice(0, 15) + '…';
+                const tw = ctx.measureText(txt).width;
+                const left = x + 3;
+                // pick the first row whose last label has cleared this x (+6 px gap)
+                let row = -1;
+                if (left > laneRight[0] + 6) row = 0;
+                else if (left > laneRight[1] + 6) row = 1;
+                if (row < 0) return; // both rows busy here → skip (line still marks it)
+                const y = laneY[row];
+                ctx.fillStyle = 'rgba(15,20,25,0.82)';
+                ctx.fillRect(left - 1, y - 9, tw + 4, 12);
+                ctx.fillStyle = '#e6edf3';
+                ctx.fillText(txt, left + 1, y);
+                laneRight[row] = left + tw;
             });
             // ── x-axis time ticks (seconds relative to now) ───────────────────
             ctx.fillStyle = '#8b949e'; ctx.font = '11px monospace'; ctx.textAlign = 'center';

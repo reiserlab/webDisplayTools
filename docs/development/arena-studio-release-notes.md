@@ -4,6 +4,17 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.33 — 2026-07-07 · Readable scope overlay labels
+
+- **LED label is just the level** — the pink opto-stim box now reads `25%` instead of
+  `LED 25%` (the box already says it's the LED).
+- **Trial-name labels no longer collide.** At longer spans (30 s, 1/2/5 min) the
+  condition names used to overlap into an unreadable smear. Now: the white boundary
+  line always marks where each trial starts; names are drawn in a **two-row header
+  lane** and **only when they won't overlap the previous name**, so they thin out
+  gracefully as the span grows. Long names are truncated with an ellipsis and get a
+  dark backing for contrast.
+
 ## v0.32 — 2026-07-07 · Run-time estimate self-calibrates
 
 - **The projected finish time now learns from your runs.** v0.31 added a fixed
