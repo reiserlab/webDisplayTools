@@ -2643,7 +2643,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.9 | 2026-07-07 00:03 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.10 | 2026-07-07 00:34 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -5725,7 +5725,7 @@ function condChips(cond) {
         if (dur) chips.push('<span class="kchip dur">' + dur + ' s</span>');
     }
     const hasIO = (cond.commands || []).some(
-        (c) => c.type === 'controller' && (c.command_name === 'setAnalogOut' || c.command_name === 'setDigitalOut')
+        (c) => c.type === 'controller' && (c.command_name === 'setAnalogOut' || c.command_name === 'setDigitalOut' || c.command_name === 'ledDrive')
     );
     if (hasIO) chips.push('<span class="kchip io">AO/DO</span>');
     return chips.join('');
@@ -11101,7 +11101,7 @@ async function initFromUrl() {
             card.appendChild(actions);
 
             const detailKeys = {
-                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'posX', 'mv', 'channel', 'state'],
+                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'posX', 'mv', 'percent', 'channel', 'state'],
                 wait: ['duration'],
                 plugin: []
             }[cmd.type] || [];

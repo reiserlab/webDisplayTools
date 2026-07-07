@@ -66,8 +66,9 @@ const KNOWN_COMMAND_KEYS_BY_TYPE = {
         'frame_rate',
         'gain',
         'posX',
-        // G6-only I/O commands (setAnalogOut / setDigitalOut)
+        // G6-only I/O commands (setAnalogOut / setDigitalOut / ledDrive)
         'mv',
+        'percent',
         'channel',
         'state'
     ],
@@ -79,7 +80,7 @@ const KNOWN_COMMAND_KEYS_BY_TYPE = {
 // plugin-registry's G6_ONLY_COMMANDS (authoritative source) — duplicated on
 // purpose because this module stays plugin-registry-agnostic. Used by
 // collectExportWarnings to soft-warn when such a command targets a non-G6 arena.
-const G6_ONLY_COMMAND_NAMES = ['setAnalogOut', 'setDigitalOut'];
+const G6_ONLY_COMMAND_NAMES = ['setAnalogOut', 'setDigitalOut', 'ledDrive'];
 
 const KNOWN_PLUGIN_KEYS = [
     'name',

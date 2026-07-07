@@ -4117,6 +4117,44 @@ console.log('\n--- Suite 33: G6-only analog/digital output commands ---');
     checkTrue('33.19: setDigitalOut has no duration field', dOn && dOn.duration === undefined);
 }
 
+// ─── Suite 33b: ledDrive (BuckPuck LED %) roundtrip + g6-only ───────────────
+// ledDrive is a G6-only controller command taking a `percent` (0–100); the
+// runner maps % → control voltage → SET_AO_VOLTAGE. Here we only assert the
+// authoring/YAML contract: `percent` is a first-class key that survives
+// generate → parse and that ledDrive warns g6-only off a G6 arena. (Built on the
+// known-good g6_io fixture so we don't hand-author YAML or touch a shared file.)
+console.log('\n--- Suite 33b: ledDrive (BuckPuck LED %) ---');
+{
+    // Author ledDrive INTO the YAML text (so the parsed doc + object both carry
+    // it) rather than mutating the projection — generate serializes from the doc.
+    const text =
+        readFixture('v3_g6_io.yaml').trimEnd() +
+        '\n' +
+        '      - type: "controller"\n' +
+        '        command_name: "ledDrive"\n' +
+        '        percent: 62.5\n';
+    const exp1 = parseV3Protocol(text);
+    const regen = generateV3Protocol(exp1);
+    const exp2 = parseV3Protocol(regen);
+    const led = exp2.conditions[0].commands.find((c) => c.command_name === 'ledDrive');
+
+    checkTrue('33b.1: ledDrive roundtrips through generate → parse', !!led);
+    check('33b.2: percent preserved', led && led.percent, 62.5);
+    checkTrue(
+        '33b.3: percent is a first-class key (not swallowed as unknown)',
+        led && !(led._unknownKeys && 'percent' in led._unknownKeys)
+    );
+    checkTrue('33b.4: percent survives in regen YAML', /percent:\s*62\.5/.test(regen));
+    checkTrue('33b.5: ledDrive has no duration field', led && led.duration === undefined);
+
+    const ledWarns = (gen) =>
+        collectExportWarnings(exp1, gen).warnings.filter(
+            (x) => x.kind === 'g6-only-command' && x.name === 'ledDrive'
+        );
+    check('33b.6: ledDrive warns g6-only on G4.1', ledWarns('G4.1').length, 1);
+    check('33b.7: no ledDrive g6-only warning on G6', ledWarns('G6').length, 0);
+}
+
 // ─── Suite 34: negative frame_rate = Mode-2 reverse (fw ee74c33, fw #4) ─────
 console.log('\n--- Suite 34: negative frame_rate (Mode-2 reverse playback) ---');
 {

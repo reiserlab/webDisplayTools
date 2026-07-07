@@ -157,8 +157,44 @@ var ArenaRunnerG6 = (function () {
         'stopDisplay',
         'setPositionX',
         'setAnalogOut',
-        'setDigitalOut'
+        'setDigitalOut',
+        'ledDrive'
     ];
+
+    // BuckPuck 3021/3023 LED driver: map brightness percent (% of MAX light
+    // output) to the control voltage (mV) on the "Analog Out" BNC. Digitized from
+    // the LEDdynamics datasheet Fig. 3 (normalized output-current vs control-
+    // voltage transfer), so "percent" ≈ % of max current/light, not % of the
+    // voltage range. Control pin: ≤~1.65 V = full, ≥~4.2 V = off. APPROXIMATE (read
+    // off a small figure, ~few %); replace CURVE with measured (mv, frac) points
+    // for a photometric calibration. 0% → 5000 mV sits safely past the 4.2 V ±5%
+    // shutoff so the LED is reliably dark.
+    const LED_OFF_MV = 5000;
+    const BUCKPUCK_CURVE = [
+        { mv: 1650, frac: 1.0 },
+        { mv: 2000, frac: 0.9 },
+        { mv: 2500, frac: 0.72 },
+        { mv: 3000, frac: 0.5 },
+        { mv: 3500, frac: 0.28 },
+        { mv: 4000, frac: 0.08 },
+        { mv: 4200, frac: 0.0 }
+    ];
+    function ledPercentToMv(percent) {
+        const p = Number(percent);
+        if (!Number.isFinite(p) || p <= 0) return LED_OFF_MV;
+        const frac = Math.min(1, p / 100);
+        const c = BUCKPUCK_CURVE;
+        if (frac >= c[0].frac) return c[0].mv;
+        for (let i = 0; i < c.length - 1; i++) {
+            const a = c[i];
+            const b = c[i + 1];
+            if (frac <= a.frac && frac >= b.frac) {
+                const t = (a.frac - frac) / (a.frac - b.frac);
+                return Math.round(a.mv + t * (b.mv - a.mv));
+            }
+        }
+        return c[c.length - 1].mv;
+    }
 
     /**
      * The wall-clock duration of a condition, in seconds: max(trialParams.duration,
@@ -395,6 +431,21 @@ var ArenaRunnerG6 = (function () {
                     };
                 }
                 return { op: 'setAnalogOut', mv };
+            }
+            if (name === 'ledDrive') {
+                // BuckPuck LED driver on the AO line: percent (0..100, % of full
+                // brightness) → control voltage (mV) via the datasheet curve, then
+                // reuse the setAnalogOut IR (SET_AO_VOLTAGE 0xA0). Instantaneous.
+                const pct = Number(cmd.percent);
+                if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+                    return {
+                        op: 'error',
+                        reason:
+                            'ledDrive percent must be a number 0–100, got ' +
+                            JSON.stringify(cmd.percent)
+                    };
+                }
+                return { op: 'setAnalogOut', mv: ledPercentToMv(pct) };
             }
             if (name === 'setDigitalOut') {
                 // G6-only: drive the "Digital IO 1/2 (5V)" BNCs (J3/J4) as TTL outputs

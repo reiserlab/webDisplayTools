@@ -4,6 +4,18 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.10 — 2026-07-07 · BuckPuck LED-drive command (author LED brightness in %)
+
+- **New `LED drive (% intensity)` protocol command.** Instead of programming the LED with a
+  raw analog-output voltage, a condition can drive an LED (via a BuckPuck current driver on
+  the "Analog Out (0-5V)" BNC) as a **percentage of full brightness** (0 = off, 100 = max,
+  0.1% steps) — far easier for students to calibrate. The runner maps % to the control
+  voltage using the BuckPuck datasheet transfer curve (so % ≈ % of light output) and sends
+  SET_AO_VOLTAGE under the hood; 0% parks safely past the driver's shutoff. It's a G6-only
+  controller command (like Set Analog/Digital Out) and appears in the Commands and Table
+  editors with a Brightness (%) field. The datasheet curve is approximate — a measured
+  per-rig calibration can refine it later.
+
 ## v0.9 — 2026-07-06 · Closed-loop frame-count fix (correct FicTrac modulus)
 
 - **Fixed: closed-loop (FicTrac) runs used the wrong frame modulus.** The bridge needs the

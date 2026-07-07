@@ -150,6 +150,26 @@ var CONTROLLER_COMMANDS = {
             }
         }
     },
+    ledDrive: {
+        label: 'LED drive (% intensity)',
+        description:
+            'Drive an LED through a BuckPuck current driver on the "Analog Out ' +
+            '(0-5V)" BNC as a percentage of full brightness (0 = off, 100 = max). ' +
+            'The runner maps % to the control voltage via the BuckPuck datasheet ' +
+            'curve, so students calibrate in % instead of raw millivolts. G6 ' +
+            'controller only (SET_AO_VOLTAGE 0xA0).',
+        params: {
+            percent: {
+                type: 'number',
+                required: true,
+                default: 0,
+                min: 0,
+                max: 100,
+                step: 0.1,
+                label: 'Brightness (%)'
+            }
+        }
+    },
     setDigitalOut: {
         label: 'Set Digital Out (G6)',
         description:
@@ -197,7 +217,7 @@ function isKnownControllerCommand(name) {
  * all generations — so existing commands need no annotation. Used by the editor
  * to hide/flag these on a non-G6 rig, and to soft-warn on export.
  */
-var G6_ONLY_COMMANDS = new Set(['setAnalogOut', 'setDigitalOut']);
+var G6_ONLY_COMMANDS = new Set(['setAnalogOut', 'setDigitalOut', 'ledDrive']);
 
 /** Is `name` a controller command restricted to the G6 controller board? */
 function isG6OnlyCommand(name) {
