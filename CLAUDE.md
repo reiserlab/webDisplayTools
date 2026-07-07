@@ -13,9 +13,9 @@ Roadmap and planning content belongs in:
 
 Use simple two-digit versions for all web tools (e.g., `v1`, `v2`, `v6`). No semantic versioning (1.0.0) needed.
 
-Format in footer: `Tool Name vX | YYYY-MM-DD HH:MM ET`
+Format in footer: `Tool Name vX | YYYY-MM-DD HH:MM ET · GitHub` — ONLY the tool name/version, an ET timestamp, and a GitHub repo link. NEVER put a changelog, release-notes summary, or "what changed" keywords in the footer (that content lives only in the release-notes file).
 
-Example: `Arena Editor v2 | 2026-01-16 14:30 ET`
+Example: `Arena Editor v2 | 2026-01-16 14:30 ET · GitHub`
 
 **IMPORTANT**: Always include timestamp in Eastern Time (ET) to distinguish multiple updates per day. Update the timestamp whenever the page is modified.
 
@@ -256,9 +256,12 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   map, don't scatter attributes) and suppresses the native engineer `title=` while shown.
   Content rule: end-user voice, shipped features only, no opcodes/issue refs/design history.
   Per-view "first steps" cards are created by `helpCard()` in the same script.
-- **Footer is ONE line** (version + ET timestamp + a couple of keywords + release-notes
-  link); the changelog lives in `docs/development/arena-studio-release-notes.md` — add an
-  entry there for user-visible changes.
+- **Footer is ONE line and carries ONLY** the tool name/version + ET timestamp + a GitHub
+  repo link (e.g. `Arena Studio v0.9 | 2026-07-07 00:03 ET · GitHub`). NEVER put a
+  changelog, release-notes summary, or "what changed" keywords in the footer — this is a
+  recurring mistake. The changelog lives ONLY in
+  `docs/development/arena-studio-release-notes.md` — add an entry there for user-visible
+  changes.
 - Bump the footer version/timestamp on every edit; never Prettier the HTML.
 
 ## Pattern Designer (`pattern_editor.html`)
