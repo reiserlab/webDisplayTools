@@ -4,6 +4,28 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.14 — 2026-07-07 · Safe mode (student-friendly default; advanced behind a password)
+
+- **The Studio now opens in a locked-down "safe mode" by default.** A plain load shows a
+  **🛡 Safe mode** chip and keeps only the student-safe surfaces reachable: **▶ Run** and
+  **▶ Test** the loaded protocol, enter run metadata, **Open a protocol to run it
+  (read-only, from any source — local file / library / course repo)**, and connect/disconnect
+  the arena. Editing, the Console (patterns/panels/ISP/SD/raw hex), the session-rig selector,
+  and all GitHub save/setup are hidden or locked — so a student can't wander into a surface
+  that could disrupt the rig.
+- **Advanced (the full Studio) is one click + a password away.** Click the 🛡 chip (or a
+  locked ✎ Edit / ⛭ Console tab) and enter the instructor password to unlock everything; the
+  unlock is **remembered on that browser** so the instructor's machine stays in advanced mode
+  across reloads. A **🔓 Advanced · lock** chip returns to safe mode. The default password is
+  `reiser`; an instructor can set a per-bench one by storing `studio_advanced_pw` in the
+  browser. This is a **guardrail, not security** (it's all client-side) — it just keeps
+  students on the rails.
+- **Link into advanced mode with `?advanced=1`** (still password-gated). The flag is kept in
+  the URL only when you arrived with it; a remembered-unlocked browser keeps a clean URL.
+- **Run-lock is now standard for everyone:** while a run is active, the ✎ Edit / ⛭ Console
+  tabs are disabled, so a stray view switch can't perturb a running experiment. Press **STOP**
+  first.
+
 ## v0.12 — 2026-07-07 · Pattern-set redundancy (archive the SD card after a run)
 
 - **After a completed recorded run, the patterns actually on the SD card are snapshotted to

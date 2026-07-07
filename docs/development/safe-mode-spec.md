@@ -1,6 +1,8 @@
 # Safe Mode — Implementation Handoff Spec
 
-**Status:** Spec only — NOT implemented. Written for a future session/agent.
+**Status:** ✅ IMPLEMENTED in Arena Studio v0.14 (2026-07-07). All locked decisions below
+are shipped; the open questions (§5) were resolved this session — see the resolutions note
+at the end of §5. This doc is kept as the design record.
 **Owner:** Reiser Lab (CSHL course). **Target:** `arena_studio.html` (the primary tool).
 **Origin:** colleagues felt the full Studio is intimidating for students; the PI wants a
 locked-down default and a password-gated "advanced" mode for the second half of the course.
@@ -106,6 +108,25 @@ stays in safe mode. Document plainly in the UI that this is a guardrail, not sec
 - Where the **password** is configured (course settings vs constant) and how the instructor
   sets it per bench.
 - Unlock affordance placement + the safe-mode indicator styling.
+
+**Resolutions (2026-07-07, as built in v0.14):**
+- **"Test the rig"** = the blue **▶ Test experiment** button (un-recorded run of the loaded
+  protocol); the Run-dock **All on / All off** quick checks also stay available (both live in
+  the Run view, which is the only reachable view). No dedicated self-test was added.
+- **Open-to-run scope:** **all sources, read-only** — local file / library / course repo all
+  work in safe mode; a load lands in Run (safe mode's silent `setMode('edit')` refusal keeps
+  it there). Save/Edit/Promote remain locked.
+- **Password:** built-in default `reiser` (constant `ADVANCED_DEFAULT_PW`), overridable
+  per-bench via `localStorage['studio_advanced_pw']` (set behind the existing 🔒 GitHub-settings
+  unlock in advanced mode). Remembered unlock = `localStorage['studio_advanced_unlocked']='1'`.
+- **Affordance/indicator:** a top-bar **🛡 Safe mode** chip (click → password prompt) that
+  swaps to a **🔓 Advanced · lock** chip once unlocked (click → re-lock). The dimmed, padlocked
+  ✎ Edit / ⛭ Console segments are a second click-to-unlock path.
+- **Implementation:** `body.safemode` CSS gate; `Studio.advanced` + `applyModeGating()` /
+  `unlockAdvanced()` / `lockSafe()`; `setMode` gains the run-lock (all modes) + a silent
+  safe-mode Edit/Console refusal; `?advanced=1` added to `js/studio-url-state.js` (decode/
+  encode/encodeApp, clean-URL rule mirroring `rig`); belt-and-suspenders Console dispatcher
+  gate (`SAFE_BLOCKED_CMDS`). Tests: `tests/test-studio-url-state.js` (advanced param).
 
 ## 6. Out of scope / notes
 

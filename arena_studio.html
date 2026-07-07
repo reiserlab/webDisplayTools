@@ -155,6 +155,33 @@
   .gear .menu a:hover,.gear .menu button:hover{background:var(--surface2)}
   .gear .menu .sep{height:1px;background:var(--border);margin:4px 2px}
 
+  /* ===== SAFE MODE (default student mode; advanced behind ?advanced=1 + a soft
+     password — see docs/development/safe-mode-spec.md). A gating/affordance
+     feature: it hides/disables existing surfaces, adds no run/edit capability.
+     Everything below keys off body.safemode (set by applyModeGating). ===== */
+  /* The indicator must show even with NO protocol loaded, so these per-state
+     reveal rules outrank the body:not(.hasproto) .chip hide (higher specificity):
+     base-hide both, then reveal exactly one per mode. */
+  .chip.safemode-ind{cursor:pointer;display:none}
+  .chip.safemode-ind.safe-label{color:#9fd4ff;border-color:#2b5b86;background:rgba(38,64,94,.35)}
+  .chip.safemode-ind.adv-label{color:var(--accent);border-color:var(--accent);background:rgba(0,230,118,.08)}
+  body.safemode .chip.safemode-ind.safe-label{display:inline-block}
+  body:not(.safemode) .chip.safemode-ind.adv-label{display:inline-block}
+  /* Edit/Console segments: dimmed + padlocked in safe mode; a click prompts to
+     unlock (they are the discoverable unlock path alongside the indicator). */
+  body.safemode #modeSeg [data-mode="edit"],
+  body.safemode #modeSeg [data-mode="console"]{opacity:.42}
+  body.safemode #modeSeg [data-mode="edit"]::after,
+  body.safemode #modeSeg [data-mode="console"]::after{content:'🔒';font-size:.72em;margin-left:4px}
+  /* GitHub sign-in / repo / bench-id setup is instructor-only. */
+  body.safemode #ghBlock{display:none}
+  /* Session-rig selector stays hard-locked (its unlock padlock is hidden). */
+  body.safemode #sessionRigLock{display:none}
+  /* Run-lock (STANDARD, all modes): while a run is active, the Edit/Console
+     segments are visibly disabled — no stray view switch mid-experiment. */
+  body.running #modeSeg [data-mode="edit"],
+  body.running #modeSeg [data-mode="console"]{opacity:.42;pointer-events:none}
+
   /* ===== BODY ===== */
   .body-wrap{flex:1 1 auto;position:relative;overflow:auto;min-height:0}
 
@@ -1956,6 +1983,14 @@
   </div>
 
 
+  <!-- Safe-mode indicator + unlock/lock affordance (safe mode = default student
+       mode). safe-label shows in safe mode (click → password prompt); adv-label
+       shows once unlocked (click → re-lock). See safe-mode-spec.md. -->
+  <span class="chip safemode-ind safe-label" id="safeModeChip"
+        title="Safe mode — editing, Console and bench setup are locked (for students). Click to unlock advanced mode with the instructor password. This is a guardrail, not security.">🛡 Safe mode</span>
+  <span class="chip safemode-ind adv-label" id="advLockChip"
+        title="Advanced mode is unlocked on this browser. Click to return to safe mode (locks Edit, Console and setup for students).">🔓 Advanced · lock</span>
+
   <div class="seg" id="modeSeg">
     <button class="on" data-mode="run">▶ Run</button>
     <button data-mode="edit">✎ Edit</button>
@@ -2646,7 +2681,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.13 | 2026-07-07 01:28 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.14 | 2026-07-07 01:59 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -3228,8 +3263,87 @@
     }
     Studio.showBanner = showBanner;
 
+    // ---- Safe mode (default student mode) -------------------------------------
+    // Safe mode is the DEFAULT: a plain load locks Edit, Console, the session-rig
+    // selector and all GitHub/setup surfaces, leaving Run + Test + read-only Open
+    // reachable. Advanced (full Studio) is requested via ?advanced=1 and granted
+    // after a SOFT password, then remembered per browser (localStorage). It is a
+    // guardrail against students wandering into destructive surfaces — NOT a
+    // security boundary (all client-side). See docs/development/safe-mode-spec.md.
+    const ADVANCED_DEFAULT_PW = 'reiser'; // built-in default; instructor overrides via studio_advanced_pw
+    // Destructive/config Console ops, blocked even if the Console view is somehow
+    // reached without advanced. Console is unreachable in safe mode (setMode
+    // refuses), so this dispatcher gate is the belt-and-suspenders second line.
+    const SAFE_BLOCKED_CMDS = new Set(['csdpurge', 'csdarchive', 'cfwpick', 'cfwflash', 'cispbatch']);
+    Studio.advancedUrlRequested = false; // set true by initFromUrl on ?advanced=1
+    function advancedPassword() {
+        return (localStorage.getItem('studio_advanced_pw') || '').trim() || ADVANCED_DEFAULT_PW;
+    }
+    // Remembered per browser so an instructor's machine stays unlocked across
+    // reloads (localStorage), independent of the URL flag.
+    Studio.advanced = localStorage.getItem('studio_advanced_unlocked') === '1';
+    // Reflect advanced/safe state into the DOM (body.safemode drives the CSS) and
+    // keep the hard locks enforced. Idempotent; called on load + on every toggle.
+    function applyModeGating() {
+        const safe = !Studio.advanced;
+        document.body.classList.toggle('safemode', safe);
+        // The session-rig selector is unlockable only in advanced mode; force it
+        // re-locked whenever we drop back to safe (an unlock may have opened it).
+        if (safe) {
+            const rigSel = $('sessionRig');
+            const rigLock = $('sessionRigLock');
+            if (rigSel) rigSel.disabled = true;
+            if (rigLock) rigLock.textContent = '🔒';
+        }
+    }
+    Studio.applyModeGating = applyModeGating;
+    // Prompt for the soft password; on match, grant + remember advanced. Returns
+    // true iff advanced was granted. Called ONLY on explicit user intent (clicking
+    // the indicator or a locked Edit/Console segment) — never from a programmatic
+    // setMode (e.g. a protocol load's jump-to-Edit), so opening-to-run never prompts.
+    function unlockAdvanced() {
+        if (Studio.advanced) return true;
+        const pw = window.prompt(
+            'Advanced mode (instructor)\n\nUnlocks Edit, Console and bench setup. ' +
+                'This is a guardrail, not security. Enter the password:'
+        );
+        if (pw == null) return false; // cancelled
+        if (pw.trim() !== advancedPassword()) {
+            showBanner('Wrong password — staying in safe mode.');
+            return false;
+        }
+        Studio.advanced = true;
+        localStorage.setItem('studio_advanced_unlocked', '1');
+        applyModeGating();
+        Studio.updateUrl({ push: false });
+        showBanner('Advanced mode unlocked (remembered on this browser).');
+        return true;
+    }
+    Studio.unlockAdvanced = unlockAdvanced;
+    // Return to safe mode: forget the unlock, force the view back to Run, re-lock.
+    function lockSafe() {
+        Studio.advanced = false;
+        localStorage.removeItem('studio_advanced_unlocked');
+        applyModeGating();
+        if (Studio.mode !== 'run') setMode('run'); // setMode emits the URL update
+        else Studio.updateUrl({ push: false }); // already in Run → scrub advanced=1
+        showBanner('Safe mode — Edit, Console and setup are locked.');
+    }
+    Studio.lockSafe = lockSafe;
+    applyModeGating(); // set body.safemode from the remembered state, before first paint
+
     // ---- view model ----------------------------------------------------------
     function setMode(m, opts) {
+        // Run-lock (STANDARD, all modes): never leave the Run view while a run is
+        // active — a stray Console/Edit switch must not perturb a running trial.
+        if (m !== 'run' && Studio.session && Studio.session.running) {
+            showBanner('A run is active — press STOP before leaving the Run view.');
+            return;
+        }
+        // Safe mode: Edit/Console are locked. Refuse SILENTLY here so a programmatic
+        // jump (a protocol load landing in Edit) just stays in Run with no prompt;
+        // the password prompt lives on the explicit click paths only.
+        if ((m === 'edit' || m === 'console') && !Studio.advanced) return;
         Studio.mode = m;
         document.body.classList.toggle('editmode', m === 'edit');
         document.body.classList.toggle('consolemode', m === 'console');
@@ -3266,7 +3380,11 @@
             repoPath: repoRef ? repoRef.path : null,
             // #135: only an EXPLICIT session-rig selection is shareable; a rig
             // derived from the loaded protocol is redundant with `p` (clean URL).
-            rigKey: Studio.currentRig && Studio.currentRig.explicit ? Studio.currentRig.name : null
+            rigKey: Studio.currentRig && Studio.currentRig.explicit ? Studio.currentRig.name : null,
+            // Safe mode: mirror advanced=1 ONLY when advanced is active AND was
+            // URL-requested (clean-URL rule, like a derived rig) — a browser
+            // remembered-unlocked without ?advanced=1 keeps a clean URL.
+            advanced: !!(Studio.advanced && Studio.advancedUrlRequested)
         });
         // Load-bearing dedup: re-clicks and per-mutation syncs must not stack
         // history entries (or burn Safari's ~100/30s history-call budget).
@@ -3356,8 +3474,20 @@
         $('fileMenu').classList.remove('open');
     });
     document.querySelectorAll('#modeSeg button').forEach((b) =>
-        b.addEventListener('click', () => setMode(b.dataset.mode))
+        b.addEventListener('click', () => {
+            const target = b.dataset.mode;
+            // Safe mode: a click on a locked Edit/Console segment is an explicit
+            // request to unlock — prompt, and switch only if the password matches.
+            if ((target === 'edit' || target === 'console') && !Studio.advanced) {
+                if (unlockAdvanced()) setMode(target);
+                return;
+            }
+            setMode(target);
+        })
     );
+    // Safe-mode indicator (unlock) + advanced indicator (re-lock).
+    $('safeModeChip') && $('safeModeChip').addEventListener('click', () => unlockAdvanced());
+    $('advLockChip') && $('advLockChip').addEventListener('click', () => lockSafe());
     $('openProtoBtn').addEventListener('click', () => $('fileInput').click());
     $('fmOpen').addEventListener('click', () => { $('fileMenu').classList.remove('open'); $('fileInput').click(); });
 
@@ -4104,6 +4234,13 @@
         const btn = e.target.closest('[data-cmd]');
         if (!btn || btn.disabled) return;
         const cmd = btn.dataset.cmd;
+        // Safe-mode belt-and-suspenders: the Console view is unreachable in safe
+        // mode, but if it ever is reached, refuse the destructive/config ops.
+        if (!Studio.advanced && SAFE_BLOCKED_CMDS.has(cmd)) {
+            e.preventDefault();
+            showBanner('Locked in safe mode — unlock advanced mode (🛡 Safe mode chip) to use this.');
+            return;
+        }
         if (handlers[cmd]) { e.preventDefault(); handlers[cmd](e); }
         // One-shot menu items (Get info / Reset …) close their menu after
         // firing; row items (Set/Get beside an input) keep it open for editing.
@@ -4439,6 +4576,8 @@ async function populateSessionRig() {
     // rig (setSessionRig, derived) still works while locked.
     const lockBtn = $('sessionRigLock');
     if (lockBtn) lockBtn.addEventListener('click', () => {
+        // Safe mode keeps the rig hard-locked (the padlock is CSS-hidden too).
+        if (!Studio.advanced) return;
         sel.disabled = !sel.disabled;
         lockBtn.textContent = sel.disabled ? '🔒' : '🔓';
         lockBtn.title = sel.disabled
@@ -6961,6 +7100,16 @@ async function initFromUrl() {
         // an explicit rig wins for the SESSION value (the protocol keeps its
         // own rig — a disagreement shows the mismatch chip, never a rewrite).
         if (state.rig) setSessionRig(state.rig, { explicit: true });
+        // Safe mode (?advanced=1): a REQUEST for advanced. If this browser is
+        // already remembered-unlocked we're advanced without prompting; else
+        // prompt for the soft password now — BEFORE the mode is applied, so an
+        // advanced ?mode=edit/console link can actually land there once unlocked.
+        // (updateUrl is suppressed during init; the finally-block emits the one
+        // canonical URL, keeping advanced=1 only if the unlock succeeded.)
+        if (state.advanced) {
+            Studio.advancedUrlRequested = true;
+            if (!Studio.advanced) unlockAdvanced();
+        }
         if (state.mode && state.mode !== 'run') Studio.setMode(state.mode);
     } finally {
         Studio._urlSuppress = false;
