@@ -2804,7 +2804,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.31 | 2026-07-07 17:42 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.32 | 2026-07-07 18:22 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3096,9 +3096,44 @@
     }
     Studio.startRunTimer = startRunTimer;
 
+    // ---- learned per-command run overhead (self-calibrating finish estimate) ----
+    // The projected finish = Σ conditionDuration + (wire-command count × this).
+    // Serial round-trip cost varies by machine/bridge and by command mix, so a
+    // fixed constant over/under-shoots (a 0.03 s guess overshot a command-heavy
+    // protocol by ~18 s). Instead we LEARN it: after each COMPLETED run, solve
+    // (actual_elapsed − durationSum) / commandCount and fold it into a stored EMA.
+    // Seeded low so the first estimate is conservative; clamped to a sane band.
+    const RUN_OVERHEAD_SEED = 0.008; // s per command, before any run has trained it
+    const RUN_OVERHEAD_MAX = 0.2;    // clamp — one command can't plausibly cost >200 ms
+    Studio.runOverheadPerCmd = function () {
+        const v = parseFloat(localStorage.getItem('studio_run_overhead_s'));
+        return Number.isFinite(v) && v >= 0 ? Math.min(RUN_OVERHEAD_MAX, v) : RUN_OVERHEAD_SEED;
+    };
+    // Recalibrate from a just-finished run. elapsedSec = real wall-clock; uses the
+    // durSum/cmdCount stashed at beginRun. No-op unless there were commands and the
+    // elapsed time is sane (guards against aborts / clock weirdness dragging it).
+    Studio.learnRunOverhead = function (elapsedSec) {
+        const durSum = Studio._runEstDurSum, cmd = Studio._runCmdCount;
+        if (!(cmd > 0) || !Number.isFinite(elapsedSec) || elapsedSec <= 0) return;
+        if (elapsedSec < durSum * 0.5) return; // implausibly short → likely aborted
+        const measured = Math.max(0, Math.min(RUN_OVERHEAD_MAX, (elapsedSec - durSum) / cmd));
+        const prev = Studio.runOverheadPerCmd();
+        // EMA so one odd run can't whipsaw the estimate; converges over a few runs.
+        const next = Math.round((0.5 * prev + 0.5 * measured) * 1e4) / 1e4;
+        try { localStorage.setItem('studio_run_overhead_s', String(next)); } catch (_) {}
+        Studio.rawLog('run timing: learned ~' + Math.round(next * 1000) + ' ms/command (was ' +
+            Math.round(prev * 1000) + '); ' + cmd + ' cmds, ' + Math.round(elapsedSec) + 's actual', 'info');
+    };
+
     function onRunFinished(summary) {
         const log = Studio.activeRunLog;
         clearSeqHighlight();
+        // Self-calibrate the finish estimate from this run — only on a clean
+        // completion (aborts/errors would teach a wrong overhead) and while the run
+        // clock is still valid (before refreshState freezes it).
+        if (summary && summary.outcome === 'COMPLETED' && Studio._runStartMs) {
+            Studio.learnRunOverhead((Date.now() - Studio._runStartMs) / 1000);
+        }
         if (!log) return;
         const btn = $('btnLogSave');
         if (btn) btn.disabled = false;
@@ -6737,13 +6772,22 @@ Studio.beginRun = async function (isExperiment) {
     // Estimated total = sum of step durations PLUS per-command serial overhead
     // (host-timed); the timer ticks wall-time since now. conditionDuration alone
     // undercounts — every wire command costs a serial round-trip the display time
-    // doesn't include, so the run finishes a few seconds later than a pure
-    // sum-of-durations. Best-effort — steps whose condition isn't found add 0.
-    let totalSec = 0;
+    // doesn't include. The per-command overhead is LEARNED from completed runs
+    // (Studio.runOverheadPerCmd) rather than a fixed constant, because command-
+    // light and command-heavy protocols need very different values. durSum and
+    // cmdCount are stashed so onRunFinished can recalibrate against actual elapsed.
+    // Best-effort — steps whose condition isn't found add 0.
+    let durSum = 0, cmdCount = 0;
     for (const st of steps) {
         const c = conditionsByName.get(st.conditionName);
-        if (c) totalSec += (RunnerLib.conditionDuration(c) || 0) + (RunnerLib.conditionOverhead(c) || 0);
+        if (c) {
+            durSum += RunnerLib.conditionDuration(c) || 0;
+            cmdCount += RunnerLib.conditionCommandCount(c) || 0;
+        }
     }
+    Studio._runEstDurSum = durSum;
+    Studio._runCmdCount = cmdCount;
+    const totalSec = durSum + cmdCount * Studio.runOverheadPerCmd();
     if (Studio.startRunTimer) Studio.startRunTimer(totalSec);
     await runSteps(steps, conditionsByName, exp, isExperiment);
 };

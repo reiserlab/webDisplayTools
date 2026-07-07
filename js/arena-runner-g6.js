@@ -215,27 +215,21 @@ var ArenaRunnerG6 = (function () {
         return Math.max(tp, wait);
     }
 
-    // Empirical per-wire-command overhead (seconds). conditionDuration counts only
-    // the nominal display/wait time; it ignores the serial round-trip the runner
-    // pays on every command's `await link.send(...)` (trialParams, allOn/allOff,
-    // setFramePosition, AO/DO, the trailing stop, …). Across a whole protocol those
-    // round-trips accumulate into a real drift — the run finishes LATER than the
-    // sum-of-durations estimate (reported ~8 s over a ~10 min run). Counting them
-    // makes the projected finish time track wall-clock. Waits carry no send (a
-    // local timer), so they're excluded. Tune from bench timing if needed.
-    const PER_CMD_OVERHEAD_SEC = 0.03;
-
     /**
-     * Estimated serial overhead for a condition, in seconds: PER_CMD_OVERHEAD_SEC
-     * per non-wait command (each of which the runner sends over the wire). PURE, so
-     * the run estimate and any preview share one definition alongside
-     * conditionDuration.
+     * Count the wire-sending commands in a condition (everything except `wait`,
+     * which is a local timer, not a serial round-trip). conditionDuration counts
+     * only nominal display/wait time; each of these commands also costs a real
+     * `await link.send(...)` round-trip, and across a whole protocol those add up
+     * to a drift the duration sum misses. The run estimate multiplies this count
+     * by a per-command overhead that the app LEARNS from completed runs (a fixed
+     * constant can't fit both command-light and command-heavy protocols). PURE, so
+     * it sits alongside conditionDuration as the estimator's other primitive.
      */
-    function conditionOverhead(cond) {
+    function conditionCommandCount(cond) {
         if (!cond || !Array.isArray(cond.commands)) return 0;
         let n = 0;
         for (const c of cond.commands) if (c && c.type !== 'wait') n++;
-        return n * PER_CMD_OVERHEAD_SEC;
+        return n;
     }
 
     /**
@@ -1035,7 +1029,7 @@ var ArenaRunnerG6 = (function () {
         frameIndexToInitPos,
         buildTrialParams,
         conditionDuration,
-        conditionOverhead,
+        conditionCommandCount,
         flattenStructure,
         translateCommand,
         hostSideTrialEnd,

@@ -318,28 +318,27 @@ async function main() {
         5
     );
 
-    console.log('\n=== conditionOverhead (per non-wait command serial cost) ===');
-    const oh1 = Runner.conditionOverhead({ commands: [trialCmd] });
-    checkBool('single command has positive overhead', oh1 > 0, 'oh1=' + oh1);
-    check('null -> 0 overhead', Runner.conditionOverhead(null), 0);
+    console.log('\n=== conditionCommandCount (wire-sending, non-wait commands) ===');
+    check('single command -> 1', Runner.conditionCommandCount({ commands: [trialCmd] }), 1);
+    check('null -> 0', Runner.conditionCommandCount(null), 0);
     check(
-        'waits-only -> 0 overhead',
-        Runner.conditionOverhead({ commands: [{ type: 'wait', duration: 2 }] }),
+        'waits-only -> 0',
+        Runner.conditionCommandCount({ commands: [{ type: 'wait', duration: 2 }] }),
         0
     );
     check(
-        'two commands = 2x one command',
-        Runner.conditionOverhead({
+        'two non-wait commands -> 2',
+        Runner.conditionCommandCount({
             commands: [trialCmd, { type: 'controller', command_name: 'allOff' }]
         }),
-        oh1 * 2
+        2
     );
     check(
-        'waits add no overhead',
-        Runner.conditionOverhead({
+        'waits are excluded from the count',
+        Runner.conditionCommandCount({
             commands: [trialCmd, { type: 'wait', duration: 3 }, { type: 'wait', duration: 4 }]
         }),
-        oh1
+        1
     );
 
     console.log('\n=== flattenStructure (reps × trials, ITI between-not-after) ===');

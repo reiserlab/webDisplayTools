@@ -4,6 +4,16 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.32 — 2026-07-07 · Run-time estimate self-calibrates
+
+- **The projected finish time now learns from your runs.** v0.31 added a fixed
+  0.03 s/command serial overhead, which fit a command-light protocol but overshot a
+  command-heavy one by ~18 s. The overhead is now **learned**: after each clean run,
+  the Studio solves `(actual − duration-sum) / command-count` and folds it into a
+  stored moving average, so the estimate converges on your rig's real timing over a
+  run or two. Seeded conservatively, clamped to a sane band, and only trained by
+  completed runs (aborts/errors don't skew it).
+
 ## v0.31 — 2026-07-07 · Console pattern-picker step, sharper previews, runner fixes
 
 Batch of post-bench fixes:
