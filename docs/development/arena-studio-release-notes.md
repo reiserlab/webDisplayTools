@@ -11,8 +11,10 @@ history lives here. Newest first. (Per-session engineering detail stays in
   (GET_SD_ARCHIVE) and commits it to `pattern-sets/<content-hash>/patterns.zip`, so a
   student's on-card renames or edits are captured even though the repo→SD half of the
   registry can't see them. Deduped by **content hash** — identical card contents are stored
-  exactly once. It's best-effort and never blocks or fails the run-log commit; it needs the
-  arena connected and a firmware build with the SD-archive command. (Bench-verified path.)
+  exactly once. It's best-effort and needs the arena connected + a firmware build with the
+  SD-archive command. **Known issue (bench, 2026-07-07):** on a large (~1.7 MB) card the
+  `GET_SD_ARCHIVE` bulk download aborts with a serial "Break received" and drops the arena
+  connection — under investigation (see `docs/development/bench-testing-2026-07-08.md`).
 
 ## v0.11 — 2026-07-07 · Run log: paired two-color TX/RX lines
 

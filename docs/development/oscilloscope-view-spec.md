@@ -26,6 +26,22 @@ real time. It replaces "watch numbers scroll by in the log" (which is illegible 
 closed loop) with an intuitive scrolling trace. Pedagogical, not for acquisition — the
 **authoritative data is still the bridge JSONL** (full-fidelity, all 25 FicTrac fields).
 
+### Relationship to the offline analysis dashboard
+
+The scope is the real-time, single-run view of the same data model used by the
+offline analysis dashboard. It should not grow a separate analysis vocabulary. For
+v1, enforce this by sharing:
+
+- the same raw FicTrac field names and units;
+- the same derived kinematic channels: turning rate, forward velocity, heading;
+- the same event/epoch vocabulary: condition, visual stimulus, opto stimulus;
+- the same channel colors, row order, and axis labels;
+- the same sign conventions, with no scope-only folding or protocol-specific
+  response transforms.
+
+The dashboard adds grouping, trial averaging, folded/unfolded responses, tuning
+curves, and histograms. The scope remains a live preview of one run/session.
+
 ## 2. Where it lives
 
 The bottom dock of the **Run view** becomes a three-way choice, reusing the existing
@@ -89,6 +105,35 @@ existing `index/seq/t` keys means the current frame-apply path is untouched.
 
 **Decision to confirm with the analysis session:** exact field set + names. Lock this
 before coding either side.
+
+### Shared analysis contract with the dashboard
+
+Before implementing the scope, create or identify one shared JavaScript module for
+kinematic derivations. Both the scope and the offline dashboard must use it for:
+
+- heading unwrap;
+- heading wrap to +/-180 deg;
+- windowed OLS slope;
+- turning velocity from integrated heading;
+- forward velocity from integrated forward motion;
+- ball-radius conversion, when calibrated.
+
+The module should expose a derived sample shape that both clients can consume:
+
+```json
+{
+  "t_ms": 12345,
+  "heading_deg": -42.1,
+  "turning_deg_s": 180.4,
+  "forward_mm_s": 7.2,
+  "frame_index": 84,
+  "source_seq": 3076
+}
+```
+
+Offline analysis should be able to regenerate the same derived samples from JSONL
+that the live scope displayed from websocket frames. Add fixture tests with known
+slopes and a recorded bench log so the two paths cannot silently diverge.
 
 ## 4. Channel definitions & signal processing
 
