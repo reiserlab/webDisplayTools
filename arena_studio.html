@@ -2645,7 +2645,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.11 | 2026-07-07 00:41 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.12 | 2026-07-07 00:58 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -2939,6 +2939,51 @@
         }
         await commitRunLog(log, {});
     }
+    // SHA-256 hex of a byte buffer (SubtleCrypto; secure-context only — the course
+    // bench runs over https / localhost).
+    async function _sha256hex(bytes) {
+        const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        const digest = await crypto.subtle.digest('SHA-256', u8);
+        return Array.from(new Uint8Array(digest))
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('');
+    }
+    // Redundancy (Frank): after a recorded run, snapshot the ACTUAL patterns on the
+    // SD card (GET_SD_ARCHIVE 0x8A → a ZIP) and stash them in the course repo under
+    // pattern-sets/<content-hash>/patterns.zip — capturing a student's on-card
+    // renames/edits that the repo→SD half of the registry can't see. Deduped by
+    // CONTENT hash: identical card contents commit exactly once. Best-effort — its
+    // own errors never affect the run-log commit. Needs the ARENA (Web Serial)
+    // connected + a firmware build with GET_SD_ARCHIVE.
+    async function snapshotPatternArchive(cs, token) {
+        const GH = window.StudioGitHub;
+        const session = Studio.session;
+        if (!GH || !cs || !cs.repo || !token || !cs.benchId) return null;
+        if (!session || !session.connected) return { skipped: 'arena disconnected' };
+        if (!Wire || typeof Wire.encodeGetSdArchive !== 'function') return { skipped: 'firmware has no SD-archive command' };
+        await Studio.quiesceDisplay(); // 0x8A requires the display stopped
+        const zip = await session.sendBulkRead(Wire.encodeGetSdArchive(), { timeoutMs: 300000 });
+        if (!zip || !zip.length) return { skipped: 'empty SD archive' };
+        const hash = (await _sha256hex(zip)).slice(0, 16);
+        const path = 'pattern-sets/' + hash + '/patterns.zip';
+        // Dedup: skip the upload if this exact card content is already archived.
+        let exists = false;
+        try {
+            const head = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, path, null, token));
+            exists = !!(head && head.ok);
+        } catch (_) { /* treat as absent → commit below */ }
+        if (exists) return { hash, path, deduped: true };
+        const res = await GH.directCommit(fetch, {
+            owner: cs.repo.owner,
+            repo: cs.repo.name,
+            token: token,
+            path: path,
+            message: 'pattern-set snapshot ' + hash + ' (bench ' + cs.benchId + ')',
+            contentBytes: zip
+        });
+        if (!res.ok) throw new Error(res.error || 'HTTP ' + res.status);
+        return { hash, path, committed: true, bytes: zip.length };
+    }
     // Shared export+commit core (auto + manual). opts.manual → user-initiated:
     // louder banners, and it's reached even for aborted/disconnected runs (which
     // the auto path skips). The bridge must still be connected — it re-serves the
@@ -2999,6 +3044,16 @@
             setTimeout(hideUploadModal, 1800); // auto-dismiss on success
             const saved = $('rlSaved');
             if (saved && !/committed to course repo/.test(saved.textContent)) saved.textContent += ' · ✓ committed to course repo';
+            // Redundancy: stash the actual on-card patterns (deduped by content
+            // hash). Best-effort — a failure here never fails the run-log commit.
+            try {
+                const arch = await snapshotPatternArchive(cs, token);
+                if (arch && arch.committed) rawLine('✓ pattern set archived → ' + arch.path + ' (' + arch.bytes + ' B)', 'info');
+                else if (arch && arch.deduped) rawLine('pattern set already archived (' + arch.path + ')', 'info');
+                else if (arch && arch.skipped) rawLine('pattern archive skipped — ' + arch.skipped, 'warn');
+            } catch (e2) {
+                rawLine('pattern archive skipped: ' + (e2 && e2.message ? e2.message : e2), 'warn');
+            }
         } catch (e) {
             const m = (e && e.message ? e.message : String(e));
             rawLine('run-log commit FAILED: ' + m, 'err');

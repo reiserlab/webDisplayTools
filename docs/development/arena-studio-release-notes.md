@@ -4,6 +4,16 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.12 — 2026-07-07 · Pattern-set redundancy (archive the SD card after a run)
+
+- **After a completed recorded run, the patterns actually on the SD card are snapshotted to
+  the course repo** for safekeeping (requested by Frank). The Studio pulls the whole card
+  (GET_SD_ARCHIVE) and commits it to `pattern-sets/<content-hash>/patterns.zip`, so a
+  student's on-card renames or edits are captured even though the repo→SD half of the
+  registry can't see them. Deduped by **content hash** — identical card contents are stored
+  exactly once. It's best-effort and never blocks or fails the run-log commit; it needs the
+  arena connected and a firmware build with the SD-archive command. (Bench-verified path.)
+
 ## v0.11 — 2026-07-07 · Run log: paired two-color TX/RX lines
 
 - **The run log pairs each command with its reply on one line, in two colors.** Data sent
