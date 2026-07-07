@@ -177,8 +177,9 @@
      connection-state enable/disable logic). */
   .safe-blocked{opacity:.5;cursor:not-allowed}
   /* Bench GitHub / repo / bench-id setup is instructor-only: the block stays
-     VISIBLE but its unlock padlock is hidden, so the kiosk lock can't be lifted. */
-  body.safemode #ghLock{display:none}
+     VISIBLE and its padlock stays SHOWN as a 🔒 (locked) indicator; in safe mode
+     the padlock is inert (clicking it can't unlock — see the click handler). */
+  body.safemode #ghLock{cursor:not-allowed;opacity:.6}
   /* Session-rig selector stays hard-locked (its unlock padlock is hidden). */
   body.safemode #sessionRigLock{display:none}
   /* Run-lock (STANDARD, all modes): while a run is active, the Edit/Console
@@ -2749,7 +2750,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.22 | 2026-07-07 12:57 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.23 | 2026-07-07 13:06 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -3382,6 +3383,9 @@
             const rigLock = $('sessionRigLock');
             if (rigSel) rigSel.disabled = true;
             if (rigLock) rigLock.textContent = '🔒';
+            // Re-lock GitHub setup too (an instructor may have unlocked it in
+            // advanced mode). Guarded: wireCourseSettings runs after the first call.
+            if (Studio.applyGhLock) Studio.applyGhLock(true);
         }
         applyConsoleSafeGating();
     }
@@ -3903,8 +3907,11 @@
     // "Pattern Designer ↗" + "Other tools"; legacy tools live on the index)
     $('connectBtn').addEventListener('click', toggleConnect);
     $('fileMenuBtn').addEventListener('click', (e) => { e.stopPropagation(); $('fileMenu').classList.toggle('open'); });
-    document.addEventListener('click', () => {
-        $('fileMenu').classList.remove('open');
+    document.addEventListener('click', (e) => {
+        // Close only on a click OUTSIDE the menu — clicks on its own controls (the
+        // Run-logging <select>, checkboxes, inputs) must NOT close it. Explicit
+        // actions (Open/Save/…) close it themselves.
+        if (!e.target.closest('#fileMenu')) $('fileMenu').classList.remove('open');
     });
     document.querySelectorAll('#modeSeg button').forEach((b) =>
         // Every view is reachable in safe mode now (Edit read-only, Console gated),
@@ -7086,9 +7093,17 @@ function wireCourseSettings() {
     if (ghLock) {
         ghLock.addEventListener('click', (e) => {
             e.stopPropagation();
+            // Safe mode: the padlock is inert — GitHub setup is instructor-only.
+            if (!Studio.advanced) {
+                Studio.showBanner('GitHub setup is instructor-only — unlock advanced mode (🛡 chip) first.');
+                return;
+            }
             applyGhLock(!ghBlock.classList.contains('gh-locked'));
         });
     }
+    // Exposed so returning to safe mode (applyModeGating) can force a re-lock even
+    // if an instructor left it unlocked in advanced mode.
+    Studio.applyGhLock = applyGhLock;
     applyGhLock(true); // default locked on every load
 }
 wireCourseSettings();

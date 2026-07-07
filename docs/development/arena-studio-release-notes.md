@@ -4,6 +4,18 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.23 — 2026-07-07 · Safe-mode fixes: GitHub padlock + File-menu Run-logging
+
+- **The GitHub padlock is back in safe mode.** It was hidden, so bench setup looked
+  unlocked; it now shows a 🔒 (locked) indicator, sign-in/out + repo/bench stay disabled,
+  and clicking the padlock in safe mode explains it's instructor-only instead of unlocking.
+  Returning to safe mode from advanced now re-locks GitHub automatically.
+- **The Run-logging dropdown works.** Selecting it no longer slams the File menu shut — the
+  menu now closes only on a click *outside* it, so its controls (the Run-logging `<select>`,
+  checkboxes, inputs) are usable.
+- Reminder: **enter advanced mode** by clicking the **🛡 Safe mode** chip (top bar) and
+  entering the password (default `reiser`).
+
 ## v0.22 — 2026-07-07 · Run view opens on the Scope (≈⅓ screen); smaller Notes
 
 - The Run view now **opens with the oscilloscope** by default, sized to about a third
