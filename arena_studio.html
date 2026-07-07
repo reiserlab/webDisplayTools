@@ -2742,7 +2742,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.17 | 2026-07-07 08:40 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.18 | 2026-07-07 09:23 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -3527,6 +3527,13 @@
         let lastMs = 0, lastWall = 0; // map browser-clock overlay events → sample ms
         let running = false, rafId = null, subbed = false;
         const cfg = { windowMs: 250, spanS: 30, ballDiaMm: 9, autoY: true };
+        // Held per-row Y ranges: while auto-Y is ON each render restores the row's
+        // scale from its data and re-stores it here; when auto-Y is OFF the trace
+        // reuses the last stored scale (frozen) so it stops rescaling as data flows.
+        const heldScale = {};
+        // BuckPuck "LED dark" mV — the on/off threshold for the LED overlay. Read
+        // from the runner (single source of truth); fall back to 5000 if unloaded.
+        const LED_OFF_MV = (window.ArenaRunnerG6 && window.ArenaRunnerG6.LED_OFF_MV) || 5000;
 
         function currentBallDia() {
             const oride = parseFloat(localStorage.getItem('studio_scope_ball_dia_mm'));
@@ -3586,6 +3593,7 @@
             raw = [];
             ov.cond = []; ov.visual = []; ov.led = [];
             ledOpen = null; visOpen = null; lastMs = 0;
+            for (const k in heldScale) delete heldScale[k]; // rescale fresh next run
         }
         function onRunStatus(s) {
             if (!s || !s.phase) return;
@@ -3601,9 +3609,14 @@
                     visOpen = { startMs: t, endMs: dur != null ? t + dur * 1000 : null };
                     ov.visual.push(visOpen);
                 } else if (s.op === 'setAnalogOut') {
-                    // LED (BuckPuck) drive: mv>0 opens a red box, mv==0 closes it.
+                    // LED (BuckPuck) drive is INVERTED: brighter = lower mV, and
+                    // "dark" sits at LED_OFF_MV (≈5000 mV), NOT 0. So "on" means the
+                    // level is between 0 and the off threshold; a ledDrive 0% (which
+                    // emits LED_OFF_MV) correctly reads as off. Raw setAnalogOut 0 mV
+                    // also reads off. Threshold comes from the runner (one source).
                     const mv = typeof s.value === 'number' ? s.value : 0;
-                    if (mv > 0) { if (!ledOpen) { ledOpen = { startMs: t, endMs: null }; ov.led.push(ledOpen); } }
+                    const on = mv > 0 && mv < LED_OFF_MV;
+                    if (on) { if (!ledOpen) { ledOpen = { startMs: t, endMs: null }; ov.led.push(ledOpen); } }
                     else if (ledOpen) { ledOpen.endMs = t; ledOpen = null; }
                 }
             } else if (s.phase === 'sequence-complete' || s.phase === 'aborted') {
@@ -3715,11 +3728,16 @@
             ctx.strokeRect(padL, top, plotW, h);
             let lo, hi;
             if (row.fixed) { lo = row.fixed[0]; hi = row.fixed[1]; }
-            else {
+            else if (cfg.autoY || !heldScale[row.key]) {
+                // Auto-scale symmetrically about 0 and remember it. When auto-Y is
+                // later switched off, this last range is what freezes (below).
                 let mx = 1e-6;
                 if (pts) pts.forEach((p) => { if (p && isFinite(p.v)) mx = Math.max(mx, Math.abs(p.v)); });
                 mx *= 1.1;
                 lo = -mx; hi = mx;
+                heldScale[row.key] = [lo, hi];
+            } else {
+                lo = heldScale[row.key][0]; hi = heldScale[row.key][1]; // auto-Y off → frozen
             }
             const yOf = (v) => bottom - ((v - lo) / (hi - lo)) * h;
             if (lo < 0 && hi > 0) {

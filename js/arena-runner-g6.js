@@ -1007,6 +1007,7 @@ var ArenaRunnerG6 = (function () {
         translateCommand,
         hostSideTrialEnd,
         RUNNABLE_CONTROLLER_COMMANDS,
+        LED_OFF_MV, // BuckPuck "LED dark" analog level (mV) — the scope's on/off threshold
         ArenaRunner
     };
 })();

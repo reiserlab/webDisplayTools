@@ -4,6 +4,17 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.18 — 2026-07-07 · Scope fixes: LED overlay on/off + working auto-Y
+
+- **The scope's LED band now reads the BuckPuck driver correctly.** The LED (BuckPuck)
+  drive is inverted — full dark is ≈5 V, brighter is a *lower* voltage — so a `ledDrive 0%`
+  used to (wrongly) show the LED as on. The overlay now uses the driver's own "LED dark"
+  threshold (`LED_OFF_MV`, shared from the runner) to tell on from off, so an LED turned
+  off mid-run correctly closes the red band.
+- **The scope's `auto-Y` button now does something.** With auto-Y on (default) each trace
+  auto-scales to its data; turning it off **freezes** the current Y range so the trace stops
+  rescaling as new data streams in. (Previously the button toggled but had no effect.)
+
 ## v0.17 — 2026-07-07 · Run-logging level is a File-menu setting
 
 - **Pick the FicTrac frame-logging level from File ▾ → Run logging** — `behavior_v1`

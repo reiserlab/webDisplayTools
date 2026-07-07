@@ -459,6 +459,20 @@ async function main() {
         Runner.translateCommand({ type: 'controller', command_name: 'setAnalogOut', mv: 12.5 }).op,
         'error'
     );
+    // ledDrive is the inverted BuckPuck path: 0% brightness emits LED_OFF_MV (dark),
+    // brighter = LOWER mV. The scope's LED overlay keys off LED_OFF_MV (exported) to
+    // tell on from off, so both must agree — assert the export and the 0% level.
+    check('LED_OFF_MV is exported', Runner.LED_OFF_MV, 5000);
+    check(
+        'ledDrive 0% -> LED_OFF_MV (dark, reads off in the scope)',
+        Runner.translateCommand({ type: 'controller', command_name: 'ledDrive', percent: 0 }).mv,
+        Runner.LED_OFF_MV
+    );
+    checkBool(
+        'ledDrive 100% -> below LED_OFF_MV (reads on in the scope)',
+        Runner.translateCommand({ type: 'controller', command_name: 'ledDrive', percent: 100 }).mv <
+            Runner.LED_OFF_MV
+    );
     const trDO = Runner.translateCommand({
         type: 'controller',
         command_name: 'setDigitalOut',
