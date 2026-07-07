@@ -464,6 +464,12 @@
   .pmodal-h{display:flex;align-items:center;justify-content:space-between;font-family:var(--head);font-size:14px}
   .pmodal-box code{color:var(--accent);font-size:11px}
   footer{flex:0 0 auto;padding:3px 14px;font-size:10px;color:var(--dim);background:var(--surface);border-top:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Course-repo quick-links — small fixed widget above the footer, bottom-left. */
+  #ghQuickLinks{position:fixed;left:8px;bottom:26px;z-index:45;display:flex;align-items:center;gap:7px;background:rgba(26,31,38,.94);border:1px solid var(--border);border-radius:7px;padding:4px 9px;font-size:10.5px;color:var(--dim);box-shadow:0 4px 14px rgba(0,0,0,.45)}
+  #ghQuickLinks .ql-title{font-family:var(--head);letter-spacing:.3px;color:var(--dim)}
+  #ghQuickLinks .ql-repo{color:var(--text);opacity:.65;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #ghQuickLinks .ql-link{color:var(--accent);text-decoration:none;padding:1px 6px;border:1px solid transparent;border-radius:5px}
+  #ghQuickLinks .ql-link:hover{border-color:var(--accent);background:rgba(0,230,118,.08)}
   .banner{background:rgba(227,160,8,.12);border:1px solid var(--warn);color:var(--warn);border-radius:8px;padding:8px 12px;margin:10px 20px;font-size:12px;display:none}
   .banner.show{display:block}
 
@@ -2775,7 +2781,17 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.26 | 2026-07-07 14:46 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<!-- Course-repo quick-links (bottom-left): open protocols / logs / patterns in a
+     new tab. Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
+<div id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
+  <span class="ql-title">course repo ↗</span>
+  <span class="ql-repo" id="qlRepo"></span>
+  <a class="ql-link" id="qlProtocols" target="_blank" rel="noopener">protocols</a>
+  <a class="ql-link" id="qlLogs" target="_blank" rel="noopener">logs</a>
+  <a class="ql-link" id="qlPatterns" target="_blank" rel="noopener">patterns</a>
+</div>
+
+<footer id="footer">Arena Studio v0.27 | 2026-07-07 14:51 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -7062,6 +7078,30 @@ function updateSaveLabel() {
         $('fmSave').textContent = 'Save → local file';
         if (saveAs) saveAs.textContent = 'Save as → local file…';
     }
+    updateGhQuickLinks(cs);
+}
+// Bottom-corner quick-links: open the configured course repo's protocols / logs /
+// patterns folders in a new tab. Bench-namespaced when a bench id is set (else the
+// parent folder). Refreshed from updateSaveLabel whenever repo/bench change.
+function updateGhQuickLinks(cs) {
+    const box = $('ghQuickLinks');
+    if (!box) return;
+    cs = cs || Studio.courseSettings();
+    if (!cs.repo) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    const base = 'https://github.com/' + cs.repo.owner + '/' + cs.repo.name + '/tree/main/';
+    const bench = cs.benchId ? encodeURIComponent(cs.benchId) : '';
+    const set = (id, path, tip) => {
+        const a = $(id);
+        if (!a) return;
+        a.href = base + path;
+        a.title = tip + ' — ' + cs.repo.full + '/' + path + ' (opens in a new tab)';
+    };
+    set('qlProtocols', 'protocols' + (bench ? '/' + bench : ''), 'Protocols for this bench');
+    set('qlLogs', 'runlogs' + (bench ? '/' + bench : ''), 'Run logs for this bench');
+    set('qlPatterns', 'patterns', 'Shared pattern library');
+    const repoLbl = $('qlRepo');
+    if (repoLbl) repoLbl.textContent = cs.repo.full + (cs.benchId ? ' · ' + cs.benchId : '');
 }
 // PR vs direct-commit are mutually exclusive write modes — checking one
 // clears the other (the last checked box wins).

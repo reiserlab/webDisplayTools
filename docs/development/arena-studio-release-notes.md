@@ -4,6 +4,13 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.27 — 2026-07-07 · Course-repo quick-links (bottom corner)
+
+- A small **course repo ↗** widget in the bottom-left opens the configured repo's
+  **protocols**, **logs** (`runlogs/`), and **patterns** folders on GitHub in a new
+  tab. Links namespace to the current **bench id** when one is set (e.g.
+  `protocols/bench02`, `runlogs/bench02`) and update live when the repo/bench change.
+
 ## v0.26 — 2026-07-07 · Run-details: fly age / sex / fly number
 
 - Three new controlled-vocabulary dropdowns in Run details — **Fly age**
