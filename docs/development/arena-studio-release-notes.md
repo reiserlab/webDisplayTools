@@ -4,6 +4,16 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.26 — 2026-07-07 · Run-details: fly age / sex / fly number
+
+- Three new controlled-vocabulary dropdowns in Run details — **Fly age**
+  (1-2 / 3-4 / 5-6 / 7-14 / 14+ days), **Sex** (M / F), and **Fly number**
+  (N/A or 1–100) — each backed by a repo YAML (`configs/metadata/ages.yaml`,
+  `sexes.yaml`, `fly_numbers.yaml`) with an ↗ source link, same as experimenter
+  and genotype. Extend a list via a PR. Optional (not required for a recorded run).
+- All three are written into the run-log `run_metadata` line (`age`, `sex`,
+  `fly_number`), so recorded runs carry them for the analysis dashboard.
+
 ## v0.25 — 2026-07-07 · Oscilloscope readability pass
 
 - **New 2-minute span** option (10 s / 30 s / 1 min / 2 min / 5 min).

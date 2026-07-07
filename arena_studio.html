@@ -2187,8 +2187,32 @@
           <div class="hint">Required for a recorded run.</div>
         </div>
         <div class="mp-field">
+          <label>Fly age
+            <a class="srclink" id="mAgeSrc" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/ages.yaml" target="_blank" rel="noopener">↗ source</a>
+          </label>
+          <select id="mAge" title="Fly age bracket (controlled list — configs/metadata/ages.yaml).">
+            <option value="">— select age —</option>
+          </select>
+        </div>
+        <div class="mp-field">
+          <label>Sex
+            <a class="srclink" id="mSexSrc" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/sexes.yaml" target="_blank" rel="noopener">↗ source</a>
+          </label>
+          <select id="mSex" title="Fly sex (controlled list — configs/metadata/sexes.yaml).">
+            <option value="">— select sex —</option>
+          </select>
+        </div>
+        <div class="mp-field">
+          <label>Fly number
+            <a class="srclink" id="mFlyNumSrc" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/fly_numbers.yaml" target="_blank" rel="noopener">↗ source</a>
+          </label>
+          <select id="mFlyNum" title="Which fly within the day/genotype (N/A or 1–100; configs/metadata/fly_numbers.yaml).">
+            <option value="">— select fly # —</option>
+          </select>
+        </div>
+        <div class="mp-field">
           <label>Notes</label>
-          <textarea id="mNotes" placeholder="temperature, fly age, anything odd…"></textarea>
+          <textarea id="mNotes" placeholder="temperature, anything odd…"></textarea>
         </div>
         <div class="mp-note" id="mSrcNote">Dropdowns read controlled-vocabulary files in the repo — extend via a PR.</div>
       </div>
@@ -2751,7 +2775,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.25 | 2026-07-07 14:38 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.26 | 2026-07-07 14:46 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -5325,6 +5349,14 @@ async function populateMetaDatalists() {
     const genos = await loadVocab('./configs/metadata/genotypes.yaml', 'genotypes');
     if (people) renderPeopleVocab(people);
     if (genos) renderGenoVocab(genos);
+    // Fly age / sex / fly-number — same controlled-vocab pattern, site-local YAML
+    // (no course-repo override; these lists are stable). Optional fields.
+    const ages = await loadVocab('./configs/metadata/ages.yaml', 'ages');
+    const sexes = await loadVocab('./configs/metadata/sexes.yaml', 'sexes');
+    const flyNums = await loadVocab('./configs/metadata/fly_numbers.yaml', 'fly_numbers');
+    if (ages) fillMetaSelect($('mAge'), ages, '— select age —');
+    if (sexes) fillMetaSelect($('mSex'), sexes, '— select sex —');
+    if (flyNums) fillMetaSelect($('mFlyNum'), flyNums.map(String), '— select fly # —');
     if (!people && !genos) {
         $('mSrcNote').textContent = 'Controlled list unavailable — ask the instructor to add entries to people.yaml / genotypes.yaml.';
     }
@@ -6535,7 +6567,14 @@ function startRunLog(isExperiment) {
     const runId = window.StudioMeta.makeRunId();
     const meta = window.StudioMeta.buildMeta({
         runId,
-        panel: { experimenter: $('mExp').value, genotype: $('mGeno').value, notes: $('mNotes').value },
+        panel: {
+            experimenter: $('mExp').value,
+            genotype: $('mGeno').value,
+            age: $('mAge').value,
+            sex: $('mSex').value,
+            fly_number: $('mFlyNum').value,
+            notes: $('mNotes').value
+        },
         doc: { filename: doc.filename, sha256: doc.sha256 },
         session: { firmware: Studio.firmware, controllerId: Studio.controllerId },
         rig: doc.rig,

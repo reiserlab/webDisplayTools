@@ -1,0 +1,7 @@
+# Controlled vocabulary — fly sex for the Arena Studio Run-details panel.
+# CONSTRAINED pick-list (no free text) so recorded data stays typo-free and
+# mergeable — extend via a PR.
+format_version: "1.0"
+sexes:
+  - "M"
+  - "F"

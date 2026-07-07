@@ -54,7 +54,14 @@ checkBool('random suffix breaks same-ms collision', c1 !== c2, c1 + ' vs ' + c2)
 console.log('=== buildMeta ===');
 const meta = M.buildMeta({
     runId: 'abc123',
-    panel: { experimenter: '  mreiser ', genotype: 'Canton-S', notes: ' fly 7 ' },
+    panel: {
+        experimenter: '  mreiser ',
+        genotype: 'Canton-S',
+        age: '3-4 days',
+        sex: 'F',
+        fly_number: ' 7 ',
+        notes: ' fly 7 '
+    },
     doc: { filename: 'looming_v3.yaml', sha256: 'deadbeef' },
     session: { firmware: 'v1', controllerId: '04:E9:E5:AB:CD:12' },
     rig: { name: 'cshl_g6_2x10', arenaConfig: 'G6_2x10' },
@@ -63,6 +70,9 @@ const meta = M.buildMeta({
 check('run_id passthrough', meta.run_id, 'abc123');
 check('experimenter trimmed', meta.experimenter, 'mreiser');
 check('genotype', meta.genotype, 'Canton-S');
+check('age', meta.age, '3-4 days');
+check('sex', meta.sex, 'F');
+check('fly_number trimmed', meta.fly_number, '7');
 check('notes trimmed', meta.notes, 'fly 7');
 check('protocol_filename', meta.protocol_filename, 'looming_v3.yaml');
 check('protocol_sha256', meta.protocol_sha256, 'deadbeef');
