@@ -2149,6 +2149,7 @@
                 <option value="10">10 s</option>
                 <option value="30" selected>30 s</option>
                 <option value="60">1 min</option>
+                <option value="120">2 min</option>
                 <option value="300">5 min</option>
               </select>
             </label>
@@ -2750,7 +2751,7 @@
   </div>
 </div>
 
-<footer id="footer">Arena Studio v0.24 | 2026-07-07 13:41 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
+<footer id="footer">Arena Studio v0.25 | 2026-07-07 14:38 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></footer>
 
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
@@ -3712,9 +3713,9 @@
             const W = cssW, H = cssH;
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.clearRect(0, 0, W, H);
-            const padL = 46, padR = 8, padT = 14, ledH = 9, xAxisH = 12;
+            const padL = 52, padR = 8, padT = 18, xAxisH = 16;
             const plotW = Math.max(10, W - padL - padR);
-            const plotTop = padT, plotBottom = H - ledH - xAxisH, plotH = Math.max(30, plotBottom - plotTop);
+            const plotTop = padT, plotBottom = H - xAxisH, plotH = Math.max(30, plotBottom - plotTop);
             const gap = 6, rowH = (plotH - 2 * gap) / 3;
             const tNow = raw.length ? raw[raw.length - 1].ms : 0;
             const spanMs = cfg.spanS * 1000, t0 = tNow - spanMs, t1 = tNow;
@@ -3730,44 +3731,42 @@
                         : 'waiting for FicTrac bridge (Console → FicTrac, then run closed-loop)';
             }
             const series = raw.length ? computeSeries(t0, t1) : null;
-            // visual (green) spans behind the rows
+            // ── UNDERLAYS (behind the data) ──────────────────────────────────
+            // trial (pattern-displaying) span — very light green
             ov.visual.forEach((v) => {
                 const e = v.endMs != null ? v.endMs : t1;
                 if (e < t0 || v.startMs > t1) return;
                 const x0 = clipX(v.startMs), x1 = clipX(e);
-                ctx.fillStyle = 'rgba(0,230,118,0.045)'; // very light green underlay (trial span)
+                ctx.fillStyle = 'rgba(0,230,118,0.045)';
                 ctx.fillRect(x0, plotTop, Math.max(1, x1 - x0), plotH);
             });
-            ROWS.forEach((row, i) => drawRow(row, series ? series[row.key] : null, plotTop + i * (rowH + gap), rowH, padL, plotW, xOf));
-            // condition boundaries (dashed vertical + label at top)
-            ctx.setLineDash([3, 3]);
-            ov.cond.forEach((c) => {
-                if (c.ms < t0 || c.ms > t1) return;
-                const x = xOf(c.ms);
-                ctx.strokeStyle = 'rgba(230,237,243,0.30)'; ctx.lineWidth = 1;
-                ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, plotBottom); ctx.stroke();
-                ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace'; ctx.textAlign = 'left';
-                ctx.fillText(String(c.label).slice(0, 18), x + 2, plotTop - 4);
-            });
-            ctx.setLineDash([]);
-            // LED (red) band under the rows
-            const ledY = plotBottom + 2;
-            ctx.fillStyle = '#8b949e'; ctx.font = '8px monospace'; ctx.textAlign = 'right';
-            ctx.fillText('LED', padL - 3, ledY + ledH - 1);
+            // LED (opto stim) interval — a PINK box spanning all three rows, under
+            // the traces (replaces the old thin band beneath the plot).
             ov.led.forEach((l) => {
                 const e = l.endMs != null ? l.endMs : t1;
                 if (e < t0 || l.startMs > t1) return;
                 const x0 = clipX(l.startMs), x1 = clipX(e);
-                ctx.fillStyle = 'rgba(255,105,160,0.55)'; // light pink LED band
-                ctx.fillRect(x0, ledY, Math.max(1, x1 - x0), ledH - 2);
+                ctx.fillStyle = 'rgba(255,64,140,0.15)';
+                ctx.fillRect(x0, plotTop, Math.max(1, x1 - x0), plotH);
             });
-            // x-axis time ticks (seconds relative to now)
-            ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
-            const tickStep = cfg.spanS <= 10 ? 2 : cfg.spanS <= 30 ? 5 : cfg.spanS <= 60 ? 10 : 60;
+            // ── DATA ROWS ────────────────────────────────────────────────────
+            ROWS.forEach((row, i) => drawRow(row, series ? series[row.key] : null, plotTop + i * (rowH + gap), rowH, padL, plotW, xOf));
+            // ── TRIAL BOUNDARIES: bright white, solid, a touch thicker, on top ─
+            ov.cond.forEach((c) => {
+                if (c.ms < t0 || c.ms > t1) return;
+                const x = xOf(c.ms);
+                ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, plotBottom); ctx.stroke();
+                ctx.fillStyle = '#e6edf3'; ctx.font = '11px monospace'; ctx.textAlign = 'left';
+                ctx.fillText(String(c.label).slice(0, 18), x + 3, plotTop - 5);
+            });
+            // ── x-axis time ticks (seconds relative to now) ───────────────────
+            ctx.fillStyle = '#8b949e'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
+            const tickStep = cfg.spanS <= 10 ? 2 : cfg.spanS <= 30 ? 5 : cfg.spanS <= 60 ? 10 : cfg.spanS <= 120 ? 20 : 60;
             for (let s = 0; s <= cfg.spanS; s += tickStep) {
                 const x = xOf(t1 - s * 1000);
                 if (x < padL - 1) continue;
-                ctx.fillText('-' + s + 's', x, H - 2);
+                ctx.fillText('-' + s + 's', x, H - 3);
             }
         }
         function drawRow(row, pts, top, h, padL, plotW, xOf) {
@@ -3804,11 +3803,11 @@
                 });
                 ctx.stroke();
             }
-            ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
-            ctx.fillText(fmt(hi), padL - 3, top + 8);
-            ctx.fillText(fmt(lo), padL - 3, bottom - 2);
+            ctx.fillStyle = '#8b949e'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+            ctx.fillText(fmt(hi), padL - 4, top + 10);
+            ctx.fillText(fmt(lo), padL - 4, bottom - 2);
             const cur = pts ? lastFinite(pts) : null;
-            ctx.fillStyle = row.color; ctx.font = '10px monospace'; ctx.textAlign = 'left';
+            ctx.fillStyle = row.color; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'left';
             ctx.fillText(row.label + (cur != null ? '  ' + fmt(cur) + ' ' + row.unit : '  ' + row.unit), padL + 4, top + 10);
         }
         function loop() {

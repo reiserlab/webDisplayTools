@@ -4,6 +4,16 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.25 — 2026-07-07 · Oscilloscope readability pass
+
+- **New 2-minute span** option (10 s / 30 s / 1 min / 2 min / 5 min).
+- **Larger labels** (~25%) across the scope — axis ticks, condition labels, and the
+  per-row value readouts (now bold) — easier to read from across the rig.
+- **Trial-boundary lines are now bright white and thicker** (solid), so trial starts
+  stand out clearly.
+- **The LED (opto) interval is now a translucent pink box spanning all three traces**,
+  drawn *under* the data — replacing the thin band that used to sit below the plot.
+
 ## v0.24 — 2026-07-07 · Run-log metadata version was stuck at "v0.5"
 
 `tool_version` in every run-log's `run_metadata` was a hardcoded constant
