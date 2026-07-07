@@ -249,11 +249,12 @@
   .mp-field{margin-bottom:9px}
   .mp-field label{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:3px}
   .mp-field .req{color:var(--warn)}
-  .mp-field input,.mp-field textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-family:var(--mono);font-size:12px}
+  .mp-field input,.mp-field select,.mp-field textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-family:var(--mono);font-size:12px}
+  .mp-field select{cursor:pointer}
   .mp-field textarea{resize:vertical;min-height:44px}
   /* Notes: roomy by default (plenty of space on the Run screen); still resizable */
   #mNotes{min-height:38vh}
-  .mp-field.invalid input{border-color:var(--danger)}
+  .mp-field.invalid input,.mp-field.invalid select{border-color:var(--danger)}
   .mp-field .hint{font-size:10px;color:var(--danger);margin-top:3px;display:none}
   .mp-field.invalid .hint{display:block}
   .srclink{font-size:10px;color:var(--beta);text-decoration:none;font-weight:400}
@@ -2063,7 +2064,9 @@
           <label>Experimenter <span class="req">*</span>
             <a class="srclink" id="mExpSrc" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/people.yaml" target="_blank" rel="noopener">↗ source</a>
           </label>
-          <input id="mExp" list="expList" placeholder="who is running this?" autocomplete="off">
+          <select id="mExp" title="Pick the experimenter from the controlled list (course roster / people.yaml). No free text — add missing people to that file so the recorded data stays typo-free and mergeable.">
+            <option value="">— select experimenter —</option>
+          </select>
           <datalist id="expList"></datalist>
           <div class="hint">Required for a recorded run.</div>
         </div>
@@ -2071,8 +2074,9 @@
           <label>Fly genotype <span class="req">*</span>
             <a class="srclink" id="mGenoSrc" href="https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/genotypes.yaml" target="_blank" rel="noopener">↗ source</a>
           </label>
-          <input id="mGeno" list="genoList" placeholder="e.g. w;UAS-CsChrimson" autocomplete="off">
-          <datalist id="genoList"></datalist>
+          <select id="mGeno" title="Pick the genotype from the controlled list (course genotypes.yaml). No free text — pre-register new genotypes in that file so the recorded data stays typo-free and mergeable.">
+            <option value="">— select genotype —</option>
+          </select>
           <div class="hint">Required for a recorded run.</div>
         </div>
         <div class="mp-field">
@@ -3245,7 +3249,7 @@
     $('fmOpen').addEventListener('click', () => { $('fileMenu').classList.remove('open'); $('fileInput').click(); });
 
     // metadata gating live
-    ['mExp', 'mGeno'].forEach((id) => $(id).addEventListener('input', updateRunGate));
+    ['mExp', 'mGeno'].forEach((id) => ['change', 'input'].forEach((ev) => $(id).addEventListener(ev, updateRunGate)));
 
     // ---- session subscriptions (the single spine) ----------------------------
     if (Studio.session) {
@@ -4552,30 +4556,86 @@ async function loadVocab(path, key) {
         return null;
     }
 }
+// ---- controlled-vocabulary <select>s (run-view experimenter + genotype) ------
+// The run-view experimenter + genotype are CONSTRAINED dropdowns, not free text:
+// students pick from a curated list so no typos leak into the recorded data and
+// runs merge cleanly later. The vocab is CACHED — options are rebuilt only when
+// the source list actually changes (and never while the control is open), which
+// also removes the option-churn that made the old <datalist> inputs feel "stuck"
+// after a pick. (The edit-view protocol *author* keeps its expList datalist +
+// free text — that's who built the protocol, a different field.)
+function fillMetaSelect(sel, items, placeholder) {
+    if (!sel) return;
+    const opts = (items || [])
+        .map((it) => (typeof it === 'string' ? { value: it, label: it } : { value: it.value, label: it.label || it.value }))
+        .filter((o) => o.value);
+    const sig = JSON.stringify(opts);
+    if (sel._optSig === sig) return; // unchanged — skip the rebuild (no churn)
+    if (document.activeElement === sel) return; // don't collapse an open dropdown mid-pick
+    const prev = sel.value;
+    sel.innerHTML = '';
+    const ph = document.createElement('option');
+    ph.value = '';
+    ph.textContent = placeholder || '— select —';
+    sel.appendChild(ph);
+    let hasPrev = false;
+    opts.forEach((o) => {
+        const el = document.createElement('option');
+        el.value = o.value;
+        el.textContent = o.label;
+        if (o.value === prev) hasPrev = true;
+        sel.appendChild(el);
+    });
+    // Keep an already-chosen value selectable even if it left the vocab, so a
+    // refresh never silently drops what the user picked.
+    if (prev && !hasPrev) {
+        const keep = document.createElement('option');
+        keep.value = prev;
+        keep.textContent = prev + ' (not in list)';
+        sel.appendChild(keep);
+    }
+    sel.value = prev;
+    sel._optSig = sig;
+}
+// Render the people vocab into BOTH the edit-view author datalist (free-text
+// suggestions) and the run-view experimenter <select> (constrained pick-list).
+function renderPeopleVocab(people) {
+    const list = Array.isArray(people) ? people.filter((p) => p && (typeof p === 'string' || p.id || p.name)) : [];
+    const dl = $('expList');
+    if (dl) {
+        const sig = JSON.stringify(list);
+        if (dl._optSig !== sig) {
+            dl.innerHTML = '';
+            list.forEach((p) => {
+                const o = document.createElement('option');
+                o.value = p.id || p.name || p;
+                if (p.name && p.id) o.label = p.name;
+                dl.appendChild(o);
+            });
+            dl._optSig = sig;
+        }
+    }
+    fillMetaSelect(
+        $('mExp'),
+        list.map((p) => ({ value: p.id || p.name || p, label: p.name || p.id || p })),
+        '— select experimenter —'
+    );
+}
+function renderGenoVocab(genos) {
+    const list = Array.isArray(genos) ? genos : [];
+    fillMetaSelect(
+        $('mGeno'),
+        list.map((g) => (typeof g === 'string' ? g : g.name || g.id)).filter(Boolean),
+        '— select genotype —'
+    );
+}
 async function populateMetaDatalists() {
     const people = await loadVocab('./configs/metadata/people.yaml', 'people');
     const genos = await loadVocab('./configs/metadata/genotypes.yaml', 'genotypes');
-    const expList = $('expList');
-    if (people) {
-        expList.innerHTML = '';
-        people.forEach((p) => {
-            const o = document.createElement('option');
-            o.value = p.id || p.name || p;
-            if (p.name && p.id) o.label = p.name;
-            expList.appendChild(o);
-        });
-    }
-    const genoList = $('genoList');
-    if (genos) {
-        genoList.innerHTML = '';
-        genos.forEach((g) => {
-            const o = document.createElement('option');
-            o.value = typeof g === 'string' ? g : g.name || g.id;
-            genoList.appendChild(o);
-        });
-    }
+    if (people) renderPeopleVocab(people);
+    if (genos) renderGenoVocab(genos);
     if (!people && !genos) {
-        $('mSrcNote').textContent = 'Controlled list unavailable — free text is fine.';
+        $('mSrcNote').textContent = 'Controlled list unavailable — ask the instructor to add entries to people.yaml / genotypes.yaml.';
     }
 }
 
@@ -4634,26 +4694,17 @@ async function fetchCourseRoster() {
         return;
     }
     if (!Array.isArray(entries) || !entries.length) return;
-    // Course datalist: the roster's names drive the experimenter dropdown.
-    const expList = $('expList');
-    if (expList) {
-        expList.innerHTML = '';
-        entries.forEach((p) => {
-            if (!p || !(p.id || p.name)) return;
-            const o = document.createElement('option');
-            o.value = p.id || p.name;
-            if (p.name && p.id) o.label = p.name;
-            expList.appendChild(o);
-        });
-        const note = $('mSrcNote');
-        if (note) note.textContent = 'Experimenter list from the course roster (' + cs.repo.full + '/roster.yaml).';
-        // The "↗ source" link now points at the ACTIVE source (the roster),
-        // not the default lab people.yaml.
-        const link = $('mExpSrc');
-        if (link) {
-            link.href = courseFileUrl(cs, 'roster.yaml');
-            link.title = 'Course roster — experimenter list (' + cs.repo.full + '/roster.yaml)';
-        }
+    // The roster drives the experimenter picker (constrained <select>) + the
+    // edit-view author datalist; cached so a reconnect doesn't churn the options.
+    renderPeopleVocab(entries);
+    const note = $('mSrcNote');
+    if (note) note.textContent = 'Experimenter list from the course roster (' + cs.repo.full + '/roster.yaml).';
+    // The "↗ source" link now points at the ACTIVE source (the roster),
+    // not the default lab people.yaml.
+    const link = $('mExpSrc');
+    if (link) {
+        link.href = courseFileUrl(cs, 'roster.yaml');
+        link.title = 'Course roster — experimenter list (' + cs.repo.full + '/roster.yaml)';
     }
     if (!cs.benchId) return;
     const mine = entries.find((p) => p && p.rig_id === cs.benchId);
@@ -4705,17 +4756,7 @@ async function fetchCourseGenotypes() {
         return;
     }
     if (!Array.isArray(list) || !list.length) return;
-    const genoList = $('genoList');
-    if (genoList) {
-        genoList.innerHTML = '';
-        list.forEach((g) => {
-            const val = typeof g === 'string' ? g : (g && (g.name || g.id)) || '';
-            if (!val) return;
-            const o = document.createElement('option');
-            o.value = val;
-            genoList.appendChild(o);
-        });
-    }
+    renderGenoVocab(list);
     const link = $('mGenoSrc');
     if (link) {
         link.href = courseFileUrl(cs, 'genotypes.yaml');
