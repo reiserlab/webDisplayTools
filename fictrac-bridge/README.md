@@ -112,6 +112,10 @@ bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>,
                     "x":<rad>, "y":<rad>, "hd":<rad>}
                      (the behavior_v1 fields — ms/fc/idx/ft/x/y/hd — drive the live
                       oscilloscope; index/seq/t stay for back-compatibility)
+                     NOTE: `ft` is relative MILLISECONDS. FicTrac col-22 is the camera
+                     hardware clock — NANOSECONDS on our rigs — normalized here via
+                     FT_TS_NS_PER_MS. `ms` is the bridge wall-clock (display axis); `ft`
+                     is the velocity time base (per-frame differences, drop-safe).
                    {"type":"log_export_result", "name":<str>, "content":<str>}
                      (reply to log_export; {"error":<str>} when nothing was written)
 browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
