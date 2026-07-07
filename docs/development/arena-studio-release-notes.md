@@ -4,6 +4,35 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.9 — 2026-07-06 · Closed-loop frame-count fix (correct FicTrac modulus)
+
+- **Fixed: closed-loop (FicTrac) runs used the wrong frame modulus.** The bridge needs the
+  pattern's *true* frame count as the index modulus (e.g. 200 for a 200-frame pattern), but
+  the Console thumbnail renderer was overwriting the pattern's stored frame count with the
+  number of *preview thumbnails* it sampled (≤10). A run could therefore push `frames=10` to
+  the bridge for a 200-frame pattern, wrapping the closed-loop heading→frame mapping every 10
+  frames instead of 200 — silently corrupting the visual feedback. The preview now keeps the
+  true parsed frame count. Reported from a bench run whose log showed
+  `{"type":"config","gain":1.8,"frames":10}` for `frame2_h_ccw_200f`. (The standalone
+  `experiment_designer_v3.html` had the same class of bug via a different field — its
+  closed-loop frame resolver read a nonexistent `it.frames` and always got null — fixed too,
+  v0.41.)
+
+## v0.8 — 2026-07-06 · Constrained run metadata + run log collapsed by default
+
+- **Experimenter and genotype are now controlled pick-lists**, not free-text fields. Both
+  are `<select>` dropdowns fed from the controlled vocabulary (the course `roster.yaml` /
+  `genotypes.yaml`, or the lab `configs/metadata/*.yaml` when no course repo is set). No
+  free text means no typos leak into the recorded run data, so runs merge cleanly later. A
+  genotype that isn't on the list is pre-registered by adding it to `genotypes.yaml` (the
+  "↗ source" link). This also fixes the bench report that a picked value got **stuck and
+  couldn't be changed** — the old `<datalist>` inputs could wedge Chrome's native
+  autocomplete when the list rebuilt on connect; a `<select>` is always re-selectable, and
+  the vocabulary is now cached so a reconnect no longer churns the options. (The Edit view's
+  protocol *author* field is unchanged — it stays free text with roster suggestions.)
+- **The run log starts collapsed** so a first look isn't a wall of transport hex. One click
+  on the ▸ chevron opens it, and that choice is remembered per browser.
+
 ## v0.7 — 2026-07-05 · Edit toolbar + Settings diet (wireframe v6 issues 6/7/8)
 
 - **Edit toolbar** is now just: Designer | YAML tabs · ● edited · ↶ ↷ · Settings ▾.
