@@ -4,6 +4,21 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.40 — 2026-07-08 · Console trial panel speaks the new TRIAL_PARAMS layout
+
+- **New wire format for trials** (firmware #4 / #39 re-layout, via webDisplayTools
+  [#155](https://github.com/reiserlab/webDisplayTools/pull/155)): gain is now a full
+  ±32767 range, and the trial duration is sent to the controller so **the arena stops
+  itself** when the trial ends — the browser's own STOP now fires 2 s later as a
+  backup only (the log says which one fired). Requires the matching new firmware; an
+  arena on older firmware will misread trial parameters, so flash first.
+- **Per-trial brightness (duty) in the Arena Trial panel.** A new optional `duty`
+  field (0–255) dims just that trial; leave it blank to use the pattern's own stored
+  brightness. Cleared by ALL_OFF / pattern re-select on the controller side.
+- **Full trial provenance in the console log** — the TRIAL_PARAMS log line now records
+  rate, start frame, gain, duration, and duty (when sent), so a bench session's log
+  is a complete record of what each trial actually ran with.
+
 ## v0.39 — 2026-07-08 · Scope opens bigger, dead gap trimmed
 
 - **The scope now opens at half the viewport** (was ~1/3) and sits directly under the

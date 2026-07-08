@@ -2635,11 +2635,12 @@
               <span class="pchip" title="The pattern this trial runs — change it in Patterns"><span class="thumb"></span><b id="cTrialPatName">—</b></span>
               <label>mode <select id="cMode"><option value="2">2 · play</option><option value="3">3 · show frame</option><option value="4">4 · closed loop</option></select></label>
               <label class="tf" data-modes="2" title="Frames per second — negative plays in reverse (mode 2)">rate (Hz) <input id="cRate" type="number" min="-32768" max="32767" value="30" style="width:56px"></label>
-              <label class="tf" data-modes="4" title="Loop gain (mode 4)">gain <input id="cGain" type="number" value="0" style="width:50px"></label>
+              <label class="tf" data-modes="4" title="Loop gain (mode 4) — signed int16, -32768 to 32767">gain <input id="cGain" type="number" min="-32768" max="32767" value="0" style="width:62px"></label>
               <label class="tf" data-modes="34" title="Start frame (modes 3/4) — SET_FRAME_POSITION 0x70">start <input id="cInit" type="number" value="0" style="width:50px"></label>
-              <label title="host-timed auto-stop after N s; 0 = run until Stop">auto-stop (s) <input id="cDur" type="number" min="0" step="0.1" value="0" style="width:52px"></label>
+              <label title="Per-trial brightness override 0–255 (optional 12th TRIAL_PARAMS byte) — blank = use the pattern's stored duty">duty <input id="cTrialDuty" type="number" min="0" max="255" step="1" placeholder="pat" style="width:50px"></label>
+              <label title="Trial duration in seconds — sent in TRIAL_PARAMS (controller-timed stop); the host arms a backup STOP 2 s later. 0 = run until Stop">duration (s) <input id="cDur" type="number" min="0" step="0.1" value="0" style="width:52px"></label>
               <label class="pat-hidden">pat idx <input id="cPat" type="number" min="1" value="1" style="width:56px" title="1-based SD index (set from the Patterns picker)"></label>
-              <span class="rt"><button class="pill go" data-cmd="ctrial" title="Send TRIAL_PARAMS (0x08); dur &gt; 0 arms a host-timed STOP">▶ Start</button><button class="pill" data-cmd="cstop" title="Stop the display (STOP_DISPLAY 0x30)">■ Stop</button></span>
+              <span class="rt"><button class="pill go" data-cmd="ctrial" title="Send TRIAL_PARAMS (0x08); duration &gt; 0 = controller-timed stop + a backup host STOP">▶ Start</button><button class="pill" data-cmd="cstop" title="Stop the display (STOP_DISPLAY 0x30)">■ Stop</button></span>
             </div>
           </div>
         </section>
@@ -2809,7 +2810,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.39 | 2026-07-08 01:25 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.40 | 2026-07-08 01:39 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -4307,9 +4308,10 @@
         fn();
     }
 
-    // Host-timed auto-stop for "Send trial params" dur > 0 (approximate —
-    // controller-timed duration arrives with firmware #4). Cleared by anything
-    // that changes what the display is doing.
+    // Backup host STOP for "Send trial params" dur > 0. Duration now rides the
+    // wire (controller-timed stop, fw #4) — this timer fires 2 s late as a
+    // safety net only. Cleared by anything that changes what the display is
+    // doing.
     let autoStopTimer = null;
     function clearAutoStop() {
         if (autoStopTimer) {
@@ -4351,19 +4353,35 @@
         callon: () => guardDestructive(() => { clearAutoStop(); send(Wire.encodeAllOn(), 'ALL_ON 0xFF'); }),
         calloff: () => guardDestructive(() => { clearAutoStop(); send(Wire.encodeAllOff(), 'ALL_OFF 0x00'); }),
         cstop: () => { clearAutoStop(); send(Wire.encodeStop(), 'STOP_DISPLAY 0x30'); },
-        // trial params — dur > 0 ARMS a host-timed STOP (it used to only log a hint)
+        // trial params — duration rides the WIRE (controller-timed stop, fw #4);
+        // dur > 0 also arms a backup host STOP 2 s after the controller should
+        // have stopped itself. duty (fw #33) is optional: blank = byte omitted,
+        // the pattern's stored duty_cycle flows through unchanged.
         ctrial: () =>
             guardDestructive(async () => {
                 clearAutoStop();
-                const p = { mode: num('cMode'), patternId: num('cPat'), frameRate: num('cRate'), gain: num('cGain'), initPos: num('cInit') };
-                const r = await send(Wire.encodeTrialParams(p), 'TRIAL_PARAMS 0x08 mode ' + p.mode + ' pat ' + p.patternId);
                 const dur = num('cDur');
+                const p = { mode: num('cMode'), patternId: num('cPat'), frameRate: num('cRate'), initPos: num('cInit'), gain: num('cGain'), duration: dur };
+                const dutyRaw = $('cTrialDuty').value.trim();
+                if (dutyRaw !== '') p.duty = Number(dutyRaw);
+                let bytes;
+                try {
+                    bytes = Wire.encodeTrialParams(p);
+                } catch (e) {
+                    clog('trial params invalid: ' + (e.message || e), 'err');
+                    return;
+                }
+                const label =
+                    'TRIAL_PARAMS 0x08 mode ' + p.mode + ' pat ' + p.patternId +
+                    ' rate ' + p.frameRate + ' init ' + p.initPos + ' gain ' + p.gain +
+                    ' dur ' + dur + 's' + (p.duty !== undefined ? ' duty ' + p.duty : '');
+                const r = await send(bytes, label);
                 const d = r && Wire.decodeResponse(r);
                 if (dur > 0 && d && d.ok) {
                     autoStopTimer = setTimeout(() => {
                         autoStopTimer = null;
-                        send(Wire.encodeStop(), 'STOP_DISPLAY 0x30 (auto-stop after ' + dur + ' s, host-timed)');
-                    }, dur * 1000);
+                        send(Wire.encodeStop(), 'STOP_DISPLAY 0x30 (backup host stop — controller should have stopped at ' + dur + ' s)');
+                    }, dur * 1000 + 2000);
                 }
             }),
         cpatinfo: () => refreshPatInfo(false),
@@ -13638,6 +13656,7 @@ initFromUrl();
     '#cRate': 'Frames per second (Mode 2). Negative plays backwards.',
     '#cGain': 'Closed-loop gain (Mode 4).',
     '#cInit': 'Which frame to start on (Modes 3 and 4).',
+    '#cTrialDuty': 'Brightness for this trial (0–255). Leave blank to use the pattern’s own brightness.',
     '#cDur': 'Stop automatically after this many seconds. 0 = play until Stop.',
     '[data-cmd="ctrial"]': 'Start the trial with these settings.',
     '[data-cmd="cstop"]': 'Stop the trial.',
