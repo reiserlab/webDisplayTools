@@ -2848,7 +2848,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.53 | 2026-07-08 19:26 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.54 | 2026-07-08 19:46 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3795,7 +3795,35 @@
         const lastVals = {}; // {turning_deg_s, forward_mm_s, heading_deg} current values
         const SND_MAX_GAIN = 0.2, SND_VOL_FLOOR = 0.12, SND_STALE_MS = 500;
         const SND_FLO = 196, SND_FHI = 1568; // continuous pitch range (G3–G6)
-        const SND_SCALE_SEMIS = { pentatonic: [0, 3, 5, 7, 10], chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] };
+        // Note quantisers, as ABSOLUTE 12-TET pitch classes so a named chord/scale
+        // actually lands on its notes (C major = C-E-G) regardless of the Freq lo↔hi
+        // window. root = pitch class of the root (C=0, D=2, E=4, F=5, G=7, A=9, B=11);
+        // semis = intervals above it. rebuildNotes enumerates every matching pitch in
+        // [fLo, fHi]. 'continuous' is absent → no quantise (smooth glide).
+        const SND_SCALES = {
+            chromatic:  { root: 0, semis: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+            pentatonic: { root: 7, semis: [0, 2, 4, 7, 9] },      // G major pentatonic
+            major:      { root: 0, semis: [0, 2, 4, 5, 7, 9, 11] }, // C major scale
+            minor:      { root: 9, semis: [0, 2, 3, 5, 7, 8, 10] }, // A natural minor
+            wholetone:  { root: 0, semis: [0, 2, 4, 6, 8, 10] },   // dreamy, rootless
+            gmaj:       { root: 7, semis: [0, 4, 7] },             // G major chord
+            cmaj:       { root: 0, semis: [0, 4, 7] },             // C major chord
+            dmin:       { root: 2, semis: [0, 3, 7] },             // D minor chord
+            amin:       { root: 9, semis: [0, 3, 7] },             // A minor chord
+            maj7:       { root: 0, semis: [0, 4, 7, 11] },         // Cmaj7 arpeggio
+            power5:     { root: 0, semis: [0, 7] }                 // stark 5ths (root+fifth)
+        };
+        const SND_SCALE_OPTS = [
+            ['continuous', 'continuous (glide)'], ['chromatic', 'chromatic'],
+            ['pentatonic', 'pentatonic (G)'], ['major', 'major scale (C)'],
+            ['minor', 'minor scale (A)'], ['wholetone', 'whole tone'],
+            ['gmaj', 'G major chord'], ['cmaj', 'C major chord'],
+            ['dmin', 'D minor chord'], ['amin', 'A minor chord'],
+            ['maj7', 'major 7th (Cmaj7)'], ['power5', 'power 5ths']
+        ];
+        const A4_HZ = 440, A4_MIDI = 69;
+        const midiToFreq = (m) => A4_HZ * Math.pow(2, (m - A4_MIDI) / 12);
+        const freqToMidi = (f) => A4_MIDI + 12 * Math.log2(f / A4_HZ);
         // Defaults track the BEHAVIOR: tone = turning SPEED (|turning|), volume =
         // overall speed. pitchSigned flips the tone to signed turning (an option).
         const SND_DEF = { on: false, pitchSrc: 'turning_deg_s', pitchSigned: false, pitchMin: 0, pitchMax: 200,
@@ -3845,13 +3873,13 @@
         // the popover to re-fit ranges when the source changes.
         let sndNotes = null;
         function rebuildNotes() {
-            const semis = SND_SCALE_SEMIS[snd.scale];
-            if (!semis) { sndNotes = null; return; } // continuous → no quantise
+            const def = SND_SCALES[snd.scale];
+            if (!def) { sndNotes = null; return; } // continuous → no quantise
             const flo = snd.fLo || SND_FLO, fhi = snd.fHi || SND_FHI;
+            const pcs = new Set(def.semis.map((s) => (((def.root || 0) + s) % 12 + 12) % 12));
+            const mLo = Math.ceil(freqToMidi(flo) - 1e-6), mHi = Math.floor(freqToMidi(fhi) + 1e-6);
             const a = [];
-            for (let o = 0; o < 9 && flo * Math.pow(2, o) <= fhi * 1.02; o++) {
-                for (const s of semis) { const f = flo * Math.pow(2, (o * 12 + s) / 12); if (f <= fhi * 1.02) a.push(f); }
-            }
+            for (let m = mLo; m <= mHi; m++) if (pcs.has(((m % 12) + 12) % 12)) a.push(midiToFreq(m));
             if (!a.length) a.push(flo);
             sndNotes = a;
         }
@@ -4022,7 +4050,7 @@
             const vCurve = mkSel(SND_CURVES, snd.volCurve || 'linear');
             const fLo = mkNum(snd.fLo), fHi = mkNum(snd.fHi);
             const wSel = mkSel([['triangle', 'triangle'], ['sine', 'sine'], ['square', 'square'], ['sawtooth', 'saw']], snd.wave);
-            const scSel = mkSel([['pentatonic', 'pentatonic'], ['chromatic', 'chromatic'], ['continuous', 'continuous']], snd.scale);
+            const scSel = mkSel(SND_SCALE_OPTS, snd.scale);
             const mv = document.createElement('input'); mv.type = 'range'; mv.min = '0'; mv.max = '1'; mv.step = '0.05'; mv.value = snd.master;
             m.appendChild(row(lbl('Pitch'), pSel, pSignedLbl));
             m.appendChild(row(dim('range'), pMin, dim('to'), pMax));

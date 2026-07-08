@@ -4,6 +4,14 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.54 — 2026-07-08 · Sonification: chords & scales
+
+- **The Notes dropdown gains chords and scales.** Alongside continuous / chromatic /
+  pentatonic, you can now pick **major** and **minor** scales, **whole tone**, the
+  **G major / C major / D minor / A minor** chords, a **Cmaj7** arpeggio, and stark
+  **power 5ths**. Notes are now built on absolute 12-TET pitches, so a named chord
+  really lands on its notes (C major = C-E-G) across whatever Freq lo↔hi range you set.
+
 ## v0.53 — 2026-07-08 · Repo open/save clarity, non-linear sound, test-mode scope
 
 - **Open-from-repo is now grouped by source.** The picker (File ▾ → Open from Repo…)
