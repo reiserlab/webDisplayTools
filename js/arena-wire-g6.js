@@ -206,7 +206,9 @@ const ArenaWireG6 = (function () {
      *   [0C 08 mode pat(LE16) rate(LE16) init(LE16) gain(LE16) duration(LE16)]
      * The length byte 0x0C = 12 = cmd + 11 param bytes, all required (fw #4
      * canonical re-layout: gain widened to int16, moved after init_pos, plus
-     * a new controller-run Duration field).
+     * a new controller-run Duration field). Passing `duty` appends a 12th
+     * param byte (length 0x0D / 14 bytes total); omitting it keeps the
+     * 11-param form (fw #33 accepts both).
      *
      * @param {object} p
      * @param {number} [p.mode=2]       display mode (2 open / 3 show-frame / 4 closed)
@@ -220,6 +222,11 @@ const ArenaWireG6 = (function () {
      *                                  (converted to AC::constants::duration_tick_ms —
      *                                  10 ms — ticks on the wire); `0` = no auto-stop,
      *                                  the controller runs until told to stop
+     * @param {number} [p.duty]         per-trial duty override 0-255 (fw #33,
+     *                                  stateless: declared at trial start, cleared
+     *                                  on ALL_OFF / SET_PATTERN_ID). Omitted or `0`
+     *                                  = the pattern's stored duty_cycle flows
+     *                                  through unchanged; transmit-time only.
      */
     function encodeTrialParams(p) {
         p = p || {};
@@ -239,7 +246,10 @@ const ArenaWireG6 = (function () {
         ); // seconds -> 10ms ticks, matching AC::constants::duration_tick_ms
         // mode, pat(2), rate(2), init(2), gain(2), duration(2) = 11 param bytes.
         const params = [mode, ...pat, ...rate, ...init, ...gain, ...durationTicks];
-        return frame(OPCODES.TRIAL_PARAMS, params); // 0C 08 ...
+        if (p.duty !== undefined) {
+            params.push(u8(p.duty, 'duty')); // optional 12th param byte
+        }
+        return frame(OPCODES.TRIAL_PARAMS, params); // 0C/0D 08 ...
     }
 
     // set-frame-position (0x70) — Mode 3 host-commanded frame index (u16 LE).

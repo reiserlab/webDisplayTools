@@ -198,6 +198,18 @@ checkBytes(
 check('trial frame total length', Wire.encodeTrialParams().length, 13);
 check('trial length byte', Wire.encodeTrialParams()[0], 0x0c);
 
+// duty (fw #33) is an optional 12th param byte — omitted keeps the 11-param
+// (13-byte total) form; passing it appends the byte and bumps length to 0x0D.
+check('trial frame total length (no duty)', Wire.encodeTrialParams().length, 13);
+checkBytes(
+    'trial duty=0x40 appends param[11], length 0x0D',
+    Wire.encodeTrialParams({ mode: 3, patternId: 1, duty: 0x40 }),
+    '0d 08 03 01 00 00 00 00 00 00 00 00 00 40'
+);
+check('trial frame total length (with duty)', Wire.encodeTrialParams({ duty: 0 }).length, 14);
+checkThrows('duty -1 throws', () => Wire.encodeTrialParams({ duty: -1 }));
+checkThrows('duty 256 throws', () => Wire.encodeTrialParams({ duty: 256 }));
+
 console.log('\n=== encoder range validation (throws) ===');
 checkThrows('gain -32769 throws', () => Wire.encodeTrialParams({ gain: -32769 }));
 checkThrows('gain 32768 throws', () => Wire.encodeTrialParams({ gain: 32768 }));
