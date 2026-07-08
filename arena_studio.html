@@ -336,12 +336,14 @@
   .dock-seg{height:22px}
   .dock-seg button{padding:0 9px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px}
   body.dock-scope .dock-pane{display:none}          /* Scope active → hide the log pane */
-  /* Scope needs vertical room for 3 stacked traces — taller default than the log
-     (still user-resizable via the strip's drag handle). */
-  /* Scope opens at ~1/3 screen. Pin the flex-basis (0 0 33vh) so the canvas's
-     intrinsic size can't inflate it to max-height; the drag-resizer's inline
-     height overrides this afterwards. */
-  body.dock-scope .run-view .run-log-strip{flex:0 0 33vh;min-height:0;max-height:60vh}
+  /* Scope maximised: open the dock at half the viewport (was 1/3) so the canvas is
+     large, and trim the dead band above it — small row-gap + no strip top-margin —
+     so the scope sits just under the sequence card. Still user-resizable via the
+     drag handle (its inline height overrides the flex-basis). Kept as a definite vh
+     basis on purpose: a 1fr dock row breaks the %-height chain (.body-wrap scrolls)
+     and the canvas overflows the viewport. */
+  body.dock-scope .run-view{row-gap:5px}
+  body.dock-scope .run-view .run-log-strip{flex:0 0 50vh;min-height:0;max-height:74vh;margin-top:0}
   body:not(.dock-scope) .dock-scope-pane{display:none}
   body.log-collapsed .dock-scope-pane{display:none} /* collapsed → hide both panes */
   body.dock-scope .dock-h .log-only{display:none}   /* log-only actions hidden in Scope */
@@ -2807,7 +2809,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.38 | 2026-07-07 19:59 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.39 | 2026-07-08 01:25 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -4110,6 +4112,12 @@
         document.body.classList.toggle('dock-scope', view === 'scope');
         document.querySelectorAll('#dockSeg button').forEach((b) => b.classList.toggle('on', b.dataset.dock === view));
         localStorage.setItem('studio_dock_view', view);
+        // Scope auto-fills the dock (CSS), so drop any inline height the log-mode
+        // drag-resizer left on the strip — otherwise it would pin the scope small.
+        if (view === 'scope') {
+            const strip = document.querySelector('.run-view .run-log-strip');
+            if (strip) { strip.style.flex = ''; strip.style.height = ''; strip.style.maxHeight = ''; }
+        }
         if (view === 'scope') Scope.start(); else Scope.stop();
     }
     Studio.setDockView = setDockView;

@@ -4,6 +4,13 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.39 — 2026-07-08 · Scope opens bigger, dead gap trimmed
+
+- **The scope now opens at half the viewport** (was ~1/3) and sits directly under the
+  sequence card — the empty band above it (row gap + strip margin) is trimmed to a few
+  pixels. Still resizable via the drag handle. Net effect: a noticeably larger
+  oscilloscope with almost no wasted space between it and the controls above.
+
 ## v0.38 — 2026-07-07 · Scope: fixed-axis limits for turning / forward
 
 - **Type a ± limit for the turning and forward rows** (`turn ±` / `fwd ±` boxes on the
