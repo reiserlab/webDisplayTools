@@ -4,14 +4,19 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.47 — 2026-07-08 · Console: LED as a proper tool panel
+
+- **The LED control is now an 8th Console tool** (rail toggle + panel), alongside
+  Patterns / Arena Trial / Step / Test / I/O / Panel firmware / FicTrac — replacing
+  the fixed top bar from v0.46. Toggle it open/closed from the left rail like any other
+  tool. Panel has a **power %** field + **Set** and a pink **OFF** (5000 mV dark);
+  maps % → Analog Out mV via the shared BuckPuck curve (`ledPercentToMv`). Connect-
+  gated like the other tools.
+
 ## v0.46 — 2026-07-08 · Console: slim LED bar
 
-- **A thin one-row LED bar at the top of the Console** — enter a power **%** and Set,
-  or **OFF** (pink) to go dark. Maps % → Analog Out mV via the shared BuckPuck curve
-  (0% → 5000 mV off, 100% → brightest); OFF sends 5000 mV. It sits outside the
-  connect-gated fieldset, so it's always enabled (incl. in safe mode) for a quick
-  cutoff. `ledPercentToMv` is now exported from the runner so the bar and the
-  protocol `ledDrive` command share one curve.
+- (superseded by v0.47) A thin one-row LED bar at the top of the Console; replaced by
+  the LED tool panel so it can be toggled from the rail like the other tools.
 
 ## v0.45 — 2026-07-08 · Run view: TURN OFF LED button
 

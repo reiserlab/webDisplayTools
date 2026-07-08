@@ -1894,11 +1894,6 @@
      containers. Scoped to .console-view so Run/Edit are untouched. */
   .console-view{padding:8px 12px;overflow:hidden}
   .console-view #consoleFields{flex:1 1 auto;min-height:0;overflow:hidden}
-  .console-view .led-bar{flex:0 0 auto;display:flex;align-items:center;gap:7px;padding:4px 8px;margin-bottom:6px;background:var(--surface);border:1px solid var(--border);border-radius:7px;font-size:12px}
-  .console-view .led-bar-lbl{font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#ff8fbd}
-  .console-view .led-bar-unit{color:var(--dim)}
-  .console-view .led-bar input{width:54px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 5px;font-size:12px;font-family:inherit}
-  .console-view .led-bar .pill{padding:3px 10px}
   .console-view .bench-strip{flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
   .console-view .bench-strip .cmenubar{margin-bottom:0}
   .console-view .v6-cap{font-size:11px}
@@ -2485,16 +2480,6 @@
 
   <!-- CONSOLE view — bench surface, shares the one connection -->
   <div class="console-view" id="consoleView">
-    <!-- Slim always-enabled LED bar (outside the connect-gated fieldset): set LED
-         power % and send, or OFF (Analog Out 5000 mV, BuckPuck dark). Available in
-         safe mode; the OFF button is always live for a quick cutoff. -->
-    <div class="led-bar" title="Stimulus LED (BuckPuck via Analog Out 0xA0). Enter power % → Set, or OFF to go dark.">
-      <span class="led-bar-lbl">LED</span>
-      <input id="cLedPct" type="number" min="0" max="100" step="1" value="50" title="LED power — % of max brightness (0 = off)">
-      <span class="led-bar-unit">%</span>
-      <button class="pill" data-cmd="cledset" title="Set LED power — SET_AO_VOLTAGE 0xA0 to the BuckPuck level for this %">Set</button>
-      <button class="pill led-off" data-cmd="cledoff" title="Turn the LED off — Analog Out 5000 mV (BuckPuck dark)">OFF</button>
-    </div>
     <fieldset id="consoleFields" style="border:0;padding:0;margin:0" disabled>
 
     <!-- v6 bench strip: menus + always-on essentials -->
@@ -2610,6 +2595,7 @@
         <div class="rail-btn sel" data-panel="step" role="button" tabindex="0" title="Show single frames of the selected pattern (mode 3)">Step frames<span class="sub">mode 3</span></div>
         <div class="rail-btn sel" data-panel="test" role="button" tabindex="0" title="Test figures + one-off frames">Test display<span class="sub">GS16</span></div>
         <div class="rail-btn" data-panel="io" role="button" tabindex="0" title="Analog / digital BNCs on the controller">I/O<span class="sub" id="cIoSum">AO – · DIO –</span></div>
+        <div class="rail-btn sel" data-panel="led" role="button" tabindex="0" title="Stimulus LED — set brightness % or turn off (BuckPuck on Analog Out)">LED<span class="sub">BuckPuck</span></div>
         <div class="rail-btn" data-panel="fw" role="button" tabindex="0" title="Program the panels’ firmware">Panel firmware<span class="sub" id="cFwSum">flash · verify</span></div>
         <div class="rail-btn sel" data-panel="fictrac" role="button" tabindex="0" title="Closed loop from the FicTrac bridge">FicTrac<span class="sub" id="cFtSum">ws · idle</span></div>
       </div>
@@ -2739,6 +2725,16 @@
           </div>
         </section>
 
+        <section class="panel open" data-panel="led">
+          <div class="panel-h"><span class="panel-title" title="Stimulus LED via the BuckPuck driver on the 'Analog Out (0-5V)' BNC (0xA0). Power % maps to control voltage (mV); OFF = 5000 mV dark.">LED</span><span class="spacer"></span><span class="panel-x" data-close="led" role="button" title="Collapse to the rail">✕</span></div>
+          <div class="panel-b">
+          <div class="crow" style="margin-bottom:0"><span class="lbl" title="LED power — % of max brightness (0 = off)">power</span>
+            <input id="cLedPct" type="number" min="0" max="100" step="1" value="50" style="width:64px" title="LED power % (0 = off)"><span class="dim">%</span>
+            <button class="pill" data-cmd="cledset" title="Set LED power — SET_AO_VOLTAGE 0xA0 to the BuckPuck level for this %">Set</button>
+            <button class="pill led-off" data-cmd="cledoff" title="Turn the LED off — Analog Out 5000 mV (BuckPuck dark)">OFF</button></div>
+          </div>
+        </section>
+
         <section class="panel" data-panel="fw">
           <div class="panel-h"><span class="panel-title" title="upload 0xE0 · flash 0xC8 · verify 0xC9 · info 0xE3">Panel firmware</span><span class="spacer"></span><span class="panel-x" data-close="fw" role="button" title="Collapse to the rail">✕</span></div>
           <div class="panel-b">
@@ -2846,7 +2842,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.46 | 2026-07-08 13:50 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.47 | 2026-07-08 13:59 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
