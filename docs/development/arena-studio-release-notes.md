@@ -4,6 +4,12 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.45 — 2026-07-08 · Run view: TURN OFF LED button
+
+- **A small pink "TURN OFF LED" button** in the Run view's bridge strip drives the
+  stimulus LED dark immediately — sets Analog Out to 5000 mV (the BuckPuck "off"
+  level). Always available, including mid-run.
+
 ## v0.44 — 2026-07-08 · Scope sound settings popover
 
 - **A ▾ next to ♪ sound opens a compact settings popover.** Choose which channel
