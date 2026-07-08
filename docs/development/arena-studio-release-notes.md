@@ -4,6 +4,15 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.46 — 2026-07-08 · Console: slim LED bar
+
+- **A thin one-row LED bar at the top of the Console** — enter a power **%** and Set,
+  or **OFF** (pink) to go dark. Maps % → Analog Out mV via the shared BuckPuck curve
+  (0% → 5000 mV off, 100% → brightest); OFF sends 5000 mV. It sits outside the
+  connect-gated fieldset, so it's always enabled (incl. in safe mode) for a quick
+  cutoff. `ledPercentToMv` is now exported from the runner so the bar and the
+  protocol `ledDrive` command share one curve.
+
 ## v0.45 — 2026-07-08 · Run view: TURN OFF LED button
 
 - **A small pink "TURN OFF LED" button** in the Run view's bridge strip drives the

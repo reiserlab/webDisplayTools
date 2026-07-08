@@ -1894,6 +1894,11 @@
      containers. Scoped to .console-view so Run/Edit are untouched. */
   .console-view{padding:8px 12px;overflow:hidden}
   .console-view #consoleFields{flex:1 1 auto;min-height:0;overflow:hidden}
+  .console-view .led-bar{flex:0 0 auto;display:flex;align-items:center;gap:7px;padding:4px 8px;margin-bottom:6px;background:var(--surface);border:1px solid var(--border);border-radius:7px;font-size:12px}
+  .console-view .led-bar-lbl{font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#ff8fbd}
+  .console-view .led-bar-unit{color:var(--dim)}
+  .console-view .led-bar input{width:54px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 5px;font-size:12px;font-family:inherit}
+  .console-view .led-bar .pill{padding:3px 10px}
   .console-view .bench-strip{flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
   .console-view .bench-strip .cmenubar{margin-bottom:0}
   .console-view .v6-cap{font-size:11px}
@@ -2480,6 +2485,16 @@
 
   <!-- CONSOLE view — bench surface, shares the one connection -->
   <div class="console-view" id="consoleView">
+    <!-- Slim always-enabled LED bar (outside the connect-gated fieldset): set LED
+         power % and send, or OFF (Analog Out 5000 mV, BuckPuck dark). Available in
+         safe mode; the OFF button is always live for a quick cutoff. -->
+    <div class="led-bar" title="Stimulus LED (BuckPuck via Analog Out 0xA0). Enter power % → Set, or OFF to go dark.">
+      <span class="led-bar-lbl">LED</span>
+      <input id="cLedPct" type="number" min="0" max="100" step="1" value="50" title="LED power — % of max brightness (0 = off)">
+      <span class="led-bar-unit">%</span>
+      <button class="pill" data-cmd="cledset" title="Set LED power — SET_AO_VOLTAGE 0xA0 to the BuckPuck level for this %">Set</button>
+      <button class="pill led-off" data-cmd="cledoff" title="Turn the LED off — Analog Out 5000 mV (BuckPuck dark)">OFF</button>
+    </div>
     <fieldset id="consoleFields" style="border:0;padding:0;margin:0" disabled>
 
     <!-- v6 bench strip: menus + always-on essentials -->
@@ -2831,7 +2846,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.45 | 2026-07-08 13:21 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.46 | 2026-07-08 13:50 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -4675,6 +4690,18 @@
         },
         // hardware I/O
         caoset: () => send(Wire.encodeSetAoVoltage(num('cAoMv')), 'SET_AO_VOLTAGE 0xA0 ' + num('cAoMv') + ' mV'),
+        // LED bar (BuckPuck via AO): set brightness % → mV, or OFF (5000 mV dark).
+        cledset: () => {
+            const p = num('cLedPct');
+            const conv = window.ArenaRunnerG6 && window.ArenaRunnerG6.ledPercentToMv;
+            const mv = conv ? conv(p) : (p > 0 ? 5000 : 5000);
+            send(Wire.encodeSetAoVoltage(mv), 'LED ' + p + '% → SET_AO_VOLTAGE 0xA0 ' + mv + ' mV');
+        },
+        cledoff: () => {
+            const off = (window.ArenaRunnerG6 && window.ArenaRunnerG6.LED_OFF_MV) || 5000;
+            if ($('cLedPct')) $('cLedPct').value = 0;
+            send(Wire.encodeSetAoVoltage(off), 'LED OFF → SET_AO_VOLTAGE 0xA0 ' + off + ' mV');
+        },
         caoget: async () => {
             const resp = await send(Wire.encodeGetAoVoltage(), 'GET_AO_VOLTAGE 0xA1');
             const mv = resp && Wire.decodeAoVoltage ? Wire.decodeAoVoltage(resp) : null;

@@ -546,6 +546,13 @@ async function main() {
     // brighter = LOWER mV. The scope's LED overlay keys off LED_OFF_MV (exported) to
     // tell on from off, so both must agree — assert the export and the 0% level.
     check('LED_OFF_MV is exported', Runner.LED_OFF_MV, 5000);
+    // ledPercentToMv is exported for the Console LED bar (% → AO mV, same curve).
+    check('ledPercentToMv exported', typeof Runner.ledPercentToMv, 'function');
+    check('ledPercentToMv(0) -> LED_OFF_MV', Runner.ledPercentToMv(0), Runner.LED_OFF_MV);
+    checkBool(
+        'ledPercentToMv(100) < LED_OFF_MV (bright)',
+        Runner.ledPercentToMv(100) < Runner.LED_OFF_MV
+    );
     check(
         'ledDrive 0% -> LED_OFF_MV (dark, reads off in the scope)',
         Runner.translateCommand({ type: 'controller', command_name: 'ledDrive', percent: 0 }).mv,
