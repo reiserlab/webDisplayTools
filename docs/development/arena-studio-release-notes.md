@@ -4,6 +4,13 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.38 — 2026-07-07 · Scope: fixed-axis limits for turning / forward
+
+- **Type a ± limit for the turning and forward rows** (`turn ±` / `fwd ±` boxes on the
+  scope header). Enter a magnitude and that row's Y axis fixes to ±value; leave it
+  blank to auto-scale as before. Values persist across reloads. **Heading is always
+  fixed at ±180** (unchanged).
+
 ## v0.37 — 2026-07-07 · Scope: per-trial direction glyph + live trial shading
 
 - **Direction glyph on the scope.** Open-loop trials now show a large ►/◄ centered in

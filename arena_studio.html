@@ -2170,7 +2170,9 @@
               </select>
             </label>
             <label title="Fly-on-ball diameter (mm) — converts forward velocity to mm/s. Defaults to the rig's ball_diameter_mm, else 9 mm.">ball ⌀ <input id="scopeBallDia" type="number" min="1" max="50" step="0.5" value="9"> mm</label>
-            <button class="pill on" id="scopeAutoY" title="Auto-scale each row's Y axis to its data">auto-Y</button>
+            <label title="Fix the turning axis to ±this value (°/s). Blank = auto-scale.">turn ± <input id="scopeTurnLim" type="number" min="0" step="1" placeholder="auto"> °/s</label>
+            <label title="Fix the forward axis to ±this value (mm/s). Blank = auto-scale.">fwd ± <input id="scopeFwdLim" type="number" min="0" step="1" placeholder="auto"> mm/s</label>
+            <button class="pill on" id="scopeAutoY" title="Auto-scale rows that have no fixed ± limit typed (heading is always ±180)">auto-Y</button>
             <button class="pill" id="scopeClear" title="Clear the scope buffer">clear</button>
             <span class="scope-status" id="scopeStatus"></span>
           </div>
@@ -2805,7 +2807,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.37 | 2026-07-07 19:56 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.38 | 2026-07-07 19:59 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3703,7 +3705,10 @@
         let lastMs = 0, lastWall = 0; // map browser-clock overlay events → sample ms
         let running = false, rafId = null, subbed = false;
         let lastGeom = null, tipEl = null; // last render's x-mapping + hover tooltip
-        const cfg = { windowMs: 250, spanS: 30, ballDiaMm: 9, autoY: true };
+        // fix: per-row symmetric ±limit typed by the user (null = auto-scale). Only
+        // turning/forward are user-settable; heading is always fixed ±180 (row.fixed).
+        const cfg = { windowMs: 250, spanS: 30, ballDiaMm: 9, autoY: true,
+            fix: { turning_deg_s: null, forward_mm_s: null } };
         // Held per-row Y ranges: while auto-Y is ON each render restores the row's
         // scale from its data and re-stores it here; when auto-Y is OFF the trace
         // reuses the last stored scale (frozen) so it stops rescaling as data flows.
@@ -3747,6 +3752,10 @@
             });
             const auto = document.getElementById('scopeAutoY');
             if (auto) auto.addEventListener('click', () => { cfg.autoY = !cfg.autoY; auto.classList.toggle('on', cfg.autoY); });
+            // Fixed ±limit inputs for turning / forward (blank = auto). Persisted so
+            // they survive a reload; heading is always ±180 and has no input.
+            wireFixLimit('scopeTurnLim', 'turning_deg_s', 'studio_scope_turn_lim');
+            wireFixLimit('scopeFwdLim', 'forward_mm_s', 'studio_scope_fwd_lim');
             const clr = document.getElementById('scopeClear');
             if (clr) clr.addEventListener('click', reset);
             // Hover-to-reveal: the trial-name labels are truncated/thinned, so hovering
@@ -3756,6 +3765,23 @@
             canvas.addEventListener('mouseleave', () => { if (tipEl) tipEl.style.display = 'none'; });
             applyRigBallDiameter();
             subscribeBridge();
+        }
+        // Wire a fixed-±-limit input: parse on change (blank/≤0 → null = auto-scale),
+        // store in cfg.fix[key], and persist. Restores any saved value on load.
+        function wireFixLimit(inputId, key, storeKey) {
+            const inp = document.getElementById(inputId);
+            if (!inp) return;
+            const apply = (raw, persist) => {
+                const v = parseFloat(raw);
+                cfg.fix[key] = Number.isFinite(v) && v > 0 ? v : null;
+                if (persist) {
+                    if (cfg.fix[key] != null) localStorage.setItem(storeKey, String(cfg.fix[key]));
+                    else localStorage.removeItem(storeKey);
+                }
+            };
+            const saved = localStorage.getItem(storeKey);
+            if (saved != null) { inp.value = saved; apply(saved, false); }
+            inp.addEventListener('change', () => apply(inp.value, true));
         }
         function onHover(e) {
             if (!lastGeom || !ov.cond.length || !cwrap) { if (tipEl) tipEl.style.display = 'none'; return; }
@@ -4007,7 +4033,9 @@
             ctx.strokeStyle = 'rgba(45,54,64,0.9)'; ctx.lineWidth = 1;
             ctx.strokeRect(padL, top, plotW, h);
             let lo, hi;
-            if (row.fixed) { lo = row.fixed[0]; hi = row.fixed[1]; }
+            const userLim = cfg.fix && cfg.fix[row.key]; // typed ± limit (turning/forward)
+            if (row.fixed) { lo = row.fixed[0]; hi = row.fixed[1]; } // heading: always ±180
+            else if (userLim) { lo = -userLim; hi = userLim; } // user-fixed symmetric axis
             else if (cfg.autoY || !heldScale[row.key]) {
                 // Auto-scale symmetrically about 0 and remember it. When auto-Y is
                 // later switched off, this last range is what freezes (below).
@@ -4025,6 +4053,10 @@
                 ctx.beginPath(); ctx.moveTo(padL, yOf(0)); ctx.lineTo(padL + plotW, yOf(0)); ctx.stroke();
             }
             if (pts) {
+                // Clip to the row so a value beyond a fixed/frozen ± limit stays in
+                // its own row instead of bleeding into the neighbours.
+                ctx.save();
+                ctx.beginPath(); ctx.rect(padL, top, plotW, h); ctx.clip();
                 ctx.strokeStyle = row.color; ctx.lineWidth = 1.4; ctx.beginPath();
                 let pen = false, prev = null;
                 pts.forEach((p) => {
@@ -4035,6 +4067,7 @@
                     prev = p.v;
                 });
                 ctx.stroke();
+                ctx.restore();
             }
             ctx.fillStyle = '#8b949e'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
             ctx.fillText(fmt(hi), padL - 4, top + 10);
