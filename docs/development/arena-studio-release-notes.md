@@ -4,6 +4,14 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.43 — 2026-07-08 · Scope sonification (optional ♪ sound)
+
+- **Optional "♪ sound" toggle on the scope** turns the fly's movement into music
+  (Web Audio, no plugins). **Turning → pitch** (quantised to a pentatonic scale so it
+  stays consonant) and **activity = forward speed → volume**. Both scale to the fixed
+  `turn ±` / `fwd ±` limits when set, otherwise a sensible default range. Silent when
+  data is stale/absent, and it stops when you leave the scope view. Off by default.
+
 ## v0.42 — 2026-07-08 · File ▾ menu opens on-screen
 
 - **The File ▾ dropdown now opens to the right of the button** (it kept its old
@@ -56,7 +64,6 @@ history lives here. Newest first. (Per-session engineering detail stays in
   silent ReferenceError instead of working — advanced-mode machines never saw it.
   Blocked ops now show the "Locked in safe mode" banner again and everything else
   dispatches normally.
-
 ## v0.39 — 2026-07-08 · Scope opens bigger, dead gap trimmed
 
 - **The scope now opens at half the viewport** (was ~1/3) and sits directly under the

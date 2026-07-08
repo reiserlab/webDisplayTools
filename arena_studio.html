@@ -2180,6 +2180,7 @@
             <label title="Fix the forward axis to ±this value (mm/s). Blank = auto-scale.">fwd ± <input id="scopeFwdLim" type="number" min="0" step="1" placeholder="auto"> mm/s</label>
             <button class="pill on" id="scopeAutoY" title="Auto-scale rows that have no fixed ± limit typed (heading is always ±180)">auto-Y</button>
             <button class="pill" id="scopeClear" title="Clear the scope buffer">clear</button>
+            <button class="pill" id="scopeSound" title="Sonify the fly (Web Audio): turning → pitch (pentatonic), activity = forward speed → volume. Scaled to the fixed turn ± / fwd ± limits when set, else a default range. Toggle on/off.">♪ sound</button>
             <span class="scope-status" id="scopeStatus"></span>
           </div>
         </div>
@@ -2814,7 +2815,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.42 | 2026-07-08 11:49 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.43 | 2026-07-08 12:41 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3716,6 +3717,16 @@
         let lastMs = 0, lastWall = 0; // map browser-clock overlay events → sample ms
         let running = false, rafId = null, subbed = false;
         let lastGeom = null, tipEl = null; // last render's x-mapping + hover tooltip
+        // ── sonification (optional): turning → pitch, activity(|forward|) → volume ──
+        // Web Audio (built-in synth, no deps/MIDI). Pitch is quantised to a pentatonic
+        // scale so it always sounds consonant; both map against the FIXED ± limits
+        // (falling back to defaults when a limit box is blank). Latest per-row current
+        // value is stashed during render for the audio tick to read.
+        let audioOn = false, actx = null, osc = null, audioGain = null;
+        const lastVals = {}; // {turning_deg_s, forward_mm_s, heading_deg} current values
+        const SND_NOTES = (function () { const a = [], semis = [0, 3, 5, 7, 10]; for (let o = 0; o < 3; o++) for (const s of semis) a.push(220 * Math.pow(2, (o * 12 + s) / 12)); return a; })();
+        const SND_MAX_GAIN = 0.16, SND_VOL_FLOOR = 0.12, SND_STALE_MS = 500;
+        const SND_DEF_TURN = 400, SND_DEF_FWD = 15; // fallback ± limits when none typed
         // fix: per-row symmetric ±limit typed by the user (null = auto-scale). Only
         // turning/forward are user-settable; heading is always fixed ±180 (row.fixed).
         const cfg = { windowMs: 250, spanS: 30, ballDiaMm: 9, autoY: true,
@@ -3774,8 +3785,51 @@
             // within (looked up from the last render's x-mapping).
             canvas.addEventListener('mousemove', onHover);
             canvas.addEventListener('mouseleave', () => { if (tipEl) tipEl.style.display = 'none'; });
+            const snd = document.getElementById('scopeSound');
+            if (snd) snd.addEventListener('click', () => setSound(!audioOn));
             applyRigBallDiameter();
             subscribeBridge();
+        }
+        // ── sonification ─────────────────────────────────────────────────────────
+        // Lazily build the Web Audio graph (osc → gain → out) on first enable — must
+        // happen inside the toggle's user gesture to satisfy the autoplay policy.
+        function ensureAudio() {
+            if (actx) return true;
+            try {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if (!AC) return false;
+                actx = new AC();
+                osc = actx.createOscillator(); osc.type = 'triangle';
+                audioGain = actx.createGain(); audioGain.gain.value = 0;
+                osc.connect(audioGain).connect(actx.destination);
+                osc.start();
+            } catch (e) { actx = null; return false; }
+            return true;
+        }
+        function setSound(on) {
+            const btn = document.getElementById('scopeSound');
+            if (on && !ensureAudio()) { audioOn = false; if (btn) btn.classList.remove('on'); return; }
+            audioOn = on;
+            if (btn) btn.classList.toggle('on', on);
+            if (on && actx.state === 'suspended') actx.resume();
+            if (!on && audioGain && actx) audioGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+        }
+        // Drive pitch/volume from the latest turning/forward values, scaled to the
+        // FIXED ± limits (defaults when blank). Silence when data is stale/absent.
+        function updateAudio() {
+            if (!audioOn || !actx || !audioGain || !osc) return;
+            const now = actx.currentTime;
+            const fresh = raw.length && (Date.now() - lastWall) < SND_STALE_MS;
+            if (!fresh) { audioGain.gain.setTargetAtTime(0, now, 0.08); return; }
+            const turnLim = (cfg.fix && cfg.fix.turning_deg_s) || SND_DEF_TURN;
+            const fwdLim = (cfg.fix && cfg.fix.forward_mm_s) || SND_DEF_FWD;
+            const turn = lastVals.turning_deg_s, fwd = lastVals.forward_mm_s;
+            const t = isFinite(turn) ? Math.max(0, Math.min(1, (turn + turnLim) / (2 * turnLim))) : 0.5;
+            const freq = SND_NOTES[Math.round(t * (SND_NOTES.length - 1))];
+            const a = isFinite(fwd) ? Math.max(0, Math.min(1, Math.abs(fwd) / fwdLim)) : 0;
+            const vol = SND_MAX_GAIN * (SND_VOL_FLOOR + (1 - SND_VOL_FLOOR) * a);
+            osc.frequency.setTargetAtTime(freq, now, 0.05);
+            audioGain.gain.setTargetAtTime(vol, now, 0.06);
         }
         // Wire a fixed-±-limit input: parse on change (blank/≤0 → null = auto-scale),
         // store in cfg.fix[key], and persist. Restores any saved value on load.
@@ -4084,6 +4138,7 @@
             ctx.fillText(fmt(hi), padL - 4, top + 10);
             ctx.fillText(fmt(lo), padL - 4, bottom - 2);
             const cur = pts ? lastFinite(pts) : null;
+            lastVals[row.key] = cur; // stash for sonification
             // Live value at the BOTTOM of the row — keeps the top of row 0 clear for
             // the stim/LED overlay labels (they used to collide with "turning …").
             ctx.fillStyle = row.color; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'left';
@@ -4092,6 +4147,7 @@
         function loop() {
             if (!running) return;
             render();
+            updateAudio(); // sonification (no-op unless the ♪ toggle is on)
             rafId = requestAnimationFrame(loop);
         }
         function start() {
@@ -4104,6 +4160,9 @@
             running = false;
             if (rafId) cancelAnimationFrame(rafId);
             rafId = null;
+            // Silence the tone when the scope stops rendering (dock hidden / switched
+            // to log) — updateAudio won't run to taper it otherwise.
+            if (audioGain && actx) audioGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
         }
         return { init, start, stop, reset, pushSample, onRunStatus, applyRigBallDiameter };
     })();
