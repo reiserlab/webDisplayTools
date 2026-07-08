@@ -4,6 +4,25 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.41 — 2026-07-08 · Per-trial brightness (duty) in protocols + Run view
+
+- **`duty` is now a first-class protocol field.** A `trialParams` command can carry
+  `duty: 0–255` (per-trial brightness override; 0 = the pattern's own stored
+  brightness). It round-trips through load/edit/save, shows up in the command card,
+  and the Run view sends it to the arena. New commands created in the designer start
+  at duty 0 — the card says "(0 = pattern's own)" right next to the field — so adding
+  a trialParams never changes brightness until you dial it in.
+- **The runner always declares duty on the wire** — trials that don't set it send 0
+  ("use the pattern's stored brightness"), so one trial's override can never leak
+  into the next. Each trial's duty lands in `runlog.json` automatically as part of
+  the recorded trial params.
+- **Optional params can be added/removed on command cards.** Controller commands now
+  have the same "+ add:" row plugin commands already had — add `duty` to an existing
+  trialParams, or ✕ it off to go back to the pattern's own brightness.
+- **Gain limits updated to the new firmware range** (±32767, was ±127) in the
+  designer's field clamps — matching the int16 gain that shipped in v0.40's wire
+  re-layout.
+
 ## v0.40 — 2026-07-08 · Console trial panel speaks the new TRIAL_PARAMS layout
 
 - **New wire format for trials** (firmware #4 / #39 re-layout, via webDisplayTools

@@ -1405,10 +1405,11 @@ console.log('\n--- Suite 17: collectExportWarnings (soft-warn gate) ---');
     const exp = parseV3Protocol(yaml);
     const { warnings } = collectExportWarnings(exp);
     const anchorWarns = warnings.filter((w) => w.kind === 'unused-anchor');
-    checkTrue('warn: sequence-style string anchor not falsely flagged',
-        anchorWarns.length === 0);
-    checkTrue('warn: no [native code] garbage anchor name',
-        !warnings.some((w) => String(w.name || '').includes('native code')));
+    checkTrue('warn: sequence-style string anchor not falsely flagged', anchorWarns.length === 0);
+    checkTrue(
+        'warn: no [native code] garbage anchor name',
+        !warnings.some((w) => String(w.name || '').includes('native code'))
+    );
 }
 
 {
@@ -4210,7 +4211,95 @@ console.log('\n--- Suite 34: negative frame_rate (Mode-2 reverse playback) ---')
     check('34.7: clamp keeps -30', clampToSchema(-30, schema).value, -30);
     checkTrue('34.7b: in-range value unchanged', clampToSchema(-30, schema).changed === false);
     check('34.8: clamp pulls -40000 up to -32768', clampToSchema(-40000, schema).value, -32768);
-    check('34.9: clamp pulls u16-era 65535 down to 32767', clampToSchema(65535, schema).value, 32767);
+    check(
+        '34.9: clamp pulls u16-era 65535 down to 32767',
+        clampToSchema(65535, schema).value,
+        32767
+    );
+}
+
+// ─── Suite 35: per-trial duty (fw #33) + int16 gain (fw #4) on trialParams ──
+// duty is the optional 12th TRIAL_PARAMS byte: a per-trial brightness override,
+// 0 = the pattern's stored duty_cycle. Authoring contract: `duty` is a
+// first-class trialParams key (roundtrips, not `_unknownKeys`), OPTIONAL in the
+// schema (absent stays absent — the runner sends 0 for it), default 0 so a
+// designer-seeded field is a visible no-op until edited. gain widened to int16.
+console.log('\n--- Suite 35: trialParams duty (per-trial brightness) + int16 gain ---');
+{
+    const text = [
+        'version: 3',
+        '',
+        'experiment_info:',
+        '  name: "duty override"',
+        '',
+        'rig: "./configs/rigs/cshl_g6_2x10.yaml"',
+        '',
+        'experiment:',
+        '  - "dimmed"',
+        '  - "plain"',
+        '',
+        'conditions:',
+        '  - name: "dimmed"',
+        '    commands:',
+        '      - type: "controller"',
+        '        command_name: "trialParams"',
+        '        pattern: "grating_sq"',
+        '        pattern_ID: 2',
+        '        duration: 3',
+        '        mode: 2',
+        '        frame_index: 0',
+        '        frame_rate: 30',
+        '        gain: -500',
+        '        duty: 200',
+        '  - name: "plain"',
+        '    commands:',
+        '      - type: "controller"',
+        '        command_name: "trialParams"',
+        '        pattern: "grating_sq"',
+        '        pattern_ID: 2',
+        '        duration: 3',
+        '        mode: 2',
+        '        frame_index: 0',
+        '        frame_rate: 30',
+        '        gain: 0',
+        ''
+    ].join('\n');
+    const exp = parseV3Protocol(text);
+    const dimmed = exp.conditions[0].commands[0];
+    const plain = exp.conditions[1].commands[0];
+
+    check('35.1: duty parses as a first-class key', dimmed.duty, 200);
+    checkTrue(
+        '35.2: duty not swallowed into _unknownKeys',
+        !(dimmed._unknownKeys && 'duty' in dimmed._unknownKeys)
+    );
+    checkTrue('35.3: omitted duty stays absent (no default injection)', plain.duty === undefined);
+
+    const regen = generateV3Protocol(exp);
+    checkTrue('35.4: duty survives regen YAML', /duty:\s*200/.test(regen));
+    const exp2 = parseV3Protocol(regen);
+    check('35.5: re-parse matches', exp2.conditions[0].commands[0].duty, 200);
+    checkTrue(
+        '35.6: omitted duty still absent after regen -> parse',
+        exp2.conditions[1].commands[0].duty === undefined
+    );
+    check('35.7: no blocking errors', collectBlockingErrors(exp).errors.length, 0);
+
+    // Schema: optional-with-default so designer-created commands seed 128 but
+    // the parser never injects it into loaded protocols.
+    const schema = getV3CommandParams(exp, 'controller', null, 'trialParams');
+    checkTrue('35.8: duty in trialParams schema', !!schema.duty);
+    checkTrue('35.9: duty is optional (required falsy)', !schema.duty.required);
+    check('35.10: duty default 0 (no override)', schema.duty.default, 0);
+    check('35.11: duty min 0', schema.duty.min, 0);
+    check('35.12: duty max 255', schema.duty.max, 255);
+    check('35.13: clamp pulls 300 down to 255', clampToSchema(300, schema.duty).value, 255);
+
+    // gain rode the same fw #4 re-layout: int8 -> int16 on the wire; the
+    // schema must accept the widened range (and the -500 above must parse).
+    check('35.14: gain -500 parses (past old int8 floor)', dimmed.gain, -500);
+    check('35.15: gain schema min -32768', schema.gain.min, -32768);
+    check('35.16: gain schema max 32767', schema.gain.max, 32767);
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────

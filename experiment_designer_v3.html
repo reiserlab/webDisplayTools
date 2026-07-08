@@ -1589,7 +1589,7 @@
     <!-- Footer -->
     <div class="app-footer">
         <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">Reiser Lab</a> |
-        v3 Experiment Designer v0.42 | <span id="footerTimestamp">2026-07-07 00:34 ET</span>
+        v3 Experiment Designer v0.43 | <span id="footerTimestamp">2026-07-08 07:10 ET</span>
     </div>
 
     <!-- Error modal -->
@@ -4266,6 +4266,7 @@
             'frame_index': 'number',
             'frame_rate': 'number',
             'gain': 'number',
+            'duty': 'number',
             'posX': 'number',
             'command_name': 'string',
             'plugin_name': 'string'
@@ -6204,7 +6205,12 @@
             card.appendChild(actions);
 
             const detailKeys = {
-                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'posX', 'mv', 'percent', 'channel', 'state'],
+                // 'duty' kept in sync with the shared trialParams schema — the
+                // schema default (128) seeds it into NEW commands, so without it
+                // here the field would exist but never render. The "+ add /
+                // ✕ remove optional param" affordance is Studio-only (this tool
+                // is maintenance-mode; see arena-studio-parity.md).
+                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'duty', 'posX', 'mv', 'percent', 'channel', 'state'],
                 wait: ['duration'],
                 plugin: []
             }[cmd.type] || [];

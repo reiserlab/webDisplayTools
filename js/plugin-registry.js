@@ -85,10 +85,25 @@ var CONTROLLER_COMMANDS = {
                 type: 'number',
                 required: true,
                 default: 0,
-                min: -128,
-                max: 127,
+                min: -32768,
+                max: 32767,
                 integer: true,
-                label: 'Gain (int8)'
+                label: 'Gain (int16)'
+            },
+            // Per-trial duty/brightness override (fw #33, the optional 12th
+            // TRIAL_PARAMS byte). 0 = the pattern's stored duty_cycle flows
+            // through unchanged — the designer shows that meaning inline
+            // ("(0 = pattern's own)"). Optional-with-default: new commands
+            // seed 0, so the field is visible and editable without changing
+            // brightness until the user asks.
+            duty: {
+                type: 'number',
+                required: false,
+                default: 0,
+                min: 0,
+                max: 255,
+                integer: true,
+                label: 'Duty (brightness, 0 = pattern default)'
             }
         }
     },

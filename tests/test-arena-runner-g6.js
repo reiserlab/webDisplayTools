@@ -189,20 +189,34 @@ async function main() {
     check('gain', p.gain, 0);
     check('initPos (from frame_index 1)', p.initPos, 1);
     check('duration', p.duration, 5);
-    // The encoded frame must match the wire golden vector (duration=5s -> 500 ticks -> F4 01).
+    // duty is ALWAYS present (0 = pattern's stored duty when the protocol
+    // omits it) so every trial declares its own duty — 14-byte 0x0D frames.
+    check('duty defaults to 0 (pattern default)', p.duty, 0);
+    // The encoded frame must match the wire golden vector (duration=5s -> 500 ticks -> F4 01,
+    // always-appended duty byte 00 at the end).
     checkBytes(
         'encodeTrialParams(mapped)',
         Wire.encodeTrialParams(p),
-        '0c 08 02 01 00 0a 00 01 00 00 00 f4 01'
+        '0d 08 02 01 00 0a 00 01 00 00 00 f4 01 00'
     );
 
     // THE coercion test: string scalars (as a YAML parser might yield) must work.
-    const strCmd = { mode: '2', frame_rate: '10', gain: '0', frame_index: '1' };
+    const strCmd = { mode: '2', frame_rate: '10', gain: '0', frame_index: '1', duty: '64' };
     const ps = Runner.buildTrialParams(strCmd, { patternId: '1' });
+    check('string duty coerces', ps.duty, 64);
     checkBytes(
         'string-typed fields coerce to the same frame',
         Wire.encodeTrialParams(ps),
-        '0c 08 02 01 00 0a 00 01 00 00 00 00 00'
+        '0d 08 02 01 00 0a 00 01 00 00 00 00 00 40'
+    );
+
+    // duty passthrough + blank-field semantics ('' = unset, not 0-by-accident).
+    const pDuty = Runner.buildTrialParams({ mode: 2, duty: 200 }, { patternId: 1 });
+    check('duty 200 passes through', pDuty.duty, 200);
+    check(
+        "blank duty ('') treated as unset -> 0",
+        Runner.buildTrialParams({ mode: 2, duty: '' }, { patternId: 1 }).duty,
+        0
     );
 
     // NEGATIVE frame_rate = Mode-2 reverse playback (fw ee74c33+, fw #4) —
@@ -212,7 +226,7 @@ async function main() {
     checkBytes(
         'reverse rate -5 encodes as int16 LE FB FF',
         Wire.encodeTrialParams(pRev),
-        '0c 08 02 01 00 fb ff 00 00 00 00 00 00'
+        '0d 08 02 01 00 fb ff 00 00 00 00 00 00 00'
     );
 
     console.log('\n=== buildTrialParams: clear throws ===');
@@ -222,6 +236,18 @@ async function main() {
     );
     checkThrows('patternId 0 throws', () => Runner.buildTrialParams({ mode: 2 }, { patternId: 0 }));
     checkThrows('missing patternId throws', () => Runner.buildTrialParams({ mode: 2 }, {}));
+    // duty is validated in the BUILDER (not the encoder) so translateCommand
+    // turns a bad value into a skip-this-trial {op:'error'} instead of the
+    // encoder's RangeError aborting the whole sequence from inside _runIR.
+    checkThrows('duty 256 throws', () =>
+        Runner.buildTrialParams({ mode: 2, duty: 256 }, { patternId: 1 })
+    );
+    checkThrows('duty -1 throws', () =>
+        Runner.buildTrialParams({ mode: 2, duty: -1 }, { patternId: 1 })
+    );
+    checkThrows('duty 12.5 (non-integer) throws', () =>
+        Runner.buildTrialParams({ mode: 2, duty: 12.5 }, { patternId: 1 })
+    );
 
     console.log('\n=== ArenaRunner: send + run-state ===');
     {
@@ -234,7 +260,7 @@ async function main() {
         checkBytes(
             'sent the trialParams frame',
             link.sent[0],
-            '0c 08 02 01 00 0a 00 01 00 00 00 f4 01'
+            '0d 08 02 01 00 0a 00 01 00 00 00 f4 01 00'
         );
         check('conditionName tracked', runner.conditionName, 'sine_grating');
 
@@ -434,6 +460,24 @@ async function main() {
         ).op,
         'error'
     );
+    // Bad duty must become a skip-this-trial error op (builder throw), NOT an
+    // encoder RangeError that would abort the whole sequence from _runIR.
+    check(
+        'trialParams with duty 999 -> error (skip, not abort)',
+        Runner.translateCommand(
+            { type: 'controller', command_name: 'trialParams', mode: 2, duty: 999 },
+            { patternId: 1 }
+        ).op,
+        'error'
+    );
+    check(
+        'trialParams duty carried in params',
+        Runner.translateCommand(
+            { type: 'controller', command_name: 'trialParams', mode: 2, duty: 64 },
+            { patternId: 1 }
+        ).params.duty,
+        64
+    );
     check(
         'allOn -> op allOn',
         Runner.translateCommand({ type: 'controller', command_name: 'allOn' }).op,
@@ -586,7 +630,11 @@ async function main() {
         });
         check('sent exactly 3 frames (allOn, trialParams, final STOP)', link.sent.length, 3);
         checkBytes('1st send: allOn', link.sent[0], '01 ff');
-        checkBytes('2nd send: trialParams', link.sent[1], '0c 08 02 01 00 0a 00 01 00 00 00 f4 01');
+        checkBytes(
+            '2nd send: trialParams',
+            link.sent[1],
+            '0d 08 02 01 00 0a 00 01 00 00 00 f4 01 00'
+        );
         checkBytes('3rd send: final STOP', link.sent[2], '01 30');
         checkBool('summary.completed true', summary.completed === true);
         checkBool('summary.aborted false', summary.aborted === false);

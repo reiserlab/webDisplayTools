@@ -34,6 +34,7 @@ Update this list when a Studio feature intentionally skips the twins.
 | URL state read+write (#107: `?p`/`?mode`; push-view/replace-doc history, popstate, own-refresh via history.state) | ✗ | ✗ |
 | Edit-toolbar 💾 Save = the real save path (marks saved, opens run gate; Export YAML ≠ Save) | n/a | ✗ (Export only, never marks saved) |
 | Session rig (#135, Studio v0.4): ONE top-bar rig selector (locked, 🔒 unlock) shared by Run/Edit/Console; mismatch chip vs the protocol's `rig:`; `?rig=` URL bookmark; rig `io:` power-on defaults applied at connect + Controller ▾ session-role overrides (fw-gated roles greyed) | ✗ (own caption `arena` picker; no io: defaults) | ✗ (Settings→Rig edits the doc only) |
+| "+ add / ✕ remove" optional CONTROLLER params on command cards (Studio v0.41; first user: trialParams `duty`). The standalone designer renders/edits a `duty` present in the YAML or seeded by the shared schema default (detailKeys synced), but can't add it to or remove it from an existing command | n/a | ✗ (render/edit only) |
 
 Backported to both (the safety class): display-quiesce before ISP/SD-write ops
 (`e79007f`), batch show-on-arena blink pattern, `decodeRefreshRate`/`encodeGetRefreshRate`

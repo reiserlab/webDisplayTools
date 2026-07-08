@@ -110,9 +110,18 @@ var ArenaRunnerG6 = (function () {
      * seconds (same convention as conditionDuration's wait/trialParams math);
      * encodeTrialParams converts to 10 ms ticks on the wire.
      *
+     * duty (fw #33, the optional 12th TRIAL_PARAMS byte) is ALWAYS included —
+     * 0 when the protocol omits it, which firmware reads as "the pattern's
+     * stored duty_cycle flows through unchanged". Always declaring it keeps
+     * every trial self-describing: the runner never emits ALL_OFF between
+     * trials, so relying on the controller's cleared-on-ALL_OFF behavior
+     * would leak one trial's override into the next. Validated here (not in
+     * the encoder) so a bad value skips the trial via translateCommand's
+     * {op:'error'} instead of aborting the whole sequence from _runIR.
+     *
      * @param {object} cmd  the trialParams controller command
      * @param {{patternId:number}} opts  the resolved 1-based SD index
-     * @returns {{mode:number, patternId:number, frameRate:number, gain:number, initPos:number, duration:number}}
+     * @returns {{mode:number, patternId:number, frameRate:number, gain:number, initPos:number, duration:number, duty:number}}
      */
     function buildTrialParams(cmd, opts) {
         cmd = cmd || {};
@@ -133,6 +142,16 @@ var ArenaRunnerG6 = (function () {
         const initPos = frameIndexToInitPos(cmd.frame_index);
         const duration = cmd.duration === undefined ? 0 : toNumber(cmd.duration, 'duration');
 
+        // '' is what a blank designer field would yield — treat as unset, not
+        // Number('') === 0 by accident (they happen to agree, but be explicit).
+        const duty = cmd.duty === undefined || cmd.duty === '' ? 0 : toNumber(cmd.duty, 'duty');
+        if (!Number.isInteger(duty) || duty < 0 || duty > 255) {
+            throw new Error(
+                'duty must be an integer 0..255 (0 = pattern default), got ' +
+                    JSON.stringify(cmd.duty)
+            );
+        }
+
         const patternId = toNumber(opts.patternId, 'patternId');
         if (!Number.isInteger(patternId) || patternId < 1) {
             throw new Error(
@@ -141,7 +160,7 @@ var ArenaRunnerG6 = (function () {
             );
         }
 
-        return { mode, patternId, frameRate, gain, initPos, duration };
+        return { mode, patternId, frameRate, gain, initPos, duration, duty };
     }
 
     // The controller commands the sequence runner can EMIT on G6, grounded in the

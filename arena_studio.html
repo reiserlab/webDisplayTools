@@ -2810,7 +2810,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.40 | 2026-07-08 01:39 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.41 | 2026-07-08 07:17 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -10967,6 +10967,7 @@ async function initFromUrl() {
             'frame_index': 'number',
             'frame_rate': 'number',
             'gain': 'number',
+            'duty': 'number',
             'posX': 'number',
             'command_name': 'string',
             'plugin_name': 'string'
@@ -11864,6 +11865,29 @@ async function initFromUrl() {
             }
         }
 
+        // Optional CONTROLLER params (top-level command keys, e.g. trialParams
+        // duty) — unlike plugin params they live directly on the command map,
+        // so plain docSet/docDelete on the full path does the job.
+        function onAddControllerParam(keyPath, sch) {
+            if (!pushUndo()) return;
+            try {
+                docSet(experiment, keyPath, sch ? defaultParamValue(sch) : '');
+                commitInspectorEdit();
+            } catch (err) {
+                showError('Add param failed', err.message);
+            }
+        }
+
+        function onDeleteControllerParam(keyPath) {
+            if (!pushUndo()) return;
+            try {
+                docDelete(experiment, keyPath);
+                commitInspectorEdit();
+            } catch (err) {
+                showError('Remove param failed', err.message);
+            }
+        }
+
         // Suggest a unique condition name like condition_1, condition_2, ...
         function autoConditionName() {
             const taken = new Set(experiment.conditions.map((c) => c.name));
@@ -12377,7 +12401,7 @@ async function initFromUrl() {
             card.appendChild(actions);
 
             const detailKeys = {
-                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'posX', 'mv', 'percent', 'channel', 'state'],
+                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'duty', 'posX', 'mv', 'percent', 'channel', 'state'],
                 wait: ['duration'],
                 plugin: []
             }[cmd.type] || [];
@@ -12410,15 +12434,62 @@ async function initFromUrl() {
                     k === 'pattern' && activeSet()
                         ? { patternPicker: true }
                         : undefined;
-                card.appendChild(
-                    renderEditableField(
-                        k,
-                        [...cmdPath, k],
-                        cmd[k],
-                        fieldSchema || FIELD_TYPES[k] || 'string',
-                        fieldOpts
-                    )
+                const fieldRow = renderEditableField(
+                    k,
+                    [...cmdPath, k],
+                    cmd[k],
+                    fieldSchema || FIELD_TYPES[k] || 'string',
+                    fieldOpts
                 );
+                // duty 0 is "no override" — say so inline, so a seeded/blank 0
+                // reads as "keeps the pattern's stored brightness", not as dark.
+                if (cmd.type === 'controller' && k === 'duty') {
+                    fieldRow.appendChild(
+                        el('span', { class: 'dim', style: 'margin-left:0.35rem;font-size:0.85em' }, "(0 = pattern's own)")
+                    );
+                }
+                // OPTIONAL schema params (duty is the first) get a ✕ so removing
+                // one reverts the command to the key-absent form (e.g. duty
+                // absent = the pattern's stored duty; mirrors plugin params).
+                if (cmd.type === 'controller' && fieldSchema && !fieldSchema.required) {
+                    fieldRow.appendChild(el('button', {
+                        class: 'param-x-btn',
+                        title: 'Remove this param — back to the omitted default (Ctrl+Z to undo)',
+                        onClick: (e) => {
+                            e.stopPropagation();
+                            onDeleteControllerParam([...cmdPath, k]);
+                        }
+                    }, '✕'));
+                }
+                card.appendChild(fieldRow);
+            }
+
+            // Optional controller schema params absent from the command get a
+            // "+ add:" row (mirrors the plugin-params affordance below) — the
+            // only way to opt an EXISTING command into an optional param like
+            // duty, since the field loop above renders present keys only.
+            if (cmd.type === 'controller' && paramsSchema) {
+                const missingOptional = Object.keys(paramsSchema).filter(
+                    (k) => !paramsSchema[k].required && cmd[k] === undefined
+                );
+                if (missingOptional.length > 0) {
+                    const addRow = el('div', { class: 'kv-line' }, el('span', { class: 'k' }, '+ add:'));
+                    const sel = el('select', {
+                        class: 'field-edit',
+                        title: 'Add an optional parameter from this command\'s schema'
+                    });
+                    sel.appendChild(el('option', { value: '' }, 'choose…'));
+                    for (const k of missingOptional) {
+                        const sch = paramsSchema[k];
+                        sel.appendChild(el('option', { value: k }, sch.label ? k + ' — ' + sch.label : k));
+                    }
+                    sel.addEventListener('change', () => {
+                        if (!sel.value) return;
+                        onAddControllerParam([...cmdPath, sel.value], paramsSchema[sel.value]);
+                    });
+                    addRow.appendChild(sel);
+                    card.appendChild(addRow);
+                }
             }
 
             if (cmd.type === 'plugin') {

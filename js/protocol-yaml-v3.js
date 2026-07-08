@@ -65,6 +65,8 @@ const KNOWN_COMMAND_KEYS_BY_TYPE = {
         'frame_index',
         'frame_rate',
         'gain',
+        // per-trial duty/brightness override (fw #33, optional 12th TRIAL_PARAMS byte)
+        'duty',
         'posX',
         // G6-only I/O commands (setAnalogOut / setDigitalOut / ledDrive)
         'mv',
