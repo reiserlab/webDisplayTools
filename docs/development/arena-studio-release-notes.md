@@ -4,6 +4,15 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.44 — 2026-07-08 · Scope sound settings popover
+
+- **A ▾ next to ♪ sound opens a compact settings popover.** Choose which channel
+  drives **pitch** (turning / forward / heading / none) and which drives **volume**
+  (forward / turning / heading / **speed** / none), set the **min/max** input range for
+  each, pick the **waveform** (triangle / sine / square / saw) and **note scale**
+  (pentatonic / chromatic / continuous), and set a **master volume**. All settings
+  persist. "speed" = combined turning+forward magnitude (overall activity).
+
 ## v0.43 — 2026-07-08 · Scope sonification (optional ♪ sound)
 
 - **Optional "♪ sound" toggle on the scope** turns the fly's movement into music

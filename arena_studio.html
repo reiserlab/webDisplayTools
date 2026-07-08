@@ -366,6 +366,17 @@
   .scope-canvas-wrap{flex:1;min-height:60px;position:relative}
   #scopeCanvas{width:100%;height:100%;display:block}
   .scope-tip{position:absolute;pointer-events:none;background:rgba(15,20,25,0.96);border:1px solid var(--border);color:var(--text);font:11px/1.35 monospace;padding:2px 7px;border-radius:4px;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:6;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+  /* sonification settings popover (anchored under the ▾ next to ♪ sound) */
+  .scope-sound-menu{position:fixed;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 12px 34px rgba(0,0,0,.55);padding:10px 11px;display:none;font-size:11px;color:var(--text);min-width:236px}
+  .scope-sound-menu.open{display:block}
+  .scope-sound-menu .ss-hd{font-family:var(--head);text-transform:uppercase;letter-spacing:.5px;color:var(--dim);font-size:10px;margin:0 0 6px}
+  .scope-sound-menu .ssr{display:flex;align-items:center;gap:6px;margin:5px 0}
+  .scope-sound-menu .ssr>label{flex:0 0 44px;color:var(--dim)}
+  .scope-sound-menu select,.scope-sound-menu input[type=number]{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font-family:inherit;font-size:11px}
+  .scope-sound-menu select{flex:1 1 auto}
+  .scope-sound-menu input[type=number]{width:54px}
+  .scope-sound-menu input[type=range]{flex:1 1 auto}
+  .scope-sound-menu .ss-dim{color:var(--dim);flex:0 0 auto}
   .runlog-head{display:flex;align-items:center;gap:9px;margin-bottom:7px;font-size:11px;flex-wrap:wrap}
   .runlog-head .tag{font-weight:700;border-radius:4px;padding:2px 8px;font-size:10px}
   .runlog-head .tag.exp{background:var(--rec);color:#2a0000}
@@ -2180,7 +2191,8 @@
             <label title="Fix the forward axis to ±this value (mm/s). Blank = auto-scale.">fwd ± <input id="scopeFwdLim" type="number" min="0" step="1" placeholder="auto"> mm/s</label>
             <button class="pill on" id="scopeAutoY" title="Auto-scale rows that have no fixed ± limit typed (heading is always ±180)">auto-Y</button>
             <button class="pill" id="scopeClear" title="Clear the scope buffer">clear</button>
-            <button class="pill" id="scopeSound" title="Sonify the fly (Web Audio): turning → pitch (pentatonic), activity = forward speed → volume. Scaled to the fixed turn ± / fwd ± limits when set, else a default range. Toggle on/off.">♪ sound</button>
+            <button class="pill" id="scopeSound" title="Sonify the fly (Web Audio): turning → pitch, activity = forward speed → volume. Toggle on/off. Use ▾ for settings.">♪ sound</button>
+            <button class="pill" id="scopeSoundCfg" title="Sound settings — channel mapping, ranges, waveform, note scale, volume" style="padding:5px 7px">▾</button>
             <span class="scope-status" id="scopeStatus"></span>
           </div>
         </div>
@@ -2815,7 +2827,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.43 | 2026-07-08 12:41 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.44 | 2026-07-08 13:16 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3717,16 +3729,31 @@
         let lastMs = 0, lastWall = 0; // map browser-clock overlay events → sample ms
         let running = false, rafId = null, subbed = false;
         let lastGeom = null, tipEl = null; // last render's x-mapping + hover tooltip
-        // ── sonification (optional): turning → pitch, activity(|forward|) → volume ──
-        // Web Audio (built-in synth, no deps/MIDI). Pitch is quantised to a pentatonic
-        // scale so it always sounds consonant; both map against the FIXED ± limits
-        // (falling back to defaults when a limit box is blank). Latest per-row current
-        // value is stashed during render for the audio tick to read.
-        let audioOn = false, actx = null, osc = null, audioGain = null;
+        // ── sonification (optional): map behaviour channels → a Web Audio tone ──────
+        // Built-in synth (no deps/MIDI). Configurable via the ▾ popover: which channel
+        // drives pitch vs volume, the input min/max for each, waveform, note scale, and
+        // master volume. Latest per-row current value is stashed during render for the
+        // audio tick to read. Config persists (except `on` — audio needs a gesture).
+        let actx = null, osc = null, audioGain = null, sndMenu = null;
         const lastVals = {}; // {turning_deg_s, forward_mm_s, heading_deg} current values
-        const SND_NOTES = (function () { const a = [], semis = [0, 3, 5, 7, 10]; for (let o = 0; o < 3; o++) for (const s of semis) a.push(220 * Math.pow(2, (o * 12 + s) / 12)); return a; })();
-        const SND_MAX_GAIN = 0.16, SND_VOL_FLOOR = 0.12, SND_STALE_MS = 500;
-        const SND_DEF_TURN = 400, SND_DEF_FWD = 15; // fallback ± limits when none typed
+        const SND_MAX_GAIN = 0.2, SND_VOL_FLOOR = 0.12, SND_STALE_MS = 500;
+        const SND_FLO = 196, SND_FHI = 1568; // continuous pitch range (G3–G6)
+        const SND_SCALE_SEMIS = { pentatonic: [0, 3, 5, 7, 10], chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] };
+        const SND_DEF = { on: false, pitchSrc: 'turning_deg_s', pitchMin: -300, pitchMax: 300,
+            volSrc: 'forward_mm_s', volMin: 0, volMax: 15, wave: 'triangle', scale: 'pentatonic', master: 0.6 };
+        let snd = Object.assign({}, SND_DEF);
+        try { const s = JSON.parse(localStorage.getItem('studio_scope_sound') || 'null'); if (s && typeof s === 'object') snd = Object.assign(snd, s); } catch (_) {}
+        snd.on = false; // never auto-start on load (autoplay policy)
+        let sndNotes = null;
+        function rebuildNotes() {
+            const semis = SND_SCALE_SEMIS[snd.scale];
+            if (!semis) { sndNotes = null; return; } // continuous → no quantise
+            const a = [];
+            for (let o = 0; o < 4; o++) for (const s of semis) { const f = SND_FLO * Math.pow(2, (o * 12 + s) / 12); if (f <= SND_FHI * 1.02) a.push(f); }
+            sndNotes = a;
+        }
+        rebuildNotes();
+        function saveSnd() { try { localStorage.setItem('studio_scope_sound', JSON.stringify(snd)); } catch (_) {} }
         // fix: per-row symmetric ±limit typed by the user (null = auto-scale). Only
         // turning/forward are user-settable; heading is always fixed ±180 (row.fixed).
         const cfg = { windowMs: 250, spanS: 30, ballDiaMm: 9, autoY: true,
@@ -3785,8 +3812,14 @@
             // within (looked up from the last render's x-mapping).
             canvas.addEventListener('mousemove', onHover);
             canvas.addEventListener('mouseleave', () => { if (tipEl) tipEl.style.display = 'none'; });
-            const snd = document.getElementById('scopeSound');
-            if (snd) snd.addEventListener('click', () => setSound(!audioOn));
+            const sndBtn = document.getElementById('scopeSound');
+            if (sndBtn) sndBtn.addEventListener('click', () => setSound(!snd.on));
+            const sndCfg = document.getElementById('scopeSoundCfg');
+            if (sndCfg) sndCfg.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (sndMenu && sndMenu.classList.contains('open')) closeSoundMenu(); else openSoundMenu();
+            });
+            document.addEventListener('click', () => closeSoundMenu()); // click-away closes
             applyRigBallDiameter();
             subscribeBridge();
         }
@@ -3799,7 +3832,7 @@
                 const AC = window.AudioContext || window.webkitAudioContext;
                 if (!AC) return false;
                 actx = new AC();
-                osc = actx.createOscillator(); osc.type = 'triangle';
+                osc = actx.createOscillator(); osc.type = snd.wave || 'triangle';
                 audioGain = actx.createGain(); audioGain.gain.value = 0;
                 osc.connect(audioGain).connect(actx.destination);
                 osc.start();
@@ -3808,29 +3841,95 @@
         }
         function setSound(on) {
             const btn = document.getElementById('scopeSound');
-            if (on && !ensureAudio()) { audioOn = false; if (btn) btn.classList.remove('on'); return; }
-            audioOn = on;
+            if (on && !ensureAudio()) { snd.on = false; if (btn) btn.classList.remove('on'); return; }
+            snd.on = on;
             if (btn) btn.classList.toggle('on', on);
             if (on && actx.state === 'suspended') actx.resume();
             if (!on && audioGain && actx) audioGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
         }
-        // Drive pitch/volume from the latest turning/forward values, scaled to the
-        // FIXED ± limits (defaults when blank). Silence when data is stale/absent.
+        // Current value of a mapped channel; 'speed' = |(turning, forward)| magnitude.
+        function channelVal(key) {
+            if (key === 'speed') { const t = lastVals.turning_deg_s, f = lastVals.forward_mm_s; return Math.hypot(isFinite(t) ? t : 0, isFinite(f) ? f : 0); }
+            const v = lastVals[key];
+            return isFinite(v) ? v : NaN;
+        }
+        // Drive pitch + volume from the configured channels/ranges. Silence when data
+        // is stale/absent. Called every render frame (no-op unless sound is on).
         function updateAudio() {
-            if (!audioOn || !actx || !audioGain || !osc) return;
+            if (!snd.on || !actx || !audioGain || !osc) return;
             const now = actx.currentTime;
             const fresh = raw.length && (Date.now() - lastWall) < SND_STALE_MS;
             if (!fresh) { audioGain.gain.setTargetAtTime(0, now, 0.08); return; }
-            const turnLim = (cfg.fix && cfg.fix.turning_deg_s) || SND_DEF_TURN;
-            const fwdLim = (cfg.fix && cfg.fix.forward_mm_s) || SND_DEF_FWD;
-            const turn = lastVals.turning_deg_s, fwd = lastVals.forward_mm_s;
-            const t = isFinite(turn) ? Math.max(0, Math.min(1, (turn + turnLim) / (2 * turnLim))) : 0.5;
-            const freq = SND_NOTES[Math.round(t * (SND_NOTES.length - 1))];
-            const a = isFinite(fwd) ? Math.max(0, Math.min(1, Math.abs(fwd) / fwdLim)) : 0;
-            const vol = SND_MAX_GAIN * (SND_VOL_FLOOR + (1 - SND_VOL_FLOOR) * a);
-            osc.frequency.setTargetAtTime(freq, now, 0.05);
+            // pitch (signed — sign picks low vs high within the range)
+            if (snd.pitchSrc !== 'none') {
+                const v = channelVal(snd.pitchSrc);
+                const span = (snd.pitchMax - snd.pitchMin) || 1;
+                const n = isFinite(v) ? Math.max(0, Math.min(1, (v - snd.pitchMin) / span)) : 0.5;
+                let freq;
+                if (snd.scale === 'continuous' || !sndNotes) freq = SND_FLO * Math.pow(SND_FHI / SND_FLO, n);
+                else freq = sndNotes[Math.round(n * (sndNotes.length - 1))];
+                osc.frequency.setTargetAtTime(freq, now, 0.05);
+            }
+            // volume (magnitude — louder with more of whatever drives it)
+            let a = 1;
+            if (snd.volSrc !== 'none') {
+                const v = Math.abs(channelVal(snd.volSrc));
+                const span = (snd.volMax - snd.volMin) || 1;
+                a = isFinite(v) ? Math.max(0, Math.min(1, (v - snd.volMin) / span)) : 0;
+            }
+            const master = snd.master == null ? 0.6 : snd.master;
+            const vol = SND_MAX_GAIN * master * (SND_VOL_FLOOR + (1 - SND_VOL_FLOOR) * a);
             audioGain.gain.setTargetAtTime(vol, now, 0.06);
         }
+        // ── sound settings popover (built once, anchored under the ▾ button) ────────
+        function buildSoundMenu() {
+            if (sndMenu) return sndMenu;
+            const m = document.createElement('div');
+            m.className = 'scope-sound-menu';
+            const PITCH_CH = [['turning_deg_s', 'turning'], ['forward_mm_s', 'forward'], ['heading_deg', 'heading'], ['none', 'none']];
+            const VOL_CH = [['forward_mm_s', 'forward'], ['turning_deg_s', 'turning'], ['heading_deg', 'heading'], ['speed', 'speed'], ['none', 'none']];
+            const mkSel = (opts, val) => { const s = document.createElement('select'); opts.forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; if (v === val) o.selected = true; s.appendChild(o); }); return s; };
+            const mkNum = (val) => { const i = document.createElement('input'); i.type = 'number'; i.value = val; return i; };
+            const lbl = (t) => { const l = document.createElement('label'); l.textContent = t; return l; };
+            const dim = (t) => { const s = document.createElement('span'); s.className = 'ss-dim'; s.textContent = t; return s; };
+            const row = (...els) => { const d = document.createElement('div'); d.className = 'ssr'; els.forEach((e) => d.appendChild(e)); return d; };
+            const hd = document.createElement('div'); hd.className = 'ss-hd'; hd.textContent = 'Sound mapping'; m.appendChild(hd);
+            const pSel = mkSel(PITCH_CH, snd.pitchSrc), pMin = mkNum(snd.pitchMin), pMax = mkNum(snd.pitchMax);
+            const vSel = mkSel(VOL_CH, snd.volSrc), vMin = mkNum(snd.volMin), vMax = mkNum(snd.volMax);
+            const wSel = mkSel([['triangle', 'triangle'], ['sine', 'sine'], ['square', 'square'], ['sawtooth', 'saw']], snd.wave);
+            const scSel = mkSel([['pentatonic', 'pentatonic'], ['chromatic', 'chromatic'], ['continuous', 'continuous']], snd.scale);
+            const mv = document.createElement('input'); mv.type = 'range'; mv.min = '0'; mv.max = '1'; mv.step = '0.05'; mv.value = snd.master;
+            m.appendChild(row(lbl('Pitch'), pSel));
+            m.appendChild(row(dim('range'), pMin, dim('to'), pMax));
+            m.appendChild(row(lbl('Volume'), vSel));
+            m.appendChild(row(dim('range'), vMin, dim('to'), vMax));
+            m.appendChild(row(lbl('Wave'), wSel));
+            m.appendChild(row(lbl('Notes'), scSel));
+            m.appendChild(row(lbl('Vol %'), mv));
+            const commit = () => {
+                snd.pitchSrc = pSel.value; snd.pitchMin = parseFloat(pMin.value); snd.pitchMax = parseFloat(pMax.value);
+                snd.volSrc = vSel.value; snd.volMin = parseFloat(vMin.value); snd.volMax = parseFloat(vMax.value);
+                snd.wave = wSel.value; snd.scale = scSel.value; snd.master = parseFloat(mv.value);
+                if (osc) osc.type = snd.wave;
+                rebuildNotes(); saveSnd();
+            };
+            [pSel, pMin, pMax, vSel, vMin, vMax, wSel, scSel, mv].forEach((el) => el.addEventListener('change', commit));
+            mv.addEventListener('input', commit);
+            m.addEventListener('click', (e) => e.stopPropagation()); // keep clicks inside from closing
+            document.body.appendChild(m);
+            sndMenu = m;
+            return m;
+        }
+        function openSoundMenu() {
+            const m = buildSoundMenu();
+            const btn = document.getElementById('scopeSoundCfg');
+            if (!btn) return;
+            m.classList.add('open');
+            const r = btn.getBoundingClientRect(), mw = m.offsetWidth;
+            m.style.left = Math.max(6, Math.min(r.left, window.innerWidth - mw - 6)) + 'px';
+            m.style.top = (r.bottom + 4) + 'px';
+        }
+        function closeSoundMenu() { if (sndMenu) sndMenu.classList.remove('open'); }
         // Wire a fixed-±-limit input: parse on change (blank/≤0 → null = auto-scale),
         // store in cfg.fix[key], and persist. Restores any saved value on load.
         function wireFixLimit(inputId, key, storeKey) {
