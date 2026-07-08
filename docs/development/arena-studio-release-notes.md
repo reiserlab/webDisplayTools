@@ -16,6 +16,12 @@ history lives here. Newest first. (Per-session engineering detail stays in
   ("use the pattern's stored brightness"), so one trial's override can never leak
   into the next. Each trial's duty lands in `runlog.json` automatically as part of
   the recorded trial params.
+- **Protocol trials stay host-timed (compat).** The runner sends wire-duration 0
+  (no controller auto-stop) so existing protocols behave exactly as before — the
+  pattern keeps playing until the next command, and the browser remains the trial
+  clock. Controller-timed trials will be adopted deliberately later, together with
+  the run-complete event. The Console bench form still sends a real duration, so
+  firmware timing stays testable there.
 - **Optional params can be added/removed on command cards.** Controller commands now
   have the same "+ add:" row plugin commands already had — add `duty` to an existing
   trialParams, or ✕ it off to go back to the pattern's own brightness.

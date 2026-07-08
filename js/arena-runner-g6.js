@@ -106,9 +106,17 @@ var ArenaRunnerG6 = (function () {
      * Gain is coerced; encodeTrialParams enforces the int16 range. frame_rate
      * is passed through SIGNED — negative plays Mode 2 in reverse (G4-style
      * count-down; fw ee74c33+, fw issue #4), sign ignored by firmware in
-     * Modes 3/4; encodeTrialParams enforces the int16 range. duration is
-     * seconds (same convention as conditionDuration's wait/trialParams math);
-     * encodeTrialParams converts to 10 ms ticks on the wire.
+     * Modes 3/4; encodeTrialParams enforces the int16 range.
+     *
+     * COMPAT (2026-07-08): the wire `duration` is PINNED TO 0 — "no controller
+     * auto-stop" — while host-side timing (hostSideTrialEnd) remains the
+     * authoritative trial clock. Sending the real duration made fw #39
+     * controllers blank the display at exactly `duration` seconds, where
+     * protocols authored against host timing expect the pattern to keep
+     * playing until the next command (often through the ITI). Host timing is
+     * untouched: translateCommand's durationSec / conditionDuration read
+     * cmd.duration directly. Re-enable (pass cmd.duration through) together
+     * with the run-complete timing swap at the SWAP POINT below.
      *
      * duty (fw #33, the optional 12th TRIAL_PARAMS byte) is ALWAYS included —
      * 0 when the protocol omits it, which firmware reads as "the pattern's
@@ -140,7 +148,7 @@ var ArenaRunnerG6 = (function () {
 
         const gain = cmd.gain === undefined ? 0 : toNumber(cmd.gain, 'gain');
         const initPos = frameIndexToInitPos(cmd.frame_index);
-        const duration = cmd.duration === undefined ? 0 : toNumber(cmd.duration, 'duration');
+        const duration = 0; // COMPAT: no controller auto-stop — see the doc block above
 
         // '' is what a blank designer field would yield — treat as unset, not
         // Number('') === 0 by accident (they happen to agree, but be explicit).
@@ -549,9 +557,11 @@ var ArenaRunnerG6 = (function () {
      * the controller signals completion), replace this with a function that AWAITS
      * the controller's run-complete event instead of sleeping — or inject
      * `opts.timing` into runSequence. Nothing else in the runner changes.
-     * The wire-side duration now exists (buildTrialParams/encodeTrialParams), so
-     * the swap is unblocked whenever it's picked up — this function is untouched
-     * for now (host-side timing stays authoritative; see plan scope decision).
+     * The wire-side duration exists in the encoder, but buildTrialParams PINS
+     * it to 0 (compat — see its doc block): the two must flip together. When
+     * this function is replaced with an await-run-complete implementation,
+     * also pass cmd.duration through in buildTrialParams so the controller
+     * actually times the trial.
      *
      * Best-effort: a slept/closed tab won't fire the timer, so STOP/abort is the
      * primary control.

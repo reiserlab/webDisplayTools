@@ -188,16 +188,20 @@ async function main() {
     check('frameRate', p.frameRate, 10);
     check('gain', p.gain, 0);
     check('initPos (from frame_index 1)', p.initPos, 1);
-    check('duration', p.duration, 5);
+    // COMPAT: the wire duration is pinned to 0 (no controller auto-stop) while
+    // host-side timing stays authoritative — cmd.duration (5) must NOT reach
+    // the wire, but it MUST still drive durationSec (asserted in the
+    // translateCommand suite below).
+    check('wire duration pinned to 0 (compat)', p.duration, 0);
     // duty is ALWAYS present (0 = pattern's stored duty when the protocol
     // omits it) so every trial declares its own duty — 14-byte 0x0D frames.
     check('duty defaults to 0 (pattern default)', p.duty, 0);
-    // The encoded frame must match the wire golden vector (duration=5s -> 500 ticks -> F4 01,
-    // always-appended duty byte 00 at the end).
+    // The encoded frame must match the wire golden vector (duration bytes 00 00
+    // per the compat pin, always-appended duty byte 00 at the end).
     checkBytes(
         'encodeTrialParams(mapped)',
         Wire.encodeTrialParams(p),
-        '0d 08 02 01 00 0a 00 01 00 00 00 f4 01 00'
+        '0d 08 02 01 00 0a 00 01 00 00 00 00 00 00'
     );
 
     // THE coercion test: string scalars (as a YAML parser might yield) must work.
@@ -260,7 +264,7 @@ async function main() {
         checkBytes(
             'sent the trialParams frame',
             link.sent[0],
-            '0d 08 02 01 00 0a 00 01 00 00 00 f4 01 00'
+            '0d 08 02 01 00 0a 00 01 00 00 00 00 00 00'
         );
         check('conditionName tracked', runner.conditionName, 'sine_grating');
 
@@ -633,7 +637,7 @@ async function main() {
         checkBytes(
             '2nd send: trialParams',
             link.sent[1],
-            '0d 08 02 01 00 0a 00 01 00 00 00 f4 01 00'
+            '0d 08 02 01 00 0a 00 01 00 00 00 00 00 00'
         );
         checkBytes('3rd send: final STOP', link.sent[2], '01 30');
         checkBool('summary.completed true', summary.completed === true);
