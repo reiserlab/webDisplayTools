@@ -2844,7 +2844,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.50 | 2026-07-08 15:37 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.51 | 2026-07-08 16:47 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3792,11 +3792,36 @@
         const SND_MAX_GAIN = 0.2, SND_VOL_FLOOR = 0.12, SND_STALE_MS = 500;
         const SND_FLO = 196, SND_FHI = 1568; // continuous pitch range (G3–G6)
         const SND_SCALE_SEMIS = { pentatonic: [0, 3, 5, 7, 10], chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] };
-        const SND_DEF = { on: false, pitchSrc: 'turning_deg_s', pitchMin: -300, pitchMax: 300,
-            volSrc: 'forward_mm_s', volMin: 0, volMax: 15, wave: 'triangle', scale: 'pentatonic', master: 0.6 };
+        // Defaults track the BEHAVIOR: tone = turning SPEED (|turning|), volume =
+        // overall speed. pitchSigned flips the tone to signed turning (an option).
+        const SND_DEF = { on: false, pitchSrc: 'turning_deg_s', pitchSigned: false, pitchMin: 0, pitchMax: 200,
+            volSrc: 'speed', volMin: 0, volMax: 200, wave: 'triangle', scale: 'pentatonic', master: 0.6 };
+        // Natural value range of a behavioral channel, tied to the scope's fixed axis
+        // limits — so the sound spans exactly the metric's low→high (absolute channels
+        // start at 0; signed spans ±limit). Drives the default pitch/volume min/max and
+        // resets them when the mapped channel changes, so ranges match the channel.
+        function channelRange(key, signed) {
+            const turnLim = (cfg.fix && cfg.fix.turning_deg_s) || 200;
+            const fwdLim = (cfg.fix && cfg.fix.forward_mm_s) || 20;
+            if (key === 'turning_deg_s') return signed ? [-turnLim, turnLim] : [0, turnLim];
+            if (key === 'forward_mm_s') return signed ? [-fwdLim, fwdLim] : [0, fwdLim];
+            if (key === 'heading_deg') return [-180, 180];
+            if (key === 'speed') return [0, Math.round(Math.hypot(turnLim, fwdLim))];
+            return [0, 1];
+        }
+        // One-time migration to the behavior-matched sound defaults.
+        if (localStorage.getItem('studio_scope_sound_v') !== '2') {
+            localStorage.removeItem('studio_scope_sound');
+            localStorage.setItem('studio_scope_sound_v', '2');
+        }
         let snd = Object.assign({}, SND_DEF);
-        try { const s = JSON.parse(localStorage.getItem('studio_scope_sound') || 'null'); if (s && typeof s === 'object') snd = Object.assign(snd, s); } catch (_) {}
+        let sndStored = null;
+        try { sndStored = JSON.parse(localStorage.getItem('studio_scope_sound') || 'null'); } catch (_) {}
+        if (sndStored && typeof sndStored === 'object') snd = Object.assign(snd, sndStored);
         snd.on = false; // never auto-start on load (autoplay policy)
+        // SND_DEF's min/max already match the default channels (|turning| 0–200,
+        // speed 0–200); channelRange (which reads cfg, defined below) is used later by
+        // the popover to re-fit ranges when the source changes.
         let sndNotes = null;
         function rebuildNotes() {
             const semis = SND_SCALE_SEMIS[snd.scale];
@@ -3922,11 +3947,14 @@
             const now = actx.currentTime;
             const fresh = raw.length && (Date.now() - lastWall) < SND_STALE_MS;
             if (!fresh) { audioGain.gain.setTargetAtTime(0, now, 0.08); return; }
-            // pitch (signed — sign picks low vs high within the range)
+            // pitch: by default the tone tracks the channel's SPEED (|value|), so low
+            // metric → low freq and high metric → high freq. pitchSigned uses the signed
+            // value instead (turn direction picks low vs high about the midpoint).
             if (snd.pitchSrc !== 'none') {
-                const v = channelVal(snd.pitchSrc);
+                let v = channelVal(snd.pitchSrc);
+                if (!snd.pitchSigned && isFinite(v)) v = Math.abs(v);
                 const span = (snd.pitchMax - snd.pitchMin) || 1;
-                const n = isFinite(v) ? Math.max(0, Math.min(1, (v - snd.pitchMin) / span)) : 0.5;
+                const n = isFinite(v) ? Math.max(0, Math.min(1, (v - snd.pitchMin) / span)) : (snd.pitchSigned ? 0.5 : 0);
                 let freq;
                 if (snd.scale === 'continuous' || !sndNotes) freq = SND_FLO * Math.pow(SND_FHI / SND_FLO, n);
                 else freq = sndNotes[Math.round(n * (sndNotes.length - 1))];
@@ -3957,11 +3985,14 @@
             const row = (...els) => { const d = document.createElement('div'); d.className = 'ssr'; els.forEach((e) => d.appendChild(e)); return d; };
             const hd = document.createElement('div'); hd.className = 'ss-hd'; hd.textContent = 'Sound mapping'; m.appendChild(hd);
             const pSel = mkSel(PITCH_CH, snd.pitchSrc), pMin = mkNum(snd.pitchMin), pMax = mkNum(snd.pitchMax);
+            const pSigned = document.createElement('input'); pSigned.type = 'checkbox'; pSigned.checked = !!snd.pitchSigned;
+            const pSignedLbl = document.createElement('label'); pSignedLbl.style.flex = '0 0 auto'; pSignedLbl.title = 'On: tone follows SIGNED turning (direction). Off (default): tone follows turning SPEED (|value|).';
+            pSignedLbl.appendChild(pSigned); pSignedLbl.appendChild(document.createTextNode(' signed'));
             const vSel = mkSel(VOL_CH, snd.volSrc), vMin = mkNum(snd.volMin), vMax = mkNum(snd.volMax);
             const wSel = mkSel([['triangle', 'triangle'], ['sine', 'sine'], ['square', 'square'], ['sawtooth', 'saw']], snd.wave);
             const scSel = mkSel([['pentatonic', 'pentatonic'], ['chromatic', 'chromatic'], ['continuous', 'continuous']], snd.scale);
             const mv = document.createElement('input'); mv.type = 'range'; mv.min = '0'; mv.max = '1'; mv.step = '0.05'; mv.value = snd.master;
-            m.appendChild(row(lbl('Pitch'), pSel));
+            m.appendChild(row(lbl('Pitch'), pSel, pSignedLbl));
             m.appendChild(row(dim('range'), pMin, dim('to'), pMax));
             m.appendChild(row(lbl('Volume'), vSel));
             m.appendChild(row(dim('range'), vMin, dim('to'), vMax));
@@ -3969,13 +4000,21 @@
             m.appendChild(row(lbl('Notes'), scSel));
             m.appendChild(row(lbl('Vol %'), mv));
             const commit = () => {
-                snd.pitchSrc = pSel.value; snd.pitchMin = parseFloat(pMin.value); snd.pitchMax = parseFloat(pMax.value);
+                snd.pitchSrc = pSel.value; snd.pitchSigned = pSigned.checked;
+                snd.pitchMin = parseFloat(pMin.value); snd.pitchMax = parseFloat(pMax.value);
                 snd.volSrc = vSel.value; snd.volMin = parseFloat(vMin.value); snd.volMax = parseFloat(vMax.value);
                 snd.wave = wSel.value; snd.scale = scSel.value; snd.master = parseFloat(mv.value);
                 if (osc) osc.type = snd.wave;
                 rebuildNotes(); saveSnd();
             };
-            [pSel, pMin, pMax, vSel, vMin, vMax, wSel, scSel, mv].forEach((el) => el.addEventListener('change', commit));
+            // Changing the pitch/volume source (or the signed toggle) snaps the min/max
+            // to that channel's natural range, so the defaults always match the channel.
+            const syncPitchRange = () => { const r = channelRange(pSel.value, pSigned.checked); pMin.value = r[0]; pMax.value = r[1]; commit(); };
+            const syncVolRange = () => { const r = channelRange(vSel.value, false); vMin.value = r[0]; vMax.value = r[1]; commit(); };
+            pSel.addEventListener('change', syncPitchRange);
+            pSigned.addEventListener('change', syncPitchRange);
+            vSel.addEventListener('change', syncVolRange);
+            [pMin, pMax, vMin, vMax, wSel, scSel, mv].forEach((el) => el.addEventListener('change', commit));
             mv.addEventListener('input', commit);
             m.addEventListener('click', (e) => e.stopPropagation()); // keep clicks inside from closing
             document.body.appendChild(m);

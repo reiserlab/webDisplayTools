@@ -4,6 +4,19 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.51 — 2026-07-08 · Sonification tracks behavior
+
+- **Sound defaults now match the behavioral channels:** tone = **turning speed**
+  (|turning|), volume = **overall speed** (was forward). The pitch/volume min–max
+  defaults come from the channel's own range (tied to the scope axis limits), and
+  **snap to the new channel when you change the source** — no more a fixed tone-range
+  default that stays put.
+- **Pitch low↔high tracks the metric low↔high** — low turning speed → low note, high →
+  high note.
+- **New "signed" option for the tone** (in the ▾ popover): off (default) = turning
+  speed; on = signed turning (direction sets low vs high about the middle), with the
+  range flipping to ±limit.
+
 ## v0.50 — 2026-07-08 · BuckPuck recalibration + scope defaults/polish
 
 - **BuckPuck LED transfer function recalibrated.** Bench-tested: with the old curve
