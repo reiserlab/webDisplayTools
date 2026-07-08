@@ -4,6 +4,12 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.52 — 2026-07-08 · Sonification: editable pitch frequency range
+
+- **The tone's frequency range is now editable** in the ▾ popover — a **Freq lo → hi
+  (Hz)** row (default 196–1568). It sets the pitch span for both the continuous glide
+  and the quantised note scales (pentatonic/chromatic notes are generated across it).
+
 ## v0.51 — 2026-07-08 · Sonification tracks behavior
 
 - **Sound defaults now match the behavioral channels:** tone = **turning speed**
