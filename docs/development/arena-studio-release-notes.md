@@ -4,6 +4,24 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.50 — 2026-07-08 · BuckPuck recalibration + scope defaults/polish
+
+- **BuckPuck LED transfer function recalibrated.** Bench-tested: with the old curve
+  input 1–4 % left the LED dark, 5 % flickered, 6 % was solid. The dead zone is gone —
+  input **1 % now maps to the just-on level** (old raw 5 %) and 100 % stays full, so the
+  whole 0.1–100 % scale is usable. Documented in
+  `configs/calibration/buckpuck_g6.json`; the protocol `ledDrive` intensity inherits it
+  automatically (shared `ledPercentToMv`). Rig-config-driven loading is tracked in #156.
+- **Console LED tool: slider + type-in number in lockstep** (0.0–100.0, **0.1** steps),
+  like the Test-display duty control, with a live control-voltage readout.
+- **Oscilloscope defaults:** smoothing window **0.5 s**, span **1 min**, turning axis
+  **±200 °/s**, forward **±20 mm/s**. Ball-diameter control removed (fixed 9 mm; moving
+  to rig config, #156). A one-time reset adopts these on existing browsers too.
+- **auto-Y is now a master toggle** — it autoscales every trace, overriding the fixed
+  ± limits while on (fixes: auto-Y did nothing once you'd typed a fixed limit).
+- **Scope polish:** trial-boundary lines ~33 % thinner; the FicTrac rate / sample-count
+  readout is a compact two-line stack (no sphere diameter), hidden on narrow screens.
+
 ## v0.49 — 2026-07-08 · LED tool: brightness slider
 
 - **The Console LED tool now has a brightness slider** (like the Test-display

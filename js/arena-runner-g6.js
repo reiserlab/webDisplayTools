@@ -209,10 +209,20 @@ var ArenaRunnerG6 = (function () {
         { mv: 4000, frac: 0.08 },
         { mv: 4200, frac: 0.0 }
     ];
+    // Bench calibration (2026-07-08): with the raw datasheet curve, input 1–4 % left
+    // the LED fully dark, 5 % was flickery, 6 % solid — i.e. a ~5 % dead zone at the
+    // bottom. LED_ON_FLOOR_PCT removes it: input % is remapped so 1 % lands on the
+    // raw-5 % (just-on) level and 100 % stays full, giving a usable 0.1–100 % scale.
+    // Documented in configs/calibration/buckpuck_g6.json; see issue #156 for driving
+    // this from the rig config. ledDrive (protocol intensity) shares this function.
+    const LED_ON_FLOOR_PCT = 5;
     function ledPercentToMv(percent) {
         const p = Number(percent);
         if (!Number.isFinite(p) || p <= 0) return LED_OFF_MV;
-        const frac = Math.min(1, p / 100);
+        // Remap 1..100 % → raw ON_FLOOR..100 % (linear), so the dead zone is gone.
+        const inPct = Math.min(100, p);
+        const rawPct = LED_ON_FLOOR_PCT + ((inPct - 1) * (100 - LED_ON_FLOOR_PCT)) / 99;
+        const frac = Math.max(0, Math.min(1, rawPct / 100));
         const c = BUCKPUCK_CURVE;
         if (frac >= c[0].frac) return c[0].mv;
         for (let i = 0; i < c.length - 1; i++) {

@@ -1,0 +1,39 @@
+{
+  "$schema_note": "BuckPuck LED-driver calibration for the G6 arena. This file DOCUMENTS the transfer function used by js/arena-runner-g6.js (ledPercentToMv). Until issue #156 wires rig-config-driven loading, js/arena-runner-g6.js mirrors these values — keep the two in sync.",
+  "driver": "LEDdynamics BuckPuck 3021/3023 (analog-dim)",
+  "channel": "analog_out",
+  "control": "Controller 'Analog Out (0-5V)' BNC (J27, MCP4725 DAC), SET_AO_VOLTAGE 0xA0",
+  "units": {
+    "input": "percent (0-100, % of max brightness)",
+    "output": "millivolts (control voltage on the AO BNC)"
+  },
+  "off_mv": 5000,
+  "polarity": "inverted — lower mV = brighter; ~4.2 V = off, ~1.65 V = full (datasheet Fig. 3)",
+  "bench_findings_2026-07-08": {
+    "note": "With the raw datasheet curve (no floor), low inputs were below the LED's turn-on: 1-4% fully dark, 5% on-but-flickery, 6% solidly on.",
+    "raw_dead_zone_pct": [0, 4],
+    "raw_flickery_pct": 5,
+    "raw_solid_pct": 6
+  },
+  "remap": {
+    "on_floor_pct": 5,
+    "rule": "input 1-100% -> raw 5-100% (linear); input 0% -> off. So input 1% == the raw 5% just-on level; input 100% == full.",
+    "formula_raw_pct": "5 + (min(100,p) - 1) * (100 - 5) / 99, for p > 0; p <= 0 -> off_mv"
+  },
+  "datasheet_curve_raw": [
+    { "raw_pct": 100, "mv": 1650 },
+    { "raw_pct": 90, "mv": 2000 },
+    { "raw_pct": 72, "mv": 2500 },
+    { "raw_pct": 50, "mv": 3000 },
+    { "raw_pct": 28, "mv": 3500 },
+    { "raw_pct": 8, "mv": 4000 },
+    { "raw_pct": 0, "mv": 4200 }
+  ],
+  "effective_examples_after_remap": [
+    { "input_pct": 0, "mv": 5000, "state": "off" },
+    { "input_pct": 1, "mv": 4075, "state": "just-on (was raw 5%)" },
+    { "input_pct": 50, "mv": 2954, "state": "on" },
+    { "input_pct": 100, "mv": 1650, "state": "full" }
+  ],
+  "accuracy": "APPROXIMATE — datasheet-digitized + a bench turn-on floor, NOT photometric. Replace datasheet_curve_raw with measured (mv -> light) points for a real photometric calibration, and (per #156) point the rig config here."
+}

@@ -365,7 +365,8 @@
   .scope-ctrls input[type=number]{width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font-size:11px}
   .scope-ctrls select{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font-size:11px}
   .scope-ctrls .pill.on{background:var(--accent);color:#06210f;border-color:var(--accent)}
-  .scope-status{margin-left:auto;font-style:italic}
+  .scope-status{margin-left:auto;font-style:italic;font-size:9px;line-height:1.05;text-align:right;white-space:nowrap;align-self:center;color:var(--dim)}
+  @media (max-width:1100px){ #scopeCtrls .scope-status{display:none} } /* wide screens only */
   .scope-canvas-wrap{flex:1;min-height:60px;position:relative}
   #scopeCanvas{width:100%;height:100%;display:block}
   .scope-tip{position:absolute;pointer-events:none;background:rgba(15,20,25,0.96);border:1px solid var(--border);color:var(--text);font:11px/1.35 monospace;padding:2px 7px;border-radius:4px;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:6;box-shadow:0 4px 14px rgba(0,0,0,.5)}
@@ -2180,20 +2181,19 @@
           <!-- Scope controls live ON the header row in scope mode (maximizes the
                canvas); hidden in log mode. The .acts group is hidden in scope mode. -->
           <div class="scope-ctrls" id="scopeCtrls">
-            <label title="Smoothing window for the velocity traces (windowed least-squares slope, centered). Default 0.25 s.">win <input id="scopeWin" type="number" min="0.05" max="5" step="0.05" value="0.25"> s</label>
+            <label title="Smoothing window for the velocity traces (windowed least-squares slope, centered). Default 0.5 s.">win <input id="scopeWin" type="number" min="0.05" max="5" step="0.05" value="0.5"> s</label>
             <label title="Time span shown (the scrolling X range)">span
               <select id="scopeSpan">
                 <option value="10">10 s</option>
-                <option value="30" selected>30 s</option>
-                <option value="60">1 min</option>
+                <option value="30">30 s</option>
+                <option value="60" selected>1 min</option>
                 <option value="120">2 min</option>
                 <option value="300">5 min</option>
               </select>
             </label>
-            <label title="Fly-on-ball diameter (mm) — converts forward velocity to mm/s. Defaults to the rig's ball_diameter_mm, else 9 mm.">ball ⌀ <input id="scopeBallDia" type="number" min="1" max="50" step="0.5" value="9"> mm</label>
-            <label title="Fix the turning axis to ±this value (°/s). Blank = auto-scale.">turn ± <input id="scopeTurnLim" type="number" min="0" step="1" placeholder="auto"> °/s</label>
-            <label title="Fix the forward axis to ±this value (mm/s). Blank = auto-scale.">fwd ± <input id="scopeFwdLim" type="number" min="0" step="1" placeholder="auto"> mm/s</label>
-            <button class="pill on" id="scopeAutoY" title="Auto-scale rows that have no fixed ± limit typed (heading is always ±180)">auto-Y</button>
+            <label title="Fix the turning axis to ±this value (°/s). Blank = auto-scale. Overridden while auto-Y is on.">turn ± <input id="scopeTurnLim" type="number" min="0" step="1" value="200"> °/s</label>
+            <label title="Fix the forward axis to ±this value (mm/s). Blank = auto-scale. Overridden while auto-Y is on.">fwd ± <input id="scopeFwdLim" type="number" min="0" step="1" value="20"> mm/s</label>
+            <button class="pill" id="scopeAutoY" title="Auto-scale ALL traces (overrides the fixed ± limits while on; heading is always ±180)">auto-Y</button>
             <button class="pill" id="scopeClear" title="Clear the scope buffer">clear</button>
             <button class="pill" id="scopeSound" title="Sonify the fly (Web Audio): turning → pitch, activity = forward speed → volume. Toggle on/off. Use ▾ for settings.">♪ sound</button>
             <button class="pill" id="scopeSoundCfg" title="Sound settings — channel mapping, ranges, waveform, note scale, volume" style="padding:5px 7px">▾</button>
@@ -2729,8 +2729,9 @@
           <div class="panel-h"><span class="panel-title" title="Stimulus LED via the BuckPuck driver on the 'Analog Out (0-5V)' BNC (0xA0). Power % maps to control voltage (mV); OFF = 5000 mV dark.">LED</span><span class="spacer"></span><span class="panel-x" data-close="led" role="button" title="Collapse to the rail">✕</span></div>
           <div class="panel-b">
           <div class="crow" style="margin-bottom:0"><span class="lbl" title="LED power — % of max brightness (0 = off)">power</span>
-            <input id="cLedPct" type="range" min="0" max="100" step="1" value="50" style="width:120px" title="LED power (% of max brightness; 0 = off)">
-            <span class="dim" id="cLedVal" style="min-width:80px">50% · 3000 mV</span>
+            <input id="cLedPct" type="range" min="0" max="100" step="0.1" value="50" style="width:110px" title="LED power (% of max brightness; 0 = off)">
+            <input id="cLedNum" type="number" min="0" max="100" step="0.1" value="50" style="width:58px" title="LED power % — type a value 0.0–100.0 (0.1 steps); clamped"><span class="dim">%</span>
+            <span class="dim" id="cLedVal" style="min-width:56px">3000 mV</span>
             <button class="pill" data-cmd="cledset" title="Set LED power — SET_AO_VOLTAGE 0xA0 to the BuckPuck level for this %">Set</button>
             <button class="pill led-off" data-cmd="cledoff" title="Turn the LED off — Analog Out 5000 mV (BuckPuck dark)">OFF</button></div>
           </div>
@@ -2843,7 +2844,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.49 | 2026-07-08 14:51 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.50 | 2026-07-08 15:37 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3808,8 +3809,8 @@
         function saveSnd() { try { localStorage.setItem('studio_scope_sound', JSON.stringify(snd)); } catch (_) {} }
         // fix: per-row symmetric ±limit typed by the user (null = auto-scale). Only
         // turning/forward are user-settable; heading is always fixed ±180 (row.fixed).
-        const cfg = { windowMs: 250, spanS: 30, ballDiaMm: 9, autoY: true,
-            fix: { turning_deg_s: null, forward_mm_s: null } };
+        const cfg = { windowMs: 500, spanS: 60, ballDiaMm: 9, autoY: false,
+            fix: { turning_deg_s: 200, forward_mm_s: 20 } };
         // Held per-row Y ranges: while auto-Y is ON each render restores the row's
         // scale from its data and re-stores it here; when auto-Y is OFF the trace
         // reuses the last stored scale (frozen) so it stops rescaling as data flows.
@@ -3855,6 +3856,15 @@
             if (auto) auto.addEventListener('click', () => { cfg.autoY = !cfg.autoY; auto.classList.toggle('on', cfg.autoY); });
             // Fixed ±limit inputs for turning / forward (blank = auto). Persisted so
             // they survive a reload; heading is always ±180 and has no input.
+            // One-time migration to the new universal defaults (turn ±200 / fwd ±20,
+            // no ball-diameter override): clear pre-update persisted values so every
+            // bench starts from the same axes. Later user edits persist as usual.
+            if (localStorage.getItem('studio_scope_prefs_v') !== '2026-07-08') {
+                localStorage.removeItem('studio_scope_turn_lim');
+                localStorage.removeItem('studio_scope_fwd_lim');
+                localStorage.removeItem('studio_scope_ball_dia_mm');
+                localStorage.setItem('studio_scope_prefs_v', '2026-07-08');
+            }
             wireFixLimit('scopeTurnLim', 'turning_deg_s', 'studio_scope_turn_lim');
             wireFixLimit('scopeFwdLim', 'forward_mm_s', 'studio_scope_fwd_lim');
             const clr = document.getElementById('scopeClear');
@@ -3997,6 +4007,7 @@
             };
             const saved = localStorage.getItem(storeKey);
             if (saved != null) { inp.value = saved; apply(saved, false); }
+            else apply(inp.value, false); // sync cfg.fix with the HTML default (200 / 20)
             inp.addEventListener('change', () => apply(inp.value, true));
         }
         function onHover(e) {
@@ -4137,8 +4148,11 @@
                 ? 'waiting for FicTrac frames…'
                 : 'waiting for FicTrac bridge — Console → FicTrac';
             if (statusEl) {
-                statusEl.textContent = raw.length
-                    ? 'FicTrac ' + ((b && b.stats && b.stats.rateHz) || 0) + ' Hz · ' + raw.length + ' samples · ⌀' + cfg.ballDiaMm + ' mm'
+                // Two tight stacked lines (rate above, sample count below) so it fits
+                // the header bar height without eating a row. No sphere diameter (shown
+                // elsewhere). Hidden on narrow screens via CSS.
+                statusEl.innerHTML = raw.length
+                    ? 'FicTrac ' + ((b && b.stats && b.stats.rateHz) || 0) + ' Hz<br>' + raw.length + ' samples'
                     : '';
             }
             if (!raw.length) {
@@ -4180,7 +4194,7 @@
             });
             // ── TRIAL BOUNDARY LINES: bright white, drawn UNDERNEATH the data so they
             //    mark where each trial starts without obscuring the traces.
-            ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+            ctx.lineWidth = 1.3; ctx.strokeStyle = 'rgba(255,255,255,0.85)';
             ov.cond.forEach((c) => {
                 if (c.ms < t0 || c.ms > t1) return;
                 const x = xOf(c.ms);
@@ -4248,18 +4262,22 @@
             ctx.strokeRect(padL, top, plotW, h);
             let lo, hi;
             const userLim = cfg.fix && cfg.fix[row.key]; // typed ± limit (turning/forward)
-            if (row.fixed) { lo = row.fixed[0]; hi = row.fixed[1]; } // heading: always ±180
-            else if (userLim) { lo = -userLim; hi = userLim; } // user-fixed symmetric axis
+            // Precedence: heading is always ±180. auto-Y is the MASTER — when ON it
+            // autoscales EVERY row, overriding any typed ± limit (so auto-Y always
+            // works, even after you enter a fixed limit). When OFF, a typed limit fixes
+            // the axis, else the last auto range freezes.
+            if (row.fixed) { lo = row.fixed[0]; hi = row.fixed[1]; }
+            else if (!cfg.autoY && userLim) { lo = -userLim; hi = userLim; }
             else if (cfg.autoY || !heldScale[row.key]) {
-                // Auto-scale symmetrically about 0 and remember it. When auto-Y is
-                // later switched off, this last range is what freezes (below).
+                // Auto-scale symmetrically about 0 and remember it (so it can freeze
+                // when auto-Y is later switched off with no typed limit).
                 let mx = 1e-6;
                 if (pts) pts.forEach((p) => { if (p && isFinite(p.v)) mx = Math.max(mx, Math.abs(p.v)); });
                 mx *= 1.1;
                 lo = -mx; hi = mx;
                 heldScale[row.key] = [lo, hi];
             } else {
-                lo = heldScale[row.key][0]; hi = heldScale[row.key][1]; // auto-Y off → frozen
+                lo = heldScale[row.key][0]; hi = heldScale[row.key][1]; // frozen
             }
             const yOf = (v) => bottom - ((v - lo) / (hi - lo)) * h;
             if (lo < 0 && hi > 0) {
@@ -4722,7 +4740,7 @@
         },
         cledoff: () => {
             const off = (window.ArenaRunnerG6 && window.ArenaRunnerG6.LED_OFF_MV) || 5000;
-            if ($('cLedPct')) { $('cLedPct').value = 0; $('cLedPct').dispatchEvent(new Event('input')); }
+            if (Studio.applyLed) Studio.applyLed(0); // sync slider + number + readout
             send(Wire.encodeSetAoVoltage(off), 'LED OFF → SET_AO_VOLTAGE 0xA0 ' + off + ' mV');
         },
         caoget: async () => {
@@ -5227,19 +5245,23 @@
     // level slider readout + duty → module-block stream state. The duty slider
     // and its number box stay in lockstep; typed values clamp to 0–255.
     $('cLevel').addEventListener('input', () => { $('cLevelVal').textContent = $('cLevel').value + '/15'; });
-    // LED tool slider readout: show % and the resolved BuckPuck control voltage.
-    (function () {
-        const sl = $('cLedPct');
-        if (!sl) return;
-        const upd = () => {
-            const p = Number(sl.value) || 0;
-            const conv = window.ArenaRunnerG6 && window.ArenaRunnerG6.ledPercentToMv;
-            const el = $('cLedVal');
-            if (el) el.textContent = p + '%' + (conv ? ' · ' + conv(p) + ' mV' : '');
-        };
-        sl.addEventListener('input', upd);
-        upd();
-    })();
+    // LED tool: slider + number box in lockstep (like duty), 0.0–100.0 in 0.1 steps,
+    // with a readout of the resolved BuckPuck control voltage.
+    function applyLed(v) {
+        const raw = String(v).trim();
+        let n = raw === '' ? NaN : Number(raw);
+        if (!Number.isFinite(n)) n = Number($('cLedPct').value);
+        n = Math.min(100, Math.max(0, Math.round(n * 10) / 10)); // clamp 0–100, 0.1 step
+        if ($('cLedPct')) $('cLedPct').value = n;
+        if ($('cLedNum')) $('cLedNum').value = n;
+        const conv = window.ArenaRunnerG6 && window.ArenaRunnerG6.ledPercentToMv;
+        const el = $('cLedVal');
+        if (el) el.textContent = conv ? conv(n) + ' mV' : '';
+    }
+    Studio.applyLed = applyLed;
+    if ($('cLedPct')) $('cLedPct').addEventListener('input', () => applyLed($('cLedPct').value));
+    if ($('cLedNum')) $('cLedNum').addEventListener('change', () => applyLed($('cLedNum').value));
+    if ($('cLedPct')) applyLed($('cLedPct').value);
     function applyDuty(v) {
         // A number input holding garbage reports '' (and Number('') === 0), so
         // treat empty as "keep the current value", not as zero.

@@ -553,6 +553,17 @@ async function main() {
         'ledPercentToMv(100) < LED_OFF_MV (bright)',
         Runner.ledPercentToMv(100) < Runner.LED_OFF_MV
     );
+    // Bench recalibration (2026-07-08): the dead zone is gone — input 1% now lands on
+    // the just-on level (was raw 5%), so 1% must read ON and dimmer than 50%.
+    checkBool(
+        'ledPercentToMv(1) turns the LED on (< off)',
+        Runner.ledPercentToMv(1) < Runner.LED_OFF_MV
+    );
+    checkBool(
+        'ledPercentToMv(1) dimmer than 50% (higher mV)',
+        Runner.ledPercentToMv(1) > Runner.ledPercentToMv(50)
+    );
+    check('ledPercentToMv(1) == raw-5% just-on level (4075 mV)', Runner.ledPercentToMv(1), 4075);
     check(
         'ledDrive 0% -> LED_OFF_MV (dark, reads off in the scope)',
         Runner.translateCommand({ type: 'controller', command_name: 'ledDrive', percent: 0 }).mv,
