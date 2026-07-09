@@ -167,14 +167,17 @@
             else state.rig = rig;
         }
 
-        // advanced (safe mode) — a soft-gate REQUEST flag (0|1). Only '1' is
-        // meaningful: it REQUESTS advanced (full Studio) mode, which the app
-        // still password-gates before granting. Absent or '0' ⇒ safe mode (the
-        // default). NOT a security boundary — see docs/development/safe-mode-spec.md.
+        // advanced (safe mode) — a soft-gate flag (0|1). '1' REQUESTS advanced
+        // (full Studio) mode, which the app still password-gates before granting.
+        // '0' explicitly FORCES safe mode — re-locking a browser that was
+        // remembered-unlocked (state.advanced === false ⇒ the app calls lockSafe()).
+        // Absent ⇒ safe mode by default, but with NO re-lock (a remembered unlock
+        // stands). NOT a security boundary — see docs/development/safe-mode-spec.md.
         const adv = params.get('advanced');
         if (adv != null) {
             if (adv === '1') state.advanced = true;
-            else if (adv !== '0') warnings.push('Ignored advanced=' + adv + ' (expected 0 or 1)');
+            else if (adv === '0') state.advanced = false;
+            else warnings.push('Ignored advanced=' + adv + ' (expected 0 or 1)');
         }
 
         return { state: state, warnings: warnings };

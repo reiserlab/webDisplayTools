@@ -2858,7 +2858,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.56 | 2026-07-08 20:19 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.57 | 2026-07-09 00:25 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -8590,9 +8590,19 @@ async function initFromUrl() {
         // advanced ?mode=edit/console link can actually land there once unlocked.
         // (updateUrl is suppressed during init; the finally-block emits the one
         // canonical URL, keeping advanced=1 only if the unlock succeeded.)
-        if (state.advanced) {
+        // NOTE: lockSafe/unlockAdvanced live in the classic shell IIFE, not this
+        // module scope — call them via the exposed Studio.* refs (a bare name here
+        // throws a ReferenceError that the finally-block would silently mask).
+        if (state.advanced === true) {
             Studio.advancedUrlRequested = true;
-            if (!Studio.advanced) unlockAdvanced();
+            if (!Studio.advanced) Studio.unlockAdvanced();
+        } else if (state.advanced === false && Studio.advanced) {
+            // ?advanced=0 explicitly FORCES safe mode — re-lock a browser that was
+            // remembered-unlocked. lockSafe() forgets the unlock (localStorage),
+            // re-applies gating, and forces Run; the machine then stays safe on
+            // later loads even without the param. (updateUrl is suppressed during
+            // init, so the finally-block scrubs advanced=0 to a clean URL.)
+            Studio.lockSafe();
         }
         if (state.mode && state.mode !== 'run') Studio.setMode(state.mode);
     } finally {

@@ -49,9 +49,11 @@ deliberate misuse.
   `localStorage['studio_advanced_pw'] = 'yourpassword'` (the built-in `2026` is only
   a fallback when no override is set).
 - **Kiosk tip:** because unlock is *remembered per browser*, a machine that was ever
-  unlocked stays advanced until you click **lock**. Before handing a machine to
-  students, click **🔓 Advanced · lock** once. There is no URL parameter that forces
-  a remembered-unlocked browser back to safe.
+  unlocked stays advanced until it's re-locked. Two ways to re-lock: click **🔓
+  Advanced · lock**, or open **any link with `?advanced=0`** (see below) — that
+  forces safe mode and *forgets* the unlock, so the machine then stays safe on later
+  loads too. Handing a bookmarked `?advanced=0` link to students guarantees safe mode
+  even on a machine that was previously unlocked.
 
 ---
 
@@ -67,7 +69,8 @@ safe mode, in the Run view, ready to hit **Connect → Run**.
 | `repo=owner/name` | The course/data repo to load from (e.g. `reiserlab/cshl-2026-course`). |
 | `p=…` | The protocol. **With `repo`**, it's a repo-relative path under `protocols/` (e.g. `protocols/bench03/looming.yaml`). **Without `repo`**, it's a site-library key from `protocols/index.json` (e.g. `g6_2x10_smoke`). |
 | `rig=name` | *(optional)* The session/bench rig, e.g. `cshl_g6_2x10_ball`. Sets the bench rig for geometry; it never rewrites the protocol's own rig (a disagreement raises the mismatch chip). |
-| `advanced=1` | *(leave this OFF for safe mode)* Requests advanced mode; still password-gated. Omit it and you get safe mode by default. |
+| `advanced=1` | *(leave OFF for safe mode)* Requests advanced mode; still password-gated. Omit it and you get safe mode by default. |
+| `advanced=0` | **Forces safe mode** — re-locks a browser that was previously unlocked-and-remembered, and forgets the unlock (so it stays safe afterward). Use this on shared/kiosk machines. |
 
 Notes that make these links "just work":
 
@@ -128,3 +131,6 @@ no GitHub sign-in — handy for demos and smoke tests.
 - `…/arena_studio.html?repo=reiserlab/cshl-2026-course&p=protocols/shared/looming.yaml`
   with **no** stored token → stays safe/Run and shows the "sign in, then Open from
   course repo…" banner (no error). With a token it opens directly. ✓
+- `…/arena_studio.html?advanced=0&p=g6_2x10_smoke` on a browser that was
+  remembered-unlocked → forced back to **safe** mode (editor re-locked, unlock
+  forgotten), protocol loaded in **Run**; a later plain reload stays safe. ✓

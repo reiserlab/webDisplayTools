@@ -4,6 +4,15 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.57 — 2026-07-09 · `?advanced=0` forces safe mode
+
+- **A link with `?advanced=0` now forces safe mode** and forgets any remembered
+  unlock on that browser — so a bookmarked `?advanced=0` link guarantees a
+  student/kiosk machine opens locked, even if it was previously unlocked. It then
+  stays safe on later loads. (Also fixed a latent scope bug where the `?advanced=1`
+  URL request called an out-of-scope helper; both now use the exposed `Studio.*`
+  refs.)
+
 ## v0.56 — 2026-07-08 · Advanced-mode password default → `2026`
 
 - The built-in advanced-mode password is now **`2026`** (was `reiser`). A per-bench

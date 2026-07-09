@@ -290,8 +290,10 @@ d = U.decode('?advanced=1', { allowedKeys: ALLOWED });
 check('advanced=1 requested', d.state.advanced, true);
 checkBool('advanced=1 does not warn', d.warnings.length === 0, d.warnings.join('|'));
 d = U.decode('?advanced=0', { allowedKeys: ALLOWED });
-check('advanced=0 → safe (undefined)', d.state.advanced, undefined);
+check('advanced=0 → force safe (explicit false)', d.state.advanced, false);
 checkBool('advanced=0 does not warn', d.warnings.length === 0, d.warnings.join('|'));
+// encode/encodeApp never EMIT advanced=0 (clean-URL rule) — false is treated as off.
+check('encode advanced=false still omitted', U.encode({ mode: 'run', advanced: false }), '');
 d = U.decode('?advanced=yes', { allowedKeys: ALLOWED });
 check('advanced=yes dropped', d.state.advanced, undefined);
 checkBool(
