@@ -61,7 +61,7 @@ console: `localStorage.removeItem('studio_advanced_unlocked')`, then reload.
 - [ ] **Bench setup stays instructor-only:** the GitHub/repo/bench-id block is visible but its
   unlock padlock (🔒) is hidden; the session-rig selector stays hard-locked.
 - [ ] **Unlock:** click the **🛡 Safe mode** chip → password prompt. Wrong → stays safe (banner).
-  Correct (**`reiser`**) → chip becomes **🔓 Advanced · lock**, destructive Console ops
+  Correct (**`2026`**) → chip becomes **🔓 Advanced · lock**, destructive Console ops
   un-grey, Edit becomes mutable, rig/GitHub unlock.
 - [ ] Reload → still advanced (remembered), URL clean (no `?advanced=1`).
 - [ ] `arena_studio.html?advanced=1` on a *fresh* browser (clear the key first) → prompts; on
@@ -70,7 +70,7 @@ console: `localStorage.removeItem('studio_advanced_unlocked')`, then reload.
 - [ ] **Run-lock (all modes):** during an active run, Edit/Console tabs are disabled — STOP
   before switching views.
 - [ ] **Per-bench password:** set `localStorage['studio_advanced_pw']='yourpw'`, lock, unlock
-  with it (built-in `reiser` is a fallback only when the custom one is unset).
+  with it (built-in `2026` is a fallback only when the custom one is unset).
 
 ## 3. Oscilloscope — browser with the simulator (no arena needed)
 

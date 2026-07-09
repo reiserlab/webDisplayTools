@@ -4,6 +4,11 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.56 — 2026-07-08 · Advanced-mode password default → `2026`
+
+- The built-in advanced-mode password is now **`2026`** (was `reiser`). A per-bench
+  override via `localStorage['studio_advanced_pw']` still takes precedence.
+
 ## v0.55 — 2026-07-08 · Safe mode: true view-only editor + no pattern writes
 
 - **The editor is now genuinely read-only in safe mode.** Previously you could type

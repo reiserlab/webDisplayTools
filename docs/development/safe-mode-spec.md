@@ -134,7 +134,7 @@ stays in safe mode. Document plainly in the UI that this is a guardrail, not sec
 - **Open-to-run scope:** **all sources, read-only** — local file / library / course repo all
   work in safe mode; a load lands in Run (safe mode's silent `setMode('edit')` refusal keeps
   it there). Save/Edit/Promote remain locked.
-- **Password:** built-in default `reiser` (constant `ADVANCED_DEFAULT_PW`), overridable
+- **Password:** built-in default `2026` (constant `ADVANCED_DEFAULT_PW`), overridable
   per-bench via `localStorage['studio_advanced_pw']` (set behind the existing 🔒 GitHub-settings
   unlock in advanced mode). Remembered unlock = `localStorage['studio_advanced_unlocked']='1'`.
 - **Affordance/indicator:** a top-bar **🛡 Safe mode** chip (click → password prompt) that
