@@ -32,18 +32,18 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 
 ## Full Genotype Reference
 
-### Wild Type
+### `CS x w1118`
 
-- Shorthand: `CS x w1118`
+- Course use: wild type/control.
 - Sheet label: `CS X w1118`
 - Driver: N/A
 - Effector: N/A
 - Full genotype fields in sheet: blank
 - Sexes: F, M
 
-### Silencing
+### `empty split > Kir2.1`
 
-- Shorthand: `empty split > Kir2.1`
+- Course use: silencing control.
 - Sheet label: `None`
 - Driver: `empty split GAL4`
 - Effector: `Kir2.1`
@@ -51,7 +51,9 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Full effector genotype: `w+ (DL); +(DL); pJFRC49-10XUAS- eGFPKir2.1(attP2)`
 - Sexes: F
 
-- Shorthand: `T4/T5 (SS00324) > Kir2.1`
+### `T4/T5 (SS00324) > Kir2.1`
+
+- Course use: silencing experiment.
 - Sheet label: `T4/T5`
 - Driver: `SS00324`
 - Effector: `Kir2.1`
@@ -59,9 +61,12 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Full effector genotype: `w+ (DL); +(DL); pJFRC49-10XUAS- eGFPKir2.1(attP2)`
 - Sexes: F
 
-### Optogenetic Activation
+> CsChrimson activation and RESET stock note: balancers to select against: TBD
+> for all stocks.
 
-- Shorthand: `empty split > CsChrimson`
+### `empty split > CsChrimson`
+
+- Course use: optogenetic activation control.
 - Sheet label: `None`
 - Driver: `empty split GAL4`
 - Effector: `CsChrimson`
@@ -69,7 +74,9 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Full effector genotype: `w+,20XUAS-CsChrimson-mVenus(attP18);;`
 - Sexes: F, M
 
-- Shorthand: `LC-6 (R_42E06) > CsChrimson`
+### `LC-6 (R_42E06) > CsChrimson`
+
+- Course use: optogenetic activation / RESET.
 - Sheet label: `LC-6`
 - Driver: `R_42E06`
 - Effector: `CsChrimson`
@@ -78,7 +85,9 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Sexes: F in the optogenetic activation row; F, M in the RESET row
 - Note: this shorthand intentionally collapses two sheet rows with the same driver-effector shorthand but different course-use notes.
 
-- Shorthand: `P1 (15A01;71G01) > CsChrimson`
+### `P1 (15A01;71G01) > CsChrimson`
+
+- Course use: optogenetic activation.
 - Sheet label: `P1`
 - Driver: `15A01;71G01`
 - Effector: `CsChrimson`
@@ -86,7 +95,9 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Full effector genotype: `w+,20XUAS-CsChrimson-mVenus(attP18);;`
 - Sexes: M
 
-- Shorthand: `Hot Cell (HC-Gal4) > CsChrimson`
+### `Hot Cell (HC-Gal4) > CsChrimson`
+
+- Course use: optogenetic activation.
 - Sheet label: `Hot Cell`
 - Driver: `HC-Gal4`
 - Effector: `CsChrimson`
@@ -94,7 +105,9 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Full effector genotype: `w+,20XUAS-CsChrimson-mVenus(attP18);;`
 - Sexes: F
 
-- Shorthand: `pC1_19 (SS100895) > CsChrimson`
+### `pC1_19 (SS100895) > CsChrimson`
+
+- Course use: optogenetic activation.
 - Sheet label: `pC1_19`
 - Driver: `SS100895`
 - Effector: `CsChrimson`
@@ -102,7 +115,9 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Full effector genotype: `w+,20XUAS-CsChrimson-mVenus(attP18);;`
 - Sexes: M
 
-- Shorthand: `pC1_17a,b (SS102696) > CsChrimson`
+### `pC1_17a,b (SS102696) > CsChrimson`
+
+- Course use: optogenetic activation.
 - Sheet label: `pC1_17a,b`
 - Driver: `SS102696`
 - Effector: `CsChrimson`
@@ -110,9 +125,9 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Full effector genotype: `w+,20XUAS-CsChrimson-mVenus(attP18);;`
 - Sexes: M
 
-### RESET Stocks
+### `MDN-1 (VT050660) > CsChrimson`
 
-- Shorthand: `MDN-1 (VT050660) > CsChrimson`
+- Course use: RESET stock, moonwalker.
 - Sheet note: `Moonwalker`
 - Driver: `VT050660-Gal4`
 - Effector: `CsChrimson`
@@ -120,7 +135,9 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Full effector genotype: `20XUAS-CsChrimson-mVenus(attP18);;`
 - Sexes: F, M
 
-- Shorthand: `NP225 > CsChrimson`
+### `NP225 > CsChrimson`
+
+- Course use: RESET stock, spins.
 - Sheet note: `Spins`
 - Driver: `NP225`
 - Effector: `CsChrimson`
@@ -128,7 +145,9 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Full effector genotype: `10XUAS-Chrmson88-tdT`
 - Sexes: F, M
 
-- Shorthand: `LC-24 (SS02638) > CsChrimson`
+### `LC-24 (SS02638) > CsChrimson`
+
+- Course use: RESET stock, forward walking.
 - Sheet note: `Forward Walking`
 - Driver: `SS02638`
 - Effector: `CsChrimson`
@@ -136,7 +155,9 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Full effector genotype: `20XUAS-CsChrimson-mVenus(attP18);;`
 - Sexes: F, M
 
-- Shorthand: `Avoidance (SS01159) > CsChrimson`
+### `Avoidance (SS01159) > CsChrimson`
+
+- Course use: RESET stock, avoidance.
 - Sheet note: `Avoidance`
 - Driver: `SS01159`
 - Effector: `CsChrimson`
@@ -144,7 +165,9 @@ Parentheses hold the driver or stock identifier when the common name alone is am
 - Full effector genotype: `20XUAS-CsChrimson-mVenus(attP18);;`
 - Sexes: F, M
 
-- Shorthand: `Giant Fiber (17A04-AD;68A06-DBD) > CsChrimson`
+### `Giant Fiber (17A04-AD;68A06-DBD) > CsChrimson`
+
+- Course use: RESET stock, giant fiber.
 - Sheet note: `Giant Fiber`
 - Driver: `17A04-AD;68A06-DBD`
 - Effector: `CsChrimson`
