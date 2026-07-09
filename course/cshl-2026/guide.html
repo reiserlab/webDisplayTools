@@ -6,18 +6,18 @@
   <title>Visual Behavior in Flies | CSHL 2026 Guide</title>
   <style>
     :root {
-      --paper: #fffdf7;
-      --ink: #17212b;
-      --muted: #5d6670;
-      --line: #d7ddd4;
-      --soft: #f3efe3;
-      --cyan: #0e8f9e;
-      --coral: #df5b43;
-      --gold: #c9941a;
-      --leaf: #378b54;
-      --plum: #6c4b8e;
-      --black: #101417;
+      --paper: #ffffff;
+      --ink: #202923;
+      --muted: #6d7871;
+      --line: #cfd7d1;
+      --soft: #f4f7f5;
+      --accent: #007a43;
+      --accent-bright: #00c853;
+      --black: #0f1419;
+      --surface: #1a1f26;
       --white: #ffffff;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+      --heading: "JetBrains Mono", var(--mono);
     }
 
     * {
@@ -32,30 +32,30 @@
       margin: 0;
       background: var(--paper);
       color: var(--ink);
-      font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 15px/1.6 var(--mono);
     }
 
     a {
-      color: var(--cyan);
-      text-decoration-thickness: 2px;
-      text-underline-offset: 3px;
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
     }
 
     code {
       background: #edf1ee;
       border: 1px solid var(--line);
-      border-radius: 4px;
-      color: #24313b;
+      border-radius: 3px;
+      color: #1f2b24;
       padding: 0.08em 0.3em;
-      font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+      font-family: var(--mono);
       font-size: 0.92em;
     }
 
     pre {
       overflow-x: auto;
-      background: #101417;
-      color: #f6fbff;
-      border-radius: 8px;
+      background: var(--black);
+      color: #e6edf3;
+      border-radius: 4px;
       padding: 16px;
     }
 
@@ -75,7 +75,7 @@
     .sidebar {
       background: var(--black);
       color: var(--white);
-      border-right: 8px solid var(--gold);
+      border-right: 4px solid var(--accent-bright);
       padding: 22px 18px;
       position: sticky;
       top: 0;
@@ -88,15 +88,16 @@
     }
 
     .brand .kicker {
-      color: #a9dbe2;
+      color: var(--accent-bright);
       font-size: 12px;
       font-weight: 900;
-      letter-spacing: 0.09em;
+      letter-spacing: 0;
       margin: 0 0 8px;
       text-transform: uppercase;
     }
 
     .brand h1 {
+      font-family: var(--heading);
       font-size: 28px;
       line-height: 1.02;
       letter-spacing: 0;
@@ -104,16 +105,16 @@
     }
 
     .brand p {
-      color: #cdd6d5;
+      color: #aeb8b2;
       margin: 12px 0 0;
       font-size: 14px;
     }
 
     .draft {
-      background: #2b2416;
-      border: 1px solid #6a541a;
-      color: #ffe7aa;
-      border-radius: 8px;
+      background: #151c18;
+      border: 1px solid #2d3640;
+      color: #b8c2bc;
+      border-radius: 4px;
       font-size: 13px;
       padding: 10px;
       margin: 0 0 18px;
@@ -124,28 +125,29 @@
     }
 
     .nav-group h2 {
-      color: #9fb3b6;
+      color: #8b949e;
+      font-family: var(--heading);
       font-size: 12px;
-      letter-spacing: 0.1em;
+      letter-spacing: 0;
       margin: 0 0 8px;
       text-transform: uppercase;
     }
 
     .nav-link {
-      color: #edf7f7;
+      color: #e6edf3;
       display: block;
       text-decoration: none;
       border-left: 4px solid transparent;
       padding: 7px 9px;
       margin: 2px 0;
-      font-weight: 750;
+      font-weight: 700;
       font-size: 14px;
     }
 
     .nav-link:hover,
     .nav-link.active {
-      background: #1b2730;
-      border-left-color: var(--cyan);
+      background: var(--surface);
+      border-left-color: var(--accent-bright);
     }
 
     .content-wrap {
@@ -167,6 +169,7 @@
 
     .topbar strong {
       color: var(--black);
+      font-family: var(--heading);
     }
 
     .topbar .links {
@@ -174,7 +177,7 @@
       flex-wrap: wrap;
       gap: 12px;
       font-size: 14px;
-      font-weight: 800;
+      font-weight: 700;
     }
 
     main {
@@ -184,39 +187,41 @@
 
     .content {
       background: var(--white);
-      border: 1px solid var(--line);
-      border-top: 9px solid var(--cyan);
-      border-radius: 8px;
-      padding: 34px;
-      box-shadow: 0 18px 45px rgba(23, 33, 43, 0.08);
+      border: 0;
+      border-top: 3px solid var(--accent-bright);
+      border-radius: 0;
+      padding: 30px 0 0;
     }
 
     .content h1 {
-      font-size: clamp(30px, 4vw, 44px);
+      font-family: var(--heading);
+      font-size: clamp(28px, 4vw, 40px);
       line-height: 1.06;
       letter-spacing: 0;
       margin: 0 0 18px;
     }
 
     .content h2 {
-      border-bottom: 3px solid var(--black);
-      font-size: clamp(22px, 2.6vw, 27px);
+      border-bottom: 1px solid var(--line);
+      font-family: var(--heading);
+      font-size: clamp(20px, 2.6vw, 25px);
       letter-spacing: 0;
       margin: 36px 0 14px;
       padding-bottom: 6px;
     }
 
     .content h3 {
-      color: #1d3a45;
-      font-size: 19px;
+      color: var(--ink);
+      font-family: var(--heading);
+      font-size: 18px;
       margin: 28px 0 10px;
     }
 
     .content blockquote {
-      border-left: 8px solid var(--gold);
-      background: #fff6d7;
+      border-left: 3px solid var(--accent-bright);
+      background: var(--soft);
       margin: 20px 0;
-      padding: 14px 18px;
+      padding: 12px 16px;
     }
 
     .content table {
@@ -227,7 +232,7 @@
     }
 
     .content th {
-      background: var(--black);
+      background: var(--surface);
       color: var(--white);
       text-align: left;
     }
@@ -240,7 +245,7 @@
     }
 
     .content tr:nth-child(even) td {
-      background: #fafaf6;
+      background: var(--soft);
     }
 
     .content img {
@@ -316,7 +321,7 @@
         height: auto;
         position: static;
         border-right: 0;
-        border-bottom: 8px solid var(--gold);
+        border-bottom: 4px solid var(--accent-bright);
       }
 
       .nav-group {
@@ -337,7 +342,7 @@
       }
 
       .content {
-        padding: 22px;
+        padding: 22px 0 0;
       }
 
       .content .fictrac-example {
