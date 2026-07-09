@@ -37,7 +37,7 @@ practical.
   - [p0 — Optogenetic intensity](protocols/p0-opto-intensity.md)
   - [p1 — Visual motion (optomotor + looming)](protocols/p1-motion.md)
   - [p2 — Object responses (bar, choice)](protocols/p2-object.md)
-  - [p3 — Conditioning / bonus experiment](protocols/p3.md) *(coming soon)*
+  - [p3 — The Heisenberg experiment](protocols/p3.md) *(patterns ready; protocol in validation)*
 
 ## Course strategy
 
@@ -50,6 +50,9 @@ practical.
 3. **Then make or modify a pattern.** After the core runs, use the
    [Pattern Editor](pattern-editor.md) to build at least one stimulus and, if
    time allows, test it in Arena Studio.
+4. **Try P3 after instructor validation.** P3 adapts classic closed-loop visual
+   conditioning to walking flies and lets each team choose a historical
+   Heisenberg/Wolf/Dill pattern pair.
 
 ## Reference
 
@@ -58,7 +61,7 @@ practical.
 
 > **TBD: add images.** Useful first images: tethering station, fly on the ball,
 > Arena Studio Run view, Pattern Editor, FicTrac config GUI, and example pattern
-> animations for p0-p2.
+> animations for p0-p3.
 
 ---
 *Last updated 2026-07-09.*

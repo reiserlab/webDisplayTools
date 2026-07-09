@@ -15,8 +15,9 @@ matching **full** version. If short and full were run on the same fly, the
 analysis can pool them.
 
 P0 is the intro/calibration protocol and is worth running once per line when
-possible. P1 and P2 are the core student protocols. P3 is planned as a bonus or
-conditioning experiment but is not built yet.
+possible. P1 and P2 are the core student protocols. P3 is the planned
+Heisenberg flight-simulator tribute: its five visual patterns are built, but
+the protocol remains gated on a physical test of conditional LED activation.
 
 ## Design principle: internal comparisons
 
@@ -42,9 +43,9 @@ each trial type as an isolated condition.
 | **[p0](p0-opto-intensity.md)** | Optogenetic intensity | Which LED level drives the fly | No (open-loop) | ~2.6 min | ~10.3 min |
 | **[p1](p1-motion.md)** | Visual motion | Optomotor turning + looming response | No (open-loop) | ~2.7 min | ~7.9 min |
 | **[p2](p2-object.md)** | Object responses | Bar fixation + A/B choice | **Yes** (needs FicTrac) | ~4.3-4.5 min | ~9.8-10.2 min |
-| **[p3](p3.md)** | Conditioning / bonus | Planned open-loop conditioning then closed-loop test | TBD | TBD | TBD |
+| **[p3](p3.md)** | Heisenberg conditioning | Closed-loop cue-preference learning | **Yes** (needs FicTrac) | ≈8 min | ≈18 min |
 
-Animated pattern previews are embedded on the p0, p1, and p2 pages.
+Animated pattern previews are embedded on all four protocol pages.
 
 ## Also on the rigs
 
@@ -76,7 +77,8 @@ These analysis pages are still being built. The first plots will likely include:
   stimulus class/speed/position.
 - P2: closed-loop fixation traces, open-loop sweep responses, and side-balanced
   object-choice preference plots.
-- P3: TBD once the protocol is finalized.
+- P3: arena-index occupancy, baseline-corrected preference, quadrant dwell
+  times, LED transitions, and walking/immobility QC.
 
 ---
 *Last updated 2026-07-09.*

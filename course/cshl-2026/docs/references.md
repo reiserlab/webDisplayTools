@@ -38,7 +38,24 @@ references will be added to the individual protocol pages.
 - Morimoto MM et al. (2020), *Spatial readout of visual looming in the central
   brain of Drosophila*: <https://elifesciences.org/articles/57685>.
 - TBD: add object fixation and object-choice references for p2.
-- TBD: add conditioning references for p3 once the protocol is defined.
+
+### P3 visual conditioning
+
+- Wolf R, Heisenberg M (1991), *Basic organization of operant behavior as
+  revealed in Drosophila flight orientation*:
+  [doi:10.1007/BF00194898](https://doi.org/10.1007/BF00194898).
+- Dill M, Wolf R, Heisenberg M (1995), *Behavioral analysis of Drosophila
+  landmark learning in the flight simulator*:
+  [doi:10.1101/lm.2.3-4.152](https://doi.org/10.1101/lm.2.3-4.152).
+- Guo A et al. (1996), *Conditioned visual flight orientation in Drosophila:
+  dependence on age, practice, and diet*:
+  [doi:10.1101/lm.3.1.49](https://doi.org/10.1101/lm.3.1.49).
+- Brembs B, Heisenberg M (2000), *The operant and the classical in conditioned
+  orientation of Drosophila melanogaster at the flight simulator*:
+  [doi:10.1101/lm.7.2.104](https://doi.org/10.1101/lm.7.2.104).
+- Tang S, Wolf R, Xu S, Heisenberg M (2004), *Visual pattern recognition in
+  Drosophila is invariant for retinal position*:
+  [doi:10.1126/science.1099839](https://doi.org/10.1126/science.1099839).
 
 ---
 *Last updated 2026-07-09.*
