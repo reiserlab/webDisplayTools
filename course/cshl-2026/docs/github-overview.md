@@ -1,6 +1,6 @@
 # GitHub for the course
 
-## What GitHub is (30 seconds)
+## What GitHub is
 
 GitHub is a website that stores files and keeps a full history of every change.
 For this course it's the **shared filing cabinet**: every bench's protocols,
@@ -24,13 +24,21 @@ is organized so no two benches ever overwrite each other's files:
 
 ```
 roster.yaml                                   who's who (id, name, rig, …)
-genotypes.yaml, ages.yaml, …                  dropdown vocabularies
+genotypes.yaml, ages.yaml, …                  metadata shorthand lists
 protocols/<bench-id>/<name>.yaml              a bench's own protocol saves
 protocols/<bench-id>/<name>_patterns/*.pat    that protocol's patterns
 protocols/shared/<name>.yaml                  protocols shared with everyone
 runlogs/<bench-id>/…jsonl                      recorded data, one file per run
 docs/                                          these guides
 ```
+
+There are not separate repositories for each bench. Instead, each bench writes
+to its own folders inside the private course repo. In normal use, Arena Studio
+handles those writes for you: your bench saves into `protocols/<your-bench-id>/`
+and completed recorded runs go into `runlogs/<your-bench-id>/`.
+
+> **TBD: add image.** Add a screenshot of the repository folders and one example
+> runlog file name.
 
 ## How your work gets there (automatically)
 
@@ -72,16 +80,14 @@ is one run. The filename tells you the protocol, who ran it, and when.
 - You don't manually upload data — completed runs commit themselves.
 - You don't edit `roster.yaml` or the vocab files — instructors maintain those.
 
-## What instructors may do
+## What may change during the course
 
-Instructors may update `roster.yaml`, promote stable protocols into
-`protocols/shared/`, fix pattern bundles, or pull the latest `runlogs/` for
-analysis. If you see new files appear while the course is running, that is
-normal.
+New runlog files will appear as teams finish experiments. Instructors may also
+update the shared protocols, metadata lists, or documentation during the course.
+If you see new files appear while the course is running, that is normal.
 
-> ✍️ **Instructor to confirm:** how students receive repo access (added as
-> collaborators vs. a shared read token) and whether they ever open github.com
-> directly or only ever go through Arena Studio.
+> **TBD:** confirm how students receive repository access and whether they
+> should open github.com directly or only through Arena Studio.
 
 ---
 *Last updated 2026-07-09.*

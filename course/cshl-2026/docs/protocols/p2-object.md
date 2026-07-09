@@ -10,6 +10,40 @@ between two objects** (A/B choice) — with and without optogenetic activation.
 control. Everyone should run a P2 version; the instructor will assign tonic,
 burst, or both.
 
+## Open in Arena Studio
+
+These links open the shared protocol from the private course repository in the
+Run view and force safe mode. Use the tonic or burst version assigned to your
+team.
+
+| Version | Link |
+| --- | --- |
+| Tonic short | [Open p2 tonic short](https://reiserlab.github.io/webDisplayTools/arena_studio.html?repo=reiserlab/cshl-2026-course&p=protocols/shared/p2_object_tonic_short.yaml&rig=cshl_g6_2x10_ball&advanced=0) |
+| Tonic full | [Open p2 tonic full](https://reiserlab.github.io/webDisplayTools/arena_studio.html?repo=reiserlab/cshl-2026-course&p=protocols/shared/p2_object_tonic_full.yaml&rig=cshl_g6_2x10_ball&advanced=0) |
+| Burst short | [Open p2 burst short](https://reiserlab.github.io/webDisplayTools/arena_studio.html?repo=reiserlab/cshl-2026-course&p=protocols/shared/p2_object_burst_short.yaml&rig=cshl_g6_2x10_ball&advanced=0) |
+| Burst full | [Open p2 burst full](https://reiserlab.github.io/webDisplayTools/arena_studio.html?repo=reiserlab/cshl-2026-course&p=protocols/shared/p2_object_burst_full.yaml&rig=cshl_g6_2x10_ball&advanced=0) |
+
+If the browser is not signed in to GitHub yet, Arena Studio will stay in safe
+mode and ask you to sign in before loading the protocol.
+
+## Pattern previews
+
+### Single object
+
+| Closed-loop stripe / sweep object |
+| --- |
+| ![p2 single dark stripe](../assets/patterns/p2_bar.gif) |
+
+### Object-choice patterns
+
+| Small object | Barberpole | Bright bar |
+| --- | --- | --- |
+| ![p2 choice small object](../assets/patterns/p2_choice_small.gif) | ![p2 choice barberpole object](../assets/patterns/p2_choice_barberpole.gif) | ![p2 choice bright bar](../assets/patterns/p2_choice_bright.gif) |
+
+| Dark bar | Graded edge | Contrast peak |
+| --- | --- | --- |
+| ![p2 choice dark bar](../assets/patterns/p2_choice_dark.gif) | ![p2 choice graded edge](../assets/patterns/p2_choice_edge.gif) | ![p2 choice contrast peak](../assets/patterns/p2_choice_peak.gif) |
+
 ## Two optogenetic variants
 
 Same visual design; they differ only in *how* the LED is delivered:
@@ -68,8 +102,19 @@ bursts in the burst version.
 - Run the short version first. If the same fly then completes the full version,
   both can be pooled in analysis.
 
-> ✍️ **Instructor to confirm:** the front-column calibration procedure and which
-> genotypes run P2 tonic, P2 burst, or both.
+## Analysis plots
+
+Planned first-look plots:
+
+- Closed-loop stripe position and fly turning during no-opto versus opto
+  fixation.
+- Open-loop sweep responses by speed and direction.
+- Object-choice occupancy/preference for each A/B combination, with B-left and
+  B-right versions combined only after checking side bias.
+- Forward velocity over the run, using a centered 0.5 s window.
+
+> **TBD:** add the front-column calibration procedure and which genotypes run P2
+> tonic, P2 burst, or both.
 
 ---
 *Last updated 2026-07-09. Source: `protocols/shared/p2_object_*.yaml`.*

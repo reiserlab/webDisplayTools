@@ -5,14 +5,14 @@ its head and body are held still while its legs walk freely. Tethering is a
 craft — the single biggest factor in getting clean data. A well-tethered, happy
 fly gives you hours of behavior; a crooked or over-glued one won't walk.
 
-*Adapted from the lab's CSHL tethering protocol (Loesche & Reiser) and*
-*[Loesche & Reiser 2021](https://doi.org/10.3389/fnbeh.2021.689573).*
+> **TBD: add images.** Add a photo of the tethering station, a close-up of a
+> good tether, and a photo of a fly correctly positioned on the ball.
 
 ## The idea
 
-- Flies are **cold-anesthetized on ice** — no CO₂. Temperature is the fly's
-  off-switch: chilled below a few °C they stop moving within minutes, and warm
-  up within a minute. Keep them cold while you work, let them warm to wake.
+- Flies are **cold-anesthetized on ice** — no CO₂. Below about **4.5 °C**, they
+  stop moving within minutes; when they warm up, they recover and begin moving
+  again. Keep them cold while you work, then let them warm to wake.
 - You glue **only the top of the thorax** to the tether. Head, legs, wings, and
   abdomen stay **free**.
 - **Minimal glue.** *If you never lose a fly because it breaks free, you're
@@ -20,19 +20,21 @@ fly gives you hours of behavior; a crooked or over-glued one won't walk.
 
 ## What you need
 
-Tethers (pins), a micromanipulator + a Peltier-cooled tethering platform (the
-"sarcophagus"), light-curing (UV) glue + a curing LED, a glass slide, a pin
+Tethers (pins), a micromanipulator plus a Peltier-cooled tethering platform
+(the "sarcophagus"), light-curing glue plus a curing LED, a glass slide, a pin
 vice, a fine paintbrush, a vacuum pen, Kimwipes, and a dissecting scope.
 
-> ✍️ **Instructor to confirm:** the exact tether type, glue product, and station
-> model on your bench.
+> **TBD:** add the exact tether type, glue product, curing LED, and station
+> model used on each bench.
 
 ## Prepare the flies
 
 1. Get a vial; **note the genotype and estimated age** in your notebook.
 2. Transfer a few flies into a tube; plug it with cotton/foam. *Every fly is
    precious* — ask for small batches.
-3. **Chill on ice** until fully immobilized (~5 min).
+3. **Chill on ice** until fully immobilized (~5 min). Do not leave them on ice
+   longer than necessary: a longer chill means a longer recovery before the fly
+   is ready to walk.
 
 ## Prepare the station
 
@@ -75,13 +77,18 @@ vice, a fine paintbrush, a vacuum pen, Kimwipes, and a dissecting scope.
 3. Confirm it walks: the ball turns under it, and once
    [FicTrac](fictrac.md) is running you'll see motion on the oscilloscope.
 
-> ✍️ **Instructor to confirm:** target fly height above the ball, and glue
-> cure/recovery times for your setup.
+> **TBD:** add target fly height above the ball and typical glue cure/recovery
+> times for this setup.
 
 ## Practice first
 
 Tethering takes reps — everyone should tether several practice flies before
 touching experimental ones. Time spent here pays off in every experiment after.
+
+## Reference
+
+- Loesche & Reiser (2021), *An inexpensive, high-precision fly-on-ball setup*:
+  [doi:10.3389/fnbeh.2021.689573](https://doi.org/10.3389/fnbeh.2021.689573).
 
 ---
 *Last updated 2026-07-09.*

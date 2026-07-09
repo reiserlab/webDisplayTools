@@ -1,12 +1,26 @@
-# Vision In Flies — Course Guide
+# Visual Behavior in Flies — Course Guide
 
 Welcome! These pages are your reference for running fly-on-ball experiments on
 the G6 LED-arena rigs. Read them in roughly this order; each page is short and
 practical.
 
-> ⚠️ **Draft (AI-assisted).** These pages were drafted from the rig configs,
-> the shipped protocols, and the July 8 setup meeting. Anything marked
-> **✍️ Instructor to confirm** needs a human check before students rely on it.
+> **Draft.** Anything marked **TBD** still needs instructor review or a missing
+> image/reference before the final student handout.
+
+> **Feedback welcome.** This equipment is brand new: the rigs are less than a
+> month old, and much of the course software, including Arena Studio, is only
+> about 10 days old. If you see something confusing, broken, missing, or worth
+> improving in the course, experiments, rigs, or software, please tell us. You
+> can send feedback directly to the instructors or [open a course feedback
+> issue](https://github.com/reiserlab/cshl-2026-course/issues/new?title=Course%20feedback%3A%20).
+
+## Course team
+
+- **Instructors:** Michael Reiser and Frank Loesche.
+- **Rig assembly and testing:** many people in the Reiser Lab helped assemble,
+  test, and troubleshoot these rigs, especially Hannah Marie Santos and Isabel
+  Lehenbauer.
+- **Fly work and genotypes:** Ed Rogers.
 
 ## Start here
 
@@ -14,7 +28,8 @@ practical.
 2. **[Rig 101](rig-101.md)** — what's on the bench and what each part does.
 3. **[FicTrac basics & config](fictrac.md)** — the ball tracker: what it does and how to set it up.
 4. **[Arena Studio](arena-studio.md)** — the web app you run experiments from (getting started + links).
-5. **[GitHub for the course](github-overview.md)** — where protocols and data live, and how they get there.
+5. **[Pattern Editor](pattern-editor.md)** — make and preview LED-arena patterns.
+6. **[GitHub for the course](github-overview.md)** — where protocols and data live, and how they get there.
 
 ## The experiments
 
@@ -26,29 +41,24 @@ practical.
 
 ## Course strategy
 
-- **P0 is the intro/calibration protocol.** It is useful to run once per line,
-  but it is not intended to be the main high-N dataset.
-- **Everyone should run P1 and P2.** Start with the short version to verify the
-  fly, rig, tracking, and optogenetic timing; then run the matching full
-  version when the fly looks good.
-- **The plan is flexible.** If one genotype is inactive and another looks
-  excellent, teams may rotate or rebalance during the session rather than
-  grinding through a bad fly.
-- **By the end of the day, every team should make at least one pattern** and may
-  modify an experiment after completing the core runs.
+1. **Learn the rig with P0.** Run the short intro/calibration protocol so your
+   team sees how the arena, optogenetic LED, FicTrac traces, metadata, and
+   GitHub run logging fit together.
+2. **Collect core data with P1 and P2.** For each assigned fly, run the short
+   version first. If the fly is walking and the setup looks healthy, continue
+   with the matching full version.
+3. **Then make or modify a pattern.** After the core runs, use the
+   [Pattern Editor](pattern-editor.md) to build at least one stimulus and, if
+   time allows, test it in Arena Studio.
 
 ## Reference
 
-- **[Genotype shorthand](genotypes.md)** — the fly lines and their dropdown labels.
-- **Further reading:** Loesche & Reiser (2021), *An inexpensive, high-precision
-  fly-on-ball setup* — [doi:10.3389/fnbeh.2021.689573](https://doi.org/10.3389/fnbeh.2021.689573).
-  The tethering and fly-on-ball pages here are adapted from it and the lab's CSHL
-  tethering protocol.
+- **[Genotype shorthand](genotypes.md)** — the line shorthand names used in Arena Studio metadata.
+- **[References and links](references.md)** — panel-system, FicTrac, Arena Studio, and reading links.
 
-## For maintainers
-
-- **[Plan: markdown → stylish HTML pages](html-plan.md)** — how these pages become
-  a student-friendly website.
+> **TBD: add images.** Useful first images: tethering station, fly on the ball,
+> Arena Studio Run view, Pattern Editor, FicTrac config GUI, and example pattern
+> animations for p0-p2.
 
 ---
 *Last updated 2026-07-09.*

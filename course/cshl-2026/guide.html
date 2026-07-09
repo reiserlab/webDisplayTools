@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Vision In Flies | CSHL 2026 Guide</title>
+  <title>Visual Behavior in Flies | CSHL 2026 Guide</title>
   <style>
     :root {
       --paper: #fffdf7;
@@ -178,8 +178,8 @@
     }
 
     main {
-      max-width: 920px;
-      padding: 38px 34px 72px;
+      width: min(100%, 1240px);
+      padding: 30px clamp(18px, 4vw, 54px) 72px;
     }
 
     .content {
@@ -192,15 +192,15 @@
     }
 
     .content h1 {
-      font-size: clamp(34px, 6vw, 58px);
-      line-height: 0.98;
+      font-size: clamp(30px, 4vw, 44px);
+      line-height: 1.06;
       letter-spacing: 0;
       margin: 0 0 18px;
     }
 
     .content h2 {
       border-bottom: 3px solid var(--black);
-      font-size: 28px;
+      font-size: clamp(22px, 2.6vw, 27px);
       letter-spacing: 0;
       margin: 36px 0 14px;
       padding-bottom: 6px;
@@ -208,7 +208,7 @@
 
     .content h3 {
       color: #1d3a45;
-      font-size: 21px;
+      font-size: 19px;
       margin: 28px 0 10px;
     }
 
@@ -245,6 +245,16 @@
 
     .content img {
       max-width: 100%;
+    }
+
+    .content a,
+    .content td,
+    .content th {
+      overflow-wrap: anywhere;
+    }
+
+    .content .pattern-preview--loom {
+      filter: brightness(2);
     }
 
     .content hr {
@@ -303,7 +313,7 @@
     <aside class="sidebar">
       <div class="brand">
         <p class="kicker">CSHL 2026</p>
-        <h1>Vision In Flies</h1>
+        <h1>Visual Behavior in Flies</h1>
         <p>Demystifying fly-on-ball behavior.</p>
       </div>
       <div class="draft">
@@ -316,8 +326,8 @@
       <header class="topbar">
         <strong id="doc-title">Course guide</strong>
         <div class="links">
-          <a href="../../arena_studio.html">Arena Studio</a>
-          <a href="https://github.com/reiserlab/cshl-2026-course">Course repo</a>
+          <a href="../../arena_studio.html" target="_blank" rel="noopener">Arena Studio</a>
+          <a href="https://github.com/reiserlab/cshl-2026-course" target="_blank" rel="noopener">Course repo</a>
         </div>
       </header>
       <main>
@@ -339,6 +349,7 @@
           ['rig-101', 'Rig 101'],
           ['fictrac', 'FicTrac basics'],
           ['arena-studio', 'Arena Studio'],
+          ['pattern-editor', 'Pattern Editor'],
           ['github-overview', 'GitHub overview']
         ]
       },
@@ -356,7 +367,7 @@
         title: 'Reference',
         items: [
           ['genotypes', 'Genotype shorthand'],
-          ['html-plan', 'HTML plan']
+          ['references', 'References']
         ]
       }
     ];
@@ -367,8 +378,9 @@
       'rig-101': 'docs/rig-101.md',
       'fictrac': 'docs/fictrac.md',
       'arena-studio': 'docs/arena-studio.md',
+      'pattern-editor': 'docs/pattern-editor.md',
       'github-overview': 'docs/github-overview.md',
-      'html-plan': 'docs/html-plan.md',
+      'references': 'docs/references.md',
       'genotypes': 'docs/genotypes.md',
       'protocols': 'docs/protocols/README.md',
       'p0-opto-intensity': 'docs/protocols/p0-opto-intensity.md',
@@ -414,7 +426,13 @@
       const docsBase = new URL('docs/', location.href);
       content.querySelectorAll('a[href]').forEach(anchor => {
         const raw = anchor.getAttribute('href');
-        if (!raw || raw.startsWith('#') || /^[a-z]+:/i.test(raw)) return;
+        if (!raw || raw.startsWith('#')) return;
+
+        if (/^[a-z]+:/i.test(raw)) {
+          anchor.setAttribute('target', '_blank');
+          anchor.setAttribute('rel', 'noopener');
+          return;
+        }
 
         const resolved = new URL(raw, currentUrl);
         if (!resolved.href.startsWith(docsBase.href)) return;
@@ -424,7 +442,25 @@
         const slug = slugByPath[relativePath];
         if (slug) {
           anchor.setAttribute('href', `?doc=${slug}${resolved.hash || ''}`);
+        } else {
+          anchor.setAttribute('target', '_blank');
+          anchor.setAttribute('rel', 'noopener');
         }
+      });
+    }
+
+    function rewriteLocalMarkdownImages(currentPath) {
+      const currentUrl = new URL(currentPath, location.href);
+      const localBase = new URL('.', location.href);
+      content.querySelectorAll('img[src]').forEach(image => {
+        const raw = image.getAttribute('src');
+        if (!raw || raw.startsWith('#') || /^[a-z]+:/i.test(raw)) return;
+
+        const resolved = new URL(raw, currentUrl);
+        if (!resolved.href.startsWith(localBase.href)) return;
+
+        const relativePath = decodeURIComponent(resolved.href.slice(localBase.href.length));
+        image.setAttribute('src', relativePath);
       });
     }
 
@@ -441,6 +477,7 @@
         if (!window.marked) throw new Error('Markdown renderer failed to load');
         content.innerHTML = marked.parse(markdown);
         rewriteLocalMarkdownLinks(path);
+        rewriteLocalMarkdownImages(path);
         if (location.hash) {
           const id = decodeURIComponent(location.hash.slice(1));
           const target = document.getElementById(id);
