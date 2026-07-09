@@ -33,8 +33,8 @@ turning, forward, and heading in real time while a trial runs — and a green
 
 By default the Studio opens in **safe mode**: you can view everything and **run**
 experiments, but you can't accidentally edit protocols or change patterns. The
-🛡 chip in the top bar shows it. That's expected — see
-[what safe mode does and doesn't do](#what-safe-mode-blocks) below.
+🛡 chip in the top bar shows it. That's expected; see **What safe mode blocks**
+below.
 
 ## Running an experiment — the short version
 
@@ -53,19 +53,29 @@ experiments, but you can't accidentally edit protocols or change patterns. The
    automatically — you don't have to save anything. See
    [GitHub for the course](github-overview.md).
 
-**STOP** is always available and blanks the arena immediately.
+**STOP** is always available and blanks the arena immediately. If you stop the
+arena early and the red LED is still on, click **Turn off LED** so the fly is
+not stimulated outside the experiment.
 
 ## Bookmark links (one click per protocol)
 
 Your instructor can hand you a link that opens a specific protocol, in safe
-mode, ready to run. The format is:
+mode, ready to run. Open it in Chrome or Edge on the rig computer. The base
+format is:
 
 ```
 …/arena_studio.html?repo=<owner>/<name>&p=protocols/<bench-id>/<protocol>.yaml
 ```
 
-- Add `&rig=<rigname>` to also set the bench rig.
-- Add `&advanced=0` to *force* safe mode on a shared machine.
+- Add options **at the end of the URL**, after the `.yaml` filename. For
+  example:
+
+  ```
+  …<protocol>.yaml&rig=cshl_g6_2x10_ball&advanced=0
+  ```
+
+- `&rig=<rigname>` sets the bench rig.
+- `&advanced=0` forces safe mode on a shared machine.
 - These links always open in the **Run** view.
 
 Loading a protocol from the private course repo needs you to be **signed in to
@@ -89,8 +99,9 @@ team needs to edit a protocol or make a new pattern set.
 2. Run the short version first.
 3. If the fly and rig look good, run the matching full version.
 4. Check that the completed recorded run appears in `runlogs/<bench-id>/`.
-5. After core runs, make or modify a pattern and mark that run as
-   `innovation`.
+5. After core runs, make or modify a pattern. In the run metadata's **Notes**
+   field, add `innovation` plus a short description of what you changed (for
+   example, `innovation: female-like pattern, 2 repeats`).
 
 See [Pattern Editor](pattern-editor.md) for the separate pattern-making workflow.
 

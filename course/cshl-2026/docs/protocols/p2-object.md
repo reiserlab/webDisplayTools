@@ -113,11 +113,6 @@ Planned first-look plots:
   B-right versions combined only after checking side bias.
 - Forward velocity over the run, using a centered 0.5 s window.
 
-## References
-
-- TBD: Add references for object fixation, closed-loop stripe fixation, and
-  object-choice behavior here.
-
 > **TBD:** add the front-column calibration procedure and which genotypes run P2
 > tonic, P2 burst, or both.
 

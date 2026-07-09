@@ -34,7 +34,7 @@ mode and ask you to sign in before loading the protocol.
 
 | Expanding dark disc | Expanding annulus | Multi-dot control |
 | --- | --- | --- |
-| ![p1 expanding dark disc loom](../assets/patterns/p1_loom_disc_front.gif) | ![p1 expanding annulus loom control](../assets/patterns/p1_loom_annulus_front.gif) | ![p1 expanding multi-dot loom control](../assets/patterns/p1_loom_dots_front.gif) |
+| <img class="pattern-preview--loom" src="../assets/patterns/p1_loom_disc_front.gif" alt="p1 expanding dark disc loom"> | <img class="pattern-preview--loom" src="../assets/patterns/p1_loom_annulus_front.gif" alt="p1 expanding annulus loom control"> | <img class="pattern-preview--loom" src="../assets/patterns/p1_loom_dots_front.gif" alt="p1 expanding multi-dot loom control"> |
 
 ## The optogenetic prestim
 
@@ -116,8 +116,6 @@ Planned first-look plots:
 - Strother JA et al. (2017). The emergence of directional selectivity in the
   visual motion pathway of Drosophila. *Neuron* 94:168-182.
   <https://doi.org/10.1016/j.neuron.2017.03.010>
-- TBD: Add additional references for optomotor behavior and looming stimulus
-  controls here.
 
 > **TBD:** add which genotypes run P1 first and which P1 runs count toward the
 > class aggregate.

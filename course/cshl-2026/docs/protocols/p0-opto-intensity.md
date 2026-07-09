@@ -100,8 +100,6 @@ Planned first-look plots:
 - Strother JA et al. (2017). The emergence of directional selectivity in the
   visual motion pathway of Drosophila. *Neuron* 94:168-182.
   <https://doi.org/10.1016/j.neuron.2017.03.010>
-- TBD: Add additional references for optomotor behavior and optogenetic
-  intensity calibration here.
 
 > **TBD:** add which CsChrimson genotypes to run p0 on, and the final LED-percent
 > calibration per rig.

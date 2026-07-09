@@ -1,6 +1,6 @@
 # GitHub for the course
 
-## What GitHub is (30 seconds)
+## What GitHub is
 
 GitHub is a website that stores files and keeps a full history of every change.
 For this course it's the **shared filing cabinet**: every bench's protocols,

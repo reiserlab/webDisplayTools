@@ -10,9 +10,9 @@ fly gives you hours of behavior; a crooked or over-glued one won't walk.
 
 ## The idea
 
-- Flies are **cold-anesthetized on ice** — no CO₂. Temperature is the fly's
-  off-switch: chilled below a few °C they stop moving within minutes, and warm
-  up within a minute. Keep them cold while you work, let them warm to wake.
+- Flies are **cold-anesthetized on ice** — no CO₂. Below about **4.5 °C**, they
+  stop moving within minutes; when they warm up, they recover and begin moving
+  again. Keep them cold while you work, then let them warm to wake.
 - You glue **only the top of the thorax** to the tether. Head, legs, wings, and
   abdomen stay **free**.
 - **Minimal glue.** *If you never lose a fly because it breaks free, you're
@@ -32,7 +32,9 @@ vice, a fine paintbrush, a vacuum pen, Kimwipes, and a dissecting scope.
 1. Get a vial; **note the genotype and estimated age** in your notebook.
 2. Transfer a few flies into a tube; plug it with cotton/foam. *Every fly is
    precious* — ask for small batches.
-3. **Chill on ice** until fully immobilized (~5 min).
+3. **Chill on ice** until fully immobilized (~5 min). Do not leave them on ice
+   longer than necessary: a longer chill means a longer recovery before the fly
+   is ready to walk.
 
 ## Prepare the station
 
