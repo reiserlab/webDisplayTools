@@ -64,6 +64,19 @@ check('duty default 0 (= pattern stored duty, no override)', duty.default, 0);
 check('duty 300 -> 255', P.clampToSchema(300, duty).value, 255);
 check('duty -1 -> 0', P.clampToSchema(-1, duty).value, 0);
 
+// led_activation: nested object param (conditional LED, Mode-3 closed loop).
+const ledAct = P.CONTROLLER_COMMANDS.trialParams.params.led_activation;
+check('led_activation present in schema', !!ledAct, true);
+check('led_activation type is object', ledAct.type, 'object');
+check('led_activation is optional', !!ledAct.required, false);
+check('led_activation has NO default (not auto-seeded)', ledAct.default, undefined);
+check('led_activation advertises level sub-field', !!(ledAct.fields && ledAct.fields.level), true);
+check(
+    'led_activation advertises hysteresis sub-field',
+    !!(ledAct.fields && ledAct.fields.hysteresis),
+    true
+);
+
 const dur = P.CONTROLLER_COMMANDS.trialParams.params.duration; // {min:0, step:0.1} (not integer)
 check('duration 2.5 kept (float allowed)', P.clampToSchema(2.5, dur), {
     value: 2.5,

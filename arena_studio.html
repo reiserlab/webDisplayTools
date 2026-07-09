@@ -2858,7 +2858,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.58 | 2026-07-09 08:03 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.59 | 2026-07-09 09:35 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -12494,11 +12494,28 @@ async function initFromUrl() {
         function onAddControllerParam(keyPath, sch) {
             if (!pushUndo()) return;
             try {
-                docSet(experiment, keyPath, sch ? defaultParamValue(sch) : '');
+                docSet(experiment, keyPath, controllerParamSeed(sch));
                 commitInspectorEdit();
             } catch (err) {
                 showError('Add param failed', err.message);
             }
+        }
+
+        // Seed value for a freshly-added optional controller param. Object-typed
+        // params (led_activation) get a default nested object built from the
+        // schema's `fields` defaults + an empty on_ranges list; scalars use
+        // defaultParamValue.
+        function controllerParamSeed(sch) {
+            if (!sch) return '';
+            if (sch.type === 'object') {
+                const obj = {};
+                for (const [fk, fs] of Object.entries(sch.fields || {})) {
+                    obj[fk] = fs.default !== undefined ? fs.default : (fs.type === 'number' ? 0 : '');
+                }
+                obj.on_ranges = []; // authored via the range-list editor
+                return obj;
+            }
+            return defaultParamValue(sch);
         }
 
         function onDeleteControllerParam(keyPath) {
@@ -12509,6 +12526,96 @@ async function initFromUrl() {
             } catch (err) {
                 showError('Remove param failed', err.message);
             }
+        }
+
+        // Write a whole led_activation object at cmdPath (one undo step). The
+        // object is small machine config, so rewriting it wholesale — rather
+        // than deep docSet into on_ranges[i] — is simpler and robust (docSet /
+        // setIn serialize a plain object/array into the CST + mirror the model).
+        function setLedActivation(cmdPath, obj) {
+            if (!pushUndo()) return;
+            try {
+                docSet(experiment, [...cmdPath, 'led_activation'], obj);
+                commitInspectorEdit();
+            } catch (err) {
+                showError('LED activation edit failed', err.message);
+            }
+        }
+
+        // Sub-editor for a trialParams `led_activation` object: LED level,
+        // hysteresis, and a list of [start,end] ON ranges (add/remove rows),
+        // plus a ✕ to drop the whole activation. Only meaningful in Mode 3
+        // (host-visible live index) — a hint shows when the trial isn't Mode 3.
+        function renderLedActivation(cmd, cmdPath) {
+            const la = cmd.led_activation || {};
+            const box = el('div', { class: 'led-act-box', style: 'border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin:4px 0;background:rgba(0,230,118,0.04)' });
+            const head = el('div', { class: 'kv-line', style: 'display:flex;align-items:center;gap:6px' },
+                el('span', { class: 'k', style: 'color:var(--accent)' }, 'LED activation'));
+            head.appendChild(el('button', {
+                class: 'param-x-btn',
+                title: 'Remove LED activation entirely (Ctrl+Z to undo)',
+                onClick: (e) => { e.stopPropagation(); onDeleteControllerParam([...cmdPath, 'led_activation']); }
+            }, '✕'));
+            box.appendChild(head);
+            if (Number(cmd.mode) !== 3) {
+                box.appendChild(el('div', { class: 'dim', style: 'font-size:0.82em;color:var(--warn)' },
+                    '⚠ only runs in Mode 3 (FicTrac closed loop) — this trial is Mode ' + (cmd.mode != null ? cmd.mode : '?')));
+            }
+            // A numeric sub-field editor that rewrites the whole object on change.
+            const numRow = (label, key, opts) => {
+                const inp = el('input', {
+                    type: 'number', class: 'field-edit', style: 'width:70px',
+                    value: la[key] != null ? la[key] : '',
+                    title: opts && opts.title ? opts.title : label
+                });
+                if (opts && opts.min != null) inp.min = opts.min;
+                if (opts && opts.max != null) inp.max = opts.max;
+                if (opts && opts.step != null) inp.step = opts.step;
+                inp.addEventListener('change', () => {
+                    const next = { ...la, on_ranges: (la.on_ranges || []).map((r) => r.slice()) };
+                    next[key] = inp.value === '' ? 0 : Number(inp.value);
+                    setLedActivation(cmdPath, next);
+                });
+                return el('label', { class: 'kv-line', style: 'display:flex;gap:6px;align-items:center' },
+                    el('span', { class: 'k' }, label), inp);
+            };
+            box.appendChild(numRow('level (%)', 'level', { min: 0, max: 100, step: 0.1, title: 'LED brightness % while active (BuckPuck curve)' }));
+            box.appendChild(numRow('hysteresis', 'hysteresis', { min: 0, step: 1, title: 'Frames past a band edge before the LED turns OFF (0 = none) — prevents chatter at a boundary' }));
+
+            // on_ranges: one row per [start,end] pair, each with a ✕; + range adds one.
+            const ranges = Array.isArray(la.on_ranges) ? la.on_ranges : [];
+            const rangesWrap = el('div', { style: 'margin-top:2px' });
+            rangesWrap.appendChild(el('div', { class: 'k', style: 'font-size:0.85em' },
+                'on ranges (0-based frame index, inclusive):'));
+            const commitRanges = (newRanges) => {
+                setLedActivation(cmdPath, { ...la, on_ranges: newRanges });
+            };
+            ranges.forEach((pair, i) => {
+                const a = el('input', { type: 'number', class: 'field-edit', style: 'width:64px', min: 0, value: pair[0] });
+                const b = el('input', { type: 'number', class: 'field-edit', style: 'width:64px', min: 0, value: pair[1] });
+                const onEdit = () => {
+                    const copy = ranges.map((r) => r.slice());
+                    copy[i] = [a.value === '' ? 0 : Number(a.value), b.value === '' ? 0 : Number(b.value)];
+                    commitRanges(copy);
+                };
+                a.addEventListener('change', onEdit);
+                b.addEventListener('change', onEdit);
+                const row = el('div', { class: 'kv-line', style: 'display:flex;gap:4px;align-items:center' },
+                    a, el('span', { class: 'dim' }, '–'), b);
+                row.appendChild(el('button', {
+                    class: 'param-x-btn',
+                    title: 'Remove this range',
+                    onClick: (e) => { e.stopPropagation(); commitRanges(ranges.filter((_, j) => j !== i).map((r) => r.slice())); }
+                }, '✕'));
+                rangesWrap.appendChild(row);
+            });
+            rangesWrap.appendChild(el('button', {
+                class: 'pill', style: 'font-size:0.8em;margin-top:2px',
+                title: 'Add an ON range',
+                onClick: (e) => { e.stopPropagation(); commitRanges([...ranges.map((r) => r.slice()), [0, 0]]); }
+            }, '+ range'));
+            box.appendChild(rangesWrap);
+            return box;
         }
 
         // Suggest a unique condition name like condition_1, condition_2, ...
@@ -13024,7 +13131,7 @@ async function initFromUrl() {
             card.appendChild(actions);
 
             const detailKeys = {
-                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'duty', 'posX', 'mv', 'percent', 'channel', 'state'],
+                controller: ['command_name', 'pattern', 'pattern_ID', 'duration', 'mode', 'frame_index', 'frame_rate', 'gain', 'duty', 'led_activation', 'posX', 'mv', 'percent', 'channel', 'state'],
                 wait: ['duration'],
                 plugin: []
             }[cmd.type] || [];
@@ -13046,6 +13153,12 @@ async function initFromUrl() {
                 // (computer / MATLAB-path) patterns, where it's the browser-run fallback.
                 if (k === 'pattern_ID' && cmd.type === 'controller' &&
                     cmd.command_name === 'trialParams' && activeSetIndexByName(cmd.pattern) != null) {
+                    continue;
+                }
+                // led_activation is an OBJECT (level/hysteresis/on_ranges) — the
+                // scalar field renderer can't show it; render its own sub-editor.
+                if (k === 'led_activation' && cmd.type === 'controller') {
+                    card.appendChild(renderLedActivation(cmd, cmdPath));
                     continue;
                 }
                 const fieldSchema = paramsSchema && paramsSchema[k];

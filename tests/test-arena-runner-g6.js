@@ -482,6 +482,48 @@ async function main() {
         ).params.duty,
         64
     );
+    // led_activation rides the trialParams IR as a normalized spec (or null).
+    {
+        const irLa = Runner.translateCommand(
+            {
+                type: 'controller',
+                command_name: 'trialParams',
+                mode: 3,
+                led_activation: { level: 20, hysteresis: 3, on_ranges: [[50, 100]] }
+            },
+            { patternId: 1 }
+        );
+        checkBool('trialParams led_activation carried in IR', !!irLa.ledActivation);
+        check('led_activation.level normalized', irLa.ledActivation.level, 20);
+        check('led_activation.hysteresis normalized', irLa.ledActivation.hysteresis, 3);
+        check(
+            'led_activation.on_ranges normalized',
+            JSON.stringify(irLa.ledActivation.on_ranges),
+            '[[50,100]]'
+        );
+        check(
+            'no led_activation -> null on IR',
+            Runner.translateCommand(
+                { type: 'controller', command_name: 'trialParams', mode: 3 },
+                { patternId: 1 }
+            ).ledActivation,
+            null
+        );
+        // A malformed spec must SKIP the trial (error op), not throw at apply time.
+        check(
+            'bad led_activation -> error op (skip, not abort)',
+            Runner.translateCommand(
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    mode: 3,
+                    led_activation: { level: 20, on_ranges: [[10]] } // bad pair
+                },
+                { patternId: 1 }
+            ).op,
+            'error'
+        );
+    }
     check(
         'allOn -> op allOn',
         Runner.translateCommand({ type: 'controller', command_name: 'allOn' }).op,
@@ -610,6 +652,146 @@ async function main() {
         }).op,
         'error'
     );
+    console.log('\n=== conditional LED activation (normalize + hysteresis engine) ===');
+    // normalizeLedActivation: validation + coercion, or null when absent.
+    check('normalize null -> null', Runner.normalizeLedActivation(null), null);
+    check('normalize undefined -> null', Runner.normalizeLedActivation(undefined), null);
+    {
+        const n = Runner.normalizeLedActivation({
+            level: '20',
+            hysteresis: '3',
+            on_ranges: [
+                ['50', '100'],
+                [180, 150]
+            ]
+        });
+        check('level coerced', n.level, 20);
+        check('hysteresis coerced', n.hysteresis, 3);
+        // reversed pair [180,150] is tolerated (swapped); strings coerced.
+        check(
+            'on_ranges normalized + sorted-pair',
+            JSON.stringify(n.on_ranges),
+            '[[50,100],[150,180]]'
+        );
+    }
+    checkThrows('level > 100 throws', () => Runner.normalizeLedActivation({ level: 120 }));
+    checkThrows('negative hysteresis throws', () =>
+        Runner.normalizeLedActivation({ hysteresis: -1 })
+    );
+    checkThrows('non-integer hysteresis throws', () =>
+        Runner.normalizeLedActivation({ hysteresis: 2.5 })
+    );
+    checkThrows('bad on_ranges pair throws', () =>
+        Runner.normalizeLedActivation({ on_ranges: [[10]] })
+    );
+    checkThrows('non-array on_ranges throws', () =>
+        Runner.normalizeLedActivation({ on_ranges: 5 })
+    );
+
+    // makeLedActivator: index → {on, changed}. No hysteresis first.
+    {
+        const act = Runner.makeLedActivator({ level: 20, hysteresis: 0, on_ranges: [[50, 100]] });
+        const step = (i) => act.step(i);
+        check(
+            'below band: off, no change',
+            JSON.stringify(step(10)),
+            JSON.stringify({ on: false, changed: false })
+        );
+        check(
+            'enter band: on + changed',
+            JSON.stringify(step(50)),
+            JSON.stringify({ on: true, changed: true })
+        );
+        check(
+            'inside band: on, no change',
+            JSON.stringify(step(80)),
+            JSON.stringify({ on: true, changed: false })
+        );
+        check(
+            'leave band (h=0): off + changed',
+            JSON.stringify(step(101)),
+            JSON.stringify({ on: false, changed: true })
+        );
+    }
+    // Hysteresis: turn ON at the true edge, stay ON until > h past it.
+    {
+        const act = Runner.makeLedActivator({ level: 20, hysteresis: 3, on_ranges: [[50, 100]] });
+        act.step(60); // on
+        check(
+            'h=3: 2 past edge (102) stays ON (no change)',
+            JSON.stringify(act.step(102)),
+            JSON.stringify({ on: true, changed: false })
+        );
+        check(
+            'h=3: exactly h past (103) still ON',
+            JSON.stringify(act.step(103)),
+            JSON.stringify({ on: true, changed: false })
+        );
+        check(
+            'h=3: > h past (104) turns OFF',
+            JSON.stringify(act.step(104)),
+            JSON.stringify({ on: false, changed: true })
+        );
+        // dithering at the far edge with h=3 must NOT chatter
+        const d = Runner.makeLedActivator({ level: 20, hysteresis: 3, on_ranges: [[50, 100]] });
+        d.step(100); // on
+        let chatter = 0;
+        [101, 100, 102, 99, 103, 100].forEach((i) => {
+            if (d.step(i).changed) chatter++;
+        });
+        check('dither near edge with h=3: no on/off chatter', chatter, 0);
+    }
+
+    // Runner wiring: _installLedActivator subscribes to the bridge 'applied'
+    // event, sends SET_AO_VOLTAGE only on a transition, and emits a
+    // 'led-activation' status per transition (run-log provenance).
+    {
+        const AO = 0xa0;
+        const sent = [];
+        const link = {
+            connected: true,
+            async send(b) {
+                sent.push(Array.from(b));
+                return new Uint8Array([0x02, 0x00, b[1]]);
+            }
+        };
+        const handlers = {};
+        const bridge = {
+            on(ev, fn) {
+                (handlers[ev] = handlers[ev] || new Set()).add(fn);
+                return () => handlers[ev].delete(fn);
+            },
+            off(ev, fn) {
+                if (handlers[ev]) handlers[ev].delete(fn);
+            },
+            emit(ev, x) {
+                (handlers[ev] || []).forEach((f) => f(x));
+            }
+        };
+        const runner = new Runner.ArenaRunner(link, Wire, bridge);
+        const events = [];
+        runner._emit = (s) => events.push(s); // stand in for a run's status sink
+        runner._installLedActivator({ level: 20, hysteresis: 3, on_ranges: [[50, 100]] });
+        const baselineOff = sent.filter((f) => f[1] === AO).length; // 1 = OFF baseline
+        [10, 50, 80, 101, 103, 104, 60].forEach((i) => bridge.emit('applied', i));
+        const aoSends = sent.filter((f) => f[1] === AO).length;
+        const transitions = events.filter((e) => e.phase === 'led-activation');
+        check('install sends 1 OFF-baseline AO frame', baselineOff, 1);
+        // 3 transitions: ON@50, OFF@104, ON@60 (101/103 held by hysteresis; 80 inside).
+        check('AO sent only on transitions (1 baseline + 3)', aoSends, 4);
+        check('3 led-activation events emitted', transitions.length, 3);
+        check('first transition ON', transitions[0].on, true);
+        check('first transition frame', transitions[0].index, 50);
+        check('second transition OFF (past hysteresis)', transitions[1].on, false);
+        check('second transition frame', transitions[1].index, 104);
+        // Teardown forces the LED off and stops gating.
+        runner._clearLedActivator();
+        const afterClear = sent.filter((f) => f[1] === AO).length;
+        check('teardown sends a final OFF', afterClear, aoSends + 1);
+        bridge.emit('applied', 60); // superseded — must NOT send or emit
+        check('no AO after teardown', sent.filter((f) => f[1] === AO).length, afterClear);
+    }
+
     const trWait = Runner.translateCommand({ type: 'wait', duration: 3 });
     check('wait -> op wait', trWait.op, 'wait');
     check('wait -> durationSec', trWait.durationSec, 3);

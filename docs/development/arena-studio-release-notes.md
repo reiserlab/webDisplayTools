@@ -4,6 +4,27 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.59 — 2026-07-09 · Conditional LED activation (index-gated LED in closed loop)
+
+A closed-loop (Mode 3, FicTrac) trial can now turn the BuckPuck LED on **only
+while the pattern is displaying certain frame indices** — e.g. LED on for frames
+50–100 and 150–180, off elsewhere — driven live by the fly's behavior.
+
+- **New `led_activation` on a trialParams command** (in the Designer: on a
+  trialParams card, **+ add → led_activation**). It shows a small editor with:
+  **LED level (%)**, **hysteresis** (frames of overshoot past a band edge before
+  the LED switches off — set 0 for none, higher to stop chatter when the fly
+  dithers on a boundary), and a list of **on-ranges** (`start – end`, 0-based
+  frame indices, inclusive; **+ range** to add more). A ✕ removes the whole thing.
+- **How it runs:** the browser watches each frame the arena actually receives
+  from the bridge and flips the LED **only when it crosses into / out of** an
+  active band — never per frame, so it doesn't disturb the closed-loop frame
+  updates. The activation config is recorded on the trial, and each LED on/off
+  transition is logged (with the frame index) in the run log for analysis.
+- **Mode 3 only** (that's where the frame index is computed on the host). The
+  editor shows a warning if you add it to a non-Mode-3 trial; the runner ignores
+  it there. The LED is forced off at trial end, on Stop, and on disconnect.
+
 ## v0.58 — 2026-07-09 · Duplicate SD pattern names: surfaced, pickable, and gated
 
 Two same-named patterns on the SD card (e.g. `002_grating.pat` + `005_grating.pat`

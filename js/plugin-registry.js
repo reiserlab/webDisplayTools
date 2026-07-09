@@ -104,6 +104,35 @@ var CONTROLLER_COMMANDS = {
                 max: 255,
                 integer: true,
                 label: 'Duty (brightness, 0 = pattern default)'
+            },
+            // Conditional LED activation (host-side, Mode-3 closed loop): drive
+            // the BuckPuck LED ON only while the live frame index is inside one
+            // of on_ranges, with hysteresis to prevent chatter at a band edge.
+            // OBJECT-typed (not a scalar) — the designer renders a dedicated
+            // sub-editor for it, and clampToSchema/renderEditableField skip it.
+            // Optional, NO default, so a normal trial has no LED activation and
+            // it only appears once added via the "+ add" affordance.
+            led_activation: {
+                type: 'object',
+                required: false,
+                label: 'LED activation (closed loop)',
+                fields: {
+                    level: {
+                        type: 'number',
+                        default: 20,
+                        min: 0,
+                        max: 100,
+                        label: 'LED level (%)'
+                    },
+                    hysteresis: {
+                        type: 'number',
+                        default: 0,
+                        min: 0,
+                        integer: true,
+                        label: 'Hysteresis (frames, 0 = none)'
+                    }
+                    // on_ranges: [[start,end], ...] — edited via the range list UI
+                }
             }
         }
     },

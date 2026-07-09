@@ -4302,6 +4302,101 @@ console.log('\n--- Suite 35: trialParams duty (per-trial brightness) + int16 gai
     check('35.16: gain schema max 32767', schema.gain.max, 32767);
 }
 
+// ─── Suite 36: conditional LED activation (nested object on trialParams) ────
+// led_activation is a nested { level, hysteresis, on_ranges:[[a,b],...] } object
+// on a trialParams command — the first NON-scalar controller param. Authoring
+// contract: it's a first-class key (round-trips, not `_unknownKeys`), preserves
+// nested structure, is OPTIONAL with no default (absent stays absent), and the
+// schema advertises it as an object with sub-field metadata.
+console.log('\n--- Suite 36: trialParams led_activation (conditional LED) ---');
+{
+    const text = [
+        'version: 3',
+        '',
+        'experiment_info:',
+        '  name: "conditional LED"',
+        '',
+        'rig: "./configs/rigs/cshl_g6_2x10.yaml"',
+        '',
+        'experiment:',
+        '  - "gated"',
+        '  - "plain"',
+        '',
+        'conditions:',
+        '  - name: "gated"',
+        '    commands:',
+        '      - type: "controller"',
+        '        command_name: "trialParams"',
+        '        pattern: "closed_loop_grating"',
+        '        pattern_ID: 2',
+        '        duration: 30',
+        '        mode: 3',
+        '        frame_index: 0',
+        '        frame_rate: 0',
+        '        gain: 0',
+        '        led_activation:',
+        '          level: 20',
+        '          hysteresis: 3',
+        '          on_ranges:',
+        '            - [50, 100]',
+        '            - [150, 180]',
+        '  - name: "plain"',
+        '    commands:',
+        '      - type: "controller"',
+        '        command_name: "trialParams"',
+        '        pattern: "closed_loop_grating"',
+        '        pattern_ID: 2',
+        '        duration: 30',
+        '        mode: 3',
+        '        frame_index: 0',
+        '        frame_rate: 0',
+        '        gain: 0',
+        ''
+    ].join('\n');
+    const exp = parseV3Protocol(text);
+    const gated = exp.conditions[0].commands[0];
+    const plain = exp.conditions[1].commands[0];
+
+    checkTrue('36.1: led_activation parses as a first-class key', !!gated.led_activation);
+    checkTrue(
+        '36.2: not swallowed into _unknownKeys',
+        !(gated._unknownKeys && 'led_activation' in gated._unknownKeys)
+    );
+    check('36.3: nested level preserved', gated.led_activation.level, 20);
+    check('36.4: nested hysteresis preserved', gated.led_activation.hysteresis, 3);
+    check(
+        '36.5: nested on_ranges preserved',
+        JSON.stringify(gated.led_activation.on_ranges),
+        '[[50,100],[150,180]]'
+    );
+    checkTrue(
+        '36.6: omitted stays absent (no default injection)',
+        plain.led_activation === undefined
+    );
+
+    const regen = generateV3Protocol(exp);
+    checkTrue('36.7: led_activation survives regen YAML', /led_activation:/.test(regen));
+    checkTrue('36.8: nested on_ranges survive regen', /on_ranges/.test(regen) && /180/.test(regen));
+    const exp2 = parseV3Protocol(regen);
+    check('36.9: re-parse level matches', exp2.conditions[0].commands[0].led_activation.level, 20);
+    check(
+        '36.10: re-parse on_ranges match',
+        JSON.stringify(exp2.conditions[0].commands[0].led_activation.on_ranges),
+        '[[50,100],[150,180]]'
+    );
+    check('36.11: no blocking errors', collectBlockingErrors(exp).errors.length, 0);
+
+    const sch = getV3CommandParams(exp, 'controller', null, 'trialParams');
+    checkTrue('36.12: led_activation in schema', !!sch.led_activation);
+    check('36.13: schema type is object', sch.led_activation.type, 'object');
+    checkTrue('36.14: led_activation is optional', !sch.led_activation.required);
+    checkTrue('36.15: no default (not auto-seeded)', sch.led_activation.default === undefined);
+    checkTrue(
+        '36.16: schema advertises sub-fields',
+        !!(sch.led_activation.fields && sch.led_activation.fields.level)
+    );
+}
+
 // ─── Results ────────────────────────────────────────────────────────────────
 console.log('\n=== Results: ' + passedTests + '/' + totalTests + ' passed ===');
 if (failedTests.length > 0) {

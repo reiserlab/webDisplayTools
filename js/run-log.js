@@ -90,6 +90,17 @@
                     (ev.op || 'command') +
                     (ev.value != null ? ' ' + ev.value : '')
                 );
+            case 'led-activation':
+                // Conditional-LED transition during a Mode-3 closed-loop trial.
+                return (
+                    stamp +
+                    '   ' +
+                    where +
+                    'LED ' +
+                    (ev.on ? 'ON' : 'OFF') +
+                    (ev.index != null ? ' @frame ' + ev.index : '') +
+                    (ev.on && ev.ledPercent != null ? ' (' + ev.ledPercent + '%)' : '')
+                );
             case 'skip':
                 return (
                     stamp +

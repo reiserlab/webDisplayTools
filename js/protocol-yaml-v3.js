@@ -67,6 +67,9 @@ const KNOWN_COMMAND_KEYS_BY_TYPE = {
         'gain',
         // per-trial duty/brightness override (fw #33, optional 12th TRIAL_PARAMS byte)
         'duty',
+        // conditional LED activation (host-side, Mode-3 closed loop): a nested
+        // { level, hysteresis, on_ranges:[[a,b],...] } object, index-gated LED
+        'led_activation',
         'posX',
         // G6-only I/O commands (setAnalogOut / setDigitalOut / ledDrive)
         'mv',
@@ -346,8 +349,13 @@ function extractCommand(cmd) {
     const out = {};
     for (const k of known) {
         if (cmd[k] !== undefined) {
+            // Deep-clone nested objects (plugin `params`, controller
+            // `led_activation`) so the runtime model doesn't alias the parse.
+            const isNested =
+                (t === 'plugin' && k === 'params') ||
+                (t === 'controller' && k === 'led_activation');
             out[k] =
-                t === 'plugin' && k === 'params' && cmd[k] && typeof cmd[k] === 'object'
+                isNested && cmd[k] && typeof cmd[k] === 'object'
                     ? JSON.parse(JSON.stringify(cmd[k]))
                     : cmd[k];
         }

@@ -90,6 +90,13 @@ controller; `duration`/`wait` sets how long the host lets the trial run. (Note: 
 MATLAB/G4 executor historically quantized duration to 0.1 s ticks — that's an executor
 convention, not a YAML rule; confirm the target if a protocol will also run under MATLAB.)
 
+**Optional `duty` (per-trial brightness, any mode):** `trialParams` accepts an optional
+`duty: 0–255` — a per-trial brightness override for the whole pattern. **`0` (the default,
+and the value sent when omitted) = use the pattern's own stored brightness** — so leave it
+off unless you specifically want to dim/brighten this trial. Requires fw #33+. Web-only
+(MATLAB ignores it). Distinct from `led_activation` (that gates the separate BuckPuck LED,
+not the pattern brightness).
+
 ## FicTrac closed loop (Mode 3)
 
 A closed-loop trial is a `trialParams` (mode 3) that loads the pattern + start frame,
@@ -115,6 +122,35 @@ streams frames for the wait's duration. Declare a `fictrac` plugin. Shape:
     - type: "controller"
       command_name: "stopClosedLoop"
 ```
+
+### Conditional LED activation (index-gated LED, Mode 3 only)
+
+A Mode-3 `trialParams` may carry an optional **`led_activation`** attribute to drive
+the BuckPuck LED **on only while the live frame index is inside author-specified
+bands** (host-side; the web runner watches each applied frame and toggles the LED on
+transitions). It's an attribute ON the trialParams command, NOT a separate command:
+
+```yaml
+- type: "controller"
+  command_name: "trialParams"
+  pattern: "closed_loop_grating"
+  pattern_ID: 2
+  duration: 30
+  mode: 3
+  frame_index: 0
+  frame_rate: 0
+  gain: 0
+  led_activation:
+    level: 20            # LED % when ON (0 = never lights)
+    hysteresis: 3        # frames past a band edge before OFF (0 = none; higher = anti-chatter)
+    on_ranges: [[50, 100], [150, 180]]   # 0-based frame bands, inclusive
+```
+
+- `on_ranges` indices are **0-based** (same as `frame_index`/`setPositionX`), inclusive.
+- Hysteresis is asymmetric: ON at the true edge, OFF only once **> hysteresis** frames
+  outside every band. Omit `led_activation` for no gating.
+- **Mode 3 only** (Mode 4 computes frames on the controller; the host can't gate it).
+  Web-only — MATLAB does not read it. Full reference: `docs/development/conditional-led-activation.md`.
 
 ## Other controller commands
 
