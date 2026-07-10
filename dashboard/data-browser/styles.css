@@ -232,6 +232,24 @@ main {
   color: var(--green);
 }
 
+.source-statuses {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.rig-selection-summary {
+  max-width: 52vw;
+  overflow: hidden;
+  color: #dce8df;
+  font-size: 12px;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .source-grid {
   display: grid;
   grid-template-columns: auto minmax(280px, 0.8fr) minmax(500px, 1.3fr);
@@ -253,7 +271,7 @@ main {
 }
 
 .github-controls {
-  grid-template-columns: minmax(210px, 1fr) auto auto auto;
+  grid-template-columns: minmax(210px, 1fr) auto auto auto auto;
 }
 
 .local-source {
@@ -412,6 +430,19 @@ main {
 
 .run-row .run-protocol {
   color: #9fc3f3;
+}
+
+.run-rig {
+  display: inline-block;
+  margin-right: 7px;
+  padding: 2px 5px;
+  border: 1px solid #3b6751;
+  border-radius: 4px;
+  background: #16281e;
+  color: #80dda0;
+  font-size: 10px;
+  font-weight: 720;
+  line-height: 1.2;
 }
 
 .run-row .run-sex {
@@ -793,6 +824,123 @@ main {
   color: #b9c4cc;
 }
 
+.rig-dialog {
+  width: min(540px, calc(100vw - 24px));
+  max-height: min(720px, calc(100vh - 32px));
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #4a555e;
+  border-radius: var(--radius);
+  background: #11161a;
+  color: var(--text);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.58);
+}
+
+.rig-dialog::backdrop {
+  background: rgba(2, 5, 7, 0.74);
+}
+
+.rig-dialog-header,
+.rig-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #171d22;
+}
+
+.rig-dialog-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.rig-dialog-header h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: 0;
+}
+
+.rig-dialog-repo {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.icon-button {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.rig-dialog-body {
+  padding: 13px 16px 16px;
+  overflow: auto;
+}
+
+.rig-dialog-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rig-dialog-tools > div {
+  display: flex;
+  gap: 6px;
+}
+
+.rig-folder-list {
+  max-height: min(440px, calc(100vh - 250px));
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.rig-option {
+  display: grid;
+  grid-template-columns: 20px minmax(90px, 0.45fr) minmax(150px, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 46px;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--border-soft);
+  cursor: pointer;
+}
+
+.rig-option:last-child {
+  border-bottom: 0;
+}
+
+.rig-option:hover {
+  background: #192028;
+}
+
+.rig-option span {
+  color: #f1f5f7;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rig-option small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rig-dialog-footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+}
+
 .table-wrap {
   max-height: 420px;
   overflow: auto;
@@ -894,6 +1042,20 @@ td:nth-child(2) {
   .header-actions {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .source-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .source-statuses {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .rig-selection-summary {
+    max-width: 66vw;
   }
 
   .status-strip {
@@ -1001,6 +1163,16 @@ td:nth-child(2) {
     text-align: left;
   }
 
+  .source-statuses {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .rig-selection-summary {
+    max-width: 100%;
+  }
+
   .source-grid,
   .url-loader,
   .inline-control,
@@ -1010,6 +1182,19 @@ td:nth-child(2) {
 
   .github-controls input {
     grid-column: 1;
+  }
+
+  .rig-dialog-tools {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .rig-option {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+
+  .rig-option small {
+    grid-column: 2;
   }
 
   .segmented,

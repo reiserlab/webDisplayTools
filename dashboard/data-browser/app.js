@@ -13,7 +13,14 @@ const state = {
     pages: [],
     plotIndex: 0,
     renderedRuns: [],
-    github: { branch: 'main', user: null },
+    github: {
+        branch: 'main',
+        user: null,
+        repo: '',
+        rootItems: [],
+        directories: [],
+        selectedFolders: []
+    },
     viewStart: 0,
     viewWindow: 30,
     traceSet: 'behavior',
@@ -38,7 +45,18 @@ const els = Object.fromEntries(
         'githubRepoInput',
         'githubSignInButton',
         'githubSignOutButton',
+        'chooseRigsButton',
         'browseGithubButton',
+        'rigSelectionSummary',
+        'rigDialog',
+        'rigDialogRepo',
+        'rigDialogCount',
+        'rigFolderList',
+        'rigSelectAllButton',
+        'rigClearAllButton',
+        'rigDialogCloseButton',
+        'rigCancelButton',
+        'rigApplyButton',
         'repoBaseInput',
         'scanLocalButton',
         'singleModeButton',
@@ -153,6 +171,40 @@ function focusedRun() {
     return state.focusKey ? state.runs.get(state.focusKey) || null : null;
 }
 
+function rigName(descriptor) {
+    return A.safeText(descriptor && (descriptor.folder || descriptor.bench)) || 'unassigned';
+}
+
+function experimenterName(descriptor) {
+    return (
+        A.safeText(descriptor && descriptor.experimenter)
+            .replaceAll('_', ' ')
+            .replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Unknown experimenter'
+    );
+}
+
+function updateRigSelectionUi() {
+    const selected = state.github.selectedFolders;
+    const label = selected.length
+        ? `Rig folders: ${selected.join(', ')}`
+        : G.currentToken()
+          ? 'Rig folders: choose folders'
+          : 'Rig folders: sign in to choose';
+    els.rigSelectionSummary.textContent = label;
+    els.rigSelectionSummary.title = label;
+    els.browseGithubButton.textContent = selected.length
+        ? 'Refresh selected rigs'
+        : 'Browse private repo';
+}
+
+function resetGithubFolderState() {
+    state.github.repo = '';
+    state.github.rootItems = [];
+    state.github.directories = [];
+    state.github.selectedFolders = [];
+    updateRigSelectionUi();
+}
+
 function updateGithubUi(user) {
     const tokenPresent = !!G.currentToken();
     state.github.user = user || null;
@@ -164,7 +216,9 @@ function updateGithubUi(user) {
     els.githubWho.classList.toggle('ok', tokenPresent);
     els.githubSignInButton.disabled = tokenPresent;
     els.githubSignOutButton.disabled = !tokenPresent;
+    els.chooseRigsButton.disabled = !tokenPresent;
     els.browseGithubButton.disabled = !tokenPresent;
+    updateRigSelectionUi();
     try {
         const repo = G.parseRepo(els.githubRepoInput.value);
         els.courseRepoLink.href = `https://github.com/${repo.full}`;
@@ -178,8 +232,8 @@ function mergeDescriptor(descriptor) {
     if (index >= 0) state.catalog[index] = { ...state.catalog[index], ...descriptor };
     else state.catalog.push(descriptor);
     state.catalog.sort((a, b) =>
-        `${a.protocolFamily} ${a.genotype} ${a.sex} ${a.timestamp}`.localeCompare(
-            `${b.protocolFamily} ${b.genotype} ${b.sex} ${b.timestamp}`
+        `${rigName(a)} ${a.protocolFamily} ${a.genotype} ${a.sex} ${a.timestamp}`.localeCompare(
+            `${rigName(b)} ${b.protocolFamily} ${b.genotype} ${b.sex} ${b.timestamp}`
         )
     );
 }
@@ -192,6 +246,7 @@ function addRun(run, descriptorPatch) {
         loaded: true
     };
     run.catalogKey = descriptor.key;
+    run.descriptor = descriptor;
     state.runs.set(descriptor.key, run);
     mergeDescriptor(descriptor);
     return descriptor;
@@ -248,6 +303,7 @@ function descriptorSearchText(descriptor) {
         descriptor.sex,
         descriptor.flyNumber,
         descriptor.experimenter,
+        descriptor.folder,
         descriptor.bench,
         descriptor.timestamp,
         descriptor.notes
@@ -285,7 +341,10 @@ function renderCatalog() {
     els.catalogSearchInput.disabled = false;
     els.renderSelectionButton.disabled =
         state.mode === 'single' ? !state.focusKey : !state.selectedKeys.size;
-    els.catalogStatus.textContent = `${visible.size} shown of ${state.catalog.length} runlogs | ${state.selectedKeys.size} selected`;
+    const rigScope = state.github.selectedFolders.length
+        ? state.github.selectedFolders.join(', ')
+        : 'loaded sources';
+    els.catalogStatus.textContent = `${visible.size} shown of ${state.catalog.length} runlogs | ${state.selectedKeys.size} selected | rigs: ${rigScope}`;
     els.runCatalog.innerHTML = state.catalog
         .map((descriptor) => {
             const selected =
@@ -299,7 +358,7 @@ function renderCatalog() {
       <div class="run-row ${selected ? 'selected' : ''} ${hidden ? 'hidden-by-group' : ''}" data-key="${escapeHtml(descriptor.key)}">
         <input class="run-select" type="checkbox" data-key="${escapeHtml(descriptor.key)}" ${selected ? 'checked' : ''} aria-label="Select ${escapeHtml(descriptor.runId)}">
         <strong title="${escapeHtml(descriptor.runId)}">${escapeHtml(descriptor.runId)}</strong>
-        <span class="run-protocol" title="${escapeHtml(descriptor.protocol)}">${escapeHtml(descriptor.protocolFamily)}</span>
+        <span class="run-protocol" title="${escapeHtml(`${rigName(descriptor)} | ${descriptor.protocol}`)}"><span class="run-rig">${escapeHtml(rigName(descriptor))}</span>${escapeHtml(descriptor.protocolFamily)}</span>
         <span class="run-genotype" title="${escapeHtml(descriptor.genotype)}">${escapeHtml(descriptor.genotype)}</span>
         <span class="run-sex">${escapeHtml(descriptor.sex || '?')}</span>
         <span class="run-fly">fly ${escapeHtml(descriptor.flyNumber || '?')}</span>
@@ -322,7 +381,7 @@ function renderFocusOptions() {
         '<option value="">Choose a run</option>',
         ...state.catalog.map(
             (descriptor) =>
-                `<option value="${escapeHtml(descriptor.key)}">${escapeHtml(`${descriptor.protocolFamily} | ${descriptor.genotype} | ${descriptor.sex} | fly ${descriptor.flyNumber || '?'} | ${descriptor.runId}`)}</option>`
+                `<option value="${escapeHtml(descriptor.key)}">${escapeHtml(`[${rigName(descriptor)}] ${experimenterName(descriptor)} | ${descriptor.protocolFamily} | ${descriptor.genotype} | ${descriptor.sex} | fly ${descriptor.flyNumber || '?'} | ${descriptor.runId}`)}</option>`
         )
     ].join('');
     els.focusRunSelect.value = state.focusKey;
@@ -440,28 +499,93 @@ async function loadUrl(url) {
     setStatus('ok', `Loaded ${result.descriptor.runId}`);
 }
 
-async function browseGithub() {
+function checkedRigFolders() {
+    return [...els.rigFolderList.querySelectorAll('input[type="checkbox"]:checked')].map(
+        (input) => input.value
+    );
+}
+
+function updateRigDialogSelection() {
+    const count = checkedRigFolders().length;
+    els.rigDialogCount.textContent = `${count} of ${state.github.directories.length} selected`;
+    els.rigApplyButton.disabled = count === 0;
+}
+
+function renderRigDialog() {
+    const selected = new Set(state.github.selectedFolders);
+    els.rigDialogRepo.textContent = `${state.github.repo}/runlogs`;
+    els.rigFolderList.innerHTML = state.github.directories
+        .map(
+            (directory) => `
+        <label class="rig-option" title="View runlogs from ${escapeHtml(directory.path)}">
+          <input type="checkbox" value="${escapeHtml(directory.name)}" ${selected.has(directory.name) ? 'checked' : ''}>
+          <span>${escapeHtml(directory.name)}</span>
+          <small>${escapeHtml(directory.path)}</small>
+        </label>`
+        )
+        .join('');
+    updateRigDialogSelection();
+}
+
+async function openRigDialog() {
     const repoValue = els.githubRepoInput.value.trim();
     const repo = G.parseRepo(repoValue);
     localStorage.setItem(G.REPO_KEY, repo.full);
     updateGithubUi(state.github.user);
+    els.chooseRigsButton.disabled = true;
     els.browseGithubButton.disabled = true;
-    setStatus('', `Reading ${repo.full}/runlogs`);
+    setStatus('', `Reading rig folders from ${repo.full}/runlogs`);
     try {
         const info = await G.repoInfo(repo.full);
         state.github.branch = info.default_branch || 'main';
-        const root = await G.listPath(repo.full, 'runlogs', state.github.branch);
-        const directories = root.filter((item) => item.type === 'dir');
-        const directFiles = root.filter(
+        state.github.repo = repo.full;
+        state.github.rootItems = await G.listPath(repo.full, 'runlogs', state.github.branch);
+        state.github.directories = state.github.rootItems
+            .filter((item) => item.type === 'dir')
+            .sort((a, b) => a.name.localeCompare(b.name));
+        const available = state.github.directories.map((directory) => directory.name);
+        state.github.selectedFolders = G.preferredFolders(repo.full, available);
+        renderRigDialog();
+        if (!els.rigDialog.open) els.rigDialog.showModal();
+        setStatus('ok', `${available.length} rig folders available from ${repo.full}`);
+    } finally {
+        updateGithubUi(state.github.user);
+    }
+}
+
+async function browseGithub() {
+    const repoValue = els.githubRepoInput.value.trim();
+    const repo = G.parseRepo(repoValue);
+    if (
+        state.github.repo !== repo.full ||
+        !state.github.directories.length ||
+        !state.github.selectedFolders.length
+    ) {
+        await openRigDialog();
+        return;
+    }
+    localStorage.setItem(G.REPO_KEY, repo.full);
+    updateGithubUi(state.github.user);
+    els.chooseRigsButton.disabled = true;
+    els.browseGithubButton.disabled = true;
+    const selected = new Set(state.github.selectedFolders);
+    const directories = state.github.directories.filter((directory) =>
+        selected.has(directory.name)
+    );
+    setStatus('', `Indexing ${state.github.selectedFolders.join(', ')}`);
+    try {
+        const directFiles = state.github.rootItems.filter(
             (item) => item.type === 'file' && item.name.toLowerCase().endsWith('.jsonl')
         );
         const directoryFiles = await G.mapLimit(directories, 4, async (directory, index) => {
             setStatus('', `Indexing runlog folders ${index + 1}/${directories.length}`);
-            return G.listPath(repo.full, directory.path, state.github.branch);
+            const entries = await G.listPath(repo.full, directory.path, state.github.branch);
+            return entries.map((item) => ({ ...item, rigFolder: directory.name }));
         });
-        const files = [...directFiles, ...directoryFiles.flat()].filter(
-            (item) => item.type === 'file' && item.name.toLowerCase().endsWith('.jsonl')
-        );
+        const files = [
+            ...directFiles.map((item) => ({ ...item, rigFolder: 'runlogs root' })),
+            ...directoryFiles.flat()
+        ].filter((item) => item.type === 'file' && item.name.toLowerCase().endsWith('.jsonl'));
         const descriptors = await G.mapLimit(
             files,
             4,
@@ -479,17 +603,29 @@ async function browseGithub() {
                     path: item.path,
                     githubPath: item.path,
                     sourceType: 'github',
+                    repoFull: repo.full,
+                    folder: item.rigFolder,
                     size: item.size
                 };
             },
             (done, total) => setStatus('', `Reading run metadata ${done}/${total}`)
         );
+        state.catalog = state.catalog.filter(
+            (descriptor) => descriptor.sourceType !== 'github' || descriptor.repoFull !== repo.full
+        );
         descriptors.forEach(mergeDescriptor);
+        const catalogKeys = new Set(state.catalog.map((descriptor) => descriptor.key));
+        state.selectedKeys = new Set([...state.selectedKeys].filter((key) => catalogKeys.has(key)));
+        if (state.focusKey && !catalogKeys.has(state.focusKey)) state.focusKey = '';
         rebuildFilters();
         renderCatalog();
-        setStatus('ok', `${descriptors.length} private runlogs indexed from ${repo.full}`);
+        renderFocusedRun();
+        setStatus(
+            'ok',
+            `${descriptors.length} private runlogs indexed from ${state.github.selectedFolders.join(', ')}`
+        );
     } finally {
-        els.browseGithubButton.disabled = !G.currentToken();
+        updateGithubUi(state.github.user);
     }
 }
 
@@ -764,13 +900,22 @@ function renderMetadata() {
         els.metadataRaw.textContent = '';
         return;
     }
+    const descriptor = descriptorByKey(state.focusKey) || run.descriptor || {};
+    const folder = rigName(descriptor);
+    const metadataRig = A.safeText(run.metadata.rig_id || run.metadata.bench);
+    const rig =
+        folder !== 'unassigned' && metadataRig && folder !== metadataRig
+            ? `${folder} (metadata: ${metadataRig})`
+            : folder !== 'unassigned'
+              ? folder
+              : metadataRig || 'Not recorded';
     const fields = [
         ['Genotype', run.metadata.genotype],
         ['Fly number', run.metadata.fly_number],
         ['Sex', run.metadata.sex],
         ['Age', run.metadata.age],
-        ['Experimenter', run.metadata.experimenter],
-        ['Bench', run.metadata.rig_id],
+        ['Experimenter', experimenterName(descriptor)],
+        ['Rig / folder', rig],
         ['Protocol', run.metadata.protocol_filename],
         ['Started', run.metadata.timestamp_start],
         ['Notes', run.metadata.notes || 'None entered'],
@@ -1220,6 +1365,7 @@ els.githubSignInButton.addEventListener('click', async () => {
 
 els.githubSignOutButton.addEventListener('click', () => {
     G.signOut();
+    if (els.rigDialog.open) els.rigDialog.close();
     updateGithubUi(null);
     setStatus('', 'GitHub token cleared from this browser');
 });
@@ -1228,13 +1374,55 @@ els.githubRepoInput.addEventListener('change', () => {
     try {
         const repo = G.parseRepo(els.githubRepoInput.value);
         localStorage.setItem(G.REPO_KEY, repo.full);
+        resetGithubFolderState();
         updateGithubUi(state.github.user);
     } catch (error) {
         setStatus('error', error.message);
     }
 });
 
+els.chooseRigsButton.addEventListener('click', async () => {
+    try {
+        await openRigDialog();
+    } catch (error) {
+        setStatus('error', `Could not list rig folders: ${error.message}`);
+    }
+});
+
 els.browseGithubButton.addEventListener('click', async () => {
+    try {
+        await browseGithub();
+    } catch (error) {
+        setStatus('error', `GitHub browse failed: ${error.message}`);
+    }
+});
+
+els.rigFolderList.addEventListener('change', updateRigDialogSelection);
+
+els.rigSelectAllButton.addEventListener('click', () => {
+    els.rigFolderList
+        .querySelectorAll('input[type="checkbox"]')
+        .forEach((input) => (input.checked = true));
+    updateRigDialogSelection();
+});
+
+els.rigClearAllButton.addEventListener('click', () => {
+    els.rigFolderList
+        .querySelectorAll('input[type="checkbox"]')
+        .forEach((input) => (input.checked = false));
+    updateRigDialogSelection();
+});
+
+[els.rigDialogCloseButton, els.rigCancelButton].forEach((button) =>
+    button.addEventListener('click', () => els.rigDialog.close())
+);
+
+els.rigApplyButton.addEventListener('click', async () => {
+    const selected = checkedRigFolders();
+    if (!selected.length) return;
+    state.github.selectedFolders = G.saveFolders(state.github.repo, selected);
+    updateRigSelectionUi();
+    els.rigDialog.close();
     try {
         await browseGithub();
     } catch (error) {

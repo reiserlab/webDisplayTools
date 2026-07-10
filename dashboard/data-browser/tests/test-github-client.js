@@ -15,6 +15,7 @@ global.sessionStorage = storage();
 global.localStorage = storage();
 sessionStorage.setItem('studio_gh_pat', 'github_pat_TEST_SECRET');
 localStorage.setItem('studio_gh_repo', 'reiserlab/cshl-2026-course');
+localStorage.setItem('studio_bench_id', 'bench02');
 
 const seen = [];
 global.fetch = async (url, options) => {
@@ -43,6 +44,20 @@ const G = require('../github-repo.js');
         full: 'reiserlab/cshl-2026-course'
     });
     assert.throws(() => G.parseRepo('https://github.com/reiserlab/cshl-2026-course'));
+    assert.deepStrictEqual(
+        G.preferredFolders(G.currentRepo(), ['bench01', 'bench02', 'bench03']),
+        ['bench02'],
+        'Arena Studio bench should be the initial dashboard rig selection'
+    );
+    assert.deepStrictEqual(G.saveFolders(G.currentRepo(), ['bench03', 'bench01', 'bench03']), [
+        'bench01',
+        'bench03'
+    ]);
+    assert.deepStrictEqual(
+        G.preferredFolders(G.currentRepo(), ['bench01', 'bench02', 'bench03']),
+        ['bench01', 'bench03'],
+        'saved dashboard selection should override the Arena Studio bench default'
+    );
 
     const listing = await G.listPath(G.currentRepo(), 'runlogs', 'main');
     assert.strictEqual(listing[0].path, 'runlogs/bench02');

@@ -32,7 +32,10 @@
     <section class="source-band" aria-label="Data sources">
       <div class="source-title">
         <h2>Data</h2>
-        <span id="githubWho" class="source-state">GitHub signed out</span>
+        <div class="source-statuses">
+          <strong id="rigSelectionSummary" class="rig-selection-summary">Rig folders: sign in to choose</strong>
+          <span id="githubWho" class="source-state">GitHub signed out</span>
+        </div>
       </div>
       <div class="source-grid">
         <label class="file-button command-button">
@@ -49,7 +52,8 @@
           <input id="githubRepoInput" type="text" value="reiserlab/cshl-2026-course" aria-label="GitHub repository">
           <button id="githubSignInButton" type="button">Sign in</button>
           <button id="githubSignOutButton" type="button" disabled>Sign out</button>
-          <button id="browseGithubButton" class="primary" type="button" disabled>Browse private repo</button>
+          <button id="chooseRigsButton" type="button" title="Choose which rig folders are included in the data catalog" disabled>Select rigs</button>
+          <button id="browseGithubButton" class="primary" type="button" title="Index runlogs from the selected rig folders" disabled>Browse private repo</button>
         </div>
 
         <details class="local-source">
@@ -104,7 +108,7 @@
 
       <div class="catalog-head">
         <span id="catalogStatus">Open files or connect to the course repository.</span>
-        <input id="catalogSearchInput" type="search" placeholder="Filter by run, fly, genotype, protocol, notes" disabled>
+        <input id="catalogSearchInput" type="search" placeholder="Filter by rig, experimenter, run, fly, genotype, protocol, notes" disabled>
       </div>
       <div id="runCatalog" class="run-catalog" aria-label="Available runlogs">
         <div class="empty-state">No runlogs indexed</div>
@@ -239,8 +243,33 @@
     </section>
   </main>
 
+  <dialog id="rigDialog" class="rig-dialog" aria-labelledby="rigDialogTitle">
+    <header class="rig-dialog-header">
+      <div>
+        <p class="section-kicker">Repository scope</p>
+        <h2 id="rigDialogTitle">Select rig folders</h2>
+        <p id="rigDialogRepo" class="rig-dialog-repo"></p>
+      </div>
+      <button id="rigDialogCloseButton" class="icon-button" type="button" title="Close rig selection" aria-label="Close rig selection">&times;</button>
+    </header>
+    <div class="rig-dialog-body">
+      <div class="rig-dialog-tools">
+        <span id="rigDialogCount">0 selected</span>
+        <div>
+          <button id="rigSelectAllButton" type="button" title="Select every available rig folder">Select all</button>
+          <button id="rigClearAllButton" type="button" title="Clear every rig-folder selection">Clear</button>
+        </div>
+      </div>
+      <div id="rigFolderList" class="rig-folder-list" aria-label="Available rig folders"></div>
+    </div>
+    <footer class="rig-dialog-footer">
+      <button id="rigCancelButton" type="button" title="Close without changing the rig-folder selection">Cancel</button>
+      <button id="rigApplyButton" class="primary" type="button" title="Index runlogs from the checked rig folders" disabled>Load selected rigs</button>
+    </footer>
+  </dialog>
+
   <footer class="app-footer">
-    Course Data Dashboard v1 | 2026-07-09 19:42 ET &middot;
+    Course Data Dashboard v1 | 2026-07-10 16:25 ET &middot;
     <a href="https://github.com/reiserlab/webDisplayTools/tree/main/dashboard/data-browser" target="_blank" rel="noreferrer">GitHub</a>
   </footer>
 </body>

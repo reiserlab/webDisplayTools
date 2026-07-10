@@ -82,6 +82,36 @@ assert(
         .figure.data.every((trace) => trace.type === 'scatterpolar')
 );
 
+const p2Forward = p2Pages.find((page) => page.id === 'p2-sweep-forward');
+const p2ForwardValues = p2Forward.figure.data.flatMap((trace) =>
+    Array.isArray(trace.y) ? trace.y.filter(Number.isFinite) : []
+);
+const p2ForwardRange = p2Forward.figure.layout.yaxis.range;
+assert.deepStrictEqual(
+    p2ForwardRange,
+    [-20, 20],
+    'ordinary forward plots should use the shared course envelope'
+);
+assert(
+    p2ForwardRange[0] < Math.min(...p2ForwardValues) &&
+        p2ForwardRange[1] > Math.max(...p2ForwardValues),
+    'shared p2 forward range should contain every displayed point with padding'
+);
+assert(
+    Object.entries(p2Forward.figure.layout)
+        .filter(([key]) => /^yaxis\d*$/.test(key))
+        .every(([, axis]) => JSON.stringify(axis.range) === JSON.stringify(p2ForwardRange)),
+    'all p2 forward panels should use the same dataset-wide range'
+);
+
+assert.deepStrictEqual(
+    P.datasetSharedRange([{ traces: [{ y: [-8, 0, 12] }] }]).map((value) =>
+        Number(value.toFixed(8))
+    ),
+    [-10, 15],
+    'dataset range should include full extrema rather than a percentile cutoff'
+);
+
 const secondP0 = load('p0-opto-intensity__hannah-marie__2026-07-07T20-11-17__qjs21a3i.jsonl');
 const grouped = P.buildPages([p0, secondP0], { mode: 'group', showIndividuals: true });
 assert.strictEqual(grouped.length, 7);

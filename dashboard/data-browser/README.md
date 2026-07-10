@@ -12,6 +12,9 @@ CSHL 2026 course.
   personal-access-token flow and storage keys used by Arena Studio.
 - Indexes run metadata without downloading complete runlogs, then loads full
   files only when selected.
+- Opens a persisted rig-folder picker before indexing GitHub runlogs; the first
+  selection defaults to the Arena Studio bench when one is configured.
+- Shows rig and experimenter first in the run-selection dropdown.
 - Switches between single-fly and grouped-fly analysis.
 - Defaults grouped analysis to exact protocol family + genotype + sex.
 - Keeps every runlog independently selectable so reruns and metadata mistakes
@@ -22,6 +25,10 @@ CSHL 2026 course.
 
 The dark oscilloscope uses the Arena Studio channel order and colors. Analysis
 plots use a white background and Plotly hover, zoom, pan, and reset controls.
+Time-series matrices use one padded, rounded range spanning every displayed
+trace in the selected dataset. A common course envelope (turning +/-400 deg/s,
+forward +/-20 mm/s) keeps ordinary runs comparable; ranges expand when needed
+so extreme or failed-tracking runs remain visible rather than clipping.
 
 ## Analysis pages
 

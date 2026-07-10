@@ -5,6 +5,8 @@
     const API_VERSION = '2022-11-28';
     const TOKEN_KEY = 'studio_gh_pat';
     const REPO_KEY = 'studio_gh_repo';
+    const BENCH_KEY = 'studio_bench_id';
+    const FOLDERS_KEY_PREFIX = 'dashboard_runlog_folders:';
     const DEFAULT_REPO = 'reiserlab/cshl-2026-course';
 
     function currentToken() {
@@ -13,6 +15,55 @@
 
     function currentRepo() {
         return (localStorage.getItem(REPO_KEY) || DEFAULT_REPO).trim();
+    }
+
+    function foldersKey(repoValue) {
+        return `${FOLDERS_KEY_PREFIX}${parseRepo(repoValue || currentRepo()).full}`;
+    }
+
+    function normalizeFolders(folders, available) {
+        const allowed = available ? new Set(available) : null;
+        return [
+            ...new Set(
+                (Array.isArray(folders) ? folders : [])
+                    .map((folder) => String(folder || '').trim())
+                    .filter(
+                        (folder) =>
+                            folder &&
+                            !folder.includes('/') &&
+                            !folder.includes('\\') &&
+                            folder !== '.' &&
+                            folder !== '..' &&
+                            (!allowed || allowed.has(folder))
+                    )
+            )
+        ].sort((a, b) => a.localeCompare(b));
+    }
+
+    function savedFolders(repoValue, available) {
+        try {
+            return normalizeFolders(
+                JSON.parse(localStorage.getItem(foldersKey(repoValue)) || '[]'),
+                available
+            );
+        } catch (_) {
+            return [];
+        }
+    }
+
+    function preferredFolders(repoValue, available) {
+        const folders = normalizeFolders(available || []);
+        const saved = savedFolders(repoValue, folders);
+        if (saved.length) return saved;
+        const bench = String(localStorage.getItem(BENCH_KEY) || '').trim();
+        if (folders.includes(bench)) return [bench];
+        return folders;
+    }
+
+    function saveFolders(repoValue, folders) {
+        const normalized = normalizeFolders(folders);
+        localStorage.setItem(foldersKey(repoValue), JSON.stringify(normalized));
+        return normalized;
     }
 
     function parseRepo(value) {
@@ -187,9 +238,15 @@
         API_VERSION,
         TOKEN_KEY,
         REPO_KEY,
+        BENCH_KEY,
+        FOLDERS_KEY_PREFIX,
         DEFAULT_REPO,
         currentToken,
         currentRepo,
+        foldersKey,
+        savedFolders,
+        preferredFolders,
+        saveFolders,
         parseRepo,
         headers,
         signIn,

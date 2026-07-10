@@ -23,6 +23,11 @@
     };
 
     const METRICS = ['turning', 'forward', 'heading'];
+    const COURSE_AXIS_FLOORS = {
+        turning: [-400, 400],
+        forward: [-20, 20],
+        heading: [-180, 180]
+    };
     const POSITION_COLORS = {
         f: '#20262d',
         l45: '#1463d6',
@@ -53,7 +58,7 @@
 
     function sourceLabel(run) {
         const d = run.descriptor;
-        return `${d.genotype} | ${d.sex} | fly ${d.flyNumber || '?'} | ${d.runId}`;
+        return `${d.folder || d.bench || 'unassigned rig'} | ${d.genotype} | ${d.sex} | fly ${d.flyNumber || '?'} | ${d.runId}`;
     }
 
     function traceCsvRows(curve, pageId, cellTitle, series, level, runId) {
@@ -242,19 +247,54 @@
         return { traces, shapes, csvRows };
     }
 
-    function robustSharedRange(cells, metric) {
+    function niceAxisStep(span, targetTicks) {
+        const raw = Math.max(Number.EPSILON, span) / (targetTicks || 6);
+        const magnitude = 10 ** Math.floor(Math.log10(raw));
+        const normalized = raw / magnitude;
+        const multiplier =
+            normalized <= 1
+                ? 1
+                : normalized <= 2
+                  ? 2
+                  : normalized <= 2.5
+                    ? 2.5
+                    : normalized <= 5
+                      ? 5
+                      : 10;
+        return multiplier * magnitude;
+    }
+
+    function datasetSharedRange(cells, metric) {
         const values = [];
         for (const cell of cells) {
             for (const trace of cell.traces || []) {
-                if (trace.fill || !Array.isArray(trace.y)) continue;
+                if (!Array.isArray(trace.y)) continue;
                 values.push(...trace.y.filter(Number.isFinite));
             }
         }
         if (!values.length) return [-1, 1];
-        values.sort((a, b) => Math.abs(a) - Math.abs(b));
-        const limit = Math.max(1, Math.abs(values[Math.floor((values.length - 1) * 0.99)])) * 1.12;
-        if (metric === 'forward') return [-limit * 0.25, limit];
-        return [-limit, limit];
+        const minimum = Math.min(0, ...values);
+        const maximum = Math.max(0, ...values);
+        const span = Math.max(
+            maximum - minimum,
+            Math.max(Math.abs(minimum), Math.abs(maximum), 1) * 0.1
+        );
+        const padding = span * 0.08;
+        const paddedMinimum = minimum - padding;
+        const paddedMaximum = maximum + padding;
+        const step = niceAxisStep(paddedMaximum - paddedMinimum, 7);
+        let lower = Math.floor(paddedMinimum / step) * step;
+        let upper = Math.ceil(paddedMaximum / step) * step;
+        if (!(upper > lower)) {
+            lower = minimum - 1;
+            upper = maximum + 1;
+        }
+        const floor = COURSE_AXIS_FLOORS[metric];
+        if (floor) {
+            lower = Math.min(lower, floor[0]);
+            upper = Math.max(upper, floor[1]);
+        }
+        return [Number(lower.toPrecision(12)), Number(upper.toPrecision(12))];
     }
 
     function cartesianGrid(cells, rows, cols, options) {
@@ -275,7 +315,7 @@
         const gapX = cols > 1 ? 0.025 : 0;
         const gapY = rows > 1 ? 0.035 : 0;
         const sharedRange =
-            opts.yRange || (opts.sharedY === false ? null : robustSharedRange(cells, opts.metric));
+            opts.yRange || (opts.sharedY === false ? null : datasetSharedRange(cells, opts.metric));
         const legendNames = new Set();
 
         cells.forEach((cell, index) => {
@@ -1261,7 +1301,14 @@
         return genericPages(runs, opts);
     }
 
-    const DashboardPlots = { COLORS, METRICS, buildPages, cartesianGrid };
+    const DashboardPlots = {
+        COLORS,
+        METRICS,
+        COURSE_AXIS_FLOORS,
+        buildPages,
+        cartesianGrid,
+        datasetSharedRange
+    };
     if (typeof module !== 'undefined' && module.exports) module.exports = DashboardPlots;
     global.DashboardPlots = DashboardPlots;
 })(typeof window !== 'undefined' ? window : globalThis);
