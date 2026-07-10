@@ -4,6 +4,18 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.62 — 2026-07-10 · Run log records the LED on/off state (not just times)
+
+- **Fixed: conditional-LED (`led_activation`) transitions were logged with their
+  time + frame index but WITHOUT the on/off flag or brightness**, and the trial's
+  `led_activation` spec wasn't recorded either — so the committed run log showed
+  *when/where* the LED toggled but not *whether* it went on or off. The run-status
+  sanitizer that builds the bridge/course-repo log dropped those keys (`on`,
+  `ledPercent`, `ledActivation`) because they weren't on its allowlist. Now they're
+  kept, so the run log is self-contained: each `led-activation` event carries its
+  ON/OFF state + level, and the `trial-running` event carries the activation spec
+  (level / hysteresis / on_ranges). (Bench-confirmed against rig 6's first run.)
+
 ## v0.61 — 2026-07-10 · Course-repo pattern thumbnails survive a reload
 
 - **Fixed: after a page reload, patterns from a course-repo protocol's colocated

@@ -283,6 +283,36 @@ function newSession(m) {
         checkBool('runTrial pre-empts active run (stop before start)', i >= 0 && i < j);
     }
 
+    // ── _sanitizeRunStatus keeps conditional-LED provenance ────────────────────
+    // The bridge run log (committed to the course repo) is built from sanitized
+    // runstatus events. led-activation transitions must keep their ON/OFF flag +
+    // brightness, and trial-running must keep the led_activation spec, so the log
+    // is self-contained (regression: the allowlist dropped on/ledPercent/ledActivation
+    // → the committed log had transition times but not whether the LED went on/off).
+    console.log('=== runstatus sanitize: LED activation provenance ===');
+    {
+        const s = newSession(makeMocks());
+        const t = s._sanitizeRunStatus({
+            phase: 'led-activation',
+            on: true,
+            index: 60,
+            ledPercent: 20
+        });
+        check('led-activation keeps phase', t.phase, 'led-activation');
+        check('led-activation keeps on', t.on, true);
+        check('led-activation keeps index', t.index, 60);
+        check('led-activation keeps ledPercent', t.ledPercent, 20);
+        const tr = s._sanitizeRunStatus({
+            phase: 'trial-running',
+            ledActivation: { level: 20, hysteresis: 3, on_ranges: [[50, 99]] }
+        });
+        check('trial-running keeps led_activation spec', tr.ledActivation, {
+            level: 20,
+            hysteresis: 3,
+            on_ranges: [[50, 99]]
+        });
+    }
+
     // ── runSequence: forwards progress, pre-empts ───────────────────────────────
     console.log('=== runSequence ===');
     {

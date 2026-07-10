@@ -373,7 +373,14 @@
                 'message',
                 'level',
                 'durationSec',
-                'conditionName'
+                'conditionName',
+                // conditional-LED-activation provenance: the per-transition ON/OFF
+                // flag + brightness, and the spec on the trial-running event, so
+                // the committed run log is self-contained (was dropped → the log
+                // had transition times/index but not whether the LED went on/off).
+                'on',
+                'ledPercent',
+                'ledActivation'
             ];
             for (const k of keys) if (s[k] !== undefined) out[k] = s[k];
             if (s.params && typeof s.params === 'object') out.params = s.params;
