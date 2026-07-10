@@ -238,6 +238,12 @@
       background: var(--soft);
     }
 
+    .content.course-overview table:first-of-type th:first-child,
+    .content.course-overview table:first-of-type td:first-child {
+      overflow-wrap: normal;
+      width: 10rem;
+    }
+
     .content img {
       max-width: 100%;
     }
@@ -564,6 +570,7 @@
       const path = pathBySlug[slug];
       buildNav(slug);
       title.textContent = docTitleFor(slug);
+      content.classList.toggle('course-overview', slug === 'README');
       content.innerHTML = '<p class="loading">Loading guide...</p>';
 
       try {
