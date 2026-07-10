@@ -16,7 +16,8 @@ CSHL 2026 course.
   selection defaults to the Arena Studio bench when one is configured.
 - Shows rig and experimenter first in the run-selection dropdown.
 - Switches between single-fly and grouped-fly analysis.
-- Defaults grouped analysis to exact protocol family + genotype + sex.
+- Defaults grouped analysis to exact protocol family + genotype + sex, with
+  explicit `ALL` options for pooling genotypes or sexes within one protocol.
 - Keeps every runlog independently selectable so reruns and metadata mistakes
   are visible rather than silently excluded.
 - Averages trials within each fly/run before averaging across flies.

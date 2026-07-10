@@ -341,21 +341,23 @@ function rebuildFilters(preferred) {
         els.genotypeFilter,
         state.catalog.map((item) => item.genotype),
         focus.genotype || els.genotypeFilter.value,
-        null
+        'ALL'
     );
     selectOptions(
         els.sexFilter,
         state.catalog.map((item) => item.sex),
         focus.sex || els.sexFilter.value,
-        null
+        'ALL'
     );
 }
 
 function matchesGroup(descriptor) {
+    const genotype = els.genotypeFilter.value;
+    const sex = els.sexFilter.value;
     return (
         descriptor.protocolFamily === els.protocolFilter.value &&
-        descriptor.genotype === els.genotypeFilter.value &&
-        descriptor.sex === els.sexFilter.value
+        (genotype === '*' || descriptor.genotype === genotype) &&
+        (sex === '*' || descriptor.sex === sex)
     );
 }
 
