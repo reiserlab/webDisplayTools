@@ -4,6 +4,15 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.63 — 2026-07-10 · Scope shows conditional-LED activation as pink boxes
+
+- **The oscilloscope now draws the conditional-LED (`led_activation`) ON periods**
+  as pink boxes, the same style as the LED-drive overlay but **without a label**
+  (the level is constant per trial and the gate toggles densely, so a label per
+  box would be noise). Previously these didn't show at all — the closed-loop
+  gate toggles the LED via a direct analog-out write, not a `setAnalogOut`
+  command, so the scope's existing LED overlay never saw them.
+
 ## v0.62 — 2026-07-10 · Run log records the LED on/off state (not just times)
 
 - **Fixed: conditional-LED (`led_activation`) transitions were logged with their

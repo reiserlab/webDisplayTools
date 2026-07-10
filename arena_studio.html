@@ -2862,7 +2862,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.62 | 2026-07-10 00:26 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.63 | 2026-07-10 00:38 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -4247,6 +4247,16 @@
                     if (on) { if (!ledOpen) { ledOpen = { startMs: t, endMs: null, label: label }; ov.led.push(ledOpen); } }
                     else if (ledOpen) { ledOpen.endMs = t; ledOpen = null; }
                 }
+            } else if (s.phase === 'led-activation') {
+                // Conditional LED activation (Mode-3 closed loop) toggles the LED
+                // from the runner's per-frame gate, sent as a direct AO write — NOT
+                // a setAnalogOut *command* — so it arrives as its own phase. Draw the
+                // ON periods as pink boxes, same style as the LED-drive overlay, but
+                // with NO label (the level is constant per trial and the toggles are
+                // dense — a label per box would be noise). The draw routine already
+                // skips the text when label is falsy.
+                if (s.on) { if (!ledOpen) { ledOpen = { startMs: t, endMs: null, label: null }; ov.led.push(ledOpen); } }
+                else if (ledOpen) { ledOpen.endMs = t; ledOpen = null; }
             } else if (s.phase === 'sequence-complete' || s.phase === 'aborted') {
                 if (ledOpen) { ledOpen.endMs = t; ledOpen = null; }
                 if (visOpen) { visOpen.endMs = t; visOpen = null; }
