@@ -10,6 +10,9 @@ between two objects** (A/B choice) — with and without optogenetic activation.
 control. Everyone should run a P2 version; the instructor will assign tonic,
 burst, or both.
 
+**Canonical genotype:** a male **P1 > CsChrimson** or **pC1 > CsChrimson** fly.
+Activating either circuit should make males more interested in visual objects.
+
 ## Open in Arena Studio
 
 These links open the shared protocol from the private course repository in the
@@ -46,7 +49,9 @@ mode and ask you to sign in before loading the protocol.
 
 ## Two optogenetic variants
 
-Same visual design; they differ only in *how* the LED is delivered:
+The visual design is the same; the variants differ only in *how* the LED is
+delivered. Some male P1/pC1 activation flies become inactive under continuous
+stimulation, so the burst version provides a more transient alternative:
 
 - **`burst`** — a **0.5 s LED pulse before each trial** (while the first frame
   is held), then LED off for the trial. Default LED level: **35%**.
@@ -121,8 +126,9 @@ Planned first-look plots:
 - Cheng KY, Frye MA (2021). Odour boosts visual object approach in flies.
   <https://doi.org/10.1098/rsbl.2020.0770>
 
-> **TBD:** add the front-column calibration procedure and which genotypes run P2
-> tonic, P2 burst, or both.
+> **Rig alignment:** in the course arenas, **column 3 is directly in front** and
+> **column 8 is directly behind**. Confirm that frame 0 of the closed-loop bar
+> is aligned to column 3 before collecting P2 data.
 
 ---
-*Updated 2026-07-10 01:47 ET. Source: `protocols/shared/p2_object_*.yaml`.*
+*Updated 2026-07-10 02:28 ET. Source: `protocols/shared/p2_object_*.yaml`.*
