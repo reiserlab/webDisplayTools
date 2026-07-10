@@ -12,9 +12,6 @@ runs entirely in your browser (Chrome or Edge) — nothing to install.
 > **Recommended workspace:** Position FicTrac and Arena Studio side by side so
 > you can see everything that is happening.
 
-> **Still to add:** isolated screenshots of the Connect dialog, protocol picker,
-> and safe-mode indicator.
-
 ## Useful links
 
 - **Arena Studio:** <https://reiserlab.github.io/webDisplayTools/arena_studio.html>

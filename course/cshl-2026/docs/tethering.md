@@ -1,8 +1,8 @@
 # Tethering basics
 
 <div class="image-with-credit tethering-station">
-  <img src="assets/tethering_station.png" alt="Rendered design of the tethering station">
-  <span>Design by Frank Loesche</span>
+  <img src="assets/tethering_station_photo.png" alt="Tethering station with a dissecting microscope, cooling platform, micromanipulator, and tethering tools">
+  <span>Photo by Frank Loesche</span>
 </div>
 
 To record a fly on the ball you first glue it to a small pin (the "tether") so

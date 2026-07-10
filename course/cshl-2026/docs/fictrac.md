@@ -103,9 +103,6 @@ Closed-loop and the live scope need the **bridge** running on the rig computer:
 open-loop motion first, then a closed-loop block that the fly steers. If the
 closed-loop block responds to nudging the ball, the bridge is working.
 
-> **TBD:** add exact camera model/lens, the Windows path to `configGUI.bat`, and
-> any per-rig gain/offset defaults.
-
 ## Common problems
 
 | Symptom | Likely cause / fix |
