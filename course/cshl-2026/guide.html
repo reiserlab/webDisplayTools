@@ -272,6 +272,28 @@
       right: 6px;
     }
 
+    .content .genotype-intro {
+      align-items: start;
+      display: grid;
+      gap: clamp(24px, 4vw, 48px);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .content .genotype-intro-copy p:first-of-type {
+      margin-top: 0;
+    }
+
+    .content .genotype-intro-image {
+      display: block;
+      margin: 0;
+      width: 100%;
+    }
+
+    .content .genotype-intro-image img {
+      height: auto;
+      width: 100%;
+    }
+
     .content .fictrac-example {
       float: right;
       margin: 0 0 18px 24px;
@@ -349,6 +371,16 @@
         float: none;
         margin: 0 0 18px;
         width: 100%;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .content .genotype-intro {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .content .genotype-intro-image {
+        width: min(100%, 520px);
       }
     }
   </style>
