@@ -39,9 +39,21 @@ arena.
 
 1. Create a **new folder** for this rig (or a dated copy for this config change).
 2. Put the config file in it.
-3. On Windows, right-click inside that folder and open a PowerShell/Terminal
+3. Copy the config file into the **`reiser`** folder, listed under Quick Access
+   in every Windows Explorer window on the rig computers. The configuration
+   files FicTrac actually runs from live in its `fictrac\cshl` subfolder.
+4. On Windows, right-click inside that folder and open a PowerShell/Terminal
    window there. Run FicTrac from that folder.
-4. Data writes into that folder, per trial.
+
+   A faster way: the Windows quickstart bar has an icon with a **green upward
+   arrow**. Clicking it opens a PowerShell window already at the FicTrac base
+   directory. From there, run FicTrac with the config file's path as an
+   argument, e.g. for rig 2's config file:
+
+   ```
+   build\Release\fictrac.bat cshl\config02.txt
+   ```
+5. Data writes into that folder, per trial.
 
 Keeping one folder per config means you never lose a working setup. A shared
 "starter" config is a good starting point but will **not** work as-is on every
@@ -65,7 +77,15 @@ turning and forward signals sent to Arena Studio.
 ## Calibrating with `configGUI`
 
 On Windows, open PowerShell/Terminal in the folder containing the config file,
-then run the config GUI (`configGUI.bat`). Work through its steps:
+then run the config GUI (`configGUI.bat`). Using the quickstart-bar icon
+(PowerShell at the FicTrac base directory), the equivalent command for rig 2's
+config file is:
+
+```
+build\Release\configGui.bat cshl\config02.txt
+```
+
+Work through its steps:
 
 1. **Define the ball circle** — click at least three points around the ball's
    perimeter to estimate its outline. Double-right-click removes a point.
