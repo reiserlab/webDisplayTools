@@ -125,4 +125,4 @@ Planned first-look plots:
 > tonic, P2 burst, or both.
 
 ---
-*Last updated 2026-07-09. Source: `protocols/shared/p2_object_*.yaml`.*
+*Updated 2026-07-10 01:47 ET. Source: `protocols/shared/p2_object_*.yaml`.*

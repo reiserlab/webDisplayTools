@@ -124,4 +124,4 @@ closed-loop block responds to nudging the ball, the bridge is working.
   [doi:10.3389/fnbeh.2021.689573](https://doi.org/10.3389/fnbeh.2021.689573).
 
 ---
-*Last updated 2026-07-09.*
+*Updated 2026-07-10 01:47 ET.*

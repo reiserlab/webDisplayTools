@@ -81,4 +81,4 @@ These analysis pages are still being built. The first plots will likely include:
   times, LED transitions, and walking/immobility QC.
 
 ---
-*Last updated 2026-07-09.*
+*Updated 2026-07-10 01:47 ET.*

@@ -121,4 +121,4 @@ Planned first-look plots:
 > class aggregate.
 
 ---
-*Last updated 2026-07-09. Source: `protocols/shared/p1_motion_v2_*.yaml`.*
+*Updated 2026-07-10 01:47 ET. Source: `protocols/shared/p1_motion_v2_*.yaml`.*

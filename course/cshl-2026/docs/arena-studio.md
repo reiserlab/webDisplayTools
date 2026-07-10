@@ -124,4 +124,4 @@ See [Pattern Editor](pattern-editor.md) for the separate pattern-making workflow
   first; some commands are refused while the display is active.
 
 ---
-*Last updated 2026-07-09.*
+*Updated 2026-07-10 01:47 ET.*

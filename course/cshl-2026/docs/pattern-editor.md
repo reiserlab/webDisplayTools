@@ -77,4 +77,4 @@ By the end of the course day, each team should make at least one pattern and
 understand how it would be added to an Arena Studio protocol.
 
 ---
-*Last updated 2026-07-09.*
+*Updated 2026-07-10 01:47 ET.*

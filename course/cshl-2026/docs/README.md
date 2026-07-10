@@ -50,9 +50,5 @@ practical.
 - **[Fly Stock Genotypes](genotypes.md)** — the stock names and full genotypes used in Arena Studio metadata.
 - **[References and links](references.md)** — panel-system, FicTrac, Arena Studio, and reading links.
 
-> **TBD: add images.** Useful first images: tethering station, fly on the ball,
-> Arena Studio Run view, Pattern Editor, FicTrac config GUI, and example pattern
-> animations for p0-p3.
-
 ---
-*Last updated 2026-07-10.*
+*Updated 2026-07-10 01:47 ET.*

@@ -90,4 +90,4 @@ If you see new files appear while the course is running, that is normal.
 > should open github.com directly or only through Arena Studio.
 
 ---
-*Last updated 2026-07-09.*
+*Updated 2026-07-10 01:47 ET.*

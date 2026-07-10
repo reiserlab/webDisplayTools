@@ -227,3 +227,6 @@ paper first, followed by a later exact driver-effector match when useful.
 - Use `none` only for no-fly hardware tests, bridge tests, or placeholder metadata.
 - If a course run uses a genotype not listed here, ask an instructor what
   shorthand name to use before repeated runs.
+
+---
+*Updated 2026-07-10 01:47 ET.*
