@@ -70,7 +70,7 @@ const p0Pages = P.buildPages([p0], { mode: 'single', showIndividuals: true });
 const p1Pages = P.buildPages([p1], { mode: 'single', showIndividuals: true });
 const p2Pages = P.buildPages([p2], { mode: 'single', showIndividuals: true });
 assert.strictEqual(p0Pages.length, 7);
-assert.strictEqual(p1Pages.length, 8);
+assert.strictEqual(p1Pages.length, 9);
 assert.strictEqual(p2Pages.length, 9);
 assert(p0Pages.every((page) => page.figure.data.length > 0));
 assert(p1Pages.every((page) => page.figure.data.length > 0));
@@ -102,6 +102,41 @@ assert(
     'CCW/left turning should be sign-flipped into the CW/right frame'
 );
 
+const p1Folded = p1Pages.find((page) => page.id === 'p1-optomotor-folded-summary');
+assert(p1Folded, 'p1 should include a CW-aligned folded optomotor summary');
+const rawP1Cw = A.mean(
+    p1.steps
+        .filter((step) => step.condition === 'om_36deg_cw_2hz')
+        .map((step) => A.stepMean(p1, step, 'turning', 0, 2))
+);
+const foldedTurning = p1Folded.figure.data.find(
+    (trace) => trace.name === 'CW-aligned folded mean' && trace.yaxis === 'y'
+);
+assert(foldedTurning);
+assert(
+    Math.abs(foldedTurning.y[foldedTurning.x.indexOf(2)] - (rawP1Cw - rawP1Ccw) / 2) < 1e-9,
+    'folded turning should average CW with sign-flipped CCW'
+);
+const rawP1CwForward = A.mean(
+    p1.steps
+        .filter((step) => step.condition === 'om_36deg_cw_2hz')
+        .map((step) => A.stepMean(p1, step, 'forward', 0, 2))
+);
+const rawP1CcwForward = A.mean(
+    p1.steps
+        .filter((step) => step.condition === 'om_36deg_ccw_2hz')
+        .map((step) => A.stepMean(p1, step, 'forward', 0, 2))
+);
+const foldedForward = p1Folded.figure.data.find(
+    (trace) => trace.name === 'CW-aligned folded mean' && trace.yaxis === 'y3'
+);
+assert(foldedForward);
+assert(
+    Math.abs(foldedForward.y[foldedForward.x.indexOf(2)] - (rawP1CwForward + rawP1CcwForward) / 2) <
+        1e-9,
+    'folded forward should average CW and CCW without sign reversal'
+);
+
 const manualP1Pages = P.buildPages([p1], {
     mode: 'single',
     showIndividuals: true,
@@ -119,6 +154,9 @@ assert.deepStrictEqual(
 const manualMatched = manualP1Pages.find((page) => page.id === 'p1-optomotor-matched-summary');
 assert.deepStrictEqual(manualMatched.figure.layout.yaxis.range, [-300, 300]);
 assert.deepStrictEqual(manualMatched.figure.layout.yaxis3.range, [0, 25]);
+const manualFolded = manualP1Pages.find((page) => page.id === 'p1-optomotor-folded-summary');
+assert.deepStrictEqual(manualFolded.figure.layout.yaxis.range, [-300, 300]);
+assert.deepStrictEqual(manualFolded.figure.layout.yaxis3.range, [0, 25]);
 
 const p2Forward = p2Pages.find((page) => page.id === 'p2-sweep-forward');
 const p2ForwardValues = p2Forward.figure.data.flatMap((trace) =>

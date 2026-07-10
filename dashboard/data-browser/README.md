@@ -52,6 +52,8 @@ displayed trace in the selected dataset.
 - Rows are stimulus class; columns are loom speed
 - Loom positions remain separate
 - Signed optomotor tuning summary
+- Folded optomotor summary with turning computed as `mean(CW, -CCW)` and
+  forward velocity computed as `mean(CW, CCW)` within each fly
 - Matched optomotor summary with turning above forward velocity, spatial period
   columns, and CCW/left turning sign-flipped into the CW/right frame
 

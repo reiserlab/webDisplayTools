@@ -822,6 +822,78 @@
         );
     }
 
+    function p1FoldedTuningPoints(run, period, metric) {
+        return [0, 1, 2, 4, 8, 16]
+            .map((frequency) => {
+                if (frequency === 0) {
+                    const staticSteps = run.steps.filter(
+                        (step) => step.condition === `om_${period}deg_static_0hz`
+                    );
+                    return {
+                        x: frequency,
+                        y: A.mean(staticSteps.map((step) => A.stepMean(run, step, metric, 0, 2)))
+                    };
+                }
+                const directionMeans = ['cw', 'ccw'].map((direction) => {
+                    const steps = run.steps.filter(
+                        (step) => step.condition === `om_${period}deg_${direction}_${frequency}hz`
+                    );
+                    return A.mean(steps.map((step) => A.stepMean(run, step, metric, 0, 2)));
+                });
+                if (!directionMeans.every(Number.isFinite)) return { x: frequency, y: NaN };
+                const [cw, ccw] = directionMeans;
+                return {
+                    x: frequency,
+                    y: metric === 'turning' ? (cw - ccw) / 2 : (cw + ccw) / 2
+                };
+            })
+            .filter((point) => Number.isFinite(point.y));
+    }
+
+    function p1FoldedTuningPage(runs, options) {
+        const periods = [36, 72];
+        const metrics = ['turning', 'forward'];
+        const cells = [];
+        metrics.forEach((metric) =>
+            periods.forEach((period) => {
+                const result = summarySeries(
+                    runs,
+                    (run) => p1FoldedTuningPoints(run, period, metric),
+                    [{ name: 'CW-aligned folded mean', key: 'folded', color: COLORS.cw }],
+                    options
+                );
+                cells.push({
+                    title: `${period} deg spatial period`,
+                    traces: result.traces,
+                    shapes: [],
+                    csvRows: result.csvRows.map((row) => ({
+                        ...row,
+                        metric,
+                        spatial_period_deg: period,
+                        folding: metric === 'turning' ? 'mean(CW, -CCW)' : 'mean(CW, CCW)'
+                    }))
+                });
+            })
+        );
+        return pageFromCells(
+            'p1-optomotor-folded-summary',
+            'p1 Folded optomotor summary',
+            'Turning is folded into the CW frame and then averaged: mean(CW, -CCW). Forward velocity is averaged without sign reversal: mean(CW, CCW). Each direction is averaged within fly first, then flies are averaged for grouped views. Static 0 Hz is the common control.',
+            cells,
+            metrics.length,
+            periods.length,
+            {
+                xLabel: 'Temporal frequency (Hz)',
+                rowMetrics: metrics,
+                rowLabels: ['CW-aligned folded turning (deg/s)', 'Direction-mean forward (mm/s)'],
+                axisRanges: options.axisRanges,
+                useCourseAxisFloor: options.useCourseAxisFloor !== false,
+                columnTitlesOnly: true,
+                height: 650
+            }
+        );
+    }
+
     function p1TuningPage(runs, options) {
         const cells = [36, 72].map((period) => {
             const result = summarySeries(
@@ -1401,6 +1473,7 @@
             return [
                 ...p1OptomotorPages(runs, opts),
                 ...p1LoomPages(runs, opts),
+                p1FoldedTuningPage(runs, opts),
                 p1MatchedTuningPage(runs, opts),
                 p1TuningPage(runs, opts)
             ];
