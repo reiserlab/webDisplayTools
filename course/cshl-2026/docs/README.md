@@ -24,9 +24,39 @@ practical.
 | Time | Focus |
 | --- | --- |
 | **10:30-noon** | Meet at the rigs for a brief setup orientation, tethering demonstration, and hands-on tethering. Before lunch, each group mounts one fly and runs P0. P0 is a calibration protocol: it asks which stimulation levels are most effective for that genotype on that rig. |
-| **After lunch-5:30** | Bootstrap P1 and P2 across genotypes. Different groups begin with different flies, run short protocols first, and collect high-quality data. At roughly hourly check-ins, we will compare results, troubleshoot, and decide together which genotypes or effects deserve more runs. The goal is analyzable data: an achievable target is `n>=4` for one genotype in P1 and `n>=4` for one genotype in P2. |
+| **After lunch-5:30** | Bootstrap P1 and P2 across genotypes. Different groups begin with different flies, run short protocols first, and collect high-quality data. At roughly hourly check-ins, we will compare results, troubleshoot, and decide together which genotypes or effects deserve more runs. The immediate goal is `n=2` good flies; `n=4-5` is a realistic target for analyzable data. |
 | **Late afternoon** | Review promising results in the dashboard. Once core P1/P2 data are in hand, teams may try an instructor-approved variation or a new pattern. |
 | **After evening lecture** | P3 closed-loop conditioning: an exploratory, instructor-led experiment. |
+
+## Goals for the day
+
+### Morning — learn the rig and make a first fly
+
+Everyone should tether at least one fly and become comfortable with the rig
+before lunch:
+
+1. Open **Arena Studio** and connect to the rig.
+2. Browse the pattern library, then use the Console to display a pattern.
+3. Open a protocol file in the Editor and follow its steps to understand what it
+   will do.
+4. Use the setup to ask concrete questions: for example, what does `gain` do,
+   and how would changing it affect a closed-loop experiment?
+
+### Afternoon — collect useful behavioral data
+
+Keep tethering and running flies. The immediate goal is `n=2` good flies in a
+selected protocol; `n=4-5` is a realistic target for analyzable data. Work with
+one or both of **P1** and **P2**, collecting multiple flies in each condition.
+
+> **"Flies are cheap." — Michael Dickinson** Do not hold back on trying another
+> fly when a tether, walking behavior, or result is not good enough.
+
+### Evening — explore conditioning
+
+Use optogenetic and visual stimuli to explore closed-loop conditioning in
+walking flies, adapting classic experiments from Martin Heisenberg and
+colleagues. This is exploratory, but if something seems to work, lock it in and
+collect enough data to ask whether it replicates.
 
 ## Start here
 
@@ -51,4 +81,4 @@ practical.
 - **[References and links](references.md)** — panel-system, FicTrac, Arena Studio, and reading links.
 
 ---
-*Updated 2026-07-10 01:47 ET.*
+*Updated 2026-07-10 02:30 ET.*
