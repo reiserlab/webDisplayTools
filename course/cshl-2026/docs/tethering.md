@@ -31,9 +31,6 @@ Tethers (pins), a micromanipulator plus a Peltier-cooled tethering platform
 (the "sarcophagus"), light-curing glue plus a curing LED, a glass slide, a pin
 vice, a fine paintbrush, a vacuum pen, Kimwipes, and a dissecting scope.
 
-> **TBD:** add the exact tether type, glue product, curing LED, and station
-> model used on each bench.
-
 ## Prepare the flies
 
 1. Get a vial; **note the genotype and estimated age** in your notebook.
@@ -84,9 +81,6 @@ vice, a fine paintbrush, a vacuum pen, Kimwipes, and a dissecting scope.
 2. Lower until the legs just reach the ball and it grips and starts to walk.
 3. Confirm it walks: the ball turns under it, and once
    [FicTrac](fictrac.md) is running you'll see motion on the oscilloscope.
-
-> **TBD:** add target fly height above the ball and typical glue cure/recovery
-> times for this setup.
 
 ## Practice first
 
