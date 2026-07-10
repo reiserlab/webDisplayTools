@@ -4,6 +4,13 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.60 — 2026-07-09 · File menu: "Open experimental protocol" header
+
+- **The File ▾ menu now labels its Open items.** A small accent-coloured
+  "Open experimental protocol" header sits directly above Open local file… /
+  Open from Library… / Open from Repo…, so it's clear those three open a
+  *protocol* (not some other kind of file). Cosmetic only.
+
 ## v0.59 — 2026-07-09 · Conditional LED activation (index-gated LED in closed loop)
 
 A closed-loop (Mode 3, FicTrac) trial can now turn the BuckPuck LED on **only
