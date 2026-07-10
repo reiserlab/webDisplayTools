@@ -5,8 +5,15 @@ runs entirely in your browser (Chrome or Edge) — nothing to install.
 
 **Open it:** <https://reiserlab.github.io/webDisplayTools/arena_studio.html>
 
-> **TBD: add images.** Add screenshots of the Run view, metadata panel, Connect
-> dialog, oscilloscope, protocol picker, and safe-mode indicator.
+<div class="arena-studio-overview">
+  <img src="assets/arena_studio_fictrac_side_by_side.png" alt="FicTrac and Arena Studio shown side by side, including the Run view, metadata panel, and live oscilloscope">
+</div>
+
+> **Recommended workspace:** Position FicTrac and Arena Studio side by side so
+> you can see everything that is happening.
+
+> **Still to add:** isolated screenshots of the Connect dialog, protocol picker,
+> and safe-mode indicator.
 
 ## Useful links
 
