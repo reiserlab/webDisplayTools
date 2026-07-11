@@ -201,6 +201,9 @@ check(
     req.url,
     'https://api.github.com/repos/reiserlab/webDisplayTools/contents/protocols/shared/loom_patterns/loom.pat?ref=main'
 );
+req = G.reqGetContents(O, R, 'patterns', null, null);
+check('anonymous public read omits auth', Object.prototype.hasOwnProperty.call(req.headers, 'Authorization'), false);
+check('anonymous public read keeps accept', req.headers.Accept, 'application/vnd.github+json');
 req = G.reqGetContentsRaw(O, R, 'roster.yaml', null, TOKEN);
 check(
     'roster raw readable',
