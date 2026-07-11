@@ -7600,6 +7600,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             const cfg = {};
             if (Number.isFinite(Number(pcfg.fictrac_port))) cfg.fictrac_port = Number(pcfg.fictrac_port);
             if (Number.isFinite(Number(pcfg.gain))) cfg.gain = Number(pcfg.gain);
+            if (Number.isFinite(Number(pcfg.offset))) cfg.offset = Number(pcfg.offset);
             if (Object.keys(cfg).length) bridge.setConfig(cfg);
         }
         // Frame-logging level is a runtime/session setting (File ▾ → Run logging),

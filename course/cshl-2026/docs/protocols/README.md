@@ -15,9 +15,9 @@ matching **full** version. If short and full were run on the same fly, the
 analysis can pool them.
 
 P0 is the intro/calibration protocol and is worth running once per line when
-possible. P1 and P2 are the core student protocols. P3 is the planned
-Heisenberg flight-simulator tribute: its five visual patterns and short/full
-YAMLs are ready for instructor-led runs.
+possible. P1 and P2 are the core student protocols. P3 is the Heisenberg
+flight-simulator tribute: V2 uses five phase-paired visual families, fixed
+−1.8 closed-loop coupling, and short/full YAMLs for instructor-led runs.
 
 ## Design principle: internal comparisons
 
@@ -43,7 +43,7 @@ each trial type as an isolated condition.
 | **[p0](p0-opto-intensity.md)** | Optogenetic intensity | Which LED level drives the fly | No (open-loop) | about 2.6 min | about 10.3 min |
 | **[p1](p1-motion.md)** | Visual motion | Optomotor turning + looming response | No (open-loop) | about 2.7 min | about 7.9 min |
 | **[p2](p2-object.md)** | Object responses | Bar fixation + A/B choice | **Yes** (needs FicTrac) | about 4.3-4.5 min | about 9.8-10.2 min |
-| **[p3](p3.md)** | Heisenberg conditioning | Closed-loop cue-preference learning | **Yes** (needs FicTrac) | ≈8 min | ≈18 min |
+| **[p3](p3.md)** | Heisenberg conditioning | Closed-loop cue-preference learning | **Yes** (needs FicTrac) | ≈8:04 min | ≈18:04 min |
 
 Animated pattern previews are embedded on all four protocol pages.
 
