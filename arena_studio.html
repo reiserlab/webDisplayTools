@@ -8197,7 +8197,6 @@ if (ghToken()) {
                 // Already signed in on load → pull course metadata now (no
                 // arena connection needed).
                 if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
-                refreshRepoSharedPatternPreviews().then(() => rewireRepoPatternPreviews());
             }
         })
         .catch(() => {});
