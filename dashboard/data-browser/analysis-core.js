@@ -200,6 +200,52 @@
         if (filename.includes('p1') || names.some((name) => /^(om_|loom_)/.test(name))) {
             return { family: 'p1', label: 'p1 optomotor + looming' };
         }
+        const p3Patterns = {
+            heisenberg_ts: 'T figures',
+            heisenberg_high_low: 'high/low bars',
+            heisenberg_slashes: 'left/right slashes',
+            heisenberg_relational: 'relational slashes',
+            dill_random_checkers: 'Dill random checkers'
+        };
+        const namedP3 = filename.match(
+            /(?:^|\/)p3_(heisenberg_ts|heisenberg_high_low|heisenberg_slashes|heisenberg_relational|dill_random_checkers)_(short|full)(?:\.yaml)?$/
+        );
+        const hasP3Phases = names.some((name) =>
+            /^(baseline|training|probe)_phase(?:0|90)$/.test(name)
+        );
+        const hasLegacyP3Phases =
+            names.some((name) => /^baseline_[ab]$/.test(name)) &&
+            names.some((name) => /^training_[ab]$/.test(name)) &&
+            names.some((name) => /^probe_[ab]$/.test(name));
+        if (namedP3) {
+            const pattern = namedP3[1];
+            const timing = namedP3[2];
+            return {
+                family: `p3-${pattern.replaceAll('_', '-')}`,
+                label: `p3 ${p3Patterns[pattern]}`,
+                p3Pattern: pattern,
+                p3Timing: timing,
+                p3Legacy: false
+            };
+        }
+        if (filename.includes('p3_conditioning_closedloop_v2_short') || hasP3Phases) {
+            return {
+                family: 'p3-heisenberg-ts',
+                label: 'p3 T figures',
+                p3Pattern: 'heisenberg_ts',
+                p3Timing: filename.includes('_full') ? 'full' : 'short',
+                p3Legacy: false
+            };
+        }
+        if (filename.includes('p3') || hasLegacyP3Phases) {
+            return {
+                family: 'p3-legacy-diagnostic',
+                label: 'p3 legacy diagnostic',
+                p3Pattern: 'heisenberg_ts',
+                p3Timing: 'legacy',
+                p3Legacy: true
+            };
+        }
         if (
             filename.includes('p2') ||
             names.some((name) => /^(burst_)?(ab_|sw_|cl_bar|base_bar)/.test(name))
@@ -267,7 +313,8 @@
                     startMs: ms,
                     endMs: ms + finite(rec.durationSec || 0) * 1000,
                     durationSec: finite(rec.durationSec || 0),
-                    params: rec.params || {}
+                    params: rec.params || {},
+                    ledActivation: rec.ledActivation || null
                 });
             } else if (rec.phase === 'command') {
                 step.commands.push({
@@ -701,6 +748,314 @@
         return match ? { object: match[1], side: match[2] } : null;
     }
 
+    function p3Phase(condition) {
+        const match = safeText(condition).match(
+            /^(baseline|training|probe)_(?:phase(?:0|90)|[ab])$/
+        );
+        return match ? match[1] : '';
+    }
+
+    function p3TrialVariant(condition) {
+        const match = safeText(condition).match(
+            /^(?:baseline|training|probe)_(phase(?:0|90)|[ab])$/
+        );
+        return match ? match[1] : '';
+    }
+
+    function p3UsesCueNormalization(run) {
+        return !!(run && run.protocolInfo && run.protocolInfo.p3Legacy === false);
+    }
+
+    function p3CueIndex(run, condition, index) {
+        const raw = mod(Math.round(finite(index)), 200);
+        if (!p3UsesCueNormalization(run)) return raw;
+        return p3TrialVariant(condition) === 'phase90' ? mod(raw + 50, 200) : raw;
+    }
+
+    function p3LoggedLedActivation(run, requestedStep) {
+        const steps = requestedStep ? [requestedStep] : run.steps || [];
+        for (const step of steps) {
+            if (p3Phase(step.condition) !== 'training') continue;
+            for (const interval of step.intervals || []) {
+                const activation = interval.ledActivation;
+                const ranges = activation && activation.on_ranges;
+                if (!Array.isArray(ranges) || !ranges.length) continue;
+                return {
+                    level: finite(activation.level),
+                    hysteresis: finite(activation.hysteresis),
+                    ranges: ranges
+                        .filter(
+                            (range) =>
+                                Array.isArray(range) &&
+                                range.length >= 2 &&
+                                Number.isFinite(finite(range[0])) &&
+                                Number.isFinite(finite(range[1]))
+                        )
+                        .map((range) => [finite(range[0]), finite(range[1])]),
+                    condition: step.condition,
+                    variant: p3TrialVariant(step.condition)
+                };
+            }
+        }
+        return {
+            level: NaN,
+            hysteresis: NaN,
+            ranges: [],
+            condition: requestedStep ? requestedStep.condition : '',
+            variant: requestedStep ? p3TrialVariant(requestedStep.condition) : ''
+        };
+    }
+
+    function p3LoggedLedActivations(run) {
+        const unique = new Map();
+        for (const step of run.steps || []) {
+            const activation = p3LoggedLedActivation(run, step);
+            if (!activation.ranges.length) continue;
+            const key = JSON.stringify([
+                activation.variant,
+                activation.level,
+                activation.hysteresis,
+                activation.ranges
+            ]);
+            if (!unique.has(key)) unique.set(key, activation);
+        }
+        return [...unique.values()];
+    }
+
+    function p3Reinforcement(run, step) {
+        const logged = p3LoggedLedActivation(run, step);
+        if (logged.ranges.length) return logged;
+        const anyLogged = p3LoggedLedActivation(run);
+        if (anyLogged.ranges.length) return anyLogged;
+        return {
+            level: NaN,
+            hysteresis: NaN,
+            ranges: [[0, 49], [100, 149]],
+            condition: '',
+            variant: ''
+        };
+    }
+
+    function p3AnalysisRanges(run) {
+        return p3UsesCueNormalization(run)
+            ? [[0, 49], [100, 149]]
+            : p3Reinforcement(run).ranges;
+    }
+
+    function p3LedEpochs(run) {
+        const trainingSteps = (run.steps || []).filter(
+            (step) => p3Phase(step.condition) === 'training'
+        );
+        const trainingStart = Math.min(
+            ...trainingSteps.map((step) => step.startMs).filter(Number.isFinite)
+        );
+        const trainingEnd = Math.max(
+            ...trainingSteps.map((step) => step.endMs).filter(Number.isFinite)
+        );
+        const changes = (run.events || [])
+            .flatMap((rec) => {
+                if (rec.event !== 'runner') return [];
+                const ms = relativeEventMs(rec, run.sessionStartMs);
+                if (!Number.isFinite(ms)) return [];
+                if (rec.phase === 'led-activation') {
+                    return [
+                        {
+                            ms,
+                            on: rec.on === true,
+                            level: rec.on === true ? finite(rec.ledPercent) : 0
+                        }
+                    ];
+                }
+                if (
+                    rec.phase === 'command' &&
+                    (rec.op === 'setAnalogOut' || rec.command_name === 'setAnalogOut') &&
+                    finite(rec.ledPercent) === 0
+                ) {
+                    return [{ ms, on: false, level: 0 }];
+                }
+                return [];
+            })
+            .sort((a, b) => a.ms - b.ms);
+        const epochs = [];
+        let active = null;
+        for (const change of changes) {
+            if (change.on && !active) {
+                active = { startMs: change.ms, level: change.level };
+            } else if (!change.on && active) {
+                if (change.ms > active.startMs)
+                    epochs.push({ ...active, endMs: change.ms });
+                active = null;
+            }
+        }
+        if (active) {
+            if (trainingEnd > active.startMs) epochs.push({ ...active, endMs: trainingEnd });
+        }
+        return epochs
+            .map((epoch) => ({
+                ...epoch,
+                startMs: Math.max(trainingStart, epoch.startMs),
+                endMs: Math.min(trainingEnd, epoch.endMs)
+            }))
+            .filter((epoch) => epoch.endMs > epoch.startMs);
+    }
+
+    function p3TrialFrames(run, step, dropSec) {
+        const phase = p3Phase(step && step.condition);
+        if (!phase) return [];
+        const startMs = step.startMs + Math.max(0, finite(dropSec) || 0) * 1000;
+        return (run.framesByStep.get(step.index) || [])
+            .filter((frame) => frame.ms >= startMs && Number.isFinite(frame.index));
+    }
+
+    function p3TrialIndices(run, step, dropSec) {
+        return p3TrialFrames(run, step, dropSec).map((frame) =>
+            p3CueIndex(run, step.condition, frame.index)
+        );
+    }
+
+    function p3IndexIsReinforced(index, ranges) {
+        return ranges.some(([start, end]) => index >= start && index <= end);
+    }
+
+    function p3TrialAngles(run, step, dropSec) {
+        return p3TrialIndices(run, step, dropSec).map((index) =>
+            wrapDeg(((index - 25) * 360) / 200)
+        );
+    }
+
+    function p3PreferenceIndex(run, step, dropSec) {
+        const indices = p3TrialIndices(run, step, dropSec);
+        const analysisRanges = p3AnalysisRanges(run);
+        const loggedActivation = p3LoggedLedActivation(run, step);
+        if (!indices.length) {
+            return {
+                phase: p3Phase(step && step.condition),
+                preference: NaN,
+                safeFraction: NaN,
+                reinforcedFraction: NaN,
+                samples: 0,
+                analysisRanges,
+                loggedActivation
+            };
+        }
+        const reinforced = indices.filter((index) =>
+            p3IndexIsReinforced(index, analysisRanges)
+        ).length;
+        const safe = indices.length - reinforced;
+        return {
+            phase: p3Phase(step.condition),
+            preference: (safe - reinforced) / indices.length,
+            safeFraction: safe / indices.length,
+            reinforcedFraction: reinforced / indices.length,
+            samples: indices.length,
+            analysisRanges,
+            loggedActivation
+        };
+    }
+
+    function p3TrialDoseMetrics(run, step) {
+        const indices = p3TrialIndices(run, step, 0);
+        const analysisRanges = p3AnalysisRanges(run);
+        const loggedActivation = p3LoggedLedActivation(run, step);
+        let sectorEntries = 0;
+        let previousReinforced = null;
+        for (const index of indices) {
+            const reinforced = p3IndexIsReinforced(index, analysisRanges);
+            if (previousReinforced === false && reinforced) sectorEntries += 1;
+            previousReinforced = reinforced;
+        }
+        const durationMs = Math.max(0, step.endMs - step.startMs);
+        const ledOnMs = p3LedEpochs(run).reduce(
+            (sum, epoch) =>
+                sum +
+                Math.max(
+                    0,
+                    Math.min(step.endMs, epoch.endMs) - Math.max(step.startMs, epoch.startMs)
+                ),
+            0
+        );
+        return {
+            phase: p3Phase(step.condition),
+            ledOnFraction: durationMs ? ledOnMs / durationMs : NaN,
+            ledOnSec: ledOnMs / 1000,
+            sectorEntries,
+            samples: indices.length,
+            analysisRanges,
+            loggedActivation
+        };
+    }
+
+    function p3DwellBouts(run, step) {
+        const frames = p3TrialFrames(run, step, 0);
+        if (!frames.length) return [];
+        const analysisRanges = p3AnalysisRanges(run);
+        const bouts = [];
+        let startMs = frames[0].ms;
+        let reinforced = p3IndexIsReinforced(
+            p3CueIndex(run, step.condition, frames[0].index),
+            analysisRanges
+        );
+        for (let index = 1; index < frames.length; index += 1) {
+            const nextReinforced = p3IndexIsReinforced(
+                p3CueIndex(run, step.condition, frames[index].index),
+                analysisRanges
+            );
+            if (nextReinforced === reinforced) continue;
+            bouts.push({
+                sector: reinforced ? 'reinforced' : 'safe',
+                startMs,
+                endMs: frames[index].ms,
+                durationSec: Math.max(0, (frames[index].ms - startMs) / 1000)
+            });
+            startMs = frames[index].ms;
+            reinforced = nextReinforced;
+        }
+        const endMs = Math.max(startMs, Math.min(step.endMs, frames[frames.length - 1].ms));
+        bouts.push({
+            sector: reinforced ? 'reinforced' : 'safe',
+            startMs,
+            endMs,
+            durationSec: Math.max(0, (endMs - startMs) / 1000)
+        });
+        return bouts.filter((bout) => bout.durationSec > 0);
+    }
+
+    function p3TrialQualityMetrics(run, step, movementThresholdMmS) {
+        const frames = p3TrialFrames(run, step, 0);
+        const threshold = Number.isFinite(finite(movementThresholdMmS))
+            ? Math.max(0, finite(movementThresholdMmS))
+            : 1;
+        const angles = p3TrialAngles(run, step, 0);
+        const doubledRadians = angles.map((angle) => (angle * Math.PI) / 90);
+        const meanCos = mean(doubledRadians.map(Math.cos));
+        const meanSin = mean(doubledRadians.map(Math.sin));
+        const speeds = frames.map((frame) => frame.speedMmS).filter(Number.isFinite);
+        const turning = frames.map((frame) => frame.turningDegS).filter(Number.isFinite);
+        const skippedFrames = frames.reduce(
+            (sum, frame) => sum + (frame.frameGap > 1 ? frame.frameGap - 1 : 0),
+            0
+        );
+        return {
+            phase: p3Phase(step && step.condition),
+            variant: p3TrialVariant(step && step.condition),
+            cueStabilizationStrength:
+                Number.isFinite(meanCos) && Number.isFinite(meanSin)
+                    ? Math.sqrt(meanCos ** 2 + meanSin ** 2)
+                    : NaN,
+            movementThresholdMmS: threshold,
+            movementFraction: speeds.length
+                ? speeds.filter((speed) => speed > threshold).length / speeds.length
+                : NaN,
+            meanSpeedMmS: mean(speeds),
+            meanAbsTurningDegS: mean(turning.map(Math.abs)),
+            skippedFrames,
+            skippedFrameFraction: frames.length
+                ? skippedFrames / (frames.length + skippedFrames)
+                : NaN,
+            samples: frames.length
+        };
+    }
+
     function choiceAngles(run, step, dropSec) {
         const info = choiceInfo(step.condition);
         if (!info) return [];
@@ -766,6 +1121,21 @@
         averageCurves,
         stepMean,
         choiceInfo,
+        p3Phase,
+        p3TrialVariant,
+        p3UsesCueNormalization,
+        p3CueIndex,
+        p3LoggedLedActivation,
+        p3LoggedLedActivations,
+        p3Reinforcement,
+        p3AnalysisRanges,
+        p3LedEpochs,
+        p3TrialIndices,
+        p3TrialAngles,
+        p3PreferenceIndex,
+        p3TrialDoseMetrics,
+        p3DwellBouts,
+        p3TrialQualityMetrics,
         choiceAngles,
         occupancyHistogram,
         preferenceMetrics,
