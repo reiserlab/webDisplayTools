@@ -4,6 +4,17 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.65 — 2026-07-10 · Crisp edges applied consistently across all frames
+
+- **The crisper-border treatment now applies throughout, not just the main
+  boxes.** Two-tier, centralized in CSS vars: `--border` (every edge/divider,
+  lifted from the old dim grey to a soft-white tint so the whole UI reads
+  crisper in a lit room) and `--edge` (the brighter 1.5px treatment for
+  structural frame boxes). Frames now on `--edge`: Console tool-rail buttons,
+  the SD/log boxes, the run-view metadata card + scope/log dock, the console
+  command group, the editor command cards, and the sequence/block rows — on top
+  of the panels/cards already done. Internal dividers stay a single subtle line.
+
 ## v0.64 — 2026-07-10 · Panel edges readable in a lit room; File-menu lock trim
 
 - **Panels/cards now have a crisper edge.** The box borders (Console tool panels

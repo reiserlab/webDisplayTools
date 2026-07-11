@@ -10,7 +10,10 @@
 </script>
 <style>
   :root{
-    --bg:#0f1419; --surface:#1a1f26; --surface2:#141a20; --border:#2d3640;
+    /* --border lifted from the old dim #2d3640 to a soft-white tint so EVERY
+       edge/divider reads crisper on a dark monitor in a lit room; --edge is the
+       brighter, thicker treatment for structural frame boxes (panels/cards/etc). */
+    --bg:#0f1419; --surface:#1a1f26; --surface2:#141a20; --border:rgba(255,255,255,.18); --edge:rgba(255,255,255,.30);
     --text:#e6edf3; --dim:#8b949e; --accent:#00e676; --hover:#00c853;
     --danger:#ff5252; --warn:#e3a008; --beta:#4aa8ff; --rec:#ff5252;
     --mode:#00e676; --modec:#062a16;
@@ -239,7 +242,7 @@
   @media (max-width:860px){.run-view{grid-template-columns:1fr;grid-template-rows:auto}
     .run-view>.run-main,.run-view>.meta-panel,.run-dock{grid-column:auto;grid-row:auto}}
   .run-main{min-width:0;align-self:stretch;display:flex;flex-direction:column;min-height:0}
-  .card{background:var(--surface);border:1.5px solid rgba(255,255,255,.30);border-radius:10px;padding:10px 14px;margin-bottom:10px}
+  .card{background:var(--surface);border:1.5px solid var(--edge);border-radius:10px;padding:10px 14px;margin-bottom:10px}
   .launch-card{padding:8px 12px}
   .launch-row{display:flex;gap:10px;align-items:stretch}
   .btn-run{flex:1;background:var(--accent);color:#06210f;border:0;border-radius:8px;font-family:var(--head);font-weight:700;font-size:15px;padding:9px;letter-spacing:.3px}
@@ -291,11 +294,11 @@
   .seqlist{flex:1 1 auto;min-height:110px;display:flex;flex-direction:column;overflow:hidden}
   #seqBody{flex:1 1 auto;overflow:auto;min-height:0}
   .seqlist h3{font-family:var(--head);font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 8px}
-  .blockhead{display:flex;align-items:center;gap:12px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;margin-bottom:6px;background:var(--surface2)}
+  .blockhead{display:flex;align-items:center;gap:12px;padding:6px 10px;border:1.5px solid var(--edge);border-radius:7px;margin-bottom:6px;background:var(--surface2)}
   .blockhead .bt{font-family:var(--head);font-size:12px;color:var(--text)}
   .blockhead .meta{color:var(--dim);font-size:11px}
   .blockhead.active{border-color:var(--accent)}
-  .seqrow{position:relative;display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;margin-bottom:5px;background:var(--surface2);transition:border-color .2s,background .2s}
+  .seqrow{position:relative;display:flex;align-items:center;gap:10px;padding:6px 10px;border:1.5px solid var(--edge);border-radius:7px;margin-bottom:5px;background:var(--surface2);transition:border-color .2s,background .2s}
   .seqrow.nested{margin-left:18px}
   .seqrow .idx{color:var(--dim);font-size:11px;width:18px}
   .seqrow .nm{font-size:13px;min-width:150px}
@@ -320,7 +323,7 @@
   /* ===== metadata SIDE PANEL (replaces the modal) ===== */
   .meta-panel{position:sticky;top:12px;align-self:stretch;min-height:0;max-height:100%;overflow-y:auto}
   body.running .meta-panel .mp-run-note{display:block}
-  .mp-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+  .mp-card{background:var(--surface);border:1.5px solid var(--edge);border-radius:10px;padding:10px 12px;margin-bottom:10px}
   .mp-card h4{font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 8px}
   .mp-field{margin-bottom:9px}
   .mp-field label{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:3px}
@@ -344,7 +347,7 @@
   /* Bottom-anchored run log: capped at 40% of viewport height so it never grows
      to squeeze the launch card + sequence above; the sequence takes the flexible
      middle (flex:1) and the logbox scrolls inside this cap. */
-  .run-log-strip{margin-top:8px;display:flex;flex-direction:column;flex:0 1 auto;max-height:40vh;min-height:150px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .run-log-strip{margin-top:8px;display:flex;flex-direction:column;flex:0 1 auto;max-height:40vh;min-height:150px;background:var(--surface);border:1.5px solid var(--edge);border-radius:10px;overflow:hidden}
   body.log-collapsed .run-log-strip{flex:0 0 auto!important;min-height:0!important;height:auto!important}
   /* MR#2b: draggable divider above the run log — drag to resize, snaps on release
      (mirrors the Console log resizer); hidden when the log is collapsed. */
@@ -411,7 +414,7 @@
   .runlog-head .ctr{color:var(--dim)}
   .dock-stop{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:3px 12px;font-size:11px;font-weight:700;opacity:.5;pointer-events:none}
   body.running .dock-stop{background:var(--danger);border-color:var(--danger);color:#2a0000;opacity:1;pointer-events:auto}
-  .logbox{background:#0a0e12;border:1px solid var(--border);border-radius:5px;padding:8px;overflow:auto;font-size:11px;color:#9fe8c0;white-space:pre-wrap;font-family:var(--mono);flex:1;min-height:0}
+  .logbox{background:#0a0e12;border:1.5px solid var(--edge);border-radius:5px;padding:8px;overflow:auto;font-size:11px;color:#9fe8c0;white-space:pre-wrap;font-family:var(--mono);flex:1;min-height:0}
   .logbox .l-err{color:var(--danger)}
   .logbox .l-warn{color:var(--warn)}
   .logbox .l-info{color:var(--dim)}
@@ -453,7 +456,7 @@
   .dbg-lockrow,.ctl-lockrow{border-bottom:1px solid var(--border);margin-bottom:3px;padding-bottom:6px}
   #dbgMenu:not(.dbg-locked) .dbg-lockrow label,#ctlMenu:not(.ctl-locked) .ctl-lockrow label{color:var(--accent)}
   .cmenu-btn.danger{border-color:rgba(255,82,82,.5);color:var(--danger)}
-  .cgroup{flex:0 0 auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:9px 12px;margin-bottom:8px}
+  .cgroup{flex:0 0 auto;border:1.5px solid var(--edge);border-radius:10px;background:var(--surface);padding:9px 12px;margin-bottom:8px}
   .cgroup .gh{font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-bottom:7px;display:flex;align-items:center;gap:8px}
   .cgroup .gh .op{text-transform:none;letter-spacing:0;font-weight:400;font-family:var(--mono);color:var(--dim)}
   .cgroup.inline{display:flex;align-items:center;gap:12px}
@@ -490,7 +493,7 @@
   .console-view .sd-down,.console-view .sd-del{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:4px;padding:1px 7px;font-size:11px;margin-left:4px}
   .console-view .sd-down:hover{border-color:var(--accent);color:var(--accent)}
   .console-view .sd-del:hover{border-color:var(--danger);color:var(--danger)}
-  .console-view .clog{background:#0a0e12;border:1px solid var(--border);border-radius:5px;padding:8px;overflow:auto;font-size:11px;color:#9fe8c0;white-space:pre-wrap;font-family:var(--mono);height:120px}
+  .console-view .clog{background:#0a0e12;border:1.5px solid var(--edge);border-radius:5px;padding:8px;overflow:auto;font-size:11px;color:#9fe8c0;white-space:pre-wrap;font-family:var(--mono);height:120px}
   .console-view .clog .l-tx{color:#7fd0ff}.console-view .clog .l-rx{color:#9fe8c0}.console-view .clog .l-err{color:var(--danger)}.console-view .clog .l-info{color:var(--dim)}
   .console-view fieldset:disabled{opacity:.55}
   /* batch ISP programmer report (inside the panel-firmware group) */
@@ -557,7 +560,8 @@
             --bg: #0f1419;
             --surface: #1a1f26;
             --surface-2: #232a33;
-            --border: #2d3640;
+            --border: rgba(255,255,255,.18);
+            --edge: rgba(255,255,255,.30);
             --text: #e6edf3;
             --text-dim: #8b949e;
             --accent: #00e676;
@@ -1462,7 +1466,7 @@
             margin-bottom: 0.3rem;
         }
         .edit-view .cmd-card {
-            border: 1px solid var(--border);
+            border: 1.5px solid var(--edge);
             border-radius: 3px;
             padding: 0.4rem 0.5rem;
             margin-bottom: 0.3rem;
@@ -1932,7 +1936,7 @@
   .console-main{flex:0 0 auto;display:flex;min-height:96px;max-height:calc(100% - 160px)}
   .console-view .rail{flex:0 0 152px;display:flex;flex-direction:column;gap:6px;border-right:1px solid var(--border);padding:8px;overflow:auto}
   .console-view .rail-h{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);padding:0 3px 2px}
-  .console-view .rail-btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:7px 9px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);font-size:11.5px;text-align:left;font-family:var(--mono);cursor:pointer}
+  .console-view .rail-btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:7px 9px;border:1.5px solid var(--edge);border-radius:7px;background:var(--surface);color:var(--text);font-size:11.5px;text-align:left;font-family:var(--mono);cursor:pointer}
   .console-view .rail-btn:hover{border-color:var(--accent)}
   .console-view .rail-btn.sel{border-color:var(--accent);background:rgba(0,230,118,.08)}
   .console-view .rail-btn .sub{font-size:9px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:126px}
@@ -1940,7 +1944,7 @@
   /* Outer panel box: soft near-white 1.5px edge so panels stay distinct on a
      dark monitor in a lit room (grey var(--border) washed out). Internal
      dividers (panel-h border-bottom) stay subtle so it doesn't get loud. */
-  .console-view .panel{border:1.5px solid rgba(255,255,255,.30);border-radius:10px;background:var(--surface);display:none}
+  .console-view .panel{border:1.5px solid var(--edge);border-radius:10px;background:var(--surface);display:none}
   .console-view .panel.open{display:block}
   .console-view .panel-h{display:flex;align-items:center;gap:8px;padding:5px 11px;border-bottom:1px solid var(--border)}
   .console-view .panel-title{font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--text);cursor:help;border-bottom:1px dotted var(--dim);padding-bottom:1px}
@@ -2871,7 +2875,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.64 | 2026-07-10 19:21 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.65 | 2026-07-10 20:52 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
