@@ -35,6 +35,23 @@
         l90: '#087d9e',
         r90: '#b26b00'
     };
+    const P3_PHASES = [
+        { key: 'baseline', name: 'Baseline', color: '#59636e' },
+        { key: 'training', name: 'Training', color: '#b6388c' },
+        { key: 'probe', name: 'Probe', color: '#168a55' }
+    ];
+    const P3_PATTERN_IMAGES = {
+        36: 'assets/p3_heisenberg_ts.gif',
+        41: 'assets/p3_heisenberg_ts.gif',
+        37: 'assets/p3_heisenberg_high_low.gif',
+        42: 'assets/p3_heisenberg_high_low.gif',
+        38: 'assets/p3_heisenberg_slashes.gif',
+        43: 'assets/p3_heisenberg_slashes.gif',
+        39: 'assets/p3_heisenberg_relational.gif',
+        44: 'assets/p3_heisenberg_relational.gif',
+        40: 'assets/p3_dill_random_checkers.gif',
+        45: 'assets/p3_dill_random_checkers.gif'
+    };
 
     function rgba(hex, alpha) {
         const value = hex.replace('#', '');
@@ -304,11 +321,18 @@
             paper_bgcolor: '#ffffff',
             plot_bgcolor: '#ffffff',
             font: { family: 'Inter, system-ui, sans-serif', color: COLORS.text, size: 11 },
-            margin: { l: 64, r: 26, t: 54, b: 52 },
+            margin: { l: 64, r: 26, t: opts.marginTop || 54, b: 52 },
             height: opts.height || Math.max(360, rows * 190 + 100),
             showlegend: true,
-            legend: { orientation: 'h', x: 0, y: 1.06, xanchor: 'left', yanchor: 'bottom' },
+            legend: {
+                orientation: 'h',
+                x: 0,
+                y: opts.legendY || 1.06,
+                xanchor: 'left',
+                yanchor: 'bottom'
+            },
             annotations: [],
+            images: [],
             shapes: [],
             hovermode: 'closest'
         };
@@ -367,6 +391,10 @@
                         ? { text: opts.xLabel || 'Time from stimulus onset (s)', standoff: 4 }
                         : undefined,
                 tickfont: { size: 10 },
+                type: opts.xType,
+                tickmode: opts.xTickVals ? 'array' : undefined,
+                tickvals: opts.xTickVals,
+                ticktext: opts.xTickText,
                 range: opts.xRange
             };
             layout[yKey] = {
@@ -404,10 +432,30 @@
                 delete nextShape.dataY;
                 layout.shapes.push(nextShape);
             }
+            for (const annotation of cell.annotations || []) {
+                const dataY = !!annotation.dataY;
+                const nextAnnotation = {
+                    ...annotation,
+                    xref: xName,
+                    yref: dataY ? yName : `${yName} domain`
+                };
+                delete nextAnnotation.dataY;
+                layout.annotations.push(nextAnnotation);
+            }
+            for (const item of cell.images || []) {
+                const dataY = !!item.dataY;
+                const nextImage = {
+                    ...item,
+                    xref: xName,
+                    yref: dataY ? yName : `${yName} domain`
+                };
+                delete nextImage.dataY;
+                layout.images.push(nextImage);
+            }
             if (!opts.columnTitlesOnly || row === 0) {
                 layout.annotations.push({
                     x: (x0 + x1) / 2,
-                    y: y1 + 0.008,
+                    y: y1 + (opts.titleOffset || 0.008),
                     xref: 'paper',
                     yref: 'paper',
                     text: `<b>${cell.title}</b>`,
@@ -1421,6 +1469,1126 @@
         };
     }
 
+    function p3PhaseBounds(run, scale) {
+        return run.steps.flatMap((step) => {
+            const phase = P3_PHASES.find(
+                (candidate) => candidate.key === A.p3Phase(step.condition)
+            );
+            return phase
+                ? [{ ...phase, start: step.startMs * scale, end: step.endMs * scale }]
+                : [];
+        });
+    }
+
+    function p3PhaseBandShapes(run, scale) {
+        return p3PhaseBounds(run, scale).map((phase) => ({
+            type: 'rect',
+            x0: phase.start,
+            x1: phase.end,
+            y0: 0,
+            y1: 1,
+            fillcolor: rgba(phase.color, 0.09),
+            line: { width: 0 },
+            layer: 'below'
+        }));
+    }
+
+    function p3LedBandShapes(run) {
+        return A.p3LedEpochs(run).map((epoch) => ({
+            type: 'rect',
+            x0: epoch.startMs / 60000,
+            x1: epoch.endMs / 60000,
+            y0: 0,
+            y1: 1,
+            fillcolor: 'rgba(220, 42, 54, 0.18)',
+            line: { width: 0 },
+            layer: 'below'
+        }));
+    }
+
+    function p3TimelineOrientationShapes(run) {
+        const durationMin = (run.frames[run.frames.length - 1] || {}).timeS / 60 || 0;
+        const reinforced = p3ReinforcedAngleSegments(run);
+        const boundaries = [
+            -180,
+            180,
+            ...reinforced.flatMap(([start, end]) => [start, end])
+        ]
+            .filter(Number.isFinite)
+            .sort((a, b) => a - b)
+            .filter((value, index, values) => index === 0 || value !== values[index - 1]);
+        const shapes = [];
+        for (let index = 0; index < boundaries.length - 1; index += 1) {
+            const start = boundaries[index];
+            const end = boundaries[index + 1];
+            const midpoint = (start + end) / 2;
+            const isReinforced = reinforced.some(
+                ([rangeStart, rangeEnd]) => midpoint >= rangeStart && midpoint <= rangeEnd
+            );
+            shapes.push({
+                type: 'rect',
+                x0: 0,
+                x1: durationMin,
+                y0: start,
+                y1: end,
+                dataY: true,
+                fillcolor: rgba(isReinforced ? COLORS.magenta : COLORS.green, 0.055),
+                line: { width: 0 },
+                layer: 'below'
+            });
+        }
+        boundaries.slice(1, -1).forEach((boundary) =>
+            shapes.push({
+                type: 'line',
+                x0: 0,
+                x1: durationMin,
+                y0: boundary,
+                y1: boundary,
+                dataY: true,
+                line: { color: '#8f99a3', width: 1, dash: 'dot' }
+            })
+        );
+        return shapes;
+    }
+
+    function p3TimelinePage(runs, options) {
+        const metrics = [
+            {
+                key: 'orientation',
+                title: 'Cue-normalized orientation',
+                label: 'Cue-normalized orientation, A = 0 deg',
+                color: COLORS.cw,
+                value: (frame, run) =>
+                    A.wrapDeg(
+                        ((A.p3CueIndex(run, frame.condition, frame.index) - 25) * 360) / 200
+                    )
+            },
+            {
+                key: 'forward',
+                title: 'Forward velocity',
+                label: 'Forward velocity (mm/s)',
+                color: COLORS.green,
+                value: (frame) => frame.forwardMmSSmoothed
+            },
+            {
+                key: 'turning',
+                title: 'Turning velocity',
+                label: 'Turning velocity (deg/s)',
+                color: COLORS.ccw,
+                value: (frame) => frame.turningDegSSmoothed
+            }
+        ];
+        const phaseShapes = p3PhaseBandShapes(runs[0], 1 / 60000);
+        const ledShapes = p3LedBandShapes(runs[0]);
+        const orientationShapes = p3TimelineOrientationShapes(runs[0]);
+        const cells = metrics.map((metric) => {
+            const traces = [];
+            const csvRows = [];
+            runs.forEach((run) => {
+                const stride = Math.max(1, Math.ceil(run.frames.length / 5000));
+                const sampled = run.frames.filter(
+                    (frame, index) =>
+                        index % stride === 0 && Number.isFinite(metric.value(frame, run))
+                );
+                const x = sampled.map((frame) => frame.timeS / 60);
+                const y = sampled.map((frame) => metric.value(frame, run));
+                traces.push({
+                    type: 'scatter',
+                    mode: 'lines',
+                    x,
+                    y,
+                    name: run.id,
+                    showlegend: metric.key === 'orientation',
+                    legendgroup: run.id,
+                    line: {
+                        color: rgba(metric.color, runs.length === 1 ? 0.9 : 0.45),
+                        width: runs.length === 1 ? 1.2 : 0.8
+                    },
+                    text: sourceLabel(run),
+                    hovertemplate: '%{text}<br>%{x:.2f} min<br>%{y:.2f}<extra></extra>'
+                });
+                sampled.forEach((frame, index) =>
+                    csvRows.push({
+                        plot: 'p3-timeline',
+                        run_id: run.id,
+                        metric: metric.key,
+                        time_min: x[index],
+                        value: y[index],
+                        condition: frame.condition || ''
+                    })
+                );
+            });
+            return {
+                title: metric.title,
+                traces,
+                shapes: [
+                    ...(metric.key === 'orientation' ? orientationShapes : []),
+                    ...phaseShapes,
+                    ...ledShapes
+                ],
+                csvRows
+            };
+        });
+        return pageFromCells(
+            'p3-timeline',
+            'p3 Experiment timeline',
+            'Cue-normalized panorama orientation (not FicTrac fly heading), forward velocity, and turning velocity across the experiment. Current phase90 trials are shifted +50 frames so the same cues align across trials; legacy diagnostic runs remain raw. Horizontal bands mark safe and reinforced cue sectors; red vertical bands mark logged LED-on intervals.',
+            cells,
+            3,
+            1,
+            {
+                xLabel: 'Experiment time (min)',
+                rowMetrics: metrics.map((metric) => metric.key),
+                rowLabels: metrics.map((metric) => metric.label),
+                axisRanges: { ...(options.axisRanges || {}), orientation: [-180, 180] },
+                useCourseAxisFloor: options.useCourseAxisFloor !== false,
+                height: 760
+            }
+        );
+    }
+
+    function p3ReinforcedAngleSegments(run) {
+        return A.p3AnalysisRanges(run).flatMap(([startIndex, endIndex]) => {
+            const start = A.wrapDeg(((startIndex - 25) * 360) / 200);
+            const width = ((endIndex - startIndex + 1) * 360) / 200;
+            const end = start + width;
+            if (end <= 180) return [[start, end]];
+            return [
+                [start, 180],
+                [-180, end - 360]
+            ];
+        });
+    }
+
+    function p3OrientationShapes(run) {
+        const shapes = p3ReinforcedAngleSegments(run).map(([start, end]) => ({
+            type: 'rect',
+            x0: start,
+            x1: end,
+            y0: 0,
+            y1: 1,
+            fillcolor: rgba(COLORS.magenta, 0.1),
+            line: { width: 0 },
+            layer: 'below'
+        }));
+        [-180, 0, 180].forEach((angle) =>
+            shapes.push({
+                type: 'line',
+                x0: angle,
+                x1: angle,
+                y0: 0,
+                y1: 1,
+                line: { color: COLORS.text, width: 1 }
+            })
+        );
+        [-90, 90].forEach((angle) =>
+            shapes.push({
+                type: 'line',
+                x0: angle,
+                x1: angle,
+                y0: 0,
+                y1: 1,
+                line: { color: COLORS.green, width: 1, dash: 'dot' }
+            })
+        );
+        shapes.push({
+            type: 'line',
+            x0: -180,
+            x1: 180,
+            y0: 1,
+            y1: 1,
+            dataY: true,
+            line: { color: COLORS.amber, width: 1, dash: 'dash' }
+        });
+        return shapes;
+    }
+
+    function p3PatternId(run) {
+        for (const step of run.steps || []) {
+            if (!A.p3Phase(step.condition)) continue;
+            for (const interval of step.intervals || []) {
+                const patternId = Number(interval.params && interval.params.patternId);
+                if (Number.isFinite(patternId)) return patternId;
+            }
+        }
+        return NaN;
+    }
+
+    function p3StimulusImage(run) {
+        return P3_PATTERN_IMAGES[p3PatternId(run)] || P3_PATTERN_IMAGES[36];
+    }
+
+    function p3StimulusImages(run) {
+        return [
+            {
+                source: p3StimulusImage(run),
+                x: -180,
+                y: 1.025,
+                sizex: 360,
+                sizey: 0.1,
+                xanchor: 'left',
+                yanchor: 'bottom',
+                sizing: 'stretch',
+                opacity: 1,
+                layer: 'above'
+            }
+        ];
+    }
+
+    function p3OrientationCell(runs, phase, options) {
+        const perRun = runs
+            .map((run) => {
+                const angles = run.steps
+                    .filter((step) => A.p3Phase(step.condition) === phase.key)
+                    .flatMap((step) => A.p3TrialAngles(run, step, 0));
+                const histogram = A.occupancyHistogram(angles, 100);
+                return {
+                    run,
+                    curve: { x: histogram.angle, y: histogram.percent },
+                    samples: histogram.samples
+                };
+            })
+            .filter((item) => item.samples > 0);
+        const traces = [];
+        const csvRows = [];
+        if (options.mode === 'group' && options.showIndividuals) {
+            perRun.forEach((item) => {
+                traces.push({
+                    type: 'scatter',
+                    mode: 'lines',
+                    x: item.curve.x,
+                    y: item.curve.y,
+                    name: `${phase.name} ${item.run.id}`,
+                    showlegend: false,
+                    line: { color: rgba(phase.color, 0.28), width: 1 },
+                    text: sourceLabel(item.run),
+                    hovertemplate: '%{text}<br>%{x:.1f} deg<br>%{y:.2f}%<extra></extra>'
+                });
+            });
+        }
+        const summary =
+            options.mode === 'group'
+                ? A.averageCurves(perRun.map((item) => item.curve))
+                : perRun[0] && perRun[0].curve;
+        if (summary) {
+            traces.push({
+                type: 'scatter',
+                mode: 'lines',
+                x: summary.x,
+                y: summary.y,
+                name: phase.name,
+                line: { color: phase.color, width: 2.4 },
+                hovertemplate: `${phase.name}<br>%{x:.1f} deg<br>%{y:.2f}%<extra></extra>`
+            });
+        }
+        perRun.forEach((item) => {
+            item.curve.x.forEach((angle, index) =>
+                csvRows.push({
+                    plot: 'p3-orientation',
+                    phase: phase.key,
+                    level: 'fly',
+                    run_id: item.run.id,
+                    angle_deg: angle,
+                    occupancy_percent: item.curve.y[index],
+                    samples: item.samples
+                })
+            );
+        });
+        return {
+            title: phase.name,
+            traces,
+            shapes: p3OrientationShapes(runs[0]),
+            images: p3StimulusImages(runs[0]),
+            csvRows
+        };
+    }
+
+    function p3OrientationPage(runs, options) {
+        const cells = P3_PHASES.map((phase) => p3OrientationCell(runs, phase, options));
+        const maxY =
+            Math.max(
+                2,
+                ...cells.flatMap((cell) =>
+                    cell.traces.flatMap((trace) =>
+                        Array.isArray(trace.y) ? trace.y.filter(Number.isFinite) : []
+                    )
+                )
+            ) * 1.08;
+        const activations = runs.flatMap(A.p3LoggedLedActivations);
+        const levels = [
+            ...new Set(
+                activations.map((activation) => activation.level).filter(Number.isFinite)
+            )
+        ].sort((a, b) => a - b);
+        const rangeSets = [
+            ...new Set(
+                activations.map(
+                    (activation) =>
+                        `${activation.variant || 'legacy'} ${activation.ranges
+                            .map(([start, end]) => `${start}-${end}`)
+                            .join(', ')}`
+                )
+            )
+        ];
+        const levelText = levels.length ? levels.map((level) => `${level}%`).join(', ') : 'unknown';
+        const rangeText = rangeSets.length ? rangeSets.join('; ') : 'not logged';
+        const legacyNote = runs.some((run) => run.protocolInfo.p3Legacy)
+            ? ' Legacy diagnostic data are shown without phase shifting.'
+            : '';
+        return pageFromCells(
+            'p3-orientation',
+            'p3 Orientation occupancy',
+            `Full 360 degree cue-A-aligned occupancy by phase with the logged stimulus unrolled above each histogram. Cue A is at 0/180 deg, cue B at +/-90 deg, magenta sectors were reinforced during training, and chance is 1% per bin. Logged LED level(s): ${levelText}; raw on-ranges: ${rangeText}.${legacyNote}`,
+            cells,
+            1,
+            3,
+            {
+                xLabel: 'Cue A-aligned panorama angle (deg)',
+                yLabel: 'Occupancy (%)',
+                yRange: [0, maxY],
+                xRange: [-180, 180],
+                height: 500,
+                marginTop: 120,
+                titleOffset: 0.15,
+                legendY: 1.23
+            }
+        );
+    }
+
+    function p3TrialRows(run) {
+        let trial = 0;
+        const phaseTrials = { baseline: 0, training: 0, probe: 0 };
+        const rows = run.steps
+            .filter((step) => A.p3Phase(step.condition))
+            .map((step) => {
+                trial += 1;
+                const metric = A.p3PreferenceIndex(run, step, 0);
+                const dose = A.p3TrialDoseMetrics(run, step);
+                const quality = A.p3TrialQualityMetrics(run, step, 1);
+                phaseTrials[metric.phase] += 1;
+                return {
+                    run,
+                    step,
+                    trial,
+                    phaseTrial: phaseTrials[metric.phase],
+                    variant: A.p3TrialVariant(step.condition),
+                    ...metric,
+                    ledOnFraction: dose.ledOnFraction,
+                    ledOnSec: dose.ledOnSec,
+                    sectorEntries: dose.sectorEntries,
+                    loggedActivation: dose.loggedActivation,
+                    ...quality
+                };
+            });
+        const blocks = [];
+        for (const row of rows) {
+            const last = blocks[blocks.length - 1];
+            if (last && last.phase === row.phase) last.rows.push(row);
+            else blocks.push({ phase: row.phase, rows: [row] });
+        }
+        const probeBlockCount = blocks.filter((block) => block.phase === 'probe').length;
+        const phaseBlockCounts = { baseline: 0, training: 0, probe: 0 };
+        for (const block of blocks) {
+            phaseBlockCounts[block.phase] += 1;
+            const blockNumber = phaseBlockCounts[block.phase];
+            const stage =
+                block.phase === 'baseline'
+                    ? 'baseline'
+                    : block.phase === 'training'
+                      ? `training_${blockNumber}`
+                      : probeBlockCount === 1 || blockNumber === probeBlockCount
+                        ? 'final_probe'
+                        : `probe_${blockNumber}`;
+            block.rows.forEach((row, index) => {
+                row.stage = stage;
+                row.stageTrial = index + 1;
+            });
+        }
+        return rows;
+    }
+
+    function p3StageRank(stage) {
+        if (stage === 'baseline') return 0;
+        if (stage === 'final_probe') return 1000;
+        const match = stage.match(/^(training|probe)_(\d+)$/);
+        if (!match) return 999;
+        return Number(match[2]) * 2 - (match[1] === 'training' ? 1 : 0);
+    }
+
+    function p3AlignedTrialRows(runs) {
+        const perRun = runs.map((run) => ({ run, rows: p3TrialRows(run) }));
+        const stages = [
+            ...new Set(perRun.flatMap((item) => item.rows.map((row) => row.stage)))
+        ].sort((a, b) => p3StageRank(a) - p3StageRank(b));
+        const offsets = new Map();
+        let offset = 0;
+        for (const stage of stages) {
+            offsets.set(stage, offset);
+            offset += Math.max(
+                ...perRun.map(
+                    (item) => item.rows.filter((row) => row.stage === stage).length
+                )
+            );
+        }
+        return perRun.map((item) => ({
+            run: item.run,
+            rows: item.rows.map((row) => ({
+                ...row,
+                sourceTrial: row.trial,
+                trial: offsets.get(row.stage) + row.stageTrial
+            }))
+        }));
+    }
+
+    function p3LoggedLedSummary(runs) {
+        const activations = runs.flatMap(A.p3LoggedLedActivations);
+        if (!activations.length) return 'No conditional LED configuration was logged.';
+        const details = [
+            ...new Set(
+                activations.map((activation) => {
+                    const ranges = activation.ranges
+                        .map(([start, end]) => `${start}-${end}`)
+                        .join(', ');
+                    const level = Number.isFinite(activation.level)
+                        ? `${activation.level}%`
+                        : 'unknown level';
+                    return `${activation.variant || 'legacy'}: ${level} at [${ranges}]`;
+                })
+            )
+        ];
+        return `Logged conditional LED: ${details.join('; ')}.`;
+    }
+
+    function p3PreferencePage(runs, options) {
+        const perRun = p3AlignedTrialRows(runs);
+        const traces = [];
+        const csvRows = [];
+        if (options.mode === 'group' && options.showIndividuals) {
+            perRun.forEach((item) =>
+                traces.push({
+                    type: 'scatter',
+                    mode: 'lines',
+                    x: item.rows.map((row) => row.trial),
+                    y: item.rows.map((row) => row.preference),
+                    name: item.run.id,
+                    showlegend: false,
+                    line: { color: 'rgba(60, 70, 80, 0.22)', width: 1 },
+                    text: sourceLabel(item.run),
+                    hovertemplate: '%{text}<br>trial %{x}<br>PI=%{y:.3f}<extra></extra>'
+                })
+            );
+        }
+        perRun.forEach((item) =>
+            item.rows.forEach((row) =>
+                csvRows.push({
+                    plot: 'p3-preference',
+                    level: 'fly_trial',
+                    run_id: item.run.id,
+                    trial: row.trial,
+                    source_trial: row.sourceTrial,
+                    phase: row.phase,
+                    phase_trial: row.phaseTrial,
+                    stage: row.stage,
+                    stage_trial: row.stageTrial,
+                    trial_variant: row.variant,
+                    condition: row.step.condition,
+                    cue_normalized: A.p3UsesCueNormalization(item.run),
+                    preference_index: row.preference,
+                    safe_fraction: row.safeFraction,
+                    reinforced_fraction: row.reinforcedFraction,
+                    samples: row.samples
+                })
+            )
+        );
+        const trialNumbers = [
+            ...new Set(perRun.flatMap((item) => item.rows.map((row) => row.trial)))
+        ].sort((a, b) => a - b);
+        const means = trialNumbers.map((trial) =>
+            A.mean(
+                perRun.map((item) => {
+                    const row = item.rows.find((candidate) => candidate.trial === trial);
+                    return row ? row.preference : NaN;
+                })
+            )
+        );
+        const errors = trialNumbers.map((trial) =>
+            A.sem(
+                perRun.map((item) => {
+                    const row = item.rows.find((candidate) => candidate.trial === trial);
+                    return row ? row.preference : NaN;
+                })
+            )
+        );
+        traces.push({
+            type: 'scatter',
+            mode: 'lines',
+            x: trialNumbers,
+            y: means,
+            name: 'Trial sequence',
+            showlegend: false,
+            line: { color: '#7c8791', width: 1.4 },
+            hoverinfo: 'skip'
+        });
+        const referenceRows = perRun[0] ? perRun[0].rows : [];
+        P3_PHASES.forEach((phase) => {
+            const indices = trialNumbers
+                .map((trial, index) => ({
+                    trial,
+                    index,
+                    row: referenceRows.find((candidate) => candidate.trial === trial)
+                }))
+                .filter((item) => item.row && item.row.phase === phase.key);
+            traces.push({
+                type: 'scatter',
+                mode: 'markers',
+                x: indices.map((item) => item.trial),
+                y: indices.map((item) => means[item.index]),
+                name: phase.name,
+                marker: { color: phase.color, size: 9 },
+                error_y:
+                    options.mode === 'group'
+                        ? {
+                              type: 'data',
+                              array: indices.map((item) => errors[item.index]),
+                              visible: true,
+                              color: phase.color
+                          }
+                        : undefined,
+                hovertemplate: `${phase.name}<br>trial %{x}<br>PI=%{y:.3f}<extra></extra>`
+            });
+        });
+        const shapes = p3TrialPhaseShapes(referenceRows).map((shape) => ({
+            ...shape,
+            xref: 'x',
+            yref: 'y domain'
+        }));
+        shapes.push({
+            type: 'line',
+            x0: 0.5,
+            x1: Math.max(1.5, ...trialNumbers) + 0.5,
+            y0: 0,
+            y1: 0,
+            xref: 'x',
+            yref: 'y',
+            line: { color: '#8f99a3', width: 1, dash: 'dash' }
+        });
+        trialNumbers.forEach((trial, index) =>
+            csvRows.push({
+                plot: 'p3-preference',
+                level: options.mode === 'group' ? 'group_mean' : 'fly_mean',
+                run_id: options.mode === 'group' ? 'all' : runs[0].id,
+                trial,
+                phase:
+                    (referenceRows.find((row) => row.trial === trial) || {}).phase || '',
+                preference_index: means[index],
+                sem: errors[index],
+                n: perRun.length
+            })
+        );
+        return {
+            id: 'p3-preference',
+            title: 'p3 Preference index by trial',
+            description:
+                'Classic sector preference index from unsmoothed frame samples: (time safe - time reinforced) / total. Current phase90 trials are shifted +50 frames before scoring; legacy diagnostic runs remain raw. +1 is entirely safe-sector occupancy; -1 is entirely reinforced-sector occupancy.',
+            figure: {
+                data: traces,
+                layout: {
+                    paper_bgcolor: '#ffffff',
+                    plot_bgcolor: '#ffffff',
+                    font: { family: 'Inter, system-ui, sans-serif', color: COLORS.text },
+                    margin: { l: 82, r: 30, t: 35, b: 62 },
+                    height: 470,
+                    hovermode: 'closest',
+                    legend: { orientation: 'h', x: 0.18, y: 1.08 },
+                    images: [
+                        {
+                            source: p3StimulusImage(runs[0]),
+                            xref: 'paper',
+                            yref: 'paper',
+                            x: 0.01,
+                            y: 0.5,
+                            sizex: 0.14,
+                            sizey: 0.12,
+                            xanchor: 'left',
+                            yanchor: 'middle',
+                            sizing: 'contain',
+                            layer: 'above'
+                        }
+                    ],
+                    shapes,
+                    xaxis: {
+                        title: '20 s trial',
+                        domain: [0.18, 1],
+                        range: [0.5, Math.max(1.5, ...trialNumbers) + 0.5],
+                        dtick: 1,
+                        gridcolor: COLORS.grid
+                    },
+                    yaxis: {
+                        title: 'Preference index',
+                        range: [-1.05, 1.05],
+                        gridcolor: COLORS.grid,
+                        zeroline: false
+                    }
+                }
+            },
+            csvRows
+        };
+    }
+
+    function p3TrialPhaseShapes(rows) {
+        const blocks = [];
+        for (const row of rows) {
+            const last = blocks[blocks.length - 1];
+            if (last && last.phase === row.phase && row.trial === last.end + 1) {
+                last.end = row.trial;
+            } else {
+                blocks.push({ phase: row.phase, start: row.trial, end: row.trial });
+            }
+        }
+        return blocks.flatMap((block) => {
+            const phase = P3_PHASES.find((candidate) => candidate.key === block.phase);
+            return phase
+                ? [
+                      {
+                          type: 'rect',
+                          x0: block.start - 0.5,
+                          x1: block.end + 0.5,
+                          y0: 0,
+                          y1: 1,
+                          fillcolor: rgba(phase.color, 0.07),
+                          line: { width: 0 },
+                          layer: 'below'
+                      }
+                  ]
+                : [];
+        });
+    }
+
+    function p3TrialMetricCell(runs, options, metric) {
+        const perRun = p3AlignedTrialRows(runs);
+        const referenceRows = perRun[0] ? perRun[0].rows : [];
+        const trialNumbers = [
+            ...new Set(perRun.flatMap((item) => item.rows.map((row) => row.trial)))
+        ].sort((a, b) => a - b);
+        const value = metric.value;
+        const means = trialNumbers.map((trial) =>
+            A.mean(
+                perRun.map((item) => {
+                    const row = item.rows.find((candidate) => candidate.trial === trial);
+                    return row ? value(row) : NaN;
+                })
+            )
+        );
+        const errors = trialNumbers.map((trial) =>
+            A.sem(
+                perRun.map((item) => {
+                    const row = item.rows.find((candidate) => candidate.trial === trial);
+                    return row ? value(row) : NaN;
+                })
+            )
+        );
+        const traces = [];
+        if (options.mode === 'group' && options.showIndividuals) {
+            perRun.forEach((item) =>
+                traces.push({
+                    type: 'scatter',
+                    mode: 'lines',
+                    x: item.rows.map((row) => row.trial),
+                    y: item.rows.map(value),
+                    name: item.run.id,
+                    showlegend: false,
+                    line: { color: 'rgba(60, 70, 80, 0.2)', width: 1 },
+                    text: sourceLabel(item.run),
+                    hovertemplate: '%{text}<br>trial %{x}<br>%{y:.2f}<extra></extra>'
+                })
+            );
+        }
+        traces.push({
+            type: 'scatter',
+            mode: 'lines',
+            x: trialNumbers,
+            y: means,
+            name: 'Trial sequence',
+            showlegend: false,
+            line: { color: '#7c8791', width: 1.4 },
+            hoverinfo: 'skip'
+        });
+        P3_PHASES.forEach((phase) => {
+            const points = trialNumbers
+                .map((trial, index) => ({
+                    trial,
+                    index,
+                    row: referenceRows.find((candidate) => candidate.trial === trial)
+                }))
+                .filter((item) => item.row && item.row.phase === phase.key);
+            traces.push({
+                type: 'scatter',
+                mode: 'markers',
+                x: points.map((point) => point.trial),
+                y: points.map((point) => means[point.index]),
+                name: phase.name,
+                marker: { color: phase.color, size: 8 },
+                error_y:
+                    options.mode === 'group'
+                        ? {
+                              type: 'data',
+                              array: points.map((point) => errors[point.index]),
+                              visible: true,
+                              color: phase.color
+                          }
+                        : undefined,
+                hovertemplate: `${phase.name}<br>trial %{x}<br>%{y:.2f}<extra></extra>`
+            });
+        });
+        const csvRows = [];
+        perRun.forEach((item) =>
+            item.rows.forEach((row) =>
+                csvRows.push({
+                    plot: metric.plotId,
+                    metric: metric.key,
+                    level: 'fly_trial',
+                    run_id: item.run.id,
+                    trial: row.trial,
+                    source_trial: row.sourceTrial,
+                    phase: row.phase,
+                    stage: row.stage,
+                    stage_trial: row.stageTrial,
+                    trial_variant: row.variant,
+                    condition: row.step.condition,
+                    value: value(row),
+                    led_on_sec: row.ledOnSec,
+                    led_level_percent: row.loggedActivation.level,
+                    led_hysteresis: row.loggedActivation.hysteresis,
+                    led_on_ranges_raw: JSON.stringify(row.loggedActivation.ranges),
+                    skipped_frame_fraction: row.skippedFrameFraction,
+                    samples: row.samples
+                })
+            )
+        );
+        trialNumbers.forEach((trial, index) =>
+            csvRows.push({
+                plot: metric.plotId,
+                metric: metric.key,
+                level: options.mode === 'group' ? 'group_mean' : 'fly_mean',
+                run_id: options.mode === 'group' ? 'all' : runs[0].id,
+                trial,
+                phase:
+                    (referenceRows.find((row) => row.trial === trial) || {}).phase || '',
+                value: means[index],
+                sem: errors[index],
+                n: perRun.length
+            })
+        );
+        return {
+            title: metric.title,
+            traces,
+            shapes: p3TrialPhaseShapes(referenceRows),
+            csvRows
+        };
+    }
+
+    function p3DoseEntriesPage(runs, options) {
+        const metrics = [
+            {
+                key: 'ledOnPercent',
+                plotId: 'p3-dose-entries',
+                title: 'LED-on fraction',
+                label: 'LED on (% of trial)',
+                value: (row) => row.ledOnFraction * 100
+            },
+            {
+                key: 'sectorEntries',
+                plotId: 'p3-dose-entries',
+                title: 'Reinforced-sector entries',
+                label: 'Safe to reinforced entries',
+                value: (row) => row.sectorEntries
+            }
+        ];
+        const cells = metrics.map((metric) => p3TrialMetricCell(runs, options, metric));
+        return pageFromCells(
+            'p3-dose-entries',
+            'p3 LED dose and sector entries',
+            `Actual logged LED-on fraction and cue-normalized safe-to-reinforced sector crossings for each 20 s trial. Raw LED level and on-ranges are retained in the CSV. ${p3LoggedLedSummary(runs)}`,
+            cells,
+            2,
+            1,
+            {
+                xLabel: '20 s trial',
+                rowMetrics: metrics.map((metric) => metric.key),
+                rowLabels: metrics.map((metric) => metric.label),
+                axisRanges: { ledOnPercent: [0, 100] },
+                useCourseAxisFloor: false,
+                height: 620
+            }
+        );
+    }
+
+    function p3QualityPage(runs, options) {
+        const metrics = [
+            {
+                key: 'cueStabilization',
+                plotId: 'p3-quality-qc',
+                title: 'Cue stabilization strength',
+                label: 'Doubled-angle vector strength',
+                value: (row) => row.cueStabilizationStrength
+            },
+            {
+                key: 'movementPercent',
+                plotId: 'p3-quality-qc',
+                title: 'Movement fraction',
+                label: 'Frames moving >1 mm/s (%)',
+                value: (row) => row.movementFraction * 100
+            },
+            {
+                key: 'meanSpeed',
+                plotId: 'p3-quality-qc',
+                title: 'Mean walking speed',
+                label: 'Speed (mm/s)',
+                value: (row) => row.meanSpeedMmS
+            },
+            {
+                key: 'meanAbsTurning',
+                plotId: 'p3-quality-qc',
+                title: 'Mean absolute turning',
+                label: '|Turning| (deg/s)',
+                value: (row) => row.meanAbsTurningDegS
+            },
+            {
+                key: 'skippedFrames',
+                plotId: 'p3-quality-qc',
+                title: 'Skipped-frame QC',
+                label: 'Skipped FicTrac frames',
+                value: (row) => row.skippedFrames
+            }
+        ];
+        const cells = metrics.map((metric) => p3TrialMetricCell(runs, options, metric));
+        return pageFromCells(
+            'p3-quality-qc',
+            'p3 Behavior and timing QC',
+            'Per-trial cue stabilization, movement, and acquisition quality. Stabilization is doubled-angle vector strength (0 uniform, 1 tightly aligned to either repeated cue axis); movement is speed >1 mm/s; speed and absolute turning use unsmoothed frame derivatives; skipped frames come from FicTrac frame-counter gaps.',
+            cells,
+            metrics.length,
+            1,
+            {
+                xLabel: '20 s trial',
+                rowMetrics: metrics.map((metric) => metric.key),
+                rowLabels: metrics.map((metric) => metric.label),
+                axisRanges: {
+                    cueStabilization: [0, 1],
+                    movementPercent: [0, 100]
+                },
+                useCourseAxisFloor: false,
+                height: 1050
+            }
+        );
+    }
+
+    function p3DwellCurve(run, phase, sector) {
+        const dwellTimes = run.steps
+            .filter((step) => A.p3Phase(step.condition) === phase)
+            .flatMap((step) => A.p3DwellBouts(run, step))
+            .filter((bout) => bout.sector === sector)
+            .map((bout) => bout.durationSec);
+        const x = Array.from(
+            { length: 201 },
+            (_, index) => 10 ** (-2 + (index / 200) * (Math.log10(20) + 2))
+        );
+        return {
+            x,
+            y: x.map((threshold) =>
+                dwellTimes.length
+                    ? (dwellTimes.filter((duration) => duration >= threshold).length /
+                          dwellTimes.length) *
+                      100
+                    : NaN
+            ),
+            dwellTimes
+        };
+    }
+
+    function p3DwellCell(runs, phase, options) {
+        const traces = [];
+        const csvRows = [];
+        const sectors = [
+            { key: 'safe', name: 'Safe', color: COLORS.green },
+            { key: 'reinforced', name: 'Reinforced', color: COLORS.magenta }
+        ];
+        sectors.forEach((sector) => {
+            const perRun = runs.map((run) => ({
+                run,
+                curve: p3DwellCurve(run, phase.key, sector.key)
+            }));
+            if (options.mode === 'group' && options.showIndividuals) {
+                perRun.forEach((item) =>
+                    traces.push({
+                        type: 'scatter',
+                        mode: 'lines',
+                        x: item.curve.x,
+                        y: item.curve.y,
+                        name: `${sector.name} ${item.run.id}`,
+                        showlegend: false,
+                        line: { color: rgba(sector.color, 0.25), width: 1 },
+                        text: sourceLabel(item.run),
+                        hovertemplate:
+                            '%{text}<br>dwell >= %{x:.1f} s<br>%{y:.1f}%<extra></extra>'
+                    })
+                );
+            }
+            const summary =
+                options.mode === 'group'
+                    ? A.averageCurves(perRun.map((item) => item.curve))
+                    : perRun[0] && perRun[0].curve;
+            if (summary) {
+                traces.push({
+                    type: 'scatter',
+                    mode: 'lines',
+                    x: summary.x,
+                    y: summary.y,
+                    name: sector.name,
+                    line: { color: sector.color, width: 2.5 },
+                    hovertemplate: `${sector.name}<br>dwell >= %{x:.1f} s<br>%{y:.1f}%<extra></extra>`
+                });
+            }
+            perRun.forEach((item) =>
+                item.curve.dwellTimes.forEach((duration, index) =>
+                    csvRows.push({
+                        plot: 'p3-dwell',
+                        phase: phase.key,
+                        sector: sector.key,
+                        level: 'bout',
+                        run_id: item.run.id,
+                        bout: index + 1,
+                        duration_sec: duration
+                    })
+                )
+            );
+        });
+        return { title: phase.name, traces, shapes: [], csvRows };
+    }
+
+    function p3DwellPage(runs, options) {
+        const cells = P3_PHASES.map((phase) => p3DwellCell(runs, phase, options));
+        return pageFromCells(
+            'p3-dwell',
+            'p3 Safe versus reinforced dwell times',
+            'Dwell-time survival curves from unsmoothed sector occupancy. Each curve shows the percentage of contiguous bouts lasting at least the indicated duration.',
+            cells,
+            1,
+            3,
+            {
+                xLabel: 'Dwell duration (s)',
+                yLabel: 'Bouts at least this long (%)',
+                xType: 'log',
+                xRange: [-2, Math.log10(20)],
+                xTickVals: [0.01, 0.1, 1, 10, 20],
+                xTickText: ['0.01', '0.1', '1', '10', '20'],
+                yRange: [0, 100],
+                height: 450
+            }
+        );
+    }
+
+    function p3CorrectedProbeRows(run) {
+        const rows = p3TrialRows(run);
+        const baseline = {};
+        const variants = [...new Set(rows.map((row) => row.variant).filter(Boolean))];
+        variants.forEach((variant) => {
+            baseline[variant] = A.mean(
+                rows
+                    .filter(
+                        (row) =>
+                            row.phase === 'baseline' &&
+                            row.variant === variant
+                    )
+                    .map((row) => row.preference)
+            );
+        });
+        const probeTrials = {};
+        return rows
+            .filter((row) => row.phase === 'probe')
+            .map((row) => {
+                probeTrials[row.variant] = (probeTrials[row.variant] || 0) + 1;
+                return {
+                    ...row,
+                    probeTrial: probeTrials[row.variant],
+                    baselinePreference: baseline[row.variant],
+                    correctedPreference: row.preference - baseline[row.variant]
+                };
+            });
+    }
+
+    function p3CorrectedProbePage(runs, options) {
+        const current = runs.some((run) => !run.protocolInfo.p3Legacy);
+        const series = current
+            ? [
+                  { name: 'Phase 0', key: 'phase0', color: COLORS.cw, symbol: 'circle' },
+                  { name: 'Phase 90', key: 'phase90', color: COLORS.green, symbol: 'square' }
+              ]
+            : [
+                  { name: 'Legacy A', key: 'a', color: COLORS.cw, symbol: 'circle' },
+                  { name: 'Legacy B', key: 'b', color: COLORS.green, symbol: 'square' }
+              ];
+        const result = summarySeries(
+            runs,
+            (run, item) =>
+                p3CorrectedProbeRows(run)
+                    .filter((row) => row.variant === item.key)
+                    .map((row) => ({ x: row.probeTrial, y: row.correctedPreference })),
+            series,
+            options
+        );
+        const details = runs.flatMap((run) =>
+            p3CorrectedProbeRows(run).map((row) => ({
+                plot: 'p3-corrected-probe',
+                level: 'fly_trial',
+                run_id: run.id,
+                probe_trial: row.probeTrial,
+                trial_variant: row.variant,
+                probe_preference: row.preference,
+                matched_baseline_preference: row.baselinePreference,
+                corrected_preference: row.correctedPreference
+            }))
+        );
+        const maxProbeTrial = Math.max(
+            1,
+            ...runs.flatMap((run) =>
+                p3CorrectedProbeRows(run).map((row) => row.probeTrial)
+            )
+        );
+        return pageFromCells(
+            'p3-corrected-probe',
+            'p3 Baseline-corrected probe preference',
+            'Probe PI minus the same fly\'s mean baseline PI for the matching phase0/phase90 trial variant. Legacy diagnostic runs are matched by their original A/B labels without phase normalization.',
+            [
+                {
+                    title: 'Probe after matched baseline correction',
+                    traces: result.traces,
+                    shapes: [
+                        {
+                            type: 'line',
+                            x0: 0.5,
+                            x1: maxProbeTrial + 0.5,
+                            y0: 0,
+                            y1: 0,
+                            dataY: true,
+                            line: { color: '#8f99a3', width: 1, dash: 'dash' }
+                        }
+                    ],
+                    csvRows: [...details, ...result.csvRows]
+                }
+            ],
+            1,
+            1,
+            {
+                xLabel: 'Probe trial',
+                yLabel: 'Probe PI - matched baseline PI',
+                xRange: [0.5, maxProbeTrial + 0.5],
+                useCourseAxisFloor: false,
+                height: 470
+            }
+        );
+    }
+
     function genericPages(runs, options) {
         const conditions = [
             ...new Set(runs.flatMap((run) => run.steps.map((step) => step.condition)))
@@ -1476,6 +2644,16 @@
                 p1FoldedTuningPage(runs, opts),
                 p1MatchedTuningPage(runs, opts),
                 p1TuningPage(runs, opts)
+            ];
+        if (families[0].startsWith('p3-'))
+            return [
+                p3TimelinePage(runs, opts),
+                p3OrientationPage(runs, opts),
+                p3PreferencePage(runs, opts),
+                p3CorrectedProbePage(runs, opts),
+                p3DoseEntriesPage(runs, opts),
+                p3QualityPage(runs, opts),
+                p3DwellPage(runs, opts)
             ];
         if (families[0] === 'p2-tonic' || families[0] === 'p2-burst') {
             return [

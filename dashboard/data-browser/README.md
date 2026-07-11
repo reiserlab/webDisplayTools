@@ -67,6 +67,33 @@ displayed trace in the selected dataset.
 - The first 2 s of each choice trial are excluded from occupancy/preference
   scoring
 
+### p3 closed-loop conditioning
+
+- Five current pattern families are grouped independently: T figures,
+  high/low bars, left/right slashes, relational slashes, and Dill random
+  checkers. Short/full protocols are timing variants within each pattern family.
+- The pre-release `_a`/`_b` runs remain available as a separate legacy
+  diagnostic family and are not mixed with current data.
+- Full-experiment cue orientation, forward velocity, and turning-velocity time
+  series with baseline, training, and probe phase bands, cue-sector bands, and
+  logged LED-on intervals
+- Current `phase90` indices are normalized as `(index + 50) % 200`; `phase0`
+  remains unchanged. Preference, occupancy, dwell, and sector-entry metrics all
+  use this cue-aligned coordinate.
+- Cue-A-aligned orientation occupancy for baseline, training, and probe, with
+  an aligned unrolled stimulus cartoon, logged reinforced sectors, and the 1%
+  chance line
+- Classic trial preference index `(time safe - time reinforced) / total`, using
+  unsmoothed frame samples and separate phase markers
+- Phase-matched baseline-corrected probe PI
+- Logged LED-on fraction and safe-to-reinforced sector-entry count by trial
+- Per-trial cue stabilization strength, movement fraction, speed, absolute
+  turning, and skipped-frame QC
+- Safe-versus-reinforced dwell-time survival curves
+- Raw LED ranges, level, and hysteresis are read from each logged training
+  `ledActivation` configuration and retained in CSV exports
+- Stimulus images are selected from the logged p3 pattern ID
+
 Unknown protocols receive generic condition-aligned turning, forward, and
 relative-heading pages instead of failing import.
 
@@ -149,7 +176,8 @@ node dashboard/data-browser/tests/test-analysis.js
 node dashboard/data-browser/tests/test-github-client.js
 ```
 
-The analysis test parses live p0, p1, and p2 fixtures, validates stimulus
-alignment and p2 occupancy normalization, builds every protocol page, and checks
-two-fly aggregation. The GitHub test verifies that the token appears only in the
+The analysis test parses live p0, p1, p2, current P3, and legacy P3 fixtures;
+validates stimulus alignment, P2 occupancy, P3 phase normalization, logged LED
+settings, and skipped-frame QC; builds every protocol page; and checks two-fly
+aggregation. The GitHub test verifies that the token appears only in the
 Authorization header.
