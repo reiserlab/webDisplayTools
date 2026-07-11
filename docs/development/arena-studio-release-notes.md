@@ -4,7 +4,7 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
-## v0.65 — 2026-07-10 · Crisp edges applied consistently across all frames
+## v0.66 — 2026-07-10 · Crisp edges applied consistently across all frames
 
 - **The crisper-border treatment now applies throughout, not just the main
   boxes.** Two-tier, centralized in CSS vars: `--border` (every edge/divider,
@@ -14,6 +14,17 @@ history lives here. Newest first. (Per-session engineering detail stays in
   the SD/log boxes, the run-view metadata card + scope/log dock, the console
   command group, the editor command cards, and the sequence/block rows — on top
   of the panels/cards already done. Internal dividers stay a single subtle line.
+
+## v0.65 — 2026-07-10 · Linked course-repo patterns preview without a protocol
+
+- **Fixed: shared course patterns now preview without first opening their
+  associated protocol.** Linking a course repo now wires its root `patterns/`
+  directory into the Console thumbnail system during page load, repo changes,
+  and sign-in. The listing is eager but `.pat` bytes remain lazy: only the
+  selected pattern is downloaded for rendering. A loaded protocol's colocated
+  `_patterns/` files still take precedence over same-named shared files.
+- Public course repos can supply these read-only previews while signed out;
+  private repos continue to use the configured GitHub token.
 
 ## v0.64 — 2026-07-10 · Panel edges readable in a lit room; File-menu lock trim
 

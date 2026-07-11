@@ -2875,7 +2875,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.65 | 2026-07-10 20:52 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.66 | 2026-07-10 20:52 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -6309,6 +6309,7 @@ const PP = window.PatPreview;
 const BUILTIN_BASE = './patterns/g6_2x10/';
 Studio.patternSet = null;
 const webPreviewBySdName = new Map(); // filename → () => Promise<ArrayBuffer>
+const repoSharedPreviewKeys = new Set(); // sources currently wired from course-repo patterns/
 function patByteSource(sd) {
     const f = webPreviewBySdName.get(sd);
     return f ? f() : Promise.reject(new Error('no local copy of ' + sd));
@@ -7604,6 +7605,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             const cfg = {};
             if (Number.isFinite(Number(pcfg.fictrac_port))) cfg.fictrac_port = Number(pcfg.fictrac_port);
             if (Number.isFinite(Number(pcfg.gain))) cfg.gain = Number(pcfg.gain);
+            if (Number.isFinite(Number(pcfg.offset))) cfg.offset = Number(pcfg.offset);
             if (Object.keys(cfg).length) bridge.setConfig(cfg);
         }
         // Frame-logging level is a runtime/session setting (File ▾ → Run logging),
@@ -8033,6 +8035,7 @@ $('ghSignInBtn').addEventListener('click', async (e) => {
         // Now that we're authed, load the course metadata (roster/genotypes/
         // links) immediately — no arena connection required.
         if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
+        refreshRepoSharedPatternPreviews().then(() => rewireRepoPatternPreviews());
     } catch (err) {
         Studio.showBanner('GitHub sign-in failed: ' + err.message);
     }
@@ -8128,6 +8131,7 @@ function wireCourseSettings() {
         updateSaveLabel();
         // Repo changed → re-pull that repo's metadata (roster/genotypes/links).
         if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
+        refreshRepoSharedPatternPreviews().then(() => rewireRepoPatternPreviews());
     });
     direct.addEventListener('change', () => {
         localStorage.setItem('studio_gh_direct', direct.checked ? '1' : '0');
@@ -8441,6 +8445,49 @@ async function rewireRepoPatternPreviews() {
     registerRepoPatternPreviews({ owner: rp.owner, name: rp.name, full: rp.full }, rp.path, token);
 }
 
+// A linked course repo's root patterns/ folder is the shared pattern library.
+// Wire it independently of protocol loading so an SD-card pattern can preview
+// as soon as its filename matches the repo library. Bytes stay lazy: this
+// request lists names only; the selected .pat is downloaded on first preview.
+// Public repos work signed out, while a token transparently enables private
+// repos. Protocol-colocated sources are registered afterwards and may
+// intentionally override a shared file with the same name.
+async function registerRepoSharedPatternPreviews(repo, token) {
+    if (!repo) return;
+    try {
+        const res = await GH.run(fetch, GH.reqGetContents(repo.owner, repo.name, 'patterns', null, token));
+        if (!res.ok || !Array.isArray(res.data)) return;
+        for (const key of repoSharedPreviewKeys) webPreviewBySdName.delete(key);
+        repoSharedPreviewKeys.clear();
+        let n = 0;
+        res.data
+            .filter((f) => f && f.type === 'file' && /\.pat$/i.test(f.name))
+            .forEach((f) => {
+                n++;
+                repoSharedPreviewKeys.add(f.name);
+                webPreviewBySdName.set(f.name, async () => {
+                    const r = await GH.runBytes(fetch,
+                        GH.reqGetContentsRaw(repo.owner, repo.name, f.path, null, token));
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.bytes.buffer;
+                });
+            });
+        if (n) {
+            patPreviewCache = {};
+            const sel = $('cPatName');
+            if (sel && sel.value) renderPatThumb(sel.value);
+            if (Studio.editor && Studio.editor.repaintLibrary) Studio.editor.repaintLibrary();
+            Studio.rawLog('course repo: ' + n + ' shared pattern preview(s) wired from patterns/', 'info');
+        }
+    } catch (_) { /* missing/private/unavailable shared library — previews stay best-effort */ }
+}
+
+async function refreshRepoSharedPatternPreviews() {
+    const cs = Studio.courseSettings && Studio.courseSettings();
+    if (!cs || !cs.repo) return;
+    await registerRepoSharedPatternPreviews(cs.repo, ghToken());
+}
+
 // Repo-hosted .pat previews: register byte sources for the protocol's
 // colocated _patterns/ dir so thumbnails render for patterns that live only
 // in the course repo (not on this rig's SD / built-in manifest). RAW media
@@ -8723,6 +8770,7 @@ async function initFromUrl() {
         await populateSessionRig();
         wirePatPicker();
         loadBuiltinPatternSet();
+        await refreshRepoSharedPatternPreviews(); // shared patterns/ previews do not depend on a protocol
         rewireRepoPatternPreviews(); // restore last-opened course protocol's colocated thumbs
         let allowedKeys = [];
         let protoIndex = [];

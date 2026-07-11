@@ -105,11 +105,15 @@
     }
 
     function headers(token) {
-        return {
-            Authorization: 'Bearer ' + token,
+        const h = {
             Accept: 'application/vnd.github+json',
             'X-GitHub-Api-Version': API_VERSION
         };
+        // Public course repos can be browsed without a token. Omit the header
+        // entirely: `Bearer null` is an invalid credential, not an anonymous
+        // GitHub request. Write paths still require authentication normally.
+        if (token) h.Authorization = 'Bearer ' + token;
+        return h;
     }
 
     function enc(seg) {
