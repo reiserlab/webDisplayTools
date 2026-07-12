@@ -303,6 +303,10 @@
             '<input class="alt-replay-slider" type="range" min="0" max="0" step="10" value="0" aria-label="Replay time">' +
             '<span class="alt-replay-clock">00:00.00 / 00:00.00</span>' +
             '<select class="alt-replay-speed" aria-label="Replay speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>' +
+            '<span class="alt-replay-sound-controls" role="group" aria-label="Replay sound">' +
+            '<button type="button" class="alt-replay-sound" aria-pressed="false" title="Sonify replayed FicTrac behavior: turning controls pitch and movement controls volume">♪ Sound</button>' +
+            '<button type="button" class="alt-replay-sound-config" aria-label="Replay sound settings" title="Configure pitch, volume, waveform, scale, and response ranges">▾</button>' +
+            '</span>' +
             '<button type="button" class="alt-replay-open-viewer">3D view</button>' +
             '<button type="button" class="alt-replay-stop">■ Stop</button>';
         runView.insertBefore(bar, runView.firstChild);
@@ -311,6 +315,8 @@
         replay.ui.slider = bar.querySelector('.alt-replay-slider');
         replay.ui.clock = bar.querySelector('.alt-replay-clock');
         replay.ui.speed = bar.querySelector('.alt-replay-speed');
+        replay.ui.sound = bar.querySelector('.alt-replay-sound');
+        replay.ui.soundConfig = bar.querySelector('.alt-replay-sound-config');
         replay.ui.openViewer = bar.querySelector('.alt-replay-open-viewer');
         replay.ui.stop = bar.querySelector('.alt-replay-stop');
         replay.ui.speed.addEventListener('change', () => {
@@ -318,6 +324,32 @@
             replay.ui.speedLoader.value = String(replay.speed);
             replay.lastWall = performance.now();
         });
+        const syncSound = () => {
+            const on = Boolean(Scope.getSoundEnabled && Scope.getSoundEnabled());
+            replay.ui.sound.setAttribute('aria-pressed', String(on));
+            replay.ui.sound.title = on
+                ? 'Replay sonification is on; click to mute'
+                : 'Sonify replayed FicTrac behavior: turning controls pitch and movement controls volume';
+        };
+        replay.ui.sound.addEventListener('click', () => {
+            if (!Scope.setSoundEnabled) return;
+            Scope.setSoundEnabled(!(Scope.getSoundEnabled && Scope.getSoundEnabled()));
+            syncSound();
+        });
+        replay.ui.soundConfig.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (document.querySelector('.scope-sound-menu.open')) {
+                if (Scope.closeSoundSettings) Scope.closeSoundSettings();
+            } else if (Scope.openSoundSettings) {
+                Scope.openSoundSettings(replay.ui.soundConfig);
+            }
+        });
+        document.addEventListener('scope-sound-change', syncSound);
+        if (!Scope.setSoundEnabled) {
+            replay.ui.sound.disabled = true;
+            replay.ui.soundConfig.disabled = true;
+        }
+        syncSound();
         replay.ui.slider.addEventListener('input', () => {
             const target = replay.startMs + Number(replay.ui.slider.value || 0);
             if (replay.seekRaf) cancelAnimationFrame(replay.seekRaf);
@@ -1181,7 +1213,7 @@
     function setReplayFrozen(on) {
         const targets = document.querySelectorAll(
             '.topbar, .run-main, .meta-panel, .run-dock, .edit-view, .console-view, ' +
-                '.alt-scope-settings, .scope-sound-menu, .picker-overlay, .rlup-overlay'
+                '.alt-scope-settings, .picker-overlay, .rlup-overlay'
         );
         if (on) {
             replay.frozen.clear();
@@ -1259,6 +1291,11 @@
             // control can slip into the parse window after the initial check.
             Studio.session.setOutputInhibited('Arena Studio replay');
             Studio.replayActive = true;
+            // Replay audio is always opt-in from the pinned transport. Besides
+            // avoiding surprise audio, the explicit click satisfies Web Audio's
+            // user-gesture requirement in every supported browser.
+            if (Scope.closeSoundSettings) Scope.closeSoundSettings();
+            if (Scope.setSoundEnabled) Scope.setSoundEnabled(false);
             const token = ++replay.loadToken;
             setReplayFrozen(true);
             document.body.classList.add('alt-replay-active');
@@ -1346,6 +1383,8 @@
         setReplayFrozen(false);
         if (replay.ui.transport) replay.ui.transport.hidden = true;
         if (replay.ui.slider) replay.ui.slider.disabled = false;
+        if (Scope.closeSoundSettings) Scope.closeSoundSettings();
+        if (Scope.setSoundEnabled) Scope.setSoundEnabled(false);
         if (Scope.setReplayMode) Scope.setReplayMode(false);
         document
             .querySelectorAll('.seqrow.active')
@@ -1364,6 +1403,8 @@
             if (replay.raf) cancelAnimationFrame(replay.raf);
             replay.displayMode = 'off';
             replay.ledOn = false;
+            if (Scope.closeSoundSettings) Scope.closeSoundSettings();
+            if (Scope.setSoundEnabled) Scope.setSoundEnabled(false);
             sendViewerState();
             closeViewer();
             setReplayFrozen(false);

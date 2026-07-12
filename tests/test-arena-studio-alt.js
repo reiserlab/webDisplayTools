@@ -148,6 +148,52 @@ check(
 );
 check('replay always clears the interlock on stop', alt.includes('setOutputInhibited(null)'));
 check(
+    'replay transport exposes sonification and sound settings controls',
+    alt.includes('class="alt-replay-sound"') && alt.includes('class="alt-replay-sound-config"')
+);
+check(
+    'replay Scope keeps sound enabled across seeks',
+    !studio
+        .slice(
+            studio.indexOf('function setReplayMode(on)'),
+            studio.indexOf('function setReplayClock')
+        )
+        .includes('setSound(false)')
+);
+check(
+    'Scope exposes sound controls to the replay transport',
+    studio.includes('setSoundEnabled: setSound') &&
+        studio.includes('getSoundEnabled') &&
+        studio.includes('openSoundSettings: openSoundMenu')
+);
+check(
+    'replay sound settings remain interactive while hardware controls are inert',
+    !alt
+        .slice(
+            alt.indexOf('function setReplayFrozen(on)'),
+            alt.indexOf('function updateReplayTransport')
+        )
+        .includes('.scope-sound-menu')
+);
+check(
+    'replay sound is opt-in and Stop mutes it immediately',
+    alt
+        .slice(alt.indexOf('async function startReplay()'), alt.indexOf('function stopReplay()'))
+        .includes('Scope.setSoundEnabled(false)') &&
+        alt
+            .slice(
+                alt.indexOf('function stopReplay()'),
+                alt.indexOf('function installUnloadSafety()')
+            )
+            .includes('Scope.setSoundEnabled(false)') &&
+        alt
+            .slice(
+                alt.indexOf('function stopReplay()'),
+                alt.indexOf('function installUnloadSafety()')
+            )
+            .includes('Scope.closeSoundSettings()')
+);
+check(
     'armed FicTrac frame application blocks replay entry',
     alt.includes('bridge && bridge.apply')
 );

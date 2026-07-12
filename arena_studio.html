@@ -4064,12 +4064,18 @@
         }
         function setSound(on) {
             const btn = document.getElementById('scopeSound');
-            if (on && !ensureAudio()) { snd.on = false; if (btn) btn.classList.remove('on'); return; }
-            snd.on = on;
-            if (btn) btn.classList.toggle('on', on);
-            if (on && actx.state === 'suspended') actx.resume();
-            if (!on && audioGain && actx) audioGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+            if (on && !ensureAudio()) snd.on = false;
+            else snd.on = !!on;
+            if (btn) {
+                btn.classList.toggle('on', snd.on);
+                btn.setAttribute('aria-pressed', String(snd.on));
+            }
+            if (snd.on && actx.state === 'suspended') actx.resume();
+            if (!snd.on && audioGain && actx) audioGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+            document.dispatchEvent(new CustomEvent('scope-sound-change', { detail: { on: snd.on } }));
+            return snd.on;
         }
+        function getSoundEnabled() { return !!snd.on; }
         // Current value of a mapped channel; 'speed' = |(turning, forward)| magnitude.
         function channelVal(key) {
             if (key === 'speed') { const t = lastVals.turning_deg_s, f = lastVals.forward_mm_s; return Math.hypot(isFinite(t) ? t : 0, isFinite(f) ? f : 0); }
@@ -4169,9 +4175,9 @@
             sndMenu = m;
             return m;
         }
-        function openSoundMenu() {
+        function openSoundMenu(anchor) {
             const m = buildSoundMenu();
-            const btn = document.getElementById('scopeSoundCfg');
+            const btn = anchor || document.getElementById('scopeSoundCfg');
             if (!btn) return;
             m.classList.add('open');
             const r = btn.getBoundingClientRect(), mw = m.offsetWidth;
@@ -4242,7 +4248,6 @@
         function setReplayMode(on) {
             replayMode = !!on;
             replayClockMs = 0;
-            if (replayMode) setSound(false);
             reset();
         }
         function setReplayClock(ms) {
@@ -4609,7 +4614,9 @@
             if (audioGain && actx) audioGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
         }
         return { init, start, stop, reset, pushSample, onRunStatus, applyRigBallDiameter,
-            setReplayMode, setReplayClock, setAnnotationMode, getAnnotationMode };
+            setReplayMode, setReplayClock, setAnnotationMode, getAnnotationMode,
+            setSoundEnabled: setSound, getSoundEnabled, openSoundSettings: openSoundMenu,
+            closeSoundSettings: closeSoundMenu };
     })();
     window.Scope = Scope;
     Scope.init();
