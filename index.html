@@ -57,10 +57,10 @@
             margin-top: 0.75rem;
         }
 
-        /* ---- the two primary tools: big side-by-side cards ---- */
+        /* ---- the primary tools: large side-by-side cards ---- */
         .primary-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 1.5rem;
             margin-bottom: 2.5rem;
         }
@@ -144,6 +144,18 @@
 
         .tool-card.big p {
             font-size: 0.95rem;
+        }
+
+        .tool-card.alt-studio {
+            border-color: #6d613d;
+            background: linear-gradient(145deg, #171c1d, #171b20);
+        }
+
+        .tool-card.alt-studio::before { background: #ffc857; }
+        .tool-card.alt-studio h2 { color: #ffc857; }
+        .tool-card.alt-studio:hover {
+            border-color: #ffc857;
+            box-shadow: 0 8px 24px rgba(255, 200, 87, 0.12);
         }
 
         /* ---- grouped secondary tools ---- */
@@ -324,7 +336,7 @@
             <p class="subtitle">Web-based tools for LED panel arena design and pattern creation</p>
         </header>
 
-        <!-- The two primary tools -->
+        <!-- Primary tools -->
         <div class="primary-grid">
             <a href="pattern_editor.html" class="tool-card big">
                 <div class="big-head">
@@ -387,6 +399,27 @@
                 </div>
                 <p>Run, edit, and bench-test G6 experiments in one tool over a single connection. Open a protocol, run the whole sequence with a recorded log, edit it in the three-zone designer, and drive the display directly from the Console.</p>
                 <span class="status beta">Beta</span>
+            </a>
+
+            <a href="arena_studio_alt.html" class="tool-card big alt-studio">
+                <div class="big-head">
+                    <!-- Alt icon: compact bench instrument with scope + status lamp -->
+                    <svg class="tool-icon" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <rect x="5" y="8" width="54" height="48" rx="4" fill="#11181b" stroke="#7d7867" stroke-width="2"/>
+                        <rect x="10" y="14" width="38" height="25" rx="1" fill="#091013" stroke="#526068"/>
+                        <path d="M12 31 C17 31 17 21 22 21 S27 35 32 35 S37 24 42 24 S44 28 47 28" fill="none" stroke="#8bff9a" stroke-width="2"/>
+                        <circle cx="53" cy="18" r="3" fill="#ffc857"/>
+                        <rect x="10" y="45" width="17" height="5" rx="1" fill="#8bff9a"/>
+                        <rect x="31" y="45" width="10" height="5" rx="1" fill="#343f43"/>
+                        <rect x="45" y="45" width="9" height="5" rx="1" fill="#343f43"/>
+                    </svg>
+                    <div>
+                        <h2>Arena Studio Alt</h2>
+                        <span class="tagline">The same instrument, calmer controls</span>
+                    </div>
+                </div>
+                <p>A clean, retro bench-instrument redesign with identical live Run, Edit, and Console wiring, plus light/dark themes, logged next-trial runtime controls, and synchronized YAML + JSONL experiment replay.</p>
+                <span class="status in-dev">Alternative preview</span>
             </a>
         </div>
 

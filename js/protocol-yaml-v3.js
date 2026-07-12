@@ -43,6 +43,7 @@ const KNOWN_TOP_LEVEL_KEYS = [
     'experiment_info',
     'rig',
     'variables',
+    'runtime_controls',
     'plugins',
     'experiment',
     'conditions'
@@ -201,6 +202,10 @@ function parseV3Protocol(yamlText) {
         experiment_info: extractExperimentInfo(data.experiment_info),
         rig_path: String(data.rig),
         variables: extractVariables(doc),
+        // Runtime controls are declarations only.  The parser exposes a plain,
+        // detached copy for the runner/UI; apply state lives in
+        // js/runtime-controls.js and never writes back into this YAML document.
+        runtime_controls: extractRuntimeControls(data.runtime_controls),
         plugins: Array.isArray(data.plugins) ? data.plugins.map(extractPlugin) : [],
         conditions: data.conditions.map(extractCondition),
         sequence: data.experiment.map(extractSequenceEntry),
@@ -248,6 +253,17 @@ function extractExperimentInfo(info) {
     }
     out._unknownKeys = extractUnknownKeys(info, KNOWN_EXPERIMENT_INFO_KEYS);
     return out;
+}
+
+/**
+ * Extract the optional `runtime_controls:` declaration without interpreting its
+ * schema. Validation belongs to js/runtime-controls.js so malformed declarations
+ * can be reported as a complete, UI-friendly list instead of failing YAML import.
+ */
+function extractRuntimeControls(raw) {
+    if (raw === undefined) return {};
+    if (raw === null || typeof raw !== 'object') return raw;
+    return JSON.parse(JSON.stringify(raw));
 }
 
 /**

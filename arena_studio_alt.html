@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Arena Studio Alt</title>
+<meta name="robots" content="noindex" />
+<style>
+  :root{color-scheme:dark light}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1013;color:#dce7e5;
+       font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .boot{display:flex;align-items:center;gap:10px;letter-spacing:.08em;text-transform:uppercase}
+  .lamp{width:9px;height:9px;background:#8bff9a;box-shadow:0 0 12px #8bff9a}
+</style>
+</head>
+<body>
+  <div class="boot"><span class="lamp"></span><span>Loading Arena Studio Alt…</span></div>
+  <script>
+    (function () {
+      var q = location.search || '';
+      var target = 'arena_studio.html' + q + '#alt';
+      location.replace(target);
+    })();
+  </script>
+</body>
+</html>
