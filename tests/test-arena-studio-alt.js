@@ -139,7 +139,7 @@ directButtons.forEach((id) =>
 );
 
 console.log('=== added safety and replay seams ===');
-check('replay parser loaded', studio.includes('src="js/runlog-replay.js"'));
+check('replay parser loaded', /src="js\/runlog-replay\.js(?:\?[^\"]+)?"/.test(studio));
 check('runtime controls loaded', studio.includes('src="js/runtime-controls.js"'));
 check('viewer protocol loaded', studio.includes('src="js/arena-replay-viewer-protocol.js"'));
 check(

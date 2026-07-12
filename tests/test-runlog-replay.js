@@ -406,6 +406,20 @@ const torn = R.parseRunLog(
 check('torn final JSONL line is ignored without losing prior events', torn.events.length, 1);
 check('event before torn line retains explicit replay time', torn.events[0].ms, 10);
 
+// Full course recordings routinely exceed the browser's function-argument
+// limit. This must remain a constant-stack bounds scan rather than
+// Math.min.apply/Math.max.apply over every sample timestamp.
+const largeRowCount = 150000;
+const largeLog = Array.from({ length: largeRowCount }, (_, i) =>
+    JSON.stringify([i, i, i, i, 0, 0, 0])
+).join('\n');
+const largeParsed = R.parseRunLog(largeLog);
+check(
+    'large JSONL parses without overflowing the call stack',
+    [largeParsed.samples.length, largeParsed.startMs, largeParsed.endMs],
+    [largeRowCount, 0, largeRowCount - 1]
+);
+
 // ── buildTimeline: merged + ordered (status before sample at equal ms) ────────
 console.log('=== buildTimeline ===');
 const tl = R.buildTimeline(p);

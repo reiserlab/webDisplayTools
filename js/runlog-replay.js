@@ -369,12 +369,25 @@
             }
         }
 
-        const replayTimes = [];
-        for (const s of samples) if (typeof s.ms === 'number') replayTimes.push(s.ms);
-        for (const e of events) if (typeof e.ms === 'number') replayTimes.push(e.ms);
-        for (const f of arenaFrames) if (typeof f.ms === 'number') replayTimes.push(f.ms);
-        const startMs = replayTimes.length ? Math.min.apply(null, replayTimes) : 0;
-        const endMs = replayTimes.length ? Math.max.apply(null, replayTimes) : 0;
+        // Do not spread/apply the timestamps into Math.min/Math.max. A normal
+        // full course run can contain >250,000 frame rows, which exceeds the
+        // browser's function-argument limit and throws "Maximum call stack size
+        // exceeded". Scan once with constant stack and without allocating a
+        // second full-size timestamp array.
+        let startMs = Infinity;
+        let endMs = -Infinity;
+        const includeReplayTime = (value) => {
+            if (!Number.isFinite(value)) return;
+            if (value < startMs) startMs = value;
+            if (value > endMs) endMs = value;
+        };
+        for (const s of samples) includeReplayTime(s.ms);
+        for (const e of events) includeReplayTime(e.ms);
+        for (const f of arenaFrames) includeReplayTime(f.ms);
+        if (startMs === Infinity) {
+            startMs = 0;
+            endMs = 0;
+        }
         const protocolSha256 = _protocolSha(metadata);
         const format = canonical ? 'runlog' : sawBehaviorV1 ? frameLevel || 'behavior_v1' : 'full';
         return {
