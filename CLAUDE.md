@@ -1,5 +1,18 @@
 # Claude Code Guidelines for webDisplayTools
 
+## Project Skills
+
+Claude discovers project-skill wrappers under `.claude/skills/`. The maintained, cross-model
+skill bodies live under `.agents/skills/` and are also used directly by Codex:
+
+- `g6-orientation` — repository map and G6 system conventions.
+- `protocol-yaml` — v3 protocol authoring and validation.
+- `g6-pattern-maker` — reproducible G6 pattern generation and comparison.
+
+Follow the wrapper into the canonical skill before working. Do not duplicate substantive skill
+instructions in `CLAUDE.md` or inside the wrappers. See
+`docs/development/project-skills.md` for the cross-model organization and validation contract.
+
 ## Scope of This File
 
 **CLAUDE.md** is for **how to work with the code** — architecture, patterns, gotchas, testing procedures, and coding conventions. It should NOT contain roadmap items, feature wishlists, or project planning.

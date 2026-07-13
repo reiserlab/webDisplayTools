@@ -1,0 +1,4 @@
+interface:
+  display_name: "G6 Pattern Maker"
+  short_description: "Design and validate reproducible G6 arena patterns"
+  default_prompt: "Use $g6-pattern-maker to create and validate a reproducible G6 arena pattern from my scientific stimulus description."
