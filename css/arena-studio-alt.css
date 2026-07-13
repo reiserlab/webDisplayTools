@@ -126,6 +126,7 @@ html.arena-alt .topbar {
   display:flex;
   flex-wrap:wrap;
   align-items:center;
+  justify-content:flex-end;
   gap:5px;
   min-height:48px;
   padding:7px 10px;
@@ -141,7 +142,15 @@ html.arena-alt .alt-top-context {
   display:contents;
 }
 
-html.arena-alt .alt-context-spacer { display:none; }
+html.arena-alt .alt-top-navigation,
+html.arena-alt .alt-top-actions {
+  display:contents;
+}
+
+html.arena-alt .alt-context-spacer {
+  flex:1 1 0;
+  min-width:12px;
+}
 
 html.arena-alt .brand {
   display:inline-flex;
@@ -152,14 +161,6 @@ html.arena-alt .brand {
   letter-spacing:.12em;
   text-transform:uppercase;
   text-shadow:0 0 10px color-mix(in srgb,var(--alt-brand) 42%,transparent);
-}
-
-html.arena-alt .alt-brand-mark {
-  color:var(--amber);
-  border-left:1px solid var(--border);
-  padding-left:9px;
-  font-size:9px;
-  letter-spacing:.18em;
 }
 
 html.arena-alt .alt-top-primary .seg {
@@ -261,6 +262,78 @@ html.arena-alt .alt-context-left .doc-name {
   max-width:min(22vw,220px);
   overflow:hidden;
   text-overflow:ellipsis;
+}
+
+@media (max-width:1600px) {
+  html.arena-alt .alt-context-left .doc-name { max-width:110px; }
+  html.arena-alt body.editmode .alt-top-primary .seg {
+    flex:0 1 198px;
+    min-width:174px;
+    margin-left:2px;
+  }
+  html.arena-alt body.editmode .alt-top-primary .seg button {
+    flex:1 1 0;
+    min-width:0;
+    padding-left:5px;
+    padding-right:5px;
+  }
+  html.arena-alt body.editmode .alt-edit-tools [data-alt-short] { font-size:0!important; }
+  html.arena-alt body.editmode .alt-edit-tools [data-alt-short]::after {
+    content:attr(data-alt-short);
+    font:600 11px var(--head);
+    letter-spacing:.04em;
+  }
+  html.arena-alt body.editmode .alt-edit-tools .edit-tab,
+  html.arena-alt body.editmode .alt-edit-tools .header-btn {
+    padding-left:7px;
+    padding-right:7px;
+  }
+  html.arena-alt body.editmode .alt-top-primary .safemode-ind[data-alt-short] {
+    font-size:0!important;
+  }
+  html.arena-alt body.editmode .alt-top-primary .safemode-ind[data-alt-short]::after {
+    content:attr(data-alt-short);
+    font:600 12px var(--head);
+  }
+}
+
+/* A loaded editor has the extra Designer/YAML/undo/settings toolset. At a
+   normal laptop width, keep the meaningful navigation and action labels whole
+   and collapse only the already-tooltipped filename readout to its document
+   glyph. This is enough to keep the complete ribbon on one row at 1280px. */
+@media (max-width:1400px) {
+  html.arena-alt body.editmode .topbar { gap:4px; }
+  html.arena-alt body.editmode .alt-context-left .doc-name {
+    width:29px;
+    max-width:29px;
+    text-overflow:clip;
+  }
+  html.arena-alt body.editmode .alt-top-primary .seg { flex-basis:190px; }
+  html.arena-alt body.editmode .alt-top-primary .connect {
+    inline-size:90px;
+    min-inline-size:90px;
+  }
+}
+
+/* At the screenshot-width Run layout, the filename is likewise the only
+   expendable horizontal label: its glyph and tooltip preserve the context
+   while Connect, Settings, and Help remain on the first ribbon row. */
+@media (max-width:1200px) {
+  html.arena-alt .alt-context-left .doc-name {
+    width:29px;
+    max-width:29px;
+    text-overflow:clip;
+  }
+  html.arena-alt body:not(.editmode) .topbar { gap:4px; }
+  html.arena-alt body:not(.editmode) .alt-top-primary .seg {
+    flex:0 1 245px;
+    min-width:230px;
+    margin-left:4px;
+  }
+  html.arena-alt body:not(.editmode) .alt-top-primary .connect {
+    inline-size:90px;
+    min-inline-size:90px;
+  }
 }
 
 /* The original, fully wired editor header joins the same wrapping ribbon. */
@@ -1160,17 +1233,21 @@ html.arena-alt footer {
 
 html.arena-alt .alt-footer-mark { color:var(--amber); letter-spacing:.1em; }
 
-/* Compact labels before wrapping: common laptop and desktop widths should still
-   get the useful one-row instrument ribbon, while every full label remains in
-   title / aria text and returns on wider displays. */
-@media (max-width:1600px) {
+/* Compact labels only once the window is genuinely narrow. Comfortable desktop
+   widths keep the full labels and spend their free space between the left
+   navigation identity and the right operational cluster. */
+@media (max-width:1065px) {
   html.arena-alt .topbar {
     gap:5px;
     padding-left:8px;
     padding-right:8px;
   }
-  html.arena-alt .alt-brand-mark { display:none; }
   html.arena-alt .alt-top-primary .seg {
+    flex:0 1 198px;
+    min-width:174px;
+    margin-left:2px;
+  }
+  html.arena-alt body:not(.editmode) .alt-top-primary .seg {
     flex:0 1 198px;
     min-width:174px;
     margin-left:2px;
@@ -1217,7 +1294,7 @@ html.arena-alt .alt-footer-mark { color:var(--amber); letter-spacing:.1em; }
   html.arena-alt .alt-edit-tools .edit-tab,
   html.arena-alt .alt-edit-tools .header-btn { padding-left:5px; padding-right:5px; }
   html.arena-alt #fileMenuBtn,
-  html.arena-alt .alt-context-right .ribbon-btn { padding-left:7px; padding-right:7px; }
+  html.arena-alt .alt-top-primary .ribbon-btn { padding-left:7px; padding-right:7px; }
 }
 
 @media (max-width:820px) {

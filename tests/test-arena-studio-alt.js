@@ -204,6 +204,23 @@ check(
         altTopbarBody.includes('context.appendChild(editTools)')
 );
 check(
+    'Alt keeps identity navigation left and operational controls right',
+    altTopbarBody.indexOf('append(navigation, brand)') <
+        altTopbarBody.indexOf("append(navigation, $('pdLink'))") &&
+        altTopbarBody.indexOf("append(navigation, $('pdLink'))") <
+            altTopbarBody.indexOf('append(navigation, otherToolsLink)') &&
+        altTopbarBody.includes('actions.append(context, primary)') &&
+        altTopbarBody.includes('top.append(navigation, pSpacer, actions)') &&
+        altTopbarBody.includes("otherToolsLink.textContent = 'Tools'")
+);
+check(
+    'safety controls stay in the replay-frozen operational group',
+    altTopbarBody.indexOf("append(primary, document.querySelector('.safe-label'))") <
+        altTopbarBody.indexOf(".querySelectorAll('.topbar > .chip") &&
+        altTopbarBody.indexOf("append(primary, document.querySelector('.adv-label'))") <
+            altTopbarBody.indexOf(".querySelectorAll('.topbar > .chip")
+);
+check(
     'Edit header retains every visible editor control',
     ['edTabDesigner', 'edTabYaml', 'dirtyIndicator', 'undoBtn', 'redoBtn', 'settingsToggle'].every(
         (id) => studio.includes('id="' + id + '"')
@@ -564,7 +581,7 @@ check(
 );
 check(
     'Alt footer exposes the current Alt build stamp without changing Classic',
-    alt.includes("const ALT_BUILD_STAMP = '2026-07-13 18:23 ET';") &&
+    alt.includes("const ALT_BUILD_STAMP = '2026-07-13 18:34 ET';") &&
         alt.includes("stampNode.nodeValue = version + ' | ' + ALT_BUILD_STAMP + ' · ';") &&
         studio.includes('Arena Studio v0.66 | 2026-07-10 20:52 ET')
 );
@@ -598,7 +615,49 @@ check(
 );
 check(
     'narrow shell compacts labels without disabling natural wrapping',
-    !css.includes('flex-wrap:nowrap;') && css.includes('.topbar [data-alt-short]::after')
+    !css.includes('flex-wrap:nowrap;') &&
+        css.includes('@media (max-width:1065px)') &&
+        css.includes('.topbar [data-alt-short]::after') &&
+        css.includes('body:not(.editmode) .alt-top-primary .seg') &&
+        css.includes('min-width:174px')
+);
+check(
+    'right operation cluster consumes free space without compressing navigation',
+    css.includes('html.arena-alt .alt-top-navigation,') &&
+        css.includes('html.arena-alt .alt-top-actions {') &&
+        css.includes('display:contents;') &&
+        css.includes('html.arena-alt .alt-context-spacer {') &&
+        css.includes('flex:1 1 0;') &&
+        css.includes('min-width:12px;') &&
+        css.includes('justify-content:flex-end;')
+);
+check(
+    'desktop density preserves full navigation labels',
+    css.includes('@media (max-width:1600px)') &&
+        css.includes('body.editmode .alt-edit-tools [data-alt-short]') &&
+        !css
+            .slice(
+                css.indexOf('@media (max-width:1600px)'),
+                css.indexOf('@media (max-width:1065px)')
+            )
+            .includes('.topbar [data-alt-short]') &&
+        !altTopbarBody.includes("[$('pdLink'), 'Patterns ↗']") &&
+        !altTopbarBody.includes("[$('otherToolsLink'), 'Tools']")
+);
+check(
+    'loaded Edit gives the filename icon priority over a needless second ribbon',
+    css.includes('@media (max-width:1400px)') &&
+        css.includes('body.editmode .alt-context-left .doc-name') &&
+        css.includes('max-width:29px') &&
+        css.includes('body.editmode .alt-top-primary .seg { flex-basis:190px; }') &&
+        css.includes('inline-size:90px')
+);
+check(
+    'screenshot-width Run keeps actions on row one by compacting only the filename',
+    css.includes('@media (max-width:1200px)') &&
+        css.includes('html.arena-alt .alt-context-left .doc-name') &&
+        css.includes('body:not(.editmode) .alt-top-primary .seg') &&
+        css.includes('min-width:230px')
 );
 check('Scope dock is bounded', css.includes('height:252px'));
 check('index exposes Arena Studio Alt', index.includes('href="arena_studio_alt.html"'));

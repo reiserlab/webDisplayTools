@@ -22,7 +22,7 @@
     const DOC_URL =
         'https://github.com/reiserlab/webDisplayTools/blob/main/docs/development/flow-control-counter-proposal.md';
     const LED_OFF_MV = (window.ArenaRunnerG6 && window.ArenaRunnerG6.LED_OFF_MV) || 5000;
-    const ALT_BUILD_STAMP = '2026-07-13 18:23 ET';
+    const ALT_BUILD_STAMP = '2026-07-13 18:34 ET';
     // `replay=1` is an Alt-only launch convenience. Capture it before the
     // production URL canonicalizer intentionally removes unknown parameters.
     // The repo/path still pass through the shared URL-state validators.
@@ -520,11 +520,11 @@
 
         const primary = el('div', 'alt-top-primary');
         const context = el('div', 'alt-top-context');
-        const brand = document.querySelector('.brand');
-        const mark = el('span', 'alt-brand-mark', 'ALT');
+        const navigation = el('div', 'alt-top-navigation');
+        const actions = el('div', 'alt-top-actions');
         const pSpacer = el('span', 'alt-context-spacer');
+        const brand = document.querySelector('.brand');
         const contextLeft = el('div', 'alt-context-left');
-        const contextRight = el('div', 'alt-context-right');
         const editTools = document.querySelector('#editView > .app-header');
         if (editTools) {
             editTools.id = 'altEditTools';
@@ -763,10 +763,10 @@
             [$('advLockChip'), '🔓'],
             [$('undoBtn'), '↶'],
             [$('redoBtn'), '↷'],
-            [$('dirtyIndicator'), '●'],
-            [$('pdLink'), 'Patterns ↗'],
-            [$('otherToolsLink'), 'Tools']
+            [$('dirtyIndicator'), '●']
         ];
+        const otherToolsLink = $('otherToolsLink');
+        if (otherToolsLink) otherToolsLink.textContent = 'Tools';
         shortLabels.forEach(([node, label]) => {
             if (node) node.dataset.altShort = label;
         });
@@ -860,30 +860,32 @@
         const append = (host, node) => {
             if (node) host.appendChild(node);
         };
-        append(primary, brand);
-        append(primary, mark);
-        append(primary, $('modeSeg'));
+        append(navigation, brand);
+        append(navigation, $('pdLink'));
+        append(navigation, otherToolsLink);
+
+        // Move safety controls before collecting the remaining top-level chips;
+        // once a node enters the detached context group, document.querySelector
+        // can no longer recover it for the operational (replay-frozen) group.
         append(primary, document.querySelector('.safe-label'));
         append(primary, document.querySelector('.adv-label'));
-        primary.appendChild(pSpacer);
-        append(primary, $('runInline'));
-        append(primary, document.querySelector('.status'));
-        append(primary, $('connectBtn'));
-        primary.appendChild(settings);
-        append(primary, $('helpBtn'));
 
-        append(contextLeft, $('fileMenu'));
+        append(contextLeft, document.querySelector('.status'));
         append(contextLeft, $('docName'));
         document
             .querySelectorAll('.topbar > .chip, .topbar > .plug-hover, .topbar > .arena')
             .forEach((node) => contextLeft.appendChild(node));
+        append(contextLeft, $('runInline'));
         append(contextLeft, $('openProtoBtn'));
-        append(contextRight, $('pdLink'));
-        append(contextRight, $('otherToolsLink'));
+        append(contextLeft, $('fileMenu'));
+
+        append(primary, $('modeSeg'));
+        append(primary, $('connectBtn'));
+        primary.appendChild(settings);
+        append(primary, $('helpBtn'));
 
         context.appendChild(contextLeft);
         if (editTools) context.appendChild(editTools);
-        context.appendChild(contextRight);
 
         // Keep any future production controls visible instead of dropping them.
         Array.from(top.children).forEach((node) => {
@@ -897,7 +899,8 @@
             }
         });
         top.querySelectorAll(':scope > .sep-v, :scope > .spacer').forEach((node) => node.remove());
-        top.append(primary, context);
+        actions.append(context, primary);
+        top.append(navigation, pSpacer, actions);
     }
 
     function installRunMode() {
