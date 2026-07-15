@@ -57,7 +57,7 @@ const ArenaWireG6 = (function () {
         GET_PATTERN_FILE: 0x84, // [03 84 idx_lo idx_hi] 1-based; response: uint64 LE size, then raw bytes
         SET_PATTERN_FILE: 0x85, // [0x85, idx_lo, idx_hi, len64 LE, data…] upload file (bulk stream)
         DELETE_PATTERN_FILE: 0x86, // [03 86 idx_lo idx_hi] delete 1-based pattern; idx=0 deletes pattern.temp
-        DELETE_ALL_PATTERNS: 0x8f, // [01 8F] delete all files in /patterns
+        PURGE_MEMORY: 0x8f, // [01 8F] format the SD card (wipes everything, not just /patterns)
         GET_SD_ARCHIVE: 0x8a, // [01 8A] stream full SD as ZIP; only in ALL_OFF state
         STOP_DISPLAY: 0x30,
         STREAM_FRAME: 0x32, // host-streamed full frame ("FR"+blocks; see encodeStreamFrame)
@@ -507,9 +507,11 @@ const ArenaWireG6 = (function () {
         return frame(OPCODES.GET_PATTERN_FILE, u16le(index, 'index')); // 03 84 lo hi
     }
 
-    // delete-all-patterns (0x8F) — delete every file in /patterns.
-    function encodeDeleteAllPatterns() {
-        return frame(OPCODES.DELETE_ALL_PATTERNS); // 01 8F
+    // purge-memory (0x8F) — format the SD card (wipes everything, not just
+    // /patterns: also /firmware/panel.bin and both manifests). Much slower
+    // than the per-file delete it replaced; give it a generous timeout.
+    function encodePurgeMemory() {
+        return frame(OPCODES.PURGE_MEMORY); // 01 8F
     }
 
     // delete-pattern-file (0x86) — delete the pattern at 1-based index.
@@ -853,7 +855,7 @@ const ArenaWireG6 = (function () {
         encodeGetPatternFile,
         encodeSetPatternFile,
         encodeDeletePatternFile,
-        encodeDeleteAllPatterns,
+        encodePurgeMemory,
         encodeGetSdArchive,
         encodeSetFirmwareFile,
         encodeGetFirmwareInfo,

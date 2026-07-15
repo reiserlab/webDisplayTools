@@ -2661,7 +2661,7 @@
                 </div>
               </div>
               <button class="pill" data-cmd="csdarchive" title="Download the whole SD as a ZIP (GET_SD_ARCHIVE 0x8A)">Download ZIP</button>
-              <button class="pill danger" data-cmd="csdpurge" title="Delete ALL patterns (DELETE_ALL_PATTERNS 0x8F)">Purge…</button>
+              <button class="pill danger" data-cmd="csdpurge" title="Format the SD card - wipes patterns, firmware image, and manifests (PURGE_MEMORY 0x8F)">Purge…</button>
               <input id="cSdFile" type="file" accept=".pat" style="display:none">
               <input id="cSdFolder2" type="file" webkitdirectory directory style="display:none">
             </div>
@@ -4770,7 +4770,7 @@
     }
     Studio.clearConsoleAutoStop = clearAutoStop; // Run-path pre-emption (module block)
 
-    // The firmware refuses SD-write + ISP commands (0x8D/0xE0/0x8A/0xC8/0xC9)
+    // The firmware refuses SD-write + ISP commands (0x8D/0xE0/0x8A/0x8F/0xC8/0xC9)
     // unless the display is stopped (state ALL_OFF — CE_DISPLAY_ACTIVE with
     // "Stop display before …" otherwise). STOP_DISPLAY also BLANKS the panels
     // (they latch their last frame, so the controller pushes a dark frame).
@@ -4898,8 +4898,9 @@
         },
         csdpurge: () => guardDestructive(async () => {
             if (!connected()) return;
-            if (!confirm('Delete ALL patterns from the SD card? This cannot be undone.')) return;
-            const r = await send(Wire.encodeDeleteAllPatterns(), 'DELETE_ALL_PATTERNS 0x8F', { timeoutMs: 30000 });
+            if (!confirm('Format the SD card? This wipes ALL patterns, the panel firmware image, and manifests. This cannot be undone.')) return;
+            await quiesceDisplay(); // 0x8F requires the display stopped
+            const r = await send(Wire.encodePurgeMemory(), 'PURGE_MEMORY 0x8F', { timeoutMs: 30000 });
             if (r && Wire.decodeResponse(r) && Wire.decodeResponse(r).ok) sdRefresh();
         }),
         // panel firmware
