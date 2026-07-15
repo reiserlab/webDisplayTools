@@ -1,7 +1,7 @@
 /**
  * Arena Configurations
  * Auto-generated from maDisplayTools/configs/arenas/ and arena_registry/
- * Last updated: 2026-07-05T00:22:25.965Z
+ * Last updated: 2026-07-13T19:38:14.361Z
  *
  * DO NOT EDIT MANUALLY - regenerate with: node scripts/generate-arena-configs.js
  */
@@ -42,6 +42,19 @@ const STANDARD_CONFIGS = {
       "angle_offset_deg": 0
     }
   },
+  "G6_3x10": {
+    "label": "G6 (3×10) - 360°",
+    "description": "Full G6 arena, 3 rows x 10 columns, 360 degree coverage",
+    "arena": {
+      "generation": "G6",
+      "num_rows": 3,
+      "num_cols": 10,
+      "columns_installed": null,
+      "orientation": "normal",
+      "column_order": "cw",
+      "angle_offset_deg": 0
+    }
+  },
   "G6_3x12of18": {
     "label": "G6 (3×18) - 240°",
     "description": "G6 arena, 3 rows, 12 of 18 columns installed (240 degree coverage)",
@@ -75,6 +88,19 @@ const STANDARD_CONFIGS = {
       "generation": "G6",
       "num_rows": 3,
       "num_cols": 16,
+      "columns_installed": null,
+      "orientation": "normal",
+      "column_order": "cw",
+      "angle_offset_deg": 0
+    }
+  },
+  "G6_4x10": {
+    "label": "G6 (4×10) - 360°",
+    "description": "Full G6 arena, 4 rows x 10 columns, 360 degree coverage",
+    "arena": {
+      "generation": "G6",
+      "num_rows": 4,
+      "num_cols": 10,
       "columns_installed": null,
       "orientation": "normal",
       "column_order": "cw",
@@ -188,7 +214,7 @@ const GENERATIONS = {
 const ARENA_REGISTRY = {
     'G4': { 1: 'G4_4x12', 2: 'G4_3x12of18' },
     'G4.1': { 1: 'G41_2x12_cw' },
-    'G6': { 1: 'G6_2x10', 2: 'G6_2x8of10', 3: 'G6_3x12of18', 4: 'G6_3x16_full' }
+    'G6': { 1: 'G6_2x10', 2: 'G6_2x8of10', 3: 'G6_3x12of18', 4: 'G6_3x16_full', 5: 'G6_3x10', 6: 'G6_4x10' }
 };
 
 /**

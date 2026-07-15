@@ -21,7 +21,10 @@
     const KNOWN = {
         'sequence-start': 1,
         'step-start': 1,
+        'runtime-control-applied': 1,
+        'trial-resolved': 1,
         'trial-running': 1,
+        'led-activation': 1,
         command: 1,
         skip: 1,
         error: 1,

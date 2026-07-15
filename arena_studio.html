@@ -4,6 +4,46 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Arena Studio</title>
+<script>
+  // The Alt entry point redirects here so both designs share one fully wired
+  // implementation. Add the scope class before first paint to avoid a flash of
+  // the original layout; the stylesheet is otherwise inert.
+  if (location.hash === '#alt') document.documentElement.classList.add('arena-alt');
+  // Browsers do not reliably execute this page's ES-module imports or relative
+  // fetches from file://. The shell can therefore look healthy while GitHub,
+  // protocol, config, and pattern actions have no listeners. Fail visibly and
+  // point at the supported localhost launch instead of presenting a dead UI.
+  if (location.protocol === 'file:') {
+    document.documentElement.classList.add('studio-file-launch');
+    addEventListener('DOMContentLoaded', function () {
+      if (document.getElementById('studioFileLaunchGuard')) return;
+      var isAlt = document.documentElement.classList.contains('arena-alt');
+      var page = isAlt ? 'arena_studio_alt.html' : 'arena_studio.html';
+      var guard = document.createElement('div');
+      guard.id = 'studioFileLaunchGuard';
+      guard.innerHTML =
+        '<div class="studio-file-card"><span class="studio-file-kicker">LOCAL LAUNCH CHECK</span>' +
+        '<h1>Arena Studio needs localhost</h1>' +
+        '<p>The page was opened as <code>file://</code>. It can draw the shell, but browser security blocks the module and data requests used by GitHub sign-in, repo protocols, replay files, and patterns.</p>' +
+        '<p>In a Terminal opened in this folder, run:</p>' +
+        '<code class="studio-file-command">pixi run serve</code>' +
+        '<a class="studio-file-open" href="http://127.0.0.1:8000/' + page + '">Open the localhost Studio</a>' +
+        '<small>Keep that Terminal running while you use Arena Studio.</small></div>';
+      document.body.appendChild(guard);
+    });
+  }
+</script>
+<style>
+  #studioFileLaunchGuard{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:24px;background:#0b1013;color:#dce7e5;font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  #studioFileLaunchGuard .studio-file-card{width:min(620px,calc(100vw - 48px));border:1px solid #59666a;background:#11191d;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.55)}
+  #studioFileLaunchGuard .studio-file-kicker{color:#8bff9a;font-size:10px;letter-spacing:.16em}
+  #studioFileLaunchGuard h1{margin:8px 0 12px;font-size:24px;font-weight:600}
+  #studioFileLaunchGuard p{color:#aebbbd;line-height:1.55}
+  #studioFileLaunchGuard code{color:#ffd166}
+  #studioFileLaunchGuard .studio-file-command{display:block;margin:10px 0 16px;padding:12px;border:1px solid #354247;background:#080d10;user-select:all}
+  #studioFileLaunchGuard .studio-file-open{display:inline-block;margin-right:14px;padding:9px 12px;border:1px solid #8bff9a;color:#8bff9a;text-decoration:none;text-transform:uppercase;letter-spacing:.08em}
+  #studioFileLaunchGuard small{color:#7e8d90}
+</style>
 <!-- The v3 designer modules import the vendored `yaml` via this bare specifier. -->
 <script type="importmap">
     { "imports": { "yaml": "./js/vendor/yaml/browser/dist/index.js" } }
@@ -116,6 +156,7 @@
   .filemenu .menu button.gh-lock:hover{background:rgba(255,255,255,.08)}
   .gh-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
   .gh-signin{background:transparent;border:1px solid var(--border);color:var(--beta);border-radius:5px;padding:3px 9px;font-size:11px}
+  .gh-block.gh-locked .gh-signin-while-locked{opacity:1;cursor:pointer;border-style:dashed}
   .gh-who{color:var(--accent);font-weight:600;display:none}
   .gh-signout{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:3px 9px;font-size:11px;display:none}
   body.ghauth .gh-signin{display:none}
@@ -2021,6 +2062,7 @@
   .help-card .help-x{position:absolute;top:6px;right:8px;background:transparent;border:0;color:var(--dim);cursor:pointer;font-size:13px;line-height:1}
   .help-card .help-x:hover{color:var(--text)}
 </style>
+<link rel="stylesheet" href="css/arena-studio-alt.css?v=20260713-alt-v067" />
 </head>
 <body>
 
@@ -2907,6 +2949,9 @@
 <script src="js/studio-runlog-adapter.js"></script>
 <script src="js/kinematics.js"></script> <!-- shared scope/dashboard kinematic derivations -->
 <script src="js/studio-github.js"></script>
+<script src="js/runlog-replay.js?v=20260712-stackfix"></script>
+<script src="js/runtime-controls.js"></script>
+<script src="js/arena-replay-viewer-protocol.js"></script>
 
 <!-- ============================================================ -->
 <!-- (2) STUDIO SHELL — the spine (classic; owns view model + wiring) -->
@@ -3850,6 +3895,14 @@
         let ledOpen = null, visOpen = null;
         let lastMs = 0, lastWall = 0; // map browser-clock overlay events → sample ms
         let running = false, rafId = null, subbed = false;
+        let replayMode = false, replayClockMs = 0;
+        // The production Studio keeps its established full annotation view.
+        // Only the Alt route opts into the calmer current-trial label default.
+        const altScope = document.documentElement.classList.contains('arena-alt');
+        let annotationMode = altScope
+            ? (localStorage.getItem('arena_studio_alt_scope_annotations') === 'full' ? 'full' : 'clean')
+            : 'full';
+        let paletteCache = null, paletteTheme = null;
         let lastGeom = null, tipEl = null; // last render's x-mapping + hover tooltip
         // ── sonification (optional): map behaviour channels → a Web Audio tone ──────
         // Built-in synth (no deps/MIDI). Configurable via the ▾ popover: which channel
@@ -3857,6 +3910,7 @@
         // master volume. Latest per-row current value is stashed during render for the
         // audio tick to read. Config persists (except `on` — audio needs a gesture).
         let actx = null, osc = null, audioGain = null, sndMenu = null;
+        let soundSuspended = false;
         const lastVals = {}; // {turning_deg_s, forward_mm_s, heading_deg} current values
         const SND_MAX_GAIN = 0.2, SND_VOL_FLOOR = 0.12, SND_STALE_MS = 500;
         const SND_FLO = 196, SND_FHI = 1568; // continuous pitch range (G3–G6)
@@ -4046,11 +4100,23 @@
         }
         function setSound(on) {
             const btn = document.getElementById('scopeSound');
-            if (on && !ensureAudio()) { snd.on = false; if (btn) btn.classList.remove('on'); return; }
-            snd.on = on;
-            if (btn) btn.classList.toggle('on', on);
-            if (on && actx.state === 'suspended') actx.resume();
-            if (!on && audioGain && actx) audioGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+            if (on && !ensureAudio()) snd.on = false;
+            else snd.on = !!on;
+            if (btn) {
+                btn.classList.toggle('on', snd.on);
+                btn.setAttribute('aria-pressed', String(snd.on));
+            }
+            if (snd.on && actx.state === 'suspended') actx.resume();
+            if (!snd.on && audioGain && actx) audioGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+            document.dispatchEvent(new CustomEvent('scope-sound-change', { detail: { on: snd.on } }));
+            return snd.on;
+        }
+        function getSoundEnabled() { return !!snd.on; }
+        function setSoundSuspended(on) {
+            soundSuspended = !!on;
+            if (soundSuspended && audioGain && actx)
+                audioGain.gain.setTargetAtTime(0, actx.currentTime, 0.02);
+            return soundSuspended;
         }
         // Current value of a mapped channel; 'speed' = |(turning, forward)| magnitude.
         function channelVal(key) {
@@ -4063,6 +4129,10 @@
         function updateAudio() {
             if (!snd.on || !actx || !audioGain || !osc) return;
             const now = actx.currentTime;
+            if (soundSuspended) {
+                audioGain.gain.setTargetAtTime(0, now, 0.02);
+                return;
+            }
             const fresh = raw.length && (Date.now() - lastWall) < SND_STALE_MS;
             if (!fresh) { audioGain.gain.setTargetAtTime(0, now, 0.08); return; }
             // pitch: by default the tone tracks the channel's SPEED (|value|), so low
@@ -4151,9 +4221,9 @@
             sndMenu = m;
             return m;
         }
-        function openSoundMenu() {
+        function openSoundMenu(anchor) {
             const m = buildSoundMenu();
-            const btn = document.getElementById('scopeSoundCfg');
+            const btn = anchor || document.getElementById('scopeSoundCfg');
             if (!btn) return;
             m.classList.add('open');
             const r = btn.getBoundingClientRect(), mw = m.offsetWidth;
@@ -4199,6 +4269,9 @@
             tipEl.style.top = '2px';
         }
         function pushSample(s) {
+            // A replay owns the scope clock. Ignore live bridge frames while it is
+            // active so an attached rig cannot contaminate the historical trace.
+            if (replayMode && !s.__replay) return;
             if (!s || !isFinite(s.hd)) return;
             const ms = typeof s.ms === 'number' ? s.ms : raw.length ? raw[raw.length - 1].ms + 10 : 0;
             const ft = typeof s.ft === 'number' ? s.ft : ms;
@@ -4218,10 +4291,25 @@
             ledOpen = null; visOpen = null; lastMs = 0;
             for (const k in heldScale) delete heldScale[k]; // rescale fresh next run
         }
+        function setReplayMode(on) {
+            replayMode = !!on;
+            replayClockMs = 0;
+            reset();
+        }
+        function setReplayClock(ms) {
+            replayClockMs = Math.max(0, Number(ms) || 0);
+        }
+        function setAnnotationMode(mode) {
+            annotationMode = mode === 'full' ? 'full' : 'clean';
+            try { localStorage.setItem('arena_studio_alt_scope_annotations', annotationMode); } catch (_) {}
+            return annotationMode;
+        }
+        function getAnnotationMode() { return annotationMode; }
         function onRunStatus(s) {
             if (!s || !s.phase) return;
             if (s.phase === 'sequence-start') { reset(); return; }
-            const t = overlayMs();
+            const t = Number.isFinite(s.replayMs) ? s.replayMs : overlayMs();
+            if (replayMode && Number.isFinite(s.replayMs)) replayClockMs = s.replayMs;
             if (s.phase === 'step-start') {
                 const nm = (s.step && (s.step.conditionName || s.step.label)) || 'step ' + ((s.index || 0) + 1);
                 ov.cond.push({ ms: t, label: nm });
@@ -4229,8 +4317,8 @@
             } else if (s.phase === 'trial-running') {
                 // LIVE trialParams: open the "pattern displaying" visual span and tag
                 // the current trial's direction from the open-loop frame_rate SIGN
-                // (Mode 2). (The runlog-replay path emits phase:'command' op:'trialParams'
-                // instead — handled below — but carries no params, so no glyph there.)
+                // (Mode 2). The runlog-replay path emits phase:'command'
+                // op:'trialParams' instead and mirrors these annotations below.
                 const dur = typeof s.durationSec === 'number' ? s.durationSec : null;
                 visOpen = { startMs: t, endMs: dur != null ? t + dur * 1000 : null };
                 ov.visual.push(visOpen);
@@ -4246,6 +4334,13 @@
                     const dur = typeof s.value === 'number' ? s.value : null; // durationSec
                     visOpen = { startMs: t, endMs: dur != null ? t + dur * 1000 : null };
                     ov.visual.push(visOpen);
+                    const fr = s.params && typeof s.params.frameRate === 'number' ? s.params.frameRate : 0;
+                    const md = s.params && typeof s.params.mode === 'number' ? s.params.mode : 0;
+                    const last = ov.cond[ov.cond.length - 1];
+                    if (last) {
+                        last.dir = fr > 0 ? 1 : fr < 0 ? -1 : 0;
+                        last.closedLoop = md === 3 || md === 4;
+                    }
                 } else if (s.op === 'setAnalogOut') {
                     // LED (BuckPuck) drive is INVERTED: brighter = lower mV, and
                     // "dark" sits at LED_OFF_MV (≈5000 mV), NOT 0. So "on" means the
@@ -4292,6 +4387,29 @@
             const a = Math.abs(v);
             return a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : v.toFixed(2);
         }
+        function scopePalette() {
+            const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+            if (paletteCache && paletteTheme === theme) return paletteCache;
+            const probe = document.createElement('i');
+            probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none';
+            document.body.appendChild(probe);
+            const read = (prop, fallback) => {
+                probe.style.color = 'var(' + prop + ', ' + fallback + ')';
+                return getComputedStyle(probe).color || fallback;
+            };
+            paletteCache = {
+                dim: read('--dim', '#8b949e'),
+                text: read('--text', '#e6edf3'),
+                surface: read('--surface', '#1a1f26'),
+                surface2: read('--surface2', '#141a20'),
+                border: read('--border', '#4d5660'),
+                accent: read('--accent', '#00e676'),
+                pink: read('--alt-pink', '#ff408c')
+            };
+            paletteTheme = theme;
+            probe.remove();
+            return paletteCache;
+        }
         function computeSeries(t0, t1) {
             const step = 100; // 10 Hz output grid
             const ballR = Kin.ballRadiusMm(cfg.ballDiaMm);
@@ -4319,7 +4437,8 @@
             const plotW = Math.max(10, W - padL - padR);
             const plotTop = padT, plotBottom = H - xAxisH, plotH = Math.max(30, plotBottom - plotTop);
             const gap = 6, rowH = (plotH - 2 * gap) / 3;
-            const tNow = raw.length ? raw[raw.length - 1].ms : 0;
+            const pal = scopePalette();
+            const tNow = replayMode ? replayClockMs : raw.length ? raw[raw.length - 1].ms : 0;
             const spanMs = cfg.spanS * 1000, t0 = tNow - spanMs, t1 = tNow;
             const xOf = (ms) => padL + ((ms - t0) / spanMs) * plotW;
             const clipX = (ms) => Math.max(padL, Math.min(padL + plotW, xOf(ms)));
@@ -4327,28 +4446,32 @@
             const b = Studio.session && Studio.session.bridge;
             // Header status shows the live rate/samples only when data is flowing;
             // the "waiting" state is a big message drawn on the canvas (below).
-            const waitMsg = b && b.connected
+            const waitMsg = replayMode
+                ? 'No FicTrac samples recorded — event timeline only'
+                : b && b.connected
                 ? 'waiting for FicTrac frames…'
                 : 'waiting for FicTrac bridge — Console → FicTrac';
             if (statusEl) {
                 // Two tight stacked lines (rate above, sample count below) so it fits
                 // the header bar height without eating a row. No sphere diameter (shown
                 // elsewhere). Hidden on narrow screens via CSS.
-                statusEl.innerHTML = raw.length
-                    ? 'FicTrac ' + ((b && b.stats && b.stats.rateHz) || 0) + ' Hz<br>' + raw.length + ' samples'
-                    : '';
+                statusEl.innerHTML = replayMode
+                    ? 'REPLAY<br>' + raw.length + ' samples'
+                    : raw.length
+                      ? 'FicTrac ' + ((b && b.stats && b.stats.rateHz) || 0) + ' Hz<br>' + raw.length + ' samples'
+                      : '';
             }
             if (!raw.length) {
                 // No data yet: a large centered message ON the scope (per request).
-                ctx.fillStyle = 'rgba(139,148,158,0.85)';
+                ctx.fillStyle = pal.dim;
                 ctx.font = 'bold 22px monospace';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(waitMsg, padL + plotW / 2, plotTop + plotH / 2);
                 ctx.textBaseline = 'alphabetic';
-                return; // nothing else to draw
+                if (!replayMode) return; // live mode has no time base yet
             }
-            const series = computeSeries(t0, t1);
+            const series = raw.length ? computeSeries(t0, t1) : null;
             // ── UNDERLAYS (behind the data) ──────────────────────────────────
             // trial (pattern-displaying) span — very light green
             ov.visual.forEach((v) => {
@@ -4377,9 +4500,11 @@
             });
             // ── TRIAL BOUNDARY LINES: bright white, drawn UNDERNEATH the data so they
             //    mark where each trial starts without obscuring the traces.
-            ctx.lineWidth = 1.3; ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-            ov.cond.forEach((c) => {
-                if (c.ms < t0 || c.ms > t1) return;
+            ctx.lineWidth = 1.3; ctx.strokeStyle = pal.text;
+            const visibleConds = ov.cond.filter((c) => c.ms >= t0 && c.ms <= t1);
+            const labelConds = annotationMode === 'clean' && visibleConds.length
+                ? [visibleConds[visibleConds.length - 1]] : visibleConds;
+            visibleConds.forEach((c) => {
                 const x = xOf(c.ms);
                 ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, plotBottom); ctx.stroke();
             });
@@ -4393,8 +4518,7 @@
             ctx.font = '9px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
             const laneY = [plotTop - 15, plotTop - 5]; // two stacked rows above the plot
             const laneRight = [-Infinity, -Infinity];  // right edge of last label per row
-            ov.cond.forEach((c) => {
-                if (c.ms < t0 || c.ms > t1) return;
+            labelConds.forEach((c) => {
                 const x = xOf(c.ms);
                 let txt = String(c.label);
                 if (txt.length > 16) txt = txt.slice(0, 15) + '…';
@@ -4406,9 +4530,9 @@
                 else if (left > laneRight[1] + 6) row = 1;
                 if (row < 0) return; // both rows busy here → skip (line still marks it)
                 const y = laneY[row];
-                ctx.fillStyle = 'rgba(15,20,25,0.82)';
+                ctx.fillStyle = pal.surface2;
                 ctx.fillRect(left - 1, y - 7, tw + 3, 9);
-                ctx.fillStyle = 'rgba(200,209,217,0.9)';
+                ctx.fillStyle = pal.text;
                 ctx.fillText(txt, left + 1, y);
                 laneRight[row] = left + tw;
             });
@@ -4420,11 +4544,12 @@
             ctx.font = 'bold 17px monospace';
             for (let k = 0; k < ov.cond.length; k++) {
                 const c = ov.cond[k];
+                if (annotationMode === 'clean' && c !== visibleConds[visibleConds.length - 1]) continue;
                 if (!c.dir) continue;
                 const endMs = k + 1 < ov.cond.length ? ov.cond[k + 1].ms : t1;
                 if (endMs < t0 || c.ms > t1) continue;
                 const midX = (clipX(c.ms) + clipX(endMs)) / 2;
-                ctx.fillStyle = 'rgba(0,230,118,0.55)';
+                ctx.fillStyle = pal.accent;
                 ctx.fillText(c.dir > 0 ? '▶' : '◀', midX, plotTop + 18);
             }
             // ── CLOSED LOOP tag: bright green, at the TOP of the heading row (row 2) —
@@ -4434,20 +4559,21 @@
             ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.font = 'bold 10px monospace';
             for (let k = 0; k < ov.cond.length; k++) {
                 const c = ov.cond[k];
+                if (annotationMode === 'clean' && c !== visibleConds[visibleConds.length - 1]) continue;
                 if (!c.closedLoop) continue;
                 const endMs = k + 1 < ov.cond.length ? ov.cond[k + 1].ms : t1;
                 if (endMs < t0 || c.ms > t1) continue;
                 const x0 = clipX(c.ms);
                 const txt = 'CLOSED LOOP';
                 const tw = ctx.measureText(txt).width;
-                ctx.fillStyle = 'rgba(15,20,25,0.82)';
+                ctx.fillStyle = pal.surface2;
                 ctx.fillRect(x0 + 2, headTop + 3, tw + 6, 13);
-                ctx.fillStyle = '#00e676';
+                ctx.fillStyle = pal.accent;
                 ctx.fillText(txt, x0 + 5, headTop + 13);
             }
             ctx.textAlign = 'left';
             // ── x-axis time ticks (seconds relative to now) ───────────────────
-            ctx.fillStyle = '#8b949e'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
+            ctx.fillStyle = pal.dim; ctx.font = '11px monospace'; ctx.textAlign = 'center';
             const tickStep = cfg.spanS <= 10 ? 2 : cfg.spanS <= 30 ? 5 : cfg.spanS <= 60 ? 10 : cfg.spanS <= 120 ? 20 : 60;
             for (let s = 0; s <= cfg.spanS; s += tickStep) {
                 const x = xOf(t1 - s * 1000);
@@ -4459,7 +4585,8 @@
         }
         function drawRow(row, pts, top, h, padL, plotW, xOf) {
             const bottom = top + h;
-            ctx.strokeStyle = 'rgba(45,54,64,0.9)'; ctx.lineWidth = 1;
+            const pal = scopePalette();
+            ctx.strokeStyle = pal.border; ctx.lineWidth = 1;
             ctx.strokeRect(padL, top, plotW, h);
             let lo, hi;
             const userLim = cfg.fix && cfg.fix[row.key]; // typed ± limit (turning/forward)
@@ -4482,7 +4609,7 @@
             }
             const yOf = (v) => bottom - ((v - lo) / (hi - lo)) * h;
             if (lo < 0 && hi > 0) {
-                ctx.strokeStyle = 'rgba(139,148,158,0.22)';
+                ctx.strokeStyle = pal.border;
                 ctx.beginPath(); ctx.moveTo(padL, yOf(0)); ctx.lineTo(padL + plotW, yOf(0)); ctx.stroke();
             }
             if (pts) {
@@ -4502,7 +4629,7 @@
                 ctx.stroke();
                 ctx.restore();
             }
-            ctx.fillStyle = '#8b949e'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+            ctx.fillStyle = pal.dim; ctx.font = '11px monospace'; ctx.textAlign = 'right';
             ctx.fillText(fmt(hi), padL - 4, top + 10);
             ctx.fillText(fmt(lo), padL - 4, bottom - 2);
             const cur = pts ? lastFinite(pts) : null;
@@ -4532,7 +4659,10 @@
             // to log) — updateAudio won't run to taper it otherwise.
             if (audioGain && actx) audioGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
         }
-        return { init, start, stop, reset, pushSample, onRunStatus, applyRigBallDiameter };
+        return { init, start, stop, reset, pushSample, onRunStatus, applyRigBallDiameter,
+            setReplayMode, setReplayClock, setAnnotationMode, getAnnotationMode,
+            setSoundEnabled: setSound, getSoundEnabled, openSoundSettings: openSoundMenu,
+            closeSoundSettings: closeSoundMenu, setSoundSuspended };
     })();
     window.Scope = Scope;
     Scope.init();
@@ -7573,6 +7703,12 @@ function startRunLog(isExperiment) {
         toolVersion: Studio.TOOL_VERSION
     });
     Studio.activeRunLog = RunLog.createRunLog({ intent: isExperiment ? 'experiment' : 'test', meta });
+    // Arena Studio Alt may attach the proposal's narrowly scoped runtime
+    // controls to this immutable YAML/run identity. The original Studio has no
+    // hook and therefore behaves exactly as before.
+    if (typeof Studio.prepareRuntimeControls === 'function') {
+        Studio.prepareRuntimeControls(runId, isExperiment);
+    }
     // reset the log surface
     const box = $('runlogBox');
     box.innerHTML = '';
@@ -7656,6 +7792,9 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             conditionsByName,
             resolvePatternId: resolvePatternIdForCmd,
             resolvePatternFrames: resolvePatternFramesForCmd,
+            resolveCondition: typeof Studio.resolveRuntimeCondition === 'function'
+                ? Studio.resolveRuntimeCondition
+                : undefined,
             fictracPluginNames: new Set(ftNames)
         });
     } catch (e) {
@@ -7748,6 +7887,7 @@ document.addEventListener('keydown', (e) => {
 const GH_OWNER = 'reiserlab';
 const GH_REPO = 'webDisplayTools';
 const GH = window.StudioGitHub;
+let ghAuthGeneration = 0;
 
 function ghToken() {
     return Studio.ghToken(); // single source (classic shell) — see courseSettings
@@ -7958,6 +8098,10 @@ async function saveViaDirectCommit() {
 // Edit toolbar's "Export YAML", which downloads a REGENERATED roundtrip copy
 // and marks nothing saved.
 Studio.saveCurrent = function () {
+    if (!Studio.advanced) {
+        Studio.showBanner('Save is locked in Safe mode — unlock Advanced mode first.');
+        return;
+    }
     if (!Studio.currentDoc) { Studio.showBanner('Open a protocol first.'); return; }
     if (Studio.editor && Studio.editor.hasUnappliedYaml()) {
         Studio.showBanner('The YAML tab has unapplied edits — Apply or Revert them first.');
@@ -7984,6 +8128,10 @@ $('fmSave').addEventListener('click', () => {
 // never cleared here).
 $('fmSaveAs').addEventListener('click', () => {
     $('fileMenu').classList.remove('open');
+    if (!Studio.advanced) {
+        Studio.showBanner('Save As is locked in Safe mode — unlock Advanced mode first.');
+        return;
+    }
     const doc = Studio.currentDoc;
     if (!doc) { Studio.showBanner('Open a protocol first.'); return; }
     if (Studio.editor && Studio.editor.hasUnappliedYaml && Studio.editor.hasUnappliedYaml()) {
@@ -8012,22 +8160,57 @@ $('fmSaveAs').addEventListener('click', () => {
 
 $('ghSignInBtn').addEventListener('click', async (e) => {
     e.stopPropagation();
+    const signInBtn = $('ghSignInBtn');
     const pat = prompt(
         'Paste a GitHub fine-grained personal access token for ' + ghTargetRepo().full +
-        '\n(Contents: read/write + Pull requests: read/write).\n\n' +
+        '\nFor private read-only access: Contents read. For saving: Contents read/write' +
+        ' + Pull requests read/write. Public protocol/replay reads need no token.\n\n' +
         'Stored in sessionStorage (cleared when this tab closes). The follow-up ' +
         '"remember" option keeps it in localStorage — REQUIRED for course bench ' +
         'setup (a sessionStorage-only token evaporates when the tab closes); ' +
         'do NOT use it on a personal shared machine.'
     );
     if (!pat) return;
+    const token = pat.trim();
+    if (!token) return;
+    const authGeneration = ++ghAuthGeneration;
+    const originalLabel = signInBtn.textContent;
+    signInBtn.disabled = true;
+    signInBtn.setAttribute('aria-busy', 'true');
+    signInBtn.textContent = 'Checking…';
     try {
-        const res = await fetch('https://api.github.com/user', { headers: GH.headers(pat.trim()) });
+        const res = await fetch('https://api.github.com/user', { headers: GH.headers(token) });
+        if (authGeneration !== ghAuthGeneration) return;
         if (!res.ok) throw new Error('token rejected (' + res.status + ')');
         const user = await res.json();
-        sessionStorage.setItem('studio_gh_pat', pat.trim());
+        if (authGeneration !== ghAuthGeneration) return;
+        const cs = Studio.courseSettings();
+        if (cs.repo) {
+            const access = await GH.run(
+                fetch,
+                GH.reqGetRepo(cs.repo.owner, cs.repo.name, token)
+            );
+            if (authGeneration !== ghAuthGeneration) return;
+            if (!access.ok) {
+                throw new Error(
+                    'signed in as @' +
+                        (user.login || 'user') +
+                        ', but ' +
+                        cs.repo.full +
+                        ' is unavailable (HTTP ' +
+                        access.status +
+                        '). Check repository access on the token.'
+                );
+            }
+        }
+        if (authGeneration !== ghAuthGeneration) return;
+        sessionStorage.setItem('studio_gh_pat', token);
         if (confirm('Remember this token on THIS browser (localStorage)?\nYES for a course bench (survives tab close); NO on a personal shared machine.')) {
-            localStorage.setItem('studio_gh_pat', pat.trim());
+            localStorage.setItem('studio_gh_pat', token);
+        } else {
+            // A previous remembered credential must not silently survive when
+            // the operator explicitly chooses a session-only replacement.
+            localStorage.removeItem('studio_gh_pat');
         }
         document.body.classList.add('ghauth');
         $('ghWho').textContent = '✓ @' + (user.login || 'user');
@@ -8038,13 +8221,22 @@ $('ghSignInBtn').addEventListener('click', async (e) => {
         if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
         refreshRepoSharedPatternPreviews().then(() => rewireRepoPatternPreviews());
     } catch (err) {
-        Studio.showBanner('GitHub sign-in failed: ' + err.message);
+        if (authGeneration === ghAuthGeneration) {
+            Studio.showBanner('GitHub sign-in failed: ' + err.message);
+        }
+    } finally {
+        signInBtn.disabled = false;
+        signInBtn.removeAttribute('aria-busy');
+        signInBtn.textContent = originalLabel;
     }
 });
 // Sign out — clear the token (both storages), drop authed state, and restore
-// the lab-wide metadata defaults. Gated by the gh-block lock like sign-in.
+// the lab-wide metadata defaults. Sign out remains instructor-locked so a
+// student cannot disconnect a configured bench; Sign in stays available for
+// read access in Safe mode.
 $('ghSignOutBtn').addEventListener('click', (e) => {
     e.stopPropagation();
+    ghAuthGeneration++;
     sessionStorage.removeItem('studio_gh_pat');
     localStorage.removeItem('studio_gh_pat');
     document.body.classList.remove('ghauth');
@@ -8054,6 +8246,10 @@ $('ghSignOutBtn').addEventListener('click', (e) => {
     if ($('mGenoSrc')) $('mGenoSrc').href = 'https://github.com/reiserlab/webDisplayTools/blob/main/configs/metadata/genotypes.yaml';
     if (typeof populateMetaDatalists === 'function') populateMetaDatalists();
     updateSaveLabel();
+    // Rebuild lazy pattern sources after credential removal. Their byte fetches
+    // also resolve ghToken() at click/replay time, so a cleared token is never
+    // retained in a closure.
+    refreshRepoSharedPatternPreviews().then(() => rewireRepoPatternPreviews());
     Studio.rawLog('signed out of GitHub — token cleared; metadata back to lab defaults', 'info');
 });
 function updateSaveLabel() {
@@ -8161,10 +8357,21 @@ function wireCourseSettings() {
     // next load. The 🔒 button itself is never disabled.
     const ghBlock = $('ghBlock');
     const ghLock = $('ghLock');
-    const lockTargets = () => [$('ghSignInBtn'), $('ghSignOutBtn'), repoIn, bench, $('ghPR'), direct];
+    // Authentication itself remains available in safe mode: it grants read
+    // access to the fixed course repo. Destination and write configuration stay
+    // behind the instructor lock. A native-disabled Sign in button previously
+    // looked clickable but emitted no event at all.
+    const lockTargets = () => [$('ghSignOutBtn'), repoIn, bench, $('ghPR'), direct, archive];
     function applyGhLock(locked) {
         if (ghBlock) ghBlock.classList.toggle('gh-locked', locked);
         lockTargets().forEach((el) => { if (el) el.disabled = locked; });
+        const signIn = $('ghSignInBtn');
+        if (signIn) {
+            signIn.classList.toggle('gh-signin-while-locked', locked);
+            signIn.title = locked
+                ? 'Sign in for course-repo read access; repo, bench, and write settings remain instructor-locked'
+                : 'Sign in to GitHub with a fine-grained personal access token';
+        }
         if (ghLock) {
             ghLock.textContent = locked ? '🔒' : '🔓';
             ghLock.title = locked
@@ -8191,10 +8398,61 @@ function wireCourseSettings() {
 wireCourseSettings();
 // Restore an existing session token on load.
 if (ghToken()) {
-    fetch('https://api.github.com/user', { headers: GH.headers(ghToken()) })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((u) => {
-            if (u) {
+    const storedToken = ghToken();
+    const restoreGeneration = ghAuthGeneration;
+    const restoreCurrent = () =>
+        restoreGeneration === ghAuthGeneration && ghToken() === storedToken;
+    fetch('https://api.github.com/user', { headers: GH.headers(storedToken) })
+        .then((r) => {
+            if (!restoreCurrent()) return null;
+            if (r.ok) return r.json();
+            if (r.status === 401) {
+                sessionStorage.removeItem('studio_gh_pat');
+                localStorage.removeItem('studio_gh_pat');
+                document.body.classList.remove('ghauth');
+                Studio.showBanner(
+                    'The stored GitHub token is no longer valid. Sign in again from File ▾.'
+                );
+                updateSaveLabel();
+                return null;
+            }
+            throw new Error('GitHub session check returned HTTP ' + r.status);
+        })
+        .then(async (u) => {
+            if (u && restoreCurrent()) {
+                const cs = Studio.courseSettings();
+                if (cs.repo) {
+                    const access = await GH.run(
+                        fetch,
+                        GH.reqGetRepo(cs.repo.owner, cs.repo.name, storedToken)
+                    );
+                    if (!restoreCurrent()) return;
+                    if (!access.ok) {
+                        document.body.classList.remove('ghauth');
+                        if (access.status === 401 || access.status === 404) {
+                            sessionStorage.removeItem('studio_gh_pat');
+                            localStorage.removeItem('studio_gh_pat');
+                            Studio.showBanner(
+                                'The stored GitHub token cannot access ' +
+                                    cs.repo.full +
+                                    ' (HTTP ' +
+                                    access.status +
+                                    '). Sign in with a token that has repository access.'
+                            );
+                        } else {
+                            Studio.showBanner(
+                                'GitHub could not verify access to ' +
+                                    cs.repo.full +
+                                    ' (HTTP ' +
+                                    access.status +
+                                    '). The stored token was kept; retry or sign in again.'
+                            );
+                        }
+                        updateSaveLabel();
+                        return;
+                    }
+                }
+                if (!restoreCurrent()) return;
                 document.body.classList.add('ghauth');
                 $('ghWho').textContent = '✓ @' + (u.login || 'user');
                 if (!($('ghDirect') && $('ghDirect').checked)) $('ghPR').checked = true;
@@ -8204,7 +8462,20 @@ if (ghToken()) {
                 if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
             }
         })
-        .catch(() => {});
+        .catch((error) => {
+            if (!restoreCurrent()) return;
+            document.body.classList.remove('ghauth');
+            Studio.showBanner(
+                'GitHub session verification is temporarily unavailable. ' +
+                    'The stored token was kept; retry or sign in again.'
+            );
+            updateSaveLabel();
+            Studio.rawLog(
+                'GitHub session check unavailable: ' +
+                    (error && error.message ? error.message : error),
+                'info'
+            );
+        });
 }
 updateSaveLabel(); // reflect stored course settings even before sign-in
 
@@ -8254,6 +8525,10 @@ function showPicker(title, items, onPick) {
     });
     ov.style.display = 'flex';
 }
+// Arena Studio Alt reuses the production picker for repo-backed replay inputs.
+// Exposing the existing function preserves one modal implementation and its
+// current keyboard/cancel behavior.
+Studio.showPicker = showPicker;
 function hidePicker() {
     $('pickerOverlay').style.display = 'none';
     // tear down any multi-select footer extras so the single-select picker's
@@ -8367,7 +8642,30 @@ $('fmOpenCourse').addEventListener('click', async () => {
     const cs = Studio.courseSettings();
     const token = ghToken();
     if (!cs.repo) { Studio.showBanner('Set the course repo (owner/name) in File ▾ first.'); return; }
-    if (!token) { Studio.showBanner('Sign in to GitHub first.'); return; }
+    // Public course repos are readable without a token. Authentication is only
+    // required for private repos, writes, or a higher API rate limit.
+    try {
+        const access = await GH.run(
+            fetch,
+            GH.reqGetRepo(cs.repo.owner, cs.repo.name, token)
+        );
+        if (!access.ok) {
+            Studio.showBanner(
+                'Course repo is unavailable (HTTP ' +
+                    access.status +
+                    '): ' +
+                    cs.repo.full +
+                    (token ? ' · Check token repository access.' : ' · Sign in if it is private.')
+            );
+            return;
+        }
+    } catch (error) {
+        Studio.showBanner(
+            'Course repo check failed: ' +
+                (error && error.message ? error.message : error)
+        );
+        return;
+    }
     // Two sources, kept clearly separate: THIS bench's own saves (rig-specific)
     // first, then the class-wide SHARED protocols. Grouped under titled headers
     // with a divider — not one flat gray list — so which is which is obvious and
@@ -8376,15 +8674,31 @@ $('fmOpenCourse').addEventListener('click', async () => {
         try {
             const res = await GH.run(fetch, GH.reqGetContents(cs.repo.owner, cs.repo.name, dir, null, token));
             if (res.ok && Array.isArray(res.data)) {
-                return res.data
+                return { items: res.data
                     .filter((f) => f && f.type === 'file' && /\.ya?ml$/i.test(f.name))
-                    .map((f) => ({ label: f.name, value: f.path }));
+                    .map((f) => ({ label: f.name, value: f.path })), error: null };
             }
-        } catch (_) { /* 404 before the first save is normal */ }
-        return [];
+            if (res.status === 404) return { items: [], error: null };
+            return { items: [], error: dir + ' returned HTTP ' + res.status };
+        } catch (error) {
+            return { items: [], error: dir + ': ' + (error && error.message ? error.message : error) };
+        }
     };
-    const benchItems = cs.benchId ? await fetchDir('protocols/' + cs.benchId) : [];
-    const sharedItems = await fetchDir('protocols/shared');
+    const benchResult = cs.benchId
+        ? await fetchDir('protocols/' + cs.benchId)
+        : { items: [], error: null };
+    const sharedResult = await fetchDir('protocols/shared');
+    const benchItems = benchResult.items;
+    const sharedItems = sharedResult.items;
+    const readErrors = [benchResult.error, sharedResult.error].filter(Boolean);
+    if (!benchItems.length && !sharedItems.length && readErrors.length) {
+        Studio.showBanner(
+            'Course repo could not be read: ' +
+                readErrors.join(' · ') +
+                (token ? '' : ' · Sign in if this repo is private.')
+        );
+        return;
+    }
     const benchNames = new Set(benchItems.map((i) => i.label.toLowerCase()));
     const items = [];
     if (cs.benchId) {
@@ -8397,15 +8711,29 @@ $('fmOpenCourse').addEventListener('click', async () => {
         sharedItems.forEach((i) => { if (benchNames.has(i.label.toLowerCase())) i.sub = '⚠ also on your bench'; });
         items.push(...sharedItems);
     } else items.push({ note: 'No shared protocols yet.' });
-    showPicker('Open protocol — choose a source (' + cs.repo.full + ')', items, (path) =>
-        openFromCourseRepo(cs.repo, path, token)
+    if (readErrors.length) items.push({ note: 'Some sources were unavailable: ' + readErrors.join(' · ') });
+    showPicker(
+        'Open protocol — choose a source (' +
+            cs.repo.full +
+            (token ? ' · signed in' : ' · public read') +
+            ')',
+        items,
+        (path) => openFromCourseRepo(cs.repo, path, token)
     );
 });
 
 async function openFromCourseRepo(repo, path, token, landIn) {
     try {
         const res = await GH.runBytes(fetch, GH.reqGetContentsRaw(repo.owner, repo.name, path, null, token));
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (!res.ok) {
+            throw new Error(
+                'HTTP ' +
+                    res.status +
+                    (!token && [401, 403, 404].includes(res.status)
+                        ? ' — sign in if this repository is private'
+                        : '')
+            );
+        }
         const text = new TextDecoder().decode(res.bytes);
         const ok = await Studio.loadProtocol(text, path.split('/').pop(), 'committed', {
             repoRef: { repo: repo.full, path: path },
@@ -8442,7 +8770,7 @@ async function rewireRepoPatternPreviews() {
     if (!rp || !rp.path) return;
     const cs = Studio.courseSettings && Studio.courseSettings();
     const token = ghToken();
-    if (!token || !cs || !cs.repo || cs.repo.full !== rp.full) return;
+    if (!cs || !cs.repo || cs.repo.full !== rp.full) return;
     registerRepoPatternPreviews({ owner: rp.owner, name: rp.name, full: rp.full }, rp.path, token);
 }
 
@@ -8467,8 +8795,9 @@ async function registerRepoSharedPatternPreviews(repo, token) {
                 n++;
                 repoSharedPreviewKeys.add(f.name);
                 webPreviewBySdName.set(f.name, async () => {
+                    const currentToken = ghToken();
                     const r = await GH.runBytes(fetch,
-                        GH.reqGetContentsRaw(repo.owner, repo.name, f.path, null, token));
+                        GH.reqGetContentsRaw(repo.owner, repo.name, f.path, null, currentToken));
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.bytes.buffer;
                 });
@@ -8507,7 +8836,17 @@ async function registerRepoPatternPreviews(repo, protoPath, token) {
                 n++;
                 names.add(sdLogicalName(f.name));
                 webPreviewBySdName.set(f.name, async () => {
-                    const r = await GH.runBytes(fetch, GH.reqGetContentsRaw(repo.owner, repo.name, f.path, null, token));
+                    const currentToken = ghToken();
+                    const r = await GH.runBytes(
+                        fetch,
+                        GH.reqGetContentsRaw(
+                            repo.owner,
+                            repo.name,
+                            f.path,
+                            null,
+                            currentToken
+                        )
+                    );
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.bytes.buffer;
                 });
@@ -8717,6 +9056,10 @@ async function putSharedGuarded(repo, token, path, bytes, message) {
 }
 $('fmPromote').addEventListener('click', async () => {
     $('fileMenu').classList.remove('open');
+    if (!Studio.advanced) {
+        Studio.showBanner('Promote is locked in Safe mode — unlock Advanced mode first.');
+        return;
+    }
     const cs = Studio.courseSettings();
     const token = ghToken();
     const doc = Studio.currentDoc;
@@ -8804,12 +9147,7 @@ async function initFromUrl() {
             // holds — a signed-out bench gets a pointer, not the file.
             const token = ghToken();
             const rm = /^([^/]+)\/(.+)$/.exec(state.repo);
-            if (!token) {
-                // The finally-block canonicalizes (scrubs) the URL, so "reload"
-                // would NOT retry — point at the picker, which relists the repo.
-                Studio.showBanner('This link opens ' + state.p + ' from ' + state.repo +
-                    ' — sign in (File ▾ → GitHub), then File ▾ → "Open from course repo…" to open it.');
-            } else if (rm) {
+            if (rm) {
                 await openFromCourseRepo({ owner: rm[1], name: rm[2], full: state.repo }, state.p, token, 'run');
             }
         } else if (state.p) {
@@ -14733,5 +15071,6 @@ initFromUrl();
   setTimeout(pickerRebuilt, 2000);
 })();
 </script>
+<script src="js/arena-studio-alt.js?v=20260713-alt-v067"></script>
 </body>
 </html>

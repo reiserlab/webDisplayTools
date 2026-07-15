@@ -559,8 +559,16 @@ When an ES6 `import` statement fails, the **entire** `<script type="module">` bl
 2. **`_buildArena()` must NEVER reset the camera position** — only the initial `init()` call sets the camera to top-down. Rebuilds preserve the user's current view.
 3. **Track which arena config the 3D viewer was last built with** using `threeViewerArenaConfig`. Compare on every `init3DViewer()` call and reinit if stale.
 4. **If `init()` fails** (scene is null), destroy the viewer and retry on next attempt — never leave a half-initialized viewer that silently ignores all controls.
+5. **CSHL G6_2x10 previews intentionally omit physical panels 8 and 18.** They
+   are the two rows of zero-based column 7 in G6 row-major numbering. Keep this
+   visual-only in `ThreeViewer`: do not mutate `columns_installed`, the 200×40
+   pattern address map, or configured arena statistics. Partial G6_2x8of10 and
+   other arena shapes must remain unchanged.
 
 These rules prevent stale geometry bugs where the 3D viewer shows an old arena after config changes.
+
+Shared LED glow architecture, tuning, performance budget, and reuse checklist:
+`docs/development/three-viewer-led-glow.md`.
 
 ## Pattern Editor Migration Plan
 

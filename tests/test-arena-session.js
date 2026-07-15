@@ -65,6 +65,11 @@ function makeMocks() {
             calls.push('link.send');
             return Promise.resolve(new Uint8Array([1, 0, bytes[1] || 0]));
         }
+        sendBulkRead(bytes, opts) {
+            this.sent.push([Array.from(bytes), opts]);
+            calls.push('link.sendBulkRead');
+            return Promise.resolve(new Uint8Array(bytes));
+        }
     }
     class MockRunner {
         constructor(link, wire) {
@@ -255,6 +260,101 @@ function newSession(m) {
         check('send forwarded bytes + opts', s._link.sent[0], [[1, 0x67], { timeoutMs: 99 }]);
     }
 
+    // ── replay hardware-output interlock ────────────────────────────────────────
+    console.log('=== hardware-output interlock ===');
+    {
+        const m = makeMocks();
+        const s = newSession(m);
+        let states = 0;
+        s.on('state', () => states++);
+        checkBool('output starts enabled', s.outputInhibited === false);
+        check('no initial inhibition reason', s.outputInhibitedReason, null);
+        checkBool('enabling interlock reports a change', s.setOutputInhibited('replay') === true);
+        checkBool('outputInhibited true in replay', s.outputInhibited === true);
+        check('interlock retains reason', s.outputInhibitedReason, 'replay');
+        checkBool('enabling same reason is idempotent', s.setOutputInhibited('replay') === false);
+        checkBool('latch change emitted one state event', states === 1);
+
+        const blocked = [];
+        for (const [name, fn] of [
+            ['connect', () => s.connect()],
+            ['send', () => s.send(new Uint8Array([1, 0x67]))],
+            ['bulk-read', () => s.sendBulkRead(new Uint8Array([1, 0x68]))],
+            ['trial', () => s.runTrial({ params: { mode: 2, patternId: 1 } })],
+            ['sequence', () => s.runSequence({ steps: [], conditionsByName: new Map() })],
+            ['stop', () => s.stop()]
+        ]) {
+            try {
+                await fn();
+            } catch (e) {
+                blocked.push([name, e && e.code, e && e.reason]);
+            }
+        }
+        check('all hardware entry points blocked with coded reason', blocked, [
+            ['connect', 'ARENA_OUTPUT_INHIBITED', 'replay'],
+            ['send', 'ARENA_OUTPUT_INHIBITED', 'replay'],
+            ['bulk-read', 'ARENA_OUTPUT_INHIBITED', 'replay'],
+            ['trial', 'ARENA_OUTPUT_INHIBITED', 'replay'],
+            ['sequence', 'ARENA_OUTPUT_INHIBITED', 'replay'],
+            ['stop', 'ARENA_OUTPUT_INHIBITED', 'replay']
+        ]);
+        checkBool(
+            'blocked calls reached neither link nor runner',
+            !m.calls.some((c) => c.startsWith('link.') || c.startsWith('runner.'))
+        );
+
+        checkBool('clearing interlock reports a change', s.setOutputInhibited(null) === true);
+        checkBool('output re-enabled', s.outputInhibited === false);
+        check('reason cleared', s.outputInhibitedReason, null);
+        await s.send(new Uint8Array([1, 0x67]));
+        checkBool('normal send resumes after clear', m.calls.includes('link.send'));
+        checkBool('clear emitted a second state event', states === 2);
+    }
+    {
+        const m = makeMocks();
+        const s = newSession(m);
+        s._runner._active = true;
+        let errorCode = null;
+        try {
+            s.setOutputInhibited('replay');
+        } catch (e) {
+            errorCode = e && e.code;
+        }
+        check('cannot enter replay while a run is active', errorCode, 'ARENA_RUN_ACTIVE');
+        checkBool('failed enable leaves output live', s.outputInhibited === false);
+    }
+    {
+        const m = makeMocks();
+        const s = newSession(m);
+        await s.connect();
+        s.setOutputInhibited('replay');
+        await s.disconnect();
+        checkBool('disconnect remains available under interlock', s.connected === false);
+        checkBool(
+            'disconnect under interlock closes without a STOP',
+            !m.calls.includes('runner.stop')
+        );
+    }
+    {
+        const m = makeMocks();
+        const s = newSession(m);
+        await s.connect();
+        s.setOutputInhibited('replay');
+        // Simulate a stale/injected runner reporting active after the replay latch
+        // was set. Disconnect must still favor local abort over a forbidden STOP.
+        s._runner._active = true;
+        await s.disconnect();
+        checkBool(
+            'active runner discovered under interlock is aborted locally',
+            m.calls.includes('runner.abort')
+        );
+        checkBool(
+            'active runner discovered under interlock never sends STOP',
+            !m.calls.includes('runner.stop')
+        );
+        checkBool('emergency disconnect still closes the link', m.calls.includes('link.close'));
+    }
+
     // ── runTrial: forwards status, pre-empts active run ─────────────────────────
     console.log('=== runTrial ===');
     {
@@ -311,6 +411,24 @@ function newSession(m) {
             hysteresis: 3,
             on_ranges: [[50, 99]]
         });
+        const apply = { variable: 'led_percent', old_value: 20, new_value: 40 };
+        const record = {
+            event: 'runtime_control_trial_parameters',
+            resolved_variables: { led_percent: 40 }
+        };
+        check(
+            'runtime apply provenance survives bridge sanitizer',
+            s._sanitizeRunStatus({
+                phase: 'runtime-control-applied',
+                runtimeControlApply: apply
+            }).runtimeControlApply,
+            apply
+        );
+        check(
+            'resolved trial record survives bridge sanitizer',
+            s._sanitizeRunStatus({ phase: 'trial-resolved', runtimeRecord: record }).runtimeRecord,
+            record
+        );
     }
 
     // ── runSequence: forwards progress, pre-empts ───────────────────────────────
@@ -325,9 +443,14 @@ function newSession(m) {
         const summary = await s.runSequence({
             steps,
             conditionsByName,
+            resolveCondition: () => null,
             onProgress: (st) => prog.push('cb:' + st.phase)
         });
         check('runner.runSequence got steps', s._runner.lastSeq.steps, steps);
+        checkBool(
+            'runSequence forwards resolveCondition hook',
+            typeof s._runner.lastSeq.resolveCondition === 'function'
+        );
         check('progress broadcast + per-call', prog, ['sequence-complete', 'cb:sequence-complete']);
         check('returns the runner summary', summary, { completed: true });
     }

@@ -73,6 +73,13 @@
             this._LinkClass = LinkClass;
             this._handlers = {};
             EVENTS.forEach((e) => (this._handlers[e] = new Set()));
+            // Replay/viewer mode uses this broker-level latch to guarantee that
+            // no NEW serial operation can be started while historical data is
+            // being presented as if it were live.  The latch is deliberately in
+            // ArenaSession (rather than in one UI) because console sends,
+            // sequence runs, FicTrac frame application, and bulk reads all meet
+            // here.  null means normal live operation.
+            this._outputInhibitedReason = null;
 
             // ONE link with the three callbacks fanned out to subscribers. On an
             // INVOLUNTARY loss (cable-pull / read-loop death) abort the runner
@@ -155,6 +162,63 @@
             else if (typeof this._runner._clear === 'function') this._runner._clear();
         }
 
+        // ---- hardware-output interlock --------------------------------------
+
+        /** True while new serial/hardware operations are blocked. */
+        get outputInhibited() {
+            return this._outputInhibitedReason !== null;
+        }
+
+        /** Human-readable owner/reason for the active interlock, or null. */
+        get outputInhibitedReason() {
+            return this._outputInhibitedReason;
+        }
+
+        /**
+         * Enable/clear the page-wide hardware-output interlock.
+         *
+         * Pass a non-empty reason to enable it; pass null/false/'' to clear it.
+         * Enabling while a runner is active is rejected: an already-started
+         * wire transaction cannot be recalled safely, so the caller must stop
+         * the live run before entering replay.  `disconnect()` remains allowed
+         * under the interlock so the serial port can always be closed.
+         *
+         * @returns {boolean} true when the latch changed
+         */
+        setOutputInhibited(reason) {
+            const next =
+                reason === null || reason === undefined || reason === false
+                    ? null
+                    : String(reason).trim() || null;
+            if (next && this._runner.active) {
+                const e = new Error(
+                    'Cannot inhibit arena output while a run is active — stop the live run first.'
+                );
+                e.code = 'ARENA_RUN_ACTIVE';
+                throw e;
+            }
+            if (next === this._outputInhibitedReason) return false;
+            this._outputInhibitedReason = next;
+            this._emit('state');
+            return true;
+        }
+
+        _assertOutputAllowed(operation) {
+            if (!this.outputInhibited) return;
+            const e = new Error(
+                'Arena hardware output is inhibited' +
+                    (this._outputInhibitedReason ? ' (' + this._outputInhibitedReason + ')' : '') +
+                    '; cannot ' +
+                    operation +
+                    '.'
+            );
+            e.name = 'ArenaOutputInhibitedError';
+            e.code = 'ARENA_OUTPUT_INHIBITED';
+            e.reason = this._outputInhibitedReason;
+            e.operation = operation;
+            throw e;
+        }
+
         // ---- connection lifecycle -------------------------------------------
 
         /** True while the serial port is open. */
@@ -168,6 +232,7 @@
          * @param {object} [opts] {filters?, baudRate?} — forwarded to ArenaLink.connect
          */
         async connect(opts) {
+            this._assertOutputAllowed('connect');
             await this._link.connect(opts);
             this._emit('state');
         }
@@ -178,10 +243,16 @@
          */
         async disconnect() {
             if (this._runner.active) {
-                try {
-                    await this._runner.stop();
-                } catch (_) {
-                    /* best-effort */
+                // The interlock is normally enabled only while idle.  If an
+                // injected/legacy runner nevertheless reports active, abort it
+                // locally rather than violating the latch with a STOP frame.
+                if (this.outputInhibited) this._abortRunner();
+                else {
+                    try {
+                        await this._runner.stop();
+                    } catch (_) {
+                        /* best-effort */
+                    }
                 }
             }
             try {
@@ -205,6 +276,7 @@
          * @returns {Promise<Uint8Array>}
          */
         send(bytes, opts) {
+            this._assertOutputAllowed('send');
             const p = this._link.send(bytes, opts);
             // Bridge-as-single-logger (default-on): when logging is active, post every
             // arena command to the bridge's unified JSONL — timestamped on the browser
@@ -271,6 +343,7 @@
          * @returns {Promise<Uint8Array>}
          */
         sendBulkRead(bytes, opts) {
+            this._assertOutputAllowed('bulk-read');
             return this._link.sendBulkRead(bytes, opts);
         }
 
@@ -302,6 +375,7 @@
          * @returns {Promise<object|null>} decoded trialParams response
          */
         async runTrial(a) {
+            this._assertOutputAllowed('run a trial');
             const args = a || {};
             if (this._runner.active) await this._runner.stop();
             return this._runner.start({
@@ -318,12 +392,15 @@
          * @param {Array}  a.steps               flattenStructure(experiment,...).steps
          * @param {Map}    a.conditionsByName     name -> condition
          * @param {Function} [a.resolvePatternId] trialParamsCmd -> 1-based SD index | null
+         * @param {Function} [a.resolveCondition] optional async trial-boundary resolver;
+         *        forwarded verbatim to ArenaRunner.runSequence
          * @param {Function} [a.onProgress]       per-call progress sink (also broadcast as 'runstatus')
          * @param {Function} [a.timing]           host-timing fn (default runner's hostSideTrialEnd — FW#4 swap point)
          * @param {Function} [a.sleep]            sleep(ms) (default runner's abort-aware sleep; tests inject instant)
          * @returns {Promise<{completed,aborted,steps,errors,skipped}>}
          */
         async runSequence(a) {
+            this._assertOutputAllowed('run a sequence');
             const args = a || {};
             if (this._runner.active) await this._runner.stop();
             return this._runner.runSequence({
@@ -331,6 +408,7 @@
                 conditionsByName: args.conditionsByName,
                 resolvePatternId: args.resolvePatternId,
                 resolvePatternFrames: args.resolvePatternFrames,
+                resolveCondition: args.resolveCondition,
                 fictracPluginNames: args.fictracPluginNames,
                 timing: args.timing,
                 sleep: args.sleep,
@@ -340,6 +418,7 @@
 
         /** Best-effort, queued STOP (STOP_DISPLAY 0x30). Idempotent; safe mid-run. */
         async stop() {
+            this._assertOutputAllowed('send STOP');
             const r = await this._runner.stop();
             this._emit('state');
             return r;
@@ -385,6 +464,16 @@
             for (const k of keys) if (s[k] !== undefined) out[k] = s[k];
             if (s.params && typeof s.params === 'object') out.params = s.params;
             if (s.step && s.step.conditionName) out.condition = s.step.conditionName;
+            // Runtime-control boundary records are already JSON-safe and carry
+            // the complete YAML/session/apply provenance.  Keep them nested so
+            // bridge JSONL receives the authoritative record without expanding
+            // the scalar allowlist every time the proposal grows a field.
+            if (s.runtimeControlApply && typeof s.runtimeControlApply === 'object') {
+                out.runtimeControlApply = s.runtimeControlApply;
+            }
+            if (s.runtimeRecord && typeof s.runtimeRecord === 'object') {
+                out.runtimeRecord = s.runtimeRecord;
+            }
             if (s.response && typeof s.response === 'object') {
                 out.status = s.response.status;
                 out.ok = s.response.ok;

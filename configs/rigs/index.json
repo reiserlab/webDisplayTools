@@ -4,6 +4,18 @@
   "description": "Built-in rigs offered in the v3 Experiment Designer's Settings → Rig dropdown. Add a rig YAML alongside this file and a matching entry here.",
   "rigs": [
     {
+      "name": "g6_3x10",
+      "label": "G6 — 3×10 (360°)",
+      "path": "./configs/rigs/g6_3x10.yaml",
+      "arena": "G6_3x10"
+    },
+    {
+      "name": "g6_4x10",
+      "label": "G6 — 4×10 (360°)",
+      "path": "./configs/rigs/g6_4x10.yaml",
+      "arena": "G6_4x10"
+    },
+    {
       "name": "cshl_g6_2x10_ball",
       "label": "CSHL G6 — 2×10 fly-on-ball (FicTrac)",
       "path": "./configs/rigs/cshl_g6_2x10_ball.yaml",

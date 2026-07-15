@@ -22,6 +22,20 @@ import {
 const GRAYSCALE_LEVELS = 16;
 const BASE_OFFSET_RAD = -Math.PI / 2;
 
+// The solid package remains close to its physical size. A single shared point
+// layer supplies the soft falloff, so glow adds one draw call rather than one
+// sprite/light per LED (7,200 physical preview LEDs / 8,000 PAT addresses).
+const LED_CORE_SCALE = 1.14;
+const LED_HALO_DIAMETER_SCALE = 2.0;
+const LED_HALO_OPACITY = 0.34;
+const LED_HALO_TEXTURE_SIZE = 64;
+const LED_HALO_SURFACE_OFFSET = 0.004;
+
+// Visual-only CSHL hardware gap. G6 panel numbers are row-major and one-based,
+// so panels 8 and 18 are the lower and upper panels of the rear 2x10 column.
+// This intentionally does not alter arena configs or the 200x40 PAT address map.
+const G6_2X10_PREVIEW_OMITTED_PANEL_NUMBERS = Object.freeze([8, 18]);
+
 class ThreeViewer {
     constructor(container) {
         this.container = container;
@@ -32,6 +46,8 @@ class ThreeViewer {
         this.controls = null;
         this.arenaGroup = null;
         this.ledMeshes = [];
+        this.ledGlow = null;
+        this._ledGlowEnabled = true;
         this.labelObjects = [];
         this.poleGroup = null; // Group for pole geometry visualization
 
@@ -168,6 +184,18 @@ class ThreeViewer {
         this.state.pattern = patternData;
         this.state.currentFrame = 0;
         this._updateLEDColors();
+    }
+
+    /**
+     * Enable or disable the subtle shared LED halo. This is primarily useful
+     * for visual comparison and performance benchmarking.
+     * @param {boolean} enabled
+     */
+    setLedGlowEnabled(enabled) {
+        this._ledGlowEnabled = !!enabled;
+        if (this.ledGlow) {
+            this.ledGlow.visible = this._ledGlowEnabled && !!this.ledGlow.userData.anyLit;
+        }
     }
 
     /**
@@ -356,7 +384,7 @@ class ThreeViewer {
 
     /**
      * Set camera field of view
-     * @param {number} fov - FOV in degrees (30-120)
+     * @param {number} fov - Vertical FOV in degrees (must remain below 180)
      * @param {boolean} compensateDistance - Adjust camera distance to maintain apparent size
      */
     setFOV(fov, compensateDistance = false) {
@@ -417,7 +445,8 @@ class ThreeViewer {
         const cRadius = panelWidth / Math.tan(alpha / 2) / 2;
         const arenaHeight = panelHeight * numRows;
 
-        // Installed columns (for partial arenas)
+        // Configured columns (the preview-only physical gap intentionally does
+        // not change logical arena/PAT statistics).
         const installedCols = arena.columns_installed ? arena.columns_installed.length : numCols;
         const totalPanels = installedCols * numRows;
         const totalLEDs = totalPanels * specs.pixels_per_panel * specs.pixels_per_panel;
@@ -447,6 +476,25 @@ class ThreeViewer {
     }
 
     /**
+     * Return the current renderer counters used by the manual LED benchmark.
+     * Values describe the most recently rendered frame.
+     */
+    getRenderStats() {
+        if (!this.renderer) return null;
+        const info = this.renderer.info;
+        return {
+            calls: info.render.calls,
+            triangles: info.render.triangles,
+            points: info.render.points,
+            lines: info.render.lines,
+            geometries: info.memory.geometries,
+            textures: info.memory.textures,
+            ledCount: this.ledMeshes.length,
+            glowVisible: !!this.ledGlow?.visible
+        };
+    }
+
+    /**
      * Clean up and destroy the viewer
      */
     destroy() {
@@ -459,6 +507,8 @@ class ThreeViewer {
         if (this._resizeHandler) {
             window.removeEventListener('resize', this._resizeHandler);
         }
+
+        this._disposeLEDGlowLayer();
 
         if (this.renderer) {
             this.renderer.dispose();
@@ -486,6 +536,7 @@ class ThreeViewer {
 
         // Clear references
         this.ledMeshes = [];
+        this.ledGlow = null;
         this.labelObjects = [];
         this.scene = null;
         this.camera = null;
@@ -566,7 +617,43 @@ class ThreeViewer {
         }
     }
 
+    /**
+     * Return columns rendered by the preview. Panels 8 and 18 are a physical
+     * CSHL omission that is deliberately absent from the rig/config registry.
+     * Pattern indexing still uses the configured 10-column coordinate system.
+     */
+    _getVisibleColumnsSet() {
+        const visibleColumns = this._getInstalledColumnsSet();
+        const arena = this.arenaConfig?.arena;
+
+        if (
+            !arena ||
+            arena.generation !== 'G6' ||
+            arena.num_rows !== 2 ||
+            arena.num_cols !== 10 ||
+            (arena.columns_installed !== null && arena.columns_installed !== undefined)
+        ) {
+            return visibleColumns;
+        }
+
+        for (const col of [...visibleColumns]) {
+            let entireColumnOmitted = true;
+            for (let row = 0; row < arena.num_rows; row += 1) {
+                const panelNumber = row * arena.num_cols + col + 1;
+                if (!G6_2X10_PREVIEW_OMITTED_PANEL_NUMBERS.includes(panelNumber)) {
+                    entireColumnOmitted = false;
+                    break;
+                }
+            }
+            if (entireColumnOmitted) visibleColumns.delete(col);
+        }
+
+        return visibleColumns;
+    }
+
     _buildArena() {
+        this._disposeLEDGlowLayer();
+
         // Clean up existing label DOM elements FIRST (they're nested in column groups)
         // CSS2DRenderer appends label.element to its own domElement container
         for (const label of this.labelObjects) {
@@ -619,11 +706,11 @@ class ThreeViewer {
         // CCW: c0 just RIGHT of south, columns increase clockwise (mirror)
         // Note: Three.js uses right-handed coords but top-down view has +Z toward viewer,
         // so we negate Z to match MATLAB's top-down appearance
-        const installedSet = this._getInstalledColumnsSet();
+        const visibleColumns = this._getVisibleColumnsSet();
 
         for (let col = 0; col < numCols; col++) {
-            // Skip uninstalled columns (for partial arenas like G6_2x8of10)
-            if (!installedSet.has(col)) continue;
+            // Skip config-level omissions and the visual-only CSHL panels 8/18 rear gap.
+            if (!visibleColumns.has(col)) continue;
 
             let angle;
             if (columnOrder === 'cw') {
@@ -649,11 +736,119 @@ class ThreeViewer {
                 columnOrder
             );
             columnGroup.position.set(x, 0, z);
+            columnGroup.userData.columnIndex = col;
 
             this.arenaGroup.add(columnGroup);
         }
+
+        this._createLEDGlowLayer();
+        this._updateLEDColors();
+
         // Note: camera position is NOT reset here — preserves user's current view.
         // Only init() calls _resetCameraToTopDown() for the initial view.
+    }
+
+    /**
+     * Build one camera-facing point cloud for every LED halo. Keeping the halo
+     * in one BufferGeometry avoids thousands of extra scene objects and draw
+     * calls while still following the physical LED positions around the arena.
+     */
+    _createLEDGlowLayer() {
+        if (!this.arenaGroup || this.ledMeshes.length === 0 || !this.panelSpecs) return;
+
+        this.arenaGroup.updateMatrixWorld(true);
+
+        const positions = new Float32Array(this.ledMeshes.length * 3);
+        const colors = new Float32Array(this.ledMeshes.length * 3);
+        const worldPosition = new THREE.Vector3();
+        const worldNormal = new THREE.Vector3();
+        const worldQuaternion = new THREE.Quaternion();
+
+        for (let index = 0; index < this.ledMeshes.length; index += 1) {
+            const mesh = this.ledMeshes[index].mesh;
+            mesh.getWorldPosition(worldPosition);
+            mesh.getWorldQuaternion(worldQuaternion);
+            worldNormal.set(0, 0, 1).applyQuaternion(worldQuaternion).normalize();
+            worldPosition.addScaledVector(worldNormal, LED_HALO_SURFACE_OFFSET);
+            this.arenaGroup.worldToLocal(worldPosition);
+
+            const offset = index * 3;
+            positions[offset] = worldPosition.x;
+            positions[offset + 1] = worldPosition.y;
+            positions[offset + 2] = worldPosition.z;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const colorAttribute = new THREE.BufferAttribute(colors, 3);
+        colorAttribute.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute('color', colorAttribute);
+        geometry.computeBoundingSphere();
+
+        const texture = this._createLEDGlowTexture();
+        const material = new THREE.PointsMaterial({
+            size: this._getLEDHaloDiameter(),
+            map: texture,
+            transparent: true,
+            opacity: LED_HALO_OPACITY,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending,
+            depthTest: true,
+            depthWrite: false,
+            sizeAttenuation: true,
+            alphaTest: 0.01
+        });
+        material.toneMapped = false;
+
+        this.ledGlow = new THREE.Points(geometry, material);
+        this.ledGlow.name = 'led-glow-layer';
+        this.ledGlow.renderOrder = 2;
+        this.ledGlow.userData.anyLit = false;
+        this.arenaGroup.add(this.ledGlow);
+    }
+
+    _createLEDGlowTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = LED_HALO_TEXTURE_SIZE;
+        canvas.height = LED_HALO_TEXTURE_SIZE;
+
+        const context = canvas.getContext('2d');
+        const center = LED_HALO_TEXTURE_SIZE / 2;
+        const gradient = context.createRadialGradient(center, center, 1, center, center, center);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 0.82)');
+        gradient.addColorStop(0.28, 'rgba(255, 255, 255, 0.46)');
+        gradient.addColorStop(0.62, 'rgba(255, 255, 255, 0.14)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        context.fillStyle = gradient;
+        context.fillRect(0, 0, LED_HALO_TEXTURE_SIZE, LED_HALO_TEXTURE_SIZE);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = false;
+        texture.needsUpdate = true;
+        return texture;
+    }
+
+    _getLEDHaloDiameter() {
+        const specs = this.panelSpecs;
+        const packageDiameterMM =
+            specs.led_type === 'rect'
+                ? Math.max(specs.led_width_mm || 1.0, specs.led_height_mm || 0.5)
+                : specs.led_diameter_mm || 2.0;
+        return (packageDiameterMM / 25.4) * LED_HALO_DIAMETER_SCALE;
+    }
+
+    _disposeLEDGlowLayer() {
+        if (!this.ledGlow) return;
+        if (this.ledGlow.parent) {
+            this.ledGlow.parent.remove(this.ledGlow);
+        }
+        const material = this.ledGlow.material;
+        if (material?.map) material.map.dispose();
+        if (material) material.dispose();
+        if (this.ledGlow.geometry) this.ledGlow.geometry.dispose();
+        this.ledGlow = null;
     }
 
     /**
@@ -783,8 +978,8 @@ class ThreeViewer {
 
                 if (isRectLED) {
                     // Rectangular LED rotated 45°
-                    const rectW = ledW / 2;
-                    const rectH = ledH / 2;
+                    const rectW = (ledW * LED_CORE_SCALE) / 2;
+                    const rectH = (ledH * LED_CORE_SCALE) / 2;
 
                     const cos45 = Math.SQRT1_2;
                     const sin45 = Math.SQRT1_2;
@@ -860,7 +1055,7 @@ class ThreeViewer {
                     group.add(outline);
                 } else {
                     // Round LED
-                    const ledGeom = new THREE.CircleGeometry(ledRadius, 16);
+                    const ledGeom = new THREE.CircleGeometry(ledRadius * LED_CORE_SCALE, 16);
                     const ledMat = new THREE.MeshBasicMaterial({ color: 0x00e600 });
                     const led = new THREE.Mesh(ledGeom, ledMat);
                     led.position.set(localX, localY, localZ);
@@ -880,12 +1075,13 @@ class ThreeViewer {
                     // LED outline circle
                     const circlePoints = [];
                     const segments = 16;
+                    const outlineRadius = ledRadius * LED_CORE_SCALE;
                     for (let i = 0; i <= segments; i++) {
                         const theta = (i / segments) * Math.PI * 2;
                         circlePoints.push(
                             new THREE.Vector3(
-                                Math.cos(theta) * ledRadius,
-                                Math.sin(theta) * ledRadius,
+                                Math.cos(theta) * outlineRadius,
+                                Math.sin(theta) * outlineRadius,
                                 0
                             )
                         );
@@ -946,12 +1142,31 @@ class ThreeViewer {
     }
 
     _updateLEDColors() {
-        const pattern = this.state.pattern;
+        const glowColors = this.ledGlow?.geometry.getAttribute('color') || null;
+        let anyLit = false;
 
-        for (const ledRef of this.ledMeshes) {
+        for (let index = 0; index < this.ledMeshes.length; index += 1) {
+            const ledRef = this.ledMeshes[index];
             const brightness = this._getLEDBrightness(ledRef);
             const color = this._brightnessToColor(brightness);
             ledRef.mesh.material.color.setHex(color);
+
+            if (glowColors) {
+                // Match the existing green-phosphor mix. Brightness remains
+                // literal: GS2 off pixels have no halo and GS16 levels retain
+                // their relative intensity without temporal smoothing.
+                const coreColor = ledRef.mesh.material.color;
+                glowColors.setXYZ(index, coreColor.r, coreColor.g, coreColor.b);
+            }
+            if (brightness > 0) anyLit = true;
+        }
+
+        if (glowColors) {
+            glowColors.needsUpdate = true;
+        }
+        if (this.ledGlow) {
+            this.ledGlow.userData.anyLit = anyLit;
+            this.ledGlow.visible = this._ledGlowEnabled && anyLit;
         }
     }
 

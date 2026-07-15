@@ -91,20 +91,24 @@ All tools use a consistent dark theme design:
 
 ## Local Development
 
-All tools can be tested locally by opening the HTML files directly in a web browser. No server setup is required for basic functionality.
+Static tools can still be opened directly, but Arena Studio and repo-backed features
+must run over HTTP. A `file://` launch cannot reliably load ES modules, protocol
+registries, GitHub data, or pattern files.
 
-For running tests or code formatting, first install dependencies:
+From the repository root:
 
 ```bash
-npm install
+pixi run serve
 ```
 
-Then you can use:
+Then open [http://127.0.0.1:8000/arena_studio_alt.html](http://127.0.0.1:8000/arena_studio_alt.html).
+
+The same Pixi environment provides tests and formatting:
 
 ```bash
-npm test              # Run validation tests
-npm run format        # Format all JS files with Prettier
-npm run format:check  # Check formatting without changes
+pixi run test
+pixi run format
+pixi run format-check
 ```
 
 ## Repository Structure

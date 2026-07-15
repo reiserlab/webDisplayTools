@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Arena Studio Alt</title>
+<meta name="robots" content="noindex" />
+<style>
+  :root{color-scheme:dark light}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1013;color:#dce7e5;
+       font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .boot{display:flex;align-items:center;gap:10px;letter-spacing:.08em;text-transform:uppercase}
+  .lamp{width:9px;height:9px;background:#8bff9a;box-shadow:0 0 12px #8bff9a}
+  .file-help{max-width:620px;border:1px solid #59666a;background:#11191d;padding:24px;line-height:1.55}
+  .file-help h1{margin:0 0 10px;font-size:22px;text-transform:none;letter-spacing:0}
+  .file-help p{color:#aebbbd;text-transform:none;letter-spacing:0}
+  .file-help code{display:block;margin:12px 0;padding:11px;border:1px solid #354247;background:#080d10;color:#ffd166;text-transform:none;letter-spacing:0;user-select:all}
+  .file-help a{display:inline-block;padding:8px 11px;border:1px solid #8bff9a;color:#8bff9a;text-decoration:none}
+</style>
+</head>
+<body>
+  <div class="boot"><span class="lamp"></span><span>Loading Arena Studio Alt…</span></div>
+  <script>
+    (function () {
+      if (location.protocol === 'file:') {
+        document.querySelector('.boot').outerHTML =
+          '<div class="file-help"><h1>Run Arena Studio through localhost</h1>' +
+          '<p>A <code>file://</code> launch cannot reliably load the modules and data requests used by GitHub, protocols, replay logs, and patterns.</p>' +
+          '<p>In a Terminal opened in this folder, run:</p><code>pixi run serve</code>' +
+          '<a href="http://127.0.0.1:8000/arena_studio_alt.html">Open localhost Studio</a></div>';
+        return;
+      }
+      var q = location.search || '';
+      var joiner = q ? '&' : '?';
+      var target = 'arena_studio.html' + q + joiner + 'alt_ui=20260713-alt-v067#alt';
+      location.replace(target);
+    })();
+  </script>
+</body>
+</html>

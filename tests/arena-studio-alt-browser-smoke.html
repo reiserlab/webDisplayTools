@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Arena Studio Alt browser smoke</title>
+  <style>
+    html,body{margin:0;height:100%;background:#111;color:#ddd;font:12px monospace}
+    #state{position:fixed;right:10px;top:10px;z-index:10;padding:6px 9px;background:#111;border:1px solid #8bff9a;color:#8bff9a}
+    iframe{width:100%;height:100%;border:0}
+  </style>
+</head>
+<body>
+  <div id="state">loading fixtures…</div>
+  <iframe id="studio" src="../arena_studio_alt.html" title="Arena Studio Alt smoke target"></iframe>
+  <script>
+    const frame = document.getElementById('studio');
+    const state = document.getElementById('state');
+    frame.addEventListener('load', async () => {
+      try {
+        const win = frame.contentWindow;
+        for (let i = 0; i < 100 && !win.ArenaStudioAlt; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        if (!win.ArenaStudioAlt) throw new Error('Alt controller did not initialize');
+        const [yaml, log] = await Promise.all([
+          fetch('../protocols/g6_2x10_smoke.yaml').then((r) => r.text()),
+          fetch('./fixtures/arena_studio_alt_replay.jsonl').then((r) => r.text())
+        ]);
+        const replay = win.ArenaStudioAlt.replay;
+        replay.yamlFile = new win.File([yaml], 'g6_2x10_smoke.yaml', { type: 'text/yaml' });
+        replay.logFile = new win.File([log], 'arena_studio_alt_replay.jsonl', { type: 'application/x-ndjson' });
+        replay.ui.viewerCheck.checked = false;
+        await win.ArenaStudioAlt.startReplay();
+        state.textContent = win.Studio.replayActive ? 'replay active' : 'replay failed';
+      } catch (error) {
+        state.textContent = 'error: ' + (error && error.message ? error.message : error);
+        state.style.borderColor = '#ff6b5e';
+        state.style.color = '#ff6b5e';
+      }
+    });
+  </script>
+</body>
+</html>

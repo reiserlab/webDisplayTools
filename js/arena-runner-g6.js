@@ -962,6 +962,12 @@ var ArenaRunnerG6 = (function () {
          * @param {function} a.resolvePatternId  (trialParamsCmd) ⇒ 1-based SD index | null
          * @param {function} [a.resolvePatternFrames] (trialParamsCmd) ⇒ frame count | null
          *                                        (Mode-3 index modulus for closed-loop)
+         * @param {function} [a.resolveCondition] async optional trial-boundary hook:
+         *        (conditionName, {index,total,step,condition,conditionsByName}) ⇒
+         *        condition | {condition, runtimeRecord}.  A runtimeRecord may
+         *        also supply resolved_commands, in which case the runner builds
+         *        a non-mutating condition copy around those commands.  The hook
+         *        runs after step-start and before any command translation/send.
          * @param {Set|Array} [a.fictracPluginNames]  plugin names whose class is FicTracPlugin
          * @param {function} [a.onProgress]      progress/event callback (see phases below)
          * @param {function} [a.timing]          async (durationSec, sleep) ⇒ trial end
@@ -981,6 +987,8 @@ var ArenaRunnerG6 = (function () {
                 typeof a.resolvePatternId === 'function' ? a.resolvePatternId : () => null;
             const resolvePatternFrames =
                 typeof a.resolvePatternFrames === 'function' ? a.resolvePatternFrames : () => null;
+            const resolveCondition =
+                typeof a.resolveCondition === 'function' ? a.resolveCondition : null;
             const fictracPluginNames =
                 a.fictracPluginNames instanceof Set
                     ? a.fictracPluginNames
@@ -1009,7 +1017,7 @@ var ArenaRunnerG6 = (function () {
                 for (let i = 0; i < steps.length; i++) {
                     if (this._abort) break;
                     const step = steps[i];
-                    const cond = conditionsByName.get(step.conditionName) || null;
+                    let cond = conditionsByName.get(step.conditionName) || null;
                     this._conditionName = step.conditionName || null;
                     emit({
                         phase: 'step-start',
@@ -1031,6 +1039,115 @@ var ArenaRunnerG6 = (function () {
                         });
                         emit({ phase: 'step-done', index: i, total: steps.length, step });
                         continue;
+                    }
+                    // Optional Alt-UI/runtime-controls seam.  It is intentionally
+                    // absent from the default path, so existing pages execute the
+                    // exact same condition object/order as before.  The resolver
+                    // may be async (for future durable logging) but must finish at
+                    // the boundary before the first command is translated.
+                    if (resolveCondition) {
+                        let resolution;
+                        try {
+                            resolution = await resolveCondition(step.conditionName, {
+                                index: i,
+                                total: steps.length,
+                                step,
+                                condition: cond,
+                                conditionsByName
+                            });
+                        } catch (e) {
+                            summary.errors++;
+                            emit({
+                                phase: 'error',
+                                index: i,
+                                step,
+                                error: e,
+                                reason: 'condition resolution failed: ' + (e && (e.message || e))
+                            });
+                            emit({ phase: 'step-done', index: i, total: steps.length, step });
+                            continue;
+                        }
+
+                        let runtimeRecord = null;
+                        if (
+                            resolution &&
+                            typeof resolution === 'object' &&
+                            Object.prototype.hasOwnProperty.call(resolution, 'condition')
+                        ) {
+                            runtimeRecord = resolution.runtimeRecord || null;
+                            if (
+                                resolution.condition !== undefined &&
+                                resolution.condition !== null
+                            ) {
+                                cond = resolution.condition;
+                            }
+                        } else if (
+                            resolution &&
+                            typeof resolution === 'object' &&
+                            Object.prototype.hasOwnProperty.call(resolution, 'runtimeRecord')
+                        ) {
+                            runtimeRecord = resolution.runtimeRecord || null;
+                            if (Array.isArray(resolution.commands)) {
+                                cond = Object.assign({}, cond, { commands: resolution.commands });
+                            }
+                        } else if (resolution !== undefined && resolution !== null) {
+                            cond = resolution;
+                        }
+
+                        // RuntimeControlSession.beginTrial() returns a complete
+                        // authoritative record.  If the wrapper did not construct
+                        // a condition itself, use the record's resolved commands in
+                        // a shallow copy — never mutate the parsed YAML model.
+                        if (
+                            runtimeRecord &&
+                            Array.isArray(runtimeRecord.resolved_commands) &&
+                            (!cond ||
+                                !Array.isArray(cond.commands) ||
+                                (resolution && resolution.condition === undefined))
+                        ) {
+                            cond = Object.assign({}, cond || {}, {
+                                name: (cond && cond.name) || step.conditionName,
+                                commands: runtimeRecord.resolved_commands
+                            });
+                        }
+
+                        if (runtimeRecord) {
+                            const applied = Array.isArray(runtimeRecord.apply_events)
+                                ? runtimeRecord.apply_events
+                                : [];
+                            for (const applyEvent of applied) {
+                                emit({
+                                    phase: 'runtime-control-applied',
+                                    index: i,
+                                    total: steps.length,
+                                    step,
+                                    runtimeControlApply: applyEvent
+                                });
+                            }
+                            emit({
+                                phase: 'trial-resolved',
+                                index: i,
+                                total: steps.length,
+                                step,
+                                conditionName: step.conditionName,
+                                runtimeRecord
+                            });
+                        }
+
+                        if (!cond || !Array.isArray(cond.commands)) {
+                            summary.errors++;
+                            emit({
+                                phase: 'error',
+                                index: i,
+                                step,
+                                reason:
+                                    'Condition resolver returned no command list for "' +
+                                    step.conditionName +
+                                    '" — skipped.'
+                            });
+                            emit({ phase: 'step-done', index: i, total: steps.length, step });
+                            continue;
+                        }
                     }
                     // Per-condition timing accumulators: the max trialParams target
                     // duration and the total time actually slept on wait commands.

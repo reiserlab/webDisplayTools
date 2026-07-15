@@ -112,12 +112,17 @@ stop writing immediately; issue a new one and re-paste per P3.
 - ⚠ **Do NOT enable branch protection** on `main` — benches commit directly.
 
 ### P3. Per-bench Studio config (repeat on each bench laptop)
-Arena Studio → **File ▾** (the GitHub settings are visible in all views but
-**locked by default** — kiosk-safe so students can't change them):
-1. Click the **🔒 lock** in the GitHub block to **unlock** it (🔓).
-2. GitHub **Sign in…** → paste the shared PAT → answer **YES** to "Remember
+Run `pixi run serve`, then open Arena Studio through `http://127.0.0.1:8000/`.
+Do not use a `file://` launch: its shell can render while browser security blocks
+the module and data requests used by GitHub, protocols, and patterns.
+
+Arena Studio → **File ▾**. GitHub authentication remains available in Safe mode,
+while destination/write settings are **locked by default**:
+1. GitHub **Sign in…** → paste the shared PAT → answer **YES** to "Remember
    this token" (localStorage; a sessionStorage-only token dies when the tab
    closes — a classic footgun for a kiosk bench).
+2. Click **🛡 Safe mode**, enter the instructor password, then click the **🔒**
+   in the GitHub block to unlock destination/write setup.
 3. **Repo** = `reiserlab/cshl-2026-course`.
 4. **Bench id** = `bench01`…`bench07` (must match `roster.yaml`).
 5. Check **"Commit directly to default branch"**.

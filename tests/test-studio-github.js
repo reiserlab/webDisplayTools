@@ -9,7 +9,10 @@
  */
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const G = require('../js/studio-github.js');
+const studioHtml = fs.readFileSync(path.join(__dirname, '..', 'arena_studio.html'), 'utf8');
 
 let totalChecks = 0;
 let failures = 0;
@@ -83,6 +86,7 @@ check('writable paths readable', G.isAllowedReadPath('protocols/shared/x.yaml'),
 check('runlogs readable', G.isAllowedReadPath('runlogs/bench03/x.jsonl'), true);
 check('bare patterns dir listable', G.isAllowedReadPath('patterns'), true);
 check('bare protocols dir listable', G.isAllowedReadPath('protocols'), true);
+check('bare runlogs dir listable', G.isAllowedReadPath('runlogs'), true);
 check('bare patterns NOT writable', G.isAllowedPath('patterns'), false);
 check('other dir still blocked', G.isAllowedReadPath('js/evil.js'), false);
 check('nested roster blocked', G.isAllowedReadPath('secrets/roster.yaml'), false);
@@ -100,6 +104,124 @@ const h = G.headers(TOKEN);
 check('bearer token', h.Authorization, 'Bearer ' + TOKEN);
 check('api version', h['X-GitHub-Api-Version'], '2022-11-28');
 check('accept', h.Accept, 'application/vnd.github+json');
+
+// ── Arena Studio authentication + public-read wiring ───────────────────────
+console.log('=== Arena Studio auth wiring ===');
+const signInStart = studioHtml.indexOf("$('ghSignInBtn').addEventListener");
+const signInEnd = studioHtml.indexOf('// Sign out', signInStart);
+const signInBody = studioHtml.slice(signInStart, signInEnd);
+const lockStart = studioHtml.indexOf('const lockTargets = () =>');
+const lockEnd = studioHtml.indexOf('function applyGhLock', lockStart);
+const lockBody = studioHtml.slice(lockStart, lockEnd);
+const openCourseStart = studioHtml.indexOf("$('fmOpenCourse').addEventListener");
+const openCourseEnd = studioHtml.indexOf('async function openFromCourseRepo', openCourseStart);
+const openCourseBody = studioHtml.slice(openCourseStart, openCourseEnd);
+checkBool('Sign in handler is present', signInStart >= 0 && signInEnd > signInStart);
+checkBool(
+    'locked safe mode keeps Sign in clickable',
+    lockStart >= 0 && !lockBody.includes("$('ghSignInBtn')")
+);
+checkBool('advanced archive option is included in kiosk lock', lockBody.includes('archive'));
+checkBool(
+    'Sign in shows a checking state',
+    signInBody.includes("signInBtn.textContent = 'Checking…'") &&
+        signInBody.includes("signInBtn.setAttribute('aria-busy', 'true')")
+);
+checkBool(
+    'Sign in verifies access to the configured course repo',
+    signInBody.includes('GH.reqGetRepo(cs.repo.owner, cs.repo.name, token)')
+);
+checkBool(
+    'repo access is verified before a token is stored',
+    signInBody.indexOf('GH.reqGetRepo(cs.repo.owner, cs.repo.name, token)') <
+        signInBody.indexOf("sessionStorage.setItem('studio_gh_pat'")
+);
+checkBool(
+    'choosing session-only Sign in removes an older remembered token',
+    signInBody.includes("localStorage.removeItem('studio_gh_pat')")
+);
+checkBool(
+    'a stale Sign in response cannot replace a newer auth state',
+    signInBody.includes('const authGeneration = ++ghAuthGeneration') &&
+        (signInBody.match(/authGeneration !== ghAuthGeneration/g) || []).length >= 3
+);
+checkBool(
+    'Sign in always restores its busy state',
+    signInBody.includes('finally {') &&
+        signInBody.includes("signInBtn.removeAttribute('aria-busy')") &&
+        signInBody.includes('signInBtn.disabled = false')
+);
+checkBool(
+    'public Open from Repo does not require a token',
+    openCourseStart >= 0 && !openCourseBody.includes("if (!token) { Studio.showBanner('Sign in")
+);
+checkBool(
+    'repo-listing failures are surfaced instead of rendered as empty data',
+    openCourseBody.includes('Course repo could not be read:') &&
+        openCourseBody.includes('GH.reqGetRepo(cs.repo.owner, cs.repo.name, token)')
+);
+checkBool(
+    'file launch gets an explicit localhost guard',
+    studioHtml.includes("location.protocol === 'file:'") && studioHtml.includes('pixi run serve')
+);
+checkBool(
+    'production picker is exposed to Alt replay',
+    studioHtml.includes('Studio.showPicker = showPicker')
+);
+const saveStart = studioHtml.indexOf('Studio.saveCurrent = function ()');
+const saveEnd = studioHtml.indexOf("$('fmSave').addEventListener", saveStart);
+const saveAsStart = studioHtml.indexOf("$('fmSaveAs').addEventListener");
+const saveAsEnd = studioHtml.indexOf("$('ghSignInBtn').addEventListener", saveAsStart);
+const promoteStart = studioHtml.indexOf("$('fmPromote').addEventListener");
+const promoteEnd = studioHtml.indexOf('// ---- URL state', promoteStart);
+checkBool(
+    'Safe mode blocks protocol save writes',
+    studioHtml.slice(saveStart, saveEnd).includes('if (!Studio.advanced)')
+);
+checkBool(
+    'Safe mode blocks Save As before filename mutation',
+    studioHtml.slice(saveAsStart, saveAsEnd).includes('if (!Studio.advanced)') &&
+        studioHtml.slice(saveAsStart, saveAsEnd).indexOf('if (!Studio.advanced)') <
+            studioHtml.slice(saveAsStart, saveAsEnd).indexOf('doc.filename =')
+);
+checkBool(
+    'Safe mode blocks protocol promotion writes',
+    studioHtml.slice(promoteStart, promoteEnd).includes('if (!Studio.advanced)')
+);
+const initStart = studioHtml.indexOf('async function initFromUrl()');
+const initEnd = studioHtml.indexOf('// ?rig=', initStart);
+checkBool(
+    'public repo protocol links can open anonymously',
+    !studioHtml.slice(initStart, initEnd).includes('if (!token) {')
+);
+checkBool(
+    'stored sessions re-check configured repo access',
+    studioHtml.includes('GH.reqGetRepo(cs.repo.owner, cs.repo.name, storedToken)') &&
+        studioHtml.includes('The stored GitHub token cannot access ')
+);
+const restoreStart = studioHtml.indexOf('// Restore an existing session token on load.');
+const restoreEnd = studioHtml.indexOf(
+    'updateSaveLabel(); // reflect stored course settings',
+    restoreStart
+);
+const restoreBody = studioHtml.slice(restoreStart, restoreEnd);
+checkBool(
+    'stored-token restore cannot overwrite a newer auth attempt',
+    restoreBody.includes('const restoreGeneration = ghAuthGeneration') &&
+        restoreBody.includes(
+            'restoreGeneration === ghAuthGeneration && ghToken() === storedToken'
+        ) &&
+        (restoreBody.match(/restoreCurrent\(\)/g) || []).length >= 4
+);
+checkBool(
+    'transient repo verification failures preserve the stored token',
+    restoreBody.includes('access.status === 401 || access.status === 404') &&
+        restoreBody.includes('The stored token was kept; retry or sign in again.')
+);
+checkBool(
+    'lazy repo pattern fetches resolve the current token instead of retaining one',
+    (studioHtml.match(/const currentToken = ghToken\(\);/g) || []).length >= 2
+);
 
 // ── request builders ─────────────────────────────────────────────────────────
 console.log('=== reqGetRepo ===');
@@ -208,6 +330,12 @@ check(
     false
 );
 check('anonymous public read keeps accept', req.headers.Accept, 'application/vnd.github+json');
+req = G.reqGetContentsRaw(O, R, 'runlogs/rig1/example.jsonl', null, null);
+check(
+    'anonymous raw public read omits auth',
+    Object.prototype.hasOwnProperty.call(req.headers, 'Authorization'),
+    false
+);
 req = G.reqGetContentsRaw(O, R, 'roster.yaml', null, TOKEN);
 check(
     'roster raw readable',

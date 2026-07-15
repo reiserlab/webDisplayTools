@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Arena replay viewer browser smoke</title>
+  <style>
+    body{margin:0;min-height:100vh;display:grid;place-items:center;background:#101516;color:#e5ece8;font:14px monospace}
+    main{display:flex;align-items:center;gap:12px;padding:18px;border:1px solid #53635d;background:#151d1d}
+    button{padding:9px 14px;border:1px solid #ffc56a;background:#111;color:#ffc56a;font:inherit}
+    #state{color:#8fffc1}
+  </style>
+</head>
+<body>
+  <main>
+    <button id="open" type="button">Open LED-on viewer</button>
+    <span id="state">idle</span>
+  </main>
+  <script src="../js/arena-replay-viewer-protocol.js"></script>
+  <script>
+    const Protocol = window.ArenaReplayViewerProtocol;
+    const sessionId = 'viewer-smoke-1234';
+    const state = document.getElementById('state');
+    let popup = null;
+    document.getElementById('open').addEventListener('click', () => {
+      const url = '../arena_replay_viewer.html?session=' + encodeURIComponent(sessionId) +
+        '&origin=' + encodeURIComponent(location.origin);
+      popup = window.open(url, 'arena-replay-viewer-smoke', 'popup=yes,width=880,height=720,resizable=yes');
+      state.textContent = popup ? 'waiting for viewer…' : 'popup blocked';
+    });
+    window.addEventListener('message', (event) => {
+      const validation = Protocol.validateFromViewer(event, {
+        viewerWindow: popup,
+        expectedOrigin: location.origin,
+        sessionId
+      });
+      if (!validation.ok || validation.message.type !== 'ready') return;
+      popup.postMessage(
+        Protocol.makeMessage(Protocol.OPENER_SOURCE, 'init', sessionId, {
+          arenaConfigName: 'G6_2x10',
+          pattern: null,
+          state: {
+            elapsedMs: 1250,
+            condition: 'LED apparatus smoke',
+            frame: 0,
+            ledOn: true,
+            displayMode: 'all-on'
+          }
+        }),
+        location.origin
+      );
+      state.textContent = 'viewer linked · LED on';
+    });
+  </script>
+</body>
+</html>

@@ -101,6 +101,34 @@
                     (ev.index != null ? ' @frame ' + ev.index : '') +
                     (ev.on && ev.ledPercent != null ? ' (' + ev.ledPercent + '%)' : '')
                 );
+            case 'runtime-control-requested': {
+                const request = ev.request || {};
+                const changes = (request.changes || [])
+                    .map(
+                        (change) =>
+                            change.variable + ' ' + change.old_value + '→' + change.new_value
+                    )
+                    .join(', ');
+                return stamp + '   runtime Apply requested' + (changes ? ' — ' + changes : '');
+            }
+            case 'runtime-control-applied': {
+                const applied = ev.runtimeControlApply || {};
+                return (
+                    stamp +
+                    '   runtime applied at trial boundary — ' +
+                    (applied.variable || '?') +
+                    ' ' +
+                    applied.old_value +
+                    '→' +
+                    applied.new_value
+                );
+            }
+            case 'trial-resolved':
+                return stamp + '   authoritative trial parameters resolved';
+            case 'runtime-control-unapplied':
+                return (
+                    stamp + '   runtime Apply NOT USED — run ended before another trial boundary'
+                );
             case 'skip':
                 return (
                     stamp +

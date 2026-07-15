@@ -882,6 +882,143 @@ async function main() {
         check('no skips for valid I/O commands', summary.skipped, 0);
     }
 
+    console.log('\n=== runSequence: optional trial-boundary condition resolution ===');
+    {
+        const link = makeFakeLink();
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const steps = [
+            {
+                kind: 'ref',
+                conditionName: 'runtime_led',
+                label: 'runtime_led',
+                seqIdx: 0,
+                dur: 0
+            }
+        ];
+        const sourceCondition = {
+            name: 'runtime_led',
+            commands: [{ type: 'controller', command_name: 'setAnalogOut', mv: 5000 }]
+        };
+        const conditionsByName = new Map([['runtime_led', sourceCondition]]);
+        const record = {
+            event: 'runtime_control_trial_parameters',
+            trial_index: 0,
+            condition_name: 'runtime_led',
+            resolved_variables: { led_mv: 2500 },
+            resolved_commands: [{ type: 'controller', command_name: 'setAnalogOut', mv: 2500 }],
+            parameter_bindings: [
+                { variable: 'led_mv', command_index: 0, parameter_path: ['mv'], value: 2500 }
+            ],
+            runtime_control_provenance: { led_mv: { source: 'runtime_control' } },
+            apply_events: [
+                {
+                    event: 'runtime_control_apply',
+                    variable: 'led_mv',
+                    old_value: 5000,
+                    new_value: 2500,
+                    request_id: 'r1'
+                }
+            ]
+        };
+        const phases = [];
+        const emitted = [];
+        let hookContext = null;
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName,
+            sleep: () => Promise.resolve(),
+            resolveCondition: async (conditionName, context) => {
+                hookContext = { conditionName, context };
+                return { runtimeRecord: record };
+            },
+            onProgress: (s) => {
+                phases.push(s.phase);
+                emitted.push(s);
+            }
+        });
+        check('resolver receives condition name', hookContext.conditionName, 'runtime_led');
+        check('resolver receives zero-based boundary index', hookContext.context.index, 0);
+        checkBool(
+            'resolver receives original condition',
+            hookContext.context.condition === sourceCondition
+        );
+        checkBytes('resolved command is sent', link.sent[0], '03 a0 c4 09');
+        check('source condition remains unchanged', sourceCondition.commands[0].mv, 5000);
+        checkBool('runtime-control-applied emitted', phases.includes('runtime-control-applied'));
+        checkBool('trial-resolved emitted', phases.includes('trial-resolved'));
+        checkBool(
+            'boundary events precede the resolved command',
+            phases.indexOf('runtime-control-applied') < phases.indexOf('command') &&
+                phases.indexOf('trial-resolved') < phases.indexOf('command')
+        );
+        const applyStatus = emitted.find((s) => s.phase === 'runtime-control-applied');
+        const resolvedStatus = emitted.find((s) => s.phase === 'trial-resolved');
+        check(
+            'apply status keeps complete event',
+            applyStatus.runtimeControlApply,
+            record.apply_events[0]
+        );
+        checkBool(
+            'trial status keeps authoritative record',
+            resolvedStatus.runtimeRecord === record
+        );
+        checkBool('resolved run completes', summary.completed === true);
+    }
+    {
+        // Returning a condition directly is the lightweight, non-runtime use of
+        // the hook; it should not create provenance phases.
+        const link = makeFakeLink();
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const phases = [];
+        await runner.runSequence({
+            steps: [{ conditionName: 'switch' }],
+            conditionsByName: new Map([
+                [
+                    'switch',
+                    {
+                        name: 'switch',
+                        commands: [{ type: 'controller', command_name: 'allOn' }]
+                    }
+                ]
+            ]),
+            resolveCondition: () => ({
+                name: 'switch',
+                commands: [{ type: 'controller', command_name: 'allOff' }]
+            }),
+            sleep: () => Promise.resolve(),
+            onProgress: (s) => phases.push(s.phase)
+        });
+        checkBytes('direct replacement condition executes', link.sent[0], '01 00');
+        checkBool('direct replacement emits no runtime phase', !phases.includes('trial-resolved'));
+    }
+    {
+        const link = makeFakeLink();
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const statuses = [];
+        const summary = await runner.runSequence({
+            steps: [{ conditionName: 'bad-boundary' }],
+            conditionsByName: new Map([
+                ['bad-boundary', { commands: [{ type: 'controller', command_name: 'allOn' }] }]
+            ]),
+            resolveCondition: () => {
+                throw new Error('audit record unavailable');
+            },
+            sleep: () => Promise.resolve(),
+            onProgress: (s) => statuses.push(s)
+        });
+        checkBool(
+            'resolver failure is surfaced with context',
+            statuses.some(
+                (s) => s.phase === 'error' && /condition resolution failed/.test(s.reason || '')
+            )
+        );
+        checkBool(
+            'resolver failure does not send source command',
+            !link.sent.some((frame) => frame[1] === 0xff)
+        );
+        check('resolver failure increments errors', summary.errors, 1);
+    }
+
     console.log(
         '\n=== runSequence: plugin skipped + unsupported errored, arena cmds still run ==='
     );
