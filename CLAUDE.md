@@ -160,6 +160,13 @@ This pattern has caused bugs multiple times. Always use `config.name` for the va
 
 ## Arena Studio (`arena_studio.html`) — the primary tool
 
+**Current redesign direction (2026-07-17):** before changing the Studio's visual
+shell, read
+**`docs/development/arena-studio-claude-redesign-handoff.md`**. The next design
+candidate must be derived from the Classic/Claude Studio, with selected Alt
+functionality ported through shared modules; Alt is a reference implementation,
+not the new visual base.
+
 **Policy (2026-07-02):** the Studio is the **primary development path**. The
 standalone tools it absorbed — `arena_console.html` and
 `experiment_designer_v3.html` — are in **maintenance mode**: bug/safety fixes
