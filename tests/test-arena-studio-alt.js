@@ -585,7 +585,7 @@ check(
         alt.includes("const ALT_BUILD_STAMP = '2026-07-13 18:55 ET';") &&
         alt.includes("stampNode.nodeValue = ALT_TOOL_VERSION + ' | ' + ALT_BUILD_STAMP + ' · ';") &&
         alt.includes('Studio.TOOL_VERSION = ALT_TOOL_VERSION;') &&
-        studio.includes('Arena Studio v0.67 | 2026-07-21 16:25 ET')
+        studio.includes('Arena Studio v0.69 | 2026-07-21 16:46 ET')
 );
 
 console.log('=== scoped presentation ===');

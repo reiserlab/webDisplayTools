@@ -4,6 +4,22 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.69 (2026-07-21) · ISP batch retries a failed panel twice
+
+- **A failed panel flash now gets up to two retries** (was one) before being
+  marked failed/skipped, with the attempt number shown in the log and report
+  ("retry 1", "retry 2"). Paired with a controller-firmware change that
+  varies its receipt-poll timing between attempts, so a retry re-rolls
+  timing-related failures instead of replaying them exactly.
+
+## v0.68 (2026-07-21) · Clearer ISP batch summary
+
+- **The ISP batch summary now leads with the total.** A run where every panel
+  flashed and CRC-verified used to end with "20 verified, 0 flashed, 0
+  failed/skipped of 20", which read as if nothing had been flashed ("flashed"
+  meant flashed-without-verify). It now reads "Done: 20/20 flashed (20
+  verified, 0 unverified, 0 failed/skipped)".
+
 ## v0.67 — 2026-07-21 · Console picker previews any connected SD-card pattern
 
 - **The Console pattern picker now shows a thumbnail for patterns already on
