@@ -4,6 +4,17 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.67 — 2026-07-21 · Console picker previews any connected SD-card pattern
+
+- **The Console pattern picker now shows a thumbnail for patterns already on
+  the SD card from a prior session.** When a pattern's bytes are not in memory
+  (this-session upload, built-in library, loaded course-repo protocol, or the
+  linked repo's shared `patterns/`), the preview falls back to a live
+  `GET_PATTERN_FILE` (0x84) fetch, the same call the SD table's Download
+  button makes. Safe on firmware with the chunked, non-blocking 0x84 handler
+  (reiserlab/LED-Display_G6_Firmware_Arena#16); an older controller can still
+  wedge the link on this fetch.
+
 ## v0.66 — 2026-07-10 · Crisp edges applied consistently across all frames
 
 - **The crisper-border treatment now applies throughout, not just the main
