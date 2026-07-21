@@ -4,7 +4,7 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
-## v0.68 (2026-07-21) · ISP batch retries a failed panel twice
+## v0.69 (2026-07-21) · ISP batch retries a failed panel twice
 
 - **A failed panel flash now gets up to two retries** (was one) before being
   marked failed/skipped, with the attempt number shown in the log and report
@@ -12,13 +12,24 @@ history lives here. Newest first. (Per-session engineering detail stays in
   varies its receipt-poll timing between attempts, so a retry re-rolls
   timing-related failures instead of replaying them exactly.
 
-## v0.67 (2026-07-21) · Clearer ISP batch summary
+## v0.68 (2026-07-21) · Clearer ISP batch summary
 
 - **The ISP batch summary now leads with the total.** A run where every panel
   flashed and CRC-verified used to end with "20 verified, 0 flashed, 0
   failed/skipped of 20", which read as if nothing had been flashed ("flashed"
   meant flashed-without-verify). It now reads "Done: 20/20 flashed (20
   verified, 0 unverified, 0 failed/skipped)".
+
+## v0.67 — 2026-07-21 · Console picker previews any connected SD-card pattern
+
+- **The Console pattern picker now shows a thumbnail for patterns already on
+  the SD card from a prior session.** When a pattern's bytes are not in memory
+  (this-session upload, built-in library, loaded course-repo protocol, or the
+  linked repo's shared `patterns/`), the preview falls back to a live
+  `GET_PATTERN_FILE` (0x84) fetch, the same call the SD table's Download
+  button makes. Safe on firmware with the chunked, non-blocking 0x84 handler
+  (reiserlab/LED-Display_G6_Firmware_Arena#16); an older controller can still
+  wedge the link on this fetch.
 
 ## v0.66 — 2026-07-10 · Crisp edges applied consistently across all frames
 

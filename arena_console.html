@@ -1521,7 +1521,7 @@
                 </div>
                 <div id="log"></div>
             </div>
-            <footer id="footer">Arena Console v8 | 2026-07-02 01:06 ET</footer>
+            <footer id="footer">Arena Console v9 | 2026-07-05 17:10 ET</footer>
         </div>
 
         <!-- Paste-a-frame modal -->
@@ -4014,22 +4014,25 @@
                 nameSel.value = entries[0].name;
                 tpPat.value = entries[0].idx;
                 lockPat(false);
-                // Cheap metadata preview via GET_PATTERN_INFO (0x88) — a small
-                // framed read, NOT the 0x84 bulk download that stalled the link
-                // and had to be disabled here. (Full-frame thumbnail is deferred;
-                // see renderSdPreview / the .pat-meta-thumb slot.)
-                renderSdMetaCard(entries[0].idx);
+                // Full-frame thumbnail via 0x84 (renderSdPreview) — re-enabled now
+                // that the controller's GET_PATTERN_FILE handler is chunked/
+                // non-blocking with a bounded stall recovery (issue #16), instead
+                // of the old single-call handler that could wedge the link on a
+                // stalled host. Requires that firmware fix to be flashed — an
+                // older controller can still wedge the link here.
+                renderSdPreview(entries[0].idx);
             };
 
             nameSel.addEventListener('change', () => {
                 const name = nameSel.value;
                 const sdIdx = sdNameToIndex[name];
                 if (sdIdx != null) {
-                    // SD card mode: set the pattern index directly + show cheap
-                    // 0x88 metadata (renderSdMetaCard). The 0x84 bulk preview stays
-                    // disabled — it stalled the link.
+                    // SD card mode: set the pattern index directly + show the
+                    // full-frame thumbnail (renderSdPreview, 0x84 — see the
+                    // __populateFromSdCard comment above for why this is safe
+                    // again).
                     tpPat.value = sdIdx;
-                    renderSdMetaCard(sdIdx);
+                    renderSdPreview(sdIdx);
                 } else if (activeManifest) {
                     // Manifest mode: resolve name → index + preview via manifest.
                     applyPick(name);

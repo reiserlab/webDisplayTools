@@ -2917,7 +2917,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.68 | 2026-07-21 15:55 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.69 | 2026-07-21 16:46 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -6431,19 +6431,32 @@ async function fetchCourseVocab(file, key, srcId, apply) {
 //    LIVE SD LISTING whenever one exists — the card is the source of truth for
 //    what index a name has (uploads/deletes re-order it). Falls back to the
 //    built-in web manifest when never connected.
-//  · PREVIEW BYTES can only come from the web side (built-in library, or bytes
-//    seen this session via Upload ▾ / an opened course-repo protocol) — the
-//    thumbnail is best-effort, matched by filename; an SD pattern whose bytes
-//    were never seen this session simply has no thumb.
+//  · PREVIEW BYTES prefer the web side (built-in library, or bytes seen this
+//    session via Upload ▾ / an opened course-repo protocol), matched by
+//    filename; when connected, any other SD pattern falls back to a live 0x84
+//    fetch (patByteSource). The thumbnail stays best-effort either way.
 const PS = window.PatternSet;
 const PP = window.PatPreview;
 const BUILTIN_BASE = './patterns/g6_2x10/';
 Studio.patternSet = null;
 const webPreviewBySdName = new Map(); // filename → () => Promise<ArrayBuffer>
 const repoSharedPreviewKeys = new Set(); // sources currently wired from course-repo patterns/
-function patByteSource(sd) {
-    const f = webPreviewBySdName.get(sd);
-    return f ? f() : Promise.reject(new Error('no local copy of ' + sd));
+// In-memory sources first (logical-name tolerant via webBytesForName). `idx`
+// (1-based SD index) is the fallback path: a pattern already on the card
+// from a prior session has no cached source above, so fetch it live via 0x84
+// — the controller's GET_PATTERN_FILE handler is chunked/non-blocking with a
+// bounded stall recovery (issue #16), so this is safe on fixed firmware (an
+// older controller can still wedge the link here). Same call the SD table's
+// Download button already makes.
+function patByteSource(sd, idx) {
+    const f = Studio.webBytesForName(sd);
+    if (f) return f();
+    if (!Studio.session || !Studio.session.connected || idx == null) {
+        return Promise.reject(new Error('no local copy of ' + sd));
+    }
+    return Studio.session
+        .sendBulkRead(Wire.encodeGetPatternFile(idx), { timeoutMs: 60000 })
+        .then((u8) => u8.buffer);
 }
 let patPreviewCache = {};
 
@@ -6695,14 +6708,15 @@ async function renderPatThumb(name) {
     // because it stores files pre-prefixed. Colocated sources are re-wired after
     // a reload by initFromUrl → rewireRepoPatternPreviews.
     const src = Studio.webBytesForName(p.sd_name);
-    host.title = src
+    const canFetchLive = Studio.session && Studio.session.connected && p.index != null;
+    host.title = src || canFetchLive
         ? 'Pattern preview (multi-frame patterns animate automatically)'
-        : 'No preview — this pattern is on the SD card but its bytes were not seen this session (upload it via Upload ▾, or open its course-repo protocol, for a thumbnail)';
+        : 'No preview — connect to the controller for a live thumbnail, or upload the set / open its course-repo protocol';
     try {
         let sampled = patPreviewCache[name];
         if (!sampled) {
-            if (!src) return;
-            const ab = await src();
+            if (!src && !canFetchLive) return;
+            const ab = await patByteSource(p.sd_name, p.index);
             const parsed = PatParser.parsePatFile(ab);
             sampled = PP.samplePreviewFrames(parsed, arenaForConfig(m.arenaConfig), {
                 renderIcon: generatePatternIcon,
@@ -6842,8 +6856,9 @@ function wirePatPicker() {
         const o = sel.selectedOptions && sel.selectedOptions[0];
         applyPatPick(sel.value, o && o.dataset.idx != null ? Number(o.dataset.idx) : null);
     });
-    // (Pattern-set previews now come from device memory → Upload ▾, which
-    // registers uploaded bytes as preview sources — see Studio.registerUploadedPreviews.)
+    // (Pattern-set previews prefer in-memory bytes — Upload ▾ registers those,
+    // see Studio.registerUploadedPreviews — and fall back to a live 0x84 fetch
+    // via patByteSource for any other connected SD-card pattern.)
 }
 
 // ---- stream frame (host-streamed test figures) — ported from arena_console ----
