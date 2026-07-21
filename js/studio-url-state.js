@@ -1,7 +1,8 @@
 /**
  * studio-url-state.js — Arena Studio URL state codec (#107, DOM-free, testable).
  *
- * Encodes/decodes the shareable link params: mode / p / lib / set / rig / repo.
+ * Encodes/decodes the shareable link params: mode / p / lib / set / rig / repo
+ * / advanced.
  * Shareability boundary (design §9): `p`/`lib` resolve ONLY to committed
  * protocol keys (validated against protocols/index.json by the caller); a
  * locally file-picked YAML has NO shareable URL, so encode() omits p/set when
@@ -166,6 +167,19 @@
             else state.rig = rig;
         }
 
+        // advanced (safe mode) — a soft-gate flag (0|1). '1' REQUESTS advanced
+        // (full Studio) mode, which the app still password-gates before granting.
+        // '0' explicitly FORCES safe mode — re-locking a browser that was
+        // remembered-unlocked (state.advanced === false ⇒ the app calls lockSafe()).
+        // Absent ⇒ safe mode by default, but with NO re-lock (a remembered unlock
+        // stands). NOT a security boundary — see docs/development/safe-mode-spec.md.
+        const adv = params.get('advanced');
+        if (adv != null) {
+            if (adv === '1') state.advanced = true;
+            else if (adv === '0') state.advanced = false;
+            else warnings.push('Ignored advanced=' + adv + ' (expected 0 or 1)');
+        }
+
         return { state: state, warnings: warnings };
     }
 
@@ -193,6 +207,11 @@
         if (isSafeKey(s.lib)) params.set('lib', s.lib);
         if (!local && isSafeKey(s.set)) params.set('set', s.set);
         if (isSafeKey(s.rig)) params.set('rig', s.rig);
+        // advanced: emitted only when the caller passes it true (the write side
+        // does so ONLY when advanced is active AND was URL-requested — the
+        // clean-URL rule, mirroring rig: a browser remembered-unlocked without
+        // ?advanced=1 keeps a clean URL; advanced state lives in localStorage).
+        if (s.advanced) params.set('advanced', '1');
         // URLSearchParams percent-encodes '/', which is legal un-encoded in a
         // query string (RFC 3986) — keep repo/path params human-readable.
         const q = params.toString().replace(/%2F/gi, '/');
@@ -211,7 +230,10 @@
      * `repo`+`repoPath` are course-repo provenance (set only by a validated
      * ?repo=&p= load or an in-app course-repo open) and take precedence over
      * `protocolKey` — a doc can't be both registry- and repo-sourced.
-     * @param {object} app {mode, protocolKey, rigKey, repo, repoPath}
+     * `advanced` must be true ONLY when advanced mode is active AND was
+     * URL-requested (the caller enforces this; a remembered-unlocked browser
+     * passes false to keep a clean URL, mirroring the derived-rig rule).
+     * @param {object} app {mode, protocolKey, rigKey, repo, repoPath, advanced}
      * @returns {string} query string (leading '?', or '' when all defaults)
      */
     function encodeApp(app) {
@@ -222,6 +244,7 @@
                 repo: a.repo,
                 p: a.repoPath,
                 rig: a.rigKey || undefined,
+                advanced: a.advanced || undefined,
                 source: 'committed'
             });
         }
@@ -229,6 +252,7 @@
             mode: a.mode,
             p: a.protocolKey || undefined,
             rig: a.rigKey || undefined,
+            advanced: a.advanced || undefined,
             source: a.protocolKey ? 'committed' : 'local'
         });
     }

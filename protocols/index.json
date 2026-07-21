@@ -19,6 +19,11 @@
       "path": "./protocols/fictrac_direction_test.yaml"
     },
     {
+      "key": "led_activation_quadrant_test",
+      "label": "Conditional LED activation — quadrant test (Mode-3 closed loop)",
+      "path": "./protocols/led_activation_quadrant_test.yaml"
+    },
+    {
       "key": "full_experiment",
       "label": "Full experiment (blocks, plugins, ITI)",
       "path": "./protocols/full_experiment.yaml"

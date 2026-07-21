@@ -85,10 +85,54 @@ var CONTROLLER_COMMANDS = {
                 type: 'number',
                 required: true,
                 default: 0,
-                min: -128,
-                max: 127,
+                min: -32768,
+                max: 32767,
                 integer: true,
-                label: 'Gain (int8)'
+                label: 'Gain (int16)'
+            },
+            // Per-trial duty/brightness override (fw #33, the optional 12th
+            // TRIAL_PARAMS byte). 0 = the pattern's stored duty_cycle flows
+            // through unchanged — the designer shows that meaning inline
+            // ("(0 = pattern's own)"). Optional-with-default: new commands
+            // seed 0, so the field is visible and editable without changing
+            // brightness until the user asks.
+            duty: {
+                type: 'number',
+                required: false,
+                default: 0,
+                min: 0,
+                max: 255,
+                integer: true,
+                label: 'Duty (brightness, 0 = pattern default)'
+            },
+            // Conditional LED activation (host-side, Mode-3 closed loop): drive
+            // the BuckPuck LED ON only while the live frame index is inside one
+            // of on_ranges, with hysteresis to prevent chatter at a band edge.
+            // OBJECT-typed (not a scalar) — the designer renders a dedicated
+            // sub-editor for it, and clampToSchema/renderEditableField skip it.
+            // Optional, NO default, so a normal trial has no LED activation and
+            // it only appears once added via the "+ add" affordance.
+            led_activation: {
+                type: 'object',
+                required: false,
+                label: 'LED activation (closed loop)',
+                fields: {
+                    level: {
+                        type: 'number',
+                        default: 20,
+                        min: 0,
+                        max: 100,
+                        label: 'LED level (%)'
+                    },
+                    hysteresis: {
+                        type: 'number',
+                        default: 0,
+                        min: 0,
+                        integer: true,
+                        label: 'Hysteresis (frames, 0 = none)'
+                    }
+                    // on_ranges: [[start,end], ...] — edited via the range list UI
+                }
             }
         }
     },
@@ -150,6 +194,26 @@ var CONTROLLER_COMMANDS = {
             }
         }
     },
+    ledDrive: {
+        label: 'LED drive (% intensity)',
+        description:
+            'Drive an LED through a BuckPuck current driver on the "Analog Out ' +
+            '(0-5V)" BNC as a percentage of full brightness (0 = off, 100 = max). ' +
+            'The runner maps % to the control voltage via the BuckPuck datasheet ' +
+            'curve, so students calibrate in % instead of raw millivolts. G6 ' +
+            'controller only (SET_AO_VOLTAGE 0xA0).',
+        params: {
+            percent: {
+                type: 'number',
+                required: true,
+                default: 0,
+                min: 0,
+                max: 100,
+                step: 0.1,
+                label: 'Brightness (%)'
+            }
+        }
+    },
     setDigitalOut: {
         label: 'Set Digital Out (G6)',
         description:
@@ -197,7 +261,7 @@ function isKnownControllerCommand(name) {
  * all generations — so existing commands need no annotation. Used by the editor
  * to hide/flag these on a non-G6 rig, and to soft-warn on export.
  */
-var G6_ONLY_COMMANDS = new Set(['setAnalogOut', 'setDigitalOut']);
+var G6_ONLY_COMMANDS = new Set(['setAnalogOut', 'setDigitalOut', 'ledDrive']);
 
 /** Is `name` a controller command restricted to the G6 controller board? */
 function isG6OnlyCommand(name) {

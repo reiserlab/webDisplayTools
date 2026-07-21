@@ -10,7 +10,7 @@
  *   - scripts/all_on.py        (all-on / all-off)
  *   - scripts/web-serial/main.js (every button's byte sequence)
  *   - src/commands.h           (opcodes)
- * in the sibling repo LED-Display_G6_Firmware_Arena. The negative-gain int8
+ * in the sibling repo LED-Display_G6_Firmware_Arena. The negative-gain int16
  * Mode-4 case is pinned explicitly — it's the easy-to-get-wrong one.
  *
  * Exits 0 on PASS, 1 on any FAIL. Wired into `npm test` for CI.
@@ -132,33 +132,44 @@ checkBytes(
     Wire.encodeTrialParams({ mode: 2, patternId: 1, frameRate: 30, initPos: 0 }),
     '0c 08 02 01 00 1e 00 00 00 00 00 00 00'
 );
-// Defaults: mode=2, patternId=1, frameRate=0, gain=0, initPos=0.
+// Defaults: mode=2, patternId=1, frameRate=0, initPos=0, gain=0, duration=0.
 checkBytes(
     'trial defaults (mode2 pat1)',
     Wire.encodeTrialParams(),
     '0c 08 02 01 00 00 00 00 00 00 00 00 00'
 );
-// Mode 4 closed-loop, NEGATIVE gain -50 -> int8 byte 0xCE (the must-pin case).
+// Mode 4 closed-loop, NEGATIVE gain -50 -> int16 LE CE FF (the must-pin case).
 checkBytes(
-    'trial mode4 gain -50 -> 0xCE',
+    'trial mode4 gain -50 -> CE FF',
     Wire.encodeTrialParams({ mode: 4, patternId: 1, frameRate: 0, gain: -50, initPos: 0 }),
-    '0c 08 04 01 00 00 00 ce 00 00 00 00 00'
+    '0c 08 04 01 00 00 00 00 00 ce ff 00 00'
 );
-// play_pattern.py docstring example: Mode 4 gain -20 -> int8 byte 0xEC.
+// play_pattern.py docstring example: Mode 4 gain -20 -> int16 LE EC FF.
 checkBytes(
-    'trial mode4 gain -20 -> 0xEC',
+    'trial mode4 gain -20 -> EC FF',
     Wire.encodeTrialParams({ mode: 4, patternId: 1, gain: -20 }),
-    '0c 08 04 01 00 00 00 ec 00 00 00 00 00'
+    '0c 08 04 01 00 00 00 00 00 ec ff 00 00'
 );
-// int8 boundaries: -128 -> 0x80, 127 -> 0x7F, -1 -> 0xFF.
-check('gain -128 byte', Wire.encodeTrialParams({ gain: -128 })[7], 0x80);
-check('gain 127 byte', Wire.encodeTrialParams({ gain: 127 })[7], 0x7f);
-check('gain -1 byte', Wire.encodeTrialParams({ gain: -1 })[7], 0xff);
+// Widened-gain case: -500 is past the old int8 ceiling, exercising the gain
+// high byte -> int16 LE 0C FE.
+checkBytes(
+    'trial mode4 gain -500 -> 0C FE',
+    Wire.encodeTrialParams({ mode: 4, patternId: 1, gain: -500 }),
+    '0c 08 04 01 00 00 00 00 00 0c fe 00 00'
+);
+// int16 boundaries: -32768 -> 00 80, 32767 -> FF 7F, -1 -> FF FF.
+check('gain -32768 lo byte', Wire.encodeTrialParams({ gain: -32768 })[9], 0x00);
+check('gain -32768 hi byte', Wire.encodeTrialParams({ gain: -32768 })[10], 0x80);
+check('gain 32767 lo byte', Wire.encodeTrialParams({ gain: 32767 })[9], 0xff);
+check('gain 32767 hi byte', Wire.encodeTrialParams({ gain: 32767 })[10], 0x7f);
+check('gain -1 lo byte', Wire.encodeTrialParams({ gain: -1 })[9], 0xff);
+check('gain -1 hi byte', Wire.encodeTrialParams({ gain: -1 })[10], 0xff);
 // Mode 3 show-frame with a large pattern id / init exercises both u16 hi bytes.
+// init_pos now sits at offset 7-8 (post-relayout).
 checkBytes(
     'trial mode3 pat300 init513',
     Wire.encodeTrialParams({ mode: 3, patternId: 300, initPos: 513 }),
-    '0c 08 03 2c 01 00 00 00 01 02 00 00 00'
+    '0c 08 03 2c 01 00 00 01 02 00 00 00 00'
 );
 // NEGATIVE frame_rate = Mode-2 REVERSE (fw reads int16 since ee74c33, fw #4).
 // -2 Hz -> int16 LE FE FF — the two's-complement must-pin case for the rate.
@@ -176,13 +187,32 @@ checkBytes(
 check('rate 32767 lo byte', Wire.encodeTrialParams({ frameRate: 32767 })[5], 0xff);
 check('rate 32767 hi byte', Wire.encodeTrialParams({ frameRate: 32767 })[6], 0x7f);
 check('rate -32768 hi byte', Wire.encodeTrialParams({ frameRate: -32768 })[6], 0x80);
+// duration=0 (default) is covered by 'trial defaults' above. 1.5 s -> 150
+// ticks (10 ms/tick) -> int16 LE 96 00, at the new offset 11-12.
+checkBytes(
+    'trial duration 1.5s -> 150 ticks (96 00)',
+    Wire.encodeTrialParams({ mode: 2, patternId: 1, duration: 1.5 }),
+    '0c 08 02 01 00 00 00 00 00 00 00 96 00'
+);
 // Length byte is always 0x0C (12 bytes follow: cmd + 11 params); total = 13 B.
 check('trial frame total length', Wire.encodeTrialParams().length, 13);
 check('trial length byte', Wire.encodeTrialParams()[0], 0x0c);
 
+// duty (fw #33) is an optional 12th param byte — omitted keeps the 11-param
+// (13-byte total) form; passing it appends the byte and bumps length to 0x0D.
+check('trial frame total length (no duty)', Wire.encodeTrialParams().length, 13);
+checkBytes(
+    'trial duty=0x40 appends param[11], length 0x0D',
+    Wire.encodeTrialParams({ mode: 3, patternId: 1, duty: 0x40 }),
+    '0d 08 03 01 00 00 00 00 00 00 00 00 00 40'
+);
+check('trial frame total length (with duty)', Wire.encodeTrialParams({ duty: 0 }).length, 14);
+checkThrows('duty -1 throws', () => Wire.encodeTrialParams({ duty: -1 }));
+checkThrows('duty 256 throws', () => Wire.encodeTrialParams({ duty: 256 }));
+
 console.log('\n=== encoder range validation (throws) ===');
-checkThrows('gain -129 throws', () => Wire.encodeTrialParams({ gain: -129 }));
-checkThrows('gain 128 throws', () => Wire.encodeTrialParams({ gain: 128 }));
+checkThrows('gain -32769 throws', () => Wire.encodeTrialParams({ gain: -32769 }));
+checkThrows('gain 32768 throws', () => Wire.encodeTrialParams({ gain: 32768 }));
 checkThrows('patternId 70000 throws', () => Wire.encodeTrialParams({ patternId: 70000 }));
 // frame_rate is int16 now: 32768..65535 would ALIAS to reverse rates on the
 // signed firmware — must throw, not silently encode (they were legal as u16).
@@ -193,6 +223,11 @@ checkThrows('rate 65535 throws (was legal as u16)', () =>
     Wire.encodeTrialParams({ frameRate: 65535 })
 );
 checkThrows('rate -32769 throws', () => Wire.encodeTrialParams({ frameRate: -32769 }));
+// duration ticks must fit uint16: 655.35 s is the max representable (65535
+// ticks); 655.36 s rounds to 65536 ticks and must throw, not wrap.
+checkThrows('duration 655.36s throws (tick overflow)', () =>
+    Wire.encodeTrialParams({ duration: 655.36 })
+);
 checkThrows('frame position -1 throws', () => Wire.encodeSetFramePosition(-1));
 checkThrows('frame position 70000 throws', () => Wire.encodeSetFramePosition(70000));
 checkThrows('non-integer mhz throws', () => Wire.encodeSetSpiClock(20.5));

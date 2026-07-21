@@ -18,6 +18,11 @@ description: "CSHL fly-on-ball rig — G6 2x10 arena (full 360°), controller ov
 
 arena: "G6_2x10"
 
+# Fly-on-ball geometry — the tracking ball's diameter (mm). Used to convert the
+# live oscilloscope's / analysis dashboard's forward + side velocities from rad/s
+# to mm/s (js/kinematics.js). Typical fly-on-ball ≈ 9 mm diameter.
+ball_diameter_mm: 9
+
 controller:
   host: "0.0.0.0" # not used for serial/USB
   port: 62222

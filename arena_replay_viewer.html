@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="color-scheme" content="dark" />
+        <title>Arena Replay Viewer</title>
+        <script type="importmap">
+            {
+                "imports": {
+                    "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/"
+                }
+            }
+        </script>
+        <style>
+            :root {
+                --ink: #e8ece6;
+                --muted: #8b9993;
+                --panel: rgba(13, 20, 20, 0.91);
+                --panel-deep: #091010;
+                --line: #33433e;
+                --phosphor: #8fffc1;
+                --phosphor-dim: #55b988;
+                --amber: #ffc56a;
+                --red: #ff4554;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                overflow: hidden;
+                background: #090d0e;
+                color: var(--ink);
+                font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+            }
+
+            body::after {
+                position: fixed;
+                z-index: 20;
+                inset: 0;
+                pointer-events: none;
+                content: "";
+                opacity: 0.12;
+                background: repeating-linear-gradient(
+                    0deg,
+                    rgba(255, 255, 255, 0.025) 0,
+                    rgba(255, 255, 255, 0.025) 1px,
+                    transparent 1px,
+                    transparent 4px
+                );
+                mix-blend-mode: screen;
+            }
+
+            #arena-canvas {
+                position: fixed;
+                inset: 0;
+            }
+
+            .instrument-rail {
+                position: fixed;
+                z-index: 30;
+                top: 14px;
+                left: 14px;
+                right: 14px;
+                display: grid;
+                grid-template-columns: minmax(150px, 0.9fr) minmax(90px, 0.55fr) minmax(150px, 1.4fr) minmax(100px, 0.7fr) minmax(82px, 0.55fr) auto;
+                min-height: 74px;
+                border: 1px solid var(--line);
+                border-top-color: #52655e;
+                border-radius: 8px;
+                background:
+                    linear-gradient(180deg, rgba(37, 50, 47, 0.88), transparent 5px),
+                    var(--panel);
+                box-shadow:
+                    0 16px 50px rgba(0, 0, 0, 0.35),
+                    inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+                backdrop-filter: blur(14px);
+            }
+
+            .brand,
+            .readout,
+            .view-controls {
+                min-width: 0;
+                padding: 12px 14px;
+            }
+
+            .brand,
+            .readout {
+                border-right: 1px solid var(--line);
+            }
+
+            .eyebrow,
+            .readout-label {
+                display: block;
+                margin-bottom: 7px;
+                color: var(--muted);
+                font-size: 9px;
+                font-weight: 700;
+                letter-spacing: 0.16em;
+                line-height: 1;
+                text-transform: uppercase;
+            }
+
+            .brand-name {
+                overflow: hidden;
+                color: var(--phosphor);
+                font-size: 15px;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                line-height: 1.3;
+                text-overflow: ellipsis;
+                text-shadow: 0 0 16px rgba(143, 255, 193, 0.18);
+                white-space: nowrap;
+            }
+
+            .readout-value {
+                display: block;
+                overflow: hidden;
+                color: var(--ink);
+                font-size: 15px;
+                font-variant-numeric: tabular-nums;
+                font-weight: 650;
+                line-height: 1.3;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            #time-value {
+                color: var(--amber);
+            }
+
+            .led-readout .readout-value {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            #led-indicator {
+                width: 9px;
+                height: 9px;
+                flex: 0 0 auto;
+                border: 1px solid #704149;
+                border-radius: 50%;
+                background: #3b1c21;
+            }
+
+            #led-indicator[data-on="true"] {
+                border-color: #ff8c96;
+                background: var(--red);
+                box-shadow:
+                    0 0 7px rgba(255, 69, 84, 0.9),
+                    0 0 16px rgba(255, 69, 84, 0.48);
+            }
+
+            #led-value[data-on="true"] {
+                color: #ff8490;
+            }
+
+            .view-controls {
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                gap: 6px;
+            }
+
+            .view-angle {
+                display: inline-flex;
+                height: 32px;
+                align-items: center;
+                gap: 6px;
+                margin-left: 2px;
+                padding-left: 8px;
+                border-left: 1px solid var(--line);
+                color: var(--muted);
+                font-size: 8px;
+                font-weight: 700;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                white-space: nowrap;
+            }
+
+            .view-angle select {
+                height: 32px;
+                padding: 0 24px 0 8px;
+                border: 1px solid #42564f;
+                border-radius: 4px;
+                outline: none;
+                background: #111b19;
+                color: var(--phosphor);
+                font: inherit;
+                font-size: 10px;
+                font-weight: 700;
+                cursor: pointer;
+            }
+
+            .view-angle select:hover,
+            .view-angle select:focus-visible {
+                border-color: var(--phosphor-dim);
+            }
+
+            button {
+                min-width: 52px;
+                height: 32px;
+                padding: 0 10px;
+                border: 1px solid #42564f;
+                border-radius: 4px;
+                outline: none;
+                background: #111b19;
+                color: #b6c6bf;
+                font: inherit;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                cursor: pointer;
+            }
+
+            button:hover {
+                border-color: var(--phosphor-dim);
+                color: var(--phosphor);
+                background: #15231f;
+            }
+
+            button:focus-visible {
+                border-color: var(--phosphor);
+                box-shadow: 0 0 0 2px rgba(143, 255, 193, 0.2);
+            }
+
+            .status-strip {
+                position: fixed;
+                z-index: 30;
+                right: 14px;
+                bottom: 14px;
+                left: 14px;
+                display: flex;
+                min-height: 34px;
+                align-items: center;
+                justify-content: space-between;
+                gap: 18px;
+                padding: 7px 10px;
+                border: 1px solid rgba(66, 86, 79, 0.78);
+                border-radius: 5px;
+                background: rgba(9, 16, 15, 0.8);
+                color: var(--muted);
+                font-size: 9px;
+                font-weight: 700;
+                letter-spacing: 0.11em;
+                text-transform: uppercase;
+                backdrop-filter: blur(10px);
+            }
+
+            .connection {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+                flex: 0 0 auto;
+            }
+
+            .connection::before {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: #65736d;
+                content: "";
+            }
+
+            .connection[data-tone="ready"]::before {
+                background: var(--amber);
+                box-shadow: 0 0 8px rgba(255, 197, 106, 0.5);
+            }
+
+            .connection[data-tone="linked"] {
+                color: var(--phosphor);
+            }
+
+            .connection[data-tone="linked"]::before {
+                background: var(--phosphor);
+                box-shadow: 0 0 8px rgba(143, 255, 193, 0.5);
+            }
+
+            .connection[data-tone="error"] {
+                color: #ff8c96;
+            }
+
+            .connection[data-tone="error"]::before {
+                background: var(--red);
+            }
+
+            #pattern-status {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            #pattern-status[data-loaded="true"] {
+                color: #b4c8bd;
+            }
+
+            .orbit-hint {
+                flex: 0 0 auto;
+                color: #6f7e78;
+            }
+
+            @media (max-width: 880px) {
+                .instrument-rail {
+                    grid-template-columns: 1fr 1fr 1fr;
+                }
+
+                .brand,
+                .readout,
+                .view-controls {
+                    border-right: 1px solid var(--line);
+                    border-bottom: 1px solid var(--line);
+                }
+
+                .condition-readout {
+                    grid-column: span 2;
+                }
+
+                .view-controls {
+                    grid-column: 1 / -1;
+                    justify-content: stretch;
+                }
+
+                .view-controls button {
+                    flex: 1;
+                    min-width: 0;
+                }
+
+                .view-angle {
+                    flex: 0 0 auto;
+                }
+            }
+
+            @media (max-width: 560px) {
+                .instrument-rail {
+                    grid-template-columns: 1fr 1fr;
+                }
+
+                .brand,
+                .condition-readout {
+                    grid-column: span 2;
+                }
+
+                .view-controls {
+                    grid-column: span 2;
+                }
+
+                .orbit-hint {
+                    display: none;
+                }
+            }
+
+            @media (max-width: 420px) {
+                .view-controls {
+                    flex-wrap: wrap;
+                }
+
+                .view-controls button {
+                    flex: 1 1 0;
+                }
+
+                .view-angle {
+                    height: 38px;
+                    flex: 1 0 100%;
+                    justify-content: flex-end;
+                    margin-left: 0;
+                    padding: 6px 0 0;
+                    border-top: 1px solid var(--line);
+                    border-left: 0;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <main id="arena-canvas" aria-label="Synchronized three-dimensional arena replay"></main>
+
+        <header class="instrument-rail" aria-label="Replay state and camera controls">
+            <div class="brand">
+                <span class="eyebrow">Optical sidecar · RPL-01</span>
+                <div class="brand-name">ARENA REPLAY</div>
+            </div>
+            <div class="readout">
+                <span class="readout-label">Time</span>
+                <output class="readout-value" id="time-value">00:00.00</output>
+            </div>
+            <div class="readout condition-readout">
+                <span class="readout-label">Condition</span>
+                <output class="readout-value" id="condition-value">—</output>
+            </div>
+            <div class="readout">
+                <span class="readout-label">Pattern frame</span>
+                <output class="readout-value" id="frame-value">—</output>
+            </div>
+            <div class="readout led-readout">
+                <span class="readout-label">Red LED</span>
+                <output class="readout-value" id="led-value" data-on="false">
+                    <span id="led-indicator" data-on="false" aria-hidden="true"></span>
+                    <span id="led-text">OFF</span>
+                </output>
+            </div>
+            <nav class="view-controls" aria-label="Camera presets">
+                <button type="button" id="view-reset">Reset</button>
+                <button type="button" id="view-top">Top</button>
+                <button type="button" id="view-rear" title="Look into the arena from the rear camera gap">Rear</button>
+                <button type="button" id="view-fly-eye" title="View from just above the ball, facing the calibrated front column">Fly eye</button>
+                <label class="view-angle" title="Horizontal camera viewing angle">
+                    <span>Width</span>
+                    <select id="view-fov" aria-label="Horizontal viewing angle">
+                        <option value="60">60°</option>
+                        <option value="90">90°</option>
+                        <option value="120" selected>120°</option>
+                        <option value="135">135°</option>
+                        <option value="150">150°</option>
+                    </select>
+                </label>
+            </nav>
+        </header>
+
+        <footer class="status-strip" aria-live="polite">
+            <span class="connection" id="connection-status" data-tone="idle">Starting</span>
+            <span id="pattern-status" data-loaded="false">No pattern · cylinder idle</span>
+            <span class="orbit-hint">Drag to orbit · scroll to zoom</span>
+        </footer>
+
+        <script src="js/arena-replay-viewer-protocol.js?v=0713-solid-ball"></script>
+        <script type="module" src="js/arena-replay-viewer.js?v=0713-solid-ball"></script>
+    </body>
+</html>

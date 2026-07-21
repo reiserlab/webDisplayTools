@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visual Behavior in Flies | CSHL 2026 Guide</title>
+  <style>
+    :root {
+      --paper: #ffffff;
+      --ink: #202923;
+      --muted: #6d7871;
+      --line: #cfd7d1;
+      --soft: #f4f7f5;
+      --accent: #007a43;
+      --accent-bright: #00c853;
+      --black: #0f1419;
+      --surface: #1a1f26;
+      --white: #ffffff;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+      --heading: "JetBrains Mono", var(--mono);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 15px/1.6 var(--mono);
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+
+    code {
+      background: #edf1ee;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      color: #1f2b24;
+      padding: 0.08em 0.3em;
+      font-family: var(--mono);
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: var(--black);
+      color: #e6edf3;
+      border-radius: 4px;
+      padding: 16px;
+    }
+
+    pre code {
+      background: transparent;
+      border: 0;
+      color: inherit;
+      padding: 0;
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      background: var(--black);
+      color: var(--white);
+      border-right: 4px solid var(--accent-bright);
+      padding: 22px 18px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .brand {
+      margin-bottom: 22px;
+    }
+
+    .brand .kicker {
+      color: var(--accent-bright);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0;
+      margin: 0 0 8px;
+      text-transform: uppercase;
+    }
+
+    .brand h1 {
+      font-family: var(--heading);
+      font-size: 28px;
+      line-height: 1.02;
+      letter-spacing: 0;
+      margin: 0;
+    }
+
+    .brand p {
+      color: #aeb8b2;
+      margin: 12px 0 0;
+      font-size: 14px;
+    }
+
+    .nav-group {
+      margin: 0 0 18px;
+    }
+
+    .nav-group h2 {
+      color: #8b949e;
+      font-family: var(--heading);
+      font-size: 12px;
+      letter-spacing: 0;
+      margin: 0 0 8px;
+      text-transform: uppercase;
+    }
+
+    .nav-link {
+      color: #e6edf3;
+      display: block;
+      text-decoration: none;
+      border-left: 4px solid transparent;
+      padding: 7px 9px;
+      margin: 2px 0;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .nav-link:hover,
+    .nav-link.active {
+      background: var(--surface);
+      border-left-color: var(--accent-bright);
+    }
+
+    .content-wrap {
+      min-width: 0;
+    }
+
+    .topbar {
+      background: var(--white);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 13px 28px;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .topbar strong {
+      color: var(--black);
+      font-family: var(--heading);
+    }
+
+    .topbar .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    main {
+      width: min(100%, 1240px);
+      padding: 30px clamp(18px, 4vw, 54px) 72px;
+    }
+
+    .content {
+      background: var(--white);
+      border: 0;
+      border-top: 3px solid var(--accent-bright);
+      border-radius: 0;
+      padding: 30px 0 0;
+    }
+
+    .content h1 {
+      font-family: var(--heading);
+      font-size: clamp(28px, 4vw, 40px);
+      line-height: 1.06;
+      letter-spacing: 0;
+      margin: 0 0 18px;
+    }
+
+    .content h2 {
+      border-bottom: 1px solid var(--line);
+      font-family: var(--heading);
+      font-size: clamp(20px, 2.6vw, 25px);
+      letter-spacing: 0;
+      margin: 36px 0 14px;
+      padding-bottom: 6px;
+    }
+
+    .content h3 {
+      color: var(--ink);
+      font-family: var(--heading);
+      font-size: 18px;
+      margin: 28px 0 10px;
+    }
+
+    .content blockquote {
+      border-left: 3px solid var(--accent-bright);
+      background: var(--soft);
+      margin: 20px 0;
+      padding: 12px 16px;
+    }
+
+    .content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 22px;
+      font-size: 15px;
+    }
+
+    .content th {
+      background: var(--surface);
+      color: var(--white);
+      text-align: left;
+    }
+
+    .content th,
+    .content td {
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      vertical-align: top;
+    }
+
+    .content tr:nth-child(even) td {
+      background: var(--soft);
+    }
+
+    .content.course-overview table:first-of-type th:first-child,
+    .content.course-overview table:first-of-type td:first-child {
+      overflow-wrap: normal;
+      width: 10rem;
+    }
+
+    .content img {
+      max-width: 100%;
+    }
+
+    .content .image-with-credit {
+      display: inline-block;
+      max-width: 100%;
+      position: relative;
+    }
+
+    .content .image-with-credit img {
+      display: block;
+    }
+
+    .content .image-with-credit span {
+      background: rgba(255, 255, 255, 0.86);
+      bottom: 6px;
+      color: var(--ink);
+      font-size: 12px;
+      padding: 2px 5px;
+      position: absolute;
+      right: 6px;
+    }
+
+    .content .genotype-intro {
+      align-items: start;
+      display: grid;
+      gap: clamp(24px, 4vw, 48px);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .content .genotype-intro-copy p:first-of-type {
+      margin-top: 0;
+    }
+
+    .content .genotype-intro-image {
+      display: block;
+      margin: 0;
+      width: 100%;
+    }
+
+    .content .genotype-intro-image img {
+      height: auto;
+      width: 100%;
+    }
+
+    .content .fictrac-example {
+      float: right;
+      margin: 0 0 18px 24px;
+      width: min(360px, 42%);
+    }
+
+    .content .fictrac-example img {
+      width: 100%;
+    }
+
+    .content .fictrac-example-clear {
+      clear: both;
+    }
+
+    .content .tethering-station {
+      float: right;
+      margin: 0 0 18px 24px;
+      width: min(510px, 61%);
+    }
+
+    .content .tethering-station img {
+      border: 1px solid var(--line);
+      width: 100%;
+    }
+
+    .content .tethering-station-clear {
+      clear: both;
+    }
+
+    .content .arena-studio-overview,
+    .content .pattern-editor-overview {
+      margin: 20px 0;
+      max-width: 960px;
+    }
+
+    .content .arena-studio-overview img,
+    .content .pattern-editor-overview img {
+      border: 1px solid var(--line);
+      display: block;
+      width: 100%;
+    }
+
+    .content .github-overview {
+      margin: 20px 0;
+      max-width: 760px;
+    }
+
+    .content .github-overview img {
+      border: 1px solid var(--line);
+      display: block;
+      width: 100%;
+    }
+
+    .content .led-spectrum {
+      margin: 20px 0;
+      max-width: 960px;
+    }
+
+    .content .led-spectrum img {
+      border: 1px solid var(--line);
+      display: block;
+      width: 100%;
+    }
+
+    .content .rig-arena-photo {
+      margin: 20px 0;
+      max-width: 620px;
+    }
+
+    .content .rig-arena-photo img {
+      border: 1px solid var(--line);
+      display: block;
+      width: 100%;
+    }
+
+    .content .flies-are-cheap {
+      font-size: 1.875em;
+      font-weight: 800;
+    }
+
+    .content a,
+    .content td,
+    .content th {
+      overflow-wrap: anywhere;
+    }
+
+    .content .pattern-preview--loom {
+      filter: brightness(2);
+    }
+
+    .content hr {
+      border: 0;
+      border-top: 1px solid var(--line);
+      margin: 34px 0 0;
+    }
+
+    .loading,
+    .error {
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .error {
+      color: #a8281d;
+    }
+
+    @media (max-width: 880px) {
+      .shell {
+        display: block;
+      }
+
+      .sidebar {
+        height: auto;
+        position: static;
+        border-right: 0;
+        border-bottom: 4px solid var(--accent-bright);
+      }
+
+      .nav-group {
+        display: inline-block;
+        vertical-align: top;
+        width: min(100%, 280px);
+        margin-right: 14px;
+      }
+
+      .topbar {
+        position: static;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      main {
+        padding: 22px 14px 46px;
+      }
+
+      .content {
+        padding: 22px 0 0;
+      }
+
+      .content .fictrac-example {
+        float: none;
+        margin: 0 0 18px;
+        width: 100%;
+      }
+
+      .content .tethering-station {
+        float: none;
+        margin: 0 0 18px;
+        width: 100%;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .content .genotype-intro {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .content .genotype-intro-image {
+        width: min(100%, 520px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <p class="kicker">CSHL 2026</p>
+        <h1>Visual Behavior in Flies</h1>
+        <p>Demystifying fly-on-ball behavior.</p>
+      </div>
+      <nav id="nav" aria-label="Guide sections"></nav>
+    </aside>
+
+    <div class="content-wrap">
+      <header class="topbar">
+        <strong id="doc-title">Course guide</strong>
+        <div class="links">
+          <a href="../../arena_studio.html" target="_blank" rel="noopener">Arena Studio</a>
+          <a href="https://github.com/reiserlab/cshl-2026-course" target="_blank" rel="noopener">Course repo</a>
+        </div>
+      </header>
+      <main>
+        <article id="content" class="content">
+          <p class="loading">Loading guide...</p>
+        </article>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    const docs = [
+      {
+        title: 'Start here',
+        items: [
+          ['README', 'Course guide'],
+          ['tethering', 'Tethering basics'],
+          ['rig-101', 'Rig 101'],
+          ['fictrac', 'FicTrac basics'],
+          ['arena-studio', 'Arena Studio'],
+          ['pattern-editor', 'Pattern Editor'],
+          ['github-overview', 'GitHub overview']
+        ]
+      },
+      {
+        title: 'Protocols',
+        items: [
+          ['protocols', 'Protocol overview'],
+          ['p0-opto-intensity', 'P0 opto intensity'],
+          ['p1-motion', 'P1 motion + looming'],
+          ['p2-object', 'P2 object responses'],
+          ['p3', 'P3 conditioning']
+        ]
+      },
+      {
+        title: 'Reference',
+        items: [
+          ['genotypes', 'Fly Stock Genotypes'],
+          ['references', 'References']
+        ]
+      }
+    ];
+
+    const pathBySlug = {
+      'README': 'docs/README.md',
+      'tethering': 'docs/tethering.md',
+      'rig-101': 'docs/rig-101.md',
+      'fictrac': 'docs/fictrac.md',
+      'arena-studio': 'docs/arena-studio.md',
+      'pattern-editor': 'docs/pattern-editor.md',
+      'github-overview': 'docs/github-overview.md',
+      'references': 'docs/references.md',
+      'genotypes': 'docs/genotypes.md',
+      'protocols': 'docs/protocols/README.md',
+      'p0-opto-intensity': 'docs/protocols/p0-opto-intensity.md',
+      'p1-motion': 'docs/protocols/p1-motion.md',
+      'p2-object': 'docs/protocols/p2-object.md',
+      'p3': 'docs/protocols/p3.md'
+    };
+
+    const slugByPath = Object.fromEntries(
+      Object.entries(pathBySlug).map(([slug, path]) => [path, slug])
+    );
+
+    const content = document.getElementById('content');
+    const nav = document.getElementById('nav');
+    const title = document.getElementById('doc-title');
+
+    function currentSlug() {
+      const params = new URLSearchParams(location.search);
+      return pathBySlug[params.get('doc')] ? params.get('doc') : 'README';
+    }
+
+    function buildNav(activeSlug) {
+      nav.innerHTML = docs.map(group => `
+        <div class="nav-group">
+          <h2>${group.title}</h2>
+          ${group.items.map(([slug, label]) => `
+            <a class="nav-link ${slug === activeSlug ? 'active' : ''}" href="?doc=${slug}">${label}</a>
+          `).join('')}
+        </div>
+      `).join('');
+    }
+
+    function docTitleFor(slug) {
+      for (const group of docs) {
+        const hit = group.items.find(([candidate]) => candidate === slug);
+        if (hit) return hit[1];
+      }
+      return 'Course guide';
+    }
+
+    function rewriteLocalMarkdownLinks(currentPath) {
+      const currentUrl = new URL(currentPath, location.href);
+      const docsBase = new URL('docs/', location.href);
+      content.querySelectorAll('a[href]').forEach(anchor => {
+        const raw = anchor.getAttribute('href');
+        if (!raw || raw.startsWith('#')) return;
+
+        if (/^[a-z]+:/i.test(raw)) {
+          anchor.setAttribute('target', '_blank');
+          anchor.setAttribute('rel', 'noopener');
+          return;
+        }
+
+        const resolved = new URL(raw, currentUrl);
+        if (!resolved.href.startsWith(docsBase.href)) return;
+        if (!resolved.pathname.endsWith('.md')) return;
+
+        const relativePath = decodeURIComponent(resolved.href.slice(new URL('.', location.href).href.length));
+        const slug = slugByPath[relativePath];
+        if (slug) {
+          anchor.setAttribute('href', `?doc=${slug}${resolved.hash || ''}`);
+        } else {
+          anchor.setAttribute('target', '_blank');
+          anchor.setAttribute('rel', 'noopener');
+        }
+      });
+    }
+
+    function rewriteLocalMarkdownImages(currentPath) {
+      const currentUrl = new URL(currentPath, location.href);
+      const localBase = new URL('.', location.href);
+      content.querySelectorAll('img[src]').forEach(image => {
+        const raw = image.getAttribute('src');
+        if (!raw || raw.startsWith('#') || /^[a-z]+:/i.test(raw)) return;
+
+        const resolved = new URL(raw, currentUrl);
+        if (!resolved.href.startsWith(localBase.href)) return;
+
+        const relativePath = decodeURIComponent(resolved.href.slice(localBase.href.length));
+        image.setAttribute('src', relativePath);
+      });
+    }
+
+    async function loadDoc(slug) {
+      const path = pathBySlug[slug];
+      buildNav(slug);
+      title.textContent = docTitleFor(slug);
+      content.classList.toggle('course-overview', slug === 'README');
+      content.innerHTML = '<p class="loading">Loading guide...</p>';
+
+      try {
+        const response = await fetch(path, { cache: 'no-cache' });
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+        const markdown = await response.text();
+        if (!window.marked) throw new Error('Markdown renderer failed to load');
+        content.innerHTML = marked.parse(markdown);
+        rewriteLocalMarkdownLinks(path);
+        rewriteLocalMarkdownImages(path);
+        if (location.hash) {
+          const id = decodeURIComponent(location.hash.slice(1));
+          const target = document.getElementById(id);
+          if (target) target.scrollIntoView();
+        }
+      } catch (error) {
+        content.innerHTML = `<p class="error">Could not load this guide page: ${error.message}</p>`;
+      }
+    }
+
+    loadDoc(currentSlug());
+  </script>
+</body>
+</html>

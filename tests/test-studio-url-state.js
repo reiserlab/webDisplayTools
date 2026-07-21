@@ -284,6 +284,58 @@ const rtRepo = U.decode(
 check('round-trip repo', rtRepo.state.repo, REPO);
 check('round-trip repo path', rtRepo.state.p, 'protocols/bench03/looming.yaml');
 
+// ── advanced param (safe mode: soft-gate request flag) ──────────────────────
+console.log('=== advanced param ===');
+d = U.decode('?advanced=1', { allowedKeys: ALLOWED });
+check('advanced=1 requested', d.state.advanced, true);
+checkBool('advanced=1 does not warn', d.warnings.length === 0, d.warnings.join('|'));
+d = U.decode('?advanced=0', { allowedKeys: ALLOWED });
+check('advanced=0 → force safe (explicit false)', d.state.advanced, false);
+checkBool('advanced=0 does not warn', d.warnings.length === 0, d.warnings.join('|'));
+// encode/encodeApp never EMIT advanced=0 (clean-URL rule) — false is treated as off.
+check('encode advanced=false still omitted', U.encode({ mode: 'run', advanced: false }), '');
+d = U.decode('?advanced=yes', { allowedKeys: ALLOWED });
+check('advanced=yes dropped', d.state.advanced, undefined);
+checkBool(
+    'advanced=yes warns',
+    d.warnings.some((w) => /expected 0 or 1/.test(w)),
+    d.warnings.join('|')
+);
+d = U.decode('', {});
+check('no advanced param → safe (undefined)', d.state.advanced, undefined);
+// advanced coexists with a shared protocol (still forces Run) and a rig.
+d = U.decode('?p=looming_v3&advanced=1', { allowedKeys: ALLOWED });
+check('advanced + shared p still forces Run', d.state.mode, 'run');
+check('advanced kept alongside p', d.state.advanced, true);
+// encode: emitted only when true.
+check('encode advanced', U.encode({ mode: 'run', advanced: true }), '?advanced=1');
+check('encode advanced=false omitted', U.encode({ mode: 'run', advanced: false }), '');
+check('encode no advanced omitted', U.encode({ mode: 'run' }), '');
+// encodeApp: the write side passes advanced only when active AND URL-requested.
+check(
+    'encodeApp advanced with doc',
+    U.encodeApp({ mode: 'run', protocolKey: 'looming_v3', advanced: true }),
+    '?p=looming_v3&advanced=1'
+);
+check(
+    'encodeApp advanced omitted when false (remembered-unlocked, clean URL)',
+    U.encodeApp({ mode: 'run', protocolKey: 'looming_v3', advanced: false }),
+    '?p=looming_v3'
+);
+check(
+    'encodeApp advanced with repo provenance',
+    U.encodeApp({
+        mode: 'run',
+        repo: REPO,
+        repoPath: 'protocols/bench03/looming.yaml',
+        advanced: true
+    }),
+    '?repo=' + REPO + '&p=protocols/bench03/looming.yaml&advanced=1'
+);
+// round-trip: advanced survives encodeApp → decode.
+const rtAdv = U.decode(U.encodeApp({ mode: 'run', protocolKey: null, advanced: true }), {});
+check('round-trip advanced', rtAdv.state.advanced, true);
+
 // ── navMode (popstate: literal mode, NO shared-p force) ──────────────────────
 console.log('=== navMode ===');
 check('empty search → run', U.navMode(''), 'run');

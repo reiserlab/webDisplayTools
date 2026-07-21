@@ -1,0 +1,10 @@
+# Controlled vocabulary — fly age brackets for the Arena Studio Run-details panel.
+# CONSTRAINED pick-list (no free text) so recorded data stays typo-free and
+# mergeable — add a bracket via a PR for it to appear in the dropdown.
+format_version: "1.0"
+ages:
+  - "1-2 days"
+  - "3-4 days"
+  - "5-6 days"
+  - "7-14 days"
+  - "14+ days"

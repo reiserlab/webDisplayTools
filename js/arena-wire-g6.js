@@ -57,7 +57,7 @@ const ArenaWireG6 = (function () {
         GET_PATTERN_FILE: 0x84, // [03 84 idx_lo idx_hi] 1-based; response: uint64 LE size, then raw bytes
         SET_PATTERN_FILE: 0x85, // [0x85, idx_lo, idx_hi, len64 LE, data…] upload file (bulk stream)
         DELETE_PATTERN_FILE: 0x86, // [03 86 idx_lo idx_hi] delete 1-based pattern; idx=0 deletes pattern.temp
-        DELETE_ALL_PATTERNS: 0x8f, // [01 8F] delete all files in /patterns
+        PURGE_MEMORY: 0x8f, // [01 8F] format the SD card (wipes everything, not just /patterns)
         GET_SD_ARCHIVE: 0x8a, // [01 8A] stream full SD as ZIP; only in ALL_OFF state
         STOP_DISPLAY: 0x30,
         STREAM_FRAME: 0x32, // host-streamed full frame ("FR"+blocks; see encodeStreamFrame)
@@ -145,17 +145,6 @@ const ArenaWireG6 = (function () {
         return [value & 0xff, (value >> 8) & 0xff];
     }
 
-    // Validate a signed int8 and return the unsigned wire byte (two's
-    // complement). e.g. gain -50 -> 0xCE. This is the easy-to-get-wrong case
-    // the golden tests pin.
-    function int8Byte(value, name) {
-        requireInt(value, name);
-        if (value < -128 || value > 127) {
-            throw new RangeError(name + ' must be -128..127 (int8), got ' + value);
-        }
-        return value & 0xff;
-    }
-
     // Validate a signed int16 and return [lo, hi] little-endian two's
     // complement. e.g. -2 -> [0xFE, 0xFF]. Used for trial-params frame_rate,
     // which firmware reads as int16 (fw #4, ee74c33: negative = Mode-2
@@ -214,10 +203,12 @@ const ArenaWireG6 = (function () {
     /**
      * trial-params (0x08) — select display mode + pattern + timing.
      * Emits the documented 13-byte combined command:
-     *   [0C 08 mode pat(LE16) rate(LE16) gain init(LE16) 00 00 00]
-     * The length byte 0x0C = 12 = cmd + 11 param bytes. The 3 trailing reserved
-     * bytes pad the combined-command length; the firmware reads only the first
-     * 8 param bytes.
+     *   [0C 08 mode pat(LE16) rate(LE16) init(LE16) gain(LE16) duration(LE16)]
+     * The length byte 0x0C = 12 = cmd + 11 param bytes, all required (fw #4
+     * canonical re-layout: gain widened to int16, moved after init_pos, plus
+     * a new controller-run Duration field). Passing `duty` appends a 12th
+     * param byte (length 0x0D / 14 bytes total); omitting it keeps the
+     * 11-param form (fw #33 accepts both).
      *
      * @param {object} p
      * @param {number} [p.mode=2]       display mode (2 open / 3 show-frame / 4 closed)
@@ -225,8 +216,17 @@ const ArenaWireG6 = (function () {
      * @param {number} [p.frameRate=0]  frame-advance rate in Hz, int16 — negative
      *                                  plays Mode 2 in REVERSE (G4-style count-down;
      *                                  fw ee74c33+); sign ignored in Modes 3/4
-     * @param {number} [p.gain=0]       signed int8 velocity gain (×10 fps/V in Mode 4)
      * @param {number} [p.initPos=0]    initial frame index (0-based)
+     * @param {number} [p.gain=0]       signed int16 velocity gain (×10 fps/V in Mode 4)
+     * @param {number} [p.duration=0]   controller-run trial length, in SECONDS
+     *                                  (converted to AC::constants::duration_tick_ms —
+     *                                  10 ms — ticks on the wire); `0` = no auto-stop,
+     *                                  the controller runs until told to stop
+     * @param {number} [p.duty]         per-trial duty override 0-255 (fw #33,
+     *                                  stateless: declared at trial start, cleared
+     *                                  on ALL_OFF / SET_PATTERN_ID). Omitted or `0`
+     *                                  = the pattern's stored duty_cycle flows
+     *                                  through unchanged; transmit-time only.
      */
     function encodeTrialParams(p) {
         p = p || {};
@@ -238,11 +238,18 @@ const ArenaWireG6 = (function () {
         }
         const pat = u16le(patternId, 'patternId');
         const rate = i16le(p.frameRate === undefined ? 0 : p.frameRate, 'frameRate');
-        const gain = int8Byte(p.gain === undefined ? 0 : p.gain, 'gain');
         const init = u16le(p.initPos === undefined ? 0 : p.initPos, 'initPos');
-        // mode, pat(2), rate(2), gain, init(2), reserved(3) = 11 param bytes.
-        const params = [mode, ...pat, ...rate, gain, ...init, 0, 0, 0];
-        return frame(OPCODES.TRIAL_PARAMS, params); // 0C 08 ...
+        const gain = i16le(p.gain === undefined ? 0 : p.gain, 'gain');
+        const durationTicks = u16le(
+            Math.round((p.duration === undefined ? 0 : p.duration) * 100),
+            'duration'
+        ); // seconds -> 10ms ticks, matching AC::constants::duration_tick_ms
+        // mode, pat(2), rate(2), init(2), gain(2), duration(2) = 11 param bytes.
+        const params = [mode, ...pat, ...rate, ...init, ...gain, ...durationTicks];
+        if (p.duty !== undefined) {
+            params.push(u8(p.duty, 'duty')); // optional 12th param byte
+        }
+        return frame(OPCODES.TRIAL_PARAMS, params); // 0C/0D 08 ...
     }
 
     // set-frame-position (0x70) — Mode 3 host-commanded frame index (u16 LE).
@@ -500,9 +507,11 @@ const ArenaWireG6 = (function () {
         return frame(OPCODES.GET_PATTERN_FILE, u16le(index, 'index')); // 03 84 lo hi
     }
 
-    // delete-all-patterns (0x8F) — delete every file in /patterns.
-    function encodeDeleteAllPatterns() {
-        return frame(OPCODES.DELETE_ALL_PATTERNS); // 01 8F
+    // purge-memory (0x8F): format the SD card (wipes everything, not just
+    // /patterns: also /firmware/panel.bin and both manifests). Much slower
+    // than the per-file delete it replaced; give it a generous timeout.
+    function encodePurgeMemory() {
+        return frame(OPCODES.PURGE_MEMORY); // 01 8F
     }
 
     // delete-pattern-file (0x86) — delete the pattern at 1-based index.
@@ -846,7 +855,7 @@ const ArenaWireG6 = (function () {
         encodeGetPatternFile,
         encodeSetPatternFile,
         encodeDeletePatternFile,
-        encodeDeleteAllPatterns,
+        encodePurgeMemory,
         encodeGetSdArchive,
         encodeSetFirmwareFile,
         encodeGetFirmwareInfo,

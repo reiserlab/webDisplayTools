@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>CSHL 2026 Course Data Dashboard</title>
+  <link rel="stylesheet" href="styles.css?v=20260710-1647">
+  <script defer src="https://cdn.plot.ly/plotly-3.6.0.min.js" charset="utf-8"></script>
+  <script defer src="vendor/kinematics.js?v=20260710-1647"></script>
+  <script defer src="analysis-core.js?v=20260710-2236"></script>
+  <script defer src="plot-specs.js?v=20260710-2236"></script>
+  <script defer src="github-repo.js?v=20260710-1647"></script>
+  <script defer src="app.js?v=20260710-1653"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">CSHL 2026</p>
+      <h1>Course Data Dashboard</h1>
+    </div>
+    <div class="header-actions">
+      <a id="courseRepoLink" class="quiet-link" href="https://github.com/reiserlab/cshl-2026-course" target="_blank" rel="noreferrer">Course repo</a>
+      <div class="status-strip" id="statusStrip" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="statusText">No data loaded</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="source-band" aria-label="Data sources">
+      <div class="source-title">
+        <h2>Data</h2>
+        <div class="source-statuses">
+          <strong id="rigSelectionSummary" class="rig-selection-summary">Rig folders: sign in to choose</strong>
+          <span id="githubWho" class="source-state">GitHub signed out</span>
+        </div>
+      </div>
+      <div class="source-grid">
+        <label class="file-button command-button">
+          Open JSONL files
+          <input id="fileInput" type="file" accept=".jsonl,.ndjson,.json,text/plain" multiple>
+        </label>
+
+        <div class="inline-control url-loader">
+          <input id="urlInput" type="url" placeholder="Same-origin JSONL URL">
+          <button id="loadUrlButton" type="button">Load URL</button>
+        </div>
+
+        <div class="github-controls">
+          <input id="githubRepoInput" type="text" value="reiserlab/cshl-2026-course" aria-label="GitHub repository">
+          <button id="githubSignInButton" type="button">Sign in</button>
+          <button id="githubSignOutButton" type="button" disabled>Sign out</button>
+          <button id="chooseRigsButton" type="button" title="Choose which rig folders are included in the data catalog" disabled>Select rigs</button>
+          <button id="browseGithubButton" class="primary" type="button" title="Index runlogs from the selected rig folders" disabled>Browse private repo</button>
+        </div>
+
+        <details class="local-source">
+          <summary>Local server repository</summary>
+          <div class="inline-control">
+            <input id="repoBaseInput" type="text" value="/cshl-2026-course/runlogs/" aria-label="Local runlog repository path">
+            <button id="scanLocalButton" type="button">Scan local</button>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="dataset-band" aria-label="Dataset selection">
+      <div class="dataset-toolbar">
+        <div class="segmented" role="group" aria-label="Analysis mode">
+          <button id="singleModeButton" class="active" type="button" aria-pressed="true">Single fly</button>
+          <button id="groupModeButton" type="button" aria-pressed="false">Grouped flies</button>
+        </div>
+        <label class="field-grow">
+          <span>Focus run</span>
+          <select id="focusRunSelect" disabled>
+            <option value="">No runs available</option>
+          </select>
+        </label>
+        <label class="check-control">
+          <input id="showIndividualsInput" type="checkbox" checked>
+          <span id="individualsLabel">Show individual trials</span>
+        </label>
+        <button id="renderSelectionButton" class="primary" type="button" disabled>Render selection</button>
+      </div>
+
+      <div id="groupControls" class="group-controls" hidden>
+        <label>
+          <span>Protocol family</span>
+          <select id="protocolFilter"></select>
+        </label>
+        <label>
+          <span>Genotype</span>
+          <select id="genotypeFilter"></select>
+        </label>
+        <label>
+          <span>Sex</span>
+          <select id="sexFilter"></select>
+        </label>
+        <label class="check-control mix-control">
+          <input id="showAllRunsInput" type="checkbox">
+          <span>Show runs outside the matched group</span>
+        </label>
+        <button id="selectVisibleButton" type="button">Select visible</button>
+        <button id="clearSelectionButton" type="button">Clear</button>
+      </div>
+
+      <div class="catalog-head">
+        <span id="catalogStatus">Open files or connect to the course repository.</span>
+        <input id="catalogSearchInput" type="search" placeholder="Filter by rig, experimenter, run, fly, genotype, protocol, notes" disabled>
+      </div>
+      <div id="runCatalog" class="run-catalog" aria-label="Available runlogs">
+        <div class="empty-state">No runlogs indexed</div>
+      </div>
+    </section>
+
+    <section class="preview-layout" aria-label="Focused run preview">
+      <aside class="panel metadata-panel preview-metadata" aria-label="Focused run metadata">
+        <div class="panel-heading">
+          <div>
+            <p class="section-kicker">Data identity</p>
+            <h2>Focused Run Metadata</h2>
+          </div>
+          <button id="downloadFramesCsvButton" type="button" title="Download the focused run's derived frame data as CSV" disabled>Frames CSV</button>
+        </div>
+        <div id="metadataSummary" class="metadata-body"></div>
+        <details>
+          <summary title="Show every metadata field recorded in this runlog">All metadata</summary>
+          <pre id="metadataRaw"></pre>
+        </details>
+      </aside>
+
+      <div class="preview-main">
+        <section class="metrics-grid" id="metricsGrid" aria-label="Focused run summary"></section>
+
+        <section class="scope-section" aria-label="Oscilloscope viewer">
+          <div class="scope-toolbar">
+            <div class="scope-readout">
+              <strong id="timeReadout">0.0 s</strong>
+              <span id="windowReadout">window: 30 s</span>
+            </div>
+            <div class="scope-controls">
+              <button id="stepBackButton" type="button" disabled aria-label="Previous time window">- Window</button>
+              <button id="stepForwardButton" type="button" disabled aria-label="Next time window">+ Window</button>
+              <label title="Centered smoothing window for displayed velocity traces.">
+                <span>win</span>
+                <input id="scopeSmoothWin" type="number" min="0.05" max="5" step="0.05" value="0.50" disabled>
+                <span>s</span>
+              </label>
+              <label>
+                <span>Window</span>
+                <select id="windowSelect" disabled>
+                  <option value="5">5 s</option>
+                  <option value="10">10 s</option>
+                  <option value="30" selected>30 s</option>
+                  <option value="60">60 s</option>
+                  <option value="120">120 s</option>
+                  <option value="all">All</option>
+                </select>
+              </label>
+              <label>
+                <span>Trace set</span>
+                <select id="traceSetSelect" disabled>
+                  <option value="behavior" selected>Scope</option>
+                  <option value="position">Position</option>
+                  <option value="stimulus">Stimulus</option>
+                </select>
+              </label>
+              <label title="Fly-on-ball diameter used for forward velocity scaling.">
+                <span>ball &#8709;</span>
+                <input id="scopeBallDia" type="number" min="1" max="50" step="0.5" value="9" disabled>
+                <span>mm</span>
+              </label>
+              <label title="Fix the turning axis to +/- this value. Blank uses automatic scaling.">
+                <span>turn &plusmn;</span>
+                <input id="scopeTurnLim" type="number" min="0" step="1" placeholder="auto" disabled>
+              </label>
+              <label title="Fix the forward axis to +/- this value. Blank uses automatic scaling.">
+                <span>fwd &plusmn;</span>
+                <input id="scopeFwdLim" type="number" min="0" step="1" placeholder="auto" disabled>
+              </label>
+              <button id="scopeAutoY" class="pill on" type="button" disabled aria-pressed="true">auto-Y</button>
+            </div>
+          </div>
+          <canvas id="scopeCanvas" class="scope-canvas"></canvas>
+          <input id="timeSlider" class="time-slider" type="range" min="0" max="0" step="0.1" value="0" disabled aria-label="Scope time">
+        </section>
+      </div>
+    </section>
+
+    <section class="analysis-section" aria-label="Protocol analysis">
+      <div class="analysis-toolbar">
+        <div>
+          <p class="section-kicker">Protocol analysis</p>
+          <h2 id="plotTitle">No analysis loaded</h2>
+          <p id="plotDescription" class="plot-description">Choose one or more runlogs to build trial-aligned plots.</p>
+        </div>
+        <div class="plot-navigation">
+          <button id="previousPlotButton" type="button" disabled aria-label="Previous plot">&larr;</button>
+          <select id="plotSelect" aria-label="Analysis plot" disabled>
+            <option>No plots</option>
+          </select>
+          <button id="nextPlotButton" type="button" disabled aria-label="Next plot">&rarr;</button>
+        </div>
+        <div class="plot-downloads">
+          <button id="downloadSvgButton" type="button" disabled>SVG</button>
+          <button id="downloadPngButton" type="button" disabled>PNG</button>
+          <button id="downloadPlotCsvButton" type="button" disabled>CSV</button>
+          <a id="plotSourceLink" class="command-button" href="https://github.com/reiserlab/webDisplayTools/tree/main/dashboard/data-browser" target="_blank" rel="noreferrer">Source</a>
+        </div>
+      </div>
+      <div class="analysis-axis-controls" role="group" aria-label="Analysis plot axis ranges">
+        <div class="axis-control-title">
+          <strong>Plot axes</strong>
+          <span id="analysisAxisMode" class="badge">Manual</span>
+        </div>
+        <label title="Symmetric turning-velocity limit used by turning plots">
+          <span>Turning &plusmn;</span>
+          <input id="analysisTurnLimit" type="number" min="1" step="25" value="300">
+          <span>deg/s</span>
+        </label>
+        <label title="Minimum and maximum forward-velocity limits used by forward plots">
+          <span>Forward</span>
+          <input id="analysisForwardMin" type="number" step="1" value="0" aria-label="Forward velocity minimum">
+          <span>to</span>
+          <input id="analysisForwardMax" type="number" step="1" value="25" aria-label="Forward velocity maximum">
+          <span>mm/s</span>
+        </label>
+        <button id="applyAnalysisAxesButton" type="button" title="Apply these ranges to all matching analysis panels">Apply ranges</button>
+        <button id="fitAnalysisAxesButton" type="button" title="Fit shared padded ranges to every displayed trace in the selected data">Fit selected</button>
+      </div>
+      <div id="analysisContext" class="analysis-context">No runlogs selected</div>
+      <div id="analysisWarnings" class="analysis-warnings" hidden></div>
+      <div id="plotArea" class="plot-area">
+        <div class="empty-state">Protocol-aware plots appear here.</div>
+      </div>
+    </section>
+
+    <section class="detail-grid detail-grid--steps">
+      <article class="panel steps-panel">
+        <div class="panel-heading">
+          <h2>Runner Steps</h2>
+          <span id="stepCount" class="badge">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Index</th>
+                <th>Condition</th>
+                <th>Start</th>
+                <th>Duration</th>
+                <th>Frames</th>
+                <th>Mean forward</th>
+                <th>Mean turn</th>
+              </tr>
+            </thead>
+            <tbody id="stepsTable"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <dialog id="rigDialog" class="rig-dialog" aria-labelledby="rigDialogTitle">
+    <header class="rig-dialog-header">
+      <div>
+        <p class="section-kicker">Repository scope</p>
+        <h2 id="rigDialogTitle">Select rig folders</h2>
+        <p id="rigDialogRepo" class="rig-dialog-repo"></p>
+      </div>
+      <button id="rigDialogCloseButton" class="icon-button" type="button" title="Close rig selection" aria-label="Close rig selection">&times;</button>
+    </header>
+    <div class="rig-dialog-body">
+      <div class="rig-dialog-tools">
+        <span id="rigDialogCount">0 selected</span>
+        <div>
+          <button id="rigSelectAllButton" type="button" title="Select every available rig folder">Select all</button>
+          <button id="rigClearAllButton" type="button" title="Clear every rig-folder selection">Clear</button>
+        </div>
+      </div>
+      <div id="rigFolderList" class="rig-folder-list" aria-label="Available rig folders"></div>
+    </div>
+    <footer class="rig-dialog-footer">
+      <button id="rigCancelButton" type="button" title="Close without changing the rig-folder selection">Cancel</button>
+      <button id="rigApplyButton" class="primary" type="button" title="Index runlogs from the checked rig folders" disabled>Load selected rigs</button>
+    </footer>
+  </dialog>
+
+  <footer class="app-footer">
+    Course Data Dashboard v1 | 2026-07-10 22:36 ET &middot;
+    <a href="https://github.com/reiserlab/webDisplayTools/tree/main/dashboard/data-browser" target="_blank" rel="noreferrer">GitHub</a>
+  </footer>
+</body>
+</html>

@@ -33,7 +33,8 @@
 
     const API = 'https://api.github.com';
     const API_VERSION = '2022-11-28';
-    const WRITABLE_PREFIXES = ['protocols/', 'runlogs/', 'configs/metadata/'];
+    // patterns/ = the shared pattern library (Pattern Designer "Save to Repo").
+    const WRITABLE_PREFIXES = ['protocols/', 'runlogs/', 'configs/metadata/', 'patterns/'];
     // Read-only extras: exact root paths readable but never writable — the
     // course roster + genotype vocabulary (instructor-edited on GitHub).
     const READABLE_EXACT = ['roster.yaml', 'genotypes.yaml'];
@@ -73,10 +74,19 @@
         return WRITABLE_PREFIXES.some((p) => path.startsWith(p));
     }
 
+    // Directory listings hit the bare root ('patterns', 'protocols/bench03') —
+    // the top-level dir has no trailing slash, so it can't match a prefix.
+    // Readable, never writable (a write to the bare name would be a FILE).
+    const READABLE_DIR_EXACT = WRITABLE_PREFIXES.map((p) => p.replace(/\/$/, ''));
+
     // Reads: everything writable plus the exact-match read-only extras.
     function isAllowedReadPath(path) {
         if (!_isSanePath(path)) return false;
-        return isAllowedPath(path) || READABLE_EXACT.includes(path);
+        return (
+            isAllowedPath(path) ||
+            READABLE_EXACT.includes(path) ||
+            READABLE_DIR_EXACT.includes(path)
+        );
     }
 
     // Filesystem-safe slug for a branch segment.
@@ -95,11 +105,15 @@
     }
 
     function headers(token) {
-        return {
-            Authorization: 'Bearer ' + token,
+        const h = {
             Accept: 'application/vnd.github+json',
             'X-GitHub-Api-Version': API_VERSION
         };
+        // Public course repos can be browsed without a token. Omit the header
+        // entirely: `Bearer null` is an invalid credential, not an anonymous
+        // GitHub request. Write paths still require authentication normally.
+        if (token) h.Authorization = 'Bearer ' + token;
+        return h;
     }
 
     function enc(seg) {

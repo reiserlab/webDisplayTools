@@ -50,9 +50,32 @@ check('mv 12.7 -> 13 (round)', P.clampToSchema(12.7, mv), {
     reason: 'rounded to integer'
 });
 
-const gain = P.CONTROLLER_COMMANDS.trialParams.params.gain; // {min:-128,max:127,integer:true}
-check('gain 500 -> 127', P.clampToSchema(500, gain).value, 127);
-check('gain -500 -> -128', P.clampToSchema(-500, gain).value, -128);
+// gain is int16 on the wire since the fw #4 re-layout (was int8).
+const gain = P.CONTROLLER_COMMANDS.trialParams.params.gain; // {min:-32768,max:32767,integer:true}
+check('gain 500 kept (int16 now)', P.clampToSchema(500, gain).value, 500);
+check('gain -500 kept (int16 now)', P.clampToSchema(-500, gain).value, -500);
+check('gain 40000 -> 32767', P.clampToSchema(40000, gain).value, 32767);
+check('gain -40000 -> -32768', P.clampToSchema(-40000, gain).value, -32768);
+
+// duty (fw #33): optional 12th TRIAL_PARAMS byte, 0 = pattern's stored duty.
+const duty = P.CONTROLLER_COMMANDS.trialParams.params.duty; // {min:0,max:255,integer:true,default:0}
+check('duty is optional', !!duty.required, false);
+check('duty default 0 (= pattern stored duty, no override)', duty.default, 0);
+check('duty 300 -> 255', P.clampToSchema(300, duty).value, 255);
+check('duty -1 -> 0', P.clampToSchema(-1, duty).value, 0);
+
+// led_activation: nested object param (conditional LED, Mode-3 closed loop).
+const ledAct = P.CONTROLLER_COMMANDS.trialParams.params.led_activation;
+check('led_activation present in schema', !!ledAct, true);
+check('led_activation type is object', ledAct.type, 'object');
+check('led_activation is optional', !!ledAct.required, false);
+check('led_activation has NO default (not auto-seeded)', ledAct.default, undefined);
+check('led_activation advertises level sub-field', !!(ledAct.fields && ledAct.fields.level), true);
+check(
+    'led_activation advertises hysteresis sub-field',
+    !!(ledAct.fields && ledAct.fields.hysteresis),
+    true
+);
 
 const dur = P.CONTROLLER_COMMANDS.trialParams.params.duration; // {min:0, step:0.1} (not integer)
 check('duration 2.5 kept (float allowed)', P.clampToSchema(2.5, dur), {

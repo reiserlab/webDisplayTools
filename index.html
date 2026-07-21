@@ -38,8 +38,8 @@
 
         header {
             text-align: center;
-            margin-bottom: 3rem;
-            padding-bottom: 2rem;
+            margin-bottom: 2.5rem;
+            padding-bottom: 1.75rem;
             border-bottom: 2px solid var(--border);
         }
 
@@ -57,11 +57,12 @@
             margin-top: 0.75rem;
         }
 
-        .tools-grid {
+        /* ---- the primary tools: large side-by-side cards ---- */
+        .primary-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 1.5rem;
-            margin-bottom: 2rem;
+            margin-bottom: 2.5rem;
         }
 
         .tool-card {
@@ -114,6 +115,118 @@
             margin-bottom: 1rem;
         }
 
+        .tool-card.big {
+            padding: 2.25rem 2.5rem;
+        }
+
+        .tool-card.big .big-head {
+            display: flex;
+            align-items: center;
+            gap: 1.4rem;
+            margin-bottom: 1.1rem;
+        }
+
+        .tool-card.big .tool-icon {
+            flex: 0 0 auto;
+            width: 76px;
+            height: 76px;
+        }
+
+        .tool-card.big h2 {
+            font-size: 1.9rem;
+            margin-bottom: 0.35rem;
+        }
+
+        .tool-card.big .tagline {
+            color: var(--text);
+            font-size: 0.95rem;
+        }
+
+        .tool-card.big p {
+            font-size: 0.95rem;
+        }
+
+        .tool-card.alt-studio {
+            border-color: #6d613d;
+            background: linear-gradient(145deg, #171c1d, #171b20);
+        }
+
+        .tool-card.alt-studio::before { background: #ffc857; }
+        .tool-card.alt-studio h2 { color: #ffc857; }
+        .tool-card.alt-studio:hover {
+            border-color: #ffc857;
+            box-shadow: 0 8px 24px rgba(255, 200, 87, 0.12);
+        }
+
+        /* ---- grouped secondary tools ---- */
+        .group-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.95rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-dim);
+            margin: 2.25rem 0 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .group-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .group-note {
+            font-size: 0.8rem;
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .tools-grid.small .tool-card {
+            padding: 1.3rem 1.5rem;
+        }
+
+        .tools-grid.small .tool-card h2 {
+            font-size: 1.05rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .tools-grid.small .tool-card p {
+            font-size: 0.82rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .tools-grid.legacy .tool-card {
+            opacity: 0.66;
+        }
+
+        .tools-grid.legacy .tool-card:hover {
+            opacity: 1;
+        }
+
+        .tools-grid.legacy .tool-card h2 {
+            color: var(--text-dim);
+        }
+
+        .supersede {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            font-style: italic;
+            margin-bottom: 0.75rem;
+        }
+
         .tool-card .status {
             display: inline-block;
             padding: 0.3rem 0.8rem;
@@ -146,6 +259,12 @@
             background: rgba(41, 182, 246, 0.15);
             color: #29b6f6;
             border: 1px solid #29b6f6;
+        }
+
+        .status.legacy-chip {
+            background: rgba(139, 148, 158, 0.12);
+            color: var(--text-dim);
+            border: 1px solid var(--border);
         }
 
         .tool-card.disabled {
@@ -193,6 +312,12 @@
             color: var(--text);
         }
 
+        @media (max-width: 900px) {
+            .primary-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         @media (max-width: 768px) {
             h1 {
                 font-size: 2rem;
@@ -211,31 +336,96 @@
             <p class="subtitle">Web-based tools for LED panel arena design and pattern creation</p>
         </header>
 
-        <div class="tools-grid">
-            <a href="pattern_editor.html" class="tool-card">
-                <h2>Pattern Editor</h2>
-                <p>Create, edit, and combine full-arena patterns. Generate gratings, starfields, and more with 2D/3D preview.</p>
-                <span class="status in-dev">In Development</span>
-            </a>
-
-            <a href="arena_studio.html" class="tool-card">
-                <h2>Arena Studio</h2>
-                <p>Run, edit, and bench-test G6 experiments in one tool over a single Web Serial connection. Load a v3 protocol, run the whole sequence, and export a timestamped run log with metadata.</p>
+        <!-- Primary tools -->
+        <div class="primary-grid">
+            <a href="pattern_editor.html" class="tool-card big">
+                <div class="big-head">
+                    <!-- Pattern Designer icon: LED dot matrix with a lit wave -->
+                    <svg class="tool-icon" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <rect x="2" y="2" width="60" height="60" rx="11" fill="none" stroke="#2d3640" stroke-width="2.5"/>
+                        <g fill="#3a444f">
+                            <circle cx="12" cy="12" r="2.4"/><circle cx="20" cy="12" r="2.4"/><circle cx="28" cy="12" r="2.4"/><circle cx="36" cy="12" r="2.4"/><circle cx="44" cy="12" r="2.4"/><circle cx="52" cy="12" r="2.4"/>
+                            <circle cx="12" cy="20" r="2.4"/><circle cx="28" cy="20" r="2.4"/><circle cx="36" cy="20" r="2.4"/><circle cx="52" cy="20" r="2.4"/>
+                            <circle cx="12" cy="28" r="2.4"/><circle cx="20" cy="28" r="2.4"/><circle cx="36" cy="28" r="2.4"/><circle cx="44" cy="28" r="2.4"/><circle cx="52" cy="28" r="2.4"/>
+                            <circle cx="20" cy="36" r="2.4"/><circle cx="28" cy="36" r="2.4"/><circle cx="44" cy="36" r="2.4"/><circle cx="52" cy="36" r="2.4"/>
+                            <circle cx="12" cy="44" r="2.4"/><circle cx="20" cy="44" r="2.4"/><circle cx="28" cy="44" r="2.4"/><circle cx="36" cy="44" r="2.4"/><circle cx="52" cy="44" r="2.4"/>
+                            <circle cx="12" cy="52" r="2.4"/><circle cx="20" cy="52" r="2.4"/><circle cx="28" cy="52" r="2.4"/><circle cx="36" cy="52" r="2.4"/><circle cx="44" cy="52" r="2.4"/><circle cx="52" cy="52" r="2.4"/>
+                        </g>
+                        <!-- the lit sine wave -->
+                        <g fill="#00e676">
+                            <circle cx="12" cy="36" r="3.1"/>
+                            <circle cx="20" cy="20" r="3.1"/>
+                            <circle cx="28" cy="28" r="3.1"/>
+                            <circle cx="36" cy="44" r="3.1"/>
+                            <circle cx="44" cy="44" r="3.1"/>
+                            <circle cx="44" cy="20" r="3.1"/>
+                            <circle cx="52" cy="36" r="3.1"/>
+                        </g>
+                    </svg>
+                    <div>
+                        <h2>Pattern Designer</h2>
+                        <span class="tagline">Design what the fly sees</span>
+                    </div>
+                </div>
+                <p>Draw, generate, and combine full-arena patterns — gratings, starfields, spherical motion — with 2D grid editing and live 3D preview. Save patterns locally or push them straight to your repo.</p>
                 <span class="status beta">Beta</span>
             </a>
 
-            <a href="experiment_designer_v3.html" class="tool-card">
-                <h2>v3 Experiment Designer</h2>
-                <p>Edit Protocol v3 YAML — library of conditions + ordered sequence, with anchors and comments preserved on round-trip.</p>
+            <a href="arena_studio.html" class="tool-card big">
+                <div class="big-head">
+                    <!-- Arena Studio icon: top-down panel ring with a play mark -->
+                    <svg class="tool-icon" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <g>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#00e676" transform="rotate(0 32 32)"/>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#00e676" transform="rotate(30 32 32)"/>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#00e676" transform="rotate(60 32 32)"/>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#3a444f" transform="rotate(90 32 32)"/>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#3a444f" transform="rotate(120 32 32)"/>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#00e676" transform="rotate(150 32 32)"/>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#00e676" transform="rotate(180 32 32)"/>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#00e676" transform="rotate(210 32 32)"/>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#3a444f" transform="rotate(240 32 32)"/>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#3a444f" transform="rotate(270 32 32)"/>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#00e676" transform="rotate(300 32 32)"/>
+                            <rect x="28.5" y="4" width="7" height="5.5" rx="1.2" fill="#00e676" transform="rotate(330 32 32)"/>
+                        </g>
+                        <circle cx="32" cy="32" r="15.5" fill="none" stroke="#2d3640" stroke-width="2"/>
+                        <path d="M28 24.5 L41 32 L28 39.5 Z" fill="#00e676"/>
+                    </svg>
+                    <div>
+                        <h2>Arena Studio</h2>
+                        <span class="tagline">Run it on the arena</span>
+                    </div>
+                </div>
+                <p>Run, edit, and bench-test G6 experiments in one tool over a single connection. Open a protocol, run the whole sequence with a recorded log, edit it in the three-zone designer, and drive the display directly from the Console.</p>
                 <span class="status beta">Beta</span>
             </a>
 
-            <a href="arena_console.html" class="tool-card">
-                <h2>Arena Console</h2>
-                <p>Live control for the G6 arena over Web Serial — connect a controller over USB and drive the display directly. PControl successor.</p>
-                <span class="status beta">Beta</span>
+            <a href="arena_studio_alt.html" class="tool-card big alt-studio">
+                <div class="big-head">
+                    <!-- Alt icon: compact bench instrument with scope + status lamp -->
+                    <svg class="tool-icon" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <rect x="5" y="8" width="54" height="48" rx="4" fill="#11181b" stroke="#7d7867" stroke-width="2"/>
+                        <rect x="10" y="14" width="38" height="25" rx="1" fill="#091013" stroke="#526068"/>
+                        <path d="M12 31 C17 31 17 21 22 21 S27 35 32 35 S37 24 42 24 S44 28 47 28" fill="none" stroke="#8bff9a" stroke-width="2"/>
+                        <circle cx="53" cy="18" r="3" fill="#ffc857"/>
+                        <rect x="10" y="45" width="17" height="5" rx="1" fill="#8bff9a"/>
+                        <rect x="31" y="45" width="10" height="5" rx="1" fill="#343f43"/>
+                        <rect x="45" y="45" width="9" height="5" rx="1" fill="#343f43"/>
+                    </svg>
+                    <div>
+                        <h2>Arena Studio Alt</h2>
+                        <span class="tagline">The same instrument, calmer controls</span>
+                    </div>
+                </div>
+                <p>A clean, retro bench-instrument redesign with identical live Run, Edit, and Console wiring, plus light/dark themes, logged next-trial runtime controls, and synchronized YAML + JSONL experiment replay.</p>
+                <span class="status in-dev">Alternative preview</span>
             </a>
+        </div>
 
+        <!-- Specialty tools -->
+        <div class="group-title">Specialty tools <span class="group-note">design aids &amp; panel hardware utilities</span></div>
+        <div class="tools-grid small">
             <a href="arena_editor.html" class="tool-card">
                 <h2>Arena Layout</h2>
                 <p>Configure arena geometry from standard configs or create custom layouts. 2D visualization with PDF export.</p>
@@ -248,27 +438,21 @@
                 <span class="status ready">Ready</span>
             </a>
 
-            <a href="icon_generator.html" class="tool-card">
-                <h2>Pattern Icon Generator</h2>
-                <p>Generate top-down cylindrical view icons from arena patterns. Supports single-frame and motion blur rendering.</p>
-                <span class="status in-dev">In Development</span>
-            </a>
-
             <a href="g6_panel_editor.html" class="tool-card">
                 <h2>G6 Panel Patterns</h2>
                 <p>Create and preview 20×20 pixel patterns for individual G6 panels. Supports GS2 and GS16 modes with real-time preview.</p>
                 <span class="status ready">Ready</span>
             </a>
 
-            <a href="experiment_designer.html" class="tool-card">
-                <h2>Experiment Designer</h2>
-                <p>Design experiment protocols with stimulus sequences and trial parameters. YAML export for MATLAB execution.</p>
+            <a href="icon_generator.html" class="tool-card">
+                <h2>Pattern Icon Generator</h2>
+                <p>Generate top-down cylindrical view icons from arena patterns. Supports single-frame and motion blur rendering.</p>
                 <span class="status in-dev">In Development</span>
             </a>
 
             <a href="flasher/index.html" class="tool-card">
                 <h2>G6 Panel Flash Programmer</h2>
-                <p>Program a single G6 panel's firmware over WebUSB on the bench — pick a build, hold BOOTSEL, flash the published UF2. (For in-arena updates, use the console's In-System ISP Programmer.) Chrome/Edge only.</p>
+                <p>Program a single G6 panel's firmware over WebUSB on the bench — pick a build, hold BOOTSEL, flash the published UF2. (For in-arena updates, use Arena Studio's Panel firmware tools.) Chrome/Edge only.</p>
                 <span class="status in-dev">In Development</span>
             </a>
 
@@ -276,6 +460,31 @@
                 <h2>Panel Serial Monitor</h2>
                 <p>Read a running panel's USB-serial log live — a quick "is it alive?" check. Streams the boot banner + diagnostics; sends console commands to self-test builds. Chrome/Edge only.</p>
                 <span class="status in-dev">In Development</span>
+            </a>
+        </div>
+
+        <!-- Legacy tools -->
+        <div class="group-title">Legacy tools <span class="group-note">superseded — new features land in Arena Studio</span></div>
+        <div class="tools-grid small legacy">
+            <a href="arena_console.html" class="tool-card">
+                <h2>Arena Console</h2>
+                <span class="supersede">Now the Console view in Arena Studio — this standalone gets bug fixes only.</span>
+                <p>Live control for the G6 arena over Web Serial — connect a controller over USB and drive the display directly. PControl successor.</p>
+                <span class="status legacy-chip">Maintenance</span>
+            </a>
+
+            <a href="experiment_designer_v3.html" class="tool-card">
+                <h2>v3 Experiment Designer</h2>
+                <span class="supersede">Now the Edit view in Arena Studio — this standalone gets bug fixes only.</span>
+                <p>Edit Protocol v3 YAML — library of conditions + ordered sequence, with anchors and comments preserved on round-trip.</p>
+                <span class="status legacy-chip">Maintenance</span>
+            </a>
+
+            <a href="experiment_designer.html" class="tool-card">
+                <h2>Experiment Designer</h2>
+                <span class="supersede">The older (pre-v3) protocol format — superseded by the v3 designer.</span>
+                <p>Design experiment protocols with stimulus sequences and trial parameters. YAML export for MATLAB execution.</p>
+                <span class="status legacy-chip">Legacy</span>
             </a>
         </div>
 

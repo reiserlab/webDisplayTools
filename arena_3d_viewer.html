@@ -2165,8 +2165,15 @@
             // Add panel labels on back side (if enabled)
             if (state.showPanelLabels) {
                 const panelH = height / numRows;
+                // G6: match the arena's own panel map — ROW-major, 1-based
+                // (firmware panel_index = row * numCols + col; row 0 = bottom).
+                // Bench-verified 2026-07-05. Other generations keep the classic
+                // column-major 0-based numbering.
+                const g6RowMajor = state.panelType === 'G6';
                 for (let row = 0; row < numRows; row++) {
-                    const panelNumber = colIndex * numRows + row;
+                    const panelNumber = g6RowMajor
+                        ? row * numCols + colIndex + 1
+                        : colIndex * numRows + row;
                     const panelLabel = createLabel(panelNumber.toString(), '#ffff00', 'normal');
                     // Position on back side of panel, centered
                     panelLabel.position.set(0, -halfH + row * panelH + panelH / 2, -panelThickness - 0.01);

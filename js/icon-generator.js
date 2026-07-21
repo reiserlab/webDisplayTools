@@ -188,9 +188,23 @@ function computeWeightedAverage(frames, frameIndices, weights, rows, cols) {
  */
 function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts) {
     const canvas = document.createElement('canvas');
-    canvas.width = opts.width;
-    canvas.height = opts.height;
+    // Supersample the backing store so thumbnails stay crisp on HiDPI/Retina
+    // screens (the CSS display size is opts.width/height; without this the browser
+    // upscales a 48/96-px bitmap and it looks pixelated). opts.supersample forces a
+    // factor for tests; otherwise track devicePixelRatio, capped at 3× and floored
+    // at 1. All geometry below is computed from opts.width/height, so a single
+    // ctx.scale keeps the drawing math unchanged — only the pixel density rises.
+    const ss = Math.max(
+        1,
+        opts.supersample ||
+            (typeof window !== 'undefined' && window.devicePixelRatio
+                ? Math.min(3, Math.ceil(window.devicePixelRatio))
+                : 1)
+    );
+    canvas.width = Math.round(opts.width * ss);
+    canvas.height = Math.round(opts.height * ss);
     const ctx = canvas.getContext('2d');
+    if (ss !== 1) ctx.scale(ss, ss);
 
     // Enable smooth rendering
     ctx.imageSmoothingEnabled = true;

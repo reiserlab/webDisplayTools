@@ -13,9 +13,9 @@ Roadmap and planning content belongs in:
 
 Use simple two-digit versions for all web tools (e.g., `v1`, `v2`, `v6`). No semantic versioning (1.0.0) needed.
 
-Format in footer: `Tool Name vX | YYYY-MM-DD HH:MM ET`
+Format in footer: `Tool Name vX | YYYY-MM-DD HH:MM ET · GitHub` — ONLY the tool name/version, an ET timestamp, and a GitHub repo link. NEVER put a changelog, release-notes summary, or "what changed" keywords in the footer (that content lives only in the release-notes file).
 
-Example: `Arena Editor v2 | 2026-01-16 14:30 ET`
+Example: `Arena Editor v2 | 2026-01-16 14:30 ET · GitHub`
 
 **IMPORTANT**: Always include timestamp in Eastern Time (ET) to distinguish multiple updates per day. Update the timestamp whenever the page is modified.
 
@@ -160,6 +160,13 @@ This pattern has caused bugs multiple times. Always use `config.name` for the va
 
 ## Arena Studio (`arena_studio.html`) — the primary tool
 
+**Current redesign direction (2026-07-17):** before changing the Studio's visual
+shell, read
+**`docs/development/arena-studio-claude-redesign-handoff.md`**. The next design
+candidate must be derived from the Classic/Claude Studio, with selected Alt
+functionality ported through shared modules; Alt is a reference implementation,
+not the new visual base.
+
 **Policy (2026-07-02):** the Studio is the **primary development path**. The
 standalone tools it absorbed — `arena_console.html` and
 `experiment_designer_v3.html` — are in **maintenance mode**: bug/safety fixes
@@ -207,6 +214,21 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   firmware's ASCII error payload on non-ok status — keep that for new ops.
   New `.cmenu` popups: the document click-away closer ignores clicks inside
   `.cmenu-pop`; one-shot `.cmenu-item`s (not in a `.cmenu-row`) auto-close.
+- **Metadata / controlled-vocab sourcing (THE rule):** when a **course repo is
+  configured AND signed in**, ALL metadata vocabularies load from that repo (its
+  root-level YAML) and their ↗ source links repoint there — the connected repo is
+  the source of truth. When not (offline / not signed in), fall back to the
+  **webDisplayTools site library** at `configs/metadata/*.yaml`. Today this covers
+  experimenter (`roster.yaml`), genotype (`genotypes.yaml`), and fly age/sex/number
+  (`ages.yaml`/`sexes.yaml`/`fly_numbers.yaml`). Wiring: `populateMetaDatalists()`
+  loads the site fallback at page start; `Studio.refreshCourseMeta()` (on sign-in /
+  repo change / connect) overrides from the repo via `fetchCourseRoster` /
+  `fetchCourseGenotypes` / the generic `fetchCourseVocab(file, key, srcId, apply)`.
+  **Any NEW controlled vocab MUST follow this course-first, site-fallback pattern:**
+  add a site YAML under `configs/metadata/`, load it in `populateMetaDatalists`, AND
+  add a `fetchCourseVocab(...)` call in `refreshCourseMeta` + seed the file into the
+  course repo root. The course repo (`reiserlab/cshl-2026-course`) is PRIVATE, so
+  the course override needs a token; the site files are same-origin (always work).
 - **Session rig (#135, v0.4):** `Studio.currentRig` (`{name, arenaConfig,
   explicit}`) is THE bench rig for all three views — one top-bar selector,
   locked by default. Always change it via the module block's
@@ -242,7 +264,49 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `Studio._urlSuppress`. URL writing is NOT a protocol mutation — never route
   it through `pushUndo`. Any NEW shareable state must flow through
   `encodeApp()` + `Studio.updateUrl` (never hand-build `location.search`).
+- **Console v6 layout (v0.6):** left rail of 7 tool panels (`data-panel` =
+  patterns/trial/step/test/io/fw/fictrac) + bench strip + always-visible resizable log;
+  the SD/library **listing IS the pattern picker** (row click drives the hidden `cPatName`).
+  GOTCHA: connected SD rows carry RAW filenames in `data-name` while picker options key
+  LOGICAL names — always normalize row↔option comparisons through `Studio.sdLogicalName`
+  (offline mirrored rows use option values, so offline tests pass without it).
+- **Open lands in Edit:** `Studio.loadProtocol(text, name, source, opts)` switches to Edit
+  after a successful load unless `opts.landIn === 'run'` (only the `initFromUrl` `?p=`/
+  `?repo=` loads pass that). Never re-add an unconditional force-to-Run.
+- **? Help mode:** top-bar `?` toggles `body.helpmode`; a managed tooltip shows curated
+  `data-help` text (applied from the `HELP` map in the v6 glue classic script — extend the
+  map, don't scatter attributes) and suppresses the native engineer `title=` while shown.
+  Content rule: end-user voice, shipped features only, no opcodes/issue refs/design history.
+  Per-view "first steps" cards are created by `helpCard()` in the same script.
+- **Footer is ONE line and carries ONLY** the tool name/version + ET timestamp + a GitHub
+  repo link (e.g. `Arena Studio v0.9 | 2026-07-07 00:03 ET · GitHub`). NEVER put a
+  changelog, release-notes summary, or "what changed" keywords in the footer — this is a
+  recurring mistake. The changelog lives ONLY in
+  `docs/development/arena-studio-release-notes.md` — add an entry there for user-visible
+  changes.
 - Bump the footer version/timestamp on every edit; never Prettier the HTML.
+
+## Pattern Designer (`pattern_editor.html`)
+
+Renamed from "Pattern Editor" (v0.10, 2026-07-04); the FILENAME stays `pattern_editor.html`
+(bookmarks/links). It shares the Studio's GitHub settings via same-origin storage
+(`studio_gh_pat` in sessionStorage/localStorage, `studio_gh_repo` + `studio_bench_id` in
+localStorage) — no auth UI of its own. Repo layout: free-standing patterns in `patterns/`
+(shared library) or protocol-colocated `protocols/<bench-id>/<proto>_patterns/`.
+
+- **URL state:** `?arena=<config>` (validated via `getConfig`, applies + LOCKS the arena
+  selector) and `?repo=owner/name` (validated via `StudioUrlState.isSafeRepo`, session-only
+  override — never written to localStorage). Written back via `updateUrlState()`
+  (replaceState) on arena change / pattern load. The Studio's top-bar **Patterns ↗** link
+  builds this URL at click time from `Studio.currentRig.arenaConfig` + the stored repo.
+- **File ops:** LOAD ▾ menu = Open local file… / Open from Library… (site
+  `patterns/<config-lowercase>/MANIFEST.txt` via `window.PatternSet.parseManifestTxt`) /
+  Open from Repo… (two-step picker: `patterns/` + every `*_patterns/` dir under
+  `protocols/<bench-id>|shared/`). All three sources funnel into `loadPatternBuffer()`.
+  ⇪ Save to Repo… = destination modal (library vs protocol) → `GH.directCommit` with an
+  exists-check overwrite confirm.
+- Classic deps added for this: `js/pattern-set.js`, `js/studio-url-state.js` (both
+  dual-export; same files the Studio loads).
 
 ## CI/CD Validation
 
@@ -502,8 +566,16 @@ When an ES6 `import` statement fails, the **entire** `<script type="module">` bl
 2. **`_buildArena()` must NEVER reset the camera position** — only the initial `init()` call sets the camera to top-down. Rebuilds preserve the user's current view.
 3. **Track which arena config the 3D viewer was last built with** using `threeViewerArenaConfig`. Compare on every `init3DViewer()` call and reinit if stale.
 4. **If `init()` fails** (scene is null), destroy the viewer and retry on next attempt — never leave a half-initialized viewer that silently ignores all controls.
+5. **CSHL G6_2x10 previews intentionally omit physical panels 8 and 18.** They
+   are the two rows of zero-based column 7 in G6 row-major numbering. Keep this
+   visual-only in `ThreeViewer`: do not mutate `columns_installed`, the 200×40
+   pattern address map, or configured arena statistics. Partial G6_2x8of10 and
+   other arena shapes must remain unchanged.
 
 These rules prevent stale geometry bugs where the 3D viewer shows an old arena after config changes.
+
+Shared LED glow architecture, tuning, performance budget, and reuse checklist:
+`docs/development/three-viewer-led-glow.md`.
 
 ## Pattern Editor Migration Plan
 

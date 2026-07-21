@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pattern Editor - PanelDisplayTools</title>
+    <title>Pattern Designer - PanelDisplayTools</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
     <script type="importmap">
         {
@@ -30,6 +30,11 @@
     <!-- course pipeline: GitHub request builders for "push to course repo"
          (classic dual-export module — same file Arena Studio uses) -->
     <script src="js/studio-github.js"></script>
+    <!-- library MANIFEST parser (Open from Library…) + repo/path validators
+         (?repo= / ?arena= URL state) — same classic dual-export modules the
+         Studio loads, so behavior matches across the two tools -->
+    <script src="js/pattern-set.js"></script>
+    <script src="js/studio-url-state.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -55,20 +60,23 @@
             flex-direction: column;
         }
 
-        /* Development Banner */
-        .dev-banner {
-            background: linear-gradient(90deg, var(--warning), #f57c00);
-            color: var(--bg);
-            text-align: center;
-            padding: 0.5rem;
-            font-size: 0.8rem;
-            font-weight: 600;
-            font-family: 'JetBrains Mono', monospace;
+        /* Footer — version + timestamp + GitHub, matching the other tools */
+        .pd-footer {
+            flex: 0 0 auto;
+            font-size: 10.5px;
+            color: var(--text-dim);
+            padding: 3px 12px;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+            font-family: 'IBM Plex Mono', monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        .dev-banner a {
-            color: var(--bg);
-            text-decoration: underline;
+        .pd-footer a {
+            color: var(--accent);
+            text-decoration: none;
         }
 
         /* Main Layout */
@@ -1704,24 +1712,65 @@
 
         /* Coming Soon overlay for disabled features */
         /* coming-soon styles removed — Mercator/Mollweide now implemented */
+
+        /* LOAD ▾ menu (Open local file… / from Library… / from Repo…) */
+        .load-menu-wrap { position: relative; display: inline-block; }
+        .load-menu {
+            display: none; position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 300;
+            background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+            padding: 4px; min-width: 185px; box-shadow: 0 8px 22px rgba(0,0,0,.5);
+        }
+        .load-menu.open { display: block; }
+        .load-menu button {
+            display: block; width: 100%; text-align: left; background: transparent; border: 0;
+            color: var(--text); font-family: inherit; font-size: 0.8rem; padding: 6px 9px;
+            border-radius: 4px; cursor: pointer; white-space: nowrap;
+        }
+        .load-menu button:hover { background: var(--card-hover, #252b33); color: var(--accent); }
+
+        /* repo/library picker modal list */
+        .pd-picker-list {
+            max-height: 46vh; overflow: auto; margin: 0.6rem 0; display: flex; flex-direction: column; gap: 3px;
+        }
+        .pd-picker-list button {
+            display: flex; align-items: baseline; gap: 0.6rem; width: 100%; text-align: left;
+            background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+            color: var(--text); font-family: inherit; font-size: 0.8rem; padding: 7px 10px; cursor: pointer;
+        }
+        .pd-picker-list button:hover { border-color: var(--accent); }
+        .pd-picker-list .sub { color: var(--text-dim); font-size: 0.7rem; margin-left: auto; }
+        .pd-picker-status { color: var(--text-dim); font-size: 0.78rem; min-height: 1.1em; }
+
+        /* Save-to-repo destination modal */
+        .dest-row { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0.55rem 0; cursor: pointer; }
+        .dest-row input[type=radio] { margin-top: 3px; accent-color: var(--accent); }
+        .dest-row .dest-text b { display: block; font-size: 0.85rem; color: var(--text); }
+        .dest-row .dest-text span { font-size: 0.72rem; color: var(--text-dim); }
+        .dest-proto-input {
+            width: 100%; margin-top: 4px; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 4px; color: var(--text); font-family: inherit; font-size: 0.78rem; padding: 4px 7px;
+        }
+        .dest-path { font-size: 0.72rem; color: var(--text-dim); word-break: break-all; margin-top: 0.6rem; }
     </style>
 </head>
 <body>
     <!-- Development Banner -->
-    <div class="dev-banner">
-        🚧 Pattern Editor v0.9.42 | 2026-07-04 11:53 ET — Frame Animation pane: one-click 💾 Save .pat (saveFrameAnimationAsPat → handleSave; fixes the undefined savePatternFile ReferenceError). Course pipeline: ⇪ Push to course repo (direct commit to protocols/&lt;bench-id&gt;/&lt;protocol&gt;_patterns/, reuses Arena Studio's saved GitHub settings) — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
-    </div>
+    <!-- (the old top dev-banner is gone — version/date/GitHub live in the
+         footer at the bottom, like the other tools; history is in the repo) -->
 
     <div class="app-container">
         <!-- Left Panel: Tools -->
         <div class="tools-panel">
             <div class="tools-header">
                 <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <a href="index.html" title="Back to Tools" style="color: var(--text-dim); text-decoration: none; font-size: 0.85rem;">← Tools</a>
-                    <h1 style="margin: 0;">Pattern Editor</h1>
+                    <h1 style="margin: 0;">Pattern Designer</h1>
                     <button class="quick-start-btn" id="quickStartBtn" title="Open Quick Start Guide">quick<br>start</button>
                 </div>
                 <div class="subtitle">Create and edit arena patterns</div>
+                <div style="margin-top: 0.35rem; display: flex; gap: 0.9rem; align-items: baseline;">
+                    <a id="asLink" href="arena_studio.html" title="Switch to the Arena Studio — reuses its tab if one is open (its arena connection is kept); otherwise opens it" style="color: var(--accent); text-decoration: none; font-size: 0.85rem; font-weight: 600;">Arena Studio ↗</a>
+                    <a href="index.html" target="wdt-index" title="All web tools (the index page) — opens in its own reused tab" style="color: var(--text-dim); text-decoration: none; font-size: 0.8rem;">Other tools</a>
+                </div>
             </div>
 
             <!-- Tool Tabs -->
@@ -2144,8 +2193,8 @@
             <!-- File Operations -->
             <div class="file-operations">
                 <div class="file-buttons">
-                    <button class="btn" id="saveBtn" title="Encode the current pattern as a .pat file and download it">SAVE</button>
-                    <button class="btn" id="pushRepoBtn" title="Commit the current pattern to the course-data repo at protocols/<bench-id>/<protocol>_patterns/ — uses the GitHub token, repo, and bench id configured in Arena Studio (File ▾) on this browser">⇪ PUSH TO COURSE REPO</button>
+                    <button class="btn" id="saveBtn" title="Encode the current pattern as a .pat file and download it to this computer">💾 SAVE LOCAL FILE</button>
+                    <button class="btn" id="pushRepoBtn" title="Commit the current pattern to the repo — either the shared pattern library (patterns/) or a protocol's _patterns/ folder. Uses the GitHub token + repo configured in Arena Studio (File ▾) on this browser, or the ?repo= this tab was opened with">⇪ SAVE TO REPO…</button>
                 </div>
             </div>
         </div>
@@ -2305,7 +2354,14 @@
             <!-- Playback Controls -->
             <div class="playback-controls">
                 <div class="file-action-buttons">
-                    <button class="file-action-btn" id="loadBtn" title="Load a .pat file">LOAD</button>
+                    <div class="load-menu-wrap">
+                        <button class="file-action-btn" id="loadBtn" title="Open a pattern — from this computer, the built-in library, or the repo">LOAD ▾</button>
+                        <div class="load-menu" id="loadMenu">
+                            <button id="lmLocal" title="Open a .pat file from this computer">Open local file…</button>
+                            <button id="lmLibrary" title="Open a pattern from the built-in library for the current arena">Open from Library…</button>
+                            <button id="lmRepo" title="Open a pattern from the repo — the shared patterns/ library or a protocol's _patterns/ folder (needs the GitHub sign-in from Arena Studio)">Open from Repo…</button>
+                        </div>
+                    </div>
                     <button class="file-action-btn file-action-new" id="newBtn" title="Create a new blank pattern">NEW</button>
                 </div>
                 <div class="frame-nav">
@@ -2381,6 +2437,8 @@
         </div>
     </div>
 
+    <footer class="pd-footer">Pattern Designer v0.10 | 2026-07-05 13:40 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/)">GitHub</a></footer>
+
     <!-- Hidden file input -->
     <input type="file" id="fileInput" accept=".pat" style="display: none;">
     <input type="file" id="fileInputA" accept=".pat" style="display: none;">
@@ -2405,9 +2463,49 @@
         </div>
     </div>
 
+    <!-- Open from Library / Open from Repo picker -->
+    <div class="modal-overlay" id="pdPickerModal">
+        <div class="modal-content" style="min-width: 420px; max-width: 560px;">
+            <h3 class="modal-title" id="pdPickerTitle">Open…</h3>
+            <div class="pd-picker-status" id="pdPickerStatus"></div>
+            <div class="pd-picker-list" id="pdPickerList"></div>
+            <div class="modal-buttons">
+                <button class="modal-btn secondary" id="pdPickerCancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save to Repo… destination chooser -->
+    <div class="modal-overlay" id="repoSaveModal">
+        <div class="modal-content" style="min-width: 440px; max-width: 560px;">
+            <h3 class="modal-title">Save to Repo</h3>
+            <div class="pd-picker-status" id="repoSaveRepoLine"></div>
+            <label class="dest-row">
+                <input type="radio" name="repoDest" id="destLibrary" value="library" checked>
+                <span class="dest-text">
+                    <b>Shared pattern library</b>
+                    <span>patterns/ — free-standing patterns anyone can open, not tied to a protocol</span>
+                </span>
+            </label>
+            <label class="dest-row">
+                <input type="radio" name="repoDest" id="destProtocol" value="protocol">
+                <span class="dest-text">
+                    <b>A protocol's pattern folder</b>
+                    <span>protocols/&lt;bench-id&gt;/&lt;protocol&gt;_patterns/ — travels with that protocol (needs a bench id)</span>
+                    <input type="text" class="dest-proto-input" id="destProtoName" placeholder="protocol name, e.g. my_protocol" disabled>
+                </span>
+            </label>
+            <div class="dest-path" id="repoSavePath"></div>
+            <div class="modal-buttons">
+                <button class="modal-btn secondary" id="repoSaveCancel">Cancel</button>
+                <button class="modal-btn primary" id="repoSaveCommit">Commit</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import PatParser from './js/pat-parser.js';
-        import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js?v=0310';
+        import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js?v=0713-solid-ball';
         import MercatorViewer from './js/pattern-editor/viewers/mercator-viewer.js?v=0218';
         import MollweideViewer from './js/pattern-editor/viewers/mollweide-viewer.js?v=0218';
         import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
@@ -2595,9 +2693,59 @@
             initEditPalette();
 
             // File operations
-            document.getElementById('loadBtn').addEventListener('click', () => {
+            // LOAD ▾ menu: Open local file… / Open from Library… / Open from Repo…
+            const loadMenu = document.getElementById('loadMenu');
+            document.getElementById('loadBtn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                loadMenu.classList.toggle('open');
+            });
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.load-menu-wrap')) loadMenu.classList.remove('open');
+            });
+            document.getElementById('lmLocal').addEventListener('click', () => {
+                loadMenu.classList.remove('open');
                 document.getElementById('fileInput').click();
             });
+            document.getElementById('lmLibrary').addEventListener('click', () => {
+                loadMenu.classList.remove('open');
+                openFromLibrary();
+            });
+            document.getElementById('lmRepo').addEventListener('click', () => {
+                loadMenu.classList.remove('open');
+                openFromRepo();
+            });
+            document.getElementById('pdPickerCancel').addEventListener('click', closePdPicker);
+
+            // Studio ⇄ Designer first-class linking: this tab is NAMED so the
+            // Studio's "Pattern Designer ↗" can focus it instead of opening
+            // duplicates; the reverse link below focuses an existing Studio tab
+            // (keeping its arena connection + any run) and only opens a fresh
+            // one when none exists.
+            window.name = 'pattern-designer';
+            document.getElementById('asLink').addEventListener('click', (e) => {
+                e.preventDefault();
+                let w = null;
+                try { w = window.open('', 'arena-studio'); } catch (_) { /* ignore */ }
+                try {
+                    if (w && w.location && /arena_studio/.test(w.location.pathname || '')) { w.focus(); return; }
+                } catch (_) { /* treat as fresh */ }
+                if (w) { try { w.location.href = 'arena_studio.html'; w.focus(); return; } catch (_) { /* fall through */ } }
+                window.open('arena_studio.html', 'arena-studio');
+            });
+
+            // Save to Repo… destination modal
+            document.getElementById('repoSaveCancel').addEventListener('click', () => {
+                document.getElementById('repoSaveModal').classList.remove('visible');
+            });
+            document.getElementById('repoSaveCommit').addEventListener('click', commitRepoSave);
+            document.querySelectorAll('input[name="repoDest"]').forEach((r) => {
+                r.addEventListener('change', () => {
+                    document.getElementById('destProtoName').disabled =
+                        !document.getElementById('destProtocol').checked;
+                    updateRepoSavePath();
+                });
+            });
+            document.getElementById('destProtoName').addEventListener('input', updateRepoSavePath);
 
             document.getElementById('fileInput').addEventListener('change', handleFileLoad);
 
@@ -2674,6 +2822,7 @@
                 updateStatus();
                 updateG3ButtonStates();  // Disable save/load for G3
                 renderCurrentViewer();
+                updateUrlState();        // mirror the explicit arena pick into ?arena=
             });
 
             // Arena lock/unlock button
@@ -3188,54 +3337,61 @@
             };
         }
 
+        // One load path for every source (local file / Library / Repo): parse the
+        // bytes, adopt + lock the pattern's arena config, enter preview mode.
+        function loadPatternBuffer(buffer, filename) {
+            const pattern = normalizePattern(PatParser.parsePatFile(buffer));
+
+            state.pattern = pattern;
+            state.filename = filename;
+            state.isDirty = false;
+            state.editor.currentFrame = 0;
+
+            // Reflect the loaded pattern's baked duty_cycle in the brightness control
+            syncGlobalBrightnessFromPattern();
+
+            // Resolve arena config: V2 header is authoritative, dimension-match is fallback
+            let matchingConfig = null;
+
+            if (pattern.headerVersion >= 2 && pattern.arena_id > 0) {
+                const registryName = getArenaName(pattern.generation, pattern.arena_id);
+                if (registryName && getConfig(registryName)) {
+                    matchingConfig = registryName;
+                    console.log(`Arena config from V2 header: ${registryName} (arena_id=${pattern.arena_id})`);
+                } else {
+                    console.warn(`V2 arena_id=${pattern.arena_id} for ${pattern.generation} not in registry, falling back to dimension match`);
+                }
+            }
+
+            if (!matchingConfig) {
+                matchingConfig = PatParser.findMatchingConfig(pattern, STANDARD_CONFIGS);
+            }
+
+            if (matchingConfig) {
+                state.arena.configName = matchingConfig;
+                state.arena.config = getConfig(matchingConfig);
+                document.getElementById('arenaConfigStatus').value = matchingConfig;
+            }
+
+            // Lock arena config and enter preview mode
+            lockArenaConfig();
+            enterPreviewMode();
+
+            updateStatus();
+            renderCurrentViewer();
+            updateFrameInfo();
+            updateUrlState(); // mirror the (possibly auto-detected) arena into the URL
+
+            console.log('Loaded pattern:', pattern);
+        }
+
         async function handleFileLoad(e) {
             const file = e.target.files[0];
             if (!file) return;
 
             try {
                 const buffer = await file.arrayBuffer();
-                const pattern = normalizePattern(PatParser.parsePatFile(buffer));
-
-                state.pattern = pattern;
-                state.filename = file.name;
-                state.isDirty = false;
-                state.editor.currentFrame = 0;
-
-                // Reflect the loaded pattern's baked duty_cycle in the brightness control
-                syncGlobalBrightnessFromPattern();
-
-                // Resolve arena config: V2 header is authoritative, dimension-match is fallback
-                let matchingConfig = null;
-
-                if (pattern.headerVersion >= 2 && pattern.arena_id > 0) {
-                    const registryName = getArenaName(pattern.generation, pattern.arena_id);
-                    if (registryName && getConfig(registryName)) {
-                        matchingConfig = registryName;
-                        console.log(`Arena config from V2 header: ${registryName} (arena_id=${pattern.arena_id})`);
-                    } else {
-                        console.warn(`V2 arena_id=${pattern.arena_id} for ${pattern.generation} not in registry, falling back to dimension match`);
-                    }
-                }
-
-                if (!matchingConfig) {
-                    matchingConfig = PatParser.findMatchingConfig(pattern, STANDARD_CONFIGS);
-                }
-
-                if (matchingConfig) {
-                    state.arena.configName = matchingConfig;
-                    state.arena.config = getConfig(matchingConfig);
-                    document.getElementById('arenaConfigStatus').value = matchingConfig;
-                }
-
-                // Lock arena config and enter preview mode
-                lockArenaConfig();
-                enterPreviewMode();
-
-                updateStatus();
-                renderCurrentViewer();
-                updateFrameInfo();
-
-                console.log('Loaded pattern:', pattern);
+                loadPatternBuffer(buffer, file.name);
             } catch (err) {
                 console.error('Failed to load pattern:', err);
                 alert('Failed to load pattern file: ' + err.message);
@@ -3305,60 +3461,282 @@
             console.log('Saved pattern:', built.filename);
         }
 
-        // ---- push to course repo (CSHL pipeline) ----
-        // Direct-commits the encoded .pat to the course-data repo under
-        // protocols/<bench-id>/<protocol>_patterns/. Reuses the SAME
-        // localStorage settings Arena Studio's File ▾ block writes (PAT +
-        // repo + bench id are same-origin), so there is no auth UI here.
-        // Getting the pattern ONTO the SD stays manual for the course week:
-        // Arena Studio → Console → SD upload.
-        async function handlePushToRepo() {
+        // ============================================================
+        // Repo integration (shared settings with Arena Studio) + URL state
+        //
+        // Reuses the SAME same-origin storage Arena Studio's File ▾ block
+        // writes (token in sessionStorage/localStorage `studio_gh_pat`, repo
+        // + bench id in localStorage) — so a tab opened from the Studio's
+        // "Patterns ↗" link is already signed in. `?repo=owner/name` overrides
+        // the repo for THIS TAB only (never written back to localStorage —
+        // the Studio's kiosk-locked settings stay untouched).
+        // ============================================================
+        let sessionRepo = null;       // ?repo= override for this tab
+        let _urlArenaLock = false;    // ?arena= handover locks the config after initUI
+
+        function repoSettings() {
+            const raw = (sessionRepo || localStorage.getItem('studio_gh_repo') || '').trim();
+            const rm = /^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/.exec(raw);
+            const ok = rm && !raw.includes('..');
+            return {
+                token: sessionStorage.getItem('studio_gh_pat') || localStorage.getItem('studio_gh_pat'),
+                repoRaw: raw,
+                owner: ok ? rm[1] : null,
+                repo: ok ? rm[2] : null,
+                benchId: (localStorage.getItem('studio_bench_id') || '').trim()
+            };
+        }
+        function repoConfiguredOrExplain() {
+            const cs = repoSettings();
+            if (!window.StudioGitHub || !cs.token || !cs.owner) {
+                alert('Repo not configured on this browser.\n' +
+                    'Open Arena Studio → File ▾ → sign in to GitHub and set the repo (owner/name) — ' +
+                    'or open this page from the Studio’s "Patterns ↗" link.');
+                return null;
+            }
+            return cs;
+        }
+
+        // ---- URL state: ?arena=<config> & ?repo=<owner/name> ----
+        // Read once at startup; written (replaceState, no history spam) when the
+        // arena changes — by the user, or by a loaded pattern's auto-detect.
+        function applyUrlState() {
+            const params = new URLSearchParams(location.search);
+            const arena = params.get('arena');
+            if (arena && getConfig(arena)) {
+                state.arena.configName = arena;
+                state.arena.config = getConfig(arena);
+                _urlArenaLock = true; // an explicit handover locks the selector
+            } else if (arena) {
+                console.warn('?arena= is not a known config — ignored:', arena);
+            }
+            const repo = params.get('repo');
+            const US = window.StudioUrlState;
+            if (repo && US && US.isSafeRepo && US.isSafeRepo(repo)) {
+                sessionRepo = repo;
+            } else if (repo) {
+                console.warn('?repo= is not owner/name — ignored:', repo);
+            }
+        }
+        function updateUrlState() {
+            try {
+                const params = new URLSearchParams(location.search);
+                params.delete('arena');
+                params.delete('repo');
+                if (state.arena.configName) params.set('arena', state.arena.configName);
+                if (sessionRepo) params.set('repo', sessionRepo);
+                const q = params.toString();
+                history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+            } catch (_) { /* URL mirroring is best-effort */ }
+        }
+
+        // ---- shared picker modal (Open from Library… / Open from Repo…) ----
+        function showPdPicker(title, items, onPick, statusText) {
+            const modal = document.getElementById('pdPickerModal');
+            document.getElementById('pdPickerTitle').textContent = title;
+            document.getElementById('pdPickerStatus').textContent = statusText || '';
+            const list = document.getElementById('pdPickerList');
+            list.innerHTML = '';
+            if (!items.length) {
+                const d = document.createElement('div');
+                d.className = 'pd-picker-status';
+                d.textContent = '(nothing found)';
+                list.appendChild(d);
+            }
+            items.forEach((it) => {
+                const b = document.createElement('button');
+                if (it.tooltip) b.title = it.tooltip;
+                const l = document.createElement('span');
+                l.textContent = it.label;
+                b.appendChild(l);
+                if (it.sub) {
+                    const s = document.createElement('span');
+                    s.className = 'sub';
+                    s.textContent = it.sub;
+                    b.appendChild(s);
+                }
+                b.addEventListener('click', () => { closePdPicker(); onPick(it.value); });
+                list.appendChild(b);
+            });
+            modal.classList.add('visible');
+        }
+        function closePdPicker() {
+            document.getElementById('pdPickerModal').classList.remove('visible');
+        }
+
+        // ---- Open from Library… — the site's built-in set for the current arena ----
+        async function openFromLibrary() {
+            const cfgName = state.arena.configName;
+            const folder = String(cfgName || '').toLowerCase();
+            const base = './patterns/' + folder + '/';
+            let items = [];
+            let status;
+            try {
+                const resp = await fetch(base + 'MANIFEST.txt', { cache: 'no-store' });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const parsed = window.PatternSet.parseManifestTxt(await resp.text());
+                items = parsed.patterns.map((p) => ({
+                    label: p.name,
+                    sub: p.sd_name,
+                    value: base + 'patterns/' + p.sd_name
+                }));
+                status = 'Built-in library for ' + cfgName + (parsed.pattern_set_id ? ' · set ' + parsed.pattern_set_id : '');
+            } catch (e) {
+                status = 'No built-in library for ' + cfgName + ' (looked in patterns/' + folder + '/).';
+            }
+            showPdPicker('Open from Library', items, async (url) => {
+                try {
+                    const r = await fetch(url, { cache: 'no-store' });
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    loadPatternBuffer(await r.arrayBuffer(), url.split('/').pop());
+                } catch (e) {
+                    alert('Library fetch failed: ' + e.message);
+                }
+            }, status);
+        }
+
+        // ---- Open from Repo… — two steps: pick a source, then a .pat ----
+        // Sources: the shared patterns/ library + every protocol _patterns/
+        // folder under protocols/<bench-id>/ and protocols/shared/.
+        async function openFromRepo() {
+            const cs = repoConfiguredOrExplain();
+            if (!cs) return;
             const GH = window.StudioGitHub;
-            if (!GH) {
-                alert('GitHub module failed to load — hard-refresh and retry.');
-                return;
+            const sources = [{
+                label: '📚 Shared pattern library',
+                sub: 'patterns/',
+                value: 'patterns'
+            }];
+            const dirs = [];
+            if (cs.benchId) dirs.push('protocols/' + cs.benchId);
+            dirs.push('protocols/shared');
+            for (const dir of dirs) {
+                try {
+                    const res = await GH.run(fetch, GH.reqGetContents(cs.owner, cs.repo, dir, null, cs.token));
+                    if (res.ok && Array.isArray(res.data)) {
+                        res.data
+                            .filter((f) => f && f.type === 'dir' && /_patterns$/.test(f.name))
+                            .forEach((f) => sources.push({
+                                label: '📄 ' + f.name.replace(/_patterns$/, ''),
+                                sub: dir + '/',
+                                value: f.path
+                            }));
+                    }
+                } catch (_) { /* missing dir before the first save is normal */ }
             }
-            const token = sessionStorage.getItem('studio_gh_pat') || localStorage.getItem('studio_gh_pat');
-            const repoRaw = (localStorage.getItem('studio_gh_repo') || '').trim();
-            const benchId = (localStorage.getItem('studio_bench_id') || '').trim();
-            const rm = /^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/.exec(repoRaw);
-            if (!token || !rm || repoRaw.includes('..')) {
-                alert('Course repo not configured on this browser.\nOpen Arena Studio → File ▾ → sign in to GitHub and set the repo (owner/name), then retry.');
-                return;
+            showPdPicker('Open from Repo — pick a source', sources, listRepoPatterns, cs.repoRaw);
+        }
+        async function listRepoPatterns(dir) {
+            const cs = repoConfiguredOrExplain();
+            if (!cs) return;
+            const GH = window.StudioGitHub;
+            let items = [];
+            let status = cs.repoRaw + ' · ' + dir + '/';
+            try {
+                const res = await GH.run(fetch, GH.reqGetContents(cs.owner, cs.repo, dir, null, cs.token));
+                if (res.ok && Array.isArray(res.data)) {
+                    items = res.data
+                        .filter((f) => f && f.type === 'file' && /\.pat$/i.test(f.name))
+                        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+                        .map((f) => ({
+                            label: f.name,
+                            sub: (f.size / 1024).toFixed(1) + ' KB',
+                            value: f.path
+                        }));
+                }
+            } catch (e) {
+                status = 'Listing failed: ' + e.message;
             }
-            if (!benchId) {
-                alert('Push blocked: bench id not set — see instructor (Arena Studio → File ▾ → Bench id).');
-                return;
-            }
+            showPdPicker('Open from Repo — pick a pattern', items, async (path) => {
+                try {
+                    const r = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.owner, cs.repo, path, null, cs.token));
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    const u8 = r.bytes;
+                    const buf = (u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength)
+                        ? u8.buffer : u8.slice().buffer;
+                    loadPatternBuffer(buf, path.split('/').pop());
+                } catch (e) {
+                    alert('Repo fetch failed: ' + e.message);
+                }
+            }, status);
+        }
+
+        // ---- ⇪ Save to Repo… — destination modal: shared patterns/ library OR a
+        // protocol's colocated _patterns/ folder (the course pipeline's layout).
+        // Getting the pattern ONTO the SD stays manual: Arena Studio → Console →
+        // Patterns → Add ▾.
+        let _pendingRepoSave = null;
+        function handlePushToRepo() {
+            const cs = repoConfiguredOrExplain();
+            if (!cs) return;
             const built = buildPatternDataForSave();
             if (!built) return;
-            const protoRaw = prompt(
-                'Attach this pattern to which protocol?\n' +
-                'It will be committed to protocols/' + benchId + '/<protocol>_patterns/' + built.filename,
-                'my_protocol'
-            );
-            if (!protoRaw) return;
-            const proto = GH.slug(protoRaw.replace(/\.ya?ml$/i, ''));
-            const path = 'protocols/' + benchId + '/' + proto + '_patterns/' + built.filename;
-            const btn = document.getElementById('pushRepoBtn');
+            _pendingRepoSave = built;
+            document.getElementById('repoSaveRepoLine').textContent =
+                'Repo: ' + cs.repoRaw + (cs.benchId ? ' · bench ' + cs.benchId : '');
+            const protoRadio = document.getElementById('destProtocol');
+            const protoInput = document.getElementById('destProtoName');
+            protoRadio.disabled = !cs.benchId;
+            protoRadio.closest('.dest-row').title = cs.benchId
+                ? 'Commits next to a protocol so they travel together'
+                : 'Needs a bench id (set in Arena Studio → File ▾) — course benches only';
+            if (!cs.benchId) document.getElementById('destLibrary').checked = true;
+            protoInput.disabled = !protoRadio.checked;
+            updateRepoSavePath();
+            document.getElementById('repoSaveModal').classList.add('visible');
+        }
+        function repoSaveDestPath() {
+            const built = _pendingRepoSave;
+            if (!built) return null;
+            const cs = repoSettings();
+            if (document.getElementById('destLibrary').checked) return 'patterns/' + built.filename;
+            const raw = (document.getElementById('destProtoName').value || '').replace(/\.ya?ml$/i, '').trim();
+            const proto = raw ? window.StudioGitHub.slug(raw) : '';
+            return proto ? 'protocols/' + cs.benchId + '/' + proto + '_patterns/' + built.filename : null;
+        }
+        function updateRepoSavePath() {
+            const p = repoSaveDestPath();
+            document.getElementById('repoSavePath').textContent = p ? '→ ' + p : '→ (enter a protocol name)';
+        }
+        async function commitRepoSave() {
+            const cs = repoConfiguredOrExplain();
+            if (!cs || !_pendingRepoSave) return;
+            const GH = window.StudioGitHub;
+            const built = _pendingRepoSave;
+            const path = repoSaveDestPath();
+            if (!path) { alert('Enter a protocol name for the protocol destination.'); return; }
+            const btn = document.getElementById('repoSaveCommit');
             btn.disabled = true;
             try {
+                // Same-name guard: warn before overwriting an existing repo file.
+                let exists = false;
+                try {
+                    const chk = await GH.run(fetch, GH.reqGetContents(cs.owner, cs.repo, path, null, cs.token));
+                    exists = !!chk.ok;
+                } catch (_) { /* 404 = new file */ }
+                if (exists && !confirm('"' + path + '" already exists in ' + cs.repoRaw + ' — overwrite it?')) {
+                    return;
+                }
                 const bytes = new Uint8Array(PatEncoder.encode(built.patternData));
                 const res = await GH.directCommit(fetch, {
-                    owner: rm[1],
-                    repo: rm[2],
-                    token: token,
+                    owner: cs.owner,
+                    repo: cs.repo,
+                    token: cs.token,
                     path: path,
-                    message: 'pattern: ' + built.filename + ' for ' + proto + ' from ' + benchId + ' via Pattern Editor',
+                    message: 'pattern: ' + built.filename + ' via Pattern Designer',
                     contentBytes: bytes
                 });
                 if (!res.ok) throw new Error(res.error || 'HTTP ' + res.status);
-                console.log('Pushed pattern to course repo:', path);
-                alert('✓ Committed to ' + repoRaw + '\n' + path +
-                    '\n\nTo run it on the arena, upload it to the SD via Arena Studio → Console → SD upload.');
+                console.log('Pushed pattern to repo:', path);
+                document.getElementById('repoSaveModal').classList.remove('visible');
+                state.isDirty = false;
+                state.filename = built.filename;
+                updateStatus();
+                alert('✓ Committed to ' + cs.repoRaw + '\n' + path +
+                    '\n\nTo run it on the arena, upload it to the SD card via Arena Studio → Console → Patterns → Add ▾.');
             } catch (err) {
-                console.error('Push to course repo failed:', err);
-                alert('Push failed: ' + err.message + '\nThe pattern was NOT committed — use SAVE for a local copy.');
+                console.error('Save to repo failed:', err);
+                alert('Save to repo failed: ' + err.message + '\nThe pattern was NOT committed — use SAVE LOCAL FILE for a local copy.');
             } finally {
                 btn.disabled = false;
             }
@@ -6237,13 +6615,17 @@
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
 
-                let panelNum = 1;
+                // G6: match the arena's own panel map — ROW-major, 1-based
+                // (firmware panel_index = row * numCols + col; row 0 = bottom,
+                // so 1..numCols run along the BOTTOM row). Bench-verified
+                // 2026-07-05. Other generations keep column-major numbering.
+                const g6RowMajor = state.arena.config.arena.generation === 'G6';
                 for (let pc = 0; pc < panelCols; pc++) {
                     for (let pr = 0; pr < panelRows; pr++) {
                         const centerX = (pc + 0.5) * pixelsPerPanel * pixelSize;
                         const centerY = (panelRows - pr - 0.5) * pixelsPerPanel * pixelSize;
-                        ctx.fillText(panelNum.toString(), centerX, centerY);
-                        panelNum++;
+                        const n = g6RowMajor ? pr * panelCols + pc + 1 : pc * panelRows + pr + 1;
+                        ctx.fillText(n.toString(), centerX, centerY);
                     }
                 }
             }
@@ -6487,7 +6869,9 @@
         // Initialize
         // ============================================
         function initializeApp() {
+            applyUrlState();   // ?arena= / ?repo= — before initUI so the dropdown reflects it
             initUI();
+            if (_urlArenaLock) lockArenaConfig(); // a handed-over arena arrives locked
             updateClipboardUI();
             updateDefaultFrames();  // Set initial frames based on default arena
             updatePatternTypeUI();  // Set initial pattern type UI visibility

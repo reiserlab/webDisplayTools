@@ -1373,6 +1373,46 @@ console.log('\n--- Suite 17: collectExportWarnings (soft-warn gate) ---');
 }
 
 {
+    // Regression: SEQUENCE-style variables (the documented shape + every fixture)
+    // with a STRING-valued anchor. The unused-anchor scan used to read
+    // pair.value.anchor, which on a scalar string hit String.prototype.anchor
+    // and produced a bogus "&function anchor() { [native code] }" warning even
+    // for a referenced anchor. Both anchors here are referenced → zero warnings.
+    const yaml =
+        [
+            'version: 3',
+            'experiment_info: {name: x}',
+            'rig: "/tmp/r.yaml"',
+            'variables:',
+            '  - &pat_name "G6_2x10_grating_20px"',
+            '  - &dur 4',
+            'experiment: [foo]',
+            'conditions:',
+            '  - name: foo',
+            '    commands:',
+            '      - type: controller',
+            '        command_name: trialParams',
+            '        pattern: *pat_name',
+            '        pattern_ID: 2',
+            '        duration: *dur',
+            '        mode: 2',
+            '        frame_index: 0',
+            '        frame_rate: 5',
+            '        gain: 0',
+            '      - type: wait',
+            '        duration: *dur'
+        ].join('\n') + '\n';
+    const exp = parseV3Protocol(yaml);
+    const { warnings } = collectExportWarnings(exp);
+    const anchorWarns = warnings.filter((w) => w.kind === 'unused-anchor');
+    checkTrue('warn: sequence-style string anchor not falsely flagged', anchorWarns.length === 0);
+    checkTrue(
+        'warn: no [native code] garbage anchor name',
+        !warnings.some((w) => String(w.name || '').includes('native code'))
+    );
+}
+
+{
     // Plugin used but not declared in plugins:
     const yaml =
         [
@@ -4078,6 +4118,44 @@ console.log('\n--- Suite 33: G6-only analog/digital output commands ---');
     checkTrue('33.19: setDigitalOut has no duration field', dOn && dOn.duration === undefined);
 }
 
+// ─── Suite 33b: ledDrive (BuckPuck LED %) roundtrip + g6-only ───────────────
+// ledDrive is a G6-only controller command taking a `percent` (0–100); the
+// runner maps % → control voltage → SET_AO_VOLTAGE. Here we only assert the
+// authoring/YAML contract: `percent` is a first-class key that survives
+// generate → parse and that ledDrive warns g6-only off a G6 arena. (Built on the
+// known-good g6_io fixture so we don't hand-author YAML or touch a shared file.)
+console.log('\n--- Suite 33b: ledDrive (BuckPuck LED %) ---');
+{
+    // Author ledDrive INTO the YAML text (so the parsed doc + object both carry
+    // it) rather than mutating the projection — generate serializes from the doc.
+    const text =
+        readFixture('v3_g6_io.yaml').trimEnd() +
+        '\n' +
+        '      - type: "controller"\n' +
+        '        command_name: "ledDrive"\n' +
+        '        percent: 62.5\n';
+    const exp1 = parseV3Protocol(text);
+    const regen = generateV3Protocol(exp1);
+    const exp2 = parseV3Protocol(regen);
+    const led = exp2.conditions[0].commands.find((c) => c.command_name === 'ledDrive');
+
+    checkTrue('33b.1: ledDrive roundtrips through generate → parse', !!led);
+    check('33b.2: percent preserved', led && led.percent, 62.5);
+    checkTrue(
+        '33b.3: percent is a first-class key (not swallowed as unknown)',
+        led && !(led._unknownKeys && 'percent' in led._unknownKeys)
+    );
+    checkTrue('33b.4: percent survives in regen YAML', /percent:\s*62\.5/.test(regen));
+    checkTrue('33b.5: ledDrive has no duration field', led && led.duration === undefined);
+
+    const ledWarns = (gen) =>
+        collectExportWarnings(exp1, gen).warnings.filter(
+            (x) => x.kind === 'g6-only-command' && x.name === 'ledDrive'
+        );
+    check('33b.6: ledDrive warns g6-only on G4.1', ledWarns('G4.1').length, 1);
+    check('33b.7: no ledDrive g6-only warning on G6', ledWarns('G6').length, 0);
+}
+
 // ─── Suite 34: negative frame_rate = Mode-2 reverse (fw ee74c33, fw #4) ─────
 console.log('\n--- Suite 34: negative frame_rate (Mode-2 reverse playback) ---');
 {
@@ -4133,7 +4211,190 @@ console.log('\n--- Suite 34: negative frame_rate (Mode-2 reverse playback) ---')
     check('34.7: clamp keeps -30', clampToSchema(-30, schema).value, -30);
     checkTrue('34.7b: in-range value unchanged', clampToSchema(-30, schema).changed === false);
     check('34.8: clamp pulls -40000 up to -32768', clampToSchema(-40000, schema).value, -32768);
-    check('34.9: clamp pulls u16-era 65535 down to 32767', clampToSchema(65535, schema).value, 32767);
+    check(
+        '34.9: clamp pulls u16-era 65535 down to 32767',
+        clampToSchema(65535, schema).value,
+        32767
+    );
+}
+
+// ─── Suite 35: per-trial duty (fw #33) + int16 gain (fw #4) on trialParams ──
+// duty is the optional 12th TRIAL_PARAMS byte: a per-trial brightness override,
+// 0 = the pattern's stored duty_cycle. Authoring contract: `duty` is a
+// first-class trialParams key (roundtrips, not `_unknownKeys`), OPTIONAL in the
+// schema (absent stays absent — the runner sends 0 for it), default 0 so a
+// designer-seeded field is a visible no-op until edited. gain widened to int16.
+console.log('\n--- Suite 35: trialParams duty (per-trial brightness) + int16 gain ---');
+{
+    const text = [
+        'version: 3',
+        '',
+        'experiment_info:',
+        '  name: "duty override"',
+        '',
+        'rig: "./configs/rigs/cshl_g6_2x10.yaml"',
+        '',
+        'experiment:',
+        '  - "dimmed"',
+        '  - "plain"',
+        '',
+        'conditions:',
+        '  - name: "dimmed"',
+        '    commands:',
+        '      - type: "controller"',
+        '        command_name: "trialParams"',
+        '        pattern: "grating_sq"',
+        '        pattern_ID: 2',
+        '        duration: 3',
+        '        mode: 2',
+        '        frame_index: 0',
+        '        frame_rate: 30',
+        '        gain: -500',
+        '        duty: 200',
+        '  - name: "plain"',
+        '    commands:',
+        '      - type: "controller"',
+        '        command_name: "trialParams"',
+        '        pattern: "grating_sq"',
+        '        pattern_ID: 2',
+        '        duration: 3',
+        '        mode: 2',
+        '        frame_index: 0',
+        '        frame_rate: 30',
+        '        gain: 0',
+        ''
+    ].join('\n');
+    const exp = parseV3Protocol(text);
+    const dimmed = exp.conditions[0].commands[0];
+    const plain = exp.conditions[1].commands[0];
+
+    check('35.1: duty parses as a first-class key', dimmed.duty, 200);
+    checkTrue(
+        '35.2: duty not swallowed into _unknownKeys',
+        !(dimmed._unknownKeys && 'duty' in dimmed._unknownKeys)
+    );
+    checkTrue('35.3: omitted duty stays absent (no default injection)', plain.duty === undefined);
+
+    const regen = generateV3Protocol(exp);
+    checkTrue('35.4: duty survives regen YAML', /duty:\s*200/.test(regen));
+    const exp2 = parseV3Protocol(regen);
+    check('35.5: re-parse matches', exp2.conditions[0].commands[0].duty, 200);
+    checkTrue(
+        '35.6: omitted duty still absent after regen -> parse',
+        exp2.conditions[1].commands[0].duty === undefined
+    );
+    check('35.7: no blocking errors', collectBlockingErrors(exp).errors.length, 0);
+
+    // Schema: optional-with-default so designer-created commands seed 128 but
+    // the parser never injects it into loaded protocols.
+    const schema = getV3CommandParams(exp, 'controller', null, 'trialParams');
+    checkTrue('35.8: duty in trialParams schema', !!schema.duty);
+    checkTrue('35.9: duty is optional (required falsy)', !schema.duty.required);
+    check('35.10: duty default 0 (no override)', schema.duty.default, 0);
+    check('35.11: duty min 0', schema.duty.min, 0);
+    check('35.12: duty max 255', schema.duty.max, 255);
+    check('35.13: clamp pulls 300 down to 255', clampToSchema(300, schema.duty).value, 255);
+
+    // gain rode the same fw #4 re-layout: int8 -> int16 on the wire; the
+    // schema must accept the widened range (and the -500 above must parse).
+    check('35.14: gain -500 parses (past old int8 floor)', dimmed.gain, -500);
+    check('35.15: gain schema min -32768', schema.gain.min, -32768);
+    check('35.16: gain schema max 32767', schema.gain.max, 32767);
+}
+
+// ─── Suite 36: conditional LED activation (nested object on trialParams) ────
+// led_activation is a nested { level, hysteresis, on_ranges:[[a,b],...] } object
+// on a trialParams command — the first NON-scalar controller param. Authoring
+// contract: it's a first-class key (round-trips, not `_unknownKeys`), preserves
+// nested structure, is OPTIONAL with no default (absent stays absent), and the
+// schema advertises it as an object with sub-field metadata.
+console.log('\n--- Suite 36: trialParams led_activation (conditional LED) ---');
+{
+    const text = [
+        'version: 3',
+        '',
+        'experiment_info:',
+        '  name: "conditional LED"',
+        '',
+        'rig: "./configs/rigs/cshl_g6_2x10.yaml"',
+        '',
+        'experiment:',
+        '  - "gated"',
+        '  - "plain"',
+        '',
+        'conditions:',
+        '  - name: "gated"',
+        '    commands:',
+        '      - type: "controller"',
+        '        command_name: "trialParams"',
+        '        pattern: "closed_loop_grating"',
+        '        pattern_ID: 2',
+        '        duration: 30',
+        '        mode: 3',
+        '        frame_index: 0',
+        '        frame_rate: 0',
+        '        gain: 0',
+        '        led_activation:',
+        '          level: 20',
+        '          hysteresis: 3',
+        '          on_ranges:',
+        '            - [50, 100]',
+        '            - [150, 180]',
+        '  - name: "plain"',
+        '    commands:',
+        '      - type: "controller"',
+        '        command_name: "trialParams"',
+        '        pattern: "closed_loop_grating"',
+        '        pattern_ID: 2',
+        '        duration: 30',
+        '        mode: 3',
+        '        frame_index: 0',
+        '        frame_rate: 0',
+        '        gain: 0',
+        ''
+    ].join('\n');
+    const exp = parseV3Protocol(text);
+    const gated = exp.conditions[0].commands[0];
+    const plain = exp.conditions[1].commands[0];
+
+    checkTrue('36.1: led_activation parses as a first-class key', !!gated.led_activation);
+    checkTrue(
+        '36.2: not swallowed into _unknownKeys',
+        !(gated._unknownKeys && 'led_activation' in gated._unknownKeys)
+    );
+    check('36.3: nested level preserved', gated.led_activation.level, 20);
+    check('36.4: nested hysteresis preserved', gated.led_activation.hysteresis, 3);
+    check(
+        '36.5: nested on_ranges preserved',
+        JSON.stringify(gated.led_activation.on_ranges),
+        '[[50,100],[150,180]]'
+    );
+    checkTrue(
+        '36.6: omitted stays absent (no default injection)',
+        plain.led_activation === undefined
+    );
+
+    const regen = generateV3Protocol(exp);
+    checkTrue('36.7: led_activation survives regen YAML', /led_activation:/.test(regen));
+    checkTrue('36.8: nested on_ranges survive regen', /on_ranges/.test(regen) && /180/.test(regen));
+    const exp2 = parseV3Protocol(regen);
+    check('36.9: re-parse level matches', exp2.conditions[0].commands[0].led_activation.level, 20);
+    check(
+        '36.10: re-parse on_ranges match',
+        JSON.stringify(exp2.conditions[0].commands[0].led_activation.on_ranges),
+        '[[50,100],[150,180]]'
+    );
+    check('36.11: no blocking errors', collectBlockingErrors(exp).errors.length, 0);
+
+    const sch = getV3CommandParams(exp, 'controller', null, 'trialParams');
+    checkTrue('36.12: led_activation in schema', !!sch.led_activation);
+    check('36.13: schema type is object', sch.led_activation.type, 'object');
+    checkTrue('36.14: led_activation is optional', !sch.led_activation.required);
+    checkTrue('36.15: no default (not auto-seeded)', sch.led_activation.default === undefined);
+    checkTrue(
+        '36.16: schema advertises sub-fields',
+        !!(sch.led_activation.fields && sch.led_activation.fields.level)
+    );
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────

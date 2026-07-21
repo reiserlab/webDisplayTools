@@ -1,6 +1,7 @@
 # Controlled vocabulary — fly genotypes for the Arena Studio Run-details panel.
-# Free text is still allowed (datalist, not a locked select). Add an entry via a
-# PR — Studio's "Save as Pull Request" can append here for you.
+# This is a CONSTRAINED pick-list (no free text) so recorded data stays typo-free
+# and mergeable — pre-register a genotype via a PR (Studio's "Save as Pull
+# Request" can append here for you) for it to appear in the dropdown.
 format_version: "1.0"
 genotypes:
   - "w;UAS-CsChrimson"

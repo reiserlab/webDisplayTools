@@ -19,7 +19,7 @@ The wireframe work is **consolidated on branch `docs/arena-studio-wireframes`, r
 
 ## Resume in 60 seconds
 1. **Read:** this doc → `arena-studio-unification-design.md` (esp. **§6** canMutate blocker, **§10** phasing, **§11** open questions, **§12** staged path, **§13** feedback, **§14** v4).
-2. **Preview:** server via `.claude/launch.json` → **port 8091** (`python3 .claude/nocache-server.py`). Open `http://localhost:8091/docs/development/arena-studio-wireframe-v5.html` (v4 is the A/B baseline). Wireframe is a **mockup** — Connect/Run are fake.
+2. **Preview:** server via `.claude/launch.json` → **port 8091** (`python3 .claude/nocache-server.py`). Open `http://localhost:8091/docs/development/arena-studio-wireframe-v6.html` (v5 is the A/B baseline). Wireframe is a **mockup** — Connect/Run are fake.
 3. **The next arc:** Phase 1 (repo review) ✅ done · Phase 2 (v5 re-sync + density) ✅ done → **Phase 3 = the big build** (Stage B `arena_runner.html` and/or Stage C full merge).
 
 ---
@@ -27,8 +27,8 @@ The wireframe work is **consolidated on branch `docs/arena-studio-wireframes`, r
 ## Where the work lives
 | Thing | Path | Note |
 |---|---|---|
-| **Current wireframe** | `docs/development/arena-studio-wireframe-v5.html` | **v5, user-approved.** Committed on `docs/arena-studio-wireframes`. Footer: `v5 · 2026-07-01`. |
-| **A/B baseline** | `docs/development/arena-studio-wireframe-v4.html` | Prior concept; keep for compare. Committed on the branch (v1/v2/v3 too). |
+| **Current wireframe** | `docs/development/arena-studio-wireframe-v6.html` | **v6.2 (2026-07-04): Console de-clutter pass** — LEFT rail of 7 tools (multi-open compact one-row boxes, ✕ to collapse, Start/Stop right-aligned), Patterns = merged device-memory+picker, **Arena Trial** = ONE trial-params box (modes 2/3/4, mode-aware field dimming) + separate Step frames, busy/mutex lock model (⏳ simulate busy), plain labels (hex → title hovers, global ? Help mode), status header + ALWAYS-visible log, default layout = all open except I/O + firmware (fits 1280×800), Edit toolbar diet + repo-connected Settings. Companion: `arena-studio-v6-notes.md` (MATLAB-restore ledger, mutex matrix, renames, draft issues, main-reconciliation §8). Baseline UI: Studio v0.5 on **main @ `8bc97e6`** (PR #139) — directly executable. |
+| **A/B baseline** | `docs/development/arena-studio-wireframe-v5.html` | v5, user-approved 2026-07-01; keep for compare (v1–v4 too, on `docs/arena-studio-wireframes`). |
 | **Authoritative plan/design** | `docs/development/arena-studio-unification-design.md` | Rev 3 + §14 (v4). **Needs a §15 for v5** (density pass) — not yet written. Committed only on `docs/arena-studio-wireframes`. |
 | **Memory (auto-loads)** | memory note `arena-studio-unification` | Running decision log. Also `[[g6-web-runner-impl]]`, `[[g6-console-pcontrol-parity]]`, `[[js-module-load-gotcha]]`, `[[fictrac-closed-loop-v3-runner]]`. |
 | **Source-of-truth code (main)** | `arena_console.html` (**v6**), `experiment_designer_v3.html` (**v0.40**), `js/arena-session.js`, `js/run-log.js`, `js/arena-runner-g6.js`, `js/plugin-registry.js` | What the wireframe stays honest to. |

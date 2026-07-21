@@ -39,7 +39,7 @@
      * missing provenance is null (run-log.js also nulls protocol_sha256 for
      * intent:'test'). No DOM, no clock — feed the pieces in.
      * @param {object} a
-     * @param {object} a.panel   {experimenter, genotype, notes} from the side panel
+     * @param {object} a.panel   {experimenter, genotype, age, sex, fly_number, notes} from the side panel
      * @param {object} a.doc     {filename, sha256}  loaded/edited protocol
      * @param {object} a.session {firmware, controllerId} from GET_CONTROLLER_INFO 0xC2 only
      * @param {object} a.rig     {name, arenaConfig} from the loaded rig YAML (NOT the controller)
@@ -57,6 +57,9 @@
             run_id: o.runId || null,
             experimenter: s(panel.experimenter),
             genotype: s(panel.genotype),
+            age: s(panel.age),
+            sex: s(panel.sex),
+            fly_number: s(panel.fly_number),
             notes: s(panel.notes),
             protocol_filename: doc.filename || 'untitled.yaml',
             protocol_sha256: doc.sha256 || null,

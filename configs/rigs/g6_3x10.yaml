@@ -1,0 +1,33 @@
+# G6 rig configuration — 3x10 (full 360°)
+#
+# General-purpose counterpart of cshl_g6_2x10.yaml for a three-row arena.
+# The browser drives the G6 controller directly over USB/serial. No external
+# camera, tracker, backlight, or temperature plugins are assumed.
+
+format_version: "1.0"
+name: "G6 3x10"
+description: "Generic G6 3x10 arena (full 360°), controller over USB/serial, no external plugins"
+
+arena: "G6_3x10"
+
+controller:
+  host: "0.0.0.0" # not used for serial/USB
+  port: 62222
+
+plugins: {}
+# AO (analog-out) is controller-native, not a rig plugin.
+
+# Match the CSHL G6 arena-only controller I/O defaults.
+io:
+  dio:
+    - port: 1
+      role: out_debug_framescan # HIGH during each frame's SPI transmission
+      default: 0
+    - port: 2
+      role: off # declare in_trigger when a trigger source is actually cabled
+      default: 0
+  ai:
+    role: off
+  ao:
+    role: programmable
+    default: 5.0 # volts — this hardware idles at 5 V

@@ -1434,7 +1434,7 @@
                         >
                             SD card
                             <button id="sd-purge-btn" disabled
-                                title="Delete ALL patterns from SD card (DELETE_ALL_PATTERNS 0x8F)">xXx</button>
+                                title="Format the SD card - wipes patterns, firmware image, and manifests (PURGE_MEMORY 0x8F)">xXx</button>
                             <span
                                 id="sd-count-badge"
                                 title="Pattern files on SD card (GET_FILE_COUNT 0x80). Click to refresh."
@@ -2590,10 +2590,10 @@
 
             $('sd-purge-btn').addEventListener('click', async () => {
                 if (!session.connected) return;
-                if (!confirm('Delete ALL patterns from SD card? This cannot be undone.')) return;
+                if (!confirm('Format the SD card? This wipes ALL patterns, the panel firmware image, and manifests. This cannot be undone.')) return;
                 const resp = await run(
-                    'delete-all-patterns',
-                    Wire.encodeDeleteAllPatterns(),
+                    'purge-memory',
+                    Wire.encodePurgeMemory(),
                     (r) => (r && r.ok ? 'done' : null),
                     { timeoutMs: 30000 }
                 );

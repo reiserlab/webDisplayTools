@@ -9,11 +9,15 @@
  * / `canApply` policy, and subscribes to events for UI.
  *
  * WHAT THE BRIDGE SPEAKS (see fictrac-bridge/README.md):
- *   bridge → us:  {"type":"frame","index":<int>,"seq":<int>,"t":<ms>}
+ *   bridge → us:  {"type":"frame","index":<int>,"seq":<int>,"t":<ms>,
+ *                  "ms":<int>,"fc":<int>,"idx":<int>,"ft":<ms|null>,
+ *                  "x":<rad>,"y":<rad>,"hd":<rad>}   (behavior_v1 fields — the live
+ *                    oscilloscope's raw state; index/seq/t kept for back-compat)
  *                 {"type":"log_export_result","name":..,"content":..}  (or {"error":..})
  *   us → bridge:  {"type":"hello","client":...,"v":1}
  *                 {"type":"config","fictrac_port":..,"gain":..,"offset":..,"frames":..}
- *                 {"type":"log_control","enabled":<bool>}   (opens/closes the log file)
+ *                 {"type":"log_control","enabled":<bool>,"level":"behavior_v1"|"full"}
+ *                     (opens/closes the log file; level picks the frame-row format)
  *                 {"type":"log", ...}                        (an event to append)
  *                 {"type":"log_export"}                      (close + stream back the log)
  *
@@ -32,6 +36,9 @@
  *   'status'  (text:string, kind:string)   — connection status changed
  *   'stats'   (stats:object)               — {recv, applied, drop, rateHz} updated
  *   'frame'   (index:int)                  — a frame index arrived (pre-apply)
+ *   'sample'  (sample:object)              — behavior_v1 kinematic sample for the
+ *                                            scope: {ms, fc, idx, ft, x, y, hd, t}
+ *                                            (only when the bridge forwards them)
  *   'applied' (index:int)                  — a frame was applied to the arena
  *   'blocked' (reason:string)              — a frame could not be applied (canApply false)
  *   'apply'   (on:bool)                     — closed-loop apply was enabled/disabled
@@ -40,7 +47,7 @@
 (function (global) {
     'use strict';
 
-    const EVENTS = ['status', 'stats', 'frame', 'applied', 'blocked', 'apply', 'log'];
+    const EVENTS = ['status', 'stats', 'frame', 'sample', 'applied', 'blocked', 'apply', 'log'];
 
     class FicTracBridgeClient {
         /**
@@ -79,7 +86,16 @@
             this._lastBlockedMs = 0;
 
             // Bridge config (mirrors the console inputs). Sent on connect + on change.
-            this._config = { fictrac_port: 60000, gain: 1.8, offset: 0, frames: null };
+            // logLevel is the frame-logging level requested when logging starts
+            // ('behavior_v1' default | 'full'); the browser ASSERTS it so the runner
+            // logs behavior_v1 regardless of how the bridge process was launched.
+            this._config = {
+                fictrac_port: 60000,
+                gain: 1.8,
+                offset: 0,
+                frames: null,
+                logLevel: 'behavior_v1'
+            };
         }
 
         // ---- events ----------------------------------------------------------
@@ -159,7 +175,12 @@
                 this._emit('log', 'bridge: connected to ' + this._url, 'info');
                 this._send({ type: 'hello', client: 'webDisplayTools', v: 1 });
                 this.sendConfig();
-                if (this._logging) this._send({ type: 'log_control', enabled: true });
+                if (this._logging)
+                    this._send({
+                        type: 'log_control',
+                        enabled: true,
+                        level: this._config.logLevel
+                    });
                 this._startRateTimer();
                 this._emit('stats', this.stats);
             };
@@ -170,7 +191,7 @@
                 } catch (_) {
                     return; // ignore non-JSON
                 }
-                if (msg && msg.type === 'frame') this.handleFrame(msg.index);
+                if (msg && msg.type === 'frame') this.handleFrame(msg.index, msg);
                 else if (msg && msg.type === 'log_export_result') this._handleExportResult(msg);
             };
             ws.onerror = () => this._emit('status', 'error', 'err');
@@ -243,10 +264,22 @@
             if (changed) this._emit('apply', this._apply);
         }
 
-        /** Turn the bridge's session log file on/off (sends log_control). */
+        /**
+         * Select the frame-logging level for the NEXT log the bridge opens:
+         * 'behavior_v1' (compact, the runner default) or 'full' (25-column). Takes
+         * effect at the next setLogging(true) / reconnect (the bridge applies it
+         * when it opens a fresh file). Unknown values are ignored.
+         */
+        setLogLevel(level) {
+            if (level === 'behavior_v1' || level === 'full') this._config.logLevel = level;
+        }
+
+        /** Turn the bridge's session log file on/off (sends log_control + the level). */
         setLogging(on) {
             this._logging = !!on;
-            this._send({ type: 'log_control', enabled: this._logging });
+            const msg = { type: 'log_control', enabled: this._logging };
+            if (this._logging) msg.level = this._config.logLevel;
+            this._send(msg);
         }
 
         /** Append an event to the bridge log (only when logging is on + connected). */
@@ -316,14 +349,31 @@
         /**
          * A frame index arrived from the bridge. Counts it, coalesces it as the
          * newest pending index, and (if applying + permitted) drains it to the arena.
+         * The optional full `msg` carries the behavior_v1 kinematic fields — when
+         * present they're re-emitted as a 'sample' event for the live oscilloscope
+         * (the frame-driving path itself only needs the index).
          * PUBLIC so tests can drive it without a live WebSocket.
          */
-        handleFrame(index) {
+        handleFrame(index, msg) {
             if (!Number.isFinite(index)) return;
             this._recv++;
             this._rateCount++;
             this._pending = index; // coalesce — only the newest index matters
             this._emit('frame', index);
+            // behavior_v1 sample for the scope — only when the bridge forwards the
+            // kinematic fields (older bridges send index-only → no 'sample').
+            if (msg && (typeof msg.hd === 'number' || typeof msg.x === 'number')) {
+                this._emit('sample', {
+                    ms: typeof msg.ms === 'number' ? msg.ms : null,
+                    fc: typeof msg.fc === 'number' ? msg.fc : msg.seq,
+                    idx: typeof msg.idx === 'number' ? msg.idx : index,
+                    ft: typeof msg.ft === 'number' ? msg.ft : null,
+                    x: msg.x,
+                    y: msg.y,
+                    hd: msg.hd,
+                    t: typeof msg.t === 'number' ? msg.t : this._now()
+                });
+            }
             this._emit('stats', this.stats);
             if (!this._apply) return;
             if (!this._applyFrame) return;

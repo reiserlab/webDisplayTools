@@ -43,6 +43,7 @@ const KNOWN_TOP_LEVEL_KEYS = [
     'experiment_info',
     'rig',
     'variables',
+    'runtime_controls',
     'plugins',
     'experiment',
     'conditions'
@@ -65,9 +66,15 @@ const KNOWN_COMMAND_KEYS_BY_TYPE = {
         'frame_index',
         'frame_rate',
         'gain',
+        // per-trial duty/brightness override (fw #33, optional 12th TRIAL_PARAMS byte)
+        'duty',
+        // conditional LED activation (host-side, Mode-3 closed loop): a nested
+        // { level, hysteresis, on_ranges:[[a,b],...] } object, index-gated LED
+        'led_activation',
         'posX',
-        // G6-only I/O commands (setAnalogOut / setDigitalOut)
+        // G6-only I/O commands (setAnalogOut / setDigitalOut / ledDrive)
         'mv',
+        'percent',
         'channel',
         'state'
     ],
@@ -79,7 +86,7 @@ const KNOWN_COMMAND_KEYS_BY_TYPE = {
 // plugin-registry's G6_ONLY_COMMANDS (authoritative source) — duplicated on
 // purpose because this module stays plugin-registry-agnostic. Used by
 // collectExportWarnings to soft-warn when such a command targets a non-G6 arena.
-const G6_ONLY_COMMAND_NAMES = ['setAnalogOut', 'setDigitalOut'];
+const G6_ONLY_COMMAND_NAMES = ['setAnalogOut', 'setDigitalOut', 'ledDrive'];
 
 const KNOWN_PLUGIN_KEYS = [
     'name',
@@ -195,6 +202,10 @@ function parseV3Protocol(yamlText) {
         experiment_info: extractExperimentInfo(data.experiment_info),
         rig_path: String(data.rig),
         variables: extractVariables(doc),
+        // Runtime controls are declarations only.  The parser exposes a plain,
+        // detached copy for the runner/UI; apply state lives in
+        // js/runtime-controls.js and never writes back into this YAML document.
+        runtime_controls: extractRuntimeControls(data.runtime_controls),
         plugins: Array.isArray(data.plugins) ? data.plugins.map(extractPlugin) : [],
         conditions: data.conditions.map(extractCondition),
         sequence: data.experiment.map(extractSequenceEntry),
@@ -242,6 +253,17 @@ function extractExperimentInfo(info) {
     }
     out._unknownKeys = extractUnknownKeys(info, KNOWN_EXPERIMENT_INFO_KEYS);
     return out;
+}
+
+/**
+ * Extract the optional `runtime_controls:` declaration without interpreting its
+ * schema. Validation belongs to js/runtime-controls.js so malformed declarations
+ * can be reported as a complete, UI-friendly list instead of failing YAML import.
+ */
+function extractRuntimeControls(raw) {
+    if (raw === undefined) return {};
+    if (raw === null || typeof raw !== 'object') return raw;
+    return JSON.parse(JSON.stringify(raw));
 }
 
 /**
@@ -343,8 +365,13 @@ function extractCommand(cmd) {
     const out = {};
     for (const k of known) {
         if (cmd[k] !== undefined) {
+            // Deep-clone nested objects (plugin `params`, controller
+            // `led_activation`) so the runtime model doesn't alias the parse.
+            const isNested =
+                (t === 'plugin' && k === 'params') ||
+                (t === 'controller' && k === 'led_activation');
             out[k] =
-                t === 'plugin' && k === 'params' && cmd[k] && typeof cmd[k] === 'object'
+                isNested && cmd[k] && typeof cmd[k] === 'object'
                     ? JSON.parse(JSON.stringify(cmd[k]))
                     : cmd[k];
         }
@@ -635,9 +662,21 @@ function collectExportWarnings(experiment, arenaGeneration) {
         const declaredAnchors = [];
         const varsNode = experiment._doc.get('variables', true);
         if (varsNode && Array.isArray(varsNode.items)) {
-            for (const pair of varsNode.items) {
-                if (pair.value && pair.value.anchor) {
-                    declaredAnchors.push(pair.value.anchor);
+            for (const item of varsNode.items) {
+                if (!item) continue;
+                // Sequence-style (`- &anchor 5`, the documented shape + every
+                // fixture): the item node carries `.anchor` directly.
+                if (item.anchor) {
+                    declaredAnchors.push(item.anchor);
+                    continue;
+                }
+                // Mapping-style (`key: &anchor 5`): the Pair's VALUE node carries
+                // it. Guard that .value is a NODE, not a primitive — a scalar
+                // string's `.anchor` is the deprecated String.prototype.anchor
+                // method, which produced a bogus "[native code]" unused-anchor
+                // warning for string-valued sequence anchors.
+                if (item.value && typeof item.value === 'object' && item.value.anchor) {
+                    declaredAnchors.push(item.value.anchor);
                 }
             }
         }

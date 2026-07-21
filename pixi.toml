@@ -10,12 +10,13 @@ version = "0.1.0"
 # Forward args after `--`, e.g.  pixi run bridge -- --proto tcp --frames 60 --log run.jsonl
 bridge = "python fictrac-bridge/bridge.py"
 sim = "python fictrac-bridge/fictrac_sim.py"
+serve = "python -m http.server 8000 --bind 127.0.0.1"
 
 # ── JS dev tooling (Node + Prettier come from conda-forge — no npm) ─────────
 # The full test suite. yaml is vendored (js/vendor/yaml), so no package install.
 # The v3 suite pulls in ESM modules that `import 'yaml'`; --import maps that bare
 # specifier to the vendored copy (tests/vendor-yaml.register.mjs).
-test = "node tests/validate-arena-calculations.js && node tests/test-protocol-roundtrip.js && node --import ./tests/vendor-yaml.register.mjs tests/test-protocol-roundtrip-v3.js && node tests/test-plugin-registry.js && node tests/test-arena-wire-g6.js && node tests/test-arena-link.js && node tests/test-arena-runner-g6.js && node tests/test-arena-session.js && node tests/test-fictrac-bridge-client.js && node tests/test-run-log.js && node tests/test-bin-classifier.js && node tests/test-pattern-set.js && node tests/test-pat-preview.js && node tests/test-studio-meta.js && node tests/test-studio-url-state.js && node tests/test-studio-runlog-adapter.js && node tests/test-studio-github.js && node tests/test-studio-canmutate.js && node tests/test-studio-protocols-index.js"
+test = "node tests/validate-arena-calculations.js && node tests/test-protocol-roundtrip.js && node --import ./tests/vendor-yaml.register.mjs tests/test-protocol-roundtrip-v3.js && node --import ./tests/vendor-yaml.register.mjs tests/test-runtime-controls.js && node tests/test-plugin-registry.js && node tests/test-arena-wire-g6.js && node tests/test-arena-link.js && node tests/test-arena-runner-g6.js && node tests/test-arena-session.js && node tests/test-fictrac-bridge-client.js && node tests/test-run-log.js && node tests/test-bin-classifier.js && node tests/test-pattern-set.js && node tests/test-pat-preview.js && node tests/test-studio-meta.js && node tests/test-studio-url-state.js && node tests/test-studio-runlog-adapter.js && node tests/test-studio-github.js && node tests/test-studio-canmutate.js && node tests/test-studio-protocols-index.js && node tests/test-g6-tall-rigs.js && node tests/test-arena-studio-alt.js && node tests/test-three-viewer-led-glow.js && node tests/test-three-viewer-preview-omissions.js && node tests/test-arena-replay-viewer-protocol.js && node tests/test-kinematics.js && node tests/test-runlog-replay.js && python tests/test-bridge-behavior.py"
 format = "prettier --write \"**/*.js\""
 format-check = "prettier --check \"**/*.js\""
 

@@ -103,14 +103,33 @@ var ArenaRunnerG6 = (function () {
      * can't represent, before the encoder's terser RangeError would fire:
      *   - mode ∉ {2,3,4}
      *   - non-integer / < 1 patternId
-     * Gain is coerced; encodeTrialParams enforces the int8 range. frame_rate
+     * Gain is coerced; encodeTrialParams enforces the int16 range. frame_rate
      * is passed through SIGNED — negative plays Mode 2 in reverse (G4-style
      * count-down; fw ee74c33+, fw issue #4), sign ignored by firmware in
      * Modes 3/4; encodeTrialParams enforces the int16 range.
      *
+     * COMPAT (2026-07-08): the wire `duration` is PINNED TO 0 — "no controller
+     * auto-stop" — while host-side timing (hostSideTrialEnd) remains the
+     * authoritative trial clock. Sending the real duration made fw #39
+     * controllers blank the display at exactly `duration` seconds, where
+     * protocols authored against host timing expect the pattern to keep
+     * playing until the next command (often through the ITI). Host timing is
+     * untouched: translateCommand's durationSec / conditionDuration read
+     * cmd.duration directly. Re-enable (pass cmd.duration through) together
+     * with the run-complete timing swap at the SWAP POINT below.
+     *
+     * duty (fw #33, the optional 12th TRIAL_PARAMS byte) is ALWAYS included —
+     * 0 when the protocol omits it, which firmware reads as "the pattern's
+     * stored duty_cycle flows through unchanged". Always declaring it keeps
+     * every trial self-describing: the runner never emits ALL_OFF between
+     * trials, so relying on the controller's cleared-on-ALL_OFF behavior
+     * would leak one trial's override into the next. Validated here (not in
+     * the encoder) so a bad value skips the trial via translateCommand's
+     * {op:'error'} instead of aborting the whole sequence from _runIR.
+     *
      * @param {object} cmd  the trialParams controller command
      * @param {{patternId:number}} opts  the resolved 1-based SD index
-     * @returns {{mode:number, patternId:number, frameRate:number, gain:number, initPos:number}}
+     * @returns {{mode:number, patternId:number, frameRate:number, gain:number, initPos:number, duration:number, duty:number}}
      */
     function buildTrialParams(cmd, opts) {
         cmd = cmd || {};
@@ -129,6 +148,17 @@ var ArenaRunnerG6 = (function () {
 
         const gain = cmd.gain === undefined ? 0 : toNumber(cmd.gain, 'gain');
         const initPos = frameIndexToInitPos(cmd.frame_index);
+        const duration = 0; // COMPAT: no controller auto-stop — see the doc block above
+
+        // '' is what a blank designer field would yield — treat as unset, not
+        // Number('') === 0 by accident (they happen to agree, but be explicit).
+        const duty = cmd.duty === undefined || cmd.duty === '' ? 0 : toNumber(cmd.duty, 'duty');
+        if (!Number.isInteger(duty) || duty < 0 || duty > 255) {
+            throw new Error(
+                'duty must be an integer 0..255 (0 = pattern default), got ' +
+                    JSON.stringify(cmd.duty)
+            );
+        }
 
         const patternId = toNumber(opts.patternId, 'patternId');
         if (!Number.isInteger(patternId) || patternId < 1) {
@@ -138,7 +168,7 @@ var ArenaRunnerG6 = (function () {
             );
         }
 
-        return { mode, patternId, frameRate, gain, initPos };
+        return { mode, patternId, frameRate, gain, initPos, duration, duty };
     }
 
     // The controller commands the sequence runner can EMIT on G6, grounded in the
@@ -157,14 +187,174 @@ var ArenaRunnerG6 = (function () {
         'stopDisplay',
         'setPositionX',
         'setAnalogOut',
-        'setDigitalOut'
+        'setDigitalOut',
+        'ledDrive'
     ];
+
+    // BuckPuck 3021/3023 LED driver: map brightness percent (% of MAX light
+    // output) to the control voltage (mV) on the "Analog Out" BNC. Digitized from
+    // the LEDdynamics datasheet Fig. 3 (normalized output-current vs control-
+    // voltage transfer), so "percent" ≈ % of max current/light, not % of the
+    // voltage range. Control pin: ≤~1.65 V = full, ≥~4.2 V = off. APPROXIMATE (read
+    // off a small figure, ~few %); replace CURVE with measured (mv, frac) points
+    // for a photometric calibration. 0% → 5000 mV sits safely past the 4.2 V ±5%
+    // shutoff so the LED is reliably dark.
+    const LED_OFF_MV = 5000;
+    const BUCKPUCK_CURVE = [
+        { mv: 1650, frac: 1.0 },
+        { mv: 2000, frac: 0.9 },
+        { mv: 2500, frac: 0.72 },
+        { mv: 3000, frac: 0.5 },
+        { mv: 3500, frac: 0.28 },
+        { mv: 4000, frac: 0.08 },
+        { mv: 4200, frac: 0.0 }
+    ];
+    // Bench calibration (2026-07-08): with the raw datasheet curve, input 1–4 % left
+    // the LED fully dark, 5 % was flickery, 6 % solid — i.e. a ~5 % dead zone at the
+    // bottom. LED_ON_FLOOR_PCT removes it: input % is remapped so 1 % lands on the
+    // raw-5 % (just-on) level and 100 % stays full, giving a usable 0.1–100 % scale.
+    // Documented in configs/calibration/buckpuck_g6.json; see issue #156 for driving
+    // this from the rig config. ledDrive (protocol intensity) shares this function.
+    const LED_ON_FLOOR_PCT = 5;
+    function ledPercentToMv(percent) {
+        const p = Number(percent);
+        if (!Number.isFinite(p) || p <= 0) return LED_OFF_MV;
+        // Remap 1..100 % → raw ON_FLOOR..100 % (linear), so the dead zone is gone.
+        const inPct = Math.min(100, p);
+        const rawPct = LED_ON_FLOOR_PCT + ((inPct - 1) * (100 - LED_ON_FLOOR_PCT)) / 99;
+        const frac = Math.max(0, Math.min(1, rawPct / 100));
+        const c = BUCKPUCK_CURVE;
+        if (frac >= c[0].frac) return c[0].mv;
+        for (let i = 0; i < c.length - 1; i++) {
+            const a = c[i];
+            const b = c[i + 1];
+            if (frac <= a.frac && frac >= b.frac) {
+                const t = (a.frac - frac) / (a.frac - b.frac);
+                return Math.round(a.mv + t * (b.mv - a.mv));
+            }
+        }
+        return c[c.length - 1].mv;
+    }
+
+    // ---- conditional LED activation (index-gated LED, closed loop) --------
+    //
+    // A closed-loop (Mode 3, FicTrac-stepped) trial can drive the BuckPuck LED
+    // ON only while the displayed frame index falls inside author-specified
+    // bands. The frame index is live (computed by the bridge from FicTrac), so
+    // this is HOST-side: the runner subscribes to the bridge's per-frame
+    // 'applied' event and sends SET_AO_VOLTAGE (0xA0) — but ONLY on a state
+    // transition (a handful of commands per trial), never per frame, so it
+    // doesn't starve the SET_FRAME_POSITION traffic on the same serial link.
+    //
+    // Spec (trialParams `led_activation`): { level:%, hysteresis:int, on_ranges:[[a,b],...] }.
+    //   - level      LED brightness % when ON (BuckPuck curve; 0 = never lights)
+    //   - on_ranges  0-based frame-index bands (inclusive) where the LED is ON,
+    //                indexed by the SAME value the wire uses (SET_FRAME_POSITION)
+    //   - hysteresis frames of overshoot past a band edge before the LED turns
+    //                OFF (0 = none). Kills chatter when the fly dithers on a
+    //                boundary: ON at the true edge, OFF only once the index is
+    //                MORE than `hysteresis` positions outside every band.
+
+    // Validate + normalize a raw led_activation spec. Returns the normalized
+    // spec, or null when absent. THROWS (clear message) on malformed input so
+    // translateCommand turns it into a skip-this-trial {op:'error'} rather than
+    // a mid-run failure. Coerces string scalars (YAML) like the rest of the runner.
+    function normalizeLedActivation(raw) {
+        if (raw === undefined || raw === null || raw === '') return null;
+        if (typeof raw !== 'object' || Array.isArray(raw)) {
+            throw new Error('led_activation must be a mapping {level, hysteresis, on_ranges}');
+        }
+        const level = raw.level === undefined ? 0 : toNumber(raw.level, 'led_activation.level');
+        if (level < 0 || level > 100) {
+            throw new Error(
+                'led_activation.level must be 0..100 %, got ' + JSON.stringify(raw.level)
+            );
+        }
+        const hysteresis =
+            raw.hysteresis === undefined || raw.hysteresis === ''
+                ? 0
+                : toNumber(raw.hysteresis, 'led_activation.hysteresis');
+        if (!Number.isInteger(hysteresis) || hysteresis < 0) {
+            throw new Error(
+                'led_activation.hysteresis must be an integer >= 0, got ' +
+                    JSON.stringify(raw.hysteresis)
+            );
+        }
+        const rawRanges = raw.on_ranges === undefined ? [] : raw.on_ranges;
+        if (!Array.isArray(rawRanges)) {
+            throw new Error('led_activation.on_ranges must be a list of [start, end] pairs');
+        }
+        const ranges = rawRanges.map((pair, i) => {
+            if (!Array.isArray(pair) || pair.length !== 2) {
+                throw new Error(
+                    'led_activation.on_ranges[' +
+                        i +
+                        '] must be a [start, end] pair, got ' +
+                        JSON.stringify(pair)
+                );
+            }
+            let a = toNumber(pair[0], 'on_ranges[' + i + '][0]');
+            let b = toNumber(pair[1], 'on_ranges[' + i + '][1]');
+            if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) {
+                throw new Error(
+                    'led_activation.on_ranges[' +
+                        i +
+                        '] must be non-negative integer indices, got ' +
+                        JSON.stringify(pair)
+                );
+            }
+            if (a > b) {
+                const t = a;
+                a = b;
+                b = t;
+            } // tolerate a reversed pair
+            return [a, b];
+        });
+        return { level, hysteresis, on_ranges: ranges };
+    }
+
+    // Build a STATEFUL evaluator from a normalized spec. step(index) returns
+    // { on, changed } — `changed` is true only when the ON/OFF state flips, so
+    // the caller sends an LED command only on transitions. Baseline is OFF
+    // (the caller sends an explicit LED-off when installing, so `changed` need
+    // not fire on the first frame unless it actually enters a band). PURE +
+    // offline-testable (no bridge, no wire).
+    function makeLedActivator(spec) {
+        const s = spec || { level: 0, hysteresis: 0, on_ranges: [] };
+        const h = Math.max(0, Math.floor(Number(s.hysteresis) || 0));
+        const ranges = Array.isArray(s.on_ranges) ? s.on_ranges : [];
+        const rawOn = (i) => ranges.some((r) => i >= r[0] && i <= r[1]);
+        const expandedOn = (i) => ranges.some((r) => i >= r[0] - h && i <= r[1] + h);
+        let on = false;
+        return {
+            get on() {
+                return on;
+            },
+            // Feed one applied frame index; returns whether the LED is now ON
+            // and whether that changed vs the previous call.
+            step(index) {
+                const i = Math.round(Number(index));
+                let next = on;
+                if (!on) {
+                    if (rawOn(i)) next = true; // enter a band at its true edge
+                } else if (!expandedOn(i)) {
+                    next = false; // leave only past the band edge by > hysteresis
+                }
+                const changed = next !== on;
+                on = next;
+                return { on, changed };
+            }
+        };
+    }
 
     /**
      * The wall-clock duration of a condition, in seconds: max(trialParams.duration,
      * sum of wait durations). Mirrors the v3 designer's timeline math; pure so the
      * runner and the timeline preview share ONE definition. Number()-coerces to
-     * defend against string YAML scalars.
+     * defend against string YAML scalars. Rounded to ms precision so summed floats
+     * don't surface IEEE artifacts (0.74×3 = 2.2199999999999998 → 2.22) in the Run
+     * chips / estimate / timeline; the actual arena timing uses each command's own
+     * duration (not this), so the rounding is display/estimate-only.
      */
     function conditionDuration(cond) {
         if (!cond || !Array.isArray(cond.commands)) return 0;
@@ -176,7 +366,24 @@ var ArenaRunnerG6 = (function () {
             }
             if (c && c.type === 'wait') wait += Number(c.duration) || 0;
         }
-        return Math.max(tp, wait);
+        return Math.round(Math.max(tp, wait) * 1000) / 1000;
+    }
+
+    /**
+     * Count the wire-sending commands in a condition (everything except `wait`,
+     * which is a local timer, not a serial round-trip). conditionDuration counts
+     * only nominal display/wait time; each of these commands also costs a real
+     * `await link.send(...)` round-trip, and across a whole protocol those add up
+     * to a drift the duration sum misses. The run estimate multiplies this count
+     * by a per-command overhead that the app LEARNS from completed runs (a fixed
+     * constant can't fit both command-light and command-heavy protocols). PURE, so
+     * it sits alongside conditionDuration as the estimator's other primitive.
+     */
+    function conditionCommandCount(cond) {
+        if (!cond || !Array.isArray(cond.commands)) return 0;
+        let n = 0;
+        for (const c of cond.commands) if (c && c.type !== 'wait') n++;
+        return n;
     }
 
     /**
@@ -363,16 +570,23 @@ var ArenaRunnerG6 = (function () {
                             '" — not in the active set and no usable pattern_ID.'
                     };
                 }
-                let params;
+                let params, ledActivation;
                 try {
                     params = buildTrialParams(cmd, { patternId: opts.patternId });
+                    // Validate here (not at apply time) so a malformed spec
+                    // skips this trial via {op:'error'} instead of throwing
+                    // inside the async 'applied' handler mid-run.
+                    ledActivation = normalizeLedActivation(cmd.led_activation);
                 } catch (e) {
                     return { op: 'error', reason: e.message };
                 }
                 return {
                     op: 'trialParams',
                     params,
-                    durationSec: Number(cmd.duration) > 0 ? Number(cmd.duration) : 0
+                    durationSec: Number(cmd.duration) > 0 ? Number(cmd.duration) : 0,
+                    // Only Mode 3 has a host-visible live index to gate on; carry
+                    // the spec regardless and let the runner apply it when mode===3.
+                    ledActivation: ledActivation || null
                 };
             }
             if (name === 'allOn') return { op: 'allOn' };
@@ -395,6 +609,23 @@ var ArenaRunnerG6 = (function () {
                     };
                 }
                 return { op: 'setAnalogOut', mv };
+            }
+            if (name === 'ledDrive') {
+                // BuckPuck LED driver on the AO line: percent (0..100, % of full
+                // brightness) → control voltage (mV) via the datasheet curve, then
+                // reuse the setAnalogOut IR (SET_AO_VOLTAGE 0xA0). Instantaneous.
+                const pct = Number(cmd.percent);
+                if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+                    return {
+                        op: 'error',
+                        reason:
+                            'ledDrive percent must be a number 0–100, got ' +
+                            JSON.stringify(cmd.percent)
+                    };
+                }
+                // ledPercent rides along so the scope can label the LED box with
+                // the commanded % (the mv is the inverted BuckPuck control voltage).
+                return { op: 'setAnalogOut', mv: ledPercentToMv(pct), ledPercent: pct };
             }
             if (name === 'setDigitalOut') {
                 // G6-only: drive the "Digital IO 1/2 (5V)" BNCs (J3/J4) as TTL outputs
@@ -454,6 +685,11 @@ var ArenaRunnerG6 = (function () {
      * the controller signals completion), replace this with a function that AWAITS
      * the controller's run-complete event instead of sleeping — or inject
      * `opts.timing` into runSequence. Nothing else in the runner changes.
+     * The wire-side duration exists in the encoder, but buildTrialParams PINS
+     * it to 0 (compat — see its doc block): the two must flip together. When
+     * this function is replaced with an await-run-complete implementation,
+     * also pass cmd.duration through in buildTrialParams so the controller
+     * actually times the trial.
      *
      * Best-effort: a slept/closed tab won't fire the timer, so STOP/abort is the
      * primary control.
@@ -499,6 +735,9 @@ var ArenaRunnerG6 = (function () {
             this._abort = false; // sequence abort flag (set by stop()/_clear())
             this._sleepTimer = null; // in-progress host-side wait timer
             this._sleepResolve = null; // resolver for the in-progress wait
+            this._ledActivator = null; // active conditional-LED evaluator (Mode 3)
+            this._ledUnsub = null; // bridge 'applied' unsubscribe for the above
+            this._emit = null; // current run's status emit (for async LED events)
         }
 
         get active() {
@@ -531,6 +770,7 @@ var ArenaRunnerG6 = (function () {
             const emit = (s) => {
                 if (typeof a.onStatus === 'function') a.onStatus(s);
             };
+            this._emit = emit; // for async side-effects (LED activation on 'applied')
 
             this._active = true;
             this._conditionName = a.conditionName || null;
@@ -589,6 +829,8 @@ var ArenaRunnerG6 = (function () {
             }
             this._active = false;
             this._conditionName = null;
+            this._clearLedActivator(); // sends LED off (before the STOP below)
+            this._emit = null;
             if (this._link && this._link.connected) {
                 return this._link.send(this._wire.encodeStop());
             }
@@ -615,6 +857,58 @@ var ArenaRunnerG6 = (function () {
             }
             this._active = false;
             this._conditionName = null;
+            this._clearLedActivator(); // guarded: no-op send when the link is gone
+            this._emit = null;
+        }
+
+        // ---- conditional LED activation (install / teardown) --------------
+        // Installed by a Mode-3 trialParams carrying led_activation; driven by
+        // the bridge's per-frame 'applied' event; sends SET_AO_VOLTAGE only on
+        // an ON/OFF transition. Superseded by the next trialParams, and cleared
+        // by allOff / stopDisplay, sequence end, stop(), and disconnect.
+        _installLedActivator(spec) {
+            this._clearLedActivator();
+            if (!spec || !this._bridge || typeof this._bridge.on !== 'function') return;
+            const act = makeLedActivator(spec);
+            this._ledActivator = act;
+            const onBytes = () => this._wire.encodeSetAoVoltage(ledPercentToMv(spec.level));
+            const offBytes = () => this._wire.encodeSetAoVoltage(ledPercentToMv(0));
+            this._sendLed(offBytes()); // deterministic OFF baseline at trial start
+            // on() returns an unsubscribe fn.
+            this._ledUnsub = this._bridge.on('applied', (index) => {
+                if (this._ledActivator !== act) return; // superseded — ignore late events
+                const r = act.step(index);
+                if (!r.changed) return;
+                this._sendLed(r.on ? onBytes() : offBytes());
+                // Log each transition so the run log captures WHEN the LED
+                // switched during the closed-loop trial (analysis provenance).
+                if (this._emit) {
+                    this._emit({
+                        phase: 'led-activation',
+                        on: r.on,
+                        index,
+                        ledPercent: r.on ? spec.level : 0
+                    });
+                }
+            });
+        }
+        _clearLedActivator() {
+            if (this._ledUnsub) {
+                try {
+                    this._ledUnsub();
+                } catch (_) {
+                    /* ignore */
+                }
+                this._ledUnsub = null;
+            }
+            if (this._ledActivator) {
+                this._ledActivator = null;
+                this._sendLed(this._wire.encodeSetAoVoltage(ledPercentToMv(0))); // LED off on teardown
+            }
+        }
+        _sendLed(bytes) {
+            if (!this._link || !this._link.connected) return; // link gone: nothing to send
+            Promise.resolve(this._link.send(bytes)).catch(() => {});
         }
 
         /** Resolve + clear any in-progress host-side wait (makes STOP prompt). */
@@ -668,6 +962,12 @@ var ArenaRunnerG6 = (function () {
          * @param {function} a.resolvePatternId  (trialParamsCmd) ⇒ 1-based SD index | null
          * @param {function} [a.resolvePatternFrames] (trialParamsCmd) ⇒ frame count | null
          *                                        (Mode-3 index modulus for closed-loop)
+         * @param {function} [a.resolveCondition] async optional trial-boundary hook:
+         *        (conditionName, {index,total,step,condition,conditionsByName}) ⇒
+         *        condition | {condition, runtimeRecord}.  A runtimeRecord may
+         *        also supply resolved_commands, in which case the runner builds
+         *        a non-mutating condition copy around those commands.  The hook
+         *        runs after step-start and before any command translation/send.
          * @param {Set|Array} [a.fictracPluginNames]  plugin names whose class is FicTracPlugin
          * @param {function} [a.onProgress]      progress/event callback (see phases below)
          * @param {function} [a.timing]          async (durationSec, sleep) ⇒ trial end
@@ -687,6 +987,8 @@ var ArenaRunnerG6 = (function () {
                 typeof a.resolvePatternId === 'function' ? a.resolvePatternId : () => null;
             const resolvePatternFrames =
                 typeof a.resolvePatternFrames === 'function' ? a.resolvePatternFrames : () => null;
+            const resolveCondition =
+                typeof a.resolveCondition === 'function' ? a.resolveCondition : null;
             const fictracPluginNames =
                 a.fictracPluginNames instanceof Set
                     ? a.fictracPluginNames
@@ -698,6 +1000,7 @@ var ArenaRunnerG6 = (function () {
             const emit = (s) => {
                 if (typeof a.onProgress === 'function') a.onProgress(s);
             };
+            this._emit = emit; // for async side-effects (LED activation on 'applied')
 
             this._active = true;
             this._abort = false;
@@ -714,7 +1017,7 @@ var ArenaRunnerG6 = (function () {
                 for (let i = 0; i < steps.length; i++) {
                     if (this._abort) break;
                     const step = steps[i];
-                    const cond = conditionsByName.get(step.conditionName) || null;
+                    let cond = conditionsByName.get(step.conditionName) || null;
                     this._conditionName = step.conditionName || null;
                     emit({
                         phase: 'step-start',
@@ -736,6 +1039,115 @@ var ArenaRunnerG6 = (function () {
                         });
                         emit({ phase: 'step-done', index: i, total: steps.length, step });
                         continue;
+                    }
+                    // Optional Alt-UI/runtime-controls seam.  It is intentionally
+                    // absent from the default path, so existing pages execute the
+                    // exact same condition object/order as before.  The resolver
+                    // may be async (for future durable logging) but must finish at
+                    // the boundary before the first command is translated.
+                    if (resolveCondition) {
+                        let resolution;
+                        try {
+                            resolution = await resolveCondition(step.conditionName, {
+                                index: i,
+                                total: steps.length,
+                                step,
+                                condition: cond,
+                                conditionsByName
+                            });
+                        } catch (e) {
+                            summary.errors++;
+                            emit({
+                                phase: 'error',
+                                index: i,
+                                step,
+                                error: e,
+                                reason: 'condition resolution failed: ' + (e && (e.message || e))
+                            });
+                            emit({ phase: 'step-done', index: i, total: steps.length, step });
+                            continue;
+                        }
+
+                        let runtimeRecord = null;
+                        if (
+                            resolution &&
+                            typeof resolution === 'object' &&
+                            Object.prototype.hasOwnProperty.call(resolution, 'condition')
+                        ) {
+                            runtimeRecord = resolution.runtimeRecord || null;
+                            if (
+                                resolution.condition !== undefined &&
+                                resolution.condition !== null
+                            ) {
+                                cond = resolution.condition;
+                            }
+                        } else if (
+                            resolution &&
+                            typeof resolution === 'object' &&
+                            Object.prototype.hasOwnProperty.call(resolution, 'runtimeRecord')
+                        ) {
+                            runtimeRecord = resolution.runtimeRecord || null;
+                            if (Array.isArray(resolution.commands)) {
+                                cond = Object.assign({}, cond, { commands: resolution.commands });
+                            }
+                        } else if (resolution !== undefined && resolution !== null) {
+                            cond = resolution;
+                        }
+
+                        // RuntimeControlSession.beginTrial() returns a complete
+                        // authoritative record.  If the wrapper did not construct
+                        // a condition itself, use the record's resolved commands in
+                        // a shallow copy — never mutate the parsed YAML model.
+                        if (
+                            runtimeRecord &&
+                            Array.isArray(runtimeRecord.resolved_commands) &&
+                            (!cond ||
+                                !Array.isArray(cond.commands) ||
+                                (resolution && resolution.condition === undefined))
+                        ) {
+                            cond = Object.assign({}, cond || {}, {
+                                name: (cond && cond.name) || step.conditionName,
+                                commands: runtimeRecord.resolved_commands
+                            });
+                        }
+
+                        if (runtimeRecord) {
+                            const applied = Array.isArray(runtimeRecord.apply_events)
+                                ? runtimeRecord.apply_events
+                                : [];
+                            for (const applyEvent of applied) {
+                                emit({
+                                    phase: 'runtime-control-applied',
+                                    index: i,
+                                    total: steps.length,
+                                    step,
+                                    runtimeControlApply: applyEvent
+                                });
+                            }
+                            emit({
+                                phase: 'trial-resolved',
+                                index: i,
+                                total: steps.length,
+                                step,
+                                conditionName: step.conditionName,
+                                runtimeRecord
+                            });
+                        }
+
+                        if (!cond || !Array.isArray(cond.commands)) {
+                            summary.errors++;
+                            emit({
+                                phase: 'error',
+                                index: i,
+                                step,
+                                reason:
+                                    'Condition resolver returned no command list for "' +
+                                    step.conditionName +
+                                    '" — skipped.'
+                            });
+                            emit({ phase: 'step-done', index: i, total: steps.length, step });
+                            continue;
+                        }
                     }
                     // Per-condition timing accumulators: the max trialParams target
                     // duration and the total time actually slept on wait commands.
@@ -791,6 +1203,7 @@ var ArenaRunnerG6 = (function () {
                 this._active = false;
                 this._conditionName = null;
                 this._resolveSleep();
+                this._clearLedActivator(); // LED off + stop gating on completion/abort
                 try {
                     if (this._link && this._link.connected) {
                         await this._link.send(this._wire.encodeStop());
@@ -798,6 +1211,7 @@ var ArenaRunnerG6 = (function () {
                 } catch (_) {
                     /* best-effort */
                 }
+                this._emit = null;
             }
         }
 
@@ -832,8 +1246,20 @@ var ArenaRunnerG6 = (function () {
                         step,
                         response: resp,
                         params: ir.params,
-                        durationSec: ir.durationSec
+                        durationSec: ir.durationSec,
+                        // Record the activation spec (if any) so the run log
+                        // shows this trial gated the LED, with what ranges/level.
+                        ledActivation: ir.ledActivation || undefined
                     });
+                    // Conditional LED activation: only Mode 3 exposes a live
+                    // host-visible frame index to gate on. A new trialParams
+                    // always supersedes the previous activator (install replaces,
+                    // or clears when this trial has no spec / isn't Mode 3).
+                    if (ir.params && ir.params.mode === 3 && ir.ledActivation) {
+                        this._installLedActivator(ir.ledActivation);
+                    } else {
+                        this._clearLedActivator();
+                    }
                     // Trial timing is host-side (interim — firmware #4) but does NOT
                     // block here: the controller displays the pattern autonomously
                     // while the condition's wait commands run CONCURRENTLY. We only
@@ -850,10 +1276,12 @@ var ArenaRunnerG6 = (function () {
                     emit({ phase: 'command', index, step, op: ir.op });
                     return;
                 case 'allOff':
+                    this._clearLedActivator(); // display cleared → LED off, stop gating
                     await this._link.send(W.encodeAllOff());
                     emit({ phase: 'command', index, step, op: ir.op });
                     return;
                 case 'stopDisplay':
+                    this._clearLedActivator(); // display stopped → LED off, stop gating
                     await this._link.send(W.encodeStop());
                     emit({ phase: 'command', index, step, op: ir.op });
                     return;
@@ -863,7 +1291,14 @@ var ArenaRunnerG6 = (function () {
                     return;
                 case 'setAnalogOut':
                     await this._link.send(W.encodeSetAoVoltage(ir.mv));
-                    emit({ phase: 'command', index, step, op: ir.op, value: ir.mv });
+                    emit({
+                        phase: 'command',
+                        index,
+                        step,
+                        op: ir.op,
+                        value: ir.mv,
+                        ledPercent: ir.ledPercent
+                    });
                     return;
                 case 'setDigitalOut':
                     await this._link.send(W.encodeSetDigitalOut(ir.channel, ir.state));
@@ -952,10 +1387,15 @@ var ArenaRunnerG6 = (function () {
         frameIndexToInitPos,
         buildTrialParams,
         conditionDuration,
+        conditionCommandCount,
         flattenStructure,
         translateCommand,
         hostSideTrialEnd,
         RUNNABLE_CONTROLLER_COMMANDS,
+        LED_OFF_MV, // BuckPuck "LED dark" analog level (mV) — the scope's on/off threshold
+        ledPercentToMv, // BuckPuck brightness % → AO control voltage (mV); 0% → LED_OFF_MV
+        normalizeLedActivation, // validate/normalize a trialParams led_activation spec (throws on bad)
+        makeLedActivator, // pure stateful index→ON/OFF evaluator with hysteresis
         ArenaRunner
     };
 })();

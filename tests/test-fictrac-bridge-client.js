@@ -137,6 +137,39 @@ async function main() {
         checkBool('log() offline is a no-op (no throw)', true);
     }
 
+    console.log('\n=== behavior_v1 sample event ===');
+    {
+        const samples = [];
+        const frames = [];
+        const client = new FicTracBridgeClient({});
+        client.on('sample', (s) => samples.push(s));
+        client.on('frame', (i) => frames.push(i));
+        // A full bridge frame message carries the behavior_v1 fields → 'sample'.
+        client.handleFrame(42, {
+            type: 'frame',
+            index: 42,
+            seq: 7,
+            t: 1000,
+            ms: 500,
+            fc: 7,
+            idx: 42,
+            ft: 123.4,
+            x: 0.1,
+            y: 0.2,
+            hd: 0.3
+        });
+        check('frame event still fires', frames, [42]);
+        checkBool('sample event fired', samples.length === 1, JSON.stringify(samples));
+        check('sample carries hd', samples[0] && samples[0].hd, 0.3);
+        check('sample carries ft', samples[0] && samples[0].ft, 123.4);
+        check('sample carries idx', samples[0] && samples[0].idx, 42);
+        check('sample carries fc', samples[0] && samples[0].fc, 7);
+        // An index-only frame (older bridge, no kinematic fields) → NO 'sample'.
+        client.handleFrame(43);
+        check('no sample without kinematic fields', samples.length, 1);
+        check('frame still fired for index-only', frames, [42, 43]);
+    }
+
     console.log('\n=== non-finite frame ignored ===');
     {
         const applied = [];
@@ -227,6 +260,30 @@ async function main() {
         await p5.catch((e) => (err5 = e.message));
         checkBool('disconnect rejects pending export', /disconnected/.test(err5), err5);
         client.disconnect();
+    }
+
+    console.log('\n=== log level (behavior_v1 default / full override) ===');
+    {
+        const client = new FicTracBridgeClient({ WebSocketImpl: FakeWS });
+        client.connect('ws://localhost:8765');
+        const ws = FakeWS.last;
+        ws.open();
+        const lastEnable = () => ws.sent.filter((m) => m.type === 'log_control' && m.enabled).pop();
+        client.setLogging(true);
+        check('setLogging asserts default level behavior_v1', lastEnable().level, 'behavior_v1');
+        client.setLogLevel('full');
+        client.setLogging(true);
+        check('setLogLevel(full) → level full', lastEnable().level, 'full');
+        client.setLogLevel('bogus'); // ignored
+        client.setLogging(true);
+        check('unknown level ignored (stays full)', lastEnable().level, 'full');
+        client.setLogging(false);
+        const off = ws.sent[ws.sent.length - 1];
+        checkBool(
+            'disabling sends log_control without a level',
+            off.type === 'log_control' && off.enabled === false && off.level === undefined,
+            JSON.stringify(off)
+        );
     }
 
     console.log('\n=== Summary ===');

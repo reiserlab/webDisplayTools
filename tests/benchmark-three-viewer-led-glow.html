@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ThreeViewer LED glow benchmark</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/"
+            }
+        }
+    </script>
+    <style>
+        :root { color-scheme: dark; }
+        body {
+            margin: 0;
+            padding: 20px;
+            color: #d8e4dc;
+            background: #090d0f;
+            font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+        h1 { margin: 0 0 8px; color: #53f28c; font-size: 18px; }
+        p { max-width: 960px; color: #97a49d; }
+        #viewer { width: 960px; height: 720px; border: 1px solid #27322c; }
+        #result {
+            width: 940px;
+            min-height: 110px;
+            margin: 12px 0 0;
+            padding: 10px;
+            overflow: auto;
+            color: #c8f8d8;
+            background: #101715;
+            border: 1px solid #27322c;
+        }
+    </style>
+</head>
+<body>
+    <h1>ThreeViewer LED glow benchmark</h1>
+    <p>
+        Fixed 960 × 720 shared preview. The default G6_2x10 workload keeps its
+        8,000-address pattern grid while rendering 7,200 physical emitters after
+        the rear panels 8/18 gap. Use <code>?mode=compare</code> (ABBA),
+        <code>?mode=hard</code>, or <code>?mode=glow</code>.
+    </p>
+    <div id="viewer"></div>
+    <pre id="result">Preparing arena geometry…</pre>
+
+    <script type="module">
+        const params = new URLSearchParams(location.search);
+        const requestedMode = params.get('mode') || 'compare';
+        const mode = ['compare', 'hard', 'glow'].includes(requestedMode)
+            ? requestedMode
+            : 'compare';
+        const cacheKey = params.get('cache') || Date.now().toString(36);
+        const [{ default: ThreeViewer }, { getConfig, PANEL_SPECS }] = await Promise.all([
+            import(`../js/pattern-editor/viewers/three-viewer.js?benchmark=${cacheKey}`),
+            import(`../js/arena-configs.js?benchmark=${cacheKey}`)
+        ]);
+
+        const configName = params.get('arena') || 'G6_2x10';
+        const requestedWorkload = params.get('workload') || 'checker';
+        const workload = ['checker', 'off', 'gap'].includes(requestedWorkload)
+            ? requestedWorkload
+            : 'checker';
+        const config = getConfig(configName);
+        const specs = PANEL_SPECS[config.arena.generation];
+        const rows = config.arena.num_rows * specs.pixels_per_panel;
+        const cols = config.arena.num_cols * specs.pixels_per_panel;
+        const pixelCount = rows * cols;
+        const frameA = new Uint8Array(pixelCount);
+        const frameB = new Uint8Array(pixelCount);
+        if (workload === 'checker') {
+            for (let i = 0; i < pixelCount; i += 1) {
+                const on = ((Math.floor(i / cols) + (i % cols)) & 1) === 0;
+                frameA[i] = on ? 15 : 0;
+                frameB[i] = on ? 0 : 15;
+            }
+        } else if (workload === 'gap') {
+            // G6_2x10 mapping check: frame A addresses only omitted rear column 8
+            // (global X 140..159); frame B addresses adjacent column 9 (160..179).
+            for (let row = 0; row < rows; row += 1) {
+                for (let col = 140; col < 160 && col < cols; col += 1) {
+                    frameA[row * cols + col] = 15;
+                }
+                for (let col = 160; col < 180 && col < cols; col += 1) {
+                    frameB[row * cols + col] = 15;
+                }
+            }
+        }
+        const pattern = {
+            frames: [frameA, frameB],
+            numFrames: 2,
+            pixelRows: rows,
+            pixelCols: cols,
+            gsMode: 16
+        };
+
+        const viewer = new ThreeViewer(document.getElementById('viewer'));
+        viewer.init(config, specs);
+        viewer.pause();
+        viewer.setPattern(pattern);
+
+        const inspectFrame = frameIndex => {
+            viewer.setFrame(frameIndex);
+            return {
+                frame: frameIndex,
+                litMeshes: viewer.ledMeshes.filter(ref =>
+                    ref.mesh.material.color.r > 0 ||
+                    ref.mesh.material.color.g > 0 ||
+                    ref.mesh.material.color.b > 0
+                ).length,
+                glowVisible: Boolean(viewer.ledGlow?.visible)
+            };
+        };
+        const frameInspection = [inspectFrame(0), inspectFrame(1)];
+        viewer.setFrame(0);
+
+        const render = () => {
+            viewer.controls.update();
+            viewer.renderer.render(viewer.scene, viewer.camera);
+        };
+        const gl = viewer.renderer.getContext();
+        const measure = (fn, samples) => {
+            const values = [];
+            for (let i = 0; i < samples; i += 1) {
+                const start = performance.now();
+                fn(i);
+                gl.finish();
+                values.push(performance.now() - start);
+            }
+            values.sort((a, b) => a - b);
+            const at = fraction => values[Math.min(values.length - 1, Math.floor(values.length * fraction))];
+            return {
+                samples: values.length,
+                medianMs: at(0.5),
+                p95Ms: at(0.95),
+                maxMs: values[values.length - 1]
+            };
+        };
+
+        const runBatch = batchMode => {
+            if (typeof viewer.setLedGlowEnabled === 'function') {
+                viewer.setLedGlowEnabled(batchMode === 'glow');
+            }
+            for (let i = 0; i < 4; i += 1) render();
+            gl.finish();
+            const renderTiming = measure(() => render(), 12);
+            const updateRenderTiming = measure(i => {
+                viewer.setFrame(i & 1);
+                render();
+            }, 12);
+            render();
+            const info = viewer.renderer.info;
+            return {
+                mode: batchMode,
+                renderTiming,
+                updateRenderTiming,
+                renderer: {
+                    calls: info.render.calls,
+                    triangles: info.render.triangles,
+                    points: info.render.points,
+                    lines: info.render.lines,
+                    geometries: info.memory.geometries,
+                    textures: info.memory.textures
+                }
+            };
+        };
+
+        const sequence = mode === 'compare' ? ['hard', 'glow', 'glow', 'hard'] : [mode];
+        const batches = sequence.map(runBatch);
+        if (mode === 'compare' && typeof viewer.setLedGlowEnabled === 'function') {
+            viewer.setLedGlowEnabled(true);
+            viewer.setFrame(0);
+            render();
+        }
+
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        const gpu = debugInfo
+            ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+            : 'unavailable';
+        const result = {
+            mode,
+            arena: configName,
+            workload,
+            ledCount: viewer.ledMeshes.length,
+            viewport: { width: 960, height: 720, dpr: devicePixelRatio },
+            gpu,
+            userAgent: navigator.userAgent,
+            frameInspection,
+            sequence,
+            batches
+        };
+        window.__threeViewerLedBenchmark = result;
+        document.getElementById('result').textContent = JSON.stringify(result, null, 2);
+    </script>
+</body>
+</html>

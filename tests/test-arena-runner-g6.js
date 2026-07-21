@@ -188,20 +188,39 @@ async function main() {
     check('frameRate', p.frameRate, 10);
     check('gain', p.gain, 0);
     check('initPos (from frame_index 1)', p.initPos, 1);
-    // The encoded frame must match the wire golden vector.
+    // COMPAT: the wire duration is pinned to 0 (no controller auto-stop) while
+    // host-side timing stays authoritative — cmd.duration (5) must NOT reach
+    // the wire, but it MUST still drive durationSec (asserted in the
+    // translateCommand suite below).
+    check('wire duration pinned to 0 (compat)', p.duration, 0);
+    // duty is ALWAYS present (0 = pattern's stored duty when the protocol
+    // omits it) so every trial declares its own duty — 14-byte 0x0D frames.
+    check('duty defaults to 0 (pattern default)', p.duty, 0);
+    // The encoded frame must match the wire golden vector (duration bytes 00 00
+    // per the compat pin, always-appended duty byte 00 at the end).
     checkBytes(
         'encodeTrialParams(mapped)',
         Wire.encodeTrialParams(p),
-        '0c 08 02 01 00 0a 00 00 01 00 00 00 00'
+        '0d 08 02 01 00 0a 00 01 00 00 00 00 00 00'
     );
 
     // THE coercion test: string scalars (as a YAML parser might yield) must work.
-    const strCmd = { mode: '2', frame_rate: '10', gain: '0', frame_index: '1' };
+    const strCmd = { mode: '2', frame_rate: '10', gain: '0', frame_index: '1', duty: '64' };
     const ps = Runner.buildTrialParams(strCmd, { patternId: '1' });
+    check('string duty coerces', ps.duty, 64);
     checkBytes(
         'string-typed fields coerce to the same frame',
         Wire.encodeTrialParams(ps),
-        '0c 08 02 01 00 0a 00 00 01 00 00 00 00'
+        '0d 08 02 01 00 0a 00 01 00 00 00 00 00 40'
+    );
+
+    // duty passthrough + blank-field semantics ('' = unset, not 0-by-accident).
+    const pDuty = Runner.buildTrialParams({ mode: 2, duty: 200 }, { patternId: 1 });
+    check('duty 200 passes through', pDuty.duty, 200);
+    check(
+        "blank duty ('') treated as unset -> 0",
+        Runner.buildTrialParams({ mode: 2, duty: '' }, { patternId: 1 }).duty,
+        0
     );
 
     // NEGATIVE frame_rate = Mode-2 reverse playback (fw ee74c33+, fw #4) —
@@ -211,7 +230,7 @@ async function main() {
     checkBytes(
         'reverse rate -5 encodes as int16 LE FB FF',
         Wire.encodeTrialParams(pRev),
-        '0c 08 02 01 00 fb ff 00 00 00 00 00 00'
+        '0d 08 02 01 00 fb ff 00 00 00 00 00 00 00'
     );
 
     console.log('\n=== buildTrialParams: clear throws ===');
@@ -221,6 +240,18 @@ async function main() {
     );
     checkThrows('patternId 0 throws', () => Runner.buildTrialParams({ mode: 2 }, { patternId: 0 }));
     checkThrows('missing patternId throws', () => Runner.buildTrialParams({ mode: 2 }, {}));
+    // duty is validated in the BUILDER (not the encoder) so translateCommand
+    // turns a bad value into a skip-this-trial {op:'error'} instead of the
+    // encoder's RangeError aborting the whole sequence from inside _runIR.
+    checkThrows('duty 256 throws', () =>
+        Runner.buildTrialParams({ mode: 2, duty: 256 }, { patternId: 1 })
+    );
+    checkThrows('duty -1 throws', () =>
+        Runner.buildTrialParams({ mode: 2, duty: -1 }, { patternId: 1 })
+    );
+    checkThrows('duty 12.5 (non-integer) throws', () =>
+        Runner.buildTrialParams({ mode: 2, duty: 12.5 }, { patternId: 1 })
+    );
 
     console.log('\n=== ArenaRunner: send + run-state ===');
     {
@@ -233,7 +264,7 @@ async function main() {
         checkBytes(
             'sent the trialParams frame',
             link.sent[0],
-            '0c 08 02 01 00 0a 00 00 01 00 00 00 00'
+            '0d 08 02 01 00 0a 00 01 00 00 00 00 00 00'
         );
         check('conditionName tracked', runner.conditionName, 'sine_grating');
 
@@ -311,11 +342,45 @@ async function main() {
     check('waits-only condition', Runner.conditionDuration(intertrialCond), 2);
     check('null condition -> 0', Runner.conditionDuration(null), 0);
     check(
+        'summed float waits round clean (no 2.21999… artifact)',
+        Runner.conditionDuration({
+            commands: [
+                { type: 'wait', duration: 0.74 },
+                { type: 'wait', duration: 0.74 },
+                { type: 'wait', duration: 0.74 }
+            ]
+        }),
+        2.22
+    );
+    check(
         'string durations coerce',
         Runner.conditionDuration({
             commands: [{ type: 'controller', command_name: 'trialParams', duration: '5' }]
         }),
         5
+    );
+
+    console.log('\n=== conditionCommandCount (wire-sending, non-wait commands) ===');
+    check('single command -> 1', Runner.conditionCommandCount({ commands: [trialCmd] }), 1);
+    check('null -> 0', Runner.conditionCommandCount(null), 0);
+    check(
+        'waits-only -> 0',
+        Runner.conditionCommandCount({ commands: [{ type: 'wait', duration: 2 }] }),
+        0
+    );
+    check(
+        'two non-wait commands -> 2',
+        Runner.conditionCommandCount({
+            commands: [trialCmd, { type: 'controller', command_name: 'allOff' }]
+        }),
+        2
+    );
+    check(
+        'waits are excluded from the count',
+        Runner.conditionCommandCount({
+            commands: [trialCmd, { type: 'wait', duration: 3 }, { type: 'wait', duration: 4 }]
+        }),
+        1
     );
 
     console.log('\n=== flattenStructure (reps × trials, ITI between-not-after) ===');
@@ -399,6 +464,66 @@ async function main() {
         ).op,
         'error'
     );
+    // Bad duty must become a skip-this-trial error op (builder throw), NOT an
+    // encoder RangeError that would abort the whole sequence from _runIR.
+    check(
+        'trialParams with duty 999 -> error (skip, not abort)',
+        Runner.translateCommand(
+            { type: 'controller', command_name: 'trialParams', mode: 2, duty: 999 },
+            { patternId: 1 }
+        ).op,
+        'error'
+    );
+    check(
+        'trialParams duty carried in params',
+        Runner.translateCommand(
+            { type: 'controller', command_name: 'trialParams', mode: 2, duty: 64 },
+            { patternId: 1 }
+        ).params.duty,
+        64
+    );
+    // led_activation rides the trialParams IR as a normalized spec (or null).
+    {
+        const irLa = Runner.translateCommand(
+            {
+                type: 'controller',
+                command_name: 'trialParams',
+                mode: 3,
+                led_activation: { level: 20, hysteresis: 3, on_ranges: [[50, 100]] }
+            },
+            { patternId: 1 }
+        );
+        checkBool('trialParams led_activation carried in IR', !!irLa.ledActivation);
+        check('led_activation.level normalized', irLa.ledActivation.level, 20);
+        check('led_activation.hysteresis normalized', irLa.ledActivation.hysteresis, 3);
+        check(
+            'led_activation.on_ranges normalized',
+            JSON.stringify(irLa.ledActivation.on_ranges),
+            '[[50,100]]'
+        );
+        check(
+            'no led_activation -> null on IR',
+            Runner.translateCommand(
+                { type: 'controller', command_name: 'trialParams', mode: 3 },
+                { patternId: 1 }
+            ).ledActivation,
+            null
+        );
+        // A malformed spec must SKIP the trial (error op), not throw at apply time.
+        check(
+            'bad led_activation -> error op (skip, not abort)',
+            Runner.translateCommand(
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    mode: 3,
+                    led_activation: { level: 20, on_ranges: [[10]] } // bad pair
+                },
+                { patternId: 1 }
+            ).op,
+            'error'
+        );
+    }
     check(
         'allOn -> op allOn',
         Runner.translateCommand({ type: 'controller', command_name: 'allOn' }).op,
@@ -459,6 +584,45 @@ async function main() {
         Runner.translateCommand({ type: 'controller', command_name: 'setAnalogOut', mv: 12.5 }).op,
         'error'
     );
+    // ledDrive is the inverted BuckPuck path: 0% brightness emits LED_OFF_MV (dark),
+    // brighter = LOWER mV. The scope's LED overlay keys off LED_OFF_MV (exported) to
+    // tell on from off, so both must agree — assert the export and the 0% level.
+    check('LED_OFF_MV is exported', Runner.LED_OFF_MV, 5000);
+    // ledPercentToMv is exported for the Console LED bar (% → AO mV, same curve).
+    check('ledPercentToMv exported', typeof Runner.ledPercentToMv, 'function');
+    check('ledPercentToMv(0) -> LED_OFF_MV', Runner.ledPercentToMv(0), Runner.LED_OFF_MV);
+    checkBool(
+        'ledPercentToMv(100) < LED_OFF_MV (bright)',
+        Runner.ledPercentToMv(100) < Runner.LED_OFF_MV
+    );
+    // Bench recalibration (2026-07-08): the dead zone is gone — input 1% now lands on
+    // the just-on level (was raw 5%), so 1% must read ON and dimmer than 50%.
+    checkBool(
+        'ledPercentToMv(1) turns the LED on (< off)',
+        Runner.ledPercentToMv(1) < Runner.LED_OFF_MV
+    );
+    checkBool(
+        'ledPercentToMv(1) dimmer than 50% (higher mV)',
+        Runner.ledPercentToMv(1) > Runner.ledPercentToMv(50)
+    );
+    check('ledPercentToMv(1) == raw-5% just-on level (4075 mV)', Runner.ledPercentToMv(1), 4075);
+    check(
+        'ledDrive 0% -> LED_OFF_MV (dark, reads off in the scope)',
+        Runner.translateCommand({ type: 'controller', command_name: 'ledDrive', percent: 0 }).mv,
+        Runner.LED_OFF_MV
+    );
+    checkBool(
+        'ledDrive 100% -> below LED_OFF_MV (reads on in the scope)',
+        Runner.translateCommand({ type: 'controller', command_name: 'ledDrive', percent: 100 }).mv <
+            Runner.LED_OFF_MV
+    );
+    // ledDrive carries the commanded % so the scope can label the LED box.
+    check(
+        'ledDrive 50% -> ledPercent passthrough',
+        Runner.translateCommand({ type: 'controller', command_name: 'ledDrive', percent: 50 })
+            .ledPercent,
+        50
+    );
     const trDO = Runner.translateCommand({
         type: 'controller',
         command_name: 'setDigitalOut',
@@ -488,6 +652,146 @@ async function main() {
         }).op,
         'error'
     );
+    console.log('\n=== conditional LED activation (normalize + hysteresis engine) ===');
+    // normalizeLedActivation: validation + coercion, or null when absent.
+    check('normalize null -> null', Runner.normalizeLedActivation(null), null);
+    check('normalize undefined -> null', Runner.normalizeLedActivation(undefined), null);
+    {
+        const n = Runner.normalizeLedActivation({
+            level: '20',
+            hysteresis: '3',
+            on_ranges: [
+                ['50', '100'],
+                [180, 150]
+            ]
+        });
+        check('level coerced', n.level, 20);
+        check('hysteresis coerced', n.hysteresis, 3);
+        // reversed pair [180,150] is tolerated (swapped); strings coerced.
+        check(
+            'on_ranges normalized + sorted-pair',
+            JSON.stringify(n.on_ranges),
+            '[[50,100],[150,180]]'
+        );
+    }
+    checkThrows('level > 100 throws', () => Runner.normalizeLedActivation({ level: 120 }));
+    checkThrows('negative hysteresis throws', () =>
+        Runner.normalizeLedActivation({ hysteresis: -1 })
+    );
+    checkThrows('non-integer hysteresis throws', () =>
+        Runner.normalizeLedActivation({ hysteresis: 2.5 })
+    );
+    checkThrows('bad on_ranges pair throws', () =>
+        Runner.normalizeLedActivation({ on_ranges: [[10]] })
+    );
+    checkThrows('non-array on_ranges throws', () =>
+        Runner.normalizeLedActivation({ on_ranges: 5 })
+    );
+
+    // makeLedActivator: index → {on, changed}. No hysteresis first.
+    {
+        const act = Runner.makeLedActivator({ level: 20, hysteresis: 0, on_ranges: [[50, 100]] });
+        const step = (i) => act.step(i);
+        check(
+            'below band: off, no change',
+            JSON.stringify(step(10)),
+            JSON.stringify({ on: false, changed: false })
+        );
+        check(
+            'enter band: on + changed',
+            JSON.stringify(step(50)),
+            JSON.stringify({ on: true, changed: true })
+        );
+        check(
+            'inside band: on, no change',
+            JSON.stringify(step(80)),
+            JSON.stringify({ on: true, changed: false })
+        );
+        check(
+            'leave band (h=0): off + changed',
+            JSON.stringify(step(101)),
+            JSON.stringify({ on: false, changed: true })
+        );
+    }
+    // Hysteresis: turn ON at the true edge, stay ON until > h past it.
+    {
+        const act = Runner.makeLedActivator({ level: 20, hysteresis: 3, on_ranges: [[50, 100]] });
+        act.step(60); // on
+        check(
+            'h=3: 2 past edge (102) stays ON (no change)',
+            JSON.stringify(act.step(102)),
+            JSON.stringify({ on: true, changed: false })
+        );
+        check(
+            'h=3: exactly h past (103) still ON',
+            JSON.stringify(act.step(103)),
+            JSON.stringify({ on: true, changed: false })
+        );
+        check(
+            'h=3: > h past (104) turns OFF',
+            JSON.stringify(act.step(104)),
+            JSON.stringify({ on: false, changed: true })
+        );
+        // dithering at the far edge with h=3 must NOT chatter
+        const d = Runner.makeLedActivator({ level: 20, hysteresis: 3, on_ranges: [[50, 100]] });
+        d.step(100); // on
+        let chatter = 0;
+        [101, 100, 102, 99, 103, 100].forEach((i) => {
+            if (d.step(i).changed) chatter++;
+        });
+        check('dither near edge with h=3: no on/off chatter', chatter, 0);
+    }
+
+    // Runner wiring: _installLedActivator subscribes to the bridge 'applied'
+    // event, sends SET_AO_VOLTAGE only on a transition, and emits a
+    // 'led-activation' status per transition (run-log provenance).
+    {
+        const AO = 0xa0;
+        const sent = [];
+        const link = {
+            connected: true,
+            async send(b) {
+                sent.push(Array.from(b));
+                return new Uint8Array([0x02, 0x00, b[1]]);
+            }
+        };
+        const handlers = {};
+        const bridge = {
+            on(ev, fn) {
+                (handlers[ev] = handlers[ev] || new Set()).add(fn);
+                return () => handlers[ev].delete(fn);
+            },
+            off(ev, fn) {
+                if (handlers[ev]) handlers[ev].delete(fn);
+            },
+            emit(ev, x) {
+                (handlers[ev] || []).forEach((f) => f(x));
+            }
+        };
+        const runner = new Runner.ArenaRunner(link, Wire, bridge);
+        const events = [];
+        runner._emit = (s) => events.push(s); // stand in for a run's status sink
+        runner._installLedActivator({ level: 20, hysteresis: 3, on_ranges: [[50, 100]] });
+        const baselineOff = sent.filter((f) => f[1] === AO).length; // 1 = OFF baseline
+        [10, 50, 80, 101, 103, 104, 60].forEach((i) => bridge.emit('applied', i));
+        const aoSends = sent.filter((f) => f[1] === AO).length;
+        const transitions = events.filter((e) => e.phase === 'led-activation');
+        check('install sends 1 OFF-baseline AO frame', baselineOff, 1);
+        // 3 transitions: ON@50, OFF@104, ON@60 (101/103 held by hysteresis; 80 inside).
+        check('AO sent only on transitions (1 baseline + 3)', aoSends, 4);
+        check('3 led-activation events emitted', transitions.length, 3);
+        check('first transition ON', transitions[0].on, true);
+        check('first transition frame', transitions[0].index, 50);
+        check('second transition OFF (past hysteresis)', transitions[1].on, false);
+        check('second transition frame', transitions[1].index, 104);
+        // Teardown forces the LED off and stops gating.
+        runner._clearLedActivator();
+        const afterClear = sent.filter((f) => f[1] === AO).length;
+        check('teardown sends a final OFF', afterClear, aoSends + 1);
+        bridge.emit('applied', 60); // superseded — must NOT send or emit
+        check('no AO after teardown', sent.filter((f) => f[1] === AO).length, afterClear);
+    }
+
     const trWait = Runner.translateCommand({ type: 'wait', duration: 3 });
     check('wait -> op wait', trWait.op, 'wait');
     check('wait -> durationSec', trWait.durationSec, 3);
@@ -530,7 +834,11 @@ async function main() {
         });
         check('sent exactly 3 frames (allOn, trialParams, final STOP)', link.sent.length, 3);
         checkBytes('1st send: allOn', link.sent[0], '01 ff');
-        checkBytes('2nd send: trialParams', link.sent[1], '0c 08 02 01 00 0a 00 00 01 00 00 00 00');
+        checkBytes(
+            '2nd send: trialParams',
+            link.sent[1],
+            '0d 08 02 01 00 0a 00 01 00 00 00 00 00 00'
+        );
         checkBytes('3rd send: final STOP', link.sent[2], '01 30');
         checkBool('summary.completed true', summary.completed === true);
         checkBool('summary.aborted false', summary.aborted === false);
@@ -572,6 +880,143 @@ async function main() {
         checkBytes('final STOP sent', link.sent[link.sent.length - 1], '01 30');
         check('no errors for valid I/O commands', summary.errors, 0);
         check('no skips for valid I/O commands', summary.skipped, 0);
+    }
+
+    console.log('\n=== runSequence: optional trial-boundary condition resolution ===');
+    {
+        const link = makeFakeLink();
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const steps = [
+            {
+                kind: 'ref',
+                conditionName: 'runtime_led',
+                label: 'runtime_led',
+                seqIdx: 0,
+                dur: 0
+            }
+        ];
+        const sourceCondition = {
+            name: 'runtime_led',
+            commands: [{ type: 'controller', command_name: 'setAnalogOut', mv: 5000 }]
+        };
+        const conditionsByName = new Map([['runtime_led', sourceCondition]]);
+        const record = {
+            event: 'runtime_control_trial_parameters',
+            trial_index: 0,
+            condition_name: 'runtime_led',
+            resolved_variables: { led_mv: 2500 },
+            resolved_commands: [{ type: 'controller', command_name: 'setAnalogOut', mv: 2500 }],
+            parameter_bindings: [
+                { variable: 'led_mv', command_index: 0, parameter_path: ['mv'], value: 2500 }
+            ],
+            runtime_control_provenance: { led_mv: { source: 'runtime_control' } },
+            apply_events: [
+                {
+                    event: 'runtime_control_apply',
+                    variable: 'led_mv',
+                    old_value: 5000,
+                    new_value: 2500,
+                    request_id: 'r1'
+                }
+            ]
+        };
+        const phases = [];
+        const emitted = [];
+        let hookContext = null;
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName,
+            sleep: () => Promise.resolve(),
+            resolveCondition: async (conditionName, context) => {
+                hookContext = { conditionName, context };
+                return { runtimeRecord: record };
+            },
+            onProgress: (s) => {
+                phases.push(s.phase);
+                emitted.push(s);
+            }
+        });
+        check('resolver receives condition name', hookContext.conditionName, 'runtime_led');
+        check('resolver receives zero-based boundary index', hookContext.context.index, 0);
+        checkBool(
+            'resolver receives original condition',
+            hookContext.context.condition === sourceCondition
+        );
+        checkBytes('resolved command is sent', link.sent[0], '03 a0 c4 09');
+        check('source condition remains unchanged', sourceCondition.commands[0].mv, 5000);
+        checkBool('runtime-control-applied emitted', phases.includes('runtime-control-applied'));
+        checkBool('trial-resolved emitted', phases.includes('trial-resolved'));
+        checkBool(
+            'boundary events precede the resolved command',
+            phases.indexOf('runtime-control-applied') < phases.indexOf('command') &&
+                phases.indexOf('trial-resolved') < phases.indexOf('command')
+        );
+        const applyStatus = emitted.find((s) => s.phase === 'runtime-control-applied');
+        const resolvedStatus = emitted.find((s) => s.phase === 'trial-resolved');
+        check(
+            'apply status keeps complete event',
+            applyStatus.runtimeControlApply,
+            record.apply_events[0]
+        );
+        checkBool(
+            'trial status keeps authoritative record',
+            resolvedStatus.runtimeRecord === record
+        );
+        checkBool('resolved run completes', summary.completed === true);
+    }
+    {
+        // Returning a condition directly is the lightweight, non-runtime use of
+        // the hook; it should not create provenance phases.
+        const link = makeFakeLink();
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const phases = [];
+        await runner.runSequence({
+            steps: [{ conditionName: 'switch' }],
+            conditionsByName: new Map([
+                [
+                    'switch',
+                    {
+                        name: 'switch',
+                        commands: [{ type: 'controller', command_name: 'allOn' }]
+                    }
+                ]
+            ]),
+            resolveCondition: () => ({
+                name: 'switch',
+                commands: [{ type: 'controller', command_name: 'allOff' }]
+            }),
+            sleep: () => Promise.resolve(),
+            onProgress: (s) => phases.push(s.phase)
+        });
+        checkBytes('direct replacement condition executes', link.sent[0], '01 00');
+        checkBool('direct replacement emits no runtime phase', !phases.includes('trial-resolved'));
+    }
+    {
+        const link = makeFakeLink();
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const statuses = [];
+        const summary = await runner.runSequence({
+            steps: [{ conditionName: 'bad-boundary' }],
+            conditionsByName: new Map([
+                ['bad-boundary', { commands: [{ type: 'controller', command_name: 'allOn' }] }]
+            ]),
+            resolveCondition: () => {
+                throw new Error('audit record unavailable');
+            },
+            sleep: () => Promise.resolve(),
+            onProgress: (s) => statuses.push(s)
+        });
+        checkBool(
+            'resolver failure is surfaced with context',
+            statuses.some(
+                (s) => s.phase === 'error' && /condition resolution failed/.test(s.reason || '')
+            )
+        );
+        checkBool(
+            'resolver failure does not send source command',
+            !link.sent.some((frame) => frame[1] === 0xff)
+        );
+        check('resolver failure increments errors', summary.errors, 1);
     }
 
     console.log(

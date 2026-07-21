@@ -45,7 +45,33 @@ const STREAM = [
         total: 1,
         step: { conditionName: 'grating_15px', kind: 'ref' }
     },
+    {
+        phase: 'runtime-control-applied',
+        index: 0,
+        runtimeControlApply: {
+            event: 'runtime_control_apply',
+            variable: 'led_percent',
+            old_value: 20,
+            new_value: 40
+        }
+    },
+    {
+        phase: 'trial-resolved',
+        index: 0,
+        runtimeRecord: {
+            event: 'runtime_control_trial_parameters',
+            resolved_variables: { led_percent: 40 },
+            resolved_commands: []
+        }
+    },
     { phase: 'trial-running', index: 0, step: { conditionName: 'grating_15px' }, durationSec: 5 },
+    {
+        phase: 'led-activation',
+        index: 12,
+        on: true,
+        ledPercent: 20,
+        step: { conditionName: 'grating_15px' }
+    },
     { phase: 'command', index: 0, op: 'allOff' },
     {
         phase: 'skip',
@@ -83,7 +109,10 @@ check(
     [
         'sequence-start',
         'step-start',
+        'runtime-control-applied',
+        'trial-resolved',
         'trial-running',
+        'led-activation',
         'command',
         'skip',
         'step-done',
@@ -95,7 +124,12 @@ checkBool(
     j.events.every((e) => typeof e.t_iso === 'string'),
     'stamped'
 );
-checkBool('skip payload preserved', j.events[4].plugin_name === 'camera', 'camera');
+const ledEvent = j.events.find((e) => e.phase === 'led-activation');
+checkBool('led-activation logged', !!ledEvent, JSON.stringify(ledEvent));
+check('led-activation on retained', ledEvent.on, true);
+check('led-activation percent retained', ledEvent.ledPercent, 20);
+const skipEvent = j.events.find((e) => e.phase === 'skip');
+checkBool('skip payload preserved', skipEvent.plugin_name === 'camera', 'camera');
 
 // ── ABORTED run ──────────────────────────────────────────────────────────────
 console.log('=== ABORTED run ===');
@@ -141,6 +175,7 @@ console.log('=== isTerminal ===');
 check('sequence-complete terminal', A.isTerminal('sequence-complete'), true);
 check('aborted terminal', A.isTerminal('aborted'), true);
 check('command not terminal', A.isTerminal('command'), false);
+check('led-activation not terminal', A.isTerminal('led-activation'), false);
 
 console.log('\n=== Summary ===');
 console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);

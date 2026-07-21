@@ -83,6 +83,7 @@ All major features implemented:
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-07-04 | Studio wireframe v6.2 | Console de-clutter concept: left tool rail + compact one-row boxes (Arena Trial merges modes 2/3/4; Step frames separate) + busy/mutex model + merged Patterns panel + plain labels/help mode + always-visible log; Edit toolbar diet + repo-connected Settings; reconciled to main @ 8bc97e6 (docs/development/arena-studio-wireframe-v6.html + -v6-notes.md) |
 | 2026-02-18 | PE v0.9.31 | Mercator and Mollweide projection viewer tabs; white labels/axes; full-sphere default FOV; eye FOV overlay on Mollweide (#44) |
 | 2026-02-13 | PE v0.9.29 | Relocated LOAD/NEW buttons to viewer toolbar; 3-tier button visual hierarchy (primary/secondary/status); LOAD button widened for discoverability |
 | 2026-02-11 | PE v0.9.26 | Expanded hover animation to full row in combiner and clipboard; vertical filmstrip for sequence builder; animated combiner thumbnails; closed #28 and #29 |
