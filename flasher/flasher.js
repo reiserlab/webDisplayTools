@@ -295,6 +295,33 @@ const LOCAL_BUILDS = [
         usb_product: 'G6 Panel v0.2',
         local: true,
         default: false
+    },
+    // Active-low EINT trigger test builds (firmware PR #29, commit 52a9ecb):
+    // identical to production (full SPI ingest, deployable) except the
+    // external-trigger polarity is inverted — Triggered advances a row per
+    // HIGH->LOW edge, Gated lights while EINT is LOW, pull-up on EINT. For
+    // the imaging-system sync line, which asserts LOW. `variant:
+    // 'production'` on purpose: the non-production caution note ("no SPI
+    // ingest") would be wrong for these; the section + label carry the flag.
+    {
+        rev: 'v0.3.1',
+        variant: 'production',
+        section: 'Test builds (active-low EINT trigger)',
+        label: 'v0.3.1 Active-low EINT trigger (52a9ecb)',
+        file: 'firmware/g6-panel-v0.3.1-eintlow-52a9ecb.uf2',
+        usb_product: 'G6 Panel v0.3',
+        local: true,
+        default: false
+    },
+    {
+        rev: 'v0.2.1',
+        variant: 'production',
+        section: 'Test builds (active-low EINT trigger)',
+        label: 'v0.2.1 Active-low EINT trigger (52a9ecb)',
+        file: 'firmware/g6-panel-v0.2.1-eintlow-52a9ecb.uf2',
+        usb_product: 'G6 Panel v0.2',
+        local: true,
+        default: false
     }
 ];
 
