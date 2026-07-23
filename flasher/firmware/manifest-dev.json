@@ -7,7 +7,7 @@
       "rev": "v0.3.1",
       "variant": "production",
       "env": "pico_v031",
-      "label": "v0.3.1 — Production +ISP-progress (dev 23d66af)",
+      "label": "v0.3.1 \u2014 Production +ISP-progress (dev 23d66af)",
       "usb_product": "G6 Panel v0.3",
       "uf2": {
         "file": "g6-panel-v0.3.1-progress-23d66af.uf2",
@@ -23,7 +23,7 @@
       "rev": "v0.2.1",
       "variant": "production",
       "env": "pico_v021",
-      "label": "v0.2.1 — Production +ISP-progress (dev 23d66af)",
+      "label": "v0.2.1 \u2014 Production +ISP-progress (dev 23d66af)",
       "usb_product": "G6 Panel v0.2",
       "uf2": {
         "file": "g6-panel-v0.2.1-progress-23d66af.uf2",
@@ -39,7 +39,7 @@
       "rev": "v0.3.1",
       "variant": "production",
       "env": "pico_v031",
-      "label": "v0.3.1 — Production fleet build (dd7d3f9, no progress UI)",
+      "label": "v0.3.1 \u2014 Production fleet build (dd7d3f9, no progress UI)",
       "usb_product": "G6 Panel v0.3",
       "bin": {
         "file": "g6-panel-v0.3.1-isp-fleet-dd7d3f9.bin",
@@ -51,11 +51,43 @@
       "rev": "v0.2.1",
       "variant": "production",
       "env": "pico_v021",
-      "label": "v0.2.1 — Production fleet build (dd7d3f9, no progress UI)",
+      "label": "v0.2.1 \u2014 Production fleet build (dd7d3f9, no progress UI)",
       "usb_product": "G6 Panel v0.2",
       "bin": {
         "file": "g6-panel-v0.2.1-isp-fleet-dd7d3f9.bin",
         "sha256": "ebf47dd22ac8d072dbe3cede4cd2d987bf1a222c9a6eb93def98ff51acae9884"
+      },
+      "default": false
+    },
+    {
+      "rev": "v0.3.1",
+      "variant": "production",
+      "env": "pico_v031_eintlow",
+      "label": "v0.3.1 \u2014 Active-low EINT trigger (52a9ecb)",
+      "usb_product": "G6 Panel v0.3",
+      "uf2": {
+        "file": "g6-panel-v0.3.1-eintlow-52a9ecb.uf2",
+        "sha256": "c961259dbac336b7db8f22aca123c18a3fc6fd704b87aac652c2c756551c0c99"
+      },
+      "bin": {
+        "file": "g6-panel-v0.3.1-isp-eintlow-52a9ecb.bin",
+        "sha256": "8cf9167c514005264eea9b4d946b6f651f5ee317fef5b88c0d5767a87d032826"
+      },
+      "default": false
+    },
+    {
+      "rev": "v0.2.1",
+      "variant": "production",
+      "env": "pico_v021_eintlow",
+      "label": "v0.2.1 \u2014 Active-low EINT trigger (52a9ecb)",
+      "usb_product": "G6 Panel v0.2",
+      "uf2": {
+        "file": "g6-panel-v0.2.1-eintlow-52a9ecb.uf2",
+        "sha256": "49a024a03a7b40c768d1c45c1d28ae3483c3eaa173626f0b866236151afda028"
+      },
+      "bin": {
+        "file": "g6-panel-v0.2.1-isp-eintlow-52a9ecb.bin",
+        "sha256": "00b069fbe97d8b7fcc799496750a37319a9fb0d0a332afbfcc6fbcc5c8e1040d"
       },
       "default": false
     }
