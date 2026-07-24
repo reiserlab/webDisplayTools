@@ -296,7 +296,7 @@ const LOCAL_BUILDS = [
         local: true,
         default: false
     },
-    // Active-low EINT trigger test builds (firmware PR #29, commit 52a9ecb):
+    // Active-low EINT trigger test builds (firmware commit 9014b5b: PR #29 active-low switch + PRs #26/#27/#28 ISP indicator):
     // identical to production (full SPI ingest, deployable) except the
     // external-trigger polarity is inverted — Triggered advances a row per
     // HIGH->LOW edge, Gated lights while EINT is LOW, pull-up on EINT. For
@@ -307,8 +307,8 @@ const LOCAL_BUILDS = [
         rev: 'v0.3.1',
         variant: 'production',
         section: 'Test builds (active-low EINT trigger)',
-        label: 'v0.3.1 Active-low EINT trigger (52a9ecb)',
-        file: 'firmware/g6-panel-v0.3.1-eintlow-52a9ecb.uf2',
+        label: 'v0.3.1 Active-low EINT trigger (9014b5b)',
+        file: 'firmware/g6-panel-v0.3.1-eintlow-9014b5b.uf2',
         usb_product: 'G6 Panel v0.3',
         local: true,
         default: false
@@ -317,8 +317,8 @@ const LOCAL_BUILDS = [
         rev: 'v0.2.1',
         variant: 'production',
         section: 'Test builds (active-low EINT trigger)',
-        label: 'v0.2.1 Active-low EINT trigger (52a9ecb)',
-        file: 'firmware/g6-panel-v0.2.1-eintlow-52a9ecb.uf2',
+        label: 'v0.2.1 Active-low EINT trigger (9014b5b)',
+        file: 'firmware/g6-panel-v0.2.1-eintlow-9014b5b.uf2',
         usb_product: 'G6 Panel v0.2',
         local: true,
         default: false
