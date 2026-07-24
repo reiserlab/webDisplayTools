@@ -60,15 +60,21 @@ a release tag land. Entries with no `uf2` key are ISP-only (no UF2 staged).
    local `crc32(bytes)` before proceeding. Long transfer (~140 KB); generous timeout.
 2. **(Optional) confirm what's on SD:** `encodeGetFirmwareInfo()` → `0xE3`; `decodeFirmwareInfo()`
    returns `{magic, version, imageCrc32, imageSize}` — `version` is the release tag. Great UI field.
-3. **Per panel:** `encodeG6ProgramPanel(n)` → `0xC8` (1-based index). Long-running (stage ~540
-   pages over SPI + LittleFS commit + reboot ≈ 30–45 s); `decodeProgramPanelResponse()` gives
-   `{ok, status, message}` with the controller's step-by-step failure text.
+3. **Per panel:** `encodeG6ProgramPanel(n)` → `0xC8` (1-based index). Long-running: the
+   controller stages ~540 pages over SPI, then POLLS the panel's commit receipt (15 s ceiling)
+   and post-reboot liveness (12 s ceiling) instead of fixed waits, so it returns as soon as the
+   panel is back up (~3.2 s typical, fleet-validated; ceilings bound the worst case).
+   `decodeProgramPanelResponse()` gives `{ok, status, message}` with the
+   controller's step-by-step failure text; the success message now carries a per-phase timing
+   summary.
 4. **Verify:** `encodeG6VerifyPanel(n)` → `0xC9` — CRCs the panel's live app flash against the SD
    footer. `MATCH` = that exact release is installed. Non-destructive; also useful as a fleet
    "which version is everyone running?" audit loop.
-5. **What the human sees** (with the progress-indicator firmware running on the target): progress
-   bar sweeps during staging → brief dark at commit/reboot → **smiley** held until the first real
-   display frame arrives. Failed panels: no smiley.
+5. **What the human sees** (with the progress-indicator firmware running on the target): one
+   weighted bar spans the visible process: upload sweeps columns 0-16, verify lights 17, the
+   LittleFS commit animates 17-20 (full bar = staged, reboot imminent) → dark during the OTA
+   copy → **smiley** held until the first real display frame arrives. Failed panels: **sad
+   smiley** on a failed commit, or no smiley after the dark window.
 
 **Reference implementation that ran the real fleet reflash (2026-07-02):** the Python tool
 `isp_roundtrip.py` (firmware-session scratchpad; mirrors this exact flow with response-frame
@@ -82,7 +88,8 @@ timeout, always verify after program.
   (require MATCH)} with a stop-on-failure toggle; show the controller's `message` text verbatim.
 - Show SD-card state (`0xE3` footer version) persistently — "arena is loaded with panel-fw-v1.0.0".
 - Sequential only — one `0xC8` at a time (the controller ISPs one panel per command).
-- Expect the target panel to drop off/reboot ~30–45 s after program; verify only after it settles.
+- The controller now polls the panel back to life before answering `0xC8`, so a success response
+  means the panel already rebooted and is answering COMM_CHECK; verify right after.
 
 ## 6. Gotchas
 
