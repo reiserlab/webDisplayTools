@@ -1,6 +1,13 @@
 # Flow control: Slack discussion and Michael's counter-proposal
 
-**Status:** Discussion draft for Lisa and the experiment-control team  
+> **Superseded by [`v3-flow-control-design.md`](v3-flow-control-design.md).**
+> This document is the reasoning archive — the original Slack discussion, Michael's
+> counter-proposal, and Lisa's response. It is retained for the argument, not for the
+> conclusions: several positions here were revised in the agreed design (notably the
+> deferral of `repeat_until`, the latency case for trial-level control, and the use of
+> script-based checks). Do not implement from this file.
+
+**Status:** Superseded — reasoning archive  
 **Date:** 2026-07-12
 
 ## What we discussed in Slack
