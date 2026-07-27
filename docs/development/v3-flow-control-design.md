@@ -128,6 +128,29 @@ Relative-to-baseline comparison is defined for `mean` only in Stage 1. The two f
 constructs' typical needs — fractions for trial rejection, baseline-relative means for vigor decline
 — and the cross product is deferred until something needs it.
 
+### Evaluation rules (cross-runner contract)
+
+Both runners must agree on these exactly, or the same protocol yields different decisions on
+MATLAB and in the browser.
+
+**Comparisons are strict** — `<` for `below`, `>` for `above` — and this applies to *both* the
+per-sample `level:` test and the outer `stop_when:` / `threshold:` test. One convention, no
+exceptions. It rarely matters for float-valued metrics, where exact ties are effectively
+impossible, but it matters for integer-valued device-health metrics where ties are common. It also
+matches how the criterion reads in prose: "below 150 for *more than* 30% of the trial."
+
+**NaN samples are excluded, never propagated.** `mean` is taken over the valid samples; the
+`fraction_*` statistics are the fraction *of valid samples* past the level. Propagating would mean
+a single dropped sample invalidates an entire trial, which is far too brittle for real DAQ and
+FicTrac streams.
+
+A NaN *result* is a different matter and is already covered in §6: the criterion is unevaluable and
+the run fails closed.
+
+**The valid-sample count goes in the trace** for every evaluation, so a window that was three good
+samples out of five thousand is visible in analysis rather than silently passing. A hard minimum
+coverage floor is reasonable to add as a built-in constant; it should not become a YAML field.
+
 **The evaluation window is implied by the construct** and is not a field. A `trial_check`
 criterion can only mean the trial that just ran; a `repeat_until` criterion can only mean the
 repetition that just completed. There is no third possibility, so making it explicit would only
@@ -472,14 +495,33 @@ to make deliberately, not to arrive at by accretion.
 
 ---
 
-## 9. Open questions
+## 9. Field requirements
 
-1. **Which fields may default.** Fewer mandatory fields is a real authoring goal, but
-   `on_exhausted` and `max_attempts` must stay explicit. The full default list should be settled
-   before implementation rather than discovered during it.
+Settled with Lisa before implementation. Anything not listed as optional is required.
 
-*(Resolved and moved into the body: failed-attempt data handling → §5; ownership of the browser
-half → §7.)*
+| Field | Where | Required? |
+|---|---|---|
+| `requires: [flow_control]` | top level | Required for any protocol using either construct |
+| `criterion` | both constructs | Required |
+| `max_attempts` | `trial_check` | Required — explicit, no default |
+| `on_exhausted` | `trial_check` | Required — explicit, no default (§3) |
+| `on_fail` / `on_fail.run` | `trial_check` | **Optional** — omit to retry with no side effect |
+| `max_repeats` | `repeat_until` | Required |
+| `min_repeats` | `repeat_until` | **Optional**, defaults to 1 |
+| `metric`, `statistic`, `stop_when` | `criterion` | Required |
+| `level` | `criterion` | Required for `fraction_below` / `fraction_above`; absent for `mean` |
+| `threshold` | `criterion` | Required for an absolute comparison; absent for a baseline-relative one |
+| `baseline` + `fraction` | `criterion` | Used together for a relative comparison |
+
+Two validation rules that are easy to miss:
+
+- **`threshold` and `baseline`+`fraction` are mutually exclusive** — they are the absolute and
+  relative forms of the same comparison, and a criterion must pick one.
+- **A block sets either `repetitions:` or `min_repeats`/`max_repeats`, never both.** The static
+  key is the degenerate case where min equals max (§4).
+
+*(Previously open and now resolved: failed-attempt data handling → §5; ownership of the browser
+half → §7; evaluation edge cases → §2.)*
 
 ---
 
