@@ -256,11 +256,14 @@ function main() {
     }
     const registryStr = registryLines.join(',\n');
 
-    // Generate output
+    // Generate output. Deliberately NO generation timestamp in the header: it made
+    // every run of the sync-arena-configs workflow a "change" and opened a weekly PR
+    // whose entire diff was that one line (e.g. #169). Output must stay a pure function
+    // of the input YAML so "Check for changes" means a real config change. Git history
+    // records when the file last changed; don't re-add a Date here.
     const output = `/**
  * Arena Configurations
  * Auto-generated from maDisplayTools/configs/arenas/ and arena_registry/
- * Last updated: ${new Date().toISOString()}
  *
  * DO NOT EDIT MANUALLY - regenerate with: node scripts/generate-arena-configs.js
  */
