@@ -623,7 +623,13 @@ var ArenaRunnerG6 = (function () {
                             op: 'fictracApply',
                             on: true,
                             gain: Number.isFinite(Number(params.gain)) ? Number(params.gain) : null,
-                            bias: bias,
+                            // ALWAYS carry a bias, `{type:'none'}` when none was
+                            // authored — same reasoning as `duty` in buildTrialParams:
+                            // every closed-loop epoch must be self-describing. Sending
+                            // nothing would leave whatever the bridge still had
+                            // installed (a previous condition's waveform, or a stale
+                            // one from an aborted run) silently driving this trial.
+                            bias: bias || { type: 'none' },
                             warning: warning
                         };
                     }
@@ -922,6 +928,7 @@ var ArenaRunnerG6 = (function () {
             this._active = false;
             this._conditionName = null;
             this._clearLedActivator(); // sends LED off (before the STOP below)
+            this._clearClosedLoop(); // stop streaming frames + clear any bias waveform
             this._emit = null;
             if (this._link && this._link.connected) {
                 return this._link.send(this._wire.encodeStop());
@@ -950,6 +957,7 @@ var ArenaRunnerG6 = (function () {
             this._active = false;
             this._conditionName = null;
             this._clearLedActivator(); // guarded: no-op send when the link is gone
+            this._clearClosedLoop(); // bridge-side, so it still works with no link
             this._emit = null;
         }
 
@@ -984,6 +992,37 @@ var ArenaRunnerG6 = (function () {
                 }
             });
         }
+        // ---- closed-loop teardown ------------------------------------------
+        /**
+         * Tear down the FicTrac closed loop: stop applying frames AND clear any bias
+         * waveform. Called from EVERY run-teardown path (sequence end, stop(),
+         * _clear()) because `stopClosedLoop` only runs on the happy path — a STOP
+         * mid-trial skips it, which used to leave the bridge (a) still streaming
+         * SET_FRAME_POSITION at the arena and (b) integrating a disturbance whose
+         * phase clock kept running, so the NEXT run inherited a stale, already-drifted
+         * bias until some condition happened to push a new one.
+         *
+         * Bridge-only (WebSocket), so it is safe even when the serial link is gone —
+         * which is exactly the _clear()/abort() case. Best-effort: a dead bridge
+         * socket must never break teardown.
+         *
+         * The bias is cleared only when the CLIENT has one installed, so a bias set
+         * on the bridge's own CLI (--bias-type) survives a run rather than being
+         * silently stomped by it.
+         */
+        _clearClosedLoop() {
+            const b = this._bridge;
+            if (!b) return;
+            try {
+                if (typeof b.setApply === 'function') b.setApply(false);
+                if (b.bias && b.bias.type !== 'none' && typeof b.setConfig === 'function') {
+                    b.setConfig({ bias: { type: 'none' } });
+                }
+            } catch (_) {
+                /* best-effort */
+            }
+        }
+
         _clearLedActivator() {
             if (this._ledUnsub) {
                 try {
@@ -1296,6 +1335,8 @@ var ArenaRunnerG6 = (function () {
                 this._conditionName = null;
                 this._resolveSleep();
                 this._clearLedActivator(); // LED off + stop gating on completion/abort
+                this._clearClosedLoop(); // idempotent after a stopClosedLoop; THE fix
+                // when a mid-trial STOP skipped stopClosedLoop entirely
                 try {
                     if (this._link && this._link.connected) {
                         await this._link.send(this._wire.encodeStop());

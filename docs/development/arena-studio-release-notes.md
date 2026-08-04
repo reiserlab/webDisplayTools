@@ -25,7 +25,10 @@ history lives here. Newest first. (Per-session engineering detail stays in
   — so you can confirm at the bench that it took effect. It is read-only there;
   the protocol is the only place it is set.
 - **Stop closed-loop clears the bias**, so a disturbance never leaks into
-  following trials.
+  following trials — and so does **pressing STOP mid-run**, which skips the
+  protocol's own Stop closed-loop entirely. Without that, the next run started
+  with the previous run's disturbance still going (and the bridge kept driving
+  the arena after STOP). Bench-reported and fixed before release.
 - A ready-made sweep of all four waveforms ships as **FicTrac closed-loop
   bias/disturbance test** in File ▾ → Open from library.
 - Needs an updated FicTrac bridge (`pixi run bridge`, reports version 2.1 or

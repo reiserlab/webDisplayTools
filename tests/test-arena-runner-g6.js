@@ -1172,7 +1172,10 @@ async function main() {
         check('startClosedLoop -> fictracApply', scl.op, 'fictracApply');
         checkBool('startClosedLoop on=true', scl.on === true);
         check('startClosedLoop carries gain override', scl.gain, 3.6);
-        check('no bias authored -> bias null', scl.bias, null);
+        // Every closed-loop epoch is SELF-DESCRIBING: with no bias authored the IR still
+        // carries {type:'none'} so the bridge can't keep driving this trial with a
+        // waveform left over from an earlier condition or an aborted run.
+        checkDeep('no bias authored -> explicit {type:none}', scl.bias, { type: 'none' });
         check('stopClosedLoop -> on=false', t('stopClosedLoop').on, false);
         // stopClosedLoop MUST clear the bias: the bridge integrates from its own phase
         // clock, so a waveform left installed keeps skewing the frame index through
@@ -1421,9 +1424,14 @@ async function main() {
             }
         });
         check('bridge.connect called once', bridge.connectCalls, 1);
+        // Enabled once by startClosedLoop, then disabled — by stopClosedLoop AND again
+        // by the sequence-end teardown (idempotent). What matters is that it ENDS
+        // disabled and was only ever enabled once.
         checkBool(
-            'apply toggled true then false',
-            JSON.stringify(bridge.applyStates) === JSON.stringify([true, false]),
+            'apply enabled once, and ends disabled',
+            bridge.applyStates[0] === true &&
+                bridge.applyStates[bridge.applyStates.length - 1] === false &&
+                bridge.applyStates.filter((v) => v === true).length === 1,
             bridge.applyStates.join(',')
         );
         checkBool(
@@ -1574,6 +1582,148 @@ async function main() {
                 'the waveform still reached the bridge',
                 bridge.configs.some((c) => c.bias && c.bias.type === 'sine')
             );
+        }
+    }
+
+    console.log('\n=== closed-loop teardown: STOP mid-run must not leak the bias ===');
+    {
+        // THE BUG (found on the bench): pressing STOP during a closed-loop trial skips
+        // stopClosedLoop entirely, so the runner used to leave the bridge streaming
+        // frames AND integrating the bias — whose phase clock kept running. The next
+        // run then inherited a stale, already-drifted disturbance until some condition
+        // happened to push a new one.
+        const makeFakeBridge = () => ({
+            logging: true,
+            configs: [],
+            logs: [],
+            applyStates: [],
+            _bias: null,
+            connect() {},
+            disconnect() {},
+            setApply(on) {
+                this.applyStates.push(!!on);
+            },
+            setConfig(cfg) {
+                this.configs.push(cfg);
+                if (cfg.bias) this._bias = cfg.bias; // mirror the real client's state
+            },
+            get bias() {
+                return this._bias;
+            },
+            log(obj) {
+                this.logs.push(obj);
+            }
+        });
+        const clCondition = {
+            name: 'cl',
+            commands: [
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    mode: 3,
+                    frame_rate: 0,
+                    gain: 0,
+                    frame_index: 0,
+                    duration: 5,
+                    pattern: 'p'
+                },
+                {
+                    type: 'plugin',
+                    plugin_name: 'fictrac',
+                    command_name: 'startClosedLoop',
+                    params: { gain: 1.8, bias_type: 'constant', bias_amplitude: 90 }
+                },
+                { type: 'wait', duration: 5 },
+                { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' }
+            ]
+        };
+        const runArgs = (bridge, runner, sleep) => ({
+            steps: [{ kind: 'ref', conditionName: 'cl', label: 'cl', seqIdx: 0, dur: 5 }],
+            conditionsByName: new Map([['cl', clCondition]]),
+            resolvePatternId: () => 1,
+            resolvePatternFrames: (cmd) => (cmd.command_name === 'trialParams' ? 200 : null),
+            fictracPluginNames: new Set(['fictrac']),
+            sleep
+        });
+
+        // --- stop() mid-wait (the STOP button) ---------------------------------
+        {
+            const bridge = makeFakeBridge();
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, bridge);
+            // Abort from inside the trial's wait, exactly like pressing STOP.
+            const sleep = () => {
+                runner.stop();
+                return Promise.resolve();
+            };
+            const summary = await runner.runSequence(runArgs(bridge, runner, sleep));
+            checkBool('run reports aborted', summary.aborted === true, JSON.stringify(summary));
+            // The bias must be cleared even though stopClosedLoop never ran.
+            checkBool(
+                'bias cleared on abort (never reached stopClosedLoop)',
+                bridge.bias && bridge.bias.type === 'none',
+                JSON.stringify(bridge.bias)
+            );
+            // ...and the bridge must stop driving the arena.
+            check(
+                'apply ends disabled on abort',
+                bridge.applyStates[bridge.applyStates.length - 1],
+                false
+            );
+
+            // Now the reported symptom: the NEXT run must not inherit the old waveform.
+            // Re-run with a condition that authors NO bias at all.
+            const noBias = JSON.parse(JSON.stringify(clCondition));
+            noBias.commands[1].params = { gain: 1.8 }; // no bias_* keys
+            bridge.configs.length = 0;
+            await runner.runSequence({
+                ...runArgs(bridge, runner, () => Promise.resolve()),
+                conditionsByName: new Map([['cl', noBias]])
+            });
+            const started = bridge.configs.find((c) => c.frames === 200);
+            checkBool(
+                'a bias-free condition pushes an EXPLICIT none (self-describing)',
+                started && started.bias && started.bias.type === 'none',
+                JSON.stringify(started)
+            );
+            checkBool(
+                'no stale waveform survived into the second run',
+                !bridge.configs.some((c) => c.bias && c.bias.type !== 'none'),
+                JSON.stringify(bridge.configs)
+            );
+        }
+
+        // --- abort()/_clear() (involuntary disconnect) -------------------------
+        // The serial link is gone, but the BRIDGE socket is independent — so the
+        // closed loop can and must still be torn down.
+        {
+            const bridge = makeFakeBridge();
+            bridge.setConfig({ bias: { type: 'sine', amplitude: 90, frequency: 0.5 } });
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, bridge);
+            runner.abort();
+            checkBool(
+                'abort() clears the bias with no link',
+                bridge.bias && bridge.bias.type === 'none',
+                JSON.stringify(bridge.bias)
+            );
+            check('abort() disables apply', bridge.applyStates.pop(), false);
+        }
+
+        // --- a bridge-CLI bias (--bias-type) is NOT stomped --------------------
+        // Teardown clears what the CLIENT installed; a deliberate operator default
+        // set on the bridge process has no client-side bias, so nothing is pushed.
+        {
+            const bridge = makeFakeBridge(); // _bias stays null = client knows of none
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, bridge);
+            runner.abort();
+            check('no bias config pushed when the client has none', bridge.configs.length, 0);
+            check('apply still disabled', bridge.applyStates.pop(), false);
+        }
+
+        // --- no bridge at all: teardown must not throw -------------------------
+        {
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, null);
+            runner.abort();
+            checkBool('teardown is a no-op without a bridge', true);
         }
     }
 

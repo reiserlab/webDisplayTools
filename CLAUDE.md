@@ -263,7 +263,13 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   bridge `BIAS_TYPES`, runner `BIAS_TYPES`, registry `bias_type.options` — and a
   registry test pins them equal; (2) `stopClosedLoop` MUST push
   `bias:{type:'none'}` or the waveform keeps accumulating into the frame index
-  through later trials; (3) `bias` is the one OBJECT-valued key in
+  through later trials — and because a mid-trial STOP never REACHES it, the loop
+  is torn down twice over: `_clearClosedLoop()` (setApply(false) + bias none) is
+  called from ALL THREE teardown paths (`runSequence` finally, `stop()`,
+  `_clear()`/`abort()`, symmetric with `_clearLedActivator()`) and
+  `startClosedLoop` ALWAYS carries an explicit bias so an epoch can never inherit
+  a stale one. Call `_clearClosedLoop()` from any NEW teardown path;
+  (3) `bias` is the one OBJECT-valued key in
   `FicTracBridgeClient.setConfig`, whose scalar keys gate on `Number.isFinite`;
   (4) never widen `BEHAVIOR_V1_COLS` to log it — the per-frame `bias` on the
   WebSocket is display-only, and offline reconstruction uses the `bias_config`

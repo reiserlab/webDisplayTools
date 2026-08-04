@@ -120,6 +120,30 @@ trial to trial.
 integrates from its own phase clock, so a waveform left installed would keep
 accumulating into the frame index through every following trial.
 
+### Two guards, because `stopClosedLoop` only runs on the happy path
+
+A STOP pressed mid-trial aborts the sequence, so `stopClosedLoop` never executes.
+Found on the bench (2026-08-04): that left the bias installed *and* its phase clock
+running, so the next run inherited a stale, already-drifted disturbance until some
+condition happened to push a new one — and separately left the bridge still streaming
+`SET_FRAME_POSITION` at the arena after STOP. Two independent guards now cover it:
+
+1. **Every teardown path clears the closed loop.** `ArenaRunner._clearClosedLoop()`
+   does `setApply(false)` plus a `bias: {type:'none'}` push, and is called from all
+   three teardown paths, symmetric with `_clearLedActivator()`: `runSequence`'s
+   `finally` (normal end *and* abort unwind), `stop()` (the STOP button), and
+   `_clear()`/`abort()` (involuntary disconnect). It is bridge-only, so it still works
+   when the serial link is already gone. It clears the bias only when the *client* has
+   one installed, so a bias set on the bridge's own CLI (`--bias-type`) survives a run
+   instead of being silently stomped by it.
+2. **Every closed-loop epoch is self-describing.** `startClosedLoop` always carries a
+   bias in its IR — `{type:'none'}` when the condition authors none — so it can never
+   inherit whatever the bridge still had installed. Same reasoning as `duty` in
+   `buildTrialParams`: relying on someone else having cleared state leaks one trial's
+   settings into the next.
+
+When adding any new run-teardown path, call `_clearClosedLoop()` from it.
+
 ## Validation policy
 
 | Input | Result |
