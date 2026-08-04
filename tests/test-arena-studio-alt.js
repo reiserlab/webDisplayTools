@@ -585,7 +585,13 @@ check(
         alt.includes("const ALT_BUILD_STAMP = '2026-07-13 18:55 ET';") &&
         alt.includes("stampNode.nodeValue = ALT_TOOL_VERSION + ' | ' + ALT_BUILD_STAMP + ' · ';") &&
         alt.includes('Studio.TOOL_VERSION = ALT_TOOL_VERSION;') &&
-        studio.includes('Arena Studio v0.69 | 2026-07-21 16:46 ET')
+        // Classic keeps its OWN footer identity — matched by SHAPE, not by a pinned
+        // version string. CLAUDE.md requires the Classic footer version + ET stamp to be
+        // bumped on every edit, so pinning "v0.69 | 2026-07-21 16:46 ET" here made this
+        // guard fail on every unrelated Studio change. What actually matters is that
+        // Classic's footer is a Classic one (never the Alt string).
+        /Arena Studio v[0-9.]+ \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET/.test(studio) &&
+        !studio.includes('Arena Studio Alt v')
 );
 
 console.log('=== scoped presentation ===');

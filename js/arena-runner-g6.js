@@ -313,6 +313,81 @@ var ArenaRunnerG6 = (function () {
         return { level, hysteresis, on_ranges: ranges };
     }
 
+    // ---- closed-loop bias waveform (LAB-185) ------------------------------
+    //
+    // A disturbance added to the FicTrac closed loop so the display keeps moving
+    // even when the fly is still — the stimulus for disturbance-rejection
+    // experiments. Authored as an added rotational VELOCITY (deg/s peak); the
+    // BRIDGE integrates it analytically and folds the resulting angle into its
+    // heading→frame-index mapping (fictrac-bridge/bridge.py bias_angle_deg).
+    // The runner's only job is to validate the spec and push it as bridge config.
+    //
+    // Spec (on the fictrac plugin's `startClosedLoop` params):
+    //   bias_type       'none' | 'constant' | 'sine' | 'square'
+    //   bias_amplitude  peak angular velocity, deg/s (negative reverses direction)
+    //   bias_frequency  Hz — sine/square only, ignored by constant/none
+    const BIAS_TYPES = ['none', 'constant', 'sine', 'square'];
+
+    // Validate + normalize the bias params of a startClosedLoop command. Returns
+    // { bias, warning } — `bias` is null when no waveform was authored (so the IR
+    // stays byte-identical to the pre-bias shape), `warning` is a string or null.
+    // THROWS (clear message) on malformed input so translateCommand turns it into a
+    // skip-this-step {op:'error'} rather than a silent no-op at the bridge.
+    function normalizeBias(params) {
+        const p = params || {};
+        if (p.bias_type === undefined || p.bias_type === null || p.bias_type === '') {
+            return { bias: null, warning: null };
+        }
+        const type = String(p.bias_type).trim().toLowerCase();
+        if (BIAS_TYPES.indexOf(type) < 0) {
+            throw new Error(
+                'bias_type must be one of ' +
+                    BIAS_TYPES.join('/') +
+                    ', got ' +
+                    JSON.stringify(p.bias_type)
+            );
+        }
+        if (type === 'none') return { bias: null, warning: null };
+
+        // toNumber coerces string YAML scalars and THROWS on anything non-finite
+        // (NaN/Infinity included), which is the non-finite rejection — no extra guard.
+        // '' is what a blank designer field yields: treat as unset, like `duty` does.
+        const amplitude =
+            p.bias_amplitude === undefined || p.bias_amplitude === ''
+                ? 0
+                : toNumber(p.bias_amplitude, 'bias_amplitude');
+        const frequency =
+            p.bias_frequency === undefined || p.bias_frequency === ''
+                ? 0
+                : toNumber(p.bias_frequency, 'bias_frequency');
+
+        let warning = null;
+        if (type === 'sine' || type === 'square') {
+            // 0 Hz is the divide-by-ω case: the bridge would defensively return a 0
+            // bias, which looks exactly like "the disturbance didn't work". Fail the
+            // step instead, where the author gets told why.
+            if (frequency === 0) {
+                throw new Error(
+                    'bias_frequency must be non-zero for bias_type ' +
+                        type +
+                        ' (0 Hz has no period — use bias_type constant for a steady drift)'
+                );
+            }
+            // A negative frequency is well-defined but a NO-OP: both waveforms have a
+            // cosine velocity, which is even in ω, so f and −f are identical. Run it,
+            // but say so — the author probably meant to reverse the direction.
+            if (frequency < 0) {
+                warning =
+                    'bias_frequency ' +
+                    frequency +
+                    ' Hz is treated as ' +
+                    Math.abs(frequency) +
+                    ' Hz (the waveform is even in frequency) — negate bias_amplitude to reverse direction';
+            }
+        }
+        return { bias: { type, amplitude, frequency }, warning };
+    }
+
     // Build a STATEFUL evaluator from a normalized spec. step(index) returns
     // { on, changed } — `changed` is true only when the ON/OFF state flips, so
     // the caller sends an LED command only on transitions. Baseline is OFF
@@ -494,7 +569,9 @@ var ArenaRunnerG6 = (function () {
      *   { op:'wait', durationSec }
      *   { op:'logMessage', message, level }          // built-in log plugin → bridge log
      *   { op:'fictracConnect' | 'fictracDisconnect' }        // FicTrac bridge lifecycle
-     *   { op:'fictracApply', on, gain }              // start/stop Mode-3 closed-loop
+     *   { op:'fictracApply', on, gain, bias, warning } // start/stop Mode-3 closed-loop
+     *          bias: {type, amplitude, frequency} disturbance waveform, or null when
+     *          none was authored; stopClosedLoop always carries {type:'none'} to clear it
      *   { op:'skip', reason, plugin_name, command_name }   // other plugin → not driveable
      *   { op:'error', reason }                              // unsupported / malformed
      */
@@ -532,14 +609,29 @@ var ArenaRunnerG6 = (function () {
                         return { op: 'fictracConnect' };
                     case 'disconnect':
                         return { op: 'fictracDisconnect' };
-                    case 'startClosedLoop':
+                    case 'startClosedLoop': {
+                        let bias, warning;
+                        try {
+                            // Validated HERE (not at apply time) so a malformed bias skips
+                            // this step via {op:'error'} instead of silently no-op'ing at
+                            // the bridge, where it would read as "the disturbance failed".
+                            ({ bias, warning } = normalizeBias(params));
+                        } catch (e) {
+                            return { op: 'error', reason: e.message };
+                        }
                         return {
                             op: 'fictracApply',
                             on: true,
-                            gain: Number.isFinite(Number(params.gain)) ? Number(params.gain) : null
+                            gain: Number.isFinite(Number(params.gain)) ? Number(params.gain) : null,
+                            bias: bias,
+                            warning: warning
                         };
+                    }
                     case 'stopClosedLoop':
-                        return { op: 'fictracApply', on: false };
+                        // Clear the bias too: the bridge integrates from its own phase
+                        // clock, so a waveform left installed would keep accumulating into
+                        // the frame index through every following trial.
+                        return { op: 'fictracApply', on: false, bias: { type: 'none' } };
                     default:
                         return {
                             op: 'skip',
@@ -1343,15 +1435,23 @@ var ArenaRunnerG6 = (function () {
                     return;
                 case 'fictracApply':
                     if (this._bridge) {
-                        if (ir.on) {
-                            const cfg = {};
-                            if (Number.isFinite(acc.fictracFrames)) cfg.frames = acc.fictracFrames;
-                            if (ir.gain != null) cfg.gain = ir.gain;
-                            if (Object.keys(cfg).length) this._bridge.setConfig(cfg);
-                            this._bridge.setApply(true);
-                        } else {
-                            this._bridge.setApply(false);
-                        }
+                        // One setConfig carries frames + gain + bias: the bridge re-zeros
+                        // its bias PHASE clock on any config message containing `bias`, so
+                        // pushing it here makes every closed-loop epoch start at phase 0.
+                        const cfg = {};
+                        if (ir.on && Number.isFinite(acc.fictracFrames))
+                            cfg.frames = acc.fictracFrames;
+                        if (ir.on && ir.gain != null) cfg.gain = ir.gain;
+                        if (ir.bias) cfg.bias = ir.bias;
+                        if (Object.keys(cfg).length) this._bridge.setConfig(cfg);
+                        this._bridge.setApply(!!ir.on);
+                    }
+                    if (ir.warning) {
+                        // A warning is NOT a skip — the step ran. Its own phase keeps
+                        // summary.skipped honest while still surfacing in the run log.
+                        if (this._bridge)
+                            this._bridge.log({ event: 'warn', message: ir.warning, level: 'WARN' });
+                        emit({ phase: 'warn', index, step, op: ir.op, reason: ir.warning });
                     }
                     emit({ phase: 'command', index, step, op: ir.op, value: !!ir.on });
                     return;
@@ -1395,6 +1495,7 @@ var ArenaRunnerG6 = (function () {
         LED_OFF_MV, // BuckPuck "LED dark" analog level (mV) — the scope's on/off threshold
         ledPercentToMv, // BuckPuck brightness % → AO control voltage (mV); 0% → LED_OFF_MV
         normalizeLedActivation, // validate/normalize a trialParams led_activation spec (throws on bad)
+        normalizeBias, // validate/normalize startClosedLoop bias params → {bias, warning} (throws on bad)
         makeLedActivator, // pure stateful index→ON/OFF evaluator with hysteresis
         ArenaRunner
     };

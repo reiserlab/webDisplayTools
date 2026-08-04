@@ -35,6 +35,18 @@ function check(name, got, expected) {
     if (!ok) failures++;
 }
 
+// check() compares with === , so it cannot compare objects/arrays. Use this for
+// those (JSON-shape equality, so key ORDER matters — which is what we want when
+// pinning a wire/IR shape).
+function checkDeep(name, got, expected) {
+    totalChecks++;
+    const g = JSON.stringify(got);
+    const e = JSON.stringify(expected);
+    const ok = g === e;
+    console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name}: got ${g}, expected ${e}`);
+    if (!ok) failures++;
+}
+
 function checkBool(name, ok, info) {
     totalChecks++;
     console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name}${info ? ' — ' + info : ''}`);
@@ -1160,7 +1172,12 @@ async function main() {
         check('startClosedLoop -> fictracApply', scl.op, 'fictracApply');
         checkBool('startClosedLoop on=true', scl.on === true);
         check('startClosedLoop carries gain override', scl.gain, 3.6);
+        check('no bias authored -> bias null', scl.bias, null);
         check('stopClosedLoop -> on=false', t('stopClosedLoop').on, false);
+        // stopClosedLoop MUST clear the bias: the bridge integrates from its own phase
+        // clock, so a waveform left installed keeps skewing the frame index through
+        // every following trial.
+        checkDeep('stopClosedLoop clears the bias', t('stopClosedLoop').bias, { type: 'none' });
         // recording was removed from the fictrac plugin: it now falls through to
         // the unknown-command skip (driving the arena is the only real command).
         check('removed startRecording -> skip', t('startRecording').op, 'skip');
@@ -1195,6 +1212,135 @@ async function main() {
                 { fictracPluginNames: fic }
             ).op,
             'skip'
+        );
+    }
+
+    console.log('\n=== closed-loop bias: normalizeBias + translateCommand (LAB-185) ===');
+    {
+        const fic = new Set(['fictrac']);
+        const scl = (params) =>
+            Runner.translateCommand(
+                {
+                    type: 'plugin',
+                    plugin_name: 'fictrac',
+                    command_name: 'startClosedLoop',
+                    params
+                },
+                { fictracPluginNames: fic }
+            );
+
+        // --- happy paths: the spec reaches the IR normalized -------------------
+        check(
+            'bias_type omitted -> null (IR shape unchanged)',
+            Runner.normalizeBias({}).bias,
+            null
+        );
+        check('bias_type none -> null', Runner.normalizeBias({ bias_type: 'none' }).bias, null);
+        check(
+            'bias_type "" -> null (blank designer field)',
+            Runner.normalizeBias({ bias_type: '' }).bias,
+            null
+        );
+        checkDeep(
+            'constant normalizes',
+            Runner.normalizeBias({ bias_type: 'constant', bias_amplitude: 90 }).bias,
+            {
+                type: 'constant',
+                amplitude: 90,
+                frequency: 0
+            }
+        );
+        checkDeep(
+            'sine normalizes',
+            Runner.normalizeBias({ bias_type: 'sine', bias_amplitude: 90, bias_frequency: 0.5 })
+                .bias,
+            { type: 'sine', amplitude: 90, frequency: 0.5 }
+        );
+        // YAML parsers can hand back string scalars — coerce like the rest of the runner.
+        checkDeep(
+            'string scalars coerced',
+            Runner.normalizeBias({ bias_type: 'square', bias_amplitude: '45', bias_frequency: '2' })
+                .bias,
+            { type: 'square', amplitude: 45, frequency: 2 }
+        );
+        check(
+            'bias_type is case/space tolerant',
+            Runner.normalizeBias({ bias_type: '  Sine ', bias_amplitude: 1, bias_frequency: 1 })
+                .bias.type,
+            'sine'
+        );
+        check(
+            'negative amplitude kept (that is how you reverse direction)',
+            Runner.normalizeBias({ bias_type: 'constant', bias_amplitude: -90 }).bias.amplitude,
+            -90
+        );
+
+        const biased = scl({
+            gain: 1.8,
+            bias_type: 'sine',
+            bias_amplitude: 90,
+            bias_frequency: 0.5
+        });
+        checkDeep('startClosedLoop carries the bias into the IR', biased.bias, {
+            type: 'sine',
+            amplitude: 90,
+            frequency: 0.5
+        });
+        check('bias does not disturb the gain override', biased.gain, 1.8);
+        check('no warning on a clean spec', biased.warning, null);
+
+        // --- FAIL the step (not the run) on a malformed spec -------------------
+        // Mirrors the `duty` precedent: {op:'error'} skips this step with a message
+        // instead of aborting the sequence or silently no-op'ing at the bridge.
+        const bad = scl({ bias_type: 'triangle' });
+        check('unknown bias_type -> error', bad.op, 'error');
+        checkBool(
+            'unknown bias_type names the legal values',
+            /none\/constant\/sine\/square/.test(bad.reason),
+            bad.reason
+        );
+        // 0 Hz is the divide-by-ω case. The bridge would defensively return a 0 bias,
+        // which reads as "the disturbance didn't work" — so fail loudly here instead.
+        const zeroHz = scl({ bias_type: 'sine', bias_amplitude: 90, bias_frequency: 0 });
+        check('sine at 0 Hz -> error', zeroHz.op, 'error');
+        checkBool('0 Hz error suggests constant', /constant/.test(zeroHz.reason), zeroHz.reason);
+        check(
+            'square at 0 Hz -> error',
+            scl({ bias_type: 'square', bias_amplitude: 90, bias_frequency: 0 }).op,
+            'error'
+        );
+        check(
+            'sine with bias_frequency omitted -> error (defaults to 0)',
+            scl({ bias_type: 'sine', bias_amplitude: 90 }).op,
+            'error'
+        );
+        check(
+            'non-numeric amplitude -> error',
+            scl({ bias_type: 'constant', bias_amplitude: 'lots' }).op,
+            'error'
+        );
+        check(
+            'non-numeric frequency -> error',
+            scl({ bias_type: 'sine', bias_amplitude: 90, bias_frequency: 'fast' }).op,
+            'error'
+        );
+
+        // --- 0 Hz is FINE for constant (there is no period to divide by) -------
+        const const0 = scl({ bias_type: 'constant', bias_amplitude: 90, bias_frequency: 0 });
+        check('constant ignores bias_frequency 0', const0.op, 'fictracApply');
+        check('constant needs no frequency', const0.bias.type, 'constant');
+
+        // --- WARN but still run on a negative frequency ------------------------
+        // It is well-defined yet a no-op (both velocities are cosines, even in ω), so
+        // the author probably meant to negate the amplitude. Run it, and say so.
+        const negF = scl({ bias_type: 'sine', bias_amplitude: 90, bias_frequency: -0.5 });
+        check('negative frequency still runs', negF.op, 'fictracApply');
+        check('negative frequency preserved verbatim in the IR', negF.bias.frequency, -0.5);
+        checkBool('negative frequency warns', typeof negF.warning === 'string', negF.warning);
+        checkBool(
+            'the warning points at bias_amplitude',
+            /bias_amplitude/.test(negF.warning),
+            negF.warning
         );
     }
 
@@ -1295,6 +1441,140 @@ async function main() {
         check('no skips (fictrac + log executed)', summary.skipped, 0);
         check('no errors', summary.errors, 0);
         check('closed-loop timing = 2s (fictrac ops add no time)', slept, 2000);
+    }
+
+    console.log('\n=== closed-loop bias: runSequence pushes it to the bridge ===');
+    {
+        const makeFakeBridge = () => ({
+            logging: true,
+            configs: [],
+            logs: [],
+            applyStates: [],
+            connect() {},
+            disconnect() {},
+            setApply(on) {
+                this.applyStates.push(!!on);
+            },
+            setConfig(cfg) {
+                this.configs.push(cfg);
+            },
+            log(obj) {
+                this.logs.push(obj);
+            }
+        });
+        const clCondition = (params) => ({
+            name: 'cl',
+            commands: [
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    mode: 3,
+                    frame_rate: 0,
+                    gain: 0,
+                    frame_index: 0,
+                    duration: 2,
+                    pattern: 'p'
+                },
+                {
+                    type: 'plugin',
+                    plugin_name: 'fictrac',
+                    command_name: 'startClosedLoop',
+                    params
+                },
+                { type: 'wait', duration: 2 },
+                { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' }
+            ]
+        });
+        const runCl = async (params) => {
+            const bridge = makeFakeBridge();
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, bridge);
+            const events = [];
+            let slept = 0;
+            const summary = await runner.runSequence({
+                steps: [{ kind: 'ref', conditionName: 'cl', label: 'cl', seqIdx: 0, dur: 2 }],
+                conditionsByName: new Map([['cl', clCondition(params)]]),
+                resolvePatternId: () => 1,
+                resolvePatternFrames: (cmd) => (cmd.command_name === 'trialParams' ? 200 : null),
+                fictracPluginNames: new Set(['fictrac']),
+                onProgress: (s) => events.push(s),
+                sleep: (ms) => {
+                    slept += ms;
+                    return Promise.resolve();
+                }
+            });
+            return { bridge, summary, events, slept };
+        };
+
+        {
+            const { bridge, summary, slept } = await runCl({
+                gain: 1.8,
+                bias_type: 'sine',
+                bias_amplitude: 90,
+                bias_frequency: 0.5
+            });
+            // ONE setConfig must carry frames + gain + bias together: the bridge re-zeros
+            // its bias phase clock on any config containing `bias`, so bundling them is
+            // what makes each epoch start at phase 0.
+            const start = bridge.configs.find((c) => c.bias && c.bias.type === 'sine');
+            checkBool('startClosedLoop pushed the bias', !!start, JSON.stringify(bridge.configs));
+            check('bias rides with frames', start.frames, 200);
+            check('bias rides with gain', start.gain, 1.8);
+            checkDeep('bias spec pushed intact', start.bias, {
+                type: 'sine',
+                amplitude: 90,
+                frequency: 0.5
+            });
+            // ...and stopClosedLoop must clear it, or it leaks into later trials.
+            const stop = bridge.configs.find((c) => c.bias && c.bias.type === 'none');
+            checkBool('stopClosedLoop pushed bias none', !!stop, JSON.stringify(bridge.configs));
+            checkBool(
+                'the clear comes after the start',
+                bridge.configs.indexOf(stop) > bridge.configs.indexOf(start)
+            );
+            check('no errors', summary.errors, 0);
+            check('no skips', summary.skipped, 0);
+            check('bias adds no time to the trial', slept, 2000);
+        }
+
+        {
+            // A malformed bias must skip its STEP, not abort the run, and must never
+            // reach the bridge as a silently-degraded no-op.
+            const { bridge, summary } = await runCl({ gain: 1.8, bias_type: 'triangle' });
+            check('bad bias -> one error', summary.errors, 1);
+            checkBool(
+                'bad bias never pushed a bias config',
+                !bridge.configs.some((c) => c.bias && c.bias.type !== 'none'),
+                JSON.stringify(bridge.configs)
+            );
+            checkBool('run still completed the rest of the sequence', summary.completed !== false);
+        }
+
+        {
+            // A negative frequency runs, but emits a 'warn' event (its own phase — NOT
+            // 'skip', which would inflate summary.skipped) and a bridge log line.
+            const { bridge, summary, events } = await runCl({
+                gain: 1.8,
+                bias_type: 'sine',
+                bias_amplitude: 90,
+                bias_frequency: -0.5
+            });
+            check('negative frequency is not an error', summary.errors, 0);
+            check('negative frequency is not counted as a skip', summary.skipped, 0);
+            checkBool(
+                "emitted a 'warn' phase event",
+                events.some((e) => e.phase === 'warn' && /bias_amplitude/.test(e.reason || '')),
+                JSON.stringify(events.filter((e) => e.phase === 'warn'))
+            );
+            checkBool(
+                'warning also written to the bridge log',
+                bridge.logs.some((l) => l.event === 'warn'),
+                JSON.stringify(bridge.logs)
+            );
+            checkBool(
+                'the waveform still reached the bridge',
+                bridge.configs.some((c) => c.bias && c.bias.type === 'sine')
+            );
+        }
     }
 
     console.log('\n=== Summary ===');

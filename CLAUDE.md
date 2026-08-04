@@ -251,6 +251,23 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   when adding encoders/decoders, add them to the export list AND a test; audit
   with `Object.keys(require('./js/arena-wire-g6.js'))` vs the page's `Wire.*`
   uses (a missing export throws silently inside async handlers).
+- **Closed-loop bias (LAB-185):** a disturbance waveform added to the FicTrac
+  closed loop so the display moves even when the fly is still. Authored
+  per-condition on the `fictrac` plugin's `startClosedLoop`
+  (`bias_type`/`bias_amplitude`/`bias_frequency`) — deliberately NOT in the
+  plugin's `configFields` and NOT a Console input, so there is one source of
+  truth. The MATH lives in the bridge (`bias_angle_deg` in
+  `fictrac-bridge/bridge.py`, pure + Python-tested); the runner only validates
+  (`normalizeBias` → `{bias, warning}`) and pushes it as bridge config. GOTCHAS:
+  (1) the `none|constant|sine|square` vocabulary is declared in THREE places —
+  bridge `BIAS_TYPES`, runner `BIAS_TYPES`, registry `bias_type.options` — and a
+  registry test pins them equal; (2) `stopClosedLoop` MUST push
+  `bias:{type:'none'}` or the waveform keeps accumulating into the frame index
+  through later trials; (3) `bias` is the one OBJECT-valued key in
+  `FicTracBridgeClient.setConfig`, whose scalar keys gate on `Number.isFinite`;
+  (4) never widen `BEHAVIOR_V1_COLS` to log it — the per-frame `bias` on the
+  WebSocket is display-only, and offline reconstruction uses the `bias_config`
+  log event. Full spec: `docs/development/closed-loop-bias.md`.
 - URL state ([#107](https://github.com/reiserlab/webDisplayTools/issues/107),
   read+write): `js/studio-url-state.js` (`mode` ∈ run|edit|console; a shared
   `p` forces `edit`→Run on fresh loads, never `console`). Write side:

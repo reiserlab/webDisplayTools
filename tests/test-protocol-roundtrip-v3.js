@@ -4397,6 +4397,59 @@ console.log('\n--- Suite 36: trialParams led_activation (conditional LED) ---');
     );
 }
 
+// ─── Suite 37: closed-loop bias params on startClosedLoop (LAB-185) ─────────
+// The bias/disturbance waveform is authored as three params on the `fictrac`
+// plugin's startClosedLoop command. Nothing in protocol-yaml-v3.js knows about
+// them by name — plugin `params` is a whitelisted, deep-cloned free-form mapping —
+// so this suite PINS that assumption instead of trusting it, and closes a real
+// coverage gap: v3_fictrac_closed_loop.yaml matches the CI path filter but was
+// previously loaded by no test at all.
+console.log('\n--- Suite 37: startClosedLoop bias params (closed-loop disturbance) ---');
+{
+    const text = readFixture('v3_fictrac_closed_loop.yaml');
+    const exp = parseV3Protocol(text);
+
+    const byName = (n) => exp.conditions.find((c) => c.name === n);
+    const biasCond = byName('closed_loop_bias_sine');
+    checkTrue('37.1: the bias condition parses', !!biasCond);
+    const scl = biasCond.commands.find((c) => c.command_name === 'startClosedLoop');
+    checkTrue('37.2: startClosedLoop command found', !!scl);
+    check('37.3: bias_type parses', scl.params.bias_type, 'sine');
+    check('37.4: bias_amplitude parses (deg/s peak)', scl.params.bias_amplitude, 90);
+    check('37.5: bias_frequency parses', scl.params.bias_frequency, 0.5);
+    check('37.6: the gain override still parses alongside', scl.params.gain, 1.8);
+    checkTrue(
+        '37.7: bias params are NOT swallowed into _unknownKeys',
+        !(scl._unknownKeys && 'params' in scl._unknownKeys)
+    );
+    // The plain closed-loop condition must stay bias-free — no default injection.
+    const plain = byName('closed_loop_rotation');
+    const plainScl = plain.commands.find((c) => c.command_name === 'startClosedLoop');
+    checkTrue('37.8: omitting bias leaves it absent', plainScl.params.bias_type === undefined);
+
+    const regen = generateV3Protocol(exp);
+    checkTrue('37.9: bias_type survives regen YAML', /bias_type:/.test(regen));
+    checkTrue('37.10: bias_amplitude survives regen', /bias_amplitude:/.test(regen));
+    checkTrue('37.11: bias_frequency survives regen', /bias_frequency:/.test(regen));
+    const exp2 = parseV3Protocol(regen);
+    const scl2 = exp2.conditions
+        .find((c) => c.name === 'closed_loop_bias_sine')
+        .commands.find((c) => c.command_name === 'startClosedLoop');
+    check('37.12: re-parse bias_type matches', scl2.params.bias_type, 'sine');
+    check('37.13: re-parse bias_amplitude matches', scl2.params.bias_amplitude, 90);
+    check('37.14: re-parse bias_frequency matches', scl2.params.bias_frequency, 0.5);
+    check('37.15: no blocking errors', collectBlockingErrors(exp).errors.length, 0);
+
+    // The designer builds its param editors from the registry schema, so the three
+    // fields must be discoverable through the same lookup the UI uses.
+    const sch = getV3CommandParams(exp, 'plugin', 'fictrac', 'startClosedLoop');
+    checkTrue('37.16: bias_type in schema', !!sch.bias_type);
+    check('37.17: bias_type renders as a select', sch.bias_type.type, 'select');
+    checkTrue('37.18: bias_amplitude in schema', !!sch.bias_amplitude);
+    checkTrue('37.19: bias_frequency in schema', !!sch.bias_frequency);
+    check('37.20: bias_frequency default is 1, not the illegal 0', sch.bias_frequency.default, 1);
+}
+
 // ─── Results ────────────────────────────────────────────────────────────────
 console.log('\n=== Results: ' + passedTests + '/' + totalTests + ' passed ===');
 if (failedTests.length > 0) {
