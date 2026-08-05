@@ -12,8 +12,10 @@ history lives here. Newest first. (Per-session engineering detail stays in
   see how the fly counter-turns to null it. Set it per condition in Edit → the
   condition's **Start closed-loop** command, which grows three fields:
   - **Bias waveform** — None, Constant (steady drift), Sine, or Square.
-  - **Bias amplitude (deg/s, peak)** — how fast the display is pushed. Negative
-    reverses the direction.
+  - **Bias amplitude (deg/s, peak)** — how fast the display is pushed. A
+    **positive** amplitude turns the display **clockwise** (equivalently, the
+    pattern sweeps rightward across the fly's view); negative turns it
+    counter-clockwise. Confirmed on the arena.
   - **Bias frequency (Hz)** — for Sine and Square only; Constant ignores it.
 - **Constant** drifts the display steadily in one direction. **Sine** and
   **Square** push it equally left and right around the frame it started on, so
@@ -32,9 +34,12 @@ history lives here. Newest first. (Per-session engineering detail stays in
 - A ready-made sweep of all four waveforms ships as **FicTrac closed-loop
   bias/disturbance test** in File ▾ → Open from library.
 - Needs an updated FicTrac bridge (`pixi run bridge`, reports version 2.1 or
-  later) — the bias is computed there. An older bridge simply ignores it.
-- Bench-validated end to end against the bridge, but **not yet run on an arena
-  with a fly.**
+  later) — the bias is computed there. An older bridge simply ignores it (verified:
+  a stale bridge keeps streaming normally, it just applies no disturbance).
+- **Validated on arena hardware.** A full 8-condition run drove a real controller
+  and the recorded log matches the intended frame index on every one of its 328,733
+  frames; the rotation direction was checked by eye. Not yet used in an experiment
+  with a behaving fly.
 
 ## v0.69 (2026-07-21) · ISP batch retries a failed panel twice
 

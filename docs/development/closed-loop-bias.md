@@ -1,9 +1,18 @@
 # Closed-loop bias waveforms (LAB-185)
 
-**Status:** implemented, unit- and end-to-end-tested against the real bridge over a
-real WebSocket. **Not yet bench-validated on an arena with a fly.** Web-only —
-MATLAB has no `FicTracPlugin` (its closed loop is analog Mode 4, computed on the
-controller, where the host cannot inject anything).
+**Status: bench-validated on arena hardware (2026-08-04).** A full 8-condition run of
+`protocols/fictrac_bias_test.yaml` drove a real G6 controller (32,499
+`SET_FRAME_POSITION` commands) and the log reproduces
+`round((heading + bias)/gain) mod 200` for all 328,733 frame rows — 4 mismatches
+(0.0012%), all ±1 frame from millisecond rounding. `constant 90 deg/s` measured
+50.0 frames/s = 90.0 deg/s = one revolution per 4.00 s; every waveform's amplitude
+matched prediction exactly; `b(0) = 0` at all 16 epoch onsets. The rotation direction
+was confirmed by eye (see below).
+
+Still untested: an actual **behaving-fly experiment** (the validation run used a moving
+ball, but nothing depended on the fly's behaviour). Web-only — MATLAB has no
+`FicTracPlugin` (its closed loop is analog Mode 4, computed on the controller, where
+the host cannot inject anything).
 
 ## What it is and why
 
@@ -59,6 +68,22 @@ idx = round((heading_deg + offset + b(t)) / gain) mod n_frames
 
 So a positive `bias_amplitude` moves the display the same direction as increasing fly
 heading, and a **negative `gain` reverses the bias along with the fly coupling**.
+
+### On-arena direction (confirmed by eye, 2026-08-04)
+
+With a **positive `gain`** (the normal 1.8) on the fly-on-ball rig:
+
+| `bias_amplitude` | Viewed from above | From the fly's point of view |
+| --- | --- | --- |
+| **positive** | **clockwise** | pattern sweeps **rightward** across the visual field |
+| **negative** | counter-clockwise | pattern sweeps leftward |
+
+Both descriptions agree on this rig geometry, so either phrasing is safe to use.
+
+**This is the sign an analysis must assume.** Get it backwards and an apparent
+disturbance-rejection response inverts: a fly correctly counter-turning against a
+clockwise disturbance would read as following it. Note the qualifier — a negative
+`gain` flips the table, because the bias is divided by `gain` along with the heading.
 
 **To reverse the disturbance, negate `bias_amplitude`.** Negating `bias_frequency` is
 a **no-op**: both velocity waveforms are cosines, which are even in `ω`. (For the
@@ -222,9 +247,19 @@ pins all three to the same list — keep them in step.
   `constant 90 deg/s` and `gain 1.8` the frame index must sweep 50 indices/s even
   though heading never changes, and every frame must satisfy
   `idx == round(bias / gain) mod frames`.
-- On an arena (still outstanding): Mode-3 pattern, 200 frames, `gain 1.8`, ball held
-  still. `constant 90 deg/s` → one revolution per 4 s. `sine 90 deg/s @ 0.5 Hz` →
-  smooth back-and-forth over `±28.6°` (≈ ±16 frames), **symmetric about the starting
-  frame**. `square 90 deg/s @ 0.5 Hz` → constant-speed reversals over `±45°`
-  (±25 frames). Confirm `stopClosedLoop` freezes the display and that the next
-  condition restarts from phase 0.
+- On an arena — **done 2026-08-04**, and the recipe to repeat it: run
+  `protocols/fictrac_bias_test.yaml` with the bridge logging, then check the exported
+  log with the reconstruction above. `constant 90 deg/s` → one revolution per 4 s;
+  `sine 90 deg/s @ 0.5 Hz` → `±28.6°` (≈ ±16 frames) symmetric about the starting
+  frame; `square 90 deg/s @ 0.5 Hz` → `±45°` reversals. The log check subsumes the
+  "ball held still" version of this test, because it validates against the *logged*
+  per-frame heading rather than assuming a constant one.
+- **Direction, by eye** — the one thing no log can prove, since it depends on the
+  pattern and panel wiring rather than on this code. Immobilise the ball, run a single
+  `constant +90 deg/s` trial, and confirm the pattern turns clockwise. Re-check after
+  any change to arena wiring, panel numbering, or the pattern's own direction.
+- **Trial duration vs frequency:** keep `cl_dur` an integer number of bias cycles or
+  the periodic waveforms carry a small DC term over the trial. At the committed
+  `cl_dur: 30` both 0.5 Hz (15 cycles) and 1 Hz (30 cycles) are exact; a 15 s trial at
+  0.5 Hz is 7.5 cycles and leaves ≈4% of peak as a net offset (they still *end* at
+  `b = 0`, so there is no jump at `stopClosedLoop`).

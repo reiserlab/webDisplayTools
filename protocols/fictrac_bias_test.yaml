@@ -21,6 +21,12 @@ version: 3
 #   sine        swings smoothly back and forth over ±A/(2πf)
 #   square      constant-speed rotation that reverses, over ±A/(4f)
 #
+# DIRECTION (confirmed on the arena, 2026-08-04, at the normal positive gain 1.8):
+# a POSITIVE bias_amplitude turns the display CLOCKWISE — equivalently, the pattern
+# sweeps rightward across the fly's visual field. Negative is counter-clockwise.
+# This is the sign your analysis must assume; get it backwards and a fly correctly
+# counter-turning against the disturbance will read as following it.
+#
 # The periodic waveforms are ZERO-MEAN in position: the display is pushed equally
 # left and right rather than drifting to one side, and always starts at the frame
 # it was already on (no jump at onset). Note the excursion SHRINKS as frequency
