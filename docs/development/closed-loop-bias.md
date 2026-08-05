@@ -209,6 +209,22 @@ consumed by `js/runlog-replay.js` and the offline dashboard's vendored parser;
 adding an eighth column would break every positional reader. A test asserts the rows
 stay 7 wide.
 
+`js/runlog-replay.js` surfaces each epoch as a **status event** with
+`status.phase === 'bias_config'` and the spec on `status.bias`, so it flows through
+`buildTimeline` like any other status item and every existing
+`status.phase === '…'` consumer ignores it rather than breaking. Filter for that phase
+to get the epoch list for reconstruction:
+
+```js
+const epochs = parsed.events
+    .filter((e) => e.status && e.status.phase === 'bias_config')
+    .map((e) => ({ ms: e.ms, bias: e.status.bias }));
+```
+
+Note the epoch `ms` is only used verbatim when the log carries its usual epoch-stamped
+`logging_started` anchor (which tells the parser the origin is wall-clock). A
+hand-written fixture without that anchor gets rebased against its own first record.
+
 The live WebSocket frame message *does* carry a `bias` field (the current angle, deg)
 when a bias is active. That is additive — unknown fields are ignored by older clients
 — and exists only to drive the Studio's read-only readout.

@@ -273,7 +273,10 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `FicTracBridgeClient.setConfig`, whose scalar keys gate on `Number.isFinite`;
   (4) never widen `BEHAVIOR_V1_COLS` to log it — the per-frame `bias` on the
   WebSocket is display-only, and offline reconstruction uses the `bias_config`
-  log event. Full spec: `docs/development/closed-loop-bias.md`.
+  log event, which `js/runlog-replay.js` surfaces as a status event
+  (`status.phase === 'bias_config'`, spec on `status.bias`) so `buildTimeline`
+  and every `status.phase === '…'` consumer keep working untouched.
+  Full spec: `docs/development/closed-loop-bias.md`.
 - URL state ([#107](https://github.com/reiserlab/webDisplayTools/issues/107),
   read+write): `js/studio-url-state.js` (`mode` ∈ run|edit|console; a shared
   `p` forces `edit`→Run on fresh loads, never `console`). Write side:
