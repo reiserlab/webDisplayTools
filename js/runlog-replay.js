@@ -343,6 +343,26 @@
                 continue;
             }
 
+            // Closed-loop bias epoch (LAB-185). The bridge writes one of these each time a
+            // bias waveform is installed or cleared. Its `ms` is ALREADY in the
+            // behavior_v1 relative timebase and marks the waveform's phase-clock ZERO —
+            // that pair (epoch start + spec) is what makes b(t) exactly reconstructable
+            // offline, since the bias is deliberately NOT a per-frame column
+            // (docs/development/closed-loop-bias.md).
+            //
+            // Surfaced as a STATUS event so buildTimeline and every existing
+            // `status.phase === '...'` consumer keeps working untouched — they just
+            // don't match the new phase. The bias spec rides on `status.bias`.
+            if (o.type === 'bias_config') {
+                const replayMs = _recordReplayMs(o, wallStartMs, isoStartMs, fallbackMs);
+                events.push({
+                    ms: replayMs,
+                    status: { phase: 'bias_config', bias: o.bias || { type: 'none' } }
+                });
+                fallbackMs = Math.max(fallbackMs, replayMs);
+                continue;
+            }
+
             // runner run-status event.
             if (o.event === 'runner' || o.type === 'runner' || (canonical && o.phase)) {
                 const status = adaptRunnerEvent(o);

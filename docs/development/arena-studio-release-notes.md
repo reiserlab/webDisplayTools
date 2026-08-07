@@ -4,6 +4,43 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.70 (2026-08-04) · Closed-loop bias — add a disturbance to a fly-on-ball trial
+
+- **A closed-loop condition can now add a smooth disturbance to the visual
+  display**, so the arena keeps moving even when the fly holds still. This is
+  the stimulus for disturbance-rejection experiments: impose a known motion and
+  see how the fly counter-turns to null it. Set it per condition in Edit → the
+  condition's **Start closed-loop** command, which grows three fields:
+  - **Bias waveform** — None, Constant (steady drift), Sine, or Square.
+  - **Bias amplitude (deg/s, peak)** — how fast the display is pushed. A
+    **positive** amplitude turns the display **clockwise** (equivalently, the
+    pattern sweeps rightward across the fly's view); negative turns it
+    counter-clockwise. Confirmed on the arena.
+  - **Bias frequency (Hz)** — for Sine and Square only; Constant ignores it.
+- **Constant** drifts the display steadily in one direction. **Sine** and
+  **Square** push it equally left and right around the frame it started on, so
+  they add no net rotation over a trial. Because the amplitude is a *speed*, how
+  far the display travels shrinks as the frequency rises: at 90 deg/s a sine
+  covers ±28.6° at 0.5 Hz but only ±14.3° at 1 Hz.
+- **The Run view shows the live bias** next to the closed-loop indicator — the
+  waveform the running protocol asked for, plus the angle it is adding right now
+  — so you can confirm at the bench that it took effect. It is read-only there;
+  the protocol is the only place it is set.
+- **Stop closed-loop clears the bias**, so a disturbance never leaks into
+  following trials — and so does **pressing STOP mid-run**, which skips the
+  protocol's own Stop closed-loop entirely. Without that, the next run started
+  with the previous run's disturbance still going (and the bridge kept driving
+  the arena after STOP). Bench-reported and fixed before release.
+- A ready-made sweep of all four waveforms ships as **FicTrac closed-loop
+  bias/disturbance test** in File ▾ → Open from library.
+- Needs an updated FicTrac bridge (`pixi run bridge`, reports version 2.1 or
+  later) — the bias is computed there. An older bridge simply ignores it (verified:
+  a stale bridge keeps streaming normally, it just applies no disturbance).
+- **Validated on arena hardware.** A full 8-condition run drove a real controller
+  and the recorded log matches the intended frame index on every one of its 328,733
+  frames; the rotation direction was checked by eye. Not yet used in an experiment
+  with a behaving fly.
+
 ## v0.69 (2026-07-21) · ISP batch retries a failed panel twice
 
 - **A failed panel flash now gets up to two retries** (was one) before being
