@@ -57,6 +57,22 @@ Because `A` is a peak *velocity* for every waveform, the position excursion is
 derived. At `A = 90 deg/s`, a sine covers `±28.6°` at 0.5 Hz but only `±14.3°` at
 1 Hz. To hold excursion constant across a frequency sweep, scale `A` with `f`.
 
+### Practical Amplitude and Frequency Limits
+The practical limits of amplitude, `A`, and frequency, `ω`, in an experiment are determined by their ratio, `(A/ω)`, because of how the bias angle is calculated. For example, on a 10-column G6 arena, any `(A/ω)<1.8` fails to produce any visible motion since one LED pixel subtends `360°/200 LED = 1.8°/LED`. As a result, the Amplitude in degrees/s must be at least 1.8 times larger than the frequency in rad/s, `(A/ω)>1.8` or 11.3 times larger than the frequency in Hz, `(A/f)>11.3`.
+As a general rule of thumb, we don't recommend using bias waveforms with frequency higher than 3 Hz. However, that limit can be extended if coupled with higher amplitude values according to our recommendations below. 
+
+**Suggested Amplitude and Frequency values**
+Below are a table of suggested values and limits for amplitude, in degrees/s, and frequency, in Hz.
+The `(A/f)` ratio values in this table are calculated for sine wave bias waveforms because they have stricter limits. These values are slightly conservative for triangle waves, which have an absolute minimum, on-pixel bias value of `(A/f)>7.2`. 
+
+| `(A/f)` Ratio | Physical description on 10-column G6 arena |
+| --- | --- | 
+| 11.3 | **Absolute minimum on 10-column G6 Arena** `(A/ω)=1.8°` or one LED |
+| 56.5 | Practical minimum, `(A/ω)=9°`, 18° pp  or one column |
+| 189 | Typical value, `(A/ω)=30°`, 60° pp|
+| 565 | Hemispherical, `(A/ω)=90°`, 180° pp|
+| 1130 | Likely absolute maximum, `(A/ω)=180°`, 360° pp|
+
 ### Direction, and the sign of `gain`
 
 The bias angle is summed in the same **heading-equivalent degrees** space as the
