@@ -275,7 +275,22 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   WebSocket is display-only, and offline reconstruction uses the `bias_config`
   log event, which `js/runlog-replay.js` surfaces as a status event
   (`status.phase === 'bias_config'`, spec on `status.bias`) so `buildTimeline`
-  and every `status.phase === '…'` consumer keep working untouched.
+  and every `status.phase === '…'` consumer keep working untouched;
+  (5) **the FRAME MODULUS must reach the bridge.** It wraps every index with
+  `% n_frames`, and firmware REJECTS `index >= frame_count_` with
+  `showError(CE_BAD_PARAM)`. Bench 2026-08-12 (Isabel): a 20-frame grating ran
+  against the bridge's `--frames` default of 200 (the runner pushed none) → 91% of
+  0x70s rejected, a flickering error glyph with the pattern flashing through, and a
+  Console left unresponsive until a power cycle (single-slot `resp_buf_` overrun →
+  request↔response desync). The 200-frame validation pattern had hidden this by
+  matching the default. `ArenaRunner._resolveFrameModulus()` now resolves it: the
+  `resolvePatternFrames` hook (Studio-side, only knows patterns whose Console
+  thumbnail rendered — `onSdListing` sets `preview: null`), else **GET_PATTERN_INFO
+  (0x88)** on the controller (cached per pattern per run), else the step FAILS
+  rather than starting the loop on a guess. `FicTracBridgeClient` also defaults
+  `clampFrame` to wrap on the last pushed count. Resolve the modulus this way from
+  any NEW closed-loop entry point. A short pattern is legitimate — a 20-px grating
+  needs 20 frames and the modulus tiles it; keep `gain = 360/azimuth_pixels`.
   Full spec: `docs/development/closed-loop-bias.md`.
 - URL state ([#107](https://github.com/reiserlab/webDisplayTools/issues/107),
   read+write): `js/studio-url-state.js` (`mode` ∈ run|edit|console; a shared

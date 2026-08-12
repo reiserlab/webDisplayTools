@@ -399,6 +399,51 @@ async function main() {
         check('a zero bias angle is kept (not confused with absent)', client.biasAngleDeg, 0);
     }
 
+    // The bridge wraps indices on its own n_frames, but only the host knows whether
+    // the config push that set it ever landed. The default clamp wraps on the count
+    // we last pushed, so a disagreement can't send the arena a frame index the
+    // loaded pattern doesn't have (bench, 2026-08-12: that showed as a flickering
+    // panel map and wedged the display engine until a power cycle).
+    console.log('\n=== default clamp wraps on the pushed frame count ===');
+    {
+        const applied = [];
+        const client = new FicTracBridgeClient({
+            applyFrame: (i) => (applied.push(i), Promise.resolve())
+        });
+        check('frames unknown before any push', client.frames, null);
+        client.setApply(true);
+        client.handleFrame(250);
+        await tick();
+        check('unknown count passes the index through unchanged', applied, [250]);
+
+        client.setConfig({ frames: 20 });
+        check('frames records the pushed count', client.frames, 20);
+        applied.length = 0;
+        client.handleFrame(37);
+        await tick();
+        check('index wraps onto the 20-frame pattern', applied, [17]);
+        applied.length = 0;
+        client.handleFrame(-3);
+        await tick();
+        check('a negative index wraps non-negative (not -3)', applied, [17]);
+        applied.length = 0;
+        client.handleFrame(19);
+        await tick();
+        check('an in-range index is untouched', applied, [19]);
+
+        // An explicit consumer clamp still wins over the default.
+        const custom = [];
+        const c2 = new FicTracBridgeClient({
+            applyFrame: (i) => (custom.push(i), Promise.resolve()),
+            clampFrame: () => 7
+        });
+        c2.setConfig({ frames: 20 });
+        c2.setApply(true);
+        c2.handleFrame(500);
+        await tick();
+        check('an injected clampFrame overrides the default', custom, [7]);
+    }
+
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);

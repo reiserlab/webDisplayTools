@@ -1,6 +1,7 @@
 # Closed-loop bias waveforms (LAB-185)
 
-**Status: bench-validated on arena hardware (2026-08-04).** A full 8-condition run of
+**Status: bench-validated on arena hardware (2026-08-04, and again 2026-08-12 on a
+20-frame pattern — see "The frame modulus is load-bearing").** A full 8-condition run of
 `protocols/fictrac_bias_test.yaml` drove a real G6 controller (32,499
 `SET_FRAME_POSITION` commands) and the log reproduces
 `round((heading + bias)/gain) mod 200` for all 328,733 frame rows — 4 mismatches
@@ -185,6 +186,89 @@ condition happened to push a new one — and separately left the bridge still st
 
 When adding any new run-teardown path, call `_clearClosedLoop()` from it.
 
+## The frame modulus is load-bearing (bench, 2026-08-12)
+
+The bridge wraps every index it computes with `% n_frames`, so **the loaded pattern's
+frame count must reach the bridge or the closed loop streams frames that do not
+exist.** The firmware is strict: `handleSetFramePosition` rejects
+`index >= frame_count_` with `showError(CE_BAD_PARAM)`, which paints the error glyph
+over the arena for `error_display_hold_ms`.
+
+Found by Isabel with a **20-frame grating** (SD pat 5) where the validated protocol
+had used the **200-frame** `frame2_h_ccw_200f`:
+
+- The runner pushed no `frames`, so the bridge kept its `--frames` **default of 200**.
+- A `constant 90 deg/s` bias swept the index 0→199 every 4 s against a 20-frame
+  pattern. **1553 of 1705 commands (91%) came back status 1** — `showError` firing
+  ~45×/s, i.e. a flickering error glyph with the real grating flashing through during
+  the 9% of each sweep that was in range.
+- Afterwards the arena stopped responding to Console `allOn`/`allOff` until a power
+  cycle. **Cause unconfirmed.** One candidate: `SerialManager` holds **one** response
+  slot and `flushResponses()` silently keeps it queued when the USB CDC TX buffer is
+  full, so ~1500 41-byte error payloads (vs. the usual 3-byte ack) could overrun it and
+  drop replies, desyncing the host's request↔response pairing. Not reproduced, and
+  beware: a **blocked** command queue looks identical from the bench — a single
+  `sendBulkRead` (the Console picker's preview fetch) holds `ArenaLink`'s serialized
+  queue for up to 60 s while the UI keeps logging clicks as `›` sent. Isabel hit that
+  separately on 2026-08-12 and recovered with Disconnect → Connect. **Before assuming
+  the controller is wedged, check whether something is merely holding the queue.**
+
+Note the *bias* was blameless — it just made the index sweep the whole modulus, which
+a still fly never does. Any Mode-3 pattern shorter than 200 frames was exposed; the
+200-frame validation pattern hid it by accidentally matching the bridge's default.
+
+**A short pattern is not a bug.** A 20-px-period grating only needs 20 frames: with
+`gain 1.8` (1 frame = 1 px = 1.8°) the modulus tiles it around the full azimuth. Keep
+`gain = 360 / azimuth_pixels` and let the frame count be the modulus — don't rescale
+`gain` to the frame count.
+
+### How the count is resolved now
+
+`ArenaRunner._resolveFrameModulus(acc)`, in order:
+
+1. `resolvePatternFrames(cmd)` — the host hook. In the Studio this reads a `.pat`
+   header the page already parsed, which in practice means **only** the pattern whose
+   Console thumbnail was rendered (`Studio.onSdListing` builds every entry with
+   `preview: null`; the card lists filenames, not frame counts). A fast path, never a
+   guarantee — this is what returned `null` for pat 5.
+2. **`GET_PATTERN_INFO` (0x88)** against the controller, which reports the
+   authoritative `frameCount` for any 1-based SD index. Same query the Console's
+   Mode-3 *Load* already does to bound its stepper. Cached per pattern index per run.
+
+If neither answers, `startClosedLoop` **fails the step** and never calls
+`setApply(true)` — the `duty`/bias precedent, and far better than 30 s of rejected
+frames. As a second line of defence `FicTracBridgeClient` now defaults `clampFrame` to
+wrap on the count it last pushed (`_clampToFrames`), which covers a config message
+that never landed.
+
+**When adding any new closed-loop entry point, resolve the modulus the same way** —
+never let the bridge's default stand in for a real frame count.
+
+### Bench-validated on a short pattern (2026-08-12)
+
+The full 8-condition sweep re-run on the **20-frame grating** that first broke,
+`runlogs/bench03/fictrac-closed-loop-bias-disturbance-grating__isabel__2026-08-12T17-16-07`:
+
+- Every `config` push carries `"frames":20`, and **all 66,569 arena commands returned
+  status 0** — zero rejections, down from 91%.
+- All 68,638 `behavior_v1` rows reproduce
+  `round((heading_deg + offset + b(t)) / gain) mod 20`, with **12 mismatches
+  (0.0175%), every one ±1 frame** — the same millisecond-rounding signature as the
+  200-frame validation. The rate tracks how much time a waveform spends at full
+  speed (square 0.047% > constant 0.012% > sine 0.008% > none 0%), i.e. how often a
+  1 ms timestamp discrepancy lands on a rounding boundary.
+- All 16 epochs satisfy `b(0) = 0`, and every measured excursion matches the closed
+  form exactly: constant ±90 → 2700° drift over 30 s; sine 90 @ 0.5/1 Hz → ±28.6°/
+  ±14.3°; sine 30 @ 0.5 Hz → ±9.5°; square 90 @ 0.5/1 Hz → ±45.0°/±22.5°.
+
+**Caveat for analysis on a periodic pattern.** A 20-frame, 20-px grating repeats every
+36° of azimuth, so several of these excursions exceed one period (sine 90 @ 0.5 Hz
+spans 1.6 periods; square 90 @ 0.5 Hz, 2.5). The *display* is therefore spatially
+ambiguous beyond 36° — you cannot recover absolute pattern position from what the fly
+saw. `b(t)` itself stays exactly reconstructable (it is analytic), so velocity-based
+disturbance-rejection analysis is unaffected; position-referenced analysis needs a
+non-repeating pattern.
+
 ## Validation policy
 
 | Input | Result |
@@ -251,9 +335,10 @@ when a bias is active. That is additive — unknown fields are ignored by older 
 | --- | --- | --- |
 | Math | `fictrac-bridge/bridge.py` | `bias_angle_deg()` (pure), `BIAS_TYPES`, the `bias_deg` argument to `frame_index_from_fictrac()` |
 | Clock + logging | `fictrac-bridge/bridge.py` | `Pipeline.set_bias()` / `bias_now_deg()`, `LogWriter.write_event()`, the `config` dispatch, `--bias-type/--bias-amplitude/--bias-freq` |
-| Transport | `js/fictrac-bridge-client.js` | `bias` as the one object-valued config key; `setBias()`, the `'bias'` event, `biasAngleDeg` |
+| Transport | `js/fictrac-bridge-client.js` | `bias` as the one object-valued config key; `setBias()`, the `'bias'` event, `biasAngleDeg`; the default index clamp `_clampToFrames()` |
 | Schema | `js/plugin-registry.js` | the three `startClosedLoop` params |
 | Validation | `js/arena-runner-g6.js` | `normalizeBias()` → `{bias, warning}`; the `fictracApply` IR and its `_runIR` push |
+| Frame modulus | `js/arena-runner-g6.js` | `_resolveFrameModulus()` — host hook, else 0x88, else fail the step |
 | UI (read-only) | `arena_studio.html` | `#rbBias` in the Run-view bridge strip |
 
 The vocabulary `none|constant|sine|square` is declared in three places (bridge

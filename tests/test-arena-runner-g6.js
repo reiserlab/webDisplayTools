@@ -1727,6 +1727,202 @@ async function main() {
         }
     }
 
+    // ── the closed-loop frame MODULUS (bench regression, 2026-08-12) ───────────
+    // The bridge wraps every streamed index with `% n_frames`. If the runner never
+    // pushes the loaded pattern's true frame count, the bridge keeps its own default
+    // (200) and streams SET_FRAME_POSITION indices the pattern does not have — a
+    // flickering panel map with the real pattern flashing through, and a display
+    // engine wedged until a power cycle. It went unnoticed because the Studio's host
+    // resolver only knows a frame count for patterns whose Console THUMBNAIL was
+    // rendered, and the validation pattern happened to be exactly 200 frames.
+    console.log('\n=== closed-loop frame modulus: resolved, or the step fails ===');
+    {
+        const makeFakeBridge = () => ({
+            logging: true,
+            configs: [],
+            applyStates: [],
+            connect() {},
+            disconnect() {},
+            setApply(on) {
+                this.applyStates.push(!!on);
+            },
+            setConfig(cfg) {
+                this.configs.push(cfg);
+            },
+            log() {}
+        });
+        // A link that answers GET_PATTERN_INFO (0x88) with the 12-byte payload the
+        // firmware sends: frame_count u16 · gs · rows · cols · arena · observer ·
+        // file_size u32 · stretch. Everything else gets the plain OK ack.
+        const makeInfoLink = (frameCount) =>
+            makeFakeLink({
+                reply: (bytes) => {
+                    if (bytes[1] === Wire.OPCODES.GET_PATTERN_INFO) {
+                        const payload = [
+                            frameCount & 0xff,
+                            (frameCount >> 8) & 0xff,
+                            1,
+                            2,
+                            10,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            1
+                        ];
+                        // frame = [length, status, echo_cmd, ...payload];
+                        // length counts status + echo_cmd + payload.
+                        return new Uint8Array([
+                            2 + payload.length,
+                            0x00,
+                            Wire.OPCODES.GET_PATTERN_INFO,
+                            ...payload
+                        ]);
+                    }
+                    return new Uint8Array([0x02, 0x00, bytes[1]]);
+                }
+            });
+        const clCondition = {
+            name: 'cl',
+            commands: [
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    mode: 3,
+                    frame_rate: 0,
+                    gain: 0,
+                    frame_index: 0,
+                    duration: 1,
+                    pattern: 'grating',
+                    pattern_ID: 5
+                },
+                {
+                    type: 'plugin',
+                    plugin_name: 'fictrac',
+                    command_name: 'startClosedLoop',
+                    params: { gain: 1.8, bias_type: 'constant', bias_amplitude: 90 }
+                },
+                { type: 'wait', duration: 1 },
+                { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' }
+            ]
+        };
+        function runCl(link, bridge, resolveFrames) {
+            const runner = new Runner.ArenaRunner(link, Wire, bridge);
+            const events = [];
+            return runner
+                .runSequence({
+                    steps: [{ kind: 'ref', conditionName: 'cl', label: 'cl', seqIdx: 0, dur: 1 }],
+                    conditionsByName: new Map([['cl', clCondition]]),
+                    resolvePatternId: () => 5,
+                    resolvePatternFrames: resolveFrames || (() => null),
+                    fictracPluginNames: new Set(['fictrac']),
+                    sleep: () => Promise.resolve(),
+                    onProgress: (s) => events.push(s)
+                })
+                .then((summary) => ({ summary, events }));
+        }
+
+        // 1. Host resolver knows the count → that wins, no 0x88 round-trip needed.
+        {
+            const link = makeInfoLink(20);
+            const bridge = makeFakeBridge();
+            const { summary } = await runCl(link, bridge, (cmd) =>
+                cmd.command_name === 'trialParams' ? 40 : null
+            );
+            checkBool(
+                'host-resolved frame count is pushed as the modulus',
+                bridge.configs.some((c) => c.frames === 40),
+                JSON.stringify(bridge.configs)
+            );
+            checkBool(
+                'no 0x88 query when the host already knows',
+                !link.sent.some((b) => b[1] === Wire.OPCODES.GET_PATTERN_INFO)
+            );
+            check('no errors', summary.errors, 0);
+        }
+
+        // 2. THE BENCH CASE: the host resolver returns null (an SD pattern with no
+        //    rendered thumbnail). The count must come from the controller — NOT from
+        //    the bridge's 200 default.
+        {
+            const link = makeInfoLink(20);
+            const bridge = makeFakeBridge();
+            const { summary } = await runCl(link, bridge, null);
+            checkBool(
+                'unresolved host count falls back to GET_PATTERN_INFO (0x88)',
+                link.sent.some((b) => b[1] === Wire.OPCODES.GET_PATTERN_INFO)
+            );
+            checkBool(
+                'controller-reported 20 frames is pushed as the modulus',
+                bridge.configs.some((c) => c.frames === 20),
+                JSON.stringify(bridge.configs)
+            );
+            checkBool(
+                'the closed loop DID start',
+                bridge.applyStates.some((v) => v === true),
+                bridge.applyStates.join(',')
+            );
+            check('no errors', summary.errors, 0);
+        }
+
+        // 3. Neither source can answer → the step FAILS and the loop never starts.
+        //    Better a visibly dead trial than 30 s of out-of-range frames at the arena.
+        {
+            const link = makeFakeLink(); // default ack: 0x88 payload too short to decode
+            const bridge = makeFakeBridge();
+            const { summary, events } = await runCl(link, bridge, null);
+            check('unknown modulus fails the step', summary.errors, 1);
+            checkBool(
+                'apply(true) was NEVER sent on an unknown modulus',
+                !bridge.applyStates.some((v) => v === true),
+                bridge.applyStates.join(',')
+            );
+            checkBool(
+                'no frames key pushed when the count is unknown',
+                !bridge.configs.some((c) => 'frames' in c),
+                JSON.stringify(bridge.configs)
+            );
+            checkBool(
+                'the error names the frame count as the cause',
+                events.some(
+                    (e) => e.phase === 'error' && /unknown frame count/.test(e.reason || '')
+                ),
+                JSON.stringify(events.filter((e) => e.phase === 'error').map((e) => e.reason))
+            );
+        }
+
+        // 4. The 0x88 result is cached: a condition repeated across blocks must not
+        //    pay a serial round-trip (and a timeout) every repetition.
+        {
+            const link = makeInfoLink(20);
+            const bridge = makeFakeBridge();
+            const runner = new Runner.ArenaRunner(link, Wire, bridge);
+            await runner.runSequence({
+                steps: [
+                    { kind: 'ref', conditionName: 'cl', label: 'cl', seqIdx: 0, dur: 1 },
+                    { kind: 'ref', conditionName: 'cl', label: 'cl', seqIdx: 1, dur: 1 }
+                ],
+                conditionsByName: new Map([['cl', clCondition]]),
+                resolvePatternId: () => 5,
+                resolvePatternFrames: () => null,
+                fictracPluginNames: new Set(['fictrac']),
+                sleep: () => Promise.resolve()
+            });
+            check(
+                'the 0x88 frame-count query is cached per pattern',
+                link.sent.filter((b) => b[1] === Wire.OPCODES.GET_PATTERN_INFO).length,
+                1
+            );
+            checkBool(
+                'both repetitions still got the modulus',
+                bridge.configs.filter((c) => c.frames === 20).length >= 2,
+                JSON.stringify(bridge.configs)
+            );
+        }
+    }
+
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);

@@ -4,6 +4,28 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.71 (2026-08-12) · Closed loop works with any pattern length, not just 200-frame ones
+
+- **Fixed: a closed-loop trial on a pattern with fewer than 200 frames drove the
+  arena to frames that did not exist.** The display showed a flickering diagnostic
+  glyph with the real pattern flashing through, and afterwards the arena could stop
+  responding to Console commands until it was power-cycled. Reported by Isabel
+  running a 20-frame grating where the same protocol had worked with a 200-frame
+  bar; 91% of the frame commands in that run were rejected by the controller.
+- The cause was the frame count never reaching the FicTrac bridge, which then
+  assumed 200. The Studio now reads the true count **from the controller** when it
+  is not already known from the pattern file, so any pattern length works.
+- **A closed loop will no longer start on a guessed frame count.** If neither the
+  pattern file nor the controller can supply it, that step fails with an explanation
+  in the run log and the rest of the run continues — instead of silently streaming
+  out-of-range frames for the whole trial.
+- No protocol changes needed. In particular a short pattern is perfectly valid: a
+  20-pixel-period grating only needs 20 frames, and the closed loop tiles it around
+  the arena. Keep the usual `gain: 1.8` on a 10-column G6 — do not rescale it to the
+  frame count.
+- If you hit the old symptom before updating: **Disconnect → Connect** in the
+  Studio is worth trying before a power cycle.
+
 ## v0.70 (2026-08-04) · Closed-loop bias — add a disturbance to a fly-on-ball trial
 
 - **A closed-loop condition can now add a smooth disturbance to the visual

@@ -76,7 +76,11 @@
         constructor(opts) {
             const o = opts || {};
             this._applyFrame = typeof o.applyFrame === 'function' ? o.applyFrame : null;
-            this._clampFrame = typeof o.clampFrame === 'function' ? o.clampFrame : (i) => i;
+            // Default clamp = wrap on the frame count we last PUSHED to the bridge
+            // (see _clampToFrames). Belt-and-braces: the bridge already wraps on its
+            // own n_frames, but only the host knows whether that value ever arrived.
+            this._clampFrame =
+                typeof o.clampFrame === 'function' ? o.clampFrame : (i) => this._clampToFrames(i);
             this._canApply = typeof o.canApply === 'function' ? o.canApply : () => true;
             this._WS = o.WebSocketImpl || (typeof WebSocket !== 'undefined' ? WebSocket : null);
             this._now = typeof o.now === 'function' ? o.now : () => Date.now();
@@ -296,6 +300,25 @@
         /** Set the clamp policy (index → in-range index). Consumer-specific. */
         setClampFrame(fn) {
             if (typeof fn === 'function') this._clampFrame = fn;
+        }
+        /** The frame count last pushed to the bridge (null when never set). */
+        get frames() {
+            return this._config.frames;
+        }
+        /**
+         * Default clamp: wrap an index onto the pattern frame count we last pushed to
+         * the bridge. The bridge does its own `% n_frames`, so this only matters when
+         * the two disagree — a config push that never landed, or a bridge launched
+         * with a `--frames` we never overrode. In that window an unwrapped index goes
+         * to SET_FRAME_POSITION as a frame the loaded pattern does not have, which the
+         * firmware renders as a flickering panel map and can leave the display engine
+         * wedged until a power cycle (bench, 2026-08-12). Unknown count ⇒ identity,
+         * since guessing a modulus is worse than passing the bridge's own value through.
+         */
+        _clampToFrames(i) {
+            const n = this._config.frames;
+            if (!Number.isInteger(n) || n <= 0) return i;
+            return ((i % n) + n) % n;
         }
         /** Set the apply gate (may we drive the arena right now?). Consumer-specific. */
         setCanApply(fn) {

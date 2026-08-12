@@ -992,6 +992,52 @@ var ArenaRunnerG6 = (function () {
                 }
             });
         }
+        // ---- closed-loop frame modulus -------------------------------------
+        /**
+         * The frame count of the Mode-3 pattern this closed-loop epoch will steer —
+         * the modulus the bridge wraps every streamed index with. Two sources, in
+         * order:
+         *
+         *   1. `acc.fictracFrames`, from the caller's `resolvePatternFrames` hook.
+         *      In the Studio that reads a `.pat` header the page has already parsed,
+         *      which in practice means ONLY the pattern whose Console thumbnail was
+         *      rendered — every other pattern comes back null (the SD listing carries
+         *      filenames, not frame counts). So this is a fast path, never a guarantee.
+         *   2. GET_PATTERN_INFO (0x88) against the controller, which reports the
+         *      authoritative `frameCount` for any 1-based SD index. Same query the
+         *      Console's Mode-3 "Load" does to bound its stepper. Cached per pattern
+         *      index for the life of the runner: the card can't change under us
+         *      mid-run, and a closed-loop condition repeated across blocks must not
+         *      pay a serial round-trip every repetition.
+         *
+         * Returns a positive integer, or null when neither source can answer (offline,
+         * no Mode-3 trialParams in the condition, or a controller that won't say) —
+         * which the caller MUST treat as "do not start the loop".
+         */
+        async _resolveFrameModulus(acc) {
+            const known = Number(acc && acc.fictracFrames);
+            if (Number.isFinite(known) && known > 0) return Math.round(known);
+            const pat = acc && acc.fictracPatternId;
+            if (!Number.isInteger(pat) || pat < 1) return null;
+            if (!this._frameCountCache) this._frameCountCache = new Map();
+            if (this._frameCountCache.has(pat)) return this._frameCountCache.get(pat);
+            let frames = null;
+            if (this._link && this._link.connected && this._wire.encodeGetPatternInfo) {
+                try {
+                    const resp = await this._link.send(this._wire.encodeGetPatternInfo(pat), {
+                        timeoutMs: 2000
+                    });
+                    const info = this._wire.decodePatternInfo(resp);
+                    const n = info && Number(info.frameCount);
+                    if (Number.isFinite(n) && n > 0) frames = Math.round(n);
+                } catch (_) {
+                    /* best-effort: a failed query is "unknown", not a run-killer */
+                }
+            }
+            this._frameCountCache.set(pat, frames); // negative caching included
+            return frames;
+        }
+
         // ---- closed-loop teardown ------------------------------------------
         /**
          * Tear down the FicTrac closed loop: stop applying frames AND clear any bias
@@ -1135,6 +1181,9 @@ var ArenaRunnerG6 = (function () {
 
             this._active = true;
             this._abort = false;
+            // Per-run: the card's contents (and so any pattern index's frame count)
+            // can change between runs via an SD upload, but never mid-run.
+            this._frameCountCache = new Map();
             const summary = {
                 completed: false,
                 aborted: false,
@@ -1284,8 +1333,15 @@ var ArenaRunnerG6 = (function () {
                     // duration and the total time actually slept on wait commands.
                     // fictracFrames tracks the current Mode-3 pattern's frame count
                     // (index modulus) so a following fictrac.startClosedLoop can push
-                    // the right modulus to the bridge.
-                    const acc = { trialTargetSec: 0, waitedSec: 0, fictracFrames: null };
+                    // the right modulus to the bridge. fictracPatternId records which
+                    // pattern that count must describe, so the modulus can be recovered
+                    // from the CONTROLLER (0x88) when the host resolver comes up empty.
+                    const acc = {
+                        trialTargetSec: 0,
+                        waitedSec: 0,
+                        fictracFrames: null,
+                        fictracPatternId: null
+                    };
                     for (const cmd of cond.commands) {
                         if (this._abort) break;
                         const ir = translateCommand(cmd, {
@@ -1294,7 +1350,9 @@ var ArenaRunnerG6 = (function () {
                         });
                         if (cmd.type === 'controller' && cmd.command_name === 'trialParams') {
                             const f = Number(resolvePatternFrames(cmd));
-                            if (Number.isFinite(f) && f > 0) acc.fictracFrames = f;
+                            acc.fictracFrames = Number.isFinite(f) && f > 0 ? f : null;
+                            acc.fictracPatternId =
+                                ir.op === 'trialParams' && ir.params ? ir.params.patternId : null;
                         }
                         try {
                             await this._runIR(ir, { step, index: i, emit, sleep, summary, acc });
@@ -1476,12 +1534,44 @@ var ArenaRunnerG6 = (function () {
                     return;
                 case 'fictracApply':
                     if (this._bridge) {
+                        // The index MODULUS is not optional. The bridge wraps every
+                        // frame index with `% n_frames`, so if we don't push the loaded
+                        // pattern's true frame count it keeps its own default (200) and
+                        // streams SET_FRAME_POSITION indices that DON'T EXIST in the
+                        // pattern — on the bench (2026-08-12, Isabel) a 200-index sweep
+                        // into a short grating showed a flickering panel map with the
+                        // real pattern flashing through, and left the display engine
+                        // wedged until a power cycle. A 200-frame pattern hid this for
+                        // months by accidentally matching that default.
+                        let frames = null;
+                        if (ir.on) {
+                            frames = await this._resolveFrameModulus(acc);
+                            if (frames == null) {
+                                // Fail the STEP (the `duty`/bias precedent) rather than
+                                // the run — but never start the loop on a guessed
+                                // modulus. A silent wrong guess is the outcome that
+                                // costs a bench session.
+                                summary.errors++;
+                                emit({
+                                    phase: 'error',
+                                    index,
+                                    step,
+                                    op: ir.op,
+                                    reason:
+                                        'closed loop not started: unknown frame count for pattern ' +
+                                        (acc.fictracPatternId == null
+                                            ? '(no Mode-3 trialParams in this condition)'
+                                            : 'idx ' + acc.fictracPatternId) +
+                                        ' — the bridge would wrap frame indices on the wrong modulus and drive frames the pattern does not have.'
+                                });
+                                return;
+                            }
+                        }
                         // One setConfig carries frames + gain + bias: the bridge re-zeros
                         // its bias PHASE clock on any config message containing `bias`, so
                         // pushing it here makes every closed-loop epoch start at phase 0.
                         const cfg = {};
-                        if (ir.on && Number.isFinite(acc.fictracFrames))
-                            cfg.frames = acc.fictracFrames;
+                        if (frames != null) cfg.frames = frames;
                         if (ir.on && ir.gain != null) cfg.gain = ir.gain;
                         if (ir.bias) cfg.bias = ir.bias;
                         if (Object.keys(cfg).length) this._bridge.setConfig(cfg);
