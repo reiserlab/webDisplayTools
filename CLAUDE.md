@@ -271,6 +271,13 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   a stale one. Call `_clearClosedLoop()` from any NEW teardown path;
   (3) `bias` is the one OBJECT-valued key in
   `FicTracBridgeClient.setConfig`, whose scalar keys gate on `Number.isFinite`;
+  (4a) every epoch also TARES THE HEADING (`hd0`, latched on the epoch's first frame,
+  logged as `heading_tare`) — FicTrac heading is absolute, so without it an epoch
+  opened by jumping the display up to 340° away (bench03, real flies). The tared
+  difference is wrapped to (-180,180]; only the heading, never the bias. Armed by
+  epochs ONLY, not at bridge startup, so the plain Console path is unchanged.
+  Offline analysis MUST apply `heading_tare` or every index is off by
+  round(hd0/gain);
   (4) never widen `BEHAVIOR_V1_COLS` to log it — the per-frame `bias` on the
   WebSocket is display-only, and offline reconstruction uses the `bias_config`
   log event, which `js/runlog-replay.js` surfaces as a status event

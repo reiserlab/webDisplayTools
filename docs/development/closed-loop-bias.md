@@ -80,7 +80,8 @@ The bias angle is summed in the same **heading-equivalent degrees** space as the
 existing `offset`:
 
 ```
-idx = round((heading_deg + offset + b(t)) / gain) mod n_frames
+rel     = wrap180(heading_deg - hd0_deg)          # turn since the epoch's tare
+idx     = round((rel + offset + b(t)) / gain) mod n_frames
 ```
 
 So a positive `bias_amplitude` moves the display the same direction as increasing fly
@@ -149,6 +150,49 @@ Worked example with all four waveforms: `protocols/fictrac_bias_test.yaml`.
 The three fields render automatically in the v3 designer (and the Studio's embedded
 one) from the registry schema — `bias_type` as a dropdown, the other two as number
 inputs. No designer HTML knows about them by name.
+
+## The heading tare
+
+FicTrac's integrated heading is **absolute** (and wraps 0–360°). Without a tare, the
+first frame of a closed-loop epoch lands at `round(heading/gain)` — an essentially
+arbitrary index. On the bench that looked like: the pattern loads centred in front of
+the fly (`frame_index: 0`), then **jumps somewhere else on the very first FicTrac
+frame**, possibly out of the fly's field of view.
+
+Measured on the bench03 field logs (12 runs, 7 epochs each): a median jump of
+**55–156 frames, up to 189 of 200 = 340° of azimuth** on a full-azimuth pattern, and
+up to the whole pattern (19 of 20 frames) on a short tiled grating.
+
+So every epoch **re-zeros the heading**. `hd0` is latched from the **first frame after
+the epoch opens** — a config message can't sample a heading that hasn't arrived yet,
+and the last-seen one may be stale. The epoch therefore opens at index 0, i.e. wherever
+`frame_index` put it for the usual `frame_index: 0`, and moves relative to that:
+
+- The fly's turn **since onset** drives the display, not its absolute heading.
+- `offset` still applies on top, so it can deliberately place the start elsewhere
+  (`offset = 90` at `gain 1.8` starts 50 frames round).
+- **A bias epoch is the trigger.** Any `config` carrying `bias` re-tares — and the
+  runner always sends one on `startClosedLoop` (self-describing epochs), so *every*
+  condition tares, including a `bias_type: none` baseline.
+
+The tared difference is wrapped into `(-180, 180]` so it reads as a true relative turn:
+a fly tared at 350° that turns +20° reads 10° absolute, which naively is −340°. Those
+differ by 360° = `360/gain` frames, which only aliases away when the pattern spans the
+full azimuth — the wrap keeps the nearest-angle reading correct for **short tiled
+patterns** too. Only the heading is wrapped; `bias_deg` stays unbounded so a constant
+disturbance keeps rotating.
+
+**Scope of the change:** the tare is armed by epochs only, *not* at bridge startup, so
+the plain Console closed loop (no protocol, no bias key) still maps absolute heading
+exactly as it always did. That path keeps the old jump; a protocol is what fixes it.
+
+### `frame_index` other than 0
+
+The tare zeroes to index **0**, not to the trialParams `frame_index`. With
+`frame_index: 50` the pattern loads at 50 and the loop still moves it to 0 on the first
+frame. Use `offset = frame_index × gain` to line them up (`50 × 1.8 = 90`). Pushing the
+start index through to the bridge would remove the need for that, and is the obvious
+follow-up if anyone authors a non-zero `frame_index` closed-loop condition.
 
 ## The phase clock
 
@@ -289,20 +333,36 @@ frame and must never raise mid-stream.
 
 ## Logging and offline reconstruction
 
-Two records land in the run log:
+Three records land in the run log:
 
 - The raw `config` message, via the existing inbound logging (`rx_ms`, absolute).
 - A bridge-authored `bias_config` event whose **`ms` is in the same relative timebase
-  as the `behavior_v1` rows**:
+  as the `behavior_v1` rows**.
+- A bridge-authored `heading_tare` event, written when the tare latches on the epoch's
+  first frame, in the same relative timebase:
 
 ```json
 {"type":"bias_config","dir":"bridge","ms":4099,"bias":{"type":"sine","amplitude":90.0,"frequency":0.5}}
+{"type":"heading_tare","dir":"bridge","ms":4107,"hd0_deg":137.25}
 ```
 
-That second line is what makes `b(t)` exactly reconstructable offline: for any logged
-row at `ms`, evaluate `bias_angle_deg(type, amplitude, frequency, (ms − bias_config.ms)/1000)`.
+Together those make the whole mapping exactly reconstructable offline. For any logged
+row at `ms`, take the latest `bias_config` and the latest `heading_tare` at or before
+it, then:
+
+```python
+b   = bias_angle_deg(spec.type, spec.amplitude, spec.frequency, (ms - bias_ms) / 1000)
+rel = ((hd_deg - hd0_deg + 180) % 360) - 180
+idx = round((rel + offset + b) / gain) % n_frames
+```
+
 Because the waveform is analytic and deterministic, this recovers the exact value the
 bridge used — no per-frame bias column is needed.
+
+**`heading_tare` is not optional for analysis.** Omit it and every recomputed index is
+off by `round(hd0/gain)` frames — up to 189 of 200 on the bench03 logs. (It is also
+derivable as the `hd` of the first row at or after the epoch's `bias_config.ms`, but
+the explicit event is what the bridge actually used, including across a dropped frame.)
 
 **`BEHAVIOR_V1_COLS` was deliberately NOT widened.** The positional row format is
 consumed by `js/runlog-replay.js` and the offline dashboard's vendored parser;
@@ -319,6 +379,9 @@ to get the epoch list for reconstruction:
 const epochs = parsed.events
     .filter((e) => e.status && e.status.phase === 'bias_config')
     .map((e) => ({ ms: e.ms, bias: e.status.bias }));
+const tares = parsed.events
+    .filter((e) => e.status && e.status.phase === 'heading_tare')
+    .map((e) => ({ ms: e.ms, hd0_deg: e.status.hd0_deg }));
 ```
 
 Note the epoch `ms` is only used verbatim when the log carries its usual epoch-stamped
@@ -334,6 +397,7 @@ when a bias is active. That is additive — unknown fields are ignored by older 
 | Layer | File | What it owns |
 | --- | --- | --- |
 | Math | `fictrac-bridge/bridge.py` | `bias_angle_deg()` (pure), `BIAS_TYPES`, the `bias_deg` argument to `frame_index_from_fictrac()` |
+| Heading tare | `fictrac-bridge/bridge.py` | `hd0` + `_tare_pending` on `Pipeline`, armed by `set_bias(tare=True)`, latched in `handle_line`, logged as `heading_tare` |
 | Clock + logging | `fictrac-bridge/bridge.py` | `Pipeline.set_bias()` / `bias_now_deg()`, `LogWriter.write_event()`, the `config` dispatch, `--bias-type/--bias-amplitude/--bias-freq` |
 | Transport | `js/fictrac-bridge-client.js` | `bias` as the one object-valued config key; `setBias()`, the `'bias'` event, `biasAngleDeg`; the default index clamp `_clampToFrames()` |
 | Schema | `js/plugin-registry.js` | the three `startClosedLoop` params |

@@ -128,7 +128,8 @@ browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on con
                                              "amplitude":<deg/s>, "frequency":<Hz>}}
                                                               (any subset; a message
                                                                CARRYING "bias" re-zeros
-                                                               the bias phase clock)
+                                                               the bias phase clock AND
+                                                               re-tares the heading)
                    {"type":"log_control", "enabled":<bool>, "level":"behavior_v1"|"full"}
                                                               (open the log file; level
                                                                picks the frame-row format)
@@ -217,6 +218,21 @@ writes a `bias_config` line into the log whose `ms` is in the **same relative ti
 as the behavior_v1 rows**, which is what makes `b(t)` exactly reconstructable offline
 (the per-frame `bias` on the WebSocket is display-only; `BEHAVIOR_V1_COLS` is
 deliberately not widened).
+
+### Heading tare
+
+FicTrac's integrated heading is absolute, so without a tare a closed-loop epoch opens
+by snapping the display to `round(heading/gain)` — on real fly logs a median 55-156
+frame jump (up to 340 deg of azimuth), i.e. the stimulus leaving the fly's view on the
+first frame. Every epoch therefore re-zeros the heading: `hd0` is latched from the first
+frame after the epoch opens, so the epoch starts where `frame_index` put it and moves
+relative to that. The tared difference is wrapped into `(-180, 180]` so it reads as a
+true relative turn (only the heading — the bias stays unbounded so `constant` keeps
+rotating). Each latch writes a `heading_tare` log event carrying `hd0_deg`, which
+offline analysis NEEDS: without it a recomputed index is off by `round(hd0/gain)`.
+
+The tare is armed by epochs only, not at startup, so the plain Console closed loop
+still maps absolute heading exactly as before.
 
 Full reference, including the validation policy and the authoring YAML:
 `docs/development/closed-loop-bias.md`.

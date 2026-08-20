@@ -571,6 +571,44 @@ checkBool(
 const pBiasBad = R.parseRunLog(JSON.stringify({ type: 'bias_config', ms: 5 }));
 check('missing bias payload defaults to none', pBiasBad.events[0].status.bias, { type: 'none' });
 
+// ── heading_tare: closed-loop heading zero ────────────────────────────────────
+// Reconstruction of the mapping needs hd0 — without it a recomputed index is off by
+// round(hd0/gain) frames (up to 189 of 200 on the bench03 field logs).
+console.log('=== parseRunLog: heading_tare ===');
+const tareLog = [
+    JSON.stringify({ type: 'session', event: 'logging_started', ms: 1785858942699 }),
+    JSON.stringify({
+        type: 'frame_schema',
+        level: 'behavior_v1',
+        cols: ['ms', 'fc', 'idx', 'ft', 'x', 'y', 'hd']
+    }),
+    JSON.stringify({
+        type: 'bias_config',
+        dir: 'bridge',
+        ms: 100,
+        bias: { type: 'constant', amplitude: 90, frequency: 0 }
+    }),
+    JSON.stringify({ type: 'heading_tare', dir: 'bridge', ms: 108, hd0_deg: 137.25 }),
+    JSON.stringify([110, 1, 0, 110, 0, 0, 2.3954]),
+    JSON.stringify({ type: 'heading_tare', dir: 'bridge', ms: 5000, hd0_deg: 0 })
+].join('\n');
+const pTare = R.parseRunLog(tareLog);
+const tares = pTare.events.filter((e) => e.status && e.status.phase === 'heading_tare');
+check('2 heading_tare events surfaced', tares.length, 2);
+check('tare ms used verbatim', tares[0].ms, 108);
+check('hd0_deg preserved', tares[0].status.hd0_deg, 137.25);
+check('a zero tare is kept (not treated as missing)', tares[1].status.hd0_deg, 0);
+// It must not be confused with, or swallow, the bias epoch on the same log.
+check(
+    'bias_config still surfaces alongside',
+    pTare.events.filter((e) => e.status && e.status.phase === 'bias_config').length,
+    1
+);
+check('frame rows unaffected', pTare.samples.length, 1);
+// Malformed tare degrades rather than throwing.
+const pTareBad = R.parseRunLog(JSON.stringify({ type: 'heading_tare', ms: 5 }));
+check('missing hd0_deg defaults to 0', pTareBad.events[0].status.hd0_deg, 0);
+
 console.log('\n=== Summary ===');
 console.log(`${total - failures} / ${total} checks passed`);
 process.exit(failures ? 1 : 0);

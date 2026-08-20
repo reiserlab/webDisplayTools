@@ -4,6 +4,35 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## Bridge 2.2 (2026-08-20) · Closed-loop trials start in front of the fly
+
+A **FicTrac bridge** change — no Studio update needed, but the bridge must be
+restarted to pick it up (`pixi run bridge` should report **2.2**). Protocols are
+unchanged.
+
+- **Fixed: a closed-loop trial no longer jumps the display away from the fly on its
+  first frame.** The pattern would appear centred in front of the fly (`frame_index:
+  0`) and then immediately snap somewhere else — frequently out of the fly's field of
+  view — because the frame index was computed from the fly's *absolute* accumulated
+  heading. Measured across 12 real fly recordings (bench03): a median **55–156 frame
+  jump, up to 189 of 200 = 340° of arena**, and up to the whole pattern on a 20-frame
+  grating. Reported by Isabel from real experiments.
+- Each closed-loop trial now **zeroes ("tares") the heading at its start**, so the
+  display opens where the pattern was loaded and the fly's turns — plus any bias —
+  move it from there. Every condition tares, including a `bias_type: none` baseline.
+- The fly's turn is now read **relative to the trial start**, wrapped to ±180°, so a
+  fly that crosses the 0/360° heading boundary reads as a small turn rather than a
+  large one. This also matters for short tiled patterns, where the two are not
+  equivalent.
+- `offset` still applies on top, so it can deliberately start the display somewhere
+  other than dead ahead.
+- **Analysis note:** the bridge logs a `heading_tare` event per trial carrying the
+  zeroed heading. Offline reconstruction of the displayed frame must apply it —
+  without it every recomputed index is off by up to most of the pattern. The Studio's
+  replay parser surfaces it alongside the bias epochs.
+- Unchanged: the plain Console closed loop (no protocol) still maps absolute heading
+  exactly as before. The tare applies to protocol-driven trials.
+
 ## v0.71 (2026-08-12) · Closed loop works with any pattern length, not just 200-frame ones
 
 - **Fixed: a closed-loop trial on a pattern with fewer than 200 frames drove the

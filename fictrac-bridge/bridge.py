@@ -30,7 +30,8 @@ WebSocket message schema (also documented in README.md):
                                        "bias":{"type":"none"|"constant"|"sine"|"square",
                                                "amplitude":<deg/s>, "frequency":<Hz>}}
                        (any subset; a message CARRYING "bias" re-zeros the bias phase
-                        clock, so every closed-loop epoch starts at phase 0)
+                        clock AND re-tares the heading, so every closed-loop epoch
+                        starts at phase 0 with the display where the pattern loaded)
                      {"type":"log_control", "enabled":<bool>, "level":"behavior_v1"|"full"}
                        (open/close the log file; level picks the frame-row format,
                         overriding --log-frames — the runner asserts behavior_v1)
@@ -41,7 +42,9 @@ The FicTrac → frame-index policy lives in frame_index_from_fictrac(); edit tha
 function to change closed-loop behaviour. The optional BIAS WAVEFORM (LAB-185) is an
 added rotational velocity whose time-integral is summed into the mapping alongside
 `offset`, so the display keeps moving even when the fly is still — see
-bias_angle_deg() and docs/development/closed-loop-bias.md.
+bias_angle_deg() and docs/development/closed-loop-bias.md. Each epoch also TARES the
+heading (hd0), so it opens with the display where `frame_index` put it rather than
+jumping to an arbitrary index derived from FicTrac's absolute heading.
 
 FRAME LOGGING has two levels (issue #140), both uniform NDJSON — a reader does one
 JSON.parse() per line and dispatches on Array.isArray (frame array vs event object):
@@ -82,7 +85,7 @@ WS_MAX_SIZE = 16 * 1024 * 1024
 # leads the startup banner. (An OLD bridge has no --version flag → argparse errors,
 # which is itself the tell.) "behavior_v1" here means frames carry ms/fc/idx/ft/x/y/hd
 # with `ft` normalized ns→ms — i.e. the live scope + dashboard will work.
-BRIDGE_VERSION = "2.1 · behavior_v1 (ns→ms ft, x/y/hd frames) + bias waveforms"
+BRIDGE_VERSION = "2.2 · behavior_v1 (ns→ms ft, x/y/hd frames) + bias waveforms + heading tare"
 
 # behavior_v1 — the default logged frame schema (issue #140). Positional-array
 # rows in this column order; the live scope + offline dashboard recompute every
@@ -195,7 +198,12 @@ def bias_angle_deg(kind: str, amp_dps: float, freq_hz: float, t_s: float) -> flo
 
 
 def frame_index_from_fictrac(
-    fields: list[float], n_frames: int, gain: float, offset: float, bias_deg: float = 0.0
+    fields: list[float],
+    n_frames: int,
+    gain: float,
+    offset: float,
+    bias_deg: float = 0.0,
+    hd0_deg: float = 0.0,
 ) -> int:
     """Map one FicTrac record to a 0-based arena frame index in [0, n_frames).
 
@@ -210,10 +218,27 @@ def frame_index_from_fictrac(
     heading-equivalent degrees space as `offset`. So a positive bias amplitude moves
     the display the same direction as increasing fly heading, and a NEGATIVE `gain`
     reverses the bias direction along with the fly coupling.
+
+    `hd0_deg` is the HEADING TARE: the heading treated as zero. FicTrac's integrated
+    heading is absolute (and wraps 0..360), so without a tare the first frame of a
+    closed-loop epoch lands at round(heading/gain) — an essentially arbitrary index.
+    On the bench that showed up as the pattern being loaded centred in front of the
+    fly and then JUMPING somewhere else, possibly out of view, on the very first
+    FicTrac frame. Subtracting the heading at epoch onset makes the epoch start at
+    index 0 (i.e. wherever `frame_index` put it, for the usual frame_index 0) and
+    move relative to that. `offset` still applies on top, so it can deliberately
+    place the start elsewhere.
     """
     if not gain:
         return 0  # no deg→index scale, so there is nothing to map (bias included)
-    heading_deg = math.degrees(fields[16])
+    # Wrap the tared difference into (-180, 180] so it reads as a true RELATIVE turn:
+    # FicTrac's col-17 heading already wraps 0..360, so a fly that turned +20 deg past
+    # a tare of 350 would otherwise present as -340. The two are equivalent modulo
+    # 360/gain frames, which only coincides with n_frames when the pattern spans the
+    # full azimuth — wrapping keeps the nearest-angle reading correct for short,
+    # tiled patterns too. Only the heading is wrapped; `bias_deg` must stay unbounded
+    # so a constant disturbance keeps rotating.
+    heading_deg = ((math.degrees(fields[16]) - hd0_deg + 180.0) % 360.0) - 180.0
     idx = round((heading_deg + offset + bias_deg) / gain)
     return idx % n_frames  # Python % is non-negative, so negative gain wraps cleanly
 
@@ -430,17 +455,25 @@ class Pipeline:
         # epoch (each startClosedLoop), not per log file.
         self.bias = {"type": "none", "amplitude": 0.0, "frequency": 0.0}
         self.bias_t0_ms = now_ms()
+        # HEADING TARE. FicTrac's integrated heading is absolute, so a closed-loop
+        # epoch would otherwise open by jumping the display to round(heading/gain).
+        # hd0 is the heading treated as zero; _tare_pending latches it from the FIRST
+        # frame after the epoch begins (a config message can't sample a heading that
+        # hasn't arrived yet, and the last-seen one may be stale).
+        self.hd0 = 0.0
+        self._tare_pending = False
         if bias:
-            self.set_bias(bias, log_event=False)
+            self.set_bias(bias, log_event=False, tare=False)
 
     def reset_base(self) -> None:
         """Re-zero the behavior_v1 relative clocks at a run boundary (log start)."""
         self.t0_ms = now_ms()
         self.ft0 = None
 
-    def set_bias(self, spec: dict | None, log_event: bool = True) -> dict:
-        """Install a bias waveform and RE-ZERO its phase clock, so every closed-loop
-        epoch starts at b(0) = 0 and is reproducible trial to trial. Tolerant: an
+    def set_bias(self, spec: dict | None, log_event: bool = True, tare: bool = True) -> dict:
+        """Install a bias waveform, RE-ZERO its phase clock, and ARM THE HEADING TARE,
+        so every closed-loop epoch starts at b(0) = 0 with the display where the
+        pattern was loaded, and is reproducible trial to trial. Tolerant: an
         unrecognised type or unparseable number degrades to a no-op bias rather than
         raising (the web runner is what rejects bad specs up front, with a message).
 
@@ -465,6 +498,12 @@ class Pipeline:
             amp, freq = 0.0, 0.0
         self.bias = {"type": kind, "amplitude": amp, "frequency": freq}
         self.bias_t0_ms = now_ms()
+        # Arm the heading tare — but only for a real EPOCH, not for the CLI defaults
+        # applied at construction. Startup must leave the mapping on absolute heading
+        # so the plain Console closed loop behaves exactly as it always has; the tare
+        # is scoped to closed-loop epochs, which is where the jump was a problem.
+        if tare:
+            self._tare_pending = True
         if log_event:
             self.log.write_event(
                 {
@@ -510,8 +549,25 @@ class Pipeline:
             self.skipped += 1
             return
         self.parsed += 1
+        # Latch the heading tare on the first frame of a new epoch, BEFORE mapping, so
+        # that very first frame already lands at the pattern's start index instead of
+        # jumping. Logged (with the same relative ms as the frame rows) because offline
+        # reconstruction of the mapping needs it.
+        if self._tare_pending:
+            self._tare_pending = False
+            self.hd0 = math.degrees(fields[16])
+            self.log.write_event(
+                {
+                    "type": "heading_tare",
+                    "dir": "bridge",
+                    "ms": now_ms() - self.t0_ms,
+                    "hd0_deg": round(self.hd0, 4),
+                }
+            )
         bias_deg = self.bias_now_deg()
-        index = frame_index_from_fictrac(fields, self.n_frames, self.gain, self.offset, bias_deg)
+        index = frame_index_from_fictrac(
+            fields, self.n_frames, self.gain, self.offset, bias_deg, self.hd0
+        )
         # behavior_v1 compact state (issue #140): the live scope + offline dashboard
         # recompute every derived channel from these. The ns→ms + column mapping
         # lives in behavior_v1_row() (pure, offline-tested); the Pipeline only owns

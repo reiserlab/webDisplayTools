@@ -353,6 +353,23 @@
             // Surfaced as a STATUS event so buildTimeline and every existing
             // `status.phase === '...'` consumer keeps working untouched — they just
             // don't match the new phase. The bias spec rides on `status.bias`.
+            // Heading tare (LAB-185 follow-up). Emitted when a closed-loop epoch
+            // re-zeros the heading; `hd0_deg` is the heading treated as zero. Offline
+            // reconstruction of the mapping NEEDS this — without it the recomputed
+            // index is off by round(hd0/gain) frames.
+            if (o.type === 'heading_tare') {
+                const replayMs = _recordReplayMs(o, wallStartMs, isoStartMs, fallbackMs);
+                events.push({
+                    ms: replayMs,
+                    status: {
+                        phase: 'heading_tare',
+                        hd0_deg: typeof o.hd0_deg === 'number' ? o.hd0_deg : 0
+                    }
+                });
+                fallbackMs = Math.max(fallbackMs, replayMs);
+                continue;
+            }
+
             if (o.type === 'bias_config') {
                 const replayMs = _recordReplayMs(o, wallStartMs, isoStartMs, fallbackMs);
                 events.push({

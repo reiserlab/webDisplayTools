@@ -10,10 +10,13 @@ Covers:
   • bias_angle_deg()           the closed-loop bias/disturbance waveforms (LAB-185):
                                the closed-form integrals, b(0)=0, the ZERO-MEAN
                                position property, and the degenerate no-ops.
-  • frame_index_from_fictrac() the heading→frame-index mapping, with bias summed in.
+  • frame_index_from_fictrac() the heading→frame-index mapping, with bias summed in
+                               and the HEADING TARE that keeps a closed-loop epoch
+                               from opening with a jump.
 
 Run: python tests/test-bridge-behavior.py
 """
+import math
 import os
 import sys
 
@@ -174,6 +177,40 @@ check("gain 0 short-circuits to 0 even with a bias", bridge.frame_index_from_fic
 # Fly heading and bias sum: 90 deg of heading + 90 deg of bias = 180 deg → frame 100.
 walking = rec(fc=2, x=0.0, y=0.0, hd=3.141592653589793 / 2, ts=0)  # hd = 90 deg
 check("heading + bias sum (90 + 90 deg → frame 100)", bridge.frame_index_from_fictrac(walking, NFR, GAIN, 0.0, 90.0), 100)
+
+print("=== frame_index_from_fictrac: HEADING TARE (bench03 field bug) ===")
+# FicTrac's integrated heading is ABSOLUTE and wraps 0..360, so without a tare a
+# closed-loop epoch opens by snapping the display to round(heading/gain) — an
+# essentially arbitrary index. On bench03 real-fly logs that measured as a median
+# 55-156 frame jump (up to 189 of 200 = 340 deg of azimuth) on a full-azimuth
+# pattern, i.e. the stimulus leaving the fly's field of view on the first frame.
+def hdrec(deg):
+    a = [0.0] * 25
+    a[16] = math.radians(deg)
+    return a
+
+FI = bridge.frame_index_from_fictrac
+check("no tare: 137 deg heading snaps to frame 76 (THE BUG)", FI(hdrec(137), 200, 1.8, 0.0), 76)
+check("tared: same heading stays at the loaded frame 0", FI(hdrec(137), 200, 1.8, 0.0, 0.0, 137.0), 0)
+check("tare is back-compatible (hd0 defaults to 0)", FI(hdrec(137), 200, 1.8, 0.0, 0.0, 0.0), 76)
+# Tared, the index tracks the fly's turn RELATIVE to onset.
+check("tared: +18 deg turn -> +10 frames", FI(hdrec(155), 200, 1.8, 0.0, 0.0, 137.0), 10)
+check("tared: -18 deg turn -> -10 frames (wraps to 190)", FI(hdrec(119), 200, 1.8, 0.0, 0.0, 137.0), 190)
+# The tare composes with the other terms rather than replacing them.
+check("tared + 90 deg bias -> 50 frames", FI(hdrec(137), 200, 1.8, 0.0, 90.0, 137.0), 50)
+check("tared + 90 deg offset -> 50 frames", FI(hdrec(137), 200, 1.8, 90.0, 0.0, 137.0), 50)
+check("bias stays unbounded so constant keeps rotating", FI(hdrec(137), 200, 1.8, 0.0, 1350.0, 137.0), 150)
+check("gain 0 still short-circuits", FI(hdrec(137), 200, 0.0, 0.0, 0.0, 137.0), 0)
+
+print("=== ...and the tared difference is a RELATIVE turn (0/360 wrap) ===")
+# A fly tared at 350 deg that turns +20 deg reads 10 deg absolute. Naively that is
+# -340, not +20. Those differ by 360 deg = 360/gain frames, which only aliases away
+# when the pattern spans the full azimuth — so a short TILED pattern needs the wrap.
+check("full azimuth (200f): +20 deg past a 350 deg tare -> 11", FI(hdrec(10), 200, 1.8, 0.0, 0.0, 350.0), 11)
+check("tiled 20f grating: same case still -> 11, not aliased", FI(hdrec(10), 20, 1.8, 0.0, 0.0, 350.0), 11)
+check("wrap is symmetric: -20 deg past a 10 deg tare -> -11 (wraps 189)", FI(hdrec(350), 200, 1.8, 0.0, 0.0, 10.0), 189)
+# Exactly antipodal is the wrap boundary; (-180, 180] means +180 is chosen.
+check("180 deg from tare resolves to +100, not -100", FI(hdrec(180), 200, 1.8, 0.0, 0.0, 0.0), 100)
 
 print("\n=== Summary ===")
 print(f"{total - failures} / {total} checks passed")
