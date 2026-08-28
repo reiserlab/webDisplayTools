@@ -4,6 +4,94 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## Bridge 2.2 (2026-08-20) · Closed-loop trials start in front of the fly
+
+A **FicTrac bridge** change — no Studio update needed, but the bridge must be
+restarted to pick it up (`pixi run bridge` should report **2.2**). Protocols are
+unchanged.
+
+- **Fixed: a closed-loop trial no longer jumps the display away from the fly on its
+  first frame.** The pattern would appear centred in front of the fly (`frame_index:
+  0`) and then immediately snap somewhere else — frequently out of the fly's field of
+  view — because the frame index was computed from the fly's *absolute* accumulated
+  heading. Measured across 12 real fly recordings (bench03): a median **55–156 frame
+  jump, up to 189 of 200 = 340° of arena**, and up to the whole pattern on a 20-frame
+  grating. Reported by Isabel from real experiments.
+- Each closed-loop trial now **zeroes ("tares") the heading at its start**, so the
+  display opens where the pattern was loaded and the fly's turns — plus any bias —
+  move it from there. Every condition tares, including a `bias_type: none` baseline.
+- The fly's turn is now read **relative to the trial start**, wrapped to ±180°, so a
+  fly that crosses the 0/360° heading boundary reads as a small turn rather than a
+  large one. This also matters for short tiled patterns, where the two are not
+  equivalent.
+- `offset` still applies on top, so it can deliberately start the display somewhere
+  other than dead ahead.
+- **Analysis note:** the bridge logs a `heading_tare` event per trial carrying the
+  zeroed heading. Offline reconstruction of the displayed frame must apply it —
+  without it every recomputed index is off by up to most of the pattern. The Studio's
+  replay parser surfaces it alongside the bias epochs.
+- Unchanged: the plain Console closed loop (no protocol) still maps absolute heading
+  exactly as before. The tare applies to protocol-driven trials.
+
+## v0.71 (2026-08-12) · Closed loop works with any pattern length, not just 200-frame ones
+
+- **Fixed: a closed-loop trial on a pattern with fewer than 200 frames drove the
+  arena to frames that did not exist.** The display showed a flickering diagnostic
+  glyph with the real pattern flashing through, and afterwards the arena could stop
+  responding to Console commands until it was power-cycled. Reported by Isabel
+  running a 20-frame grating where the same protocol had worked with a 200-frame
+  bar; 91% of the frame commands in that run were rejected by the controller.
+- The cause was the frame count never reaching the FicTrac bridge, which then
+  assumed 200. The Studio now reads the true count **from the controller** when it
+  is not already known from the pattern file, so any pattern length works.
+- **A closed loop will no longer start on a guessed frame count.** If neither the
+  pattern file nor the controller can supply it, that step fails with an explanation
+  in the run log and the rest of the run continues — instead of silently streaming
+  out-of-range frames for the whole trial.
+- No protocol changes needed. In particular a short pattern is perfectly valid: a
+  20-pixel-period grating only needs 20 frames, and the closed loop tiles it around
+  the arena. Keep the usual `gain: 1.8` on a 10-column G6 — do not rescale it to the
+  frame count.
+- If you hit the old symptom before updating: **Disconnect → Connect** in the
+  Studio is worth trying before a power cycle.
+
+## v0.70 (2026-08-04) · Closed-loop bias — add a disturbance to a fly-on-ball trial
+
+- **A closed-loop condition can now add a smooth disturbance to the visual
+  display**, so the arena keeps moving even when the fly holds still. This is
+  the stimulus for disturbance-rejection experiments: impose a known motion and
+  see how the fly counter-turns to null it. Set it per condition in Edit → the
+  condition's **Start closed-loop** command, which grows three fields:
+  - **Bias waveform** — None, Constant (steady drift), Sine, or Square.
+  - **Bias amplitude (deg/s, peak)** — how fast the display is pushed. A
+    **positive** amplitude turns the display **clockwise** (equivalently, the
+    pattern sweeps rightward across the fly's view); negative turns it
+    counter-clockwise. Confirmed on the arena.
+  - **Bias frequency (Hz)** — for Sine and Square only; Constant ignores it.
+- **Constant** drifts the display steadily in one direction. **Sine** and
+  **Square** push it equally left and right around the frame it started on, so
+  they add no net rotation over a trial. Because the amplitude is a *speed*, how
+  far the display travels shrinks as the frequency rises: at 90 deg/s a sine
+  covers ±28.6° at 0.5 Hz but only ±14.3° at 1 Hz.
+- **The Run view shows the live bias** next to the closed-loop indicator — the
+  waveform the running protocol asked for, plus the angle it is adding right now
+  — so you can confirm at the bench that it took effect. It is read-only there;
+  the protocol is the only place it is set.
+- **Stop closed-loop clears the bias**, so a disturbance never leaks into
+  following trials — and so does **pressing STOP mid-run**, which skips the
+  protocol's own Stop closed-loop entirely. Without that, the next run started
+  with the previous run's disturbance still going (and the bridge kept driving
+  the arena after STOP). Bench-reported and fixed before release.
+- A ready-made sweep of all four waveforms ships as **FicTrac closed-loop
+  bias/disturbance test** in File ▾ → Open from library.
+- Needs an updated FicTrac bridge (`pixi run bridge`, reports version 2.1 or
+  later) — the bias is computed there. An older bridge simply ignores it (verified:
+  a stale bridge keeps streaming normally, it just applies no disturbance).
+- **Validated on arena hardware.** A full 8-condition run drove a real controller
+  and the recorded log matches the intended frame index on every one of its 328,733
+  frames; the rotation direction was checked by eye. Not yet used in an experiment
+  with a behaving fly.
+
 ## v0.69 (2026-07-21) · ISP batch retries a failed panel twice
 
 - **A failed panel flash now gets up to two retries** (was one) before being

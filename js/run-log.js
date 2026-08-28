@@ -139,6 +139,12 @@
                     (ev.command_name ? '.' + ev.command_name : '') +
                     (ev.reason ? ' (' + ev.reason + ')' : '')
                 );
+            case 'warn':
+                // The step RAN but something about it deserves attention (e.g. a bias
+                // frequency that is legal yet has no effect). Distinct from 'skip'.
+                return (
+                    stamp + '   ' + where + 'WARN ' + (ev.op ? ev.op + ' ' : '') + (ev.reason || '')
+                );
             case 'error':
                 return stamp + '   ' + where + 'ERROR ' + (ev.reason || '');
             case 'step-done':

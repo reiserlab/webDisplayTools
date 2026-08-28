@@ -42,12 +42,24 @@
  *   'applied' (index:int)                  — a frame was applied to the arena
  *   'blocked' (reason:string)              — a frame could not be applied (canApply false)
  *   'apply'   (on:bool)                     — closed-loop apply was enabled/disabled
+ *   'bias'    (bias:object|null)           — the bias waveform pushed to the bridge
+ *                                            changed: {type, amplitude, frequency}
  *   'log'     (msg:string, kind:string)    — human-readable trace line
  */
 (function (global) {
     'use strict';
 
-    const EVENTS = ['status', 'stats', 'frame', 'sample', 'applied', 'blocked', 'apply', 'log'];
+    const EVENTS = [
+        'status',
+        'stats',
+        'frame',
+        'sample',
+        'applied',
+        'blocked',
+        'apply',
+        'bias',
+        'log'
+    ];
 
     class FicTracBridgeClient {
         /**
@@ -64,7 +76,11 @@
         constructor(opts) {
             const o = opts || {};
             this._applyFrame = typeof o.applyFrame === 'function' ? o.applyFrame : null;
-            this._clampFrame = typeof o.clampFrame === 'function' ? o.clampFrame : (i) => i;
+            // Default clamp = wrap on the frame count we last PUSHED to the bridge
+            // (see _clampToFrames). Belt-and-braces: the bridge already wraps on its
+            // own n_frames, but only the host knows whether that value ever arrived.
+            this._clampFrame =
+                typeof o.clampFrame === 'function' ? o.clampFrame : (i) => this._clampToFrames(i);
             this._canApply = typeof o.canApply === 'function' ? o.canApply : () => true;
             this._WS = o.WebSocketImpl || (typeof WebSocket !== 'undefined' ? WebSocket : null);
             this._now = typeof o.now === 'function' ? o.now : () => Date.now();
@@ -84,16 +100,21 @@
             this._rateHz = 0;
             this._rateTimer = null;
             this._lastBlockedMs = 0;
+            this._biasNowDeg = null; // live bias angle from the newest frame (display only)
 
             // Bridge config (mirrors the console inputs). Sent on connect + on change.
             // logLevel is the frame-logging level requested when logging starts
             // ('behavior_v1' default | 'full'); the browser ASSERTS it so the runner
             // logs behavior_v1 regardless of how the bridge process was launched.
+            // `bias` is the one OBJECT-valued config key (LAB-185): the closed-loop
+            // disturbance waveform {type, amplitude, frequency}. null = never set, so
+            // nothing is pushed and an old bridge is unaffected.
             this._config = {
                 fictrac_port: 60000,
                 gain: 1.8,
                 offset: 0,
                 frames: null,
+                bias: null,
                 logLevel: 'behavior_v1'
             };
         }
@@ -218,15 +239,51 @@
         }
 
         // ---- config / logging ------------------------------------------------
-        /** Merge config (any subset of fictrac_port/gain/offset/frames) and push if connected. */
+        /**
+         * Merge config (any subset of fictrac_port/gain/offset/frames/bias) and push if
+         * connected. `bias` is an OBJECT ({type, amplitude, frequency}) — the scalar keys
+         * are pushed only when finite, so it needs its own branch or it would be dropped.
+         */
         setConfig(partial) {
             if (partial && typeof partial === 'object') {
                 for (const k of ['fictrac_port', 'gain', 'offset', 'frames']) {
                     if (partial[k] !== undefined && partial[k] !== null)
                         this._config[k] = partial[k];
                 }
+                if (partial.bias !== undefined) this.setBias(partial.bias, true);
             }
             this.sendConfig();
+        }
+        /**
+         * Install the closed-loop bias waveform. Emits 'bias' when it changes so a UI can
+         * show what the bridge was told. Note the bridge re-zeros its bias PHASE clock on
+         * every config message that carries a `bias` key — so re-pushing the same waveform
+         * restarts it at phase 0, which is exactly what a new closed-loop epoch wants.
+         * @param {object|null} bias  {type, amplitude, frequency}; null/'none' clears it
+         * @param {boolean} [deferSend]  true when the caller will sendConfig() itself
+         */
+        setBias(bias, deferSend) {
+            const next =
+                bias && typeof bias === 'object'
+                    ? {
+                          type: String(bias.type || 'none'),
+                          amplitude: Number(bias.amplitude) || 0,
+                          frequency: Number(bias.frequency) || 0
+                      }
+                    : null;
+            const before = JSON.stringify(this._config.bias);
+            this._config.bias = next;
+            if (JSON.stringify(next) !== before) this._emit('bias', next);
+            if (!deferSend) this.sendConfig();
+        }
+        /** The bias waveform last pushed to the bridge (null when never set). */
+        get bias() {
+            return this._config.bias;
+        }
+        /** Bias angle (deg) the bridge reported on the newest frame; null when inactive
+         *  (no bias running, or a pre-bias bridge that never sends the field). */
+        get biasAngleDeg() {
+            return this._biasNowDeg;
         }
         /** Push the current config to the bridge (no-op when disconnected). */
         sendConfig() {
@@ -236,12 +293,32 @@
             if (Number.isFinite(c.gain)) cfg.gain = c.gain;
             if (Number.isFinite(c.offset)) cfg.offset = c.offset;
             if (Number.isFinite(c.frames)) cfg.frames = c.frames;
+            if (c.bias) cfg.bias = c.bias;
             this._send(cfg);
         }
 
         /** Set the clamp policy (index → in-range index). Consumer-specific. */
         setClampFrame(fn) {
             if (typeof fn === 'function') this._clampFrame = fn;
+        }
+        /** The frame count last pushed to the bridge (null when never set). */
+        get frames() {
+            return this._config.frames;
+        }
+        /**
+         * Default clamp: wrap an index onto the pattern frame count we last pushed to
+         * the bridge. The bridge does its own `% n_frames`, so this only matters when
+         * the two disagree — a config push that never landed, or a bridge launched
+         * with a `--frames` we never overrode. In that window an unwrapped index goes
+         * to SET_FRAME_POSITION as a frame the loaded pattern does not have, which the
+         * firmware renders as a flickering panel map and can leave the display engine
+         * wedged until a power cycle (bench, 2026-08-12). Unknown count ⇒ identity,
+         * since guessing a modulus is worse than passing the bridge's own value through.
+         */
+        _clampToFrames(i) {
+            const n = this._config.frames;
+            if (!Number.isInteger(n) || n <= 0) return i;
+            return ((i % n) + n) % n;
         }
         /** Set the apply gate (may we drive the arena right now?). Consumer-specific. */
         setCanApply(fn) {
@@ -359,6 +436,9 @@
             this._recv++;
             this._rateCount++;
             this._pending = index; // coalesce — only the newest index matters
+            // Live bias angle the bridge folded into this index (absent when no bias is
+            // active, or when talking to a pre-bias bridge) — display only.
+            this._biasNowDeg = typeof msg?.bias === 'number' ? msg.bias : null;
             this._emit('frame', index);
             // behavior_v1 sample for the scope — only when the bridge forwards the
             // kinematic fields (older bridges send index-only → no 'sample').

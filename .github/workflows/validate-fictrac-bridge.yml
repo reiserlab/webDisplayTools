@@ -1,0 +1,56 @@
+name: Validate FicTrac Bridge
+
+# The bridge owns two pieces of pure math the closed loop depends on:
+#   • behavior_v1_row()  — the col-22 ns→ms normalization the live scope and the
+#     offline dashboard both read.
+#   • bias_angle_deg()   — the closed-loop bias/disturbance waveforms (LAB-185):
+#     the closed-form integrals and the zero-mean-position property.
+# tests/test-bridge-behavior.py covers both and runs in `pixi run test`, but until
+# this workflow it ran in NO CI job — so a regression in either only surfaced on a
+# developer's machine.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'fictrac-bridge/**'
+      - 'tests/test-bridge-behavior.py'
+      - '.github/workflows/validate-fictrac-bridge.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'fictrac-bridge/**'
+      - 'tests/test-bridge-behavior.py'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install bridge dependencies
+        # bridge.py imports websockets at module scope, so importing it for the
+        # offline tests needs the package even though no socket is opened.
+        run: pip install 'websockets>=12'
+
+      - name: Run bridge behavior + bias tests
+        run: python tests/test-bridge-behavior.py
+
+      - name: Bridge CLI smoke test
+        # --version proves the module imports and argparse is wired; the bad-bias
+        # case proves the 0 Hz guard rejects before any socket is opened.
+        run: |
+          python fictrac-bridge/bridge.py --version
+          if python fictrac-bridge/bridge.py --bias-type sine --bias-freq 0 2>/dev/null; then
+            echo "FAIL: --bias-type sine with --bias-freq 0 should be rejected"
+            exit 1
+          fi
+          echo "OK: 0 Hz sine rejected at the CLI"

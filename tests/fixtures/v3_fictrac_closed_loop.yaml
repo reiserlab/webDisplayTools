@@ -47,6 +47,7 @@ plugins:
 experiment:
   - "fictrac_setup"
   - "closed_loop_rotation"
+  - "closed_loop_bias_sine"
   - "open_loop_grating"
   - "fictrac_shutdown"
 
@@ -84,6 +85,35 @@ conditions:
         command_name: "startClosedLoop"
         params:
           gain: 1.8
+      - type: "wait"
+        duration: 10
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  # CLOSED-LOOP + BIAS (LAB-185): same as above, plus a sinusoidal disturbance
+  # added to the loop so the display keeps swinging even when the fly holds still
+  # (disturbance rejection). bias_amplitude is the PEAK velocity in deg/s; the
+  # bridge integrates it, so at 0.5 Hz the position swings ±90/(2π·0.5) ≈ ±28.6°.
+  - name: "closed_loop_bias_sine"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: 10
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: 1.8
+          bias_type: "sine"
+          bias_amplitude: 90
+          bias_frequency: 0.5
       - type: "wait"
         duration: 10
       - type: "plugin"

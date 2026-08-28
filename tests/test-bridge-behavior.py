@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
-"""Offline tests for fictrac-bridge/bridge.py behavior_v1_row() — the pure ns→ms
-timestamp normalization + column mapping that the live scope AND the offline
-analysis dashboard depend on. No sockets/WebSocket: the buggy logic is pure, so
-this runs offline. Wired into `pixi run test`.
+"""Offline tests for the PURE parts of fictrac-bridge/bridge.py. No sockets/WebSocket
+— the logic that can actually be wrong is pure, so this runs offline. Wired into
+`pixi run test`.
+
+Covers:
+  • behavior_v1_row()          the ns→ms timestamp normalization + column mapping
+                               that the live scope AND the offline analysis
+                               dashboard depend on.
+  • bias_angle_deg()           the closed-loop bias/disturbance waveforms (LAB-185):
+                               the closed-form integrals, b(0)=0, the ZERO-MEAN
+                               position property, and the degenerate no-ops.
+  • frame_index_from_fictrac() the heading→frame-index mapping, with bias summed in
+                               and the HEADING TARE that keeps a closed-loop epoch
+                               from opening with a jump.
 
 Run: python tests/test-bridge-behavior.py
 """
+import math
 import os
 import sys
 
@@ -90,6 +101,116 @@ short = [0.0] * 17
 short[0] = 7
 check("missing col-22 → ft None", bridge.behavior_v1_row(short, index=1, rel_ms=3, ft0=None)["ft"], None)
 check("missing col-22 still maps hd", bridge.behavior_v1_row(short, index=1, rel_ms=3, ft0=None)["fc"], 7)
+
+print("=== bias_angle_deg: types + b(0) = 0 ===")
+check("BIAS_TYPES vocabulary", list(bridge.BIAS_TYPES), ["none", "constant", "sine", "square"])
+A = 90.0   # peak velocity, deg/s
+F = 0.5    # Hz → period 2 s
+T = 1.0 / F
+for kind in bridge.BIAS_TYPES:
+    # Onset must never jump the display: every waveform integrates from zero.
+    approx(f"{kind}: b(0) = 0", bridge.bias_angle_deg(kind, A, F, 0.0), 0.0)
+check("none is a no-op at any t", bridge.bias_angle_deg("none", A, F, 3.7), 0.0)
+check("unknown kind is a no-op (never raises)", bridge.bias_angle_deg("triangle", A, F, 3.7), 0.0)
+
+print("=== bias_angle_deg: constant = A·t (the 'display still rotates' case) ===")
+approx("constant 90 deg/s for 2 s = 180 deg", bridge.bias_angle_deg("constant", A, F, 2.0), 180.0)
+approx("constant is linear (4 s = 360 deg)", bridge.bias_angle_deg("constant", A, F, 4.0), 360.0)
+approx("constant ignores frequency", bridge.bias_angle_deg("constant", A, 7.3, 2.0), 180.0)
+approx("negative amplitude reverses", bridge.bias_angle_deg("constant", -A, F, 2.0), -180.0)
+
+print("=== bias_angle_deg: sine = (A/ω)·sin(ωt), ZERO-MEAN in position ===")
+# The peak position excursion is A/ω = A/(2πf) — 28.6478.. deg at 90 deg/s, 0.5 Hz.
+peak_sine = A / (2 * 3.141592653589793 * F)
+approx("sine peak +A/ω at t = T/4", bridge.bias_angle_deg("sine", A, F, T / 4), peak_sine, tol=1e-9)
+approx("sine back to 0 at t = T/2", bridge.bias_angle_deg("sine", A, F, T / 2), 0.0, tol=1e-9)
+# THE regression guard: an earlier draft used (A/ω)(1−cos ωt), which is one-sided
+# (never negative) — the display would drift to one side instead of being pushed
+# equally both ways. A negative trough at 3T/4 is what proves the zero-mean form.
+approx("sine trough −A/ω at t = 3T/4 (NOT one-sided)", bridge.bias_angle_deg("sine", A, F, 3 * T / 4), -peak_sine, tol=1e-9)
+approx("sine periodic: b(T) = 0", bridge.bias_angle_deg("sine", A, F, T), 0.0, tol=1e-9)
+approx("sine periodic: b(T + T/4) = peak", bridge.bias_angle_deg("sine", A, F, T + T / 4), peak_sine, tol=1e-9)
+approx("sine negative amplitude mirrors", bridge.bias_angle_deg("sine", -A, F, T / 4), -peak_sine, tol=1e-9)
+# Halving the excursion by doubling f is the practical consequence of amplitude
+# being a VELOCITY: at a fixed A, a faster disturbance covers less ground.
+approx("sine at 2f has half the excursion", bridge.bias_angle_deg("sine", A, 2 * F, (T / 2) / 4), peak_sine / 2, tol=1e-9)
+
+print("=== bias_angle_deg: square = symmetric triangle, ±A/(4f) ===")
+peak_sq = A / (4 * F)  # 45 deg at 90 deg/s, 0.5 Hz
+approx("square peak +A/(4f) at t = T/4", bridge.bias_angle_deg("square", A, F, T / 4), peak_sq)
+approx("square crosses 0 at t = T/2", bridge.bias_angle_deg("square", A, F, T / 2), 0.0)
+approx("square trough −A/(4f) at t = 3T/4", bridge.bias_angle_deg("square", A, F, 3 * T / 4), -peak_sq)
+approx("square periodic: b(T) = 0", bridge.bias_angle_deg("square", A, F, T), 0.0)
+approx("square periodic: b(3T + T/4) = peak", bridge.bias_angle_deg("square", A, F, 3 * T + T / 4), peak_sq)
+approx("square rises linearly (T/8 → half peak)", bridge.bias_angle_deg("square", A, F, T / 8), peak_sq / 2)
+approx("square negative amplitude mirrors", bridge.bias_angle_deg("square", -A, F, T / 4), -peak_sq)
+
+print("=== bias_angle_deg: degenerate frequency ===")
+# 0 Hz is the divide-by-ω case. The WEB RUNNER rejects it up front (skips the step
+# with a message); the bridge must still degrade to a no-op rather than raise,
+# because it runs once per FicTrac frame.
+check("sine at 0 Hz → 0.0, no raise", bridge.bias_angle_deg("sine", A, 0.0, 2.0), 0.0)
+check("square at 0 Hz → 0.0, no raise", bridge.bias_angle_deg("square", A, 0.0, 2.0), 0.0)
+# A negative frequency is a NO-OP, not a mirror: both velocities are cosines, which
+# are even in ω. (For the sine's b(t) the sign flips in A/ω and sin(ωt) cancel.)
+# Reversing direction is done by negating the AMPLITUDE.
+approx("sine at −f equals sine at +f", bridge.bias_angle_deg("sine", A, -F, T / 4), bridge.bias_angle_deg("sine", A, F, T / 4), tol=1e-9)
+approx("square at −f equals square at +f", bridge.bias_angle_deg("square", A, -F, T / 4), bridge.bias_angle_deg("square", A, F, T / 4))
+
+print("=== frame_index_from_fictrac: bias folds into the mapping ===")
+GAIN = 1.8   # deg of heading per frame index (360/200)
+NFR = 200
+still = rec(fc=1, x=0.0, y=0.0, hd=0.0, ts=0)  # a fly holding perfectly still
+check("no bias + still fly → frame 0", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0), 0)
+check("bias_deg defaults to 0 (back-compat signature)", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0), 0)
+# THE feature: a still fly still moves the display, purely from the bias.
+check("bias 90 deg → frame 50 with a still fly", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0, 90.0), 50)
+check("bias 180 deg → frame 100", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0, 180.0), 100)
+check("bias wraps past a full turn (450 deg → frame 50)", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0, 450.0), 50)
+check("negative bias wraps non-negative (−90 deg → frame 150)", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0, -90.0), 150)
+# Bias lives in the same heading-equivalent space as `offset`, so they add...
+check("bias adds to offset", bridge.frame_index_from_fictrac(still, NFR, GAIN, 45.0, 45.0), 50)
+# ...and a NEGATIVE gain reverses the bias along with the fly coupling.
+check("negative gain reverses the bias direction", bridge.frame_index_from_fictrac(still, NFR, -GAIN, 0.0, 90.0), 150)
+# gain 0 has no deg→index scale, so there is nothing to map — bias included.
+check("gain 0 short-circuits to 0 even with a bias", bridge.frame_index_from_fictrac(still, NFR, 0.0, 0.0, 90.0), 0)
+# Fly heading and bias sum: 90 deg of heading + 90 deg of bias = 180 deg → frame 100.
+walking = rec(fc=2, x=0.0, y=0.0, hd=3.141592653589793 / 2, ts=0)  # hd = 90 deg
+check("heading + bias sum (90 + 90 deg → frame 100)", bridge.frame_index_from_fictrac(walking, NFR, GAIN, 0.0, 90.0), 100)
+
+print("=== frame_index_from_fictrac: HEADING TARE (bench03 field bug) ===")
+# FicTrac's integrated heading is ABSOLUTE and wraps 0..360, so without a tare a
+# closed-loop epoch opens by snapping the display to round(heading/gain) — an
+# essentially arbitrary index. On bench03 real-fly logs that measured as a median
+# 55-156 frame jump (up to 189 of 200 = 340 deg of azimuth) on a full-azimuth
+# pattern, i.e. the stimulus leaving the fly's field of view on the first frame.
+def hdrec(deg):
+    a = [0.0] * 25
+    a[16] = math.radians(deg)
+    return a
+
+FI = bridge.frame_index_from_fictrac
+check("no tare: 137 deg heading snaps to frame 76 (THE BUG)", FI(hdrec(137), 200, 1.8, 0.0), 76)
+check("tared: same heading stays at the loaded frame 0", FI(hdrec(137), 200, 1.8, 0.0, 0.0, 137.0), 0)
+check("tare is back-compatible (hd0 defaults to 0)", FI(hdrec(137), 200, 1.8, 0.0, 0.0, 0.0), 76)
+# Tared, the index tracks the fly's turn RELATIVE to onset.
+check("tared: +18 deg turn -> +10 frames", FI(hdrec(155), 200, 1.8, 0.0, 0.0, 137.0), 10)
+check("tared: -18 deg turn -> -10 frames (wraps to 190)", FI(hdrec(119), 200, 1.8, 0.0, 0.0, 137.0), 190)
+# The tare composes with the other terms rather than replacing them.
+check("tared + 90 deg bias -> 50 frames", FI(hdrec(137), 200, 1.8, 0.0, 90.0, 137.0), 50)
+check("tared + 90 deg offset -> 50 frames", FI(hdrec(137), 200, 1.8, 90.0, 0.0, 137.0), 50)
+check("bias stays unbounded so constant keeps rotating", FI(hdrec(137), 200, 1.8, 0.0, 1350.0, 137.0), 150)
+check("gain 0 still short-circuits", FI(hdrec(137), 200, 0.0, 0.0, 0.0, 137.0), 0)
+
+print("=== ...and the tared difference is a RELATIVE turn (0/360 wrap) ===")
+# A fly tared at 350 deg that turns +20 deg reads 10 deg absolute. Naively that is
+# -340, not +20. Those differ by 360 deg = 360/gain frames, which only aliases away
+# when the pattern spans the full azimuth — so a short TILED pattern needs the wrap.
+check("full azimuth (200f): +20 deg past a 350 deg tare -> 11", FI(hdrec(10), 200, 1.8, 0.0, 0.0, 350.0), 11)
+check("tiled 20f grating: same case still -> 11, not aliased", FI(hdrec(10), 20, 1.8, 0.0, 0.0, 350.0), 11)
+check("wrap is symmetric: -20 deg past a 10 deg tare -> -11 (wraps 189)", FI(hdrec(350), 200, 1.8, 0.0, 0.0, 10.0), 189)
+# Exactly antipodal is the wrap boundary; (-180, 180] means +180 is chosen.
+check("180 deg from tare resolves to +100, not -100", FI(hdrec(180), 200, 1.8, 0.0, 0.0, 0.0), 100)
 
 print("\n=== Summary ===")
 print(f"{total - failures} / {total} checks passed")

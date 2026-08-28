@@ -102,6 +102,52 @@ check('select schema passthrough', P.clampToSchema(2, { type: 'select' }), {
     reason: null
 });
 
+console.log('\n=== fictrac startClosedLoop bias params (LAB-185) ===');
+{
+    const scl = P.BUILTIN_PLUGINS.fictrac.commands.startClosedLoop.params;
+    const bType = scl.bias_type;
+    const bAmp = scl.bias_amplitude;
+    const bFreq = scl.bias_frequency;
+    check('bias_type present', !!bType, true);
+    check('bias_type is a select (renders a dropdown)', bType.type, 'select');
+    check('bias_type is optional', !!bType.required, false);
+    check('bias_type defaults to none (opt-in feature)', bType.default, 'none');
+    // The vocabulary must match BIAS_TYPES in fictrac-bridge/bridge.py and the
+    // BIAS_TYPES list in js/arena-runner-g6.js, or a legal UI pick would be rejected.
+    check(
+        'bias_type options match the bridge vocabulary',
+        (bType.options || []).map((o) => o.value).join(','),
+        'none,constant,sine,square'
+    );
+    check('bias_amplitude present', !!bAmp, true);
+    check('bias_amplitude is numeric', bAmp.type, 'number');
+    check('bias_amplitude defaults to 0', bAmp.default, 0);
+    check('bias_amplitude label names deg/s (it is a VELOCITY)', /deg\/s/.test(bAmp.label), true);
+    // A negative amplitude is how you reverse the disturbance, so it must NOT be
+    // clamped at 0 — an accidental `min: 0` here would silently break that.
+    check('bias_amplitude is unbounded below', bAmp.min, undefined);
+    check('bias_amplitude -90 survives clamping', P.clampToSchema(-90, bAmp).value, -90);
+    check('bias_frequency present', !!bFreq, true);
+    // Default 1, NOT 0: 0 is the divide-by-ω case for sine/square, which the runner
+    // rejects — a 0 default would make every freshly-added sine command invalid.
+    check('bias_frequency defaults to 1 (0 would be the illegal value)', bFreq.default, 1);
+    // And no `min: 0`, or clampToSchema would silently raise a harmless negative
+    // (a no-op) into that one illegal value.
+    check(
+        'bias_frequency has no min (would coerce negatives to the illegal 0)',
+        bFreq.min,
+        undefined
+    );
+    check('bias_frequency -0.5 survives clamping', P.clampToSchema(-0.5, bFreq).value, -0.5);
+    // Bias is per-condition ONLY — a configFields copy would be a second source of truth.
+    const cfgFields = P.BUILTIN_PLUGINS.fictrac.configFields;
+    check(
+        'no bias keys in fictrac configFields (per-condition only)',
+        Object.keys(cfgFields).filter((k) => /bias/.test(k)).length,
+        0
+    );
+}
+
 console.log('\n=== isG6OnlyCommand ===');
 check('setAnalogOut is G6-only', P.isG6OnlyCommand('setAnalogOut'), true);
 check('setDigitalOut is G6-only', P.isG6OnlyCommand('setDigitalOut'), true);

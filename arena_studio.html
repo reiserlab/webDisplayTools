@@ -306,6 +306,8 @@
   /* closed-loop label: very light by default, bright-green pulsing when active */
   .run-bridge .rb-cl{margin-left:auto;font-family:var(--head);font-size:11px;letter-spacing:.4px;color:var(--dim);opacity:.45;transition:color .2s,opacity .2s}
   .run-bridge .rb-cl.active{color:var(--accent);opacity:1;text-shadow:0 0 8px rgba(0,230,118,.7);animation:pulse 1.1s infinite}
+  /* closed-loop bias readout — read-only mirror of what the protocol pushed (LAB-185) */
+  .run-bridge .rb-bias{font-size:11px;color:var(--dim);white-space:nowrap}
   /* quick safety button: drive the stimulus LED dark (AO 5000 mV) — pink */
   .pill.led-off{border-color:#ff408c;color:#ff6fa8;font-weight:700;letter-spacing:.3px}
   .pill.led-off:hover{background:rgba(255,64,140,.16);border-color:#ff408c;color:#ff8fbd}
@@ -2220,6 +2222,7 @@
           <span class="dim" id="rbStatus">disconnected</span>
           <span class="dim rb-count" id="rbCount"></span>
           <span class="rb-cl" id="rbClosedLoop" title="Closed-loop (FicTrac Mode 3/4) — lights green while a trial or experiment is driving the arena from FicTrac">closed-loop</span>
+          <span class="dim rb-bias" id="rbBias" title="Closed-loop bias — the disturbance waveform the running protocol pushed to the bridge, and the angle it is currently adding. Set per condition in the protocol (fictrac → Start closed-loop)."></span>
           <button class="pill led-off" id="btnLedOff" title="Turn the stimulus LED off now — sets Analog Out to 5000 mV (BuckPuck dark). Works during a run.">TURN OFF LED</button>
         </div>
       </div>
@@ -2917,7 +2920,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.69 | 2026-07-21 16:46 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.71 | 2026-08-12 16:56 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3096,7 +3099,7 @@
         }
         const div = document.createElement('div');
         if (ev.phase === 'error') div.className = 'l-err';
-        else if (ev.phase === 'skip') div.className = 'l-warn';
+        else if (ev.phase === 'skip' || ev.phase === 'warn') div.className = 'l-warn';
         // Reuse run-log.js's own transcript line if available, else a compact fallback.
         div.textContent =
             (ev.t_iso ? ev.t_iso.slice(11, 19) + '  ' : '') +
@@ -5745,19 +5748,34 @@
         // sync (both subscribe to the one client's events), even when switching
         // views. Only connect + status + live counts + a closed-loop indicator
         // are exposed here; gain / closed-loop config stay in the Console.
+        // Bias is READ-ONLY here: it is authored per condition in the protocol
+        // (fictrac → Start closed-loop), so this only mirrors what the runner pushed
+        // plus the live angle the bridge reports on each frame. Blank when inactive.
+        function biasText() {
+            const b = bridge.bias;
+            if (!b || b.type === 'none') return '';
+            const head =
+                b.type === 'constant'
+                    ? 'constant ' + b.amplitude + '°/s'
+                    : b.type + ' ' + b.amplitude + '°/s @' + Math.abs(b.frequency) + ' Hz';
+            const live = bridge.biasAngleDeg;
+            return 'bias: ' + head + (live == null ? '' : ' · ' + (live > 0 ? '+' : '') + live.toFixed(1) + '°');
+        }
         function refreshRunBridge() {
             const on = bridge.connected;
-            const dot = $('rbDot'), conn = $('rbConnBtn'), st = $('rbStatus'), cnt = $('rbCount'), cl = $('rbClosedLoop');
+            const dot = $('rbDot'), conn = $('rbConnBtn'), st = $('rbStatus'), cnt = $('rbCount'), cl = $('rbClosedLoop'), bias = $('rbBias');
             if (dot) dot.classList.toggle('on', on);
             if (conn) conn.textContent = on ? 'Disconnect' : 'Connect';
             if (st) st.textContent = on ? 'connected' : 'disconnected';
             const s = bridge.stats;
             if (cnt) cnt.textContent = (on && s && s.recv) ? 'rx ' + s.recv + ' · applied ' + s.applied : '';
             if (cl) cl.classList.toggle('active', on && bridge.apply); // 'apply' = closed-loop live
+            if (bias) bias.textContent = on ? biasText() : '';
         }
         bridge.on('status', refreshRunBridge);
         bridge.on('stats', refreshRunBridge);
         bridge.on('apply', refreshRunBridge);
+        bridge.on('bias', refreshRunBridge);
         if ($('rbConnBtn')) $('rbConnBtn').addEventListener('click', () => {
             if (bridge.connected) { bridge.disconnect(); }
             else { ftSendConfig(); bridge.connect(($('cFtUrl').value || 'ws://localhost:8765').trim()); }
@@ -14903,6 +14921,7 @@ initFromUrl();
     '#mNotes': 'Anything worth remembering about this run — temperature, fly age, oddities.',
     '#provBox': 'Filled in automatically — which protocol, arena, and controller produced this run.',
     '#runBridge': 'The FicTrac bridge program records runs and drives closed-loop trials. Connect it before a recorded run.',
+    '#rbBias': 'The bias (disturbance) the running protocol added to the closed loop, and the angle it is adding right now. A bias keeps the display moving even when the fly holds still. Set it per condition in Edit → the condition’s Start closed-loop command.',
     /* File ▾ — relocated Edit actions */
     '#fmOpenDemo': 'Open one of the bundled demo protocols to explore how experiments are built.',
     '#fmSaveCopy': 'Download a regenerated copy of the protocol for diffing or MATLAB checks — this does NOT count as saving.',

@@ -343,6 +343,43 @@
                 continue;
             }
 
+            // Closed-loop bias epoch (LAB-185). The bridge writes one of these each time a
+            // bias waveform is installed or cleared. Its `ms` is ALREADY in the
+            // behavior_v1 relative timebase and marks the waveform's phase-clock ZERO —
+            // that pair (epoch start + spec) is what makes b(t) exactly reconstructable
+            // offline, since the bias is deliberately NOT a per-frame column
+            // (docs/development/closed-loop-bias.md).
+            //
+            // Surfaced as a STATUS event so buildTimeline and every existing
+            // `status.phase === '...'` consumer keeps working untouched — they just
+            // don't match the new phase. The bias spec rides on `status.bias`.
+            // Heading tare (LAB-185 follow-up). Emitted when a closed-loop epoch
+            // re-zeros the heading; `hd0_deg` is the heading treated as zero. Offline
+            // reconstruction of the mapping NEEDS this — without it the recomputed
+            // index is off by round(hd0/gain) frames.
+            if (o.type === 'heading_tare') {
+                const replayMs = _recordReplayMs(o, wallStartMs, isoStartMs, fallbackMs);
+                events.push({
+                    ms: replayMs,
+                    status: {
+                        phase: 'heading_tare',
+                        hd0_deg: typeof o.hd0_deg === 'number' ? o.hd0_deg : 0
+                    }
+                });
+                fallbackMs = Math.max(fallbackMs, replayMs);
+                continue;
+            }
+
+            if (o.type === 'bias_config') {
+                const replayMs = _recordReplayMs(o, wallStartMs, isoStartMs, fallbackMs);
+                events.push({
+                    ms: replayMs,
+                    status: { phase: 'bias_config', bias: o.bias || { type: 'none' } }
+                });
+                fallbackMs = Math.max(fallbackMs, replayMs);
+                continue;
+            }
+
             // runner run-status event.
             if (o.event === 'runner' || o.type === 'runner' || (canonical && o.phase)) {
                 const status = adaptRunnerEvent(o);

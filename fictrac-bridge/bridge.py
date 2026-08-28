@@ -26,7 +26,12 @@ WebSocket message schema (also documented in README.md):
                        (reply to log_export; {"error":<str>} when nothing was written)
   browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
                      {"type":"config", "fictrac_port":<int>, "gain":<float>,
-                                       "offset":<float>, "frames":<int>}  (any subset)
+                                       "offset":<float>, "frames":<int>,
+                                       "bias":{"type":"none"|"constant"|"sine"|"square",
+                                               "amplitude":<deg/s>, "frequency":<Hz>}}
+                       (any subset; a message CARRYING "bias" re-zeros the bias phase
+                        clock AND re-tares the heading, so every closed-loop epoch
+                        starts at phase 0 with the display where the pattern loaded)
                      {"type":"log_control", "enabled":<bool>, "level":"behavior_v1"|"full"}
                        (open/close the log file; level picks the frame-row format,
                         overriding --log-frames — the runner asserts behavior_v1)
@@ -34,7 +39,12 @@ WebSocket message schema (also documented in README.md):
                      {"type":"log_export"}   (close the active log, stream it back whole)
 
 The FicTrac → frame-index policy lives in frame_index_from_fictrac(); edit that one
-function to change closed-loop behaviour.
+function to change closed-loop behaviour. The optional BIAS WAVEFORM (LAB-185) is an
+added rotational velocity whose time-integral is summed into the mapping alongside
+`offset`, so the display keeps moving even when the fly is still — see
+bias_angle_deg() and docs/development/closed-loop-bias.md. Each epoch also TARES the
+heading (hd0), so it opens with the display where `frame_index` put it rather than
+jumping to an arbitrary index derived from FicTrac's absolute heading.
 
 FRAME LOGGING has two levels (issue #140), both uniform NDJSON — a reader does one
 JSON.parse() per line and dispatches on Array.isArray (frame array vs event object):
@@ -75,7 +85,7 @@ WS_MAX_SIZE = 16 * 1024 * 1024
 # leads the startup banner. (An OLD bridge has no --version flag → argparse errors,
 # which is itself the tell.) "behavior_v1" here means frames carry ms/fc/idx/ft/x/y/hd
 # with `ft` normalized ns→ms — i.e. the live scope + dashboard will work.
-BRIDGE_VERSION = "2.0 · behavior_v1 (ns→ms ft, x/y/hd frames)"
+BRIDGE_VERSION = "2.2 · behavior_v1 (ns→ms ft, x/y/hd frames) + bias waveforms + heading tare"
 
 # behavior_v1 — the default logged frame schema (issue #140). Positional-array
 # rows in this column order; the live scope + offline dashboard recompute every
@@ -90,6 +100,10 @@ BEHAVIOR_V1_COLS = ["ms", "fc", "idx", "ft", "x", "y", "hd"]
 # free — only the fixed unit is applied here. (If a future rig's camera differs,
 # this one constant is the only knob.)
 FT_TS_NS_PER_MS = 1_000_000.0
+
+# Closed-loop bias waveforms (LAB-185). The vocabulary is shared with the web side:
+# js/plugin-registry.js `startClosedLoop.params.bias_type` must offer exactly these.
+BIAS_TYPES = ("none", "constant", "sine", "square")
 
 
 def now_ms() -> int:
@@ -127,7 +141,70 @@ def behavior_v1_row(fields: list[float], index: int, rel_ms: int, ft0: float | N
 # ─────────────────────────────────────────────────────────────────────────────
 # Processing policy — THE part you customise.
 # ─────────────────────────────────────────────────────────────────────────────
-def frame_index_from_fictrac(fields: list[float], n_frames: int, gain: float, offset: float) -> int:
+def bias_angle_deg(kind: str, amp_dps: float, freq_hz: float, t_s: float) -> float:
+    """Bias ANGLE (degrees) after t_s seconds of a closed-loop epoch. PURE (no clocks,
+    no I/O) so it is unit-testable offline — see tests/test-bridge-behavior.py.
+
+    The bias is authored as an added rotational VELOCITY v(t) in deg/s; what the
+    mapping needs is its time-integral b(t) = ∫v, which is what this returns. `amp_dps`
+    (A) is the PEAK velocity for every waveform, so the position excursion is derived
+    and shrinks as frequency rises.
+
+        kind        v(t)              b(t) = ∫v              position range
+        none        0                 0                      —
+        constant    A                 A·t                    unbounded drift
+        sine        A·cos(ωt)         (A/ω)·sin(ωt)          ±A/(2πf)
+        square      A·sign(cos ωt)    symmetric triangle     ±A/(4f)
+
+    where ω = 2πf. Every waveform satisfies b(0) = 0, so closed-loop onset never
+    produces a position jump, and the two periodic ones are ZERO-MEAN in position —
+    the display is pushed equally left and right instead of drifting to one side.
+    (`sign(cos ωt)` rather than `sign(sin ωt)` is what makes the triangle symmetric:
+    b rises for the first quarter cycle, falls through the middle half, and rises back
+    to 0 in the last quarter. `sign(sin ωt)` would give a one-sided 0 → +A/(2f) ramp.)
+
+    Degenerate input is a defensive no-op (0.0), never a raise — this runs per FicTrac
+    frame and must not kill the stream. freq_hz == 0 for sine/square is the divide-by-ω
+    case; the WEB RUNNER is what rejects it up front (js/arena-runner-g6.js skips the
+    trial), so a 0 here means someone bypassed that path. A NEGATIVE freq_hz needs no
+    special case either — it is a NO-OP: both velocities are cosines, which are even in
+    ω, so f and −f give an identical waveform. (For the sine's b(t) the two sign flips
+    in A/ω and sin(ωt) cancel.) To reverse the disturbance direction, negate the
+    AMPLITUDE, not the frequency; the runner warns when it sees a negative frequency.
+    """
+    if kind == "constant":
+        return amp_dps * t_s
+    if kind == "sine":
+        w = 2.0 * math.pi * freq_hz
+        if w == 0.0:
+            return 0.0
+        return (amp_dps / w) * math.sin(w * t_s)
+    if kind == "square":
+        if freq_hz == 0.0:
+            return 0.0
+        # Integral of A·sign(cos ωt): a symmetric triangle. Fold t into one period,
+        # then piece it together from the quarter-cycle breakpoints (peak = A/(4f)).
+        # abs() because a negative frequency is a no-op here (cos is even).
+        period = 1.0 / abs(freq_hz)
+        quarter = period / 4.0
+        peak = amp_dps * quarter
+        phase = t_s % period
+        if phase <= quarter:  # rising 0 → +peak
+            return amp_dps * phase
+        if phase <= 3.0 * quarter:  # falling +peak → −peak
+            return peak - amp_dps * (phase - quarter)
+        return -peak + amp_dps * (phase - 3.0 * quarter)  # rising −peak → 0
+    return 0.0  # "none" and anything unrecognised
+
+
+def frame_index_from_fictrac(
+    fields: list[float],
+    n_frames: int,
+    gain: float,
+    offset: float,
+    bias_deg: float = 0.0,
+    hd0_deg: float = 0.0,
+) -> int:
     """Map one FicTrac record to a 0-based arena frame index in [0, n_frames).
 
     Default policy: drive the frame from the animal's integrated heading (FicTrac
@@ -136,11 +213,33 @@ def frame_index_from_fictrac(fields: list[float], n_frames: int, gain: float, of
     360/200 = 1.8; a negative gain reverses the coupling direction. `offset` shifts
     the zero (degrees). Replace the body to use position (fields 15-16), speed
     (field 19), or any combination.
+
+    `bias_deg` is the disturbance angle from bias_angle_deg(), summed in the same
+    heading-equivalent degrees space as `offset`. So a positive bias amplitude moves
+    the display the same direction as increasing fly heading, and a NEGATIVE `gain`
+    reverses the bias direction along with the fly coupling.
+
+    `hd0_deg` is the HEADING TARE: the heading treated as zero. FicTrac's integrated
+    heading is absolute (and wraps 0..360), so without a tare the first frame of a
+    closed-loop epoch lands at round(heading/gain) — an essentially arbitrary index.
+    On the bench that showed up as the pattern being loaded centred in front of the
+    fly and then JUMPING somewhere else, possibly out of view, on the very first
+    FicTrac frame. Subtracting the heading at epoch onset makes the epoch start at
+    index 0 (i.e. wherever `frame_index` put it, for the usual frame_index 0) and
+    move relative to that. `offset` still applies on top, so it can deliberately
+    place the start elsewhere.
     """
     if not gain:
-        return 0
-    heading_deg = math.degrees(fields[16])
-    idx = round((heading_deg + offset) / gain)
+        return 0  # no deg→index scale, so there is nothing to map (bias included)
+    # Wrap the tared difference into (-180, 180] so it reads as a true RELATIVE turn:
+    # FicTrac's col-17 heading already wraps 0..360, so a fly that turned +20 deg past
+    # a tare of 350 would otherwise present as -340. The two are equivalent modulo
+    # 360/gain frames, which only coincides with n_frames when the pattern spans the
+    # full azimuth — wrapping keeps the nearest-angle reading correct for short,
+    # tiled patterns too. Only the heading is wrapped; `bias_deg` must stay unbounded
+    # so a constant disturbance keeps rotating.
+    heading_deg = ((math.degrees(fields[16]) - hd0_deg + 180.0) % 360.0) - 180.0
+    idx = round((heading_deg + offset + bias_deg) / gain)
     return idx % n_frames  # Python % is non-negative, so negative gain wraps cleanly
 
 
@@ -279,6 +378,13 @@ class LogWriter:
             print(f"[log] export failed for {self._name}: {exc}", file=sys.stderr)
             return None, None
 
+    def write_event(self, obj: dict) -> None:
+        """Append one bridge-authored event object. Unlike write_inbound() this does NOT
+        stamp `rx_ms` — the caller supplies whatever timebase the event belongs in (e.g.
+        bias_config carries `ms` in the same relative timebase as the behavior_v1 rows,
+        which is what makes the bias reconstructable offline)."""
+        self._emit(obj)
+
     def _emit(self, obj) -> None:
         # Compact separators are mandatory for the frame rows (issue #140 size
         # audit) and harmless for event objects — one line per JSON value.
@@ -324,7 +430,15 @@ class LogWriter:
 class Pipeline:
     """Parses FicTrac lines, computes a frame index, and publishes to the hub."""
 
-    def __init__(self, hub: Hub, log: LogWriter, n_frames: int, gain: float, offset: float) -> None:
+    def __init__(
+        self,
+        hub: Hub,
+        log: LogWriter,
+        n_frames: int,
+        gain: float,
+        offset: float,
+        bias: dict | None = None,
+    ) -> None:
         self.hub = hub
         self.log = log
         self.n_frames = n_frames
@@ -336,11 +450,79 @@ class Pipeline:
         # start; `ft` counts FicTrac's own timestamp (col 22) since the first frame.
         self.t0_ms = now_ms()
         self.ft0: float | None = None
+        # Bias waveform (LAB-185) + its OWN phase clock, deliberately independent of
+        # the behavior_v1 log-boundary clock: the phase must re-zero per closed-loop
+        # epoch (each startClosedLoop), not per log file.
+        self.bias = {"type": "none", "amplitude": 0.0, "frequency": 0.0}
+        self.bias_t0_ms = now_ms()
+        # HEADING TARE. FicTrac's integrated heading is absolute, so a closed-loop
+        # epoch would otherwise open by jumping the display to round(heading/gain).
+        # hd0 is the heading treated as zero; _tare_pending latches it from the FIRST
+        # frame after the epoch begins (a config message can't sample a heading that
+        # hasn't arrived yet, and the last-seen one may be stale).
+        self.hd0 = 0.0
+        self._tare_pending = False
+        if bias:
+            self.set_bias(bias, log_event=False, tare=False)
 
     def reset_base(self) -> None:
         """Re-zero the behavior_v1 relative clocks at a run boundary (log start)."""
         self.t0_ms = now_ms()
         self.ft0 = None
+
+    def set_bias(self, spec: dict | None, log_event: bool = True, tare: bool = True) -> dict:
+        """Install a bias waveform, RE-ZERO its phase clock, and ARM THE HEADING TARE,
+        so every closed-loop epoch starts at b(0) = 0 with the display where the
+        pattern was loaded, and is reproducible trial to trial. Tolerant: an
+        unrecognised type or unparseable number degrades to a no-op bias rather than
+        raising (the web runner is what rejects bad specs up front, with a message).
+
+        Also writes a `bias_config` log line carrying `ms` in the behavior_v1 relative
+        timebase — that is what lets an offline analysis reconstruct b(t) exactly from
+        the logged `ms` column.
+        """
+        spec = spec if isinstance(spec, dict) else {}
+        kind = str(spec.get("type", "none")).strip().lower()
+        if kind not in BIAS_TYPES:
+            print(f"[cfg] unknown bias type {kind!r} → none", file=sys.stderr)
+            kind = "none"
+        try:
+            amp = float(spec.get("amplitude", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            amp = 0.0
+        try:
+            freq = float(spec.get("frequency", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            freq = 0.0
+        if not (math.isfinite(amp) and math.isfinite(freq)):
+            amp, freq = 0.0, 0.0
+        self.bias = {"type": kind, "amplitude": amp, "frequency": freq}
+        self.bias_t0_ms = now_ms()
+        # Arm the heading tare — but only for a real EPOCH, not for the CLI defaults
+        # applied at construction. Startup must leave the mapping on absolute heading
+        # so the plain Console closed loop behaves exactly as it always has; the tare
+        # is scoped to closed-loop epochs, which is where the jump was a problem.
+        if tare:
+            self._tare_pending = True
+        if log_event:
+            self.log.write_event(
+                {
+                    "type": "bias_config",
+                    "dir": "bridge",
+                    "ms": self.bias_t0_ms - self.t0_ms,
+                    "bias": dict(self.bias),
+                }
+            )
+        return self.bias
+
+    def bias_now_deg(self) -> float:
+        """Current bias angle, evaluated ANALYTICALLY at the elapsed epoch time — never
+        incrementally integrated, so a dropped FicTrac frame costs nothing and the value
+        is exactly reproducible offline."""
+        if self.bias["type"] == "none":
+            return 0.0
+        t_s = (now_ms() - self.bias_t0_ms) / 1000.0
+        return bias_angle_deg(self.bias["type"], self.bias["amplitude"], self.bias["frequency"], t_s)
 
     async def handle_line(self, line: str) -> None:
         line = line.strip()
@@ -367,7 +549,25 @@ class Pipeline:
             self.skipped += 1
             return
         self.parsed += 1
-        index = frame_index_from_fictrac(fields, self.n_frames, self.gain, self.offset)
+        # Latch the heading tare on the first frame of a new epoch, BEFORE mapping, so
+        # that very first frame already lands at the pattern's start index instead of
+        # jumping. Logged (with the same relative ms as the frame rows) because offline
+        # reconstruction of the mapping needs it.
+        if self._tare_pending:
+            self._tare_pending = False
+            self.hd0 = math.degrees(fields[16])
+            self.log.write_event(
+                {
+                    "type": "heading_tare",
+                    "dir": "bridge",
+                    "ms": now_ms() - self.t0_ms,
+                    "hd0_deg": round(self.hd0, 4),
+                }
+            )
+        bias_deg = self.bias_now_deg()
+        index = frame_index_from_fictrac(
+            fields, self.n_frames, self.gain, self.offset, bias_deg, self.hd0
+        )
         # behavior_v1 compact state (issue #140): the live scope + offline dashboard
         # recompute every derived channel from these. The ns→ms + column mapping
         # lives in behavior_v1_row() (pure, offline-tested); the Pipeline only owns
@@ -378,6 +578,13 @@ class Pipeline:
         # Legacy index/seq/t kept alongside the behavior_v1 fields for back-compat.
         msg = {"type": "frame", "index": index, "seq": beh["fc"], "t": now_ms()}
         msg.update(beh)
+        # Live bias angle, for the Studio's read-only readout only. Additive on the
+        # WebSocket (unknown fields are ignored by older clients) and deliberately NOT
+        # a behavior_v1 column — widening BEHAVIOR_V1_COLS would break every positional
+        # reader (js/runlog-replay.js, the offline dashboard). Offline analysis
+        # reconstructs b(t) from the bias_config event instead.
+        if self.bias["type"] != "none":
+            msg["bias"] = round(bias_deg, 3)
         await self.hub.publish(msg)
         self.log.write_frame(beh, fields)
 
@@ -508,6 +715,11 @@ def make_dispatcher(pipeline: Pipeline, log: LogWriter, inputs: InputManager):
             if obj.get("fictrac_port"):
                 await inputs.rebind(int(obj["fictrac_port"]))
                 applied["fictrac_port"] = inputs.port
+            # Presence of the key — not its value — re-zeros the bias phase clock, so
+            # `{"bias":{"type":"none"}}` is how the runner both stops the disturbance at
+            # stopClosedLoop and guarantees the next epoch starts at phase 0.
+            if "bias" in obj:
+                applied["bias"] = pipeline.set_bias(obj["bias"])
             print(f"[cfg] applied {applied}", file=sys.stderr)
             log.write_inbound(raw)
         elif kind == "log_control":
@@ -544,12 +756,32 @@ def make_dispatcher(pipeline: Pipeline, log: LogWriter, inputs: InputManager):
     return dispatch
 
 
+def _bias_banner(bias: dict) -> str:
+    """One-glance bias summary for the startup banner / stderr."""
+    if bias["type"] == "none":
+        return "none"
+    if bias["type"] == "constant":
+        return f"constant {bias['amplitude']:g}deg/s"
+    return f"{bias['type']} {bias['amplitude']:g}deg/s @{bias['frequency']:g}Hz"
+
+
 async def run(args: argparse.Namespace) -> None:
     log = LogWriter(args.log, args.log_frames, args.log_dir)
     queue: asyncio.Queue[str] = asyncio.Queue()
     # pipeline ↔ hub is a cycle (hub's dispatcher reconfigures the pipeline; the
     # pipeline publishes to the hub), so build the pipeline first and wire the hub in.
-    pipeline = Pipeline(None, log, args.frames, args.gain, args.offset)
+    pipeline = Pipeline(
+        None,
+        log,
+        args.frames,
+        args.gain,
+        args.offset,
+        {
+            "type": args.bias_type,
+            "amplitude": args.bias_amplitude,
+            "frequency": args.bias_freq,
+        },
+    )
     inputs = InputManager(args.proto, args.in_host, args.in_port, queue)
     hub = Hub(make_dispatcher(pipeline, log, inputs))
     pipeline.hub = hub
@@ -569,7 +801,8 @@ async def run(args: argparse.Namespace) -> None:
         print(
             f"[ws] serving ws://{args.ws_host}:{args.ws_port}  "
             f"(bridge {BRIDGE_VERSION}; proto={args.proto}, fictrac_port={args.in_port}, "
-            f"frames={args.frames}, gain={args.gain:g}, log={args.log or 'on-demand'})",
+            f"frames={args.frames}, gain={args.gain:g}, bias={_bias_banner(pipeline.bias)}, "
+            f"log={args.log or 'on-demand'})",
             file=sys.stderr,
         )
         await stop.wait()
@@ -597,6 +830,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--frames", type=int, default=200, help="frame count of the loaded pattern; the index modulus (default: 200)")
     p.add_argument("--gain", type=float, default=1.8, help="degrees of heading per frame index, e.g. 360/200=1.8 (default: 1.8)")
     p.add_argument("--offset", type=float, default=0.0, help="heading offset in degrees (default: 0.0)")
+    p.add_argument("--bias-type", choices=BIAS_TYPES, default="none", help="closed-loop bias/disturbance waveform (default: none). A protocol's startClosedLoop overrides this live")
+    p.add_argument("--bias-amplitude", type=float, default=0.0, help="bias PEAK velocity in deg/s (default: 0.0)")
+    p.add_argument("--bias-freq", type=float, default=1.0, help="bias frequency in Hz for sine/square; ignored by constant (default: 1.0)")
     p.add_argument("--log", default=None, help="append browser log events (JSONL) to this file (else opened on demand)")
     p.add_argument("--log-dir", default=None, help="directory for on-demand arena-log-*.jsonl files (default: CWD; created if missing)")
     p.add_argument("--log-frames", action="store_true", help="log the FULL 25-column FicTrac record per frame (debug/archival); default logs the compact behavior_v1 array [ms,fc,idx,ft,x,y,hd]")
@@ -604,6 +840,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.frames <= 0:
         p.error("--frames must be > 0")
+    # 0 Hz is the divide-by-ω case for the periodic waveforms — reject it here, where a
+    # human can still read the message, rather than letting bias_angle_deg no-op silently.
+    if args.bias_type in ("sine", "square") and args.bias_freq == 0:
+        p.error(f"--bias-freq must be non-zero for --bias-type {args.bias_type}")
 
     try:
         asyncio.run(run(args))

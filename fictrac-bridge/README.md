@@ -109,9 +109,12 @@ touch this parsing path.
 ```
 bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>,
                     "ms":<int>, "fc":<int>, "idx":<int>, "ft":<ms|null>,
-                    "x":<rad>, "y":<rad>, "hd":<rad>}
+                    "x":<rad>, "y":<rad>, "hd":<rad>, "bias":<deg>}
                      (the behavior_v1 fields — ms/fc/idx/ft/x/y/hd — drive the live
                       oscilloscope; index/seq/t stay for back-compatibility)
+                     `bias` is present ONLY while a bias waveform is active: the angle
+                     the disturbance is currently adding, for display. Additive — older
+                     clients ignore it. NOT a behavior_v1 column (see below).
                      NOTE: `ft` is relative MILLISECONDS. FicTrac col-22 is the camera
                      hardware clock — NANOSECONDS on our rigs — normalized here via
                      FT_TS_NS_PER_MS. `ms` is the bridge wall-clock (display axis); `ft`
@@ -120,7 +123,13 @@ bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>,
                      (reply to log_export; {"error":<str>} when nothing was written)
 browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
                    {"type":"config", "fictrac_port":<int>, "gain":<float>,
-                                     "offset":<float>, "frames":<int>}  (any subset)
+                                     "offset":<float>, "frames":<int>,
+                                     "bias":{"type":"none"|"constant"|"sine"|"square",
+                                             "amplitude":<deg/s>, "frequency":<Hz>}}
+                                                              (any subset; a message
+                                                               CARRYING "bias" re-zeros
+                                                               the bias phase clock AND
+                                                               re-tares the heading)
                    {"type":"log_control", "enabled":<bool>, "level":"behavior_v1"|"full"}
                                                               (open the log file; level
                                                                picks the frame-row format)
@@ -167,18 +176,66 @@ log transfers without chunking.
 Edit **one function** in `bridge.py`:
 
 ```python
-def frame_index_from_fictrac(fields, n_frames, gain, offset) -> int:
+def frame_index_from_fictrac(fields, n_frames, gain, offset, bias_deg=0.0) -> int:
     ...
 ```
 
 The default maps the animal's integrated **heading** (FicTrac field 17 →
-`fields[16]`, 0-based) to `index = round((heading° + offset) / gain) mod n_frames`.
+`fields[16]`, 0-based) to
+`index = round((heading° + offset + bias°) / gain) mod n_frames`.
 `gain` is **degrees of heading per frame index** — `360/200 = 1.8` advances one
 azimuthal position (one of 20 pixels × 10 surrounding columns) per index; a negative
 gain reverses direction. `offset` is in degrees. Swap in integrated position
 (`fields[14]`, `fields[15]`), speed (`fields[18]`), or any combination. `--frames N`
 (the index modulus) should match the loaded pattern's frame count — the console
 sends it automatically when you load a Mode-3 pattern.
+
+## Bias / disturbance waveforms
+
+`bias_deg` above comes from a second pure function, `bias_angle_deg(kind, amp_dps,
+freq_hz, t_s)`. A **bias** is a smooth disturbance added to the loop so the display
+keeps moving even when the fly holds still — the stimulus for disturbance-rejection
+experiments. It is authored as a rotational **velocity** (deg/s peak); the bridge
+integrates it analytically:
+
+| `type` | `v(t)` | `b(t) = ∫v` | position range |
+| --- | --- | --- | --- |
+| `constant` | `A` | `A·t` | unbounded drift |
+| `sine` | `A·cos(ωt)` | `(A/ω)·sin(ωt)` | `±A/(2πf)` |
+| `square` | `A·sign(cos ωt)` | symmetric triangle | `±A/(4f)` |
+
+Every waveform starts at `b(0) = 0` (no jump at onset), and the periodic two are
+**zero-mean in position** — the display is pushed equally both ways. Since `A` is a
+velocity, the position excursion shrinks as frequency rises. Reverse the direction by
+negating the **amplitude**; negating the frequency is a no-op (both velocities are
+cosines, even in ω).
+
+Set it live from the browser with a `config` message carrying `bias`. Presence of the
+key re-zeros the phase clock, so each closed-loop epoch starts at phase 0 — the web
+runner does exactly this on every `startClosedLoop`, and pushes
+`bias: {"type":"none"}` on `stopClosedLoop` to stop the integration. Each push also
+writes a `bias_config` line into the log whose `ms` is in the **same relative timebase
+as the behavior_v1 rows**, which is what makes `b(t)` exactly reconstructable offline
+(the per-frame `bias` on the WebSocket is display-only; `BEHAVIOR_V1_COLS` is
+deliberately not widened).
+
+### Heading tare
+
+FicTrac's integrated heading is absolute, so without a tare a closed-loop epoch opens
+by snapping the display to `round(heading/gain)` — on real fly logs a median 55-156
+frame jump (up to 340 deg of azimuth), i.e. the stimulus leaving the fly's view on the
+first frame. Every epoch therefore re-zeros the heading: `hd0` is latched from the first
+frame after the epoch opens, so the epoch starts where `frame_index` put it and moves
+relative to that. The tared difference is wrapped into `(-180, 180]` so it reads as a
+true relative turn (only the heading — the bias stays unbounded so `constant` keeps
+rotating). Each latch writes a `heading_tare` log event carrying `hd0_deg`, which
+offline analysis NEEDS: without it a recomputed index is off by `round(hd0/gain)`.
+
+The tare is armed by epochs only, not at startup, so the plain Console closed loop
+still maps absolute heading exactly as before.
+
+Full reference, including the validation policy and the authoring YAML:
+`docs/development/closed-loop-bias.md`.
 
 ## bridge.py options
 
@@ -190,6 +247,9 @@ sends it automatically when you load a Mode-3 pattern.
 | `--frames N` | `200` | Frame count of the loaded pattern (the index modulus); re-sent live by the console. |
 | `--gain` | `1.8` | Degrees of heading per frame index (360/200); negative reverses. Re-settable live. |
 | `--offset` | `0.0` | Heading offset in degrees. |
+| `--bias-type` | `none` | Bias/disturbance waveform: `none`, `constant`, `sine`, `square`. A protocol's `startClosedLoop` overrides this live. |
+| `--bias-amplitude` | `0.0` | Bias PEAK velocity in deg/s; negative reverses. |
+| `--bias-freq` | `1.0` | Bias frequency in Hz for `sine`/`square`; ignored by `constant`. Must be non-zero for the periodic waveforms. |
 | `--log PATH` | on demand | Append log events (JSONL). If unset, opened when the browser enables logging. |
 | `--log-frames` | off | Log the FULL 25-column FicTrac record per frame (debug/archival) instead of the default compact `behavior_v1` array `[ms,fc,idx,ft,x,y,hd]`. |
 

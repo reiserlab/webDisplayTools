@@ -286,6 +286,164 @@ async function main() {
         );
     }
 
+    console.log('\n=== bias waveform config (LAB-185) ===');
+    {
+        const client = new FicTracBridgeClient({ WebSocketImpl: FakeWS });
+        client.connect('ws://localhost:8765');
+        const ws = FakeWS.last;
+        ws.open();
+        const lastCfg = () => ws.sent.filter((m) => m.type === 'config').pop();
+
+        // Nothing pushed until a bias is set — an old bridge must be unaffected.
+        check('bias absent before it is ever set', client.bias, null);
+        checkBool(
+            'no bias key in the connect-time config',
+            lastCfg().bias === undefined,
+            JSON.stringify(lastCfg())
+        );
+
+        // THE regression this guards: `bias` is the one OBJECT-valued config key, and
+        // sendConfig() gates the scalars on Number.isFinite — an object would be dropped.
+        const seen = [];
+        client.on('bias', (b) => seen.push(b));
+        client.setConfig({ bias: { type: 'sine', amplitude: 90, frequency: 0.5 } });
+        check('object-valued bias survives setConfig', lastCfg().bias, {
+            type: 'sine',
+            amplitude: 90,
+            frequency: 0.5
+        });
+        check("'bias' event fired with the normalized spec", seen, [
+            { type: 'sine', amplitude: 90, frequency: 0.5 }
+        ]);
+        check('bias getter reflects it', client.bias.type, 'sine');
+
+        // Scalars still work alongside it, and still gate on finiteness.
+        client.setConfig({ gain: 3.6, frames: 60 });
+        check('scalars pushed alongside bias', [lastCfg().gain, lastCfg().frames], [3.6, 60]);
+        check('bias persists across a scalar-only setConfig', lastCfg().bias.type, 'sine');
+        client.setConfig({ gain: NaN });
+        checkBool(
+            'non-finite scalar omitted from the push',
+            lastCfg().gain === undefined,
+            JSON.stringify(lastCfg())
+        );
+        checkBool('bias still rides along', lastCfg().bias.type === 'sine', 'bias intact');
+        client.setConfig({ gain: 3.6 }); // restore for the checks below
+
+        // Coercion: string scalars from YAML/DOM must become numbers.
+        client.setConfig({ bias: { type: 'square', amplitude: '30', frequency: '2' } });
+        check('string amplitude/frequency coerced', lastCfg().bias, {
+            type: 'square',
+            amplitude: 30,
+            frequency: 2
+        });
+
+        // Re-pushing the SAME waveform must still reach the bridge (it re-zeros the
+        // phase clock there, which is how each closed-loop epoch restarts at phase 0)
+        // even though no 'bias' event fires, since nothing changed.
+        const before = seen.length;
+        const sentBefore = ws.sent.filter((m) => m.type === 'config').length;
+        client.setConfig({ bias: { type: 'square', amplitude: 30, frequency: 2 } });
+        checkBool(
+            'identical bias still pushed (phase reset)',
+            ws.sent.filter((m) => m.type === 'config').length === sentBefore + 1,
+            'config resent'
+        );
+        check('no bias event when unchanged', seen.length, before);
+
+        // stopClosedLoop's clear: {type:'none'} must be SENT (not omitted), so the
+        // bridge stops integrating instead of leaking the waveform into later trials.
+        client.setConfig({ bias: { type: 'none' } });
+        check('type none is pushed, not dropped', lastCfg().bias, {
+            type: 'none',
+            amplitude: 0,
+            frequency: 0
+        });
+        check("'bias' event fired for the clear", seen[seen.length - 1].type, 'none');
+
+        // Explicit null clears it entirely (nothing more pushed).
+        client.setBias(null);
+        check('setBias(null) clears', client.bias, null);
+        checkBool(
+            'cleared bias omitted from config',
+            lastCfg().bias === undefined,
+            JSON.stringify(lastCfg())
+        );
+
+        // Reconnect must re-assert the bias, or a mid-run bridge restart would
+        // silently drop the disturbance.
+        client.setBias({ type: 'constant', amplitude: 45 });
+        client.disconnect();
+        client.connect('ws://localhost:8765');
+        const ws2 = FakeWS.last;
+        ws2.open();
+        const cfg2 = ws2.sent.filter((m) => m.type === 'config').pop();
+        check('bias re-sent on reconnect', cfg2.bias, {
+            type: 'constant',
+            amplitude: 45,
+            frequency: 0
+        });
+        client.disconnect();
+    }
+
+    console.log('\n=== live bias angle from the frame message ===');
+    {
+        const client = new FicTracBridgeClient({ applyFrame: () => Promise.resolve() });
+        check('biasAngleDeg null before any frame', client.biasAngleDeg, null);
+        client.handleFrame(7, { hd: 0.1, x: 0, y: 0, bias: 12.5 });
+        check('biasAngleDeg picked up from the frame', client.biasAngleDeg, 12.5);
+        // An older bridge sends no `bias` field — must read as inactive, not stale.
+        client.handleFrame(8, { hd: 0.2, x: 0, y: 0 });
+        check('biasAngleDeg back to null when absent', client.biasAngleDeg, null);
+        client.handleFrame(9, { hd: 0.3, x: 0, y: 0, bias: 0 });
+        check('a zero bias angle is kept (not confused with absent)', client.biasAngleDeg, 0);
+    }
+
+    // The bridge wraps indices on its own n_frames, but only the host knows whether
+    // the config push that set it ever landed. The default clamp wraps on the count
+    // we last pushed, so a disagreement can't send the arena a frame index the
+    // loaded pattern doesn't have (bench, 2026-08-12: that showed as a flickering
+    // panel map and wedged the display engine until a power cycle).
+    console.log('\n=== default clamp wraps on the pushed frame count ===');
+    {
+        const applied = [];
+        const client = new FicTracBridgeClient({
+            applyFrame: (i) => (applied.push(i), Promise.resolve())
+        });
+        check('frames unknown before any push', client.frames, null);
+        client.setApply(true);
+        client.handleFrame(250);
+        await tick();
+        check('unknown count passes the index through unchanged', applied, [250]);
+
+        client.setConfig({ frames: 20 });
+        check('frames records the pushed count', client.frames, 20);
+        applied.length = 0;
+        client.handleFrame(37);
+        await tick();
+        check('index wraps onto the 20-frame pattern', applied, [17]);
+        applied.length = 0;
+        client.handleFrame(-3);
+        await tick();
+        check('a negative index wraps non-negative (not -3)', applied, [17]);
+        applied.length = 0;
+        client.handleFrame(19);
+        await tick();
+        check('an in-range index is untouched', applied, [19]);
+
+        // An explicit consumer clamp still wins over the default.
+        const custom = [];
+        const c2 = new FicTracBridgeClient({
+            applyFrame: (i) => (custom.push(i), Promise.resolve()),
+            clampFrame: () => 7
+        });
+        c2.setConfig({ frames: 20 });
+        c2.setApply(true);
+        c2.handleFrame(500);
+        await tick();
+        check('an injected clampFrame overrides the default', custom, [7]);
+    }
+
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);

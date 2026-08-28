@@ -68,6 +68,7 @@ for (const w of warnings) console.warn('⚠ ' + (w && w.message ? w.message : w)
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 let lintCount = 0;
 const lint = (msg) => { lintCount++; console.warn('⚠ waits: ' + msg); };
+const lintBias = (msg) => { lintCount++; console.warn('⚠ bias: ' + msg); };
 
 for (const cond of conds) {
     const cmds = cond.commands || [];
@@ -105,6 +106,43 @@ for (const cond of conds) {
         if ((mode === 3 || mode === 4) && num(tp.frame_rate) !== 0) {
             lint(label + ' is mode ' + mode + ' with frame_rate ' + tp.frame_rate +
                 ' — modes 3/4 want frame_rate 0.');
+        }
+    }
+}
+
+// ── BIAS SANITY (LAB-185) ───────────────────────────────────────────────────
+// The bias params live on the fictrac plugin's startClosedLoop, not on trialParams,
+// so this needs its own pass over plugin commands. Mirrors the runner's rules
+// (js/arena-runner-g6.js normalizeBias) so an author hears about it here rather than
+// at run time, where a bad spec skips the trial — possibly with a fly already mounted.
+const BIAS_TYPES = ['none', 'constant', 'sine', 'square'];
+for (const cond of conds) {
+    for (const c of cond.commands || []) {
+        if (c.type !== 'plugin' || c.command_name !== 'startClosedLoop') continue;
+        const p = c.params || {};
+        if (p.bias_type === undefined || p.bias_type === null || p.bias_type === '') continue;
+        const t = String(p.bias_type).trim().toLowerCase();
+        const label = '"' + cond.name + '" startClosedLoop';
+        if (!BIAS_TYPES.includes(t)) {
+            lintBias(label + ' has bias_type ' + JSON.stringify(p.bias_type) +
+                ' — must be one of ' + BIAS_TYPES.join('/') + '. The runner will skip this step.');
+            continue;
+        }
+        if (t === 'sine' || t === 'square') {
+            const f = num(p.bias_frequency);
+            if (p.bias_frequency === undefined || f === 0) {
+                lintBias(label + ' is bias_type ' + t + ' with bias_frequency ' +
+                    (p.bias_frequency === undefined ? 'unset' : f) +
+                    ' — 0 Hz has no period, so the runner will SKIP this step. ' +
+                    'Set a non-zero frequency (or use bias_type constant for a steady drift).');
+            } else if (f < 0) {
+                lintBias(label + ' has a negative bias_frequency (' + f + ') — that is a no-op, ' +
+                    'the waveform is even in frequency. Negate bias_amplitude to reverse direction.');
+            }
+            if (num(p.bias_amplitude) === 0) {
+                console.log('ℹ ' + label + ' is bias_type ' + t +
+                    ' with bias_amplitude 0 — no disturbance will be applied.');
+            }
         }
     }
 }

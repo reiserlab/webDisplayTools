@@ -313,6 +313,81 @@ var ArenaRunnerG6 = (function () {
         return { level, hysteresis, on_ranges: ranges };
     }
 
+    // ---- closed-loop bias waveform (LAB-185) ------------------------------
+    //
+    // A disturbance added to the FicTrac closed loop so the display keeps moving
+    // even when the fly is still — the stimulus for disturbance-rejection
+    // experiments. Authored as an added rotational VELOCITY (deg/s peak); the
+    // BRIDGE integrates it analytically and folds the resulting angle into its
+    // heading→frame-index mapping (fictrac-bridge/bridge.py bias_angle_deg).
+    // The runner's only job is to validate the spec and push it as bridge config.
+    //
+    // Spec (on the fictrac plugin's `startClosedLoop` params):
+    //   bias_type       'none' | 'constant' | 'sine' | 'square'
+    //   bias_amplitude  peak angular velocity, deg/s (negative reverses direction)
+    //   bias_frequency  Hz — sine/square only, ignored by constant/none
+    const BIAS_TYPES = ['none', 'constant', 'sine', 'square'];
+
+    // Validate + normalize the bias params of a startClosedLoop command. Returns
+    // { bias, warning } — `bias` is null when no waveform was authored (so the IR
+    // stays byte-identical to the pre-bias shape), `warning` is a string or null.
+    // THROWS (clear message) on malformed input so translateCommand turns it into a
+    // skip-this-step {op:'error'} rather than a silent no-op at the bridge.
+    function normalizeBias(params) {
+        const p = params || {};
+        if (p.bias_type === undefined || p.bias_type === null || p.bias_type === '') {
+            return { bias: null, warning: null };
+        }
+        const type = String(p.bias_type).trim().toLowerCase();
+        if (BIAS_TYPES.indexOf(type) < 0) {
+            throw new Error(
+                'bias_type must be one of ' +
+                    BIAS_TYPES.join('/') +
+                    ', got ' +
+                    JSON.stringify(p.bias_type)
+            );
+        }
+        if (type === 'none') return { bias: null, warning: null };
+
+        // toNumber coerces string YAML scalars and THROWS on anything non-finite
+        // (NaN/Infinity included), which is the non-finite rejection — no extra guard.
+        // '' is what a blank designer field yields: treat as unset, like `duty` does.
+        const amplitude =
+            p.bias_amplitude === undefined || p.bias_amplitude === ''
+                ? 0
+                : toNumber(p.bias_amplitude, 'bias_amplitude');
+        const frequency =
+            p.bias_frequency === undefined || p.bias_frequency === ''
+                ? 0
+                : toNumber(p.bias_frequency, 'bias_frequency');
+
+        let warning = null;
+        if (type === 'sine' || type === 'square') {
+            // 0 Hz is the divide-by-ω case: the bridge would defensively return a 0
+            // bias, which looks exactly like "the disturbance didn't work". Fail the
+            // step instead, where the author gets told why.
+            if (frequency === 0) {
+                throw new Error(
+                    'bias_frequency must be non-zero for bias_type ' +
+                        type +
+                        ' (0 Hz has no period — use bias_type constant for a steady drift)'
+                );
+            }
+            // A negative frequency is well-defined but a NO-OP: both waveforms have a
+            // cosine velocity, which is even in ω, so f and −f are identical. Run it,
+            // but say so — the author probably meant to reverse the direction.
+            if (frequency < 0) {
+                warning =
+                    'bias_frequency ' +
+                    frequency +
+                    ' Hz is treated as ' +
+                    Math.abs(frequency) +
+                    ' Hz (the waveform is even in frequency) — negate bias_amplitude to reverse direction';
+            }
+        }
+        return { bias: { type, amplitude, frequency }, warning };
+    }
+
     // Build a STATEFUL evaluator from a normalized spec. step(index) returns
     // { on, changed } — `changed` is true only when the ON/OFF state flips, so
     // the caller sends an LED command only on transitions. Baseline is OFF
@@ -494,7 +569,9 @@ var ArenaRunnerG6 = (function () {
      *   { op:'wait', durationSec }
      *   { op:'logMessage', message, level }          // built-in log plugin → bridge log
      *   { op:'fictracConnect' | 'fictracDisconnect' }        // FicTrac bridge lifecycle
-     *   { op:'fictracApply', on, gain }              // start/stop Mode-3 closed-loop
+     *   { op:'fictracApply', on, gain, bias, warning } // start/stop Mode-3 closed-loop
+     *          bias: {type, amplitude, frequency} disturbance waveform, or null when
+     *          none was authored; stopClosedLoop always carries {type:'none'} to clear it
      *   { op:'skip', reason, plugin_name, command_name }   // other plugin → not driveable
      *   { op:'error', reason }                              // unsupported / malformed
      */
@@ -532,14 +609,35 @@ var ArenaRunnerG6 = (function () {
                         return { op: 'fictracConnect' };
                     case 'disconnect':
                         return { op: 'fictracDisconnect' };
-                    case 'startClosedLoop':
+                    case 'startClosedLoop': {
+                        let bias, warning;
+                        try {
+                            // Validated HERE (not at apply time) so a malformed bias skips
+                            // this step via {op:'error'} instead of silently no-op'ing at
+                            // the bridge, where it would read as "the disturbance failed".
+                            ({ bias, warning } = normalizeBias(params));
+                        } catch (e) {
+                            return { op: 'error', reason: e.message };
+                        }
                         return {
                             op: 'fictracApply',
                             on: true,
-                            gain: Number.isFinite(Number(params.gain)) ? Number(params.gain) : null
+                            gain: Number.isFinite(Number(params.gain)) ? Number(params.gain) : null,
+                            // ALWAYS carry a bias, `{type:'none'}` when none was
+                            // authored — same reasoning as `duty` in buildTrialParams:
+                            // every closed-loop epoch must be self-describing. Sending
+                            // nothing would leave whatever the bridge still had
+                            // installed (a previous condition's waveform, or a stale
+                            // one from an aborted run) silently driving this trial.
+                            bias: bias || { type: 'none' },
+                            warning: warning
                         };
+                    }
                     case 'stopClosedLoop':
-                        return { op: 'fictracApply', on: false };
+                        // Clear the bias too: the bridge integrates from its own phase
+                        // clock, so a waveform left installed would keep accumulating into
+                        // the frame index through every following trial.
+                        return { op: 'fictracApply', on: false, bias: { type: 'none' } };
                     default:
                         return {
                             op: 'skip',
@@ -830,6 +928,7 @@ var ArenaRunnerG6 = (function () {
             this._active = false;
             this._conditionName = null;
             this._clearLedActivator(); // sends LED off (before the STOP below)
+            this._clearClosedLoop(); // stop streaming frames + clear any bias waveform
             this._emit = null;
             if (this._link && this._link.connected) {
                 return this._link.send(this._wire.encodeStop());
@@ -858,6 +957,7 @@ var ArenaRunnerG6 = (function () {
             this._active = false;
             this._conditionName = null;
             this._clearLedActivator(); // guarded: no-op send when the link is gone
+            this._clearClosedLoop(); // bridge-side, so it still works with no link
             this._emit = null;
         }
 
@@ -892,6 +992,83 @@ var ArenaRunnerG6 = (function () {
                 }
             });
         }
+        // ---- closed-loop frame modulus -------------------------------------
+        /**
+         * The frame count of the Mode-3 pattern this closed-loop epoch will steer —
+         * the modulus the bridge wraps every streamed index with. Two sources, in
+         * order:
+         *
+         *   1. `acc.fictracFrames`, from the caller's `resolvePatternFrames` hook.
+         *      In the Studio that reads a `.pat` header the page has already parsed,
+         *      which in practice means ONLY the pattern whose Console thumbnail was
+         *      rendered — every other pattern comes back null (the SD listing carries
+         *      filenames, not frame counts). So this is a fast path, never a guarantee.
+         *   2. GET_PATTERN_INFO (0x88) against the controller, which reports the
+         *      authoritative `frameCount` for any 1-based SD index. Same query the
+         *      Console's Mode-3 "Load" does to bound its stepper. Cached per pattern
+         *      index for the life of the runner: the card can't change under us
+         *      mid-run, and a closed-loop condition repeated across blocks must not
+         *      pay a serial round-trip every repetition.
+         *
+         * Returns a positive integer, or null when neither source can answer (offline,
+         * no Mode-3 trialParams in the condition, or a controller that won't say) —
+         * which the caller MUST treat as "do not start the loop".
+         */
+        async _resolveFrameModulus(acc) {
+            const known = Number(acc && acc.fictracFrames);
+            if (Number.isFinite(known) && known > 0) return Math.round(known);
+            const pat = acc && acc.fictracPatternId;
+            if (!Number.isInteger(pat) || pat < 1) return null;
+            if (!this._frameCountCache) this._frameCountCache = new Map();
+            if (this._frameCountCache.has(pat)) return this._frameCountCache.get(pat);
+            let frames = null;
+            if (this._link && this._link.connected && this._wire.encodeGetPatternInfo) {
+                try {
+                    const resp = await this._link.send(this._wire.encodeGetPatternInfo(pat), {
+                        timeoutMs: 2000
+                    });
+                    const info = this._wire.decodePatternInfo(resp);
+                    const n = info && Number(info.frameCount);
+                    if (Number.isFinite(n) && n > 0) frames = Math.round(n);
+                } catch (_) {
+                    /* best-effort: a failed query is "unknown", not a run-killer */
+                }
+            }
+            this._frameCountCache.set(pat, frames); // negative caching included
+            return frames;
+        }
+
+        // ---- closed-loop teardown ------------------------------------------
+        /**
+         * Tear down the FicTrac closed loop: stop applying frames AND clear any bias
+         * waveform. Called from EVERY run-teardown path (sequence end, stop(),
+         * _clear()) because `stopClosedLoop` only runs on the happy path — a STOP
+         * mid-trial skips it, which used to leave the bridge (a) still streaming
+         * SET_FRAME_POSITION at the arena and (b) integrating a disturbance whose
+         * phase clock kept running, so the NEXT run inherited a stale, already-drifted
+         * bias until some condition happened to push a new one.
+         *
+         * Bridge-only (WebSocket), so it is safe even when the serial link is gone —
+         * which is exactly the _clear()/abort() case. Best-effort: a dead bridge
+         * socket must never break teardown.
+         *
+         * The bias is cleared only when the CLIENT has one installed, so a bias set
+         * on the bridge's own CLI (--bias-type) survives a run rather than being
+         * silently stomped by it.
+         */
+        _clearClosedLoop() {
+            const b = this._bridge;
+            if (!b) return;
+            try {
+                if (typeof b.setApply === 'function') b.setApply(false);
+                if (b.bias && b.bias.type !== 'none' && typeof b.setConfig === 'function') {
+                    b.setConfig({ bias: { type: 'none' } });
+                }
+            } catch (_) {
+                /* best-effort */
+            }
+        }
+
         _clearLedActivator() {
             if (this._ledUnsub) {
                 try {
@@ -1004,6 +1181,9 @@ var ArenaRunnerG6 = (function () {
 
             this._active = true;
             this._abort = false;
+            // Per-run: the card's contents (and so any pattern index's frame count)
+            // can change between runs via an SD upload, but never mid-run.
+            this._frameCountCache = new Map();
             const summary = {
                 completed: false,
                 aborted: false,
@@ -1153,8 +1333,15 @@ var ArenaRunnerG6 = (function () {
                     // duration and the total time actually slept on wait commands.
                     // fictracFrames tracks the current Mode-3 pattern's frame count
                     // (index modulus) so a following fictrac.startClosedLoop can push
-                    // the right modulus to the bridge.
-                    const acc = { trialTargetSec: 0, waitedSec: 0, fictracFrames: null };
+                    // the right modulus to the bridge. fictracPatternId records which
+                    // pattern that count must describe, so the modulus can be recovered
+                    // from the CONTROLLER (0x88) when the host resolver comes up empty.
+                    const acc = {
+                        trialTargetSec: 0,
+                        waitedSec: 0,
+                        fictracFrames: null,
+                        fictracPatternId: null
+                    };
                     for (const cmd of cond.commands) {
                         if (this._abort) break;
                         const ir = translateCommand(cmd, {
@@ -1163,7 +1350,9 @@ var ArenaRunnerG6 = (function () {
                         });
                         if (cmd.type === 'controller' && cmd.command_name === 'trialParams') {
                             const f = Number(resolvePatternFrames(cmd));
-                            if (Number.isFinite(f) && f > 0) acc.fictracFrames = f;
+                            acc.fictracFrames = Number.isFinite(f) && f > 0 ? f : null;
+                            acc.fictracPatternId =
+                                ir.op === 'trialParams' && ir.params ? ir.params.patternId : null;
                         }
                         try {
                             await this._runIR(ir, { step, index: i, emit, sleep, summary, acc });
@@ -1204,6 +1393,8 @@ var ArenaRunnerG6 = (function () {
                 this._conditionName = null;
                 this._resolveSleep();
                 this._clearLedActivator(); // LED off + stop gating on completion/abort
+                this._clearClosedLoop(); // idempotent after a stopClosedLoop; THE fix
+                // when a mid-trial STOP skipped stopClosedLoop entirely
                 try {
                     if (this._link && this._link.connected) {
                         await this._link.send(this._wire.encodeStop());
@@ -1343,15 +1534,55 @@ var ArenaRunnerG6 = (function () {
                     return;
                 case 'fictracApply':
                     if (this._bridge) {
+                        // The index MODULUS is not optional. The bridge wraps every
+                        // frame index with `% n_frames`, so if we don't push the loaded
+                        // pattern's true frame count it keeps its own default (200) and
+                        // streams SET_FRAME_POSITION indices that DON'T EXIST in the
+                        // pattern — on the bench (2026-08-12, Isabel) a 200-index sweep
+                        // into a short grating showed a flickering panel map with the
+                        // real pattern flashing through, and left the display engine
+                        // wedged until a power cycle. A 200-frame pattern hid this for
+                        // months by accidentally matching that default.
+                        let frames = null;
                         if (ir.on) {
-                            const cfg = {};
-                            if (Number.isFinite(acc.fictracFrames)) cfg.frames = acc.fictracFrames;
-                            if (ir.gain != null) cfg.gain = ir.gain;
-                            if (Object.keys(cfg).length) this._bridge.setConfig(cfg);
-                            this._bridge.setApply(true);
-                        } else {
-                            this._bridge.setApply(false);
+                            frames = await this._resolveFrameModulus(acc);
+                            if (frames == null) {
+                                // Fail the STEP (the `duty`/bias precedent) rather than
+                                // the run — but never start the loop on a guessed
+                                // modulus. A silent wrong guess is the outcome that
+                                // costs a bench session.
+                                summary.errors++;
+                                emit({
+                                    phase: 'error',
+                                    index,
+                                    step,
+                                    op: ir.op,
+                                    reason:
+                                        'closed loop not started: unknown frame count for pattern ' +
+                                        (acc.fictracPatternId == null
+                                            ? '(no Mode-3 trialParams in this condition)'
+                                            : 'idx ' + acc.fictracPatternId) +
+                                        ' — the bridge would wrap frame indices on the wrong modulus and drive frames the pattern does not have.'
+                                });
+                                return;
+                            }
                         }
+                        // One setConfig carries frames + gain + bias: the bridge re-zeros
+                        // its bias PHASE clock on any config message containing `bias`, so
+                        // pushing it here makes every closed-loop epoch start at phase 0.
+                        const cfg = {};
+                        if (frames != null) cfg.frames = frames;
+                        if (ir.on && ir.gain != null) cfg.gain = ir.gain;
+                        if (ir.bias) cfg.bias = ir.bias;
+                        if (Object.keys(cfg).length) this._bridge.setConfig(cfg);
+                        this._bridge.setApply(!!ir.on);
+                    }
+                    if (ir.warning) {
+                        // A warning is NOT a skip — the step ran. Its own phase keeps
+                        // summary.skipped honest while still surfacing in the run log.
+                        if (this._bridge)
+                            this._bridge.log({ event: 'warn', message: ir.warning, level: 'WARN' });
+                        emit({ phase: 'warn', index, step, op: ir.op, reason: ir.warning });
                     }
                     emit({ phase: 'command', index, step, op: ir.op, value: !!ir.on });
                     return;
@@ -1395,6 +1626,7 @@ var ArenaRunnerG6 = (function () {
         LED_OFF_MV, // BuckPuck "LED dark" analog level (mV) — the scope's on/off threshold
         ledPercentToMv, // BuckPuck brightness % → AO control voltage (mV); 0% → LED_OFF_MV
         normalizeLedActivation, // validate/normalize a trialParams led_activation spec (throws on bad)
+        normalizeBias, // validate/normalize startClosedLoop bias params → {bias, warning} (throws on bad)
         makeLedActivator, // pure stateful index→ON/OFF evaluator with hysteresis
         ArenaRunner
     };

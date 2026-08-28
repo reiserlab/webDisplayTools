@@ -692,6 +692,11 @@ var BUILTIN_PLUGINS = {
                 label: 'Start closed-loop',
                 description:
                     'Drive the arena from FicTrac (Mode-3 host-stepping). Requires a Mode-3 pattern displayed (a preceding trialParams mode 3).',
+                // BIAS (LAB-185) — an added rotational VELOCITY whose time-integral is
+                // summed into the closed-loop mapping, so the display keeps moving even
+                // when the fly is still (disturbance-rejection experiments). Per-condition
+                // ONLY: deliberately absent from configFields so there is no second source
+                // of truth. Semantics + formulas: docs/development/closed-loop-bias.md.
                 params: {
                     gain: {
                         type: 'number',
@@ -699,12 +704,44 @@ var BUILTIN_PLUGINS = {
                         default: 1.8,
                         label: 'Gain override (deg/index)',
                         placeholder: 'default: plugin config gain'
+                    },
+                    bias_type: {
+                        type: 'select',
+                        required: false,
+                        default: 'none',
+                        label: 'Bias waveform',
+                        // Must match BIAS_TYPES in fictrac-bridge/bridge.py.
+                        options: [
+                            { value: 'none', label: 'None' },
+                            { value: 'constant', label: 'Constant (steady drift)' },
+                            { value: 'sine', label: 'Sine' },
+                            { value: 'square', label: 'Square' }
+                        ]
+                    },
+                    bias_amplitude: {
+                        type: 'number',
+                        required: false,
+                        default: 0,
+                        label: 'Bias amplitude (deg/s, peak)',
+                        placeholder: 'e.g. 90'
+                    },
+                    bias_frequency: {
+                        // Default 1, NOT 0 — 0 is the divide-by-ω case for sine/square and
+                        // the runner rejects it. No `min` either: clampToSchema would
+                        // silently raise a negative entry to 0, turning a harmless no-op
+                        // into the one illegal value. The runner validates instead.
+                        type: 'number',
+                        required: false,
+                        default: 1,
+                        label: 'Bias frequency (Hz, sine/square)',
+                        placeholder: 'e.g. 0.5'
                     }
                 }
             },
             stopClosedLoop: {
                 label: 'Stop closed-loop',
-                description: 'Stop driving the arena from FicTrac (FicTrac keeps being logged).'
+                description:
+                    'Stop driving the arena from FicTrac (FicTrac keeps being logged). Also clears any bias waveform.'
             }
         }
     }
