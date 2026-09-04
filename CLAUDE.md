@@ -226,9 +226,17 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `fetchCourseGenotypes` / the generic `fetchCourseVocab(file, key, srcId, apply)`.
   **Any NEW controlled vocab MUST follow this course-first, site-fallback pattern:**
   add a site YAML under `configs/metadata/`, load it in `populateMetaDatalists`, AND
-  add a `fetchCourseVocab(...)` call in `refreshCourseMeta` + seed the file into the
-  course repo root. The course repo (`reiserlab/cshl-2026-course`) is PRIVATE, so
-  the course override needs a token; the site files are same-origin (always work).
+  add a `fetchCourseVocab(...)` call in `refreshCourseMeta`, ADD THE FILENAME TO
+  `READABLE_EXACT` in `js/studio-github.js` (the read allowlist — a miss throws inside
+  the loader's try/catch and the override silently falls back; that is exactly how
+  ages/sexes/fly_numbers were broken until v0.70), + seed the file into the repo root.
+  The course override runs only when a token is stored (token + repo = "course-repo
+  mode") even though `reiserlab/cshl-2026-course` has been PUBLIC since 2026-08; the
+  site files are same-origin (always work). `configs/metadata/*.yaml` are parsed by
+  `tests/test-metadata-yaml.js` (pixi + CI) because they get edited in the GitHub UI.
+  Token types: org members use a fine-grained PAT scoped to the one repo; the shared
+  course guest account (`cshl-2026`, an outside collaborator) can only use a CLASSIC
+  token — see `docs/development/data-repo-token-runbook.md`.
 - **Session rig (#135, v0.4):** `Studio.currentRig` (`{name, arenaConfig,
   explicit}`) is THE bench rig for all three views — one top-bar selector,
   locked by default. Always change it via the module block's

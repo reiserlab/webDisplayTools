@@ -16,15 +16,21 @@
  *      PUT  /repos/{o}/{r}/contents/{path}      → create/update file on the branch
  *   5. POST /repos/{o}/{r}/pulls                → open the PR
  *
- * DIRECT-COMMIT flow (course-data repos, CSHL pipeline): directCommit() skips
- * the branch + PR — GET /repos (default_branch) → GET contents (sha) → PUT on
- * the default branch. Safe there because RIG-ID namespacing means no two rigs
- * write the same file.
+ * DIRECT-COMMIT flow (data repos — the CSHL course repo or a lab repo such as
+ * reiserlab/arena-experiments): directCommit() skips the branch + PR — GET
+ * /repos (default_branch) → GET contents (sha) → PUT on the default branch.
+ * Safe there because bench/rig-id namespacing means no two rigs write the
+ * same file.
  *
  * Security: the token lives ONLY in the Authorization header — never in a URL,
- * never in the body. Writable paths are allowlisted to protocols/, runlogs/,
- * and configs/metadata/ (mirrors the URL-state path-traversal guard); reads
- * additionally allow the course repo's root-level roster.yaml.
+ * never in the body. Writable paths are allowlisted (WRITABLE_PREFIXES:
+ * protocols/, runlogs/, configs/metadata/, patterns/, pattern-sets/ — mirrors
+ * the URL-state path-traversal guard); reads additionally allow the data
+ * repo's root-level controlled-vocabulary YAMLs (READABLE_EXACT: roster,
+ * genotypes, ages, sexes, fly_numbers). Keep BOTH lists in sync with every
+ * path the Studio reads/writes — a miss throws inside a try/catch and shows up
+ * only as a "… unreadable" / "… skipped" log line (that is how the age/sex/
+ * fly-number course override silently failed until 2026-09).
  *
  * LOADING: classic <script src> (window-global + CommonJS dual-export, no ES `export`).
  */
@@ -33,11 +39,25 @@
 
     const API = 'https://api.github.com';
     const API_VERSION = '2022-11-28';
-    // patterns/ = the shared pattern library (Pattern Designer "Save to Repo").
-    const WRITABLE_PREFIXES = ['protocols/', 'runlogs/', 'configs/metadata/', 'patterns/'];
-    // Read-only extras: exact root paths readable but never writable — the
-    // course roster + genotype vocabulary (instructor-edited on GitHub).
-    const READABLE_EXACT = ['roster.yaml', 'genotypes.yaml'];
+    // patterns/ = the shared pattern library (Pattern Designer "Save to Repo");
+    // pattern-sets/<hash>/patterns.zip = the opt-in post-run SD snapshot.
+    const WRITABLE_PREFIXES = [
+        'protocols/',
+        'runlogs/',
+        'configs/metadata/',
+        'patterns/',
+        'pattern-sets/'
+    ];
+    // Read-only extras: exact root paths readable but never writable — the data
+    // repo's controlled vocabularies (roster/genotypes/ages/sexes/fly_numbers),
+    // edited on GitHub. MUST list every file Studio.refreshCourseMeta() reads.
+    const READABLE_EXACT = [
+        'roster.yaml',
+        'genotypes.yaml',
+        'ages.yaml',
+        'sexes.yaml',
+        'fly_numbers.yaml'
+    ];
 
     // UTF-8-safe base64 (Node Buffer or browser btoa+encodeURIComponent).
     function b64(text) {

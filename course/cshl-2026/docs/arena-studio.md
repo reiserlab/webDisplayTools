@@ -82,8 +82,9 @@ format is:
 - `&advanced=0` forces safe mode on a shared machine.
 - These links always open in the **Run** view.
 
-Loading a protocol from the private course repo needs you to be **signed in to
-GitHub once** on that browser (File ▾ → GitHub). After that, the link just works.
+Loading a protocol from the course repo works signed-out now that the repo is
+public; saving to it still needs the bench to be **signed in to GitHub once** on that
+browser (File ▾ → GitHub). After that, the link just works.
 
 ## What safe mode blocks
 

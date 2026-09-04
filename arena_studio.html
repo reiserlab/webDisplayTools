@@ -2917,7 +2917,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.69 | 2026-07-21 16:46 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.70 | 2026-09-04 12:14 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -8184,13 +8184,19 @@ $('ghSignInBtn').addEventListener('click', async (e) => {
     e.stopPropagation();
     const signInBtn = $('ghSignInBtn');
     const pat = prompt(
-        'Paste a GitHub fine-grained personal access token for ' + ghTargetRepo().full +
-        '\nFor private read-only access: Contents read. For saving: Contents read/write' +
-        ' + Pull requests read/write. Public protocol/replay reads need no token.\n\n' +
+        'Paste a GitHub personal access token for ' + ghTargetRepo().full + '\n\n' +
+        'Lab / org members: a FINE-GRAINED token — Resource owner = the repo\'s org, ' +
+        'Only select repositories = this repo, Contents: Read and write (Pull requests ' +
+        'read/write only if you save as PR). Shared course account or outside ' +
+        'collaborators: a CLASSIC token (scope public_repo for a public repo, repo for ' +
+        'a private one) — fine-grained tokens cannot target an org you are not a ' +
+        'member of. Public protocol/replay reads need no token.\n\n' +
         'Stored in sessionStorage (cleared when this tab closes). The follow-up ' +
-        '"remember" option keeps it in localStorage — REQUIRED for course bench ' +
-        'setup (a sessionStorage-only token evaporates when the tab closes); ' +
-        'do NOT use it on a personal shared machine.'
+        '"remember" option keeps it in localStorage — REQUIRED on a dedicated bench/rig ' +
+        'computer (a sessionStorage-only token evaporates when the tab closes); ' +
+        'say NO on a shared or borrowed machine. Tokens expire: when the Studio reports ' +
+        'the stored token is no longer valid, create a new one (see ' +
+        'docs/development/data-repo-token-runbook.md).'
     );
     if (!pat) return;
     const token = pat.trim();
@@ -8392,7 +8398,7 @@ function wireCourseSettings() {
             signIn.classList.toggle('gh-signin-while-locked', locked);
             signIn.title = locked
                 ? 'Sign in for course-repo read access; repo, bench, and write settings remain instructor-locked'
-                : 'Sign in to GitHub with a fine-grained personal access token';
+                : 'Sign in to GitHub with a personal access token (fine-grained for org members; classic for the shared course account) — see docs/development/data-repo-token-runbook.md';
         }
         if (ghLock) {
             ghLock.textContent = locked ? '🔒' : '🔓';
@@ -14882,7 +14888,7 @@ initFromUrl();
     '#fmOpenCourse': 'Open a protocol this bench saved (or one shared with the course) from the course repo.',
     '#fmSave': 'Save the protocol. Where it goes depends on the GitHub settings below — a local file, a Pull Request, or straight to the course repo.',
     '#fmPromote': 'Copy this bench’s saved protocol (and its patterns) to the course’s shared folder so other benches can use it.',
-    '#ghSignInBtn': 'Sign in with a GitHub token so the Studio can read and write the course repo.',
+    '#ghSignInBtn': 'Sign in with a GitHub token so the Studio can read and write the course repo. Tokens expire — if the Studio says the stored token is no longer valid, make a new one and sign in again.',
     '#ghLock': 'Instructor lock — the repo and bench settings stay fixed during a course.',
     '#ghRepoInput': 'The GitHub repo saves go to (owner/name).',
     '#ghBenchId': 'This bench’s name — saves and run logs are filed under it.',

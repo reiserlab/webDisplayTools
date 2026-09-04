@@ -8,7 +8,7 @@ CSHL 2026 course.
 - Opens one or more local JSONL files.
 - Loads a same-origin JSONL URL.
 - Browses a locally served course-repository checkout.
-- Signs in to the private GitHub course repository with the same fine-grained
+- Signs in to the GitHub course repository with the same personal access
   personal-access-token flow and storage keys used by Arena Studio.
 - Indexes run metadata without downloading complete runlogs, then loads full
   files only when selected.
@@ -101,9 +101,9 @@ relative-heading pages instead of failing import.
 
 ## Public page, private data
 
-The dashboard itself can be public while its URL is distributed through private
-course documentation. Private runlogs remain in
-`reiserlab/cshl-2026-course`.
+The dashboard itself is public. Runlogs live in `reiserlab/cshl-2026-course`,
+which was private during the course and has been public since 2026-08 (reads work
+signed-out; writes still need a token).
 
 The sign-in flow uses:
 
@@ -112,8 +112,10 @@ The sign-in flow uses:
 - `Authorization: Bearer <token>` headers to `api.github.com`
 
 The token is never placed in a URL, request body, runlog, CSV export, or console
-message. The course token should be a fine-grained PAT restricted to the course
-repository with Contents read/write access, matching Arena Studio.
+message. The shared course token is a **classic** PAT from the `cshl-2026` guest
+account (scope `public_repo`); lab members use a fine-grained PAT scoped to the one
+repo with Contents read/write — matching Arena Studio. See
+`docs/development/data-repo-token-runbook.md`.
 
 The dashboard currently performs read operations only. Write permission is
 retained on the shared course token so the same sign-in remains compatible with

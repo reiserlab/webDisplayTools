@@ -124,7 +124,7 @@
     async function signIn(repoValue) {
         const repo = parseRepo(repoValue || currentRepo());
         const pat = prompt(
-            `Paste a GitHub fine-grained personal access token for ${repo.full}.\n` +
+            `Paste a GitHub personal access token for ${repo.full} (fine-grained for org members; classic for the shared course account).\n` +
                 'The course token should have Contents read/write access.\n\n' +
                 'It is stored in sessionStorage first. The next prompt can remember it on this browser.'
         );
