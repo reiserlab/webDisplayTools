@@ -137,8 +137,10 @@ while destination/write settings are **locked by default**:
    closes — a classic footgun for a kiosk bench).
 2. Click **🛡 Safe mode**, enter the instructor password, then click the **🔒**
    in the GitHub block to unlock destination/write setup.
-3. **Repo** = `reiserlab/cshl-2026-course`.
-4. **Bench id** = `bench01`…`bench07` (must match `roster.yaml`).
+3. **Repo** = pick *CSHL 2026 course* in the dropdown (Studio v0.72+: nothing is
+   pre-selected on a fresh browser; "Other…" takes a custom owner/name).
+4. **Bench id** = `bench01`…`bench07` (must match `roster.yaml`; the field is
+   labelled "Bench id" while the course repo is selected, "Rig id" otherwise).
 5. Check **"Commit directly to default branch"**.
 6. Click the lock again to **re-lock** (🔒). It re-locks automatically on the
    next page load, so students can't alter the token/repo/bench id.

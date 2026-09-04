@@ -20,7 +20,8 @@ Everything lives in one repository: **`reiserlab/cshl-2026-course`** (public sin
 August 2026 — anyone can read it; writing from Arena Studio still needs the bench to
 be signed in once per browser).
 
-Each of the 7 bench rigs has a **bench id** (`bench01` … `bench07`). The repo
+Each of the 7 bench rigs has a **bench id** (`bench01` … `bench07`; the field is
+labelled "Bench id" while the course repo is selected in File ▾ → GitHub → Repo). The repo
 is organized so no two benches ever overwrite each other's files:
 
 ```
