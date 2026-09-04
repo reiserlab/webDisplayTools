@@ -104,8 +104,9 @@ in one place and its writes are attributed to a course identity.
 4. **Scopes**: `reiserlab/cshl-2026-course` is **public** (since 2026-08), so tick
    only **`public_repo`** (read/write code on public repos). Only if the repo is
    ever made private again would the full **`repo`** scope be needed.
-5. Generate; **copy the `ghp_…` string now** (shown once). Store it in the
-   shared inbox / a password manager.
+5. Generate; **copy the `ghp_…` string now** (shown once). Store it in the lab
+   password manager. (The account itself was registered to Michael's Janelia
+   address, not a separate shared inbox — password resets go there.)
 6. This single token is what you paste into each bench in P3. Students never
    see it.
 

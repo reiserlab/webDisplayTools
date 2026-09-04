@@ -24,13 +24,18 @@ the stored token; a save or run-log commit made with a dead token falls back to
 
 ## A. Renew the shared course token (guest account `cshl-2026`)
 
-1. Sign in to GitHub as `cshl-2026` (shared inbox has the password / 2FA codes).
+1. Sign in to GitHub as `cshl-2026`. The account was registered on 2026-07-04 to
+   Michael's Janelia address (its commits carry `reiserm@janelia.hhmi.org`), so a
+   forgotten password is reset via <https://github.com/password_reset> with that
+   address, and any 2FA recovery codes were saved by whoever set it up (check the
+   password manager / the 2026-07-04 GitHub emails). Sign out of your own account
+   or use a private window first — GitHub keeps one session per browser profile.
 2. Settings → Developer settings → Personal access tokens → **Tokens (classic)**.
    Delete the expired `cshl-2026-benches` token (or **Regenerate** it — same effect,
    new value).
 3. **Generate new token (classic)**: Note `cshl-2026-benches`, **Expiration** = a date
    you put in the calendar (≤ 1 year), scopes = **`public_repo` only**. Copy the
-   `ghp_…` value once; store it in the shared inbox / password manager.
+   `ghp_…` value once; store it in the lab password manager.
 4. On each bench browser (served from `http://127.0.0.1:8000/`, not `file://`):
    File ▾ → **Sign in…** → paste → **YES** to "Remember this token" → 🛡 advanced
    (instructor password) → 🔓 in the GitHub block → **Repo** `reiserlab/cshl-2026-course`,
