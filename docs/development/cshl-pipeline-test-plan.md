@@ -81,30 +81,44 @@ in one place and its writes are attributed to a course identity.
 - Org note: if `reiserlab` restricts outside collaborators, an org owner may
   need to approve the invite first.
 
-**1c. Generate the shared fine-grained PAT** (signed in as `cshl-2026`)
-1. Settings → Developer settings → **Fine-grained tokens** → **Generate new
-   token**.
-2. **Token name**: `cshl-2026-benches`.
-3. **Expiration**: set it to just past the course (e.g. the Monday after) so a
-   forgotten token can't linger.
-4. **Resource owner**: `cshl-2026` (the guest account itself).
-5. **Repository access** → **Only select repositories** →
-   `reiserlab/cshl-2026-course`. (If the repo isn't listed, the invite in
-   1b wasn't accepted yet.)
-6. **Permissions** → Repository permissions → **Contents: Read and write**
-   (leave everything else "No access"). Metadata auto-selects read-only —
-   that's fine.
-7. Generate; **copy the `github_pat_…` string now** (shown once). Store it in
-   the shared inbox / a password manager.
-8. This single token is what you paste into each bench in P3. Students never
+**1c. Generate the shared token — it must be a CLASSIC token** (signed in as
+`cshl-2026`)
+
+> **Correction (2026-09-04).** An earlier version of this step described a
+> *fine-grained* token. That cannot work here: `cshl-2026` is an *outside
+> collaborator* of `reiserlab`, and GitHub only lets a fine-grained token name
+> an organization as resource owner when the token's owner is an org *member*
+> ("Only personal access tokens (classic) have write access for public
+> repositories that are not owned by you"). Do NOT make the guest account an
+> org member to work around this — the org grants members write on every repo.
+> The course token that ran the 2026 course was a classic token. Full recipe
+> and the lab-member (fine-grained) alternative:
+> `docs/development/data-repo-token-runbook.md`.
+
+1. Settings → Developer settings → **Personal access tokens → Tokens (classic)**
+   → **Generate new token (classic)**.
+2. **Note**: `cshl-2026-benches`.
+3. **Expiration**: pick a date and put it in the calendar. For the course, just
+   past the course (e.g. the Monday after) so a forgotten token can't linger;
+   for ongoing post-course use, ≤ 1 year.
+4. **Scopes**: `reiserlab/cshl-2026-course` is **public** (since 2026-08), so tick
+   only **`public_repo`** (read/write code on public repos). Only if the repo is
+   ever made private again would the full **`repo`** scope be needed.
+5. Generate; **copy the `ghp_…` string now** (shown once). Store it in the lab
+   password manager. (The account itself was registered to Michael's Janelia
+   address, not a separate shared inbox — password resets go there.)
+6. This single token is what you paste into each bench in P3. Students never
    see it.
 
-**1d. Revoke path** (know it before the course): signed in as `cshl-2026` →
-Developer settings → Fine-grained tokens → the token → **Revoke**. All benches
-stop writing immediately; issue a new one and re-paste per P3.
+**1d. Revoke / renew path**: signed in as `cshl-2026` → Developer settings →
+Tokens (classic) → the token → **Delete** (or **Regenerate** to get a new value
+with a new expiry). All benches stop writing immediately — the Studio shows
+"The stored GitHub token is no longer valid. Sign in again from File ▾." on the
+next load — issue a new one and re-paste per P3.
 
 ### P2. Repo — DONE
-- `reiserlab/cshl-2026-course` exists (private), seeded with `README.md`,
+- `reiserlab/cshl-2026-course` exists (private during the course; made **public**
+  in 2026-08 — reads no longer need a token, writes still do), seeded with `README.md`,
   `roster.yaml` (test entries: michael/frank/isabel/hannah_marie + guest) and a
   course `genotypes.yaml` (lab set + wild-type + none), plus the
   `protocols/shared/` + `runlogs/` skeleton. Edit `roster.yaml` for the real

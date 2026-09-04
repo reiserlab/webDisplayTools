@@ -4,6 +4,25 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.70 (2026-09-04) · Metadata pick-lists restored; course age/sex/fly# lists load; token guidance
+
+- **The Experimenter dropdown is populated again when no data repo is signed in.**
+  A GitHub-UI edit to the site library's `configs/metadata/people.yaml` (2026-08-27)
+  left an indentation error; the Studio swallowed the parse failure and showed an
+  empty list, which blocked recorded runs. Fixed, and the metadata files are now
+  parsed in the test suite and CI so a bad edit fails loudly.
+- **Fly age / sex / fly-number lists now really load from the connected repo.** The
+  read allowlist only permitted `roster.yaml` and `genotypes.yaml`, so the three other
+  root vocab files were refused and the site list was silently kept. The opt-in
+  post-run SD pattern archive (`pattern-sets/…`) was blocked by the write allowlist the
+  same way; both are allowed now.
+- **Sign-in text explains which token to use.** Org members: a fine-grained token
+  scoped to the one repo (Contents read/write). Shared course account / outside
+  collaborators: a classic token (`public_repo` for a public repo) — GitHub does not let
+  a non-member own a fine-grained token for an org repo. Also says what an expired token
+  looks like and where the renewal runbook is
+  (`docs/development/data-repo-token-runbook.md`).
+
 ## v0.69 (2026-07-21) · ISP batch retries a failed panel twice
 
 - **A failed panel flash now gets up to two retries** (was one) before being

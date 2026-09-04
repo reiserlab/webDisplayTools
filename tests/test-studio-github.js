@@ -92,6 +92,23 @@ check('other dir still blocked', G.isAllowedReadPath('js/evil.js'), false);
 check('nested roster blocked', G.isAllowedReadPath('secrets/roster.yaml'), false);
 check('genotypes NOT writable', G.isAllowedPath('genotypes.yaml'), false);
 check('traversal blocked', G.isAllowedReadPath('roster.yaml/../js/evil.js'), false);
+// Every root vocab file Studio.refreshCourseMeta() reads must be readable (a miss
+// throws inside its try/catch and the course override silently falls back).
+for (const f of ['ages.yaml', 'sexes.yaml', 'fly_numbers.yaml']) {
+    check(f + ' readable', G.isAllowedReadPath(f), true);
+    check(f + ' NOT writable', G.isAllowedPath(f), false);
+}
+check(
+    'pattern-sets snapshot writable',
+    G.isAllowedPath('pattern-sets/0123abcd/patterns.zip'),
+    true
+);
+check(
+    'pattern-sets snapshot readable (dedup)',
+    G.isAllowedReadPath('pattern-sets/0123abcd/patterns.zip'),
+    true
+);
+check('bare pattern-sets dir listable', G.isAllowedReadPath('pattern-sets'), true);
 
 // ── branch naming ────────────────────────────────────────────────────────────
 console.log('=== branchName ===');

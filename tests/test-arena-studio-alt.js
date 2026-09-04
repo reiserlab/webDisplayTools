@@ -585,7 +585,9 @@ check(
         alt.includes("const ALT_BUILD_STAMP = '2026-07-13 18:55 ET';") &&
         alt.includes("stampNode.nodeValue = ALT_TOOL_VERSION + ' | ' + ALT_BUILD_STAMP + ' · ';") &&
         alt.includes('Studio.TOOL_VERSION = ALT_TOOL_VERSION;') &&
-        studio.includes('Arena Studio v0.69 | 2026-07-21 16:46 ET')
+        // Classic footer keeps its own version/stamp line (shape, not a pinned
+        // literal — the Classic footer is bumped on every Studio edit).
+        /Arena Studio v0\.\d+ \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET · /.test(studio)
 );
 
 console.log('=== scoped presentation ===');
