@@ -4,6 +4,16 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.71 (2026-09-04) · Closed-loop apply is reset at run start and abort
+
+- **No more error floods at the start of a run.** If FicTrac closed-loop "apply"
+  had been left on (Console use, or a run that aborted mid-trial), the next run
+  pushed ball-tracking frames into its opening Mode-2 step and the controller
+  rejected every one — hundreds of error lines in the first seconds (seen on
+  rig03-sr, 2026-09-04). The runner now forces apply off at sequence start, at
+  sequence end, and whenever a run aborts or the link drops. Protocol data and
+  timing are unchanged.
+
 ## v0.70 (2026-09-04) · Metadata pick-lists restored; course age/sex/fly# lists load; token guidance
 
 - **The Experimenter dropdown is populated again when no data repo is signed in.**

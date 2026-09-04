@@ -1275,9 +1275,11 @@ async function main() {
             }
         });
         check('bridge.connect called once', bridge.connectCalls, 1);
+        // Runner disarms at sequence start and again at sequence end, so the
+        // protocol's own true/false sits between two safety falses.
         checkBool(
-            'apply toggled true then false',
-            JSON.stringify(bridge.applyStates) === JSON.stringify([true, false]),
+            'apply disarmed at start, toggled true then false, disarmed at end',
+            JSON.stringify(bridge.applyStates) === JSON.stringify([false, true, false, false]),
             bridge.applyStates.join(',')
         );
         checkBool(
@@ -1295,6 +1297,126 @@ async function main() {
         check('no skips (fictrac + log executed)', summary.skipped, 0);
         check('no errors', summary.errors, 0);
         check('closed-loop timing = 2s (fictrac ops add no time)', slept, 2000);
+    }
+
+    console.log('\n=== FicTrac closed-loop: stale apply is disarmed before the first step ===');
+    {
+        // Regression for rig03-sr 2026-09-04: apply left ON from earlier Console use
+        // pushed 0x70 frames into the opening Mode-2 step (304 firmware rejects).
+        const order = [];
+        const link = makeFakeLink();
+        const origSend = link.send.bind(link);
+        link.send = (bytes) => {
+            order.push('send:0x' + bytes[1].toString(16));
+            return origSend(bytes);
+        };
+        const bridge = {
+            apply: true, // stale state from before the run
+            connect() {},
+            disconnect() {},
+            setApply(on) {
+                this.apply = !!on;
+                order.push('apply:' + this.apply);
+            },
+            setConfig() {},
+            log() {}
+        };
+        const runner = new Runner.ArenaRunner(link, Wire, bridge);
+        const steps = [{ kind: 'ref', conditionName: 'bg', label: 'bg', seqIdx: 0, dur: 1 }];
+        const conditionsByName = new Map([
+            [
+                'bg',
+                {
+                    name: 'bg',
+                    commands: [
+                        {
+                            type: 'controller',
+                            command_name: 'trialParams',
+                            mode: 2,
+                            frame_rate: 10,
+                            gain: 0,
+                            frame_index: 0,
+                            duration: 1,
+                            pattern: 'p'
+                        },
+                        { type: 'wait', duration: 1 }
+                    ]
+                }
+            ]
+        ]);
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            sleep: () => Promise.resolve()
+        });
+        check('run completed', summary.completed, true);
+        check('first bridge/link action is apply:false', order[0], 'apply:false');
+        checkBool(
+            'apply:false precedes the first controller send',
+            order.indexOf('apply:false') < order.findIndex((o) => o.startsWith('send:')),
+            order.slice(0, 3).join(' → ')
+        );
+        check('apply is OFF after the run', bridge.apply, false);
+    }
+
+    console.log('\n=== FicTrac closed-loop: abort mid-trial leaves apply OFF ===');
+    {
+        const link = makeFakeLink();
+        const bridge = {
+            apply: false,
+            states: [],
+            connect() {},
+            disconnect() {},
+            setApply(on) {
+                this.apply = !!on;
+                this.states.push(!!on);
+            },
+            setConfig() {},
+            log() {}
+        };
+        const runner = new Runner.ArenaRunner(link, Wire, bridge);
+        const steps = [{ kind: 'ref', conditionName: 'cl', label: 'cl', seqIdx: 0, dur: 20 }];
+        const conditionsByName = new Map([
+            [
+                'cl',
+                {
+                    name: 'cl',
+                    commands: [
+                        {
+                            type: 'controller',
+                            command_name: 'trialParams',
+                            mode: 3,
+                            frame_rate: 0,
+                            gain: 0,
+                            frame_index: 0,
+                            duration: 20,
+                            pattern: 'p'
+                        },
+                        { type: 'plugin', plugin_name: 'fictrac', command_name: 'startClosedLoop' },
+                        { type: 'wait', duration: 20 },
+                        { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' }
+                    ]
+                }
+            ]
+        ]);
+        let applyDuringWait = null;
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            fictracPluginNames: new Set(['fictrac']),
+            sleep: () => {
+                // Mid-closed-loop the apply must be ON; then the link drops.
+                applyDuringWait = bridge.apply;
+                runner.abort();
+                return Promise.resolve();
+            }
+        });
+        check('apply was ON during the closed-loop wait', applyDuringWait, true);
+        check('run reported aborted', summary.aborted, true);
+        check('apply is OFF after the abort', bridge.apply, false);
+        check('last apply state recorded is false', bridge.states[bridge.states.length - 1], false);
     }
 
     console.log('\n=== Summary ===');
