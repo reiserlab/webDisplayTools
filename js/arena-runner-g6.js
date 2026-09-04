@@ -858,7 +858,21 @@ var ArenaRunnerG6 = (function () {
             this._active = false;
             this._conditionName = null;
             this._clearLedActivator(); // guarded: no-op send when the link is gone
+            this._disarmClosedLoop();
             this._emit = null;
+        }
+
+        /** Force the shared bridge's closed-loop apply OFF (idempotent, never
+         *  throws). Called at sequence start, at sequence end/abort, and on
+         *  disconnect so a stale apply=true from Console use or an aborted run
+         *  cannot drive frames into the next run's non-Mode-3 steps. */
+        _disarmClosedLoop() {
+            if (!this._bridge || typeof this._bridge.setApply !== 'function') return;
+            try {
+                this._bridge.setApply(false);
+            } catch (_) {
+                /* best-effort */
+            }
         }
 
         // ---- conditional LED activation (install / teardown) --------------
@@ -1004,6 +1018,11 @@ var ArenaRunnerG6 = (function () {
 
             this._active = true;
             this._abort = false;
+            // A stale closed-loop apply (left on by Console use or an aborted run)
+            // would push FicTrac frames into the opening Mode-2 step — the firmware
+            // rejects each 0x70 with status 1 and the log fills with errors
+            // (rig03-sr, 2026-09-04: 304 rejects in the first 3 s). Start clean.
+            this._disarmClosedLoop();
             const summary = {
                 completed: false,
                 aborted: false,
@@ -1204,6 +1223,7 @@ var ArenaRunnerG6 = (function () {
                 this._conditionName = null;
                 this._resolveSleep();
                 this._clearLedActivator(); // LED off + stop gating on completion/abort
+                this._disarmClosedLoop(); // never leak apply=true into the next run
                 try {
                     if (this._link && this._link.connected) {
                         await this._link.send(this._wire.encodeStop());
