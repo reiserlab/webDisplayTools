@@ -10,7 +10,8 @@
   <script defer src="vendor/kinematics.js?v=20260710-1647"></script>
   <script defer src="analysis-core.js?v=20260710-2236"></script>
   <script defer src="plot-specs.js?v=20260710-2236"></script>
-  <script defer src="github-repo.js?v=20260710-1647"></script>
+  <script defer src="../../js/studio-data-repos.js?v=20260904"></script>
+  <script defer src="github-repo.js?v=20260904"></script>
   <script defer src="app.js?v=20260710-1653"></script>
 </head>
 <body>
@@ -20,7 +21,7 @@
       <h1>Course Data Dashboard</h1>
     </div>
     <div class="header-actions">
-      <a id="courseRepoLink" class="quiet-link" href="https://github.com/reiserlab/cshl-2026-course" target="_blank" rel="noreferrer">Course repo</a>
+      <a id="courseRepoLink" class="quiet-link" href="https://github.com/reiserlab/cshl-2026-course" target="_blank" rel="noreferrer">Data repo</a>
       <div class="status-strip" id="statusStrip" aria-live="polite">
         <span class="status-dot" aria-hidden="true"></span>
         <span id="statusText">No data loaded</span>
@@ -49,7 +50,7 @@
         </div>
 
         <div class="github-controls">
-          <input id="githubRepoInput" type="text" value="reiserlab/cshl-2026-course" aria-label="GitHub repository">
+          <input id="githubRepoInput" type="text" list="dataRepoList" value="reiserlab/cshl-2026-course" aria-label="GitHub repository"><datalist id="dataRepoList"></datalist>
           <button id="githubSignInButton" type="button">Sign in</button>
           <button id="githubSignOutButton" type="button" disabled>Sign out</button>
           <button id="chooseRigsButton" type="button" title="Choose which rig folders are included in the data catalog" disabled>Select rigs</button>
@@ -107,7 +108,7 @@
       </div>
 
       <div class="catalog-head">
-        <span id="catalogStatus">Open files or connect to the course repository.</span>
+        <span id="catalogStatus">Open files or connect to a data repository.</span>
         <input id="catalogSearchInput" type="search" placeholder="Filter by rig, experimenter, run, fly, genotype, protocol, notes" disabled>
       </div>
       <div id="runCatalog" class="run-catalog" aria-label="Available runlogs">

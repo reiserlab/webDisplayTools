@@ -399,7 +399,7 @@ function renderCatalog() {
     const visible = new Set(visibleDescriptors().map((item) => item.key));
     if (!state.catalog.length) {
         els.runCatalog.innerHTML = '<div class="empty-state">No runlogs indexed</div>';
-        els.catalogStatus.textContent = 'Open files or connect to the course repository.';
+        els.catalogStatus.textContent = 'Open files or connect to a data repository.';
         els.catalogSearchInput.disabled = true;
         els.renderSelectionButton.disabled = true;
         renderFocusOptions();
@@ -1724,6 +1724,18 @@ window.addEventListener('resize', renderScope);
 
 async function initialize() {
     els.githubRepoInput.value = G.currentRepo();
+    // Offer the known data repos (course + lab) as suggestions; free text still works.
+    const dl = document.getElementById('dataRepoList');
+    const registry = window.StudioDataRepos;
+    if (dl && registry && Array.isArray(registry.DATA_REPOS)) {
+        dl.textContent = '';
+        for (const r of registry.DATA_REPOS) {
+            const o = document.createElement('option');
+            o.value = r.full;
+            o.label = r.label;
+            dl.appendChild(o);
+        }
+    }
     loadAnalysisAxes();
     if (window.location.hostname.endsWith('github.io')) {
         els.plotSourceLink.href =
