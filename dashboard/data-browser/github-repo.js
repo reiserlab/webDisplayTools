@@ -7,7 +7,14 @@
     const REPO_KEY = 'studio_gh_repo';
     const BENCH_KEY = 'studio_bench_id';
     const FOLDERS_KEY_PREFIX = 'dashboard_runlog_folders:';
-    const DEFAULT_REPO = 'reiserlab/cshl-2026-course';
+    // The registry (js/studio-data-repos.js, loaded before this file) lists the
+    // known data repos; the dashboard's default stays the first entry (the
+    // course repo). Falls back to the literal if the registry failed to load.
+    const REGISTRY = global.StudioDataRepos || null;
+    const DEFAULT_REPO =
+        REGISTRY && REGISTRY.DATA_REPOS && REGISTRY.DATA_REPOS[0]
+            ? REGISTRY.DATA_REPOS[0].full
+            : 'reiserlab/cshl-2026-course';
 
     function currentToken() {
         return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '';
@@ -98,7 +105,7 @@
 
     async function apiJson(url, options) {
         const token = currentToken();
-        if (!token) throw new Error('Sign in with the course GitHub token first');
+        if (!token) throw new Error('Sign in with a GitHub token first');
         const response = await fetch(url, {
             method: (options && options.method) || 'GET',
             headers: headers(token),
@@ -125,7 +132,7 @@
         const repo = parseRepo(repoValue || currentRepo());
         const pat = prompt(
             `Paste a GitHub personal access token for ${repo.full} (fine-grained for org members; classic for the shared course account).\n` +
-                'The course token should have Contents read/write access.\n\n' +
+                'It needs Contents read access (read/write keeps it compatible with Arena Studio).\n\n' +
                 'It is stored in sessionStorage first. The next prompt can remember it on this browser.'
         );
         if (!pat) return null;
@@ -134,7 +141,7 @@
         sessionStorage.setItem(TOKEN_KEY, token);
         if (
             confirm(
-                'Remember this token on THIS browser?\nYES for a course bench; NO on a shared personal machine.'
+                'Remember this token on THIS browser?\nYES on a dedicated rig/bench computer or your own laptop; NO on a shared machine.'
             )
         ) {
             localStorage.setItem(TOKEN_KEY, token);
@@ -169,7 +176,7 @@
 
     async function fetchRaw(repoValue, path, ref, prefixBytes) {
         const token = currentToken();
-        if (!token) throw new Error('Sign in with the course GitHub token first');
+        if (!token) throw new Error('Sign in with a GitHub token first');
         const repo = parseRepo(repoValue || currentRepo());
         const requestHeaders = headers(token, 'application/vnd.github.raw');
         if (prefixBytes) requestHeaders.Range = `bytes=0-${Math.max(1023, prefixBytes - 1)}`;

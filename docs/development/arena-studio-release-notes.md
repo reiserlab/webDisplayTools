@@ -4,6 +4,24 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.72 (2026-09-04) · Data repos: lab repo picker, "Rig id", no default repo
+
+- **Repo is now a picker.** File ▾ → GitHub → Repo offers the CSHL 2026 course repo,
+  the new private lab repo (`reiserlab/arena-experiments`) and "Other…" for any
+  owner/name. A never-configured browser has **no repo selected** — saves go to local
+  files until one is picked (before, the course repo was silently the default).
+  Course benches already have their repo set, so nothing changes for them.
+- **"Bench id" becomes "Rig id"** outside the course repo, with a pick-list fed by the
+  repo's `roster.yaml` (people's `rig_id`s plus an optional `rigs:` list, which also
+  carries the controller MAC for the connect-time cross-check).
+- **Wording follows the repo** everywhere — save labels ("Save → Reiser lab
+  experiments"), the Open-from-repo picker ("This rig", "Shared protocols
+  (lab-wide)"), promote, run-log push, quick links, help texts. The Pattern Designer
+  and the data-browser dashboard use the same registry.
+- **Expired token handling**: a 401 during a run-log commit now clears the stored
+  token and says so, instead of only "saved locally". Setup guide:
+  `docs/development/data-repo-setup.md`.
+
 ## v0.71 (2026-09-04) · Closed-loop apply is reset at run start and abort
 
 - **No more error floods at the start of a run.** If FicTrac closed-loop "apply"

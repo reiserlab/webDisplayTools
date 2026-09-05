@@ -27,9 +27,11 @@
     <script src="js/pat-encoder.js"></script>
     <script src="js/arena-geometry.js"></script>
     <script src="js/pattern-editor/tools/generator.js"></script>
-    <!-- course pipeline: GitHub request builders for "push to course repo"
+    <!-- data-repo pipeline: GitHub request builders for "save to repo"
          (classic dual-export module — same file Arena Studio uses) -->
     <script src="js/studio-github.js"></script>
+    <!-- data-repo registry (course + lab repos, shared owner/name parser, labels) -->
+    <script src="js/studio-data-repos.js"></script>
     <!-- library MANIFEST parser (Open from Library…) + repo/path validators
          (?repo= / ?arena= URL state) — same classic dual-export modules the
          Studio loads, so behavior matches across the two tools -->
@@ -2491,7 +2493,7 @@
                 <input type="radio" name="repoDest" id="destProtocol" value="protocol">
                 <span class="dest-text">
                     <b>A protocol's pattern folder</b>
-                    <span>protocols/&lt;bench-id&gt;/&lt;protocol&gt;_patterns/ — travels with that protocol (needs a bench id)</span>
+                    <span>protocols/&lt;rig-id&gt;/&lt;protocol&gt;_patterns/ — travels with that protocol (needs a rig / bench id)</span>
                     <input type="text" class="dest-proto-input" id="destProtoName" placeholder="protocol name, e.g. my_protocol" disabled>
                 </span>
             </label>
@@ -3476,13 +3478,22 @@
 
         function repoSettings() {
             const raw = (sessionRepo || localStorage.getItem('studio_gh_repo') || '').trim();
-            const rm = /^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/.exec(raw);
-            const ok = rm && !raw.includes('..');
+            // Shared owner/name parser (js/studio-data-repos.js); regex fallback if
+            // that classic script failed to load.
+            const R = window.StudioDataRepos;
+            let parsed = null;
+            if (R && typeof R.parseRepo === 'function') parsed = R.parseRepo(raw);
+            else {
+                const rm = /^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/.exec(raw);
+                parsed = rm && !raw.includes('..') ? { owner: rm[1], name: rm[2], full: raw } : null;
+            }
             return {
                 token: sessionStorage.getItem('studio_gh_pat') || localStorage.getItem('studio_gh_pat'),
                 repoRaw: raw,
-                owner: ok ? rm[1] : null,
-                repo: ok ? rm[2] : null,
+                owner: parsed ? parsed.owner : null,
+                repo: parsed ? parsed.name : null,
+                // 'Bench id' (course repo) or 'Rig id' (lab / other) — user copy only.
+                idLabel: R && R.idLabel ? R.idLabel(raw) : 'Rig id',
                 benchId: (localStorage.getItem('studio_bench_id') || '').trim()
             };
         }
@@ -3673,13 +3684,13 @@
             if (!built) return;
             _pendingRepoSave = built;
             document.getElementById('repoSaveRepoLine').textContent =
-                'Repo: ' + cs.repoRaw + (cs.benchId ? ' · bench ' + cs.benchId : '');
+                'Repo: ' + cs.repoRaw + (cs.benchId ? ' · ' + cs.idLabel.toLowerCase() + ' ' + cs.benchId : '');
             const protoRadio = document.getElementById('destProtocol');
             const protoInput = document.getElementById('destProtoName');
             protoRadio.disabled = !cs.benchId;
             protoRadio.closest('.dest-row').title = cs.benchId
                 ? 'Commits next to a protocol so they travel together'
-                : 'Needs a bench id (set in Arena Studio → File ▾) — course benches only';
+                : 'Needs a ' + cs.idLabel.toLowerCase() + ' (set in Arena Studio → File ▾ → GitHub)';
             if (!cs.benchId) document.getElementById('destLibrary').checked = true;
             protoInput.disabled = !protoRadio.checked;
             updateRepoSavePath();

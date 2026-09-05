@@ -214,7 +214,18 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   firmware's ASCII error payload on non-ok status — keep that for new ops.
   New `.cmenu` popups: the document click-away closer ignores clicks inside
   `.cmenu-pop`; one-shot `.cmenu-item`s (not in a `.cmenu-row`) auto-close.
-- **Metadata / controlled-vocab sourcing (THE rule):** when a **course repo is
+- **Data repos (v0.72):** the Studio/Pattern Designer/dashboard target ONE GitHub
+  data repo chosen in File ▾ → GitHub → Repo, from the registry in
+  `js/studio-data-repos.js` (classic dual-export; course + lab entries + `parseRepo`
+  + label helpers). **No default repo** on a fresh browser. **Copy rule:** user-visible
+  wording goes through `Studio.dataRepoLabel()` / `Studio.idLabel()` /
+  `Studio.sharedLabel()` ("Bench id" for the course repo, "Rig id" otherwise);
+  internal identifiers (`courseSettings`, `refreshCourseMeta`, `fetchCourse*`,
+  `openFromCourseRepo`, `fmOpenCourse`, `studio_bench_id`) keep their historical
+  names — tests anchor on them, do not mass-rename. New repo = registry entry +
+  `scripts/seed-data-repo.sh`; never enable branch protection. Setup guide:
+  `docs/development/data-repo-setup.md`.
+- **Metadata / controlled-vocab sourcing (THE rule):** when a **data repo is
   configured AND signed in**, ALL metadata vocabularies load from that repo (its
   root-level YAML) and their ↗ source links repoint there — the connected repo is
   the source of truth. When not (offline / not signed in), fall back to the

@@ -174,7 +174,7 @@ checkBool(
 );
 checkBool(
     'repo-listing failures are surfaced instead of rendered as empty data',
-    openCourseBody.includes('Course repo could not be read:') &&
+    openCourseBody.includes("Studio.dataRepoLabel(cs) + ' could not be read: '") &&
         openCourseBody.includes('GH.reqGetRepo(cs.repo.owner, cs.repo.name, token)')
 );
 checkBool(

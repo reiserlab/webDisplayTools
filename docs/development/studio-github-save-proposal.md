@@ -1,6 +1,6 @@
 # Studio → GitHub save: lean proposal (for review)
 
-**Status: COURSE SCOPE SHIPPED (2026-07-03, Session 2 — Arena Studio v0.5).**
+**Status: COURSE SCOPE SHIPPED (2026-07-03, Session 2 — Arena Studio v0.5). PER-LAB SCOPE SHIPPED 2026-09-04 (Studio v0.72) as a repo *registry* (`js/studio-data-repos.js`, private `reiserlab/arena-experiments`, per-person tokens) rather than a template repo — see `data-repo-setup.md`.**
 The course-pipeline slice of this proposal is implemented; the generic
 per-user/template-repo phases below remain the unbuilt follow-on. Shipped:
 repo owner/name + bench-id settings + "commit directly to default branch"
