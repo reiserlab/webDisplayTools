@@ -207,8 +207,13 @@
             heisenberg_relational: 'relational slashes',
             dill_random_checkers: 'Dill random checkers'
         };
+        // Rig-saved variants carry suffixes after the timing token
+        // (p3-heisenberg-ts-full-led8.yaml, …-full-led8-40strain.yaml); without
+        // the suffix group they fell through to "legacy diagnostic" in the
+        // catalog (metadata-only classification) even though the parsed run
+        // was classified correctly from its condition names.
         const namedP3 = filename.match(
-            /(?:^|\/)p3_(heisenberg_ts|heisenberg_high_low|heisenberg_slashes|heisenberg_relational|dill_random_checkers)_(short|full)(?:\.yaml)?$/
+            /(?:^|\/)p3_(heisenberg_ts|heisenberg_high_low|heisenberg_slashes|heisenberg_relational|dill_random_checkers)_(short|full)(?:_[a-z0-9]+)*(?:\.yaml)?$/
         );
         const hasP3Phases = names.some((name) =>
             /^(baseline|training|probe)_phase(?:0|90)$/.test(name)
