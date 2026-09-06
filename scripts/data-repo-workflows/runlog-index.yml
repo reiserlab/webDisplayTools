@@ -1,0 +1,61 @@
+# runlog-index — keep runlogs/<folder>/index.json current.
+#
+# Installed into every Arena data repo by webDisplayTools/scripts/seed-data-repo.sh
+# (source of truth: webDisplayTools/scripts/data-repo-workflows/runlog-index.yml;
+# the script it runs is a copy of webDisplayTools/scripts/build-runlog-index.py).
+#
+# Why: the data-browser dashboard shows each run's start / duration / end state
+# from this index, because a browser cannot Range-read a file tail from GitHub
+# (CORS preflight 403). The index has ONE writer — this workflow — and is rebuilt
+# per folder from the files actually present, so Arena Studio auto-commits,
+# hand-pushed large logs, migrations and deletions are all picked up.
+#
+# Loop guard: the bot's own commits touch only index.json, which the `paths`
+# filter excludes. Concurrency: runs queue instead of racing.
+name: runlog index
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'runlogs/**'
+      - '!runlogs/**/index.json'
+  workflow_dispatch: {}   # rebuild every folder by hand
+permissions:
+  contents: write
+concurrency:
+  group: runlog-index
+  cancel-in-progress: false
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github   # never pull the multi-GB logs
+          sparse-checkout-cone-mode: true
+      - name: Folders touched by this push
+        id: touched
+        env:
+          COMMITS: ${{ toJSON(github.event.commits) }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          commits = json.loads(os.environ.get('COMMITS') or 'null') or []
+          folders = set()
+          for c in commits:
+              for k in ('added', 'modified', 'removed'):
+                  for p in c.get(k) or []:
+                      parts = p.split('/')
+                      if len(parts) >= 3 and parts[0] == 'runlogs' and parts[-1] != 'index.json':
+                          folders.add(parts[1])
+          # workflow_dispatch (no commits) → rebuild everything
+          args = ' '.join(f'--folder {f}' for f in sorted(folders)) if commits else ''
+          print('args=' + args)
+          print('list=' + (', '.join(sorted(folders)) or 'ALL'))
+          PY
+      - name: Rebuild index.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Folders: ${{ steps.touched.outputs.list }}"
+          python3 .github/scripts/build-runlog-index.py --github "$GITHUB_REPOSITORY" --branch main --write ${{ steps.touched.outputs.args }}

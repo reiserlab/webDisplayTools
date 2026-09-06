@@ -45,9 +45,11 @@ runs; for GitHub-indexed runs that have not been loaded it comes from the folder
 file was tried first, but browsers cannot do it: raw.githubusercontent.com refuses
 the CORS preflight; the GitHub API ignores `Range` entirely.) Build or refresh the
 index with `scripts/build-runlog-index.py --github owner/repo --write` (reads only
-a 64 KB head + 4 KB tail per file); Arena Studio will append to it after each
-auto-committed run (planned with the behavior_v2 work). Runs missing from the index
-show "—" until it is refreshed. Aborted runs are flagged ⚠ with
+a 64 KB head + 4 KB tail per file). In the data repos this runs automatically: the
+`runlog-index` GitHub Action (template in `scripts/data-repo-workflows/`) rebuilds a
+folder's index on every push under `runlogs/`, so a run shows its duration about a
+minute after it lands. Arena Studio does not write the index. Runs missing from an
+index show "—" until the Action has run. Aborted runs are flagged ⚠ with
 the tooltip naming the end state. Optional columns: age, experimenter, file size.
 
 ## Analysis pages

@@ -5,8 +5,11 @@ Why: the data-browser dashboard wants each run's start time, duration and end
 state WITHOUT downloading multi-MB logs. Reading a file tail from the browser is
 blocked (raw.githubusercontent.com rejects the CORS preflight that a `Range`
 header triggers), so every runlog folder carries a small index the dashboard
-fetches in ONE request. Arena Studio appends to it after each auto-commit; this
-script backfills/refreshes it from the files on disk (idempotent — re-run any time).
+fetches in ONE request. The index has ONE writer: this script, run by the data
+repo's `runlog-index` GitHub Action on every push under runlogs/ (see
+scripts/data-repo-workflows/runlog-index.yml) — and by hand for a backfill.
+Idempotent: each folder's index is rebuilt from the files present, so deletions
+and out-of-band pushes (git push of a large log, migrations) are picked up too.
 
 Per run: run_id, file, size, started_ms (logging_started), stopped_ms
 (logging_stopped, else last runner rx_ms), duration_s, complete
@@ -14,8 +17,9 @@ Per run: run_id, file, size, started_ms (logging_started), stopped_ms
 plus the run_metadata fields the catalog shows (protocol_filename, experimenter,
 genotype, sex, fly_number, age, notes, rig_id, timestamp_start).
 
-usage: build-runlog-index.py <clone-root> [--write] [--folder NAME]
-       build-runlog-index.py --github owner/repo [--branch main] [--write] [--folder NAME]
+usage: build-runlog-index.py <clone-root> [--write] [--folder NAME ...]
+       build-runlog-index.py --github owner/repo [--branch main] [--write] [--folder NAME ...]
+  --folder may repeat (the Action passes only the folders a push touched).
   (default = dry run: prints the table; --write rewrites each index.json —
    on disk for a clone, via the Contents API for --github. --github reads only
    a 64 KB head + 4 KB tail per file with Range requests on the raw URL, so it
@@ -44,6 +48,23 @@ def _gh_api(repo, path, method='GET', body=None):
     if data: h['Content-Type'] = 'application/json'
     st, raw, _ = _http(f'https://api.github.com/repos/{repo}/{path}', h, data, method)
     return json.loads(raw) if raw else None
+
+def _put_index(repo, branch, path, content, name, n):
+    """PUT index.json; on a stale-sha conflict (409/422 — another run wrote the same
+    file meanwhile) re-read the sha and retry, up to 3 attempts."""
+    import urllib.error, time
+    for attempt in range(3):
+        sha = None
+        try: sha = _gh_api(repo, f'contents/{path}?ref={branch}').get('sha')
+        except Exception: pass
+        body = {'message': f'runlogs({name}): refresh index.json ({n} runs)', 'content': base64.b64encode(content.encode()).decode(), 'branch': branch}
+        if sha: body['sha'] = sha
+        try:
+            return _gh_api(repo, f'contents/{path}', 'PUT', body)
+        except urllib.error.HTTPError as e:
+            if e.code in (409, 422) and attempt < 2:
+                time.sleep(2 + attempt); continue
+            raise
 
 def _raw_range(repo, branch, path, rng):
     tok = _token(); h = {'Range': rng}
@@ -88,7 +109,7 @@ def main_github(repo, branch, write, only):
     total = 0
     for d in sorted(dirs, key=lambda x: x['name']):
         name = d['name']
-        if only and name != only: continue
+        if only and name not in only: continue
         items = [i for i in _gh_api(repo, f"contents/{d['path']}?ref={branch}") if i['type'] == 'file' and i['name'].endswith('.jsonl')]
         runs = []
         for it in items:
@@ -100,20 +121,13 @@ def main_github(repo, branch, write, only):
         known = sum(1 for r in runs if r['duration_s'] is not None); aborted = sum(1 for r in runs if r['complete'] is False)
         print(f"{name:12s} {len(runs):3d} runs  duration known {known:3d}  aborted {aborted:2d}")
         if write:
-            path = f"{d['path']}/index.json"
-            content = json.dumps(index, indent=1) + '\n'
-            sha = None
-            try: sha = _gh_api(repo, f'contents/{path}?ref={branch}').get('sha')
-            except Exception: pass
-            body = {'message': f'runlogs({name}): refresh index.json ({len(runs)} runs)', 'content': base64.b64encode(content.encode()).decode(), 'branch': branch}
-            if sha: body['sha'] = sha
-            _gh_api(repo, f'contents/{path}', 'PUT', body)
+            _put_index(repo, branch, f"{d['path']}/index.json", json.dumps(index, indent=1) + '\n', name, len(runs))
     print(f"{'WROTE' if write else 'dry-run'}: {total} runs in {len(dirs)} folders ({repo}@{branch})")
 
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     write = '--write' in sys.argv
-    only = sys.argv[sys.argv.index('--folder') + 1] if '--folder' in sys.argv else None
+    only = {sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == '--folder' and i + 1 < len(sys.argv)} or None
     if '--github' in sys.argv:
         repo = sys.argv[sys.argv.index('--github') + 1]
         branch = sys.argv[sys.argv.index('--branch') + 1] if '--branch' in sys.argv else 'main'
@@ -124,7 +138,7 @@ def main():
     total = 0
     for folder in folders:
         name = os.path.basename(folder)
-        if only and name != only: continue
+        if only and name not in only: continue
         files = sorted(glob.glob(os.path.join(folder, '*.jsonl')) + glob.glob(os.path.join(folder, '*.jsonl.gz')))
         files = [f for f in files if not f.endswith('.gz')]  # gz handled once behavior_v2 lands
         runs = [bookends(f) for f in files]
