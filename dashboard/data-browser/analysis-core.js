@@ -285,9 +285,97 @@
             experimenter: safeText(metadata && metadata.experimenter) || parsed.experimenter,
             bench: safeText(metadata && (metadata.rig_id || metadata.bench)),
             timestamp: safeText(metadata && metadata.timestamp_start) || parsed.timestamp,
+            startedMs: startedMsFromMetadata(metadata),
             notes: safeText(metadata && metadata.notes),
             metadata: metadata || {}
         };
+    }
+
+    // Epoch ms of the run start from run_metadata (ISO timestamp_start, else the
+    // bridge receive stamp), NaN when neither parses.
+    function startedMsFromMetadata(metadata) {
+        const iso = Date.parse(safeText(metadata && metadata.timestamp_start));
+        if (Number.isFinite(iso)) return iso;
+        const rx = finite(metadata && metadata.rx_ms);
+        return rx > 1e9 ? rx : NaN;
+    }
+
+    /**
+     * Session bounds from the FIRST and LAST few lines of a run log — enough to show
+     * a duration in the catalog without downloading the file. The bridge writes
+     * {"type":"session","event":"logging_started","ms":…} first and
+     * {"type":"session","event":"logging_stopped","ms":…} last; the runner's final
+     * 'sequence-complete' / 'aborted' event (rx_ms) is the fallback stop marker.
+     * @param {string} prefixText  head of the file (may end mid-line)
+     * @param {string} [suffixText] tail of the file (may start mid-line)
+     * @returns {{startMs:number, stopMs:number, durationSec:number, complete:boolean|null}}
+     */
+    function sessionBounds(prefixText, suffixText) {
+        const parseLines = (text) => {
+            const out = [];
+            for (const line of safeText(text).split(/\r?\n/)) {
+                if (!line.startsWith('{')) continue;
+                try {
+                    out.push(JSON.parse(line));
+                } catch (_) {
+                    /* partial line at a prefix/suffix boundary */
+                }
+            }
+            return out;
+        };
+        const head = parseLines(prefixText);
+        const tail = parseLines(suffixText);
+        let startMs = NaN;
+        for (const rec of head) {
+            if (rec.event === 'logging_started' && finite(rec.ms) > 1e9) {
+                startMs = finite(rec.ms);
+                break;
+            }
+        }
+        if (!Number.isFinite(startMs)) {
+            const meta = head.find((rec) => rec.event === 'run_metadata');
+            if (meta) startMs = startedMsFromMetadata(meta);
+        }
+        let stopMs = NaN;
+        let complete = null;
+        for (const rec of tail.slice().reverse()) {
+            if (rec.event === 'logging_stopped' && finite(rec.ms) > 1e9) {
+                stopMs = finite(rec.ms);
+                break;
+            }
+        }
+        for (const rec of tail) {
+            if (rec.event === 'runner' && rec.phase === 'sequence-complete') complete = true;
+            if (rec.event === 'runner' && rec.phase === 'aborted') complete = false;
+            if (!Number.isFinite(stopMs) && rec.event === 'runner' && finite(rec.rx_ms) > 1e9)
+                stopMs = Math.max(finite(stopMs) || 0, finite(rec.rx_ms));
+        }
+        const durationSec =
+            Number.isFinite(startMs) && Number.isFinite(stopMs) && stopMs >= startMs
+                ? (stopMs - startMs) / 1000
+                : NaN;
+        return { startMs, stopMs, durationSec, complete };
+    }
+
+    /** Wall-clock duration (s) of a fully parsed run: logging_stopped − logging_started,
+     *  else the last frame / runner event. */
+    function runDurationSec(run) {
+        if (!run) return NaN;
+        const start = finite(run.sessionStartMs);
+        const stopped = (run.events || []).find((rec) => rec.event === 'logging_stopped');
+        if (stopped && Number.isFinite(start) && finite(stopped.ms) > start) {
+            return (finite(stopped.ms) - start) / 1000;
+        }
+        const lastFrame =
+            run.frames && run.frames.length ? run.frames[run.frames.length - 1].ms : NaN;
+        const lastEvent = Math.max(
+            ...(run.events || []).map((rec) => relativeEventMs(rec, start)).filter(Number.isFinite)
+        );
+        const last = Math.max(
+            finite(lastFrame) || -Infinity,
+            Number.isFinite(lastEvent) ? lastEvent : -Infinity
+        );
+        return Number.isFinite(last) && last > 0 ? last / 1000 : NaN;
     }
 
     function extractSteps(events, sessionStartMs) {
@@ -1212,6 +1300,8 @@
         parseFilename,
         parseMetadataPrefix,
         descriptorFromMetadata,
+        sessionBounds,
+        runDurationSec,
         protocolInfo,
         parseJsonl,
         deriveSignals,

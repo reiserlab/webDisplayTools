@@ -22,6 +22,15 @@ global.fetch = async (url, options) => {
     seen.push({ url, options });
     if (url.endsWith('/user'))
         return new Response(JSON.stringify({ login: 'course-user' }), { status: 200 });
+    if (url.startsWith('https://raw.githubusercontent.com/partial/')) {
+        const range = options && options.headers && options.headers.Range;
+        return new Response('{"event":"logging_stopped","ms":5}\n', {
+            status: range === 'bytes=-2048' ? 206 : 200
+        });
+    }
+    if (url.startsWith('https://raw.githubusercontent.com/full/')) {
+        return new Response('WHOLE FILE', { status: 200 });
+    }
     if (url.includes('/contents/runlogs/bench02/example.jsonl')) {
         return new Response('{"event":"run_metadata","run_id":"abc"}\n[1,2,3]\n', { status: 200 });
     }
@@ -38,6 +47,18 @@ const G = require('../github-repo.js');
 (async () => {
     assert.strictEqual(G.currentToken(), 'github_pat_TEST_SECRET');
     assert.strictEqual(G.currentRepo(), 'reiserlab/cshl-2026-course');
+    // fetchSuffix: suffix Range on the raw download URL; null unless the server
+    // answered 206 (so a 50 MB log is never downloaded just for a duration).
+    const tailText = await G.fetchSuffix('https://raw.githubusercontent.com/partial/x.jsonl', 2048);
+    assert.strictEqual(tailText, '{"event":"logging_stopped","ms":5}\n');
+    const tailReq = seen.find((r) => r.url.includes('raw.githubusercontent.com/partial/'));
+    assert.strictEqual(tailReq.options.headers.Range, 'bytes=-2048');
+    assert.strictEqual(tailReq.options.headers.Authorization, 'Bearer github_pat_TEST_SECRET');
+    assert.strictEqual(
+        await G.fetchSuffix('https://raw.githubusercontent.com/full/x.jsonl', 2048),
+        null
+    );
+    assert.strictEqual(await G.fetchSuffix('', 2048), null);
     assert.deepStrictEqual(G.parseRepo('reiserlab/cshl-2026-course'), {
         owner: 'reiserlab',
         name: 'cshl-2026-course',

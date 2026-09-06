@@ -205,6 +205,30 @@
         return fetchRaw(repoValue, path, ref, bytes || 65536);
     }
 
+    /**
+     * Last `bytes` of a file via its Contents-API `download_url`
+     * (raw.githubusercontent.com honours suffix Range requests — probed 2026-09-06:
+     * 206 with 2048 bytes; api.github.com ignores Range and streams the whole file).
+     * Returns the tail text, or null when the server did not return a partial
+     * response (so callers never accidentally download a 50 MB log for a duration).
+     */
+    async function fetchSuffix(downloadUrl, bytes) {
+        if (!downloadUrl) return null;
+        const token = currentToken();
+        const requestHeaders = { Range: `bytes=-${Math.max(512, bytes || 2048)}` };
+        if (token) requestHeaders.Authorization = `Bearer ${token}`;
+        const response = await fetch(downloadUrl, { headers: requestHeaders });
+        if (response.status !== 206) {
+            try {
+                if (response.body && response.body.cancel) await response.body.cancel();
+            } catch (_) {
+                /* nothing to cancel */
+            }
+            return null;
+        }
+        return response.text();
+    }
+
     function fetchText(repoValue, path, ref) {
         return fetchRaw(repoValue, path, ref, 0);
     }
@@ -255,6 +279,7 @@
         repoInfo,
         listPath,
         fetchPrefix,
+        fetchSuffix,
         fetchText,
         mapLimit,
         repoTreeUrl

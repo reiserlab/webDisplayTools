@@ -308,6 +308,12 @@ function addRun(run, descriptorPatch) {
         ...run.descriptor,
         ...descriptorPatch,
         metadata: run.metadata,
+        durationSec: A.runDurationSec(run),
+        complete: (run.events || []).some((rec) => rec.phase === 'sequence-complete')
+            ? true
+            : (run.events || []).some((rec) => rec.phase === 'aborted')
+              ? false
+              : null,
         loaded: true
     };
     run.catalogKey = descriptor.key;
@@ -395,8 +401,198 @@ function warningText(descriptor) {
     return notes;
 }
 
+// ---- catalog columns: registry, visibility (localStorage), sort ----------------
+const CATALOG_COLUMNS_KEY = 'dashboard_catalog_columns';
+const CATALOG_COLUMNS = [
+    {
+        key: 'run',
+        label: 'Run',
+        width: 'minmax(96px, 0.55fr)',
+        fixed: true,
+        cell: (d) => `<strong title="${escapeHtml(d.runId)}">${escapeHtml(d.runId)}</strong>`,
+        sort: (d) => d.runId
+    },
+    {
+        key: 'protocol',
+        label: 'Rig · protocol',
+        width: 'minmax(170px, 0.9fr)',
+        fixed: true,
+        cell: (d) =>
+            `<span class="run-protocol" title="${escapeHtml(`${rigName(d)} | ${d.protocol}`)}"><span class="run-rig">${escapeHtml(rigName(d))}</span>${escapeHtml(d.protocolFamily)}</span>`,
+        sort: (d) => `${rigName(d)} ${d.protocolFamily}`
+    },
+    {
+        key: 'date',
+        label: 'Start',
+        width: 'minmax(118px, 0.6fr)',
+        narrowHide: true,
+        cell: (d) =>
+            `<span class="run-date" title="${escapeHtml(d.timestamp || '')}">${escapeHtml(formatStart(d))}</span>`,
+        sort: (d) => (Number.isFinite(d.startedMs) ? d.startedMs : Date.parse(d.timestamp) || 0)
+    },
+    {
+        key: 'duration',
+        label: 'Duration',
+        width: 'minmax(72px, 0.4fr)',
+        narrowHide: true,
+        cell: (d) =>
+            `<span class="run-duration ${d.complete === false ? 'warning-note' : ''}" title="${escapeHtml(durationTitle(d))}">${escapeHtml(formatDuration(d.durationSec))}${d.complete === false ? ' ⚠' : ''}</span>`,
+        sort: (d) => (Number.isFinite(d.durationSec) ? d.durationSec : -1)
+    },
+    {
+        key: 'genotype',
+        label: 'Genotype',
+        width: 'minmax(180px, 1.3fr)',
+        narrowHide: true,
+        cell: (d) =>
+            `<span class="run-genotype" title="${escapeHtml(d.genotype)}">${escapeHtml(d.genotype)}</span>`,
+        sort: (d) => d.genotype
+    },
+    {
+        key: 'sex',
+        label: 'Sex',
+        width: '44px',
+        cell: (d) => `<span class="run-sex">${escapeHtml(d.sex || '?')}</span>`,
+        sort: (d) => d.sex
+    },
+    {
+        key: 'fly',
+        label: 'Fly',
+        width: '56px',
+        narrowHide: true,
+        cell: (d) => `<span class="run-fly">fly ${escapeHtml(d.flyNumber || '?')}</span>`,
+        sort: (d) => Number(d.flyNumber) || 0
+    },
+    {
+        key: 'age',
+        label: 'Age',
+        width: 'minmax(70px, 0.4fr)',
+        narrowHide: true,
+        defaultHidden: true,
+        cell: (d) => `<span class="run-age">${escapeHtml(d.age || '')}</span>`,
+        sort: (d) => d.age
+    },
+    {
+        key: 'experimenter',
+        label: 'Experimenter',
+        width: 'minmax(90px, 0.5fr)',
+        narrowHide: true,
+        defaultHidden: true,
+        cell: (d) =>
+            `<span class="run-experimenter">${escapeHtml(experimenterName(d) || '')}</span>`,
+        sort: (d) => experimenterName(d)
+    },
+    {
+        key: 'note',
+        label: 'Notes',
+        width: 'minmax(105px, 0.8fr)',
+        narrowHide: true,
+        cell: (d) => {
+            const note = warningText(d);
+            const text = note || d.notes || '';
+            return `<span class="run-note ${note ? 'warning-note' : ''}" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`;
+        },
+        sort: (d) => warningText(d) || d.notes || ''
+    },
+    {
+        key: 'size',
+        label: 'Size',
+        width: '62px',
+        narrowHide: true,
+        defaultHidden: true,
+        cell: (d) =>
+            `<span class="run-size">${Number.isFinite(d.size) ? (d.size / 1048576).toFixed(1) + ' MB' : ''}</span>`,
+        sort: (d) => d.size || 0
+    }
+];
+function loadColumnPrefs() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(CATALOG_COLUMNS_KEY) || 'null');
+        if (Array.isArray(saved))
+            return new Set(saved.filter((k) => CATALOG_COLUMNS.some((c) => c.key === k)));
+    } catch (_) {
+        /* fall through */
+    }
+    return new Set(CATALOG_COLUMNS.filter((c) => !c.defaultHidden).map((c) => c.key));
+}
+state.catalogColumns = loadColumnPrefs();
+state.catalogSort = { key: '', dir: 1 };
+function visibleColumns() {
+    return CATALOG_COLUMNS.filter((c) => c.fixed || state.catalogColumns.has(c.key));
+}
+function applyCatalogGrid() {
+    const cols = visibleColumns();
+    const full = ['26px', ...cols.map((c) => c.width), '58px'].join(' ');
+    const narrow = ['26px', ...cols.filter((c) => !c.narrowHide).map((c) => c.width), '52px'].join(
+        ' '
+    );
+    els.runCatalog.style.setProperty('--catalog-cols', full);
+    els.runCatalog.style.setProperty('--catalog-cols-narrow', narrow);
+}
+function formatStart(d) {
+    const ms = Number.isFinite(d.startedMs) ? d.startedMs : Date.parse(d.timestamp);
+    if (!Number.isFinite(ms)) return A.safeText(d.timestamp).slice(0, 16).replace('T', ' ');
+    const t = new Date(ms);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())} ${pad(t.getHours())}:${pad(t.getMinutes())}`;
+}
+function formatDuration(sec) {
+    if (!Number.isFinite(sec)) return '—';
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec - m * 60);
+    return m >= 60
+        ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
+        : `${m}:${String(s).padStart(2, '0')}`;
+}
+function durationTitle(d) {
+    if (!Number.isFinite(d.durationSec)) return 'Duration unknown until the run is loaded';
+    const how = d.loaded ? 'from the loaded run' : 'from the file head/tail';
+    const end =
+        d.complete === true ? 'completed' : d.complete === false ? 'ABORTED' : 'end state unknown';
+    return `${d.durationSec.toFixed(1)} s (${how}) — ${end}`;
+}
+function sortedCatalog() {
+    const { key, dir } = state.catalogSort;
+    const col = CATALOG_COLUMNS.find((c) => c.key === key);
+    if (!col) return state.catalog;
+    return state.catalog
+        .map((d, i) => ({ d, i }))
+        .sort((a, b) => {
+            const va = col.sort(a.d);
+            const vb = col.sort(b.d);
+            const cmp =
+                typeof va === 'number' && typeof vb === 'number'
+                    ? va - vb
+                    : String(va).localeCompare(String(vb));
+            return (cmp || a.i - b.i) * dir;
+        })
+        .map((x) => x.d);
+}
+function renderCatalogHead() {
+    const cols = visibleColumns();
+    const { key, dir } = state.catalogSort;
+    return `<div class="run-head">
+        <span></span>
+        ${cols
+            .map(
+                (c) =>
+                    `<button type="button" class="col-sort ${c.key === key ? 'active' : ''} ${c.narrowHide ? 'narrow-hide' : ''}" data-sort="${c.key}" title="Sort by ${escapeHtml(c.label.toLowerCase())}${c.key === key ? (dir > 0 ? ' (ascending — click for descending)' : ' (descending — click to reset)') : ''}">${escapeHtml(c.label)}${c.key === key ? (dir > 0 ? ' ▲' : ' ▼') : ''}</button>`
+            )
+            .join('')}
+        <details class="col-picker" title="Choose which columns to show"><summary>⚙</summary><div class="col-picker-menu">
+          ${CATALOG_COLUMNS.filter((c) => !c.fixed)
+              .map(
+                  (c) =>
+                      `<label><input type="checkbox" class="col-toggle" data-col="${c.key}" ${state.catalogColumns.has(c.key) ? 'checked' : ''}> ${escapeHtml(c.label)}</label>`
+              )
+              .join('')}
+        </div></details>
+      </div>`;
+}
+
 function renderCatalog() {
     const visible = new Set(visibleDescriptors().map((item) => item.key));
+    applyCatalogGrid();
     if (!state.catalog.length) {
         els.runCatalog.innerHTML = '<div class="empty-state">No runlogs indexed</div>';
         els.catalogStatus.textContent = 'Open files or connect to the course repository.';
@@ -412,28 +608,25 @@ function renderCatalog() {
         ? state.github.selectedFolders.join(', ')
         : 'loaded sources';
     els.catalogStatus.textContent = `${visible.size} shown of ${state.catalog.length} runlogs | ${state.selectedKeys.size} selected | rigs: ${rigScope}`;
-    els.runCatalog.innerHTML = state.catalog
-        .map((descriptor) => {
-            const selected =
-                state.mode === 'single'
-                    ? descriptor.key === state.focusKey
-                    : state.selectedKeys.has(descriptor.key);
-            const note = warningText(descriptor);
-            const hidden = !visible.has(descriptor.key);
-            const date = A.safeText(descriptor.timestamp).slice(0, 10);
-            return `
+    const cols = visibleColumns();
+    els.runCatalog.innerHTML =
+        renderCatalogHead() +
+        sortedCatalog()
+            .map((descriptor) => {
+                const selected =
+                    state.mode === 'single'
+                        ? descriptor.key === state.focusKey
+                        : state.selectedKeys.has(descriptor.key);
+                const hidden = !visible.has(descriptor.key);
+                const date = formatStart(descriptor);
+                return `
       <div class="run-row ${selected ? 'selected' : ''} ${hidden ? 'hidden-by-group' : ''}" data-key="${escapeHtml(descriptor.key)}">
         <input class="run-select" type="checkbox" data-key="${escapeHtml(descriptor.key)}" ${selected ? 'checked' : ''} aria-label="Select ${escapeHtml(descriptor.runId)}">
-        <strong title="${escapeHtml(descriptor.runId)}">${escapeHtml(descriptor.runId)}</strong>
-        <span class="run-protocol" title="${escapeHtml(`${rigName(descriptor)} | ${descriptor.protocol}`)}"><span class="run-rig">${escapeHtml(rigName(descriptor))}</span>${escapeHtml(descriptor.protocolFamily)}</span>
-        <span class="run-genotype" title="${escapeHtml(descriptor.genotype)}">${escapeHtml(descriptor.genotype)}</span>
-        <span class="run-sex">${escapeHtml(descriptor.sex || '?')}</span>
-        <span class="run-fly">fly ${escapeHtml(descriptor.flyNumber || '?')}</span>
-        <span class="run-note ${note ? 'warning-note' : ''}" title="${escapeHtml(note || descriptor.experimenter)}">${escapeHtml(note || descriptor.experimenter || '')}</span>
-        <button class="focus-run" type="button" data-key="${escapeHtml(descriptor.key)}" title="View ${escapeHtml(descriptor.runId)} from ${escapeHtml(date)}">View</button>
+        ${cols.map((c) => c.cell(descriptor)).join('')}
+        <button class="focus-run" type="button" data-key="${escapeHtml(descriptor.key)}" title="View ${escapeHtml(descriptor.runId)} (${escapeHtml(date)}, ${escapeHtml(formatDuration(descriptor.durationSec))})">View</button>
       </div>`;
-        })
-        .join('');
+            })
+            .join('');
     renderFocusOptions();
 }
 
@@ -664,15 +857,28 @@ async function browseGithub() {
                     65536
                 );
                 const descriptor = A.parseMetadataPrefix(prefix, item.name, item.path);
+                // Duration without downloading the file: a 2 KB tail (suffix Range on
+                // the raw download URL) carries logging_stopped; the prefix has
+                // logging_started. Best-effort — '—' in the catalog when unavailable.
+                let bounds = { durationSec: NaN, complete: null };
+                try {
+                    const tail = await G.fetchSuffix(item.download_url, 2048);
+                    bounds = A.sessionBounds(prefix, tail);
+                } catch (_) {
+                    /* keep NaN */
+                }
                 return {
                     ...descriptor,
                     key: `github:${repo.full}:${item.path}`,
                     path: item.path,
                     githubPath: item.path,
+                    downloadUrl: item.download_url,
                     sourceType: 'github',
                     repoFull: repo.full,
                     folder: item.rigFolder,
-                    size: item.size
+                    size: item.size,
+                    durationSec: bounds.durationSec,
+                    complete: bounds.complete
                 };
             },
             (done, total) => setStatus('', `Reading run metadata ${done}/${total}`)
@@ -1536,6 +1742,17 @@ els.clearSelectionButton.addEventListener('click', () => {
 });
 
 els.runCatalog.addEventListener('change', (event) => {
+    const toggle = event.target.closest('.col-toggle');
+    if (toggle) {
+        if (toggle.checked) state.catalogColumns.add(toggle.dataset.col);
+        else state.catalogColumns.delete(toggle.dataset.col);
+        localStorage.setItem(CATALOG_COLUMNS_KEY, JSON.stringify([...state.catalogColumns]));
+        const open = els.runCatalog.querySelector('.col-picker')?.open;
+        renderCatalog();
+        const picker = els.runCatalog.querySelector('.col-picker');
+        if (picker && open) picker.open = true;
+        return;
+    }
     const input = event.target.closest('.run-select');
     if (!input) return;
     const key = input.dataset.key;
@@ -1549,6 +1766,15 @@ els.runCatalog.addEventListener('change', (event) => {
 });
 
 els.runCatalog.addEventListener('click', (event) => {
+    const sortBtn = event.target.closest('.col-sort');
+    if (sortBtn) {
+        const key = sortBtn.dataset.sort;
+        if (state.catalogSort.key !== key) state.catalogSort = { key, dir: 1 };
+        else if (state.catalogSort.dir === 1) state.catalogSort = { key, dir: -1 };
+        else state.catalogSort = { key: '', dir: 1 };
+        renderCatalog();
+        return;
+    }
     const button = event.target.closest('.focus-run');
     if (!button) return;
     focusDescriptor(button.dataset.key, state.mode === 'single').catch((error) =>
