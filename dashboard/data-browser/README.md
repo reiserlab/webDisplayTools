@@ -33,6 +33,18 @@ Time-series matrices default to dashboard-controlled manual ranges (turning
 choose Fit selected to compute one padded, rounded range spanning every
 displayed trace in the selected dataset.
 
+## Run catalog
+
+The run list has titled, sortable columns (click a title to sort ascending,
+again for descending, again to reset) and a ⚙ picker to choose which columns are
+shown; the choice is remembered in this browser. Besides run, rig/protocol,
+genotype, sex, fly and notes it shows the **start** time (local clock, from
+`run_metadata.timestamp_start`) and the **duration**. Duration is exact for loaded
+runs; for GitHub-indexed runs that have not been loaded it is read from a 2 KB tail
+of the file (suffix `Range` request on the raw download URL — the GitHub API itself
+ignores `Range`), so no large download is needed. Aborted runs are flagged ⚠ with
+the tooltip naming the end state. Optional columns: age, experimenter, file size.
+
 ## Analysis pages
 
 ### p0 optogenetic intensity

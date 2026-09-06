@@ -531,3 +531,45 @@ console.log(
         fixtures.p3.split('/').pop()
     );
 }
+
+// ---- catalog: session bounds from head/tail + loaded-run duration -------------
+{
+    const head =
+        '{"type":"session","event":"logging_started","file":"x.jsonl","ms":1788636439304}\n' +
+        '{"type":"frame_schema","level":"behavior_v1","cols":["ms","fc","idx","ft","x","y","hd"]}\n' +
+        '{"type":"log","event":"run_metadata","run_id":"r1","timestamp_start":"2026-09-05T19:27:19.251Z","rx_ms":1788636439305}\n' +
+        '[6,37638,53,0.0,1.99288,-0.91475,4.6'; // partial trailing line
+    const tail =
+        ',41.68795,1.02512]\n' + // partial leading line
+        '{"type":"log","event":"runner","phase":"sequence-complete","dir":"browser→bridge","rx_ms":1788638604507}\n' +
+        '{"type":"session","event":"logging_stopped","ms":1788638604509}\n';
+    const b = A.sessionBounds(head, tail);
+    assert.strictEqual(b.startMs, 1788636439304);
+    assert.strictEqual(b.stopMs, 1788638604509);
+    assert.ok(Math.abs(b.durationSec - 2165.205) < 1e-6, 'duration from session bookends');
+    assert.strictEqual(b.complete, true);
+    // aborted run, no logging_stopped in the tail → runner rx_ms fallback + complete=false
+    const tail2 = '{"type":"log","event":"runner","phase":"aborted","rx_ms":1788637000000}\n';
+    const b2 = A.sessionBounds(head, tail2);
+    assert.strictEqual(b2.complete, false);
+    assert.ok(Math.abs(b2.durationSec - 560.696) < 1e-6);
+    // no tail at all → NaN, never throws
+    assert.ok(Number.isNaN(A.sessionBounds(head, null).durationSec));
+    assert.ok(Number.isNaN(A.sessionBounds('', '').durationSec));
+    // metadata start fallback when logging_started is missing
+    const b3 = A.sessionBounds(head.split('\n').slice(1).join('\n'), tail);
+    assert.strictEqual(b3.startMs, Date.parse('2026-09-05T19:27:19.251Z'));
+    // descriptor carries startedMs
+    const d = A.descriptorFromMetadata({ timestamp_start: '2026-09-05T19:27:19.251Z' }, 'x.jsonl');
+    assert.strictEqual(d.startedMs, Date.parse('2026-09-05T19:27:19.251Z'));
+    // loaded-run duration on the real fixture matches its own bookends
+    const dur = A.runDurationSec(p3);
+    assert.ok(Number.isFinite(dur) && dur > 60, 'fixture duration ' + dur);
+    const text = fs.readFileSync(path.join(bench, fixtures.p3), 'utf8');
+    const fromBounds = A.sessionBounds(text.slice(0, 4096), text.slice(-4096));
+    assert.ok(
+        Math.abs(fromBounds.durationSec - dur) < 0.01,
+        `bounds ${fromBounds.durationSec} vs run ${dur}`
+    );
+    console.log('catalog duration helpers OK: fixture', dur.toFixed(1), 's');
+}
