@@ -60,9 +60,27 @@ changes is the *other* line types:
    `bridge.py --convert in.jsonl out.jsonl` (both directions) so existing course
    files can be re-encoded for the migration and so the dashboard can be tested on
    real data before a rig produces v2.
-5. **Runtime log level**: `behavior_v2` becomes the default; `behavior_v1` stays
-   selectable (Studio File ▾ → Run logging) for one release. `full` (25-col FicTrac)
-   unchanged.
+5. **Runtime log level — four places must change, bridge first.** Today the level is a
+   Studio setting (File ▾ → Run logging `#fmLogLevel`, localStorage `studio_log_level`,
+   advanced-only) that the runner ASSERTS at run start via `log_control`. The chain:
+   - `fictrac-bridge/bridge.py` `set_level()` + the `log_control` handler (line ~515)
+     accept only `behavior_v1 | full` and **silently ignore anything else** — so a new
+     Studio asking an old bridge for `behavior_v2` would get a v1 file with no error.
+     Bridge change: accept `behavior_v2` (new default for a fresh bridge), write the
+     compact lines, and **acknowledge the level actually in force** — reply to
+     `log_control` with `{"type":"log_control_ack","level":…}` and advertise
+     `"levels":[…]` in the hello reply so the browser can tell.
+   - `js/fictrac-bridge-client.js` `setLogLevel()` whitelist (line ~274) gains
+     `behavior_v2`; it records the acked level and emits a warning event on mismatch.
+   - `arena_studio.html`: `#fmLogLevel` gains `behavior_v2 (compact — default)`; the
+     stored-value default becomes `behavior_v2` when nothing is stored; an explicitly
+     stored `behavior_v1` is honored for one release (then dropped); the run-start banner
+     names the level the bridge acknowledged, and warns "bridge too old for behavior_v2 —
+     logging behavior_v1" when the ack disagrees. `full` (25-col FicTrac) unchanged.
+   - Console `#cFtLogLevel` read-only mirror shows the acked level.
+   Ship order: bridge PR first (backwards compatible — old Studios never send v2), then
+   the Studio PR. Benches must `git pull` + restart `pixi run bridge` (the existing
+   stale-bridge lesson) — the ack makes a stale bridge visible instead of silent.
 
 Expected: 40 s full run 51 MB → ~18 MB; 1 h run → ~30 MB. Still tight vs 35 MiB for
 hour-long runs — hence Part 2.
