@@ -63,6 +63,26 @@ assert.strictEqual(
     A.protocolInfo({ protocol_filename: 'p3_dill_random_checkers_short.yaml' }, []).family,
     'p3-dill-random-checkers'
 );
+// Rig-saved variants (hyphenated, LED-level / trial-length suffixes) must classify
+// from metadata alone — the catalog has no condition names yet.
+for (const [file, timing] of [
+    ['p3-heisenberg-ts-full-led8.yaml', 'full'],
+    ['p3-heisenberg-ts-full-led8-40sTrain.yaml', 'full'],
+    ['p3-heisenberg-ts-short-led5.yaml', 'short'],
+    ['p3_heisenberg_high_low_full_v2.yaml', 'full']
+]) {
+    const info = A.protocolInfo({ protocol_filename: file }, []);
+    assert.strictEqual(info.p3Legacy, false, file + ' is not legacy');
+    assert.strictEqual(info.p3Timing, timing, file + ' timing');
+}
+assert.strictEqual(
+    A.protocolInfo({ protocol_filename: 'p3-heisenberg-ts-full-led8.yaml' }, []).family,
+    'p3-heisenberg-ts'
+);
+assert.strictEqual(
+    A.protocolInfo({ protocol_filename: 'p3_heisenberg_high_low_full_v2.yaml' }, []).family,
+    'p3-heisenberg-high-low'
+);
 assert.strictEqual(p0.parseErrors.length, 0);
 assert.strictEqual(p1.parseErrors.length, 0);
 assert.strictEqual(p2.parseErrors.length, 0);
