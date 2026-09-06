@@ -4,6 +4,15 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.73 (2026-09-06) · Replay opens gzipped and `behavior_v2` run logs
+
+- **Replay reads the new log files.** The Alt replay picker lists and opens `.jsonl.gz`
+  files (from the repo or a local file) and understands the compact `behavior_v2`
+  arena echoes, so runs recorded by a v0.72 Studio replay exactly like older ones.
+  The shared decoder (`js/runlog-format.js`) is the same code the analysis dashboard
+  now uses, which also opens `.jsonl.gz` and `behavior_v2` from the repo, a local
+  server, a URL or a dropped file and shows the committed size in its catalog.
+
 ## v0.72 (2026-09-06) · Run logs commit gzipped; compact `behavior_v2` log format; the bridge confirms the log level
 
 - **Run logs now commit as `.jsonl.gz`.** The Studio gzips the exported log in the

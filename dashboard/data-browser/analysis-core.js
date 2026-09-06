@@ -4,6 +4,14 @@
     const K =
         global.Kinematics ||
         (typeof require === 'function' ? require('./vendor/kinematics.js') : null);
+    // Run-log FILE format (gzip + behavior_v1/v2 line formats): the shared
+    // js/runlog-format.js, vendored byte-identical like kinematics. parseJsonl
+    // takes TEXT — loaders inflate with F.readRunlogText first — and normalizes
+    // every line through F.createNormalizer() so behavior_v2's compact arena
+    // echoes reach every consumer as the v1 `arena_command` object.
+    const F =
+        global.RunlogFormat ||
+        (typeof require === 'function' ? require('./vendor/runlog-format.js') : null);
     const DEFAULT_BALL_DIAMETER_MM = 9;
     const DEFAULT_SMOOTH_WINDOW_S = 0.5;
     const ANALOG_OFF_FLOOR_MV = 4900;
@@ -175,7 +183,8 @@
 
     function parseFilename(sourceName) {
         const fileName = safeText(sourceName).split('/').pop() || 'runlog.jsonl';
-        const stem = fileName.replace(/\.jsonl$/i, '');
+        // `.jsonl.gz` (Studio v0.72+) and `.jsonl` share the same stem grammar.
+        const stem = fileName.replace(/\.gz$/i, '').replace(/\.jsonl$/i, '');
         const fields = stem.split('__');
         return {
             fileName,
@@ -719,6 +728,7 @@
         let schema = [];
         let metadata = {};
         let sessionStartMs = NaN;
+        const normalizer = F ? F.createNormalizer() : null;
 
         for (let index = 0; index < lines.length; index += 1) {
             const line = lines[index].trim();
@@ -726,6 +736,9 @@
             let rec;
             try {
                 rec = JSON.parse(line);
+                // behavior_v2: ["a", …] arena echoes → the v1 arena_command object
+                // (needs the v2 frame_schema's t0, which precedes them in the file).
+                if (normalizer) rec = normalizer.normalize(rec);
             } catch (error) {
                 parseErrors.push({ lineNumber: index + 1, message: error.message });
                 continue;
@@ -763,7 +776,10 @@
             events,
             steps,
             parseErrors,
-            sessionStartMs
+            sessionStartMs,
+            // 'behavior_v2' | 'behavior_v1' | 'full' | 'legacy' | 'unknown'
+            logFormat: normalizer ? normalizer.format : 'unknown',
+            rawBytes: text ? text.length : 0
         };
         deriveSignals(run, options);
         assignFramesToSteps(run);

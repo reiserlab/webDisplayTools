@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const A = require('../analysis-core.js');
 const P = require('../plot-specs.js');
+const F = require('../vendor/runlog-format.js');
+const zlib = require('zlib');
 
 const repo = process.argv[2] || '/Users/reiserm/Documents/GitHub/cshl-2026-course';
 const bench = path.join(repo, 'runlogs', 'bench02');
@@ -607,3 +609,86 @@ console.log(
     assert.strictEqual(A.runIndexLookup({ runs: 'nope' }).size, 0);
     console.log('runlog index lookup OK');
 }
+
+// ── behavior_v2 + gzip: the same run read as v1 .jsonl and as v2 .jsonl.gz must
+// produce identical analysis (runlog-behavior-v2-plan.md Part 3 §4). The v2 text is
+// generated from the v1 fixture by the JS mirror of the bridge converter.
+(async () => {
+    const v1Path = path.join(bench, fixtures.p3);
+    const v1Text = fs.readFileSync(v1Path, 'utf8');
+    assert.strictEqual(F.detectFormat(v1Text), 'behavior_v1');
+    const v2Text = F.convertV1ToV2Text(v1Text);
+    assert.strictEqual(F.detectFormat(v2Text), 'behavior_v2');
+    const v2Lines = v2Text.trim().split('\n');
+    const compact = v2Lines.filter((l) => l.startsWith('["a",')).length;
+    assert.ok(compact > 1000, `compact arena echoes present (${compact})`);
+    assert.ok(v2Text.length < v1Text.length * 0.6, 'v2 text is much smaller');
+    // Byte identity is not expected (the bridge escapes non-ASCII as \u2192, JS
+    // emits the literal arrow); JSON identity line by line is the lossless claim.
+    const parseAll = (text) =>
+        text
+            .trim()
+            .split('\n')
+            .map((line) => JSON.parse(line));
+    assert.deepStrictEqual(
+        parseAll(F.convertV2ToV1Text(v2Text)),
+        parseAll(v1Text),
+        'v2 → v1 restores every fixture line'
+    );
+    const gz = new Uint8Array(zlib.gzipSync(Buffer.from(v2Text)));
+    assert.ok(F.isGzip(gz));
+    const name = fixtures.p3.split('/').pop();
+    const readBack = await F.readRunlogText(gz);
+    assert.strictEqual(readBack, v2Text, 'gz inflates to the v2 text');
+    const p3v2 = A.parseJsonl(readBack, name + '.gz', v1Path + '.gz', {
+        ballDiameterMm: 9,
+        smoothWindowS: 0.5
+    });
+    assert.strictEqual(p3.logFormat, 'behavior_v1');
+    assert.strictEqual(p3v2.logFormat, 'behavior_v2');
+    assert.strictEqual(p3v2.id, p3.id, 'same run id from .jsonl.gz');
+    assert.strictEqual(A.parseFilename(name + '.gz').runId, A.parseFilename(name).runId);
+    assert.strictEqual(p3v2.frames.length, p3.frames.length, 'same frame count');
+    assert.deepStrictEqual(p3v2.frames[0], p3.frames[0]);
+    assert.deepStrictEqual(p3v2.frames[p3.frames.length - 1], p3.frames[p3.frames.length - 1]);
+    assert.strictEqual(p3v2.events.length, p3.events.length, 'same event count (expanded echoes)');
+    const arena1 = p3.events.filter((e) => e.event === 'arena_command');
+    const arena2 = p3v2.events.filter((e) => e.event === 'arena_command');
+    assert.strictEqual(arena2.length, arena1.length, 'same arena_command count');
+    assert.deepStrictEqual(
+        arena2.map(({ lineNumber, ...rest }) => rest),
+        arena1.map(({ lineNumber, ...rest }) => rest),
+        'every expanded arena_command equals the v1 object'
+    );
+    assert.strictEqual(p3v2.parseErrors.length, 0);
+    assert.strictEqual(p3v2.steps.length, p3.steps.length);
+    const pi1 = p3.steps.map((s) => A.p3PreferenceIndex(p3, s, 0));
+    const pi2 = p3v2.steps.map((s) => A.p3PreferenceIndex(p3v2, s, 0));
+    assert.deepStrictEqual(pi2, pi1, 'identical P3 preference indices');
+    assert.deepStrictEqual(A.p3LedEpochs(p3v2), A.p3LedEpochs(p3), 'identical LED epochs');
+    const pages1 = P.buildPages([p3], { mode: 'single', showIndividuals: true });
+    const pages2 = P.buildPages([p3v2], { mode: 'single', showIndividuals: true });
+    assert.strictEqual(pages2.length, pages1.length);
+    pages1.forEach((page, i) => {
+        assert.strictEqual(pages2[i].id, page.id);
+        assert.deepStrictEqual(
+            pages2[i].csvRows,
+            page.csvRows,
+            `identical CSV rows for ${page.id}`
+        );
+    });
+    // and the prefix read used by the catalog still finds run_metadata in a .gz head
+    const head = await F.readRunlogPrefixText(gz.subarray(0, 65536));
+    const desc = A.parseMetadataPrefix(head, name + '.gz', v1Path + '.gz');
+    assert.strictEqual(desc.runId, p3.descriptor.runId, 'metadata from a gz prefix');
+    console.log(
+        'behavior_v2 + gzip parity OK:',
+        compact,
+        'compact echoes;',
+        pages1.length,
+        'pages identical'
+    );
+})().catch((e) => {
+    console.error(e);
+    process.exit(1);
+});

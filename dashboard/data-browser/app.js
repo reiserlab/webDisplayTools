@@ -1,6 +1,7 @@
 'use strict';
 
 const A = window.DashboardAnalysis;
+const F = window.RunlogFormat; // run-log file format: gzip + behavior_v1/v2 (vendor/runlog-format.js)
 const P = window.DashboardPlots;
 const G = window.DashboardGitHub;
 const ANALYSIS_AXES_KEY = 'dashboard_analysis_axes';
@@ -501,7 +502,7 @@ const CATALOG_COLUMNS = [
         narrowHide: true,
         defaultHidden: true,
         cell: (d) =>
-            `<span class="run-size">${Number.isFinite(d.size) ? (d.size / 1048576).toFixed(1) + ' MB' : ''}</span>`,
+            `<span class="run-size" title="${escapeHtml(sizeTitle(d))}">${escapeHtml(sizeLabel(d))}</span>`,
         sort: (d) => d.size || 0
     }
 ];
@@ -631,6 +632,28 @@ function renderCatalog() {
     renderFocusOptions();
 }
 
+// Catalog size column: the committed size (gzip for `.jsonl.gz`); the hover adds
+// the inflated size once the run has been loaded.
+function formatBytes(n) {
+    if (!Number.isFinite(n) || n <= 0) return '';
+    return n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`;
+}
+function sizeLabel(descriptor) {
+    const label = formatBytes(descriptor.size);
+    if (!label) return '';
+    return /\.gz$/i.test(descriptor.path || descriptor.sourceName || '') ? `${label} gz` : label;
+}
+function sizeTitle(descriptor) {
+    const gz = /\.gz$/i.test(descriptor.path || descriptor.sourceName || '');
+    const run = state.runs.get(descriptor.key);
+    const parts = [];
+    if (Number.isFinite(descriptor.size))
+        parts.push(`${gz ? 'compressed (gzip)' : 'file'} size ${formatBytes(descriptor.size)}`);
+    if (run && run.rawBytes) parts.push(`${formatBytes(run.rawBytes)} of JSONL text`);
+    if (run && run.logFormat) parts.push(`format ${run.logFormat}`);
+    return parts.join(' · ');
+}
+
 function renderFocusOptions() {
     if (!state.catalog.length) {
         els.focusRunSelect.innerHTML = '<option value="">No runs available</option>';
@@ -716,7 +739,8 @@ async function ensureRun(descriptor) {
         setStatus('', `Fetching ${descriptor.runId}`);
         const response = await fetch(descriptor.url);
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-        text = await response.text();
+        // bytes, not text: `.jsonl.gz` inflates on the gzip magic
+        text = await F.readRunlogText(new Uint8Array(await response.arrayBuffer()));
     } else {
         throw new Error(`No loader for ${descriptor.runId}`);
     }
@@ -729,11 +753,12 @@ async function loadFiles(files) {
     let firstKey = '';
     for (const file of files) {
         const key = `file:${file.name}:${file.size}:${file.lastModified}`;
-        const text = await file.text();
+        const text = await F.readRunlogText(file); // inflates `.jsonl.gz`
         const result = await parseAndAddText(text, file.name, {
             key,
             path: file.name,
-            sourceType: 'file'
+            sourceType: 'file',
+            size: file.size
         });
         if (!firstKey) firstKey = result.descriptor.key;
     }
@@ -745,7 +770,8 @@ async function loadUrl(url) {
     setStatus('', `Fetching ${url}`);
     const response = await fetch(url);
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    const text = await response.text();
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const text = await F.readRunlogText(bytes); // inflates `.jsonl.gz`
     const sourceName = decodeURIComponent(
         new URL(url, window.location.href).pathname.split('/').pop() || 'runlog.jsonl'
     );
@@ -754,7 +780,8 @@ async function loadUrl(url) {
         key,
         path: url,
         url,
-        sourceType: 'url'
+        sourceType: 'url',
+        size: bytes.length
     });
     await focusDescriptor(result.descriptor.key, true);
     setStatus('ok', `Loaded ${result.descriptor.runId}`);
@@ -836,7 +863,7 @@ async function browseGithub() {
     setStatus('', `Indexing ${state.github.selectedFolders.join(', ')}`);
     try {
         const directFiles = state.github.rootItems.filter(
-            (item) => item.type === 'file' && item.name.toLowerCase().endsWith('.jsonl')
+            (item) => item.type === 'file' && F.isRunlogName(item.name)
         );
         const directoryFiles = await G.mapLimit(directories, 4, async (directory, index) => {
             setStatus('', `Indexing runlog folders ${index + 1}/${directories.length}`);
@@ -846,7 +873,7 @@ async function browseGithub() {
         const files = [
             ...directFiles.map((item) => ({ ...item, rigFolder: 'runlogs root' })),
             ...directoryFiles.flat()
-        ].filter((item) => item.type === 'file' && item.name.toLowerCase().endsWith('.jsonl'));
+        ].filter((item) => item.type === 'file' && F.isRunlogName(item.name));
         // Per-folder index.json → start / duration / end state without downloading
         // logs (browsers can't Range-read a tail from GitHub — CORS preflight 403).
         const indexByFolder = new Map();
@@ -949,16 +976,29 @@ async function listDirectoryLinks(directoryUrl) {
 async function fetchUrlPrefix(url, bytes) {
     const response = await fetch(url, { headers: { Range: `bytes=0-${bytes - 1}` } });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    if (!response.body || !response.body.getReader) return (await response.text()).slice(0, bytes);
+    if (!response.body || !response.body.getReader) {
+        const all = new Uint8Array(await response.arrayBuffer());
+        return (await F.readRunlogPrefixText(all.subarray(0, bytes))).slice(0, bytes);
+    }
+    // Stream bytes; a plain file stops at the run_metadata line, a `.jsonl.gz`
+    // prefix is inflated (truncation-tolerant) once the byte budget is read.
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const chunks = [];
+    let total = 0;
     let text = '';
+    let gzip = null;
     try {
-        while (text.length < bytes) {
+        while (total < bytes) {
             const part = await reader.read();
             if (part.done) break;
-            text += decoder.decode(part.value, { stream: true });
-            if (text.includes('"run_metadata"')) break;
+            chunks.push(part.value);
+            total += part.value.length;
+            if (gzip === null) gzip = F.isGzip(part.value);
+            if (!gzip) {
+                text += decoder.decode(part.value, { stream: true });
+                if (text.includes('"run_metadata"')) break;
+            }
         }
     } finally {
         try {
@@ -967,7 +1007,14 @@ async function fetchUrlPrefix(url, bytes) {
             /* already complete */
         }
     }
-    return text;
+    if (!gzip) return text;
+    const all = new Uint8Array(total);
+    let at = 0;
+    for (const c of chunks) {
+        all.set(c, at);
+        at += c.length;
+    }
+    return F.readRunlogPrefixText(all);
 }
 
 async function scanLocal() {
@@ -977,13 +1024,11 @@ async function scanLocal() {
     setStatus('', `Scanning ${base.pathname}`);
     try {
         const first = await listDirectoryLinks(base);
-        const direct = first.filter((url) => url.pathname.toLowerCase().endsWith('.jsonl'));
+        const direct = first.filter((url) => F.isRunlogName(url.pathname));
         const directories = first.filter((url) => url.pathname.endsWith('/'));
         const childFiles = await Promise.all(
             directories.map(async (directory) =>
-                (await listDirectoryLinks(directory)).filter((url) =>
-                    url.pathname.toLowerCase().endsWith('.jsonl')
-                )
+                (await listDirectoryLinks(directory)).filter((url) => F.isRunlogName(url.pathname))
             )
         );
         const files = [...direct, ...childFiles.flat()];
@@ -1954,7 +1999,7 @@ document.body.addEventListener('dragover', (event) => event.preventDefault());
 document.body.addEventListener('drop', async (event) => {
     event.preventDefault();
     const files = [...((event.dataTransfer && event.dataTransfer.files) || [])].filter((file) =>
-        /\.(jsonl|ndjson|json)$/i.test(file.name)
+        F.isRunlogName(file.name)
     );
     if (!files.length) return;
     try {

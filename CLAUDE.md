@@ -296,8 +296,11 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `commitRunLog` gzips the bridge export (`GH.gzipBytes`) and commits
   `runlogs/<bench>/<name>.jsonl.gz` via `GH.commitFile`, which routes >30 MiB payloads
   through the Git Database API (`GH.directCommitLarge`) because the Contents API
-  rejects ~35 MiB+ files. Every reader (dashboard, replay viewer, adapter) must inflate
-  on the gzip magic and accept both `behavior_v1` and `behavior_v2` line formats. The
+  rejects ~35 MiB+ files. Every reader must go through **`js/runlog-format.js`**
+  (`readRunlogText` to inflate on the gzip magic, `createNormalizer().normalize(rec)` per
+  parsed line so `behavior_v2` `["a",…]` echoes become the v1 `arena_command` object) —
+  the dashboard uses an exact vendored copy at `dashboard/data-browser/vendor/`, and
+  `tests/test-runlog-format.js` fails when the copies diverge (re-copy after editing). The
   log level is a runtime setting (File ▾ → Run logging, localStorage `studio_log_level`,
   default `behavior_v2`); the runner asserts it via `log_control` and the bridge ACKS
   the level it will actually write (`bridge.waitForLogLevelAck`) — a pre-3.0 bridge

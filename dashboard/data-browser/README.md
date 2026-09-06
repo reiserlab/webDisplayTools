@@ -197,6 +197,11 @@ value still pre-fills the local-server path.
 - `plot-specs.js`: protocol adapters and Plotly figure/CSV specifications
 - `github-repo.js`: PAT storage and private GitHub Contents API reads
 - `vendor/kinematics.js`: unchanged shared Arena Studio FicTrac math
+- `vendor/runlog-format.js`: exact copy of `webDisplayTools/js/runlog-format.js` — run-log
+  FILE decoding shared with the Studio's replay: gzip (`.jsonl.gz`, Studio v0.72+) and the
+  `behavior_v2` compact arena echoes, expanded to the v1 `arena_command` object at parse
+  time so every metric sees one shape. `tests/test-runlog-format.js` (repo root) fails if
+  the two copies diverge.
 
 ## Validation
 
@@ -209,6 +214,18 @@ node dashboard/data-browser/tests/test-github-client.js
 
 The analysis test parses live p0, p1, p2, current P3, and legacy P3 fixtures;
 validates stimulus alignment, P2 occupancy, P3 phase normalization, logged LED
-settings, and skipped-frame QC; builds every protocol page; and checks two-fly
-aggregation. The GitHub test verifies that the token appears only in the
-Authorization header.
+settings, and skipped-frame QC; builds every protocol page; checks two-fly
+aggregation; and re-reads the P3 fixture as `behavior_v2` + gzip asserting identical
+frames, events, preference indices and page CSV rows. The GitHub test verifies that
+the token appears only in the Authorization header.
+
+```bash
+node dashboard/data-browser/tests/corpus-v2-parity.js [/path/to/cshl-2026-course]
+```
+
+runs that v1-vs-v2.gz comparison over EVERY log in a course-repo clone (the
+behavior_v2 corpus gate; prints a Markdown table).
+
+Both `.jsonl` and `.jsonl.gz` open from the repo, a local server, a URL or a dropped
+file; the catalog shows the committed (compressed) size, with the inflated size and
+line format in the hover once a run is loaded.
