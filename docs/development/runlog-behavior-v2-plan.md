@@ -1,8 +1,10 @@
-# Run-log format `behavior_v2` + large-file commit path — PLAN (not started)
+# Run-log format `behavior_v2` + large-file commit path — PLAN (PR 1 bridge shipped; PRs 2–3 pending)
 
 Owner: Michael. Drafted 2026-09-06 from the analysis of rig03-sr run `rydc2tql`
-(40 s trials, 51.4 MB, failed to auto-commit). Status: **approved direction, no code
-yet**. Implementation lands as three PRs (bridge, Studio, dashboard) in that order.
+(40 s trials, 51.4 MB, failed to auto-commit). Status: **PR 1 (bridge) implemented
+2026-09-06** — see "PR 1 implementation notes" at the end; PR 2 (Studio) and PR 3
+(dashboard/readers) not started. Implementation lands as three PRs (bridge, Studio,
+dashboard) in that order.
 
 ## Problem
 
@@ -183,3 +185,44 @@ hour-long runs — hence Part 2.
 - Convert the existing course-repo logs to v2+gz, or leave history as is?
 - Default log level after the release: `behavior_v2` everywhere, including course
   benches (recommend yes; readers handle both).
+
+## PR 1 implementation notes (bridge, 2026-09-06)
+
+What shipped in `fictrac-bridge/bridge.py` (BRIDGE_VERSION 3.0), and the facts the
+Studio (PR 2) and reader (PR 3) work must build on:
+
+- **The compact line is exactly** `["a", t_off, dt, hex, status, rx_off]` with a 7th
+  element only when v1 `error` is non-null. `t0` is the `ms` of the session line the
+  file opened with (`_open` emits session + schema together). The v1 object is
+  restored in the original key order `type, event, t, dt, len, head, status, echo,
+  ok, error, dir, rx_ms`.
+- **Correction to the plan's derivation rule:** on a timeout the real v1 lines have
+  `status: null, echo: null, ok: null` (js/arena-session.js `_logCommand` sets all
+  three from the decoded reply or leaves all three null). So `expandV2Line` must
+  emit `echo = ok = null` when `status` is null, and `echo = command byte`
+  (`head` byte 1), `ok = (status === 0)` otherwise — NOT `ok: false` on timeout.
+  The corpus has 33 such lines (rig2 `spzae5dn`), all with a non-null `error`.
+- **Lossless by construction, not by assumption:** `compact_arena_command` verifies
+  every invariant it later relies on (fixed 12-key set, `dir`, int `t`/`rx_ms`,
+  spaced lowercase hex `head` with `len` = byte count, `echo`/`ok` consistency).
+  A line that does not fit is written **verbatim** by the live bridge (stderr
+  warning) and **raises** under `--convert`/the corpus gate. Readers must therefore
+  accept a v1-shaped `arena_command` object inside a v2 file (e.g. a bulk command
+  whose `head` carries the ` …` truncation marker).
+- **Files without a v1 schema line** (pre-#140 logs, `full` level) convert to v2 with
+  a schema line inserted after the first session line carrying `"cols": null`
+  (no positional frame rows in this file); the reverse drops it. Readers: `cols`
+  may be null.
+- **Level negotiation:** `hello` → `hello_ack {bridge, levels:[behavior_v2,
+  behavior_v1, full], level, logging}`; `log_control` → `log_control_ack {enabled,
+  level, requested, file}` where `level` is the one actually in force (an unknown
+  `requested` is ignored, not applied). Old Studios ignore unknown message types
+  (`fictrac-bridge-client.js` dispatches only `frame`/`log_export_result`). Old
+  bridges never reply to `hello` — the Studio should treat "no hello_ack" as
+  "behavior_v1-only bridge".
+- **`run_metadata.log_format`** (Part 1 §3) is a Studio-side field (the Studio
+  composes that line and now knows the acked level); the bridge does not inject it,
+  so the v1↔v2 round trip stays exact.
+- **Corpus result (164 logs, 1.28 GB, origin/main of cshl-2026-course):** all pass;
+  totals in PR 1's description (1281.6 MB v1 → 655.6 MB v2 → 211.3 MB v2.gz at gzip
+  level 6). The 51 MB `rydc2tql` run → 20.4 MB v2 → 6.2 MB v2.gz.

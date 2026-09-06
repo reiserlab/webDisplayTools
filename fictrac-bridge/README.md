@@ -116,14 +116,24 @@ bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>,
                      hardware clock — NANOSECONDS on our rigs — normalized here via
                      FT_TS_NS_PER_MS. `ms` is the bridge wall-clock (display axis); `ft`
                      is the velocity time base (per-frame differences, drop-safe).
+                   {"type":"hello_ack", "bridge":<str>, "levels":[<str>…], "level":<str>,
+                    "logging":<bool>}
+                     (reply to hello — the log levels this bridge can write, so the
+                      browser can tell a stale bridge before a run; an old bridge
+                      never replies to hello)
+                   {"type":"log_control_ack", "enabled":<bool>, "level":<str>,
+                    "requested":<str|null>, "file":<str|null>}
+                     (reply to log_control — `level` is the level ACTUALLY in force;
+                      an unknown requested level is ignored and this is how you know)
                    {"type":"log_export_result", "name":<str>, "content":<str>}
                      (reply to log_export; {"error":<str>} when nothing was written)
 browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
                    {"type":"config", "fictrac_port":<int>, "gain":<float>,
                                      "offset":<float>, "frames":<int>}  (any subset)
-                   {"type":"log_control", "enabled":<bool>, "level":"behavior_v1"|"full"}
+                   {"type":"log_control", "enabled":<bool>,
+                                          "level":"behavior_v2"|"behavior_v1"|"full"}
                                                               (open the log file; level
-                                                               picks the frame-row format)
+                                                               picks the log format)
                    {"type":"log", "event":<str>, ...arbitrary fields, "ms":<int>}
                    {"type":"log_export"}   (close the active log, stream it back whole)
 ```
@@ -135,25 +145,57 @@ re-binds the FicTrac input when `fictrac_port` changes. `log_control{enabled:tru
 **starts a new timestamped log file** and re-zeroes the behavior_v1 `ms`/`ft`
 clocks (false closes it; `--log-dir` picks where on-demand files land, default CWD).
 The log is **uniform NDJSON** — one JSON value per line; a reader parses each line
-and dispatches on `Array.isArray` (frame array vs event object). While logging is
-active the bridge records:
+and dispatches on `Array.isArray` (positional array vs event object), then on
+`arr[0]` (`"a"` = arena echo, a number = frame). While logging is active the bridge
+records:
 
-- a one-time schema line `{"type":"frame_schema","level":"behavior_v1",
-  "cols":["ms","fc","idx","ft","x","y","hd"]}`, then **every** FicTrac record it
+- a one-time schema line — `{"type":"frame_schema","level":"behavior_v2",
+  "cols":["ms","fc","idx","ft","x","y","hd"],"arena_cols":["t_off","dt","hex",
+  "status","rx_off"],"t0":<epoch ms>}` (default) or the `behavior_v1` form without
+  `arena_cols`/`t0` — then **every** FicTrac record it
   receives (before WS coalescing) as the positional array `[ms, fc, idx, ft, x, y, hd]`
   — `ms` bridge-relative ms, `fc` FicTrac frame counter (col 1), `idx` displayed
   arena index, `ft` FicTrac timestamp (col 22) as relative ms (**not** col-24 dt,
   which can't recover elapsed time across a dropped frame), `x`/`y`/`hd` integrated
   position + heading (rad, 5-decimal). The live scope + offline dashboard recompute
   every derived channel (turning/forward/side/speed/dir) from this via
-  `js/kinematics.js`. The **browser picks the level** per run via `log_control`'s
-  `level` (Arena Studio's runner asserts the level chosen in File ▾ → Run logging,
-  default `behavior_v1`, overriding `--log-frames`) — `--log-frames` only sets the
-  launch default. `full` logs the whole 25-column record
-  (`{"type":"fictrac_frame", ..., "fictrac":[…25…]}`) for debug/archival.
-- inbound browser `log` messages (e.g. `{"event":"arena_command", ...}` for every
-  Web Serial command, or Arena Studio's `{"event":"run_metadata", ...}` header
-  line at recorded-run start), each stamped with `dir` and `rx_ms`.
+  `js/kinematics.js`. The frame array is identical in `behavior_v1` and `behavior_v2`.
+  The **browser picks the level** per run via `log_control`'s `level` (Arena
+  Studio's runner asserts the level chosen in File ▾ → Run logging, overriding
+  `--log-level`); the bridge answers with `log_control_ack` naming the level it
+  will actually write. `full` logs the whole 25-column record
+  (`{"type":"fictrac_frame", ..., "fictrac":[…25…]}`) for debug/archival, with no
+  schema line.
+- inbound browser `log` messages (e.g. Arena Studio's `{"event":"run_metadata", ...}`
+  header line at recorded-run start), each stamped with `dir` and `rx_ms`, as
+  verbatim JSON objects.
+- the browser's `{"event":"arena_command", ...}` echo of every Web Serial command
+  (one per closed-loop 0x70 frame command, ~100 Hz — 76 % of a `behavior_v1` file's
+  bytes). Under **`behavior_v2`** each becomes the compact array
+  `["a", t_off, dt, hex, status, rx_off]` (+ a 7th `error` string when non-null):
+  `t_off`/`rx_off` are ms offsets from the schema line's `t0`, `hex` is the `head`
+  bytes without spaces, `status` is the reply status or `null` on timeout. The
+  constant/derivable v1 fields (`type`, `event`, `dir`, `len`, `echo` = the command
+  byte, `ok` = `status === 0`; all three of `status`/`echo`/`ok` are `null` when no
+  reply decoded) are restored on expansion — **lossless**, verified per line: an
+  echo that does not fit the fixed shape is written verbatim instead. Measured on
+  the course corpus (164 logs, 1.28 GB): v2 is 0.51× the v1 bytes overall and 0.38×
+  on closed-loop P3 runs; v2.gz is 0.17× overall.
+  `behavior_v1` writes the echo as the full object (the pre-2026-09 format).
+
+**Converting existing files** (migration + testing readers on real data before a rig
+produces v2), no sockets needed:
+
+```bash
+pixi run bridge -- --convert runlogs/rig1/run.jsonl run.v2.jsonl.gz   # v1 → v2 (+gzip)
+pixi run bridge -- --convert run.v2.jsonl.gz run.v1.jsonl             # and back
+```
+
+Direction is auto-detected from the `frame_schema` line (`--to v1|v2` forces it);
+`.gz` on either side is handled. The conversion is strict — an `arena_command` with
+an unexpected key set aborts instead of dropping a field. `tests/test-bridge-behavior.py`
+holds the round-trip unit tests; `scripts/runlog-v2-corpus.py` runs the same round
+trip over every log in a course-repo clone and prints the size table.
 
 `log_export` (Arena Studio's course pipeline) **closes** the active log —
 guaranteeing complete, flushed content — and streams the whole file back to the
@@ -191,7 +233,9 @@ sends it automatically when you load a Mode-3 pattern.
 | `--gain` | `1.8` | Degrees of heading per frame index (360/200); negative reverses. Re-settable live. |
 | `--offset` | `0.0` | Heading offset in degrees. |
 | `--log PATH` | on demand | Append log events (JSONL). If unset, opened when the browser enables logging. |
-| `--log-frames` | off | Log the FULL 25-column FicTrac record per frame (debug/archival) instead of the default compact `behavior_v1` array `[ms,fc,idx,ft,x,y,hd]`. |
+| `--log-level {behavior_v2,behavior_v1,full}` | `behavior_v2` | Launch default for the log format; the browser's `log_control` overrides it per run (acknowledged in `log_control_ack`). |
+| `--log-frames` | off | Alias for `--log-level full` (the 25-column FicTrac record per frame, debug/archival). |
+| `--convert IN OUT [--to v1\|v2]` | — | Offline: re-encode a run log v1 ⇄ v2 (`.jsonl` or `.jsonl.gz` either side) and exit. |
 
 ## Replaying a recorded FicTrac log
 
