@@ -91,31 +91,41 @@ assert.deepStrictEqual(
         ranges: activation.ranges
     })),
     [
-        { variant: 'phase0', level: 25, ranges: [[0, 49], [100, 149]] },
-        { variant: 'phase90', level: 25, ranges: [[50, 99], [150, 199]] }
+        {
+            variant: 'phase0',
+            level: 25,
+            ranges: [
+                [0, 49],
+                [100, 149]
+            ]
+        },
+        {
+            variant: 'phase90',
+            level: 25,
+            ranges: [
+                [50, 99],
+                [150, 199]
+            ]
+        }
     ]
 );
-assert.deepStrictEqual(A.p3AnalysisRanges(p3), [[0, 49], [100, 149]]);
+assert.deepStrictEqual(A.p3AnalysisRanges(p3), [
+    [0, 49],
+    [100, 149]
+]);
 const p3Phase90 = p3Trials.find((step) => step.condition === 'baseline_phase90');
 const p3Phase90Raw = p3.framesByStep.get(p3Phase90.index)[0].index;
-assert.strictEqual(
-    A.p3TrialIndices(p3, p3Phase90, 0)[0],
-    (Math.round(p3Phase90Raw) + 50) % 200
-);
+assert.strictEqual(A.p3TrialIndices(p3, p3Phase90, 0)[0], (Math.round(p3Phase90Raw) + 50) % 200);
 const legacyTrial = p3Legacy.steps.find((step) => step.condition === 'baseline_b');
 const legacyRaw = p3Legacy.framesByStep.get(legacyTrial.index)[0].index;
 assert.strictEqual(A.p3TrialIndices(p3Legacy, legacyTrial, 0)[0], Math.round(legacyRaw) % 200);
 const p3LedEpochs = A.p3LedEpochs(p3);
 assert(p3LedEpochs.length > 0, 'p3 should recover logged LED-on intervals');
-const p3TrainingSteps = p3Trials.filter(
-    (step) => A.p3Phase(step.condition) === 'training'
-);
+const p3TrainingSteps = p3Trials.filter((step) => A.p3Phase(step.condition) === 'training');
 const p3TrainingStart = Math.min(...p3TrainingSteps.map((step) => step.startMs));
 const p3TrainingEnd = Math.max(...p3TrainingSteps.map((step) => step.endMs));
 assert(
-    p3LedEpochs.every(
-        (epoch) => epoch.startMs >= p3TrainingStart && epoch.endMs <= p3TrainingEnd
-    ),
+    p3LedEpochs.every((epoch) => epoch.startMs >= p3TrainingStart && epoch.endMs <= p3TrainingEnd),
     'p3 LED intervals should stay inside the training block'
 );
 const firstP3Preference = A.p3PreferenceIndex(p3, p3Trials[0], 0);
@@ -190,10 +200,11 @@ const p0Pages = P.buildPages([p0], { mode: 'single', showIndividuals: true });
 const p1Pages = P.buildPages([p1], { mode: 'single', showIndividuals: true });
 const p2Pages = P.buildPages([p2], { mode: 'single', showIndividuals: true });
 const p3Pages = P.buildPages([p3], { mode: 'single', showIndividuals: true });
+const p3Page = (id) => p3Pages.find((page) => page.id === id);
 assert.strictEqual(p0Pages.length, 7);
 assert.strictEqual(p1Pages.length, 9);
 assert.strictEqual(p2Pages.length, 9);
-assert.strictEqual(p3Pages.length, 7);
+assert.strictEqual(p3Pages.length, 9); // + p3-heisenberg-2 and -4
 assert(p0Pages.every((page) => page.figure.data.length > 0));
 assert(p1Pages.every((page) => page.figure.data.length > 0));
 assert(p2Pages.every((page) => page.figure.data.length > 0));
@@ -204,6 +215,8 @@ assert.deepStrictEqual(
         'p3-timeline',
         'p3-orientation',
         'p3-preference',
+        'p3-heisenberg-2',
+        'p3-heisenberg-4',
         'p3-corrected-probe',
         'p3-dose-entries',
         'p3-quality-qc',
@@ -241,48 +254,45 @@ assert(
     'single-fly occupancy display should use the 10-index circular boxcar'
 );
 assert(
-    Math.abs(
-        p3OrientationRows.reduce((sum, row) => sum + row.occupancy_percent, 0) - 100
-    ) < 1e-9
+    Math.abs(p3OrientationRows.reduce((sum, row) => sum + row.occupancy_percent, 0) - 100) < 1e-9
 );
 assert.strictEqual(
     p3Pages[2].figure.layout.images[0].source,
     'assets/p3_heisenberg_ts.png',
     'trial PI should show the logged stimulus image along the left side'
 );
+assert.strictEqual(p3Pages[2].csvRows.filter((row) => row.level === 'fly_trial').length, 24);
 assert.strictEqual(
-    p3Pages[2].csvRows.filter((row) => row.level === 'fly_trial').length,
-    24
-);
-assert.strictEqual(
-    p3Pages[3].csvRows.filter((row) => row.level === 'fly_trial').length,
+    p3Page('p3-corrected-probe').csvRows.filter((row) => row.level === 'fly_trial').length,
     6
 );
 assert.strictEqual(
-    Object.keys(p3Pages[4].figure.layout).filter((key) => /^yaxis\d*$/.test(key)).length,
+    Object.keys(p3Page('p3-dose-entries').figure.layout).filter((key) => /^yaxis\d*$/.test(key))
+        .length,
     2
 );
 assert.strictEqual(
-    p3Pages[4].csvRows.filter((row) => row.level === 'fly_trial').length,
+    p3Page('p3-dose-entries').csvRows.filter((row) => row.level === 'fly_trial').length,
     48
 );
 assert(
-    p3Pages[4].csvRows.some(
+    p3Page('p3-dose-entries').csvRows.some(
         (row) => row.metric === 'ledOnPercent' && row.led_level_percent === 25
     ),
     'dose CSV should retain actual logged LED level and raw ranges'
 );
 assert.strictEqual(
-    Object.keys(p3Pages[5].figure.layout).filter((key) => /^yaxis\d*$/.test(key)).length,
+    Object.keys(p3Page('p3-quality-qc').figure.layout).filter((key) => /^yaxis\d*$/.test(key))
+        .length,
     5
 );
 assert.strictEqual(
-    p3Pages[5].csvRows.filter((row) => row.level === 'fly_trial').length,
+    p3Page('p3-quality-qc').csvRows.filter((row) => row.level === 'fly_trial').length,
     120
 );
 assert(
-    p3Pages[6].csvRows.some((row) => row.sector === 'safe') &&
-        p3Pages[6].csvRows.some((row) => row.sector === 'reinforced')
+    p3Page('p3-dwell').csvRows.some((row) => row.sector === 'safe') &&
+        p3Page('p3-dwell').csvRows.some((row) => row.sector === 'reinforced')
 );
 assert(p2Pages.find((page) => page.id === 'p2-occupancy').csvRows.length > 0);
 assert(
@@ -323,8 +333,7 @@ const foldedTurning = p1Folded.figure.data.find(
 );
 assert(foldedTurning);
 assert(
-    Math.abs(foldedTurning.y[foldedTurning.x.indexOf(2)] - (rawP1Cw - rawP1Ccw) / 2) <
-        1e-9,
+    Math.abs(foldedTurning.y[foldedTurning.x.indexOf(2)] - (rawP1Cw - rawP1Ccw) / 2) < 1e-9,
     'folded turning should average CW with sign-flipped CCW'
 );
 const rawP1CwForward = A.mean(
@@ -342,10 +351,8 @@ const foldedForward = p1Folded.figure.data.find(
 );
 assert(foldedForward);
 assert(
-    Math.abs(
-        foldedForward.y[foldedForward.x.indexOf(2)] -
-            (rawP1CwForward + rawP1CcwForward) / 2
-    ) < 1e-9,
+    Math.abs(foldedForward.y[foldedForward.x.indexOf(2)] - (rawP1CwForward + rawP1CcwForward) / 2) <
+        1e-9,
     'folded forward should average CW and CCW without sign reversal'
 );
 
@@ -356,23 +363,17 @@ const manualP1Pages = P.buildPages([p1], {
     useCourseAxisFloor: false
 });
 assert.deepStrictEqual(
-    manualP1Pages.find((page) => page.id === 'p1-optomotor-turning').figure.layout.yaxis
-        .range,
+    manualP1Pages.find((page) => page.id === 'p1-optomotor-turning').figure.layout.yaxis.range,
     [-300, 300]
 );
 assert.deepStrictEqual(
-    manualP1Pages.find((page) => page.id === 'p1-optomotor-forward').figure.layout.yaxis
-        .range,
+    manualP1Pages.find((page) => page.id === 'p1-optomotor-forward').figure.layout.yaxis.range,
     [0, 25]
 );
-const manualMatched = manualP1Pages.find(
-    (page) => page.id === 'p1-optomotor-matched-summary'
-);
+const manualMatched = manualP1Pages.find((page) => page.id === 'p1-optomotor-matched-summary');
 assert.deepStrictEqual(manualMatched.figure.layout.yaxis.range, [-300, 300]);
 assert.deepStrictEqual(manualMatched.figure.layout.yaxis3.range, [0, 25]);
-const manualFolded = manualP1Pages.find(
-    (page) => page.id === 'p1-optomotor-folded-summary'
-);
+const manualFolded = manualP1Pages.find((page) => page.id === 'p1-optomotor-folded-summary');
 assert.deepStrictEqual(manualFolded.figure.layout.yaxis.range, [-300, 300]);
 assert.deepStrictEqual(manualFolded.figure.layout.yaxis3.range, [0, 25]);
 
@@ -420,3 +421,93 @@ console.log(
         groupedP0Pages: grouped.length
     })
 );
+
+// ---- p3 Heisenberg-style bundled preference index --------------------------
+{
+    // Pure bundling on synthetic rows: pooled (time-weighted) PI, same-stage
+    // chunking, partial trailing bundle, real step times.
+    const mk = (stage, trial, safe, reinforced, t0) => ({
+        stage,
+        phase: stage.startsWith('probe') || stage === 'final_probe' ? 'probe' : stage.split('_')[0],
+        variant: trial % 2 ? 'phase0' : 'phase90',
+        trial,
+        samples: safe + reinforced,
+        safeFraction: safe / (safe + reinforced),
+        reinforcedFraction: reinforced / (safe + reinforced),
+        step: { startMs: t0, endMs: t0 + 20000 }
+    });
+    const rows = [
+        mk('baseline', 1, 50, 50, 0),
+        mk('baseline', 2, 90, 10, 20000), // pooled: 140 safe / 60 reinf → 0.4
+        mk('training_1', 3, 100, 0, 40000),
+        mk('training_1', 4, 100, 0, 60000),
+        mk('training_1', 5, 0, 100, 80000) // odd count → partial bundle of 1
+    ];
+    const b2 = A.p3BundleTrials(rows, 2);
+    assert.strictEqual(b2.length, 3);
+    assert.deepStrictEqual(b2[0].trials, [1, 2]);
+    assert.strictEqual(b2[0].stage, 'baseline');
+    assert.ok(Math.abs(b2[0].preference - 0.4) < 1e-9, 'pooled PI is time-weighted');
+    assert.strictEqual(b2[0].startMs, 0);
+    assert.strictEqual(b2[0].endMs, 40000);
+    assert.strictEqual(b2[0].durationSec, 40);
+    assert.strictEqual(b2[0].partial, false);
+    assert.deepStrictEqual(b2[1].trials, [3, 4]); // never crosses a stage boundary
+    assert.strictEqual(b2[1].preference, 1);
+    assert.deepStrictEqual(b2[2].trials, [5]);
+    assert.strictEqual(b2[2].partial, true);
+    assert.strictEqual(b2[2].preference, -1);
+    assert.deepStrictEqual(
+        b2.map((b) => b.key),
+        ['baseline#1', 'training_1#1', 'training_1#2']
+    );
+    const b4 = A.p3BundleTrials(rows, 4);
+    assert.strictEqual(b4.length, 2);
+    assert.deepStrictEqual(b4[1].trials, [3, 4, 5]);
+    assert.strictEqual(b4[1].partial, true);
+    assert.ok(Math.abs(b4[1].preference - (200 - 100) / 300) < 1e-9);
+    assert.strictEqual(A.p3BundleTrials([], 2).length, 0);
+
+    // Real run: pages exist, every trial lands in exactly one bundle, bars
+    // carry the classic styling, and the axis label follows the trial length.
+    const pages = P.buildPages([p3], { mode: 'single' });
+    const h2 = pages.find((page) => page.id === 'p3-heisenberg-2');
+    const h4 = pages.find((page) => page.id === 'p3-heisenberg-4');
+    assert.ok(h2 && h4, 'both bundle pages registered');
+    const trialCount = p3.steps.filter((step) => A.p3Phase(step.condition)).length;
+    const flyRows2 = h2.csvRows.filter((row) => row.level === 'fly_bundle');
+    const covered2 = flyRows2.reduce((sum, row) => sum + row.bundle_size, 0);
+    assert.strictEqual(covered2, trialCount, 'every trial in exactly one 2-bundle');
+    const covered4 = h4.csvRows
+        .filter((row) => row.level === 'fly_bundle')
+        .reduce((sum, row) => sum + row.bundle_size, 0);
+    assert.strictEqual(covered4, trialCount, 'every trial in exactly one 4-bundle');
+    assert.ok(
+        flyRows2.every((row) => row.stage && row.phase),
+        'stage + phase on every bundle'
+    );
+    const training = h2.figure.data.find((trace) => trace.name === 'training');
+    const probe = h2.figure.data.find((trace) => trace.name === 'memory test');
+    assert.ok(training && training.marker.pattern.shape === '/', 'training bars hatched');
+    assert.ok(probe && probe.marker.pattern.shape === '.', 'memory-test bars dotted');
+    assert.ok(
+        h2.figure.data.every((trace) => trace.x.every(Number.isFinite)),
+        'finite minute positions'
+    );
+    assert.strictEqual(h2.figure.layout.xaxis.title, 't [min]');
+    const pref = pages.find((page) => page.id === 'p3-preference');
+    assert.ok(
+        /^\d+ s trial$/.test(pref.figure.layout.xaxis.title),
+        'trial axis title derived from log'
+    );
+    console.log(
+        'p3 Heisenberg bundles OK:',
+        b2.length,
+        'synthetic;',
+        flyRows2.length,
+        '2-bundles /',
+        trialCount,
+        'trials in',
+        fixtures.p3.split('/').pop()
+    );
+}
