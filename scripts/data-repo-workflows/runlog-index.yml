@@ -36,23 +36,26 @@ jobs:
       - name: Folders touched by this push
         id: touched
         env:
-          COMMITS: ${{ toJSON(github.event.commits) }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
         run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json, os
-          commits = json.loads(os.environ.get('COMMITS') or 'null') or []
-          folders = set()
-          for c in commits:
-              for k in ('added', 'modified', 'removed'):
-                  for p in c.get(k) or []:
-                      parts = p.split('/')
-                      if len(parts) >= 3 and parts[0] == 'runlogs' and parts[-1] != 'index.json':
-                          folders.add(parts[1])
-          # workflow_dispatch (no commits) → rebuild everything
-          args = ' '.join(f'--folder {f}' for f in sorted(folders)) if commits else ''
-          print('args=' + args)
-          print('list=' + (', '.join(sorted(folders)) or 'ALL'))
-          PY
+          # Changed files from the compare API (independent of push-payload shape /
+          # truncation). workflow_dispatch → no range → rebuild every folder.
+          if [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] && ! echo "$BEFORE" | grep -q '^0*$'; then
+            files=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$AFTER" --paginate --jq '.files[].filename' || true)
+          else
+            files=""
+          fi
+          folders=$(printf '%s\n' "$files" | awk -F/ '$1=="runlogs" && NF>=3 && $NF!="index.json" {print $2}' | sort -u)
+          if [ -n "$folders" ]; then
+            args=$(printf -- '--folder %s ' $folders); list=$(echo $folders | tr ' ' ',')
+          else
+            args=""; list="ALL"
+          fi
+          echo "args=$args" >> "$GITHUB_OUTPUT"; echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "changed files: $(printf '%s\n' "$files" | grep -c . || true) → folders: $list"
       - name: Rebuild index.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

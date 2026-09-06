@@ -25,7 +25,7 @@ usage: build-runlog-index.py <clone-root> [--write] [--folder NAME ...]
    a 64 KB head + 4 KB tail per file with Range requests on the raw URL, so it
    never downloads the logs; needs `gh auth token` or $GITHUB_TOKEN.)
 """
-import json, os, sys, glob, subprocess, urllib.request, base64
+import json, os, sys, glob, subprocess, urllib.request, urllib.error, base64
 
 HEAD_BYTES = 65536
 TAIL_BYTES = 4096
@@ -50,12 +50,17 @@ def _gh_api(repo, path, method='GET', body=None):
     return json.loads(raw) if raw else None
 
 def _put_index(repo, branch, path, content, name, n):
-    """PUT index.json; on a stale-sha conflict (409/422 — another run wrote the same
-    file meanwhile) re-read the sha and retry, up to 3 attempts."""
+    """PUT index.json unless it is already identical (no no-op commits); on a
+    stale-sha conflict (409/422 — another run wrote the same file meanwhile)
+    re-read the sha and retry, up to 3 attempts."""
     import urllib.error, time
     for attempt in range(3):
         sha = None
-        try: sha = _gh_api(repo, f'contents/{path}?ref={branch}').get('sha')
+        try:
+            cur = _gh_api(repo, f'contents/{path}?ref={branch}')
+            sha = cur.get('sha')
+            if cur.get('encoding') == 'base64' and base64.b64decode(cur.get('content') or '').decode('utf-8', 'replace') == content:
+                print(f'  {name}: index.json unchanged — skipped'); return None
         except Exception: pass
         body = {'message': f'runlogs({name}): refresh index.json ({n} runs)', 'content': base64.b64encode(content.encode()).decode(), 'branch': branch}
         if sha: body['sha'] = sha
@@ -67,12 +72,22 @@ def _put_index(repo, branch, path, content, name, n):
             raise
 
 def _raw_range(repo, branch, path, rng):
+    """Partial read of one file via raw.githubusercontent.com (honours Range; the
+    API host does not). Retries transient network errors (connection resets were
+    seen on a 340-request full rebuild)."""
+    import time
     tok = _token(); h = {'Range': rng}
     if tok: h['Authorization'] = 'Bearer ' + tok
     url = f'https://raw.githubusercontent.com/{repo}/{branch}/{urllib.request.quote(path)}'
-    st, raw, hdr = _http(url, h)
-    if st != 206: raise RuntimeError(f'{path}: expected 206 for {rng}, got {st}')
-    return raw.decode('utf-8', 'replace')
+    last = None
+    for attempt in range(4):
+        try:
+            st, raw, hdr = _http(url, h)
+            if st != 206: raise RuntimeError(f'{path}: expected 206 for {rng}, got {st}')
+            return raw.decode('utf-8', 'replace')
+        except (ConnectionError, OSError, urllib.error.URLError) as e:  # incl. ConnectionResetError
+            last = e; time.sleep(1.5 * (attempt + 1))
+    raise RuntimeError(f'{path}: {last}')
 
 def bookends(path, size=None, head=None, tail=None):
     if head is None:
