@@ -23,7 +23,10 @@
  * same file.
  *
  * Security: the token lives ONLY in the Authorization header — never in a URL,
- * never in the body. Writable paths are allowlisted (WRITABLE_PREFIXES:
+ * never in the body. Run logs commit as gzip (`gzipBytes`, `.jsonl.gz`) and
+ * `commitFile` routes >30 MiB payloads through the Git Database API
+ * (`directCommitLarge`) — the Contents API rejects ~35 MiB+ files (HTTP 422).
+ * Writable paths are allowlisted (WRITABLE_PREFIXES:
  * protocols/, runlogs/, configs/metadata/, patterns/, pattern-sets/ — mirrors
  * the URL-state path-traversal guard); reads additionally allow the data
  * repo's root-level controlled-vocabulary YAMLs (READABLE_EXACT: roster,
@@ -39,6 +42,10 @@
 
     const API = 'https://api.github.com';
     const API_VERSION = '2022-11-28';
+    // The Contents API rejects files over ~35 MiB (measured: 35 OK, 40 → 422).
+    // commitFile() routes anything above this through the Git Database API
+    // (blob → tree → commit → ref; hard limit 100 MiB per file).
+    const LARGE_FILE_BYTES = 30 * 1024 * 1024;
     // patterns/ = the shared pattern library (Pattern Designer "Save to Repo");
     // pattern-sets/<hash>/patterns.zip = the opt-in post-run SD snapshot.
     const WRITABLE_PREFIXES = [
@@ -81,6 +88,33 @@
             bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
         }
         return btoa(bin);
+    }
+
+    /**
+     * gzip bytes (or a UTF-8 string) with the platform CompressionStream —
+     * Chrome ≥ 80, Node ≥ 18. Run logs are committed as `.jsonl.gz` (6–8×
+     * smaller; lossless). Rejects when the platform has no CompressionStream so
+     * the caller can fall back to the uncompressed path.
+     * @param {Uint8Array|ArrayBuffer|string} input
+     * @returns {Promise<Uint8Array>}
+     */
+    async function gzipBytes(input) {
+        if (typeof CompressionStream === 'undefined') {
+            throw new Error('CompressionStream unavailable — cannot gzip in this browser');
+        }
+        const u8 =
+            typeof input === 'string'
+                ? new TextEncoder().encode(input)
+                : input instanceof Uint8Array
+                  ? input
+                  : new Uint8Array(input);
+        const stream = new Blob([u8]).stream().pipeThrough(new CompressionStream('gzip'));
+        return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    /** gzip magic (1f 8b) — how readers tell a `.gz` payload regardless of name. */
+    function isGzip(bytes) {
+        const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || 0);
+        return u8.length >= 2 && u8[0] === 0x1f && u8[1] === 0x8b;
     }
 
     function _isSanePath(path) {
@@ -224,6 +258,54 @@
             body: body
         };
     }
+    // ── Git Database API (the >30 MiB path; see directCommitLarge) ────────────
+    function _gitUrl(o, r, tail) {
+        return API + '/repos/' + enc(o) + '/' + enc(r) + '/git/' + tail;
+    }
+    function reqCreateBlob(o, r, bytes, token) {
+        return {
+            method: 'POST',
+            url: _gitUrl(o, r, 'blobs'),
+            headers: headers(token),
+            body: { content: b64Bytes(bytes), encoding: 'base64' }
+        };
+    }
+    function reqGetCommit(o, r, sha, token) {
+        return {
+            method: 'GET',
+            url: _gitUrl(o, r, 'commits/' + enc(sha)),
+            headers: headers(token)
+        };
+    }
+    function reqCreateTree(o, r, baseTreeSha, path, blobSha, token) {
+        if (!isAllowedPath(path)) throw new Error('Refusing to write disallowed path: ' + path);
+        return {
+            method: 'POST',
+            url: _gitUrl(o, r, 'trees'),
+            headers: headers(token),
+            body: {
+                base_tree: baseTreeSha,
+                tree: [{ path: path, mode: '100644', type: 'blob', sha: blobSha }]
+            }
+        };
+    }
+    function reqCreateCommit(o, r, a, token) {
+        return {
+            method: 'POST',
+            url: _gitUrl(o, r, 'commits'),
+            headers: headers(token),
+            body: { message: a.message, tree: a.treeSha, parents: [a.parentSha] }
+        };
+    }
+    function reqUpdateRef(o, r, branch, sha, token) {
+        return {
+            method: 'PATCH',
+            url: _gitUrl(o, r, 'refs/heads/' + branch.split('/').map(enc).join('/')),
+            headers: headers(token),
+            body: { sha: sha, force: false }
+        };
+    }
+
     function reqCreatePull(o, r, a, token) {
         return {
             method: 'POST',
@@ -321,14 +403,106 @@
         return { ok: true, status: put.status, branch: branch, updated: !!sha, data: put.data };
     }
 
+    /**
+     * Large-file direct commit via the Git Database API — for payloads the
+     * Contents API refuses (>~35 MiB): GET /repos (default_branch) → GET
+     * git/ref/heads/<branch> (head commit) → GET git/commits/<sha> (root tree)
+     * → POST git/blobs → POST git/trees (base_tree + ONE entry) → POST
+     * git/commits → PATCH git/refs/heads/<branch> (fast-forward only). Same
+     * token, same WRITABLE_PREFIXES allowlist. Overwrites an existing path
+     * (no sha dance — the tree entry simply replaces it).
+     * @param {Function} fetchImpl injected fetch
+     * @param {object} a {owner, repo, token, path, message, contentBytes}
+     * @returns {{ok:boolean, status:number, branch?:string, sha?:string,
+     *            via:'git-db', step?:string, error?:string}}
+     */
+    async function directCommitLarge(fetchImpl, a) {
+        const fail = (step, res) => ({
+            ok: false,
+            via: 'git-db',
+            step: step,
+            status: res.status,
+            error: _apiError(res)
+        });
+        const repo = await run(fetchImpl, reqGetRepo(a.owner, a.repo, a.token));
+        if (!repo.ok || !repo.data || !repo.data.default_branch) return fail('repo', repo);
+        const branch = repo.data.default_branch;
+        const ref = await run(fetchImpl, reqGetRef(a.owner, a.repo, branch, a.token));
+        if (!ref.ok || !ref.data || !ref.data.object || !ref.data.object.sha)
+            return fail('ref', ref);
+        const headSha = ref.data.object.sha;
+        const head = await run(fetchImpl, reqGetCommit(a.owner, a.repo, headSha, a.token));
+        if (!head.ok || !head.data || !head.data.tree || !head.data.tree.sha)
+            return fail('commit-get', head);
+        const blob = await run(fetchImpl, reqCreateBlob(a.owner, a.repo, a.contentBytes, a.token));
+        if (!blob.ok || !blob.data || !blob.data.sha) return fail('blob', blob);
+        const tree = await run(
+            fetchImpl,
+            reqCreateTree(a.owner, a.repo, head.data.tree.sha, a.path, blob.data.sha, a.token)
+        );
+        if (!tree.ok || !tree.data || !tree.data.sha) return fail('tree', tree);
+        const commit = await run(
+            fetchImpl,
+            reqCreateCommit(
+                a.owner,
+                a.repo,
+                { message: a.message, treeSha: tree.data.sha, parentSha: headSha },
+                a.token
+            )
+        );
+        if (!commit.ok || !commit.data || !commit.data.sha) return fail('commit', commit);
+        const upd = await run(
+            fetchImpl,
+            reqUpdateRef(a.owner, a.repo, branch, commit.data.sha, a.token)
+        );
+        if (!upd.ok) return fail('ref-update', upd);
+        return {
+            ok: true,
+            via: 'git-db',
+            status: upd.status,
+            branch: branch,
+            sha: commit.data.sha
+        };
+    }
+
+    /**
+     * Commit ONE file to the default branch, picking the path by size: the
+     * Contents API (directCommit) up to LARGE_FILE_BYTES, the Git Database API
+     * (directCommitLarge) above it. The result carries `via` and `bytes` so the
+     * caller can say which path landed the file.
+     * @param {object} a {owner, repo, token, path, message, contentText?|contentBytes?,
+     *                    thresholdBytes?  (test hook; default LARGE_FILE_BYTES)}
+     */
+    async function commitFile(fetchImpl, a) {
+        const bytes =
+            a.contentBytes != null
+                ? a.contentBytes instanceof Uint8Array
+                    ? a.contentBytes
+                    : new Uint8Array(a.contentBytes)
+                : new TextEncoder().encode(a.contentText == null ? '' : String(a.contentText));
+        const threshold = Number.isFinite(a.thresholdBytes) ? a.thresholdBytes : LARGE_FILE_BYTES;
+        let res;
+        if (bytes.length > threshold) {
+            res = await directCommitLarge(fetchImpl, Object.assign({}, a, { contentBytes: bytes }));
+        } else {
+            res = await directCommit(fetchImpl, a);
+            res.via = 'contents';
+        }
+        res.bytes = bytes.length;
+        return res;
+    }
+
     const StudioGitHub = {
         API,
         API_VERSION,
+        LARGE_FILE_BYTES,
         WRITABLE_PREFIXES,
         READABLE_EXACT,
         b64,
         b64Bytes,
         bytesEqual,
+        gzipBytes,
+        isGzip,
         isAllowedPath,
         isAllowedReadPath,
         slug,
@@ -340,10 +514,17 @@
         reqGetContents,
         reqGetContentsRaw,
         reqPutContents,
+        reqCreateBlob,
+        reqGetCommit,
+        reqCreateTree,
+        reqCreateCommit,
+        reqUpdateRef,
         reqCreatePull,
         run,
         runBytes,
-        directCommit
+        directCommit,
+        directCommitLarge,
+        commitFile
     };
 
     if (typeof module !== 'undefined' && module.exports) {

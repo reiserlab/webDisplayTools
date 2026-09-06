@@ -355,7 +355,16 @@ sensitive hops; I measured both against the real services:
 | Hop | Verified up to | Binding limit |
 |---|---|---|
 | Bridge → browser (WebSocket `log_export`) | **50 MB round-trips fine** | not the bottleneck |
-| Browser → GitHub (`directCommit` PUT) | **35 MiB OK; 40 MiB rejected** | **~35 MiB per file** |
+| Browser → GitHub (`directCommit` PUT, Contents API) | **35 MiB OK; 40 MiB rejected** | **~35 MiB per file — RAW** |
+| Browser → GitHub (`directCommitLarge`, Git Database API) | used automatically above 30 MiB gzipped | GitHub's 100 MiB hard limit |
+
+**Since Studio v0.72 (2026-09-06) run logs commit as `.jsonl.gz`** — gzipped in the
+browser (`GH.gzipBytes`, lossless, 6–8× smaller on v1 logs, ~3× on the denser
+`behavior_v2` format) — and `GH.commitFile` routes anything still over 30 MiB
+through the Git Database API (blob → tree → commit → ref). Measured on the
+course corpus: 1282 MB of v1 logs → 656 MB as v2 → 211 MB as v2.gz; the 51 MB
+40 s rig03-sr run → 6 MB. Readers must inflate (gzip magic `1f 8b`). The table
+below describes the RAW Contents-API limit the gzip path was added to clear.
 
 **The binding constraint is GitHub's Contents API: ~35 MiB per committed
 file.** Measured: 5 / 10 / 25 / 30 / 35 MiB all commit (201) and pull back
@@ -377,6 +386,9 @@ FicTrac frame, ~65 bytes/line):
 - `bridge.py --log-frames` (full 25-field record per frame) is **~3–4× larger**
   and could blow the ceiling on a long run — **leave it off for the course**
   (it's off by default). It's a debugging switch, not a course setting.
+- With v0.72's gzip + `behavior_v2` an hour-long run lands around 4 MB, so the
+  ceiling is no longer the constraint in practice; the Git Database fallback is
+  the safety net for `full`-level or multi-hour logs.
 
 **Failure is graceful, never data loss.** If a run log ever exceeds the ceiling,
 `directCommit` gets the 422 and the Studio shows *"Run log commit failed … saved

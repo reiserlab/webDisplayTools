@@ -555,6 +555,313 @@ console.log('=== run (injected fetch) ===');
     check('non-404 GET blocks', [dc.ok, dc.step], [false, 'get']);
     checkBool('no PUT after GET failure', !api.calls.some((c) => c.method === 'PUT'), 'clean');
 
+    // ── gzipBytes / isGzip (run logs commit as .jsonl.gz) ───────────────────
+    console.log('=== gzipBytes / isGzip ===');
+    {
+        const zlib = require('zlib');
+        const text =
+            '{"type":"session"}\n' + '[5,9052,39,0.0,1.42578,-3.19222,1.21378]\n'.repeat(200);
+        const gz = await G.gzipBytes(text);
+        checkBool('returns Uint8Array', gz instanceof Uint8Array, typeof gz);
+        check('gzip magic', G.isGzip(gz), true);
+        check(
+            'inflates to the original text',
+            zlib.gunzipSync(Buffer.from(gz)).toString('utf8'),
+            text
+        );
+        checkBool(
+            'smaller than the input',
+            gz.length < text.length / 4,
+            gz.length + ' vs ' + text.length
+        );
+        const gz2 = await G.gzipBytes(new TextEncoder().encode('héllo ☃'));
+        check(
+            'Uint8Array input, UTF-8 preserved',
+            zlib.gunzipSync(Buffer.from(gz2)).toString('utf8'),
+            'héllo ☃'
+        );
+        check('isGzip on plain text false', G.isGzip(new TextEncoder().encode('{"a":1}')), false);
+        check('isGzip on empty false', G.isGzip(new Uint8Array(0)), false);
+    }
+
+    // ── Git Database API request builders ───────────────────────────────────
+    console.log('=== git-db request builders ===');
+    {
+        const blob = G.reqCreateBlob(O, R, new Uint8Array([0x1f, 0x8b, 0x00, 0xff]), TOKEN);
+        check(
+            'blob POST url',
+            [blob.method, blob.url],
+            ['POST', 'https://api.github.com/repos/reiserlab/webDisplayTools/git/blobs']
+        );
+        check('blob body base64 + encoding', blob.body, {
+            content: 'H4sA/w==',
+            encoding: 'base64'
+        });
+        check('blob auth header', blob.headers.Authorization, 'Bearer ' + TOKEN);
+        const gc = G.reqGetCommit(O, R, 'abc123', TOKEN);
+        check(
+            'get commit',
+            [gc.method, gc.url],
+            ['GET', 'https://api.github.com/repos/reiserlab/webDisplayTools/git/commits/abc123']
+        );
+        const tree = G.reqCreateTree(
+            O,
+            R,
+            'treeBase',
+            'runlogs/bench03/run.jsonl.gz',
+            'blobSha',
+            TOKEN
+        );
+        check(
+            'tree POST url',
+            tree.url,
+            'https://api.github.com/repos/reiserlab/webDisplayTools/git/trees'
+        );
+        check('tree body: base_tree + ONE blob entry', tree.body, {
+            base_tree: 'treeBase',
+            tree: [
+                {
+                    path: 'runlogs/bench03/run.jsonl.gz',
+                    mode: '100644',
+                    type: 'blob',
+                    sha: 'blobSha'
+                }
+            ]
+        });
+        let threw = null;
+        try {
+            G.reqCreateTree(O, R, 't', '.github/workflows/x.yml', 'b', TOKEN);
+        } catch (e) {
+            threw = e.message;
+        }
+        checkBool(
+            'tree refuses a path outside WRITABLE_PREFIXES',
+            /disallowed path/.test(threw || ''),
+            threw
+        );
+        const cm = G.reqCreateCommit(
+            O,
+            R,
+            { message: 'runlog: x', treeSha: 'T', parentSha: 'P' },
+            TOKEN
+        );
+        check('commit body', cm.body, { message: 'runlog: x', tree: 'T', parents: ['P'] });
+        const ref = G.reqUpdateRef(O, R, 'main', 'NEW', TOKEN);
+        check(
+            'ref PATCH (fast-forward only)',
+            [ref.method, ref.url, ref.body],
+            [
+                'PATCH',
+                'https://api.github.com/repos/reiserlab/webDisplayTools/git/refs/heads/main',
+                { sha: 'NEW', force: false }
+            ]
+        );
+        for (const r of [blob, gc, tree, cm, ref])
+            checkBool(
+                'token never in URL (' + r.method + ' ' + r.url.split('/git/')[1] + ')',
+                !r.url.includes(TOKEN),
+                r.url
+            );
+    }
+
+    // ── directCommitLarge + commitFile routing ──────────────────────────────
+    console.log('=== directCommitLarge / commitFile ===');
+    {
+        const mkApi = (opts) => {
+            opts = opts || {};
+            const calls = [];
+            const fetchImpl = async (url, init) => {
+                calls.push({
+                    method: init.method,
+                    url,
+                    body: init.body ? JSON.parse(init.body) : null
+                });
+                const j = (status, data) => ({ ok: status < 300, status, json: async () => data });
+                if (init.method === 'GET' && /\/repos\/[^/]+\/[^/]+$/.test(url))
+                    return j(200, { default_branch: 'main' });
+                if (init.method === 'GET' && /\/git\/ref\/heads\/main$/.test(url))
+                    return j(200, { object: { sha: 'HEAD1' } });
+                if (init.method === 'GET' && /\/git\/commits\/HEAD1$/.test(url))
+                    return j(200, { sha: 'HEAD1', tree: { sha: 'ROOT1' } });
+                if (init.method === 'POST' && /\/git\/blobs$/.test(url))
+                    return opts.blobFail
+                        ? j(422, { message: 'blob too big' })
+                        : j(201, { sha: 'BLOB1' });
+                if (init.method === 'POST' && /\/git\/trees$/.test(url))
+                    return j(201, { sha: 'TREE1' });
+                if (init.method === 'POST' && /\/git\/commits$/.test(url))
+                    return j(201, { sha: 'COMMIT1' });
+                if (init.method === 'PATCH' && /\/git\/refs\/heads\/main$/.test(url))
+                    return j(200, { object: { sha: 'COMMIT1' } });
+                // Contents API path (small files)
+                if (init.method === 'GET' && /\/contents\//.test(url))
+                    return j(404, { message: 'Not Found' });
+                if (init.method === 'PUT' && /\/contents\//.test(url))
+                    return j(201, { content: { path: 'x' } });
+                return j(500, { message: 'unexpected ' + init.method + ' ' + url });
+            };
+            return { calls, fetchImpl };
+        };
+        const bytes = new Uint8Array([0x1f, 0x8b, 1, 2, 3]);
+        let api = mkApi();
+        let res = await G.directCommitLarge(api.fetchImpl, {
+            owner: O,
+            repo: R,
+            token: TOKEN,
+            path: 'runlogs/bench03/big.jsonl.gz',
+            message: 'runlog: big',
+            contentBytes: bytes
+        });
+        check(
+            'large: ok via git-db with the new commit sha',
+            [res.ok, res.via, res.branch, res.sha],
+            [true, 'git-db', 'main', 'COMMIT1']
+        );
+        check(
+            'large: 7-call sequence repo→ref→commit→blob→tree→commit→ref',
+            api.calls.map((c) => c.method + ' ' + c.url.replace(/^.*\/repos\/[^/]+\/[^/]+/, '')),
+            [
+                'GET ',
+                'GET /git/ref/heads/main',
+                'GET /git/commits/HEAD1',
+                'POST /git/blobs',
+                'POST /git/trees',
+                'POST /git/commits',
+                'PATCH /git/refs/heads/main'
+            ]
+        );
+        check('large: tree built on the head root tree with the blob', api.calls[4].body, {
+            base_tree: 'ROOT1',
+            tree: [
+                { path: 'runlogs/bench03/big.jsonl.gz', mode: '100644', type: 'blob', sha: 'BLOB1' }
+            ]
+        });
+        check('large: commit parents = head', api.calls[5].body.parents, ['HEAD1']);
+        check('large: ref moved to the new commit, no force', api.calls[6].body, {
+            sha: 'COMMIT1',
+            force: false
+        });
+        checkBool(
+            'large: token only in headers',
+            api.calls.every((c) => !c.url.includes(TOKEN)),
+            'urls clean'
+        );
+        api = mkApi({ blobFail: true });
+        res = await G.directCommitLarge(api.fetchImpl, {
+            owner: O,
+            repo: R,
+            token: TOKEN,
+            path: 'runlogs/b/x.jsonl.gz',
+            message: 'm',
+            contentBytes: bytes
+        });
+        check(
+            'large: blob failure reported with step + status + message',
+            [res.ok, res.step, res.status, res.error],
+            [false, 'blob', 422, 'blob too big']
+        );
+        check('large: stops after the failing call', api.calls.length, 4);
+
+        // commitFile routes by size: small → Contents API, big → git-db.
+        api = mkApi();
+        res = await G.commitFile(api.fetchImpl, {
+            owner: O,
+            repo: R,
+            token: TOKEN,
+            path: 'runlogs/b/small.jsonl.gz',
+            message: 'm',
+            contentBytes: bytes
+        });
+        check(
+            'commitFile small → contents path',
+            [res.ok, res.via, res.bytes],
+            [true, 'contents', 5]
+        );
+        check(
+            'commitFile small → GET contents + PUT',
+            api.calls.slice(1).map((c) => c.method),
+            ['GET', 'PUT']
+        );
+        api = mkApi();
+        res = await G.commitFile(api.fetchImpl, {
+            owner: O,
+            repo: R,
+            token: TOKEN,
+            path: 'runlogs/b/big.jsonl.gz',
+            message: 'm',
+            contentBytes: bytes,
+            thresholdBytes: 4
+        });
+        check(
+            'commitFile over threshold → git-db path',
+            [res.ok, res.via, res.bytes],
+            [true, 'git-db', 5]
+        );
+        check(
+            'commitFile over threshold → blob posted',
+            api.calls.some((c) => /\/git\/blobs$/.test(c.url)),
+            true
+        );
+        api = mkApi();
+        res = await G.commitFile(api.fetchImpl, {
+            owner: O,
+            repo: R,
+            token: TOKEN,
+            path: 'runlogs/b/t.jsonl',
+            message: 'm',
+            contentText: 'héllo'
+        });
+        check('commitFile contentText → byte length is UTF-8 length', res.bytes, 6);
+        check('LARGE_FILE_BYTES is 30 MiB', G.LARGE_FILE_BYTES, 30 * 1024 * 1024);
+    }
+
+    // ── the Studio's run-log commit path uses gzip + commitFile ─────────────
+    console.log('=== arena_studio.html run-log commit wiring ===');
+    {
+        const start = studioHtml.indexOf('async function commitRunLog(');
+        const end = studioHtml.indexOf('Studio._maybeCommitRunLog = maybeCommitRunLog;', start);
+        const body = studioHtml.slice(start, end);
+        checkBool(
+            'commitRunLog gzips the export',
+            /GH\.gzipBytes\(exported\.content\)/.test(body),
+            'gzipBytes call'
+        );
+        checkBool(
+            'commitRunLog commits <name>.jsonl.gz',
+            /basePath \+ '\.gz'/.test(body),
+            '.gz path'
+        );
+        checkBool(
+            'commitRunLog routes through GH.commitFile (size-based path choice)',
+            /GH\.commitFile\(fetch,/.test(body),
+            'commitFile call'
+        );
+        checkBool(
+            'commitRunLog no longer calls directCommit directly',
+            !/GH\.directCommit\(fetch/.test(body),
+            'directCommit absent'
+        );
+        checkBool(
+            'commitRunLog falls back to raw .jsonl when gzip is unavailable',
+            /contentText: exported\.content/.test(body),
+            'fallback'
+        );
+        checkBool(
+            'fmLogLevel offers behavior_v2 as the default option',
+            /<option value="behavior_v2">behavior_v2 \(compact — default\)<\/option>/.test(
+                studioHtml
+            ),
+            'option'
+        );
+        checkBool(
+            'run_metadata carries log_format',
+            /event: 'run_metadata', rig_id: Studio\.rigId \|\| null, log_format: logLevel/.test(
+                studioHtml
+            ),
+            'log_format'
+        );
+    }
+
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures ? 1 : 0);

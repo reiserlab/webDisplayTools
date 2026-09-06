@@ -262,15 +262,24 @@ async function main() {
         client.disconnect();
     }
 
-    console.log('\n=== log level (behavior_v1 default / full override) ===');
+    console.log('\n=== log level (behavior_v2 default / v1 + full selectable) ===');
     {
         const client = new FicTracBridgeClient({ WebSocketImpl: FakeWS });
+        check('LOG_LEVELS exposed, v2 first', FicTracBridgeClient.LOG_LEVELS, [
+            'behavior_v2',
+            'behavior_v1',
+            'full'
+        ]);
         client.connect('ws://localhost:8765');
         const ws = FakeWS.last;
         ws.open();
         const lastEnable = () => ws.sent.filter((m) => m.type === 'log_control' && m.enabled).pop();
         client.setLogging(true);
-        check('setLogging asserts default level behavior_v1', lastEnable().level, 'behavior_v1');
+        check('setLogging asserts default level behavior_v2', lastEnable().level, 'behavior_v2');
+        check('logLevel getter = requested level', client.logLevel, 'behavior_v2');
+        client.setLogLevel('behavior_v1');
+        client.setLogging(true);
+        check('setLogLevel(behavior_v1) still selectable', lastEnable().level, 'behavior_v1');
         client.setLogLevel('full');
         client.setLogging(true);
         check('setLogLevel(full) → level full', lastEnable().level, 'full');
@@ -283,6 +292,153 @@ async function main() {
             'disabling sends log_control without a level',
             off.type === 'log_control' && off.enabled === false && off.level === undefined,
             JSON.stringify(off)
+        );
+    }
+
+    console.log('\n=== hello_ack / log_control_ack: the bridge names the level it writes ===');
+    {
+        const client = new FicTracBridgeClient({ WebSocketImpl: FakeWS });
+        const events = [];
+        const logs = [];
+        client.on('loglevel', (i) => events.push(i));
+        client.on('log', (m, kind) => logs.push([kind, m]));
+        client.connect('ws://localhost:8765');
+        const ws = FakeWS.last;
+        ws.open();
+        check('no hello_ack yet → bridgeInfo null', client.bridgeInfo, null);
+        check(
+            'no hello_ack yet → bridgeSupportsLevel unknown (null)',
+            client.bridgeSupportsLevel('behavior_v2'),
+            null
+        );
+        check('nothing acked yet', client.ackedLogLevel, null);
+        // A pre-3.0 bridge never acks: waitForLogLevelAck resolves null after the timeout.
+        client.setLogging(true);
+        check('old bridge: wait times out → null', await client.waitForLogLevelAck(15), null);
+        // A 3.0 bridge answers hello with its levels.
+        ws.message({
+            type: 'hello_ack',
+            bridge: '3.0 · behavior_v2',
+            levels: ['behavior_v2', 'behavior_v1', 'full'],
+            level: 'behavior_v2',
+            logging: false
+        });
+        check('hello_ack recorded', client.bridgeInfo, {
+            version: '3.0 · behavior_v2',
+            levels: ['behavior_v2', 'behavior_v1', 'full'],
+            level: 'behavior_v2'
+        });
+        check('bridgeSupportsLevel(v2) true', client.bridgeSupportsLevel('behavior_v2'), true);
+        check('bridgeSupportsLevel(bogus) false', client.bridgeSupportsLevel('behavior_v9'), false);
+        check(
+            'hello loglevel event ok',
+            [events[0].source, events[0].ok, events[0].level],
+            ['hello', true, 'behavior_v2']
+        );
+        checkBool(
+            'no warning when supported',
+            logs.filter((l) => l[0] === 'err').length === 0,
+            JSON.stringify(logs)
+        );
+        // Enable logging; the ack names the same level → ok, waiters resolve.
+        client.setLogging(true);
+        const pending = client.waitForLogLevelAck(5000);
+        ws.message({
+            type: 'log_control_ack',
+            enabled: true,
+            level: 'behavior_v2',
+            requested: 'behavior_v2',
+            file: 'arena-log-1.jsonl'
+        });
+        check('ack → ackedLogLevel', client.ackedLogLevel, 'behavior_v2');
+        check('waitForLogLevelAck resolves with the acked level', await pending, 'behavior_v2');
+        check(
+            'already acked → immediate resolve',
+            await client.waitForLogLevelAck(5000),
+            'behavior_v2'
+        );
+        const e = events[events.length - 1];
+        check(
+            'log_control loglevel event',
+            [e.source, e.ok, e.level, e.requested, e.file, e.enabled],
+            ['log_control', true, 'behavior_v2', 'behavior_v2', 'arena-log-1.jsonl', true]
+        );
+        // Disable → acked level cleared, ack with enabled:false is ok regardless of level.
+        client.setLogging(false);
+        check('setLogging(false) clears acked level (pending)', client.ackedLogLevel, null);
+        ws.message({
+            type: 'log_control_ack',
+            enabled: false,
+            level: 'behavior_v2',
+            requested: null,
+            file: 'arena-log-1.jsonl'
+        });
+        check('disabled ack keeps ackedLogLevel null', client.ackedLogLevel, null);
+        check('disabled ack is ok', events[events.length - 1].ok, true);
+        // MISMATCH: the bridge cannot write what we asked → warning + ok:false.
+        client.setLogging(true);
+        ws.message({
+            type: 'log_control_ack',
+            enabled: true,
+            level: 'behavior_v1',
+            requested: 'behavior_v2',
+            file: 'arena-log-2.jsonl'
+        });
+        const m = events[events.length - 1];
+        check(
+            'mismatch → ok false, level = what the bridge writes',
+            [m.ok, m.level, m.requested],
+            [false, 'behavior_v1', 'behavior_v2']
+        );
+        check(
+            "mismatch → ackedLogLevel is the bridge's level",
+            client.ackedLogLevel,
+            'behavior_v1'
+        );
+        checkBool(
+            'mismatch → err log line names both levels',
+            logs.some(
+                (l) =>
+                    l[0] === 'err' &&
+                    /too old for behavior_v2/.test(l[1]) &&
+                    /logging behavior_v1/.test(l[1])
+            ),
+            JSON.stringify(logs.slice(-1))
+        );
+        // hello_ack from a bridge that lacks the requested level warns up front.
+        const before = logs.length;
+        ws.message({
+            type: 'hello_ack',
+            bridge: '2.9',
+            levels: ['behavior_v1', 'full'],
+            level: 'behavior_v1',
+            logging: true
+        });
+        check(
+            'hello without our level → loglevel ok:false with fallback level',
+            [events[events.length - 1].ok, events[events.length - 1].level],
+            [false, 'behavior_v1']
+        );
+        checkBool(
+            'hello without our level → err log line',
+            logs.length === before + 1 &&
+                logs[before][0] === 'err' &&
+                /cannot write behavior_v2/.test(logs[before][1]),
+            JSON.stringify(logs.slice(before))
+        );
+        // Disconnect resets negotiation state (a fresh setLogging clears the
+        // previous ack, so the waiter is really pending when the socket closes).
+        client.setLogging(true);
+        check('fresh setLogging → acked level pending again', client.ackedLogLevel, null);
+        const w = client.waitForLogLevelAck(5000);
+        ws.close();
+        check('close → pending waiter resolves null', await w, null);
+        check('close → bridgeInfo reset', client.bridgeInfo, null);
+        check('close → ackedLogLevel reset', client.ackedLogLevel, null);
+        check(
+            'not connected → wait resolves null immediately',
+            await client.waitForLogLevelAck(5000),
+            null
         );
     }
 

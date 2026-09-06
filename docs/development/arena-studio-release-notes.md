@@ -4,6 +4,29 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.72 (2026-09-06) · Run logs commit gzipped; compact `behavior_v2` log format; the bridge confirms the log level
+
+- **Run logs now commit as `.jsonl.gz`.** The Studio gzips the exported log in the
+  browser before committing it to the course repo (lossless, 6–8× smaller), so 40 s
+  and hour-long runs no longer hit GitHub's ~35 MiB per-file ceiling (the rig03-sr
+  40 s run that failed to auto-commit was 51 MB raw → about 6 MB gzipped). Anything
+  still over 30 MiB after compression goes through GitHub's Git Database API
+  instead of the Contents API. The run summary and the upload dialog show the
+  committed size and, when used, the large-file path. **Readers must inflate:**
+  the analysis dashboard and the replay viewer learn to open `.jsonl.gz` in the
+  next release; until then open new logs with `gunzip` or the bridge's
+  `--convert`. Old `.jsonl` files are untouched.
+- **New default log format `behavior_v2`** (File ▾ → Run logging). Same frame
+  rows as before; the per-command arena echoes (three quarters of a log's bytes)
+  are written compactly by the bridge. `behavior_v1` stays selectable for one
+  release; `full` is unchanged. Needs bridge 3.0 — benches `git pull` and restart
+  `pixi run bridge`.
+- **The bridge now confirms the log level it writes.** The run-start banner names
+  the confirmed level and warns "bridge too old for behavior_v2 — logging
+  behavior_v1" when the running bridge cannot write the chosen format (an old
+  bridge used to fall back silently). The Console's read-only level mirror shows
+  the confirmed level. `run_metadata` gains `log_format`.
+
 ## v0.71 (2026-09-04) · Closed-loop apply is reset at run start and abort
 
 - **No more error floods at the start of a run.** If FicTrac closed-loop "apply"

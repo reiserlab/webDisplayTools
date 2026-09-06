@@ -1,10 +1,12 @@
-# Run-log format `behavior_v2` + large-file commit path — PLAN (PR 1 bridge shipped; PRs 2–3 pending)
+# Run-log format `behavior_v2` + large-file commit path — PLAN (PRs 1–2 shipped; PR 3 readers pending)
 
 Owner: Michael. Drafted 2026-09-06 from the analysis of rig03-sr run `rydc2tql`
-(40 s trials, 51.4 MB, failed to auto-commit). Status: **PR 1 (bridge) implemented
-2026-09-06** — see "PR 1 implementation notes" at the end; PR 2 (Studio) and PR 3
+(40 s trials, 51.4 MB, failed to auto-commit). Status: **PR 1 (bridge) and PR 2
+(Studio) implemented 2026-09-06** — see the implementation notes at the end; PR 3
 (dashboard/readers) not started. Implementation lands as three PRs (bridge, Studio,
-dashboard) in that order.
+dashboard) in that order. **Merge PR 2 together with (or after) PR 3:** once PR 2 is
+live, new course runs commit as `.jsonl.gz`, which the dashboard and replay viewer
+cannot open until PR 3 lands.
 
 ## Problem
 
@@ -226,3 +228,31 @@ Studio (PR 2) and reader (PR 3) work must build on:
 - **Corpus result (164 logs, 1.28 GB, origin/main of cshl-2026-course):** all pass;
   totals in PR 1's description (1281.6 MB v1 → 655.6 MB v2 → 211.3 MB v2.gz at gzip
   level 6). The 51 MB `rydc2tql` run → 20.4 MB v2 → 6.2 MB v2.gz.
+
+## PR 2 implementation notes (Studio, 2026-09-06)
+
+- **`js/fictrac-bridge-client.js`:** `LOG_LEVELS = ['behavior_v2','behavior_v1','full']`
+  (default v2); handles `hello_ack` (→ `bridgeInfo`, `bridgeSupportsLevel(level)`) and
+  `log_control_ack` (→ `ackedLogLevel`, cleared by every `setLogging()` and on close);
+  new `'loglevel'` event `{source, requested, level, ok, levels, enabled, file}` plus an
+  `'err'` log line on mismatch; `waitForLogLevelAck(ms)` resolves the acked level or
+  null (old bridge / not connected / timeout).
+- **`js/studio-github.js`:** `gzipBytes(input)` (CompressionStream; rejects where
+  unavailable), `isGzip(bytes)`, Git Database builders (`reqCreateBlob`, `reqGetCommit`,
+  `reqCreateTree` — allowlisted path, `reqCreateCommit`, `reqUpdateRef` fast-forward
+  only), `directCommitLarge` (7-call sequence, per-step error reporting),
+  `commitFile` (routes by size; `LARGE_FILE_BYTES` = 30 MiB; `thresholdBytes` test hook;
+  result carries `via` + `bytes`).
+- **`arena_studio.html` v0.72:** `#fmLogLevel` v2/v1/full (v2 default; a stored v1 is
+  honored); Console `#cFtLogLevel` follows the `'loglevel'` event (⚠ + tooltip on
+  mismatch); run start awaits the ack ≤ 800 ms and names the level in the banner +
+  transcript (`WARN` level when it disagrees or is unconfirmed); `run_metadata` gets
+  `log_format` = acked level, or the inferred one for a non-acking bridge (`behavior_v1`
+  when v2 was requested, else the request itself); `commitRunLog` gzips → `<name>.jsonl.gz`
+  via `GH.commitFile`, falls back to raw `.jsonl` without CompressionStream, and reports
+  raw → gz size + the path used in the log line, the modal and the run-summary line.
+- **Not done here (PR 3):** readers. Until PR 3, `.jsonl.gz` files from a v0.72 Studio are
+  opened with `gunzip` / `bridge.py --convert`.
+- **Bench check when hardware is back:** recorded 20 s run → `.jsonl.gz` committed with the
+  size shown; banner names `behavior_v2`; then run against a deliberately old bridge
+  checkout and confirm the "bridge too old" warning + `log_format: behavior_v1`.
