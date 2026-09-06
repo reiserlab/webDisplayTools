@@ -86,6 +86,14 @@ displayed trace in the selected dataset.
   retained in CSV and scalar preference metrics remain unsmoothed.
 - Classic trial preference index `(time safe - time reinforced) / total`, using
   unsmoothed frame samples and separate phase markers
+- Heisenberg-style bundled PI bars (two pages: 2-trial and 4-trial bundles):
+  consecutive same-stage trials are pooled into one interval and scored
+  time-weighted as `(t safe - t reinforced) / (t safe + t reinforced)`, drawn as
+  empty (baseline), hatched (training) and dotted (memory test) bars on a real
+  minutes axis, SEM across flies in group mode. A 2-trial bundle spans one
+  pattern flip; 4 spans two. Trial length (20 s or 40 s) only changes the bar
+  width; a stage whose trial count is not a multiple of the bundle ends with a
+  flagged partial bundle. Axis titles read the trial length from the log.
 - Phase-matched baseline-corrected probe PI
 - Logged LED-on fraction and safe-to-reinforced sector-entry count by trial
 - Per-trial cue stabilization strength, movement fraction, speed, absolute

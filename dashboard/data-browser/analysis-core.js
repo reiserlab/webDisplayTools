@@ -830,7 +830,10 @@
         return {
             level: NaN,
             hysteresis: NaN,
-            ranges: [[0, 49], [100, 149]],
+            ranges: [
+                [0, 49],
+                [100, 149]
+            ],
             condition: '',
             variant: ''
         };
@@ -838,7 +841,10 @@
 
     function p3AnalysisRanges(run) {
         return p3UsesCueNormalization(run)
-            ? [[0, 49], [100, 149]]
+            ? [
+                  [0, 49],
+                  [100, 149]
+              ]
             : p3Reinforcement(run).ranges;
     }
 
@@ -882,8 +888,7 @@
             if (change.on && !active) {
                 active = { startMs: change.ms, level: change.level };
             } else if (!change.on && active) {
-                if (change.ms > active.startMs)
-                    epochs.push({ ...active, endMs: change.ms });
+                if (change.ms > active.startMs) epochs.push({ ...active, endMs: change.ms });
                 active = null;
             }
         }
@@ -903,8 +908,9 @@
         const phase = p3Phase(step && step.condition);
         if (!phase) return [];
         const startMs = step.startMs + Math.max(0, finite(dropSec) || 0) * 1000;
-        return (run.framesByStep.get(step.index) || [])
-            .filter((frame) => frame.ms >= startMs && Number.isFinite(frame.index));
+        return (run.framesByStep.get(step.index) || []).filter(
+            (frame) => frame.ms >= startMs && Number.isFinite(frame.index)
+        );
     }
 
     function p3TrialIndices(run, step, dropSec) {
@@ -1113,6 +1119,81 @@
         return metric;
     }
 
+    /**
+     * Classic Heisenberg / Wolf / Dill preference-index bundles: pool `size`
+     * consecutive trials of the SAME stage (baseline, training_1, probe_1, …)
+     * and score them as one interval, exactly like the 2-min PI of the flight-
+     * simulator papers: PI = (t_safe − t_reinforced) / (t_safe + t_reinforced),
+     * time-weighted over every frame sample in the bundle (NOT a mean of per-
+     * trial PIs, so a trial with fewer samples counts less). With the P3
+     * phase0/phase90 alternation a 2-trial bundle spans one pattern flip and a
+     * 4-trial bundle two flips. Trial length is irrelevant to the definition —
+     * 20 s or 40 s trials both work; the bundle's wall-clock span comes from
+     * the logged step timestamps. A stage whose trial count is not a multiple
+     * of `size` ends with a shorter bundle flagged `partial: true`.
+     *
+     * @param {Array} rows   ordered trial rows ({stage, phase, variant, trial,
+     *                       samples, safeFraction, reinforcedFraction, step})
+     *                       — the shape p3TrialRows / p3AlignedTrialRows emit
+     * @param {number} size  trials per bundle (2 or 4)
+     * @returns {Array} bundles {key, bundle, stage, stageBundle, phase, trials,
+     *          variants, size, partial, samples, safe, reinforced, preference,
+     *          startMs, endMs, durationSec}
+     */
+    function p3BundleTrials(rows, size) {
+        const n = Math.max(1, Math.round(finite(size) || 1));
+        const ordered = (rows || []).filter((row) => row && row.stage);
+        const bundles = [];
+        let i = 0;
+        let bundleNo = 0;
+        const perStage = new Map();
+        while (i < ordered.length) {
+            const stage = ordered[i].stage;
+            const chunk = [];
+            while (i < ordered.length && ordered[i].stage === stage && chunk.length < n) {
+                chunk.push(ordered[i]);
+                i += 1;
+            }
+            let safe = 0;
+            let reinforced = 0;
+            for (const row of chunk) {
+                const samples = finite(row.samples) || 0;
+                safe += Math.round((finite(row.safeFraction) || 0) * samples);
+                reinforced += Math.round((finite(row.reinforcedFraction) || 0) * samples);
+            }
+            const total = safe + reinforced;
+            const starts = chunk.map((row) => row.step && row.step.startMs).filter(Number.isFinite);
+            const ends = chunk.map((row) => row.step && row.step.endMs).filter(Number.isFinite);
+            const startMs = starts.length ? Math.min(...starts) : NaN;
+            const endMs = ends.length ? Math.max(...ends) : NaN;
+            bundleNo += 1;
+            const stageBundle = (perStage.get(stage) || 0) + 1;
+            perStage.set(stage, stageBundle);
+            bundles.push({
+                key: stage + '#' + stageBundle,
+                bundle: bundleNo,
+                stage,
+                stageBundle,
+                phase: chunk[0].phase,
+                trials: chunk.map((row) => row.trial),
+                variants: chunk.map((row) => row.variant),
+                size: chunk.length,
+                partial: chunk.length < n,
+                samples: total,
+                safe,
+                reinforced,
+                preference: total ? (safe - reinforced) / total : NaN,
+                startMs,
+                endMs,
+                durationSec:
+                    Number.isFinite(startMs) && Number.isFinite(endMs)
+                        ? Math.max(0, (endMs - startMs) / 1000)
+                        : NaN
+            });
+        }
+        return bundles;
+    }
+
     const DashboardAnalysis = {
         DEFAULT_BALL_DIAMETER_MM,
         DEFAULT_SMOOTH_WINDOW_S,
@@ -1146,6 +1227,7 @@
         p3TrialIndices,
         p3TrialAngles,
         p3PreferenceIndex,
+        p3BundleTrials,
         p3TrialDoseMetrics,
         p3DwellBouts,
         p3TrialQualityMetrics,
