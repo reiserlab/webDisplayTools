@@ -573,3 +573,37 @@ console.log(
     );
     console.log('catalog duration helpers OK: fixture', dur.toFixed(1), 's');
 }
+
+// ---- catalog: runlogs/<folder>/index.json lookup -------------------------------
+{
+    const idx = A.runIndexLookup({
+        format_version: 1,
+        runs: [
+            {
+                run_id: 'r1',
+                file: 'a.jsonl',
+                started_ms: 1788636439304,
+                duration_s: 2165.2,
+                complete: true,
+                size: 5
+            },
+            {
+                run_id: 'r2',
+                file: 'b.jsonl',
+                timestamp_start: '2026-09-05T19:27:19.251Z',
+                duration_s: null,
+                complete: false
+            },
+            null
+        ]
+    });
+    assert.strictEqual(idx.get('a.jsonl').durationSec, 2165.2);
+    assert.strictEqual(idx.get('a.jsonl').complete, true);
+    assert.strictEqual(idx.get('run:r1').startedMs, 1788636439304);
+    assert.ok(Number.isNaN(idx.get('b.jsonl').durationSec));
+    assert.strictEqual(idx.get('b.jsonl').complete, false);
+    assert.strictEqual(idx.get('b.jsonl').startedMs, Date.parse('2026-09-05T19:27:19.251Z'));
+    assert.strictEqual(A.runIndexLookup(null).size, 0);
+    assert.strictEqual(A.runIndexLookup({ runs: 'nope' }).size, 0);
+    console.log('runlog index lookup OK');
+}

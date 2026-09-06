@@ -40,9 +40,14 @@ again for descending, again to reset) and a ⚙ picker to choose which columns a
 shown; the choice is remembered in this browser. Besides run, rig/protocol,
 genotype, sex, fly and notes it shows the **start** time (local clock, from
 `run_metadata.timestamp_start`) and the **duration**. Duration is exact for loaded
-runs; for GitHub-indexed runs that have not been loaded it is read from a 2 KB tail
-of the file (suffix `Range` request on the raw download URL — the GitHub API itself
-ignores `Range`), so no large download is needed. Aborted runs are flagged ⚠ with
+runs; for GitHub-indexed runs that have not been loaded it comes from the folder's
+`runlogs/<folder>/index.json`, fetched once per folder. (A tail `Range` read of each
+file was tried first, but browsers cannot do it: raw.githubusercontent.com refuses
+the CORS preflight; the GitHub API ignores `Range` entirely.) Build or refresh the
+index with `scripts/build-runlog-index.py --github owner/repo --write` (reads only
+a 64 KB head + 4 KB tail per file); Arena Studio will append to it after each
+auto-committed run (planned with the behavior_v2 work). Runs missing from the index
+show "—" until it is refreshed. Aborted runs are flagged ⚠ with
 the tooltip naming the end state. Optional columns: age, experimenter, file size.
 
 ## Analysis pages

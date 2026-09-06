@@ -545,8 +545,9 @@ function formatDuration(sec) {
         : `${m}:${String(s).padStart(2, '0')}`;
 }
 function durationTitle(d) {
-    if (!Number.isFinite(d.durationSec)) return 'Duration unknown until the run is loaded';
-    const how = d.loaded ? 'from the loaded run' : 'from the file head/tail';
+    if (!Number.isFinite(d.durationSec))
+        return "Duration unknown — not in this folder's index.json yet (refresh it with scripts/build-runlog-index.py) and the run is not loaded";
+    const how = d.loaded ? 'from the loaded run' : 'from the folder index';
     const end =
         d.complete === true ? 'completed' : d.complete === false ? 'ABORTED' : 'end state unknown';
     return `${d.durationSec.toFixed(1)} s (${how}) — ${end}`;
@@ -846,6 +847,21 @@ async function browseGithub() {
             ...directFiles.map((item) => ({ ...item, rigFolder: 'runlogs root' })),
             ...directoryFiles.flat()
         ].filter((item) => item.type === 'file' && item.name.toLowerCase().endsWith('.jsonl'));
+        // Per-folder index.json → start / duration / end state without downloading
+        // logs (browsers can't Range-read a tail from GitHub — CORS preflight 403).
+        const indexByFolder = new Map();
+        await G.mapLimit(directories, 4, async (directory) => {
+            try {
+                const text = await G.fetchText(
+                    repo.full,
+                    `${directory.path}/index.json`,
+                    state.github.branch
+                );
+                indexByFolder.set(directory.name, A.runIndexLookup(JSON.parse(text)));
+            } catch (_) {
+                indexByFolder.set(directory.name, new Map()); // no index yet → '—'
+            }
+        });
         const descriptors = await G.mapLimit(
             files,
             4,
@@ -857,16 +873,14 @@ async function browseGithub() {
                     65536
                 );
                 const descriptor = A.parseMetadataPrefix(prefix, item.name, item.path);
-                // Duration without downloading the file: a 2 KB tail (suffix Range on
-                // the raw download URL) carries logging_stopped; the prefix has
-                // logging_started. Best-effort — '—' in the catalog when unavailable.
-                let bounds = { durationSec: NaN, complete: null };
-                try {
-                    const tail = await G.fetchSuffix(item.download_url, 2048);
-                    bounds = A.sessionBounds(prefix, tail);
-                } catch (_) {
-                    /* keep NaN */
-                }
+                // Start / duration / end state come from the folder's index.json
+                // (scripts/build-runlog-index.py; Studio append planned). A tail Range
+                // read was tried first but the browser's CORS preflight is refused by
+                // raw.githubusercontent.com — G.fetchSuffix stays for non-browser use.
+                const indexed =
+                    (indexByFolder.get(item.rigFolder) || new Map()).get(item.name) ||
+                    (indexByFolder.get(item.rigFolder) || new Map()).get('run:' + descriptor.runId);
+                const bounds = indexed || { durationSec: NaN, complete: null, startedMs: NaN };
                 return {
                     ...descriptor,
                     key: `github:${repo.full}:${item.path}`,
@@ -877,6 +891,9 @@ async function browseGithub() {
                     repoFull: repo.full,
                     folder: item.rigFolder,
                     size: item.size,
+                    startedMs: Number.isFinite(bounds.startedMs)
+                        ? bounds.startedMs
+                        : descriptor.startedMs,
                     durationSec: bounds.durationSec,
                     complete: bounds.complete
                 };

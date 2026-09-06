@@ -357,6 +357,34 @@
         return { startMs, stopMs, durationSec, complete };
     }
 
+    /**
+     * `runlogs/<folder>/index.json` (written by scripts/build-runlog-index.py and,
+     * later, appended by Arena Studio after each auto-commit): per-run start /
+     * duration / end state so the catalog shows them without downloading logs.
+     * Browsers cannot read a file TAIL from GitHub (raw.githubusercontent.com
+     * rejects the CORS preflight a `Range` header triggers), so this index is the
+     * only cheap source for unloaded runs.
+     * @returns {Map<string, {startedMs:number,durationSec:number,complete:boolean|null,size:number}>}
+     *          keyed by file name (and by run_id as a second key)
+     */
+    function runIndexLookup(indexJson) {
+        const map = new Map();
+        const runs = indexJson && Array.isArray(indexJson.runs) ? indexJson.runs : [];
+        for (const r of runs) {
+            if (!r) continue;
+            const entry = {
+                startedMs:
+                    finite(r.started_ms) > 1e9 ? finite(r.started_ms) : startedMsFromMetadata(r),
+                durationSec: r.duration_s == null ? NaN : finite(r.duration_s),
+                complete: r.complete === true ? true : r.complete === false ? false : null,
+                size: r.size == null ? NaN : finite(r.size)
+            };
+            if (r.file) map.set(String(r.file), entry);
+            if (r.run_id) map.set('run:' + String(r.run_id), entry);
+        }
+        return map;
+    }
+
     /** Wall-clock duration (s) of a fully parsed run: logging_stopped − logging_started,
      *  else the last frame / runner event. */
     function runDurationSec(run) {
@@ -1302,6 +1330,7 @@
         descriptorFromMetadata,
         sessionBounds,
         runDurationSec,
+        runIndexLookup,
         protocolInfo,
         parseJsonl,
         deriveSignals,
