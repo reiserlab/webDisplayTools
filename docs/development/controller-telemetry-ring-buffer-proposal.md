@@ -145,12 +145,15 @@ hardware-triggered ADC with DMA (ADC_ETC) — deferred unless T2 forces it. **Mo
 consume the same samples** (one sampling path; its EWMA/deadband stay in the loop on the
 latest tick) — open question 6 in the handover, recommended answer here.
 
-**Opcodes** (next free in the 0xA_ / 0xC_ blocks; final numbers when implemented):
+**Opcodes.** Firmware PR #47 fixed the `0xA_` allocation rule (A0–A3 analog out, A4–A9
+analog in, AA–AF digital; set/get pairs on adjacent even/odd opcodes) and **reserved 0xA8 /
+0xA9 for the sampled block stream** — which is this telemetry stream. `GET_CLOCK` goes in
+the `0xC_` controller-info block next to 0xC2.
 
-- `SET_TELEMETRY` — `[len, op, flags, rate_lo, rate_hi]`: flags bit0 events on/off,
+- `SET_TELEMETRY` **0xA8** — `[len, A8, flags, rate_lo, rate_hi]`: flags bit0 events on/off,
   bit1 analog ticks on/off, bit2 raw-vs-calibrated analog; rate in Hz (0 = tick off).
   Sampling and event recording run in any state, so the Console scope works outside trials.
-- `GET_TELEMETRY_BLOCK` — `[len, op, ack_seq u32, max_bytes u16]`: the controller frees
+- `GET_TELEMETRY_BLOCK` **0xA9** — `[len, A9, ack_seq u32, max_bytes u16]`: the controller frees
   everything up to `ack_seq`, then returns the next records from its read cursor **without
   freeing them** (freed only by the next ack). Header: `t_now_us u32, first_seq u32,
   n_records u16, dropped u32, more u8`. This makes a lost or timed-out reply harmless: the
