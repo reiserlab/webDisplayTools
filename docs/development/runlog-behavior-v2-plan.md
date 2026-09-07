@@ -260,7 +260,7 @@ Studio (PR 2) and reader (PR 3) work must build on:
 
 - **`js/runlog-format.js`** (classic dual-export; vendored byte-identical at
   `dashboard/data-browser/vendor/runlog-format.js`, enforced by `tests/test-runlog-format.js`):
-  `isGzip`, `isRunlogName` (`.jsonl|.ndjson|.json` with optional `.gz`), `stripGz`,
+  `isGzip`, `isRunlogName` (`.jsonl|.ndjson` with optional `.gz` — never bare `.json`, so `runlogs/<folder>/index.json` is not a run), `stripGz`,
   `inflateIfGzip`, `readRunlogText(string|bytes|ArrayBuffer|Blob)`, `readRunlogPrefixText`
   (truncation-tolerant gunzip for the catalog's 64 KB metadata reads), `isArenaArray`,
   `expandV2Line` (exact v1 object; timeout ⇒ status/echo/ok all null), `compactV1Line`,

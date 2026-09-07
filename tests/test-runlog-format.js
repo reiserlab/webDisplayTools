@@ -121,10 +121,15 @@ async function main() {
     check('garbage input not gzip', F.isGzip(null), false);
     check('isRunlogName .jsonl', F.isRunlogName('run.jsonl'), true);
     check('isRunlogName .jsonl.gz', F.isRunlogName('runlogs/rig1/run.jsonl.gz'), true);
+    check('isRunlogName .ndjson', F.isRunlogName('x.ndjson'), true);
     check(
-        'isRunlogName .ndjson / .json',
-        [F.isRunlogName('x.ndjson'), F.isRunlogName('x.json')],
-        [true, true]
+        'isRunlogName rejects bare .json — runlogs/<folder>/index.json is a catalog, not a run',
+        [
+            F.isRunlogName('x.json'),
+            F.isRunlogName('runlogs/rig1/index.json'),
+            F.isRunlogName('index.json.gz')
+        ],
+        [false, false, false]
     );
     check(
         'isRunlogName rejects .yaml / .gz alone',

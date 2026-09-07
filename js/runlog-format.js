@@ -55,7 +55,12 @@
         'dir',
         'rx_ms'
     ];
-    const RUNLOG_NAME_RE = /\.(jsonl|ndjson|json)(\.gz)?$/i;
+    // Run-log FILE names as they appear in directory listings (data repo, local
+    // folder, URL index). Deliberately NOT bare `.json`: every runlogs/<folder>/
+    // carries an `index.json` catalog (build-runlog-index.py) that must never be
+    // parsed as a run. User-picked files may still be `.json` (see the dashboard's
+    // file input `accept=`); that path checks the name itself.
+    const RUNLOG_NAME_RE = /\.(jsonl|ndjson)(\.gz)?$/i;
 
     // ── bytes / gzip ────────────────────────────────────────────────────────────
     function toBytes(input) {

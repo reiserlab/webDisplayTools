@@ -1998,8 +1998,10 @@ els.scopeAutoY.addEventListener('click', () => {
 document.body.addEventListener('dragover', (event) => event.preventDefault());
 document.body.addEventListener('drop', async (event) => {
     event.preventDefault();
-    const files = [...((event.dataTransfer && event.dataTransfer.files) || [])].filter((file) =>
-        F.isRunlogName(file.name)
+    // Same acceptance as the file input (`accept=".jsonl,.ndjson,.json,…"`): a
+    // dropped `.json` is a user's choice; directory listings use F.isRunlogName alone.
+    const files = [...((event.dataTransfer && event.dataTransfer.files) || [])].filter(
+        (file) => F.isRunlogName(file.name) || /\.json$/i.test(file.name)
     );
     if (!files.length) return;
     try {
