@@ -55,8 +55,12 @@ fps meter.
       rebuild ran green on the live repo — every folder "index.json unchanged — skipped",
       i.e. the new script reproduces the existing indexes exactly. Gate B1's last checkbox
       now only needs a real `.gz` run to appear in an index.
-- [ ] Corpus gates (local clone `cshl-2026-course`): `python scripts/runlog-v2-corpus.py`
-      and `node dashboard/data-browser/tests/corpus-v2-parity.js` — expect 164/164 both.
+- [x] ~~Corpus gates~~ — run 2026-09-07 evening on the rebased #188 against the
+      fast-forwarded clone (174 logs now): bridge round trip **174/174**, dashboard parity
+      **174/174**. The first parity run failed on the 12 `runlogs/<folder>/index.json` files
+      (#187's catalogs) because the shared `isRunlogName` accepted bare `.json` and #188 uses
+      it for directory listings — fixed on the #188 branch (filter is `.jsonl|.ndjson` + `.gz`;
+      a user-dropped `.json` still loads), vendor copy synced, test updated, suite green.
 - [x] ~~Merge #189~~ — merged 2026-09-07 evening.
 
 ### Afternoon (rig) — **gate B1: v2 end to end**
