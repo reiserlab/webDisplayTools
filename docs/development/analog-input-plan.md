@@ -3,8 +3,11 @@
 Owner: Michael. Drafted 2026-09-07 from the firmware (`LED-Display_G6_Firmware_Arena`
 main + `arena-2x10-local`), the controller schematic (`LED-Display_G6_Hardware_Arena`
 `arena_10-10_v1/analog.kicad_sch`), Will's analysis in the IO Rodeo group DM
-(2026-08-27), and the Studio Console as of v0.73. Status: **plan only**. Lands as a
-hardware fix, two firmware PRs, and two or three Studio PRs (§7).
+(2026-08-27), the G3 controller source (`LED-Display_G3_Software`, XmegaController
+`main.c`) for the closed-loop gain heritage, and the Studio Console as of v0.73.
+Status: **plan; decisions 1, 3, 5 taken 2026-09-07 (§6)**. Hardware fix tracked as
+LAB-209 (Frank). Lands as a hardware fix, three firmware PRs, and three or four
+Studio PRs (§7).
 
 ## 0. What we know (facts, with sources)
 
@@ -53,6 +56,26 @@ Will (IO Rodeo, DM 2026-08-27):
   counts"); the code has no ×100. With the code as written, gain = 20 gives 2 fps/V,
   so a 200-frame pattern at +10 V turns once every 10 s. This must be settled before
   the bench (§6, decision 2).
+- **Gain heritage — the G3 controller (decoded 2026-09-07).** The G4.1 Slim firmware
+  stored `gain_` but never read it (its "closed loop" ran on an internal counter), so
+  the only real prior implementation is G3. In `XmegaController/main.c`:
+  `xRate = gain × HzFromAdc(adc) / 10 + bias`, where `HzFromAdc` maps the 13-bit ADC
+  (1 V = 819 counts on the ±5 V scale) to **100 per volt** ("1 volt == 100 fps") and the
+  velocity ISR steps the frame `xRate` times per second — so `xRate` **is** fps. The gain
+  byte is 10× the gain (10 = 1.0×; PControl's slider was ±10 sent as ×10). Hence on G3
+  **unity gain = 100 fps/V, and the everyday gains of 0.2–0.5 gave 20–50 fps/V** — which
+  matches Michael's recollection of "20 or 50 frames per volt". The ADC was smoothed with
+  an EWMA (0.6 × previous + 0.4 × new) at a 400 Hz update. The G6 docs' `× 100 × gain/10`
+  is therefore the G3-faithful formula (their "−20 = −2.0 fps/V" example is wrong: −20 is
+  −2.0× = −200 fps/V); the G6 **code**, with no ×100, runs 100× slower than G3 for the
+  same gain byte. See decision 2.
+- **Teensy 4.1 ADC facts** (core `analog.c`): `analogReadResolution` 8/10/12 bits (12-bit =
+  25 ADC clocks + 24 settling, ≈ 2.5 µs at the 20 MHz ADC clock); `analogReadAveraging`
+  4/8/16/32 samples in hardware (a 32× averaged 12-bit read ≈ 80 µs, so two channels at
+  1 kHz is < 20 % of the loop). The i.MX RT ADC is noisy at 12 bits (several LSB without
+  averaging); averaging 16–32 typically buys ~1–1.5 bits. Practical input resolution:
+  20 V / 4095 ≈ 4.9 mV/LSB nominal, expect ~10 mV effective after averaging, vs 19.6 mV
+  today. `analogRead` blocks for the conversion — fine at these rates.
 - Hardware test tooling exists: the firmware repo's pytest suite over USB serial
   (`tests/test_io_roles.py` already checks the 0xA4 reply shape/range; the AO
   `frame_number` DAC ramp test measured ±4 mV), plus the lab's Analog Discovery 3
@@ -97,11 +120,20 @@ Will (IO Rodeo, DM 2026-08-27):
 
 ### F1 — measurement quality + settle the formula (small, do first)
 
-- `analogReadResolution(12)` and `analogReadAveraging(4…8)` at boot; `adc_full_scale_counts`
-  = 4095. Raises input resolution to ≈ 4.9 mV/LSB and cuts noise. **Do this before any
-  calibration numbers are recorded** (it changes the raw scale).
+- **Decided (2026-09-07):** `analogReadResolution(12)` and `analogReadAveraging(16)` at
+  boot; `adc_full_scale_counts` = 4095. Raises input resolution to ≈ 4.9 mV/LSB and cuts
+  noise. Lands **before any calibration numbers are recorded** (it changes the raw scale).
+  Keep a light EWMA in `serviceClosedLoop` as G3 did (0.6/0.4 at 500 Hz ≈ 60 Hz corner)
+  so a single noisy read cannot step a frame.
 - Settle the Mode 4 gain semantics (decision 2) and make code, `constants.h`, `g6_03`
-  and the Studio tooltip say the same thing.
+  and the Studio tooltip say the same thing. Recommendation: **G3-faithful**
+  `fps = V × 10 × gain` (gain byte = 10× the gain; 10 = 100 fps/V; typical 2–5 = 20–50
+  fps/V), i.e. add the ×100 the docs already describe and fix the doc's example. Existing
+  protocols with mode 4 gains are only test protocols, so nothing shipped speeds up.
+- **Decided (2026-09-07): deadband.** A trial-params-independent config value (mV around
+  the calibrated 0 V that yields 0 fps; default ~20 mV, settable with the calibration
+  record) so a static input does not drift. G3 had a `bias` term instead; we can add one
+  later if flight experiments want it.
 - Extend the 0xA4 reply with a 5th byte `flags` (bit0 = ch1 calibrated, bit1 = ch2
   calibrated, bit2 = 12-bit). Backwards compatible: the Studio decoder reads ≥ 4 bytes.
 
@@ -110,14 +142,14 @@ Will (IO Rodeo, DM 2026-08-27):
 - **Model:** per channel `mV = a × raw + b`, derived from two stored raw samples
   (`raw_open` ≙ +10 000 mV, `raw_gnd` ≙ 0 mV), each the mean of N = 256 reads. Store the
   raw pair (so the math can be redone) plus a magic/version/CRC and a "valid" flag.
-- **Where (decision 1).** Recommendation: **Teensy EEPROM** (the 4.1 emulates ~4 KB in
-  flash, `EEPROM.h`, no wiring). Calibration is a property of the **board's resistors and
-  reference**, not of the SD card: SD cards move between controllers, get reformatted
-  (0x8F wipes everything), and are absent on some benches. If we also want the values
-  human-inspectable and part of the data record, **mirror** them to `/config/analog_cal.json`
-  on the SD (best effort) and let 0xA6 report the source. The pure-SD alternative Michael
-  raised works too, but a card carried to another controller would then bring the wrong
-  calibration with it, and the controller must be able to run Mode 4 with no card.
+- **Where — decided 2026-09-07: Teensy EEPROM, mirrored to the SD.** EEPROM (the 4.1
+  emulates ~4 KB in flash, `EEPROM.h`, no wiring) is authoritative because calibration is
+  a property of the **board's resistors and reference**, not of the SD card: cards move
+  between controllers, get reformatted (0x8F wipes everything), and are absent on some
+  benches. The record is also written best-effort to `/config/analog_cal.json` on the SD
+  so it is human-inspectable and travels with the data; 0xA6 reports which source is in
+  force and whether the two agree. A card carried to another controller never overrides
+  that controller's EEPROM record.
 - **Opcodes** (0xA_ I/O block, io_ext-style, capability bit 6 `ai_cal`):
   - `SET_ANALOG_CAL` 0xA5 `[03 A5 ch point]` — ch 1|2 (silkscreen numbering), point
     1 = "sample now as the +10 V open-input point", 0 = "sample now as the 0 V ground-cap
@@ -172,6 +204,46 @@ single-flight) and logs to the Console log.
 - Housekeeping per CLAUDE.md: tooltips on every control, HELP-map entries for the rail
   button and panel, release-notes entry, footer bump, no Prettier on the HTML.
 
+## 4b. Later phase — analog acquisition into the oscilloscope + run log (the flight path)
+
+Michael's direction (2026-09-07): the Console panel's 10 Hz preview is a bench tool; the
+place analog input really belongs is the **live oscilloscope view**, and if the Studio can
+**log** it we have a path to run flight-arena experiments (wingbeat analyzer L−R, L+R,
+frequency on the two BNCs, pattern position from the controller) **without a National
+Instruments DAQ**. This is a separate, later step; nothing in §3–§4 depends on it.
+
+- **Why polling 0xA4 is not enough.** A 10 Hz request/response read is far below the
+  ≥ 500 Hz a WBA signal needs, and Web Serial is a single-flight, echo-correlated link.
+  The fix is to move sampling into the controller and fetch **blocks**: the request rate
+  stays ~10–20 Hz, but each reply carries every sample since the last one.
+- **F3 firmware — sampled block stream.** A ring buffer of both channels sampled at a
+  configurable rate (default 500 Hz, up to 1–2 kHz) with, per sample, `[ain1, ain2]`
+  (calibrated int16 mV), plus per block a start timestamp (µs), the running sample
+  index (drop detection) and the **current frame index** (`cur_frame_index_`, so the
+  closed-loop record pairs stimulus position with the fly's signal at full rate — the
+  thing the NI DAQ used to record from the AO). New opcodes: `SET_AI_STREAM` 0xA8
+  `[.. A8 rate_hz_lo hi flags]` (0 = off), `GET_AI_BLOCK` 0xA9 `[01 A9]` → header
+  `{t_start_us u32, seq u32, frame_index u16, n u16}` + n × 2 × int16. Bandwidth at 1 kHz
+  is 4 KB/s — trivial. Sampling runs in Mode 2/3/4 and while idle; Mode 4 reuses the same
+  samples for its loop. Buffer sized for ≥ 250 ms so a slow poll never drops.
+- **S4 Studio — scope rows + run-log rows.** During runs (and in the Console panel) poll
+  0xA9 at 10–20 Hz; push samples into the Scope as a new **analog** trace set (AI1, AI2,
+  frame index) alongside or instead of the FicTrac rows, with the same overlays
+  (condition / visual / LED epochs). Log each block into the bridge run log as compact
+  rows — one row per sample `[ms, ain1, ain2, idx]` under a `frame_schema` level
+  `analog_v1` (or one row per block) — so the existing gzip commit path and the
+  `runlog-format.js` readers extend naturally; the dashboard gains an analog trace view
+  and the kinematics module gets a WBA-derived channel set. Link budget: in Mode 4 the
+  runner sends nothing per frame, so a 10–20 Hz poll owns the link; in Mode 3 FicTrac
+  closed loop the 0x70 stream already saturates it, so the analog stream is Mode 2/4
+  only (documented, not silently dropped).
+- **What it replaces / keeps.** Replaces the NI DAQ recording of WBA + pattern position
+  for G6 flight rigs; keeps the AO `frame_number` output for labs that still record on a
+  DAQ. Timing provenance: controller µs timestamps in every block, host `rx_ms` per poll.
+- Tests: pytest for the ring buffer (rate, drop counter, block framing), Node tests for the
+  new log rows in `runlog-format.js` + dashboard parity, bench with a generator sine into
+  AI1 (reconstruct amplitude/frequency from the log) and a Mode 4 run (frame index vs AI).
+
 ## 5. Test plan
 
 ### 5.1 Front end + conversion (per board, per channel; Console live panel + DMM)
@@ -224,23 +296,51 @@ resumes after; panel collapse stops polling; non-io_ext firmware shows the guida
 line; safe mode shows the preview but hides calibration writes; tooltips on every
 control.
 
-## 6. Open decisions for Michael
+## 6. Decisions (2026-09-07)
 
-1. **Calibration storage:** EEPROM (recommended) · SD only · EEPROM + SD mirror
-   (recommended if the values should travel in the data record).
-2. **Mode 4 gain formula:** keep the code (`fps = V × gain/10`, so gain 20 = 2 fps/V; the
-   int16 range already allows thousands of fps/V) and fix the docs — or implement the
-   documented ×100. Recommend keeping the code and fixing the docs; CL2 confirms.
-3. **12-bit + averaging (F1) before calibration** — yes/no (changes the raw scale).
-4. **Rework order:** office 10-10 first (development), then the 12-18s, then CSHL boards.
-5. **Deadband parameter** in Mode 4 — worth adding while F2 is open?
-6. **AI logging during Mode 4 runs** (10 Hz `["ai", …]` rows in the run log) — include in S3?
+1. **Calibration storage — DECIDED: EEPROM authoritative + SD mirror** (§3 F2).
+2. **Mode 4 gain formula — OPEN, recommendation ready.** Michael recalled G3/G4 at
+   "50 or 20 frames per volt" and asked for the prior code bases to be checked. Finding
+   (§0): G3 was **100 fps/V at unity gain** with the gain byte = 10× gain, so the usual
+   gains 0.2–0.5 were 20–50 fps/V. Recommend implementing the G3-faithful
+   `fps = V × 10 × gain` in the G6 firmware (the ×100 the docs describe), fixing the doc
+   example, and labelling the Studio field "gain ×10 — 10 = 100 fps/V". CL2 confirms on
+   the bench. Alternative if 100 fps/V at unity feels too hot for ±10 V inputs: define
+   the G6 byte as 100× the gain (1 = 10 fps/V, 5 = 50 fps/V) — same range, finer steps,
+   but a different number from every G3 protocol note.
+3. **12-bit + averaging before calibration — DECIDED: yes** (F1 first).
+4. **Rework order** — default: office 10-10 first (development), then the 12-18s, then
+   CSHL boards (LAB-209 covers the design; the rework list is Frank's).
+5. **Deadband in Mode 4 — DECIDED: yes**, as a config value in F2.
+6. **Analog rows in run logs** — superseded by §4b: not 10 Hz polling of 0xA4, but the
+   controller-sampled block stream into the oscilloscope and the run log, as a later
+   phase (F3/S4).
 
-## 7. Sequencing
+## 7. Sequencing — and what can be done before lab testing
 
-1. **HW:** schematic fix + rework the office board (unblocks everything else).
-2. **FW F1** (12-bit, averaging, 0xA4 flags, formula + doc sync) → bench §5.1 T1–T7 and
-   §5.3 CL1–CL8 with the AD3 + generator. Studio **S1** (live panel + AO sweep) can be
-   built and used against today's firmware in parallel.
-3. **FW F2** (calibration opcodes + EEPROM ± SD mirror + tests) → Studio **S2** → bench §5.2.
-4. **S3** (provenance, `ai: in` unlock, optional AI rows) → **CL9** from the Run view.
+Everything below the "bench" lines can be built, unit-tested and compiled now (no
+hardware for a few days; the office board still needs the resistor rework anyway).
+
+**Buildable now**
+1. **FW F1** — 12-bit + averaging(16), EWMA in `serviceClosedLoop`, 0xA4 flags byte,
+   G3-faithful gain formula (once decision 2 is confirmed), `constants.h` + `g6_03` sync;
+   pytest updates; both PlatformIO envs compile.
+2. **FW F2** — calibration record + EEPROM store + SD mirror, opcodes 0xA5/0xA6/0xA7,
+   deadband, capability bit 6; pytest (round trip, persistence, cleared state, raw read).
+   Code-complete without a board; the numbers come from the bench.
+3. **Studio S1** — the Analog In rail panel: live 10 Hz preview, strip chart, min/max, AO →
+   AI sweep, pause-during-run. Wire decoders for the 0xA4 flags byte and 0xA5–0xA7
+   (`js/arena-wire-g6.js` + `tests/test-arena-wire-g6.js`). Testable in the browser
+   against a mocked session (as the Console's offline tests do) — no controller needed.
+4. **Studio S2** — calibration UI (advanced-only writes), driven by the same mocked
+   session; S3 provenance (`run_metadata.analog_cal`) and the rig `ai: in` unlock are
+   small once S2 exists.
+5. **Docs/spec** — LAB-209 (done), `g6_03` § Mode 4 corrected formula + calibration
+   procedure + new opcodes, hardware README rework list.
+
+**Needs the bench** (in this order): T1 on the reworked office board → T2–T7 → CL1–CL8
+(settles decision 2 if still open) → C1–C3 → CL9 from the Run view.
+
+**Later phase:** §4b F3/S4 (analog block stream → oscilloscope + run log), after the
+above lands and after the run-log v2 stack (#183/#186/#188) is merged, since S4's log
+rows ride on `runlog-format.js`.
