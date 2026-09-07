@@ -118,6 +118,77 @@ checkThrows('ao mode 2 throws', () => Wire.encodeSetAoMode(2));
         Wire.decodeDioRole(Uint8Array.from([0x06, 0x01, 0xad, 0x02, 0x01, 0x01, 0x00])) === null
     );
 }
+// analog-input calibration (0xA5/0xA6/0xA7, ai_cal fw)
+checkBytes(
+    'encodeSetAnalogCal(1, sampleOpen)',
+    Wire.encodeSetAnalogCal(1, 'sampleOpen'),
+    '03 a5 01 01'
+);
+checkBytes(
+    'encodeSetAnalogCal(2, sampleGround) numeric',
+    Wire.encodeSetAnalogCal(2, 0),
+    '03 a5 02 00'
+);
+checkBytes('encodeSetAnalogCal(1, clear)', Wire.encodeSetAnalogCal(1, 'clear'), '03 a5 01 ff');
+checkBytes(
+    'encodeSetAnalogCal(2, setDeadband, 300)',
+    Wire.encodeSetAnalogCal(2, 'setDeadband', 300),
+    '05 a5 02 02 2c 01'
+);
+checkBytes('encodeGetAnalogCal', Wire.encodeGetAnalogCal(), '01 a6');
+checkBytes('encodeGetAnalogInRaw', Wire.encodeGetAnalogInRaw(), '01 a7');
+checkThrows('encodeSetAnalogCal rejects ch 3', () => Wire.encodeSetAnalogCal(3, 'clear'));
+checkThrows('encodeSetAnalogCal rejects unknown action', () => Wire.encodeSetAnalogCal(1, 'bogus'));
+checkThrows('encodeSetAnalogCal deadband > 2000 rejected', () =>
+    Wire.encodeSetAnalogCal(1, 'setDeadband', 2001)
+);
+checkThrows('encodeSetAnalogCal deadband needs an integer', () =>
+    Wire.encodeSetAnalogCal(1, 'setDeadband')
+);
+{
+    // record: v1, 12-bit, source eeprom, mirror ok; ch1 valid open=3700 gnd=100 db=20; ch2 invalid db=50
+    const rec = Wire.decodeAnalogCal(
+        Uint8Array.from([
+            0x14, 0x00, 0xa6, 1, 12, 1, 1, 1, 0x74, 0x0e, 0x64, 0x00, 0x14, 0x00, 0, 0, 0, 0, 0,
+            0x32, 0x00
+        ])
+    );
+    check(
+        'decodeAnalogCal header',
+        String([rec.version, rec.adcBits, rec.source, rec.sdMirrorOk]),
+        '1,12,eeprom,true'
+    );
+    check(
+        'decodeAnalogCal ch1 points',
+        String([
+            rec.channels[0].valid,
+            rec.channels[0].rawOpen,
+            rec.channels[0].rawGnd,
+            rec.channels[0].deadbandMv
+        ]),
+        'true,3700,100,20'
+    );
+    check('decodeAnalogCal ch1 line a', Math.round(rec.channels[0].gainMvPerCount * 1000), 2778); // 10000/3600
+    check('decodeAnalogCal ch1 line b', Math.round(rec.channels[0].offsetMv), -278);
+    check(
+        'decodeAnalogCal ch2 invalid → no line',
+        String([rec.channels[1].valid, rec.channels[1].gainMvPerCount, rec.channels[1].deadbandMv]),
+        'false,,50'
+    );
+    check(
+        'decodeAnalogCal short payload → null',
+        Wire.decodeAnalogCal(Uint8Array.from([0x05, 0x00, 0xa6, 1, 12, 1, 0])),
+        null
+    );
+    const raw = Wire.decodeAnalogInRaw(Uint8Array.from([0x06, 0x00, 0xa7, 0x74, 0x0e, 0x64, 0x00]));
+    check('decodeAnalogInRaw', String([raw.raw1, raw.raw2]), '3700,100');
+}
+checkBool(
+    'capability bit 6 is ai_cal',
+    Wire.decodeControllerInfo(Uint8Array.from([0x04, 0x00, 0xc2, 1, 0x63])).capabilities.join(','),
+    'g6_mode,v2_local_storage,io_ext,ai_cal'
+);
+
 // decodeAnalogIn: int16 LE pair — -7263 mV = 0xE3A1, +1234 mV = 0x04D2.
 {
     const a = Wire.decodeAnalogIn(Uint8Array.from([0x06, 0x00, 0xa4, 0xa1, 0xe3, 0xd2, 0x04]));
