@@ -63,9 +63,9 @@ Facts an acquisition format must respect (all in the plan doc's implementation n
 |---|---|---|
 | Hardware | LAB-209 (Frank) | stage-2 divider resistors swapped on both AI channels (Will, 2026-08-27): only −10…0 V measurable until R178/R180 and R179/R181 are flipped; schematic still wrong |
 | Firmware **F1** | `LED-Display_G6_Firmware_Arena` PR #46, `feat/ai-12bit-g3-gain` | 12-bit + 16× averaging; Mode 4 `fps = V × 100 × gain/10` (G3-faithful: gain byte ×10, unity = 100 fps/V); EWMA on the input; 0xA4 reply + flags byte |
-| Firmware **F2** | branch `feat/ai-calibration` (stacked on F1; PR pending) | two-point calibration record in **EEPROM** (+ write-only SD JSON mirror `/config/analog_cal.json`), `SET_ANALOG_CAL` 0xA5 / `GET_ANALOG_CAL` 0xA6 / `GET_ANALOG_IN_RAW` 0xA7, deadband, capability bit 6 `ai_cal`; 0xA4 and Mode 4 use the calibrated volts |
+| Firmware **F2** | branch `feat/ai-calibration` (stacked on F1; PR pending) | two-point calibration record in **EEPROM** (+ write-only SD JSON mirror `/config/analog_cal.json`), `GET_ANALOG_IN_RAW` 0xA5 / `SET_ANALOG_CAL` 0xA6 / `GET_ANALOG_CAL` 0xA7, deadband, capability bit 6 `ai_cal`; 0xA4 and Mode 4 use the calibrated volts |
 | Studio **S1** v0.74 | webDisplayTools PR #190, `feat/console-analog-in` | Console "Analog In" rail panel: 10 Hz quiet poller, strip chart, min/max, AO→AI loopback sweep; `js/studio-analog-in.js` |
-| Studio **S2** | branch `feat/console-analog-cal` (stacked on S1; in progress) | calibration UI (guided two points, deadband, clear, read), wire encoders/decoders for 0xA5–0xA7, `ai_cal` capability name |
+| Studio **S2** | branch `feat/console-analog-cal` (stacked on S1; in progress) | calibration UI (guided two points, deadband, clear, read), wire encoders/decoders for 0xA5 (raw) / 0xA6 (set-cal) / 0xA7 (get-cal), `ai_cal` capability name |
 
 ## 2. How the firmware and the Studio interact (the facts)
 
@@ -110,9 +110,9 @@ async handlers):
 | 0xA2 | SET_AO_LUT | upload + start an AO waveform table |
 | 0xA3 | SET_AO_MODE | 0 programmable · 1 **frame_number** (AO tracks the frame index 0–5 V — a free analog pattern-position output, and the fps meter for Mode 4 bench tests) |
 | 0xA4 | GET_ANALOG_IN | → `[ain1 i16][ain2 i16][flags u8]` mV; flags bit0/1 = channel calibrated, bit2 = 12-bit (F1) |
-| 0xA5 | SET_ANALOG_CAL (F2) | `[len A5 ch action (mv_lo mv_hi)]` — 0 sample 0 V point, 1 sample +10 V point, 2 set deadband, 0xFF clear → the record |
-| 0xA6 | GET_ANALOG_CAL (F2) | → `[version adc_bits source flags]` + 2 × `[valid raw_open u16 raw_gnd u16 deadband u16]` (18 B) |
-| 0xA7 | GET_ANALOG_IN_RAW (F2) | → raw counts, two u16 |
+| 0xA5 | GET_ANALOG_IN_RAW (F2) | → raw counts, two u16 |
+| 0xA6 | SET_ANALOG_CAL (F2) | `[len A6 ch action (mv_lo mv_hi)]` — 0 sample 0 V point, 1 sample +10 V point, 2 set deadband, 0xFF clear → the record |
+| 0xA7 | GET_ANALOG_CAL (F2) | → `[version adc_bits source flags]` + 2 × `[valid raw_open u16 raw_gnd u16 deadband u16]` (18 B) |
 | 0xAA–0xAD | digital I/O | `SET/GET_DIGITAL_OUT`, `SET/GET_DIO_ROLE` (roles: off / in_trigger / out_programmable / out_debug_framescan) |
 
 **Controller analog facts (after F1/F2).** Two channels: "Analog In 1 (±10V)" J28 →

@@ -150,14 +150,14 @@ Will (IO Rodeo, DM 2026-08-27):
   so it is human-inspectable and travels with the data; 0xA6 reports which source is in
   force and whether the two agree. A card carried to another controller never overrides
   that controller's EEPROM record.
-- **Opcodes** (0xA_ I/O block, io_ext-style, capability bit 6 `ai_cal`):
-  - `SET_ANALOG_CAL` 0xA5 `[03 A5 ch point]` — ch 1|2 (silkscreen numbering), point
+- **Opcodes** (0xA_ I/O block: A0–A3 analog out, A4–A9 analog in, AA–AF digital; set/get on adjacent even/odd opcodes; capability bit 6 `ai_cal`):
+  - `SET_ANALOG_CAL` 0xA6 `[len A6 ch action (mv_lo mv_hi)]` — ch 1|2 (silkscreen numbering), point
     1 = "sample now as the +10 V open-input point", 0 = "sample now as the 0 V ground-cap
     point", 0xFF = clear. Controller averages, stores, recomputes a/b when both points
     exist, persists. Reply: the new record.
-  - `GET_ANALOG_CAL` 0xA6 `[01 A6]` → per channel `{valid, raw_open u16, raw_gnd u16,
+  - `GET_ANALOG_CAL` 0xA7 `[01 A7]` → per channel `{valid, raw_open u16, raw_gnd u16,
     a (float32 mV/count), b (int16 mV), source (0 none / 1 eeprom / 2 sd)}` + ADC bits.
-  - `GET_ANALOG_IN_RAW` 0xA7 `[01 A7]` → raw counts for both channels (the calibration
+  - `GET_ANALOG_IN_RAW` 0xA5 `[01 A5]` → raw counts for both channels (the calibration
     screen shows counts and mV side by side).
 - 0xA4 and `serviceClosedLoop` use the calibrated volts when valid, the current fixed
   formula otherwise. Optional but cheap while there: a Mode 4 **deadband** parameter
@@ -325,7 +325,7 @@ hardware for a few days; the office board still needs the resistor rework anyway
 1. **FW F1** — 12-bit + averaging(16), EWMA in `serviceClosedLoop`, 0xA4 flags byte,
    G3-faithful gain formula (once decision 2 is confirmed), `constants.h` + `g6_03` sync;
    pytest updates; both PlatformIO envs compile.
-2. **FW F2** — calibration record + EEPROM store + SD mirror, opcodes 0xA5/0xA6/0xA7,
+2. **FW F2** — calibration record + EEPROM store + SD mirror, opcodes 0xA5 (raw) / 0xA6 (set cal) / 0xA7 (get cal),
    deadband, capability bit 6; pytest (round trip, persistence, cleared state, raw read).
    Code-complete without a board; the numbers come from the bench.
 3. **Studio S1** — the Analog In rail panel: live 10 Hz preview, strip chart, min/max, AO →
