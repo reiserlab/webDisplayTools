@@ -70,9 +70,12 @@ const ArenaWireG6 = (function () {
         GET_AO_VOLTAGE: 0xa1, // [01 A1] returns last commanded AO level as uint16 LE mV
         SET_AO_MODE: 0xa3, // [02 A3 mode] 0=programmable | 1=frame_number (io_ext fw)
         GET_ANALOG_IN: 0xa4, // [01 A4] returns Analog In 1+2 as two int16 LE mV (+ flags byte, F1 fw)
-        SET_ANALOG_CAL: 0xa5, // [len A5 ch action (mv_lo mv_hi)] two-point calibration / deadband / clear (ai_cal fw)
-        GET_ANALOG_CAL: 0xa6, // [01 A6] → 18-byte calibration record (ai_cal fw)
-        GET_ANALOG_IN_RAW: 0xa7, // [01 A7] → raw ADC counts of both inputs, two uint16 LE (ai_cal fw)
+        // 0xA_ block: A0–A3 analog OUT, A4–A9 analog IN (A8/A9 reserved for the
+        // sampled block stream), AA–AF digital; set/get pairs on adjacent even/odd
+        // opcodes. G4 never used 0xA0–0xAF (g6_03 § G4 opcode compatibility).
+        GET_ANALOG_IN_RAW: 0xa5, // [01 A5] → raw ADC counts of both inputs, two uint16 LE (ai_cal fw)
+        SET_ANALOG_CAL: 0xa6, // [len A6 ch action (mv_lo mv_hi)] two-point calibration / deadband / clear (ai_cal fw)
+        GET_ANALOG_CAL: 0xa7, // [01 A7] → 18-byte calibration record (ai_cal fw)
         SET_DIGITAL_OUT: 0xaa, // [03 AA ch state] DO1 (ch=1, J3/D37) or DO2 (ch=2, J4/D35)
         GET_DIGITAL_OUT: 0xab, // [01 AB] returns current state of DO1 and DO2 as two bytes
         SET_DIO_ROLE: 0xac, // [03 AC port role] "Digital IO 1/2 (5V)" role (io_ext fw)
@@ -119,12 +122,12 @@ const ArenaWireG6 = (function () {
         // 0xAD / SET_AO_MODE 0xA3 / GET_ANALOG_IN 0xA4 — hosts detect the
         // DIO-role machinery by this bit, not by firmware-version guessing.
         [5, 'io_ext'],
-        // Per-board analog-input calibration (analog-input-plan F2): SET_ANALOG_CAL
-        // 0xA5 / GET_ANALOG_CAL 0xA6 / GET_ANALOG_IN_RAW 0xA7, record in EEPROM.
+        // Per-board analog-input calibration (analog-input-plan F2): GET_ANALOG_IN_RAW
+        // 0xA5 / SET_ANALOG_CAL 0xA6 / GET_ANALOG_CAL 0xA7, record in EEPROM.
         [6, 'ai_cal']
     ];
 
-    // SET_ANALOG_CAL (0xA5) actions — the host orchestrates Will's two-point
+    // SET_ANALOG_CAL (0xA6) actions — the host orchestrates Will's two-point
     // recipe (open input = +10 V from the reference, BNC ground cap = 0 V); the
     // controller samples, validates, stores (EEPROM + SD mirror) and applies.
     const ANALOG_CAL_ACTIONS = { sampleGround: 0, sampleOpen: 1, setDeadband: 2, clear: 0xff };
@@ -617,7 +620,7 @@ const ArenaWireG6 = (function () {
     }
 
     /**
-     * set-analog-cal (0xA5) — one calibration action on channel 1|2:
+     * set-analog-cal (0xA6) — one calibration action on channel 1|2:
      * 'sampleGround' (0 V point, ground cap on), 'sampleOpen' (+10 V point, BNC
      * open), 'setDeadband' (needs mv 0..2000), 'clear'. Names or codes accepted.
      */
@@ -640,15 +643,15 @@ const ArenaWireG6 = (function () {
                     'deadband must be 0..' + ANALOG_CAL_DEADBAND_MAX_MV + ' mV, got ' + mv
                 );
             }
-            return frame(OPCODES.SET_ANALOG_CAL, [ch, code, mv & 0xff, (mv >> 8) & 0xff]); // 05 A5 ch 02 lo hi
+            return frame(OPCODES.SET_ANALOG_CAL, [ch, code, mv & 0xff, (mv >> 8) & 0xff]); // 05 A6 ch 02 lo hi
         }
-        return frame(OPCODES.SET_ANALOG_CAL, [ch, code]); // 03 A5 ch action
+        return frame(OPCODES.SET_ANALOG_CAL, [ch, code]); // 03 A6 ch action
     }
     function encodeGetAnalogCal() {
-        return frame(OPCODES.GET_ANALOG_CAL); // 01 A6
+        return frame(OPCODES.GET_ANALOG_CAL); // 01 A7
     }
     function encodeGetAnalogInRaw() {
-        return frame(OPCODES.GET_ANALOG_IN_RAW); // 01 A7
+        return frame(OPCODES.GET_ANALOG_IN_RAW); // 01 A5
     }
 
     // ───────────────────────────── decoders ───────────────────────────────
@@ -835,7 +838,7 @@ const ArenaWireG6 = (function () {
     }
 
     /**
-     * get/set-analog-cal (0xA6 / 0xA5) reply: [version adc_bits source flags] then per
+     * get/set-analog-cal (0xA7 / 0xA6) reply: [version adc_bits source flags] then per
      * channel [valid][raw_open u16 LE][raw_gnd u16 LE][deadband_mv u16 LE] (18 B).
      * Adds the line each valid channel implies: mV = a·raw + b with
      * a = 10000 / (raw_open − raw_gnd), b = −a·raw_gnd (null when not valid).
@@ -873,7 +876,7 @@ const ArenaWireG6 = (function () {
             channels
         };
     }
-    // get-analog-in-raw (0xA7) reply: two uint16 LE ADC counts.
+    // get-analog-in-raw (0xA5) reply: two uint16 LE ADC counts.
     function decodeAnalogInRaw(resp) {
         const r = asResponse(resp);
         if (!r || !r.ok || r.payload.length < 4) return null;
