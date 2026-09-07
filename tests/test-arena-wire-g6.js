@@ -123,6 +123,21 @@ checkThrows('ao mode 2 throws', () => Wire.encodeSetAoMode(2));
     const a = Wire.decodeAnalogIn(Uint8Array.from([0x06, 0x00, 0xa4, 0xa1, 0xe3, 0xd2, 0x04]));
     check('decodeAnalogIn ain1 signed', a.ain1Mv, -7263);
     check('decodeAnalogIn ain2', a.ain2Mv, 1234);
+    check(
+        'decodeAnalogIn pre-F1: no flags byte → null/false',
+        String([a.flags, a.bits12, a.cal1, a.cal2]),
+        String([null, false, false, false])
+    );
+    // F1 firmware appends a flags byte: 0x04 = 12-bit raw scale, 0x01/0x02 = per-channel cal.
+    const b = Wire.decodeAnalogIn(
+        Uint8Array.from([0x07, 0x00, 0xa4, 0xa1, 0xe3, 0xd2, 0x04, 0x06])
+    );
+    check(
+        'decodeAnalogIn F1 flags',
+        String([b.flags, b.bits12, b.cal1, b.cal2]),
+        '6,true,false,true'
+    );
+    check('decodeAnalogIn F1 values unchanged', String([b.ain1Mv, b.ain2Mv]), '-7263,1234');
 }
 
 console.log('\n=== trial-params (0x08) — golden vectors from play_pattern.py ===');

@@ -763,8 +763,11 @@ const ArenaWireG6 = (function () {
         ];
     }
 
-    // get-analog-in (0xA4) reply: two int16 LE mV (±10V front-end, calibration
-    // TBD — bench diagnostic values, not precision reads).
+    // get-analog-in (0xA4) reply: two int16 LE mV on the nominal ±10 V scale,
+    // plus — since firmware F1 (analog-input-plan § 3) — a flags byte:
+    // bit0 = channel 1 per-board calibration applied (F2), bit1 = channel 2,
+    // bit2 = raw scale is 12-bit. Pre-F1 firmware sends 4 bytes → flags null,
+    // all false (10-bit, uncalibrated). Bench diagnostic values until calibrated.
     function decodeAnalogIn(resp) {
         const r = asResponse(resp);
         if (!r || !r.ok || r.payload.length < 4) return null;
@@ -772,7 +775,15 @@ const ArenaWireG6 = (function () {
             const u = lo | (hi << 8);
             return u >= 0x8000 ? u - 0x10000 : u;
         };
-        return { ain1Mv: i16(r.payload[0], r.payload[1]), ain2Mv: i16(r.payload[2], r.payload[3]) };
+        const flags = r.payload.length >= 5 ? r.payload[4] : null;
+        return {
+            ain1Mv: i16(r.payload[0], r.payload[1]),
+            ain2Mv: i16(r.payload[2], r.payload[3]),
+            flags: flags,
+            cal1: flags !== null && !!(flags & 0x01),
+            cal2: flags !== null && !!(flags & 0x02),
+            bits12: flags !== null && !!(flags & 0x04)
+        };
     }
 
     // set-firmware-file (0xE0) reply: uint32 LE CRC-32 of the stored image.

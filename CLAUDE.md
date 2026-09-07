@@ -214,6 +214,11 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   firmware's ASCII error payload on non-ok status — keep that for new ops.
   New `.cmenu` popups: the document click-away closer ignores clicks inside
   `.cmenu-pop`; one-shot `.cmenu-item`s (not in a `.cmenu-row`) auto-close.
+  **Periodic reads (the Analog In panel's 10 Hz poller, `js/studio-analog-in.js`)
+  go through `session.send` directly, NOT `send()`** — `send()` logs every command
+  and would flood the Console log; log state transitions instead. Any new poller must
+  be single-flight and gated on `session.running` (a run owns the link) — reuse
+  `StudioAnalogIn.createPoller` rather than adding another `setInterval`.
 - **Metadata / controlled-vocab sourcing (THE rule):** when a **course repo is
   configured AND signed in**, ALL metadata vocabularies load from that repo (its
   root-level YAML) and their ↗ source links repoint there — the connected repo is
