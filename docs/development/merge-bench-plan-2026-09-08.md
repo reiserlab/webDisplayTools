@@ -12,7 +12,6 @@ land. Gates are explicit — a PR merges only when its gate row is green.
 | **#188** readers v0.73 (`js/runlog-format.js`) | webDisplayTools | #186 branch → retarget to main after #186 | rebase (dashboard `app.js`, `index.html`, `tests/test-analysis.js` conflict with #184/#185), CI green, bench gate B1 |
 | **#190** Console Analog In S1 v0.74 | webDisplayTools | main | rebase after #186/#188 (Studio HTML, release notes, pixi.toml), bench gate B2 |
 | **#191** analog calibration UI S2 v0.75 | webDisplayTools | #190 | retarget after #190; needs fw F2 on hardware; bench gate B4 |
-| **#189** analog-input plan (docs) | webDisplayTools | main | none — merge any time |
 | **#178** data-repo registry | webDisplayTools | main | rebase; **bump v0.72 → v0.76** (collides with #186); rig checklist in the PR |
 | **#175** Isabel's closed-loop bias | webDisplayTools | main | Isabel rebases (runner + tests + Studio conflicts, 10 behind); confirm still wanted |
 | **fw #46** F1 12-bit ADC + G3 gain | firmware | main | bench gate B3 on a **LAB-209-reworked board** |
@@ -47,19 +46,16 @@ fps meter.
       label/hover into the `size` column, kept both test blocks; fresh cache stamps
       `?v=20260907-1`. Dashboard test + full suite green, Prettier clean; force-pushed.
       #188 still bases on #186's branch — retarget → main after #186 merges.
-- [ ] **NEW — index builder is gzip-blind.** `scripts/build-runlog-index.py` (merged in
-      #187) skips `*.jsonl.gz` in local mode (`# gz handled once behavior_v2 lands`) and
-      filters `.endswith('.jsonl')` in `--github` mode. After #186 every new run is `.gz`, so
-      `index.json` stops gaining entries and the catalog's Start/Duration read "—" for new
-      runs. Fix before or with the #186/#188 merge: accept `.jsonl.gz`, inflate the 64 KB
-      head with a truncation-tolerant `zlib.decompressobj(16 + zlib.MAX_WBITS)` for
-      `run_metadata`, and for the tail either download the whole `.gz` (a 1 h run is ~4 MB —
-      acceptable in the Action) or take `logging_stopped` from the bridge's `run_metadata`
-      if it is ever written there. Re-install the script in `cshl-2026-course/.github/scripts/`
-      (byte-identical). Part of gate B1's last checkbox.
+- [x] ~~Index builder is gzip-blind~~ — fixed 2026-09-07 evening in a follow-up PR to #187
+      (`fix/runlog-index-gzip`): `.jsonl.gz` read whole + inflated, head/tail parsing
+      unchanged; index byte-identical for all 149 v1 logs in the course clone; 9 gz twins of
+      real logs identical apart from `file`/`size`; 17-check test in `pixi run test`.
+      **Still to do:** merge it, then re-install the script byte-identical into
+      `cshl-2026-course/.github/scripts/` (the Action runs a copy). Part of gate B1's last
+      checkbox.
 - [ ] Corpus gates (local clone `cshl-2026-course`): `python scripts/runlog-v2-corpus.py`
       and `node dashboard/data-browser/tests/corpus-v2-parity.js` — expect 164/164 both.
-- [ ] Merge **#189** (docs) while waiting for CI.
+- [x] ~~Merge #189~~ — merged 2026-09-07 evening.
 
 ### Afternoon (rig) — **gate B1: v2 end to end**
 
