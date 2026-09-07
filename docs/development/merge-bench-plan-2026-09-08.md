@@ -50,9 +50,11 @@ fps meter.
       (`fix/runlog-index-gzip`): `.jsonl.gz` read whole + inflated, head/tail parsing
       unchanged; index byte-identical for all 149 v1 logs in the course clone; 9 gz twins of
       real logs identical apart from `file`/`size`; 17-check test in `pixi run test`.
-      **Still to do:** merge it, then re-install the script byte-identical into
-      `cshl-2026-course/.github/scripts/` (the Action runs a copy). Part of gate B1's last
-      checkbox.
+      Merged as #193 (main `7b4e533`) and installed byte-identical into
+      `cshl-2026-course/.github/scripts/` (commit `37d003e`); a `workflow_dispatch` full
+      rebuild ran green on the live repo — every folder "index.json unchanged — skipped",
+      i.e. the new script reproduces the existing indexes exactly. Gate B1's last checkbox
+      now only needs a real `.gz` run to appear in an index.
 - [ ] Corpus gates (local clone `cshl-2026-course`): `python scripts/runlog-v2-corpus.py`
       and `node dashboard/data-browser/tests/corpus-v2-parity.js` — expect 164/164 both.
 - [x] ~~Merge #189~~ — merged 2026-09-07 evening.
