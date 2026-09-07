@@ -1,0 +1,64 @@
+# runlog-index — keep runlogs/<folder>/index.json current.
+#
+# Installed into every Arena data repo by webDisplayTools/scripts/seed-data-repo.sh
+# (source of truth: webDisplayTools/scripts/data-repo-workflows/runlog-index.yml;
+# the script it runs is a copy of webDisplayTools/scripts/build-runlog-index.py).
+#
+# Why: the data-browser dashboard shows each run's start / duration / end state
+# from this index, because a browser cannot Range-read a file tail from GitHub
+# (CORS preflight 403). The index has ONE writer — this workflow — and is rebuilt
+# per folder from the files actually present, so Arena Studio auto-commits,
+# hand-pushed large logs, migrations and deletions are all picked up.
+#
+# Loop guard: the bot's own commits touch only index.json, which the `paths`
+# filter excludes. Concurrency: runs queue instead of racing.
+name: runlog index
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'runlogs/**'
+      - '!runlogs/**/index.json'
+  workflow_dispatch: {}   # rebuild every folder by hand
+permissions:
+  contents: write
+concurrency:
+  group: runlog-index
+  cancel-in-progress: false
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github   # never pull the multi-GB logs
+          sparse-checkout-cone-mode: true
+      - name: Folders touched by this push
+        id: touched
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          # Changed files from the compare API (independent of push-payload shape /
+          # truncation). workflow_dispatch → no range → rebuild every folder.
+          if [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] && ! echo "$BEFORE" | grep -q '^0*$'; then
+            files=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$AFTER" --paginate --jq '.files[].filename' || true)
+          else
+            files=""
+          fi
+          folders=$(printf '%s\n' "$files" | awk -F/ '$1=="runlogs" && NF>=3 && $NF!="index.json" {print $2}' | sort -u)
+          if [ -n "$folders" ]; then
+            args=$(printf -- '--folder %s ' $folders); list=$(echo $folders | tr ' ' ',')
+          else
+            args=""; list="ALL"
+          fi
+          echo "args=$args" >> "$GITHUB_OUTPUT"; echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "changed files: $(printf '%s\n' "$files" | grep -c . || true) → folders: $list"
+      - name: Rebuild index.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Folders: ${{ steps.touched.outputs.list }}"
+          python3 .github/scripts/build-runlog-index.py --github "$GITHUB_REPOSITORY" --branch main --write ${{ steps.touched.outputs.args }}

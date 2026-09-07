@@ -874,7 +874,8 @@ async function browseGithub() {
                 );
                 const descriptor = A.parseMetadataPrefix(prefix, item.name, item.path);
                 // Start / duration / end state come from the folder's index.json
-                // (scripts/build-runlog-index.py; Studio append planned). A tail Range
+                // (scripts/build-runlog-index.py, run by the data repo's runlog-index
+                // GitHub Action on every push under runlogs/). A tail Range
                 // read was tried first but the browser's CORS preflight is refused by
                 // raw.githubusercontent.com — G.fetchSuffix stays for non-browser use.
                 const indexed =
