@@ -39,14 +39,24 @@ fps meter.
 
 - [ ] **Course benches:** `git pull` + restart `pixi run bridge` (bridge 3.0 is on main; an
       old bridge still works with old Studios, the ack just becomes visible).
-- [ ] Rebase `claude/runlog-behavior-v2-studio` onto `origin/main`; resolve
-      `docs/development/runlog-behavior-v2-plan.md` (take main's text + the PR's
-      implementation notes); `pixi run test`; force-push → #186 CI runs.
-- [ ] Rebase `claude/runlog-behavior-v2-readers` onto the rebased studio branch; resolve the
-      three dashboard files (keep #184/#185's catalog columns + this PR's `.gz`/normalizer
-      wiring); `pixi run test`; `node dashboard/data-browser/tests/test-analysis.js`;
-      force-push. Retarget #188 → main only after #186 merges (or merge both from #188's
-      branch in one go — see afternoon).
+- [x] ~~Rebase #186 onto main~~ — done 2026-09-07 evening (clean: git dropped the
+      already-squashed bridge commit); full suite green; force-pushed.
+- [x] ~~Rebase #188 onto the rebased #186~~ — done 2026-09-07 evening. Three dashboard
+      files resolved: kept #184/#185's column registry and per-folder `index.json` lookup,
+      swapped the `.jsonl` filters for `F.isRunlogName`, ported the readers' gz-aware size
+      label/hover into the `size` column, kept both test blocks; fresh cache stamps
+      `?v=20260907-1`. Dashboard test + full suite green, Prettier clean; force-pushed.
+      #188 still bases on #186's branch — retarget → main after #186 merges.
+- [ ] **NEW — index builder is gzip-blind.** `scripts/build-runlog-index.py` (merged in
+      #187) skips `*.jsonl.gz` in local mode (`# gz handled once behavior_v2 lands`) and
+      filters `.endswith('.jsonl')` in `--github` mode. After #186 every new run is `.gz`, so
+      `index.json` stops gaining entries and the catalog's Start/Duration read "—" for new
+      runs. Fix before or with the #186/#188 merge: accept `.jsonl.gz`, inflate the 64 KB
+      head with a truncation-tolerant `zlib.decompressobj(16 + zlib.MAX_WBITS)` for
+      `run_metadata`, and for the tail either download the whole `.gz` (a 1 h run is ~4 MB —
+      acceptable in the Action) or take `logging_stopped` from the bridge's `run_metadata`
+      if it is ever written there. Re-install the script in `cshl-2026-course/.github/scripts/`
+      (byte-identical). Part of gate B1's last checkbox.
 - [ ] Corpus gates (local clone `cshl-2026-course`): `python scripts/runlog-v2-corpus.py`
       and `node dashboard/data-browser/tests/corpus-v2-parity.js` — expect 164/164 both.
 - [ ] Merge **#189** (docs) while waiting for CI.
