@@ -22,10 +22,16 @@ usage: build-runlog-index.py <clone-root> [--write] [--folder NAME ...]
   --folder may repeat (the Action passes only the folders a push touched).
   (default = dry run: prints the table; --write rewrites each index.json —
    on disk for a clone, via the Contents API for --github. --github reads only
-   a 64 KB head + 4 KB tail per file with Range requests on the raw URL, so it
-   never downloads the logs; needs `gh auth token` or $GITHUB_TOKEN.)
+   a 64 KB head + 4 KB tail per `.jsonl` with Range requests on the raw URL, so
+   it never downloads a plain log; needs `gh auth token` or $GITHUB_TOKEN.)
+
+Run logs committed since Arena Studio v0.72 are gzipped (`<name>.jsonl.gz`,
+run-log format behavior_v2 plan Part 2). gzip is not seekable, so a `.gz` is
+read whole (a 1 h run is ~4 MB compressed) and inflated; the same head/tail
+parsing then applies. `file` keeps the on-disk name (`x.jsonl.gz`) and `size`
+is the committed (compressed) size — what the dashboard catalog shows.
 """
-import json, os, sys, glob, subprocess, urllib.request, urllib.error, base64
+import json, os, sys, glob, subprocess, urllib.request, urllib.error, base64, gzip, zlib
 
 HEAD_BYTES = 65536
 TAIL_BYTES = 4096
@@ -89,12 +95,53 @@ def _raw_range(repo, branch, path, rng):
             last = e; time.sleep(1.5 * (attempt + 1))
     raise RuntimeError(f'{path}: {last}')
 
+def is_gz(name):
+    return name.lower().endswith('.gz')
+
+def inflate(raw):
+    """gzip bytes → text. Tolerates a truncated/corrupt trailer (a half-written
+    upload) by falling back to a streaming decompressor that keeps what it got."""
+    try:
+        return gzip.decompress(raw).decode('utf-8', 'replace')
+    except Exception:
+        d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        try: out = d.decompress(raw)
+        except zlib.error: out = b''
+        return out.decode('utf-8', 'replace')
+
+def head_tail(text):
+    return text[:HEAD_BYTES], text[-TAIL_BYTES:]
+
+def _raw_full(repo, branch, path):
+    """Whole-file read via raw.githubusercontent.com — only for `.jsonl.gz`
+    (gzip has no seekable tail; a 1 h run is ~4 MB compressed)."""
+    import time
+    tok = _token(); h = {}
+    if tok: h['Authorization'] = 'Bearer ' + tok
+    url = f'https://raw.githubusercontent.com/{repo}/{branch}/{urllib.request.quote(path)}'
+    last = None
+    for attempt in range(4):
+        try:
+            st, raw, hdr = _http(url, h)
+            if st != 200: raise RuntimeError(f'{path}: expected 200, got {st}')
+            return raw
+        except (ConnectionError, OSError, urllib.error.URLError) as e:
+            last = e; time.sleep(1.5 * (attempt + 1))
+    raise RuntimeError(f'{path}: {last}')
+
+def is_runlog_name(name):
+    n = name.lower()
+    return n.endswith('.jsonl') or n.endswith('.jsonl.gz')
+
 def bookends(path, size=None, head=None, tail=None):
     if head is None:
         size = os.path.getsize(path)
-        with open(path, 'rb') as fh:
-            head = fh.read(HEAD_BYTES).decode('utf-8', 'replace')
-            fh.seek(max(0, size - TAIL_BYTES)); tail = fh.read().decode('utf-8', 'replace')
+        if is_gz(path):
+            with open(path, 'rb') as fh: head, tail = head_tail(inflate(fh.read()))
+        else:
+            with open(path, 'rb') as fh:
+                head = fh.read(HEAD_BYTES).decode('utf-8', 'replace')
+                fh.seek(max(0, size - TAIL_BYTES)); tail = fh.read().decode('utf-8', 'replace')
     def recs(text):
         out = []
         for line in text.split('\n'):
@@ -125,11 +172,14 @@ def main_github(repo, branch, write, only):
     for d in sorted(dirs, key=lambda x: x['name']):
         name = d['name']
         if only and name not in only: continue
-        items = [i for i in _gh_api(repo, f"contents/{d['path']}?ref={branch}") if i['type'] == 'file' and i['name'].endswith('.jsonl')]
+        items = [i for i in _gh_api(repo, f"contents/{d['path']}?ref={branch}") if i['type'] == 'file' and is_runlog_name(i['name'])]
         runs = []
         for it in items:
-            head = _raw_range(repo, branch, it['path'], f'bytes=0-{HEAD_BYTES-1}')
-            tail = _raw_range(repo, branch, it['path'], f'bytes=-{TAIL_BYTES}') if it['size'] > TAIL_BYTES else head
+            if is_gz(it['name']):
+                head, tail = head_tail(inflate(_raw_full(repo, branch, it['path'])))
+            else:
+                head = _raw_range(repo, branch, it['path'], f'bytes=0-{HEAD_BYTES-1}')
+                tail = _raw_range(repo, branch, it['path'], f'bytes=-{TAIL_BYTES}') if it['size'] > TAIL_BYTES else head
             runs.append(bookends(it['path'], it['size'], head, tail))
         index = {'format_version': 1, 'folder': name, 'generated': 'scripts/build-runlog-index.py', 'runs': runs}
         total += len(runs)
@@ -155,7 +205,6 @@ def main():
         name = os.path.basename(folder)
         if only and name not in only: continue
         files = sorted(glob.glob(os.path.join(folder, '*.jsonl')) + glob.glob(os.path.join(folder, '*.jsonl.gz')))
-        files = [f for f in files if not f.endswith('.gz')]  # gz handled once behavior_v2 lands
         runs = [bookends(f) for f in files]
         index = {'format_version': 1, 'folder': name, 'generated': 'scripts/build-runlog-index.py', 'runs': runs}
         total += len(runs)
