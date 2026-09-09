@@ -26,6 +26,8 @@
  * in the browser for the scope replay / dashboard.
  */
 (function (global) {
+    'use strict';
+
     // Run-log FILE format helper (gzip + behavior_v2 compact arena echoes). Loaded
     // before this file as a classic script (js/runlog-format.js); under a stale
     // cache it may be missing — then v2 arena arrays are skipped (frames + runner
@@ -34,7 +36,6 @@
         (typeof global !== 'undefined' && global.RunlogFormat) ||
         (typeof require === 'function' ? require('./runlog-format.js') : null);
     let warnedNoFmt = false;
-    ('use strict');
 
     // Keep in sync with fictrac-bridge/bridge.py FT_TS_NS_PER_MS.
     const FT_TS_NS_PER_MS = 1e6;

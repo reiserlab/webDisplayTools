@@ -779,7 +779,7 @@
             sessionStartMs,
             // 'behavior_v2' | 'behavior_v1' | 'full' | 'legacy' | 'unknown'
             logFormat: normalizer ? normalizer.format : 'unknown',
-            rawBytes: text ? text.length : 0
+            rawBytes: text ? text.length : 0 // code units (≈ bytes for ASCII-dominant logs)
         };
         deriveSignals(run, options);
         assignFramesToSteps(run);

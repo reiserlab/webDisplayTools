@@ -649,7 +649,9 @@ function sizeTitle(descriptor) {
     const parts = [];
     if (Number.isFinite(descriptor.size))
         parts.push(`${gz ? 'compressed (gzip)' : 'file'} size ${formatBytes(descriptor.size)}`);
-    if (run && run.rawBytes) parts.push(`${formatBytes(run.rawBytes)} of JSONL text`);
+    // rawBytes is the inflated text's length in code units — a byte count for the
+    // ASCII-dominant logs we write, hence the ≈.
+    if (run && run.rawBytes) parts.push(`≈ ${formatBytes(run.rawBytes)} of JSONL text`);
     if (run && run.logFormat) parts.push(`format ${run.logFormat}`);
     return parts.join(' · ');
 }
