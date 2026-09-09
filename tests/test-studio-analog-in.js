@@ -257,6 +257,13 @@ async function main() {
             2
         );
         check('channel 2 fit', [ch2.ch, ch2.verdict], [2, 'ok']);
+        // Linear but offset by +1 V: slope is perfect, so this used to pass as ok.
+        const off = AI.summarizeSweep(
+            [0, 1000, 2000, 3000, 4000, 5000].map((v) => ({ aoMv: v, ai1Mv: v + 1000, ai2Mv: 0 })),
+            1
+        );
+        check('1 V offset with perfect slope → check, not ok', off.verdict, 'check');
+        check('offset reported in the text', /offset 1000 mV/.test(off.text), true);
         check(
             'sweepCsv',
             AI.sweepCsv(rows.slice(0, 2)),

@@ -320,8 +320,9 @@
     /**
      * rows: [{aoMv, ai1Mv, ai2Mv}], ch: 1|2 (the input the cable feeds).
      * Returns {ch, fit, rows:[{aoMv, aiMv, errMv}], verdict:'ok'|'check'|'fail', text}.
-     * Verdict: slope within ±5 % of 1 and max |err| ≤ 150 mV → ok; slope in
-     * ±15 % → check; else fail (an un-reworked board saturates near +10 V → fail).
+     * Verdict: slope within ±5 % of 1, |offset| ≤ 150 mV and max |err| ≤ 150 mV → ok
+     * (a loopback that reads AO + 1 V is linear but wrong — offset is diagnostic);
+     * slope in ±15 % → check; else fail (an un-reworked board saturates near +10 V → fail).
      */
     function summarizeSweep(rows, ch) {
         const key = ch === 2 ? 'ai2Mv' : 'ai1Mv';
@@ -335,7 +336,9 @@
         }));
         let verdict = 'fail';
         if (fit && isNum(fit.slope)) {
-            if (Math.abs(fit.slope - 1) <= 0.05 && fit.maxAbsErr <= 150) verdict = 'ok';
+            const slopeOk = Math.abs(fit.slope - 1) <= 0.05;
+            const offsetOk = Math.abs(fit.offset) <= 150;
+            if (slopeOk && offsetOk && fit.maxAbsErr <= 150) verdict = 'ok';
             else if (Math.abs(fit.slope - 1) <= 0.15) verdict = 'check';
         }
         const text = fit

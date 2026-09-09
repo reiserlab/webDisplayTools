@@ -20,7 +20,7 @@ history lives here. Newest first. (Per-session engineering detail stays in
   still has the swapped front-end resistors (LAB-209).
 - **Mode 4 gain field** now says what the number means: ×10, so 10 is unity = 100
   frames/s per volt (the G3 convention), and 2–5 gives the everyday 20–50 fps/V.
-- Loopback sweep: a refused `SET_AO_VOLTAGE` (e.g. Analog Out in `frame_number` mode) now aborts the sweep with a hint instead of recording readings against an unapplied level; a refused restore is reported. The live poller also pauses while the Console's FicTrac closed loop is active (it owns the link).
+- Loopback sweep: a refused `SET_AO_VOLTAGE` (e.g. Analog Out in `frame_number` mode) now aborts the sweep with a hint instead of recording readings against an unapplied level; a refused restore is reported. The live poller also pauses while the Console's FicTrac closed loop is active (it owns the link). The sweep verdict now also requires |offset| ≤ 150 mV — a linear reading 1 V high is `check`, not `ok`.
 
 ## v0.73 (2026-09-06) · Replay opens gzipped and `behavior_v2` run logs
 
