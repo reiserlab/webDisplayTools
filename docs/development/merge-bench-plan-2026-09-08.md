@@ -36,6 +36,10 @@ fps meter.
 
 ### Morning (desk)
 
+- [x] ~~Codex cross-review of all pending work~~ — done 2026-09-09 morning, see
+      `docs/development/codex-review-2026-09-09.md`: 7 true bugs fixed and pushed (#188 strict
+      mode; #190 sweep refusal + closed-loop gating, #191 rebased; fw #47 calibration guard +
+      mV clamp + controller_info bits); design suggestions listed for discussion.
 - [ ] **Course benches:** `git pull` + restart `pixi run bridge` (bridge 3.0 is on main; an
       old bridge still works with old Studios, the ack just becomes visible).
 - [x] ~~Rebase #186 onto main~~ — done 2026-09-07 evening (clean: git dropped the
