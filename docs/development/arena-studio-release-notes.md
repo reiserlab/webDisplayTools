@@ -14,6 +14,7 @@ history lives here. Newest first. (Per-session engineering detail stays in
   the stored record with the live raw counts on both scales; Clear returns a channel to
   the nominal scale; a **deadband** (default 20 mV) stops a static input from creeping
   the pattern in Mode 4. Writes are advanced-mode only and are recorded in the run log.
+- Calibration commands use a 2 s timeout (the controller averages 256 reads and writes EEPROM + the SD mirror) and only one calibration action runs at a time (a second click while one is in flight is refused with a note).
 
 ## v0.74 (2026-09-07) · Console "Analog In" panel — live readout + loopback self-test
 

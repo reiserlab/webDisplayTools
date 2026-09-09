@@ -5022,7 +5022,7 @@
     // firmware, user pause, a run in progress, or a sweep in flight.
     const AI = window.StudioAnalogIn;
     const aiMon = AI ? AI.createMonitor({ windowMs: 30000 }) : null;
-    const aiUser = { enabled: true, sweeping: false, lastSweep: null, lastFlags: undefined };
+    const aiUser = { enabled: true, sweeping: false, calibrating: false, lastSweep: null, lastFlags: undefined };
     function aiPanelOpen() {
         const p = document.querySelector('.panel[data-panel="ai"]');
         return !!(p && p.classList.contains('open'));
@@ -5200,15 +5200,22 @@
             const sum = $('cAiCalSum'); if (sum) sum.textContent = 'needs ai_cal firmware';
             return null;
         }
-        const r1 = await send(Wire.encodeGetAnalogCal(), 'GET_ANALOG_CAL 0xA7');
+        const r1 = await send(Wire.encodeGetAnalogCal(), 'GET_ANALOG_CAL 0xA7', { timeoutMs: 2000 });
         const rec = r1 && Wire.decodeAnalogCal(r1);
         if (!rec) { clog('analog cal: bad GET_ANALOG_CAL reply', 'err'); return null; }
-        const r2 = await send(Wire.encodeGetAnalogInRaw(), 'GET_ANALOG_IN_RAW 0xA5');
+        const r2 = await send(Wire.encodeGetAnalogInRaw(), 'GET_ANALOG_IN_RAW 0xA5', { timeoutMs: 2000 });
         const raws = r2 && Wire.decodeAnalogInRaw(r2);
         aiCalRenderTable(rec, raws);
         return rec;
     }
     async function aiCalAction(action, mv) {
+        // One calibration write at a time: the transport serialises bytes, but a
+        // double-click would queue a second EEPROM write behind the first.
+        if (aiUser.calibrating) { clog('analog cal: the previous calibration action is still in progress — wait for it', 'warn'); return; }
+        aiUser.calibrating = true;
+        try { await aiCalActionInner(action, mv); } finally { aiUser.calibrating = false; }
+    }
+    async function aiCalActionInner(action, mv) {
         if (!session || !session.connected) { clog('analog cal: not connected', 'err'); return; }
         if (!aiHasCal()) { clog('analog cal: controller lacks ai_cal (0xC2 bit 6) — needs firmware feat/ai-calibration or later', 'warn'); return; }
         const ch = Number(($('cAiCalCh') || {}).value) === 2 ? 2 : 1;
@@ -5216,7 +5223,9 @@
         try { bytes = Wire.encodeSetAnalogCal(ch, action, mv); }
         catch (e) { clog('analog cal: ' + (e.message || e), 'err'); return; }
         const label = 'SET_ANALOG_CAL 0xA6 ch ' + ch + ' ' + action + (action === 'setDeadband' ? ' ' + mv + ' mV' : '');
-        const resp = await send(bytes, label);
+        // 2 s: the controller averages 256 reads (~10 ms), writes EEPROM and the SD
+        // mirror — a slow card must not trip the 500 ms default and leave the UI stale.
+        const resp = await send(bytes, label, { timeoutMs: 2000 });
         const rec = resp && Wire.decodeAnalogCal(resp);
         if (!rec) return;
         const c = rec.channels[ch - 1];
@@ -5226,7 +5235,7 @@
         if (action === 'sampleOpen' && c.rawOpen < 3000) clog('analog cal: the +10 V point reads low (' + c.rawOpen + ' counts) — is the BNC really open? On a board without the LAB-209 rework both points saturate and the channel stays invalid', 'warn');
         const bridge = Studio.session && Studio.session.bridge;
         if (bridge && bridge.log) bridge.log({ event: 'analog_cal', channel: ch, action: action, deadband_mv: mv, record: rec });
-        const r2 = await send(Wire.encodeGetAnalogInRaw(), 'GET_ANALOG_IN_RAW 0xA5');
+        const r2 = await send(Wire.encodeGetAnalogInRaw(), 'GET_ANALOG_IN_RAW 0xA5', { timeoutMs: 2000 });
         aiCalRenderTable(rec, r2 && Wire.decodeAnalogInRaw(r2));
         aiUser.lastFlags = undefined; // force the flags text to refresh on the next sample
         if (aiPoller) aiPoller.tick();
