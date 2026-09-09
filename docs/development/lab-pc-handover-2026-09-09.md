@@ -163,3 +163,38 @@ the Console log (Copy button) and the bridge terminal output.
 correlation, Console-trial poller gate, auto-switch AO mode, safe-mode policy for the sweep.
 Telemetry ring-buffer proposal (`controller-telemetry-ring-buffer-proposal.md`) awaits the
 group's § 6 decisions; its bench work (T1–T6, L1–L4) starts after that, on a test firmware branch.
+
+## 9. Time permitting: a tiny bench launcher (so nobody types commands at the rig)
+
+A small window with a few buttons and a status line, nothing more. Purpose: the experimenter
+should never open a terminal to start FicTrac or the bridge.
+
+Buttons:
+
+- **Launch FicTrac** — runs the FicTrac executable with the rig's config file.
+- **Configure FicTrac** — runs FicTrac's interactive configuration routine (`configGui`, the
+  click-on-the-ball ROI/mask tool) on the same config file.
+- **Launch bridge** — runs `pixi run bridge` from the webDisplayTools checkout (optionally with
+  the FicTrac port if it differs from 60000).
+- **Open Studio** — opens the Studio URL in Chrome (Pages, or `pixi run serve` + localhost when
+  bench-testing a branch).
+
+Status line per process: not running / running (pid) / exited with code N, plus the last few
+lines of the bridge's output (it prints the log file name and `[cfg] applied …`). Buttons turn
+into **Stop** while a process runs; closing the window asks before killing children.
+
+Keep it boring:
+
+- Python + tkinter, run from the webDisplayTools pixi environment (`pixi run launcher`), so there is
+  nothing to install beyond what § 1 already lists. A `.bat` on the desktop can start it.
+- One small config file next to it (`launcher.json`): path to the FicTrac executable and config
+  GUI, path to the rig's FicTrac config, path to the webDisplayTools checkout, FicTrac UDP port,
+  Studio URL. First run: if a path is missing, a file picker asks once and saves it.
+- Subprocesses via `subprocess.Popen`; read their stdout on a thread into the status box; never
+  block the UI. No auto-restart, no daemons, no tray icon.
+- Lives in `fictrac-bridge/launcher.py` (same folder as the bridge, same pixi env) with a pixi task
+  `launcher = "python fictrac-bridge/launcher.py"`. A short section in `fictrac-bridge/README.md`.
+- Windows-first, but nothing Windows-specific in the code beyond the default executable name.
+
+Not for today unless B1 is done and merged. It changes nothing in the run-log path, so it can
+land as its own small PR whenever.
