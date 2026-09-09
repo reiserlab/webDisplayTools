@@ -91,6 +91,15 @@ with tempfile.TemporaryDirectory() as tmp:
     e3 = M.bookends(trunc)
     check(e3['run_id'] == 'r2' and e3['started_ms'] == 1788636439304, 'truncated gz: metadata + start still read')
     check(e3['stopped_ms'] is None and e3['duration_s'] is None and e3['complete'] is None, 'truncated gz: no invented end state')
+    check(e3.get('error') == 'gzip truncated', 'truncated gz: row is marked damaged, not merely unfinished')
+    check('error' not in e1 and 'error' not in e2, 'plain and clean-gz rows carry no error key (index unchanged for them)')
+
+    print('-- unreadable gz (not gzip at all, named .jsonl.gz) --')
+    junk = os.path.join(folder, 'p3__michael__2026-09-05T19-27-19__r5.jsonl.gz')
+    with open(junk, 'wb') as fh:
+        fh.write(b'this is not a gzip stream' * 100)
+    e5 = M.bookends(junk)
+    check(e5.get('error') == 'gzip unreadable' and 'run_id' not in e5, 'unreadable gz: marked, no metadata invented, never raises')
 
     print('-- aborted run without logging_stopped --')
     ab = os.path.join(folder, 'p3__michael__2026-09-05T19-27-19__r4.jsonl.gz')
@@ -104,7 +113,9 @@ with tempfile.TemporaryDirectory() as tmp:
     check(out.returncode == 0, 'CLI exit 0: ' + out.stdout.strip().splitlines()[-1])
     idx = json.load(open(os.path.join(folder, 'index.json')))
     files = sorted(r['file'] for r in idx['runs'])
-    check(files == sorted(os.path.basename(p) for p in (plain, gz, trunc, ab)), f'index lists all 4 files: {files}')
+    check(files == sorted(os.path.basename(p) for p in (plain, gz, trunc, ab, junk)), f'index lists all 5 files: {files}')
+    errs = {r['file']: r.get('error') for r in idx['runs']}
+    check(errs[os.path.basename(trunc)] == 'gzip truncated' and errs[os.path.basename(junk)] == 'gzip unreadable' and errs[os.path.basename(plain)] is None, 'errors land in index.json for the damaged files only')
     check(idx['format_version'] == 1 and idx['folder'] == 'rig9', 'index envelope unchanged')
 
     print('-- name filter for --github mode --')
