@@ -40,6 +40,11 @@ fps meter.
       `docs/development/codex-review-2026-09-09.md`: 7 true bugs fixed and pushed (#188 strict
       mode; #190 sweep refusal + closed-loop gating, #191 rebased; fw #47 calibration guard +
       mV clamp + controller_info bits); design suggestions listed for discussion.
+      Also rebased #186/#188/#190/#191 onto main afterwards: #193 and the two stacks all add
+      a test to the one-line `test =` task in pixi.toml, so #188 and #190 conflicted with main
+      until merged by hand (both tests kept). Whichever of #188/#190 merges second will hit
+      the same one-line pixi.toml conflict once more — the resolution is always "keep every
+      test".
 - [ ] **Course benches:** `git pull` + restart `pixi run bridge` (bridge 3.0 is on main; an
       old bridge still works with old Studios, the ack just becomes visible).
 - [x] ~~Rebase #186 onto main~~ — done 2026-09-07 evening (clean: git dropped the
