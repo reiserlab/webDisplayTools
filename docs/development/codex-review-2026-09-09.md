@@ -29,6 +29,21 @@ discussed.** § 1 is fixed and pushed; § 2–3 are for discussion; nothing else
 #188 and #190; both firmware environments build. **Everything in § 1 still needs the
 bench gates (B1–B4) — none of it has run on hardware.**
 
+### 1b. Discussion items Michael chose to do (2026-09-09, second pass)
+
+| Item | Change | Where |
+|---|---|---|
+| 4 | Loopback verdict also requires \|offset\| ≤ 150 mV (a linear reading 1 V high is `check`, not `ok`); test added | #190 |
+| 6 | Calibration commands use a 2 s timeout; one calibration action at a time (a second click is refused with a note). Read-before-write backup of the old record: not done (nice-to-have) | #191 |
+| 7 | Mode 4 frame skipping in O(1): whole part of the accumulator as one modular step, bounded, non-finite guard — same final frame as the old one-per-iteration loops | fw #47 |
+| 8 | Calibration points checked at sample time — open ≥ 3072 counts, ground within 1024..3072 — and refused with a reason instead of stored | fw #47 |
+| 9 | Index builder marks damaged `.jsonl.gz` rows (`error`: `gzip truncated` / `gzip unreadable`) + a WARNING line; plain rows unchanged (byte-identical on real folders). Merged as #194 and installed in the course repo | main |
+| 10 | `test_deadband_round_trip` gated behind `AI_CAL_DESTRUCTIVE` | fw #47 |
+
+Not taken up: 1 (large-commit retry — revisit before the first multi-hour run), 2 (ack
+correlation), 3 (auto-switch AO mode — abort-with-hint kept), 5 (Console-trial poller gate),
+11 (wording / safe-mode policy for the sweep), 12 (structural).
+
 ## 2. For discussion — Codex raised, not changed
 
 ### Run-log stack

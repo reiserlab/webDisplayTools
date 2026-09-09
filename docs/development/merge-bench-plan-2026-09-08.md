@@ -45,6 +45,10 @@ fps meter.
       until merged by hand (both tests kept). Whichever of #188/#190 merges second will hit
       the same one-line pixi.toml conflict once more — the resolution is always "keep every
       test".
+      Second pass (Codex discussion items 4/6/7/8/9/10) done and pushed: #190 (offset
+      criterion), #191 (2 s cal timeout + click lock, rebased again), fw #47 (O(1) Mode 4
+      skipping, plausibility-checked cal points, gated deadband test), #194 merged + installed
+      (damaged-gz rows carry `error`).
 - [ ] **Course benches:** `git pull` + restart `pixi run bridge` (bridge 3.0 is on main; an
       old bridge still works with old Studios, the ack just becomes visible).
 - [x] ~~Rebase #186 onto main~~ — done 2026-09-07 evening (clean: git dropped the
