@@ -15,7 +15,8 @@ Per run: run_id, file, size, started_ms (logging_started), stopped_ms
 (logging_stopped, else last runner rx_ms), duration_s, complete
 (true = runner 'sequence-complete' seen, false = 'aborted', null = unknown),
 plus the run_metadata fields the catalog shows (protocol_filename, experimenter,
-genotype, sex, fly_number, age, notes, rig_id, timestamp_start).
+genotype, sex, fly_number, age, notes, rig_id, timestamp_start). A damaged `.gz`
+additionally carries `error` ('gzip truncated' | 'gzip unreadable').
 
 usage: build-runlog-index.py <clone-root> [--write] [--folder NAME ...]
        build-runlog-index.py --github owner/repo [--branch main] [--write] [--folder NAME ...]
@@ -99,15 +100,18 @@ def is_gz(name):
     return name.lower().endswith('.gz')
 
 def inflate(raw):
-    """gzip bytes → text. Tolerates a truncated/corrupt trailer (a half-written
-    upload) by falling back to a streaming decompressor that keeps what it got."""
+    """gzip bytes → (text, error). error is None for a clean stream; 'gzip truncated'
+    when only a prefix could be recovered (a half-written upload — the head is still
+    indexed, the end state is unknown); 'gzip unreadable' when nothing could. The
+    error is carried into the index row so a damaged upload is visible as damaged,
+    not as a merely unfinished run."""
     try:
-        return gzip.decompress(raw).decode('utf-8', 'replace')
+        return gzip.decompress(raw).decode('utf-8', 'replace'), None
     except Exception:
         d = zlib.decompressobj(16 + zlib.MAX_WBITS)
         try: out = d.decompress(raw)
         except zlib.error: out = b''
-        return out.decode('utf-8', 'replace')
+        return out.decode('utf-8', 'replace'), ('gzip truncated' if out else 'gzip unreadable')
 
 def head_tail(text):
     return text[:HEAD_BYTES], text[-TAIL_BYTES:]
@@ -133,11 +137,12 @@ def is_runlog_name(name):
     n = name.lower()
     return n.endswith('.jsonl') or n.endswith('.jsonl.gz')
 
-def bookends(path, size=None, head=None, tail=None):
+def bookends(path, size=None, head=None, tail=None, error=None):
     if head is None:
         size = os.path.getsize(path)
         if is_gz(path):
-            with open(path, 'rb') as fh: head, tail = head_tail(inflate(fh.read()))
+            with open(path, 'rb') as fh: text, error = inflate(fh.read())
+            head, tail = head_tail(text)
         else:
             with open(path, 'rb') as fh:
                 head = fh.read(HEAD_BYTES).decode('utf-8', 'replace')
@@ -164,6 +169,9 @@ def bookends(path, size=None, head=None, tail=None):
     keep = ['run_id', 'rig_id', 'protocol_filename', 'protocol_sha256', 'experimenter', 'genotype', 'sex', 'fly_number', 'age', 'notes', 'timestamp_start', 'tool_version']
     entry = {k: meta.get(k) for k in keep if k in meta}
     entry.update({'file': os.path.basename(path), 'size': size, 'started_ms': started, 'stopped_ms': stopped, 'duration_s': dur, 'complete': complete})
+    if error:
+        entry['error'] = error  # only ever present for a damaged .gz — plain-file rows are unchanged
+        print(f'  WARNING {path}: {error}', file=sys.stderr)
     return entry
 
 def main_github(repo, branch, write, only):
@@ -175,12 +183,14 @@ def main_github(repo, branch, write, only):
         items = [i for i in _gh_api(repo, f"contents/{d['path']}?ref={branch}") if i['type'] == 'file' and is_runlog_name(i['name'])]
         runs = []
         for it in items:
+            err = None
             if is_gz(it['name']):
-                head, tail = head_tail(inflate(_raw_full(repo, branch, it['path'])))
+                text, err = inflate(_raw_full(repo, branch, it['path']))
+                head, tail = head_tail(text)
             else:
                 head = _raw_range(repo, branch, it['path'], f'bytes=0-{HEAD_BYTES-1}')
                 tail = _raw_range(repo, branch, it['path'], f'bytes=-{TAIL_BYTES}') if it['size'] > TAIL_BYTES else head
-            runs.append(bookends(it['path'], it['size'], head, tail))
+            runs.append(bookends(it['path'], it['size'], head, tail, err))
         index = {'format_version': 1, 'folder': name, 'generated': 'scripts/build-runlog-index.py', 'runs': runs}
         total += len(runs)
         known = sum(1 for r in runs if r['duration_s'] is not None); aborted = sum(1 for r in runs if r['complete'] is False)
