@@ -5021,6 +5021,11 @@
         if (!Array.isArray(Studio.capabilities) || !Studio.capabilities.includes('io_ext')) return { ok: false, reason: 'needs io_ext firmware' };
         if (!aiUser.enabled) return { ok: false, reason: 'paused' };
         if (session.running) return { ok: false, reason: 'paused — run active' };
+        // The Console's own FicTrac closed loop (bridge 'apply') streams 0x70 at
+        // ~100 Hz outside the runner — a 10 Hz read interleaved into that stream
+        // adds latency jitter to frames, so yield the link to it as well.
+        const br = Studio.session && Studio.session.bridge;
+        if (br && br.apply) return { ok: false, reason: 'paused — FicTrac closed loop active' };
         if (aiUser.sweeping) return { ok: false, reason: 'sweep running' };
         return { ok: true };
     }
@@ -5072,7 +5077,7 @@
             // Log transitions only — never per sample — and only ones a user acts on.
             if (state === 'error') clog('analog in: ' + reason, 'err');
             else if (state === 'polling') clog('analog in: live readout running', 'info');
-            else if (/run active|io_ext/.test(reason)) clog('analog in: ' + reason, 'warn');
+            else if (/run active|closed loop|io_ext/.test(reason)) clog('analog in: ' + reason, 'warn');
         }
     }) : null;
     function aiStartTicker() {
@@ -5116,8 +5121,15 @@
             prevMv = r0 && Wire.decodeAoVoltage ? Wire.decodeAoVoltage(r0) : null;
             const rows = [];
             for (const mv of plan) {
-                const ok = await send(Wire.encodeSetAoVoltage(mv), 'SET_AO_VOLTAGE 0xA0 ' + mv + ' mV (sweep)');
-                if (!ok) throw new Error('Analog Out refused ' + mv + ' mV');
+                // send() returns the reply frame even on an error status (it logs the
+                // firmware's reason) — decode it, or a refused step (e.g. AO in
+                // frame_number mode) would be recorded as if the level were applied.
+                const r = await send(Wire.encodeSetAoVoltage(mv), 'SET_AO_VOLTAGE 0xA0 ' + mv + ' mV (sweep)');
+                const d = r && Wire.decodeResponse(r);
+                if (!d || !d.ok) {
+                    throw new Error('Analog Out refused ' + mv + ' mV' + (d ? ' (status ' + d.status + ')' : '') +
+                        ' — is Analog Out in frame_number mode? Set the AO role to programmable (I/O panel) and retry');
+                }
                 await new Promise((r) => setTimeout(r, 150)); // DAC + front-end settle
                 const reads = [];
                 for (let i = 0; i < 3; i++) reads.push(await aiRead());
@@ -5139,7 +5151,13 @@
             clog('loopback sweep failed: ' + (e && e.message ? e.message : e), 'err');
             $('cAiSweepSum').textContent = 'failed';
         } finally {
-            if (prevMv != null) await send(Wire.encodeSetAoVoltage(prevMv), 'SET_AO_VOLTAGE 0xA0 ' + prevMv + ' mV (restore)');
+            if (prevMv != null) {
+                const rr = await send(Wire.encodeSetAoVoltage(prevMv), 'SET_AO_VOLTAGE 0xA0 ' + prevMv + ' mV (restore)');
+                const dd = rr && Wire.decodeResponse(rr);
+                if (!dd || !dd.ok) clog('loopback sweep: could not restore Analog Out to ' + prevMv + ' mV — the LED/AO level may be wrong; set it from the I/O or LED panel', 'err');
+            } else {
+                clog('loopback sweep: previous Analog Out level unknown — not restored (AO left at the last sweep step)', 'warn');
+            }
             aiUser.sweeping = false;
         }
     }
