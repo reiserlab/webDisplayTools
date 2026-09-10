@@ -286,6 +286,58 @@ un-reworked: sweep gives slope 0.0056 · offset 9980 mV → `fail` with the LAB-
 UI note from this session: the panel says `fail` for both a saturated board and a linear-but-wrong
 channel; `summarizeSweep` should name the case ("saturated — LAB-209" vs "gain error N %").
 
+#### F1 on the same board, later that evening (fw #46 rebased onto #48 = `aae3768`, `deploy-12-18-performance`)
+
+`0xA4` now returns 5 bytes, flags `0x04`; `tests/test_io_roles.py` 10 passed / 1 skipped; the Studio
+shows "12-bit · uncalibrated". AI1 only (AI2 hardware fault above).
+
+| Test | Result | Read |
+|---|---|---|
+| T6 loopback ×2 | slope 1.0576 / 1.0584 · offset 260 / 259 mV · max \|err\| 11 / 12 mV · 11 steps → `check` | repeatable to 0.1 %; residual ≈ 2 LSB and includes the MCP4725's own error — linear to ~10 mV. Gain +5.8 % and offset +260 mV are constant → F2 calibration removes both. `check` is the intended verdict (outside the ±5 % ok band = the calibration gap) |
+| T3 noise, ground cap, 200 @ 20 Hz | mean 284 mV · **std 9.5 mV = 1.9 LSB** · p-p 29 mV · drift +2 mV | std meets "≤ 1–2 LSB", **but the histogram is bimodal**: 271–276 mV (77) and 291–295 mV (80), a dip between; 32/199 steps jump > 4 LSB |
+| T3 at 50 Hz × 400 and 5 Hz × 100 | same two clusters, std 1.8–1.9 LSB; H/L sequence random (run-length mean 1.75–1.82, random ≈ 2.0) | **not poll-rate aliasing, not drift**: each 16-sample read lands at random on one of two levels ~20 mV apart, each level ~1 LSB tight |
+
+Interpretation: a disturbance whose period is shorter than the ≈ 160 µs back-to-back averaging burst
+(panel PWM, a DC-DC converter, the refresh timer…) — so **32× back-to-back averaging would not remove
+it**; spreading the samples across the disturbance period, or syncing to it, would. Find the source with
+a scope on AIN0 at the Teensy pin (5 min with the AD3 on a bench day) before changing the averaging.
+Consequence for § 6 decision 2 and CL1: the AI1 noise floor is ~30 mV p-p, so a 20 mV Mode 4 deadband
+is too thin at unity gain (100 fps/V → ±1–3 fps twitch); 35–40 mV, or a longer/spread averaging window.
+B3 still open: T2 (DMM, −10…+10 V) and CL2 (fps on AO) — need instruments; #46 merges after those.
+Sampling script: `t3_noise.py` (200× `0xA4` over pyserial; needs `PYTHONUTF8=1` on Windows) — worth
+adding to the firmware repo's `scripts/` as the T3 tool.
+
+**Source found (same evening): the noise and a ≈ 30 mV offset both scale with panel current.** T3 repeated
+with the display loaded — first dark → `ALL_ON` (0xFF) → dark, then a uniform GS16 frame streamed at gray
+levels 0, 1, 2, 4, 8, 12, 15, 0 (150 samples @ 20 Hz each, ground cap on AI1, AI2 open):
+
+| GS16 level | AI1 mean | AI1 std | AI1 jumps > 4 LSB | AI2 mean | AI2 std |
+|---|---|---|---|---|---|
+| 0 (dark) | 279 mV | 11.0 mV (2.3 LSB), two peaks | 34 | 5635 | 15.1 (3.1) |
+| 1 | 283 | 10.3 (2.1) | 34 | 5633 | 14.0 |
+| 2 | 286 | 10.1 (2.1) | 27 | 5634 | 14.1 |
+| 4 | 291 | 9.2 (1.9) | 11 | 5639 | 12.0 |
+| 8 | 298 | 7.2 (1.5) | 2 | 5651 | 9.4 |
+| 12 | 307 | 5.9 (1.2) | 1 | 5657 | 5.4 |
+| 15 (all on) | **313** | **5.2 (1.1), one peak** | **0** | **5663** | **4.7 (1.0)** |
+| 0 again | 283 | 11.0 (2.2) | 42 | 5630 | 14.3 |
+
+Two power-path effects, both monotonic in load, both identical on the two channels:
+
+1. **Offset: ≈ +2.2 mV per gray level, +33 mV from dark to all-on.** Equal in mV on a grounded input
+   (AI1) and a floating one at +5.6 V (AI2) ⇒ a common-mode shift — an IR drop in a return shared by the
+   panel supply and the analog front end, or the 10 V reference sagging with current. Calibration at one
+   load state cannot remove it; a pattern whose mean luminance changes during a Mode 4 trial moves the
+   input by up to ~30 mV (≈ 3 fps at unity gain). Constant-luminance stimuli (scrolling gratings) are
+   unaffected within a trial.
+2. **Ripple: the two-level ~20 mV noise fades as load rises** (2.3 → 1.1 LSB, jumps 34 → 0) — regulator
+   ripple / burst behaviour at light load that a 160 µs back-to-back averaging burst cannot cancel.
+
+Hardware questions for Will/Frank: which rail and return feed the analog front end and REF102 on the
+12-18 controller, and whether the front-end ground is a star from the supply or shared with the panel
+return. Firmware/host mitigations only paper over item 1; item 2 argues for spreading the averaging
+samples over ≥ one ripple period rather than 32× back-to-back.
+
 ### 5.2 Calibration (needs F2)
 
 - C1 Two-point procedure per channel; then DMM-verified −5 V and +5 V → error target
