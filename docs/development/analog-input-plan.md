@@ -286,6 +286,27 @@ un-reworked: sweep gives slope 0.0056 · offset 9980 mV → `fail` with the LAB-
 UI note from this session: the panel says `fail` for both a saturated board and a linear-but-wrong
 channel; `summarizeSweep` should name the case ("saturated — LAB-209" vs "gain error N %").
 
+#### F1 on the same board, later that evening (fw #46 rebased onto #48 = `aae3768`, `deploy-12-18-performance`)
+
+`0xA4` now returns 5 bytes, flags `0x04`; `tests/test_io_roles.py` 10 passed / 1 skipped; the Studio
+shows "12-bit · uncalibrated". AI1 only (AI2 hardware fault above).
+
+| Test | Result | Read |
+|---|---|---|
+| T6 loopback ×2 | slope 1.0576 / 1.0584 · offset 260 / 259 mV · max \|err\| 11 / 12 mV · 11 steps → `check` | repeatable to 0.1 %; residual ≈ 2 LSB and includes the MCP4725's own error — linear to ~10 mV. Gain +5.8 % and offset +260 mV are constant → F2 calibration removes both. `check` is the intended verdict (outside the ±5 % ok band = the calibration gap) |
+| T3 noise, ground cap, 200 @ 20 Hz | mean 284 mV · **std 9.5 mV = 1.9 LSB** · p-p 29 mV · drift +2 mV | std meets "≤ 1–2 LSB", **but the histogram is bimodal**: 271–276 mV (77) and 291–295 mV (80), a dip between; 32/199 steps jump > 4 LSB |
+| T3 at 50 Hz × 400 and 5 Hz × 100 | same two clusters, std 1.8–1.9 LSB; H/L sequence random (run-length mean 1.75–1.82, random ≈ 2.0) | **not poll-rate aliasing, not drift**: each 16-sample read lands at random on one of two levels ~20 mV apart, each level ~1 LSB tight |
+
+Interpretation: a disturbance whose period is shorter than the ≈ 160 µs back-to-back averaging burst
+(panel PWM, a DC-DC converter, the refresh timer…) — so **32× back-to-back averaging would not remove
+it**; spreading the samples across the disturbance period, or syncing to it, would. Find the source with
+a scope on AIN0 at the Teensy pin (5 min with the AD3 on a bench day) before changing the averaging.
+Consequence for § 6 decision 2 and CL1: the AI1 noise floor is ~30 mV p-p, so a 20 mV Mode 4 deadband
+is too thin at unity gain (100 fps/V → ±1–3 fps twitch); 35–40 mV, or a longer/spread averaging window.
+B3 still open: T2 (DMM, −10…+10 V) and CL2 (fps on AO) — need instruments; #46 merges after those.
+Sampling script: `t3_noise.py` (200× `0xA4` over pyserial; needs `PYTHONUTF8=1` on Windows) — worth
+adding to the firmware repo's `scripts/` as the T3 tool.
+
 ### 5.2 Calibration (needs F2)
 
 - C1 Two-point procedure per channel; then DMM-verified −5 V and +5 V → error target
