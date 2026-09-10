@@ -1,10 +1,11 @@
-# Run-log format `behavior_v2` + large-file commit path — PLAN (PR 1 bridge shipped; PRs 2–3 pending)
+# Run-log format `behavior_v2` + large-file commit path — PLAN (PRs 1–3 implemented 2026-09-06)
 
 Owner: Michael. Drafted 2026-09-06 from the analysis of rig03-sr run `rydc2tql`
-(40 s trials, 51.4 MB, failed to auto-commit). Status: **PR 1 (bridge) implemented
-2026-09-06** — see "PR 1 implementation notes" at the end; PR 2 (Studio) and PR 3
-(dashboard/readers) not started. Implementation lands as three PRs (bridge, Studio,
-dashboard) in that order.
+(40 s trials, 51.4 MB, failed to auto-commit). Status: **all three PRs implemented
+2026-09-06** (bridge #183 → Studio → readers, stacked) — see the implementation notes
+at the end. None bench-tested yet. **Merge order:** PR 3 (readers) must be live before
+or together with PR 2 (Studio): once PR 2 is live, new course runs commit as
+`.jsonl.gz`, which only PR 3's readers open.
 
 ## Problem
 
@@ -226,3 +227,61 @@ Studio (PR 2) and reader (PR 3) work must build on:
 - **Corpus result (164 logs, 1.28 GB, origin/main of cshl-2026-course):** all pass;
   totals in PR 1's description (1281.6 MB v1 → 655.6 MB v2 → 211.3 MB v2.gz at gzip
   level 6). The 51 MB `rydc2tql` run → 20.4 MB v2 → 6.2 MB v2.gz.
+
+## PR 2 implementation notes (Studio, 2026-09-06)
+
+- **`js/fictrac-bridge-client.js`:** `LOG_LEVELS = ['behavior_v2','behavior_v1','full']`
+  (default v2); handles `hello_ack` (→ `bridgeInfo`, `bridgeSupportsLevel(level)`) and
+  `log_control_ack` (→ `ackedLogLevel`, cleared by every `setLogging()` and on close);
+  new `'loglevel'` event `{source, requested, level, ok, levels, enabled, file}` plus an
+  `'err'` log line on mismatch; `waitForLogLevelAck(ms)` resolves the acked level or
+  null (old bridge / not connected / timeout).
+- **`js/studio-github.js`:** `gzipBytes(input)` (CompressionStream; rejects where
+  unavailable), `isGzip(bytes)`, Git Database builders (`reqCreateBlob`, `reqGetCommit`,
+  `reqCreateTree` — allowlisted path, `reqCreateCommit`, `reqUpdateRef` fast-forward
+  only), `directCommitLarge` (7-call sequence, per-step error reporting),
+  `commitFile` (routes by size; `LARGE_FILE_BYTES` = 30 MiB; `thresholdBytes` test hook;
+  result carries `via` + `bytes`).
+- **`arena_studio.html` v0.72:** `#fmLogLevel` v2/v1/full (v2 default; a stored v1 is
+  honored); Console `#cFtLogLevel` follows the `'loglevel'` event (⚠ + tooltip on
+  mismatch); run start awaits the ack ≤ 800 ms and names the level in the banner +
+  transcript (`WARN` level when it disagrees or is unconfirmed); `run_metadata` gets
+  `log_format` = acked level, or the inferred one for a non-acking bridge (`behavior_v1`
+  when v2 was requested, else the request itself); `commitRunLog` gzips → `<name>.jsonl.gz`
+  via `GH.commitFile`, falls back to raw `.jsonl` without CompressionStream, and reports
+  raw → gz size + the path used in the log line, the modal and the run-summary line.
+- **Not done here (PR 3):** readers. Until PR 3, `.jsonl.gz` files from a v0.72 Studio are
+  opened with `gunzip` / `bridge.py --convert`.
+- **Bench check when hardware is back:** recorded 20 s run → `.jsonl.gz` committed with the
+  size shown; banner names `behavior_v2`; then run against a deliberately old bridge
+  checkout and confirm the "bridge too old" warning + `log_format: behavior_v1`.
+
+## PR 3 implementation notes (readers, 2026-09-06)
+
+- **`js/runlog-format.js`** (classic dual-export; vendored byte-identical at
+  `dashboard/data-browser/vendor/runlog-format.js`, enforced by `tests/test-runlog-format.js`):
+  `isGzip`, `isRunlogName` (`.jsonl|.ndjson` with optional `.gz` — never bare `.json`, so `runlogs/<folder>/index.json` is not a run), `stripGz`,
+  `inflateIfGzip`, `readRunlogText(string|bytes|ArrayBuffer|Blob)`, `readRunlogPrefixText`
+  (truncation-tolerant gunzip for the catalog's 64 KB metadata reads), `isArenaArray`,
+  `expandV2Line` (exact v1 object; timeout ⇒ status/echo/ok all null), `compactV1Line`,
+  `detectFormat`, `createNormalizer()` (per-file state machine every reader feeds each
+  parsed line through), `convertV1ToV2Text` / `convertV2ToV1Text` (JS mirror of the bridge
+  converter — tests + parity).
+- **Dashboard:** `analysis-core.js parseJsonl` normalizes every line (v2 echoes reach
+  `p3LedEpochs`, stall forensics etc. as v1 objects); `run.logFormat` + `run.rawBytes`;
+  `parseFilename` strips `.gz`. `github-repo.js fetchRaw` reads BYTES and inflates on the
+  magic (prefix mode inflates a truncated gz). `app.js` loaders (repo / URL / local server /
+  dropped file) go through `readRunlogText`; catalog filters accept `.jsonl.gz`; new size
+  column (compressed, with inflated size + format in the hover). Cache-busting `?v=` bumped.
+- **Replay:** `js/runlog-replay.js parseRunLog` normalizes records (needs
+  `js/runlog-format.js` loaded first — `arena_studio.html` does; a stale cache degrades to
+  "v2 echoes skipped" with a console warning, frames + runner events still replay);
+  `js/arena-studio-alt.js` replay picker lists `.jsonl.gz` and inflates the picked file.
+  `arena_replay_viewer.html` receives data over its protocol module — unchanged.
+  `js/studio-runlog-adapter.js` does not read files — unchanged.
+- **Tests:** `tests/test-runlog-format.js` (new, in `pixi run test`); `tests/test-runlog-replay.js`
+  v2 case asserting identical samples/arenaFrames/events vs the equivalent v1;
+  `dashboard/data-browser/tests/test-analysis.js` re-reads the P3 fixture as v2 + gz and
+  asserts identical frames, arena_command objects, preference indices, LED epochs and page
+  CSV rows, plus metadata from a gz prefix; `dashboard/data-browser/tests/corpus-v2-parity.js`
+  runs that comparison over a whole clone (result in PR 3's description).

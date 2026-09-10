@@ -534,6 +534,12 @@ main {
   line-height: 1.2;
 }
 
+.run-row .run-size {
+  color: var(--text-dim, #8b949e);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
 .run-row .run-sex {
   color: #d4b5e9;
   text-transform: uppercase;

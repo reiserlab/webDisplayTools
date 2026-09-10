@@ -8,10 +8,11 @@
   <link rel="stylesheet" href="styles.css?v=20260906-3">
   <script defer src="https://cdn.plot.ly/plotly-3.6.0.min.js" charset="utf-8"></script>
   <script defer src="vendor/kinematics.js?v=20260710-1647"></script>
-  <script defer src="analysis-core.js?v=20260906-4"></script>
+  <script defer src="vendor/runlog-format.js?v=20260907-1"></script>
+  <script defer src="analysis-core.js?v=20260907-1"></script>
   <script defer src="plot-specs.js?v=20260906"></script>
-  <script defer src="github-repo.js?v=20260906-3"></script>
-  <script defer src="app.js?v=20260906-4"></script>
+  <script defer src="github-repo.js?v=20260907-1"></script>
+  <script defer src="app.js?v=20260907-1"></script>
 </head>
 <body>
   <header class="app-header">
@@ -40,7 +41,7 @@
       <div class="source-grid">
         <label class="file-button command-button">
           Open JSONL files
-          <input id="fileInput" type="file" accept=".jsonl,.ndjson,.json,text/plain" multiple>
+          <input id="fileInput" type="file" accept=".jsonl,.gz,.ndjson,.json,text/plain" multiple title="Open run logs (.jsonl or gzipped .jsonl.gz; behavior_v1 and behavior_v2 formats)">
         </label>
 
         <div class="inline-control url-loader">

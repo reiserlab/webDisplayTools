@@ -2134,8 +2134,9 @@
         <label class="gh-check"><input type="checkbox" id="ghDirect" title="Save commits straight to the target repo's default branch — no branch, no PR. Course-repo mode: safe there because bench-id namespacing means no two rigs write the same file"> Commit directly to default branch</label>
         <label class="gh-check"><input type="checkbox" id="ghArchivePatterns" title="Advanced: after each completed run, snapshot the SD card's patterns to pattern-sets/&lt;hash&gt;/patterns.zip in the repo (content-hash deduped) — redundancy for on-card edits. OFF by default: the SD bulk-download is still under investigation (it can disconnect the arena on large cards)."> Archive SD patterns to repo after each run <span class="dim">(advanced)</span></label>
         <div class="gh-row"><label for="fmLogLevel">Run logging</label>
-          <select id="fmLogLevel" title="FicTrac frame logging verbosity for recorded runs (and ad-hoc Console logging). behavior_v1 = the compact [ms,fc,idx,ft,x,y,hd] row the live scope + analysis dashboard use (default); full = the whole 25-column FicTrac record (debug/archival, ~4× larger). Asserted at run start — overrides the Console log toggle for deterministic experiment logging.">
-            <option value="behavior_v1">behavior_v1 (compact — default)</option>
+          <select id="fmLogLevel" title="Run-log format for recorded runs (and ad-hoc Console logging). behavior_v2 = compact arena-command echoes + the [ms,fc,idx,ft,x,y,hd] frame row the live scope + analysis dashboard use (default; ~0.4× the size of v1, lossless); behavior_v1 = the pre-2026-09 format (readable by every tool); full = the whole 25-column FicTrac record (debug/archival, ~4× larger). Asserted at run start — overrides the Console log toggle; the bridge acknowledges the level it will actually write and the run banner warns if it is too old for the chosen one.">
+            <option value="behavior_v2">behavior_v2 (compact — default)</option>
+            <option value="behavior_v1">behavior_v1 (legacy)</option>
             <option value="full">full 25-column (debug)</option>
           </select></div>
         <div class="gh-dest" id="ghDest">→ writes a local .yaml file (sign in to GitHub to open a PR instead)</div>
@@ -2249,7 +2250,7 @@
             <button class="pill log-only" id="btnLogClear">Clear</button>
             <button class="pill log-only" id="btnLogCopy" title="Copy log to clipboard">Copy</button>
             <button class="pill log-only" id="btnLogSave" title="Download the recorded run log (.json + .txt)" disabled>⬇ Save</button>
-            <button class="pill log-only" id="btnLogPush" title="Push this run's log to the course repo (runlogs/&lt;bench-id&gt;/) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one." disabled>⇪ Push log</button>
+            <button class="pill log-only" id="btnLogPush" title="Push this run's log to the course repo (runlogs/&lt;bench-id&gt;/, gzipped .jsonl.gz) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one." disabled>⇪ Push log</button>
           </span>
           <!-- Scope controls live ON the header row in scope mode (maximizes the
                canvas); hidden in log mode. The .acts group is hidden in scope mode. -->
@@ -2917,7 +2918,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.71 | 2026-09-04 16:39 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.73 | 2026-09-06 18:29 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -2949,7 +2950,8 @@
 <script src="js/studio-runlog-adapter.js"></script>
 <script src="js/kinematics.js"></script> <!-- shared scope/dashboard kinematic derivations -->
 <script src="js/studio-github.js"></script>
-<script src="js/runlog-replay.js?v=20260712-stackfix"></script>
+<script src="js/runlog-format.js?v=20260906-1829"></script>
+<script src="js/runlog-replay.js?v=20260906-1829"></script>
 <script src="js/runtime-controls.js"></script>
 <script src="js/arena-replay-viewer-protocol.js"></script>
 
@@ -3287,7 +3289,7 @@
     // ---- course-repo run-log auto-commit (CSHL pipeline) -----------------------
     // On COMPLETED recorded runs only: export the bridge's JSONL — the canonical
     // run artifact (run_metadata line + every runner/arena/FicTrac event) — and
-    // direct-commit it as ONE file under runlogs/<bench-id>/. Aborted or
+    // direct-commit it gzipped as ONE `.jsonl.gz` under runlogs/<bench-id>/. Aborted or
     // disconnected runs never auto-commit (deliberate: a partial run is bench
     // debris until someone decides otherwise). Filename STAMP is colon-free —
     // a raw ISO ':' breaks git checkout on Windows clones.
@@ -3391,26 +3393,45 @@
         const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
         const proto = GH.slug(String(log.meta.protocol_filename || 'protocol').replace(/\.ya?ml$/i, ''));
         const who = GH.slug(log.meta.experimenter || 'unknown');
-        const path =
+        const basePath =
             'runlogs/' + cs.benchId + '/' +
             proto + '__' + who + '__' + stamp + '__' + (log.meta.run_id || 'run') + '.jsonl';
-        rawLine((opts.manual ? 'pushing' : 'committing') + ' run log → ' + cs.repo.full + ' · ' + path + ' (' + exported.content.length + ' chars)…', 'info');
-        showUploadModal('Uploading run log…', { busy: true, msg: 'committing to ' + cs.repo.full + '\n' + path });
+        // The archival format is `.jsonl.gz` (behavior_v2 plan, Part 2): gzip in the
+        // browser (lossless, 6–8× smaller) so 40 s and hour-long runs clear the
+        // Contents API's ~35 MiB ceiling; GH.commitFile routes anything still
+        // over 30 MiB through the Git Database API. Readers inflate on the gzip
+        // magic. A browser without CompressionStream falls back to raw .jsonl.
+        const fmtMB = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' KB');
+        const rawBytes = new TextEncoder().encode(exported.content).length;
+        let path = basePath + '.gz';
+        let payload = null;
         try {
-            const res = await GH.directCommit(fetch, {
+            payload = { contentBytes: await GH.gzipBytes(exported.content) };
+        } catch (e) {
+            rawLine('gzip unavailable (' + (e && e.message ? e.message : e) + ') — committing uncompressed .jsonl', 'warn');
+            path = basePath;
+            payload = { contentText: exported.content };
+        }
+        const sizeNote = payload.contentBytes
+            ? fmtMB(rawBytes) + ' → ' + fmtMB(payload.contentBytes.length) + ' gzip'
+            : fmtMB(rawBytes);
+        rawLine((opts.manual ? 'pushing' : 'committing') + ' run log → ' + cs.repo.full + ' · ' + path + ' (' + sizeNote + ')…', 'info');
+        showUploadModal('Uploading run log…', { busy: true, msg: 'committing to ' + cs.repo.full + '\n' + path + '\n' + sizeNote });
+        try {
+            const res = await GH.commitFile(fetch, Object.assign({
                 owner: cs.repo.owner,
                 repo: cs.repo.name,
                 token: token,
                 path: path,
-                message: 'runlog: ' + proto + ' on ' + cs.benchId + ' (run ' + (log.meta.run_id || '?') + ')',
-                contentText: exported.content
-            });
+                message: 'runlog: ' + proto + ' on ' + cs.benchId + ' (run ' + (log.meta.run_id || '?') + ')'
+            }, payload));
             if (!res.ok) throw new Error(res.error || 'HTTP ' + res.status);
-            rawLine('✓ run log committed: ' + path, 'info');
-            showUploadModal('✓ Run log committed', { ok: true, msg: cs.repo.full + '\n' + path });
+            const via = res.via === 'git-db' ? ' · via Git Database API (large file)' : '';
+            rawLine('✓ run log committed: ' + path + ' (' + fmtMB(res.bytes) + via + ')', 'info');
+            showUploadModal('✓ Run log committed', { ok: true, msg: cs.repo.full + '\n' + path + '\n' + fmtMB(res.bytes) + via });
             setTimeout(hideUploadModal, 1800); // auto-dismiss on success
             const saved = $('rlSaved');
-            if (saved && !/committed to course repo/.test(saved.textContent)) saved.textContent += ' · ✓ committed to course repo';
+            if (saved && !/committed to course repo/.test(saved.textContent)) saved.textContent += ' · ✓ committed to course repo (' + fmtMB(res.bytes) + ')';
             // Redundancy: stash the actual on-card patterns (deduped by content
             // hash). Best-effort — a failure here never fails the run-log commit.
             try {
@@ -4706,22 +4727,28 @@
     })();
 
     // ---- Run logging level (runtime setting; File ▾ → Run logging) ------------
-    // Frame-logging verbosity for recorded runs AND ad-hoc Console logging. A
-    // SESSION setting (localStorage), NOT per-protocol: `behavior_v1` (compact,
-    // default) or `full` (the 25-column record). The runner asserts it at run start
-    // (deterministic — overrides the Console log toggle); the Console keeps the
-    // manual on/off for non-protocol sessions and shows this level read-only.
+    // Run-log format for recorded runs AND ad-hoc Console logging. A SESSION
+    // setting (localStorage), NOT per-protocol: `behavior_v2` (compact arena
+    // echoes, default since v0.72), `behavior_v1` (the pre-2026-09 format — an
+    // explicitly stored choice is honored for one release, then dropped) or `full`
+    // (the 25-column record). The runner asserts it at run start (deterministic —
+    // overrides the Console log toggle); the bridge ACKS the level it will actually
+    // write (a pre-3.0 bridge never acks and silently writes behavior_v1), and the
+    // Console shows the acked level read-only.
+    const LOG_LEVELS = ['behavior_v2', 'behavior_v1', 'full'];
     function sessionLogLevel() {
-        return localStorage.getItem('studio_log_level') === 'full' ? 'full' : 'behavior_v1';
+        const v = localStorage.getItem('studio_log_level');
+        return LOG_LEVELS.includes(v) ? v : 'behavior_v2';
     }
     Studio.sessionLogLevel = sessionLogLevel;
     function applyLogLevel(level) {
-        const lvl = level === 'full' ? 'full' : 'behavior_v1';
+        const lvl = LOG_LEVELS.includes(level) ? level : 'behavior_v2';
         localStorage.setItem('studio_log_level', lvl);
         const b = Studio.session && Studio.session.bridge;
         if (b && b.setLogLevel) b.setLogLevel(lvl); // so ad-hoc Console logging uses it too
         const sel = $('fmLogLevel'); if (sel && sel.value !== lvl) sel.value = lvl;
-        const disp = $('cFtLogLevel'); if (disp) disp.textContent = lvl;
+        const disp = $('cFtLogLevel');
+        if (disp) { disp.textContent = lvl; disp.title = 'Requested log format (read-only here — change it in File ▾ → Run logging); the bridge confirms it when logging starts'; }
     }
     Studio.applyLogLevel = applyLogLevel;
     (function initLogLevel() {
@@ -4798,6 +4825,19 @@
         if (Studio.session.bridge) {
             Studio.session.bridge.on('log', (m, kind) => rawLine('bridge: ' + m, kind === 'err' ? 'err' : 'info'));
             Studio.session.bridge.on('status', (text, kind) => rawLine('bridge: ' + text, kind === 'err' ? 'err' : 'info'));
+            // Level ack (bridge ≥ 3.0): the Console mirror shows what the bridge
+            // will ACTUALLY write, flagged when it is too old for the chosen level.
+            Studio.session.bridge.on('loglevel', (info) => {
+                const disp = $('cFtLogLevel');
+                if (!disp || !info) return;
+                if (info.ok) {
+                    disp.textContent = info.level || info.requested;
+                    disp.title = 'Log format confirmed by the bridge' + (info.levels ? ' (it offers: ' + info.levels.join(', ') + ')' : '') + ' — change it in File ▾ → Run logging';
+                } else {
+                    disp.textContent = (info.level || '?') + ' ⚠';
+                    disp.title = 'Bridge too old for ' + info.requested + ' — it logs ' + (info.level || 'behavior_v1') + '. Restart `pixi run bridge` from the current checkout.';
+                }
+            });
         }
         Studio.session.on('disconnect', (info) => {
             if (info && info.involuntary && Studio.activeRunLog && !Studio.activeRunLog.summary) {
@@ -7771,7 +7811,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         // NOT per-protocol. Assert it here so a recorded run logs deterministically
         // at the chosen level — this OVERRIDES any ad-hoc Console log toggle state.
         if (bridge.setLogLevel)
-            bridge.setLogLevel(Studio.sessionLogLevel ? Studio.sessionLogLevel() : 'behavior_v1');
+            bridge.setLogLevel(Studio.sessionLogLevel ? Studio.sessionLogLevel() : 'behavior_v2');
         bridge.setLogging(true); // universal default-on: no experiment untracked
         if ($('cFtLog')) $('cFtLog').checked = true; // keep the console toggle honest
         const ftUrl = ((($('cFtUrl') || {}).value) || 'ws://localhost:8765').trim();
@@ -7781,18 +7821,31 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
                 await new Promise((r) => setTimeout(r, 25));
             }
         }
+        // Log-level negotiation (behavior_v2 plan, Part 1 §5): a ≥3.0 bridge acks
+        // the level it will ACTUALLY write; a pre-3.0 bridge never acks and silently
+        // writes behavior_v1 (or full, if it was launched with --log-frames). Name
+        // the outcome in the banner + transcript so a stale bridge is visible at run
+        // start, not at analysis time. `logLevel` is what goes into run_metadata.
+        const wantLevel = bridge.logLevel || 'behavior_v2';
+        const ackLevel = bridge.connected && bridge.waitForLogLevelAck ? await bridge.waitForLogLevelAck(800) : null;
+        const logLevel = ackLevel || (wantLevel === 'behavior_v2' ? 'behavior_v1' : wantLevel);
+        Studio._runLogFormat = bridge.connected ? logLevel : null;
+        const levelNote = !bridge.connected ? ''
+            : ackLevel === wantLevel ? ' (' + ackLevel + ')'
+            : ackLevel ? ' ⚠ bridge too old for ' + wantLevel + ' — logging ' + ackLevel + ' (restart `pixi run bridge` from the current checkout)'
+            : ' ⚠ bridge did not confirm the log level (old bridge?) — assuming ' + logLevel + '; restart `pixi run bridge` from the current checkout';
         const ftMsg = bridge.connected
-            ? 'bridge connected (' + ftUrl + ') · run logging to JSONL' + (ftNames.length ? ' · fictrac closed-loop armed' : '')
+            ? 'bridge connected (' + ftUrl + ') · run logging to JSONL' + levelNote + (ftNames.length ? ' · fictrac closed-loop armed' : '')
             : 'bridge NOT connected (' + ftUrl + ') — ' +
               (ftNames.length ? 'closed-loop + ' : '') +
               'JSONL run logging INACTIVE. Start it (`pixi run bridge`) and re-run.';
-        Studio.rawLog((bridge.connected ? '' : '⚠ ') + ftMsg, bridge.connected ? 'info' : 'err');
+        Studio.rawLog((bridge.connected ? '' : '⚠ ') + ftMsg, !bridge.connected ? 'err' : (ackLevel === wantLevel ? 'info' : 'warn'));
         // Also into the RECORDED transcript — a saved runlog.txt must be
         // self-documenting about whether the bridge was live (bench finding:
         // the pre-fix log showed fictracApply firing into nothing, silently).
         if (Studio.activeRunLog) {
             Studio.activeRunLog.event('log', {
-                level: bridge.connected ? 'INFO' : 'WARN',
+                level: !bridge.connected || ackLevel !== wantLevel ? 'WARN' : 'INFO',
                 message: ftMsg
             });
         }
@@ -7800,8 +7853,11 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         // bridge log (setLogging(true) above rotated a fresh file server-side;
         // messages ride the same socket FIFO, so this lands right after the
         // logging_started marker). The committed artifact is self-describing.
+        // `log_format` names the line format of THIS file (the bridge's acked
+        // level, or the inferred one for a non-acking old bridge) so readers that
+        // skip the frame_schema line still know what they hold.
         if (isExperiment && bridge.connected && Studio.activeRunLog) {
-            bridge.log(Object.assign({ event: 'run_metadata', rig_id: Studio.rigId || null },
+            bridge.log(Object.assign({ event: 'run_metadata', rig_id: Studio.rigId || null, log_format: logLevel },
                 Studio.activeRunLog.meta));
         }
     }

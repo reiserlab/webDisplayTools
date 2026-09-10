@@ -355,6 +355,104 @@ check(
     null
 );
 
+// ── parseRunLog: behavior_v2 log (compact arena echoes) ─────────────────────
+console.log('=== parseRunLog: behavior_v2 log ===');
+{
+    const T0 = 100000;
+    const v2Log = [
+        JSON.stringify({ type: 'session', event: 'logging_started', file: 'x.jsonl', ms: T0 }),
+        JSON.stringify({
+            type: 'frame_schema',
+            level: 'behavior_v2',
+            cols: ['ms', 'fc', 'idx', 'ft', 'x', 'y', 'hd'],
+            arena_cols: ['t_off', 'dt', 'hex', 'status', 'rx_off'],
+            t0: T0
+        }),
+        JSON.stringify({
+            type: 'log',
+            event: 'run_metadata',
+            run_id: 'run-v2',
+            protocol_filename: 'closed_loop.yaml',
+            log_format: 'behavior_v2',
+            rx_ms: T0 + 1,
+            dir: 'browser→bridge'
+        }),
+        JSON.stringify([0, 100, 5, 0.0, 0.0, 0.0, 0.0]),
+        JSON.stringify(['a', 60, 1, '03700201', 0, 61]), // SET_FRAME_POSITION(258) ok
+        JSON.stringify([8, 101, 5, 8.272, 0.01, 0.0, 0.02]),
+        JSON.stringify(['a', 70, 3, '0370ff00', 1, 73]), // rejected (status 1) → not a frame
+        JSON.stringify([
+            'a',
+            80,
+            505,
+            '03700300',
+            null,
+            585,
+            'response timeout after 500 ms (cmd 0x70)'
+        ]),
+        JSON.stringify({
+            type: 'log',
+            event: 'runner',
+            phase: 'led-activation',
+            condition: 'closed_loop_led',
+            index: 50,
+            on: true,
+            ledPercent: 20,
+            rx_ms: T0 + 40
+        })
+    ].join('\n');
+    const pv2 = R.parseRunLog(v2Log);
+    check('format detected behavior_v2', pv2.format, 'behavior_v2');
+    check('v2 metadata run id', pv2.metadata.run_id, 'run-v2');
+    check('v2 frame rows parsed like v1', pv2.samples.length, 2);
+    approx('v2 ft passthrough', pv2.samples[1].ft, 8.272, 1e-9);
+    check('only the OK compact echo becomes a frame (reject + timeout dropped)', pv2.arenaFrames, [
+        { ms: 60, index: 258, source: 'arena_command' }
+    ]);
+    check('runner event rebased to the session clock', pv2.events[0].ms, 40);
+    // Identical result to the equivalent v1 log.
+    const v1Equivalent = R.parseRunLog(
+        v2Log
+            .split('\n')
+            .map((ln) => {
+                const o = JSON.parse(ln);
+                if (Array.isArray(o) && o[0] === 'a') {
+                    const parts = o[3].match(/../g);
+                    return JSON.stringify({
+                        type: 'log',
+                        event: 'arena_command',
+                        t: T0 + o[1],
+                        dt: o[2],
+                        len: parts.length,
+                        head: parts.join(' '),
+                        status: o[4],
+                        echo: o[4] === null ? null : parseInt(parts[1], 16),
+                        ok: o[4] === null ? null : o[4] === 0,
+                        error: o.length === 7 ? o[6] : null,
+                        dir: 'browser→bridge',
+                        rx_ms: T0 + o[5]
+                    });
+                }
+                if (o.type === 'frame_schema')
+                    return JSON.stringify({
+                        type: 'frame_schema',
+                        level: 'behavior_v1',
+                        cols: o.cols
+                    });
+                return ln;
+            })
+            .join('\n')
+    );
+    check('v2 arenaFrames == v1 arenaFrames', pv2.arenaFrames, v1Equivalent.arenaFrames);
+    check('v2 samples == v1 samples', pv2.samples, v1Equivalent.samples);
+    check('v2 events == v1 events', pv2.events, v1Equivalent.events);
+    check(
+        'v2 bounds == v1 bounds',
+        [pv2.startMs, pv2.endMs],
+        [v1Equivalent.startMs, v1Equivalent.endMs]
+    );
+}
+
 // Canonical runlog.json uses t_offset_s rather than bridge rx_ms.
 const canonical = R.parseRunLog(
     JSON.stringify(

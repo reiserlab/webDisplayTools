@@ -28,6 +28,15 @@
 (function (global) {
     'use strict';
 
+    // Run-log FILE format helper (gzip + behavior_v2 compact arena echoes). Loaded
+    // before this file as a classic script (js/runlog-format.js); under a stale
+    // cache it may be missing — then v2 arena arrays are skipped (frames + runner
+    // events still replay) and a console warning says why.
+    const Fmt =
+        (typeof global !== 'undefined' && global.RunlogFormat) ||
+        (typeof require === 'function' ? require('./runlog-format.js') : null);
+    let warnedNoFmt = false;
+
     // Keep in sync with fictrac-bridge/bridge.py FT_TS_NS_PER_MS.
     const FT_TS_NS_PER_MS = 1e6;
     // FicTrac 0-based column indices used by behavior_v1.
@@ -290,9 +299,22 @@
         let frameCols = null;
         let frameLevel = null;
         let fallbackMs = 0;
+        const normalizer = Fmt ? Fmt.createNormalizer() : null;
 
-        for (const o of records) {
-            // behavior_v1 positional row: [ms, fc, idx, ft, x, y, hd] (ft already ms)
+        for (let o of records) {
+            // behavior_v2: ["a", t_off, dt, hex, status, rx_off] → the v1 arena_command
+            // object (the frame_schema line with t0 precedes them in the file).
+            if (normalizer) o = normalizer.normalize(o);
+            else if (Array.isArray(o) && o[0] === 'a') {
+                if (!warnedNoFmt && typeof console !== 'undefined') {
+                    warnedNoFmt = true;
+                    console.warn(
+                        'runlog-replay: RunlogFormat not loaded — behavior_v2 arena echoes skipped'
+                    );
+                }
+                continue;
+            }
+            // behavior_v1/v2 positional row: [ms, fc, idx, ft, x, y, hd] (ft already ms)
             if (Array.isArray(o)) {
                 sawBehaviorV1 = true;
                 const col = (name, fallback) => {

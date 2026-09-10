@@ -292,6 +292,20 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   recurring mistake. The changelog lives ONLY in
   `docs/development/arena-studio-release-notes.md` — add an entry there for user-visible
   changes.
+- **Run logs are `.jsonl.gz` (v0.72+, `docs/development/runlog-behavior-v2-plan.md`).**
+  `commitRunLog` gzips the bridge export (`GH.gzipBytes`) and commits
+  `runlogs/<bench>/<name>.jsonl.gz` via `GH.commitFile`, which routes >30 MiB payloads
+  through the Git Database API (`GH.directCommitLarge`) because the Contents API
+  rejects ~35 MiB+ files. Every reader must go through **`js/runlog-format.js`**
+  (`readRunlogText` to inflate on the gzip magic, `createNormalizer().normalize(rec)` per
+  parsed line so `behavior_v2` `["a",…]` echoes become the v1 `arena_command` object) —
+  the dashboard uses an exact vendored copy at `dashboard/data-browser/vendor/`, and
+  `tests/test-runlog-format.js` fails when the copies diverge (re-copy after editing). The
+  log level is a runtime setting (File ▾ → Run logging, localStorage `studio_log_level`,
+  default `behavior_v2`); the runner asserts it via `log_control` and the bridge ACKS
+  the level it will actually write (`bridge.waitForLogLevelAck`) — a pre-3.0 bridge
+  never acks, so treat "no ack" as behavior_v1. Never write `log_format` into
+  `run_metadata` from anything but the acked/inferred level.
 - Bump the footer version/timestamp on every edit; never Prettier the HTML.
 
 ## Pattern Designer (`pattern_editor.html`)

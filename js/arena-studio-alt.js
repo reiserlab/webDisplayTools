@@ -453,7 +453,7 @@
                                 (entry) =>
                                     entry &&
                                     entry.type === 'file' &&
-                                    /\.(jsonl|ndjson)$/i.test(entry.name)
+                                    /\.(jsonl|ndjson)(\.gz)?$/i.test(entry.name)
                             )
                             .sort((a, b) => b.name.localeCompare(a.name));
                         Studio.showPicker(
@@ -925,7 +925,7 @@
         replayPane.innerHTML =
             '<div class="alt-replay-grid">' +
             '<div class="alt-replay-file"><button type="button" data-pick="yaml">YAML</button><button type="button" class="alt-replay-repo" data-repo-pick="yaml" title="Choose a protocol directly from the configured course repo">Repo</button><span data-name="yaml">choose protocol…</span><input type="file" accept=".yaml,.yml" hidden></div>' +
-            '<div class="alt-replay-file"><button type="button" data-pick="log">JSONL</button><button type="button" class="alt-replay-repo" data-repo-pick="log" title="Choose a runlog directly from the configured course repo">Repo</button><span data-name="log">choose run log…</span><input type="file" accept=".jsonl,.ndjson,.json,.txt" hidden></div>' +
+            '<div class="alt-replay-file"><button type="button" data-pick="log">JSONL</button><button type="button" class="alt-replay-repo" data-repo-pick="log" title="Choose a runlog directly from the configured course repo">Repo</button><span data-name="log">choose run log…</span><input type="file" accept=".jsonl,.gz,.ndjson,.json,.txt" hidden></div>' +
             '<div class="alt-replay-file"><button type="button" data-pick="patterns">PATs</button><span data-name="patterns">optional pattern files…</span><input type="file" accept=".pat" multiple hidden></div>' +
             '</div>' +
             '<div class="alt-replay-options">' +
@@ -2252,10 +2252,12 @@
             // Popup creation must stay inside the user gesture. It waits for the
             // validated ready handshake while the two local files are parsed.
             if (replay.ui.viewerCheck && replay.ui.viewerCheck.checked) openViewer(true);
-            const [yamlText, logText] = await Promise.all([
-                replay.yamlFile.text(),
-                replay.logFile.text()
-            ]);
+            // The run log may be a gzipped `.jsonl.gz` (Studio v0.72+): inflate on the
+            // gzip magic via the shared format module; plain text passes through.
+            const readLog = window.RunlogFormat
+                ? window.RunlogFormat.readRunlogText(replay.logFile)
+                : replay.logFile.text();
+            const [yamlText, logText] = await Promise.all([replay.yamlFile.text(), readLog]);
             if (token !== replay.loadToken || !Studio.replayActive) return;
             const yamlHash = await sha256(yamlText);
             if (token !== replay.loadToken || !Studio.replayActive) return;
