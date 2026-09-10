@@ -4,6 +4,18 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.75 (2026-09-07) · Analog-input calibration from the Console
+
+- **Calibrate the analog inputs in two clicks** (Analog In panel → calibrate; needs a
+  controller with the `ai_cal` firmware). Unplug the BNC and sample the +10 V point,
+  fit the ground cap and sample the 0 V point — the controller averages 256 reads per
+  point, stores the record in its own memory (mirrored to the SD card), and from then
+  on both the live readout and Mode 4 closed loop use the board's true scale. Read shows
+  the stored record with the live raw counts on both scales; Clear returns a channel to
+  the nominal scale; a **deadband** (default 20 mV) stops a static input from creeping
+  the pattern in Mode 4. Writes are advanced-mode only and are recorded in the run log.
+- Calibration commands use a 2 s timeout (the controller averages 256 reads and writes EEPROM + the SD mirror) and only one calibration action runs at a time (a second click while one is in flight is refused with a note).
+
 ## v0.74 (2026-09-07) · Console "Analog In" panel — live readout + loopback self-test
 
 - **New Console tool: Analog In.** A left-rail button opens a live readout of both

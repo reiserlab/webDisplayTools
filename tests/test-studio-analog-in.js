@@ -270,6 +270,52 @@ async function main() {
             'ao_mv,ai1_mv,ai2_mv\n0,15,40\n1000,1035,40\n'
         );
     }
+    console.log('=== calibration record helpers ===');
+    {
+        const ch1 = { ch: 1, valid: true, rawOpen: 3700, rawGnd: 100, deadbandMv: 20 };
+        const ch2 = { ch: 2, valid: false, rawOpen: 3650, rawGnd: 0, deadbandMv: 50 };
+        const rec = {
+            version: 1,
+            adcBits: 12,
+            source: 'eeprom',
+            sdMirrorOk: true,
+            channels: [ch1, ch2]
+        };
+        approx('nominalMv midscale 12-bit = 0', AI.nominalMv(2047.5, 12), 0);
+        approx('nominalMv 0 counts = −10 V', AI.nominalMv(0, 12), -10000);
+        approx('nominalMv 10-bit full scale = +10 V', AI.nominalMv(1023, 10), 10000);
+        const line = AI.calLine(ch1);
+        approx('calLine a = 10000/3600', line.a, 10000 / 3600, 1e-9);
+        approx('calLine b = −a·gnd', line.b, -(10000 / 3600) * 100, 1e-9);
+        check('calLine invalid channel → null', AI.calLine(ch2), null);
+        approx('calMv at the ground point = 0', AI.calMv(ch1, 100), 0, 1e-9);
+        approx('calMv at the open point = +10 000', AI.calMv(ch1, 3700), 10000, 1e-9);
+        approx('calMv falls back to nominal when invalid', AI.calMv(ch2, 2047.5, 12), 0, 1e-9);
+        check('calStepsText valid', AI.calStepsText(ch1), 'calibrated (both points)');
+        check('calStepsText one point', AI.calStepsText(ch2), '+10 V point ✓ · 0 V point —');
+        check(
+            'calStepsText none',
+            AI.calStepsText({ valid: false, rawOpen: 0, rawGnd: 0 }),
+            'no points'
+        );
+        check(
+            'describeCalSource eeprom + mirror',
+            AI.describeCalSource(rec),
+            'stored in EEPROM · SD mirror ok · 12-bit'
+        );
+        check(
+            'describeCalSource none',
+            AI.describeCalSource({ source: 'none', adcBits: 12 }),
+            'no record (nominal scale) · 12-bit'
+        );
+        const rows = AI.calTableRows(rec, { raw1: 1900, raw2: 2047 });
+        check('calTableRows count', rows.length, 2);
+        approx('calTableRows ch1 mV cal', rows[0].mvCal, (10000 / 3600) * (1900 - 100), 1e-6);
+        approx('calTableRows ch1 mV nominal', rows[0].mvNominal, (1900 / 4095 - 0.5) * 20000, 1e-6);
+        check('calTableRows ch2 no line', String([rows[1].a, rows[1].mvCal]), String([null, null]));
+        check('calTableRows without raws', AI.calTableRows(rec, null)[0].rawNow, null);
+    }
+
     check('drawStripChart without a canvas → false', AI.drawStripChart(null, []), false);
     check('drawStripChart with a non-canvas → false', AI.drawStripChart({}, []), false);
 
@@ -350,6 +396,44 @@ async function main() {
     );
     checkBool('footer bumped past v0.71', !/Arena Studio v0\.71 \|/.test(studioHtml), 'footer');
     checkBool('sweep restores the previous AO level', /\(restore\)/.test(studioHtml), 'restore');
+    console.log('=== calibration wiring (S2) ===');
+    for (const id of ['cAiCalCh', 'cAiDeadband', 'cAiCalSum', 'cAiCalTable', 'cAiCalTableRow'])
+        checkBool(`panel element #${id}`, new RegExp(`id="${id}"`).test(studioHtml), id);
+    for (const cmd of ['caicalread', 'caicalopen', 'caicalgnd', 'caicaldb', 'caicalclear']) {
+        checkBool(
+            `button data-cmd="${cmd}"`,
+            new RegExp(`data-cmd="${cmd}"`).test(studioHtml),
+            cmd
+        );
+        checkBool(`handler ${cmd}:`, new RegExp(`^\\s+${cmd}: `, 'm').test(studioHtml), cmd);
+    }
+    {
+        const start = studioHtml.indexOf('const SAFE_BLOCKED_CMDS = new Set([');
+        const body = studioHtml.slice(start, studioHtml.indexOf(']);', start));
+        for (const cmd of ['caicalopen', 'caicalgnd', 'caicaldb', 'caicalclear'])
+            checkBool(`safe mode blocks ${cmd}`, body.includes(`'${cmd}'`), 'SAFE_BLOCKED_CMDS');
+        checkBool(
+            'safe mode does NOT block the read',
+            !body.includes("'caicalread'"),
+            'read allowed'
+        );
+    }
+    checkBool(
+        'calibration gated on the ai_cal capability',
+        /Studio\.capabilities\.includes\('ai_cal'\)/.test(studioHtml),
+        'ai_cal gate'
+    );
+    checkBool(
+        'calibration actions logged to the run log',
+        /event: 'analog_cal'/.test(studioHtml),
+        'analog_cal event'
+    );
+    checkBool(
+        'clear asks for confirmation',
+        /Forget the selected channel/.test(studioHtml),
+        'confirm'
+    );
+    checkBool('footer at v0.75', /Arena Studio v0\.75 \|/.test(studioHtml), 'footer');
 
     console.log('\n=== Summary ===');
     console.log(`${total - failures} / ${total} checks passed`);

@@ -69,7 +69,13 @@ const ArenaWireG6 = (function () {
         SET_AO_VOLTAGE: 0xa0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV
         GET_AO_VOLTAGE: 0xa1, // [01 A1] returns last commanded AO level as uint16 LE mV
         SET_AO_MODE: 0xa3, // [02 A3 mode] 0=programmable | 1=frame_number (io_ext fw)
-        GET_ANALOG_IN: 0xa4, // [01 A4] returns Analog In 1+2 as two int16 LE mV (io_ext fw)
+        GET_ANALOG_IN: 0xa4, // [01 A4] returns Analog In 1+2 as two int16 LE mV (+ flags byte, F1 fw)
+        // 0xA_ block: A0–A3 analog OUT, A4–A9 analog IN (A8/A9 reserved for the
+        // sampled block stream), AA–AF digital; set/get pairs on adjacent even/odd
+        // opcodes. G4 never used 0xA0–0xAF (g6_03 § G4 opcode compatibility).
+        GET_ANALOG_IN_RAW: 0xa5, // [01 A5] → raw ADC counts of both inputs, two uint16 LE (ai_cal fw)
+        SET_ANALOG_CAL: 0xa6, // [len A6 ch action (mv_lo mv_hi)] two-point calibration / deadband / clear (ai_cal fw)
+        GET_ANALOG_CAL: 0xa7, // [01 A7] → 18-byte calibration record (ai_cal fw)
         SET_DIGITAL_OUT: 0xaa, // [03 AA ch state] DO1 (ch=1, J3/D37) or DO2 (ch=2, J4/D35)
         GET_DIGITAL_OUT: 0xab, // [01 AB] returns current state of DO1 and DO2 as two bytes
         SET_DIO_ROLE: 0xac, // [03 AC port role] "Digital IO 1/2 (5V)" role (io_ext fw)
@@ -115,8 +121,18 @@ const ArenaWireG6 = (function () {
         // Extended I/O command set (#135): SET_DIO_ROLE 0xAC / GET_DIO_ROLE
         // 0xAD / SET_AO_MODE 0xA3 / GET_ANALOG_IN 0xA4 — hosts detect the
         // DIO-role machinery by this bit, not by firmware-version guessing.
-        [5, 'io_ext']
+        [5, 'io_ext'],
+        // Per-board analog-input calibration (analog-input-plan F2): GET_ANALOG_IN_RAW
+        // 0xA5 / SET_ANALOG_CAL 0xA6 / GET_ANALOG_CAL 0xA7, record in EEPROM.
+        [6, 'ai_cal']
     ];
+
+    // SET_ANALOG_CAL (0xA6) actions — the host orchestrates Will's two-point
+    // recipe (open input = +10 V from the reference, BNC ground cap = 0 V); the
+    // controller samples, validates, stores (EEPROM + SD mirror) and applies.
+    const ANALOG_CAL_ACTIONS = { sampleGround: 0, sampleOpen: 1, setDeadband: 2, clear: 0xff };
+    const ANALOG_CAL_DEADBAND_MAX_MV = 2000;
+    const ANALOG_CAL_REF_MV = 10000; // the open-input point
 
     // ───────────────────────── validation helpers ─────────────────────────
 
@@ -603,6 +619,41 @@ const ArenaWireG6 = (function () {
         return frame(OPCODES.GET_ANALOG_IN); // 01 A4
     }
 
+    /**
+     * set-analog-cal (0xA6) — one calibration action on channel 1|2:
+     * 'sampleGround' (0 V point, ground cap on), 'sampleOpen' (+10 V point, BNC
+     * open), 'setDeadband' (needs mv 0..2000), 'clear'. Names or codes accepted.
+     */
+    function encodeSetAnalogCal(ch, action, mv) {
+        if (ch !== 1 && ch !== 2) throw new RangeError('ch must be 1 or 2, got ' + ch);
+        const code = typeof action === 'string' ? ANALOG_CAL_ACTIONS[action] : action;
+        const known = Object.values(ANALOG_CAL_ACTIONS);
+        if (!known.includes(code)) {
+            throw new RangeError(
+                'action must be one of ' +
+                    Object.keys(ANALOG_CAL_ACTIONS).join('/') +
+                    ', got ' +
+                    action
+            );
+        }
+        if (code === ANALOG_CAL_ACTIONS.setDeadband) {
+            requireInt(mv, 'deadband mv');
+            if (mv < 0 || mv > ANALOG_CAL_DEADBAND_MAX_MV) {
+                throw new RangeError(
+                    'deadband must be 0..' + ANALOG_CAL_DEADBAND_MAX_MV + ' mV, got ' + mv
+                );
+            }
+            return frame(OPCODES.SET_ANALOG_CAL, [ch, code, mv & 0xff, (mv >> 8) & 0xff]); // 05 A6 ch 02 lo hi
+        }
+        return frame(OPCODES.SET_ANALOG_CAL, [ch, code]); // 03 A6 ch action
+    }
+    function encodeGetAnalogCal() {
+        return frame(OPCODES.GET_ANALOG_CAL); // 01 A7
+    }
+    function encodeGetAnalogInRaw() {
+        return frame(OPCODES.GET_ANALOG_IN_RAW); // 01 A5
+    }
+
     // ───────────────────────────── decoders ───────────────────────────────
 
     /**
@@ -786,6 +837,55 @@ const ArenaWireG6 = (function () {
         };
     }
 
+    /**
+     * get/set-analog-cal (0xA7 / 0xA6) reply: [version adc_bits source flags] then per
+     * channel [valid][raw_open u16 LE][raw_gnd u16 LE][deadband_mv u16 LE] (18 B).
+     * Adds the line each valid channel implies: mV = a·raw + b with
+     * a = 10000 / (raw_open − raw_gnd), b = −a·raw_gnd (null when not valid).
+     */
+    function decodeAnalogCal(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 18) return null;
+        const p = r.payload;
+        const u16 = (i) => p[i] | (p[i + 1] << 8);
+        const sourceCode = p[2];
+        const channels = [];
+        for (let i = 0; i < 2; i++) {
+            const o = 4 + i * 7;
+            const valid = p[o] === 1;
+            const rawOpen = u16(o + 1);
+            const rawGnd = u16(o + 3);
+            const span = rawOpen - rawGnd;
+            const a = valid && span > 0 ? ANALOG_CAL_REF_MV / span : null;
+            channels.push({
+                ch: i + 1,
+                valid,
+                rawOpen,
+                rawGnd,
+                deadbandMv: u16(o + 5),
+                gainMvPerCount: a,
+                offsetMv: a === null ? null : -a * rawGnd
+            });
+        }
+        return {
+            version: p[0],
+            adcBits: p[1],
+            sourceCode,
+            source: sourceCode === 1 ? 'eeprom' : sourceCode === 0 ? 'none' : 'source' + sourceCode,
+            sdMirrorOk: !!(p[3] & 0x01),
+            channels
+        };
+    }
+    // get-analog-in-raw (0xA5) reply: two uint16 LE ADC counts.
+    function decodeAnalogInRaw(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 4) return null;
+        return {
+            raw1: r.payload[0] | (r.payload[1] << 8),
+            raw2: r.payload[2] | (r.payload[3] << 8)
+        };
+    }
+
     // set-firmware-file (0xE0) reply: uint32 LE CRC-32 of the stored image.
     function decodeSetFirmwareFileResponse(resp) {
         const r = asResponse(resp);
@@ -882,6 +982,10 @@ const ArenaWireG6 = (function () {
         encodeGetDioRole,
         encodeSetAoMode,
         encodeGetAnalogIn,
+        encodeSetAnalogCal,
+        encodeGetAnalogCal,
+        encodeGetAnalogInRaw,
+        ANALOG_CAL_ACTIONS,
 
         // Decoders
         decodeResponse,
@@ -899,6 +1003,8 @@ const ArenaWireG6 = (function () {
         decodeDigitalOut,
         decodeDioRole,
         decodeAnalogIn,
+        decodeAnalogCal,
+        decodeAnalogInRaw,
         decodeSetFirmwareFileResponse,
         decodeFirmwareInfo,
         decodeProgramPanelResponse
