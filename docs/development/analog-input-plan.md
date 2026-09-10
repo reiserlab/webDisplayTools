@@ -261,6 +261,31 @@ Instruments DAQ**. This is a separate, later step; nothing in §3–§4 depends 
 Automate T2/T4 with the AD3 (`instruments` skill) once the panel exists; the pytest suite
 can sample 0xA4 directly for T3.
 
+#### Bench results 2026-09-10 — first reworked 12-18 arena (MAC `04:E9:E5:1F:D1:72`, fw main + #48, no calibration record)
+
+Studio v0.74 (Pages) Console → Analog In; nominal scale, pre-F1 ADC. Two sweep runs per channel.
+
+| Test | AI1 | AI2 | Read |
+|---|---|---|---|
+| T1 open | ≈ +10.0 V | ≈ +5.5 V, noisy | AI2 is not reaching the pull-up value |
+| T1 ground cap | +300 mV | **−2150 mV** | AI1 = ordinary offset; AI2 is not saturated (rework applied) but far off |
+| T6 loopback slope (0–5 V) | 1.056 / 1.055 → `check` | 0.819 / 0.803 → `fail` | repeatable, linear on both channels |
+
+Diagnosis: back out V_adc from the AI2 readings (reading = 6·V_adc − 10 V): ground → 1.31 V, open
+→ 2.58 V, versus nominal 1.67 V / 3.33 V. Both are low by the **same factor 0.79**, and open/ground
+= 1.97 ≈ 2 as nominal, so stage 1 and the pull-up are fine and the AI2 error is a **single stage-2
+gain error: divider ≈ 0.26 instead of 1/3**. The −2.15 V "offset" is that gain error seen through
+the −10 V shift, not a second fault. Most likely cause: the old resistor left in parallel with the
+new one on the lower leg (10k ∥ 20k = 6.7k → ratio 0.25 → slope ≈ 0.75–0.8) or a wrong value.
+**Action: inspect R179/R181 on this board** (target R181 = 20k upper, R179 = 10k lower, nothing
+else across them), then repeat T1/T6. The noise on the open reading fits a marginal joint on the
+same node. AI1 (+5.5 % gain, +300 mV) is tolerance-class and is what F2's two-point calibration is
+for; do not calibrate AI2 until the hardware is corrected. Course-bench 10-10 controllers are
+un-reworked: sweep gives slope 0.0056 · offset 9980 mV → `fail` with the LAB-209 text (T1 signature).
+
+UI note from this session: the panel says `fail` for both a saturated board and a linear-but-wrong
+channel; `summarizeSweep` should name the case ("saturated — LAB-209" vs "gain error N %").
+
 ### 5.2 Calibration (needs F2)
 
 - C1 Two-point procedure per channel; then DMM-verified −5 V and +5 V → error target
