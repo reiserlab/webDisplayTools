@@ -4,6 +4,24 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.74 (2026-09-07) · Console "Analog In" panel — live readout + loopback self-test
+
+- **New Console tool: Analog In.** A left-rail button opens a live readout of both
+  "Analog In (±10V)" connectors — value, a ±10 V bar, min/max, and a 30 s trace —
+  polled at 10 Hz (or 5 / 2 Hz) while the panel is open. Polling pauses by itself
+  during a run, when the link is down, or when the controller lacks the io_ext
+  firmware, and it never floods the Console log. Readings are on the nominal scale;
+  per-board calibration arrives with a later firmware, and the panel shows the
+  controller's own report of its ADC resolution and calibration state.
+- **Loopback self-test.** Cable "Analog Out (0-5V)" to an input and run the sweep:
+  the Studio steps the output 0 → 5000 mV, reads the input at each step, fits slope
+  and offset, shows the table, copies it as CSV, and restores the previous output
+  level. A flat reading near +10 V at every step is the signature of a board that
+  still has the swapped front-end resistors (LAB-209).
+- **Mode 4 gain field** now says what the number means: ×10, so 10 is unity = 100
+  frames/s per volt (the G3 convention), and 2–5 gives the everyday 20–50 fps/V.
+- Loopback sweep: a refused `SET_AO_VOLTAGE` (e.g. Analog Out in `frame_number` mode) now aborts the sweep with a hint instead of recording readings against an unapplied level; a refused restore is reported. The live poller also pauses while the Console's FicTrac closed loop is active (it owns the link). The sweep verdict now also requires |offset| ≤ 150 mV — a linear reading 1 V high is `check`, not `ok`.
+
 ## v0.73 (2026-09-06) · Replay opens gzipped and `behavior_v2` run logs
 
 - **Replay reads the new log files.** The Alt replay picker lists and opens `.jsonl.gz`

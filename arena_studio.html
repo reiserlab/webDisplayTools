@@ -1981,6 +1981,18 @@
   .console-view .rail-btn:hover{border-color:var(--accent)}
   .console-view .rail-btn.sel{border-color:var(--accent);background:rgba(0,230,118,.08)}
   .console-view .rail-btn .sub{font-size:9px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:126px}
+  /* Analog In panel (analog-input-plan § 4 S1): value, ±10 V bar, 30 s strip chart, sweep table */
+  .console-view .ai-val{font-family:var(--head);font-size:15px;min-width:92px;text-align:right;color:var(--text)}
+  .console-view .ai-bar{position:relative;display:inline-block;width:150px;height:10px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);overflow:hidden;vertical-align:middle}
+  .console-view .ai-bar .mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--dim);opacity:.7}
+  .console-view .ai-bar .fill{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.85}
+  .console-view .ai-range{font-size:10px;color:var(--dim);min-width:130px}
+  .console-view #cAiChart{display:block;width:100%;max-width:460px;height:90px;border:1px solid var(--border);border-radius:4px;background:#0b0f14}
+  .console-view .ai-table{font-size:10.5px;border-collapse:collapse}
+  .console-view .ai-table td,.console-view .ai-table th{padding:1px 10px 1px 0;text-align:right;color:var(--text);font-family:var(--mono)}
+  .console-view .ai-table th{color:var(--dim);font-weight:normal}
+  .console-view .ai-table td.bad{color:#ff8a80}
+  .console-view .pill[aria-pressed="false"]{opacity:.6}
   .console-view .stage{flex:1 1 auto;overflow:auto;padding:2px 2px 2px 10px;display:flex;flex-direction:column;gap:6px}
   /* Outer panel box: soft near-white 1.5px edge so panels stay distinct on a
      dark monitor in a lit room (grey var(--border) washed out). Internal
@@ -2669,6 +2681,7 @@
         <div class="rail-btn sel" data-panel="step" role="button" tabindex="0" title="Show single frames of the selected pattern (mode 3)">Step frames<span class="sub">mode 3</span></div>
         <div class="rail-btn sel" data-panel="test" role="button" tabindex="0" title="Test figures + one-off frames">Test display<span class="sub">GS16</span></div>
         <div class="rail-btn" data-panel="io" role="button" tabindex="0" title="Analog / digital BNCs on the controller">I/O<span class="sub" id="cIoSum">AO – · DIO –</span></div>
+        <div class="rail-btn" data-panel="ai" role="button" tabindex="0" title="Live readout of both 'Analog In (±10V)' BNCs — preview at up to 10 Hz, min/max, strip chart, and the Analog Out → Analog In loopback self-test">Analog In<span class="sub" id="cAiSum">AI1 – · AI2 –</span></div>
         <div class="rail-btn sel" data-panel="led" role="button" tabindex="0" title="Stimulus LED — set brightness % or turn off (BuckPuck on Analog Out)">LED<span class="sub">BuckPuck</span></div>
         <div class="rail-btn" data-panel="fw" role="button" tabindex="0" title="Program the panels’ firmware">Panel firmware<span class="sub" id="cFwSum">flash · verify</span></div>
         <div class="rail-btn sel" data-panel="fictrac" role="button" tabindex="0" title="Closed loop from the FicTrac bridge">FicTrac<span class="sub" id="cFtSum">ws · idle</span></div>
@@ -2731,7 +2744,7 @@
               <span class="pchip" title="The pattern this trial runs — change it in Patterns"><span class="thumb"></span><b id="cTrialPatName">—</b></span>
               <label>mode <select id="cMode"><option value="2">2 · play</option><option value="3">3 · show frame</option><option value="4">4 · closed loop</option></select></label>
               <label class="tf" data-modes="2" title="Frames per second — negative plays in reverse (mode 2)">rate (Hz) <input id="cRate" type="number" min="-32768" max="32767" value="30" style="width:56px"></label>
-              <label class="tf" data-modes="4" title="Loop gain (mode 4) — signed int16, -32768 to 32767">gain <input id="cGain" type="number" min="-32768" max="32767" value="0" style="width:62px"></label>
+              <label class="tf" data-modes="4" title="Loop gain (mode 4), ×10 — 10 = unity = 100 frames/s per volt on Analog In 1 (G3-faithful); the everyday 2–5 = 20–50 fps/V; negative reverses the coupling. Signed int16.">gain <input id="cGain" type="number" min="-32768" max="32767" value="0" style="width:62px"></label>
               <label class="tf" data-modes="34" title="Start frame (modes 3/4) — SET_FRAME_POSITION 0x70">start <input id="cInit" type="number" value="0" style="width:50px"></label>
               <label title="Per-trial brightness override 0–255 (optional 12th TRIAL_PARAMS byte) — blank = use the pattern's stored duty">duty <input id="cTrialDuty" type="number" min="0" max="255" step="1" placeholder="pat" style="width:50px"></label>
               <label title="Trial duration in seconds — sent in TRIAL_PARAMS (controller-timed stop); the host arms a backup STOP 2 s later. 0 = run until Stop">duration (s) <input id="cDur" type="number" min="0" step="0.1" value="0" style="width:52px"></label>
@@ -2796,6 +2809,28 @@
             <span class="seg2"><button id="cDoLow" class="on" data-cmd="cdolow">LOW</button><button id="cDoHigh" data-cmd="cdohigh">HIGH</button></span>
             <button class="pill" data-cmd="cdoset" title="SET_DIGITAL_OUT 0xAA">Set</button>
             <button class="pill" data-cmd="cdoget" title="GET_DIGITAL_OUT 0xAB">Get</button></div>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="ai">
+          <div class="panel-h"><span class="panel-title" title="GET_ANALOG_IN 0xA4, polled while this panel is open — both BNCs silkscreened 'Analog In 1/2 (±10V)' (J28/J29). A preview: the controller's own Mode-4 sampling runs at 500 Hz.">Analog In</span><span class="spacer"></span><span class="dim" id="cAiStatus" title="Poller state — pauses by itself while a run is active or the link is down">connect to read</span><span class="panel-x" data-close="ai" role="button" title="Collapse to the rail (stops polling)">✕</span></div>
+          <div class="panel-b">
+          <div class="crow"><span class="lbl" title="Live readout controls">preview</span>
+            <button class="pill" id="cAiPoll" data-cmd="caipoll" aria-pressed="true" title="Pause / resume the live readout. While live, the controller is asked for both inputs at the chosen rate; polling pauses by itself during a run.">Live</button>
+            <label title="Poll rate — how often GET_ANALOG_IN is sent (preview only; not the controller's 500 Hz Mode-4 sampling)">rate <select id="cAiRate"><option value="10">10 Hz</option><option value="5">5 Hz</option><option value="2">2 Hz</option></select></label>
+            <button class="pill" data-cmd="caireset" title="Reset the min / max readings and clear the trace">Reset</button>
+            <span class="dim" id="cAiFlags" title="What the controller reports about its reads: ADC resolution and whether a per-board calibration is applied (firmware F1/F2)">—</span></div>
+          <div class="crow"><span class="lbl" title="BNC 'Analog In 1 (±10V)' (J28) — the input Mode-4 closed loop follows">analog in 1</span><span class="ai-val" id="cAi1Val">—</span><span class="ai-bar" title="−10 V … +10 V (centre = 0 V)"><span class="mid"></span><span class="fill" id="cAi1Bar"></span></span><span class="ai-range" id="cAi1Range"></span></div>
+          <div class="crow"><span class="lbl" title="BNC 'Analog In 2 (±10V)' (J29) — free for the experimenter (not used by Mode 4)">analog in 2</span><span class="ai-val" id="cAi2Val">—</span><span class="ai-bar" title="−10 V … +10 V (centre = 0 V)"><span class="mid"></span><span class="fill" id="cAi2Bar"></span></span><span class="ai-range" id="cAi2Range"></span></div>
+          <div class="crow"><canvas id="cAiChart" width="460" height="90" title="Last 30 s of both inputs, ±10 V full scale — green = Analog In 1, blue = Analog In 2"></canvas></div>
+          <div class="crow"><span class="lbl" title="Self-test with no instrument: cable 'Analog Out (0-5V)' (J27) to an Analog In BNC, then step the output and read the input back">loopback</span>
+            <label title="Which input the cable from Analog Out is plugged into">into <select id="cAiLoopCh"><option value="1">Analog In 1</option><option value="2">Analog In 2</option></select></label>
+            <label title="Step size of the 0 → 5000 mV sweep">step <select id="cAiLoopStep"><option value="500">500 mV</option><option value="1000">1000 mV</option><option value="250">250 mV</option></select></label>
+            <button class="pill" data-cmd="caisweep" title="Sweep Analog Out from 0 to 5000 mV (SET_AO_VOLTAGE 0xA0), read the chosen input at each step, fit slope and offset, then restore the previous Analog Out level. Note: the stimulus LED shares that BNC, so it will flash during the sweep.">Run sweep</button>
+            <button class="pill" id="cAiSweepCsv" data-cmd="caisweepcsv" disabled title="Copy the last sweep (ao_mv, ai1_mv, ai2_mv) to the clipboard as CSV">Copy CSV</button>
+            <span class="dim" id="cAiSweepSum"></span></div>
+          <div class="crow" id="cAiSweepRow" style="display:none"><table class="ai-table" id="cAiSweepTable"></table></div>
+          <div class="crow" style="margin-bottom:0"><span class="dim" style="font-size:10.5px" title="Status of the analog-input path (docs/development/analog-input-plan.md)">±10 V front end · nominal scale, per-board calibration not yet applied · a board without the LAB-209 resistor rework reads ≈ +10 V for any input above 0 V · needs io_ext firmware</span></div>
           </div>
         </section>
 
@@ -2918,7 +2953,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.73 | 2026-09-06 18:29 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.74 | 2026-09-10 16:50 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -2934,6 +2969,7 @@
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
 <!-- ============================================================ -->
 <script src="js/arena-wire-g6.js"></script>
+<script src="js/studio-analog-in.js"></script>
 <script src="js/arena-link.js"></script>
 <script src="js/arena-runner-g6.js"></script>
 <script src="js/run-log.js"></script>
@@ -4966,6 +5002,166 @@
 
     const num = (id) => Number($(id).value);
 
+    // ---- Analog In panel: quiet poller + loopback sweep (analog-input-plan § 4 S1) ----
+    // Reads GET_ANALOG_IN 0xA4 through session.send DIRECTLY — not the logging
+    // send() — so the Console log is not flooded at 10 Hz; state CHANGES and errors
+    // are logged. The poller is a single-flight ticker (js/studio-analog-in.js) that
+    // pauses itself whenever the gate says no: panel closed, link down, no io_ext
+    // firmware, user pause, a run in progress, or a sweep in flight.
+    const AI = window.StudioAnalogIn;
+    const aiMon = AI ? AI.createMonitor({ windowMs: 30000 }) : null;
+    const aiUser = { enabled: true, sweeping: false, lastSweep: null, lastFlags: undefined };
+    function aiPanelOpen() {
+        const p = document.querySelector('.panel[data-panel="ai"]');
+        return !!(p && p.classList.contains('open'));
+    }
+    function aiCanPoll() {
+        if (!aiPanelOpen()) return { ok: false, reason: 'panel closed' };
+        if (!session || !session.connected) return { ok: false, reason: 'connect to read' };
+        if (!Array.isArray(Studio.capabilities) || !Studio.capabilities.includes('io_ext')) return { ok: false, reason: 'needs io_ext firmware' };
+        if (!aiUser.enabled) return { ok: false, reason: 'paused' };
+        if (session.running) return { ok: false, reason: 'paused — run active' };
+        // The Console's own FicTrac closed loop (bridge 'apply') streams 0x70 at
+        // ~100 Hz outside the runner — a 10 Hz read interleaved into that stream
+        // adds latency jitter to frames, so yield the link to it as well.
+        const br = Studio.session && Studio.session.bridge;
+        if (br && br.apply) return { ok: false, reason: 'paused — FicTrac closed loop active' };
+        if (aiUser.sweeping) return { ok: false, reason: 'sweep running' };
+        return { ok: true };
+    }
+    async function aiRead() {
+        const resp = await session.send(Wire.encodeGetAnalogIn());
+        const a = Wire.decodeAnalogIn(resp);
+        if (!a) throw new Error('bad GET_ANALOG_IN reply');
+        return a;
+    }
+    function aiSetBar(id, mv) {
+        const el = $(id);
+        if (!el || !AI) return;
+        const f = AI.barFraction(mv);
+        const lo = Math.min(0.5, f);
+        const hi = Math.max(0.5, f);
+        el.style.left = (lo * 100).toFixed(1) + '%';
+        el.style.width = (Math.max(0.6, (hi - lo) * 100)).toFixed(1) + '%';
+    }
+    function aiRender(a) {
+        if (!AI || !aiMon) return;
+        for (const ch of [1, 2]) {
+            const st = aiMon.stats(ch);
+            const v = a ? (ch === 1 ? a.ain1Mv : a.ain2Mv) : st.last;
+            const val = $('cAi' + ch + 'Val');
+            if (val) val.textContent = AI.formatMv(v);
+            aiSetBar('cAi' + ch + 'Bar', v);
+            const rg = $('cAi' + ch + 'Range');
+            if (rg) rg.textContent = Number.isFinite(st.min) ? 'min ' + AI.formatMv(st.min) + ' · max ' + AI.formatMv(st.max) : '';
+        }
+        const sum = $('cAiSum');
+        if (sum) sum.textContent = 'AI1 ' + AI.formatMv(aiMon.stats(1).last).replace(' mV', '') + ' · AI2 ' + AI.formatMv(aiMon.stats(2).last).replace(' mV', '');
+        if (a && a.flags !== aiUser.lastFlags) {
+            aiUser.lastFlags = a.flags;
+            const fl = $('cAiFlags');
+            if (fl) fl.textContent = AI.describeFlags(a.flags).text;
+        }
+        const hz = aiMon.rateHz();
+        const stat = $('cAiStatus');
+        if (stat && aiPoller && aiPoller.state === 'polling') stat.textContent = 'live' + (Number.isFinite(hz) ? ' · ' + hz.toFixed(1) + ' Hz' : '');
+        AI.drawStripChart($('cAiChart'), aiMon.samples(), { windowMs: aiMon.windowMs });
+    }
+    const aiPoller = AI ? AI.createPoller({
+        read: aiRead,
+        canPoll: aiCanPoll,
+        onSample: (a) => { aiMon.push(Date.now(), a.ain1Mv, a.ain2Mv); aiRender(a); },
+        onState: (state, reason) => {
+            const stat = $('cAiStatus');
+            if (stat) stat.textContent = state === 'polling' ? 'live' : state === 'error' ? 'error: ' + reason : reason;
+            // Log transitions only — never per sample — and only ones a user acts on.
+            if (state === 'error') clog('analog in: ' + reason, 'err');
+            else if (state === 'polling') clog('analog in: live readout running', 'info');
+            else if (/run active|closed loop|io_ext/.test(reason)) clog('analog in: ' + reason, 'warn');
+        }
+    }) : null;
+    function aiStartTicker() {
+        if (!aiPoller) return;
+        const hz = Number(($('cAiRate') || {}).value) || 10;
+        aiPoller.start(Math.round(1000 / hz));
+    }
+    if (aiPoller) {
+        aiStartTicker();
+        const rateSel = $('cAiRate');
+        if (rateSel) rateSel.addEventListener('change', aiStartTicker);
+    }
+    function aiRenderSweepTable(rep) {
+        const row = $('cAiSweepRow');
+        const tbl = $('cAiSweepTable');
+        if (!row || !tbl) return;
+        const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+        let html = '<tr><th>AO mV</th><th>AI' + rep.ch + ' mV</th><th>err mV</th></tr>';
+        for (const r of rep.rows) {
+            const bad = Number.isFinite(r.errMv) && Math.abs(r.errMv) > 150;
+            html += '<tr><td>' + esc(r.aoMv) + '</td><td>' + esc(Math.round(r.aiMv)) + '</td><td class="' + (bad ? 'bad' : '') + '">' + esc(Number.isFinite(r.errMv) ? Math.round(r.errMv) : '') + '</td></tr>';
+        }
+        tbl.innerHTML = html;
+        row.style.display = '';
+    }
+    async function aiRunSweep() {
+        if (!AI || !session || !session.connected) { clog('loopback sweep: not connected', 'err'); return; }
+        if (!Array.isArray(Studio.capabilities) || !Studio.capabilities.includes('io_ext')) {
+            clog('loopback sweep: controller lacks io_ext (0xC2 bit 5) — needs fw feat/dio-roles-ao-modes or later', 'warn');
+            return;
+        }
+        if (aiUser.sweeping) return;
+        const ch = Number($('cAiLoopCh').value) === 2 ? 2 : 1;
+        const plan = AI.sweepPlan(0, 5000, Number($('cAiLoopStep').value) || 500);
+        aiUser.sweeping = true;
+        $('cAiSweepSum').textContent = 'sweeping…';
+        clog('loopback sweep: AO 0→5000 mV into Analog In ' + ch + ' (' + plan.length + ' steps) — cable J27 → J' + (ch === 1 ? '28' : '29'), 'info');
+        let prevMv = null;
+        try {
+            const r0 = await send(Wire.encodeGetAoVoltage(), 'GET_AO_VOLTAGE 0xA1 (before sweep)');
+            prevMv = r0 && Wire.decodeAoVoltage ? Wire.decodeAoVoltage(r0) : null;
+            const rows = [];
+            for (const mv of plan) {
+                // send() returns the reply frame even on an error status (it logs the
+                // firmware's reason) — decode it, or a refused step (e.g. AO in
+                // frame_number mode) would be recorded as if the level were applied.
+                const r = await send(Wire.encodeSetAoVoltage(mv), 'SET_AO_VOLTAGE 0xA0 ' + mv + ' mV (sweep)');
+                const d = r && Wire.decodeResponse(r);
+                if (!d || !d.ok) {
+                    throw new Error('Analog Out refused ' + mv + ' mV' + (d ? ' (status ' + d.status + ')' : '') +
+                        ' — is Analog Out in frame_number mode? Set the AO role to programmable (I/O panel) and retry');
+                }
+                await new Promise((r) => setTimeout(r, 150)); // DAC + front-end settle
+                const reads = [];
+                for (let i = 0; i < 3; i++) reads.push(await aiRead());
+                const row = { aoMv: mv, ai1Mv: AI.median(reads.map((r) => r.ain1Mv)), ai2Mv: AI.median(reads.map((r) => r.ain2Mv)) };
+                rows.push(row);
+                aiMon.push(Date.now(), row.ai1Mv, row.ai2Mv);
+                aiRender(reads[reads.length - 1]);
+            }
+            const rep = AI.summarizeSweep(rows, ch);
+            aiUser.lastSweep = { rows, ch, rep, at: new Date().toISOString() };
+            aiRenderSweepTable(rep);
+            $('cAiSweepSum').textContent = rep.text;
+            $('cAiSweepCsv').disabled = false;
+            clog('loopback sweep AO→AI' + ch + ': ' + rep.text, rep.verdict === 'ok' ? 'info' : rep.verdict === 'check' ? 'warn' : 'err');
+            if (rep.verdict === 'fail') clog('loopback sweep: a flat reading near +10 V for every step means the board still has the swapped stage-2 resistors (LAB-209)', 'warn');
+            const bridge = Studio.session && Studio.session.bridge;
+            if (bridge && bridge.log) bridge.log({ event: 'analog_loopback_sweep', channel: ch, rows, fit: rep.fit, verdict: rep.verdict });
+        } catch (e) {
+            clog('loopback sweep failed: ' + (e && e.message ? e.message : e), 'err');
+            $('cAiSweepSum').textContent = 'failed';
+        } finally {
+            if (prevMv != null) {
+                const rr = await send(Wire.encodeSetAoVoltage(prevMv), 'SET_AO_VOLTAGE 0xA0 ' + prevMv + ' mV (restore)');
+                const dd = rr && Wire.decodeResponse(rr);
+                if (!dd || !dd.ok) clog('loopback sweep: could not restore Analog Out to ' + prevMv + ' mV — the LED/AO level may be wrong; set it from the I/O or LED panel', 'err');
+            } else {
+                clog('loopback sweep: previous Analog Out level unknown — not restored (AO left at the last sweep step)', 'warn');
+            }
+            aiUser.sweeping = false;
+        }
+    }
+
     // ---- command dispatch ----
     const handlers = {
         // display essentials
@@ -5143,7 +5339,33 @@
             }
             const resp = await send(Wire.encodeGetAnalogIn(), 'GET_ANALOG_IN 0xA4');
             const a = resp && Wire.decodeAnalogIn(resp);
-            if (a) $('cAiRead').textContent = 'AI1 ' + a.ain1Mv + ' mV · AI2 ' + a.ain2Mv + ' mV';
+            if (a) $('cAiRead').textContent = 'AI1 ' + a.ain1Mv + ' mV · AI2 ' + a.ain2Mv + ' mV' + (a.flags != null ? ' · ' + window.StudioAnalogIn.describeFlags(a.flags).text : '');
+        },
+        // Analog In panel (analog-input-plan § 4 S1)
+        caipoll: () => {
+            aiUser.enabled = !aiUser.enabled;
+            const b = $('cAiPoll');
+            if (b) { b.setAttribute('aria-pressed', String(aiUser.enabled)); b.textContent = aiUser.enabled ? 'Live' : 'Paused'; }
+            if (aiUser.enabled && aiPoller) aiPoller.resume();
+            clog('analog in: preview ' + (aiUser.enabled ? 'resumed' : 'paused by user'), 'info');
+            if (aiPoller) aiPoller.tick();
+        },
+        caireset: () => {
+            if (!aiMon) return;
+            aiMon.resetMinMax();
+            aiMon.clear();
+            aiRender(null);
+        },
+        caisweep: () => guardDestructive(() => { aiRunSweep(); }),
+        caisweepcsv: async () => {
+            if (!aiUser.lastSweep || !AI) return;
+            const csv = AI.sweepCsv(aiUser.lastSweep.rows);
+            try {
+                await navigator.clipboard.writeText(csv);
+                clog('loopback sweep: CSV copied (' + aiUser.lastSweep.rows.length + ' rows)', 'info');
+            } catch (e) {
+                clog('clipboard unavailable — sweep CSV:\n' + csv, 'warn');
+            }
         },
         cioget: async () => {
             if (!Studio.capabilities || !Studio.capabilities.includes('io_ext')) {
@@ -14995,6 +15217,7 @@ initFromUrl();
     '.rail-btn[data-panel="step"]': 'Show the selected pattern one frame at a time.',
     '.rail-btn[data-panel="test"]': 'Test figures the browser draws and streams to the display — no memory card needed.',
     '.rail-btn[data-panel="io"]': 'The controller’s analog and digital input/output connectors.',
+    '.rail-btn[data-panel="ai"]': 'Watch the two analog inputs live, and check the wiring by looping Analog Out back into an input.',
     '.rail-btn[data-panel="fw"]': 'Update or check the firmware on the LED panels.',
     '.rail-btn[data-panel="fictrac"]': 'Closed loop with FicTrac: the fly’s walking steers the pattern.',
     /* Console bench strip + panels */
@@ -15054,6 +15277,7 @@ initFromUrl();
     step: 'Load the selected pattern, then walk through it frame by frame — good for checking exactly what each frame shows.',
     test: 'Built-in test figures (full field, panel map, orientation, checker) and files streamed straight from this computer.',
     io: 'Read the analog input, set the analog output, and drive the two digital connectors.',
+    ai: 'Both analog inputs, live. Cable Analog Out to an input and run the loopback sweep to check the wiring end to end; polling pauses by itself during a run.',
     fw: 'Check what firmware the panels run, and program new firmware into every panel from here.',
     fictrac: 'Closed loop: connect the bridge, load a pattern in Step frames, set the gain, then Activate — the fly steers the pattern.'
   };
