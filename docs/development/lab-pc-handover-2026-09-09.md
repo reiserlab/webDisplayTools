@@ -6,6 +6,40 @@
 The Mac session that wrote this may still be running; treat GitHub as the source of truth for
 branch state, not this file.
 
+## Status after the bench day (2026-09-10 19:13 ET) — read this before § 0
+
+| Item | Result |
+|---|---|
+| Gate B1 (run-log v2) | **passed 1–9** on `rig05-mr` with the sim; #188 merged (`f744e12`), #186 closed; Pages v0.73 |
+| Gate B2 (Analog In S1) | **passed** (software) on a course 10-10 controller; #190 merged (`880ffd5`); Pages v0.74 |
+| #191 (calibration S2) | rebased onto main, CI green, **held** for gate B4 |
+| fw #48 (12-18 variant) | reviewed + approved with nits; **flashed on the 12-18 arena**; LED column sweep confirmed |
+| 12-18 analog | AI1 OK (+5.5 % gain, +300 mV offset); **AI2 stage-2 divider wrong (0.79×)** — inspect R179/R181 |
+| fw #46/#47, B3/B4 | not started; need #48 merged first (rebase `constants.h`/`README.md`), then the 12-18 board |
+| Lab PC | pixi, gh (`mbreiser`), FicTrac (`C:\Lab\GitHub\fictrac`, `pixi-build` branch, Spinnaker 4.4 detected; still needs the rig `config.txt` from the labadmin install), firmware clone + `C:\Lab\GitHub\fw-48` worktree |
+
+Gotchas learned on this PC (add to § 6 mentally):
+
+- **Git Bash `TZ='America/New_York' date` prints UTC here** (MSYS has no tzdata) — the CLAUDE.md
+  recipe is wrong on Windows. Use PowerShell:
+  `[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date),'Eastern Standard Time')`.
+  (#190's footer stamp `16:50 ET` is really 12:50 ET; superseded when #191 lands.)
+- **Retargeting a PR base does not trigger CI** (`pull_request: edited`); gate locally with
+  `pixi run test` on the head sha, or push a commit.
+- **Rebasing a child of a squash-merged parent:** `git rebase --onto origin/main <parent-tip>`,
+  not a plain rebase (patch-ids no longer match → add/add conflicts).
+- **`pixi run test` needs `PYTHONUTF8=1` on Windows** — the Python tests print `→` and die with
+  `UnicodeEncodeError` under cp1252. A `[activation.env]` fix is stashed on this checkout
+  (`git stash list`), destined for its own PR.
+- **Firmware upload on Windows:** `scripts/find_teensy.py` is Linux-only → pass
+  `-- --upload-port COMx`; `teensy_loader_cli` cannot soft-reboot on Win32 and waits — the board
+  only entered HalfKay once the **arena was powered**. #48 renames the tasks:
+  `deploy-12-18-performance`, `deploy-10-10-performance` (§ 5 below is stale on this point).
+- Windows shows stale "Unknown" COM entries for previously plugged controllers; the live one is
+  the `Status OK` port (`Get-PnpDevice | ? InstanceId -match VID_16C0`).
+- `pixi run <task>` refuses to start while `pixi.toml` has conflict markers — resolve it with
+  `.pixi/envs/default/python.exe` directly.
+
 ## 0. Goal for the bench day, in priority order
 
 1. **Land the run-log v2 + gzip stack** (#186 Studio v0.72, #188 readers v0.73): one real run

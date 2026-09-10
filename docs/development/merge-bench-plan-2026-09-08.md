@@ -80,30 +80,69 @@ fps meter.
 
 Serve the #188 worktree locally; bridge from the same worktree.
 
-- [ ] Studio banner names the bridge-acknowledged level `behavior_v2`.
-- [ ] Short P3-style run (≥ 2 conditions, ≥ 60 s) → log contains `["a", …]` rows and
-      frame rows; `bridge.py --convert` round trip is canonical-JSON identical.
-- [ ] Run-log commit lands as `runlogs/<bench>/<name>.jsonl.gz`; size line shows raw → gz.
-- [ ] Force the > 30 MiB path once with the threshold override → one blob/tree/commit/ref.
-- [ ] Dashboard (served from the #188 worktree) opens the `.gz` from the repo **and** from a
-      local file; a v1 run of the same protocol gives identical P3 page values.
-- [ ] Replay viewer and the Alt replay picker open the `.gz`; an old v1 `.jsonl` still opens.
-- [ ] `runlog-index` Action produced/updated `runlogs/<bench>/index.json` after the commit.
+**Run 2026-09-10 on the lab PC (Windows), bench `rig05-mr`, sim as FicTrac source — PASSED.**
 
-Pass → **merge #186 and #188** (retarget #188 to main first; squash each; do not delete
-#186's branch until #188 has been retargeted). Hard-refresh Pages, repeat the dashboard open
-from Pages. Then rebase `feat/console-analog-in` onto main (Studio HTML + release notes +
-pixi.toml), bump nothing (v0.74 is still next), push → #190 CI.
+- [x] Studio banner names the bridge-acknowledged level `behavior_v2` (bridge 3.0 log:
+      `[log] writing to arena-log-20260910-111905-238.jsonl (behavior_v2)`).
+- [x] `fictrac_direction_test` (28 steps, 330 s, 24 Mode-2 + 3 Mode-3 trials) → 16 514 frame
+      rows + 4 501 compact `["a", …]` echoes + 96 runner events; `--convert` v2→v1→v2 is
+      canonical-JSON identical (21 119 lines), and the committed `.gz` equals the bridge's file.
+- [x] Commit: `runlogs/rig05-mr/fictrac-direction-test__mreiser__2026-09-10T15-24-35__oaec4gao.jsonl.gz`
+      (1.06 MB → 323 KB, commit `7d7d2f5`).
+- [ ] > 30 MiB path — **skipped by design** (no UI hook; unit-tested). Revisit before the first
+      multi-hour run (codex-review § 2, `directCommitLarge` retry).
+- [x] Dashboard opened the `.gz` from the repo (listed with start + duration, size `gz`, plots
+      render) and an older v1 `.jsonl` — served from the #188 worktree, then again from Pages.
+      Local-file open and the v1/v2 P3-parity comparison were **not** exercised (no v1 run of
+      the same protocol exists).
+- [x] Alt replay picker listed `runlogs/rig05-mr/`, fetched + inflated the `.gz`; replay timeline
+      built and advanced (protocol picked as a local YAML — a site-library protocol is not
+      auto-bound, only course-repo ones are).
+- [x] `runlog-index` Action ran 11 s after the commit (`bbdec9c`): row has `duration_s: 330.291`,
+      `complete: true`, no `error`.
+
+Pass → **merged**: #188 squashed as `f744e12` (subject names #186 + #188), #186 closed. Pages
+serves v0.73. `feat/console-analog-in` rebased onto main (footer, release notes, `pixi.toml`
+one-line test conflicts as predicted), force-pushed, CI green.
+
+**Gotcha found here:** retargeting a PR's base fires a `pull_request: edited` event, which none of
+the workflows listen to — and #188's last commit touched no path-filtered file — so **no CI ran
+after the retarget**. The equivalent gate was `pixi run test` + `format-check` locally on the exact
+head sha. Push a commit if you need a CI run.
 
 ### Late afternoon — **gate B2: S1 on today's firmware** (any board)
 
-- [ ] Analog In panel: live readout at 10/5/2 Hz, pauses with a visible reason during a run
-      and when disconnected; no log flooding (state changes only).
-- [ ] AO→AI loopback sweep: on a reworked board the verdict is `ok`; on an un-reworked board
-      the panel names the LAB-209 signature (flat ≈ +10 V) — either result is a pass for the UI.
-- [ ] `pixi run test` green; tooltips + HELP entries present on every new control.
+**Run 2026-09-10 — PASSED (software), on a course-bench 10-10 controller (io_ext firmware,
+un-reworked front end).**
 
-Pass → **merge #190**; retarget #191 → main (do not merge yet).
+- [x] Analog In panel: live readout, pauses with a visible reason; no log flooding.
+- [x] Loopback sweep on the un-reworked board: slope 0.0056 · offset 9980 mV · 6 steps → `fail`
+      with the LAB-209 text — the expected UI pass. (The 12-18 arena, the only reworked board,
+      reported *no* io_ext at first — see the firmware section below.)
+- [x] `pixi run test` green (with `PYTHONUTF8=1` on Windows — see handover gotchas).
+
+Pass → **merged**: #190 squashed as `880ffd5` (Studio v0.74; Pages serves it). #191 retargeted to
+main and rebased with `git rebase --onto origin/main 9312b56` (a plain rebase replays the parent's
+pre-squash commits and produces add/add conflicts), footer v0.75 re-stamped, force-pushed, CI
+green — **held open** until gate B4.
+
+### 12-18 arena bring-up (2026-09-10 evening, fw #48)
+
+- Firmware PR #48 (`hardware/bring-up-12-18`, Frank) reviewed: approve with nits, both variants
+  build. Flashed `deploy-12-18-performance` (= main + #48) onto the 12-18 controller (USB serial
+  20852340, MAC `04:E9:E5:1F:D1:72`); `GET_CONTROLLER_INFO` → capability `0x23` (g6_mode,
+  v2_local_storage, io_ext). The column-sweep visual test ran twice: all 240 frames accepted,
+  human-confirmed smooth P1→P12 — the derived CS map (incl. new D38–D41) is right.
+- First real loopback on a reworked board (Studio v0.74 from Pages): **AI1** slope 1.056 / 1.055
+  (`check`, +5.5 % — tolerance-class, F2 calibration territory); **AI2** slope 0.819 / 0.803
+  (`fail`, linear). T1: AI1 open 10.0 V, ground cap +300 mV; AI2 open ≈ 5.5 V (noisy), ground
+  cap −2150 mV. Both AI2 numbers are the same 0.79× factor on V_adc ⇒ channel 2's **stage-2
+  divider is ≈ 0.26 instead of 1/3** (likely a leftover resistor in parallel with the new one,
+  or a wrong value) — **inspect R179/R181 on this board** before calibrating it. Details in
+  `analog-input-plan.md` § 5.1.
+- Open: the Studio has no G6 4×12 config / 12-18 rig yet (streaming from the Studio will be
+  refused with "Bad stream-frame size"); `summarizeSweep` should distinguish "linear gain error"
+  from "saturated (LAB-209)" instead of one `fail`.
 
 ## Day 2 — Wednesday 2026-09-09: firmware F1/F2, then S2, then cleanup
 
