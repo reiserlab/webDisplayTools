@@ -49,6 +49,7 @@
     function deriveOutcome(summary, override) {
         if (override) return override;
         if (!summary) return 'UNKNOWN';
+        if (summary.fault) return 'CONTROLLER_FAULT'; // controller stopped answering (fw #50)
         if (summary.aborted) return 'ABORTED_BY_USER';
         if (summary.errors > 0) return 'ERRORED';
         if (summary.completed) return 'COMPLETED';
@@ -141,6 +142,13 @@
                 );
             case 'error':
                 return stamp + '   ' + where + 'ERROR ' + (ev.reason || '');
+            case 'fault':
+                return (
+                    stamp +
+                    '⚠ FAULT ' +
+                    (ev.reason || 'controller_unresponsive') +
+                    (ev.detail && ev.detail.lastError ? ' — ' + ev.detail.lastError : '')
+                );
             case 'step-done':
                 return stamp + '   ' + where + 'done';
             case 'sequence-complete':

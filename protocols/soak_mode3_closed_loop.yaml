@@ -1,0 +1,130 @@
+version: 3
+
+# ============================================================================
+# Mode-3 SOAK protocol — reproduces the closed-loop controller wedge (firmware
+# issue reiserlab/LED-Display_G6_Firmware_Arena#50) with the FicTrac SIMULATOR,
+# no flies. One iteration ≈ 41 min: twenty 60 s Mode-3 closed-loop trials that
+# alternate the two patterns the wedge was seen on — the 200-frame bar
+# (frame2_h_ccw_200f, index 4) and the 20-frame grating (grating_sq, index 2) —
+# separated by 2 s ITIs. The Studio's soak driver (advanced ?soak=1, File ▾ →
+# Run → Soak…) repeats the whole protocol overnight and runs the post-mortem
+# lifecycle when the fault detector trips.
+#
+# Bench recipe (CSHL 10-10 controller, no FicTrac):
+#   pixi run sim -- --count 0 --rate 100          # or --rate 286; add --jump-every 50
+#   pixi run bridge -- --log-dir soak-logs        # behavior_v2 is the default
+#   Studio ?advanced=1&soak=1 → open this protocol → Soak…
+#   morning: pixi run python scripts/wedge-scan.py soak-logs/*.jsonl
+#
+# gain 1.8 = 360/200 → one frame per 1.8° of heading on the 200-frame bar; on the
+# 20-frame grating the bridge wraps the SAME heading→index mapping modulo 20
+# (the runner pushes each trial's frame count to the bridge), so the grating
+# sees the wide-seek pattern the 08-28/09-11 bench03 failures had.
+# ============================================================================
+
+experiment_info:
+  name: "Mode-3 soak (fw #50)"
+  author: "webDisplayTools"
+
+rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
+
+plugins:
+  - name: "fictrac"
+    type: "class"
+    matlab:
+      class: "FicTracPlugin"
+    config:
+      bridge_url: "ws://localhost:8765"
+      fictrac_port: 60000
+      proto: "udp"
+      gain: 1.8
+      offset: 0
+
+variables:
+  cl_dur: &cl_dur 60
+  iti_dur: &iti_dur 2
+
+experiment:
+  - "soak_setup"
+  - block: "soak_block"
+    trials:
+      - "cl_bar_200f"
+      - "cl_grating_20f"
+    repetitions: 10
+    randomize: false
+    intertrial: "soak_iti"
+  - "soak_shutdown"
+
+conditions:
+  - name: "soak_setup"
+    commands:
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "connect"
+      - type: "plugin"
+        plugin_name: "log"
+        command_name: "log"
+        params:
+          message: "fw#50 soak iteration starting (Mode-3, sim-driven)"
+          level: "INFO"
+
+  # 200-frame bar: FicTrac-like ±1–2 frame steps → mostly sequential SD seeks.
+  - name: "cl_bar_200f"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: *cl_dur
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: 1.8
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  # 20-frame grating: the same heading walk wraps mod 20 → wide index jumps.
+  - name: "cl_grating_20f"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "grating_sq"
+        pattern_ID: 2
+        duration: *cl_dur
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: 1.8
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "soak_iti"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *iti_dur
+
+  - name: "soak_shutdown"
+    commands:
+      - type: "controller"
+        command_name: "stopDisplay"
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "disconnect"

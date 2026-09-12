@@ -262,6 +262,26 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   equal to both the silkscreen number and the 0xAA wire channel (one number
   everywhere; `parseRigIo` rejects `port: 0` with a warning). Label new I/O UI
   with the silkscreen names, not DO1/DO2/J3/J4 refdes.
+- **Controller-fault lifecycle (fw #50, v0.76) — THE fail-closed rule:** a Mode-3 controller
+  wedge is detected in `js/fictrac-bridge-client.js` (`_recordApply`: ≥ `faultThreshold` (3) failed
+  applies in the last `faultWindow` (10) — NOT "3 consecutive", a late same-opcode reply can satisfy
+  the next request) → latched `fault` event, apply forced OFF → `ArenaSession` calls
+  `runner.fault(reason, detail)` (wakes the wait, `summary.fault`, `summary.stopAcked`) → the
+  run's outcome is `CONTROLLER_FAULT` (`run-log.js` `deriveOutcome`, adapter) and it **auto-commits**
+  (only `ABORTED_BY_USER`/`DISCONNECTED` skip). A timed-out protocol command (`isTimeoutError`) is
+  labelled the same. After the run unwinds, `runSteps` (module block) calls
+  `Studio.handleControllerFault(summary)` → `js/studio-postmortem.js` (`createPostmortem().run`):
+  quiet ≥ 1 s + `session.flushRx()` → confirm 0xC2 (2 s) → probe window (5 s timeouts; typed
+  `probe` rows with decoded + raw hex, because `["a",…]` rows carry no payload) → policy `halt` |
+  `reset-continue` (0x01 → `session.reconnect()` via `ArenaLink.reconnect()`/`getPorts()`, VID/PID
+  match, ambiguity refused → MAC verified → post-reset probe). Runner sends go through
+  `session.send` (a link facade) so trialParams/STOP are logged. New wire commands used by probes
+  MUST be exported + golden-tested (`GET_HEALTH` 0xCA decodes 55 B + optional 11 B slowest-op tail;
+  `GET_FRAME_POSITION` 0x72). **Soak driver** (`Studio.startSoak`, File ▾ → Soak…, `?soak=1`,
+  advanced-only) loops `Studio.runOnce(false)` (the no-dialog half of `beginRun`), refuses without
+  a `behavior_v2` ack or without bridge frames, halts on the first fault by default, never
+  auto-commits. Analyzer: `scripts/wedge-scan.py` (+ `tests/test-wedge-scan.py`, standalone
+  harness, no pytest). Design + campaign spec: `docs/development/mode3-wedge-soak-plan.md`.
 - **Wire module exports:** `js/arena-wire-g6.js` defines more than it exports —
   when adding encoders/decoders, add them to the export list AND a test; audit
   with `Object.keys(require('./js/arena-wire-g6.js'))` vs the page's `Wire.*`

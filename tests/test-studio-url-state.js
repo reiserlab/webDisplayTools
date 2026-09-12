@@ -363,6 +363,29 @@ const rt2 = U.decode(U.encodeApp({ mode: 'edit', protocolKey: 'looming_v3' }), {
 check('fresh load of edit+p URL forces Run', rt2.state.mode, 'run');
 check('fresh load of edit+p URL keeps p', rt2.state.p, 'looming_v3');
 
+// ── soak param (fw #50 soak driver; advanced-only flag) ──────────────────────
+console.log('\n=== soak param ===');
+d = U.decode('?soak=1', { allowedKeys: ALLOWED });
+check('soak=1 requested', d.state.soak, true);
+checkBool('soak=1 does not warn', d.warnings.length === 0, d.warnings.join('|'));
+d = U.decode('?soak=0', { allowedKeys: ALLOWED });
+check('soak=0 → not requested', d.state.soak, undefined);
+checkBool('soak=0 does not warn', d.warnings.length === 0, d.warnings.join('|'));
+d = U.decode('?soak=yes', { allowedKeys: ALLOWED });
+check('soak=yes dropped', d.state.soak, undefined);
+checkBool(
+    'soak=yes warns',
+    d.warnings.some((w) => /soak/.test(w))
+);
+check('encode emits soak=1 when armed', U.encode({ mode: 'run', soak: true }), '?soak=1');
+check('encode omits soak when off', U.encode({ mode: 'run', soak: false }), '');
+check(
+    'encodeApp carries soak alongside advanced',
+    U.encodeApp({ mode: 'run', advanced: true, soak: true }),
+    '?advanced=1&soak=1'
+);
+check('encodeApp omits soak by default', U.encodeApp({ mode: 'console' }), '?mode=console');
+
 console.log('\n=== Summary ===');
 console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures ? 1 : 0);

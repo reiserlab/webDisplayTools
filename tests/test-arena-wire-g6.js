@@ -573,5 +573,104 @@ checkBool(
     Wire.decodePanelDisplayMode(Uint8Array.from([0x03, 0x01, 0x1c, 0x02])) === null
 );
 
+// ── GET_HEALTH 0xCA (fw #50 soak/post-mortem probe) ─────────────────────────
+console.log('\n=== GET_HEALTH (0xCA) ===');
+checkBytes('encodeGetHealth', Wire.encodeGetHealth(), '01 ca');
+check('OPCODES.GET_HEALTH', Wire.OPCODES.GET_HEALTH, 0xca);
+check('HEALTH_PAYLOAD_BYTES', Wire.HEALTH_PAYLOAD_BYTES, 55);
+{
+    // Build a 55-byte payload field by field (LE).
+    const u8 = (v) => [v & 0xff];
+    const u16 = (v) => [v & 0xff, (v >> 8) & 0xff];
+    const u32 = (v) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
+    const payload = [].concat(
+        u8(1), // ver
+        u8(0x0b), // flags: sd_mounted | pattern_open | breadcrumb_valid (not display_active)
+        u32(123456), // uptime_ms
+        u32(9876543), // loop_count
+        u32(4800), // loop_max_us
+        u32(310), // loop_max_1s_us
+        u32(77777), // sd_reads
+        u32(2900), // sd_read_max_us
+        u8(0), // sd_err
+        u32(0), // sd_err_data
+        u32(0x12345678), // frames_sent
+        u32(0xfffffffe), // isr_count (unsigned)
+        u32(70707), // cmd70_count
+        u8(4), // state = SHOW_FRAME
+        u16(199), // cur_frame
+        u32(0x00000800), // reset_cause (bit 11 = ... any u32 survives)
+        u8(1), // prev_breadcrumb = sd_read
+        u32(4000000000) // prev_breadcrumb_us (unsigned)
+    );
+    check('fixture is 55 bytes', payload.length, 55);
+    const frame = Uint8Array.from([payload.length + 2, 0x00, 0xca].concat(payload));
+    const h = Wire.decodeHealth(frame);
+    checkBool('decodeHealth returns an object', !!h);
+    check('ver', h.ver, 1);
+    check(
+        'flags decoded',
+        [h.sdMounted, h.patternOpen, h.displayActive, h.breadcrumbValid].join(','),
+        'true,true,false,true'
+    );
+    check('uptimeMs', h.uptimeMs, 123456);
+    check('loopCount', h.loopCount, 9876543);
+    check('loopMaxUs / loopMax1sUs', [h.loopMaxUs, h.loopMax1sUs].join(','), '4800,310');
+    check('sdReads / sdReadMaxUs', [h.sdReads, h.sdReadMaxUs].join(','), '77777,2900');
+    check('sdErr / sdErrData', [h.sdErr, h.sdErrData].join(','), '0,0');
+    check('framesSent', h.framesSent, 0x12345678);
+    check('isrCount unsigned', h.isrCount, 4294967294);
+    check('cmd70Count', h.cmd70Count, 70707);
+    check('state / curFrame', [h.state, h.curFrame].join(','), '4,199');
+    check('resetCause u32', h.resetCause, 0x800);
+    check('prevBreadcrumb + name', [h.prevBreadcrumb, h.prevBreadcrumbOp].join(','), '1,sd_read');
+    check('prevBreadcrumbUs unsigned', h.prevBreadcrumbUs, 4000000000);
+    checkBool('short payload → null', Wire.decodeHealth(frame.slice(0, 20)) === null);
+    checkBool(
+        'status!=0 → null',
+        Wire.decodeHealth(Uint8Array.from([payload.length + 2, 0x01, 0xca].concat(payload))) ===
+            null
+    );
+    // Longer payload (future fields appended) still decodes.
+    const longer = Uint8Array.from([payload.length + 4, 0x00, 0xca].concat(payload, [9, 9]));
+    checkBool('longer payload tolerated', Wire.decodeHealth(longer) !== null);
+    checkBool(
+        '2-byte tail does not decode as the slow-op tail',
+        Wire.decodeHealth(longer).slowOp === undefined
+    );
+    // The shipped 66-byte layout: 11-byte slowest-op tail.
+    const tail = [].concat(u8(0x01), u8(1), u32(1300000), u8(2), u32(4200));
+    const full = Uint8Array.from(
+        [payload.length + tail.length + 2, 0x00, 0xca].concat(payload, tail)
+    );
+    const hf = Wire.decodeHealth(full);
+    check('HEALTH_PAYLOAD_BYTES_FULL', Wire.HEALTH_PAYLOAD_BYTES_FULL, 66);
+    check('tail: prevBreadcrumbArg (opcode of the reset command)', hf.prevBreadcrumbArg, 0x01);
+    check('tail: prevSlowOp + name', [hf.prevSlowOp, hf.prevSlowOpName].join(','), '1,sd_read');
+    check('tail: prevSlowUs', hf.prevSlowUs, 1300000);
+    check('tail: slowOp + name', [hf.slowOp, hf.slowOpName].join(','), '2,spi_transfer');
+    check('tail: slowUs', hf.slowUs, 4200);
+}
+// GET_FRAME_POSITION 0x72: cur_frame u16 LE + frame_count u16 LE.
+checkBytes('encodeGetFramePosition', Wire.encodeGetFramePosition(), '01 72');
+{
+    const fp = Wire.decodeFramePosition(
+        Uint8Array.from([0x06, 0x00, 0x72, 0xc7, 0x00, 0xc8, 0x00])
+    );
+    check('decodeFramePosition index', fp && fp.index, 199);
+    check('decodeFramePosition frameCount', fp && fp.frameCount, 200);
+    checkBool(
+        'decodeFramePosition rejects status!=0',
+        Wire.decodeFramePosition(Uint8Array.from([0x06, 0x01, 0x72, 0, 0, 0, 0])) === null
+    );
+}
+// Capability bit 7 = health.
+{
+    const ci = Uint8Array.from([0x04, 0x00, 0xc2, 0x02, 0xa3]);
+    const d = Wire.decodeControllerInfo(ci);
+    checkBool('capability bit 7 → health', d.capabilities.includes('health'));
+    checkBool('bit 5 io_ext still decoded alongside', d.capabilities.includes('io_ext'));
+}
+
 console.log(`\n=== Summary ===\n${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures > 0 ? 1 : 0);

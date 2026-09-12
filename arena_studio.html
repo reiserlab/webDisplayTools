@@ -251,6 +251,8 @@
   body.safemode #ghLock{cursor:not-allowed;opacity:.6}
   /* Session-rig selector stays hard-locked (its unlock padlock is hidden). */
   body.safemode #sessionRigLock{display:none}
+  body.safemode #fmSoak{display:none}
+  #fmSoak.soaking{color:var(--accent)}
   /* Pattern WRITES greyed in safe mode: the Add ▾ menu button has no data-cmd
      (its items do, and are in SAFE_BLOCKED_CMDS), so grey the parent so the menu
      can't be opened; the per-row × delete bypasses the dispatcher (guarded in JS)
@@ -2130,6 +2132,7 @@
       <div class="sep"></div>
       <button id="fmCopyConditions" class="edit-only" title="Copy conditions from a second protocol YAML into this one — brings their anchors and plugins along">Copy conditions from another protocol…</button>
       <button id="fmReset" class="edit-only" title="Clear everything to a blank minimum-valid v3 skeleton (reversible with Undo)">Reset protocol…</button>
+      <button id="fmSoak" title="Advanced: repeat the open protocol unattended (N times / for H hours, with a gap) to reproduce the Mode-3 controller wedge (fw #50). Requires the bridge to confirm behavior_v2 logging and FicTrac/simulator frames to be arriving. On a fault: quiet period → probes → halt (first fault) or SYSTEM_RESET + reconnect + continue. Logs stay on the bridge (not auto-committed).">Soak (repeat protocol)…</button>
       <div class="sep"></div>
       <div class="gh-block gh-locked" id="ghBlock">
         <div class="gh-row">
@@ -2658,6 +2661,8 @@
           </div>
           <div class="cmenu-sep">Send raw hex</div>
           <div class="cmenu-row"><input id="cRawHex" type="text" placeholder="01 C2" title="Raw hex bytes to send verbatim (e.g. 01 C2)"><button class="cmenu-item" data-cmd="crawsend" style="width:auto" title="Send the raw hex bytes to the controller">Send</button></div>
+          <div class="cmenu-sep">Health</div>
+          <button class="cmenu-item" data-cmd="chealth" title="GET_HEALTH (0xCA) — controller loop timing, SD read stats, frame/command counters and the previous boot's breadcrumb + slowest op (needs health-capable firmware; logged to the Console and the run log)">Controller health</button>
           <div class="cmenu-sep">Danger</div>
           <button class="cmenu-item" data-cmd="sysreset" title="SYSTEM_RESET (0x01) — ack then reboot the controller firmware">Reset controller</button>
         </div>
@@ -2953,7 +2958,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.74 | 2026-09-10 16:50 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.76 | 2026-09-11 22:45 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -2984,6 +2989,7 @@
 <script src="js/studio-meta.js"></script>
 <script src="js/studio-url-state.js"></script>
 <script src="js/studio-runlog-adapter.js"></script>
+<script src="js/studio-postmortem.js"></script>
 <script src="js/kinematics.js"></script> <!-- shared scope/dashboard kinematic derivations -->
 <script src="js/studio-github.js"></script>
 <script src="js/runlog-format.js?v=20260906-1829"></script>
@@ -3323,12 +3329,14 @@
     function hideUploadModal() { const ov = $('rlUploadOverlay'); if (ov) ov.style.display = 'none'; }
 
     // ---- course-repo run-log auto-commit (CSHL pipeline) -----------------------
-    // On COMPLETED recorded runs only: export the bridge's JSONL — the canonical
-    // run artifact (run_metadata line + every runner/arena/FicTrac event) — and
-    // direct-commit it gzipped as ONE `.jsonl.gz` under runlogs/<bench-id>/. Aborted or
-    // disconnected runs never auto-commit (deliberate: a partial run is bench
-    // debris until someone decides otherwise). Filename STAMP is colon-free —
-    // a raw ISO ':' breaks git checkout on Windows clones.
+    // On COMPLETED recorded runs — and on CONTROLLER_FAULT runs (fw #50: the
+    // record of a run the controller killed is evidence, and must be durable) —
+    // export the bridge's JSONL — the canonical run artifact (run_metadata line +
+    // every runner/arena/FicTrac event) — and direct-commit it gzipped as ONE
+    // `.jsonl.gz` under runlogs/<bench-id>/. User-aborted or disconnected runs
+    // never auto-commit (deliberate: a partial run is bench debris until someone
+    // decides otherwise). Filename STAMP is colon-free — a raw ISO ':' breaks git
+    // checkout on Windows clones.
     async function maybeCommitRunLog(log, summary) {
         if (!log || log.intent !== 'experiment') return;
         const outcome = (summary && summary.outcome) || (log.summary && log.summary.outcome) || 'UNKNOWN';
@@ -3855,6 +3863,8 @@
         const repoRef = Studio.currentDoc && Studio.currentDoc.repoRef;
         const q = window.StudioUrlState.encodeApp({
             mode: Studio.mode,
+            // fw #50 soak driver armed in this tab (advanced-only; clean-URL rule).
+            soak: !!Studio.soak,
             protocolKey: Studio.currentDoc && Studio.currentDoc.protocolKey,
             // Course-repo provenance (?repo=owner/name&p=<path>): set by a
             // validated ?repo= load or an in-app course-repo open/save.
@@ -4875,6 +4885,18 @@
                 }
             });
         }
+        // Controller fault (fw #50): the closed-loop client latched
+        // controller_unresponsive → the runner is already aborting. Tell the
+        // operator now; the post-mortem lifecycle starts once the run's cleanup
+        // (best-effort STOP) has finished — see Studio.handleControllerFault.
+        Studio.session.on('fault', (f) => {
+            Studio._pendingFault = f || { kind: 'controller_unresponsive' };
+            const d = f || {};
+            rawLine('⚠ controller fault: ' + (d.kind || 'controller_unresponsive') +
+                (d.failures != null ? ' — ' + d.failures + ' of the last ' + d.window + ' frame commands failed' : '') +
+                (d.lastError ? ' (' + d.lastError + ')' : ''), 'err');
+            showBanner('⚠ Controller stopped answering — run aborted. Post-mortem probes follow (see the run log).');
+        });
         Studio.session.on('disconnect', (info) => {
             if (info && info.involuntary && Studio.activeRunLog && !Studio.activeRunLog.summary) {
                 Adapter.finishDisconnected(Studio.activeRunLog, { aborted: true, steps: 0, errors: 0, skipped: 0 });
@@ -5403,6 +5425,20 @@
         setrate: () => send(Wire.encodeSetRefreshRate(num('cRrHz')), 'SET_REFRESH_RATE 0x16 ' + num('cRrHz') + ' Hz'),
         getrate: async () => { const r = await send(Wire.encodeGetRefreshRate(), 'GET_REFRESH_RATE 0x17'); const v = r && Wire.decodeRefreshRate(r); if (v != null) $('cRrHz').value = String(v); },
         sysreset: () => guardDestructive(() => { if (confirm('SYSTEM_RESET (0x01) reboots the controller firmware. Continue?')) send(Wire.encodeSystemReset(), 'SYSTEM_RESET 0x01'); }),
+        // Controller health (fw #50): one GET_HEALTH read, decoded into the log.
+        // The reply is also an ordinary arena_command row; the decoded fields go
+        // into the run log as a typed `health` event when the bridge is logging.
+        chealth: async () => {
+            const r = await send(Wire.encodeGetHealth(), 'GET_HEALTH 0xCA', { timeoutMs: 2000 });
+            const h = r && Wire.decodeHealth(r);
+            if (!h) { clog('health: no/short reply — firmware without GET_HEALTH (capability bit 7)?', 'warn'); return; }
+            clog('health: up ' + (h.uptimeMs / 1000).toFixed(0) + ' s · loop max ' + h.loopMaxUs + ' µs (1 s: ' + h.loopMax1sUs + ') · SD reads ' + h.sdReads + ' max ' + h.sdReadMaxUs + ' µs err ' + h.sdErr +
+                 ' · frames ' + h.framesSent + ' · isr ' + h.isrCount + ' · 0x70 ' + h.cmd70Count + ' · state ' + h.state + ' frame ' + h.curFrame +
+                 ' · reset 0x' + h.resetCause.toString(16) + ' · prev boot: ' + h.prevBreadcrumbOp + (h.prevSlowOpName ? ' (slowest ' + h.prevSlowOpName + ' ' + h.prevSlowUs + ' µs)' : '') +
+                 (h.slowOpName ? ' · this boot slowest ' + h.slowOpName + ' ' + h.slowUs + ' µs' : ''), 'info');
+            const b = Studio.session && Studio.session.bridge;
+            if (b && b.logging) b.log({ event: 'health', source: 'console', health: h });
+        },
         // Rig I/O (#135) — reapply the rig's power-on defaults (module-block hook)
         cioapply: () => { if (Studio.applyRigIo) Studio.applyRigIo({ manual: true }); else clog('rig io: module block not loaded', 'err'); },
         // raw hex
@@ -7920,6 +7956,16 @@ Studio.beginRun = async function (isExperiment) {
     if (!Studio.session.connected) {
         try { await Studio.session.connect(); } catch (e) { Studio.showBanner('Connect failed: ' + e.message); return; }
     }
+    return Studio.runOnce(isExperiment);
+};
+
+// The repeatable half of beginRun — no dialogs, no port request; the caller
+// has done the one-time preflight (rig confirm + connect). Returns the runner
+// summary ({completed, aborted, fault, stopAcked, …}) or null if it could not
+// start. The soak driver loops on this.
+Studio.runOnce = async function (isExperiment) {
+    const doc = Studio.currentDoc;
+    if (!doc || !Studio.session || !Studio.session.connected) return null;
     const exp = doc.experiment;
     const { steps } = RunnerLib.flattenStructure(exp, { shuffle: shuffleInPlace });
     const conditionsByName = new Map((exp.conditions || []).map((c) => [c.name, c]));
@@ -7948,8 +7994,157 @@ Studio.beginRun = async function (isExperiment) {
     Studio._runCmdCount = cmdCount;
     const totalSec = durSum + cmdCount * Studio.runOverheadPerCmd();
     if (Studio.startRunTimer) Studio.startRunTimer(totalSec);
-    await runSteps(steps, conditionsByName, exp, isExperiment);
+    return runSteps(steps, conditionsByName, exp, isExperiment);
 };
+
+// ---- soak driver (fw #50 reproduction harness; advanced-only) --------------
+// Repeats the open protocol unattended. Each iteration is a TEST-intent run
+// (bridge-logged, never auto-committed). Refuses to start unless the bridge
+// confirms behavior_v2 logging (fail closed) and FicTrac/simulator frames are
+// arriving. A fault ends the iteration through the normal path; the
+// post-mortem result decides whether the soak continues (recovered) or stops.
+Studio.soak = null;
+const SOAK_DEFAULTS = { iterations: 0, hours: 12, gapS: 10, firstFault: 'halt', policy: 'reset-continue', maxResets: 3 };
+function parseSoakSpec(text) {
+    const cfg = Object.assign({}, SOAK_DEFAULTS);
+    String(text || '').split(/[\s,;]+/).filter(Boolean).forEach((kv) => {
+        const m = kv.match(/^([a-z_]+)=(.+)$/i);
+        if (!m) return;
+        const k = m[1].toLowerCase(); const v = m[2];
+        if (k === 'iterations' || k === 'n') cfg.iterations = Math.max(0, parseInt(v, 10) || 0);
+        else if (k === 'hours' || k === 'h') cfg.hours = Math.max(0, parseFloat(v) || 0);
+        else if (k === 'gap') cfg.gapS = Math.max(0, parseFloat(v) || 0);
+        else if (k === 'first') cfg.firstFault = /^reset/i.test(v) ? 'reset-continue' : 'halt';
+        else if (k === 'then' || k === 'policy') cfg.policy = /^halt/i.test(v) ? 'halt' : 'reset-continue';
+        else if (k === 'max' || k === 'max_resets') cfg.maxResets = Math.max(0, parseInt(v, 10) || 0);
+    });
+    return cfg;
+}
+Studio.parseSoakSpec = parseSoakSpec;
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+Studio.openSoakDialog = async function () {
+    if (!Studio.advanced) { Studio.showBanner('Soak is an advanced-mode feature (unlock with ?advanced=1).'); return; }
+    if (Studio.soak) {
+        if (confirm('A soak is running (iteration ' + Studio.soak.iteration + '). Stop it after the current run?')) Studio.stopSoak('operator');
+        return;
+    }
+    if (!Studio.currentDoc) { Studio.showBanner('Open the soak protocol first (File ▾ → Open… → protocols/soak_mode3_closed_loop.yaml).'); return; }
+    const spec = prompt(
+        'Soak the open protocol. Edit and OK:\n' +
+        '  iterations=N (0 = until hours elapse)   hours=H   gap=S (seconds between runs)\n' +
+        '  first=halt|reset   (first fault: halt = leave wedged for inspection)\n' +
+        '  then=reset|halt    max=R (SYSTEM_RESET attempts before halting)',
+        'iterations=0 hours=12 gap=10 first=halt then=reset max=3'
+    );
+    if (spec == null) return;
+    await Studio.startSoak(parseSoakSpec(spec));
+};
+
+Studio.startSoak = async function (cfg) {
+    if (Studio.soak) return;
+    if (!Studio.advanced) { Studio.showBanner('Soak is an advanced-mode feature.'); return; }
+    const doc = Studio.currentDoc;
+    if (!doc || !Studio.session) { Studio.showBanner('Soak: open a protocol first.'); return; }
+    if (!Studio.session.connected) {
+        try { await Studio.session.connect(); } catch (e) { Studio.showBanner('Soak: connect failed — ' + e.message); return; }
+    }
+    const bridge = Studio.session.bridge;
+    if (!bridge) { Studio.showBanner('Soak: the FicTrac bridge client is not loaded.'); return; }
+    // Fail closed on the log format: a night of behavior_v1 is 4× the disk and
+    // the analyzer's slow path. The runner asserts the level per run; we need the
+    // ACK before the first run starts.
+    if (bridge.setLogLevel) bridge.setLogLevel('behavior_v2');
+    bridge.setLogging(true);
+    const ftUrl = ((($('cFtUrl') || {}).value) || 'ws://localhost:8765').trim();
+    if (!bridge.connected) {
+        try { bridge.connect(ftUrl); } catch (_) { /* surfaces below */ }
+        for (let i = 0; i < 40 && !bridge.connected; i++) await sleepMs(25);
+    }
+    if (!bridge.connected) { Studio.showBanner('Soak refused: bridge not connected (' + ftUrl + ') — start `pixi run bridge`.'); return; }
+    const ack = bridge.waitForLogLevelAck ? await bridge.waitForLogLevelAck(1500) : null;
+    if (ack !== 'behavior_v2') {
+        Studio.showBanner('Soak refused: the bridge did not confirm behavior_v2 logging (' + (ack || 'no ack') + ') — `git pull` + restart `pixi run bridge`.');
+        return;
+    }
+    // Input freshness: without simulator/FicTrac frames a Mode-3 soak drives nothing.
+    let rate = bridge.stats ? bridge.stats.rateHz : 0;
+    if (!(rate > 0)) { await sleepMs(1500); rate = bridge.stats ? bridge.stats.rateHz : 0; }
+    if (!(rate > 0)) { Studio.showBanner('Soak refused: no FicTrac frames arriving at the bridge — start `pixi run sim -- --count 0 --rate 100`.'); return; }
+    const s = Studio.soak = Object.assign({}, SOAK_DEFAULTS, cfg || {}, {
+        iteration: 0, faults: 0, resets: 0, stop: false, stopReason: null, startedMs: Date.now(),
+        untilMs: 0
+    });
+    if (s.hours > 0) s.untilMs = s.startedMs + s.hours * 3600e3;
+    $('fmSoak') && $('fmSoak').classList.add('soaking');
+    Studio.updateUrl && Studio.updateUrl({ push: false });
+    const logSoak = (o) => { if (bridge.logging) bridge.log(Object.assign({ event: 'soak' }, o)); };
+    const desc = (s.iterations ? s.iterations + ' iterations' : 'until stopped') + (s.hours ? ', ≤ ' + s.hours + ' h' : '') +
+        ', gap ' + s.gapS + ' s, first fault: ' + s.firstFault + ', then: ' + s.policy + ' (max ' + s.maxResets + ' resets)';
+    logSoak({ phase: 'start', protocol: doc.filename, sha256: doc.sha256, config: { iterations: s.iterations, hours: s.hours, gap_s: s.gapS, first_fault: s.firstFault, policy: s.policy, max_resets: s.maxResets }, sim_rate_hz: rate });
+    Studio.rawLog('soak started — ' + desc, 'info');
+    Studio.showBanner('Soak running — ' + desc + '. File ▾ → Soak… to stop.');
+    (async () => {
+        let reason = 'done';
+        try {
+            for (;;) {
+                if (s.stop) { reason = s.stopReason || 'operator'; break; }
+                if (s.iterations && s.iteration >= s.iterations) { reason = 'iterations'; break; }
+                if (s.untilMs && Date.now() >= s.untilMs) { reason = 'hours'; break; }
+                if (!Studio.session.connected) { reason = 'disconnected'; break; }
+                s.iteration++;
+                Studio._lastPostmortem = null;
+                logSoak({ phase: 'iteration-start', iteration: s.iteration, elapsed_s: Math.round((Date.now() - s.startedMs) / 1000) });
+                Studio.rawLog('soak iteration ' + s.iteration + (s.iterations ? ' / ' + s.iterations : '') + ' starting', 'info');
+                const res = await Studio.runOnce(false);
+                const pmo = Studio._lastPostmortem;
+                logSoak({
+                    phase: 'iteration-end', iteration: s.iteration,
+                    outcome: !res ? 'not-started' : res.fault ? 'fault' : res.aborted ? 'aborted' : 'completed',
+                    fault: res && res.fault ? res.fault : null,
+                    stop_acked: res ? res.stopAcked : null,
+                    postmortem: pmo ? pmo.outcome : null
+                });
+                if (!res) { reason = 'run-not-started'; break; }
+                if (res.fault) {
+                    s.faults++;
+                    if (!pmo || pmo.outcome !== 'recovered') { reason = pmo ? 'fault-' + pmo.outcome : 'fault'; break; }
+                    s.resets++;
+                    Studio.rawLog('soak: controller recovered (reset ' + s.resets + '/' + s.maxResets + ') — continuing', 'warn');
+                } else if (res.aborted) { reason = 'operator-stop'; break; }
+                if (s.stop) { reason = s.stopReason || 'operator'; break; }
+                // Gap + input freshness re-check (a dead simulator is a harness
+                // problem, not a controller fault — pause, don't count it).
+                await sleepMs(s.gapS * 1000);
+                let r2 = bridge.stats ? bridge.stats.rateHz : 0;
+                let waited = 0;
+                while (!(r2 > 0) && !s.stop && waited < 600) {
+                    if (waited === 0) { Studio.rawLog('soak: no FicTrac frames — waiting for the simulator (restart `pixi run sim`)', 'warn'); logSoak({ phase: 'paused', iteration: s.iteration, reason: 'no-frames' }); }
+                    await sleepMs(5000); waited += 5;
+                    r2 = bridge.stats ? bridge.stats.rateHz : 0;
+                }
+                if (!(r2 > 0)) { reason = 'no-frames'; break; }
+            }
+        } catch (e) {
+            reason = 'error: ' + (e && e.message ? e.message : e);
+        }
+        logSoak({ phase: 'end', reason, iterations: s.iteration, faults: s.faults, resets: s.resets, elapsed_s: Math.round((Date.now() - s.startedMs) / 1000) });
+        Studio.rawLog('soak ended (' + reason + ') after ' + s.iteration + ' iteration(s), ' + s.faults + ' fault(s), ' + s.resets + ' reset(s)', /fault|error/.test(reason) ? 'err' : 'info');
+        Studio.showBanner('Soak ended: ' + reason + ' — ' + s.iteration + ' iteration(s), ' + s.faults + ' fault(s). Logs are on the bridge (`pixi run python scripts/wedge-scan.py <log-dir>`).');
+        Studio.soak = null;
+        $('fmSoak') && $('fmSoak').classList.remove('soaking');
+        Studio.updateUrl && Studio.updateUrl({ push: false });
+    })();
+};
+
+Studio.stopSoak = function (reason) {
+    if (!Studio.soak) return;
+    Studio.soak.stop = true;
+    Studio.soak.stopReason = reason || 'operator';
+    if (Studio._activePostmortem) Studio._activePostmortem.abort();
+    Studio.rawLog('soak: stop requested — finishing the current run', 'warn');
+};
+$('fmSoak') && $('fmSoak').addEventListener('click', () => Studio.openSoakDialog());
 
 Studio.runCondition = async function (name) {
     const doc = Studio.currentDoc;
@@ -8078,16 +8273,21 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         // `log_format` names the line format of THIS file (the bridge's acked
         // level, or the inferred one for a non-acking old bridge) so readers that
         // skip the frame_schema line still know what they hold.
-        if (isExperiment && bridge.connected && Studio.activeRunLog) {
-            bridge.log(Object.assign({ event: 'run_metadata', rig_id: Studio.rigId || null, log_format: logLevel },
-                Studio.activeRunLog.meta));
+        // Soak iterations are TEST-intent runs (never auto-committed) but still
+        // get the run_metadata line so a soak log is self-describing.
+        if ((isExperiment || Studio.soak) && bridge.connected && Studio.activeRunLog) {
+            const md = Object.assign({ event: 'run_metadata', rig_id: Studio.rigId || null, log_format: logLevel },
+                Studio.activeRunLog.meta);
+            if (Studio.soak) md.soak = { iteration: Studio.soak.iteration, policy: Studio.soak.policy, first_fault: Studio.soak.firstFault };
+            bridge.log(md);
         }
     }
+    let summary = null;
     try {
         // NOTE: do NOT pass onProgress — the session broadcasts 'runstatus' which
         // Studio.onRunStatus (subscribed once) consumes, so the log/highlight stay
         // live across view switches.
-        await Studio.session.runSequence({
+        summary = await Studio.session.runSequence({
             steps,
             conditionsByName,
             resolvePatternId: resolvePatternIdForCmd,
@@ -8097,6 +8297,13 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
                 : undefined,
             fictracPluginNames: new Set(ftNames)
         });
+        // Controller fault (fw #50) — either the closed-loop client tripped
+        // (bridge 'fault' → runner.fault) or a protocol command timed out; both
+        // land in summary.fault. The runner's cleanup (best-effort STOP) has
+        // finished by now, so the post-mortem lifecycle owns the link.
+        if (summary && summary.fault) {
+            Studio._lastPostmortem = await Studio.handleControllerFault(summary);
+        }
     } catch (e) {
         Studio.rawLog('run error: ' + (e && e.message ? e.message : e), 'err');
         if (Studio.activeRunLog && !Studio.activeRunLog.summary) {
@@ -8106,7 +8313,53 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         document.body.classList.remove('testing');
         Studio.refreshState();
     }
+    return summary;
 }
+
+// ---- controller-fault post-mortem (fw #50) --------------------------------
+// Runs AFTER the faulted run has unwound. Policy: outside a soak, or on a
+// soak's FIRST fault when configured halt-first, probe and leave the controller
+// as-is (evidence first); otherwise probe → SYSTEM_RESET → reconnect → verify
+// the MAC → post-reset probe, and the soak continues if it recovered.
+Studio._lastPostmortem = null;
+Studio._activePostmortem = null;
+Studio.handleControllerFault = async function (summary) {
+    const PM = window.StudioPostmortem;
+    if (!PM || !Studio.session) return null;
+    const s = Studio.soak;
+    let policy = 'halt';
+    if (s) {
+        if (s.faults === 0 && s.firstFault === 'halt') policy = 'halt';
+        else if (s.resets < s.maxResets) policy = s.policy;
+    }
+    const pm = PM.createPostmortem({
+        session: Studio.session,
+        wire: Wire,
+        log: (m, k) => Studio.rawLog('post-mortem: ' + m, k || 'info')
+    });
+    Studio._activePostmortem = pm;
+    Studio.showBanner('⚠ Controller fault — post-mortem probes running (' + policy + '). Do not unplug.');
+    try {
+        const res = await pm.run({
+            policy,
+            expectMac: Studio.controllerId || null,
+            faultDetail: Object.assign({ reason: summary.fault }, summary.faultDetail || {})
+        });
+        Studio.showBanner(
+            res.outcome === 'transient' ? 'Controller answered normally again — transient stall, run still aborted.' :
+            res.outcome === 'recovered' ? 'Controller recovered after SYSTEM_RESET' + (res.reset && res.reset.prevSlowOp ? ' (slowest op before: ' + res.reset.prevSlowOp + ')' : '') + '.' :
+            res.outcome === 'halted' ? 'Post-mortem done — controller left wedged for inspection (halt policy). Power-cycle or Debug ▾ → Reset controller when finished.' :
+            'Post-mortem: ' + res.outcome + ' — see the run log.'
+        );
+        return res;
+    } catch (e) {
+        Studio.rawLog('post-mortem error: ' + (e && e.message ? e.message : e), 'err');
+        return { outcome: 'error', error: e && e.message };
+    } finally {
+        Studio._activePostmortem = null;
+        Studio._pendingFault = null;
+    }
+};
 
 function shuffleInPlace(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -9482,6 +9735,12 @@ async function initFromUrl() {
         // NOTE: lockSafe/unlockAdvanced live in the classic shell IIFE, not this
         // module scope — call them via the exposed Studio.* refs (a bare name here
         // throws a ReferenceError that the finally-block would silently mask).
+        // ?soak=1 arms the soak driver (advanced-only). It never auto-starts —
+        // connecting needs a click — it just tells the operator where the switch is.
+        if (state.soak === true) {
+            Studio.soakRequested = true;
+            setTimeout(() => Studio.showBanner('Soak armed — open protocols/soak_mode3_closed_loop.yaml, connect, then File ▾ → Soak…'), 800);
+        }
         if (state.advanced === true) {
             Studio.advancedUrlRequested = true;
             if (!Studio.advanced) Studio.unlockAdvanced();
@@ -15219,6 +15478,8 @@ initFromUrl();
     '.rail-btn[data-panel="io"]': 'The controller’s analog and digital input/output connectors.',
     '.rail-btn[data-panel="ai"]': 'Watch the two analog inputs live, and check the wiring by looping Analog Out back into an input.',
     '.rail-btn[data-panel="fw"]': 'Update or check the firmware on the LED panels.',
+    '[data-cmd="chealth"]': 'Ask the controller how it is doing — loop timing, memory-card read times, and what it was doing before its last restart.',
+    '#fmSoak': 'Repeat the open protocol unattended (overnight) to catch the rare controller freeze; on a freeze it records diagnostics and, if you chose so, restarts the controller and continues.',
     '.rail-btn[data-panel="fictrac"]': 'Closed loop with FicTrac: the fly’s walking steers the pattern.',
     /* Console bench strip + panels */
     '#ctlMenu > .cmenu-btn': 'Questions for the controller — firmware version, network address, frame counters — plus advanced settings (locked).',

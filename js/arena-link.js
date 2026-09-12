@@ -65,6 +65,33 @@ const ArenaLink = (function () {
             .map((b) => b.toString(16).padStart(2, '0'))
             .join(' ');
 
+    // USB identity of a SerialPort ({usbVendorId, usbProductId}) or null when the
+    // browser exposes nothing (Bluetooth / virtual ports, old Chromium).
+    function portInfo(port) {
+        try {
+            const i = port && typeof port.getInfo === 'function' ? port.getInfo() : null;
+            if (!i || (i.usbVendorId == null && i.usbProductId == null)) return null;
+            return { usbVendorId: i.usbVendorId, usbProductId: i.usbProductId };
+        } catch (_) {
+            return null;
+        }
+    }
+    // A granted port matches when both ids equal the remembered ones; with no
+    // remembered identity ANY port matches (the caller's ambiguity check applies).
+    function infoMatches(info, want) {
+        if (!want) return true;
+        return (
+            !!info &&
+            info.usbVendorId === want.usbVendorId &&
+            info.usbProductId === want.usbProductId
+        );
+    }
+    function describeInfo(info) {
+        if (!info) return 'any USB serial device';
+        const h = (n) => (n == null ? '?' : '0x' + n.toString(16).padStart(4, '0'));
+        return 'VID ' + h(info.usbVendorId) + ' PID ' + h(info.usbProductId);
+    }
+
     // Truncate long payloads (e.g. future stream frames) so the log stays readable.
     const hexDump = (bytes) =>
         bytes.length > HEX_LOG_LIMIT
@@ -160,6 +187,10 @@ const ArenaLink = (function () {
 
             const baudRate = (opts && opts.baudRate) || DEFAULT_BAUD_RATE;
             await this._port.open({ baudRate });
+            // Remember the USB identity (VID/PID — all Web Serial exposes) so
+            // reconnect() can find this device among the granted ports after a
+            // firmware reset re-enumerates it.
+            this._portInfo = portInfo(this._port);
 
             try {
                 this._writer = this._port.writable.getWriter();
@@ -193,6 +224,84 @@ const ArenaLink = (function () {
             await this.requestPort(opts.filters ? { filters: opts.filters } : undefined);
             await this.open(opts);
             return this._port;
+        }
+
+        /**
+         * Re-open the controller WITHOUT a user gesture, from the ports the user
+         * has already granted (navigator.serial.getPorts()). For unattended
+         * recovery after SYSTEM_RESET (0x01) / a soak-harness fault (fw #50):
+         * the Teensy re-enumerates, so the old SerialPort object is usually dead
+         * and the device comes back as a new granted port with the same VID/PID.
+         *
+         * Candidate order: the previously used SerialPort object first (no
+         * re-enumeration happened), then granted ports whose getInfo() matches
+         * the remembered VID/PID. VID/PID names a PRODUCT, not a unit — with two
+         * or more matching granted ports the call refuses (ambiguous) unless
+         * `allowAmbiguous`; callers should verify the controller's MAC via 0xC2
+         * afterwards regardless. Polls until `timeoutMs` (default 10 s) so the
+         * ~1–3 s re-enumeration window is covered.
+         * @param {object} [opts] {timeoutMs=10000, pollMs=500, allowAmbiguous=false, baudRate}
+         * @returns {Promise<SerialPort>} the port now open
+         */
+        async reconnect(opts) {
+            this._assertSupported();
+            opts = opts || {};
+            if (this._connected) return this._port;
+            const timeoutMs = opts.timeoutMs > 0 ? opts.timeoutMs : 10000;
+            const pollMs = opts.pollMs > 0 ? opts.pollMs : 500;
+            const want = this._portInfo || null;
+            const old = this._port;
+            const deadline = Date.now() + timeoutMs;
+            let lastErr = null;
+            for (;;) {
+                let granted = [];
+                try {
+                    granted = await navigator.serial.getPorts();
+                } catch (e) {
+                    lastErr = e;
+                }
+                const matching = granted.filter((p) => p !== old && infoMatches(portInfo(p), want));
+                if (matching.length > 1 && !opts.allowAmbiguous) {
+                    throw new Error(
+                        'reconnect: ' +
+                            matching.length +
+                            ' granted ports match ' +
+                            describeInfo(want) +
+                            ' — ambiguous, pick the port manually'
+                    );
+                }
+                const candidates = (old ? [old] : []).concat(matching);
+                for (const p of candidates) {
+                    try {
+                        // A port whose device vanished may still be "open" from
+                        // the OS's point of view — release it before re-opening.
+                        try {
+                            await p.close();
+                        } catch (_) {
+                            /* already closed / never opened */
+                        }
+                        this._port = p;
+                        await this.open(opts);
+                        this._log(
+                            '-- reconnected' + (p === old ? ' (same port)' : ' (re-enumerated)')
+                        );
+                        return p;
+                    } catch (e) {
+                        lastErr = e;
+                        this._port = old;
+                    }
+                }
+                if (Date.now() >= deadline) {
+                    throw new Error(
+                        'reconnect: no granted port came back within ' +
+                            timeoutMs +
+                            ' ms' +
+                            (lastErr ? ' (' + (lastErr.message || lastErr) + ')' : '') +
+                            ' — connect manually'
+                    );
+                }
+                await new Promise((r) => setTimeout(r, pollMs));
+            }
         }
 
         /**
@@ -336,8 +445,9 @@ const ArenaLink = (function () {
             // Park the await BEFORE writing so a very fast reply can't arrive
             // before its promise exists. The executor runs synchronously, so
             // `_inflight` is set before we write.
+            let entry = null;
             const respPromise = new Promise((resolve, reject) => {
-                const entry = { expectedCmd, resolve, reject, timer: null };
+                entry = { expectedCmd, resolve, reject, timer: null };
                 entry.timer = setTimeout(() => {
                     if (this._inflight !== entry) return;
                     this._inflight = null;
@@ -358,16 +468,39 @@ const ArenaLink = (function () {
             });
 
             this._log('->', hexDump(payload));
+            // The deadline covers the WRITE too: a stalled USB write (host stack
+            // wedged, device half-gone) used to leave the caller pending forever
+            // while the response timer fired into the void. Race the write against
+            // the response promise — if the timer wins, the write is abandoned and
+            // the caller sees the ordinary timeout rejection.
+            const settled = respPromise.then(
+                () => undefined,
+                () => undefined
+            );
             try {
-                await this._writer.write(payload);
+                await Promise.race([this._writer.write(payload), settled]);
             } catch (err) {
-                if (this._inflight) {
-                    clearTimeout(this._inflight.timer);
+                if (this._inflight === entry) {
+                    clearTimeout(entry.timer);
                     this._inflight = null;
                 }
                 throw err;
             }
             return respPromise;
+        }
+
+        /**
+         * Drop any buffered, unparsed RX bytes. Used after a QUIET PERIOD in the
+         * fw #50 fault lifecycle: with no request id on the wire, a late reply to
+         * an earlier 0x70 can otherwise be taken as the answer to the next probe.
+         * Only meaningful when nothing is in flight; a pending request keeps its
+         * timer. Returns the number of bytes discarded.
+         */
+        flushRx() {
+            const n = this._rxBuf.length;
+            this._rxBuf = new Uint8Array(0);
+            if (n) this._log('-- flushed ' + n + ' stale rx byte(s)');
+            return n;
         }
 
         /** Close the port and tear down I/O. Safe to call when already closed. */

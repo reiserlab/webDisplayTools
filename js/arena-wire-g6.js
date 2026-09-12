@@ -66,6 +66,7 @@ const ArenaWireG6 = (function () {
         GET_CONTROLLER_INFO: 0xc2, // returns {version, capability_bitmap}
         SET_DIAG_OUTPUT: 0xc3, // [len=2,0xC3,on] mute/unmute DEBUG_SERIAL diagnostics
         GET_DIAG_OUTPUT: 0xc4, // returns current g_dbg_on state (0/1)
+        GET_HEALTH: 0xca, // [01 CA] controller health counters + previous-boot breadcrumb (fw #50)
         SET_AO_VOLTAGE: 0xa0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV
         GET_AO_VOLTAGE: 0xa1, // [01 A1] returns last commanded AO level as uint16 LE mV
         SET_AO_MODE: 0xa3, // [02 A3 mode] 0=programmable | 1=frame_number (io_ext fw)
@@ -75,6 +76,7 @@ const ArenaWireG6 = (function () {
         SET_DIO_ROLE: 0xac, // [03 AC port role] "Digital IO 1/2 (5V)" role (io_ext fw)
         GET_DIO_ROLE: 0xad, // [01 AD] returns [role1, level1, role2, level2] (io_ext fw)
         SET_FRAME_POSITION: 0x70, // Mode 3: host-commanded frame index
+        GET_FRAME_POSITION: 0x72, // [01 72] returns cur_frame_index + frame_count, both uint16 LE
         // Panel firmware / ISP (g6_03-controller.md § Panel firmware update).
         SET_FIRMWARE_FILE: 0xe0, // [0xE0, len64 LE, data…] upload image → /firmware/panel.bin; reply u32 LE CRC-32
         GET_FIRMWARE_INFO: 0xe3, // [01 E3] reply: 32-byte footer {magic[8], version[16], crc32 LE, size LE}
@@ -115,7 +117,10 @@ const ArenaWireG6 = (function () {
         // Extended I/O command set (#135): SET_DIO_ROLE 0xAC / GET_DIO_ROLE
         // 0xAD / SET_AO_MODE 0xA3 / GET_ANALOG_IN 0xA4 — hosts detect the
         // DIO-role machinery by this bit, not by firmware-version guessing.
-        [5, 'io_ext']
+        [5, 'io_ext'],
+        // Controller health counters + reset breadcrumb (GET_HEALTH 0xCA) — the
+        // fw #50 soak/post-mortem probe. Hosts grey the health readout without it.
+        [7, 'health']
     ];
 
     // ───────────────────────── validation helpers ─────────────────────────
@@ -670,6 +675,106 @@ const ArenaWireG6 = (function () {
         return r.payload[0] | (r.payload[1] << 8);
     }
 
+    // get-frame-position (0x72) — Mode-3 current frame index + open pattern's frame count.
+    function encodeGetFramePosition() {
+        return frame(OPCODES.GET_FRAME_POSITION); // 01 72
+    }
+    // Reply: cur_frame_index u16 LE, frame_count u16 LE.
+    function decodeFramePosition(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 4) return null;
+        const m = r.payload;
+        return { index: m[0] | (m[1] << 8), frameCount: m[2] | (m[3] << 8) };
+    }
+
+    // get-health (0xCA) — controller health counters (fw #50 soak/post-mortem probe).
+    function encodeGetHealth() {
+        return frame(OPCODES.GET_HEALTH); // 01 CA
+    }
+
+    // Reply payload (schema ver 1, 55 bytes, all little-endian; cumulative counters,
+    // nothing clears on read):
+    //   ver u8 · flags u8 (bit0 sd_mounted, bit1 pattern_open, bit2 display_active,
+    //   bit3 breadcrumb_valid) · uptime_ms u32 · loop_count u32 · loop_max_us u32 ·
+    //   loop_max_1s_us u32 · sd_reads u32 · sd_read_max_us u32 · sd_err u8 ·
+    //   sd_err_data u32 · frames_sent u32 · isr_count u32 · cmd70_count u32 ·
+    //   state u8 · cur_frame u16 · reset_cause u32 (SRC_SRSR at boot) ·
+    //   prev_breadcrumb u8 · prev_breadcrumb_us u32
+    // The breadcrumb is what the PREVIOUS boot was doing when it last wrote it
+    // (survives SYSTEM_RESET 0x01, not a power cycle). Returns null on a bad/short
+    // reply; tolerant of longer payloads — the shipped firmware appends an 11-byte
+    // slowest-op tail (66 B total, decoded below when present).
+    const HEALTH_PAYLOAD_BYTES = 55;
+    const HEALTH_PAYLOAD_BYTES_FULL = 66;
+    const HEALTH_BREADCRUMB_OPS = [
+        'idle',
+        'sd_read',
+        'spi_transfer',
+        'usb_write',
+        'command',
+        'sd_other'
+    ];
+    function decodeHealth(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < HEALTH_PAYLOAD_BYTES) return null;
+        const m = r.payload;
+        let o = 0;
+        const u8 = () => m[o++];
+        const u16 = () => {
+            const v = m[o] | (m[o + 1] << 8);
+            o += 2;
+            return v;
+        };
+        const u32 = () => {
+            const v = (m[o] | (m[o + 1] << 8) | (m[o + 2] << 16) | (m[o + 3] << 24)) >>> 0;
+            o += 4;
+            return v;
+        };
+        const ver = u8();
+        const flags = u8();
+        const h = {
+            ver,
+            flags,
+            sdMounted: !!(flags & 0x01),
+            patternOpen: !!(flags & 0x02),
+            displayActive: !!(flags & 0x04),
+            breadcrumbValid: !!(flags & 0x08),
+            uptimeMs: u32(),
+            loopCount: u32(),
+            loopMaxUs: u32(),
+            loopMax1sUs: u32(),
+            sdReads: u32(),
+            sdReadMaxUs: u32(),
+            sdErr: u8(),
+            sdErrData: u32(),
+            framesSent: u32(),
+            isrCount: u32(),
+            cmd70Count: u32(),
+            state: u8(),
+            curFrame: u16(),
+            resetCause: u32(),
+            prevBreadcrumb: u8(),
+            prevBreadcrumbUs: u32()
+        };
+        h.prevBreadcrumbOp = HEALTH_BREADCRUMB_OPS[h.prevBreadcrumb] || 'op_' + h.prevBreadcrumb;
+        // Additive tail (firmware feat/controller-health, 66 B): a host-commanded
+        // SYSTEM_RESET is itself a dispatched command, so `prevBreadcrumb` after a
+        // 0x01 always reads "command 0x01" — the firmware therefore also keeps
+        // the single SLOWEST op + duration of the previous boot (and of this one).
+        //   prev_breadcrumb_arg u8 (opcode when prev op = command) · prev_slow_op u8 ·
+        //   prev_slow_us u32 · slow_op u8 · slow_us u32
+        if (m.length >= o + 11) {
+            h.prevBreadcrumbArg = u8();
+            h.prevSlowOp = u8();
+            h.prevSlowUs = u32();
+            h.slowOp = u8();
+            h.slowUs = u32();
+            h.prevSlowOpName = HEALTH_BREADCRUMB_OPS[h.prevSlowOp] || 'op_' + h.prevSlowOp;
+            h.slowOpName = HEALTH_BREADCRUMB_OPS[h.slowOp] || 'op_' + h.slowOp;
+        }
+        return h;
+    }
+
     // get-frames-sent (0x33) reply carries the master-sent count as uint32 LE.
     function decodeFramesSent(resp) {
         const r = asResponse(resp);
@@ -859,6 +964,8 @@ const ArenaWireG6 = (function () {
         encodeGetControllerInfo,
         // Alias under the name the handoff lists for the get-info request.
         getControllerInfo: encodeGetControllerInfo,
+        encodeGetHealth,
+        encodeGetFramePosition,
         encodeGetFileCount,
         encodeGetPatternFilename,
         encodeGetPatternInfo,
@@ -886,6 +993,11 @@ const ArenaWireG6 = (function () {
         // Decoders
         decodeResponse,
         decodeControllerInfo,
+        decodeHealth,
+        decodeFramePosition,
+        HEALTH_PAYLOAD_BYTES,
+        HEALTH_PAYLOAD_BYTES_FULL,
+        HEALTH_BREADCRUMB_OPS,
         decodeSpiClock,
         decodeRefreshRate,
         decodePanelDisplayMode,

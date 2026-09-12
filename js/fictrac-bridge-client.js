@@ -69,7 +69,8 @@
         'blocked',
         'apply',
         'log',
-        'loglevel'
+        'loglevel',
+        'fault'
     ];
     // Log levels this client knows how to request, most-preferred first. The
     // bridge advertises ITS list in hello_ack; a level missing there is one the
@@ -111,6 +112,20 @@
             this._rateHz = 0;
             this._rateTimer = null;
             this._lastBlockedMs = 0;
+            // Fault detector (firmware #50 — the Mode-3 controller wedge). The
+            // apply loop used to swallow every 0x70 timeout and keep spinning at
+            // 2 Hz for the rest of the run, so a wedged controller produced a
+            // "completed" run. Now a rolling window of apply outcomes trips a
+            // latched fault once `faultThreshold` of the last `faultWindow`
+            // applies failed ("≥3 of 10", not "3 consecutive": a late reply to
+            // an earlier 0x70 can satisfy the next request and reset a
+            // consecutive counter). On fault: apply is forced OFF (fail closed)
+            // and a 'fault' event fires — ArenaSession routes it to the runner.
+            this._faultThreshold = Number.isInteger(o.faultThreshold) ? o.faultThreshold : 3;
+            this._faultWindow = Number.isInteger(o.faultWindow) ? o.faultWindow : 10;
+            this._applyOutcomes = []; // most recent apply results, 1 = failed, 0 = ok
+            this._applyFailures = 0; // total failed applies (timeouts, rejects, link errors)
+            this._fault = null; // latched fault record, or null
 
             // Bridge config (mirrors the console inputs). Sent on connect + on change.
             // logLevel is the log format requested when logging starts
@@ -170,8 +185,48 @@
                 recv: this._recv,
                 applied: this._applied,
                 drop: Math.max(0, this._recv - this._applied),
-                rateHz: this._rateHz
+                rateHz: this._rateHz,
+                applyFailures: this._applyFailures,
+                fault: this._fault
             };
+        }
+
+        /** The latched fault record ({kind, failures, window, …}) or null. */
+        get fault() {
+            return this._fault;
+        }
+
+        /** Clear the fault latch + outcome window (a new run / apply session starts clean). */
+        resetFaultWindow() {
+            this._applyOutcomes = [];
+            this._fault = null;
+        }
+
+        // Record one apply outcome; trip the fault latch when the window fills
+        // with failures. Fail closed: apply goes OFF before anyone is told.
+        _recordApply(failed, err, index) {
+            const w = this._applyOutcomes;
+            w.push(failed ? 1 : 0);
+            if (w.length > this._faultWindow) w.shift();
+            if (!failed) return;
+            this._applyFailures++;
+            if (this._fault) return;
+            const n = w.reduce((a, b) => a + b, 0);
+            if (n < this._faultThreshold) return;
+            this._fault = {
+                kind: 'controller_unresponsive',
+                failures: n,
+                window: w.length,
+                threshold: this._faultThreshold,
+                lastIndex: index,
+                lastError: err ? err.message || String(err) : null,
+                t: this._now()
+            };
+            if (this._apply) {
+                this._apply = false;
+                this._emit('apply', false);
+            }
+            this._emit('fault', this._fault);
         }
 
         // ---- connection ------------------------------------------------------
@@ -297,6 +352,7 @@
         setApply(on) {
             const next = !!on;
             const changed = next !== this._apply;
+            if (changed && next) this.resetFaultWindow(); // a fresh apply session starts clean
             this._apply = next;
             if (changed) this._emit('apply', this._apply);
         }
@@ -546,10 +602,14 @@
                     try {
                         await this._applyFrame(i);
                         this._applied++;
+                        this._recordApply(false, null, i);
                         this._emit('applied', i);
                         this._emit('stats', this.stats);
                     } catch (e) {
                         this._emit('log', 'bridge apply failed: ' + (e && (e.message || e)), 'err');
+                        // Counted, not swallowed (fw #50): enough failures in the
+                        // window latch a fault and stop the loop (apply → false).
+                        this._recordApply(true, e, i);
                     }
                 }
             } finally {

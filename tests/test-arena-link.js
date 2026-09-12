@@ -344,6 +344,102 @@ async function main() {
         checkBool('not connected after failed open', link.connected === false);
     }
 
+    console.log('\n=== write deadline: a stalled write rejects like a timeout ===');
+    {
+        const { link, writer, reader } = setup();
+        await link.connect();
+        writer.write = () => new Promise(() => {}); // USB write never completes
+        const t0 = Date.now();
+        await checkRejects(
+            'stalled write → timeout rejection',
+            link.send(Wire.encodeGetControllerInfo(), { timeoutMs: 40 }),
+            /response timeout/
+        );
+        checkBool('rejected promptly (not hung)', Date.now() - t0 < 1000);
+        checkBool('no request left in flight', link._inflight === null);
+        reader.cancel();
+        await link.close();
+    }
+
+    console.log('\n=== reconnect(): granted-port reopen without a gesture (fw #50 recovery) ===');
+    {
+        // Same port still valid (no re-enumeration): reopen it.
+        const { link, reader, port } = setup();
+        await link.connect();
+        global.navigator.serial._dispatch('disconnect', { target: port });
+        await flush();
+        checkBool('disconnected after unplug event', link.connected === false);
+        global.navigator.serial.getPorts = async () => [port];
+        const p = await link.reconnect({ timeoutMs: 500, pollMs: 20 });
+        checkBool('reconnect reopened the same port', p === port && link.connected === true);
+        reader.cancel();
+        await link.close();
+    }
+    {
+        // Re-enumerated: old port object is dead, one granted port matches VID/PID.
+        const { link, reader, port } = setup();
+        port.getInfo = () => ({ usbVendorId: 0x16c0, usbProductId: 0x0483 });
+        await link.connect();
+        global.navigator.serial._dispatch('disconnect', { target: port });
+        await flush();
+        port.open = async () => {
+            throw new Error('device gone');
+        };
+        const reader2 = new FakeReader();
+        const newPort = new FakePort(reader2, new FakeWriter());
+        newPort.getInfo = () => ({ usbVendorId: 0x16c0, usbProductId: 0x0483 });
+        const other = new FakePort(new FakeReader(), new FakeWriter());
+        other.getInfo = () => ({ usbVendorId: 0x0403, usbProductId: 0x6001 }); // an FTDI, not ours
+        global.navigator.serial.getPorts = async () => [other, newPort];
+        const p = await link.reconnect({ timeoutMs: 500, pollMs: 20 });
+        checkBool('reconnect picked the VID/PID match, not the FTDI', p === newPort);
+        checkBool('connected on the new port', link.connected === true && link.port === newPort);
+        reader.cancel();
+        reader2.cancel();
+        await link.close();
+    }
+    {
+        // Ambiguous: two granted ports match → refuse (never guess a controller).
+        const { link, reader, port } = setup();
+        port.getInfo = () => ({ usbVendorId: 0x16c0, usbProductId: 0x0483 });
+        await link.connect();
+        global.navigator.serial._dispatch('disconnect', { target: port });
+        await flush();
+        port.open = async () => {
+            throw new Error('device gone');
+        };
+        const a = new FakePort(new FakeReader(), new FakeWriter());
+        const b = new FakePort(new FakeReader(), new FakeWriter());
+        a.getInfo = b.getInfo = () => ({ usbVendorId: 0x16c0, usbProductId: 0x0483 });
+        global.navigator.serial.getPorts = async () => [a, b];
+        await checkRejects(
+            'two matching granted ports → ambiguous',
+            link.reconnect({ timeoutMs: 300, pollMs: 20 }),
+            /ambiguous/
+        );
+        checkBool('still disconnected after refusal', link.connected === false);
+        reader.cancel();
+    }
+    {
+        // Nothing comes back: times out with a manual-connect hint.
+        const { link, reader, port } = setup();
+        await link.connect();
+        global.navigator.serial._dispatch('disconnect', { target: port });
+        await flush();
+        port.open = async () => {
+            throw new Error('device gone');
+        };
+        global.navigator.serial.getPorts = async () => [];
+        const t0 = Date.now();
+        await checkRejects(
+            'no granted port → times out',
+            link.reconnect({ timeoutMs: 120, pollMs: 20 }),
+            /no granted port came back.*connect manually/
+        );
+        checkBool('honoured the timeout', Date.now() - t0 < 2000);
+        reader.cancel();
+    }
+
     console.log(`\n=== Summary ===\n${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures > 0 ? 1 : 0);
 }
