@@ -631,6 +631,44 @@ function newSession(m) {
     }
 
     // ── summary ─────────────────────────────────────────────────────────────────
+
+    console.log('\n=== send({silent:true}) skips the bridge command log ===');
+    {
+        const logged = [];
+        const bridge = {
+            logging: true,
+            connected: true,
+            log: (o) => logged.push(o),
+            on: () => () => {}
+        };
+        const link = {
+            connected: true,
+            send: async () => Uint8Array.from([3, 0x00, 0xa9, 0]),
+            setCallbacks() {},
+            on() {
+                return () => {};
+            }
+        };
+        const m = makeMocks();
+        const sess = new ArenaSession({
+            wire: { mark: 1 },
+            LinkClass: m.MockLink,
+            RunnerLib: m.RunnerLib
+        });
+        sess._link = link;
+        sess._bridge = bridge;
+        await sess.send(Uint8Array.from([8, 0xa9, 0xff, 0xff, 0xff, 0xff, 0xb2, 0, 0]), {
+            silent: true
+        });
+        await sess.send(Uint8Array.from([1, 0xc2]));
+        await new Promise((r) => setTimeout(r, 5));
+        check('silent send not logged, normal send logged', logged.length, 1);
+        check(
+            'logged one is the 0xC2',
+            logged[0] && logged[0].head && logged[0].head.slice(0, 5),
+            '01 c2'
+        );
+    }
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);

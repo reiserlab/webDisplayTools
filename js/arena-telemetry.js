@@ -231,7 +231,8 @@
                     let resp;
                     try {
                         resp = await session.send(W.encodeGetTelemetryBlock(ack, maxBytes), {
-                            timeoutMs
+                            timeoutMs,
+                            silent: true // the reply IS the log; don't echo 20 requests/s into it
                         });
                     } catch (e) {
                         st.errors++;

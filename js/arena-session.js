@@ -345,12 +345,15 @@
          * ArenaWireG6.decodeResponse; do NOT slice). Queues FIFO behind any
          * in-flight send.
          * @param {Uint8Array|number[]} bytes
-         * @param {object} [opts] {expectedCmd?, timeoutMs?} — pass expectedCmd:0x32 for STREAM_FRAME
+         * @param {object} [opts] {expectedCmd?, timeoutMs?, silent?} — pass expectedCmd:0x32 for
+         *        STREAM_FRAME; `silent: true` skips the bridge command log (for meta traffic
+         *        such as the telemetry drain's 0xA9 requests, whose payload IS the log).
          * @returns {Promise<Uint8Array>}
          */
         send(bytes, opts) {
             this._assertOutputAllowed('send');
             const p = this._link.send(bytes, opts);
+            if (opts && opts.silent) return p;
             // Bridge-as-single-logger (default-on): when logging is active, post every
             // arena command to the bridge's unified JSONL — timestamped on the browser
             // side (t) and again by the bridge on receipt (rx_ms), so arena events and
