@@ -727,6 +727,7 @@ const ArenaWireG6 = (function () {
     const HEALTH_PAYLOAD_BYTES_V2 = 89; // fw fb11681: + ISR breadcrumb + RTWDOG pre-reset PC capture
     const HEALTH_PAYLOAD_BYTES_V3 = 97; // fw 86eeb4a: + raw WDOG3_CS at boot and live
     const HEALTH_PAYLOAD_BYTES_V4 = 106; // fw 54b57d0: + measured tick rate, live TOVAL, verify bits
+    const HEALTH_PAYLOAD_BYTES_V5 = 114; // fw 4860fef: + WDOG3_CNT around each kick (offset diagnostics)
     function decodeHealth(resp) {
         const r = asResponse(resp);
         if (!r || !r.ok || r.payload.length < HEALTH_PAYLOAD_BYTES) return null;
@@ -842,6 +843,15 @@ const ArenaWireG6 = (function () {
             h.wdogVerifyTovalMismatch = !!(h.wdogVerify & 0x04);
             h.wdogVerifyTickFallback = !!(h.wdogVerify & 0x08);
             h.wdogVerifyKeyRetry = !!(h.wdogVerify & 0x10);
+        }
+        // ver 5 tail (fw 4860fef): WDOG3_CNT read before/after each refresh (min/max since
+        // boot) and live — settles whether the ~190-tick expiry offset is a comparator
+        // constant, a non-zero refresh base, or refreshes being ignored.
+        if (m.length >= HEALTH_PAYLOAD_BYTES_V5) {
+            h.wdogCntBeforeMax = u16();
+            h.wdogCntAfterMin = u16();
+            h.wdogCntAfterMax = u16();
+            h.wdogCntNow = u16();
         }
         return h;
     }
@@ -1208,6 +1218,7 @@ const ArenaWireG6 = (function () {
         HEALTH_PAYLOAD_BYTES_V2,
         HEALTH_PAYLOAD_BYTES_V3,
         HEALTH_PAYLOAD_BYTES_V4,
+        HEALTH_PAYLOAD_BYTES_V5,
         HEALTH_BREADCRUMB_OPS,
         HEALTH_ISR_NAMES,
         encodeGetCrashReport,

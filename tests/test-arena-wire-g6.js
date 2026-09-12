@@ -753,6 +753,15 @@ check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46)
     const h4 = Wire.decodeHealth(Uint8Array.from([v4.length + 2, 0x00, 0xca].concat(v4)));
     check('v4 timeout seconds', h4.wdogTimeoutS, 2);
     check('v4 verify bits', [h4.wdogVerifyRcsTimeout, h4.wdogVerifyKeyRetry].join(), 'false,true');
+    const u16b = (v) => [v & 0xff, (v >> 8) & 0xff];
+    const v5 = v4.concat(u16b(16), u16b(0), u16b(1), u16b(7));
+    check('v5 payload is 114 B', v5.length, Wire.HEALTH_PAYLOAD_BYTES_V5);
+    const h5 = Wire.decodeHealth(Uint8Array.from([v5.length + 2, 0x00, 0xca].concat(v5)));
+    check(
+        'v5 CNT diagnostics',
+        [h5.wdogCntBeforeMax, h5.wdogCntAfterMin, h5.wdogCntAfterMax, h5.wdogCntNow].join(),
+        '16,0,1,7'
+    );
     const h66 = Wire.decodeHealth(Uint8Array.from([66 + 2, 0x00, 0xca].concat(base)));
     check('66 B payload has no v2 fields', h66.wdogFlags, undefined);
 }
