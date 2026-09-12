@@ -369,6 +369,20 @@
                 return { confirmed: true, window: win, outcome: 'halted' };
             }
             const reset = await resetAndReconnect({ expectMac: a.expectMac || c.mac });
+            // Crash dump: the telemetry ring survives the reset, so drain it NOW —
+            // its last records are what the controller was doing when it hung.
+            if (reset.reconnected && typeof deps.afterReconnect === 'function') {
+                try {
+                    reset.telemetry = await deps.afterReconnect(reset);
+                    record({
+                        phase: 'telemetry-dump',
+                        name: 'ring',
+                        summary: reset.telemetry || null
+                    });
+                } catch (e) {
+                    reset.telemetryError = (e && e.message) || String(e);
+                }
+            }
             const recovered = !!(
                 reset.reconnected &&
                 reset.identityOk &&

@@ -290,6 +290,12 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   error GLYPH on the arena, so never send 0xCB (or 0xCA) blind. Firmware `main` is compiled for a
   **4×10** arena (`panel_count_per_frame_row = 4`); the CSHL 2×10 controllers run `arena-2x10-local` —
   a build from `main` rejects every 2×10 pattern (`TRIAL_PARAMS: load failed`, CE_ARENA_MISMATCH).
+  **Telemetry ring (T4):** `js/arena-telemetry.js` decodes 0xA9 blocks (18 B header + records) and
+  runs the ack-cursor drainer; `Studio.initTelemetry()` starts the 10 Hz poller on link-up (gated on
+  `health` + a SET_TELEMETRY 0xA8 ack); rows go to the bridge as `{type:'rows'}` (bridge ≥ 3.1
+  `write_rows`, verbatim `["cc"|"cf"|"cs", …]`). The record schema lives in ONE place — the header
+  comment of `js/arena-telemetry.js` — mirror any firmware change there + in `wedge-scan.py`
+  (`CTL_TAGS`/`CTL_STATE_KINDS`). Never drain while the post-mortem owns the link (its `canPoll`).
 - **Wire module exports:** `js/arena-wire-g6.js` defines more than it exports —
   when adding encoders/decoders, add them to the export list AND a test; audit
   with `Object.keys(require('./js/arena-wire-g6.js'))` vs the page's `Wire.*`

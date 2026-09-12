@@ -26,6 +26,13 @@ history lives here. Newest first. (Per-session engineering detail stays in
 - **Console → Debug ▾ → Controller health**: reads the controller's loop timing, SD-read stats,
   counters and what it was doing before its last restart (firmware with GET_HEALTH, capability
   bit 7). The runner's own commands (trial start, STOP) now appear in the run log too.
+- **Controller telemetry ring (first cut).** With firmware that has the ring, the Studio drains
+  the controller's own event log ten times a second while connected and writes it into the run
+  log as compact `cc` (command received + status), `cf` (frame displayed, SD load time, SPI time)
+  and `cs` (state changes, error glyphs, slow SD reads, boots) rows next to the FicTrac frames.
+  The ring survives a controller reset, so after a fault the post-mortem pulls the controller's
+  last seconds as a crash dump. `scripts/wedge-scan.py` reports the counts, worst SD read, state
+  events and, with `--verbose`, the records before a wedge. Needs bridge ≥ 3.1.
 - **Firmware build identity in every run log.** On connect (and after any automatic reconnect)
   the Studio reads the controller's build — git commit, branch, build date, arena size — and
   records it as `firmware` in the run details and in `run_metadata` of every committed log, so a

@@ -188,3 +188,31 @@ button first. Also: the Studio tab was in the background (timer throttling ⇒ ~
 the log; not causal). Harness bugs found and fixed live: protocol `fictrac.disconnect` took the logger down;
 a remembered v1 session setting overrode the soak's v2; one out-of-range 0x70 per trial with a smaller frame
 count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and siblings, bench-local.
+
+## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
+
+Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
+scope) and run the soak on it (T4). Host side landed in PR #198; firmware on
+`feat/telemetry-ring-2x10` (built off `feat/controller-health-2x10`).
+
+- **Ring** (firmware): 64 KiB byte ring at OCRAM `0x2026F000`, below the breadcrumb, NOT in any
+  linker section → **survives SYSTEM_RESET and the bootloader reboot** (init only when the header
+  magic/checksum is invalid, i.e. after power-on). Records `len,type,seq u32,t_us u32,payload`:
+  `CMD` (cmd, status, ≤8 request bytes), `FRAME` (idx, pattern, sd_load_us, spi_us — on index
+  change), `STATE` (boot, state_change, error_glyph, sd_slow >20 ms, ring_overrun, telemetry,
+  sd_open). Newest dropped when full (counted). Opcodes 0xA8 SET_TELEMETRY (events default ON),
+  0xA9 GET_TELEMETRY_BLOCK — 18 B header `{t_now_us, first_seq, n_records, dropped, more, flags,
+  boot_count}` + whole records ≤ 180 B; **ack cursor**: records are freed only by the NEXT
+  request's ack_seq, so a lost reply is re-asked, never lost (framing "A", one framed reply).
+- **Host**: `js/arena-telemetry.js` (`parseBlock`, `toRows`, `createDrainer` with seq/gap/drop
+  accounting, `createPoller` single-flight), `Studio.initTelemetry()` on every link-up (gated on
+  the `health` capability + a SET_TELEMETRY ack), 10 Hz drain while connected (pauses during the
+  post-mortem), rows via `bridge.logRows()` → bridge 3.1 writes `["cc"|"cf"|"cs", rx, t_us, seq,
+  …]` verbatim; one `stream_schema` event per log. `Studio.drainTelemetry()` = drain-all crash
+  dump, wired into the post-mortem's `afterReconnect`. `wedge-scan.py` gains `ctl recs`, `sd max
+  us`, `ctl states`, `ctl rejects` and prints the last 40 controller records before a wedge under
+  `--verbose`.
+- **Cost**: ~2.6 KB/s of records in Mode 3 at 100 Hz (CMD 1.6 KB/s + FRAME ~1 KB/s) → ~2 framed
+  chunks per 100 ms poll; recording a record is a few dozen cycles at the choke points.
+- **Deferred**: TICK/analog yoking (needs F1/F2 + AD3), T2/T3 (instruments), clock fit (§ 8) —
+  rows carry raw `t_us` + host `rx`; the fit is an analysis step.

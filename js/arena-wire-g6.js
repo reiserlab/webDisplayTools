@@ -68,6 +68,8 @@ const ArenaWireG6 = (function () {
         GET_DIAG_OUTPUT: 0xc4, // returns current g_dbg_on state (0/1)
         GET_HEALTH: 0xca, // [01 CA] controller health counters + previous-boot breadcrumb (fw #50)
         GET_FIRMWARE_VERSION: 0xcb, // [01 CB] build identity: git SHA, branch, date, arena rows×cols (gate on cap bit 7)
+        SET_TELEMETRY: 0xa8, // [04 A8 flags rate_lo rate_hi] telemetry ring: bit0 events on/off (fw feat/telemetry-ring)
+        GET_TELEMETRY_BLOCK: 0xa9, // [08 A9 ack_seq u32 max_bytes u16 flags] ack-cursor drain of the ring (js/arena-telemetry.js decodes)
         SET_AO_VOLTAGE: 0xa0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV
         GET_AO_VOLTAGE: 0xa1, // [01 A1] returns last commanded AO level as uint16 LE mV
         SET_AO_MODE: 0xa3, // [02 A3 mode] 0=programmable | 1=frame_number (io_ext fw)
@@ -821,6 +823,32 @@ const ArenaWireG6 = (function () {
         return v;
     }
 
+    // Telemetry ring (fw feat/telemetry-ring; proposal § 3.1). Requests only —
+    // block/record DECODING lives in js/arena-telemetry.js (it owns the record
+    // schema, seq/drop accounting and the compact log rows).
+    function encodeSetTelemetry(flags, rateHz) {
+        const f = u8(flags == null ? 1 : flags, 'flags');
+        const r = rateHz == null ? 0 : rateHz;
+        return frame(OPCODES.SET_TELEMETRY, [f].concat(u16le(r, 'rateHz'))); // 04 A8 flags lo hi
+    }
+    // ack_seq: highest record seq the host has safely stored (freed on the
+    // controller); 0xFFFFFFFF = no ack. max_bytes: cap on returned record bytes
+    // (the firmware also caps at ~180 so the reply stays one framed message).
+    const TELEMETRY_NO_ACK = 0xffffffff;
+    function encodeGetTelemetryBlock(ackSeq, maxBytes, flags) {
+        const a = ackSeq == null ? TELEMETRY_NO_ACK : ackSeq >>> 0;
+        const m = maxBytes == null ? 180 : maxBytes;
+        requireInt(m, 'maxBytes');
+        if (m < 0 || m > 0xffff) throw new RangeError('maxBytes out of range: ' + m);
+        return frame(
+            OPCODES.GET_TELEMETRY_BLOCK,
+            [a & 0xff, (a >>> 8) & 0xff, (a >>> 16) & 0xff, (a >>> 24) & 0xff].concat(
+                u16le(m, 'maxBytes'),
+                [u8(flags || 0, 'flags')]
+            )
+        ); // 08 A9 a0 a1 a2 a3 m_lo m_hi flags
+    }
+
     // get-frames-sent (0x33) reply carries the master-sent count as uint32 LE.
     function decodeFramesSent(resp) {
         const r = asResponse(resp);
@@ -1013,6 +1041,9 @@ const ArenaWireG6 = (function () {
         encodeGetHealth,
         encodeGetFramePosition,
         encodeGetFirmwareVersion,
+        encodeSetTelemetry,
+        encodeGetTelemetryBlock,
+        TELEMETRY_NO_ACK,
         encodeGetFileCount,
         encodeGetPatternFilename,
         encodeGetPatternInfo,

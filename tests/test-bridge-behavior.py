@@ -310,6 +310,8 @@ async def drive():
         await dispatch(json.dumps({"type": "log_control", "enabled": True, "level": "behavior_v2"}), ws)
         ack_v2 = ws.sent[-1]
         f_v2 = log.current_name
+        # controller telemetry rows: written verbatim while logging; shape-checked
+        await dispatch(json.dumps({"type": "rows", "rows": [["cc", 1789000000000, 1000, 10, 112, 0, "03704e00"], ["cf", 1789000000000, 1500, 11, 78, 36, 1961, 812], ["bad-tag-too-long", 1], "not-a-row", [1, 2, 3]]}), ws)
         await dispatch(json.dumps({"type": "log_control", "enabled": False}), ws)
         ack_off = ws.sent[-1]
         await dispatch(json.dumps({"type": "log_control", "enabled": True, "level": "behavior_v9"}), ws)
@@ -332,6 +334,9 @@ check("log_control_ack off: enabled false, level kept", (ack_off["enabled"], ack
 check("unknown level: ack reports the level ACTUALLY in force", (ack_bogus["level"], ack_bogus["requested"], ack_bogus["enabled"]), ("behavior_v2", "behavior_v9", True))
 check("behavior_v1 still selectable", ack_v1["level"], "behavior_v1")
 check("the v2 file: hello + log_control logged, schema is v2", (first[0]["type"], first[1]["level"], first[2]["type"]), ("session", "behavior_v2", "log_control"))
+rows = [o for o in first if isinstance(o, list) and o and isinstance(o[0], str) and o[0] in ("cc", "cf")]
+check("telemetry rows written verbatim (2 of 5 candidates)", rows, [["cc", 1789000000000, 1000, 10, 112, 0, "03704e00"], ["cf", 1789000000000, 1500, 11, 78, 36, 1961, 812]])
+check("bad rows dropped, not rewritten", any(isinstance(o, list) and o and o[0] in ("bad-tag-too-long",) for o in first) or any(o == [1, 2, 3] for o in first), False)
 
 print("\n=== Summary ===")
 print(f"{total - failures} / {total} checks passed")

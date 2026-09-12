@@ -2990,6 +2990,7 @@
 <script src="js/studio-url-state.js"></script>
 <script src="js/studio-runlog-adapter.js"></script>
 <script src="js/studio-postmortem.js"></script>
+<script src="js/arena-telemetry.js"></script>
 <script src="js/kinematics.js"></script> <!-- shared scope/dashboard kinematic derivations -->
 <script src="js/studio-github.js"></script>
 <script src="js/runlog-format.js?v=20260906-1829"></script>
@@ -3714,6 +3715,7 @@
                     const ctl = $('pvCtl');
                     if (ctl) ctl.textContent = Studio.controllerId || '— (needs fw with MAC in 0xC2)';
                     await Studio.refreshFirmwareVersion(); // build identity → run_metadata.firmware
+                    if (Studio.initTelemetry) await Studio.initTelemetry(); // ring drain (T4) when the fw has it
                     // Un-grey the fw-gated rig-I/O roles now that caps are known
                     // (the role menu may have rendered before this reply landed).
                     if (Studio.updateRigIoGating) Studio.updateRigIoGating();
@@ -4918,6 +4920,7 @@
                         if ($('pvCtl')) $('pvCtl').textContent = Studio.controllerId || '—';
                     }
                     await Studio.refreshFirmwareVersion();
+                    if (Studio.initTelemetry) await Studio.initTelemetry();
                     refreshState();
                 } catch (_) { /* best-effort: a wedged controller answers nothing */ }
             });
@@ -8218,6 +8221,89 @@ Studio.stopSoak = function (reason) {
 };
 $('fmSoak') && $('fmSoak').addEventListener('click', () => Studio.openSoakDialog());
 
+// ---- controller telemetry ring (T4: soak with ring-buffer logging) ---------
+// The controller keeps CMD/FRAME/STATE records in reboot-surviving RAM; we
+// drain them at 10 Hz over the same link (single-flight, ack cursor — lossless)
+// and write them into the run log as compact "cc"/"cf"/"cs" rows next to the
+// FicTrac frames and arena echoes. Enabled per connection when the firmware
+// advertises `health` AND answers SET_TELEMETRY; silent otherwise.
+Studio.telemetry = null;
+Studio.telemetryAvailable = false;
+Studio.initTelemetry = async function () {
+    const AT = window.ArenaTelemetry;
+    if (!AT || !Studio.session || !Studio.session.connected) return false;
+    if (!(Studio.capabilities || []).includes('health') || !Wire.encodeSetTelemetry) {
+        Studio.telemetryAvailable = false;
+        return false;
+    }
+    try {
+        const r = await Studio.session.send(Wire.encodeSetTelemetry(1), { timeoutMs: 2000 });
+        const d = Wire.decodeResponse(r);
+        Studio.telemetryAvailable = !!(d && d.ok);
+    } catch (_) {
+        Studio.telemetryAvailable = false;
+    }
+    if (!Studio.telemetryAvailable) {
+        Studio.rawLog('telemetry ring: not on this firmware (SET_TELEMETRY refused)', 'warn');
+        return false;
+    }
+    if (!Studio.telemetry) {
+        const drainer = AT.createDrainer({
+            session: Studio.session,
+            wire: Wire,
+            onRecords: (block, rows) => {
+                const b = Studio.session.bridge;
+                if (b) b.logRows(rows);
+            }
+        });
+        const poller = AT.createPoller({
+            drainer,
+            canPoll: () => {
+                if (!Studio.session.connected) return { ok: false, reason: 'disconnected' };
+                if (Studio._activePostmortem) return { ok: false, reason: 'post-mortem owns the link' };
+                if (Studio.session.outputInhibited) return { ok: false, reason: 'output inhibited' };
+                return { ok: true };
+            },
+            onState: (s, r) => { if (s === 'paused' && r) Studio.rawLog('telemetry poller paused: ' + r, 'dim'); }
+        });
+        Studio.telemetry = { drainer, poller, startedMs: Date.now(), lastReport: null };
+        poller.start(100);
+        // A quiet stats line once a minute (only when something changed).
+        setInterval(() => {
+            const st = drainer.stats;
+            const key = [st.records, st.dropped, st.gaps, st.errors].join('/');
+            if (key === Studio.telemetry.lastReport) return;
+            Studio.telemetry.lastReport = key;
+            Studio.rawLog('telemetry ring: ' + st.records + ' records · ' + st.blocks + ' blocks · ' + (st.bytes / 1024).toFixed(1) + ' KiB · dropped ' + st.dropped + ' · gaps ' + st.gaps + ' · errors ' + st.errors + (st.survivedReboot ? ' · ring survived a reboot (boot #' + st.bootCount + ')' : ''), 'dim');
+        }, 60000);
+    } else {
+        Studio.telemetry.drainer.reset(); // a new connection may be a fresh ring
+        Studio.telemetry.poller.start(100);
+    }
+    Studio.rawLog('telemetry ring: on (10 Hz drain, rows cc/cf/cs → run log)', 'info');
+    return true;
+};
+
+// Drain everything the controller holds (post-reboot crash dump). Returns a
+// JSON-safe summary; the rows themselves go to the bridge log via onRecords.
+Studio.drainTelemetry = async function (tag) {
+    if (!Studio.telemetry || !Studio.session.connected) return null;
+    const d = Studio.telemetry.drainer;
+    const before = d.stats.records;
+    const blocks = await d.drainAll(600);
+    const recs = [];
+    for (const b of blocks) for (const r of b.records) recs.push(r);
+    const tail = recs.slice(-30).map((r) =>
+        r.kind === 'cmd' ? 'CMD 0x' + r.cmd.toString(16) + ' st' + r.status + ' @' + r.tUs :
+        r.kind === 'frame' ? 'FRAME idx' + r.idx + ' sd' + r.sdLoadUs + 'us spi' + r.spiUs + 'us @' + r.tUs :
+        r.kind === 'state' ? 'STATE ' + r.stateName + ' ' + (r.codeName || r.code) + ' ' + r.arg + ' @' + r.tUs : '?');
+    const summary = { tag: tag || 'drain', records: recs.length, blocks: blocks.length, survivedReboot: d.stats.survivedReboot, bootCount: d.stats.bootCount, dropped: d.stats.dropped, gaps: d.stats.gaps, tail };
+    Studio.rawLog('telemetry dump (' + summary.tag + '): ' + recs.length + ' records' + (d.stats.survivedReboot ? ' — ring survived the reboot' : '') + (tail.length ? '\n  ' + tail.join('\n  ') : ''), recs.length ? 'warn' : 'dim');
+    const b = Studio.session.bridge;
+    if (b && b.logging) b.log({ event: 'telemetry_dump', summary });
+    return summary;
+};
+
 Studio.runCondition = async function (name) {
     const doc = Studio.currentDoc;
     if (!doc || !Studio.session) return;
@@ -8355,6 +8441,11 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             if (Studio.soak) md.soak = { iteration: Studio.soak.iteration, policy: Studio.soak.policy, first_fault: Studio.soak.firstFault };
             bridge.log(md);
         }
+        // Controller telemetry streams (T4): declare the compact row schema once
+        // per log file so readers know the cc/cf/cs columns.
+        if (Studio.telemetryAvailable && bridge.connected && window.ArenaTelemetry) {
+            bridge.log({ event: 'stream_schema', streams: window.ArenaTelemetry.STREAM_SCHEMA });
+        }
     }
     let summary = null;
     try {
@@ -8409,7 +8500,9 @@ Studio.handleControllerFault = async function (summary) {
     const pm = PM.createPostmortem({
         session: Studio.session,
         wire: Wire,
-        log: (m, k) => Studio.rawLog('post-mortem: ' + m, k || 'info')
+        log: (m, k) => Studio.rawLog('post-mortem: ' + m, k || 'info'),
+        // After a successful reset+reconnect, pull the ring's crash dump.
+        afterReconnect: () => Studio.drainTelemetry('post-reset')
     });
     Studio._activePostmortem = pm;
     Studio.showBanner('⚠ Controller fault — post-mortem probes running (' + policy + '). Do not unplug.');

@@ -494,6 +494,19 @@
         }
 
         /**
+         * Compact array rows for the run log (controller telemetry streams
+         * "cc"/"cf"/"cs" from js/arena-telemetry.js). The bridge writes each row
+         * verbatim as one NDJSON line — same shape as the behavior_v2 ["a", …]
+         * arena echoes, so readers dispatch on Array.isArray + row[0]. Needs
+         * bridge ≥ 3.1 (older bridges ignore the message). No-op unless logging.
+         * @param {Array<Array>} rows
+         */
+        logRows(rows) {
+            if (!Array.isArray(rows) || !rows.length) return;
+            if (this._logging && this.connected) this._send({ type: 'rows', rows });
+        }
+
+        /**
          * Ask the bridge for the current/most-recent log file (log_export →
          * log_export_result). The bridge CLOSES the active log first, so call
          * this at run completion (after the last log() event). The first

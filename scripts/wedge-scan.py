@@ -70,6 +70,10 @@ DEFAULT_WINDOW = 10  # arena rows after a candidate timeout to look for follower
 DEFAULT_MIN_FOLLOWERS = 2  # more timeouts (any opcode) needed to confirm onset
 TREND_WINDOW_MS = 30_000  # "last 30 s before onset" trend window
 SLOW_DT_MS = 50  # soft-degradation threshold for an OK 0x70 reply
+# Controller telemetry rows (fw feat/telemetry-ring via js/arena-telemetry.js).
+CTL_TAGS = ("cc", "cf", "cs")
+CTL_STATE_KINDS = {1: "boot", 2: "state_change", 3: "error_glyph", 4: "sd_slow", 5: "ring_overrun", 6: "telemetry", 7: "sd_open"}
+
 HIST_CAP_MS = 5_000  # dt histogram: buckets 0..HIST_CAP_MS-1 + one overflow bucket
 CONTEXT_ROWS = 5  # --verbose: rows before/after the onset row
 RUNLOG_JSON_MAX_BYTES = 64 * 1024 * 1024  # whole-file json.load cap for envelopes
@@ -321,6 +325,13 @@ class RunScan:
         self.timeouts_total = 0
         self.isolated_timeouts = 0
         self.slow_before = 0  # OK 0x70 with dt > SLOW_DT_MS before onset
+        self.ctl_records = 0
+        self.ctl_by_tag = collections.Counter()
+        self.ctl_sd_hist = collections.Counter()
+        self.ctl_sd_max = 0
+        self.ctl_states = collections.Counter()
+        self.ctl_cmd_rejects = 0
+        self.ctl_tail = collections.deque(maxlen=40)
         self.hist = DtHistogram()  # OK 0x70 dt before onset
         self.trend = TrendWindow()
         self.onset = None  # confirmed ArenaRow
@@ -357,10 +368,35 @@ class RunScan:
             self._arena(row)
             return
         if isinstance(value, list):
+            if value and isinstance(value[0], str) and value[0] in CTL_TAGS:
+                self._ctl(value, lineno)
+                return
             self._frame(value)
             return
         if isinstance(value, dict):
             self._event(value, lineno)
+
+    def _ctl(self, arr, lineno: int) -> None:
+        """Controller telemetry row (js/arena-telemetry.js): ["cc"|"cf"|"cs", rx, t_us, seq, ...]."""
+        tag = arr[0]
+        self.ctl_records += 1
+        self.ctl_by_tag[tag] += 1
+        if isinstance(arr[1], (int, float)):
+            self._touch(arr[1])
+        if tag == "cf" and len(arr) >= 8 and isinstance(arr[6], (int, float)):
+            sd = int(arr[6])
+            self.ctl_sd_hist[min(sd // 100, 999)] += 1
+            if sd > self.ctl_sd_max:
+                self.ctl_sd_max = sd
+        elif tag == "cs" and len(arr) >= 7:
+            kind = CTL_STATE_KINDS.get(arr[4], f"kind_{arr[4]}")
+            self.ctl_states[kind] += 1
+        elif tag == "cc" and len(arr) >= 7 and arr[5] not in (0, None):
+            self.ctl_cmd_rejects += 1
+        # The last records before a wedge are the crash dump: keep a bounded tail
+        # (only while no onset has been confirmed).
+        if self.onset is None:
+            self.ctl_tail.append((lineno, arr))
 
     def _frame(self, arr) -> None:
         self.frames += 1
@@ -561,12 +597,21 @@ class RunScan:
             "timeouts_after": self.timeouts_after if on is not None else None,
             "first_non70_fail": self.first_non70_fail,
             "slow_before": (f"dt>{SLOW_DT_MS}ms before onset: {self.slow_before}" if has_rows else NA),
+            "ctl_records": (f"{self.ctl_records} ({', '.join(f'{k}:{v}' for k, v in sorted(self.ctl_by_tag.items()))})" if self.ctl_records else "—"),
+            "ctl_sd_max_us": self.ctl_sd_max if self.ctl_records else "—",
+            "ctl_states": (", ".join(f"{k}:{v}" for k, v in sorted(self.ctl_states.items())) or "—") if self.ctl_records else "—",
+            "ctl_cmd_rejects": self.ctl_cmd_rejects if self.ctl_records else "—",
             "trend": trend if has_rows else NA,
             "resets": self.resets,
             "terminal": self.terminal,
             "runner_errors": [f"L{ln}: {tx}" for ln, tx in self.runner_errors],
             "outcome": self.outcome(),
             "flags": flags,
+            "_ctl_tail": (
+                [f"{n}: {json.dumps(a, separators=(',', ':'))}" for n, a in self.ctl_tail]
+                if (self.onset is not None and self.ctl_tail)
+                else []
+            ),
             "_context": (
                 [r.brief() for r in self.context_before] + [f">>> {on.brief()}  <<< ONSET"] + [r.brief() for r in self.context_after]
                 if on is not None
@@ -629,6 +674,10 @@ def scan_runlog_json(path: str, doc: dict) -> dict:
         "timeouts_after": None,
         "first_non70_fail": (timeout_errors[0] if timeout_errors else None),
         "slow_before": NA,
+        "ctl_records": "—",
+        "ctl_sd_max_us": "—",
+        "ctl_states": "—",
+        "ctl_cmd_rejects": "—",
         "trend": NA,
         "resets": resets,
         "terminal": summary.get("outcome"),
@@ -636,6 +685,7 @@ def scan_runlog_json(path: str, doc: dict) -> dict:
         "outcome": "no-arena-rows",
         "flags": flags,
         "_context": [],
+        "_ctl_tail": [],
     }
 
 
@@ -693,6 +743,10 @@ TABLE_COLUMNS = [
     ("timeouts_after", "timeouts after"),
     ("first_non70_fail", "first non-0x70 fail"),
     ("slow_before", "soft degrade"),
+    ("ctl_records", "ctl recs"),
+    ("ctl_sd_max_us", "sd max us"),
+    ("ctl_states", "ctl states"),
+    ("ctl_cmd_rejects", "ctl rejects"),
     ("trend", "trend (dt med)"),
     ("resets", "resets"),
     ("bad_lines", "bad lines"),
@@ -734,6 +788,12 @@ def render_markdown(results, verbose=False) -> str:
                 out.append("```")
                 out.extend(r["_context"])
                 out.append("```")
+            if r.get("_ctl_tail"):
+                out.append("")
+                out.append(f"**{r['file']}** controller-side records before the wedge (last {len(r['_ctl_tail'])}; ring crash dump):")
+                out.append("```")
+                out.extend(r["_ctl_tail"])
+                out.append("```")
     out.append("")
     out.append(f"_dt = host-observed round trip incl. queue time (not controller RTT). Onset = first 0x70 timeout followed by >= {DEFAULT_MIN_FOLLOWERS} more timeouts within {DEFAULT_WINDOW} arena rows; timeouts_after excludes the onset row._")
     return "\n".join(out)
@@ -761,7 +821,7 @@ def main(argv=None) -> int:
             print(f"wedge-scan: cannot open {path}: {e}", file=sys.stderr)
             rc = 2
     if args.json:
-        clean = [{k: v for k, v in r.items() if k != "_context" or args.verbose} for r in results]
+        clean = [{k: v for k, v in r.items() if k not in ("_context", "_ctl_tail") or args.verbose} for r in results]
         print(json.dumps(clean, indent=1))
     else:
         print(render_markdown(results, verbose=args.verbose))
