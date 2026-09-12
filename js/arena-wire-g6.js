@@ -726,6 +726,7 @@ const ArenaWireG6 = (function () {
     const HEALTH_ISR_NAMES = ['none', 'refresh_timer', 'spi_dma', 'watchdog'];
     const HEALTH_PAYLOAD_BYTES_V2 = 89; // fw fb11681: + ISR breadcrumb + RTWDOG pre-reset PC capture
     const HEALTH_PAYLOAD_BYTES_V3 = 97; // fw 86eeb4a: + raw WDOG3_CS at boot and live
+    const HEALTH_PAYLOAD_BYTES_V4 = 106; // fw 54b57d0: + measured tick rate, live TOVAL, verify bits
     function decodeHealth(resp) {
         const r = asResponse(resp);
         if (!r || !r.ok || r.payload.length < HEALTH_PAYLOAD_BYTES) return null;
@@ -825,6 +826,22 @@ const ArenaWireG6 = (function () {
             h.wdogHwUpdate = !!(h.wdogCsNow & 0x20);
             h.wdogHwRcs = !!(h.wdogCsNow & 0x400);
             h.wdogHwCmd32 = !!(h.wdogCsNow & 0x2000);
+        }
+        // ver 4 tail (fw 54b57d0): the RTWDOG clock is measured at boot (128 kHz/256
+        // ≈ 500 Hz on this silicon, not the 125 Hz the datasheet's LPO implies) and
+        // TOVAL derived from it; `wdogVerify` bits explain any config complaint.
+        if (m.length >= HEALTH_PAYLOAD_BYTES_V4) {
+            h.wdogTickHz = u32();
+            h.wdogTovalNow = u32();
+            h.wdogVerify = u8();
+            h.wdogTimeoutS = h.wdogTickHz
+                ? Math.round((h.wdogTovalNow / h.wdogTickHz) * 100) / 100
+                : null;
+            h.wdogVerifyRcsTimeout = !!(h.wdogVerify & 0x01);
+            h.wdogVerifyEnMismatch = !!(h.wdogVerify & 0x02);
+            h.wdogVerifyTovalMismatch = !!(h.wdogVerify & 0x04);
+            h.wdogVerifyTickFallback = !!(h.wdogVerify & 0x08);
+            h.wdogVerifyKeyRetry = !!(h.wdogVerify & 0x10);
         }
         return h;
     }
@@ -1190,6 +1207,7 @@ const ArenaWireG6 = (function () {
         HEALTH_PAYLOAD_BYTES_FULL,
         HEALTH_PAYLOAD_BYTES_V2,
         HEALTH_PAYLOAD_BYTES_V3,
+        HEALTH_PAYLOAD_BYTES_V4,
         HEALTH_BREADCRUMB_OPS,
         HEALTH_ISR_NAMES,
         encodeGetCrashReport,
