@@ -738,6 +738,16 @@ check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46)
         [Wire.HEALTH_BREADCRUMB_OPS[6], Wire.HEALTH_BREADCRUMB_OPS[9]].join(),
         'cmd_disarm_timer,cmd_respond'
     );
+    const v3 = payload.concat(u32(0x2520), u32(0x36e0));
+    check('v3 payload is 97 B', v3.length, Wire.HEALTH_PAYLOAD_BYTES_V3);
+    const h3 = Wire.decodeHealth(Uint8Array.from([v3.length + 2, 0x00, 0xca].concat(v3)));
+    check('v3 CS at boot', h3.wdogCsBootHex, '0x2520');
+    check(
+        'v3 hardware EN/INT/UPDATE/RCS/CMD32',
+        [h3.wdogHwEnabled, h3.wdogHwInt, h3.wdogHwUpdate, h3.wdogHwRcs, h3.wdogHwCmd32].join(),
+        'true,true,true,true,true'
+    );
+    check('v2 payload has no v3 fields', h.wdogCsNow, undefined);
     const h66 = Wire.decodeHealth(Uint8Array.from([66 + 2, 0x00, 0xca].concat(base)));
     check('66 B payload has no v2 fields', h66.wdogFlags, undefined);
 }

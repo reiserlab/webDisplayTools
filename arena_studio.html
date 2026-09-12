@@ -5522,7 +5522,7 @@
                  (h.slowOpName ? ' · this boot slowest ' + h.slowOpName + ' ' + h.slowUs + ' µs' : ''), 'info');
             if (h.wdogFlags !== undefined) {
                 clog('health v2: prev boot ISR ' + h.prevIsrLastName + ' (' + h.prevIsrCount + ' entries)' + (h.prevResetWasWatchdog ? ' · PREVIOUS RESET = WATCHDOG' : '') + (h.prevPcCaptured ? ' · captured PC ' + h.prevWdogPcHex + ' LR ' + h.prevWdogLrHex : '') +
-                     ' · wdog ' + (h.wdogArmed ? 'armed' : 'OFF') + (h.wdogSuspended ? ' (suspended)' : '') + (h.wdogStarving ? ' STARVING' : '') + (h.wdogConfigFailed ? ' CONFIG FAILED' : '') + ' kicks ' + h.wdogKicks + ' · this boot ISR ' + h.isrLastName + ' (' + h.isrCount + ')', h.prevResetWasWatchdog ? 'warn' : 'info');
+                     ' · wdog ' + (h.wdogArmed ? 'armed' : 'OFF') + (h.wdogSuspended ? ' (suspended)' : '') + (h.wdogStarving ? ' STARVING' : '') + (h.wdogConfigFailed ? ' CONFIG FAILED' : '') + ' kicks ' + h.wdogKicks + ' · this boot ISR ' + h.isrLastName + ' (' + h.isrCount + ')' + (h.wdogCsNow !== undefined ? ' · WDOG3_CS boot ' + h.wdogCsBootHex + ' now ' + h.wdogCsNowHex + (h.wdogHwEnabled ? ' (HW ENABLED)' : ' (HW OFF!)') : ''), h.prevResetWasWatchdog ? 'warn' : 'info');
             }
             const cr = await Studio.readCrashReport();
             if (cr) clog('crash report: ' + (cr.present ? cr.faultName + ' ret ' + cr.retAddrHex + ' cfsr 0x' + cr.cfsr.toString(16) + ' hfsr 0x' + cr.hfsr.toString(16) + ' bfar 0x' + cr.bfar.toString(16) + ' mmfar 0x' + cr.mmfar.toString(16) : 'none recorded'), cr.present ? 'warn' : 'dim');

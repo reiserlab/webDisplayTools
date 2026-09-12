@@ -725,6 +725,7 @@ const ArenaWireG6 = (function () {
     ];
     const HEALTH_ISR_NAMES = ['none', 'refresh_timer', 'spi_dma', 'watchdog'];
     const HEALTH_PAYLOAD_BYTES_V2 = 89; // fw fb11681: + ISR breadcrumb + RTWDOG pre-reset PC capture
+    const HEALTH_PAYLOAD_BYTES_V3 = 97; // fw 86eeb4a: + raw WDOG3_CS at boot and live
     function decodeHealth(resp) {
         const r = asResponse(resp);
         if (!r || !r.ok || r.payload.length < HEALTH_PAYLOAD_BYTES) return null;
@@ -810,6 +811,20 @@ const ArenaWireG6 = (function () {
             h.prevWdogLrHex = h.prevPcCaptured
                 ? '0x' + h.prevWdogLr.toString(16).padStart(8, '0')
                 : null;
+        }
+        // ver 3 tail (fw 86eeb4a): the RTWDOG control register as read at boot (reset
+        // default, expected 0x2520) and live — the hardware's own word on whether the
+        // watchdog is enabled (CS bit 7 EN), independent of the firmware's flags.
+        if (m.length >= HEALTH_PAYLOAD_BYTES_V3) {
+            h.wdogCsBoot = u32();
+            h.wdogCsNow = u32();
+            h.wdogCsBootHex = '0x' + h.wdogCsBoot.toString(16);
+            h.wdogCsNowHex = '0x' + h.wdogCsNow.toString(16);
+            h.wdogHwEnabled = !!(h.wdogCsNow & 0x80);
+            h.wdogHwInt = !!(h.wdogCsNow & 0x40);
+            h.wdogHwUpdate = !!(h.wdogCsNow & 0x20);
+            h.wdogHwRcs = !!(h.wdogCsNow & 0x400);
+            h.wdogHwCmd32 = !!(h.wdogCsNow & 0x2000);
         }
         return h;
     }
@@ -1174,6 +1189,7 @@ const ArenaWireG6 = (function () {
         HEALTH_PAYLOAD_BYTES,
         HEALTH_PAYLOAD_BYTES_FULL,
         HEALTH_PAYLOAD_BYTES_V2,
+        HEALTH_PAYLOAD_BYTES_V3,
         HEALTH_BREADCRUMB_OPS,
         HEALTH_ISR_NAMES,
         encodeGetCrashReport,
