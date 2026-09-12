@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 12:21 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 13:07 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -8316,6 +8316,11 @@ Studio.initTelemetry = async function () {
             canPoll: () => {
                 if (!Studio.session.connected) return { ok: false, reason: 'disconnected' };
                 if (Studio._activePostmortem) return { ok: false, reason: 'post-mortem owns the link' };
+                // No sink ⇒ don't poll: rows would be refused (ack withheld) and the same
+                // block re-read every 100 ms. The ring keeps the last ~6 s on the
+                // controller; when logging starts the drain resumes with that backlog.
+                const b = Studio.session.bridge;
+                if (!(b && b.connected && b.logging)) return { ok: false, reason: 'bridge not logging' };
                 if (Studio.session.outputInhibited) return { ok: false, reason: 'output inhibited' };
                 return { ok: true };
             },
