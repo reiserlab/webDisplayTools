@@ -279,6 +279,17 @@ function block(h, records) {
             'ring=' + ring.length
         );
         check('stats.records total', d.stats.records, 7 + 2 + 1 + 20);
+        // rearm(): same incarnation → NO_ACK request, duplicates dropped, cursor continues
+        const seqBefore = d.stats.lastSeq;
+        const recBefore = d.stats.records;
+        d.rearm();
+        push(2);
+        const askedBefore = asked.length;
+        await d.drainOnce();
+        check('rearm sends NO_ACK first', asked[askedBefore], 0xffffffff);
+        checkBool('rearm re-delivered nothing new twice', d.stats.duplicates >= 0);
+        check('cursor continued past the new records', d.stats.lastSeq, seqBefore + 2);
+        check('only the 2 new records counted', d.stats.records - recBefore, 2);
         d.reset();
         check('reset forgets the cursor', [d.stats.ackSeq, d.stats.lastSeq], [0xffffffff, null]);
     }

@@ -66,6 +66,11 @@
     function u32(m, o) {
         return (m[o] | (m[o + 1] << 8) | (m[o + 2] << 16) | (m[o + 3] << 24)) >>> 0;
     }
+    /** a is after b in modular u32 sequence space (half-range rule). */
+    function seqAfter(a, b) {
+        const d = (a - b) >>> 0;
+        return d !== 0 && d < 0x80000000;
+    }
 
     /** Parse one 0xA9 reply FRAME (as returned by session.send) → block or null. */
     function parseBlock(resp, wire) {
@@ -201,12 +206,15 @@
             dropped: 0, // controller's cumulative drop counter (last value)
             errors: 0,
             notStored: 0, // rows the sink refused (ack withheld, will be re-read)
+            duplicates: 0, // records re-delivered after a rearm (already stored, dropped)
+            incarnations: 0, // ring re-initialisations seen (power cycles)
             lastTNowUs: null,
             bootCount: null,
             survivedReboot: false,
             lastError: null
         };
         let busy = false;
+        let peekNext = false; // next request goes out with NO_ACK (see rearm)
         const idleWaiters = [];
 
         /**
@@ -219,7 +227,7 @@
             const blocks = [];
             try {
                 for (let i = 0; i < maxChunks; i++) {
-                    const ack = st.lastSeq == null ? NO_ACK : st.lastSeq;
+                    const ack = st.lastSeq == null || peekNext ? NO_ACK : st.lastSeq;
                     let resp;
                     try {
                         resp = await session.send(W.encodeGetTelemetryBlock(ack, maxBytes), {
@@ -237,6 +245,24 @@
                         break;
                     }
                     const rx = now();
+                    // Ring incarnation check (review finding: an old ack after a power
+                    // cycle would free unseen records). A different boot_count with the
+                    // ring NOT marked survived ⇒ fresh ring: forget the cursor. Same
+                    // incarnation after a rearm ⇒ drop records we already stored.
+                    if (peekNext) {
+                        peekNext = false;
+                        if (st.bootCount != null && block.bootCount !== st.bootCount) {
+                            if (!block.survivedReboot) st.lastSeq = null;
+                            st.incarnations++;
+                        }
+                        if (st.lastSeq != null) {
+                            const before = block.records.length;
+                            block.records = block.records.filter((r) =>
+                                seqAfter(r.seq, st.lastSeq)
+                            );
+                            st.duplicates += before - block.records.length;
+                        }
+                    }
                     st.blocks++;
                     st.bytes += block.bytes;
                     st.lastTNowUs = block.tNowUs;
@@ -286,10 +312,21 @@
             return all;
         }
 
-        /** Forget the cursor (e.g. after a power cycle the ring is fresh). */
+        /** Forget the cursor entirely (test/reset helper). */
         function reset() {
             st.ackSeq = NO_ACK;
             st.lastSeq = null;
+            peekNext = false;
+        }
+
+        /**
+         * Re-arm after a (re)connection or a controller reboot: the NEXT request
+         * carries NO_ACK, so nothing is freed until we have seen which ring
+         * incarnation answers. Same incarnation ⇒ already-stored records are
+         * dropped as duplicates and the cursor continues; fresh ring ⇒ cursor reset.
+         */
+        function rearm() {
+            peekNext = true;
         }
 
         /** Resolves once no drain is in flight (post-mortem: own the link, THEN go quiet). */
@@ -297,7 +334,7 @@
             return busy ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve();
         }
 
-        return { drainOnce, drainAll, reset, idle, stats: st };
+        return { drainOnce, drainAll, reset, rearm, idle, stats: st };
     }
 
     /**

@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 12:04 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 12:21 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -8332,7 +8332,7 @@ Studio.initTelemetry = async function () {
             Studio.rawLog('telemetry ring: ' + st.records + ' records · ' + st.blocks + ' blocks · ' + (st.bytes / 1024).toFixed(1) + ' KiB · dropped ' + st.dropped + ' · gaps ' + st.gaps + ' · errors ' + st.errors + (st.notStored ? ' · refused by bridge ' + st.notStored : '') + (st.heapCollision ? ' · RING DISABLED (heap collision)' : '') + (st.survivedReboot ? ' · ring survived a reboot (boot #' + st.bootCount + ')' : ''), 'dim');
         }, 60000);
     } else {
-        Studio.telemetry.drainer.reset(); // a new connection may be a fresh ring
+        Studio.telemetry.drainer.rearm(); // NO_ACK first: learn the ring incarnation before freeing anything
         Studio.telemetry.poller.start(100);
     }
     Studio.rawLog('telemetry ring: on (10 Hz drain, rows cc/cf/cs → run log)', 'info');
@@ -8345,6 +8345,7 @@ Studio.drainTelemetry = async function (tag) {
     if (!Studio.telemetry || !Studio.session.connected) return null;
     const d = Studio.telemetry.drainer;
     const before = d.stats.records;
+    d.rearm(); // post-reboot: never free records with a pre-reboot ack (incarnation check)
     const blocks = await d.drainAll(600);
     const recs = [];
     const rawBlocks = []; // raw payload hex per block — decoder-independent evidence
