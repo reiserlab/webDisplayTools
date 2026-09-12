@@ -285,6 +285,67 @@ function wedgedModel(opts) {
         checkBool('reconnect error recorded', /no granted port/.test(res.reset.reconnectError));
     }
 
+    console.log(
+        '\n=== MAC-less controller_info after reconnect → identity NOT ok (expected MAC) ==='
+    );
+    {
+        const m = wedgedModel({ slowMs: 300 });
+        const base = m.reply.bind(m);
+        m.afterReset = () => {
+            m.wedged = false;
+            // 0xC2 answers but without the MAC bytes (older-firmware shape)
+            m.reply = (cmd) => (cmd === 0xc2 ? { frame: ok(0xc2, [2, 0xa3]), dt: 2 } : base(cmd));
+        };
+        const t = makeSession(m);
+        const pm = PM.createPostmortem(
+            Object.assign({}, t.deps, { opts: { probeWindowMs: 1000, probeEveryMs: 500 } })
+        );
+        const res = await pm.run({ policy: 'reset-continue', expectMac: '04:e9:e5:1e:88:ec' });
+        check('outcome reset-failed (no MAC to verify)', res.outcome, 'reset-failed');
+        check('identityOk false', res.reset.identityOk, false);
+        checkBool(
+            'identity error names the missing MAC',
+            /no MAC|expected/.test(res.reset.identityError)
+        );
+    }
+
+    console.log('\n=== post-reset: one probe answers, the rest time out → NOT recovered ===');
+    {
+        const m = wedgedModel({ slowMs: 300 });
+        const base = m.reply.bind(m);
+        m.afterReset = () => {
+            m.wedged = false;
+            // controller_info + frames_sent answer; everything else is dead
+            m.reply = (cmd) => (cmd === 0xc2 || cmd === 0x33 ? base(cmd) : 'timeout');
+        };
+        const t = makeSession(m);
+        const pm = PM.createPostmortem(
+            Object.assign({}, t.deps, { opts: { probeWindowMs: 1000, probeEveryMs: 500 } })
+        );
+        const res = await pm.run({ policy: 'reset-continue' });
+        check('outcome reset-failed (timeouts after reset)', res.outcome, 'reset-failed');
+        checkBool('post-reset timeouts counted', res.reset.postSummary.timeouts > 0);
+        check('answered > 0 alone does not recover', res.reset.postSummary.answered > 0, true);
+    }
+
+    console.log(
+        '\n=== capabilities unknown (0xC2 dead) → capability-gated probes are SKIPPED, not sent ==='
+    );
+    {
+        const t = makeSession(wedgedModel({ dead: true }));
+        const pm = PM.createPostmortem(
+            Object.assign({}, t.deps, { opts: { probeWindowMs: 1000, probeEveryMs: 500 } })
+        );
+        await pm.run({ policy: 'halt' });
+        const sentCmds = t.sent.map((x) => x.cmd);
+        check('no GET_HEALTH (0xCA) sent blind', sentCmds.includes(0xca), false);
+        check('no GET_FIRMWARE_VERSION (0xCB) sent blind', sentCmds.includes(0xcb), false);
+        checkBool(
+            'skip reason recorded',
+            t.rows.some((r) => r && r.skipped === 'capabilities unknown')
+        );
+    }
+
     console.log('\n=== wrong controller after reconnect → identity error ===');
     {
         const m = wedgedModel({ slowMs: 300 });

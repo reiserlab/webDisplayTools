@@ -683,6 +683,7 @@ check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46)
     check('arena rows×cols', v.arena, '2x10');
     check('sha trimmed', v.sha, '06a6f25');
     check('date', v.date, '2026-09-12');
+    check('flags bit 2 = telemetry ring (absent here)', v.telemetry, false);
     check('branch truncated to 24', v.branch, 'feat/controller-health-2');
     check('dirty flag', v.dirty, true);
     check('debug flag', v.debug, false);

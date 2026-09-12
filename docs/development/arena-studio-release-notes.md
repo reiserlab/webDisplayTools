@@ -6,6 +6,15 @@ history lives here. Newest first. (Per-session engineering detail stays in
 
 ## v0.76 (2026-09-11) · Controller-fault detection, post-mortem probes, soak driver (fw #50)
 
+- **2026-09-12 review fixes (Codex gpt-6-astra, see `.codex-review/report-20260912-status.md`):**
+  a faulted run's log is committed only after the post-mortem (probes + controller ring dump) has
+  finished; "recovered" now requires the same controller (MAC) and every required probe answering
+  fast; the controller ring drain acknowledges records only once the bridge stored them; the ring is
+  enabled only when the firmware declares it (no blind 0xA8 on older builds) and has an on/off
+  switch in Console → Debug ▾ for a telemetry-off control arm; replay and dashboard readers ignore
+  the new `cc`/`cf`/`cs` rows; soak iterations that streamed almost nothing are marked
+  `unexercised`; the wedge analyzer reports runner-declared faults (`fault-declared`).
+
 - **A frozen controller now stops the run instead of finishing it.** During Mode-3 closed loop the
   Studio used to ignore every frame-command timeout and let a run "complete" (and auto-commit) with
   the arena dead. Now 3 failed frame commands out of the last 10 trip a fault: closed loop stops, the

@@ -189,6 +189,10 @@ the log; not causal). Harness bugs found and fixed live: protocol `fictrac.disco
 a remembered v1 session setting overrode the soak's v2; one out-of-range 0x70 per trial with a smaller frame
 count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and siblings, bench-local.
 
+- **2026-09-12 11:24 ET →** soak night 2 continues on `22b756dd` (health + version), halt-first, 10 h. Iteration 1 completed 11:5x.
+- **2026-09-12 12:00 ET** Codex (gpt-6-astra) status + diff review reconciled — `.codex-review/report-20260912-status.md`. 16 diff findings, 11 verified and fixed on the branch (deferred commit on fault, recovery predicate, ack-means-stored, tagged-row readers, 0xCB-bit-2 telemetry gate, identity per link-up, exclusive post-mortem link, telemetry off switch, analyzer declared fault, bridge row shapes, soak `unexercised`); 2 deferred (write-timeout transport generation; session-owned lifecycle → LAB-212), 1 rejected (sidecar). Full suite green.
+- **2026-09-12 12:0x ET** ring firmware `feat/telemetry-ring-2x10` = `ac4c08f` pushed (0xA8/0xA9, u32 sd_load, heap guard, eviction-first commit, synthetic producer, 0xCB flags bit 2). **Not flashed** — waits for a human at the bench (night-1 lesson) at an iteration boundary: `Studio.stopSoak()`, restart bridge (3.1), flash, verify 0xCB bit 2 + 0xA8 ack, restart soak = T4.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1

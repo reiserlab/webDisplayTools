@@ -498,12 +498,17 @@
          * "cc"/"cf"/"cs" from js/arena-telemetry.js). The bridge writes each row
          * verbatim as one NDJSON line — same shape as the behavior_v2 ["a", …]
          * arena echoes, so readers dispatch on Array.isArray + row[0]. Needs
-         * bridge ≥ 3.1 (older bridges ignore the message). No-op unless logging.
+         * bridge ≥ 3.1 (a 3.0 bridge writes the whole message as one verbatim
+         * object instead). Returns false when NOT logging/connected, so the caller
+         * (the telemetry drainer) withholds its ack and the controller keeps the rows.
          * @param {Array<Array>} rows
+         * @returns {boolean} accepted
          */
         logRows(rows) {
-            if (!Array.isArray(rows) || !rows.length) return;
-            if (this._logging && this.connected) this._send({ type: 'rows', rows });
+            if (!Array.isArray(rows) || !rows.length) return true;
+            if (!(this._logging && this.connected)) return false; // not stored — caller keeps them
+            this._send({ type: 'rows', rows });
+            return true;
         }
 
         /**

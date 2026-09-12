@@ -806,6 +806,7 @@ const ArenaWireG6 = (function () {
             flags: m[3],
             dirty: !!(m[3] & 0x01),
             debug: !!(m[3] & 0x02),
+            telemetry: !!(m[3] & 0x04), // ring buffer (0xA8/0xA9) present — the ONLY gate for SET_TELEMETRY
             sha: ascii(4, 8),
             date: ascii(12, 10),
             branch: ascii(22, 24)

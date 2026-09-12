@@ -544,6 +544,12 @@ class Hub:
             pass
 
 
+# Minimum row lengths for the tagged array streams the browser may send via
+# {type:"rows"} (schema: js/arena-telemetry.js STREAM_SCHEMA). Shorter rows are
+# dropped so a malformed producer cannot poison the file for every reader.
+ROW_MIN_LEN = {"cc": 7, "cf": 8, "cs": 7}
+
+
 class LogWriter:
     """Appends one JSON line per event to a log file.
 
@@ -656,9 +662,12 @@ class LogWriter:
             return 0
         n = 0
         for r in rows:
-            if isinstance(r, list) and r and isinstance(r[0], str) and 1 <= len(r[0]) <= 4:
-                self._emit(r)
-                n += 1
+            if not (isinstance(r, list) and r and isinstance(r[0], str) and 1 <= len(r[0]) <= 4):
+                continue
+            if len(r) < ROW_MIN_LEN.get(r[0], 2):  # a bare ["cc"] would crash readers
+                continue
+            self._emit(r)
+            n += 1
         return n
 
     def write_inbound(self, raw: str | bytes) -> None:

@@ -149,6 +149,19 @@ def build_wedge(level, n_ok=800, n_timeouts=20, onset_index=0, step_ms=10):
     return lines, onset_line, t
 
 
+def build_declared_fault(level, n=300, step_ms=10):
+    """Rejects (status 1) trip the live detector; the runner declares the fault;
+    no timeouts at all — must NOT come out `clean`. Also a bare ["cc"] row."""
+    lines = header(level)
+    for i in range(n):
+        lines.append(arena(level, i * step_ms, 3, hex70(i % 200), 1 if i % 5 == 0 else 0))
+    lines.append(["cc"])  # malformed telemetry row — dropped, counted, never a crash
+    lines.append(["cf", T0 + n * step_ms, 5000, 1, 7, 36, 129000, 812])
+    lines.append({"type": "log", "event": "runner", "phase": "aborted", "summary": {"fault": "controller_unresponsive", "aborted": True}, "dir": DIR, "rx_ms": T0 + n * step_ms})
+    lines.append({"type": "session", "event": "logging_stopped", "ms": T0 + n * step_ms})
+    return lines
+
+
 def build_isolated(level, n=600, at=300, gaps=(300,)):
     """OK rows with single timeouts at the given positions (each recovers)."""
     lines = header(level, run_id="isolated")
@@ -354,10 +367,18 @@ with tempfile.TemporaryDirectory() as d:
 
     # (i) CLI --json over the whole temp dir ──────────────────────────────
     print("=== (i) CLI --json over a directory ===")
+    # declared fault without timeouts + malformed telemetry row
+    write_ndjson(p("declared.jsonl"), build_declared_fault("behavior_v2"))
+    rd = scan(p("declared.jsonl"))
+    check("declared fault → fault-declared (not clean)", rd["outcome"], "fault-declared")
+    check("declared_fault reason kept", rd["declared_fault"], "controller_unresponsive")
+    check("bare ['cc'] row dropped and counted", rd["ctl_malformed"], 1)
+    check("well-formed cf row still decoded (sd max)", rd["ctl_sd_max_us"], 129000)
+
     out = subprocess.run([sys.executable, SCRIPT, "--json", d], capture_output=True, text=True)
     check("exit code 0", out.returncode, 0)
     rows = json.loads(out.stdout)
-    check("one row per file in dir", len(rows), 12)
+    check("one row per file in dir", len(rows), 13)
     check("no _context key without --verbose", any("_context" in r for r in rows), False)
     by = {r["file"]: r["outcome"] for r in rows}
     check("dir scan classifies wedge", by["wedge.jsonl"], "wedge")

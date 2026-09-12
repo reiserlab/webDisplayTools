@@ -35,7 +35,7 @@ function rec(type, seq, tUs, payload) {
 }
 const cmdRec = (seq, t, cmd, status, req) => rec(1, seq, t, [cmd, status, req.length].concat(req));
 const frameRec = (seq, t, idx, pat, sd, spi) =>
-    rec(2, seq, t, [].concat(u16(idx), u16(pat), u16(sd), u16(spi)));
+    rec(2, seq, t, [].concat(u16(idx), u16(pat), u32(sd), u16(spi)));
 const stateRec = (seq, t, kind, code, arg) => rec(3, seq, t, [kind, code].concat(u16(arg)));
 const padRec = (n) => [n, 0].concat(new Array(n - 2).fill(0));
 function block(h, records) {
@@ -99,9 +99,28 @@ function block(h, records) {
                 b.more,
                 b.eventsEnabled,
                 b.survivedReboot,
-                b.bootCount
+                b.bootCount,
+                b.disabledHeapCollision,
+                b.syntheticOn
             ],
-            [123456789, 10, 5, 2, true, true, true, 4]
+            [123456789, 10, 5, 2, true, true, true, 4, false, false]
+        );
+        check(
+            'frame sd_load is u32 (129 ms fits)',
+            T.parseBlock(
+                block({ tNowUs: 1, firstSeq: 1, more: false, flags: 0 }, [
+                    frameRec(1, 5, 78, 36, 129000, 812)
+                ]),
+                Wire
+            ).records[0].sdLoadUs,
+            129000
+        );
+        check(
+            'header flag bits 2/3 (heap collision, synthetic)',
+            (({ disabledHeapCollision, syntheticOn }) => [disabledHeapCollision, syntheticOn])(
+                T.parseBlock(block({ tNowUs: 1, firstSeq: 1, more: false, flags: 0x0c }, []), Wire)
+            ),
+            [true, true]
         );
         check('record count (pad skipped)', b.records.length, 4);
         check(
@@ -228,6 +247,29 @@ function block(h, records) {
         push(1);
         await d.drainOnce();
         check('gap detected', d.stats.gaps, 1);
+        // ACK MEANS STORED: a sink that refuses the rows (bridge not logging) must
+        // NOT advance the cursor — the same records come back on the next poll.
+        let refuse = true;
+        const d2 = T.createDrainer({
+            session,
+            wire: Wire,
+            maxChunks: 10,
+            now: () => 42,
+            onRecords: () => (refuse ? false : true)
+        });
+        d2.stats.lastSeq = d.stats.lastSeq; // continue from the same cursor
+        const asked2 = asked.length;
+        push(3); // seq 12..14
+        await d2.drainOnce();
+        check('refused rows counted', d2.stats.notStored, 1);
+        check('cursor did not advance on refusal', d2.stats.lastSeq, 11);
+        refuse = false;
+        await d2.drainOnce();
+        check('same ack re-sent after refusal', asked[asked2 + 1], asked[asked2]);
+        check('records stored on the retry', d2.stats.lastSeq, 14);
+        check('records counted once', d2.stats.records, 3);
+        next = 15;
+        d.stats.lastSeq = d2.stats.lastSeq; // one ring, one cursor: hand it back to d
         // drainAll on a bigger backlog
         push(20);
         const all = await d.drainAll();

@@ -349,6 +349,20 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `run_metadata` from anything but the acked/inferred level.
 - Bump the footer version/timestamp on every edit; never Prettier the HTML.
 
+- **Telemetry ring — four rules from the 2026-09-12 Codex review (all tested):** (1) the ONLY gate
+  for SET_TELEMETRY 0xA8 is GET_FIRMWARE_VERSION `flags` bit 2 (`decodeFirmwareVersion().telemetry`);
+  never infer it from the `health` capability (the 0xC2 capability byte is full; health-only builds
+  answer 0xA8 with CE_UNKNOWN_CMD + an error glyph). (2) **Ack means stored**: the drainer advances
+  its cursor only when `onRecords` returned non-false; the Studio sink returns the bridge's
+  acceptance (`FicTracBridgeClient.logRows` → boolean) — never ack rows that went nowhere.
+  (3) Run-log readers must treat ANY string-tagged array row (`"cc"/"cf"/"cs"`, future streams) as a
+  stream, not a behavior sample; only `"a"` is decoded (`js/runlog-replay.js`, dashboard
+  `analysis-core.js`). (4) A controller-fault run's export/auto-commit is DEFERRED until
+  `Studio.handleControllerFault` finishes (the export closes the bridge's file); the runner emits its
+  terminal event from `finally`, after the best-effort STOP, so `stopAcked` is in the serialized
+  summary. Post-mortem owns the link: stop the poller, `await drainer.idle()`, then go quiet;
+  capability-gated probes are skipped (and recorded) when 0xC2 gave no capabilities.
+
 ## Pattern Designer (`pattern_editor.html`)
 
 Renamed from "Pattern Editor" (v0.10, 2026-07-04); the FILENAME stays `pattern_editor.html`

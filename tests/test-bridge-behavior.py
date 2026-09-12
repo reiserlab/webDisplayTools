@@ -251,6 +251,24 @@ def write_session(level, inbound, frames=1):
         lw.close()
         return bridge.read_jsonl(os.path.join(d, name))
 
+# tagged array rows ({type:"rows"}, bridge ≥ 3.1): written verbatim, shape-checked per tag
+with tempfile.TemporaryDirectory() as d:
+    lw = bridge.LogWriter(None, "behavior_v2", d)
+    lw.start_new_log()
+    n = lw.write_rows([
+        ["cf", 1, 5000, 1, 7, 36, 129000, 812],   # ok
+        ["cc"],                                    # too short for its tag → dropped
+        ["cs", 1, 5000, 2, 1, 0],                  # cs needs 7 → dropped
+        ["zz", 1],                                 # unknown tag, generic minimum 2 → kept
+        "not a list",                              # dropped
+    ])
+    name = lw.current_name
+    lw.close()
+    got = [r for r in bridge.read_jsonl(os.path.join(d, name)) if isinstance(r, list) and r and r[0] in ("cf", "cc", "cs", "zz")]
+    check("write_rows count (shape-checked)", n, 2)
+    check("kept rows", [r[0] for r in got], ["cf", "zz"])
+    check("cf row verbatim (u32 sd_load)", got[0][6], 129000)
+
 check("default level is behavior_v2", bridge.LogWriter(None).level, "behavior_v2")
 check("legacy log_frames=True → full", bridge.LogWriter(None, True).level, "full")
 check("legacy log_frames=False → default", bridge.LogWriter(None, False).level, "behavior_v2")

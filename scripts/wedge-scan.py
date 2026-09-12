@@ -39,7 +39,9 @@ WHAT ``dt`` IS:
   USB/CDC scheduling. It is not a controller-side RTT. A 500-ish dt with
   ``status: null`` is the host's 500 ms timeout, not a measured reply.
 
-OUTCOME column:  clean | wedge | isolated | incomplete | no-arena-rows
+OUTCOME column:  clean | wedge | fault-declared | isolated | incomplete | no-arena-rows
+  (fault-declared = the runner/Studio declared a controller fault — e.g. rejects —
+   without the timeout signature; `declared_fault` carries the reason)
   ``incomplete`` = no terminal runner/session event (killed bridge, truncated
   file) OR any unparseable line (``bad_lines`` > 0) — a damaged file is never
   reported as ``clean`` silently.
@@ -332,6 +334,8 @@ class RunScan:
         self.ctl_states = collections.Counter()
         self.ctl_cmd_rejects = 0
         self.ctl_tail = collections.deque(maxlen=40)
+        self.ctl_tail_pre_onset = []
+        self.ctl_pre_boot = []  # [(lineno of the boot record, [(lineno, row), ...])]
         self.hist = DtHistogram()  # OK 0x70 dt before onset
         self.trend = TrendWindow()
         self.onset = None  # confirmed ArenaRow
@@ -341,6 +345,8 @@ class RunScan:
         self.first_non70_fail = None
         self.runner_errors = []  # (line, text) — bounded to a few
         self.terminal = None  # 'sequence-complete' | 'aborted' | 'logging_stopped'
+        self.declared_fault = None  # runner summary.fault (the live detector's verdict)
+        self.ctl_malformed = 0  # tagged rows too short to decode (dropped, counted)
         self.meta = meta_from_filename(path)
         self.frames = 0
         self.recent = collections.deque(maxlen=CONTEXT_ROWS)  # last rows (context)
@@ -379,6 +385,9 @@ class RunScan:
     def _ctl(self, arr, lineno: int) -> None:
         """Controller telemetry row (js/arena-telemetry.js): ["cc"|"cf"|"cs", rx, t_us, seq, ...]."""
         tag = arr[0]
+        if len(arr) < 4:
+            self.ctl_malformed += 1  # a bare ["cc"] must not kill the scan
+            return
         self.ctl_records += 1
         self.ctl_by_tag[tag] += 1
         if isinstance(arr[1], (int, float)):
@@ -393,10 +402,16 @@ class RunScan:
             self.ctl_states[kind] += 1
         elif tag == "cc" and len(arr) >= 7 and arr[5] not in (0, None):
             self.ctl_cmd_rejects += 1
-        # The last records before a wedge are the crash dump: keep a bounded tail
-        # (only while no onset has been confirmed).
+        # Crash-dump tails. (a) host-order: the last records seen before the onset
+        # was confirmed; (b) controller-order: at every `boot` STATE record, snapshot
+        # the records that preceded it — that is the previous boot's final history,
+        # which reaches the host only AFTER the reboot (post-mortem drain), i.e.
+        # after the onset in file order.
+        if tag == "cs" and len(arr) >= 7 and arr[4] == 1 and self.ctl_tail:
+            self.ctl_pre_boot.append((lineno, list(self.ctl_tail)))
+        self.ctl_tail.append((lineno, arr))
         if self.onset is None:
-            self.ctl_tail.append((lineno, arr))
+            self.ctl_tail_pre_onset = list(self.ctl_tail)
 
     def _frame(self, arr) -> None:
         self.frames += 1
@@ -447,6 +462,11 @@ class RunScan:
         phase = obj.get("phase")
         if phase in TERMINAL_RUNNER_PHASES:
             self.terminal = phase
+            summ = obj.get("summary")
+            if isinstance(summ, dict) and summ.get("fault"):
+                self.declared_fault = str(summ["fault"])
+        elif phase == "fault":
+            self.declared_fault = self.declared_fault or str(obj.get("reason") or "fault")
         elif phase == "error":
             text = obj.get("reason") or obj.get("error") or "error"
             if len(self.runner_errors) < 5:
@@ -542,6 +562,11 @@ class RunScan:
             return "no-arena-rows" if self.lines and self.bad_lines == 0 else "incomplete"
         if self.onset is not None:
             return "wedge"
+        if self.declared_fault:
+            # The live detector tripped (e.g. ≥3 REJECTS in 10 applies) but no
+            # timeout signature is in the rows: the run is not clean, and the
+            # inferred and declared verdicts must both be visible.
+            return "fault-declared"
         if self.isolated_timeouts:
             return "isolated"
         if self.bad_lines or self.terminal is None:
@@ -604,14 +629,20 @@ class RunScan:
             "trend": trend if has_rows else NA,
             "resets": self.resets,
             "terminal": self.terminal,
+            "declared_fault": self.declared_fault,
+            "ctl_malformed": self.ctl_malformed,
             "runner_errors": [f"L{ln}: {tx}" for ln, tx in self.runner_errors],
             "outcome": self.outcome(),
             "flags": flags,
             "_ctl_tail": (
-                [f"{n}: {json.dumps(a, separators=(',', ':'))}" for n, a in self.ctl_tail]
-                if (self.onset is not None and self.ctl_tail)
+                [f"{n}: {json.dumps(a, separators=(',', ':'))}" for n, a in self.ctl_tail_pre_onset]
+                if (self.onset is not None and self.ctl_tail_pre_onset)
                 else []
             ),
+            "_ctl_pre_boot": [
+                (bl, [f"{n}: {json.dumps(a, separators=(',', ':'))}" for n, a in rows])
+                for bl, rows in self.ctl_pre_boot
+            ],
             "_context": (
                 [r.brief() for r in self.context_before] + [f">>> {on.brief()}  <<< ONSET"] + [r.brief() for r in self.context_after]
                 if on is not None
@@ -686,6 +717,7 @@ def scan_runlog_json(path: str, doc: dict) -> dict:
         "flags": flags,
         "_context": [],
         "_ctl_tail": [],
+        "_ctl_pre_boot": [],
     }
 
 
@@ -794,6 +826,12 @@ def render_markdown(results, verbose=False) -> str:
                 out.append("```")
                 out.extend(r["_ctl_tail"])
                 out.append("```")
+            for bl, rows in r.get("_ctl_pre_boot", []):
+                out.append("")
+                out.append(f"**{r['file']}** controller records preceding the boot recorded at line {bl} (previous boot's final {len(rows)}; post-reboot drain):")
+                out.append("```")
+                out.extend(rows)
+                out.append("```")
     out.append("")
     out.append(f"_dt = host-observed round trip incl. queue time (not controller RTT). Onset = first 0x70 timeout followed by >= {DEFAULT_MIN_FOLLOWERS} more timeouts within {DEFAULT_WINDOW} arena rows; timeouts_after excludes the onset row._")
     return "\n".join(out)
@@ -821,7 +859,7 @@ def main(argv=None) -> int:
             print(f"wedge-scan: cannot open {path}: {e}", file=sys.stderr)
             rc = 2
     if args.json:
-        clean = [{k: v for k, v in r.items() if k not in ("_context", "_ctl_tail") or args.verbose} for r in results]
+        clean = [{k: v for k, v in r.items() if k not in ("_context", "_ctl_tail", "_ctl_pre_boot") or args.verbose} for r in results]
         print(json.dumps(clean, indent=1))
     else:
         print(render_markdown(results, verbose=args.verbose))

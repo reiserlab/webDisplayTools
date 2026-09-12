@@ -2662,6 +2662,7 @@
           <div class="cmenu-sep">Send raw hex</div>
           <div class="cmenu-row"><input id="cRawHex" type="text" placeholder="01 C2" title="Raw hex bytes to send verbatim (e.g. 01 C2)"><button class="cmenu-item" data-cmd="crawsend" style="width:auto" title="Send the raw hex bytes to the controller">Send</button></div>
           <div class="cmenu-sep">Health</div>
+          <button class="cmenu-item" data-cmd="ctelem" title="Toggle the controller telemetry ring drain (SET_TELEMETRY 0xA8 / GET_TELEMETRY_BLOCK 0xA9, 10 Hz, rows cc/cf/cs into the run log). Remembered. Off = the telemetry-off control arm for the fw #50 soak.">Telemetry ring: on/off</button>
           <button class="cmenu-item" data-cmd="chealth" title="GET_HEALTH (0xCA) — controller loop timing, SD read stats, frame/command counters and the previous boot's breadcrumb + slowest op (needs health-capable firmware; logged to the Console and the run log)">Controller health</button>
           <div class="cmenu-sep">Danger</div>
           <button class="cmenu-item" data-cmd="sysreset" title="SYSTEM_RESET (0x01) — ack then reboot the controller firmware">Reset controller</button>
@@ -2958,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 11:00 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 12:04 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3310,7 +3311,15 @@
         }
         $('rlCtr').textContent =
             (log.meta.run_id || 'run') + ' · ' + (log.summary ? log.summary.outcome : 'done');
-        maybeCommitRunLog(log, summary); // course pipeline — async, best-effort
+        // Controller fault (fw #50): the export closes the bridge's log file, so it
+        // must wait for the post-mortem (STOP result, probes, ring crash dump) —
+        // Studio.handleControllerFault runs the deferred commit in its finally.
+        if (summary && summary.outcome === 'CONTROLLER_FAULT' && Studio.handleControllerFault) {
+            Studio._pendingCommit = () => maybeCommitRunLog(log, summary);
+            rawLine('run log commit deferred until the controller post-mortem finishes', 'warn');
+        } else {
+            maybeCommitRunLog(log, summary); // course pipeline — async, best-effort
+        }
     }
 
     // ---- run-log upload modal — greys the screen during export+commit so a push
@@ -4910,7 +4919,10 @@
                 identified = true;
                 await new Promise((r) => setTimeout(r, 400)); // let the connect-time bring-up finish
                 if (!Studio.session.connected) return;
-                if (Studio.firmwareVersion && Studio.controllerId) return; // the Connect button already did it
+                // Never skip on cached identity: after a reset/reflash the MAC is the
+                // same but the build (and its telemetry flag) may not be. 0xC2/0xCB are
+                // RAM reads (~2 ms) — a duplicate after the Connect button is harmless.
+                Studio.firmwareVersion = null;
                 try {
                     const info = Wire.decodeControllerInfo(await Studio.session.send(Wire.encodeGetControllerInfo(), { timeoutMs: 2000 }));
                     if (info) {
@@ -5105,6 +5117,7 @@
         if (!Array.isArray(Studio.capabilities) || !Studio.capabilities.includes('io_ext')) return { ok: false, reason: 'needs io_ext firmware' };
         if (!aiUser.enabled) return { ok: false, reason: 'paused' };
         if (session.running) return { ok: false, reason: 'paused — run active' };
+        if (Studio._activePostmortem) return { ok: false, reason: 'paused — post-mortem owns the link' };
         // The Console's own FicTrac closed loop (bridge 'apply') streams 0x70 at
         // ~100 Hz outside the runner — a 10 Hz read interleaved into that stream
         // adds latency jitter to frames, so yield the link to it as well.
@@ -5494,6 +5507,11 @@
         // Controller health (fw #50): one GET_HEALTH read, decoded into the log.
         // The reply is also an ordinary arena_command row; the decoded fields go
         // into the run log as a typed `health` event when the bridge is logging.
+        ctelem: () => {
+            const on = !Studio.telemetryEnabled();
+            Studio.setTelemetryEnabled(on);
+            clog('telemetry ring ' + (on ? 'ENABLED' : 'DISABLED') + ' (remembered)', on ? 'info' : 'warn');
+        },
         chealth: async () => {
             const r = await send(Wire.encodeGetHealth(), 'GET_HEALTH 0xCA', { timeoutMs: 2000 });
             const h = r && Wire.decodeHealth(r);
@@ -8162,16 +8180,32 @@ Studio.startSoak = async function (cfg) {
                 Studio._lastPostmortem = null;
                 logSoak({ phase: 'iteration-start', iteration: s.iteration, elapsed_s: Math.round((Date.now() - s.startedMs) / 1000) });
                 Studio.rawLog('soak iteration ' + s.iteration + (s.iterations ? ' / ' + s.iterations : '') + ' starting', 'info');
+                const applied0 = bridge.stats ? bridge.stats.applied : 0;
+                const t0 = Date.now();
                 const res = await Studio.runOnce(false);
                 const pmo = Studio._lastPostmortem;
+                // Exposure, not iteration count, is the unit of evidence: record how
+                // many 0x70s this iteration actually delivered. A completed iteration
+                // that streamed almost nothing (simulator died mid-trial) is
+                // 'unexercised', not 'completed' — it must not count as clean soak time.
+                const applied = (bridge.stats ? bridge.stats.applied : 0) - applied0;
+                const durS = (Date.now() - t0) / 1000;
+                const exercised = applied >= Math.min(1000, 5 * durS); // ≥ 5 Hz average, or 1000 total
+                let outcome = !res ? 'not-started' : res.fault ? 'fault' : res.aborted ? 'aborted' : exercised ? 'completed' : 'unexercised';
                 logSoak({
                     phase: 'iteration-end', iteration: s.iteration,
-                    outcome: !res ? 'not-started' : res.fault ? 'fault' : res.aborted ? 'aborted' : 'completed',
+                    outcome,
                     fault: res && res.fault ? res.fault : null,
                     stop_acked: res ? res.stopAcked : null,
-                    postmortem: pmo ? pmo.outcome : null
+                    postmortem: pmo ? pmo.outcome : null,
+                    applied_0x70: applied, duration_s: Math.round(durS),
+                    telemetry: Studio.telemetry ? Object.assign({}, Studio.telemetry.drainer.stats) : null
                 });
                 if (!res) { reason = 'run-not-started'; break; }
+                if (outcome === 'unexercised') {
+                    s.unexercised = (s.unexercised || 0) + 1;
+                    Studio.rawLog('soak: iteration ' + s.iteration + ' delivered only ' + applied + ' frame commands in ' + Math.round(durS) + ' s — unexercised (simulator/bridge?)', 'warn');
+                }
                 if (res.fault) {
                     s.faults++;
                     if (!pmo || pmo.outcome !== 'recovered') { reason = pmo ? 'fault-' + pmo.outcome : 'fault'; break; }
@@ -8229,11 +8263,28 @@ $('fmSoak') && $('fmSoak').addEventListener('click', () => Studio.openSoakDialog
 // advertises `health` AND answers SET_TELEMETRY; silent otherwise.
 Studio.telemetry = null;
 Studio.telemetryAvailable = false;
+// Instrumentation is an experimental factor: an off switch (remembered) so a
+// telemetry-off control arm is one click, not a firmware swap. Default ON.
+Studio.telemetryEnabled = function () { try { return localStorage.getItem('studio_telemetry') !== 'off'; } catch (_) { return true; } };
+Studio.setTelemetryEnabled = function (on) {
+    try { localStorage.setItem('studio_telemetry', on ? 'on' : 'off'); } catch (_) { /* private mode */ }
+    if (!on) Studio.stopTelemetry('switched off');
+    else if (Studio.session && Studio.session.connected) Studio.initTelemetry();
+    Studio.rawLog('telemetry ring: ' + (on ? 'enabled (drains on the next connection or now)' : 'disabled — telemetry-off control arm'), 'info');
+};
+Studio.stopTelemetry = function (why) {
+    Studio.telemetryAvailable = false;
+    if (Studio.telemetry) { Studio.telemetry.poller.stop(); Studio.rawLog('telemetry ring: poller stopped (' + (why || '') + ')', 'dim'); }
+};
 Studio.initTelemetry = async function () {
     const AT = window.ArenaTelemetry;
     if (!AT || !Studio.session || !Studio.session.connected) return false;
-    if (!(Studio.capabilities || []).includes('health') || !Wire.encodeSetTelemetry) {
-        Studio.telemetryAvailable = false;
+    // Gate: ONLY the firmware's own declaration (GET_FIRMWARE_VERSION flags bit 2).
+    // `health` alone is not enough — health-only builds (22b756dd) answer 0xA8
+    // with CE_UNKNOWN_CMD and an error glyph on the arena (no blind probes).
+    const fv = Studio.firmwareVersion;
+    if (!fv || !fv.telemetry || !Wire.encodeSetTelemetry || !Studio.telemetryEnabled()) {
+        Studio.stopTelemetry(!fv || !fv.telemetry ? 'firmware has no ring' : 'disabled by setting');
         return false;
     }
     try {
@@ -8244,16 +8295,20 @@ Studio.initTelemetry = async function () {
         Studio.telemetryAvailable = false;
     }
     if (!Studio.telemetryAvailable) {
-        Studio.rawLog('telemetry ring: not on this firmware (SET_TELEMETRY refused)', 'warn');
+        Studio.stopTelemetry('SET_TELEMETRY refused');
+        Studio.rawLog('telemetry ring: firmware declares it but SET_TELEMETRY was refused', 'warn');
         return false;
     }
     if (!Studio.telemetry) {
         const drainer = AT.createDrainer({
             session: Studio.session,
             wire: Wire,
+            maxBytes: 178, // firmware reply budget: 3 + payload < 200 ⇒ 196 − 18 B header
             onRecords: (block, rows) => {
+                // Return the bridge's acceptance: false ⇒ the drainer withholds its ack
+                // and the controller keeps the records (bridge down / logging off).
                 const b = Studio.session.bridge;
-                if (b) b.logRows(rows);
+                return b && typeof b.logRows === 'function' ? b.logRows(rows) !== false : false;
             }
         });
         const poller = AT.createPoller({
@@ -8271,10 +8326,10 @@ Studio.initTelemetry = async function () {
         // A quiet stats line once a minute (only when something changed).
         setInterval(() => {
             const st = drainer.stats;
-            const key = [st.records, st.dropped, st.gaps, st.errors].join('/');
+            const key = [st.records, st.dropped, st.gaps, st.errors, st.notStored].join('/');
             if (key === Studio.telemetry.lastReport) return;
             Studio.telemetry.lastReport = key;
-            Studio.rawLog('telemetry ring: ' + st.records + ' records · ' + st.blocks + ' blocks · ' + (st.bytes / 1024).toFixed(1) + ' KiB · dropped ' + st.dropped + ' · gaps ' + st.gaps + ' · errors ' + st.errors + (st.survivedReboot ? ' · ring survived a reboot (boot #' + st.bootCount + ')' : ''), 'dim');
+            Studio.rawLog('telemetry ring: ' + st.records + ' records · ' + st.blocks + ' blocks · ' + (st.bytes / 1024).toFixed(1) + ' KiB · dropped ' + st.dropped + ' · gaps ' + st.gaps + ' · errors ' + st.errors + (st.notStored ? ' · refused by bridge ' + st.notStored : '') + (st.heapCollision ? ' · RING DISABLED (heap collision)' : '') + (st.survivedReboot ? ' · ring survived a reboot (boot #' + st.bootCount + ')' : ''), 'dim');
         }, 60000);
     } else {
         Studio.telemetry.drainer.reset(); // a new connection may be a fresh ring
@@ -8292,15 +8347,19 @@ Studio.drainTelemetry = async function (tag) {
     const before = d.stats.records;
     const blocks = await d.drainAll(600);
     const recs = [];
-    for (const b of blocks) for (const r of b.records) recs.push(r);
+    const rawBlocks = []; // raw payload hex per block — decoder-independent evidence
+    for (const b of blocks) {
+        for (const r of b.records) recs.push(r);
+        if (b.rawHex) rawBlocks.push(b.rawHex);
+    }
     const tail = recs.slice(-30).map((r) =>
         r.kind === 'cmd' ? 'CMD 0x' + r.cmd.toString(16) + ' st' + r.status + ' @' + r.tUs :
         r.kind === 'frame' ? 'FRAME idx' + r.idx + ' sd' + r.sdLoadUs + 'us spi' + r.spiUs + 'us @' + r.tUs :
         r.kind === 'state' ? 'STATE ' + r.stateName + ' ' + (r.codeName || r.code) + ' ' + r.arg + ' @' + r.tUs : '?');
-    const summary = { tag: tag || 'drain', records: recs.length, blocks: blocks.length, survivedReboot: d.stats.survivedReboot, bootCount: d.stats.bootCount, dropped: d.stats.dropped, gaps: d.stats.gaps, tail };
+    const summary = { tag: tag || 'drain', records: recs.length, blocks: blocks.length, survivedReboot: d.stats.survivedReboot, bootCount: d.stats.bootCount, dropped: d.stats.dropped, gaps: d.stats.gaps, heapCollision: !!d.stats.heapCollision, tail };
     Studio.rawLog('telemetry dump (' + summary.tag + '): ' + recs.length + ' records' + (d.stats.survivedReboot ? ' — ring survived the reboot' : '') + (tail.length ? '\n  ' + tail.join('\n  ') : ''), recs.length ? 'warn' : 'dim');
     const b = Studio.session.bridge;
-    if (b && b.logging) b.log({ event: 'telemetry_dump', summary });
+    if (b && b.logging) b.log({ event: 'telemetry_dump', summary, raw_blocks: rawBlocks });
     return summary;
 };
 
@@ -8508,6 +8567,12 @@ Studio.handleControllerFault = async function (summary) {
         afterReconnect: () => Studio.drainTelemetry('post-reset')
     });
     Studio._activePostmortem = pm;
+    // Exclusive link: stop the 10 Hz drain and wait for any chunk loop in flight
+    // BEFORE the quiet period starts (otherwise the quiet period is not quiet).
+    if (Studio.telemetry) {
+        Studio.telemetry.poller.stop();
+        try { await Studio.telemetry.drainer.idle(); } catch (_) { /* never blocks the lifecycle */ }
+    }
     Studio.showBanner('⚠ Controller fault — post-mortem probes running (' + policy + '). Do not unplug.');
     try {
         const res = await pm.run({
@@ -8528,6 +8593,12 @@ Studio.handleControllerFault = async function (summary) {
     } finally {
         Studio._activePostmortem = null;
         Studio._pendingFault = null;
+        // The run log's export/commit waited for this post-mortem (evidence first).
+        const commit = Studio._pendingCommit;
+        Studio._pendingCommit = null;
+        if (commit) { try { await commit(); } catch (e) { Studio.rawLog('deferred run-log commit failed: ' + (e && e.message ? e.message : e), 'err'); } }
+        // Resume the ring drain only on a live, identified link (recovered controller).
+        if (Studio.telemetry && Studio.telemetryAvailable && Studio.session.connected && Studio.telemetryEnabled()) Studio.telemetry.poller.start(100);
     }
 };
 
@@ -15648,6 +15719,7 @@ initFromUrl();
     '.rail-btn[data-panel="io"]': 'The controller’s analog and digital input/output connectors.',
     '.rail-btn[data-panel="ai"]': 'Watch the two analog inputs live, and check the wiring by looping Analog Out back into an input.',
     '.rail-btn[data-panel="fw"]': 'Update or check the firmware on the LED panels.',
+    '[data-cmd="ctelem"]': 'Turn the controller\'s built-in activity recording on or off (it is written into the run log alongside the tracking data).',
     '[data-cmd="chealth"]': 'Ask the controller how it is doing — loop timing, memory-card read times, and what it was doing before its last restart.',
     '#fmSoak': 'Repeat the open protocol unattended (overnight) to catch the rare controller freeze; on a freeze it records diagnostics and, if you chose so, restarts the controller and continues.',
     '.rail-btn[data-panel="fictrac"]': 'Closed loop with FicTrac: the fly’s walking steers the pattern.',

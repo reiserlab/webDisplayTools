@@ -68,7 +68,8 @@
                 name: 'pattern_info_1',
                 enc: () => W.encodeGetPatternInfo(1),
                 dec: W.decodePatternInfo,
-                sd: true
+                sd: true,
+                optional: true
             },
             // 0xE3 reads /firmware/panel.bin's footer: status 1 ("no image") is
             // the normal answer on a card without a panel image — we want its
@@ -77,7 +78,8 @@
                 name: 'firmware_info',
                 enc: () => W.encodeGetFirmwareInfo(),
                 dec: W.decodeFirmwareInfo,
-                sd: true
+                sd: true,
+                optional: true
             }
         ];
         return list.filter((p) => typeof p.enc === 'function');
@@ -124,8 +126,16 @@
         }
 
         async function sendProbe(p, phase, caps) {
-            if (p.cap && caps && !caps.includes(p.cap)) {
-                return { name: p.name, skipped: 'capability ' + p.cap + ' absent' };
+            // No blind probes: a capability-gated opcode is sent only when the
+            // capability was POSITIVELY read (unknown opcodes put an error glyph
+            // on the arena). caps == null (0xC2 timed out) ⇒ skip, recorded.
+            if (p.cap && (!caps || !caps.includes(p.cap))) {
+                // Recorded, so the log shows what was deliberately NOT sent.
+                return record({
+                    name: p.name,
+                    phase,
+                    skipped: caps ? 'capability ' + p.cap + ' absent' : 'capabilities unknown'
+                });
             }
             let bytes;
             try {
@@ -135,6 +145,7 @@
             }
             const t0 = now();
             const out = { name: p.name, phase, cmd: bytes[1], req: hex(bytes), sd: !!p.sd };
+            if (p.optional) out.optional = true; // status≠0 is an expected answer, not a failure
             try {
                 const resp = await session.send(bytes, { timeoutMs: opts.probeTimeoutMs });
                 out.dt = Math.round(now() - t0);
@@ -163,6 +174,11 @@
                 (r) => r.ok !== null && r.ok !== undefined && !r.skipped
             );
             const timeouts = results.filter((r) => r.error && /timeout/i.test(r.error)).length;
+            const errors = results.filter(
+                (r) => r.error && !/timeout/i.test(r.error) && !r.skipped
+            ).length;
+            const skipped = results.filter((r) => r.skipped).length;
+            const failedRequired = answered.filter((r) => r.ok === false && !r.optional).length;
             const dts = answered.map((r) => r.dt).filter((v) => Number.isFinite(v));
             const max = dts.length ? Math.max.apply(null, dts) : null;
             const sdDts = answered.filter((r) => r.sd).map((r) => r.dt);
@@ -176,6 +192,9 @@
                 probes: results.length,
                 answered: answered.length,
                 timeouts,
+                errors,
+                skipped,
+                failedRequired,
                 maxDt: max,
                 medianDtSd: med(sdDts),
                 medianDtRam: med(ramDts),
@@ -313,10 +332,46 @@
             // Identity check — VID/PID names a product, the MAC names the unit.
             const c = await confirm();
             out.mac = c.mac;
-            out.identityOk = !a.expectMac || !c.mac || c.mac === a.expectMac;
-            if (!out.identityOk) {
-                out.identityError = 'reconnected to ' + c.mac + ', expected ' + a.expectMac;
-                say('⚠ ' + out.identityError, 'err');
+            // Identity must be POSITIVE: a decoded 0xC2 reply, and — when the unit's
+            // MAC is known — the same MAC. A missing reply or a MAC-less reply is
+            // NOT "ok" (review finding: it used to pass).
+            // (confirm()'s `confirmed` means "wedge confirmed" — here we need the
+            // opposite: a decoded, ok controller_info reply.)
+            const answered = !!(c.result && c.result.ok && c.result.decoded);
+            if (!answered) {
+                out.identityOk = false;
+                out.identityError = 'no controller_info reply after reset';
+            } else if (a.expectMac && c.mac !== a.expectMac) {
+                out.identityOk = false;
+                out.identityError =
+                    'reconnected to ' + (c.mac || '(no MAC)') + ', expected ' + a.expectMac;
+            } else {
+                out.identityOk = true;
+            }
+            if (!out.identityOk) say('⚠ ' + out.identityError, 'err');
+            // EVIDENCE FIRST (review finding): read the breadcrumb + drain the ring
+            // BEFORE any SD-touching probe re-enters the suspected failure path.
+            out.health = await sendProbe(
+                {
+                    name: 'health',
+                    enc: () => W.encodeGetHealth(),
+                    dec: W.decodeHealth,
+                    cap: 'health'
+                },
+                'post-reset-first',
+                c.caps
+            );
+            if (typeof deps.afterReconnect === 'function') {
+                try {
+                    out.telemetry = await deps.afterReconnect(out);
+                    record({
+                        phase: 'telemetry-dump',
+                        name: 'ring',
+                        summary: out.telemetry || null
+                    });
+                } catch (e) {
+                    out.telemetryError = (e && e.message) || String(e);
+                }
             }
             out.post = await probeOnce('post-reset', c.caps);
             out.postSummary = summarize(out.post);
@@ -369,26 +424,19 @@
                 return { confirmed: true, window: win, outcome: 'halted' };
             }
             const reset = await resetAndReconnect({ expectMac: a.expectMac || c.mac });
-            // Crash dump: the telemetry ring survives the reset, so drain it NOW —
-            // its last records are what the controller was doing when it hung.
-            if (reset.reconnected && typeof deps.afterReconnect === 'function') {
-                try {
-                    reset.telemetry = await deps.afterReconnect(reset);
-                    record({
-                        phase: 'telemetry-dump',
-                        name: 'ring',
-                        summary: reset.telemetry || null
-                    });
-                } catch (e) {
-                    reset.telemetryError = (e && e.message) || String(e);
-                }
-            }
+            // "Recovered" = every REQUIRED probe answered ok and fast. Timeouts and
+            // failed required probes disqualify; optional SD-image refusals
+            // (0xE3 status 1 on a card without a panel image) do not.
+            const ps = reset.postSummary;
             const recovered = !!(
                 reset.reconnected &&
                 reset.identityOk &&
-                reset.postSummary &&
-                !reset.postSummary.degraded &&
-                reset.postSummary.answered > 0
+                ps &&
+                !ps.degraded &&
+                ps.answered > 0 &&
+                ps.timeouts === 0 &&
+                ps.failedRequired === 0 &&
+                ps.errors === 0
             );
             record({ phase: 'end', outcome: recovered ? 'recovered' : 'reset-failed', policy });
             say(

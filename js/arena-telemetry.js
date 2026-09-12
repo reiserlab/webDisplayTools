@@ -83,10 +83,13 @@
             flags: m[15],
             eventsEnabled: !!(m[15] & 1),
             survivedReboot: !!(m[15] & 2),
+            disabledHeapCollision: !!(m[15] & 4), // ring refused: heap reached its address
+            syntheticOn: !!(m[15] & 8), // T1 synthetic producer running
             bootCount: u16(m, 16),
             records: [],
             bytes: m.length - HEADER_BYTES,
-            malformed: 0
+            malformed: 0,
+            rawHex: hex(m) // decoder-independent copy (kept only in crash dumps)
         };
         let o = HEADER_BYTES;
         while (o < m.length) {
@@ -114,12 +117,12 @@
                 rec.status = m[p + 1];
                 const n = Math.min(m[p + 2], plen - 3, 8);
                 rec.req = hex(m.subarray(p + 3, p + 3 + n));
-            } else if (type === REC.FRAME && plen >= 8) {
+            } else if (type === REC.FRAME && plen >= 10) {
                 rec.kind = 'frame';
                 rec.idx = u16(m, p);
                 rec.pattern = u16(m, p + 2);
-                rec.sdLoadUs = u16(m, p + 4);
-                rec.spiUs = u16(m, p + 6);
+                rec.sdLoadUs = u32(m, p + 4); // u32: the 129 ms SD tail must fit (u16 caps at 65 ms)
+                rec.spiUs = u16(m, p + 8);
             } else if (type === REC.STATE && plen >= 4) {
                 rec.kind = 'state';
                 rec.stateKind = m[p];
@@ -173,14 +176,19 @@
      * Ack-cursor drainer. `session.send(bytes, {timeoutMs})` returns the reply
      * frame. State: `ackSeq` = last seq stored by the host (sent as the ack on
      * the next request), stats for the UI/log.
-     * @param {object} d {session, wire, timeoutMs=1500, maxBytes=180, maxChunks=8, now, onRecords(block, rows)}
+     * @param {object} d {session, wire, timeoutMs=1500, maxBytes=180, maxChunks=40, now,
+     *        onRecords(block, rows, rx) → return false to REFUSE the rows (not stored):
+     *        the drainer then withholds its ack so the controller keeps them.}
      */
     function createDrainer(d) {
         const session = d.session;
         const W = d.wire || (typeof global !== 'undefined' ? global.ArenaWireG6 : null);
         const timeoutMs = d.timeoutMs || 1500;
         const maxBytes = d.maxBytes || 180;
-        const maxChunks = d.maxChunks || 8;
+        // 40 chunks × ~180 B ≈ 7 KB per poll: under Chrome's background-tab timer
+        // throttling a poll may run only once per second, and production during
+        // Mode-3 streaming at 286 Hz is ~5–6 KB/s — the budget must exceed that.
+        const maxChunks = d.maxChunks || 40;
         const now = d.now || (() => Date.now());
         const onRecords = d.onRecords || (() => {});
         const st = {
@@ -192,12 +200,14 @@
             gaps: 0, // seq discontinuities seen (should equal controller-reported drops)
             dropped: 0, // controller's cumulative drop counter (last value)
             errors: 0,
+            notStored: 0, // rows the sink refused (ack withheld, will be re-read)
             lastTNowUs: null,
             bootCount: null,
             survivedReboot: false,
             lastError: null
         };
         let busy = false;
+        const idleWaiters = [];
 
         /**
          * One poll: ask with the current ack, parse, ack what we got. Follows
@@ -233,20 +243,30 @@
                     st.dropped = block.dropped;
                     st.bootCount = block.bootCount;
                     st.survivedReboot = block.survivedReboot;
-                    for (const r of block.records) {
-                        if (st.lastSeq != null && r.seq !== (st.lastSeq + 1) >>> 0) st.gaps++;
-                        st.lastSeq = r.seq;
-                        st.records++;
-                    }
+                    st.heapCollision = block.disabledHeapCollision;
                     if (block.records.length) {
+                        // ACK MEANS STORED (review finding): hand the rows to the sink
+                        // first; only when it accepted them does the cursor advance.
+                        // A refused block is re-requested with the old ack next poll.
+                        const accepted = onRecords(block, toRows(block, rx), rx) !== false;
+                        if (!accepted) {
+                            st.notStored++;
+                            blocks.push(block);
+                            break;
+                        }
+                        for (const r of block.records) {
+                            if (st.lastSeq != null && r.seq !== (st.lastSeq + 1) >>> 0) st.gaps++;
+                            st.lastSeq = r.seq;
+                            st.records++;
+                        }
                         st.ackSeq = st.lastSeq;
-                        onRecords(block, toRows(block, rx), rx);
                     }
                     blocks.push(block);
                     if (!block.more || (opts && opts.single)) break;
                 }
             } finally {
                 busy = false;
+                idleWaiters.splice(0).forEach((r) => r());
             }
             return blocks;
         }
@@ -255,8 +275,10 @@
         async function drainAll(limitChunks) {
             const all = [];
             for (let i = 0; i < (limitChunks || 400); i++) {
+                const refusedBefore = st.notStored;
                 const blocks = await drainOnce({ single: true });
                 if (!blocks.length) break;
+                if (st.notStored > refusedBefore) break; // sink refused: don't spin on the same block
                 all.push(blocks[0]);
                 if (!blocks[0].more && !blocks[0].records.length) break;
                 if (!blocks[0].more) break;
@@ -270,7 +292,12 @@
             st.lastSeq = null;
         }
 
-        return { drainOnce, drainAll, reset, stats: st };
+        /** Resolves once no drain is in flight (post-mortem: own the link, THEN go quiet). */
+        function idle() {
+            return busy ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve();
+        }
+
+        return { drainOnce, drainAll, reset, idle, stats: st };
     }
 
     /**

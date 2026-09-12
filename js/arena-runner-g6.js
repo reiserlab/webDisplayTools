@@ -1058,6 +1058,7 @@ var ArenaRunnerG6 = (function () {
                 if (typeof a.onProgress === 'function') a.onProgress(s);
             };
             this._emit = emit; // for async side-effects (LED activation on 'applied')
+            let terminal = null; // emitted after cleanup (see finally)
 
             this._active = true;
             this._abort = false;
@@ -1276,7 +1277,11 @@ var ArenaRunnerG6 = (function () {
                 // the controller stopped answering (fault() / a timed-out command).
                 summary.fault = this._faultReason || null;
                 if (this._faultDetail) summary.faultDetail = this._faultDetail;
-                emit({ phase: this._abort ? 'aborted' : 'sequence-complete', summary });
+                // The terminal event is emitted from `finally`, AFTER the best-effort
+                // STOP, so the serialized summary (run log, auto-commit trigger)
+                // carries `stopAcked` — review finding: it used to be present only
+                // on the returned object.
+                terminal = { phase: this._abort ? 'aborted' : 'sequence-complete', summary };
                 return summary;
             } finally {
                 // Best-effort STOP at the end / on abort, then reset run-state.
@@ -1299,6 +1304,7 @@ var ArenaRunnerG6 = (function () {
                 } catch (_) {
                     /* best-effort */
                 }
+                if (terminal) emit(terminal);
                 this._emit = null;
             }
         }
