@@ -610,7 +610,20 @@
             this._inFlight = true;
             try {
                 while (this._pending != null && this._apply && this._canApply()) {
-                    const i = this._clampFrame(this._pending);
+                    // #199: the bridge applies a new `frames` modulus one frame late
+                    // (its config message is async), so the first index after a
+                    // trial change can carry the PREVIOUS pattern's modulus →
+                    // "index out of range" + an error glyph on the arena. Wrap
+                    // locally into the configured range first; the consumer's
+                    // clampFrame still runs after. Now that controller rejects count
+                    // toward the fault window, this also keeps short alternating
+                    // trials from tripping a false CONTROLLER_FAULT.
+                    let idx = this._pending;
+                    const n = this._config.frames;
+                    if (Number.isFinite(n) && n > 0 && Number.isFinite(idx)) {
+                        idx = ((Math.round(idx) % n) + n) % n;
+                    }
+                    const i = this._clampFrame(idx);
                     this._pending = null;
                     try {
                         await this._applyFrame(i);

@@ -442,6 +442,42 @@ async function main() {
         );
     }
 
+    console.log('\n=== #199: indices wrap into the configured frame count before apply ===');
+    {
+        const applied = [];
+        const client = new FicTracBridgeClient({
+            applyFrame: (i) => {
+                applied.push(i);
+                return Promise.resolve();
+            },
+            clampFrame: (i) => i
+        });
+        client.setApply(true);
+        client.setConfig({ frames: 20 });
+        client.handleFrame(156); // computed with the previous 200-frame modulus
+        await tick();
+        client.handleFrame(19);
+        await tick();
+        client.handleFrame(-1); // negative wraps too
+        await tick();
+        check('156 mod 20 → 16, in-range untouched, -1 → 19', applied, [16, 19, 19]);
+        client.setConfig({ frames: 200 });
+        client.handleFrame(156);
+        await tick();
+        check('with the 200-frame modulus 156 passes through', applied[applied.length - 1], 156);
+        const c2 = new FicTracBridgeClient({
+            applyFrame: (i) => {
+                applied.push(i);
+                return Promise.resolve();
+            },
+            clampFrame: (i) => i
+        });
+        c2.setApply(true);
+        c2.handleFrame(999); // no frames configured → no wrap
+        await tick();
+        check('no configured frame count → index untouched', applied[applied.length - 1], 999);
+    }
+
     console.log('\n=== fault latch (fw #50): repeated apply failures fail closed ===');
     {
         // applyFrame fails (link timeout) for the given indices, succeeds otherwise.

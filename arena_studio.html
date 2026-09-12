@@ -8439,6 +8439,9 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             const md = Object.assign({ event: 'run_metadata', rig_id: Studio.rigId || null, log_format: logLevel },
                 Studio.activeRunLog.meta);
             if (Studio.soak) md.soak = { iteration: Studio.soak.iteration, policy: Studio.soak.policy, first_fault: Studio.soak.firstFault };
+            // Instrumentation is an experimental factor — say whether the 10 Hz
+            // ring drain was interleaved with this run's commands.
+            md.telemetry = Studio.telemetryAvailable ? 'ring-10hz' : 'off';
             bridge.log(md);
         }
         // Controller telemetry streams (T4): declare the compact row schema once
