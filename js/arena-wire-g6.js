@@ -845,10 +845,11 @@ const ArenaWireG6 = (function () {
                 .map((b) => b.toString(16).padStart(2, '0'))
                 .join('')
         };
-        // PJRC's isvalid(): len == sizeof(struct) (44) and a CRC over the record;
-        // we check the length (the CRC algorithm is the core's private detail) and
-        // report the fault bits decoded so a reader does not need the datasheet.
-        c.present = c.len === 44 && c.ipsr !== 0;
+        // PJRC's fault handler stores len = sizeof(struct)/4 = 11 WORDS (startup.c),
+        // and isvalid() checks that plus a CRC (the core's private detail). We check
+        // the length (accepting a byte count too, defensively) and decode the fault
+        // bits so a reader does not need the datasheet.
+        c.present = (c.len === 11 || c.len === 44) && c.ipsr !== 0;
         c.faultName =
             c.ipsr === 3
                 ? 'HardFault'
@@ -900,6 +901,7 @@ const ArenaWireG6 = (function () {
             dirty: !!(m[3] & 0x01),
             debug: !!(m[3] & 0x02),
             telemetry: !!(m[3] & 0x04), // ring buffer (0xA8/0xA9) present — the ONLY gate for SET_TELEMETRY
+            crashReport: !!(m[3] & 0x08), // GET_CRASHREPORT 0xCC + GET_HEALTH ver 2 (fw fb11681+): the ONLY gate for 0xCC
             sha: ascii(4, 8),
             date: ascii(12, 10),
             branch: ascii(22, 24)

@@ -8355,7 +8355,7 @@ Studio.initTelemetry = async function () {
 // the firmware lacks it or the link is down; never throws.
 Studio.readCrashReport = async function () {
     const fv = Studio.firmwareVersion;
-    if (!fv || !fv.telemetry || !Wire.encodeGetCrashReport || !Studio.session || !Studio.session.connected) return null;
+    if (!fv || !fv.crashReport || !Wire.encodeGetCrashReport || !Studio.session || !Studio.session.connected) return null; // 0xCB flags bit 3, never the ring bit (c47ee68 has the ring but not 0xCC)
     try {
         const cr = Wire.decodeCrashReport(await Studio.session.send(Wire.encodeGetCrashReport(), { timeoutMs: 2000 }));
         const b = Studio.session.bridge;

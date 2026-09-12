@@ -684,6 +684,7 @@ check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46)
     check('sha trimmed', v.sha, '06a6f25');
     check('date', v.date, '2026-09-12');
     check('flags bit 2 = telemetry ring (absent here)', v.telemetry, false);
+    check('flags bit 3 = crash report / health v2 (absent here)', v.crashReport, false);
     check('branch truncated to 24', v.branch, 'feat/controller-health-2');
     check('dirty flag', v.dirty, true);
     check('debug flag', v.debug, false);
@@ -745,7 +746,7 @@ check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46)
     check('encodeGetCrashReport', Array.from(Wire.encodeGetCrashReport()).join(), '1,204');
     const u32 = (v) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
     const rec = [].concat(
-        u32(44),
+        u32(11), // len in WORDS (sizeof(arm_fault_info_struct)/4)
         u32(3),
         u32(0x00008200),
         u32(0x40000000),
