@@ -292,7 +292,8 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   a build from `main` rejects every 2×10 pattern (`TRIAL_PARAMS: load failed`, CE_ARENA_MISMATCH).
   **Telemetry ring (T4):** `js/arena-telemetry.js` decodes 0xA9 blocks (18 B header + records) and
   runs the ack-cursor drainer; `Studio.initTelemetry()` starts the 10 Hz poller on link-up (gated on
-  `health` + a SET_TELEMETRY 0xA8 ack); rows go to the bridge as `{type:'rows'}` (bridge ≥ 3.1
+  GET_FIRMWARE_VERSION `flags` bit 2 — NOT on `health` — then a SET_TELEMETRY 0xA8 ack; Debug ▾
+  toggle `studio_telemetry`); rows go to the bridge as `{type:'rows'}` (bridge ≥ 3.1
   `write_rows`, verbatim `["cc"|"cf"|"cs", …]`). The record schema lives in ONE place — the header
   comment of `js/arena-telemetry.js` — mirror any firmware change there + in `wedge-scan.py`
   (`CTL_TAGS`/`CTL_STATE_KINDS`). Never drain while the post-mortem owns the link (its `canPoll`).
