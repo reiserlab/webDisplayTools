@@ -26,6 +26,11 @@ history lives here. Newest first. (Per-session engineering detail stays in
 - **Console → Debug ▾ → Controller health**: reads the controller's loop timing, SD-read stats,
   counters and what it was doing before its last restart (firmware with GET_HEALTH, capability
   bit 7). The runner's own commands (trial start, STOP) now appear in the run log too.
+- **Firmware build identity in every run log.** On connect (and after any automatic reconnect)
+  the Studio reads the controller's build — git commit, branch, build date, arena size — and
+  records it as `firmware` in the run details and in `run_metadata` of every committed log, so a
+  problem can be pinned to a build. Needs firmware with GET_FIRMWARE_VERSION (ships with the
+  health capability); older builds still show the legacy "v1".
 
 ## v0.74 (2026-09-07) · Console "Analog In" panel — live readout + loopback self-test
 

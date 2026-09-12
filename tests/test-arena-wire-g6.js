@@ -664,6 +664,40 @@ checkBytes('encodeGetFramePosition', Wire.encodeGetFramePosition(), '01 72');
         Wire.decodeFramePosition(Uint8Array.from([0x06, 0x01, 0x72, 0, 0, 0, 0])) === null
     );
 }
+// GET_FIRMWARE_VERSION 0xCB: build identity (ships with the health capability).
+checkBytes('encodeGetFirmwareVersion', Wire.encodeGetFirmwareVersion(), '01 cb');
+check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46);
+{
+    const pad = (s, n) => (s + ' '.repeat(n)).slice(0, n);
+    const bytes = (s) => Array.from(s).map((c) => c.charCodeAt(0));
+    const payload = [1, 2, 10, 0x01].concat(
+        bytes(pad('06a6f25', 8)),
+        bytes('2026-09-12'),
+        bytes(pad('feat/controller-health-2x10', 24))
+    );
+    check('fixture is 46 bytes', payload.length, 46);
+    const v = Wire.decodeFirmwareVersion(
+        Uint8Array.from([payload.length + 2, 0x00, 0xcb].concat(payload))
+    );
+    check('ver', v.ver, 1);
+    check('arena rows×cols', v.arena, '2x10');
+    check('sha trimmed', v.sha, '06a6f25');
+    check('date', v.date, '2026-09-12');
+    check('branch truncated to 24', v.branch, 'feat/controller-health-2');
+    check('dirty flag', v.dirty, true);
+    check('debug flag', v.debug, false);
+    check('label', v.label, '06a6f25* 2x10 2026-09-12 feat/controller-health-2');
+    checkBool(
+        'status!=0 → null',
+        Wire.decodeFirmwareVersion(
+            Uint8Array.from([payload.length + 2, 0x01, 0xcb].concat(payload))
+        ) === null
+    );
+    checkBool(
+        'short → null',
+        Wire.decodeFirmwareVersion(Uint8Array.from([5, 0x00, 0xcb, 1, 2, 10])) === null
+    );
+}
 // Capability bit 7 = health.
 {
     const ci = Uint8Array.from([0x04, 0x00, 0xc2, 0x02, 0xa3]);

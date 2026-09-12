@@ -56,6 +56,14 @@
                 dec: W.decodeFramePosition
             },
             { name: 'health', enc: () => W.encodeGetHealth(), dec: W.decodeHealth, cap: 'health' },
+            // Build identity — so a post-mortem (and the post-reset probe) records
+            // WHICH firmware wedged. Same capability gate as health.
+            {
+                name: 'firmware_version',
+                enc: () => W.encodeGetFirmwareVersion(),
+                dec: W.decodeFirmwareVersion,
+                cap: 'health'
+            },
             {
                 name: 'pattern_info_1',
                 enc: () => W.encodeGetPatternInfo(1),

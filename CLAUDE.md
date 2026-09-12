@@ -282,6 +282,14 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   a `behavior_v2` ack or without bridge frames, halts on the first fault by default, never
   auto-commits. Analyzer: `scripts/wedge-scan.py` (+ `tests/test-wedge-scan.py`, standalone
   harness, no pytest). Design + campaign spec: `docs/development/mode3-wedge-soak-plan.md`.
+  **Firmware build identity (permanent):** `GET_FIRMWARE_VERSION` 0xCB (`encodeGetFirmwareVersion` /
+  `decodeFirmwareVersion` → `label` "sha[*] RxC date branch") is read by `Studio.refreshFirmwareVersion()`
+  on every link-up (Connect button AND the `identityOnConnect` state hook that covers gesture-free
+  `session.reconnect()`), stored as `Studio.firmware` → `run_metadata.firmware`. **Gate it on the
+  `health` capability bit**: this firmware answers an unknown opcode with `CE_UNKNOWN_CMD` and an
+  error GLYPH on the arena, so never send 0xCB (or 0xCA) blind. Firmware `main` is compiled for a
+  **4×10** arena (`panel_count_per_frame_row = 4`); the CSHL 2×10 controllers run `arena-2x10-local` —
+  a build from `main` rejects every 2×10 pattern (`TRIAL_PARAMS: load failed`, CE_ARENA_MISMATCH).
 - **Wire module exports:** `js/arena-wire-g6.js` defines more than it exports —
   when adding encoders/decoders, add them to the export list AND a test; audit
   with `Object.keys(require('./js/arena-wire-g6.js'))` vs the page's `Wire.*`

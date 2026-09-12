@@ -67,6 +67,7 @@ const ArenaWireG6 = (function () {
         SET_DIAG_OUTPUT: 0xc3, // [len=2,0xC3,on] mute/unmute DEBUG_SERIAL diagnostics
         GET_DIAG_OUTPUT: 0xc4, // returns current g_dbg_on state (0/1)
         GET_HEALTH: 0xca, // [01 CA] controller health counters + previous-boot breadcrumb (fw #50)
+        GET_FIRMWARE_VERSION: 0xcb, // [01 CB] build identity: git SHA, branch, date, arena rows×cols (gate on cap bit 7)
         SET_AO_VOLTAGE: 0xa0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV
         GET_AO_VOLTAGE: 0xa1, // [01 A1] returns last commanded AO level as uint16 LE mV
         SET_AO_MODE: 0xa3, // [02 A3 mode] 0=programmable | 1=frame_number (io_ext fw)
@@ -775,6 +776,51 @@ const ArenaWireG6 = (function () {
         return h;
     }
 
+    // get-firmware-version (0xCB) — the controller's BUILD identity, compiled in
+    // by the firmware's PlatformIO pre-script. Ships with GET_HEALTH; older
+    // firmware answers an unknown opcode with an error GLYPH on the arena, so
+    // hosts must gate this on capability bit 7 (`health`).
+    function encodeGetFirmwareVersion() {
+        return frame(OPCODES.GET_FIRMWARE_VERSION); // 01 CB
+    }
+    // Payload (46 B): ver u8 · rows u8 · cols u8 · flags u8 (bit0 dirty tree,
+    // bit1 DEBUG_SERIAL build) · sha[8] ASCII · date[10] "YYYY-MM-DD" · branch[24]
+    // ASCII, space/NUL padded. `label` is the one-line form the Studio records in
+    // run_metadata.firmware, e.g. "06a6f25 2x10 2026-09-12 feat/controller-health".
+    const FIRMWARE_VERSION_PAYLOAD_BYTES = 46;
+    function decodeFirmwareVersion(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < FIRMWARE_VERSION_PAYLOAD_BYTES) return null;
+        const m = r.payload;
+        const ascii = (from, len) =>
+            Array.from(m.subarray(from, from + len))
+                .map((b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : ''))
+                .join('')
+                .trim();
+        const v = {
+            ver: m[0],
+            rows: m[1],
+            cols: m[2],
+            flags: m[3],
+            dirty: !!(m[3] & 0x01),
+            debug: !!(m[3] & 0x02),
+            sha: ascii(4, 8),
+            date: ascii(12, 10),
+            branch: ascii(22, 24)
+        };
+        v.arena = v.rows + 'x' + v.cols;
+        v.label =
+            (v.sha || 'unknown') +
+            (v.dirty ? '*' : '') +
+            ' ' +
+            v.arena +
+            ' ' +
+            (v.date || '?') +
+            (v.branch ? ' ' + v.branch : '') +
+            (v.debug ? ' (debug)' : '');
+        return v;
+    }
+
     // get-frames-sent (0x33) reply carries the master-sent count as uint32 LE.
     function decodeFramesSent(resp) {
         const r = asResponse(resp);
@@ -966,6 +1012,7 @@ const ArenaWireG6 = (function () {
         getControllerInfo: encodeGetControllerInfo,
         encodeGetHealth,
         encodeGetFramePosition,
+        encodeGetFirmwareVersion,
         encodeGetFileCount,
         encodeGetPatternFilename,
         encodeGetPatternInfo,
@@ -995,6 +1042,8 @@ const ArenaWireG6 = (function () {
         decodeControllerInfo,
         decodeHealth,
         decodeFramePosition,
+        decodeFirmwareVersion,
+        FIRMWARE_VERSION_PAYLOAD_BYTES,
         HEALTH_PAYLOAD_BYTES,
         HEALTH_PAYLOAD_BYTES_FULL,
         HEALTH_BREADCRUMB_OPS,

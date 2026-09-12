@@ -3652,6 +3652,37 @@
         Studio.session.bridge.on('status', () => updateRunGate());
     }
 
+    // ---- controller build identity (GET_FIRMWARE_VERSION 0xCB) ---------------
+    // Permanent feature: every connection records WHICH firmware build the
+    // controller runs, and run_metadata.firmware carries it into every committed
+    // run log. Gated on capability bit 7 (`health`, shipped together): older
+    // firmware answers an unknown opcode with an error glyph on the arena, so we
+    // never ask blind. Falls back to the 0xC2 format byte ("v1") on old builds.
+    Studio.firmwareVersion = null; // decoded 0xCB record, or null
+    Studio.refreshFirmwareVersion = async function () {
+        if (!Studio.session || !Studio.session.connected) return null;
+        const caps = Studio.capabilities || [];
+        if (!caps.includes('health') || !Wire.encodeGetFirmwareVersion) {
+            Studio.firmwareVersion = null;
+            if ($('pvFw')) $('pvFw').textContent = Studio.firmware || '—';
+            return null;
+        }
+        try {
+            const resp = await Studio.session.send(Wire.encodeGetFirmwareVersion(), { timeoutMs: 2000 });
+            const v = Wire.decodeFirmwareVersion(resp);
+            if (v) {
+                Studio.firmwareVersion = v;
+                Studio.firmware = v.label;
+                if ($('pvFw')) { $('pvFw').textContent = v.label; $('pvFw').title = 'git ' + v.sha + (v.dirty ? ' (dirty tree)' : '') + ' · ' + v.branch + ' · built ' + v.date + ' · ' + v.arena + (v.debug ? ' · DEBUG_SERIAL' : ''); }
+                rawLine('‹ firmware build: ' + v.label, 'info');
+                return v;
+            }
+        } catch (e) {
+            rawLine('firmware version: ' + (e && e.message ? e.message : e), 'warn');
+        }
+        return null;
+    };
+
     // ---- connection ----------------------------------------------------------
     async function toggleConnect() {
         if (!Studio.session) {
@@ -3682,6 +3713,7 @@
                         (info.mac ? ' · id ' + info.mac : ''), 'info');
                     const ctl = $('pvCtl');
                     if (ctl) ctl.textContent = Studio.controllerId || '— (needs fw with MAC in 0xC2)';
+                    await Studio.refreshFirmwareVersion(); // build identity → run_metadata.firmware
                     // Un-grey the fw-gated rig-I/O roles now that caps are known
                     // (the role menu may have rendered before this reply landed).
                     if (Studio.updateRigIoGating) Studio.updateRigIoGating();
@@ -4863,6 +4895,33 @@
     // ---- session subscriptions (the single spine) ----------------------------
     if (Studio.session) {
         Studio.session.on('state', refreshState);
+        // Identity on EVERY connection, including the gesture-free reconnect()
+        // paths (post-mortem reset, soak): re-read 0xC2 + 0xCB once per link-up
+        // so run_metadata.firmware is never stale or null after a reset. The
+        // manual Connect button does its own inline probe; this is the catch-all.
+        (function identityOnConnect() {
+            let identified = false;
+            Studio.session.on('state', async () => {
+                const on = Studio.session.connected;
+                if (!on) { identified = false; return; }
+                if (identified) return;
+                identified = true;
+                await new Promise((r) => setTimeout(r, 400)); // let the connect-time bring-up finish
+                if (!Studio.session.connected) return;
+                if (Studio.firmwareVersion && Studio.controllerId) return; // the Connect button already did it
+                try {
+                    const info = Wire.decodeControllerInfo(await Studio.session.send(Wire.encodeGetControllerInfo(), { timeoutMs: 2000 }));
+                    if (info) {
+                        Studio.capabilities = info.capabilities || [];
+                        Studio.controllerId = info.mac || Studio.controllerId || null;
+                        if (!Studio.firmware) Studio.firmware = 'v' + info.version;
+                        if ($('pvCtl')) $('pvCtl').textContent = Studio.controllerId || '—';
+                    }
+                    await Studio.refreshFirmwareVersion();
+                    refreshState();
+                } catch (_) { /* best-effort: a wedged controller answers nothing */ }
+            });
+        })();
         Studio.session.on('runstatus', (s) => Studio.onRunStatus(s));
         Studio.session.on('log', (m) => logTransport(m));
         Studio.session.on('error', (e) => rawLine('error: ' + (e && e.message ? e.message : e), 'err'));
@@ -5412,6 +5471,10 @@
                 if (Studio.updateRigIoGating) Studio.updateRigIoGating(); // refresh fw-gated role options
                 clog('  fw v' + info.version + ' · caps [' + info.capabilities.join(', ') + ']' +
                     (info.mac ? ' · id ' + info.mac : ' · (no MAC in reply — older fw)'), 'info');
+                const fv = await Studio.refreshFirmwareVersion();
+                if (fv) clog('  build ' + fv.label, 'info');
+                else if ((info.capabilities || []).includes('health')) clog('  build: (no 0xCB reply)', 'warn');
+                else clog('  build: unknown — this firmware predates GET_FIRMWARE_VERSION (0xCB)', 'warn');
             }
         },
         ip: async () => { const r = await send(Wire.encodeGetIp(), 'GET_ETHERNET_IP 0xC1'); const ip = r && Wire.decodeIp && Wire.decodeIp(r); if (ip) clog('  ip ' + ip, 'info'); },
