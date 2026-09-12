@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 16:06 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 17:08 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3958,6 +3958,7 @@
     // ---- STOP (both buttons) --------------------------------------------------
     async function doStop() {
         if (!Studio.session) return;
+        Studio._userStopRequested = true; // distinguishes a user STOP from a link drop (watchdog self-reset)
         try { await Studio.session.stop(); } catch (e) { rawLine('stop error: ' + e.message, 'err'); }
     }
     $('btnStopRun').addEventListener('click', doStop);
@@ -4972,6 +4973,7 @@
             showBanner('⚠ Controller stopped answering — run aborted. Post-mortem probes follow (see the run log).');
         });
         Studio.session.on('disconnect', (info) => {
+            if (info && info.involuntary) Studio._linkDropped = true; // consumed by runSteps (fault lifecycle)
             if (info && info.involuntary && Studio.activeRunLog && !Studio.activeRunLog.summary) {
                 Adapter.finishDisconnected(Studio.activeRunLog, { aborted: true, steps: 0, errors: 0, skipped: 0 });
                 onRunFinished(Studio.activeRunLog.summary);
@@ -5054,6 +5056,7 @@
         // bench action should confirm + STOP first (design §5 collision rule).
         if (session && session.running) {
             if (!confirm('A sequence is running. Interrupt it (STOP) and run this bench action?')) return;
+            Studio._userStopRequested = true;
             session.stop();
         }
         fn();
@@ -8539,6 +8542,8 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         }
     }
     let summary = null;
+    Studio._userStopRequested = false;
+    Studio._linkDropped = false;
     try {
         // NOTE: do NOT pass onProgress — the session broadcasts 'runstatus' which
         // Studio.onRunStatus (subscribed once) consumes, so the log/highlight stay
@@ -8557,6 +8562,16 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         // (bridge 'fault' → runner.fault) or a protocol command timed out; both
         // land in summary.fault. The runner's cleanup (best-effort STOP) has
         // finished by now, so the post-mortem lifecycle owns the link.
+        // A run that ended because the LINK DROPPED (controller re-enumerated
+        // mid-run) and not because the user pressed STOP is a controller event:
+        // with the hardware watchdog (fw 86eeb4a) a hang shows up exactly like
+        // this, ~0.5 s in. Route it through the same lifecycle — the post-mortem
+        // takes its self-reset path (reconnect → identity → health → ring dump).
+        if (summary && !summary.fault && summary.aborted && Studio._linkDropped && !Studio._userStopRequested) {
+            summary.fault = 'link_dropped';
+            summary.faultDetail = { kind: 'link_dropped', note: 'controller re-enumerated mid-run (watchdog self-reset?)' };
+            Studio.rawLog('run ended by a link drop, not a STOP — treating as a controller event', 'warn');
+        }
         if (summary && summary.fault) {
             Studio._lastPostmortem = await Studio.handleControllerFault(summary);
         }
@@ -12692,7 +12707,7 @@ async function initFromUrl() {
                     class: 'arena-test-btn',
                     disabled: !serialSupported,
                     title: 'Stop the running pattern (STOP_DISPLAY 0x30) — best-effort queued via the shared session',
-                    onClick: () => { if (window.Studio.session) window.Studio.session.stop(); }
+                    onClick: () => { if (window.Studio.session) { window.Studio._userStopRequested = true; window.Studio.session.stop(); } }
                 }, '■ Stop'));
                 const plugins = RunnerLib.listSkippedPlugins(cond);
                 wrap.appendChild(el('span', { class: 'arena-test-note' },
