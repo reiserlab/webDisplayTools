@@ -363,6 +363,17 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   terminal event from `finally`, after the best-effort STOP, so `stopAcked` is in the serialized
   summary. Post-mortem owns the link: stop the poller, `await drainer.idle()`, then go quiet;
   capability-gated probes are skipped (and recorded) when 0xC2 gave no capabilities.
+- **Hardware-watchdog world (fw fb11681+, 2026-09-12):** the controller resets itself ~2 s into a
+  hang, so after a fault the link DROPS. `studio-postmortem.js run()` checks `session.connected`
+  after the quiet period and after the confirm probe; a dropped link takes the **self-reset path**
+  (`resetAndReconnect({skipReset:true})`: reconnect → MAC → GET_HEALTH → `afterReconnect` ring dump
+  + crash report → post probes) regardless of policy, outcome `self-reset` (soak continues, counts
+  as a reset) or `self-reset-failed`. GET_HEALTH ver 2 = 89 B (`HEALTH_PAYLOAD_BYTES_V2`): previous
+  boot's ISR (`prevIsrLastName`), watchdog-captured PC/LR (`prevWdogPcHex`, valid when
+  `prevPcCaptured`), `wdogFlags` (armed / prev reset was watchdog / suspended / starving / config
+  failed). `GET_CRASHREPORT` 0xCC (128 B raw PJRC record, `decodeCrashReport().present`) is gated
+  like 0xA8 on the 0xCB telemetry flag; `Studio.readCrashReport()` logs a `crash_report` event.
+  Breadcrumb ops 6–9 are the SET_FRAME_POSITION sub-steps (disarm timer / preload / arm / respond).
 
 ## Pattern Designer (`pattern_editor.html`)
 
