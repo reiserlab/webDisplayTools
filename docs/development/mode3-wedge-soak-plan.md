@@ -170,3 +170,21 @@ simultaneously.
   `SD_REINIT`, controller-version opcode (LAB-150), close #24.
 - Ring buffer T1–T6 (PR #192) unchanged: sidecar-first, 10–20 Hz drain; T4/T5 run on this soak
   workload once the ring exists.
+
+## 10. Bench log
+
+**2026-09-11/12 — first night (CSHL 10-10, MAC 04:E9:E5:12:91:E2, stock course fw, sim 100 Hz, Studio soak, halt-first).**
+Smoke + 3 full iterations clean (2,001 + 110,641 + 121,670 + 121,685 0x70 OK; RTT 2 / 4–9 ms). **Iteration 4
+wedged at 187.8 s** (frame 78 of the 200-frame trial) after 18,128 clean commands — ≈ 374k good 0x70s over
+~70 min of streaming before failure. The controller was **fully silent**, not slow: 5/10/20 s probes from
+Chrome, port close+reopen, and pyserial outside Chrome all returned zero bytes; USB stayed enumerated; the
+display held its last frame. **0x01 SYSTEM_RESET got no ack** (parser lives in the stuck loop); only a power
+cycle recovered it. Consequences: H3 (browser/host stack) is out; the fault looks like `loop()` stopped
+(unbounded spin), not a slow path; the host-side recovery primitive must be a hardware watchdog or the
+Teensy bootloader route (134-baud reboot → HalfKay → `teensy_loader_cli -b`). Attempting the latter half by
+flashing #53 remotely put the Teensy in HalfKay with **no HID interface attached on macOS 26**, so no loader
+could see it — do not flash without someone at the bench; test the bootloader route with a finger on the
+button first. Also: the Studio tab was in the background (timer throttling ⇒ ~1 s-aligned timeout durations in
+the log; not causal). Harness bugs found and fixed live: protocol `fictrac.disconnect` took the logger down;
+a remembered v1 session setting overrode the soak's v2; one out-of-range 0x70 per trial with a smaller frame
+count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and siblings, bench-local.
