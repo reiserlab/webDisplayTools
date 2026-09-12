@@ -387,9 +387,13 @@
                 this.stop();
                 const si =
                     setIntervalImpl || (typeof setInterval === 'function' ? setInterval : null);
-                this._clear =
+                const ci =
                     clearIntervalImpl ||
                     (typeof clearInterval === 'function' ? clearInterval : null);
+                // Plain calls only: window.clearInterval invoked as a METHOD of this
+                // poller object throws "Illegal invocation" in browsers (found on the
+                // bench 2026-09-12 — it would have aborted the fault post-mortem).
+                this._clear = ci ? (h) => ci(h) : null;
                 if (!si) throw new Error('telemetry poller: no setInterval available');
                 timer = si(() => {
                     tick();

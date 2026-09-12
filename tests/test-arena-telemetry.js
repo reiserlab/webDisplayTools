@@ -324,6 +324,25 @@ function block(h, records) {
         check('state polling', p.state, 'polling');
     }
 
+    console.log('\n=== poller: stop() must not invoke clearInterval as a method (browser) ===');
+    {
+        const d = T.createDrainer({ session: { send: async () => new Uint8Array(0) }, wire: Wire });
+        const p = T.createPoller({ drainer: d, canPoll: () => ({ ok: true }) });
+        const strictClear = function (h) {
+            if (this !== undefined && this !== globalThis)
+                throw new TypeError('Illegal invocation');
+            clearInterval(h);
+        };
+        p.start(1000, setInterval, strictClear);
+        let threw = null;
+        try {
+            p.stop();
+        } catch (e) {
+            threw = e && e.message;
+        }
+        check('stop() with a this-sensitive clearInterval does not throw', threw, null);
+        check('poller stopped', p.state, 'stopped');
+    }
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);
