@@ -399,6 +399,13 @@ class RunScan:
                 self.ctl_sd_max = sd
         elif tag == "cs" and len(arr) >= 7:
             kind = CTL_STATE_KINDS.get(arr[4], f"kind_{arr[4]}")
+            if arr[4] == 1 and len(arr) >= 7:
+                # boot: code = SRC_SRSR & 0xFF (bit7 = wdog3 watchdog reset), arg bit1 = previous
+                # boot died inside the watchdog pre-reset ISR (fw fb11681)
+                if isinstance(arr[5], int) and arr[5] & 0x80:
+                    kind = "boot(watchdog-reset)"
+                elif isinstance(arr[6], int) and arr[6] & 0x02:
+                    kind = "boot(wdog-isr)"
             self.ctl_states[kind] += 1
         elif tag == "cc" and len(arr) >= 7 and arr[5] not in (0, None):
             self.ctl_cmd_rejects += 1

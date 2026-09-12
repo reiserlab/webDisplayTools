@@ -67,6 +67,7 @@ const ArenaWireG6 = (function () {
         SET_DIAG_OUTPUT: 0xc3, // [len=2,0xC3,on] mute/unmute DEBUG_SERIAL diagnostics
         GET_DIAG_OUTPUT: 0xc4, // returns current g_dbg_on state (0/1)
         GET_HEALTH: 0xca, // [01 CA] controller health counters + previous-boot breadcrumb (fw #50)
+        GET_CRASHREPORT: 0xcc, // [01 CC] raw 128 B at OCRAM 0x2027FF80: PJRC arm_fault_info_struct + breadcrumbs (ring fw; gate on 0xCB flags bit 2)
         GET_FIRMWARE_VERSION: 0xcb, // [01 CB] build identity: git SHA, branch, date, arena rows×cols (gate on cap bit 7)
         SET_TELEMETRY: 0xa8, // [04 A8 flags rate_lo rate_hi] telemetry ring: bit0 events on/off (fw feat/telemetry-ring)
         GET_TELEMETRY_BLOCK: 0xa9, // [08 A9 ack_seq u32 max_bytes u16 flags] ack-cursor drain of the ring (js/arena-telemetry.js decodes)
@@ -715,8 +716,15 @@ const ArenaWireG6 = (function () {
         'spi_transfer',
         'usb_write',
         'command',
-        'sd_other'
+        'sd_open',
+        // fw fb11681: sub-ops inside handleSetFramePosition (arg = 0x70)
+        'cmd_disarm_timer',
+        'cmd_preload',
+        'cmd_arm_timer',
+        'cmd_respond'
     ];
+    const HEALTH_ISR_NAMES = ['none', 'refresh_timer', 'spi_dma', 'watchdog'];
+    const HEALTH_PAYLOAD_BYTES_V2 = 89; // fw fb11681: + ISR breadcrumb + RTWDOG pre-reset PC capture
     function decodeHealth(resp) {
         const r = asResponse(resp);
         if (!r || !r.ok || r.payload.length < HEALTH_PAYLOAD_BYTES) return null;
@@ -775,7 +783,92 @@ const ArenaWireG6 = (function () {
             h.prevSlowOpName = HEALTH_BREADCRUMB_OPS[h.prevSlowOp] || 'op_' + h.prevSlowOp;
             h.slowOpName = HEALTH_BREADCRUMB_OPS[h.slowOp] || 'op_' + h.slowOp;
         }
+        // ver 2 tail (fw fb11681): which ISR the previous boot was inside when it
+        // died, the stacked PC/LR captured by the watchdog's pre-reset IRQ, and the
+        // watchdog state of this boot. Offsets 0–65 are unchanged.
+        if (m.length >= HEALTH_PAYLOAD_BYTES_V2) {
+            h.prevIsrLast = u8();
+            h.prevIsrLastName = HEALTH_ISR_NAMES[h.prevIsrLast] || 'isr_' + h.prevIsrLast;
+            h.prevIsrCount = u32();
+            h.prevWdogPc = u32();
+            h.prevWdogLr = u32();
+            h.wdogFlags = u8();
+            h.isrLast = u8();
+            h.isrLastName = HEALTH_ISR_NAMES[h.isrLast] || 'isr_' + h.isrLast;
+            h.isrCount = u32();
+            h.wdogKicks = u32();
+            h.wdogArmed = !!(h.wdogFlags & 0x01);
+            h.prevResetWasWatchdog = !!(h.wdogFlags & 0x02);
+            h.prevPcCaptured = !!(h.wdogFlags & 0x04);
+            h.wdogCompiledIn = !!(h.wdogFlags & 0x08);
+            h.wdogSuspended = !!(h.wdogFlags & 0x10);
+            h.wdogStarving = !!(h.wdogFlags & 0x20);
+            h.wdogConfigFailed = !!(h.wdogFlags & 0x40);
+            h.prevWdogPcHex = h.prevPcCaptured
+                ? '0x' + h.prevWdogPc.toString(16).padStart(8, '0')
+                : null;
+            h.prevWdogLrHex = h.prevPcCaptured
+                ? '0x' + h.prevWdogLr.toString(16).padStart(8, '0')
+                : null;
+        }
         return h;
+    }
+
+    // get-crashreport (0xCC, fw fb11681) — raw top 128 B of OCRAM: PJRC's
+    // arm_fault_info_struct {len, ipsr, cfsr, hfsr, mmfar, bfar, ret_addr, xpsr,
+    // temp f32, time, crc} (44 B) written by the core's fault handler, then PJRC's
+    // own breadcrumb words at +0x40. Never cleared by the read. Gate on the 0xCB
+    // telemetry flag (bit 2) like 0xA8/0xA9 — older firmware glyphs on it.
+    function encodeGetCrashReport() {
+        return frame(OPCODES.GET_CRASHREPORT); // 01 CC
+    }
+    const CRASHREPORT_PAYLOAD_BYTES = 128;
+    function decodeCrashReport(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 44) return null;
+        const m = r.payload;
+        const dv = new DataView(m.buffer, m.byteOffset, m.byteLength);
+        const u = (o) => dv.getUint32(o, true);
+        const c = {
+            len: u(0),
+            ipsr: u(4),
+            cfsr: u(8),
+            hfsr: u(12),
+            mmfar: u(16),
+            bfar: u(20),
+            retAddr: u(24),
+            xpsr: u(28),
+            tempC: dv.getFloat32(32, true),
+            time: u(36),
+            crc: u(40),
+            rawHex: Array.from(m)
+                .map((b) => b.toString(16).padStart(2, '0'))
+                .join('')
+        };
+        // PJRC's isvalid(): len == sizeof(struct) (44) and a CRC over the record;
+        // we check the length (the CRC algorithm is the core's private detail) and
+        // report the fault bits decoded so a reader does not need the datasheet.
+        c.present = c.len === 44 && c.ipsr !== 0;
+        c.faultName =
+            c.ipsr === 3
+                ? 'HardFault'
+                : c.ipsr === 4
+                  ? 'MemManage'
+                  : c.ipsr === 5
+                    ? 'BusFault'
+                    : c.ipsr === 6
+                      ? 'UsageFault'
+                      : c.ipsr
+                        ? 'exception_' + c.ipsr
+                        : null;
+        c.retAddrHex = '0x' + c.retAddr.toString(16).padStart(8, '0');
+        if (m.length >= 0x40 + 4) {
+            c.pjrcBreadcrumbMask = u(0x40);
+            c.pjrcBreadcrumbs = [];
+            for (let i = 0; i < 6 && 0x44 + i * 4 + 4 <= m.length; i++)
+                c.pjrcBreadcrumbs.push(u(0x44 + i * 4));
+        }
+        return c;
     }
 
     // get-firmware-version (0xCB) — the controller's BUILD identity, compiled in
@@ -1078,7 +1171,12 @@ const ArenaWireG6 = (function () {
         FIRMWARE_VERSION_PAYLOAD_BYTES,
         HEALTH_PAYLOAD_BYTES,
         HEALTH_PAYLOAD_BYTES_FULL,
+        HEALTH_PAYLOAD_BYTES_V2,
         HEALTH_BREADCRUMB_OPS,
+        HEALTH_ISR_NAMES,
+        encodeGetCrashReport,
+        decodeCrashReport,
+        CRASHREPORT_PAYLOAD_BYTES,
         decodeSpiClock,
         decodeRefreshRate,
         decodePanelDisplayMode,

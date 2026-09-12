@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 13:07 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 16:06 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -5520,6 +5520,12 @@
                  ' · frames ' + h.framesSent + ' · isr ' + h.isrCount + ' · 0x70 ' + h.cmd70Count + ' · state ' + h.state + ' frame ' + h.curFrame +
                  ' · reset 0x' + h.resetCause.toString(16) + ' · prev boot: ' + h.prevBreadcrumbOp + (h.prevSlowOpName ? ' (slowest ' + h.prevSlowOpName + ' ' + h.prevSlowUs + ' µs)' : '') +
                  (h.slowOpName ? ' · this boot slowest ' + h.slowOpName + ' ' + h.slowUs + ' µs' : ''), 'info');
+            if (h.wdogFlags !== undefined) {
+                clog('health v2: prev boot ISR ' + h.prevIsrLastName + ' (' + h.prevIsrCount + ' entries)' + (h.prevResetWasWatchdog ? ' · PREVIOUS RESET = WATCHDOG' : '') + (h.prevPcCaptured ? ' · captured PC ' + h.prevWdogPcHex + ' LR ' + h.prevWdogLrHex : '') +
+                     ' · wdog ' + (h.wdogArmed ? 'armed' : 'OFF') + (h.wdogSuspended ? ' (suspended)' : '') + (h.wdogStarving ? ' STARVING' : '') + (h.wdogConfigFailed ? ' CONFIG FAILED' : '') + ' kicks ' + h.wdogKicks + ' · this boot ISR ' + h.isrLastName + ' (' + h.isrCount + ')', h.prevResetWasWatchdog ? 'warn' : 'info');
+            }
+            const cr = await Studio.readCrashReport();
+            if (cr) clog('crash report: ' + (cr.present ? cr.faultName + ' ret ' + cr.retAddrHex + ' cfsr 0x' + cr.cfsr.toString(16) + ' hfsr 0x' + cr.hfsr.toString(16) + ' bfar 0x' + cr.bfar.toString(16) + ' mmfar 0x' + cr.mmfar.toString(16) : 'none recorded'), cr.present ? 'warn' : 'dim');
             const b = Studio.session && Studio.session.bridge;
             if (b && b.logging) b.log({ event: 'health', source: 'console', health: h });
         },
@@ -8344,6 +8350,20 @@ Studio.initTelemetry = async function () {
     return true;
 };
 
+// PJRC CrashReport passthrough (0xCC, fw fb11681) — gated like the ring on the
+// 0xCB telemetry flag. Logged as a `crash_report` event (raw hex kept). Null when
+// the firmware lacks it or the link is down; never throws.
+Studio.readCrashReport = async function () {
+    const fv = Studio.firmwareVersion;
+    if (!fv || !fv.telemetry || !Wire.encodeGetCrashReport || !Studio.session || !Studio.session.connected) return null;
+    try {
+        const cr = Wire.decodeCrashReport(await Studio.session.send(Wire.encodeGetCrashReport(), { timeoutMs: 2000 }));
+        const b = Studio.session.bridge;
+        if (cr && b && b.logging) b.log({ event: 'crash_report', present: cr.present, fault: cr.faultName, ret_addr: cr.retAddrHex, cfsr: cr.cfsr, hfsr: cr.hfsr, bfar: cr.bfar, mmfar: cr.mmfar, raw_hex: cr.rawHex });
+        return cr;
+    } catch (_) { return null; }
+};
+
 // Drain everything the controller holds (post-reboot crash dump). Returns a
 // JSON-safe summary; the rows themselves go to the bridge log via onRecords.
 Studio.drainTelemetry = async function (tag) {
@@ -8366,6 +8386,9 @@ Studio.drainTelemetry = async function (tag) {
     Studio.rawLog('telemetry dump (' + summary.tag + '): ' + recs.length + ' records' + (d.stats.survivedReboot ? ' — ring survived the reboot' : '') + (tail.length ? '\n  ' + tail.join('\n  ') : ''), recs.length ? 'warn' : 'dim');
     const b = Studio.session.bridge;
     if (b && b.logging) b.log({ event: 'telemetry_dump', summary, raw_blocks: rawBlocks });
+    // Evidence order: health (caller) → ring (above) → PJRC crash report (RAM read).
+    const cr = await Studio.readCrashReport();
+    if (cr) summary.crashReport = { present: cr.present, fault: cr.faultName, retAddr: cr.retAddrHex };
     return summary;
 };
 

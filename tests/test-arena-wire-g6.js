@@ -699,6 +699,85 @@ check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46)
         Wire.decodeFirmwareVersion(Uint8Array.from([5, 0x00, 0xcb, 1, 2, 10])) === null
     );
 }
+// GET_HEALTH ver 2 tail (fw fb11681): 89 B — ISR breadcrumb + watchdog PC capture.
+{
+    const u32 = (v) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
+    const base = new Array(66).fill(0);
+    base[0] = 2; // ver
+    base[55] = 0x70; // prev_breadcrumb_arg
+    const tail = [3].concat(
+        u32(123456),
+        u32(0x6000abcd),
+        u32(0x60001235),
+        [0x0f],
+        [0],
+        u32(42),
+        u32(9999)
+    );
+    const payload = base.concat(tail);
+    check('v2 payload is 89 B', payload.length, Wire.HEALTH_PAYLOAD_BYTES_V2);
+    const h = Wire.decodeHealth(Uint8Array.from([payload.length + 2, 0x00, 0xca].concat(payload)));
+    check('prev ISR = watchdog', h.prevIsrLastName, 'watchdog');
+    check('prev ISR count', h.prevIsrCount, 123456);
+    check('captured PC hex', h.prevWdogPcHex, '0x6000abcd');
+    check(
+        'wdog flags decoded',
+        [
+            h.wdogArmed,
+            h.prevResetWasWatchdog,
+            h.prevPcCaptured,
+            h.wdogCompiledIn,
+            h.wdogSuspended
+        ].join(),
+        'true,true,true,true,false'
+    );
+    check('kicks', h.wdogKicks, 9999);
+    check(
+        'sub-op names',
+        [Wire.HEALTH_BREADCRUMB_OPS[6], Wire.HEALTH_BREADCRUMB_OPS[9]].join(),
+        'cmd_disarm_timer,cmd_respond'
+    );
+    const h66 = Wire.decodeHealth(Uint8Array.from([66 + 2, 0x00, 0xca].concat(base)));
+    check('66 B payload has no v2 fields', h66.wdogFlags, undefined);
+}
+// GET_CRASHREPORT 0xCC: PJRC arm_fault_info_struct passthrough.
+{
+    check('encodeGetCrashReport', Array.from(Wire.encodeGetCrashReport()).join(), '1,204');
+    const u32 = (v) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
+    const rec = [].concat(
+        u32(44),
+        u32(3),
+        u32(0x00008200),
+        u32(0x40000000),
+        u32(0),
+        u32(0x2027f000),
+        u32(0x60001234),
+        u32(0x21000000),
+        [0, 0, 0x48, 0x42],
+        u32(1789242267),
+        u32(0xdeadbeef)
+    );
+    const payload = rec.concat(new Array(128 - rec.length).fill(0));
+    payload[0x40] = 1;
+    payload[0x44] = 7;
+    const c = Wire.decodeCrashReport(
+        Uint8Array.from([payload.length + 2, 0x00, 0xcc].concat(payload))
+    );
+    check('fault present', c.present, true);
+    check('fault name', c.faultName, 'HardFault');
+    check('bfar', c.bfar, 0x2027f000);
+    check('return address', c.retAddrHex, '0x60001234');
+    checkBool('temperature decoded (~50 °C)', Math.abs(c.tempC - 50) < 0.01, c.tempC);
+    check(
+        'pjrc breadcrumb mask + first word',
+        [c.pjrcBreadcrumbMask, c.pjrcBreadcrumbs[0]].join(),
+        '1,7'
+    );
+    const empty = Wire.decodeCrashReport(
+        Uint8Array.from([130, 0x00, 0xcc].concat(new Array(128).fill(0)))
+    );
+    check('empty record → present=false', empty.present, false);
+}
 // Capability bit 7 = health.
 {
     const ci = Uint8Array.from([0x04, 0x00, 0xc2, 0x02, 0xa3]);
