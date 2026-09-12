@@ -111,7 +111,27 @@
             // .bridge. Null when the module isn't loaded — the runner tolerates it.
             this._bridge = BridgeClientLib
                 ? new BridgeClientLib({
-                      applyFrame: (i) => this.send(this._wire.encodeSetFramePosition(i))
+                      // A controller REJECT (status ≠ 0 — "no pattern selected",
+                      // "index out of range") is an apply failure too, so the
+                      // bridge client's fault detector counts it. Bench
+                      // 2026-09-12: 21k rejects streamed for minutes without
+                      // tripping anything because only throws were counted.
+                      applyFrame: (i) =>
+                          this.send(this._wire.encodeSetFramePosition(i)).then((resp) => {
+                              const d = this._wire.decodeResponse
+                                  ? this._wire.decodeResponse(resp)
+                                  : null;
+                              if (d && !d.ok) {
+                                  const e = new Error(
+                                      'controller rejected SET_FRAME_POSITION (status ' +
+                                          d.status +
+                                          ')'
+                                  );
+                                  e.status = d.status;
+                                  throw e;
+                              }
+                              return resp;
+                          })
                   })
                 : null;
             // The runner sends through THIS session, not the bare link, so every

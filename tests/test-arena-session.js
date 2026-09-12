@@ -553,6 +553,53 @@ function newSession(m) {
         delete m.RunnerLib.ArenaRunner.prototype.fault;
     }
 
+    console.log('\n=== bridge applyFrame: a controller REJECT counts as an apply failure ===');
+    {
+        const m = makeMocks();
+        let status = 0;
+        m.MockLink.prototype.send = function (bytes, opts) {
+            this.sent.push([Array.from(bytes), opts]);
+            return Promise.resolve(new Uint8Array([2, status, bytes[1] || 0]));
+        };
+        class MockBridge {
+            constructor(o) {
+                this.applyFrame = o.applyFrame;
+                this.logging = false;
+            }
+            on() {
+                return () => {};
+            }
+            setApply() {}
+        }
+        const wire = {
+            encodeSetFramePosition: (i) => new Uint8Array([3, 0x70, i & 0xff, i >> 8]),
+            decodeResponse: (f) => ({ status: f[1], ok: f[1] === 0, echoCmd: f[2] })
+        };
+        const s = new ArenaSession({
+            wire,
+            LinkClass: m.MockLink,
+            RunnerLib: m.RunnerLib,
+            BridgeClientLib: MockBridge
+        });
+        await s.connect();
+        let okResp = null;
+        await s.bridge.applyFrame(7).then((r) => (okResp = r));
+        checkBool('status 0 → applyFrame resolves', okResp instanceof Uint8Array);
+        status = 1;
+        let rejected = null;
+        await s.bridge.applyFrame(8).catch((e) => (rejected = e));
+        checkBool(
+            'status 1 → applyFrame REJECTS',
+            rejected instanceof Error,
+            rejected && rejected.message
+        );
+        check('reject carries the status', rejected && rejected.status, 1);
+        checkBool(
+            'reject message names the command',
+            /SET_FRAME_POSITION/.test(rejected && rejected.message)
+        );
+    }
+
     console.log('\n=== runstatus sanitizer keeps fault detail + terminal summary ===');
     {
         const m = makeMocks();
