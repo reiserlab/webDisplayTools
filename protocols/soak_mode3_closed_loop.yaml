@@ -121,10 +121,16 @@ conditions:
       - type: "wait"
         duration: *iti_dur
 
+  # NOTE: no fictrac.disconnect here — the bridge is the run's logger, and a
+  # disconnect as the last command drops the run's terminal event from the log
+  # (and the soak driver needs the bridge up between iterations). Bench 2026-09-11.
   - name: "soak_shutdown"
     commands:
       - type: "controller"
         command_name: "stopDisplay"
       - type: "plugin"
-        plugin_name: "fictrac"
-        command_name: "disconnect"
+        plugin_name: "log"
+        command_name: "log"
+        params:
+          message: "fw#50 soak iteration finished"
+          level: "INFO"

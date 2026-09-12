@@ -8116,6 +8116,14 @@ Studio.startSoak = async function (cfg) {
                 // Gap + input freshness re-check (a dead simulator is a harness
                 // problem, not a controller fault — pause, don't count it).
                 await sleepMs(s.gapS * 1000);
+                // A protocol whose last step disconnects the fictrac plugin takes
+                // the bridge down with it; bring it back before judging freshness
+                // (bench 2026-09-11: the loop otherwise waits 10 min for frames).
+                if (!bridge.connected) {
+                    try { bridge.connect(ftUrl); } catch (_) { /* surfaces below */ }
+                    for (let i = 0; i < 40 && !bridge.connected; i++) await sleepMs(50);
+                    await sleepMs(1200); // one rate-timer tick so rateHz is fresh
+                }
                 let r2 = bridge.stats ? bridge.stats.rateHz : 0;
                 let waited = 0;
                 while (!(r2 > 0) && !s.stop && waited < 600) {
@@ -8123,6 +8131,7 @@ Studio.startSoak = async function (cfg) {
                     await sleepMs(5000); waited += 5;
                     r2 = bridge.stats ? bridge.stats.rateHz : 0;
                 }
+                if (s.stop) { reason = s.stopReason || 'operator'; break; }
                 if (!(r2 > 0)) { reason = 'no-frames'; break; }
             }
         } catch (e) {
@@ -8227,8 +8236,10 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         // Frame-logging level is a runtime/session setting (File ▾ → Run logging),
         // NOT per-protocol. Assert it here so a recorded run logs deterministically
         // at the chosen level — this OVERRIDES any ad-hoc Console log toggle state.
+        // A soak ALWAYS logs behavior_v2 (its preflight negotiated it; a remembered
+        // behavior_v1 session setting must not override it — bench 2026-09-11).
         if (bridge.setLogLevel)
-            bridge.setLogLevel(Studio.sessionLogLevel ? Studio.sessionLogLevel() : 'behavior_v2');
+            bridge.setLogLevel(Studio.soak ? 'behavior_v2' : Studio.sessionLogLevel ? Studio.sessionLogLevel() : 'behavior_v2');
         bridge.setLogging(true); // universal default-on: no experiment untracked
         if ($('cFtLog')) $('cFtLog').checked = true; // keep the console toggle honest
         const ftUrl = ((($('cFtUrl') || {}).value) || 'ws://localhost:8765').trim();
