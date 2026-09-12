@@ -381,6 +381,47 @@ function wedgedModel(opts) {
         );
     }
 
+    console.log(
+        '\n=== link drops DURING the probe window (watchdog fires ~6 s in) → self-reset path ==='
+    );
+    {
+        const m = wedgedModel({ slowMs: 300 });
+        const t = makeSession(m);
+        const baseSend = t.session.send.bind(t.session);
+        let sends = 0;
+        let dropped = false;
+        t.session.send = async (bytes, opts) => {
+            sends++;
+            // after the confirm probe + a few window probes the controller reboots: the
+            // port closes, further sends fail with a link error (not a timeout)
+            if (!dropped && sends > 4) {
+                dropped = true;
+                t.session.connected = false;
+                throw new Error('write failed: port closed');
+            }
+            if (!t.session.connected) throw new Error('not connected');
+            return baseSend(bytes, opts);
+        };
+        const pm = PM.createPostmortem(
+            Object.assign({}, t.deps, {
+                afterReconnect: async () => ({ records: 5 }),
+                opts: { probeWindowMs: 3000, probeEveryMs: 200 }
+            })
+        );
+        const res = await pm.run({ policy: 'halt' });
+        check('outcome self-reset', res.outcome, 'self-reset');
+        checkBool(
+            'window ended early on the link drop',
+            t.rows.some((r) => r && r.phase === 'window-link-dropped')
+        );
+        check('reconnected once', t.session.reconnectCalls, 1);
+        check(
+            'no SYSTEM_RESET sent',
+            t.sent.some((x) => x.cmd === 0x01),
+            false
+        );
+    }
+
     console.log('\n=== wrong controller after reconnect → identity error ===');
     {
         const m = wedgedModel({ slowMs: 300 });

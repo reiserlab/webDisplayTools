@@ -274,6 +274,12 @@
             let pass = 0;
             do {
                 if (aborted) break;
+                // A link drop mid-window = the controller rebooted (hardware watchdog):
+                // stop probing a port that is gone; run() takes the self-reset path.
+                if (!session.connected && typeof session.reconnect === 'function') {
+                    record({ phase: 'window-link-dropped', passes: pass });
+                    break;
+                }
                 const r = await probeOnce('window', caps);
                 r.forEach((x) => (x.pass = pass));
                 all.push.apply(all, r);
@@ -466,6 +472,11 @@
             if (aborted) {
                 record({ phase: 'end', outcome: 'operator-stop', policy });
                 return { confirmed: true, window: win, outcome: 'operator-stop' };
+            }
+            if (!session.connected && typeof session.reconnect === 'function') {
+                const r = await selfResetPath(a, policy, c);
+                r.window = win;
+                return r;
             }
             if (policy === 'halt') {
                 record({ phase: 'end', outcome: 'halted', policy });
