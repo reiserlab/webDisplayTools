@@ -295,28 +295,40 @@
          */
         async function resetAndReconnect(a) {
             a = a || {};
-            const out = { phase: 'reset', steps: [] };
+            const out = { phase: 'reset', steps: [], selfReset: !!a.skipReset };
             const t0 = now();
-            try {
-                const resp = await session.send(W.encodeSystemReset(), {
-                    timeoutMs: opts.resetTimeoutMs
-                });
-                const d = W.decodeResponse(resp);
-                out.resetAck = !!(d && d.ok);
-                out.resetDt = Math.round(now() - t0);
-            } catch (e) {
-                out.resetAck = false;
-                out.resetDt = Math.round(now() - t0);
-                out.resetError = (e && e.message) || String(e);
+            if (a.skipReset) {
+                // The controller rebooted on its own (hardware watchdog, fw fb11681):
+                // the link dropped, nothing to send — go straight to reconnect and
+                // the evidence-first sequence below.
+                out.resetAck = null;
+                record(Object.assign({ name: 'self_reset' }, out));
+                say(
+                    'link dropped after the fault — controller reset itself (watchdog?); reconnecting',
+                    'warn'
+                );
+            } else {
+                try {
+                    const resp = await session.send(W.encodeSystemReset(), {
+                        timeoutMs: opts.resetTimeoutMs
+                    });
+                    const d = W.decodeResponse(resp);
+                    out.resetAck = !!(d && d.ok);
+                    out.resetDt = Math.round(now() - t0);
+                } catch (e) {
+                    out.resetAck = false;
+                    out.resetDt = Math.round(now() - t0);
+                    out.resetError = (e && e.message) || String(e);
+                }
+                record(Object.assign({ name: 'system_reset' }, out));
+                say(
+                    'SYSTEM_RESET sent (' +
+                        (out.resetAck ? 'acked' : 'no ack') +
+                        ') — waiting for re-enumeration',
+                    'warn'
+                );
+                await sleep(opts.resetSettleMs);
             }
-            record(Object.assign({ name: 'system_reset' }, out));
-            say(
-                'SYSTEM_RESET sent (' +
-                    (out.resetAck ? 'acked' : 'no ack') +
-                    ') — waiting for re-enumeration',
-                'warn'
-            );
-            await sleep(opts.resetSettleMs);
             const t1 = now();
             try {
                 await session.reconnect({ timeoutMs: opts.reconnectTimeoutMs });
@@ -389,13 +401,53 @@
          * @param {object} a {policy: 'halt'|'reset-continue', expectMac?, windowMs?, faultDetail?}
          * @returns {Promise<object>} {confirmed, window, reset?, outcome}
          */
+        async function selfResetPath(a, policy, c) {
+            const reset = await resetAndReconnect({
+                expectMac: a.expectMac || (c && c.mac) || null,
+                skipReset: true
+            });
+            const ps = reset.postSummary;
+            const recovered = !!(
+                reset.reconnected &&
+                reset.identityOk &&
+                ps &&
+                !ps.degraded &&
+                ps.answered > 0 &&
+                ps.timeouts === 0 &&
+                ps.failedRequired === 0 &&
+                ps.errors === 0
+            );
+            const outcome = recovered ? 'self-reset' : 'self-reset-failed';
+            record({ phase: 'end', outcome, policy, selfReset: true });
+            say(
+                recovered
+                    ? 'controller came back after resetting itself (prev breadcrumb: ' +
+                          (reset.prevBreadcrumb || '?') +
+                          ')'
+                    : 'controller reset itself but did NOT come back healthy — halting',
+                recovered ? 'warn' : 'err'
+            );
+            return { confirmed: true, selfReset: true, reset, outcome, recovered };
+        }
+
         async function run(a) {
             a = a || {};
             aborted = false;
             const policy = a.policy === 'reset-continue' ? 'reset-continue' : 'halt';
             record({ phase: 'begin', policy, fault: a.faultDetail || null });
             await quiet();
+            // Hardware-watchdog world (fw fb11681): a hung controller resets itself
+            // ~2 s after the hang and re-enumerates, so the link drops right about
+            // now. That is a self-reset, not a wedge to probe: reconnect, verify
+            // identity, read the evidence (health breadcrumb → ring → crash report),
+            // then the ordinary post-reset probes — regardless of policy.
+            if (!session.connected && typeof session.reconnect === 'function') {
+                return await selfResetPath(a, policy, null);
+            }
             const c = await confirm();
+            if (!session.connected && typeof session.reconnect === 'function') {
+                return await selfResetPath(a, policy, c);
+            }
             if (!c.confirmed) {
                 record({ phase: 'end', outcome: 'transient', policy });
                 say(

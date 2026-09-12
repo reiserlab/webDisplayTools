@@ -47,6 +47,7 @@ function makeSession(model) {
             this.reconnectCalls++;
             if (model.reconnectFails) throw new Error('reconnect: no granted port came back');
             model.afterReset && model.afterReset();
+            this.connected = true;
             return {};
         },
         async send(bytes, opts) {
@@ -343,6 +344,40 @@ function wedgedModel(opts) {
         checkBool(
             'skip reason recorded',
             t.rows.some((r) => r && r.skipped === 'capabilities unknown')
+        );
+    }
+
+    console.log(
+        '\n=== link dropped after the fault (hardware watchdog reboot) → self-reset path ==='
+    );
+    {
+        const m = wedgedModel({ slowMs: 300 });
+        const t = makeSession(m);
+        t.session.connected = false; // the controller re-enumerated on its own
+        let afterReconnectCalls = 0;
+        const pm = PM.createPostmortem(
+            Object.assign({}, t.deps, {
+                afterReconnect: async () => {
+                    afterReconnectCalls++;
+                    return { records: 3 };
+                },
+                opts: { probeWindowMs: 1000, probeEveryMs: 500 }
+            })
+        );
+        const res = await pm.run({ policy: 'halt' }); // policy irrelevant: it already reset
+        check('outcome self-reset', res.outcome, 'self-reset');
+        check('recovered', res.recovered, true);
+        check(
+            'no SYSTEM_RESET was sent',
+            t.sent.some((x) => x.cmd === 0x01),
+            false
+        );
+        check('reconnect attempted once', t.session.reconnectCalls, 1);
+        check('evidence hook (ring drain) ran once', afterReconnectCalls, 1);
+        checkBool('health probe ran before the post probes', !!res.reset.health);
+        checkBool(
+            'self_reset row recorded',
+            t.rows.some((r) => r && r.name === 'self_reset')
         );
     }
 

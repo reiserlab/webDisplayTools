@@ -8214,7 +8214,7 @@ Studio.startSoak = async function (cfg) {
                 }
                 if (res.fault) {
                     s.faults++;
-                    if (!pmo || pmo.outcome !== 'recovered') { reason = pmo ? 'fault-' + pmo.outcome : 'fault'; break; }
+                    if (!pmo || (pmo.outcome !== 'recovered' && pmo.outcome !== 'self-reset')) { reason = pmo ? 'fault-' + pmo.outcome : 'fault'; break; }
                     s.resets++;
                     Studio.rawLog('soak: controller recovered (reset ' + s.resets + '/' + s.maxResets + ') — continuing', 'warn');
                 } else if (res.aborted) { reason = 'operator-stop'; break; }
@@ -8611,6 +8611,7 @@ Studio.handleControllerFault = async function (summary) {
         });
         Studio.showBanner(
             res.outcome === 'transient' ? 'Controller answered normally again — transient stall, run still aborted.' :
+            res.outcome === 'self-reset' ? 'Controller reset itself (watchdog) and came back — evidence captured (health, ring, crash report); soak continues.' :
             res.outcome === 'recovered' ? 'Controller recovered after SYSTEM_RESET' + (res.reset && res.reset.prevSlowOp ? ' (slowest op before: ' + res.reset.prevSlowOp + ')' : '') + '.' :
             res.outcome === 'halted' ? 'Post-mortem done — controller left wedged for inspection (halt policy). Power-cycle or Debug ▾ → Reset controller when finished.' :
             'Post-mortem: ' + res.outcome + ' — see the run log.'
