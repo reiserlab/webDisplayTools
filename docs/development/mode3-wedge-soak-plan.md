@@ -217,6 +217,8 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
 
 - **2026-09-12 18:20 ET — `4860fef` flashed from HalfKay; watchdog expiry calibrated: starve → port gone at 2.02 s (target 2.0), back 2.29 s.** TOVAL 444 = 127 Hz × 2 s + 190-tick offset. HEALTH v5's kick-path diagnostics read `WDOG3_CNT` = 0 before and after every refresh and live, so the readable counter does not expose the running count; the 190-tick offset is a comparator-side constant on this silicon (documented as empirical). PC 0x6e1c captured, ring 7→8 survived. Soak restarted ~18:22 (10 h, halt-first, self-reset path live). Post-power-cycle exposure before this boundary: 92 min clean. **Final firmware for the night: `4860fef8`.**
 
+- **2026-09-12 22:31 ET — operating point raised (Michael):** simulator restarted at **286 Hz** with a **90° jump every 100 frames** (`fictrac_sim.py --rate 286 --seed 1 --jump-every 100 --jump-deg 90`); soak restarted (9 h, halt-first) on `4860fef8`; `soak_note` event in the log marks the switch. First 84 s: FicTrac 286/s, 0x70 delivered **264/s** (0 timeouts, 0 rejects), RTT median 2 ms, p99 7 ms, p99.9 21 ms, max 29 ms; 77 % of consecutive requests change the index (median step 1 frame, 4.9 % > 10 frames), so the SD random-access path runs ~200 loads/s vs ~60/s at 100 Hz; ring 294 rec/s ≈ 4.7 KiB/s, 0 drops/gaps/refused. The 100 Hz block (13:38–22:29, 12 clean iterations = 4 h 10 m since the 16:45 power cycle) is one exposure block; 286 Hz + jumps from 22:31 is the second. Fallback if the instrumentation struggles: 200 Hz.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
