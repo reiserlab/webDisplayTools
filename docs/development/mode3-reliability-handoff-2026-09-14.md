@@ -168,6 +168,45 @@ per interval; report truncation → unknown and bounded accumulators; controller
 `arena-link` write-timeout race; bridge rows-capability negotiation. None affects tonight's benchmark; all are
 recorded so the next session starts from the list, not from a re-review.
 
+## 7.2 Course dashboard, old course protocols, log parsing (Michael's questions, 2026-09-13 16:40 ET)
+
+**Course dashboard (`dashboard/data-browser`).** Nothing new is required for it to keep working: it already inflates
+`.jsonl.gz`, normalizes `behavior_v2` through the vendored `runlog-format.js`, and (on this branch, 3 lines in
+`analysis-core.js` + a test) skips every string-tagged array row, which is what the controller streams are. So it
+reads the new logs as soon as PR #198 merges; today's `main` build would try to parse `cc`/`cf`/`cs` rows as FicTrac
+frames and reject them (they fail the numeric-column check, so the run still loads, with warnings). What it does not
+yet DO with the new data — optional, one small PR: show `run_metadata.firmware` and `.sd_card` in the run table,
+the per-trial `trial_quality` counts as a badge, and `display_gap` markers on the trace. The run-log index builder
+(`scripts/build-runlog-index.py`, bookends only) is unaffected; adding `firmware` and the quality counts to
+`index.json` is the same small PR.
+
+**Old course protocols (p0–p3, `reiserlab/cshl-2026-course/protocols/`).** Expected to run unchanged on the candidate:
+every firmware change is additive and gated on new flag bits; TRIAL_PARAMS, Mode 2/3, `ledDrive`, `led_activation`,
+duty, the FicTrac plugin path and the run-log contract are untouched; the Studio's protocol handling did not change
+between v0.75 and v0.78 except for the soak driver and the verdicts. p3 (`p3-heisenberg-ts-full`: Mode 2 baseline,
+Mode 3 closed loop with gain −1.8, `ledDrive`, `led_activation`) exercises exactly the paths that changed underneath
+(0x70 under the free-running timer, SD reads on the fast path). What is different for them: (a) a large pattern now
+costs 1.4 ms per random read instead of 2 ms with no stall risk; (b) every trial gets a pass/flagged/unknown verdict
+in its log; (c) a wedge would now end the run as `CONTROLLER_FAULT` and auto-commit instead of hanging. Only
+precondition: pattern files contiguous on the card (uploads through the Studio are; `sd_layout` reports it).
+**Verification is one run of p3 on the candidate** — added as test F in `lab-test-day-windows-2026-09-14.md`.
+
+**Parsing the logs (anyone's reader, incl. MATLAB/Python course analysis).** Rules, cumulative since v0.72:
+1. A file may be gzip (`.jsonl.gz`); inflate on the 1f 8b magic.
+2. One JSON value per line: objects are events (`type`/`event`); **arrays are streams**. An array whose first element
+   is a **number** is a FicTrac behaviour sample `[ms, fc, idx, ft, x, y, hd]` (columns named once in `frame_schema`).
+   An array whose first element is a **string** is another stream: `"a"` = host arena-command echo
+   `[t_off, dt, hex, status, rx_off(, error)]`; `"cc"/"cf"/"cs"` = controller command / frame / state records
+   (columns in `stream_schema`; `cf` has 8 or 11 fields; `cs` kinds 1–14 named in the schema's `kinds`). Unknown
+   string tags: skip, never treat as behaviour.
+3. New events since v0.77/78 (all optional): `trial_quality` (per-trial verdicts, once per run, after the last
+   controller row), `display_gap` (one per gap), `sd_diag`, `telemetry_dump`, `crash_report`, `probe`; new
+   `run_metadata` keys `firmware`, `sd_card`, `sd_diag`, `gap_threshold_ms`.
+4. Reference implementations: `js/runlog-format.js` (`readRunlogText`, `createNormalizer`) for JS,
+   `scripts/telemetry-report.py` / `scripts/runlog-check.py` for Python. Layout and byte budget:
+   `runlog-format-review-2026-09-13.md`. A MATLAB reader in maDisplayTools, if one exists, needs rule 2 (string-tagged
+   arrays are not behaviour) — the only change that can break an old parser.
+
 ## 8. Where things live
 
 - Firmware: `src/Health.*`, `src/Telemetry.*`, `src/Watchdog*`/`Health` v2 fields, `src/SpiManager.*` (timer),
