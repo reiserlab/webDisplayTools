@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 17:08 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 23:18 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3074,6 +3074,14 @@
     });
 
     // ---- unified log: raw transport trace (console 'log' events) --------------
+    // The raw log is BOUNDED (bench 2026-09-12 23:10): every arena command appends a
+    // line, so a 286 Hz closed-loop run grew it to 43k rows in 10 min and each
+    // append (+ scroll-to-bottom layout) got slower — the apply loop lost half its
+    // throughput over one 20-min iteration while the controller stayed flat. Keep
+    // the newest RAW_LOG_MAX_LINES; trim in one range delete every RAW_LOG_TRIM
+    // lines; only follow the tail when the user has not scrolled up.
+    const RAW_LOG_MAX_LINES = 3000;
+    const RAW_LOG_TRIM = 500;
     function rawLine(text, cls) {
         const box = $('runlogBox');
         if (!box) return;
@@ -3081,11 +3089,19 @@
         if (box.firstChild && box.firstChild.classList && box.firstChild.classList.contains('dim')) {
             box.textContent = '';
         }
+        const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
         const div = document.createElement('div');
         if (cls) div.className = 'l-' + cls;
         div.textContent = text;
         box.appendChild(div);
-        box.scrollTop = box.scrollHeight;
+        const n = box.childElementCount;
+        if (n > RAW_LOG_MAX_LINES + RAW_LOG_TRIM) {
+            const r = document.createRange();
+            r.setStartBefore(box.firstChild);
+            r.setEndBefore(box.children[n - RAW_LOG_MAX_LINES]);
+            r.deleteContents();
+        }
+        if (atBottom) box.scrollTop = box.scrollHeight;
     }
     Studio.rawLog = rawLine;
 
