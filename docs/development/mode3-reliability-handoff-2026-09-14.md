@@ -235,6 +235,9 @@ precondition: pattern files contiguous on the card (uploads through the Studio a
   fine-grained history; PR #53 closed as superseded.
 - **Studio:** PRs #198 and #202 squash-merged to `main` in the morning after a clean night (two commits: v0.76, v0.78),
   no separate review; revert if the lab finds a problem.
+- **Decisions closed (Michael, 2026-09-13 19:00 ET):** keep `SET_SD_DIAG` in production (gated, off at boot, Studio
+  banner when found on at connect — v0.79); one build for the hand-off, no lean variant; firmware PR #56 on `main`;
+  Studio #198 + #202 squash-merged to `main` in the morning; the overnight runs through the Studio.
 - **Docs:** the living set is this file, `lab-test-day-windows-2026-09-14.md`, `overnight-soak-test-plan-2026-09-13.md`,
   `runlog-format-review-2026-09-13.md`, `telemetry-review-handoff-2026-09-13.md` and the bench log in
   `mode3-wedge-soak-plan.md` §10. The working documents of the day (evidence write-up, causal plan, consolidation plan,

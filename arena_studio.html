@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.79 | 2026-09-13 18:48 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.79 | 2026-09-13 18:56 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3729,6 +3729,14 @@
                         const si = Wire.decodeSdInfo(await Studio.session.send(Wire.encodeGetSdInfo(), { timeoutMs: 2000 }));
                         Studio.sdCard = si;
                         if (si) rawLine('‹ sd card: ' + si.label + (si.mounted ? ' · cid ' + si.cidHex : ''), si.mounted ? 'info' : 'warn');
+                        // The bench A/B switches (SET_SD_DIAG) persist until the controller reboots: a stray
+                        // arm silently degrades every later trial (legacy FAT-chain seeks / no read skip).
+                        // Say so loudly at connect; production is 0 (Michael, 2026-09-13: keep the switch, banner it).
+                        if (si && (si.sdDiag & 0x03)) {
+                            const arm = (si.sdDiag & 1 ? 'legacy FAT-chain seek' : '') + (si.sdDiag & 3 ? (si.sdDiag & 1 && si.sdDiag & 2 ? ' + ' : '') : '') + (si.sdDiag & 2 ? 'no same-index read skip' : '');
+                            rawLine('⚠ SD diagnostic switches are ON (' + arm + ') — every trial runs degraded until Studio.setSdDiag(0) or a controller reboot', 'warn');
+                            showBanner('⚠ SD diagnostic switches are ON (arm ' + (si.sdDiag & 3) + ': ' + arm + '). Production is 0 — run `await Studio.setSdDiag(0)` unless this is the causal test.');
+                        }
                     } catch (e) { rawLine('sd info: ' + (e && e.message ? e.message : e), 'warn'); }
                 }
                 return v;
