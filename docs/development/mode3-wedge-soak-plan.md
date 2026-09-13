@@ -431,6 +431,17 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   applied-mode verification, exit 4 unless usable). Firmware tip built, NOT flashed; a Codex diff review of the
   round-3 delta is owed before it goes on the controller. Extended campaign matrix (patterns × Mode 2/3 × speeds)
   added to `sd-stall-causal-test-plan-2026-09-13.md` §7.
+- **2026-09-13 13:30–14:15 ET — Michael back online (remote, no bench). Codex round 4 on the round-3 delta
+  (`0fc6b01..9de97fe`, `.codex-review/codex-diff-review-20260913-133230-26229`, report `report-20260913-fw-round4.md`):
+  no blocking firmware finding; harness/codec fixes committed as `75405ee` (exact worst/cluster statistics, legacy
+  kind-13 checkpoint decode, `--allow-v1` completion, single-probe resync, arm restore + consistency, exFAT refusal,
+  offline `tests/test_sd_stall_stats.py`, two stale comments) and built — **`75405ee` is the build to flash next
+  session** (bootloader route, port released first). Campaign trimmed to stress-first (plan §7: S1 8 MB sine + 813 KB
+  bar at 286 Hz overnight, S2 at 200 Hz, C1 Mode-2 200 fps control); new `protocols/soak_mode3_stress.yaml`,
+  `protocols/soak_mode2_open_loop.yaml`, `scripts/make-stress-patterns.js` (8.1 MB `sine_2000f_gs16`, 213 KB
+  `bar_200f_gs2`, verified by re-parse), Studio soak driver accepts open-loop protocols (v0.77, 13:58 ET). Michael's
+  design question answered in plan §5: cache the cluster chain per pattern open (extent table) → no contiguity
+  precondition; to implement after the causal test.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 

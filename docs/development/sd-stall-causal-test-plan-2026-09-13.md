@@ -1,9 +1,10 @@
 # Causal test plan — did the contiguous-seek fix remove the SD-card stalls? (bench, ~70 min)
 
-**Written:** 2026-09-13 12:45 ET. **Status:** code ready (firmware `feat/sd-fastpath-2x10` with `SET_SD_DIAG` 0xCE,
-built, Codex review round 3 in progress; Studio v0.77 `Studio.setSdDiag`), **bench test pending** (Michael: no time
-today). **Prerequisite:** flash the reviewed 0xCE build (firmware tip after `35bb196`; run a Codex diff review of anything
-newer first) via `scripts/flash_bootloader_route.sh` (port released by the Studio first), verify 0xCB flags bit 6
+**Written:** 2026-09-13 12:45 ET; updated 14:15 ET. **Status:** code ready and **reviewed** (firmware
+`feat/sd-fastpath-2x10` tip `75405ee`: `SET_SD_DIAG` 0xCE, Codex rounds 3 + 4 reconciled in the ring worktree's
+`.codex-review/report-20260913-fw-round4.md`; Studio v0.77 `Studio.setSdDiag`), **bench test pending**.
+**Prerequisite:** flash `75405ee` (built `.pio/build/teensy41-performance/firmware.hex`; anything newer needs its own
+Codex diff review) via `scripts/flash_bootloader_route.sh` (port released by the Studio first), verify 0xCB flags bit 6
 (`sdDiag`), label `… freerun sdfast`, and `GET_SD_INFO` byte 29 = 0. The legacy-seek arm only reproduces the FAT-chain
 walk on FAT16/32 volumes (the bench card is FAT32); byte 29 bit 2 reports the mode actually applied to the open file.
 
@@ -98,6 +99,15 @@ result table to `sd-read-jitter-2026-09-13.md` §7.
   (`sd_layout` bit0 = 0) and made contiguous (`preAllocate` on upload, or re-upload).
 - Course cards: check cluster size with `GET_SD_INFO`; a 32 KB-cluster format keeps even 4 MB patterns in one FAT
   sector — but the fast path makes that moot.
+- **Next firmware step (Michael, 13:40 ET): drop the contiguity precondition by caching the file's cluster chain in
+  RAM at pattern open** — read the FAT once per open (in the inter-trial interval), store it as a list of contiguous
+  extents (a contiguous file is one extent; an 8 MB file on 4 KB clusters is at most 2000 entries = 8 KB), and turn
+  every frame seek into table lookup + sector arithmetic. Random access is then O(1) inside any pattern file, fragmented
+  or not, and the FAT is never touched during a trial; `sd_layout` bit0 becomes informational. Small change in
+  `SdManager` (SdFat exposes the FAT lookup and cluster→sector helpers its own seek uses); implement after the causal
+  test so the production arm measured here stays the one on the card. Ensuring contiguity at upload (`preAllocate`
+  on 0x8D, or the Studio's purge-and-reupload set flow) stays worthwhile for sequential read speed but stops being a
+  correctness condition.
 - The read-free path (`sd-read-jitter-2026-09-13.md` §6) remains the way to remove the 0.6–1.5 ms read and the card
   from the loop entirely; it is no longer required to reach the 10 ms bound.
 - fw #54: close the "card housekeeping" mitigation thread with this result; the card-comparison protocol becomes
@@ -110,33 +120,35 @@ read-free path becomes the priority again and the card comparison matters. Arm 3
 morning's upload moved something) ⇒ characterise afresh with `sd_stall_test.py` before any conclusion.
 
 
-## 7. Extended validation campaign (multi-hour, later) — patterns × modes × speeds
+## 7. Multi-hour campaign (later) — stress first, controls second
 
-Purpose: after the causal test, establish the **operating envelope** of the fast-path build with the per-trial
-quality verdicts as the acceptance metric (target 5 ms, worst case 10 ms, ≥ 30 ms invalidates), not just "no wedge".
-Each cell below is one soak protocol (Studio, `?soak=1`, behavior_v2 logging, telemetry on) analysed with
-`scripts/telemetry-report.py`; the firmware stays fixed for the whole campaign.
+**Design principle (Michael, 13:30 ET): test the worst case, not the grid.** Under H-FAT the per-read cost is
+independent of file size once the file is contiguous, and a bigger file at a higher command rate can only make a
+hidden problem MORE visible (longer chain, wider seeks, more reads per hour). So the campaign is two overnight
+soaks plus one short control, all judged by the per-trial `trial_quality` verdicts (target 5 ms, worst case 10 ms,
+≥ 30 ms invalidates) and `scripts/telemetry-report.py` — not a patterns × modes × speeds matrix.
 
-| axis | levels | why |
-|---|---|---|
-| pattern size / geometry | grating 20 f (81 KB) · bar 200 f (813 KB) · looming 75 f (305 KB) · a 2,000-frame sine (8 MB, GS16) · a GS2 200-frame pattern (213 KB) | FAT-chain length (1 → 2 → 16 FAT sectors), file span, frame size (1 vs 4 KB reads) |
-| mode | **3** (host-stepped, sim random walk + jumps) · **2** (controller-timed open loop at the pattern's frame rate) · 3 with a *sequential* index sweep | Mode 2 is the sequential-read control (no seeks at all, should be stall-free at any size); Mode 3 random is the stress; sequential Mode 3 separates seek cost from command load |
-| speed | Mode 3: 100 / 200 / 286 Hz commands; Mode 2: 50 / 100 / 200 fps | read rate (stall recurrence is count-based), tick starvation (300 Hz refresh), USB load |
-| duration | ≥ 1 h per cell (≈ 3 iterations); the bar-pattern cells ≥ 3 h (≈ 40 baseline stall cycles) | zero clusters in 1 h ⇒ 95 % upper bound ≈ 3 clusters/h; the long cells are the "still clean after N× the old period" evidence |
-| card | current card (baseline, never reformatted) first; candidates later via `sd_stall_test.py` screens | keep the card fixed while the firmware envelope is measured |
+| # | protocol (repo) | what | why it is the stress | duration |
+|---|---|---|---|---|
+| S1 | `protocols/soak_mode3_stress.yaml` | **8 MB sine (2000 × 4 KB frames, GS16) alternating with the 813 KB bar**, Mode 3, simulator at **286 Hz** with 90° jumps, gain 18 on the sine (one revolution sweeps the whole file; a jump = 2 MB seek) | longest FAT chain (16 sectors), widest seeks, highest read rate, the bar keeps continuity with the file that stalled | overnight (≥ 6 h ≈ 17 iterations ≈ 6 M commands ≈ 100× the old stall period) |
+| S2 | same, simulator at **200 Hz** | the course/lab rate on the same files | separates "286 Hz saturates the 300 Hz refresh" (expected: some `req_age` > 5 ms, no SD stall) from SD effects | one evening (≥ 3 h) |
+| C1 | `protocols/soak_mode2_open_loop.yaml` | Mode 2, controller-timed **200 fps**, same two files, no host stepping | the sequential-read control: no seeks at all. H-FAT ⇒ clean at any size; a per-read counter (H-count) ⇒ stalls recur at the same read spacing | 1 h (≈ 3 iterations) |
 
-**Predictions under H-FAT (fast path):** no stall in any cell; per-read cost 0.62 ms sequential / 1.2–1.5 ms random
-for every size (the 8 MB sine included); `req_age_us` max < 5 ms at 100–200 Hz, some frames over 5 ms at 286 Hz
-(tick coalescing, not SD); Mode 2 `superseded` ≈ 0. **Fail signatures to watch:** any `sd_slow` in the 8 MB or
-GS2 cells (a data-region disturb with size/geometry dependence), phase `body` with error bits (driver), `unknown`
-trials (coverage — drain budget at 286 Hz).
+Dropped from the earlier grid (implied by S1/S2 under H-FAT, or low information): 100 Hz Mode 3 (slower than S2),
+looming/GS2 cells (a smaller read is not a harder case; the GS2 bar generated by `make-stress-patterns.js` stays
+available as a 1 KB-read probe if S1 shows a size dependence), sequential Mode-3 sweeps (C1 covers sequential reads).
 
-**Order:** bar 200 f, Mode 3, 200 Hz, 3 h (continuation of today's evidence) → 8 MB sine Mode 3 200 Hz 1 h →
-Mode 2 controls (bar 100 fps, sine 100 fps) 1 h each → 286 Hz Mode 3 bar 1 h → 100 Hz Mode 3 bar 1 h (course
-rate) → GS2 + looming 1 h each. Roughly one bench day. Report per cell: the `telemetry-report.py` tables +
-`trial_quality` counts, into `sd-read-jitter-2026-09-13.md` §7.
+**Predictions.** H-FAT / fast path: **zero `sd_slow` in S1, S2, C1**; per-read 0.62 ms sequential, 1.2–1.5 ms random,
+for the 8 MB file too; `req_age_us` max < 5 ms at 200 Hz, some frames 5–10 ms at 286 Hz (refresh-tick coalescing —
+a controller-throughput finding, not an SD one); Mode 2 `superseded` ≈ 0. **Fail signatures:** any `sd_slow` in the
+8 MB cells with phase `body` (a data-region disturb that scales with file span — would re-open the card question);
+`sd_layout` bit0 = 0 for either file (fragmented upload — re-upload before drawing conclusions); `unknown` trials
+(drain coverage at 286 Hz — raise the drain budget, not the verdict).
 
-Things the campaign will need that do not exist yet: the 2,000-frame sine and GS2 200-frame patterns on the card
-(upload via the Studio, contiguous — check `sd_layout` bit0), a Mode-2 soak protocol (trialParams mode 2 with
-`frame_rate`, no FicTrac plugin), and the frame-count-from-0x88 fix (#201) so the `__framesRepatch` hook is not
-needed for new patterns.
+**Prerequisites (all in the repo now):** the two patterns from `pixi run node scripts/make-stress-patterns.js`
+(`soak-patterns/sine_2000f_gs16.pat` 8.1 MB, `bar_200f_gs2.pat` 213 KB; upload through the Studio Console so each
+is written in one pass), the Studio soak driver's open-loop mode (v0.77, protocols without a FicTrac plugin skip the
+simulator-frames gate), the Studio's frame-count resolution from the uploaded bytes (no `__framesRepatch` needed when
+the upload happens in the same Studio session; otherwise #201's 0x88 frame count). Order: S1 overnight first — if it
+is clean, S2 and C1 are confirmation; if it is not, the `sd_slow` phase byte and the file it lands on decide what
+comes next.

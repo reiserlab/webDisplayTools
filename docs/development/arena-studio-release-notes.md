@@ -26,6 +26,11 @@ history lives here. Newest first. (Per-session engineering detail stays in
 - Bench A/B helper `Studio.setSdDiag(flags)` (firmware with `SET_SD_DIAG` 0xCE): forces the legacy FAT-chain
   seek and/or disables the same-index read skip per iteration for the causal test of the card stalls
   (`docs/development/sd-stall-causal-test-plan-2026-09-13.md`); the arm is recorded in `run_metadata.sd_card.sd_diag`.
+- **Open-loop soak.** The soak driver accepts protocols without a FicTrac plugin (e.g. the Mode-2
+  SD control `protocols/soak_mode2_open_loop.yaml`): the bridge is still the logger, but the
+  "simulator frames arriving" gate and the 0x70 exposure test are skipped. New campaign protocols
+  `soak_mode3_stress.yaml` (8 MB sine + 813 KB bar at 286 Hz) and the generator
+  `scripts/make-stress-patterns.js`.
 
 ## v0.76 (2026-09-11) · Controller-fault detection, post-mortem probes, soak driver (fw #50)
 

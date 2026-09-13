@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.77 | 2026-09-13 12:32 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.77 | 2026-09-13 13:58 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -8189,9 +8189,13 @@ Studio.startSoak = async function (cfg) {
         return;
     }
     // Input freshness: without simulator/FicTrac frames a Mode-3 soak drives nothing.
+    // An OPEN-LOOP soak (no fictrac plugin in the protocol — e.g. the Mode-2 SD
+    // control, protocols/soak_mode2_open_loop.yaml) needs the bridge only as the
+    // run logger: skip the frames gate and the applied-0x70 exposure test.
+    const closedLoop = fictracPluginNames(doc.experiment).length > 0;
     let rate = bridge.stats ? bridge.stats.rateHz : 0;
-    if (!(rate > 0)) { await sleepMs(1500); rate = bridge.stats ? bridge.stats.rateHz : 0; }
-    if (!(rate > 0)) { Studio.showBanner('Soak refused: no FicTrac frames arriving at the bridge — start `pixi run sim -- --count 0 --rate 100`.'); return; }
+    if (closedLoop && !(rate > 0)) { await sleepMs(1500); rate = bridge.stats ? bridge.stats.rateHz : 0; }
+    if (closedLoop && !(rate > 0)) { Studio.showBanner('Soak refused: no FicTrac frames arriving at the bridge — start `pixi run sim -- --count 0 --rate 100`.'); return; }
     const s = Studio.soak = Object.assign({}, SOAK_DEFAULTS, cfg || {}, {
         iteration: 0, faults: 0, resets: 0, stop: false, stopReason: null, startedMs: Date.now(),
         untilMs: 0
@@ -8202,7 +8206,7 @@ Studio.startSoak = async function (cfg) {
     const logSoak = (o) => { if (bridge.logging) bridge.log(Object.assign({ event: 'soak' }, o)); };
     const desc = (s.iterations ? s.iterations + ' iterations' : 'until stopped') + (s.hours ? ', ≤ ' + s.hours + ' h' : '') +
         ', gap ' + s.gapS + ' s, first fault: ' + s.firstFault + ', then: ' + s.policy + ' (max ' + s.maxResets + ' resets)';
-    logSoak({ phase: 'start', protocol: doc.filename, sha256: doc.sha256, config: { iterations: s.iterations, hours: s.hours, gap_s: s.gapS, first_fault: s.firstFault, policy: s.policy, max_resets: s.maxResets }, sim_rate_hz: rate });
+    logSoak({ phase: 'start', protocol: doc.filename, sha256: doc.sha256, config: { iterations: s.iterations, hours: s.hours, gap_s: s.gapS, first_fault: s.firstFault, policy: s.policy, max_resets: s.maxResets }, sim_rate_hz: rate, closed_loop: closedLoop });
     Studio.rawLog('soak started — ' + desc, 'info');
     Studio.showBanner('Soak running — ' + desc + '. File ▾ → Soak… to stop.');
     (async () => {
@@ -8227,7 +8231,9 @@ Studio.startSoak = async function (cfg) {
                 // 'unexercised', not 'completed' — it must not count as clean soak time.
                 const applied = (bridge.stats ? bridge.stats.applied : 0) - applied0;
                 const durS = (Date.now() - t0) / 1000;
-                const exercised = applied >= Math.min(1000, 5 * durS); // ≥ 5 Hz average, or 1000 total
+                // Open loop: the controller steps the pattern itself (no 0x70s) — exposure is
+                // in the telemetry FRAME rows, judged by telemetry-report.py, not here.
+                const exercised = !closedLoop || applied >= Math.min(1000, 5 * durS); // ≥ 5 Hz average, or 1000 total
                 let outcome = !res ? 'not-started' : res.fault ? 'fault' : res.aborted ? 'aborted' : exercised ? 'completed' : 'unexercised';
                 logSoak({
                     phase: 'iteration-end', iteration: s.iteration,
@@ -8261,6 +8267,7 @@ Studio.startSoak = async function (cfg) {
                     for (let i = 0; i < 40 && !bridge.connected; i++) await sleepMs(50);
                     await sleepMs(1200); // one rate-timer tick so rateHz is fresh
                 }
+                if (!closedLoop) { if (!bridge.connected) { reason = 'bridge-lost'; break; } continue; }
                 let r2 = bridge.stats ? bridge.stats.rateHz : 0;
                 let waited = 0;
                 while (!(r2 > 0) && !s.stop && waited < 600) {
