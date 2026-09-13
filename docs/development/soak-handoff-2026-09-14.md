@@ -1,5 +1,7 @@
 # Overnight soak hand-off — consolidated Mode-3 build (2026-09-14)
 
+Lab morning on a Windows PC, step by step, no Claude: `lab-test-day-windows-2026-09-14.md`.
+
 One page. Everything built since Friday 2026-09-11 is under test at once: controller health (0xCA/0xCB), the
 telemetry ring, the hardware watchdog, the free-running refresh timer (the fw #50 "ISR guard"), and the SD fast
 path. If the overnight run is clean, these are the branches to merge.

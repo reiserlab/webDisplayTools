@@ -12,7 +12,7 @@ numbers given); this is the narrative and the map.
 | B | **display freezes of 30–90 ms** every ~24.5k frame reads of a large pattern (fw #54) | firmware FAT access: SdFat re-walked the file's cluster chain on backward seeks and looked up the next cluster inside every read that crossed a 4 KB cluster boundary; those FAT-sector reads hammered one physical block of the card until its read-disturb maintenance paused the card | **contiguous O(1) seeks** (`FsFile` + `contiguousRange()`): the FAT is read once at pattern open and never during a trial | 4-arm causal test 2026-09-13: FAT touched → stalls at the old spacing; FAT untouched, same read count → 0; production: 0 in 482k + 72k commands + 1 h at 286 Hz |
 
 **Candidate build:** firmware `feat/sd-fastpath-2x10` @ `75405ee` (label `… freerun sdfast`, 0xCB flags `0x7C`);
-Studio v0.77 (PRs #198 + #202). **Run sheet for the bench:** `soak-handoff-2026-09-14.md`.
+Studio v0.77 (PRs #198 + #202). **Run sheet for the bench:** `soak-handoff-2026-09-14.md`; **lab test day on Windows (no Claude):** `lab-test-day-windows-2026-09-14.md`; **what the overnight tests:** `overnight-soak-test-plan-2026-09-13.md`.
 
 ---
 
