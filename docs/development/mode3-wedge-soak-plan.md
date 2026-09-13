@@ -516,6 +516,11 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   130,758 reads, 0 reads > 10 ms (worst 1.8 ms), random-step read p50 1.39 ms — the same as the 813 KB bar —
   req_age p50 1.67 / max 2.94 ms, contiguous, usable.** First evidence that the fast path has no size dependence
   (2000-entry chain, 2 MB seeks). Segment 2 = bar at 286 Hz.
+- **2026-09-13 17:27 ET — segments 1–7 (286 Hz, sine/bar alternating) all clean:** ~171.5k commands each, 0 reads
+  > 10 ms, worst 1.8 ms, random read p50 1.39 (sine) / 1.46 (bar) ms, req_age max 2.9–3.0 ms, 0 reboots.
+- **2026-09-13 17:35 ET — hand-off paths decided (Michael):** firmware stays on `feat/sd-fastpath-2x10` as the merge
+  candidate — PUSHED, PR reiserlab/LED-Display_G6_Firmware_Arena#55 against `arena-2x10-local`; Studio #198 + #202
+  go to `main` tomorrow morning without a separate review once the night is clean (revert if needed).
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 

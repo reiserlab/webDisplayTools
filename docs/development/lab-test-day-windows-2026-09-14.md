@@ -6,11 +6,14 @@ what changed and why: `mode3-reliability-handoff-2026-09-14.md`.
 
 ## 0. Before you start (Michael)
 
-- [ ] Firmware branch `feat/sd-fastpath-2x10` pushed to GitHub (it is still local on Michael's machine) — the lab
-      builds the SAME identity from it (`e59767e5` is compiled in from git).
+- [x] Firmware branch `feat/sd-fastpath-2x10` pushed (17:35 ET) — merge-candidate PR
+      [reiserlab/LED-Display_G6_Firmware_Arena#55](https://github.com/reiserlab/LED-Display_G6_Firmware_Arena/pull/55);
+      the lab builds the SAME identity from it (`e59767e5` is compiled in from git).
 - [ ] The CSHL 2×10 controller + its bench card (patterns 36 = bar, 46 = sine already on it) travel to the lab PC,
       or plan 10 extra minutes to upload the two patterns (step 3).
 - [ ] Overnight results from the Mac pasted into §6 of the hand-off document (the reference numbers for §5 below).
+- [ ] Studio: PRs #198 + #202 merged to `main` first thing in the morning if the night is clean (Michael 17:30 ET:
+      no separate review; the lab tests main; revert if anything is wrong). Until then the lab can serve the branch.
 
 ## 1. Install (once, ~15 min)
 

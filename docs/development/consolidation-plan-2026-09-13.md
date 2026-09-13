@@ -32,10 +32,12 @@ review report; (c) **one detailed hand-off document** explaining all the changes
 - **Keep `SET_SD_DIAG` 0xCE in production?** Recommend **keep** (gated on flag bit 6, off at boot, restored by the
   harness) but add a Studio banner when the readback is non-zero at connect (S-1 below). Alternative: compile it out
   (`fw_sd_diag = false`) for the release build — loses the lab's ability to reproduce the stall on demand.
-- **Merge target for firmware:** PR against `arena-2x10-local` now (fast-forward, what the CSHL controllers run);
-  port to `main` (per-board `-DARENA_HW_*` after #48) as a follow-up PR that supersedes #53. Needs your go to push.
-- **Web:** merge #198 then #202 as they are (stack), or squash into one PR? Recommend as they are — the commit history
-  is the review trail; release notes v0.76/v0.77 are the reading guide.
+- **Merge target for firmware — DECIDED (Michael 17:30 ET):** the branch IS the merge candidate; pushed, PR #55
+  against `arena-2x10-local` (fast-forward); the lab flashes from the branch; merge after the lab day; port to
+  `main` (per-board `-DARENA_HW_*` after #48) as a follow-up PR that supersedes #53.
+- **Web — DECIDED (Michael 17:30 ET):** merge #198 then #202 to `main` as they are, without a separate review, first
+  thing tomorrow morning after a clean overnight (the v0.78 export-ordering code's first bench exercise is the
+  night); the lab tests from main; revert is one command if anything is wrong.
 
 ## 4. Small changes proposed (only these unless the reviews find more)
 
