@@ -230,6 +230,8 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
 
 - **2026-09-12 23:55 ET — host bug after the self-reset (fixed live, proper fix tomorrow):** the iteration after the watchdog recovery faulted 63 s in with three REJECTS (idx 161/162 sent to the 20-frame grating): the bridge `config` carried `frames: 200` for the grating because the Studio rebuilds `Studio.patternSet` from the SD listing on every connect, which erased the in-page `preview.frames` patch for the card-only patterns (`patternFramesByName` then fell back). The post-mortem correctly saw a healthy controller (`transient`) and the soak ended `fault-transient`. Live fix: a re-patch hook on the session state event (+2 s interval); soak restarted 23:56; first grating trial confirmed `frames: 20`, 0 rejects. Proper fix: resolve the frame count from the controller (GET_PATTERN_INFO 0x88) at trial start when the pattern set lacks it, and do not end a soak on a `transient` outcome that immediately follows a self-reset iteration. Tracked in the close-out issue #201.
 
+- **2026-09-13 00:05 ET — standing order (Michael):** soak continues to ~08:00 on `4860fef8`. On the next near-identical wedge (disarm breadcrumb / PC in `IntervalTimer::end()`), flash the **free-running refresh timer** variant (being built: 0x70 no longer disarms/re-arms the PIT; arm once on SHOW_FRAME entry; 0xCB flags bit 4 marks it) and continue the soak on it as the A/B. Each further wedge is a PC data point.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
