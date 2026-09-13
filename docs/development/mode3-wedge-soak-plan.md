@@ -244,6 +244,16 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   EXC_RETURN → STATE kind 8), to be diff-reviewed before it is the build that the standing order flashes. Soak on
   `4860fef8` at 200 Hz + jumps continues (iteration 3, trial 21 at 00:47; no wedge since 23:56).
 
+- **2026-09-13 01:25 — fix build candidate `394dee45`** (`eca07f6` free-running refresh + one amended follow-up):
+  `disarmRefreshTimer()` masks only `IRQ_PIT` at the NVIC around `IntervalTimer::end()` (watchdog IRQ stays
+  live); full and lite ISR hooks are atomic with save/restore of the enclosing id; PIT vector trampoline (ISR
+  id 7) re-installed after every `begin()`; watchdog ISR captures stacked xPSR + `EXC_RETURN` + prior `isr_last`
+  into a re-laid-out 3-line record (context line sealed and flushed first); boot after a watchdog reset emits ring
+  STATE kind 8 `wdog_context` / 9 `prev_isr_count`; kind 10 `timer_fail`; old record location invalidated. Two
+  Codex diff reviews reconciled (D1–D12, E1–E13), third running on the round-3 delta. Host decode pushed
+  (`69c14e6`, `d234f6e`). Flash gate: Codex round 3 reconciled → flash at a wedge (standing order) or at an
+  iteration boundary if Michael prefers → starve test must yield a decodable kind-8 record → soak restarts.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
