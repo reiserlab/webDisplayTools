@@ -4,6 +4,50 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.76 (2026-09-11) · Controller-fault detection, post-mortem probes, soak driver (fw #50)
+
+- **2026-09-12 review fixes (Codex gpt-6-astra, see `.codex-review/report-20260912-status.md`):**
+  a faulted run's log is committed only after the post-mortem (probes + controller ring dump) has
+  finished; "recovered" now requires the same controller (MAC) and every required probe answering
+  fast; the controller ring drain acknowledges records only once the bridge stored them; the ring is
+  enabled only when the firmware declares it (no blind 0xA8 on older builds) and has an on/off
+  switch in Console → Debug ▾ for a telemetry-off control arm; replay and dashboard readers ignore
+  the new `cc`/`cf`/`cs` rows; soak iterations that streamed almost nothing are marked
+  `unexercised`; the wedge analyzer reports runner-declared faults (`fault-declared`).
+
+- **A frozen controller now stops the run instead of finishing it.** During Mode-3 closed loop the
+  Studio used to ignore every frame-command timeout and let a run "complete" (and auto-commit) with
+  the arena dead. Now 3 failed frame commands out of the last 10 trip a fault: closed loop stops, the
+  run aborts with outcome **CONTROLLER_FAULT** (never "aborted by user"), and the run log is still
+  committed — the record of a run the controller killed is evidence. A timed-out trial command is
+  labelled the same way.
+- **Post-mortem probes after a fault.** The Studio waits a moment, confirms the controller is really
+  unresponsive, then for about a minute asks it a fixed set of questions (controller info, frame
+  counters, an SD read, the new health counters) with long timeouts, so the run log records how
+  slow it actually is — not just "timed out". Everything lands in the run log as `probe` rows.
+- **Soak (repeat protocol)…** (File ▾, advanced only, or `?soak=1`): repeats the open protocol
+  unattended — N times or for H hours with a gap — to reproduce the rare freeze overnight with the
+  FicTrac simulator. Refuses to start unless the bridge confirms `behavior_v2` logging and frames
+  are arriving. On a fault: first fault halts (controller left as-is for inspection) by default;
+  later faults can reset the controller, reconnect without a click, verify it is the same
+  controller, and continue. Soak runs are never auto-committed; scan them with
+  `scripts/wedge-scan.py`. Ships with `protocols/soak_mode3_closed_loop.yaml`.
+- **Console → Debug ▾ → Controller health**: reads the controller's loop timing, SD-read stats,
+  counters and what it was doing before its last restart (firmware with GET_HEALTH, capability
+  bit 7). The runner's own commands (trial start, STOP) now appear in the run log too.
+- **Controller telemetry ring (first cut).** With firmware that has the ring, the Studio drains
+  the controller's own event log ten times a second while connected and writes it into the run
+  log as compact `cc` (command received + status), `cf` (frame displayed, SD load time, SPI time)
+  and `cs` (state changes, error glyphs, slow SD reads, boots) rows next to the FicTrac frames.
+  The ring survives a controller reset, so after a fault the post-mortem pulls the controller's
+  last seconds as a crash dump. `scripts/wedge-scan.py` reports the counts, worst SD read, state
+  events and, with `--verbose`, the records before a wedge. Needs bridge ≥ 3.1.
+- **Firmware build identity in every run log.** On connect (and after any automatic reconnect)
+  the Studio reads the controller's build — git commit, branch, build date, arena size — and
+  records it as `firmware` in the run details and in `run_metadata` of every committed log, so a
+  problem can be pinned to a build. Needs firmware with GET_FIRMWARE_VERSION (ships with the
+  health capability); older builds still show the legacy "v1".
+
 ## v0.74 (2026-09-07) · Console "Analog In" panel — live readout + loopback self-test
 
 - **New Console tool: Analog In.** A left-rail button opens a live readout of both

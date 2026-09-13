@@ -26,6 +26,25 @@ const fixtures = {
     )
 };
 
+// Controller telemetry rows ("cc"/"cf"/"cs") interleaved with behavior rows are
+// other streams in the same file — never FicTrac frames (review finding).
+{
+    const text = [
+        JSON.stringify({
+            type: 'frame_schema',
+            level: 'behavior_v1',
+            cols: ['ms', 'fc', 'idx', 'ft', 'x', 'y', 'hd']
+        }),
+        JSON.stringify([0, 100, 5, 0.0, 0.0, 0.0, 0.0]),
+        JSON.stringify(['cc', 9, 5000, 1, 112, 0, '03704e00']),
+        JSON.stringify(['cf', 9, 5100, 2, 78, 36, 129000, 812]),
+        JSON.stringify([8, 101, 5, 8.272, 0.01, 0.0, 0.02])
+    ].join('\n');
+    const r = A.parseJsonl(text, 'ctl.jsonl', '/x/ctl.jsonl', {});
+    assert.strictEqual(r.frames.length, 2, 'tagged telemetry rows are not frames');
+    assert.strictEqual(r.frames[1].fc, 101);
+}
+
 function load(file) {
     const fullPath = path.join(bench, file);
     return A.parseJsonl(fs.readFileSync(fullPath, 'utf8'), file, fullPath, {

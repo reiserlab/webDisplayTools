@@ -480,7 +480,195 @@ function newSession(m) {
         check('runConditionName reflects runner', s.runConditionName, 'cond_x');
     }
 
+    // ── fw #50: runner sends are logged through the session; bridge fault → runner.fault
+    console.log('\n=== runner link facade routes through session.send ===');
+    {
+        const m = makeMocks();
+        const s = newSession(m);
+        await s.connect();
+        checkBool('runner got a facade, not the bare link', s._runner.link !== s._link);
+        checkBool('facade reports link connectivity', s._runner.link.connected === true);
+        const before = s._link.sent.length;
+        await s._runner.link.send(new Uint8Array([1, 0x30]), { timeoutMs: 7 });
+        check('runner send reached the link with opts', s._link.sent[before], [
+            [1, 0x30],
+            { timeoutMs: 7 }
+        ]);
+        s.setOutputInhibited('replay');
+        let blocked = null;
+        try {
+            s._runner.link.send(new Uint8Array([1, 0x30]));
+        } catch (e) {
+            blocked = e.code || e.message;
+        }
+        checkBool('runner send obeys the output interlock', blocked !== null, String(blocked));
+        s.setOutputInhibited(null);
+        await s.disconnect();
+    }
+
+    console.log('\n=== bridge fault → runner.fault + session fault event ===');
+    {
+        const m = makeMocks();
+        class MockBridge {
+            constructor(o) {
+                this.o = o;
+                this._h = {};
+                this.logging = false;
+                this.apply = false;
+            }
+            on(ev, fn) {
+                (this._h[ev] = this._h[ev] || []).push(fn);
+                return () => {};
+            }
+            emit(ev, ...a) {
+                (this._h[ev] || []).forEach((fn) => fn(...a));
+            }
+            setApply() {}
+            log() {}
+        }
+        const faults = [];
+        m.RunnerLib.ArenaRunner.prototype.fault = function (reason, detail) {
+            m.calls.push('runner.fault');
+            this.lastFault = { reason, detail };
+        };
+        const s = new ArenaSession({
+            wire: { mark: 1 },
+            LinkClass: m.MockLink,
+            RunnerLib: m.RunnerLib,
+            BridgeClientLib: MockBridge
+        });
+        let states = 0;
+        s.on('fault', (f) => faults.push(f));
+        s.on('state', () => states++);
+        const f = { kind: 'controller_unresponsive', failures: 3, window: 10 };
+        s.bridge.emit('fault', f);
+        checkBool('runner.fault called', m.calls.includes('runner.fault'));
+        check('runner got reason + detail', s._runner.lastFault, {
+            reason: 'controller_unresponsive',
+            detail: f
+        });
+        check("session re-emits 'fault'", faults, [f]);
+        checkBool("'state' emitted after fault", states >= 1);
+        checkBool('runner.abort NOT used when fault() exists', !m.calls.includes('runner.abort'));
+        delete m.RunnerLib.ArenaRunner.prototype.fault;
+    }
+
+    console.log('\n=== bridge applyFrame: a controller REJECT counts as an apply failure ===');
+    {
+        const m = makeMocks();
+        let status = 0;
+        m.MockLink.prototype.send = function (bytes, opts) {
+            this.sent.push([Array.from(bytes), opts]);
+            return Promise.resolve(new Uint8Array([2, status, bytes[1] || 0]));
+        };
+        class MockBridge {
+            constructor(o) {
+                this.applyFrame = o.applyFrame;
+                this.logging = false;
+            }
+            on() {
+                return () => {};
+            }
+            setApply() {}
+        }
+        const wire = {
+            encodeSetFramePosition: (i) => new Uint8Array([3, 0x70, i & 0xff, i >> 8]),
+            decodeResponse: (f) => ({ status: f[1], ok: f[1] === 0, echoCmd: f[2] })
+        };
+        const s = new ArenaSession({
+            wire,
+            LinkClass: m.MockLink,
+            RunnerLib: m.RunnerLib,
+            BridgeClientLib: MockBridge
+        });
+        await s.connect();
+        let okResp = null;
+        await s.bridge.applyFrame(7).then((r) => (okResp = r));
+        checkBool('status 0 → applyFrame resolves', okResp instanceof Uint8Array);
+        status = 1;
+        let rejected = null;
+        await s.bridge.applyFrame(8).catch((e) => (rejected = e));
+        checkBool(
+            'status 1 → applyFrame REJECTS',
+            rejected instanceof Error,
+            rejected && rejected.message
+        );
+        check('reject carries the status', rejected && rejected.status, 1);
+        checkBool(
+            'reject message names the command',
+            /SET_FRAME_POSITION/.test(rejected && rejected.message)
+        );
+    }
+
+    console.log('\n=== runstatus sanitizer keeps fault detail + terminal summary ===');
+    {
+        const m = makeMocks();
+        const s = newSession(m);
+        const out = s._sanitizeRunStatus({
+            phase: 'aborted',
+            summary: {
+                completed: false,
+                aborted: true,
+                steps: 3,
+                errors: 1,
+                skipped: 0,
+                fault: 'controller_unresponsive',
+                stopAcked: false,
+                extra: 'dropped'
+            }
+        });
+        check('summary passthrough (allowlist)', out.summary, {
+            completed: false,
+            aborted: true,
+            steps: 3,
+            errors: 1,
+            skipped: 0,
+            fault: 'controller_unresponsive',
+            stopAcked: false
+        });
+        const out2 = s._sanitizeRunStatus({ phase: 'fault', reason: 'x', detail: { failures: 3 } });
+        check('fault detail passthrough', [out2.reason, out2.detail], ['x', { failures: 3 }]);
+    }
+
     // ── summary ─────────────────────────────────────────────────────────────────
+
+    console.log('\n=== send({silent:true}) skips the bridge command log ===');
+    {
+        const logged = [];
+        const bridge = {
+            logging: true,
+            connected: true,
+            log: (o) => logged.push(o),
+            on: () => () => {}
+        };
+        const link = {
+            connected: true,
+            send: async () => Uint8Array.from([3, 0x00, 0xa9, 0]),
+            setCallbacks() {},
+            on() {
+                return () => {};
+            }
+        };
+        const m = makeMocks();
+        const sess = new ArenaSession({
+            wire: { mark: 1 },
+            LinkClass: m.MockLink,
+            RunnerLib: m.RunnerLib
+        });
+        sess._link = link;
+        sess._bridge = bridge;
+        await sess.send(Uint8Array.from([8, 0xa9, 0xff, 0xff, 0xff, 0xff, 0xb2, 0, 0]), {
+            silent: true
+        });
+        await sess.send(Uint8Array.from([1, 0xc2]));
+        await new Promise((r) => setTimeout(r, 5));
+        check('silent send not logged, normal send logged', logged.length, 1);
+        check(
+            'logged one is the 0xC2',
+            logged[0] && logged[0].head && logged[0].head.slice(0, 5),
+            '01 c2'
+        );
+    }
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);

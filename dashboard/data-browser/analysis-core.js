@@ -744,6 +744,9 @@
                 continue;
             }
             if (Array.isArray(rec)) {
+                // String-tagged rows ("cc"/"cf"/"cs" controller telemetry) are other
+                // streams in the same file, not FicTrac samples.
+                if (typeof rec[0] === 'string') continue;
                 const frame = parseFrameArray(rec, schema, index + 1);
                 if (frame) frames.push(frame);
                 continue;

@@ -42,7 +42,14 @@
     // Page-wide singleton (one connection per page). Held in closure scope.
     let _shared = null;
 
-    const EVENTS = ['log', 'error', 'disconnect', 'state', 'runstatus'];
+    // Monotonic ms clock for durations (performance.now in browsers + Node ≥16;
+    // Date.now fallback). Wall-clock `t` stamps stay Date.now (epoch, for t0 offsets).
+    const monoNow =
+        typeof performance !== 'undefined' && typeof performance.now === 'function'
+            ? () => performance.now()
+            : () => Date.now();
+
+    const EVENTS = ['log', 'error', 'disconnect', 'state', 'runstatus', 'fault'];
 
     class ArenaSession {
         /**
@@ -104,10 +111,56 @@
             // .bridge. Null when the module isn't loaded — the runner tolerates it.
             this._bridge = BridgeClientLib
                 ? new BridgeClientLib({
-                      applyFrame: (i) => this.send(this._wire.encodeSetFramePosition(i))
+                      // A controller REJECT (status ≠ 0 — "no pattern selected",
+                      // "index out of range") is an apply failure too, so the
+                      // bridge client's fault detector counts it. Bench
+                      // 2026-09-12: 21k rejects streamed for minutes without
+                      // tripping anything because only throws were counted.
+                      applyFrame: (i) =>
+                          this.send(this._wire.encodeSetFramePosition(i)).then((resp) => {
+                              const d = this._wire.decodeResponse
+                                  ? this._wire.decodeResponse(resp)
+                                  : null;
+                              if (d && !d.ok) {
+                                  const e = new Error(
+                                      'controller rejected SET_FRAME_POSITION (status ' +
+                                          d.status +
+                                          ')'
+                                  );
+                                  e.status = d.status;
+                                  throw e;
+                              }
+                              return resp;
+                          })
                   })
                 : null;
-            this._runner = new RunnerLib.ArenaRunner(this._link, this._wire, this._bridge);
+            // The runner sends through THIS session, not the bare link, so every
+            // wire command it issues (trialParams, STOP, AO/DO…) lands in the run
+            // log as an arena_command row next to the 0x70 stream — the fw #50
+            // post-mortem needs the 0x08 timeout in the same record — and obeys
+            // the output interlock like every other sender.
+            const self = this;
+            const runnerLink = {
+                send: (bytes, opts) => self.send(bytes, opts),
+                get connected() {
+                    return self._link.connected;
+                }
+            };
+            this._runner = new RunnerLib.ArenaRunner(runnerLink, this._wire, this._bridge);
+            // Closed-loop fault (fw #50): the bridge client latched
+            // controller_unresponsive → abort the run WITHOUT a STOP through the
+            // wedged link (runner.fault: reason + 'fault' status event, then the
+            // abort unwind; the sequence's finally still tries one STOP and
+            // records stopAcked) and tell the page.
+            if (this._bridge && typeof this._bridge.on === 'function') {
+                this._bridge.on('fault', (f) => {
+                    const kind = (f && f.kind) || 'controller_unresponsive';
+                    if (typeof this._runner.fault === 'function') this._runner.fault(kind, f);
+                    else this._abortRunner();
+                    this._emit('fault', f);
+                    this._emit('state');
+                });
+            }
         }
 
         /** Web Serial available? (Chromium-desktop only.) Gate every connect UI on this. */
@@ -238,6 +291,26 @@
         }
 
         /**
+         * Re-open the controller from the already-granted ports, no user gesture
+         * (see ArenaLink.reconnect — fw #50 recovery / soak continuation). Emits
+         * 'state' on success; rejects with the link's reason (ambiguous / timeout).
+         */
+        async reconnect(opts) {
+            this._assertOutputAllowed('reconnect');
+            if (typeof this._link.reconnect !== 'function') {
+                throw new Error('ArenaLink.reconnect unavailable (stale arena-link.js?)');
+            }
+            const port = await this._link.reconnect(opts);
+            this._emit('state');
+            return port;
+        }
+
+        /** Discard stale RX bytes on the link (quiet-period resync). 0 when unsupported. */
+        flushRx() {
+            return typeof this._link.flushRx === 'function' ? this._link.flushRx() : 0;
+        }
+
+        /**
          * User-initiated teardown: stop any active run (best-effort STOP), then
          * close the port. Emits 'disconnect' with involuntary:false. Always safe.
          */
@@ -272,12 +345,15 @@
          * ArenaWireG6.decodeResponse; do NOT slice). Queues FIFO behind any
          * in-flight send.
          * @param {Uint8Array|number[]} bytes
-         * @param {object} [opts] {expectedCmd?, timeoutMs?} — pass expectedCmd:0x32 for STREAM_FRAME
+         * @param {object} [opts] {expectedCmd?, timeoutMs?, silent?} — pass expectedCmd:0x32 for
+         *        STREAM_FRAME; `silent: true` skips the bridge command log (for meta traffic
+         *        such as the telemetry drain's 0xA9 requests, whose payload IS the log).
          * @returns {Promise<Uint8Array>}
          */
         send(bytes, opts) {
             this._assertOutputAllowed('send');
             const p = this._link.send(bytes, opts);
+            if (opts && opts.silent) return p;
             // Bridge-as-single-logger (default-on): when logging is active, post every
             // arena command to the bridge's unified JSONL — timestamped on the browser
             // side (t) and again by the bridge on receipt (rx_ms), so arena events and
@@ -285,9 +361,10 @@
             // the caller still sees the original resolution/rejection.
             if (this._bridge && this._bridge.logging) {
                 const t = typeof Date !== 'undefined' ? Date.now() : 0;
+                const p0 = monoNow();
                 p.then(
-                    (resp) => this._logCommand(bytes, t, resp, null),
-                    (err) => this._logCommand(bytes, t, null, err)
+                    (resp) => this._logCommand(bytes, t, p0, resp, null),
+                    (err) => this._logCommand(bytes, t, p0, null, err)
                 );
             }
             return p;
@@ -308,7 +385,10 @@
         }
 
         // Append one arena_command entry to the bridge log (decodes the reply if any).
-        _logCommand(bytes, t, resp, err) {
+        // `dt` is the HOST-OBSERVED round trip: from the moment this send was
+        // queued (it may wait behind an in-flight command) to the reply/timeout,
+        // on the monotonic clock — not the controller's service time.
+        _logCommand(bytes, t, p0, resp, err) {
             let status = null;
             let echo = null;
             let ok = null;
@@ -325,7 +405,7 @@
             this._bridge.log({
                 event: 'arena_command',
                 t,
-                dt: (typeof Date !== 'undefined' ? Date.now() : 0) - t,
+                dt: Math.round(monoNow() - p0),
                 len: bytes ? bytes.length : 0,
                 head: this._head(bytes),
                 status,
@@ -479,6 +559,25 @@
                 out.ok = s.response.ok;
             }
             if (s.error) out.error = s.error.message || String(s.error);
+            // fault context (fw #50) + the terminal summary (fault / stopAcked /
+            // counts) so the committed log says WHY a run ended, not just that it did.
+            if (s.detail && typeof s.detail === 'object') out.detail = s.detail;
+            if (s.summary && typeof s.summary === 'object') {
+                const sm = {};
+                for (const k of [
+                    'completed',
+                    'aborted',
+                    'steps',
+                    'errors',
+                    'skipped',
+                    'fault',
+                    'faultDetail',
+                    'stopAcked'
+                ]) {
+                    if (s.summary[k] !== undefined) sm[k] = s.summary[k];
+                }
+                out.summary = sm;
+            }
             return out;
         }
     }
