@@ -373,6 +373,13 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   (stalls return at ~24.5k reads) or a build with `contiguousRange()` disabled — the new `sd_slow` phase byte would
   read `seek`.
 
+- **2026-09-13 12:00 ET — offline check of H-FAT on the 200 Hz fix-build block (21 files, 200 bar trials, 1.77 M reads,
+  308 stalls):** a one-sector FAT-cache simulation of SdFat's chain walk (unknown first-cluster offset swept 0–127)
+  puts 42–77 % of stalls on FAT-fetching reads, but only by driving the fetch rate toward 100 %, and it does not
+  reproduce the position dependence (stalls 14–17 % in bins 4–8 vs 9–13 % simulated). Inconclusive — the model may
+  miss SdFat details or the stall may attach to a later command than the fetch. The bench A/B (zero stalls on
+  `3c71953` vs one cluster per ~250 s on `394dee45`, same card, same workload) is the discriminator.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
