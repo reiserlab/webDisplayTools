@@ -88,6 +88,7 @@ Studio v0.77 (PRs #198 + #202). **Run sheet for the bench:** `soak-handoff-2026-
 | Analysis | `scripts/wedge-scan.py`, `scripts/telemetry-report.py` | faults/resets per iteration; SD read cost by step class, stall clusters + phases, request ages, per-trial verdicts (reads Studio and harness logs) |
 | Protocols + patterns | `protocols/soak_mode3_closed_loop.yaml`, `soak_mode3_stress.yaml`, `soak_mode2_open_loop.yaml`, `scripts/make-stress-patterns.js` | the wedge soak; the 8 MB + bar stress; the Mode-2 control; the pattern generator |
 
+Run-log format review (row types, bytes per hour, compaction plan): `runlog-format-review-2026-09-13.md`.
 Run-log contract (unchanged for readers of `behavior_v2`): string-tagged array rows are streams, only `"a"` rows are
 behaviour samples; `cf` rows have 8 or 11 fields; readers go through `js/runlog-format.js`.
 
