@@ -359,6 +359,20 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   stall immunity). `req_age_us` (0x70 dispatch → SPI start) p50 1.77 ms, p99 2.56 ms, max 2.56 ms; superseded 1.2 %
   of frames. No stall yet in 66 s (expected spacing ~250 s). Layout: contiguous, 8 sectors/cluster, both patterns.
 
+- **2026-09-13 11:55 ET — prediction recorded before the iteration completes:** 10 min / 11 trials into the control
+  iteration on `3c71953`, **zero `sd_slow` records** (baseline `394dee45`: a cluster every ~250 s at this rate; with 24 %
+  fewer reads the first cluster was due by ~330 s). Hypothesis H-FAT: the card's read-count hot spot was the **FAT
+  sector(s)**, not the pattern data — on this 4 KB-cluster card the 813 KB pattern's cluster chain (≈ 200 entries ×
+  4 B = 800 B) spans TWO FAT sectors, so every backward seek's chain walk (`FatFile::seekSet` from the first cluster)
+  missed SdFat's one-sector FAT cache and re-read a FAT sector from the card (~12k FAT reads per 24.5k pattern reads);
+  the 81 KB grating's chain (80 B) lives in one FAT sector that stays cached → never a FAT read → never a stall.
+  Explains: per-file, count-based, rate-independent, power-cycle-persistent, position-dependent (seeks to high frames
+  cross the FAT-sector boundary), non-sequential-only. `contiguousRange()` (fix A) removed every FAT read, so if the
+  full iteration and iteration 2 stay at zero stalls, the stall was firmware-induced (a read-disturb hot spot on the
+  FAT's flash block) and fix A is the fix for this workload. Discriminator if wanted: one iteration on `394dee45`
+  (stalls return at ~24.5k reads) or a build with `contiguousRange()` disabled — the new `sd_slow` phase byte would
+  read `seek`.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
