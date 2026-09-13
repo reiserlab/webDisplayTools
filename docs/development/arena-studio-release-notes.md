@@ -11,6 +11,9 @@ history lives here. Newest first. (Per-session engineering detail stays in
   follows the geometry the controller reports at connect (`GET_FIRMWARE_VERSION` rows × cols): on a 2×10
   controller that is the CSHL fly-on-ball rig. Explicit choices are never overridden; the derived rig's I/O
   power-on defaults are applied.
+- **Frame counts come from the card.** After the SD listing the Studio reads every pattern's header
+  (`GET_PATTERN_INFO`), so the closed-loop heading→index modulus is right for patterns whose thumbnail
+  was never rendered (an 8 MB pattern used to fall back to 200 frames and wrap).
 - **Banner when the SD diagnostic switches are on at connect** (`SET_SD_DIAG` readback ≠ 0): the switches persist
   until a controller reboot and silently degrade every trial; the banner names the arm and how to clear it.
 

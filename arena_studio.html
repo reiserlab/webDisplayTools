@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.79 | 2026-09-13 18:56 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.79 | 2026-09-13 19:22 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -7313,7 +7313,30 @@ Studio.onSdListing = function (names) {
     });
     populatePatDropdown(); // empty set clears the dropdown + unlocks cPat
     Studio.updateRunGate(); // the missing-pattern preflight tracks the SD listing
+    fillPatternFramesFromCard(m); // frame counts via GET_PATTERN_INFO (the closed-loop index modulus)
 };
+// Frame counts for every card pattern from GET_PATTERN_INFO 0x88 (a header read, ~ms each),
+// filled right after the listing so `patternFramesByName` — which the closed-loop resolver
+// pushes to the bridge as the heading→index modulus — is correct for patterns whose preview
+// was never rendered (an 8 MB pattern is never fetched for a thumbnail; the bridge then used
+// its default of 200 and wrapped the index — bench 2026-09-13, #201). Sequential, single-flight,
+// abandons on a new listing, a disconnect or a run (a run owns the link).
+let patFramesGen = 0;
+async function fillPatternFramesFromCard(m) {
+    const gen = ++patFramesGen;
+    const W = window.ArenaWireG6;
+    if (!W || !W.encodeGetPatternInfo || !Studio.session || !Studio.session.connected) return;
+    const todo = Object.values(m.patterns).filter((p) => !(p.preview && Number.isFinite(p.preview.frames)));
+    let n = 0;
+    for (const p of todo) {
+        if (gen !== patFramesGen || !Studio.session.connected || Studio.session.running) return;
+        try {
+            const info = W.decodePatternInfo(await Studio.session.send(W.encodeGetPatternInfo(p.index), { timeoutMs: 1500, silent: true }));
+            if (info && info.frameCount > 0) { p.preview = Object.assign(p.preview || {}, { frames: info.frameCount }); n++; }
+        } catch (_) { /* best effort: the preview path can still fill it later */ }
+    }
+    if (n && gen === patFramesGen) (Studio.clog || Studio.rawLog || function () {})('pattern frame counts read from the card for ' + n + ' pattern' + (n === 1 ? '' : 's') + ' (GET_PATTERN_INFO)', 'dim');
+}
 function wirePatPicker() {
     const sel = $('cPatName');
     if (sel) sel.addEventListener('change', () => {
