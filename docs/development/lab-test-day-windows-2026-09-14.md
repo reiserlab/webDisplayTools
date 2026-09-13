@@ -6,9 +6,10 @@ what changed and why: `mode3-reliability-handoff-2026-09-14.md`.
 
 ## 0. Before you start (Michael)
 
-- [x] Firmware branch `feat/sd-fastpath-2x10` pushed (17:35 ET) — merge-candidate PR
-      [reiserlab/LED-Display_G6_Firmware_Arena#55](https://github.com/reiserlab/LED-Display_G6_Firmware_Arena/pull/55);
-      the lab builds the SAME identity from it (`e59767e5` is compiled in from git).
+- [x] Firmware branch **`feat/mode3-reliability`** pushed (18:55 ET) — merge-candidate PR
+      [reiserlab/LED-Display_G6_Firmware_Arena#56](https://github.com/reiserlab/LED-Display_G6_Firmware_Arena/pull/56)
+      against `main` (Frank's per-board scheme + a 2×10 variant); the lab builds the SAME identity from it
+      (`488d5b9` is compiled in from git).
 - [ ] The CSHL 2×10 controller + its bench card (patterns 36 = bar, 46 = sine already on it) travel to the lab PC,
       or plan 10 extra minutes to upload the two patterns (step 3).
 - [ ] Overnight results from the Mac pasted into §6 of the hand-off document (the reference numbers for §5 below).
@@ -21,7 +22,7 @@ what changed and why: `mode3-reliability-handoff-2026-09-14.md`.
 git clone https://github.com/reiserlab/webDisplayTools.git; cd webDisplayTools; git checkout claude/mode3-perf-sd
 pixi install                              # Node + Python + websockets (needs pixi: https://pixi.sh)
 cd ..; git clone https://github.com/reiserlab/LED-Display_G6_Firmware_Arena.git; cd LED-Display_G6_Firmware_Arena
-git checkout feat/sd-fastpath-2x10
+git checkout feat/mode3-reliability
 pip install platformio pyserial          # or the PlatformIO VS Code extension; Teensy Loader comes with PlatformIO
 ```
 Chrome or Edge (Web Serial). Use **PowerShell**, not Git Bash, for anything with times (Git Bash prints UTC labelled ET).
@@ -29,13 +30,14 @@ Chrome or Edge (Web Serial). Use **PowerShell**, not Git Bash, for anything with
 ## 2. Flash and identify (10 min)
 
 ```powershell
-pio run -e teensy41-performance -t upload --upload-port COM5      # find COMx in Device Manager: "USB Serial Device"
+pio run -e teensy41-2-10-performance -t upload --upload-port COM5   # 2×10 variant; find COMx in Device Manager: "USB Serial Device"
 ```
 Windows gotchas (fw PR #49 notes): the **first upload attempt often fails — run it again**; the arena must be powered;
 if the port vanishes, unplug/replug once. Then in Chrome: `pixi run python -m http.server 8092` in the webDisplayTools
 checkout → `http://localhost:8092/arena_studio.html?advanced=1&soak=1` → **Connect** → pick the Teensy port.
-**Look for**, in the Console log: `firmware e59767e5 2x10 2026-09-13 feat/sd-fastpath-2x10 freerun sdfast` and an
-`sd card: … SD8GB … FAT32 4 KiB clusters` line. If the label is not `e59767e5`, stop: wrong build.
+**Look for**, in the Console log: `firmware 488d5b9b 2x10 2026-09-13 feat/mode3-reliability freerun sdfast`, then
+`session rig follows the controller: cshl_g6_2x10_ball (2×10)` (v0.79) and an `sd card: … SD8GB … FAT32 4 KiB
+clusters` line. If the label is not `488d5b9b`, stop: wrong build.
 
 ## 3. Card check (2 min, or 10 with uploads)
 
@@ -62,7 +64,7 @@ Studio: File ▾ → Open → `protocols/soak_mode3_stress.yaml`; rig `cshl_g6_2
 | B | **Injected stall** (checks the flagging path): in the browser console `await Studio.setSdDiag(3)`, run ONE Test run of the stress protocol, then `await Studio.setSdDiag(0)` | during the run: `display gap NN ms (sd_slow, body) in trial …` lines; at the end `⚠ stimulus quality: … flagged`; after `setSdDiag(0)`, Console identity shows `sd diag 0` | at least one trial flagged; the soak did NOT stop; switches back to 0 |
 | C | **Simulator kill:** during a Soak (start a 2-iteration soak), close the sim window for 30 s, restart it | `soak: no FicTrac frames — waiting for the simulator`, then the next iteration starts | soak resumes by itself; no fault counted |
 | D | **Link drop:** during a trial pull the controller's USB cable, wait 5 s, plug it back | `run ended by a link drop … treating as a controller event`; post-mortem lines (`confirm`, `probe`, `reconnect`); the run's outcome `CONTROLLER_FAULT`; the arena goes **dark** on replug and stays dark until the next trial | reconnects without a page reload; next iteration runs |
-| F | **An old course protocol runs unchanged:** sign in to the course repo (Settings), open rig1 `p3-heisenberg-ts-full.yaml`, run it once as a Test run (simulator running) | it runs to the end exactly as in July; banner `… pass`; the run log has `trial_quality` and `run_metadata.firmware` = `e59767e5 …` | completes, all trials pass |
+| F | **An old course protocol runs unchanged:** sign in to the course repo (Settings), open rig1 `p3-heisenberg-ts-full.yaml`, run it once as a Test run (simulator running) | it runs to the end exactly as in July; banner `… pass`; the run log has `trial_quality` and `run_metadata.firmware` = `488d5b9b …` | completes, all trials pass |
 | E | **Panel firmware update still works with the watchdog** (5 min, only if a spare panel/known-good image is at hand): Console → Firmware → program one panel | progress completes; no controller reboot mid-update (the Console would show a disconnect) | update completes |
 
 Never power-cycle the controller after something odd: the evidence is in RAM until the Studio's post-mortem has read it.

@@ -528,6 +528,16 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   "phase body on the 8 MB file" watch item from the campaign plan (a data-region event?). Rate so far: 1 in
   ~2.5 M fast-path reads today; below Michael's 30 ms "detectable" line, above the 10 ms flag line → that trial would
   be *flagged*. Night phase (200 Hz) started 18:16; watching for recurrence and whether it stays on the 8 MB file.
+- **2026-09-13 18:25–18:58 ET — port onto `main` (Michael: build tonight's candidate on Frank's #48).** A Fable
+  sub-agent produced `feat/mode3-reliability` = main + the stack + a 2×10 variant (`ARENA_HW_2_10`, envs
+  `teensy41-2-10[-performance]`), three commits (`6782cda` variant, `165dc8f` stack, `488d5b9` tests+tools); all
+  three arena variants build; `src/` byte-identical to `e59767e` except the variant plumbing; 2×10 `panel_sets`
+  (50 numbers) and tie-high list verified equal to the bench build. Codex pass (`…-port/.codex-review/report-20260913-port.md`):
+  nothing against the plumbing; HIL `SET_SD_DIAG` tests made exFAT-aware; blank-before-`sd.begin()` and the test
+  geometry fixture deferred. **Pushed; PR #56 against `main` = merge candidate; #55 and #53 closed.** Hex
+  `firmware-488d5b9-2-10.hex` (sha `d8b31ca7…`) archived in the scratchpad; flash at the drill. Studio v0.79 (session
+  rig follows the controller's rows × cols — fresh profiles came up `g6_3x10`). Docs: wedge-era notes archived;
+  PRs #198/#202 carry a History-and-tests section; hand-off §6.0 test history.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 

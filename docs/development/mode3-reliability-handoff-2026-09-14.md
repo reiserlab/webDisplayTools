@@ -11,8 +11,9 @@ numbers given); this is the narrative and the map.
 | A | **controller wedge**: ~1 in 10 Mode-3 runs the controller went 100–500 ms per command, power cycle only (fw #50) | a race in `IntervalTimer::end()`: SET_FRAME_POSITION disarmed/re-armed the refresh timer per command; a PIT interrupt landing between the two left the PIT firing with a null callback (an ISR storm) | **free-running refresh timer** — 0x70 never touches the PIT; plus an atomic `end()`; plus a hardware watchdog that resets and records the PC if anything like it ever recurs | 24 soak iterations, 5.15 M commands, 0 wedges (was 1 in 10 runs) |
 | B | **display freezes of 30–90 ms** every ~24.5k frame reads of a large pattern (fw #54) | firmware FAT access: SdFat re-walked the file's cluster chain on backward seeks and looked up the next cluster inside every read that crossed a 4 KB cluster boundary; those FAT-sector reads hammered one physical block of the card until its read-disturb maintenance paused the card | **contiguous O(1) seeks** (`FsFile` + `contiguousRange()`): the FAT is read once at pattern open and never during a trial | 4-arm causal test 2026-09-13: FAT touched → stalls at the old spacing; FAT untouched, same read count → 0; production: 0 in 482k + 72k commands + 1 h at 286 Hz |
 
-**Candidate build:** firmware `feat/sd-fastpath-2x10` @ `75405ee` (label `… freerun sdfast`, 0xCB flags `0x7C`);
-Studio v0.77 (PRs #198 + #202). **Run sheet for the bench:** `archive/mode3-2026-09/soak-handoff-2026-09-14.md`; **lab test day on Windows (no Claude):** `lab-test-day-windows-2026-09-14.md`; **what the overnight tests:** `overnight-soak-test-plan-2026-09-13.md`.
+**Candidate build:** firmware **`feat/mode3-reliability` @ `488d5b9`** — the stack on `main` (Frank's per-board scheme,
+PR #48) with a 2×10 variant; build `pio run -e teensy41-2-10-performance`, label `488d5b9 2x10 … freerun sdfast`, 0xCB
+flags `0x7C`; merge-candidate PR reiserlab/LED-Display_G6_Firmware_Arena#56. Studio v0.79 (PRs #198 + #202). **Run sheet for the bench:** `archive/mode3-2026-09/soak-handoff-2026-09-14.md`; **lab test day on Windows (no Claude):** `lab-test-day-windows-2026-09-14.md`; **what the overnight tests:** `overnight-soak-test-plan-2026-09-13.md`.
 
 ---
 
@@ -36,7 +37,7 @@ Studio v0.77 (PRs #198 + #202). **Run sheet for the bench:** `archive/mode3-2026
    (bench switches). Studio v0.77 added per-trial **pass / flagged / unknown** verdicts and the card identity in the
    run metadata. The causal test on Sunday afternoon settled the cause (§6).
 
-## 2. Firmware changes, by layer (all on `arena-2x10-local`, 31 commits, fast-forward)
+## 2. Firmware changes, by layer (three commits on `main` in PR #56; the 31-commit fine-grained history is `feat/sd-fastpath-2x10`)
 
 | layer | commits | opcodes / records | 0xCB flag | README § | HIL tests |
 |---|---|---|---|---|---|
@@ -226,11 +227,12 @@ precondition: pattern files contiguous on the card (uploads through the Studio a
 
 ## 7.3 Ship plan (Michael, 2026-09-13 18:30 ET) and the paper trail
 
-- **Firmware:** the stack is re-based onto `main` on top of PR #48's per-board build scheme as branch
-  `feat/mode3-reliability` with a 2×10 variant (`-DARENA_HW_2_10`, env `teensy41-2-10-performance`) and a THREE-commit
-  story (variant · feature stack · tests+tools); that branch is what runs overnight and what the lab flashes; its PR
-  against `main` is the merge candidate. `feat/sd-fastpath-2x10` (PR #55, closed) keeps the fine-grained 31-commit
-  history; PR #53 closed as superseded.
+- **Firmware:** DONE 18:55 ET — `feat/mode3-reliability` @ `488d5b9` on `main` (PR #48 scheme) with the 2×10 variant
+  (`-DARENA_HW_2_10`, env `teensy41-2-10-performance`), three commits (variant · feature stack · tests+tools);
+  `src/` byte-identical to the bench build `e59767e` except the variant plumbing (tables verified); Codex pass
+  reconciled in the port worktree's `.codex-review/report-20260913-port.md`. **PR #56 against `main` is the merge
+  candidate**; it runs overnight and the lab flashes it. `feat/sd-fastpath-2x10` (PR #55, closed) keeps the
+  fine-grained history; PR #53 closed as superseded.
 - **Studio:** PRs #198 and #202 squash-merged to `main` in the morning after a clean night (two commits: v0.76, v0.78),
   no separate review; revert if the lab finds a problem.
 - **Docs:** the living set is this file, `lab-test-day-windows-2026-09-14.md`, `overnight-soak-test-plan-2026-09-13.md`,
