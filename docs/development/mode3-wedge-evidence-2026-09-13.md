@@ -63,6 +63,12 @@ follow-up firmware commit). Consequence for §3: the free-running change removes
 guards `disarmRefreshTimer()` by masking only `IRQ_PIT` at the NVIC around `end()` (the watchdog IRQ stays live, so a
 genuinely stalled store would still be captured) — the race is closed at every site.
 
+### 2c. Reproduced (09:01 ET)
+
+Stand-alone sketch (`tools/pit-race-repro/` in the firmware repo): stock `end()` with the disarm swept across
+the timer expiry kills the main loop within 0.5 s; the same loop with `IRQ_PIT` masked around `end()` runs
+5.9 M cycles / 2.7 M expiries in 10 min without a stall. The mechanism is established.
+
 ## 3. Proposed fix: free-running refresh timer
 
 Arm the refresh timer once when the display enters SHOW_FRAME (or when the rate changes); disarm only on

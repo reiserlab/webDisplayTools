@@ -289,6 +289,18 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   stock core, then the PJRC report; the "mechanism arm" night is optional now that two captures sit inside the race
   window and the fix build is clean.
 
+- **2026-09-13 08:58–09:12 ET — MECHANISM REPRODUCED on the bench (stand-alone sketch, no arena code).**
+  `tools/pit-race-repro/` in the firmware repo (commit `3ae478d`): one `IntervalTimer` at 10 kHz, loop =
+  `begin()` → cycle-accurate wait that sweeps `end()` across the expiry (±2 µs) → `end()`. **Stock core: main
+  loop dead within 0.5 s** (no heartbeat, status unanswered, USB still enumerated, 134-baud reboot works — the
+  storm leaves the USB ISR alive exactly as on the arena). **PIT-masked `end()`: 5.92 M cycles / 2.72 M expiries
+  in 10 min, no stall.** A first attempt with a tight `end(); begin()` loop (no wait) ran 53 M cycles with ZERO
+  timer expiries — `begin()` restarts the period every iteration, which is the display-starvation effect in
+  pure form. Soak was stopped at the iteration-2 boundary (3 clean runs, 0 faults) and restarted 09:12 on
+  `394dee45` after re-flashing (4 h). fw #50 comment draft updated with the reproducer; PJRC report ready to
+  write (fix = acknowledge `TFLG` in `pit_isr()` regardless of the callback, and/or disable the channel before
+  nulling the callback).
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
