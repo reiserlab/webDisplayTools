@@ -175,5 +175,21 @@ console.log('\n=== reset() clears everything ===');
     check('threshold default', q.thresholdUs, 10000);
 }
 
+// ---- whole-stack review 2026-09-13: a slow read visible only in the FRAME record counts once ----
+{
+    const q = TQ.createTrialQuality({ gapUs: 10000, targetUs: 5000 });
+    seq = 1000;
+    q.feed([S(7, 0, 36, 1000)]); // sd_open ok → trial 1
+    // ring-v1 style: a 15 ms read with NO sd_slow event (v1 only flags > 20 ms)
+    q.feed([Object.assign(F(3, 2000, 1500, 0), { sdLoadUs: 15000 })]);
+    // ring-v2 style: sd_slow (33 ms) FOLLOWED by the FRAME of the same read → one stall, not two
+    q.feed([S(4, 2, 330, 3000, { readUs: 33000, phase: 'body' })]);
+    q.feed([Object.assign(F(4, 3100, 1500, 0), { sdLoadUs: 33000 })]);
+    const t = q.finish().trials[0];
+    check('frame-only slow read flags the trial', t.status, 'fail');
+    check('frame-only + sd_slow-covered read = 2 stalls (not 3)', t.stalls, 2);
+    check('max_read_ms from the FRAME reads', t.max_read_ms, 33);
+}
+
 console.log(`\n${total - failures} / ${total} checks passed`);
 process.exit(failures ? 1 : 0);
