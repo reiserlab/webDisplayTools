@@ -278,6 +278,17 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   ×3, protocol `soak_mode3_card.yaml` unchanged, frames re-patch hook alive. A PIT storm on this build would read
   kind 8 `code 0xF1/0xE1, IPSR 138, prior isr 7` with the PIT count ≫ refresh count.
 
+- **2026-09-13 07:58 ET — morning summary (soak still running, iteration 20 on `394dee45`).**
+  Exposure in the 200 Hz + jumps block: baseline `4860fef8` 1.96 h streaming, 1.42 M 0x70s, **2 wedges** (#5 at
+  909 s of its run, #6 at 1022 s); fix build `394dee45` 6.53 h, 4.41 M 0x70s, **0 wedges**, 19/19 runs completed
+  (P ≈ 0.002 for zero events at the baseline's rate). Full table: `mode3-wedge-night2-scan-2026-09-13.md`.
+  Display: 34–45 → 73–75 distinct frames/s at 190 commands/s (145 distinct requests/s), same SD/SPI timings; host
+  RTT median 2 → 3 ms, p99 8–9 → 11 ms (more transfers competing in `loop()`). No kind 8/9 records on the fix build
+  (no watchdog reset). fw #50 comment drafted (session scratchpad `fw50-comment-draft.md`) — outward-facing, for
+  Michael's review. Next on the bench (Michael's call): the 10-minute `end()`/`begin()` stress reproducer on the
+  stock core, then the PJRC report; the "mechanism arm" night is optional now that two captures sit inside the race
+  window and the fix build is clean.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
