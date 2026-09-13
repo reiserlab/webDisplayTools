@@ -504,6 +504,14 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   0xA8 flags 0x31, simulator kill). New `scripts/runlog-check.py`; on this morning's v0.77 log it FAILS as predicted:
   `trial_quality` 359 lines before the last controller row, 22 command records lost to the export, ring dropped
   1,157 between runs — the v0.78 fix is what the overnight must prove.**
+- **2026-09-13 16:12 ET — switch.** 1 h production run on `75405ee`, bar only, **286 Hz: 1,036,992 commands, 788,704
+  reads, 0 reads > 10 ms (worst 1.8 ms), req_age p50 1.7 / max 3.0 ms, 0.76 reads/cmd, capture valid, usable.**
+  Flashed **`e59767e`** (bootloader route, 7 s). HIL subset (`-x`, no `--pat`): `test_firmware_version` passed;
+  `test_health.py::test_loop_max_1s_window_is_populated` FAILED (`loop_max_1s_us == 0` at ~3 s uptime) — open item:
+  re-run at the drill, decide flake vs regression before the overnight. Uploaded `sine_2000f_gs16.pat` browser-free:
+  **index 46, 2000 frames, 8.1 MB in 1.4 s (5.7 MB/s)**; verified idx 36 = 200 frames, idx 46 = 2000. Campaign started
+  16:12:53 (`sd_soak_campaign.sh … "46 36" 286 1815 200 2100 10`, detached under caffeinate): segment 1 = sine at
+  286 Hz, `sd_layout` code 1 → **contiguous**, 8 sectors/cluster.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
