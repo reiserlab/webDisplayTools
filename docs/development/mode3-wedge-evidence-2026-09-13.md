@@ -45,8 +45,8 @@ Reconciliation: `codex-review-2026-09-13-mode3-wedge-fix.md`. In the installed T
 channel->TCTRL = 0; channel->TFLG = 1;`), and `pit_isr()` clears a channel's `TFLG` **only when its callback is
 non-null**. A PIT interrupt taken between the first two stores runs the ISR with a null callback, never clears
 the flag, and re-enters forever at priority 128: the main context is starved with its return address exactly at
-`channel->TCTRL = 0` — the captured PC. `IRQ_USB1` (113) and `IRQ_SDHC1` (110) share priority 128 and win the
-NVIC tie-break on equal priority, so their ISRs still run between storm iterations (USB stays enumerated, the
+`channel->TCTRL = 0` — the captured PC. `IRQ_SDHC1` is configured at priority 96 (it preempts the storm outright) and `IRQ_USB1` (113) shares
+priority 128 with the PIT (122) and wins the NVIC tie-break on equal priority, so both ISRs still run (USB stays enumerated, the
 134-baud bootloader route works, the CDC rx buffers fill and host writes stall 1–3 s); only `loop()` never runs
 again. Quantitatively: Isabel's ~292 k commands per failure ⇒ ≈ 3.4 × 10⁻⁶ per disarm ⇒ an ≈ 11 ns window at a
 3.33 ms refresh period — the width of one or two instruction boundaries. This reading needs **no hung bus**;

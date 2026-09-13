@@ -23,7 +23,8 @@
  *               watchdog handler's EXC_RETURN low byte (0xF9 preempted thread mode, 0xF1 a handler),
  *               arg bits 0–8 = stacked xPSR IPSR (0 = thread, 138 = the PIT handler), bits 9–15 =
  *               isr_last before the watchdog overwrote it. kind 9 prev_isr_count: code = ISR id,
- *               arg = previous boot's entry count >> 12 (saturating).
+ *               arg = previous boot's entry count >> 12 (saturating). kind 10 timer_fail:
+ *               IntervalTimer::begin() failed, arg = requested refresh rate.
  *     0 PAD   : filler at the ring's wrap point (skipped)
  *
  * Log rows (behavior_v2 companion streams, proposal § 3.3; `rx` = host receive
@@ -48,7 +49,8 @@
         6: 'telemetry',
         7: 'sd_open',
         8: 'wdog_context',
-        9: 'prev_isr_count'
+        9: 'prev_isr_count',
+        10: 'timer_fail' // IntervalTimer::begin() failed: arg = requested refresh rate (Hz)
     };
     const ISR_NAMES = [
         'none',
@@ -158,6 +160,9 @@
                     rec.priorIsr = rec.arg >> 9;
                     rec.priorIsrName = ISR_NAMES[rec.priorIsr] || 'isr_' + rec.priorIsr;
                     rec.preempted = rec.ipsr === 0 ? 'thread' : 'handler_' + rec.ipsr;
+                    // EXC_RETURN low byte: bit 3 = 1 → returned to thread mode (0xF9/0xE9/0xFD/0xED),
+                    // 0 → a handler was preempted (0xF1/0xE1). FP-stacked variants clear bit 4.
+                    rec.excReturnMode = rec.code & 0x08 ? 'thread' : 'handler';
                 }
                 if (rec.stateKind === 9) {
                     rec.isrName = ISR_NAMES[rec.code] || 'isr_' + rec.code;

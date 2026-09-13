@@ -34,7 +34,7 @@ which it never gets to do. Consequences, all matching what we saw:
 |---|---|
 | PC parked on `channel->TCTRL = 0`, main context never advances | the interrupted context's return address is exactly store 2 |
 | watchdog IRQ (priority 0) still runs and captures | it preempts the storm; a capture during the storm's exception tail-chain sees the main frame |
-| USB stays enumerated; 134-baud bootloader route works (#2–#4) | `IRQ_USB1` (113) and `IRQ_SDHC1` (110) share priority 128 and win the NVIC tie-break (lower IRQ number first) on every storm iteration, so their ISRs still run — only thread mode is starved |
+| USB stays enumerated; 134-baud bootloader route works (#2–#4) | `IRQ_SDHC1` is at priority 96 (preempts the storm); `IRQ_USB1` (113) shares priority 128 with the PIT (122) and wins the NVIC tie-break (lower IRQ number first) on every storm iteration — both ISRs still run, only thread mode is starved (corrected 01:15: the first draft said both were at 128) |
 | host USB *writes* stall 1–3 s, then silence | the CDC rx buffers fill (nobody in `loop()` drains them), the device NAKs, the host write blocks |
 | breadcrumb `OP_CMD`/0x70 before the SD marker (#2–#4), `cmd_disarm_timer` (#5) | the disarm is the first step of `handleSetFramePosition`, before `loadFrame` |
 | no CPU fault, empty crash record, display holds the last frame | nothing faults; the refresh callback is null so nothing refreshes |
@@ -112,3 +112,24 @@ into the follow-up commit `5e6a78c` (reviewed separately below).
 | D10 | Split instrumentation from the timer change; pin the core version; vector ownership is an undocumented dependency. | **ACCEPTED** (recorded, fw #54) | One controller, campaign build; `wrapPitVector()` re-installs after every `begin()`, which is the one known re-attach. |
 | D11 | STOP disarms before its dark frames — if the disarm hangs, blanking never runs. | **VERIFIED** | Exactly the storm case; closed by the guarded `end()` in `5e6a78c`. |
 | D12 | No new frame-buffer race under the main-loop model. | agrees | — |
+
+## Firmware diff review 2 — `eca07f6..5e6a78c` (guarded disarm, PIT marker, watchdog context)
+
+**Run:** `.codex-review/codex-diff-review-20260913-005700-46985/`. Codex: no blocker; the guarded `end()`
+addresses the race; the diagnostics needed another pass. Folded into a third amended commit (agent round 3).
+
+| # | Finding | Verdict | Action |
+|---|---|---|---|
+| E1 | The FULL hooks (`isrEnter/isrExit`, refresh + DMA) mutate the record before `sealIsr()` masks; a nested lite-hook ISR (SDHC at 96) loses a total count; `isrExit()` writes `ISR_NONE` instead of restoring the enclosing id, so the PIT trampoline's marker is clobbered after the refresh callback. | **VERIFIED+FIXING** | Full hooks save/restore like the lite hooks; whole update masked, then seal. |
+| E2 | PRIMASK masking around `end()` also masks the watchdog IRQ — if the alternative reading (stalled peripheral store) were true, the hang would happen unmasked-capture-free. | **VERIFIED+FIXING** (adopted) | Mask only `IRQ_PIT` at the NVIC (+ DSB/ISB) around `end()`; the watchdog stays live. A pended PIT interrupt runs afterwards with a null callback and a cleared `TFLG` — no storm. |
+| E3 | `STATE(telemetry, 0xED, rate)` for a failed `begin()` decodes as a telemetry configuration. | **VERIFIED+FIXING** | New STATE kind 10 `timer_fail` (arg = rate); host decode landed. |
+| E4 | README's storm model says USB/SDHC share 128; SDHC is 96. | **VERIFIED+FIXING** | fw README + this doc + evidence §2b corrected. |
+| E5 | Decoders recognise only EXC_RETURN 0xF9/0xF1; FP-stacked returns are 0xE9/0xE1. | **VERIFIED+FIXING** | Mode from bit 3; host `excReturnMode` + wedge-scan consistency flag. |
+| E6 | The retained ISR record moved (0x2027FF20 → 0x2027FEC0) without invalidating the old location — rollback could harvest a stale record. | **VERIFIED+FIXING** | Clear the old location's magic at boot; kind 8/9 emission gated on this boot's SRC_SRSR watchdog bit. |
+| E7 | The pre-reset window (~128 bus clocks) now has to checksum 23 words and flush 3 lines; unverified. | **ACCEPTED+MITIGATING** | Context fields first, sealed and flushed first; bench starve test (`SET_TELEMETRY 0x31`) immediately after flashing must yield a decodable kind-8 record before the soak restarts. |
+| E8 | `armRefreshTimer` returns void; callers acknowledge a display state with no timer. | **DEFERRED** (fw #54) | One PIT timer in the firmware; failure is theoretical. |
+| E9 | Count saturation (≈ 10 days at 300 Hz) without a flag; 32-bit wrap. | **DEFERRED** | Diagnostic build; boots are hours. |
+| E10 | Instrumentation latency (masked sections on every refresh/DMA/USB/SDHC/PIT entry) unmeasured. | **ACCEPTED** | Diagnostic build; the stock control night is the isolation. |
+| E11 | `soak_mode3.py` does not drain the crash records after reset. | **DEFERRED** | Studio path drains them (`afterReconnect`). |
+| E12 | No last-known-good capsule; a reset mid-writeback loses context and counts together. | **DEFERRED** (fw #54) | E7's ordering limits the loss to the counts. |
+| E13 | "Split mitigation from diagnostics." | **REJECTED** for tonight | One controller, standing order; recorded for PR F2. |

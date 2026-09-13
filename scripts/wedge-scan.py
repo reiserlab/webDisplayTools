@@ -84,6 +84,7 @@ CTL_STATE_KINDS = {
     7: "sd_open",
     8: "wdog_context",  # code = EXC_RETURN low byte; arg bits 0-8 = stacked IPSR, bits 9-15 = prior isr_last
     9: "prev_isr_count",  # code = ISR id; arg = previous boot's entry count >> 12
+    10: "timer_fail",  # IntervalTimer::begin() failed; arg = requested refresh rate
 }
 ISR_NAMES = ["none", "refresh_timer", "spi_dma", "watchdog", "usb", "sdhc", "lpspi", "pit"]
 
@@ -423,6 +424,8 @@ class RunScan:
                 prior = arr[6] >> 9
                 prior_name = ISR_NAMES[prior] if prior < len(ISR_NAMES) else f"isr_{prior}"
                 ctx = "thread" if ipsr == 0 else ("pit-handler" if ipsr == 138 else f"handler_{ipsr}")
+                if isinstance(arr[5], int) and bool(arr[5] & 0x08) != (ipsr == 0):
+                    ctx += "?"  # EXC_RETURN bit 3 disagrees with the stacked IPSR — suspect capture
                 kind = f"wdog_context({ctx}, before={prior_name})"
             elif arr[4] == 9 and len(arr) >= 7 and isinstance(arr[5], int):
                 nm = ISR_NAMES[arr[5]] if arr[5] < len(ISR_NAMES) else f"isr_{arr[5]}"

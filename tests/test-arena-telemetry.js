@@ -142,6 +142,26 @@ function block(h, records) {
             ['wdog_context', 0xf9, 138, 'handler_138', 'usb']
         );
         check(
+            'wdog_context EXC_RETURN mode from bit 3 (0xE1 = FP-stacked handler)',
+            T.parseBlock(
+                block({ tNowUs: 1, firstSeq: 1, more: false, flags: 0 }, [
+                    stateRec(1, 5, 8, 0xe1, 138)
+                ]),
+                Wire
+            ).records[0].excReturnMode,
+            'handler'
+        );
+        check(
+            'state timer_fail (kind 10)',
+            T.parseBlock(
+                block({ tNowUs: 1, firstSeq: 1, more: false, flags: 0 }, [
+                    stateRec(1, 5, 10, 0, 300)
+                ]),
+                Wire
+            ).records[0].stateName,
+            'timer_fail'
+        );
+        check(
             'state prev_isr_count names the ISR and scales the count (kind 9)',
             (({ stateName, isrName, countApprox }) => [stateName, isrName, countApprox])(
                 T.parseBlock(
