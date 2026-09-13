@@ -8,8 +8,8 @@ path. If the overnight run is clean, these are the branches to merge.
 
 | piece | where | identity |
 |---|---|---|
-| firmware | `reiserlab/LED-Display_G6_Firmware_Arena` branch `feat/sd-fastpath-2x10`, commit **`75405ee`** (2×10 bench branch; fast-forwards `arena-2x10-local`) | `pio run -e teensy41-performance` → `.pio/build/teensy41-performance/firmware.hex`, sha256 starts `5d912915dd0982d9`; Studio shows the label `75405ee 2x10 … freerun sdfast` |
-| Studio | `reiserlab/webDisplayTools` PR #198 (v0.76) + PR #202 (v0.77, branch `claude/mode3-perf-sd`) | serve the branch locally: `python3 -m http.server 8092` in the checkout, open `http://localhost:8092/arena_studio.html?advanced=1&soak=1` |
+| firmware | `reiserlab/LED-Display_G6_Firmware_Arena` branch `feat/sd-fastpath-2x10`, commit **`e59767e`** (2×10 bench branch; fast-forwards `arena-2x10-local`; = `75405ee` + the whole-stack review fixes) | `pio run -e teensy41-performance` → `.pio/build/teensy41-performance/firmware.hex`; Studio shows the label `e59767e5 2x10 … freerun sdfast` |
+| Studio | `reiserlab/webDisplayTools` PR #198 (v0.76) + PR #202 (v0.78, branch `claude/mode3-perf-sd`) | serve the branch locally: `python3 -m http.server 8092` in the checkout, open `http://localhost:8092/arena_studio.html?advanced=1&soak=1` |
 | bridge + simulator | same checkout | `pixi run bridge -- --log-dir soak-logs` · `pixi run sim -- --count 0 --rate 200 --seed 1 --jump-every 100 --jump-deg 90` |
 
 Flash only with the Studio disconnected (port free): `scripts/flash_bootloader_route.sh` in the firmware repo.
@@ -18,9 +18,22 @@ after a fault before the post-mortem has finished** (it drains the ring and the 
 
 ## Card contents (once)
 
-Upload `soak-patterns/sine_2000f_gs16.pat` (8.1 MB, from `pixi run node scripts/make-stress-patterns.js`) through
-the Studio Console in the same Studio session that will run the soak; `frame2_h_ccw_200f` (813 KB) must already be
-on the card. `pixi run python scripts/telemetry-report.py <log>` must show `layout: contiguous` for both files.
+Upload `soak-patterns/sine_2000f_gs16.pat` (8.1 MB, from `pixi run node scripts/make-stress-patterns.js`) — either
+browser-free, `python3 scripts/sd_upload_pat.py --port … --file … --name sine_2000f_gs16.pat` in the firmware repo
+(prints the index and frame count), or through the Studio Console. `frame2_h_ccw_200f` (813 KB, index 36 on the
+bench card) must already be on the card. Patterns are numbered by sorted filename: after ANY upload re-check the
+indices you use (`GET_PATTERN_INFO` frame counts: 200 for the bar, 2000 for the sine). The first segment's report
+must show `layout: contiguous` for both files.
+
+## Two ways to run the soak
+
+- **Browser-free (what ran on 2026-09-13, recommended for unattended nights):** in the firmware repo
+  `scripts/sd_soak_campaign.sh PORT "<sine idx> 36" 286 1815 200 0800 10` — 10-min Mode-3 segments alternating the
+  two patterns with a random walk + 90° jumps, 286 Hz until 18:15 then 200 Hz until 08:00; per-segment logs
+  `soak-logs/sdstall-*-camp-*.jsonl`, one line per segment in `soak-logs/campaign-*.log`. Survives a controller
+  reboot; needs no bridge, simulator or browser. Report: `telemetry-report.py soak-logs/sdstall-*-camp-*.jsonl`.
+- **Studio path (produces run logs with per-trial verdicts, the format the course pipeline commits):** the runs
+  below.
 
 ## Runs, in order
 
