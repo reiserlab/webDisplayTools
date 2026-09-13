@@ -569,6 +569,15 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   costs. The frames-from-`GET_PATTERN_INFO` fill (v0.79, 19:25) is the fix; without it the overnight would have run
   every pattern as a 20-frame loop. Lesson for the test plan: **index coverage (distinct frames per trial) is a
   pass criterion**, added as T8.
+- **2026-09-13 19:49–19:55 ET — drill via the reloaded Studio (frame counts from the card: bar 200, sine 2000;
+  index coverage 200/200):** the legacy arm now bit through the Studio path too — −1 step 1.99 ms, **one 18.3 ms
+  body-phase stall** in 35.7k reads. But the Studio's verdict said `pass` with two phantom trials: my two start
+  commands overlapped; the first soak was aborted and its LATE terminal event finalized the second run's trials one
+  second in (v0.78 finalize memoised per run, reset at run start, so the second run's own finalize was a no-op and the
+  stall was fed with no open trial). **Fixed (v0.79): the finalize is bound to the run id; a stale caller is
+  ignored.** Also fixed: simulator field 22 written in ms instead of ns (every sim log's `ft` was 1000× too small;
+  found by the telemetry-review session) — sim restarted 19:55 with the fix; a footer stamp mangled by `sed -E`.
+  `pixi run test` green. Retrying the drill with a single start.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
