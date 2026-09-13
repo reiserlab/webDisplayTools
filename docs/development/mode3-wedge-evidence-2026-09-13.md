@@ -12,6 +12,7 @@ Companion: `mode3-wedge-soak-plan.md` §10–11 (bench log), `mode3-wedge-status
 | 3 | 09-12 16:27 | `c47ee684` | 100 Hz | 33 m | bootloader | same |
 | 4 | 09-12 16:36 | `c47ee684` | 100 Hz | 5.5 m | bootloader, then **power cycle** | same; slowest SD read that boot only 3.4 ms |
 | 5 | 09-12 23:51 | wdog `4860fef8` | 200 Hz + jumps | 7 h 06 m after the power cycle (12 clean iterations at 100 Hz, 3 at 286 Hz, then 15 min at 200 Hz) | **watchdog self-reset, 2 s** | `cmd_disarm_timer`/0x70; **PC 0x212f4 = `IntervalTimer::end()` at `channel->TCTRL = 0`**, LR 0x212eb (return from the `funct_table[i] = nullptr` call); ISR marker = watchdog IRQ ran |
+| 6 | 09-13 01:14 | `4860fef8` | 200 Hz + jumps | 83 min (iteration 4, 192 k 0x70s) | **watchdog self-reset** | `cmd_disarm_timer`/0x70; **PC 0x212f2** = the `ldr channel` between `funct_table[i] = nullptr` (0x212f0) and `TCTRL = 0` (0x212f4), LR 0x212eb; ISR marker = watchdog; slowest sd_read 88.9 ms, 18 `sd_slow` in the run |
 
 Common to all instrumented cases: host sees ≥3 consecutive 0x70 timeouts with USB *writes* stalling 1–3 s; then total
 silence to every probe (0xC2, 0x33, 0x72, 0x88, 0xE3, 0x01), from Chrome and from pyserial; USB stays enumerated;
@@ -51,8 +52,10 @@ priority 128 with the PIT (122) and wins the NVIC tie-break on equal priority, s
 again. Quantitatively: Isabel's ~292 k commands per failure ⇒ ≈ 3.4 × 10⁻⁶ per disarm ⇒ an ≈ 11 ns window at a
 3.33 ms refresh period — the width of one or two instruction boundaries. This reading needs **no hung bus**;
 §2's "the watchdog touches only OCRAM" premise was also wrong (its handler reads the DWT cycle counter and does
-cache maintenance), so the bus-hang reading rests on the PC alone. One caveat: in a storm most watchdog captures
-would land inside `pit_isr` (handler context), ours shows the main context, which the exception tail-chain path
+cache maintenance), so the bus-hang reading rests on the PC alone. **Wedge #6 (01:14) added the second data point: PC 0x212f2, the other return address inside the same
+two-instruction window** — a hung store would give one fixed PC; an interrupt taken inside the window gives exactly
+these two. One caveat: in a storm most watchdog captures
+would land inside `pit_isr` (handler context), both of ours show the main context, which the exception tail-chain path
 allows but does not favour — a single sample. Discriminators at the next capture: stacked xPSR IPSR field (0 =
 thread, 138 = PIT handler), the watchdog handler's `EXC_RETURN`, and a PIT interrupt-entry count (all in the
 follow-up firmware commit). Consequence for §3: the free-running change removes the hot-path `end()` (exposure

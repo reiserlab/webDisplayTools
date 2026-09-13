@@ -254,6 +254,30 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   (`69c14e6`, `d234f6e`). Flash gate: Codex round 3 reconciled → flash at a wedge (standing order) or at an
   iteration boundary if Michael prefers → starve test must yield a decodable kind-8 record → soak restarts.
 
+- **2026-09-13 01:14:37 ET — WEDGE #6 (baseline `4860fef8`, 200 Hz + jumps, iteration 4, 192 k 0x70s, 83 min
+  after wedge #5).** Watchdog self-reset; lifecycle automatic again (link_dropped → self-reset path → health →
+  ring dump → probes → iteration 5 started 01:14:48). Evidence: `prev_breadcrumb = cmd_disarm_timer (6) arg 0x70`,
+  `prev_isr_last = watchdog`, **`prev_wdog_pc = 0x000212f2`**, LR 0x212eb, slow op sd_read 88.9 ms, 18 `sd_slow`
+  records in the run (five in the last 4 s: 32–88 ms). Disassembly of `IntervalTimer::end()` (4860fef ELF rebuilt
+  in the session scratchpad, identical resolution): `212f0 str r3,[r6,r5]` = `funct_table[i] = nullptr`; `212f2
+  ldr r3,[r7]` = load `channel`; `212f4 str r1,[r3,#8]` = `TCTRL = 0`. Wedge #5's PC (0x212f4) and wedge #6's
+  (0x212f2) are exactly the two return addresses that exist between the callback being nulled and the channel
+  being disabled — a hung store would give a fixed PC, an interrupt taken inside the race window gives exactly
+  these two. Evidence for the `IntervalTimer::end()` race is now two-for-two. Log archived as
+  `soak-logs/wedges/wedge6-20260913-0114-wdog-4860fef8.jsonl(.gz)`.
+- **01:17:35 ET — standing order executed: flashed `394dee45`** (bootloader route, Studio released the port;
+  HalfKay immediate; CDC back in ~1 s). Identity: 0xCB `394dee45 2x10 2026-09-13 feat/telemetry-ring-2x10`, flags
+  0x1C (telemetry + crashreport + **freerun**, clean). HEALTH v5, wdog armed + HW enabled.
+- **01:19 ET — flash gate: starve test passed.** `SET_TELEMETRY 0x31` → reset after ~3.8 s (host-observed) →
+  reconnect → HEALTH: watchdog reset, PC 0x634c = `CommandProcessor::serviceDisplay()`, LR = `loop`. Ring boot
+  records (drained by the poller into the still-open bridge file): `boot 128`, **kind 8 `wdog_context` code 0xE9
+  arg 0** (thread mode preempted, FP state stacked, no ISR active — exactly the expected starve signature), kind 9
+  `prev_isr_count` for usb only (display was off, so no refresh/PIT entries). The expanded capture completes inside
+  the pre-reset window (context line AND counts valid).
+- **01:20:08 ET — soak restarted on `394dee45`**, 200 Hz + jumps, 6.6 h (to ~07:56), halt-first / reset-continue
+  ×3, protocol `soak_mode3_card.yaml` unchanged, frames re-patch hook alive. A PIT storm on this build would read
+  kind 8 `code 0xF1/0xE1, IPSR 138, prior isr 7` with the PIT count ≫ refresh count.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
