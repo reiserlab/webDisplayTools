@@ -487,6 +487,18 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   the contiguous-seek fix removes them at identical data-read exposure; the same-index skip is irrelevant to them.
   Production build `75405ee`: bar −1 step 1.46 ms p50 / 1.8 ms max, req_age p50 1.7 ms / max 2.9 ms at 200 Hz.
   15:12 started the 2 h production run at 286 Hz on the bar (`--label prod-286hz-2h`), unattended.
+- **2026-09-13 15:20–15:50 ET — whole-stack Codex reviews + fixes (Michael: laptop stays; review, adversarial pass,
+  one hand-off document; 2 h stress then the candidate overnight).** Firmware `arena-2x10-local..75405ee` and web
+  `main..claude/mode3-perf-sd` reviewed whole (`.codex-review/report-20260913-fw-fullstack.md`, `…-web-fullstack.md`).
+  Fixed and re-reviewed (fw round 5): **firmware `e59767e`** (panels blanked at boot after a watchdog/software reset,
+  watchdog kicked inside the ISP loops, same-index skip only after a successful DAC/LUT update, exFAT refusal for the
+  legacy arm, harness backlog drain, campaign/upload script fixes; built, hex sha `578cc29e…`, NOT yet flashed) and
+  **Studio v0.78** (verdict + final drain before the export, drain problems → unknown, bridge send failure not acked,
+  FRAME read time in verdicts, link-drop = CONTROLLER_FAULT, stress gain 0.18; PR #202 updated, `pixi run test`
+  green). New docs: `mode3-reliability-handoff-2026-09-14.md` (the one hand-off document),
+  `runlog-format-review-2026-09-13.md` (≈133 MB/h raw, 35–40 gz at 200 Hz; R1 stream-gzip, R2 schema v3),
+  `consolidation-plan-2026-09-13.md`. Plan for 16:12: stop the 286 Hz run (1 h), flash `e59767e`, HIL subset, upload
+  the 8 MB sine browser-free, verify indices, start the alternating campaign (286 Hz → 18:15, 200 Hz → 21:00).
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
