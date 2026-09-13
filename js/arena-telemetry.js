@@ -200,7 +200,10 @@
                     rec.irqstatHi = rec.arg; // USDHC IRQSTAT bits 16-31 at the driver's LAST error
                     rec.driverSawError = rec.code !== 0;
                 }
-                if (rec.stateKind === 13) rec.reads = rec.arg * Math.pow(2, rec.code); // code = binary shift
+                if (rec.stateKind === 13) {
+                    rec.reads = rec.arg * Math.pow(2, rec.code & 0x7f); // code bits 0-6 = binary shift
+                    rec.checkpoint = !!(rec.code & 0x80); // cumulative mid-open checkpoint (every 30k reads), not a close
+                }
             } else {
                 rec.kind = 'unknown';
                 rec.raw = hex(m.subarray(p, p + plen));
