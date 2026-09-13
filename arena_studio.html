@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.79 | 2026-09-13 19:22 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.79 | 2026-09-13 19:54 ET| 2026-09-13 19:22 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3345,7 +3345,7 @@
         // per-trial `trial_quality` verdict must be written FIRST (whole-stack review,
         // 2026-09-13: they used to land after the export and were lost from committed logs).
         const finalizeThenCommit = async () => {
-            try { if (Studio.finalizeTrialQuality) await Studio.finalizeTrialQuality(); } catch (_) { /* best effort */ }
+            try { if (Studio.finalizeTrialQuality) await Studio.finalizeTrialQuality(log.meta && log.meta.run_id); } catch (_) { /* best effort */ }
             await maybeCommitRunLog(log, summary);
         };
         if (summary && summary.outcome === 'CONTROLLER_FAULT' && Studio.handleControllerFault) {
@@ -8237,7 +8237,11 @@ Studio.openSoakDialog = async function () {
 // export closes the file. Called from onRunFinished (before the commit) and from runSteps (a
 // fallback); runs once per run — later callers await the first. Flag only — excluding or
 // repeating a trial is the experimenter's decision (selection-bias caveat, Codex review).
-Studio.finalizeTrialQuality = function () {
+Studio.finalizeTrialQuality = function (runId) {
+    if (runId !== undefined && runId !== Studio._tqRunId) {
+        Studio.rawLog('stimulus quality: ignoring a finalize for a previous run (' + runId + ')', 'dim');
+        return Promise.resolve(null); // stale caller: a previous run's terminal event
+    }
     if (Studio._tqFinal) return Studio._tqFinal;
     Studio._tqFinal = (async () => {
         if (!Studio.trialQuality) return null;
@@ -8745,6 +8749,10 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
     Studio._linkDropped = false;
     if (Studio.trialQuality) Studio.trialQuality.reset(); // per-trial stimulus-quality verdicts start fresh
     Studio._tqFinal = null; // finalizeTrialQuality() runs once per run (first caller wins, others await it)
+    // Bind the verdict to THIS run: a late terminal event from a previous (aborted) run must not finalize
+    // this one's trials — bench 2026-09-13: an overlapping start let the old run's finalize close the new
+    // run's trials one second in, and the real stall went unjudged.
+    Studio._tqRunId = (Studio.activeRunLog && Studio.activeRunLog.meta && Studio.activeRunLog.meta.run_id) || ('run-' + Date.now());
     try {
         // NOTE: do NOT pass onProgress — the session broadcasts 'runstatus' which
         // Studio.onRunStatus (subscribed once) consumes, so the log/highlight stay
@@ -8778,7 +8786,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         }
         // Stimulus quality: normally already finalized by onRunFinished (before the export);
         // this is the fallback for runs without a run log (Test runs).
-        await Studio.finalizeTrialQuality();
+        await Studio.finalizeTrialQuality(Studio._tqRunId);
     } catch (e) {
         Studio.rawLog('run error: ' + (e && e.message ? e.message : e), 'err');
         if (Studio.activeRunLog && !Studio.activeRunLog.summary) {

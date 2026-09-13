@@ -70,7 +70,7 @@ def check_file(path):
         for g in gaps:
             if g.get("trial") not in flagged: p.append(f"display_gap for trial {g.get('trial')} but that trial is not flagged")
     c["cc_0x70_ok"] = cc70; c["a_ok"] = a_ok
-    if cc70 and a_ok and abs(cc70 - a_ok) > 2: p.append(f"controller-accepted 0x70 {cc70} vs host-accepted {a_ok}: drain lost records")
+    if cc70 and a_ok and abs(cc70 - a_ok) > 2: p.append(f"controller-accepted 0x70 {cc70} vs host-accepted {a_ok} differ by {abs(cc70 - a_ok)} (a drain gap if a > cc; a second run in the same file if cc > a)")
     if iter_end and isinstance(iter_end.get("telemetry"), dict):
         t = iter_end["telemetry"]; c["drainer"] = {k: t.get(k) for k in ("dropped", "gaps", "notStored", "errors", "records")}
         # `dropped` is the controller's CUMULATIVE ring-overrun counter: records evicted while nobody drained —
