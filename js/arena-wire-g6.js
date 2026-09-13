@@ -723,7 +723,18 @@ const ArenaWireG6 = (function () {
         'cmd_arm_timer',
         'cmd_respond'
     ];
-    const HEALTH_ISR_NAMES = ['none', 'refresh_timer', 'spi_dma', 'watchdog'];
+    // ids 4–7 = driver-vector trampolines added by the free-running build (fw eca07f6+): usb = IRQ_USB1,
+    // sdhc = IRQ_SDHC1, lpspi = IRQ_LPSPI3/4, pit = IRQ_PIT (the refresh timer's own interrupt).
+    const HEALTH_ISR_NAMES = [
+        'none',
+        'refresh_timer',
+        'spi_dma',
+        'watchdog',
+        'usb',
+        'sdhc',
+        'lpspi',
+        'pit'
+    ];
     const HEALTH_PAYLOAD_BYTES_V2 = 89; // fw fb11681: + ISR breadcrumb + RTWDOG pre-reset PC capture
     const HEALTH_PAYLOAD_BYTES_V3 = 97; // fw 86eeb4a: + raw WDOG3_CS at boot and live
     const HEALTH_PAYLOAD_BYTES_V4 = 106; // fw 54b57d0: + measured tick rate, live TOVAL, verify bits
@@ -944,6 +955,7 @@ const ArenaWireG6 = (function () {
             debug: !!(m[3] & 0x02),
             telemetry: !!(m[3] & 0x04), // ring buffer (0xA8/0xA9) present — the ONLY gate for SET_TELEMETRY
             crashReport: !!(m[3] & 0x08), // GET_CRASHREPORT 0xCC + GET_HEALTH ver 2 (fw fb11681+): the ONLY gate for 0xCC
+            freeRunningTimer: !!(m[3] & 0x10), // fw eca07f6+: SET_FRAME_POSITION never disarms/re-arms the refresh timer
             sha: ascii(4, 8),
             date: ascii(12, 10),
             branch: ascii(22, 24)
@@ -957,7 +969,8 @@ const ArenaWireG6 = (function () {
             ' ' +
             (v.date || '?') +
             (v.branch ? ' ' + v.branch : '') +
-            (v.debug ? ' (debug)' : '');
+            (v.debug ? ' (debug)' : '') +
+            (v.freeRunningTimer ? ' freerun' : '');
         return v;
     }
 

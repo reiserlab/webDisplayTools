@@ -74,7 +74,18 @@ TREND_WINDOW_MS = 30_000  # "last 30 s before onset" trend window
 SLOW_DT_MS = 50  # soft-degradation threshold for an OK 0x70 reply
 # Controller telemetry rows (fw feat/telemetry-ring via js/arena-telemetry.js).
 CTL_TAGS = ("cc", "cf", "cs")
-CTL_STATE_KINDS = {1: "boot", 2: "state_change", 3: "error_glyph", 4: "sd_slow", 5: "ring_overrun", 6: "telemetry", 7: "sd_open"}
+CTL_STATE_KINDS = {
+    1: "boot",
+    2: "state_change",
+    3: "error_glyph",
+    4: "sd_slow",
+    5: "ring_overrun",
+    6: "telemetry",
+    7: "sd_open",
+    8: "wdog_context",  # code = EXC_RETURN low byte; arg bits 0-8 = stacked IPSR, bits 9-15 = prior isr_last
+    9: "prev_isr_count",  # code = ISR id; arg = previous boot's entry count >> 12
+}
+ISR_NAMES = ["none", "refresh_timer", "spi_dma", "watchdog", "usb", "sdhc", "lpspi", "pit"]
 
 HIST_CAP_MS = 5_000  # dt histogram: buckets 0..HIST_CAP_MS-1 + one overflow bucket
 CONTEXT_ROWS = 5  # --verbose: rows before/after the onset row
@@ -406,6 +417,16 @@ class RunScan:
                     kind = "boot(watchdog-reset)"
                 elif isinstance(arr[6], int) and arr[6] & 0x02:
                     kind = "boot(wdog-isr)"
+            elif arr[4] == 8 and len(arr) >= 7 and isinstance(arr[6], int):
+                # watchdog context: which execution context the watchdog IRQ preempted
+                ipsr = arr[6] & 0x1FF
+                prior = arr[6] >> 9
+                prior_name = ISR_NAMES[prior] if prior < len(ISR_NAMES) else f"isr_{prior}"
+                ctx = "thread" if ipsr == 0 else ("pit-handler" if ipsr == 138 else f"handler_{ipsr}")
+                kind = f"wdog_context({ctx}, before={prior_name})"
+            elif arr[4] == 9 and len(arr) >= 7 and isinstance(arr[5], int):
+                nm = ISR_NAMES[arr[5]] if arr[5] < len(ISR_NAMES) else f"isr_{arr[5]}"
+                kind = f"prev_isr_count({nm})"
             self.ctl_states[kind] += 1
         elif tag == "cc" and len(arr) >= 7 and arr[5] not in (0, None):
             self.ctl_cmd_rejects += 1

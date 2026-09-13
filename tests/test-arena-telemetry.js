@@ -124,6 +124,36 @@ function block(h, records) {
         );
         check('record count (pad skipped)', b.records.length, 4);
         check(
+            'state wdog_context decodes EXC_RETURN / IPSR / prior isr (kind 8)',
+            (({ stateName, code, ipsr, preempted, priorIsrName }) => [
+                stateName,
+                code,
+                ipsr,
+                preempted,
+                priorIsrName
+            ])(
+                T.parseBlock(
+                    block({ tNowUs: 1, firstSeq: 1, more: false, flags: 0 }, [
+                        stateRec(1, 5, 8, 0xf9, 138 | (4 << 9))
+                    ]),
+                    Wire
+                ).records[0]
+            ),
+            ['wdog_context', 0xf9, 138, 'handler_138', 'usb']
+        );
+        check(
+            'state prev_isr_count names the ISR and scales the count (kind 9)',
+            (({ stateName, isrName, countApprox }) => [stateName, isrName, countApprox])(
+                T.parseBlock(
+                    block({ tNowUs: 1, firstSeq: 1, more: false, flags: 0 }, [
+                        stateRec(1, 5, 9, 7, 3)
+                    ]),
+                    Wire
+                ).records[0]
+            ),
+            ['prev_isr_count', 'pit', 12288]
+        );
+        check(
             'cmd record',
             [
                 b.records[0].kind,

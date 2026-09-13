@@ -19,6 +19,11 @@
  *     1 CMD   : cmd u8 · status u8 · plen u8 · payload[plen ≤ 8]   (request bytes)
  *     2 FRAME : idx u16 · pattern u16 · sd_load_us u16 · spi_us u16
  *     3 STATE : kind u8 · code u8 · arg u16
+ *               kind 8 wdog_context (boot after a watchdog reset, fw eca07f6 follow-up): code = the
+ *               watchdog handler's EXC_RETURN low byte (0xF9 preempted thread mode, 0xF1 a handler),
+ *               arg bits 0–8 = stacked xPSR IPSR (0 = thread, 138 = the PIT handler), bits 9–15 =
+ *               isr_last before the watchdog overwrote it. kind 9 prev_isr_count: code = ISR id,
+ *               arg = previous boot's entry count >> 12 (saturating).
  *     0 PAD   : filler at the ring's wrap point (skipped)
  *
  * Log rows (behavior_v2 companion streams, proposal § 3.3; `rx` = host receive
@@ -41,8 +46,20 @@
         4: 'sd_slow',
         5: 'ring_overrun',
         6: 'telemetry',
-        7: 'sd_open'
+        7: 'sd_open',
+        8: 'wdog_context',
+        9: 'prev_isr_count'
     };
+    const ISR_NAMES = [
+        'none',
+        'refresh_timer',
+        'spi_dma',
+        'watchdog',
+        'usb',
+        'sdhc',
+        'lpspi',
+        'pit'
+    ];
     const ARENA_STATES = [
         'ALL_OFF',
         'ALL_ON',
@@ -136,6 +153,16 @@
                 rec.arg = u16(m, p + 2);
                 if (rec.stateKind === 2)
                     rec.codeName = ARENA_STATES[rec.code] || 'state_' + rec.code;
+                if (rec.stateKind === 8) {
+                    rec.ipsr = rec.arg & 0x1ff;
+                    rec.priorIsr = rec.arg >> 9;
+                    rec.priorIsrName = ISR_NAMES[rec.priorIsr] || 'isr_' + rec.priorIsr;
+                    rec.preempted = rec.ipsr === 0 ? 'thread' : 'handler_' + rec.ipsr;
+                }
+                if (rec.stateKind === 9) {
+                    rec.isrName = ISR_NAMES[rec.code] || 'isr_' + rec.code;
+                    rec.countApprox = rec.arg * 4096;
+                }
             } else {
                 rec.kind = 'unknown';
                 rec.raw = hex(m.subarray(p, p + plen));

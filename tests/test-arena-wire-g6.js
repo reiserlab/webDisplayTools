@@ -685,6 +685,12 @@ check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46)
     check('date', v.date, '2026-09-12');
     check('flags bit 2 = telemetry ring (absent here)', v.telemetry, false);
     check('flags bit 3 = crash report / health v2 (absent here)', v.crashReport, false);
+    check('flags bit 4 = free-running refresh timer (absent here)', v.freeRunningTimer, false);
+    check(
+        'ISR names 4–7 (usb/sdhc/lpspi/pit)',
+        Wire.HEALTH_ISR_NAMES.slice(4).join(','),
+        'usb,sdhc,lpspi,pit'
+    );
     check('branch truncated to 24', v.branch, 'feat/controller-health-2');
     check('dirty flag', v.dirty, true);
     check('debug flag', v.debug, false);
