@@ -328,6 +328,37 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   panel PSRAM write path is specified but unimplemented in panel firmware (`docs/development/sd-read-jitter-2026-09-13.md` §6).
   Codex round 2 on the round-1 fixes running; flash follows its reconciliation.
 
+- **2026-09-13 11:35:07–11:35:13 ET — flashed `3c71953` (SD fast path build) via the bootloader route** after Michael
+  disconnected the old Studio tab (port free; HalfKay immediate; CDC back in 6 s; no button). Codex round 2 on the
+  round-1 fixes: firmware accepted, harness findings deferred (`.codex-review/report-20260913-fw-sdfast-rounds.md` in
+  the ring worktree). HIL subset (version/health/telemetry) run with the port free before the Studio reconnects.
+
+- **2026-09-13 11:36–11:48 ET — HIL on `3c71953` (port free):** version/health/telemetry: same-index skip verified
+  (3 repeated 0x70s → cmd70 +3, sd_reads +0), frame storm: 26 B FRAMEs, `sd_layout` + trailing `sd_reads` after
+  ALL_OFF as designed (needed an 81 KB grating uploaded as `conftest.pat`, deleted again; listing back to 45 files,
+  idx 36/5 unchanged). **Card identity (0xCD): MID 0x00, OEM "42", PNM `SD8GB`, PRV 0.0, PSN 0x14d4, made 2025-06,
+  8.0 GB SDHC, FAT32, 4 KB clusters (8 sectors/cluster)** — an unbranded 8 GB card; the 4 KB clusters (≈ 200-cluster
+  chain for the 813 KB pattern → two FAT sectors) are what made the backward-seek FAT walk cost ~0.5 ms. Two unrelated
+  failures noted, not chased: `test_crashreport_passthrough` (PJRC CrashReport region holds junk after the HalfKay
+  reflash, len 35340264) and `test_overfill_evicts_oldest_and_reports_dropped` (ring_overrun marker position, timing
+  sensitive). Next: Studio v0.77 on :8092 connects (user gesture), soak protocol rebuilt, 2 iterations.
+
+- **2026-09-13 11:45 ET — soak restarted on `3c71953`** from Studio v0.77 (worktree served on :8092; new origin →
+  Michael clicked Connect once). Protocol `soak_mode3_card.yaml` rebuilt from the repo soak protocol (ids 36/5, frames
+  200/20 via the `__framesRepatch` hook), rig set explicitly to `cshl_g6_2x10_ball` (the page derived `g6_3x10`; the
+  mismatch chip still reads "bench ≠ protocol" — cosmetic, to check), advanced mode forced on the new origin,
+  `startSoak({iterations:2, gapS:10, firstFault:'halt', policy:'reset-continue'})`; sim 200 Hz + 90° jumps unchanged,
+  bridge 3.1 logging behavior_v2. This is the CONTROL iteration on the new build (same card, same workload).
+
+- **2026-09-13 11:46 ET — first look at the control iteration (66 s snapshot, `telemetry-report.py`):** fw reads per
+  accepted 0x70 = **0.755** (8,972 reads / 11,884 commands on the bar — the same-index skip removes the 24 % as
+  predicted); bar pattern non-sequential reads now **all ≈ 1.46 ms** (−1 was 2.00 ms: the FAT-walk penalty is gone;
+  +2..9 unchanged at 1.44; jumps 1.96 → 1.46); grating non-sequential 1.18 ms as before; +1 sequential 620 µs both.
+  Bar (813 KB) still costs ~280 µs more per random read than the grating (81 KB) with identical code paths → consistent
+  with the card serving part of the small working set from its own cache (the H-cache reading of the small file's
+  stall immunity). `req_age_us` (0x70 dispatch → SPI start) p50 1.77 ms, p99 2.56 ms, max 2.56 ms; superseded 1.2 %
+  of frames. No stall yet in 66 s (expected spacing ~250 s). Layout: contiguous, 8 sectors/cluster, both patterns.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
