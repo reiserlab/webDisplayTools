@@ -405,6 +405,15 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   idle on `3c71953`, Studio v0.77 (:8092) connected. Awaiting Michael's decision on the causal test (reflash
   `394dee45` for one iteration).
 
+- **2026-09-13 12:29 ET — session closed at the bench (Michael: laptop must disconnect; no third trial).** Causal
+  reflash test of `394dee45` DEFERRED (next bench session: one iteration on the old build, stalls expected at ~24.5k bar
+  reads; then back to the fast-path build). Controller left on `3c71953`, display stopped, Studio disconnected (port
+  free); the :8092 worktree server stopped; bridge 3.1 + sim (200 Hz) left as Michael started them. Host branch
+  `claude/mode3-perf-sd` pushed; firmware `feat/sd-fastpath-2x10` stays local (tip `f6c11d2` built, `3c71953` on the
+  controller). Standing next steps: causal reflash; card screening with `sd_stall_test.py` when cards arrive; read-free
+  path (compressed RAM cache in the ITI, `sd-read-jitter-2026-09-13.md` §6); Codex diff review of `f6c11d2` before it
+  is flashed; #201 PR consolidation; telemetry review session (`telemetry-review-handoff-2026-09-13.md`).
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
