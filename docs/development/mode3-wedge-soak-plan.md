@@ -547,6 +547,20 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   log shows the g6_3x10 io defaults applied first, then re-applied for the derived rig one second later — ordering
   follow-up, same io values), sd card line, `sdDiag` 0, telemetry available. 19:17 drill step 1: `setSdDiag(3)` +
   one-trial drill protocol (`protocols/mode3_drill_1trial.yaml`).
+- **2026-09-13 19:17–19:30 ET — drill step 1 (injected stall), two runs.** (a) 60 s Test run via `runOnce(false)`:
+  ran **pattern 4** (`p100_slow_bar`), not the bar — the bench card is the COURSE card (36 = `p3_heisenberg_ts`, the
+  813 KB/200-frame file used all day; 5 = `course_grating_36deg`; 46 = the sine) and the protocols' names
+  `frame2_h_ccw_200f`/`grating_sq` do not exist on it, so they fell back to `pattern_ID`; the Test-run log had no
+  `run_metadata` and v1-style `arena_command` objects instead of `a` rows. Fixed the protocols (names + ids 36/46,
+  drill 180 s) and documented "drill via a 1-iteration soak". (b) **180 s via the soak driver, arm 3 (legacy seek +
+  no skip), pattern 36: 34,903 commands, 34,904 reads, reads/cmd 1.00, sd_layout = legacy applied + no-skip —
+  0 stalls, worst read 2.0 ms, −1 step p50 1.39 ms (the FAST-path cost; the same arm showed 2.0 ms and clusters
+  every 23k reads at 15:00 on `75405ee`).** Log completeness on this soak-path file: `run_metadata` (label
+  `488d5b9b…`, card + arm), 34,905 `a` rows vs 34,903 `cc`, drainer gaps/notStored/errors 0, `trial_quality` AFTER
+  the last controller row → **the v0.78 export-ordering fix confirmed on a real run**; `runlog-check` fails it only
+  for the expected arm ≠ 0. Frame-count-from-0x88 fill added to the Studio (v0.79) — the sine would otherwise have
+  run with the bridge's 200-frame default modulus tonight. 19:32: harness arm 3 on `488d5b9` to see whether the
+  legacy arm stopped biting because of the Studio path or the build.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
