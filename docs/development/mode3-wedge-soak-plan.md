@@ -232,6 +232,18 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
 
 - **2026-09-13 00:05 ET — standing order (Michael):** soak continues to ~08:00 on `4860fef8`. On the next near-identical wedge (disarm breadcrumb / PC in `IntervalTimer::end()`), flash the **free-running refresh timer** variant (being built: 0x70 no longer disarms/re-arms the PIT; arm once on SHOW_FRAME entry; 0xCB flags bit 4 marks it) and continue the soak on it as the A/B. Each further wedge is a PC data point.
 
+- **2026-09-13 00:41–00:50 — Codex reviews of the evidence doc and of `eca07f6`.** Plan review (adversarial) found
+  the `IntervalTimer::end()` null-callback/`TFLG` race in the Teensy core → PIT interrupt storm with the main
+  context's return address exactly at the captured PC (`channel->TCTRL = 0`); verified in the installed core
+  1.160.0; quantitatively consistent with Isabel's ~292 k commands/failure (≈ 11 ns window). Now the leading
+  mechanism; bus hang is the alternative. Reconciliation: `codex-review-2026-09-13-mode3-wedge-fix.md`; evidence
+  doc §2b. Diff review of the free-running commit: keep the timer policy; fix the non-atomic ISR-lite record
+  update, sticky `armed_hz_` on a failed `begin()`, the lost pre-watchdog ISR identity, the historical-record
+  test assertion; README claims softened. All folded into one follow-up firmware commit (safe PRIMASK-guarded
+  disarm at the remaining `end()` sites, PIT ISR trampoline id 7 + STATE kind 9 counts, watchdog context xPSR/
+  EXC_RETURN → STATE kind 8), to be diff-reviewed before it is the build that the standing order flashes. Soak on
+  `4860fef8` at 200 Hz + jumps continues (iteration 3, trial 21 at 00:47; no wedge since 23:56).
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1

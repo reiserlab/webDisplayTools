@@ -38,6 +38,27 @@ rewrite, channel rescan, NVIC priority rewrites, 100–286×/s), or does **anoth
 DMA, USB) hang the bus and the PIT store is merely the first CPU access to block? The three earlier breadcrumbs
 (`OP_CMD` before the SD marker = the same disarm site) fit either.
 
+### 2b. Competing explanation — the `IntervalTimer::end()` race (Codex review 00:41, verified 00:45)
+
+Reconciliation: `codex-review-2026-09-13-mode3-wedge-fix.md`. In the installed Teensy core (1.160.0)
+`IntervalTimer::end()` nulls the callback **before** disabling the channel (`funct_table[i] = nullptr;
+channel->TCTRL = 0; channel->TFLG = 1;`), and `pit_isr()` clears a channel's `TFLG` **only when its callback is
+non-null**. A PIT interrupt taken between the first two stores runs the ISR with a null callback, never clears
+the flag, and re-enters forever at priority 128: the main context is starved with its return address exactly at
+`channel->TCTRL = 0` — the captured PC. `IRQ_USB1` (113) and `IRQ_SDHC1` (110) share priority 128 and win the
+NVIC tie-break on equal priority, so their ISRs still run between storm iterations (USB stays enumerated, the
+134-baud bootloader route works, the CDC rx buffers fill and host writes stall 1–3 s); only `loop()` never runs
+again. Quantitatively: Isabel's ~292 k commands per failure ⇒ ≈ 3.4 × 10⁻⁶ per disarm ⇒ an ≈ 11 ns window at a
+3.33 ms refresh period — the width of one or two instruction boundaries. This reading needs **no hung bus**;
+§2's "the watchdog touches only OCRAM" premise was also wrong (its handler reads the DWT cycle counter and does
+cache maintenance), so the bus-hang reading rests on the PC alone. One caveat: in a storm most watchdog captures
+would land inside `pit_isr` (handler context), ours shows the main context, which the exception tail-chain path
+allows but does not favour — a single sample. Discriminators at the next capture: stacked xPSR IPSR field (0 =
+thread, 138 = PIT handler), the watchdog handler's `EXC_RETURN`, and a PIT interrupt-entry count (all in the
+follow-up firmware commit). Consequence for §3: the free-running change removes the hot-path `end()` (exposure
+÷ 10⁴) but STOP/ALL_OFF, pattern entry, streaming entry, ALL_ON and the error glyph still call it — the follow-up
+guards `disarmRefreshTimer()` with a PRIMASK critical section so the race is closed at every site.
+
 ## 3. Proposed fix: free-running refresh timer
 
 Arm the refresh timer once when the display enters SHOW_FRAME (or when the rate changes); disarm only on
