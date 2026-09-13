@@ -3,14 +3,15 @@ version: 3
 # ============================================================================
 # One-trial Mode-3 drill — for the recovery drill before an overnight soak and
 # for the lab's injected-stall test (lab-test-day-windows-2026-09-14.md, test B):
-# a single 60 s closed-loop trial on the 813 KB bar with the simulator, nothing
-# else. Run it as a Test run; the banner at the end is the result.
+# a single 180 s closed-loop trial on the 813 KB bar with the simulator, nothing
+# else (≈ 36k reads at 200 Hz — more than one of the old ~24.5k-read stall periods,
+# so the injected legacy arm has time to stall). Run it as a Test run; the banner at the end is the result.
 #   before:  await Studio.setSdDiag(3)      (inject the stall arm)
 #   after:   await Studio.setSdDiag(0)
 # ============================================================================
 
 experiment_info:
-  name: "Mode-3 drill (one 60 s bar trial)"
+  name: "Mode-3 drill (one 180 s bar trial)"
   author: "webDisplayTools"
 
 rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
@@ -39,13 +40,15 @@ conditions:
         plugin_name: "fictrac"
         command_name: "connect"
 
+  # The 813 KB, 200-frame bar on the CSHL course card is p3's pattern (036_p3_heisenberg_ts.pat);
+  # names resolve against the card listing, pattern_ID is only the fallback.
   - name: "cl_bar_200f"
     commands:
       - type: "controller"
         command_name: "trialParams"
-        pattern: "frame2_h_ccw_200f"
-        pattern_ID: 4
-        duration: 60
+        pattern: "p3_heisenberg_ts"
+        pattern_ID: 36
+        duration: 180
         mode: 3
         frame_index: 0
         frame_rate: 0
@@ -56,7 +59,7 @@ conditions:
         params:
           gain: 1.8
       - type: "wait"
-        duration: 60
+        duration: 180
       - type: "plugin"
         plugin_name: "fictrac"
         command_name: "stopClosedLoop"

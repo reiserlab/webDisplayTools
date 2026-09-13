@@ -78,7 +78,7 @@ conditions:
       - type: "controller"
         command_name: "trialParams"
         pattern: "sine_2000f_gs16"
-        pattern_ID: 0
+        pattern_ID: 46
         duration: *cl_dur
         mode: 3
         frame_index: 0
@@ -96,12 +96,14 @@ conditions:
         command_name: "stopClosedLoop"
 
   # The file every bench stall happened on (813 KB, 200 frames) — continuity with the evidence.
+  # The 813 KB, 200-frame bar on the CSHL course card is p3's pattern (036_p3_heisenberg_ts.pat);
+  # names resolve against the card listing, pattern_ID is only the fallback.
   - name: "cl_bar_200f"
     commands:
       - type: "controller"
         command_name: "trialParams"
-        pattern: "frame2_h_ccw_200f"
-        pattern_ID: 4
+        pattern: "p3_heisenberg_ts"
+        pattern_ID: 36
         duration: *cl_dur
         mode: 3
         frame_index: 0

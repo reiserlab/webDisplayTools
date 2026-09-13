@@ -41,7 +41,7 @@ clusters` line. If the label is not `488d5b9b`, stop: wrong build.
 
 ## 3. Card check (2 min, or 10 with uploads)
 
-Console → the SD listing must show `frame2_h_ccw_200f` (200 frames) and `sine_2000f_gs16` (2000 frames). If not:
+Console → the SD listing must show `p3_heisenberg_ts` (index 36 on the course card: the 813 KB, 200-frame bar) and `sine_2000f_gs16` (index 46, 2000 frames). If not:
 `pixi run node scripts/make-stress-patterns.js` writes both into `soak-patterns\`; upload them from the Console
 (SD upload) with the display stopped. Indices are by sorted filename; the protocol resolves names, so numbers don't matter.
 
@@ -61,7 +61,7 @@ Studio: File ▾ → Open → `protocols/soak_mode3_stress.yaml`; rig `cshl_g6_2
 | # | do | look for (Studio log / files) | pass |
 |---|---|---|---|
 | A | **Soak, 3 iterations (~1 h):** File ▾ → Soak…, `iterations 3, gap 10 s, first fault halt, then reset-continue, max resets 3` | `soak ended (iterations) after 3 iteration(s), 0 fault(s), 0 reset(s)`; every iteration banner `… pass · 0 flagged · 0 unknown` | 0 faults, 0 resets, 60 of 60 trials pass |
-| B | **Injected stall** (checks the flagging path): in the browser console `await Studio.setSdDiag(3)`, run ONE Test run of the stress protocol, then `await Studio.setSdDiag(0)` | during the run: `display gap NN ms (sd_slow, body) in trial …` lines; at the end `⚠ stimulus quality: … flagged`; after `setSdDiag(0)`, Console identity shows `sd diag 0` | at least one trial flagged; the soak did NOT stop; switches back to 0 |
+| B | **Injected stall** (checks the flagging path): in the browser console `await Studio.setSdDiag(3)`, open `protocols/mode3_drill_1trial.yaml` and run it as a 1-iteration Soak (File ▾ → Soak…, iterations 1), then `await Studio.setSdDiag(0)` | during the run: `display gap NN ms (sd_slow, body) in trial …` lines; at the end `⚠ stimulus quality: … flagged`; after `setSdDiag(0)`, Console identity shows `sd diag 0` | at least one trial flagged; the soak did NOT stop; switches back to 0 |
 | C | **Simulator kill:** during a Soak (start a 2-iteration soak), close the sim window for 30 s, restart it | `soak: no FicTrac frames — waiting for the simulator`, then the next iteration starts | soak resumes by itself; no fault counted |
 | D | **Link drop:** during a trial pull the controller's USB cable, wait 5 s, plug it back | `run ended by a link drop … treating as a controller event`; post-mortem lines (`confirm`, `probe`, `reconnect`); the run's outcome `CONTROLLER_FAULT`; the arena goes **dark** on replug and stays dark until the next trial | reconnects without a page reload; next iteration runs |
 | F | **An old course protocol runs unchanged:** sign in to the course repo (Settings), open rig1 `p3-heisenberg-ts-full.yaml`, run it once as a Test run (simulator running) | it runs to the end exactly as in July; banner `… pass`; the run log has `trial_quality` and `run_metadata.firmware` = `488d5b9b …` | completes, all trials pass |

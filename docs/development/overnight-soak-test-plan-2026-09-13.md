@@ -55,8 +55,8 @@ judged by evidence, not by the soak still running in the morning.
 
 ### Recovery drill BEFORE the overnight (≈ 15 min, on the candidate build, Studio path) — exercises R2 and R3 on purpose
 
-1. **Injected stall (R3 + the never-yet-seen Studio banner):** `await Studio.setSdDiag(3)`; run one 60 s bar trial
-   (`Studio.runOnce(false)` on the standard soak protocol); expect ≥ 1 `display_gap`, the trial `fail`, the banner
+1. **Injected stall (R3 + the never-yet-seen Studio banner):** `await Studio.setSdDiag(3)`; run `protocols/mode3_drill_1trial.yaml`
+   (one 180 s bar trial) as a 1-iteration Soak — a plain Test run writes a Test-style log without `run_metadata`/`a` rows; expect ≥ 1 `display_gap`, the trial `fail`, the banner
    "⚠ stimulus quality: … flagged", `sd_layout` legacy+no-skip in the log; then `await Studio.setSdDiag(0)` and
    confirm `Studio.sdCard.sdDiag === 0` after a reconnect (persistence check).
 2. **Injected watchdog reset (R2):** during a trial send `SET_TELEMETRY` with flags `0x31` (events on + watchdog bits
