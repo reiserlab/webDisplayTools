@@ -117,6 +117,23 @@ behaviour samples; `cf` rows have 8 or 11 fields; readers go through `js/runlog-
 
 ## 6. Evidence
 
+### 6.0 Test history (every bench run of this stack, oldest first; details with ET times in `mode3-wedge-soak-plan.md` §10)
+
+| when | build | what ran | result |
+|---|---|---|---|
+| 2026-09-11 night | health fw (`22b756d`) + Studio v0.76 | Mode-3 soak, simulator, CSHL 2×10 | wedge reproduced (the fault lifecycle, post-mortem and run-log artefact worked as designed) |
+| 2026-09-12 | ring fw (`c47ee68`) → watchdog fw (`fb11681`…`4860fef`) | soaks with the ring drained live; watchdog self-reset path | wedge lead-up captured in the ring → PIT race identified; watchdog resets and captures the PC; Studio self-reset path exercised |
+| 2026-09-12 night → 09-13 | free-running timer fw (`394dee45`) | 19 + 5 soak iterations, 5.15 M commands at 100/200/286 Hz | **0 wedges**; SD stalls now visible: 716 slow reads in 197 clusters, every ~24.5k reads of the 813 KB pattern |
+| 2026-09-13 11:45–12:27 | SD fast path fw (`3c71953`) + Studio v0.77 | 2 soak iterations, 482k commands | **0 reads > 10 ms, 40/40 trials pass** (vs 4 clusters per iteration the night before) |
+| 2026-09-13 14:47–15:11 | `75405ee` | **causal test**: 4 arms × 6 min via `SET_SD_DIAG`, bar pattern | FAT access is the cause (table below); same-index skip irrelevant |
+| 2026-09-13 15:12–16:12 | `75405ee` | 1 h production at 286 Hz, bar | 1.04 M commands, 0 reads > 1.8 ms, req_age max 3.0 ms |
+| 2026-09-13 16:12–18:16 | `e59767e` (review fixes) | campaign: 13 × 10 min at 286 Hz, 8 MB sine ⇄ 813 KB bar | 2.2 M commands; one 19.4 ms + one 6.4 ms data read 12 ms apart on the sine (single event, no driver error); everything else ≤ 1.8 ms |
+| 2026-09-13 18:16–21:00 | `e59767e` | campaign at 200 Hz | *(running; see the bench log)* |
+| 2026-09-13 night | `feat/mode3-reliability` (this stack on main/#48, 2×10 variant) | recovery drill + overnight Studio soak per `overnight-soak-test-plan-2026-09-13.md` | *(to be filled in the morning)* |
+| offline, every commit | — | firmware `pytest tests/test_telemetry_codec.py tests/test_sd_stall_stats.py` (17), `soak_mode3_selftest.py`; web `pixi run test` (all suites incl. 25 trial-quality, 41 telemetry-report, 65 arena-telemetry, 280 wire), `format-check` | green |
+| HIL (port free) | each flash | `test_firmware_version.py`, `test_health.py`, `test_telemetry.py` subsets | green except two pre-existing flakes and one open item (`test_loop_max_1s_window_is_populated` at 3 s uptime on `e59767e`; re-run at the drill) |
+
+
 **Problem A (wedge):** before — 6 occurrences incl. rig 2 (2026-07-11), ~1 in 10 Mode-3 runs on 2026-09-11/12 soaks.
 After the free-running timer (`394dee4`, 09-12 night → 09-13): 24 iterations, 5.15 M commands, 0 wedges, 0 watchdog
 resets. Root cause demonstrated stand-alone: stock `IntervalTimer::end()` dies in < 0.5 s under the reproducer,
