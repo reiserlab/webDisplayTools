@@ -133,3 +133,25 @@ addresses the race; the diagnostics needed another pass. Folded into a third ame
 | E11 | `soak_mode3.py` does not drain the crash records after reset. | **DEFERRED** | Studio path drains them (`afterReconnect`). |
 | E12 | No last-known-good capsule; a reset mid-writeback loses context and counts together. | **DEFERRED** (fw #54) | E7's ordering limits the loss to the counts. |
 | E13 | "Split mitigation from diagnostics." | **REJECTED** for tonight | One controller, standing order; recorded for PR F2. |
+
+## Firmware diff review 3 — `eca07f6..394dee4` (round-3 delta) — FLASH GATE PASSED
+
+**Run:** `.codex-review/codex-diff-review-20260913-010840-52247/`. Codex standard: "No blocking correctness
+defects found. The PIT-only mask closes the null-callback interrupt window … while leaving the watchdog
+interrupt enabled. The nesting-safe entry/exit changes correctly preserve the enclosing PIT marker." The
+adversarial pass agrees the guard is justified and argues about the diagnostics' evidentiary weight.
+
+| # | Finding | Verdict | Action |
+|---|---|---|---|
+| F1 | The expanded capture (two checksums, three lines) must finish inside RTWDOG's 128-bus-clock pre-reset window; decoder tests cannot show that. | **ACCEPTED** — bench gate | Starve test (`SET_TELEMETRY 0x31`) right after flashing: a decodable kind-8 record (thread, IPSR 0) is required before the soak restarts; the context line is written and flushed first so a partial capture still yields PC/LR/xPSR. Under-load capture = the first real wedge on this build. |
+| F2 | `scripts/soak_mode3.py` carries an unused duplicate `classify_exc_return`; stale "~20 cycles masked" comment. | **DEFERRED** (close-out squash) | Cosmetic. |
+| F3 | The pyserial soak does not drain the ring after a reset, so kinds 8/9 would be missed. | **N/A tonight** | The Studio path drains the whole ring on reconnect (`afterReconnect`), which includes the new boot's kind 8/9 records. |
+| F4 | A failed count capture (check_all invalid → zero counters omitted) is indistinguishable from inactivity. | **ACCEPTED** | Distinguishable in practice: a watchdog boot with a kind-8 record but no kind-9 records at all = counts lost. |
+| F5 | Boot clears the legacy record location without importing it — an uncollected capture is lost on upgrade. | **ACCEPTED** (no exposure tonight) | The baseline firmware harvests its own record at the self-reset boot and the Studio logs it (GET_HEALTH) before any flash; nothing uncollected exists at flash time. |
+| F6 | Implicit ownership: PIT enable state shared, vector re-installation per `begin()`, MSP-only frame read, no linker reservation, platform not pinned. | **DEFERRED** (fw #54) | Single-timer firmware today; all listed on fw #54. |
+| F7 | Counts are lifetime totals quantised to 4096; a recent-window rate would discriminate a 2 s storm better. | **DEFERRED** | Storm signature is still unmistakable: PIT count ≫ refresh count on a boot that is hours long. |
+| F8 | Tests construct wire bytes; no firmware persistence/fault-injection tests. | **DEFERRED** (PR F2 test list) | Bench starve test tonight is the fault injection. |
+| F9 | Split the guard from the diagnostics. | **REJECTED** for tonight | One controller; recorded. |
+
+**Decision:** `394dee45` is the build the standing order flashes. Gate after flashing: 0xCB flags bit 4 set and
+label `… freerun`; starve test yields kind 8 (thread) + kind 9 (ids 1/4/5/7, ids 1 ≈ 7); then the soak restarts.
