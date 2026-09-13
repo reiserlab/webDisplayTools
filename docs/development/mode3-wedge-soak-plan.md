@@ -307,6 +307,27 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   3 % instead of P ≈ 0.0007, invariant-framed upstream fix); final texts await Michael. Handover for the
   performance session: `mode3-perf-handover-2026-09-13.md`. Controller left on `394dee45`, Studio connected idle.
 
+- **2026-09-13 09:53–11:30 ET — performance session (Claude, worktree `vigilant-tereshkova`, host branch
+  `claude/mode3-perf-sd` on #198; firmware `feat/sd-fastpath-2x10` on the ring branch, local).** Bench untouched so far
+  (Studio connected idle on `394dee45`, bridge + sim still up). Log analysis of the 75 ring-era files: per-read cost by
+  index step (+1 620 µs; non-sequential 1.18 ms grating / 1.46–2.0 ms bar — SdFat FAT-chain walk on backward seeks);
+  **the 30–90 ms stalls are card-internal**: 716 stalls / 197 clusters, quantised 23/33/41/67/89 ms, every ~48k accepted
+  0x70s at every rate, **712/716 while the 813 KB bar pattern was open** (24,573 bar reads between clusters, IQR
+  23.5–25.5k), position-dependent inside the file (frames 80–160 stall 1.5× the mean, frames 20–59 0.2×), unbroken
+  across the 16:45 power cycle; displayed-frame gap = stall + ~2 ms. Michael: acceptable freeze 5 ms target / 10 ms
+  worst case; ≥ 30 ms invalidates a trial; cards for comparison available later, not today. Codex plan review
+  (`.codex-review/report-20260913-1030-sd-stalls.md`): copy rotation withdrawn (conservation), FAT-cache explanation
+  corrected (separate FAT cache on ARM), u32 request age, screen ≠ qualify, current card is the untouched baseline.
+  Built + reviewed: fw `200fada` (contiguous O(1) seeks, same-index skip, sd_slow phase + ctx, sd_layout/sd_reads,
+  FRAME 26 B ring v2, GET_SD_INFO 0xCD, 0xCB bit 5) + `8968fb7` hygiene + `519d794` Codex round-1 fixes (skip requires
+  a running timer; presentation accounting on every transfer; provenance reset; USDHC error bits; sd_reads shift) +
+  `3c71953` `scripts/sd_stall_test.py`; host Studio v0.77 (`b96ea85`, `cfbe8a8`): trial-quality pass/flagged/unknown,
+  0xCD → `run_metadata.sd_card`, telemetry-report.py; all suites green. Read-free access-pattern research (agent +
+  Codex brainstorm): every course motion pattern except looming is an exact +1 px/frame roll; independent-frame LZ4
+  shrinks the 813 KB bar to 15 KB → complete compressed RAM cache loaded in the ITI is the recommended next step;
+  panel PSRAM write path is specified but unimplemented in panel firmware (`docs/development/sd-read-jitter-2026-09-13.md` §6).
+  Codex round 2 on the round-1 fixes running; flash follows its reconciliation.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
