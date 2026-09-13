@@ -253,11 +253,17 @@ def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dic
                             cur.stalls.append((ms, phase))
                 elif kind == 12:
                     if stalls and stalls[-1]["ctx"] is None:
-                        stalls[-1]["ctx"] = {"card_error_code": code, "irqstat_lo": arg}
+                        stalls[-1]["ctx"] = {"card_error_code": code, "irqstat_hi": arg, "driver_saw_error": bool(code)}
                 elif kind == 13:
+                    shift = (code & 0x7F) if isinstance(code, int) else 0   # bits 0-6 = binary shift; bit 7 = mid-open checkpoint
+                    reads = arg << shift
                     if cur is not None:
-                        cur.reads_fw = arg
-                        per_pattern[cur.pattern]["reads_fw"] += arg
+                        # checkpoints and the closing record are cumulative for the same open: keep the largest,
+                        # and count the per-pattern total once per open (replace the previous contribution)
+                        prev = cur.reads_fw or 0
+                        if reads > prev:
+                            per_pattern[cur.pattern]["reads_fw"] += reads - prev
+                            cur.reads_fw = reads
                 elif kind == 1:
                     if cur is not None:
                         cur.coverage.append("controller_reboot")
