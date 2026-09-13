@@ -47,6 +47,14 @@ review report; (c) **one detailed hand-off document** explaining all the changes
 | S-2 | web | run sheet: browser-free campaign path (upload + `sd_soak_campaign.sh`) as the default overnight tool; Studio path as the alternative | it is what ran tonight |
 | S-3 | web | CLAUDE.md: one line on `sd_soak_campaign` / `sd_upload_pat` and on "stalls were FAT access — never re-introduce chain-walking seeks" | institutional memory |
 
+### 4.1 Applied after the whole-stack reviews (15:30–16:00 ET) — see `.codex-review/report-20260913-*-fullstack.md`
+Firmware (commit after `75405ee`): panels blanked at boot (a watchdog/software reset left the last frame lit),
+watchdog kicked inside the ISP loops, same-index skip only after a successful DAC/LUT update, `SET_SD_DIAG` bit 0
+refused on exFAT (F-1 done), harness drains the backlog to completion, script deadline/verification fixes.
+Studio v0.78: verdict + final drain before the export (normal and fault runs), drain problems → `unknown`, bridge
+send failure not acked, FRAME read time in verdicts, link-drop = controller fault, stress gain 0.18, comment fixes.
+Deferred items are listed in the hand-off document §7.
+
 ## 5. Overnight run (on the candidate)
 
 `scripts/sd_soak_campaign.sh PORT "<sine idx> 36" 200 <until 08:00>` — 10-min alternating segments of the 8 MB sine and

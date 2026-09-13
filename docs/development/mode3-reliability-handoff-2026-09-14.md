@@ -158,6 +158,16 @@ segments — stalls, clusters, per-file read cost, request ages, reboots.*
 - **Sub-threshold stalls** (12–19 ms) exist on the legacy path; the 10 ms threshold and the 5 ms target are Michael's
   acceptance numbers, recorded in `trial-quality.js` defaults.
 
+### 7.1 Deferred from the whole-stack reviews (2026-09-13, both repos)
+Firmware: ring `seq` u32 rollover (~6 days continuous) and an incarnation id for the ack cursor; single ring header;
+ISR breadcrumb cost with telemetry off; a lean "timer fix only" release if ever wanted; HIL tests for DAC-failure
+retry, watchdog recovery and faster-than-refresh request storms; `soak_mode3.py` explicit unsynchronised state.
+Studio: a session-owned run-finalization state machine; trial identity from runner ids rather than observed opens;
+shared verdict conformance fixtures (JS ↔ Python); `SET_TELEMETRY(0)` for the "telemetry off" toggle; soak exposure
+per interval; report truncation → unknown and bounded accumulators; controller-time clustering in the report;
+`arena-link` write-timeout race; bridge rows-capability negotiation. None affects tonight's benchmark; all are
+recorded so the next session starts from the list, not from a re-review.
+
 ## 8. Where things live
 
 - Firmware: `src/Health.*`, `src/Telemetry.*`, `src/Watchdog*`/`Health` v2 fields, `src/SpiManager.*` (timer),
