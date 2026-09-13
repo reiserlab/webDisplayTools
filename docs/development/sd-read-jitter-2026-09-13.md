@@ -150,6 +150,12 @@ grouping; hot vs quiet window), (5) maintenance-capability probe and flash-regio
 
 ## 7. Bench results (filled in as they arrive)
 
+**Causal result (2026-09-13 15:11 ET, firmware `75405ee`, `SET_SD_DIAG` arms, 6 min each at 200 Hz on the bar):**
+legacy seek + no skip → 2 stall clusters (spacing 23,275 commands, worst 91 ms); contiguous seek + no skip → 0 slow
+reads at the same 72k reads; legacy seek + skip → 1 cluster; production → 0. **The FAT access was the cause** (the
+`fatGet` at cluster crossings inside `FatFile::read` puts the FAT read in the body phase, not the seek phase as §8
+assumed); the same-index skip does not affect the stalls. Details: `mode3-wedge-soak-plan.md` §10.
+
 Iteration 2 (12:27 ET) repeated iteration 1 to the decimal: 1281 s, 242k accepted 0x70s, 0 reads > 10 ms, 20/20 pass,
 req_age max 4.8 ms. **Two iterations, 482k commands, 2554 s, zero stalls** where the baseline rate predicts ≈ 6
 clusters (P(0) ≈ 0.003).

@@ -1,5 +1,10 @@
 # Causal test plan — did the contiguous-seek fix remove the SD-card stalls? (bench, ~70 min)
 
+**RESULT 2026-09-13 15:11 ET — H-FAT CONFIRMED.** Four 6-minute bar-only arms on `75405ee` at 200 Hz (table in
+`mode3-wedge-soak-plan.md` §10): arm 3 = 2 clusters at the baseline spacing (worst 91 ms), arm 2 = 0 slow reads with
+the identical read count, arm 1 = 1 cluster with the skip on, arm 0 = 0. The FAT access was the cause; the skip is
+irrelevant to the stalls.
+
 **Written:** 2026-09-13 12:45 ET; updated 14:15 ET. **Status:** code ready and **reviewed** (firmware
 `feat/sd-fastpath-2x10` tip `75405ee`: `SET_SD_DIAG` 0xCE, Codex rounds 3 + 4 reconciled in the ring worktree's
 `.codex-review/report-20260913-fw-round4.md`; Studio v0.77 `Studio.setSdDiag`), **bench test pending**.
@@ -43,8 +48,14 @@ plain luck (P ≈ 0.003).
 | 2 — the control for B | 2 | **on** | off | **0 clusters** | clusters every ~24.5k | clusters every ~24.5k |
 | 0 — production | 0 | on | on | 0 | clusters every ~32k | clusters every ~32k |
 
-Arm 0 is already measured (0 in 2 iterations). The **phase byte** is the fingerprint: under H-FAT the stall lands
-inside the seek (FAT-sector read), under H-data inside the body read — visible in arm 3 with a single stall.
+Arm 0 is already measured (0 in 2 iterations). **Correction (bench 14:47 ET):** the phase byte is NOT the H-FAT
+fingerprint. For a non-contiguous file SdFat's `FatFile::read` calls `fatGet` at every cluster crossing (a 4 KB frame
+almost always straddles two 4 KB clusters), so the FAT-sector read happens inside the **body** phase; `seekSet` only
+walks the chain on backward seeks. The 15 s arm-3 smoke run on `75405ee` reproduced a cluster (32.5 / 41.3 / 95.4 ms,
+all phase `body`, `sd_slow_ctx` = no driver error) after ~600 reads. Under H-FAT arms 3 and 1 stall (phase body),
+**arm 2 is the decisive arm**: contiguous flag on, skip off → no FAT access at all → 0 clusters; H-count/H-data
+predict clusters at the baseline spacing. The arms were shortened to 6 min each (bar-only, ~70k reads ≈ 3 baseline
+periods) via `scripts/sd_stall_test.py --sd-diag N --minutes 6` (browser-free).
 
 **Exposure and stopping rule.** One soak iteration ≈ 1250 s ≈ 120k bar-pattern commands ≈ 4–5 baseline cycles.
 - Arm 3 (20 min): must reproduce ≥ 2 clusters — if it does not, the card's behaviour has changed since last night

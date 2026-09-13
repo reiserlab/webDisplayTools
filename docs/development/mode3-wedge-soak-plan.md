@@ -452,6 +452,41 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   three runs, pass criteria, merge order). Firmware branch still LOCAL — push + PR against `arena-2x10-local`
   awaits Michael's go. RAM-cached FAT chain (extent table): deferred — decide on the 70-min causal result
   (§5 of the causal plan).
+- **2026-09-13 14:46 ET — Michael at the bench (35–40 min).** Flashed `75405ee` (bootloader route, 6 s; label
+  `75405ee6 2x10 2026-09-13 feat/sd-fastpath-2x10 freerun sdfast`). Causal test shortened: bar-only, 6 min per arm,
+  driven by `scripts/sd_stall_test.py --sd-diag N` (first hardware use). **14:46:22 smoke, arm 3, 15 s:** 2,936
+  commands, reads/cmd 1.00 (skip off), `sd_layout` legacy+no-skip, contiguous = 0 → **one cluster after ~600 reads:
+  32.5 / 41.3 / 95.4 ms, all phase `body`, sd_slow_ctx 0/0** (card held the bus, no driver error). Phase body is
+  consistent with H-FAT (SdFat `fatGet` at cluster crossings inside `read`, verified in `FatFile.cpp`); the plan's
+  "phase = seek" fingerprint corrected. 14:47 arms started in order 3 → 2 → 1 → 0, 6 min each (logs
+  `soak-logs/sdstall-*-armN.jsonl` in the ring worktree).
+- **2026-09-13 15:04 ET — arms 3 and 2 done (each 6 min, 200 Hz, bar id 36 only, capture valid, no reboot, cmds
+  reconciled).** **Arm 3** (legacy seek, no skip): 71,882 commands = 71,882 reads → **2 clusters**, spacing **23,275
+  commands** (= the baseline 24.5k period): one of 16 stalls of 12–19 ms (a sub-20 ms signature never visible under the
+  old 20 ms threshold) at 309 s and one classic 21.6 / 41.4 / 48.2 / **90.8 ms** at 426 s; phases body (one seek);
+  bar −1 step 2.0 ms p50. **Arm 2** (contiguous seek, no skip): 71,992 commands = 71,992 reads — the SAME read count —
+  → **0 reads over 10 ms, 0 slow reads at all, worst read 1.8 ms, req_age max 3.0 ms**; bar −1 step 1.46 ms.
+  ⇒ **H-count and H-data rejected, H-FAT confirmed:** identical data-read exposure, the only difference is whether the
+  FAT is touched. The same-index skip (B) is not what removed the stalls. Arms 1 and 0 running (1 = legacy seek with
+  skip on → clusters expected, closes the "B did it" loophole from the other side; 0 = production on `75405ee`).
+- **2026-09-13 15:08 ET — arm 1 done** (legacy seek, skip ON): 71,959 commands, 54,885 reads (0.763 reads/cmd) →
+  **1 cluster of 6 stalls (21.4 / 19.5 / 22.9 / 48.0 / 19.1 / 70.2 ms)**, capture valid. Stalls persist with 24 % fewer
+  data reads and the FAT still touched ⇒ the same-index skip is irrelevant to the stalls (as arm 2 vs 3 already showed).
+  Arm 0 (production) running until ~15:12.
+- **2026-09-13 15:11 ET — arm 0 done, causal test COMPLETE (4 × 6 min, all captures valid, 0 reboots).**
+
+  | arm | FAT touched | reads/cmd | reads | stalls > 10 ms | clusters | worst read | req_age max |
+  |---|---|---|---|---|---|---|---|
+  | 3 legacy seek, no skip | yes | 1.00 | 71,882 | 20 | 2 (spacing 23,275 cmds) | 90.8 ms | 76.7 ms |
+  | 2 contiguous, no skip | no | 1.00 | 71,992 | **0** | 0 | 1.8 ms | 3.0 ms |
+  | 1 legacy seek, skip | yes | 0.76 | 54,885 | 6 | 1 | 70.2 ms | — |
+  | 0 production | no | 0.76 | 54,900 | **0** | 0 | 1.8 ms | 2.9 ms |
+
+  **Conclusion: H-FAT confirmed, H-count and H-data rejected.** The stalls were induced by the firmware's FAT access
+  (SdFat chain walk on backward seeks + `fatGet` at cluster crossings inside `read`) hammering the card's FAT block;
+  the contiguous-seek fix removes them at identical data-read exposure; the same-index skip is irrelevant to them.
+  Production build `75405ee`: bar −1 step 1.46 ms p50 / 1.8 ms max, req_age p50 1.7 ms / max 2.9 ms at 200 Hz.
+  15:12 started the 2 h production run at 286 Hz on the bar (`--label prod-286hz-2h`), unattended.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
