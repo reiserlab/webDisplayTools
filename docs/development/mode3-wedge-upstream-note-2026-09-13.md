@@ -108,7 +108,7 @@ Supporting material: `mode3-wedge-evidence-2026-09-13.md` (§2b/§2c), `codex-re
 > core's `end()` remains unsafe for anyone who stops a running IntervalTimer; the NVIC guard stays in our firmware
 > until the core version we build against carries a fix. Upstream report: PaulStoffregen/cores (link to follow).
 
-## (B) FINAL — upstream report (PaulStoffregen/cores)
+## (B) FINAL — upstream report (PaulStoffregen/cores) — **HELD for Frank's review** (Michael, 09:55 ET); (A) posted as https://github.com/reiserlab/LED-Display_G6_Firmware_Arena/issues/50#issuecomment-5653672436
 
 > **Title:** Teensy 4: `IntervalTimer::end()` can leave the PIT interrupt permanently asserted (null-callback path
 > in `pit_isr`) — thread mode never runs again
