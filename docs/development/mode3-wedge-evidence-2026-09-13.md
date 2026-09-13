@@ -57,7 +57,8 @@ allows but does not favour — a single sample. Discriminators at the next captu
 thread, 138 = PIT handler), the watchdog handler's `EXC_RETURN`, and a PIT interrupt-entry count (all in the
 follow-up firmware commit). Consequence for §3: the free-running change removes the hot-path `end()` (exposure
 ÷ 10⁴) but STOP/ALL_OFF, pattern entry, streaming entry, ALL_ON and the error glyph still call it — the follow-up
-guards `disarmRefreshTimer()` with a PRIMASK critical section so the race is closed at every site.
+guards `disarmRefreshTimer()` by masking only `IRQ_PIT` at the NVIC around `end()` (the watchdog IRQ stays live, so a
+genuinely stalled store would still be captured) — the race is closed at every site.
 
 ## 3. Proposed fix: free-running refresh timer
 
