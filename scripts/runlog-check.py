@@ -73,8 +73,13 @@ def check_file(path):
     if cc70 and a_ok and abs(cc70 - a_ok) > 2: p.append(f"controller-accepted 0x70 {cc70} vs host-accepted {a_ok}: drain lost records")
     if iter_end and isinstance(iter_end.get("telemetry"), dict):
         t = iter_end["telemetry"]; c["drainer"] = {k: t.get(k) for k in ("dropped", "gaps", "notStored", "errors", "records")}
-        for k in ("dropped", "gaps", "notStored", "errors"):
+        # `dropped` is the controller's CUMULATIVE ring-overrun counter: records evicted while nobody drained —
+        # normally the gap between runs (log closed → poller paused → 64 KiB ring full in ~8 s). It is a
+        # problem only when it happens inside a trial, which trial-quality records as a `ring_overrun`
+        # coverage gap (→ unknown). So: info here, verdicts decide.
+        for k in ("gaps", "notStored", "errors"):
             if t.get(k): p.append(f"drainer {k} = {t[k]}")
+        if t.get("dropped"): c["note"] = f"ring dropped {t['dropped']} records during the file (between runs unless a trial is unknown)"
     c["fictrac_rows"] = fictrac; c["malformed_lines"] = malformed
     if malformed: p.append(f"{malformed} malformed line(s)")
     if fictrac and cc70:

@@ -34,6 +34,12 @@ iterations, ≈ 560 trials, ≈ 6 M frame commands.
 | L6 | **Size and disk** | raw MB per iteration, gz MB after commit; free disk on the bridge machine | file sizes | ≈ 45 MB raw / ≈ 12 MB gz per iteration; ≥ 5 GB free before start (2.2 TB free today) | `ls -la`, `df -h` |
 | L7 | **Verdict provenance** | `display_gap` events (if any) reference a trial and pattern that exist; `trial_quality.counts` add up to the trial count | events | consistent | `runlog-check.py` |
 
+**Baseline for L1/L2 (why these checks exist):** `runlog-check.py` on this morning's v0.77 iteration
+(`arena-log-20260913-120611-713.jsonl`, firmware `3c71953`) fails it: `trial_quality` at line 923,845, last
+controller row at 924,204 (the tail was written after the export), controller-accepted 0x70 = 242,178 vs
+host-accepted 242,200 (22 records lost to that ordering), ring `dropped` 1,157 (between runs, log closed). All 20
+trials still read `pass`. The overnight on v0.78 must read `OK` on every file — that is the test of today's fix.
+
 ## 3. If a showstopper happens, we recover correctly
 
 Nothing here is expected to trigger. Each row says what the log MUST show if it does, so a "recovered" night is
@@ -73,7 +79,7 @@ If any drill step fails, the overnight does not start until it is understood.
 ```bash
 pixi run python scripts/wedge-scan.py soak-logs/                       # T1, T4, L3, R1/R2 counts
 pixi run python scripts/telemetry-report.py soak-logs/arena-log-*.jsonl*  # T2, T3, T5, T6, L4
-pixi run python scripts/runlog-check.py soak-logs/arena-log-*.jsonl*      # L1, L2, L5, L7 (to be written: ordering, counts, provenance)
+pixi run python scripts/runlog-check.py soak-logs/arena-log-*.jsonl*      # L1, L2, L5, L7 (ordering, counts, provenance)
 ```
 Fill the tables above with numbers, then §6 of `mode3-reliability-handoff-2026-09-14.md` ("Overnight benchmark").
 Anything red → the log excerpt goes into the bench log with its ET time before anyone touches the controller.

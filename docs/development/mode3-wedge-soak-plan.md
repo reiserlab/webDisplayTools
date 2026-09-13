@@ -499,6 +499,11 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   `runlog-format-review-2026-09-13.md` (≈133 MB/h raw, 35–40 gz at 200 Hz; R1 stream-gzip, R2 schema v3),
   `consolidation-plan-2026-09-13.md`. Plan for 16:12: stop the 286 Hz run (1 h), flash `e59767e`, HIL subset, upload
   the 8 MB sine browser-free, verify indices, start the alternating campaign (286 Hz → 18:15, 200 Hz → 21:00).
+- **2026-09-13 16:02 ET — overnight test plan written (`overnight-soak-test-plan-2026-09-13.md`: timing T1–T7, log
+  completeness L1–L7, recovery R1–R5 + a pre-overnight drill: injected stall via 0xCE, injected watchdog reset via
+  0xA8 flags 0x31, simulator kill). New `scripts/runlog-check.py`; on this morning's v0.77 log it FAILS as predicted:
+  `trial_quality` 359 lines before the last controller row, 22 command records lost to the export, ring dropped
+  1,157 between runs — the v0.78 fix is what the overnight must prove.**
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
