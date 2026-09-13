@@ -512,6 +512,10 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   **index 46, 2000 frames, 8.1 MB in 1.4 s (5.7 MB/s)**; verified idx 36 = 200 frames, idx 46 = 2000. Campaign started
   16:12:53 (`sd_soak_campaign.sh … "46 36" 286 1815 200 2100 10`, detached under caffeinate): segment 1 = sine at
   286 Hz, `sd_layout` code 1 → **contiguous**, 8 sectors/cluster.
+- **2026-09-13 16:23 ET — campaign segment 1, 8 MB sine (idx 46) at 286 Hz on `e59767e`, 10 min: 171,482 commands,
+  130,758 reads, 0 reads > 10 ms (worst 1.8 ms), random-step read p50 1.39 ms — the same as the 813 KB bar —
+  req_age p50 1.67 / max 2.94 ms, contiguous, usable.** First evidence that the fast path has no size dependence
+  (2000-entry chain, 2 MB seeks). Segment 2 = bar at 286 Hz.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
