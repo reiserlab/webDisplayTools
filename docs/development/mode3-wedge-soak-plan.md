@@ -521,6 +521,13 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
 - **2026-09-13 17:35 ET — hand-off paths decided (Michael):** firmware stays on `feat/sd-fastpath-2x10` as the merge
   candidate — PUSHED, PR reiserlab/LED-Display_G6_Firmware_Arena#55 against `arena-2x10-local`; Studio #198 + #202
   go to `main` tomorrow morning without a separate review once the night is clean (revert if needed).
+- **2026-09-13 18:16 ET — stress phase done (13 segments at 286 Hz, ~2.2 M commands, ~1.7 M reads); ONE slow read.**
+  Segment 9 (`sdstall-20260913-173259-camp-286-p46`, 8 MB sine), 472 s in: frame 47 → 44 (−3 step), **body phase,
+  19.4 ms, `sd_slow_ctx` 0/0 (no driver error), single event (no cluster), next read 0.62 ms; req_age max 19.6 ms.**
+  Not the FAT signature (contiguous file, no FAT access, not quantised 23/33/41…, not clustered) — the exact
+  "phase body on the 8 MB file" watch item from the campaign plan (a data-region event?). Rate so far: 1 in
+  ~2.5 M fast-path reads today; below Michael's 30 ms "detectable" line, above the 10 ms flag line → that trial would
+  be *flagged*. Night phase (200 Hz) started 18:16; watching for recurrence and whether it stays on the 8 MB file.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
