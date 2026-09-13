@@ -91,3 +91,24 @@ review before flashing. Until a wedge, the soak continues on `4860fef8` at 200 H
    clear). Hold until the reproducer confirms.
 4. **fw #50 comment** with the mechanism, the quantitative check and the discriminators — outward-facing,
    so not posted tonight.
+
+## Firmware diff review 1 — `4860fef..eca07f6` (free-running refresh + driver-vector ISR markers)
+
+**Run:** `LED-Display_G6_Firmware_Arena-ring/.codex-review/codex-diff-review-20260913-004245-34339/`.
+Verdict from Codex: keep the timer policy; do not flash the combined patch as-is. Every fixable item went
+into the follow-up commit `5e6a78c` (reviewed separately below).
+
+| # | Finding | Verdict | Action |
+|---|---|---|---|
+| D1 | `isrEnterLite/isrExitLite` read-modify-write the shared lite record without masking; a nested wrapped ISR loses a count and leaves the checksum inconsistent (Codex reproduced it in a model). | **VERIFIED+FIXED** (`5e6a78c`) | Both hooks are PRIMASK-preserving critical sections; still no cache flush per interrupt. |
+| D2 | Tests verify declarations (0xCB bit 4, accepted ISR id range), not free-running behaviour; the frame-storm test sleeps longer than a refresh period. | **DEFERRED** (fw #54) | Display-cadence HIL tests listed; the bench measures FRAME/ISR-count progress directly tonight. |
+| D3 | The trampoline banner uses `DBG_PRINTF`, gated on a flag that is false during `setup()` — unreachable. | **VERIFIED+FIXED** | `SentinelPrint` boot path. |
+| D4 | The watchdog IRQ overwrites `isr_last` with `ISR_WDOG`, losing the identity of what was active; lite markers are not flushed when the hang is with interrupts masked. | **VERIFIED+FIXED** (identity) / **ACCEPTED** (persistence) | Prior `isr_last` captured into the `'H6IR'` record and surfaced in STATE kind 8; the un-flushed-marker case falls back to the watchdog PC (fw #54). |
+| D5 | `armRefreshTimer` ignores `IntervalTimer::begin()`'s boolean → a failed allocation becomes a sticky "already armed". | **VERIFIED+FIXED** | `armed_hz_` committed only on success; failure leaves it 0 and records `STATE(telemetry, 0xED, rate)`. |
+| D6 | New test asserts every `OP_CMD_DISARM` breadcrumb has arg 0; records written by the base firmware carry 0x70 (wedge #5's). | **VERIFIED+FIXED** | Test accepts {0, 0x70}. |
+| D7 | Use `IntervalTimer::update()` for rate changes (LDVAL only) instead of `begin()`. | **DEFERRED** (fw #54) | Rate changes are per-trial; with the guarded `end()` the race is closed regardless. |
+| D8 | README claims: "0x70 never touches the PIT" (showError/rate changes/transitions still do), "≤ one refresh period" latency (unbounded by SD + loop work), geometry-protection justification (PSRAM paths change `block_byte_count_` without disarming). | **VERIFIED+FIXED** (wording) | Steady-state wording; latest-request-wins with measured, not guaranteed, latency; kept disarm sites = explicit transition semantics. |
+| D9 | `soak_mode3.py` does not request 0xCB, so pyserial logs would not carry the variant bit. | **DEFERRED** (fw #54) | Not used tonight (Studio path carries `run_metadata.firmware`). |
+| D10 | Split instrumentation from the timer change; pin the core version; vector ownership is an undocumented dependency. | **ACCEPTED** (recorded, fw #54) | One controller, campaign build; `wrapPitVector()` re-installs after every `begin()`, which is the one known re-attach. |
+| D11 | STOP disarms before its dark frames — if the disarm hangs, blanking never runs. | **VERIFIED** | Exactly the storm case; closed by the guarded `end()` in `5e6a78c`. |
+| D12 | No new frame-buffer race under the main-loop model. | agrees | — |
