@@ -282,12 +282,14 @@
         return (b - a) >>> 0 < 0x80000000;
     }
 
-    // CMD record `req` = hex of the first ≤ 8 request bytes after [len, cmd]:
-    // for SET_FRAME_POSITION that is "03 70 lo hi" → index = lo | hi << 8.
+    // CMD record `req` = hex of the request bytes AFTER [len, cmd] as the firmware
+    // records them: for SET_FRAME_POSITION "2d00" → index 45. Host-style echoes that
+    // still carry the prefix ("03702d00") are tolerated for older fixtures.
     function idxFromReq(req) {
-        if (typeof req !== 'string' || req.length < 8) return null;
-        const lo = parseInt(req.slice(4, 6), 16);
-        const hi = parseInt(req.slice(6, 8), 16);
+        if (typeof req !== 'string' || req.length < 4) return null;
+        const off = req.length >= 8 && req.slice(2, 4) === '70' ? 4 : 0;
+        const lo = parseInt(req.slice(off, off + 2), 16);
+        const hi = parseInt(req.slice(off + 2, off + 4), 16);
         if (Number.isNaN(lo) || Number.isNaN(hi)) return null;
         return lo | (hi << 8);
     }

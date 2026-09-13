@@ -42,7 +42,8 @@ const C70 = (idx, tUs, status) => ({
 console.log('=== idxFromReq ===');
 check('index from req hex', TQ.idxFromReq('03704e00'), 78);
 check('hi byte', TQ.idxFromReq('03700101'), 257);
-check('short → null', TQ.idxFromReq('0370'), null);
+check('short → null', TQ.idxFromReq('2d'), null);
+check('firmware form (bytes after len,cmd)', TQ.idxFromReq('2d00'), 45);
 
 console.log(
     '\n=== three trials: pass / fail (stall) / fail (frame age), reads + cmd accounting ==='

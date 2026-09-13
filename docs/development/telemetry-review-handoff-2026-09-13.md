@@ -42,7 +42,7 @@ end-to-end latency (FicTrac frame → LED) is wanted (§4).
   (0x70 stream + protocol commands); requests > 8 B (TRIAL_PARAMS) fall back to the v1 `arena_command` object.
 - Controller ring rows, in **ring `seq` order** (never sort by `rx`/`t_us`):
   - `["cc", rx, t_us, seq, cmd, status, "reqhex"]` — every command the controller dispatched (except 0xA9);
-    `reqhex` = first ≤ 8 request bytes incl. `len cmd` (so `03 70 4e 00` → index 78); `status` = the reply's status.
+    `reqhex` = first ≤ 8 request bytes AFTER `len cmd` (so `2d00` → index 45; the host `a` row keeps the full `03 70 2d 00`); `status` = the reply's status.
   - `["cf", rx, t_us, seq, idx, pattern, sd_load_us, spi_us, req_age_us, superseded, flags]` — a displayed frame
     CHANGE (held frames are not recorded). Last three fields are **ring v2 only** (fw 0xCB bit 5): `req_age_us` =
     dispatch of the 0x70 that requested this frame (or the `loadFrame` decision in Mode 2/4) → SPI start, u32;

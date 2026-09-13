@@ -94,10 +94,15 @@ def step_class(prev_idx, idx, frame_count):
 
 
 def idx_from_req(req) -> int | None:
-    if not isinstance(req, str) or len(req) < 8:
+    """SET_FRAME_POSITION index from a CMD record's request hex.
+
+    The firmware records the bytes AFTER [len, cmd] ("2d00" → 45). Host-style echoes that
+    still carry the len/cmd prefix ("03702d00") are tolerated for older fixtures."""
+    if not isinstance(req, str) or len(req) < 4:
         return None
+    off = 4 if len(req) >= 8 and req[2:4] == "70" else 0
     try:
-        return int(req[4:6], 16) | (int(req[6:8], 16) << 8)
+        return int(req[off:off + 2], 16) | (int(req[off + 2:off + 4], 16) << 8)
     except ValueError:
         return None
 

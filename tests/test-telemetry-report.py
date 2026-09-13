@@ -31,7 +31,8 @@ def check(name, got, expected):
 
 
 def req70(idx):
-    return "0370" + f"{idx & 0xff:02x}{idx >> 8:02x}"
+    # the firmware records the bytes after [len, cmd]: "2d00" → 45 (see telemetry_report.idx_from_req)
+    return f"{idx & 0xff:02x}{idx >> 8:02x}"
 
 
 def build_fixture(v2=True):
@@ -109,6 +110,12 @@ with tempfile.TemporaryDirectory() as d:
     p = os.path.join(d, "fixture.jsonl")
     write(build_fixture(), p)
     rep = tr.analyze_file(p)
+
+    print("=== idx_from_req ===")
+    check("fw form", tr.idx_from_req("2d00"), 45)
+    check("host-prefixed form", tr.idx_from_req("03704e00"), 78)
+    check("hi byte", tr.idx_from_req("0101"), 257)
+    check("short", tr.idx_from_req("2d"), None)
 
     print("=== meta ===")
     check("firmware", rep["meta"]["firmware"].startswith("200fada"), True)
