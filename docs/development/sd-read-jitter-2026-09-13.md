@@ -150,6 +150,10 @@ grouping; hot vs quiet window), (5) maintenance-capability probe and flash-regio
 
 ## 7. Bench results (filled in as they arrive)
 
+Iteration 2 (12:27 ET) repeated iteration 1 to the decimal: 1281 s, 242k accepted 0x70s, 0 reads > 10 ms, 20/20 pass,
+req_age max 4.8 ms. **Two iterations, 482k commands, 2554 s, zero stalls** where the baseline rate predicts ≈ 6
+clusters (P(0) ≈ 0.003).
+
 Control iteration 1 on `3c71953` (12:06 ET; 1273 s, 20 trials, 240k accepted 0x70s) vs the baseline iteration on
 `394dee45` (01:40; same card = the unbranded SD8GB, same 200 Hz + 90° jumps workload):
 

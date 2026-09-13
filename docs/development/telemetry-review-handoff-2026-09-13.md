@@ -145,9 +145,11 @@ light. Options, cheapest first:
 
 ## 6. Critical next experiments (with what they discriminate)
 
-1. **Control iteration on the new build** (running today): step-class table (did contiguous seeks collapse the
-   backward-seek penalty?), reads/command (~0.76 expected from the same-index skip), `req_age_us` distribution,
-   stall cluster spacing in reads (expected unchanged — card).
+1. **Control iterations on the new build — DONE 2026-09-13 12:27 ET:** two iterations, 482k commands, **0 stalls**
+   (baseline: 4 clusters per iteration on the same card); bar backward-seek cost 2.0 → 1.46 ms; reads/command 0.76;
+   `req_age_us` p50 1.7 ms, max 4.8 ms; all 40 trials pass. Working explanation: the FAT-sector re-reads of the
+   old seek path were the card's read-disturb hot spot (`sd-read-jitter-2026-09-13.md` §7, bench log 11:55). The
+   causal test (reflash `394dee45` for one iteration) is pending Michael's decision.
 2. **Working-set test on the same file** (`sd_stall_test.py --window 50/100/200`, after the harness fixes): does a
    50-frame working set inside the 813 KB file stall? Discriminates card read-cache vs placement explanations.
 3. **`0x32` host streaming at 100/200/286 Hz** (existing opcode; no SD at all): does the failure vanish, and does USB

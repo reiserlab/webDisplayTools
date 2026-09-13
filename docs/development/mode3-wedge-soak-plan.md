@@ -398,6 +398,13 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   card's hot spot) is the working explanation and fix A removed the stalls on this card; a back-to-back reflash of
   `394dee45` for one iteration would make it causal (proposed to Michael).
 
+- **2026-09-13 12:27 ET — iteration 2 COMPLETE, soak ended (2 iterations, 0 faults, 0 resets, 2576 s).** Iteration 2:
+  1281 s, 242,178 accepted 0x70s, **0 reads > 10 ms**, 20/20 trials pass, reads/cmd 0.76, req_age p50 1.72 ms / max
+  4.8 ms, superseded 0.5 %. Two iterations on `3c71953`: **482k commands, 2554 s of streaming, 0 stalls** where the
+  baseline rate (4 clusters / 1238 s, scaled by 0.76 reads/cmd) predicts ≈ 6 clusters (P(0) ≈ 0.003). Controller left
+  idle on `3c71953`, Studio v0.77 (:8092) connected. Awaiting Michael's decision on the causal test (reflash
+  `394dee45` for one iteration).
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
