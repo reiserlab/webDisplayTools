@@ -301,6 +301,12 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   write (fix = acknowledge `TFLG` in `pit_isr()` regardless of the callback, and/or disable the channel before
   nulling the callback).
 
+- **2026-09-13 09:40 ET — soak wound down (operator stop; iteration 2 of the third soak aborted).** Fix build
+  `394dee45` totals: 24 runs, 5.15 M 0x70s, ~7.7 h streaming, 0 wedges. Codex review of the findings/fix/upstream
+  note reconciled (`mode3-wedge-upstream-note-2026-09-13.md` — baseline restated to the 200 Hz block, conditional
+  3 % instead of P ≈ 0.0007, invariant-framed upstream fix); final texts await Michael. Handover for the
+  performance session: `mode3-perf-handover-2026-09-13.md`. Controller left on `394dee45`, Studio connected idle.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
