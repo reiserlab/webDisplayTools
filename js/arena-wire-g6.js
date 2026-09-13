@@ -67,10 +67,10 @@ const ArenaWireG6 = (function () {
         SET_DIAG_OUTPUT: 0xc3, // [len=2,0xC3,on] mute/unmute DEBUG_SERIAL diagnostics
         GET_DIAG_OUTPUT: 0xc4, // returns current g_dbg_on state (0/1)
         GET_HEALTH: 0xca, // [01 CA] controller health counters + previous-boot breadcrumb (fw #50)
-        GET_CRASHREPORT: 0xcc, // [01 CC] raw 128 B at OCRAM 0x2027FF80: PJRC arm_fault_info_struct + breadcrumbs (ring fw; gate on 0xCB flags bit 2)
+        GET_CRASHREPORT: 0xcc, // [01 CC] raw 128 B at OCRAM 0x2027FF80: PJRC arm_fault_info_struct + breadcrumbs (gate on 0xCB flags bit 3 = crash report)
         GET_FIRMWARE_VERSION: 0xcb, // [01 CB] build identity: git SHA, branch, date, arena rows×cols (gate on cap bit 7)
         GET_SD_INFO: 0xcd, // SD card identity + volume geometry (fw sd_fastpath; gate on 0xCB flags bit 5)
-        SET_SD_DIAG: 0xce, // [02 CE flags] bench A/B: bit0 legacy FAT-chain seek (next open), bit1 no same-index skip (gate on 0xCB bit 5)
+        SET_SD_DIAG: 0xce, // [02 CE flags] bench A/B: bit0 legacy FAT-chain seek (next open), bit1 no same-index skip (gate on 0xCB bit 6 = sdDiag)
         SET_TELEMETRY: 0xa8, // [04 A8 flags rate_lo rate_hi] telemetry ring: bit0 events on/off (fw feat/telemetry-ring)
         GET_TELEMETRY_BLOCK: 0xa9, // [08 A9 ack_seq u32 max_bytes u16 flags] ack-cursor drain of the ring (js/arena-telemetry.js decodes)
         SET_AO_VOLTAGE: 0xa0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV

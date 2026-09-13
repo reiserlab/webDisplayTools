@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.77 | 2026-09-13 13:58 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.78 | 2026-09-13 15:42 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3195,6 +3195,16 @@
         if (window.Scope && window.Scope.onRunStatus) window.Scope.onRunStatus(s);
         // feed the recorded-run accumulator
         if (Studio.activeRunLog) {
+            // A run that ended because the LINK DROPPED (watchdog self-reset re-enumerates the
+            // controller) and not because the user pressed STOP is a controller fault. Decide it
+            // HERE, before the adapter derives the terminal outcome — deciding it afterwards (as
+            // runSteps also does, as a fallback) left the stored outcome ABORTED_BY_USER and
+            // skipped the auto-commit (whole-stack review, 2026-09-13).
+            const sm = s && s.summary;
+            if (sm && !sm.fault && sm.aborted && Studio._linkDropped && !Studio._userStopRequested) {
+                sm.fault = 'link_dropped';
+                sm.faultDetail = { kind: 'link_dropped', note: 'controller re-enumerated mid-run (watchdog self-reset?)' };
+            }
             const r = Adapter.feedRunStatus(Studio.activeRunLog, s);
             if (r.event) renderRunEvent(r.event);
             if (r.terminal) onRunFinished(r.summary);
@@ -3331,11 +3341,18 @@
         // Controller fault (fw #50): the export closes the bridge's log file, so it
         // must wait for the post-mortem (STOP result, probes, ring crash dump) —
         // Studio.handleControllerFault runs the deferred commit in its finally.
+        // The export closes the bridge's log file, so the final telemetry drain and the
+        // per-trial `trial_quality` verdict must be written FIRST (whole-stack review,
+        // 2026-09-13: they used to land after the export and were lost from committed logs).
+        const finalizeThenCommit = async () => {
+            try { if (Studio.finalizeTrialQuality) await Studio.finalizeTrialQuality(); } catch (_) { /* best effort */ }
+            await maybeCommitRunLog(log, summary);
+        };
         if (summary && summary.outcome === 'CONTROLLER_FAULT' && Studio.handleControllerFault) {
-            Studio._pendingCommit = () => maybeCommitRunLog(log, summary);
+            Studio._pendingCommit = finalizeThenCommit;
             rawLine('run log commit deferred until the controller post-mortem finishes', 'warn');
         } else {
-            maybeCommitRunLog(log, summary); // course pipeline — async, best-effort
+            finalizeThenCommit(); // course pipeline — async, best-effort
         }
     }
 
@@ -8162,6 +8179,47 @@ Studio.openSoakDialog = async function () {
     await Studio.startSoak(parseSoakSpec(spec));
 };
 
+// Stimulus quality (SD-card stalls, 2026-09-13): the run's final ring records must land in
+// THIS log file and the per-trial pass / flagged / unknown verdict must be written before the
+// export closes the file. Called from onRunFinished (before the commit) and from runSteps (a
+// fallback); runs once per run — later callers await the first. Flag only — excluding or
+// repeating a trial is the experimenter's decision (selection-bias caveat, Codex review).
+Studio.finalizeTrialQuality = function () {
+    if (Studio._tqFinal) return Studio._tqFinal;
+    Studio._tqFinal = (async () => {
+        if (!Studio.trialQuality) return null;
+        const tel = Studio.telemetry;
+        const bridge = Studio.session.bridge;
+        if (tel && Studio.telemetryAvailable && Studio.session.connected && !Studio._activePostmortem) {
+            const st = tel.drainer.stats;
+            const before = { errors: st.errors, notStored: st.notStored, gaps: st.gaps };
+            try {
+                await tel.drainer.idle();       // a poll in flight would make drainOnce() a no-op
+                await tel.drainer.drainOnce();  // the trailing sd_reads / state_change records
+            } catch (_) { /* accounted below */ }
+            // An incomplete final drain means the tail (where the last stall would be) may be
+            // missing: the open trial cannot be 'pass' (whole-stack review, 2026-09-13).
+            if (st.errors > before.errors || st.notStored > before.notStored || st.gaps > before.gaps) {
+                Studio.trialQuality.noteCoverage('final_drain_incomplete', { errors: st.errors - before.errors, not_stored: st.notStored - before.notStored, gaps: st.gaps - before.gaps });
+            }
+        } else if (tel && Studio.telemetryAvailable && Studio.activeRunLog) {
+            Studio.trialQuality.noteCoverage('final_drain_skipped', { connected: !!Studio.session.connected, postmortem: !!Studio._activePostmortem });
+        }
+        const tq = Studio.trialQuality.finish();
+        Studio.lastTrialQuality = tq;
+        if (tq.trials.length) {
+            if (bridge && bridge.connected && bridge.logging) bridge.log(Object.assign({ event: 'trial_quality' }, tq));
+            const thr = tq.threshold_us / 1000;
+            const msg = 'stimulus quality: ' + (tq.counts.pass || 0) + ' pass · ' + (tq.counts.fail || 0) + ' flagged · ' + (tq.counts.unknown || 0) + ' unknown'
+                + (tq.flagged_trials.length ? ' — display gap > ' + thr + ' ms in trial' + (tq.flagged_trials.length > 1 ? 's ' : ' ') + tq.flagged_trials.join(', ') + ' (worst ' + Math.round(tq.worst_gap_us / 100) / 10 + ' ms)' : '');
+            Studio.rawLog(msg, tq.counts.fail ? 'warn' : 'info');
+            if (tq.counts.fail && !Studio.soak) Studio.showBanner('⚠ ' + msg);
+        }
+        return tq;
+    })();
+    return Studio._tqFinal;
+};
+
 Studio.startSoak = async function (cfg) {
     if (Studio.soak) return;
     if (!Studio.advanced) { Studio.showBanner('Soak is an advanced-mode feature.'); return; }
@@ -8348,6 +8406,11 @@ Studio.initTelemetry = async function () {
             session: Studio.session,
             wire: Wire,
             maxBytes: 178, // firmware reply budget: 3 + payload < 200 ⇒ 196 − 18 B header
+            // A drain error, a refused batch or a sequence gap while a run is recorded means
+            // the open trial may be missing records: 'unknown', never 'pass'.
+            onCoverage: (kind, detail) => {
+                if (Studio.trialQuality && Studio.activeRunLog) Studio.trialQuality.noteCoverage(kind, detail);
+            },
             onRecords: (block, rows) => {
                 // Per-trial stimulus quality (js/trial-quality.js): fed BEFORE the sink
                 // decides, in ring order; the module dedups re-delivered records by seq.
@@ -8628,6 +8691,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
     Studio._userStopRequested = false;
     Studio._linkDropped = false;
     if (Studio.trialQuality) Studio.trialQuality.reset(); // per-trial stimulus-quality verdicts start fresh
+    Studio._tqFinal = null; // finalizeTrialQuality() runs once per run (first caller wins, others await it)
     try {
         // NOTE: do NOT pass onProgress — the session broadcasts 'runstatus' which
         // Studio.onRunStatus (subscribed once) consumes, so the log/highlight stay
@@ -8659,27 +8723,9 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         if (summary && summary.fault) {
             Studio._lastPostmortem = await Studio.handleControllerFault(summary);
         }
-        // Stimulus quality (SD-card stalls, 2026-09-13): one last drain so the run's final ring
-        // records land in THIS log file, then the per-trial pass / flagged / unknown verdict →
-        // `trial_quality` event + a banner. Flag only — excluding or repeating a trial is the
-        // experimenter's decision (selection-bias caveat, Codex review).
-        if (Studio.trialQuality) {
-            try {
-                if (Studio.telemetry && Studio.telemetryAvailable && Studio.session.connected && !Studio._activePostmortem) {
-                    await Studio.telemetry.drainer.drainOnce();
-                }
-            } catch (_) { /* best effort */ }
-            const tq = Studio.trialQuality.finish();
-            Studio.lastTrialQuality = tq;
-            if (tq.trials.length) {
-                if (bridge.connected && bridge.logging) bridge.log(Object.assign({ event: 'trial_quality' }, tq));
-                const thr = tq.threshold_us / 1000;
-                const msg = 'stimulus quality: ' + (tq.counts.pass || 0) + ' pass · ' + (tq.counts.fail || 0) + ' flagged · ' + (tq.counts.unknown || 0) + ' unknown'
-                    + (tq.flagged_trials.length ? ' — display gap > ' + thr + ' ms in trial' + (tq.flagged_trials.length > 1 ? 's ' : ' ') + tq.flagged_trials.join(', ') + ' (worst ' + Math.round(tq.worst_gap_us / 100) / 10 + ' ms)' : '');
-                Studio.rawLog(msg, tq.counts.fail ? 'warn' : 'info');
-                if (tq.counts.fail && !Studio.soak) Studio.showBanner('⚠ ' + msg);
-            }
-        }
+        // Stimulus quality: normally already finalized by onRunFinished (before the export);
+        // this is the fallback for runs without a run log (Test runs).
+        await Studio.finalizeTrialQuality();
     } catch (e) {
         Studio.rawLog('run error: ' + (e && e.message ? e.message : e), 'err');
         if (Studio.activeRunLog && !Studio.activeRunLog.summary) {

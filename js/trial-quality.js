@@ -69,6 +69,8 @@
                 ageGaps: [], // over-threshold FRAME req_age_us
                 overTarget: 0, // FRAME req_age_us over the target (5 ms) but under the threshold
                 maxReadUs: 0,
+                lastSlowSeq: null, // seq of the last sd_slow (dedup with the FRAME read that follows it)
+                lastFrameSeq: null,
                 maxAgeUs: 0,
                 superseded: 0,
                 coverage: pendingCoverage.splice(0)
@@ -149,6 +151,7 @@
                             if (!current) break;
                             const us = (r.readUs != null ? r.readUs : r.arg * 100) >>> 0;
                             current.slowReads++;
+                            current.lastSlowSeq = r.seq;
                             if (us > current.maxReadUs) current.maxReadUs = us;
                             if (us > gapUs) {
                                 const ev = gapEvent('sd_slow', r, us, {
@@ -184,6 +187,27 @@
                     current.frames++;
                     if (current.lastIdx == null) current.lastIdx = r.idx; // the trial's initial frame: a 0x70 for it is not an index change
                     if (typeof r.superseded === 'number') current.superseded += r.superseded;
+                    // The read that produced this frame: its duration is in the FRAME record
+                    // even when no sd_slow STATE was emitted (ring-v1 firmware only flags
+                    // reads > 20 ms; the verdict threshold is 10 ms). An sd_slow for the same
+                    // read precedes its FRAME, so count the read once: only when no sd_slow
+                    // arrived since the previous frame (whole-stack review, 2026-09-13).
+                    if (typeof r.sdLoadUs === 'number') {
+                        if (r.sdLoadUs > current.maxReadUs) current.maxReadUs = r.sdLoadUs;
+                        const slowSeenForThisRead =
+                            current.lastSlowSeq != null &&
+                            current.lastSlowSeq > (current.lastFrameSeq || 0);
+                        if (r.sdLoadUs > gapUs && !slowSeenForThisRead) {
+                            gapEvent('frame_read', r, r.sdLoadUs, { idx: r.idx });
+                            current.stalls.push({
+                                seq: r.seq,
+                                tUs: r.tUs,
+                                us: r.sdLoadUs,
+                                phase: 'unknown'
+                            });
+                        }
+                        current.lastFrameSeq = r.seq;
+                    }
                     if (typeof r.reqAgeUs === 'number') {
                         if (r.reqAgeUs > current.maxAgeUs) current.maxAgeUs = r.reqAgeUs;
                         if (r.reqAgeUs > gapUs) {

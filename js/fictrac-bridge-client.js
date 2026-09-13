@@ -507,8 +507,9 @@
         logRows(rows) {
             if (!Array.isArray(rows) || !rows.length) return true;
             if (!(this._logging && this.connected)) return false; // not stored — caller keeps them
-            this._send({ type: 'rows', rows });
-            return true;
+            // A send on a closing socket throws inside _send: that batch was NOT stored,
+            // so report false and the drainer withholds its ack (whole-stack review, 2026-09-13).
+            return this._send({ type: 'rows', rows });
         }
 
         /**
@@ -654,10 +655,12 @@
             if (ws && ws.readyState === 1 /* OPEN */) {
                 try {
                     ws.send(JSON.stringify(obj));
+                    return true;
                 } catch (_) {
-                    /* a closing socket can throw on send — ignore */
+                    return false; // a closing socket can throw on send — the caller decides
                 }
             }
+            return false;
         }
         _startRateTimer() {
             if (this._rateTimer || typeof setInterval === 'undefined') return;

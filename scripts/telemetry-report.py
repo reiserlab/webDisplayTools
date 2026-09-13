@@ -125,6 +125,8 @@ class Trial:
         self.over_target = 0
         self.max_read_ms = 0.0
         self.max_age_ms = 0.0
+        self.last_slow_seq = None   # dedup: an sd_slow precedes the FRAME of the same read
+        self.last_frame_seq = None
         self.superseded = 0
         self.coverage = []
         self.layout = None
@@ -243,6 +245,7 @@ def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dic
                     err = bool(isinstance(code, int) and code & 0x80)
                     slow_all += 1
                     if cur is not None:
+                        cur.last_slow_seq = arr[3] if isinstance(arr[3], int) else cur.last_slow_seq
                         cur.slow_reads += 1
                         cur.max_read_ms = max(cur.max_read_ms, ms)
                     if ms * 1000.0 > gap_us:
@@ -295,6 +298,14 @@ def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dic
                     cur.frames += 1
                     if cur.last_idx is None:
                         cur.last_idx = idx   # the trial's initial frame: a 0x70 for it is not an index change
+                    # The read behind this frame counts even without an sd_slow STATE (ring v1 only flags
+                    # > 20 ms); counted once — skip it when an sd_slow for the same read preceded the FRAME.
+                    seq = arr[3] if isinstance(arr[3], int) else None
+                    cur.max_read_ms = max(cur.max_read_ms, sd_us / 1000.0)
+                    slow_for_this_read = cur.last_slow_seq is not None and cur.last_slow_seq > (cur.last_frame_seq or 0)
+                    if sd_us > gap_us and not slow_for_this_read:
+                        cur.stalls.append((sd_us / 1000.0, "frame"))
+                    cur.last_frame_seq = seq
                 if pattern in pending_first:
                     cls = "first-after-open"
                     pending_first.discard(pattern)

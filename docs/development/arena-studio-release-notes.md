@@ -4,6 +4,24 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.78 (2026-09-13) · Whole-stack review fixes: the verdict lands in the log
+
+- **The stimulus-quality verdict is written before the run log is exported.** The final telemetry
+  drain and the `trial_quality` event used to run after the export had closed the bridge's file, so
+  committed logs lost the run's last records and the verdict. Both now run first, on normal runs and on
+  controller-fault runs (after the post-mortem, before the deferred commit).
+- **Missing telemetry can no longer produce a `pass`.** A drain error, a refused batch, a sequence gap
+  or an incomplete final drain marks the open trial `unknown`; a batch the bridge socket failed to send
+  is no longer acknowledged (the controller keeps those records for the next poll).
+- **Slow reads visible only in a FRAME record count.** A read over 10 ms flags the trial even without
+  an `sd_slow` event (ring-v1 firmware only emits those above 20 ms); counted once per read. Same rule
+  in `scripts/telemetry-report.py`.
+- **A watchdog self-reset mid-run is recorded as a controller fault** (outcome `CONTROLLER_FAULT`,
+  auto-committed) instead of `ABORTED_BY_USER`.
+- Stress protocol gain corrected to 0.18 °/frame for the 2000-frame sine (the bridge divides heading
+  by gain; 18 moved 5 frames per 90° jump instead of 500). Wire-comment fixes (crash report gate = flag
+  bit 3, SD diag gate = bit 6, FRAME `sd_load_us` is u32).
+
 ## v0.77 (2026-09-13) · SD-card stall visibility: per-trial stimulus quality, card identity, request→display latency
 
 - **Display freezes are now flagged per trial.** The controller's SD card stalls for 30–90 ms every

@@ -17,7 +17,7 @@
  *                  reboot) · boot_count u16   = 18 B header, then records
  *   record: len u8 (total) · type u8 · seq u32 · t_us u32 · payload
  *     1 CMD   : cmd u8 · status u8 · plen u8 · payload[plen ≤ 8]   (request bytes)
- *     2 FRAME : idx u16 · pattern u16 · sd_load_us u16 · spi_us u16
+ *     2 FRAME : idx u16 · pattern u16 · sd_load_us u32 · spi_us u32   (20 B; 26 B in ring v2, see below)
  *     3 STATE : kind u8 · code u8 · arg u16
  *               kind 8 wdog_context (boot after a watchdog reset, fw eca07f6 follow-up): code = the
  *               watchdog handler's EXC_RETURN low byte (0xF9 preempted thread mode, 0xF1 a handler),
@@ -283,6 +283,10 @@
         const maxChunks = d.maxChunks || 200;
         const now = d.now || (() => Date.now());
         const onRecords = d.onRecords || (() => {});
+        // Coverage events for the per-trial verdict (whole-stack review, 2026-09-13): a
+        // drain error, a refused batch or a sequence gap means records may be missing
+        // from the log — the trial open at that moment can be 'unknown' but never 'pass'.
+        const onCoverage = d.onCoverage || (() => {});
         const st = {
             ackSeq: NO_ACK, // nothing acked yet
             lastSeq: null, // highest seq seen
@@ -324,12 +328,14 @@
                     } catch (e) {
                         st.errors++;
                         st.lastError = (e && e.message) || String(e);
+                        onCoverage('drain_error', { error: st.lastError });
                         break;
                     }
                     const block = parseBlock(resp, W);
                     if (!block) {
                         st.errors++;
                         st.lastError = 'unparseable telemetry block';
+                        onCoverage('drain_error', { error: st.lastError });
                         break;
                     }
                     const rx = now();
@@ -365,11 +371,18 @@
                         const accepted = onRecords(block, toRows(block, rx), rx) !== false;
                         if (!accepted) {
                             st.notStored++;
+                            onCoverage('rows_not_stored', {
+                                seq: block.records[0].seq,
+                                n: block.records.length
+                            });
                             blocks.push(block);
                             break;
                         }
                         for (const r of block.records) {
-                            if (st.lastSeq != null && r.seq !== (st.lastSeq + 1) >>> 0) st.gaps++;
+                            if (st.lastSeq != null && r.seq !== (st.lastSeq + 1) >>> 0) {
+                                st.gaps++;
+                                onCoverage('seq_gap', { from: st.lastSeq, to: r.seq });
+                            }
                             st.lastSeq = r.seq;
                             st.records++;
                         }
