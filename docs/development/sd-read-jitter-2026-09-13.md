@@ -150,5 +150,28 @@ grouping; hot vs quiet window), (5) maintenance-capability probe and flash-regio
 
 ## 7. Bench results (filled in as they arrive)
 
-_See `mode3-wedge-soak-plan.md` §10 for the timestamped log; summary table to be added after the control
-iteration on the new build._
+Control iteration 1 on `3c71953` (12:06 ET; 1273 s, 20 trials, 240k accepted 0x70s) vs the baseline iteration on
+`394dee45` (01:40; same card = the unbranded SD8GB, same 200 Hz + 90° jumps workload):
+
+| quantity | baseline | new build |
+|---|---|---|
+| stalls > 10 ms / clusters | 15 / 4 (every ~253 s ≈ 47.4k commands) | **0 / 0** |
+| bar pattern −1 / −2..−9 / jump ≥10 / +2..9, p50 | 2.00 / 2.00 / 1.98 / 1.46 ms | **1.46 ms for all four** |
+| +1 sequential (both patterns) | 0.62 ms | 0.62 ms |
+| grating non-sequential | 1.18 ms | 1.18 ms |
+| worst SD read (bar) | 88.6 ms | **1.8 ms** |
+| SD reads per accepted 0x70 | 1.00 | **0.76** (= index changes; firmware count agrees) |
+| request → SPI start (`req_age_us`) | — | p50 1.73 ms · p99 2.56 ms · **max 4.8 ms** |
+| trials flagged | 4 / 20 | **0 / 20** |
+
+Reading: fix A removed the FAT-chain walk (bar backward seeks now cost the same as forward jumps); fix B removed the
+repeated-index reads exactly (0.76 = the index-change rate); every frame reached the SPI bus within 4.8 ms of its
+request. The stalls did not occur at all in 1273 s where ~3 clusters were expected — see the H-FAT hypothesis in the
+bench log (§10, 11:55 entry): on this 4 KB-cluster card the 813 KB pattern's chain spans two FAT sectors, so the old
+firmware re-read a FAT sector from the card on most backward seeks; the grating's chain fits one cached sector. If
+iteration 2 stays clean, the stalls were induced by those FAT-sector reads and the contiguous-file path is the fix
+for this card and workload. A back-to-back reflash of `394dee45` (stalls should return at ~24.5k bar reads) is the
+causal test. **The read-free path (§6) stays valuable** — it also takes the 0.6–1.5 ms read and the card out of
+the loop entirely — but it is no longer the only route to a stall-free trial.
+
+See `mode3-wedge-soak-plan.md` §10 for the timestamped log.

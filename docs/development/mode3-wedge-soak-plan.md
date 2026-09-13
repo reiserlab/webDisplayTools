@@ -380,6 +380,24 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   miss SdFat details or the stall may attach to a later command than the fetch. The bench A/B (zero stalls on
   `3c71953` vs one cluster per ~250 s on `394dee45`, same card, same workload) is the discriminator.
 
+- **2026-09-13 12:06 ET — control iteration 1 on `3c71953` COMPLETE (1273 s, 20 trials, 240,258 accepted 0x70s, 0 faults)
+  vs the baseline iteration `arena-log-20260913-014056-656.jsonl` on `394dee45` (same card, same sim/protocol):**
+  | quantity | baseline 394dee45 | new 3c71953 |
+  |---|---|---|
+  | stalls > 10 ms / clusters | 15 / 4 (every 253 s ≈ 47.4k cmds) | **0 / 0** |
+  | bar −1 / −2..−9 / jump / +2..9 (p50 µs) | 1999 / 1998 / 1977 / 1461 | **1460 / 1460 / 1460 / 1460** |
+  | bar +1 | 621 | 621 |
+  | grating non-sequential | 1181 | 1181 |
+  | max sd_load (bar) | 88.6 ms | **1.8 ms** |
+  | SD reads per accepted 0x70 | 1.0 (every command read) | **0.761** (= index changes; kind 13 confirms) |
+  | req_age (0x70 dispatch → SPI start) | n/a | p50 1.73 ms · p99 2.56 · **max 4.8 ms** (under the 5 ms target) |
+  | superseded loads | n/a | 0.6 % of frames |
+  | trials flagged (> 10 ms) | 4 of 20 | **0 of 20** |
+  All 20 trials `pass` with full coverage. Zero clusters where ~3 were expected (P ≈ 0.05 for one iteration under the
+  baseline rate × 0.76) — iteration 2 doubles the exposure. If it stays clean, H-FAT (the FAT-sector re-reads were the
+  card's hot spot) is the working explanation and fix A removed the stalls on this card; a back-to-back reflash of
+  `394dee45` for one iteration would make it causal (proposed to Michael).
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
