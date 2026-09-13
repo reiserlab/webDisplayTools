@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 23:18 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.77 | 2026-09-13 11:19 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -2992,6 +2992,7 @@
 <script src="js/studio-runlog-adapter.js"></script>
 <script src="js/studio-postmortem.js"></script>
 <script src="js/arena-telemetry.js"></script>
+<script src="js/trial-quality.js"></script>
 <script src="js/kinematics.js"></script> <!-- shared scope/dashboard kinematic derivations -->
 <script src="js/studio-github.js"></script>
 <script src="js/runlog-format.js?v=20260906-1829"></script>
@@ -3685,6 +3686,9 @@
     // firmware answers an unknown opcode with an error glyph on the arena, so we
     // never ask blind. Falls back to the 0xC2 format byte ("v1") on old builds.
     Studio.firmwareVersion = null; // decoded 0xCB record, or null
+    // SD card identity (GET_SD_INFO 0xCD, fw sd_fastpath): every stall measurement and card
+    // comparison must be attributable to a physical card → run_metadata.sd_card.
+    Studio.sdCard = null;
     Studio.refreshFirmwareVersion = async function () {
         if (!Studio.session || !Studio.session.connected) return null;
         const caps = Studio.capabilities || [];
@@ -3701,6 +3705,14 @@
                 Studio.firmware = v.label;
                 if ($('pvFw')) { $('pvFw').textContent = v.label; $('pvFw').title = 'git ' + v.sha + (v.dirty ? ' (dirty tree)' : '') + ' · ' + v.branch + ' · built ' + v.date + ' · ' + v.arena + (v.debug ? ' · DEBUG_SERIAL' : ''); }
                 rawLine('‹ firmware build: ' + v.label, 'info');
+                Studio.sdCard = null;
+                if (v.sdFastPath && Wire.encodeGetSdInfo) {
+                    try {
+                        const si = Wire.decodeSdInfo(await Studio.session.send(Wire.encodeGetSdInfo(), { timeoutMs: 2000 }));
+                        Studio.sdCard = si;
+                        if (si) rawLine('‹ sd card: ' + si.label + (si.mounted ? ' · cid ' + si.cidHex : ''), si.mounted ? 'info' : 'warn');
+                    } catch (e) { rawLine('sd info: ' + (e && e.message ? e.message : e), 'warn'); }
+                }
                 return v;
             }
         } catch (e) {
@@ -8330,12 +8342,24 @@ Studio.initTelemetry = async function () {
             wire: Wire,
             maxBytes: 178, // firmware reply budget: 3 + payload < 200 ⇒ 196 − 18 B header
             onRecords: (block, rows) => {
+                // Per-trial stimulus quality (js/trial-quality.js): fed BEFORE the sink
+                // decides, in ring order; the module dedups re-delivered records by seq.
+                if (Studio.trialQuality) Studio.trialQuality.feed(block.records);
                 // Return the bridge's acceptance: false ⇒ the drainer withholds its ack
                 // and the controller keeps the records (bridge down / logging off).
                 const b = Studio.session.bridge;
                 return b && typeof b.logRows === 'function' ? b.logRows(rows) !== false : false;
             }
         });
+        if (!Studio.trialQuality && window.TrialQuality) {
+            Studio.trialQuality = window.TrialQuality.createTrialQuality({
+                onGap: (ev) => {
+                    const b = Studio.session.bridge;
+                    if (b && b.logging) b.log(ev);
+                    Studio.rawLog('display gap ' + ev.ms + ' ms (' + ev.kind + (ev.phase ? ', ' + ev.phase : '') + ') in trial ' + ev.trial + ' pattern ' + ev.pattern, 'warn');
+                }
+            });
+        }
         const poller = AT.createPoller({
             drainer,
             canPoll: () => {
@@ -8349,7 +8373,13 @@ Studio.initTelemetry = async function () {
                 if (Studio.session.outputInhibited) return { ok: false, reason: 'output inhibited' };
                 return { ok: true };
             },
-            onState: (s, r) => { if (s === 'paused' && r) Studio.rawLog('telemetry poller paused: ' + r, 'dim'); }
+            onState: (s, r) => {
+                if (s === 'paused' && r) {
+                    Studio.rawLog('telemetry poller paused: ' + r, 'dim');
+                    // Coverage gap: a trial classified while the drain was paused is 'unknown', never 'pass'.
+                    if (Studio.trialQuality && Studio.activeRunLog) Studio.trialQuality.noteCoverage('poller_paused', r);
+                }
+            }
         });
         Studio.telemetry = { drainer, poller, startedMs: Date.now(), lastReport: null };
         poller.start(100);
@@ -8399,7 +8429,7 @@ Studio.drainTelemetry = async function (tag) {
     }
     const tail = recs.slice(-30).map((r) =>
         r.kind === 'cmd' ? 'CMD 0x' + r.cmd.toString(16) + ' st' + r.status + ' @' + r.tUs :
-        r.kind === 'frame' ? 'FRAME idx' + r.idx + ' sd' + r.sdLoadUs + 'us spi' + r.spiUs + 'us @' + r.tUs :
+        r.kind === 'frame' ? 'FRAME idx' + r.idx + ' sd' + r.sdLoadUs + 'us spi' + r.spiUs + 'us' + (r.reqAgeUs != null ? ' age' + r.reqAgeUs + 'us sup' + r.superseded + (r.contiguous ? ' contig' : '') : '') + ' @' + r.tUs :
         r.kind === 'state' ? 'STATE ' + r.stateName + ' ' + (r.codeName || r.code) + ' ' + r.arg + ' @' + r.tUs : '?');
     const summary = { tag: tag || 'drain', records: recs.length, blocks: blocks.length, survivedReboot: d.stats.survivedReboot, bootCount: d.stats.bootCount, dropped: d.stats.dropped, gaps: d.stats.gaps, heapCollision: !!d.stats.heapCollision, tail };
     Studio.rawLog('telemetry dump (' + summary.tag + '): ' + recs.length + ' records' + (d.stats.survivedReboot ? ' — ring survived the reboot' : '') + (tail.length ? '\n  ' + tail.join('\n  ') : ''), recs.length ? 'warn' : 'dim');
@@ -8549,6 +8579,15 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             // Instrumentation is an experimental factor — say whether the 10 Hz
             // ring drain was interleaved with this run's commands.
             md.telemetry = Studio.telemetryAvailable ? 'ring-10hz' : 'off';
+            // Which physical SD card served this run (fw sd_fastpath, 0xCD) — the card's
+            // read-count housekeeping is the dominant display-freeze source (2026-09-13).
+            const sc = Studio.sdCard;
+            md.sd_card = sc && sc.mounted ? {
+                label: sc.label, manufacturer: sc.manufacturer, pnm: sc.pnm, prv: sc.prv, psn_hex: sc.psnHex,
+                mdt: sc.mdtYear + '-' + String(sc.mdtMonth).padStart(2, '0'), capacity_gb: sc.capacityGB,
+                card_type: sc.cardTypeName, fat: sc.fatTypeName, bytes_per_cluster: sc.bytesPerCluster, cid_hex: sc.cidHex
+            } : null;
+            md.gap_threshold_ms = Studio.trialQuality ? Studio.trialQuality.thresholdUs / 1000 : null;
             bridge.log(md);
         }
         // Controller telemetry streams (T4): declare the compact row schema once
@@ -8560,6 +8599,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
     let summary = null;
     Studio._userStopRequested = false;
     Studio._linkDropped = false;
+    if (Studio.trialQuality) Studio.trialQuality.reset(); // per-trial stimulus-quality verdicts start fresh
     try {
         // NOTE: do NOT pass onProgress — the session broadcasts 'runstatus' which
         // Studio.onRunStatus (subscribed once) consumes, so the log/highlight stay
@@ -8590,6 +8630,27 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         }
         if (summary && summary.fault) {
             Studio._lastPostmortem = await Studio.handleControllerFault(summary);
+        }
+        // Stimulus quality (SD-card stalls, 2026-09-13): one last drain so the run's final ring
+        // records land in THIS log file, then the per-trial pass / flagged / unknown verdict →
+        // `trial_quality` event + a banner. Flag only — excluding or repeating a trial is the
+        // experimenter's decision (selection-bias caveat, Codex review).
+        if (Studio.trialQuality) {
+            try {
+                if (Studio.telemetry && Studio.telemetryAvailable && Studio.session.connected && !Studio._activePostmortem) {
+                    await Studio.telemetry.drainer.drainOnce();
+                }
+            } catch (_) { /* best effort */ }
+            const tq = Studio.trialQuality.finish();
+            Studio.lastTrialQuality = tq;
+            if (tq.trials.length) {
+                if (bridge.connected && bridge.logging) bridge.log(Object.assign({ event: 'trial_quality' }, tq));
+                const thr = tq.threshold_us / 1000;
+                const msg = 'stimulus quality: ' + (tq.counts.pass || 0) + ' pass · ' + (tq.counts.fail || 0) + ' flagged · ' + (tq.counts.unknown || 0) + ' unknown'
+                    + (tq.flagged_trials.length ? ' — display gap > ' + thr + ' ms in trial' + (tq.flagged_trials.length > 1 ? 's ' : ' ') + tq.flagged_trials.join(', ') + ' (worst ' + Math.round(tq.worst_gap_us / 100) / 10 + ' ms)' : '');
+                Studio.rawLog(msg, tq.counts.fail ? 'warn' : 'info');
+                if (tq.counts.fail && !Studio.soak) Studio.showBanner('⚠ ' + msg);
+            }
         }
     } catch (e) {
         Studio.rawLog('run error: ' + (e && e.message ? e.message : e), 'err');

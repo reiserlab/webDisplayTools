@@ -30,7 +30,9 @@
  * Log rows (behavior_v2 companion streams, proposal § 3.3; `rx` = host receive
  * epoch ms, `t_us` = raw controller micros(), `seq` = ring sequence):
  *   ["cc", rx, t_us, seq, cmd, status, "reqhex"]
- *   ["cf", rx, t_us, seq, idx, pattern, sd_load_us, spi_us]
+ *   ["cf", rx, t_us, seq, idx, pattern, sd_load_us, spi_us(, req_age_us, superseded, flags)]
+ *         — the three trailing fields exist only for ring-v2 firmware (0xCB flags bit 5,
+ *           26 B FRAME records); readers must treat them as optional.
  *   ["cs", rx, t_us, seq, kind, code, arg]
  *
  * Classic dual-export (window global + CommonJS), no bare ES `export`.
@@ -50,8 +52,13 @@
         7: 'sd_open',
         8: 'wdog_context',
         9: 'prev_isr_count',
-        10: 'timer_fail' // IntervalTimer::begin() failed: arg = requested refresh rate (Hz)
+        10: 'timer_fail', // IntervalTimer::begin() failed: arg = requested refresh rate (Hz)
+        11: 'sd_layout', // after sd_open: code bit0 contiguous file, bit1 exFAT; arg = sectors/cluster
+        12: 'sd_slow_ctx', // follows sd_slow: code = SdFat card errorCode(), arg = errorData() & 0xFFFF
+        13: 'sd_reads' // at STOP / next trial start: arg = readFrame calls while that pattern was open
     };
+    // sd_slow (kind 4) code byte, ring v2: bits 0-1 = slowest phase of the read, bit 7 = read error.
+    const SD_SLOW_PHASES = ['unknown', 'seek', 'body', 'tail'];
     const ISR_NAMES = [
         'none',
         'refresh_timer',
@@ -147,6 +154,16 @@
                 rec.pattern = u16(m, p + 2);
                 rec.sdLoadUs = u32(m, p + 4); // u32: the 129 ms SD tail must fit (u16 caps at 65 ms)
                 rec.spiUs = u16(m, p + 8);
+                if (plen >= 16) {
+                    // Ring v2 (fw sd_fastpath): dispatch→SPI latency of the request that
+                    // produced this frame (u32 — a 30–90 ms card stall must be representable),
+                    // loads replaced before any transfer, source flags.
+                    rec.reqAgeUs = u32(m, p + 10);
+                    rec.superseded = m[p + 14];
+                    rec.flags = m[p + 15];
+                    rec.sdRead = !!(rec.flags & 0x01);
+                    rec.contiguous = !!(rec.flags & 0x02);
+                }
             } else if (type === REC.STATE && plen >= 4) {
                 rec.kind = 'state';
                 rec.stateKind = m[p];
@@ -168,6 +185,21 @@
                     rec.isrName = ISR_NAMES[rec.code] || 'isr_' + rec.code;
                     rec.countApprox = rec.arg * 4096;
                 }
+                if (rec.stateKind === 4) {
+                    rec.readUs = rec.arg * 100;
+                    rec.phase = SD_SLOW_PHASES[rec.code & 0x03]; // 'unknown' on ring-v1 firmware (code 0)
+                    rec.readError = !!(rec.code & 0x80);
+                }
+                if (rec.stateKind === 11) {
+                    rec.contiguous = !!(rec.code & 0x01);
+                    rec.exfat = !!(rec.code & 0x02);
+                    rec.sectorsPerCluster = rec.arg;
+                }
+                if (rec.stateKind === 12) {
+                    rec.cardErrorCode = rec.code;
+                    rec.irqstatLo = rec.arg;
+                }
+                if (rec.stateKind === 13) rec.reads = rec.arg;
             } else {
                 rec.kind = 'unknown';
                 rec.raw = hex(m.subarray(p, p + plen));
@@ -184,9 +216,11 @@
         const rows = [];
         for (const r of block.records) {
             if (r.kind === 'cmd') rows.push(['cc', rx, r.tUs, r.seq, r.cmd, r.status, r.req]);
-            else if (r.kind === 'frame')
-                rows.push(['cf', rx, r.tUs, r.seq, r.idx, r.pattern, r.sdLoadUs, r.spiUs]);
-            else if (r.kind === 'state')
+            else if (r.kind === 'frame') {
+                const row = ['cf', rx, r.tUs, r.seq, r.idx, r.pattern, r.sdLoadUs, r.spiUs];
+                if (r.reqAgeUs != null) row.push(r.reqAgeUs, r.superseded, r.flags); // ring v2 only
+                rows.push(row);
+            } else if (r.kind === 'state')
                 rows.push(['cs', rx, r.tUs, r.seq, r.stateKind, r.code, r.arg]);
         }
         return rows;
@@ -199,8 +233,19 @@
             desc: 'controller-side command record'
         },
         cf: {
-            cols: ['rx', 't_us', 'seq', 'idx', 'pattern', 'sd_load_us', 'spi_us'],
-            desc: 'displayed frame change'
+            cols: [
+                'rx',
+                't_us',
+                'seq',
+                'idx',
+                'pattern',
+                'sd_load_us',
+                'spi_us',
+                'req_age_us',
+                'superseded',
+                'flags'
+            ],
+            desc: 'displayed frame change (req_age_us/superseded/flags only from ring-v2 firmware; optional)'
         },
         cs: {
             cols: ['rx', 't_us', 'seq', 'kind', 'code', 'arg'],
@@ -222,10 +267,13 @@
         const W = d.wire || (typeof global !== 'undefined' ? global.ArenaWireG6 : null);
         const timeoutMs = d.timeoutMs || 1500;
         const maxBytes = d.maxBytes || 180;
-        // 40 chunks × ~180 B ≈ 7 KB per poll: under Chrome's background-tab timer
-        // throttling a poll may run only once per second, and production during
-        // Mode-3 streaming at 286 Hz is ~5–6 KB/s — the budget must exceed that.
-        const maxChunks = d.maxChunks || 40;
+        // Per-poll budget = maxChunks × ~178 B. Under Chrome's background-tab timer
+        // throttling a poll may run only once per second, and Mode-3 production at
+        // 200–286 Hz with 26 B FRAME records is ~6.5–10 KB/s (Codex review,
+        // 2026-09-13): 40 chunks (7 KB) could not keep up and would silently lose
+        // the evidence that certifies a trial. 200 chunks ≈ 35 KB per poll; the loop
+        // stops at `more == 0`, so the cost is paid only while a backlog exists.
+        const maxChunks = d.maxChunks || 200;
         const now = d.now || (() => Date.now());
         const onRecords = d.onRecords || (() => {});
         const st = {
@@ -453,6 +501,7 @@
         HEADER_BYTES,
         REC,
         STATE_KINDS,
+        SD_SLOW_PHASES,
         ARENA_STATES,
         NO_ACK,
         STREAM_SCHEMA,

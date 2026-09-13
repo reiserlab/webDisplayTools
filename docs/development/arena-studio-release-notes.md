@@ -4,6 +4,26 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.77 (2026-09-13) · SD-card stall visibility: per-trial stimulus quality, card identity, request→display latency
+
+- **Display freezes are now flagged per trial.** The controller's SD card stalls for 30–90 ms every
+  ~24 k reads of a large pattern (card-internal housekeeping; the display holds the last frame and
+  the queued closed-loop commands are coalesced). With firmware that reports it (`sdfast` in the
+  firmware label), the Studio classifies every trial **pass / flagged / unknown** from the controller
+  telemetry ring: any SD read or request→display age over **10 ms** (Michael's worst-case acceptable
+  freeze; 5 ms is the target) flags the trial; incomplete telemetry coverage is `unknown`, never
+  `pass`. Each gap is a `display_gap` event in the run log, the per-trial table is a
+  `trial_quality` event at run end, and a banner names the flagged trials. Flag only — excluding or
+  repeating a trial stays the experimenter's decision.
+- **Which SD card ran the experiment** is recorded: the Studio reads the card's identity (maker,
+  product name, serial, manufacture date, capacity, FAT type, cluster size) at connect and writes
+  it into `run_metadata.sd_card`, so card comparisons are attributable.
+- **Request→display latency in the log.** Frame rows now carry how long the request waited before
+  the panels got it (`req_age_us`), how many loads were replaced before being shown, and whether the
+  pattern file is on the fast (contiguous) seek path. Readers treat the new columns as optional.
+- Telemetry drain keeps up in a background tab (per-poll budget raised 5×); new analysis script
+  `scripts/telemetry-report.py` (SD read cost by step, stall clusters, per-trial verdicts).
+
 ## v0.76 (2026-09-11) · Controller-fault detection, post-mortem probes, soak driver (fw #50)
 
 - **2026-09-12 review fixes (Codex gpt-6-astra, see `.codex-review/report-20260912-status.md`):**

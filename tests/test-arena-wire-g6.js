@@ -686,6 +686,79 @@ check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46)
     check('flags bit 2 = telemetry ring (absent here)', v.telemetry, false);
     check('flags bit 3 = crash report / health v2 (absent here)', v.crashReport, false);
     check('flags bit 4 = free-running refresh timer (absent here)', v.freeRunningTimer, false);
+    check('flags bit 5 = SD fast path / GET_SD_INFO (absent here)', v.sdFastPath, false);
+    {
+        const p2 = payload.slice();
+        p2[3] = 0x3c; // telemetry + crashreport + freerun + sdfast, clean tree
+        const v2 = Wire.decodeFirmwareVersion(
+            Uint8Array.from([p2.length + 2, 0x00, 0xcb].concat(p2))
+        );
+        check(
+            'flags 0x3c decode',
+            [v2.telemetry, v2.crashReport, v2.freeRunningTimer, v2.sdFastPath, v2.dirty].join(','),
+            'true,true,true,true,false'
+        );
+        check('label suffixes', v2.label.endsWith(' freerun sdfast'), true);
+    }
+    // GET_SD_INFO (0xCD): 30 B fixture — SanDisk-style CID, 32 GB SDHC, FAT32, 32 KiB clusters.
+    {
+        checkBytes('encodeGetSdInfo', Wire.encodeGetSdInfo(), '01 cd');
+        const cid = [
+            0x03, 0x53, 0x44, 0x53, 0x43, 0x33, 0x32, 0x47, 0x80, 0x12, 0x34, 0xab, 0xcd, 0x01,
+            0x75, 0x01
+        ];
+        const sd = [1, 0x07, 3, 32].concat(
+            [0x00, 0xb0, 0xb9, 0x03], // 62,500,864 sectors = 32.0 GB
+            [0x00, 0x80, 0x00, 0x00], // 32 KiB clusters
+            cid,
+            [0xff, 0]
+        );
+        check('sd_info fixture is 30 bytes', sd.length, 30);
+        const si = Wire.decodeSdInfo(Uint8Array.from([sd.length + 2, 0x00, 0xcd].concat(sd)));
+        check(
+            'sd_info mounted/cid/csd',
+            [si.mounted, si.cidValid, si.csdValid].join(','),
+            'true,true,true'
+        );
+        check(
+            'sd_info manufacturer + name',
+            [si.manufacturer, si.oid, si.pnm, si.prv].join('|'),
+            'SanDisk|SD|SC32G|8.0'
+        );
+        check(
+            'sd_info serial + date',
+            [si.psnHex, si.mdtYear, si.mdtMonth].join(','),
+            '1234abcd,2023,5'
+        );
+        check(
+            'sd_info geometry',
+            [
+                si.cardTypeName,
+                si.fatTypeName,
+                si.capacityGB,
+                si.bytesPerCluster,
+                si.sectorsPerCluster
+            ].join(','),
+            'SDHC/SDXC,FAT32,32,32768,64'
+        );
+        check(
+            'sd_info label',
+            si.label,
+            'SanDisk SC32G 8.0 sn 1234abcd (2023-05) 32 GB SDHC/SDXC FAT32 32 KiB clusters'
+        );
+        const none = sd.slice();
+        none[1] = 0;
+        const sn = Wire.decodeSdInfo(Uint8Array.from([none.length + 2, 0x01, 0xcd].concat(none)));
+        check(
+            'sd_info status 1 (no card) still decodes',
+            [sn && sn.mounted, sn && sn.label].join(','),
+            'false,no card'
+        );
+        checkBool(
+            'sd_info short payload → null',
+            Wire.decodeSdInfo(Uint8Array.from([5, 0x00, 0xcd, 1, 0, 0])) === null
+        );
+    }
     check(
         'ISR names 4–7 (usb/sdhc/lpspi/pit)',
         Wire.HEALTH_ISR_NAMES.slice(4).join(','),
