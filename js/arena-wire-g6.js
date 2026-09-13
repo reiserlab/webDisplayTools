@@ -959,6 +959,7 @@ const ArenaWireG6 = (function () {
             crashReport: !!(m[3] & 0x08), // GET_CRASHREPORT 0xCC + GET_HEALTH ver 2 (fw fb11681+): the ONLY gate for 0xCC
             freeRunningTimer: !!(m[3] & 0x10), // fw eca07f6+: SET_FRAME_POSITION never disarms/re-arms the refresh timer
             sdFastPath: !!(m[3] & 0x20), // fw 200fada+: O(1) seeks, same-index skip, 26 B FRAME (ring v2), GET_SD_INFO 0xCD — the ONLY gate for 0xCD
+            sdDiag: !!(m[3] & 0x40), // fw 2c83f45+: SET_SD_DIAG 0xCE + STATE kind 14 — the ONLY gate for 0xCE
             sha: ascii(4, 8),
             date: ascii(12, 10),
             branch: ascii(22, 24)
@@ -1061,8 +1062,9 @@ const ArenaWireG6 = (function () {
             mdtMonth: cid[14] & 0x0f,
             sdStatusMaint: m[28],
             sdDiag: m[29], // SET_SD_DIAG flags in force (0 = production behaviour)
-            legacySeek: !!(m[29] & 0x01),
-            noSameIndexSkip: !!(m[29] & 0x02)
+            legacySeek: !!(m[29] & 0x01), // requested (next open)
+            noSameIndexSkip: !!(m[29] & 0x02),
+            legacySeekApplied: !!(m[29] & 0x04) // in force for the currently open file
         };
         v.psnHex = v.psn.toString(16).padStart(8, '0');
         v.label = !v.mounted
@@ -1089,7 +1091,7 @@ const ArenaWireG6 = (function () {
                   ? v.bytesPerCluster / 1024 + ' KiB'
                   : v.bytesPerCluster + ' B') +
               ' clusters' +
-              (v.sdDiag
+              (v.sdDiag & 0x03
                   ? ' [diag ' +
                     (v.legacySeek ? 'legacy-seek ' : '') +
                     (v.noSameIndexSkip ? 'no-skip' : '') +

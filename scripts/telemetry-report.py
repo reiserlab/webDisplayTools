@@ -48,7 +48,7 @@ from collections import Counter, defaultdict
 
 STATE_KINDS = {1: "boot", 2: "state_change", 3: "error_glyph", 4: "sd_slow", 5: "ring_overrun", 6: "telemetry",
                7: "sd_open", 8: "wdog_context", 9: "prev_isr_count", 10: "timer_fail", 11: "sd_layout",
-               12: "sd_slow_ctx", 13: "sd_reads"}
+               12: "sd_slow_ctx", 13: "sd_reads", 14: "sd_reads_ckpt"}
 SD_SLOW_PHASES = ["unknown", "seek", "body", "tail"]
 CLUSTER_GAP_S = 5.0
 STEP_CLASSES = ("+1", "-1", "+2..9", "-2..-9", "jump>=10", "first-after-open", "other")
@@ -255,8 +255,8 @@ def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dic
                 elif kind == 12:
                     if stalls and stalls[-1]["ctx"] is None:
                         stalls[-1]["ctx"] = {"card_error_code": code, "irqstat_hi": arg, "driver_saw_error": bool(code)}
-                elif kind == 13:
-                    shift = (code & 0x7F) if isinstance(code, int) else 0   # bits 0-6 = binary shift; bit 7 = mid-open checkpoint
+                elif kind in (13, 14):
+                    shift = code if isinstance(code, int) else 0   # binary shift; 14 = mid-open checkpoint (cumulative), 13 = final
                     reads = arg << shift
                     if cur is not None:
                         # checkpoints and the closing record are cumulative for the same open: keep the largest,

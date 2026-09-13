@@ -86,7 +86,7 @@ def build_fixture(v2=True):
     cs(4, 2, 671); cs(12, 0, 0)
     cf(idx + 1, 36, 67100, age=69000)
     cs(4, 2, 80)                          # 8 ms: slow by fw threshold, not over 10 ms
-    cs(13, 0x80, 30)                      # mid-open checkpoint (cumulative), superseded by the close below
+    cs(14, 0, 30)                         # mid-open checkpoint (cumulative), superseded by the close below
     cs(13, 0, reads + 1)
     # trial 2: pattern 5 (20 frames), clean, one repeated index
     cs(7, 0, 5)

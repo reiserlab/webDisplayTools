@@ -88,6 +88,7 @@ CTL_STATE_KINDS = {
     11: "sd_layout",  # after sd_open: code bit0 contiguous file, bit1 exFAT; arg = sectors/cluster (fw sd_fastpath)
     12: "sd_slow_ctx",  # follows sd_slow: code = SdFat card errorCode(), arg = errorData() & 0xFFFF
     13: "sd_reads",  # at STOP / next trial start: arg = readFrame calls while that pattern was open
+    14: "sd_reads_ckpt",  # every 30k reads while open: cumulative so far = arg << code
 }
 ISR_NAMES = ["none", "refresh_timer", "spi_dma", "watchdog", "usb", "sdhc", "lpspi", "pit"]
 

@@ -164,13 +164,12 @@
                             }
                             break;
                         }
+                        case 14: // sd_reads_ckpt: cumulative so far (lower bound)
                         case 13: // sd_reads for the pattern being left
                             // checkpoints (code bit 7) and the closing record are cumulative: keep the largest
                             if (current) {
                                 const v =
-                                    r.reads != null
-                                        ? r.reads
-                                        : r.arg * Math.pow(2, (r.code || 0) & 0x7f);
+                                    r.reads != null ? r.reads : r.arg * Math.pow(2, r.code || 0);
                                 if (current.reads == null || v > current.reads) current.reads = v;
                             }
                             break;

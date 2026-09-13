@@ -239,7 +239,7 @@ function block(h, records) {
                 stateRec(21, 3100, 4, 0x82, 887), // sd_slow: body phase, read error, 88.7 ms
                 stateRec(22, 3200, 11, 0x01, 8), // sd_layout: contiguous, FAT32, 8 sectors/cluster
                 stateRec(23, 3300, 12, 0, 1), // sd_slow_ctx
-                stateRec(24, 3400, 13, 0x83, 45000) // sd_reads checkpoint: 45000 << 3 = 360000, bit 7 = checkpoint
+                stateRec(24, 3400, 14, 3, 45000) // sd_reads_ckpt: 45000 << 3 = 360000 (cumulative checkpoint)
             ]),
             Wire
         );
@@ -293,7 +293,7 @@ function block(h, records) {
                 b2.records[4].reads,
                 b2.records[4].checkpoint
             ],
-            ['sd_slow_ctx', 0, false, 'sd_reads', 360000, true]
+            ['sd_slow_ctx', 0, false, 'sd_reads_ckpt', 360000, true]
         );
         check('v2 malformed = 0', b2.malformed, 0);
         const rows2 = T.toRows(b2, 1);

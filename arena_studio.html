@@ -8408,8 +8408,8 @@ Studio.initTelemetry = async function () {
 // records the arm. Console: `await Studio.setSdDiag(1)` … `await Studio.setSdDiag(0)`.
 Studio.setSdDiag = async function (flags) {
     const fv = Studio.firmwareVersion;
-    if (!fv || !fv.sdFastPath || !Wire.encodeSetSdDiag || !Studio.session || !Studio.session.connected) {
-        Studio.rawLog('sd diag: firmware has no SD fast path (0xCB bit 5) or not connected', 'warn');
+    if (!fv || !fv.sdDiag || !Wire.encodeSetSdDiag || !Studio.session || !Studio.session.connected) {
+        Studio.rawLog('sd diag: firmware has no SET_SD_DIAG (0xCB bit 6) or not connected', 'warn');
         return null;
     }
     const r = Wire.decodeResponse(await Studio.session.send(Wire.encodeSetSdDiag(flags), { timeoutMs: 2000 }));
