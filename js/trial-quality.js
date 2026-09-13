@@ -165,7 +165,14 @@
                             break;
                         }
                         case 13: // sd_reads for the pattern being left
-                            if (current) current.reads = r.reads != null ? r.reads : r.arg;
+                            // checkpoints (code bit 7) and the closing record are cumulative: keep the largest
+                            if (current) {
+                                const v =
+                                    r.reads != null
+                                        ? r.reads
+                                        : r.arg * Math.pow(2, (r.code || 0) & 0x7f);
+                                if (current.reads == null || v > current.reads) current.reads = v;
+                            }
                             break;
                         case 5: // ring_overrun: records evicted before the host read them
                             coverage('ring_overrun', { code: r.code, arg: r.arg });
