@@ -2,8 +2,10 @@
 
 **Written:** 2026-09-13 12:45 ET. **Status:** code ready (firmware `feat/sd-fastpath-2x10` with `SET_SD_DIAG` 0xCE,
 built, Codex review round 3 in progress; Studio v0.77 `Studio.setSdDiag`), **bench test pending** (Michael: no time
-today). **Prerequisite:** flash the reviewed 0xCE build via `scripts/flash_bootloader_route.sh` (port released by the
-Studio first), verify 0xCB label `… freerun sdfast` and `GET_SD_INFO` byte 29 = 0.
+today). **Prerequisite:** flash the reviewed 0xCE build (firmware tip after `35bb196`; run a Codex diff review of anything
+newer first) via `scripts/flash_bootloader_route.sh` (port released by the Studio first), verify 0xCB flags bit 6
+(`sdDiag`), label `… freerun sdfast`, and `GET_SD_INFO` byte 29 = 0. The legacy-seek arm only reproduces the FAT-chain
+walk on FAT16/32 volumes (the bench card is FAT32); byte 29 bit 2 reports the mode actually applied to the open file.
 
 ## 1. What we know and what is still only correlational
 
@@ -106,3 +108,35 @@ result table to `sd-read-jitter-2026-09-13.md` §7.
 Arm 1 clean but arm 3 stalls ⇒ B (read count) is what matters ⇒ H-count: the card's counter is per read; the
 read-free path becomes the priority again and the card comparison matters. Arm 3 clean ⇒ the card changed (or the
 morning's upload moved something) ⇒ characterise afresh with `sd_stall_test.py` before any conclusion.
+
+
+## 7. Extended validation campaign (multi-hour, later) — patterns × modes × speeds
+
+Purpose: after the causal test, establish the **operating envelope** of the fast-path build with the per-trial
+quality verdicts as the acceptance metric (target 5 ms, worst case 10 ms, ≥ 30 ms invalidates), not just "no wedge".
+Each cell below is one soak protocol (Studio, `?soak=1`, behavior_v2 logging, telemetry on) analysed with
+`scripts/telemetry-report.py`; the firmware stays fixed for the whole campaign.
+
+| axis | levels | why |
+|---|---|---|
+| pattern size / geometry | grating 20 f (81 KB) · bar 200 f (813 KB) · looming 75 f (305 KB) · a 2,000-frame sine (8 MB, GS16) · a GS2 200-frame pattern (213 KB) | FAT-chain length (1 → 2 → 16 FAT sectors), file span, frame size (1 vs 4 KB reads) |
+| mode | **3** (host-stepped, sim random walk + jumps) · **2** (controller-timed open loop at the pattern's frame rate) · 3 with a *sequential* index sweep | Mode 2 is the sequential-read control (no seeks at all, should be stall-free at any size); Mode 3 random is the stress; sequential Mode 3 separates seek cost from command load |
+| speed | Mode 3: 100 / 200 / 286 Hz commands; Mode 2: 50 / 100 / 200 fps | read rate (stall recurrence is count-based), tick starvation (300 Hz refresh), USB load |
+| duration | ≥ 1 h per cell (≈ 3 iterations); the bar-pattern cells ≥ 3 h (≈ 40 baseline stall cycles) | zero clusters in 1 h ⇒ 95 % upper bound ≈ 3 clusters/h; the long cells are the "still clean after N× the old period" evidence |
+| card | current card (baseline, never reformatted) first; candidates later via `sd_stall_test.py` screens | keep the card fixed while the firmware envelope is measured |
+
+**Predictions under H-FAT (fast path):** no stall in any cell; per-read cost 0.62 ms sequential / 1.2–1.5 ms random
+for every size (the 8 MB sine included); `req_age_us` max < 5 ms at 100–200 Hz, some frames over 5 ms at 286 Hz
+(tick coalescing, not SD); Mode 2 `superseded` ≈ 0. **Fail signatures to watch:** any `sd_slow` in the 8 MB or
+GS2 cells (a data-region disturb with size/geometry dependence), phase `body` with error bits (driver), `unknown`
+trials (coverage — drain budget at 286 Hz).
+
+**Order:** bar 200 f, Mode 3, 200 Hz, 3 h (continuation of today's evidence) → 8 MB sine Mode 3 200 Hz 1 h →
+Mode 2 controls (bar 100 fps, sine 100 fps) 1 h each → 286 Hz Mode 3 bar 1 h → 100 Hz Mode 3 bar 1 h (course
+rate) → GS2 + looming 1 h each. Roughly one bench day. Report per cell: the `telemetry-report.py` tables +
+`trial_quality` counts, into `sd-read-jitter-2026-09-13.md` §7.
+
+Things the campaign will need that do not exist yet: the 2,000-frame sine and GS2 200-frame patterns on the card
+(upload via the Studio, contiguous — check `sd_layout` bit0), a Mode-2 soak protocol (trialParams mode 2 with
+`frame_rate`, no FicTrac plugin), and the frame-count-from-0x88 fix (#201) so the `__framesRepatch` hook is not
+needed for new patterns.

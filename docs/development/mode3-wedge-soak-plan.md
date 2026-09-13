@@ -421,6 +421,17 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   stopping rules and procedure: `docs/development/sd-stall-causal-test-plan-2026-09-13.md` (arms 3 → 1 → 2 → 0 on one
   build, ~70 min; H-FAT fingerprint = `sd_slow` phase `seek` in the legacy-seek arms).
 
+- **2026-09-13 13:00 ET — Codex round 3 on the 0xCE build (`.codex-review/codex-diff-review-20260913-123149-22302`):**
+  blocking — `openPattern` reused the open handle on a same-pattern restart, so the legacy-seek arm would not have
+  applied there (fixed `35bb196`: reopen when the applied mode differs; 0xCD byte 29 bit 2 = applied); also fixed:
+  cache reuse separated from presentation accounting (`sd_cache_ok_`), checkpoints as STATE kind 14 (kind 13 unchanged),
+  0xCB bit 6 gates 0xCE, exFAT caveat documented; harness `sd_stall_test.py` hardened (capture completeness incl.
+  trial open/close + command reconciliation + incarnation check, exact over-gap counter, block-anchored wrap-safe
+  controller time, bounded stall detail, per-open read totals, resync after a timeout, `--sd-diag N` arm with
+  applied-mode verification, exit 4 unless usable). Firmware tip built, NOT flashed; a Codex diff review of the
+  round-3 delta is owed before it goes on the controller. Extended campaign matrix (patterns × Mode 2/3 × speeds)
+  added to `sd-stall-causal-test-plan-2026-09-13.md` §7.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
