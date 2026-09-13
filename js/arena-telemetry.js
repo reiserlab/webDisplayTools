@@ -54,8 +54,8 @@
         9: 'prev_isr_count',
         10: 'timer_fail', // IntervalTimer::begin() failed: arg = requested refresh rate (Hz)
         11: 'sd_layout', // after sd_open: code bit0 contiguous file, bit1 exFAT; arg = sectors/cluster
-        12: 'sd_slow_ctx', // follows sd_slow: code = SdFat card errorCode(), arg = errorData() & 0xFFFF
-        13: 'sd_reads' // at STOP / next trial start: arg = readFrame calls while that pattern was open
+        12: 'sd_slow_ctx', // follows sd_slow: code = SdFat card errorCode() (sticky), arg = errorData() >> 16 (USDHC error bits)
+        13: 'sd_reads' // at STOP / next trial start: reads = arg << code (readFrame calls while that pattern was open)
     };
     // sd_slow (kind 4) code byte, ring v2: bits 0-1 = slowest phase of the read, bit 7 = read error.
     const SD_SLOW_PHASES = ['unknown', 'seek', 'body', 'tail'];
@@ -196,10 +196,11 @@
                     rec.sectorsPerCluster = rec.arg;
                 }
                 if (rec.stateKind === 12) {
-                    rec.cardErrorCode = rec.code;
-                    rec.irqstatLo = rec.arg;
+                    rec.cardErrorCode = rec.code; // sticky SdFat errorCode(): 0 = no driver error this boot
+                    rec.irqstatHi = rec.arg; // USDHC IRQSTAT bits 16-31 at the driver's LAST error
+                    rec.driverSawError = rec.code !== 0;
                 }
-                if (rec.stateKind === 13) rec.reads = rec.arg;
+                if (rec.stateKind === 13) rec.reads = rec.arg * Math.pow(2, rec.code); // code = binary shift
             } else {
                 rec.kind = 'unknown';
                 rec.raw = hex(m.subarray(p, p + plen));

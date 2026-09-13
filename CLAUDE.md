@@ -348,6 +348,15 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   the level it will actually write (`bridge.waitForLogLevelAck`) — a pre-3.0 bridge
   never acks, so treat "no ack" as behavior_v1. Never write `log_format` into
   `run_metadata` from anything but the acked/inferred level.
+- **Controller telemetry rows + stimulus quality (v0.77, fw `sdfast`):** `cf` rows carry three OPTIONAL trailing fields
+  (`req_age_us`, `superseded`, `flags`) from ring-v2 firmware (0xCB flags bit 5) — readers must accept 8- or
+  11-element `cf` rows and STATE kinds 11–13 (`sd_layout`/`sd_slow_ctx`/`sd_reads`, reads = arg << code). `GET_SD_INFO`
+  0xCD is gated on 0xCB bit 5 only. Per-trial pass/flagged/unknown verdicts come from `js/trial-quality.js` (fed from
+  the drainer in ring order, dedup by seq; fail = any read or request age > 10 ms; `unknown` never becomes `pass`) →
+  `display_gap` + `trial_quality` run-log events; the Studio flags, never auto-excludes. Offline analysis:
+  `scripts/telemetry-report.py` (also reads the firmware repo's `scripts/sd_stall_test.py` logs). The card stalls
+  themselves are card-internal (read-count maintenance, ~24.5k reads of a large file); see
+  `docs/development/sd-read-jitter-2026-09-13.md`.
 - Bump the footer version/timestamp on every edit; never Prettier the HTML.
 
 - **Telemetry ring — four rules from the 2026-09-12 Codex review (all tested):** (1) the ONLY gate
