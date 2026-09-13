@@ -20,6 +20,7 @@ iterations, ≈ 560 trials, ≈ 6 M frame commands.
 | T4 | **Round trip host-side** | `a`-row `dt` p50 / p99 | `a` rows | p99 ≤ 11 ms (Codex-agreed bound from #198), no upward trend | `wedge-scan.py` RTT columns |
 | T5 | **Refresh cadence holds under load** | presented frames per second; `superseded` share; `timer_fail` | `cf` count / trial duration; `cf` field 10; `cs` kind 10 | ≈ commands with an index change; superseded < 2 % at 200 Hz; 0 `timer_fail` | `telemetry-report.py` (presentation section) |
 | T6 | **Per-read cost, both files** (no size dependence) | SD read µs by step class (+1 / −1 / small / jump), sine vs bar | `cf` `sd_load_us` | +1 ≈ 0.62 ms; random ≤ 1.5 ms p50, ≤ 1.8 ms max, sine ≈ bar | `telemetry-report.py` step-class table |
+| T8 | **The trial actually swept the file** (the drill on 2026-09-13 silently ran a 20-frame loop of a 200-frame pattern when the bridge had a stale modulus) | distinct frame indices per trial; index max | `cf` field 4 | bar ≥ 190 of 200, sine ≥ 1900 of 2000 distinct indices in every 60 s trial | `telemetry-report.py` (add the coverage column) / `runlog-check.py` |
 | T7 | **Watchdog never fires** | boot count, `boot` STATE records, HEALTH `wdogFlags` "previous reset was watchdog" | ring header `boot_count` (soak `telemetry` stats), `cs` kind 1, morning `GET_HEALTH` | boot_count unchanged all night; 0 boot records; flag clear | soak events + Console health read in the morning |
 
 ## 2. The log files are complete

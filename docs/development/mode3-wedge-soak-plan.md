@@ -561,6 +561,14 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   for the expected arm ≠ 0. Frame-count-from-0x88 fill added to the Studio (v0.79) — the sine would otherwise have
   run with the bridge's 200-frame default modulus tonight. 19:32: harness arm 3 on `488d5b9` to see whether the
   legacy arm stopped biting because of the Studio path or the build.
+- **2026-09-13 19:35 ET — RESOLVED: the Studio drill ran a 20-frame loop.** Harness arm 3 on `488d5b9`, 3 min,
+  pattern 36: −1 step 1.99 ms, 1 stall (21.8 ms) → the build and the arm are fine. Index coverage: harness 200
+  distinct frames, uniform; **Studio drill: frames 0–19 only** — the bridge's heading→index modulus was still 20
+  (the last `config.frames` it had received, the grating this morning) because the Studio had no frame count for
+  `p3_heisenberg_ts` and passed none. 20 frames = 80 KB inside one FAT sector → no chain walk, no stall, fast-path
+  costs. The frames-from-`GET_PATTERN_INFO` fill (v0.79, 19:25) is the fix; without it the overnight would have run
+  every pattern as a 20-frame loop. Lesson for the test plan: **index coverage (distinct frames per trial) is a
+  pass criterion**, added as T8.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
