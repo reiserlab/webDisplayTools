@@ -8,7 +8,7 @@ round-trip-latency measurement plan; (4) the next experiments, favouring measure
 its own (no Analog Discovery, no Saleae). **Michael's acceptance numbers:** display freeze 5 ms target, 10 ms
 worst case; ≥ 30 ms is a visible artifact.
 
-Read in this order: this file → `telemetry-performance-handover-2026-09-12.md` §4–§6 (log format as of the
+Read in this order: this file → `archive/mode3-2026-09/telemetry-performance-handover-2026-09-12.md` §4–§6 (log format as of the
 ring's first night) → `archive/mode3-2026-09/sd-read-jitter-2026-09-13.md` (what changed today and why) → firmware README
 "Telemetry ring", "Health + breadcrumb", "Free-running refresh timer", "SD fast path" sections (ring
 worktree `/Users/reiserm/Documents/GitHub/LED-Display_G6_Firmware_Arena-ring/README.md`) →

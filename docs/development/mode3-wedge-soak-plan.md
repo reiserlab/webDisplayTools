@@ -236,7 +236,7 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   the `IntervalTimer::end()` null-callback/`TFLG` race in the Teensy core → PIT interrupt storm with the main
   context's return address exactly at the captured PC (`channel->TCTRL = 0`); verified in the installed core
   1.160.0; quantitatively consistent with Isabel's ~292 k commands/failure (≈ 11 ns window). Now the leading
-  mechanism; bus hang is the alternative. Reconciliation: `codex-review-2026-09-13-mode3-wedge-fix.md`; evidence
+  mechanism; bus hang is the alternative. Reconciliation: `archive/mode3-2026-09/codex-review-2026-09-13-mode3-wedge-fix.md`; evidence
   doc §2b. Diff review of the free-running commit: keep the timer policy; fix the non-atomic ISR-lite record
   update, sticky `armed_hz_` on a failed `begin()`, the lost pre-watchdog ISR identity, the historical-record
   test assertion; README claims softened. All folded into one follow-up firmware commit (safe PRIMASK-guarded
@@ -281,7 +281,7 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
 - **2026-09-13 07:58 ET — morning summary (soak still running, iteration 20 on `394dee45`).**
   Exposure in the 200 Hz + jumps block: baseline `4860fef8` 1.96 h streaming, 1.42 M 0x70s, **2 wedges** (#5 at
   909 s of its run, #6 at 1022 s); fix build `394dee45` 6.53 h, 4.41 M 0x70s, **0 wedges**, 19/19 runs completed
-  (P ≈ 0.002 for zero events at the baseline's rate). Full table: `mode3-wedge-night2-scan-2026-09-13.md`.
+  (P ≈ 0.002 for zero events at the baseline's rate). Full table: `archive/mode3-2026-09/mode3-wedge-night2-scan-2026-09-13.md`.
   Display: 34–45 → 73–75 distinct frames/s at 190 commands/s (145 distinct requests/s), same SD/SPI timings; host
   RTT median 2 → 3 ms, p99 8–9 → 11 ms (more transfers competing in `loop()`). No kind 8/9 records on the fix build
   (no watchdog reset). fw #50 comment drafted (session scratchpad `fw50-comment-draft.md`) — outward-facing, for
@@ -303,7 +303,7 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
 
 - **2026-09-13 09:40 ET — soak wound down (operator stop; iteration 2 of the third soak aborted).** Fix build
   `394dee45` totals: 24 runs, 5.15 M 0x70s, ~7.7 h streaming, 0 wedges. Codex review of the findings/fix/upstream
-  note reconciled (`mode3-wedge-upstream-note-2026-09-13.md` — baseline restated to the 200 Hz block, conditional
+  note reconciled (`archive/mode3-2026-09/mode3-wedge-upstream-note-2026-09-13.md` — baseline restated to the 200 Hz block, conditional
   3 % instead of P ≈ 0.0007, invariant-framed upstream fix); final texts await Michael. Handover for the
   performance session: `archive/mode3-2026-09/mode3-perf-handover-2026-09-13.md`. Controller left on `394dee45`, Studio connected idle.
 

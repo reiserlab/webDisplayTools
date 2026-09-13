@@ -1,8 +1,8 @@
 # Lab-PC handover — bench-testing the run-log v2 stack (+ optional analog), 2026-09-09
 
 **For a fresh Claude session on the lab Windows PC.** Read this file first, then
-`docs/development/merge-bench-plan-2026-09-08.md` (the full gated checklist) and
-`docs/development/codex-review-2026-09-09.md` (what was just fixed and what is still open).
+`merge-bench-plan-2026-09-08.md` (the full gated checklist) and
+`codex-review-2026-09-09.md` (what was just fixed and what is still open).
 The Mac session that wrote this may still be running; treat GitHub as the source of truth for
 branch state, not this file.
 

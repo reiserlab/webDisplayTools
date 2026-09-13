@@ -83,4 +83,4 @@ Both Codex passes (status/plan + branch diff) are reconciled in `.codex-review/r
 
 **12:20 ET addendum:** the ring firmware code itself was then Codex-reviewed (`LED-Display_G6_Firmware_Arena-ring/.codex-review/report-20260912-ring.md`). Flash is go after the bounded fix commit (reference-drainer handshake, HIL test corrections, ack/incarnation guard, heap guard coverage, exact-size boot repair); dual headers / linker reservation / PSRAM frame identity are deferred to the ship-to-course gate.
 
-**Tracking (12:35 ET):** deferred web items → #200; deferred firmware ring hardening → fw #54. Reconciliation reports committed as `docs/development/codex-review-2026-09-12-mode3-wedge.md` (this repo) and `docs/development/codex-review-2026-09-12-telemetry-ring.md` (ring branch).
+**Tracking (12:35 ET):** deferred web items → #200; deferred firmware ring hardening → fw #54. Reconciliation reports committed as `codex-review-2026-09-12-mode3-wedge.md` (this repo) and `docs/development/codex-review-2026-09-12-telemetry-ring.md` (ring branch).

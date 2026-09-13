@@ -37,7 +37,7 @@ fps meter.
 ### Morning (desk)
 
 - [x] ~~Codex cross-review of all pending work~~ — done 2026-09-09 morning, see
-      `docs/development/codex-review-2026-09-09.md`: 7 true bugs fixed and pushed (#188 strict
+      `codex-review-2026-09-09.md`: 7 true bugs fixed and pushed (#188 strict
       mode; #190 sweep refusal + closed-loop gating, #191 rebased; fw #47 calibration guard +
       mV clamp + controller_info bits); design suggestions listed for discussion.
       Also rebased #186/#188/#190/#191 onto main afterwards: #193 and the two stacks all add
