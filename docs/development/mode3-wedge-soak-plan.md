@@ -442,6 +442,16 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   `bar_200f_gs2`, verified by re-parse), Studio soak driver accepts open-loop protocols (v0.77, 13:58 ET). Michael's
   design question answered in plan §5: cache the cluster chain per pattern open (extent table) → no contiguity
   precondition; to implement after the causal test.
+- **2026-09-13 14:30–14:55 ET — hand-off shape (Michael: 2 h stress, not overnight; then ONE consolidated build
+  soaked overnight, clean and mergeable for the lab tomorrow).** Finding: the consolidated build already exists —
+  firmware `feat/sd-fastpath-2x10` `75405ee` is a linear stack of health → ring → watchdog → free-running timer (fw #50
+  fix) → SD fast path on top of `arena-2x10-local` (fast-forward, 31 commits; conflicts with `main` only because #48
+  moved main to per-board `-DARENA_HW_*` headers — the main port is a later PR, superseding #53). Web: PR #202 opened
+  (`claude/mode3-perf-sd` → `claude/mode3-wedge-soak`, stacked on #198; both merge cleanly onto main, #198 CI green,
+  `pixi run test` green). One-page run sheet `docs/development/soak-handoff-2026-09-14.md` (flash, serve, card,
+  three runs, pass criteria, merge order). Firmware branch still LOCAL — push + PR against `arena-2x10-local`
+  awaits Michael's go. RAM-cached FAT chain (extent table): deferred — decide on the 70-min causal result
+  (§5 of the causal plan).
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
