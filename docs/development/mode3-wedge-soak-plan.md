@@ -305,7 +305,7 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   `394dee45` totals: 24 runs, 5.15 M 0x70s, ~7.7 h streaming, 0 wedges. Codex review of the findings/fix/upstream
   note reconciled (`mode3-wedge-upstream-note-2026-09-13.md` — baseline restated to the 200 Hz block, conditional
   3 % instead of P ≈ 0.0007, invariant-framed upstream fix); final texts await Michael. Handover for the
-  performance session: `mode3-perf-handover-2026-09-13.md`. Controller left on `394dee45`, Studio connected idle.
+  performance session: `archive/mode3-2026-09/mode3-perf-handover-2026-09-13.md`. Controller left on `394dee45`, Studio connected idle.
 
 - **2026-09-13 09:53–11:30 ET — performance session (Claude, worktree `vigilant-tereshkova`, host branch
   `claude/mode3-perf-sd` on #198; firmware `feat/sd-fastpath-2x10` on the ring branch, local).** Bench untouched so far
@@ -325,7 +325,7 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   0xCD → `run_metadata.sd_card`, telemetry-report.py; all suites green. Read-free access-pattern research (agent +
   Codex brainstorm): every course motion pattern except looming is an exact +1 px/frame roll; independent-frame LZ4
   shrinks the 813 KB bar to 15 KB → complete compressed RAM cache loaded in the ITI is the recommended next step;
-  panel PSRAM write path is specified but unimplemented in panel firmware (`docs/development/sd-read-jitter-2026-09-13.md` §6).
+  panel PSRAM write path is specified but unimplemented in panel firmware (`docs/development/archive/mode3-2026-09/sd-read-jitter-2026-09-13.md` §6).
   Codex round 2 on the round-1 fixes running; flash follows its reconciliation.
 
 - **2026-09-13 11:35:07–11:35:13 ET — flashed `3c71953` (SD fast path build) via the bootloader route** after Michael
@@ -411,14 +411,14 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   free); the :8092 worktree server stopped; bridge 3.1 + sim (200 Hz) left as Michael started them. Host branch
   `claude/mode3-perf-sd` pushed; firmware `feat/sd-fastpath-2x10` stays local (tip `f6c11d2` built, `3c71953` on the
   controller). Standing next steps: causal reflash; card screening with `sd_stall_test.py` when cards arrive; read-free
-  path (compressed RAM cache in the ITI, `sd-read-jitter-2026-09-13.md` §6); Codex diff review of `f6c11d2` before it
+  path (compressed RAM cache in the ITI, `archive/mode3-2026-09/sd-read-jitter-2026-09-13.md` §6); Codex diff review of `f6c11d2` before it
   is flashed; #201 PR consolidation; telemetry review session (`telemetry-review-handoff-2026-09-13.md`).
 
 - **2026-09-13 12:45 ET — causal test prepared (bench later, Michael):** firmware `2c83f45` adds `SET_SD_DIAG` 0xCE
   (bit0 legacy FAT-chain seek at the next open, bit1 no same-index skip; readback 0xCD byte 29; `sd_layout` bits 2/3;
   STATE marker), built, Codex round 3 running — NOT flashed (controller stays on `3c71953`). Studio v0.77 gains
   `Studio.setSdDiag(flags)` + `run_metadata.sd_card.sd_diag`; telemetry-report labels the arm. Plan with predictions,
-  stopping rules and procedure: `docs/development/sd-stall-causal-test-plan-2026-09-13.md` (arms 3 → 1 → 2 → 0 on one
+  stopping rules and procedure: `docs/development/archive/mode3-2026-09/sd-stall-causal-test-plan-2026-09-13.md` (arms 3 → 1 → 2 → 0 on one
   build, ~70 min; H-FAT fingerprint = `sd_slow` phase `seek` in the legacy-seek arms).
 
 - **2026-09-13 13:00 ET — Codex round 3 on the 0xCE build (`.codex-review/codex-diff-review-20260913-123149-22302`):**
@@ -430,7 +430,7 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   controller time, bounded stall detail, per-open read totals, resync after a timeout, `--sd-diag N` arm with
   applied-mode verification, exit 4 unless usable). Firmware tip built, NOT flashed; a Codex diff review of the
   round-3 delta is owed before it goes on the controller. Extended campaign matrix (patterns × Mode 2/3 × speeds)
-  added to `sd-stall-causal-test-plan-2026-09-13.md` §7.
+  added to `archive/mode3-2026-09/sd-stall-causal-test-plan-2026-09-13.md` §7.
 - **2026-09-13 13:30–14:15 ET — Michael back online (remote, no bench). Codex round 4 on the round-3 delta
   (`0fc6b01..9de97fe`, `.codex-review/codex-diff-review-20260913-133230-26229`, report `report-20260913-fw-round4.md`):
   no blocking firmware finding; harness/codec fixes committed as `75405ee` (exact worst/cluster statistics, legacy
@@ -448,7 +448,7 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   fix) → SD fast path on top of `arena-2x10-local` (fast-forward, 31 commits; conflicts with `main` only because #48
   moved main to per-board `-DARENA_HW_*` headers — the main port is a later PR, superseding #53). Web: PR #202 opened
   (`claude/mode3-perf-sd` → `claude/mode3-wedge-soak`, stacked on #198; both merge cleanly onto main, #198 CI green,
-  `pixi run test` green). One-page run sheet `docs/development/soak-handoff-2026-09-14.md` (flash, serve, card,
+  `pixi run test` green). One-page run sheet `docs/development/archive/mode3-2026-09/soak-handoff-2026-09-14.md` (flash, serve, card,
   three runs, pass criteria, merge order). Firmware branch still LOCAL — push + PR against `arena-2x10-local`
   awaits Michael's go. RAM-cached FAT chain (extent table): deferred — decide on the 70-min causal result
   (§5 of the causal plan).
@@ -497,7 +497,7 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   FRAME read time in verdicts, link-drop = CONTROLLER_FAULT, stress gain 0.18; PR #202 updated, `pixi run test`
   green). New docs: `mode3-reliability-handoff-2026-09-14.md` (the one hand-off document),
   `runlog-format-review-2026-09-13.md` (≈133 MB/h raw, 35–40 gz at 200 Hz; R1 stream-gzip, R2 schema v3),
-  `consolidation-plan-2026-09-13.md`. Plan for 16:12: stop the 286 Hz run (1 h), flash `e59767e`, HIL subset, upload
+  `archive/mode3-2026-09/consolidation-plan-2026-09-13.md`. Plan for 16:12: stop the 286 Hz run (1 h), flash `e59767e`, HIL subset, upload
   the 8 MB sine browser-free, verify indices, start the alternating campaign (286 Hz → 18:15, 200 Hz → 21:00).
 - **2026-09-13 16:02 ET — overnight test plan written (`overnight-soak-test-plan-2026-09-13.md`: timing T1–T7, log
   completeness L1–L7, recovery R1–R5 + a pre-overnight drill: injected stall via 0xCE, injected watchdog reset via

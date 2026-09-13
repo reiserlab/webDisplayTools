@@ -9,7 +9,7 @@ its own (no Analog Discovery, no Saleae). **Michael's acceptance numbers:** disp
 worst case; ≥ 30 ms is a visible artifact.
 
 Read in this order: this file → `telemetry-performance-handover-2026-09-12.md` §4–§6 (log format as of the
-ring's first night) → `sd-read-jitter-2026-09-13.md` (what changed today and why) → firmware README
+ring's first night) → `archive/mode3-2026-09/sd-read-jitter-2026-09-13.md` (what changed today and why) → firmware README
 "Telemetry ring", "Health + breadcrumb", "Free-running refresh timer", "SD fast path" sections (ring
 worktree `/Users/reiserm/Documents/GitHub/LED-Display_G6_Firmware_Arena-ring/README.md`) →
 `controller-telemetry-ring-buffer-proposal.md` (the original design + §8 clock fit, §9 instrument plan).
@@ -148,7 +148,7 @@ light. Options, cheapest first:
 1. **Control iterations on the new build — DONE 2026-09-13 12:27 ET:** two iterations, 482k commands, **0 stalls**
    (baseline: 4 clusters per iteration on the same card); bar backward-seek cost 2.0 → 1.46 ms; reads/command 0.76;
    `req_age_us` p50 1.7 ms, max 4.8 ms; all 40 trials pass. Working explanation: the FAT-sector re-reads of the
-   old seek path were the card's read-disturb hot spot (`sd-read-jitter-2026-09-13.md` §7, bench log 11:55). The
+   old seek path were the card's read-disturb hot spot (`archive/mode3-2026-09/sd-read-jitter-2026-09-13.md` §7, bench log 11:55). The
    causal test (reflash `394dee45` for one iteration) is pending Michael's decision.
 2. **Working-set test on the same file** (`sd_stall_test.py --window 50/100/200`, after the harness fixes): does a
    50-frame working set inside the 813 KB file stall? Discriminates card read-cache vs placement explanations.
@@ -157,10 +157,10 @@ light. Options, cheapest first:
 4. **Photodiode-on-AIN glass-to-glass** (§5.3): the only way to turn `req_age_us` into a latency to light.
 5. **FicTrac → command linkage** (§4.4) then the full chain on a real FicTrac rig (camera clock, not the sim).
 6. **Telemetry-on vs -off control iteration** (Debug ▾ toggle): the instrumentation's own cost.
-7. **Card screening** when cards arrive (protocol in `sd-read-jitter-2026-09-13.md` §5); never reformat the
+7. **Card screening** when cards arrive (protocol in `archive/mode3-2026-09/sd-read-jitter-2026-09-13.md` §5); never reformat the
    current card.
 8. **Resident-decode proof** (next implementation session, not this review): LZ4/zlib per-frame RAM cache of the
-   bar pattern loaded in the ITI; the read-free path (`sd-read-jitter-2026-09-13.md` §6).
+   bar pattern loaded in the ITI; the read-free path (`archive/mode3-2026-09/sd-read-jitter-2026-09-13.md` §6).
 
 ## 7. Known gaps / caveats for the reviewer
 

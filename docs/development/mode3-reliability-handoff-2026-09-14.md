@@ -12,7 +12,7 @@ numbers given); this is the narrative and the map.
 | B | **display freezes of 30–90 ms** every ~24.5k frame reads of a large pattern (fw #54) | firmware FAT access: SdFat re-walked the file's cluster chain on backward seeks and looked up the next cluster inside every read that crossed a 4 KB cluster boundary; those FAT-sector reads hammered one physical block of the card until its read-disturb maintenance paused the card | **contiguous O(1) seeks** (`FsFile` + `contiguousRange()`): the FAT is read once at pattern open and never during a trial | 4-arm causal test 2026-09-13: FAT touched → stalls at the old spacing; FAT untouched, same read count → 0; production: 0 in 482k + 72k commands + 1 h at 286 Hz |
 
 **Candidate build:** firmware `feat/sd-fastpath-2x10` @ `75405ee` (label `… freerun sdfast`, 0xCB flags `0x7C`);
-Studio v0.77 (PRs #198 + #202). **Run sheet for the bench:** `soak-handoff-2026-09-14.md`; **lab test day on Windows (no Claude):** `lab-test-day-windows-2026-09-14.md`; **what the overnight tests:** `overnight-soak-test-plan-2026-09-13.md`.
+Studio v0.77 (PRs #198 + #202). **Run sheet for the bench:** `archive/mode3-2026-09/soak-handoff-2026-09-14.md`; **lab test day on Windows (no Claude):** `lab-test-day-windows-2026-09-14.md`; **what the overnight tests:** `overnight-soak-test-plan-2026-09-13.md`.
 
 ---
 
@@ -113,7 +113,7 @@ behaviour samples; `cf` rows have 8 or 11 fields; readers go through `js/runlog-
   `test_crashreport_passthrough` after a HalfKay reflash (junk RAM), `test_overfill_evicts_oldest…` (timing).
 - **Bench smoke (Studio):** connect → label ends `freerun sdfast` → one 60 s Mode-3 trial with the simulator → the
   run log has `cc`/`cf`/`cs` rows, `run_metadata.firmware` + `.sd_card`, and a `trial_quality` event.
-- **Soak:** `soak-handoff-2026-09-14.md` (2 h stress, overnight benchmark, pass criteria).
+- **Soak:** `archive/mode3-2026-09/soak-handoff-2026-09-14.md` (2 h stress, overnight benchmark, pass criteria).
 
 ## 6. Evidence
 
@@ -207,6 +207,20 @@ precondition: pattern files contiguous on the card (uploads through the Studio a
    `runlog-format-review-2026-09-13.md`. A MATLAB reader in maDisplayTools, if one exists, needs rule 2 (string-tagged
    arrays are not behaviour) — the only change that can break an old parser.
 
+## 7.3 Ship plan (Michael, 2026-09-13 18:30 ET) and the paper trail
+
+- **Firmware:** the stack is re-based onto `main` on top of PR #48's per-board build scheme as branch
+  `feat/mode3-reliability` with a 2×10 variant (`-DARENA_HW_2_10`, env `teensy41-2-10-performance`) and a THREE-commit
+  story (variant · feature stack · tests+tools); that branch is what runs overnight and what the lab flashes; its PR
+  against `main` is the merge candidate. `feat/sd-fastpath-2x10` (PR #55, closed) keeps the fine-grained 31-commit
+  history; PR #53 closed as superseded.
+- **Studio:** PRs #198 and #202 squash-merged to `main` in the morning after a clean night (two commits: v0.76, v0.78),
+  no separate review; revert if the lab finds a problem.
+- **Docs:** the living set is this file, `lab-test-day-windows-2026-09-14.md`, `overnight-soak-test-plan-2026-09-13.md`,
+  `runlog-format-review-2026-09-13.md`, `telemetry-review-handoff-2026-09-13.md` and the bench log in
+  `mode3-wedge-soak-plan.md` §10. The working documents of the day (evidence write-up, causal plan, consolidation plan,
+  run sheet, session brief) are in `docs/development/archive/mode3-2026-09/` — read them only for history.
+
 ## 8. Where things live
 
 - Firmware: `src/Health.*`, `src/Telemetry.*`, `src/Watchdog*`/`Health` v2 fields, `src/SpiManager.*` (timer),
@@ -214,7 +228,7 @@ precondition: pattern files contiguous on the card (uploads through the Studio a
   (byte tables), `tests/telemetry_codec.py` (decoder), `scripts/` (bench tools).
 - Web: `js/arena-wire-g6.js`, `js/arena-telemetry.js`, `js/trial-quality.js`, `js/studio-postmortem.js`,
   `js/fictrac-bridge-client.js`, `arena_studio.html` (soak driver, sinks), `scripts/telemetry-report.py`,
-  `scripts/wedge-scan.py`, `docs/development/` (this file, `soak-handoff-2026-09-14.md`, `mode3-wedge-soak-plan.md`
-  §10 bench log, `sd-read-jitter-2026-09-13.md` §8 diagrams, `sd-stall-causal-test-plan-2026-09-13.md`,
-  `consolidation-plan-2026-09-13.md`, `telemetry-review-handoff-2026-09-13.md`).
+  `scripts/wedge-scan.py`, `docs/development/` (this file, `archive/mode3-2026-09/soak-handoff-2026-09-14.md`, `mode3-wedge-soak-plan.md`
+  §10 bench log, `archive/mode3-2026-09/sd-read-jitter-2026-09-13.md` §8 diagrams, `archive/mode3-2026-09/sd-stall-causal-test-plan-2026-09-13.md`,
+  `archive/mode3-2026-09/consolidation-plan-2026-09-13.md`, `telemetry-review-handoff-2026-09-13.md`).
 - Issues: firmware #50 (wedge, Michael's thread), #54 (SD stalls), web #197, #200, #201.

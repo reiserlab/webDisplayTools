@@ -356,7 +356,7 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `display_gap` + `trial_quality` run-log events; the Studio flags, never auto-excludes. Offline analysis:
   `scripts/telemetry-report.py` (also reads the firmware repo's `scripts/sd_stall_test.py` logs). The card stalls
   themselves are card-internal (read-count maintenance, ~24.5k reads of a large file); see
-  `docs/development/sd-read-jitter-2026-09-13.md`.
+  `docs/development/archive/mode3-2026-09/sd-read-jitter-2026-09-13.md`.
 - Bump the footer version/timestamp on every edit; never Prettier the HTML.
 
 - **Telemetry ring — four rules from the 2026-09-12 Codex review (all tested):** (1) the ONLY gate
