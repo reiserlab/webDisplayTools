@@ -538,6 +538,15 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   `firmware-488d5b9-2-10.hex` (sha `d8b31ca7…`) archived in the scratchpad; flash at the drill. Studio v0.79 (session
   rig follows the controller's rows × cols — fresh profiles came up `g6_3x10`). Docs: wedge-era notes archived;
   PRs #198/#202 carry a History-and-tests section; hand-off §6.0 test history.
+- **2026-09-13 19:09 ET — campaign stopped (18 complete segments: 13 × 286 Hz, 5 × 200 Hz, all usable; the only
+  event the 19.4/6.4 ms pair in segment 9); flashed `488d5b9` (2×10 variant on main) 19:09:59.** HIL subset: 26 passed,
+  3 failed = the two pre-existing flakes (`test_crashreport_passthrough` after HalfKay, `test_overfill…`) +
+  `test_loop_max_1s_window_is_populated` at ~3 s uptime, which **passes when re-run at normal uptime** → early-boot
+  artefact, not a regression. Studio v0.79 on :8092 (Michael picked the port after the re-enumeration): label
+  `488d5b9b 2x10 2026-09-13 feat/mode3-reliability freerun sdfast`, **session rig derived `cshl_g6_2x10_ball`** (the
+  log shows the g6_3x10 io defaults applied first, then re-applied for the derived rig one second later — ordering
+  follow-up, same io values), sd card line, `sdDiag` 0, telemetry available. 19:17 drill step 1: `setSdDiag(3)` +
+  one-trial drill protocol (`protocols/mode3_drill_1trial.yaml`).
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
