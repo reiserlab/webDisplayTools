@@ -23,6 +23,9 @@ history lives here. Newest first. (Per-session engineering detail stays in
   pattern file is on the fast (contiguous) seek path. Readers treat the new columns as optional.
 - Telemetry drain keeps up in a background tab (per-poll budget raised 5×); new analysis script
   `scripts/telemetry-report.py` (SD read cost by step, stall clusters, per-trial verdicts).
+- Bench A/B helper `Studio.setSdDiag(flags)` (firmware with `SET_SD_DIAG` 0xCE): forces the legacy FAT-chain
+  seek and/or disables the same-index read skip per iteration for the causal test of the card stalls
+  (`docs/development/sd-stall-causal-test-plan-2026-09-13.md`); the arm is recorded in `run_metadata.sd_card.sd_diag`.
 
 ## v0.76 (2026-09-11) · Controller-fault detection, post-mortem probes, soak driver (fw #50)
 

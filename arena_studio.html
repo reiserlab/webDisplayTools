@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.77 | 2026-09-13 11:19 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.77 | 2026-09-13 12:32 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -8402,6 +8402,26 @@ Studio.initTelemetry = async function () {
 // PJRC CrashReport passthrough (0xCC, fw fb11681) — gated like the ring on the
 // 0xCB telemetry flag. Logged as a `crash_report` event (raw hex kept). Null when
 // the firmware lacks it or the link is down; never throws.
+// Bench A/B switches for the causal test of the SD-card stalls (SET_SD_DIAG 0xCE,
+// fw sd_fastpath only): flags bit0 = legacy FAT-chain seek at the next pattern open,
+// bit1 = no same-index skip. Refreshes Studio.sdCard so run_metadata.sd_card.sd_diag
+// records the arm. Console: `await Studio.setSdDiag(1)` … `await Studio.setSdDiag(0)`.
+Studio.setSdDiag = async function (flags) {
+    const fv = Studio.firmwareVersion;
+    if (!fv || !fv.sdFastPath || !Wire.encodeSetSdDiag || !Studio.session || !Studio.session.connected) {
+        Studio.rawLog('sd diag: firmware has no SD fast path (0xCB bit 5) or not connected', 'warn');
+        return null;
+    }
+    const r = Wire.decodeResponse(await Studio.session.send(Wire.encodeSetSdDiag(flags), { timeoutMs: 2000 }));
+    if (!r || !r.ok) { Studio.rawLog('sd diag: refused', 'warn'); return null; }
+    const si = Wire.decodeSdInfo(await Studio.session.send(Wire.encodeGetSdInfo(), { timeoutMs: 2000 }));
+    if (si) Studio.sdCard = si;
+    const b = Studio.session.bridge;
+    if (b && b.logging) b.log({ event: 'sd_diag', flags: flags, in_force: si ? si.sdDiag : null, label: si ? si.label : null });
+    Studio.rawLog('sd diag flags now ' + (si ? si.sdDiag : '?') + (flags & 1 ? ' — legacy FAT-chain seek from the next pattern open' : '') + (flags & 2 ? ' — every 0x70 reads (no same-index skip)' : '') + (!flags ? ' — production behaviour' : ''), 'info');
+    return si;
+};
+
 Studio.readCrashReport = async function () {
     const fv = Studio.firmwareVersion;
     if (!fv || !fv.crashReport || !Wire.encodeGetCrashReport || !Studio.session || !Studio.session.connected) return null; // 0xCB flags bit 3, never the ring bit (c47ee68 has the ring but not 0xCC)
@@ -8588,6 +8608,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
                 card_type: sc.cardTypeName, fat: sc.fatTypeName, bytes_per_cluster: sc.bytesPerCluster, cid_hex: sc.cidHex
             } : null;
             md.gap_threshold_ms = Studio.trialQuality ? Studio.trialQuality.thresholdUs / 1000 : null;
+            if (md.sd_card) md.sd_card.sd_diag = sc.sdDiag || 0; // A/B arm in force (SET_SD_DIAG 0xCE); 0 = production
             bridge.log(md);
         }
         // Controller telemetry streams (T4): declare the compact row schema once

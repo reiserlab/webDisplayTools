@@ -193,6 +193,8 @@
                 if (rec.stateKind === 11) {
                     rec.contiguous = !!(rec.code & 0x01);
                     rec.exfat = !!(rec.code & 0x02);
+                    rec.legacySeek = !!(rec.code & 0x04); // SET_SD_DIAG bit0 in force at this open (A/B arm)
+                    rec.noSameIndexSkip = !!(rec.code & 0x08); // SET_SD_DIAG bit1 in force
                     rec.sectorsPerCluster = rec.arg;
                 }
                 if (rec.stateKind === 12) {

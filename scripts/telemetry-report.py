@@ -232,7 +232,8 @@ def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dic
                     pending_first.add(arg)
                     per_pattern[arg]["opens"] += 1
                 elif kind == 11:
-                    lay = {"contiguous": bool(code & 1), "exfat": bool(code & 2), "sectors_per_cluster": arg}
+                    lay = {"contiguous": bool(code & 1), "exfat": bool(code & 2), "sectors_per_cluster": arg,
+                           "legacy_seek": bool(code & 4), "no_same_index_skip": bool(code & 8)}   # bits 2/3 = SET_SD_DIAG arm
                     if cur is not None:
                         cur.layout = lay
                         layout_by_pattern[cur.pattern] = lay
@@ -415,7 +416,7 @@ def render_markdown(rep: dict) -> str:
     out.append("|---|---|---|---|---|---|---|---|---|")
     for p, r in sorted(rep["reads"].items(), key=lambda kv: str(kv[0])):
         lay = r["layout"]
-        lay_s = "—" if not lay else ("contiguous" if lay["contiguous"] else "FRAGMENTED") + f", {lay['sectors_per_cluster']} spc" + (", exFAT" if lay["exfat"] else "")
+        lay_s = "—" if not lay else ("contiguous" if lay["contiguous"] else "FRAGMENTED") + f", {lay['sectors_per_cluster']} spc" + (", exFAT" if lay["exfat"] else "") + (", LEGACY-SEEK arm" if lay.get("legacy_seek") else "") + (", NO-SKIP arm" if lay.get("no_same_index_skip") else "")
         out.append(f"| {p} | {r['opens']} | {r['cmds70']} | {r['index_changes']} | {r['reads_fw'] if r['reads_fw'] is not None else '—'} | {r['frames']} | {r['index_changes_per_cmd']} | {r['reads_fw_per_cmd'] if r['reads_fw_per_cmd'] is not None else '—'} | {lay_s} |")
     out.append("")
     out.append("## SD read cost by index step (sd_load_us of displayed frames)")

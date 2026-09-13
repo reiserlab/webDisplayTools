@@ -414,6 +414,13 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   path (compressed RAM cache in the ITI, `sd-read-jitter-2026-09-13.md` §6); Codex diff review of `f6c11d2` before it
   is flashed; #201 PR consolidation; telemetry review session (`telemetry-review-handoff-2026-09-13.md`).
 
+- **2026-09-13 12:45 ET — causal test prepared (bench later, Michael):** firmware `2c83f45` adds `SET_SD_DIAG` 0xCE
+  (bit0 legacy FAT-chain seek at the next open, bit1 no same-index skip; readback 0xCD byte 29; `sd_layout` bits 2/3;
+  STATE marker), built, Codex round 3 running — NOT flashed (controller stays on `3c71953`). Studio v0.77 gains
+  `Studio.setSdDiag(flags)` + `run_metadata.sd_card.sd_diag`; telemetry-report labels the arm. Plan with predictions,
+  stopping rules and procedure: `docs/development/sd-stall-causal-test-plan-2026-09-13.md` (arms 3 → 1 → 2 → 0 on one
+  build, ~70 min; H-FAT fingerprint = `sd_slow` phase `seek` in the legacy-seek arms).
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1

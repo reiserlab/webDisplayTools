@@ -758,6 +758,30 @@ check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46)
             'sd_info short payload → null',
             Wire.decodeSdInfo(Uint8Array.from([5, 0x00, 0xcd, 1, 0, 0])) === null
         );
+        check(
+            'sd_info diag byte 0 → no diag',
+            [si.sdDiag, si.legacySeek, si.noSameIndexSkip].join(','),
+            '0,false,false'
+        );
+        const dg = sd.slice();
+        dg[29] = 0x03;
+        const sdg = Wire.decodeSdInfo(Uint8Array.from([dg.length + 2, 0x00, 0xcd].concat(dg)));
+        check(
+            'sd_info diag byte 3 decodes + label suffix',
+            [
+                sdg.legacySeek,
+                sdg.noSameIndexSkip,
+                sdg.label.endsWith('[diag legacy-seek no-skip]')
+            ].join(','),
+            'true,true,true'
+        );
+        checkBytes('encodeSetSdDiag(1)', Wire.encodeSetSdDiag(1), '02 ce 01');
+        checkBytes(
+            'encodeSetSdDiag(legacy|noskip)',
+            Wire.encodeSetSdDiag(Wire.SD_DIAG_LEGACY_SEEK | Wire.SD_DIAG_NO_SAME_INDEX_SKIP),
+            '02 ce 03'
+        );
+        checkThrows('encodeSetSdDiag rejects reserved bits', () => Wire.encodeSetSdDiag(4));
     }
     check(
         'ISR names 4–7 (usb/sdhc/lpspi/pit)',

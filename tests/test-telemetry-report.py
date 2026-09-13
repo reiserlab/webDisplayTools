@@ -128,7 +128,7 @@ with tempfile.TemporaryDirectory() as d:
     check("pattern 36 index changes (initial index not a change)", r36["index_changes"], 70)
     check("pattern 36 fw reads", r36["reads_fw"], 72)
     check("idx changes per cmd", r36["index_changes_per_cmd"], 0.5)
-    check("layout contiguous", r36["layout"], {"contiguous": True, "exfat": False, "sectors_per_cluster": 8})
+    check("layout contiguous", r36["layout"], {"contiguous": True, "exfat": False, "sectors_per_cluster": 8, "legacy_seek": False, "no_same_index_skip": False})
     check("pattern 5 index changes (repeat not counted)", rep["reads"][5]["index_changes"], 19)
 
     print("=== step classes ===")

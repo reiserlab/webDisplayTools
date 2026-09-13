@@ -70,6 +70,7 @@ const ArenaWireG6 = (function () {
         GET_CRASHREPORT: 0xcc, // [01 CC] raw 128 B at OCRAM 0x2027FF80: PJRC arm_fault_info_struct + breadcrumbs (ring fw; gate on 0xCB flags bit 2)
         GET_FIRMWARE_VERSION: 0xcb, // [01 CB] build identity: git SHA, branch, date, arena rows×cols (gate on cap bit 7)
         GET_SD_INFO: 0xcd, // SD card identity + volume geometry (fw sd_fastpath; gate on 0xCB flags bit 5)
+        SET_SD_DIAG: 0xce, // [02 CE flags] bench A/B: bit0 legacy FAT-chain seek (next open), bit1 no same-index skip (gate on 0xCB bit 5)
         SET_TELEMETRY: 0xa8, // [04 A8 flags rate_lo rate_hi] telemetry ring: bit0 events on/off (fw feat/telemetry-ring)
         GET_TELEMETRY_BLOCK: 0xa9, // [08 A9 ack_seq u32 max_bytes u16 flags] ack-cursor drain of the ring (js/arena-telemetry.js decodes)
         SET_AO_VOLTAGE: 0xa0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV
@@ -984,6 +985,17 @@ const ArenaWireG6 = (function () {
     function encodeGetSdInfo() {
         return frame(OPCODES.GET_SD_INFO); // 01 CD
     }
+    // set-sd-diag (0xCE) — bench A/B switches for the causal test of the SD-card
+    // stalls: bit0 legacy seek (the NEXT pattern open skips contiguousRange →
+    // FAT-chain-walking seeks), bit1 no same-index skip (every 0x70 reads). Both
+    // off at boot; readback = GET_SD_INFO byte 29. Gate on 0xCB flags bit 5.
+    const SD_DIAG_LEGACY_SEEK = 0x01;
+    const SD_DIAG_NO_SAME_INDEX_SKIP = 0x02;
+    function encodeSetSdDiag(flags) {
+        const f = u8(flags, 'sd diag flags');
+        if (f & ~0x03) throw new RangeError('sd diag flags: bits 2-7 are reserved');
+        return frame(OPCODES.SET_SD_DIAG, [f]); // 02 CE flags
+    }
     // Payload (30 B): ver u8 · flags u8 (bit0 mounted, bit1 CID valid, bit2 CSD
     // valid) · card_type u8 · fat_type u8 (12/16/32, 64 = exFAT) · sectors u32 ·
     // bytes_per_cluster u32 · cid[16] raw · sd_status_maint u8 (0xFF = not read) ·
@@ -1047,7 +1059,10 @@ const ArenaWireG6 = (function () {
             psn: ((cid[9] << 24) | (cid[10] << 16) | (cid[11] << 8) | cid[12]) >>> 0,
             mdtYear: 2000 + (((cid[13] & 0x0f) << 4) | (cid[14] >> 4)),
             mdtMonth: cid[14] & 0x0f,
-            sdStatusMaint: m[28]
+            sdStatusMaint: m[28],
+            sdDiag: m[29], // SET_SD_DIAG flags in force (0 = production behaviour)
+            legacySeek: !!(m[29] & 0x01),
+            noSameIndexSkip: !!(m[29] & 0x02)
         };
         v.psnHex = v.psn.toString(16).padStart(8, '0');
         v.label = !v.mounted
@@ -1073,7 +1088,13 @@ const ArenaWireG6 = (function () {
               (v.bytesPerCluster >= 1024
                   ? v.bytesPerCluster / 1024 + ' KiB'
                   : v.bytesPerCluster + ' B') +
-              ' clusters';
+              ' clusters' +
+              (v.sdDiag
+                  ? ' [diag ' +
+                    (v.legacySeek ? 'legacy-seek ' : '') +
+                    (v.noSameIndexSkip ? 'no-skip' : '') +
+                    ']'
+                  : '');
         return v;
     }
 
@@ -1296,6 +1317,9 @@ const ArenaWireG6 = (function () {
         encodeGetFramePosition,
         encodeGetFirmwareVersion,
         encodeGetSdInfo,
+        encodeSetSdDiag,
+        SD_DIAG_LEGACY_SEEK,
+        SD_DIAG_NO_SAME_INDEX_SKIP,
         encodeSetTelemetry,
         encodeGetTelemetryBlock,
         TELEMETRY_NO_ACK,

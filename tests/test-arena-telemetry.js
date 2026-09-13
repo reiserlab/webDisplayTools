@@ -270,6 +270,20 @@ function block(h, records) {
             ['sd_layout', true, false, 8]
         );
         check(
+            'sd_layout diag bits default off',
+            [b2.records[2].legacySeek, b2.records[2].noSameIndexSkip],
+            [false, false]
+        );
+        const b3 = T.parseBlock(
+            block({ tNowUs: 1, firstSeq: 30 }, [stateRec(30, 10, 11, 0x0c, 8)]),
+            Wire
+        );
+        check(
+            'sd_layout arm bits',
+            [b3.records[0].contiguous, b3.records[0].legacySeek, b3.records[0].noSameIndexSkip],
+            [false, true, true]
+        );
+        check(
             'sd_slow_ctx + sd_reads',
             [
                 b2.records[3].stateName,
