@@ -179,3 +179,87 @@ causal test. **The read-free path (§6) stays valuable** — it also takes the 0
 the loop entirely — but it is no longer the only route to a stall-free trial.
 
 See `mode3-wedge-soak-plan.md` §10 for the timestamped log.
+
+## 8. Does the fix generalise to all patterns? (Michael's question, 2026-09-13 12:50 ET)
+
+**Under H-FAT: yes for any file size — the only condition is that the pattern file is contiguous on the card.**
+The stall trigger was not the pattern data but the FAT sectors that SdFat re-read from the card on every
+chain-walking seek. With `FILE_FLAG_CONTIGUOUS` set, a seek is arithmetic (`first_cluster + n`) and a frame read
+touches only the frame's own sectors — for a 20-frame grating and for a 2,000-frame, 8 MB sine alike. Nothing
+scales with file size except the one-time `contiguousRange()` walk at pattern open (one FAT sector per 128
+clusters = per 512 KB on this 4 KB-cluster card: an 8 MB pattern costs ~16 FAT-sector reads ≈ 10 ms, once, in
+the inter-trial interval).
+
+### 8.1 Where the reads go — old seek path vs fast path (SD card, 4 KB clusters)
+
+```
+SD card (logical)                       old path, backward seek to frame j        fast path
+┌──────────────┐
+│ FAT sector 0 │ ◄─ entries for clusters   1. walk chain from cluster 0:            (no FAT access;
+│ (128 × 4 B)  │    0..127 of the file        fatGet × j  → FAT sector 0            cluster = first + n)
+├──────────────┤                              (cache MISS if sector 1 was cached)
+│ FAT sector 1 │ ◄─ clusters 128..199      2. crossing cluster 128 → FAT sector 1
+│              │    (813 KB file = 200 cl.)    (MISS)  ← the hot spot: ~12k reads
+├──────────────┤                              of 2 sectors per 24.5k frame reads
+│ …            │
+├──────────────┤
+│ pattern data │  frame j = 4066 B at        3. CMD12 stop + CMD18 restart,          3. CMD12 + CMD18,
+│ 200 × 4066 B │  offset 18 + j·4066            8–9 sectors, ~0.6–0.9 ms                 8–9 sectors, ~0.6–0.9 ms
+│ (misaligned) │  (spans 2 clusters, so      4. one fatGet at the cluster boundary   4. cluster++ (no FAT)
+│              │   one boundary per read)       inside the read (cache hit/miss)
+└──────────────┘
+grating (81 KB = 20 clusters, 80 B of FAT): its whole chain sits in ONE FAT sector → always a cache hit → never a
+FAT read from the card → never a stall. That is the size dependence we saw — of the OLD path, not of the fix.
+```
+
+### 8.2 Timing per SET_FRAME_POSITION at 200 Hz (5 ms budget; measured medians)
+
+```
+              host send   USB/CDC   dispatch  skip?      readFrame                   wait tick   SPI      LEDs
+old, −1 seek  |──────────|·········|▌        |          |seek≈0.5 (FAT rd)|body 1.4|░░░░░░░░░░|▓▓▓▓ 0.77|~?
+              0          ~1 ms     t_rx                  ─── 2.0 ms ───────────────  0–3.3 ms   0.77 ms
+old, stall    |──────────|·········|▌        |          |seek: FAT read held by card housekeeping 33–89 ms ····|▓▓▓▓|
+                                                        └── display frozen, queued commands coalesced ──────┘
+new, −1 seek  |──────────|·········|▌        |          |seek 0|body 1.46 ms      |░░░░░░░░░░|▓▓▓▓ 0.77|
+new, +1 seek  |──────────|·········|▌        |          |0.62 ms (stream continues)|░░░░░░░░░░|▓▓▓▓|
+new, same idx |──────────|·········|▌ reply  |(no read) |                                        (frame already shown)
+measured new: req_age (dispatch → SPI start) p50 1.7 ms · p99 2.6 ms · max 4.8 ms;  superseded 0.5 % of frames
+```
+`░` = waiting for the next 300 Hz refresh tick (0–3.3 ms, phase-random); the panels latch after the transfer.
+
+### 8.3 Controller memory (Teensy 4.1, no external PSRAM) — why RAM caching, not the fix, has the size limit
+
+```
+OCRAM2  0x20200000 ┌──────────────────────────┐
+                   │ .bss.dma (DMAMEM) 55.7 KB │  SPI/DMA buffers, SdFat caches (data 512 B + FAT 512 B)
+        0x2020D9A0 ├──────────────────────────┤
+                   │ heap ↑                    │
+                   │                           │  ≈ 390 KiB unused today
+                   │  ← a frame/pattern cache  │  uncompressed: ≤ 97 GS16 frames (394 KB) or ≤ 370 GS2 frames
+                   │     would live here →     │  compressed (per-frame LZ4/zlib): the whole course library
+                   │                           │  (813 KB bar → 15 KB; 305 KB looming → ~30 KB; 8 MB sine → 374 KB)
+        0x2026F000 ├──────────────────────────┤
+                   │ telemetry ring 64 KiB     │  survives resets (fixed address)
+        0x2027F000 ├──────────────────────────┤
+                   │ Health ISR/wdog records,  │
+                   │ breadcrumb, CrashReport   │
+        0x20280000 └──────────────────────────┘
+DTCM (512 KB)      .data 32 KB + .bss 131 KB (frame_buf_ 4064 B, names_[] 32 KB, …) + stack; ~97 KB free
+```
+
+### 8.4 What still scales with the pattern, and the residual risks
+
+| effect | scales with size? | status |
+|---|---|---|
+| FAT reads during a trial (the stall trigger under H-FAT) | **no** — zero for any contiguous file | fixed (A) |
+| seek cost | **no** — arithmetic | fixed (A) |
+| per-read card latency (one CMD18 restart + 8–9 sectors) | no — 1.2–1.5 ms whatever the file | inherent to reading the card per frame; only the read-free path removes it |
+| read count | no — 0.76 per command after B | — |
+| read-disturb of the **data** region | yes, but the *other* way: a bigger file spreads its reads over more flash pages, so each page is read *less* often; a small working set is served from the card's cache | not observed in 5 M reads at 24.5k per cycle; a refresh of a data block would still be a 30–90 ms freeze — the per-trial flag catches it |
+| `contiguousRange()` at open | yes, ~1 FAT sector per 512 KB (4 KB clusters) | µs–ms, in the ITI |
+| **fragmentation** | independent of size, depends on card history | the one real precondition: `sd_layout` bit0 = 0 falls back to the old path (and its FAT reads). Make uploads contiguous (`preAllocate` on 0x8D) and have the Studio warn on a fragmented pattern |
+
+So: **for every pattern that is stored contiguously, the same code path runs and the FAT is never touched during
+a trial — no size limit.** The read-free path (§6) is the one with a size ceiling (RAM), and its value is now the
+remaining 0.6–1.5 ms per read and the theoretical data-region disturb, not the 30–90 ms stalls. The causal test
+(`sd-stall-causal-test-plan-2026-09-13.md`) is what turns "under H-FAT" into a statement of fact.
