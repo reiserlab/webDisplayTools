@@ -4,6 +4,14 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.79 (2026-09-13) · Session rig follows the controller
+
+- **A fresh Studio no longer starts on the wrong arena.** With no explicit rig (no `?rig=`, no user pick) the
+  session rig used to be the first entry of the rig index (`g6_3x10`), whatever controller was plugged in. It now
+  follows the geometry the controller reports at connect (`GET_FIRMWARE_VERSION` rows × cols): on a 2×10
+  controller that is the CSHL fly-on-ball rig. Explicit choices are never overridden; the derived rig's I/O
+  power-on defaults are applied.
+
 ## v0.78 (2026-09-13) · Whole-stack review fixes: the verdict lands in the log
 
 - **The stimulus-quality verdict is written before the run log is exported.** The final telemetry

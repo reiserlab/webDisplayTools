@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.78 | 2026-09-13 15:42 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.79 | 2026-09-13 18:48 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3720,6 +3720,7 @@
             if (v) {
                 Studio.firmwareVersion = v;
                 Studio.firmware = v.label;
+                if (Studio.deriveRigFromController) Studio.deriveRigFromController(v.rows, v.cols); // no explicit rig → follow the hardware
                 if ($('pvFw')) { $('pvFw').textContent = v.label; $('pvFw').title = 'git ' + v.sha + (v.dirty ? ' (dirty tree)' : '') + ' · ' + v.branch + ' · built ' + v.date + ' · ' + v.arena + (v.debug ? ' · DEBUG_SERIAL' : ''); }
                 rawLine('‹ firmware build: ' + v.label, 'info');
                 Studio.sdCard = null;
@@ -6370,6 +6371,27 @@ async function populateSessionRig() {
     });
     if (rigIndex && rigIndex[0]) setSessionRig(rigIndex[0].name, { explicit: false });
 }
+// The controller knows its own geometry (GET_FIRMWARE_VERSION rows × cols). When nobody
+// has chosen a rig explicitly (no ?rig=, no user pick), follow the hardware instead of
+// the index's first entry — a fresh browser profile used to come up as g6_3x10 on a
+// 2×10 controller, which is the wrong geometry for streamed frames and the wrong rig
+// io: power-on defaults (bench 2026-09-13). First index entry whose arena is RxC wins
+// (for 2×10 that is the CSHL fly-on-ball rig). Explicit choices are never overridden.
+Studio.deriveRigFromController = function (rows, cols) {
+    rows = Number(rows); cols = Number(cols); // decodeFirmwareVersion parses them from the label text
+    if (!(rows > 0 && cols > 0) || !rigIndex) return null;
+    const cur = Studio.currentRig;
+    if (cur && cur.explicit) return null;
+    const hit = rigIndex.find((r) => {
+        const m = /^G6_(\d+)x(\d+)/.exec(String(r.arena || ''));
+        return m && Number(m[1]) === rows && Number(m[2]) === cols;
+    });
+    if (!hit || (cur && cur.name === hit.name)) return null;
+    setSessionRig(hit.name, { explicit: false });
+    Studio.rawLog('session rig follows the controller: ' + hit.name + ' (' + rows + '×' + cols + ')', 'info');
+    if (Studio.applyRigIo) { Studio.applyRigIo().catch(() => {}); } // the derived rig's io: defaults, not the placeholder's
+    return hit.name;
+};
 // Point the session rig at a rig name. `explicit` marks a user/URL choice
 // (encoded to the URL); a derived follow (protocol load) never overrides an
 // explicit choice — updateDeviceLine raises the mismatch chip instead.
