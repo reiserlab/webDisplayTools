@@ -13,6 +13,13 @@ overnight benchmark data taken on exactly that build. Small changes only; every 
 
 ## 2. Review gates before the overnight flash (this evening)
 
+**Michael's three criteria (15:35 ET), applied to every diff and to the reconciliation of the Codex passes:**
+(a) **minimal complexity** — the simplest diff that does the job; overlapping instrumentation or dead paths get
+removed, not documented around; (b) **good comments** — every non-obvious line says *why*, in the code, not in a
+review report; (c) **one detailed hand-off document** explaining all the changes since 2026-09-11 together
+(`docs/development/mode3-reliability-handoff-2026-09-14.md`, both repos, one narrative), not a trail across builds.
+
+
 1. Whole-stack Codex adversarial reviews, running now: firmware `arena-2x10-local..HEAD`, web `main..claude/mode3-perf-sd`.
    Reconcile → fix only blocking/significant items → one more Codex diff review of the fix delta → rebuild.
 2. HIL on the rebuilt hex, port free: `pytest --transport=serial --port … tests/test_firmware_version.py
@@ -49,5 +56,8 @@ req_age max < 10 ms; per-file read cost tables are the benchmark numbers for the
 
 ## 6. Documentation to update before hand-off
 
+**The one hand-off document** (`mode3-reliability-handoff-2026-09-14.md`): the problem (wedge + stalls), the diagnosis
+path and evidence, every firmware change by layer with its wire contract and flag bit, every Studio change, how to
+test (HIL, offline, bench), the overnight benchmark, known limits, and where each thing lives. Then the smaller ones:
 firmware README (F-2), web release notes (S-1), `soak-handoff-2026-09-14.md` (S-2, morning results), CLAUDE.md (S-3),
 `sd-read-jitter-2026-09-13.md` §7 result (done), fw #54 / web #201 closing comments, memory.
