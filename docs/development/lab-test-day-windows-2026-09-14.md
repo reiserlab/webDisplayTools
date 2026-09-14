@@ -13,13 +13,13 @@ what changed and why: `mode3-reliability-handoff-2026-09-14.md`.
 - [ ] The CSHL 2×10 controller + its bench card (patterns 36 = bar, 46 = sine already on it) travel to the lab PC,
       or plan 10 extra minutes to upload the two patterns (step 3).
 - [x] Overnight results from the Mac in §6 of the hand-off document (the reference numbers for §7 below).
-- [ ] Studio: PRs #198 + #202 merged to `main` first thing in the morning if the night is clean (Michael 17:30 ET:
-      no separate review; the lab tests main; revert if anything is wrong). Until then the lab can serve the branch.
+- [x] Studio: PRs #198 + #202 squash-merged to `main` 2026-09-14 06:55 ET (main = `6c4edb2` v0.76 + `6e484cd` v0.79); revert is one
+      `git revert` per commit if the lab finds a problem.
 
 ## 1. Install (once, ~15 min)
 
 ```powershell
-git clone https://github.com/reiserlab/webDisplayTools.git; cd webDisplayTools; git checkout claude/mode3-perf-sd
+git clone https://github.com/reiserlab/webDisplayTools.git; cd webDisplayTools        # Studio v0.79 is on main (merged 2026-09-14 06:55 ET)
 pixi install                              # Node + Python + websockets (needs pixi: https://pixi.sh)
 cd ..; git clone https://github.com/reiserlab/LED-Display_G6_Firmware_Arena.git; cd LED-Display_G6_Firmware_Arena
 git checkout feat/mode3-reliability

@@ -257,8 +257,8 @@ precondition: pattern files contiguous on the card (uploads through the Studio a
   reconciled in the port worktree's `.codex-review/report-20260913-port.md`. **PR #56 against `main` is the merge
   candidate**; it runs overnight and the lab flashes it. `feat/sd-fastpath-2x10` (PR #55, closed) keeps the
   fine-grained history; PR #53 closed as superseded.
-- **Studio:** PRs #198 and #202 squash-merged to `main` in the morning after a clean night (two commits: v0.76, v0.78),
-  no separate review; revert if the lab finds a problem.
+- **Studio:** DONE 2026-09-14 06:55 ET — #198 and #202 squash-merged to `main` (`6c4edb2` v0.76, `6e484cd` v0.79) after the
+  clean night; revert is one `git revert` per commit if the lab finds a problem.
 - **Decisions closed (Michael, 2026-09-13 19:00 ET):** keep `SET_SD_DIAG` in production (gated, off at boot, Studio
   banner when found on at connect — v0.79); one build for the hand-off, no lean variant; firmware PR #56 on `main`;
   Studio #198 + #202 squash-merged to `main` in the morning; the overnight runs through the Studio.
