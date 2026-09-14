@@ -26,16 +26,20 @@ git clone https://github.com/reiserlab/webDisplayTools.git; cd webDisplayTools  
 pixi install                              # Node + Python + websockets (needs pixi: https://pixi.sh)
 cd ..; git clone https://github.com/reiserlab/LED-Display_G6_Firmware_Arena.git; cd LED-Display_G6_Firmware_Arena
 git checkout feat/mode3-reliability
-pip install platformio pyserial          # or the PlatformIO VS Code extension; Teensy Loader comes with PlatformIO
+pixi install                              # PlatformIO (pinned >=6.1.19,<7), Teensy toolchain, Python, pyserial — all from pixi
 ```
+**Do NOT `pip install platformio`** — the firmware repo is pixi-only (Frank's scheme); a pip PlatformIO next to the pixi one
+gives two `pio` versions on PATH and version conflicts. Everything runs as `pixi run …` inside the firmware checkout.
 The Studio itself is NOT served from this clone — use GitHub Pages (§2). Chrome or Edge (Web Serial). Use **PowerShell**,
 not Git Bash, for anything with times (Git Bash prints UTC labelled ET).
 
 ## 2. Flash and identify (10 min)
 
 ```powershell
-pio run -e teensy41-2-10-performance -t upload --upload-port COM5   # 2×10 variant; find COMx in Device Manager: "USB Serial Device"
+pixi run deploy-2-10-performance          # = pio run -e teensy41-2-10-performance -t upload; the pre-script finds the Teensy port
 ```
+If the port finder picks the wrong device: `pixi run pio run -e teensy41-2-10-performance -t upload --upload-port COM5`
+(COMx from Device Manager: "USB Serial Device").
 Windows gotchas (fw PR #49 notes): the **first upload attempt often fails — run it again**; the arena must be powered;
 if the port vanishes, unplug/replug once. Then in Chrome: **`https://reiserlab.github.io/webDisplayTools/arena_studio.html?advanced=1&soak=1`** (hard-refresh once,
 Ctrl+Shift+R; the footer must read `Arena Studio v0.79`) → **Connect** → pick the Teensy port. The local FicTrac bridge
@@ -131,6 +135,6 @@ Michael fills the Windows column from the posted outputs — nothing to commit f
 
 ## 8. Optional browser-free path (if the Studio misbehaves on the PC)
 
-In the firmware checkout: `python scripts\sd_stall_test.py --port COM5 --pattern 46 --hz 200 --minutes 10 --sd-diag 0`
+In the firmware checkout: `pixi run python scripts\sd_stall_test.py --port COM5 --pattern 46 --hz 200 --minutes 10 --sd-diag 0`
 (then `--pattern 36`). Same analysis with `telemetry-report.py` on `soak-logs\sdstall-*.jsonl`. This tests the
 controller and card, not the Studio.
