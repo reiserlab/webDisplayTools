@@ -630,6 +630,12 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   the last ~100 ms before the file rolls) — tolerance question for `runlog-check`, morning item.
 - **2026-09-13 22:36 ET — overnight, 2 h in: 5 iterations complete, 100/100 trials pass, 0 reads > 10 ms, req_age max
   4.83 ms in every iteration, drainer 0/0/0/0 throughout, ~1.16 M commands; bridge + simulator alive.**
+- **2026-09-13 23:45 ET — overnight event: one 26 ms body-phase read on the 8 MB sine (pattern 46, frame 1942,
+  trial 3 of iteration 9, no driver error) → the Studio emitted `display_gap` (sd_slow 26 ms + frame_age 26.2 ms) and
+  will flag the trial — the real-stall verdict path exercised for the first time; the soak continues (a stall is not
+  a fault).** Second data-region event of the day on the sine (17:40: 19.5 + 6.4 ms), none on the bar; both on the
+  contiguous fast path with no FAT access → card-internal, rate ≈ 1 per 2–3 M reads of the large file (≈ one per
+  3 h at 200 Hz). Below Michael's 30 ms "detectable" line, above the 10 ms flag line.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
