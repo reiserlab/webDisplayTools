@@ -52,11 +52,13 @@ clusters` line. If the label is not `781efe2b`, stop: wrong build. After ANY con
 
 ## 3. Card check (2 min, or 10 with the one upload) — do this once per arena
 
-Console → Arena Trial panel → SD listing → **Refresh**. Two names must be in the list:
+Console → Arena Trial panel → SD listing → **Refresh**. Two names must be in the list (they are the only two patterns
+the lab day needs; test B's drill protocol uses the bar only):
 
-- **`p3_heisenberg_ts`** (813 KB, 200 frames — the course "bar"): on every CSHL course card, index 36. If it is missing
-  the card is not a course card — Add ▾ → Single pattern → **From course repo…** → `patterns/036_p3_heisenberg_ts.pat`
-  (needs the course sign-in), or copy that file from the course repo and use From local file… as below.
+- **`p3_heisenberg_ts`** (813 KB, 200 frames — the course "bar"): on every CSHL course card, index 36. If it is missing,
+  download it (no sign-in needed) from
+  `https://raw.githubusercontent.com/reiserlab/cshl-2026-course/main/patterns/036_p3_heisenberg_ts.pat` and upload it
+  with From local file… exactly like the sine below (or Add ▾ → From course repo… if you are signed in).
 - **`sine_2000f_gs16`** (8 MB, 2000 frames): NOT on course cards. Make it and upload it:
   1. In the webDisplayTools checkout: `pixi run node scripts/make-stress-patterns.js --only sine` → writes
      `soak-patterns\sine_2000f_gs16.pat` (≈ 8 MB) and prints the re-parsed frame count (2000).
@@ -80,7 +82,9 @@ pixi run bridge -- --log-dir soak-logs
 pixi run sim -- --count 0 --rate 200 --seed 1 --jump-every 100 --jump-deg 90
 ```
 Studio: File ▾ → Open → `protocols/soak_mode3_stress.yaml` (from the clone's `protocols\` folder); rig
-`cshl_g6_2x10_ball`; the FicTrac panel's Connect must go green. Then go straight to test A — its first iteration IS the smoke
+`cshl_g6_2x10_ball`; the FicTrac panel's Connect must go green. **This is the only protocol the lab day uses for the soak.**
+Ignore the other `soak_*.yaml` files in that folder (`soak_mode2_open_loop`, `soak_mode3_closed_loop` are older campaign
+protocols and need patterns that are not on the course card). Then go straight to test A — its first iteration IS the smoke
 run, and the soak halts by itself on a first fault. **Look for** during each 21-min iteration: `telemetry poller … running`;
 at its end the banner `stimulus quality: 20 pass · 0 flagged · 0 unknown`.
 
@@ -88,7 +92,7 @@ at its end the banner `stimulus quality: 20 pass · 0 flagged · 0 unknown`.
 
 | # | do | look for (Studio log / files) | pass |
 |---|---|---|---|
-| A | **Soak, 3 iterations (~1 h):** File ▾ → Soak…, `iterations 3, gap 10 s, first fault halt, then reset-continue, max resets 3` | `soak ended (iterations) after 3 iteration(s), 0 fault(s), 0 reset(s)`; every iteration banner `… pass · 0 flagged · 0 unknown` | 0 faults, 0 resets, 60 of 60 trials pass |
+| A | **Soak: ONE protocol (`soak_mode3_stress.yaml`, already open from §4) run 3 times (~1 h):** File ▾ → Soak…, `iterations 3, gap 10 s, first fault halt, then reset-continue, max resets 3`. "3 iterations" is the field in the Soak dialog, not three protocol files | `soak ended (iterations) after 3 iteration(s), 0 fault(s), 0 reset(s)`; every iteration banner `… pass · 0 flagged · 0 unknown` | 0 faults, 0 resets, 60 of 60 trials pass |
 | B | **Injected stall** (checks the flagging path): in the browser console `await Studio.setSdDiag(3)`, open `protocols/mode3_drill_1trial.yaml` and run it as a 1-iteration Soak (File ▾ → Soak…, iterations 1), then `await Studio.setSdDiag(0)` | during the run: `display gap NN ms (sd_slow, body) in trial …` lines; at the end `⚠ stimulus quality: … flagged`; after `setSdDiag(0)`, Console identity shows `sd diag 0` | at least one trial flagged; the soak did NOT stop; switches back to 0 |
 | C | **Simulator kill:** during a Soak (start a 2-iteration soak), close the sim window for 30 s, restart it | `soak: no FicTrac frames — waiting for the simulator`, then the next iteration starts | soak resumes by itself; no fault counted |
 | D | **Link drop:** during a trial pull the controller's USB cable, wait 5 s, plug it back | `run ended by a link drop … treating as a controller event`; post-mortem lines (`confirm`, `probe`, `reconnect`); the run's outcome `CONTROLLER_FAULT`. The controller is powered from the arena supply, so it does NOT reset: the panels keep the last stimulus until the next trial or an all-off (bench 2026-09-13). If the Studio asks for the port again, pick the Teensy — on the bench it reconnected by itself | reconnects; next iteration runs |
