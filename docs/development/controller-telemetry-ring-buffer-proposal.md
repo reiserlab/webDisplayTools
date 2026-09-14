@@ -1,6 +1,13 @@
 # Controller telemetry ring buffer — feasibility + test proposal
 
-Drafted 2026-09-07 17:38 ET (Michael + Claude). Status: **proposal, no code**. Companion to
+> **Design record (2026-09-13).** The ring shipped (fw `feat/telemetry-ring` → `488d5b9`; Studio v0.76+). As built it
+> differs from §3: FRAME is 26 B with `sd_load_us`/`req_age_us` u32, run-log rows are `[tag, rx, t_us, seq, …]` (no
+> `t_off`/`rx_off`, no `ct` tick rows), there is no `GET_CLOCK`, and the gate is 0xCB flag bit 2 (not 0xC2 bit 7).
+> The as-built layouts, clock model and latency recipe are in
+> [`telemetry-logging-reference.md`](telemetry-logging-reference.md); §5 (T1–T6) and §9 (L1–L4) here remain the
+> bench/instrument plans.
+
+Drafted 2026-09-07 17:38 ET (Michael + Claude). Status at drafting: **proposal, no code**. Companion to
 `docs/development/analog-acquisition-handover.md` (§ 3.2 F3 / § 3.3 S4, the analog block
 stream) and to Linear **LAB-149** ("controller and panel diagnostics with a retrievable
 event log"). This document answers one question — *can the G6 controller keep an event log

@@ -7,6 +7,9 @@ at the end. None bench-tested yet. **Merge order:** PR 3 (readers) must be live 
 or together with PR 2 (Studio): once PR 2 is live, new course runs commit as
 `.jsonl.gz`, which only PR 3's readers open.
 
+> **Format authority:** the as-built row/event catalogue, clock model and latency recipe are in
+> [`telemetry-logging-reference.md`](telemetry-logging-reference.md). This file keeps the design rationale.
+
 ## Problem
 
 The Studio commits run logs through GitHub's Contents API, which rejects files over
