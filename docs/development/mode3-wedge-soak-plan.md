@@ -578,6 +578,11 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   ignored.** Also fixed: simulator field 22 written in ms instead of ns (every sim log's `ft` was 1000× too small;
   found by the telemetry-review session) — sim restarted 19:55 with the fix; a footer stamp mangled by `sed -E`.
   `pixi run test` green. Retrying the drill with a single start.
+- **2026-09-13 20:09–20:13 ET — drill, single start, arm 3, pattern 36, 180 s:** 34,821 reads over **200/200
+  frames**, legacy arm applied, −1 step at the legacy cost; **0 stalls this time** (max read 3.4 ms); verdict 1 trial
+  `pass`, `trial_quality` after the last controller row, counts reconciled (34,820 cc / 34,822 a). The Studio banner
+  for a real stall therefore remains unexercised (the 19:49 run had the stall but the overlapping-run bug ate it).
+  20:14: arm back to 0 (production); watchdog drill next.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
