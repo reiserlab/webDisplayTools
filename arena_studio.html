@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.79 | 2026-09-13 19:55 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.79 | 2026-09-13 20:17 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3201,7 +3201,11 @@
             // runSteps also does, as a fallback) left the stored outcome ABORTED_BY_USER and
             // skipped the auto-commit (whole-stack review, 2026-09-13).
             const sm = s && s.summary;
-            if (sm && !sm.fault && sm.aborted && Studio._linkDropped && !Studio._userStopRequested) {
+            // `_linkDropped` is set by the Studio's own disconnect listener, which can run AFTER the
+            // broker has already aborted the runner (bench 2026-09-13, forced watchdog reset: the
+            // terminal event arrived with fault null). The link being down at the terminal event
+            // of an abort nobody requested is the same evidence — use either.
+            if (sm && !sm.fault && sm.aborted && !Studio._userStopRequested && (Studio._linkDropped || !(Studio.session && Studio.session.connected))) {
                 sm.fault = 'link_dropped';
                 sm.faultDetail = { kind: 'link_dropped', note: 'controller re-enumerated mid-run (watchdog self-reset?)' };
             }

@@ -14,6 +14,8 @@ history lives here. Newest first. (Per-session engineering detail stays in
 - **Frame counts come from the card.** After the SD listing the Studio reads every pattern's header
   (`GET_PATTERN_INFO`), so the closed-loop heading→index modulus is right for patterns whose thumbnail
   was never rendered (an 8 MB pattern used to fall back to 200 frames and wrap).
+- **A link drop mid-run is a controller fault even when the runner's terminal event beats the disconnect
+  listener** (the link being down at an abort nobody requested is the evidence; forced-watchdog drill, bench).
 - **The stimulus-quality verdict is bound to its run.** A late terminal event from a previous, aborted run
   can no longer finalize the next run's trials (it did once on the bench, one second into a drill, and
   the real stall went unjudged).
