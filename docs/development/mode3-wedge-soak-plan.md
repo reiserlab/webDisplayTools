@@ -622,6 +622,12 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   `sdDiag` 0, rig `cshl_g6_2x10_ball` derived, `hours: 10, gapS: 10, firstFault: halt, policy: reset-continue,
   maxResets: 3`). Michael: "super fast pattern movement" — the sine at 0.18°/frame, as designed. Judge in the morning
   per `overnight-soak-test-plan-2026-09-13.md` (T1–T8, L1–L7, R1–R5).
+- **2026-09-13 21:36 ET — overnight, 1 h in: 2 iterations complete (1238 s each, ~231.7k commands each), 40/40
+  trials pass, 0 reads > 10 ms, req_age p50 1.68 / max 4.83 ms (under the 5 ms target), drainer dropped/gaps/
+  notStored/errors 0/0/0/0, both files contiguous; per-read cost sine 1.385 ms p50 random (max 1.80) vs bar 1.459
+  (max 1.80); superseded share 3.6 % (200 Hz commands vs 300 Hz refresh); `trial_quality` after the last controller
+  row in both files. Only checker complaint: host-accepted exceeds controller-recorded 0x70 by 21 per file (0.01 %,
+  the last ~100 ms before the file rolls) — tolerance question for `runlog-check`, morning item.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
