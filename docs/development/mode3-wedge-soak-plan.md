@@ -643,6 +643,18 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   0x70 rows in both hex spellings); `wedge-scan` 0 onsets. Full table: hand-off §6. Next: Studio #198 → #202 to
   `main` (squash), lab day on PR #56's `781efe2`.**
 
+- **2026-09-14 18:55 ET — first field data on the candidate (rig03-sr, Shubham, Windows lab PC, real flies).** 13 runs committed to the course repo
+  between 11:59 and 18:12 ET: 3 short (26 trials) + 10 full `p3-heisenberg-ts-full-led3` (56 trials, 18 min), fw `781efe2b`,
+  Studio v0.79, log level behavior_v1 (bench setting), card `SD8GB mid_0x00 sn 000009de FAT32 32 KiB clusters` (same generic
+  model as the bench card sn 000014d4, 4 KiB clusters). All 13 sequences completed; `wedge-scan` 0 faults / 0 resets, RTT median
+  2 ms, p99 8–13 ms; `runlog-check` 13/13 structurally complete; 638 trials = 632 pass / 6 flagged / 0 unknown. **The 6 flags are
+  all the same event on pattern 41 (`p3_heisenberg_ts_shift90`)**: 16 body-phase reads of 18.8/22.4 ms alternating, then one
+  73 ms, ≈ 400 ms of frozen display inside a 20 s trial; identical signature six times, at frame indices 12, 17, 0–112, 58–112,
+  97–116, 153–167 (no position dependence), every 15.5–19.8 k reads of pattern 41 (cumulative across runs), while pattern 36
+  (same size, same read count 126 k vs 123 k) never stalled. Both files `contiguous`, contiguous-path share 1.0, no FAT access:
+  this is the card's own count-triggered maintenance on the physical block holding pattern 41, not H-FAT. The Studio flagged
+  every one (trial_quality + 34 display_gap events per run). Logs reviewed offline from the course repo; nothing changed on the rig.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
