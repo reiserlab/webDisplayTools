@@ -39,11 +39,27 @@ checkout → `http://localhost:8092/arena_studio.html?advanced=1&soak=1` → **C
 `session rig follows the controller: cshl_g6_2x10_ball (2×10)` (v0.79) and an `sd card: … SD8GB … FAT32 4 KiB
 clusters` line. If the label is not `781efe2b`, stop: wrong build. After ANY controller reset (flash, watchdog, power) glance at the arena: it should be dark; if a panel shows a glyph or the arena re-lights, send all-off from the Console (panel-side behaviour seen once on the bench).
 
-## 3. Card check (2 min, or 10 with uploads)
+## 3. Card check (2 min, or 10 with the one upload) — do this once per arena
 
-Console → the SD listing must show `p3_heisenberg_ts` (index 36 on the course card: the 813 KB, 200-frame bar) and `sine_2000f_gs16` (index 46, 2000 frames). If not:
-`pixi run node scripts/make-stress-patterns.js` writes both into `soak-patterns\`; upload them from the Console
-(SD upload) with the display stopped. Indices are by sorted filename; the protocol resolves names, so numbers don't matter.
+Console → Arena Trial panel → SD listing → **Refresh**. Two names must be in the list:
+
+- **`p3_heisenberg_ts`** (813 KB, 200 frames — the course "bar"): on every CSHL course card, index 36. If it is missing
+  the card is not a course card — Add ▾ → Single pattern → **From course repo…** → `patterns/036_p3_heisenberg_ts.pat`
+  (needs the course sign-in), or copy that file from the course repo and use From local file… as below.
+- **`sine_2000f_gs16`** (8 MB, 2000 frames): NOT on course cards. Make it and upload it:
+  1. In the webDisplayTools checkout: `pixi run node scripts/make-stress-patterns.js --only sine` → writes
+     `soak-patterns\sine_2000f_gs16.pat` (≈ 8 MB) and prints the re-parsed frame count (2000).
+  2. Studio Console, connected, display stopped (**■ Stop**): SD listing → **Add ▾ → Single pattern (.pat) → From
+     local file…** → pick that file. Log: `SD upload: 1 file(s)…` then `SD upload done: 1/1` (about a minute).
+  3. **Refresh** the listing; `sine_2000f_gs16` appears (index = its place in the sorted filenames, the number does not
+     matter — protocols resolve names). Click it, **↻ info** → 2000 frames, GS16.
+  4. **Play it once** (10 s): Arena Trial → mode `2 · play`, rate 100, duration 10 → **▶ Start**. A sine grating rolls
+     around the arena, no glyph, no error line in the log.
+  5. **Contiguity is checked for you** in the first run (§4): `telemetry-report.py` must print `layout: contiguous` for
+     both patterns; if the sine says fragmented, delete it from the card and upload again (a one-pass upload is contiguous).
+
+If a run's log ever says `… not on the SD by name — the run will fall back to the numeric pattern_ID`, the upload did not
+land or the name differs: stop and redo this step, do not run the tests on the fallback pattern.
 
 ## 4. Bridge, simulator, one smoke run (10 min)
 
