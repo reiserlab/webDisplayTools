@@ -104,7 +104,7 @@ WS_MAX_SIZE = 16 * 1024 * 1024
 # leads the startup banner. (An OLD bridge has no --version flag → argparse errors,
 # which is itself the tell.) "behavior_v1" here means frames carry ms/fc/idx/ft/x/y/hd
 # with `ft` normalized ns→ms — i.e. the live scope + dashboard will work.
-BRIDGE_VERSION = "3.0 · behavior_v2 (compact arena echo, log_control ack)"
+BRIDGE_VERSION = "3.1 · behavior_v2 (compact arena echo, log_control ack, controller telemetry rows)"
 
 # behavior_v1 — the logged frame schema (issue #140), UNCHANGED in behavior_v2.
 # Positional-array rows in this column order; the live scope + offline dashboard
@@ -544,6 +544,12 @@ class Hub:
             pass
 
 
+# Minimum row lengths for the tagged array streams the browser may send via
+# {type:"rows"} (schema: js/arena-telemetry.js STREAM_SCHEMA). Shorter rows are
+# dropped so a malformed producer cannot poison the file for every reader.
+ROW_MIN_LEN = {"cc": 7, "cf": 8, "cs": 7}
+
+
 class LogWriter:
     """Appends one JSON line per event to a log file.
 
@@ -645,6 +651,24 @@ class LogWriter:
         # audit) and harmless for event objects — one line per JSON value.
         if self._fh:
             self._fh.write(json.dumps(obj, separators=(",", ":")) + "\n")
+
+    def write_rows(self, rows) -> int:
+        """Compact ARRAY rows from the browser, written verbatim one per line
+        (controller telemetry streams "cc"/"cf"/"cs" from js/arena-telemetry.js;
+        the tag in row[0] is the reader's dispatch key, like "a" for arena echoes).
+        Rows are validated for shape only — a list whose first element is a short
+        string tag — never rewritten. Returns the number written."""
+        if not self._fh or not isinstance(rows, list):
+            return 0
+        n = 0
+        for r in rows:
+            if not (isinstance(r, list) and r and isinstance(r[0], str) and 1 <= len(r[0]) <= 4):
+                continue
+            if len(r) < ROW_MIN_LEN.get(r[0], 2):  # a bare ["cc"] would crash readers
+                continue
+            self._emit(r)
+            n += 1
+        return n
 
     def write_inbound(self, raw: str | bytes) -> None:
         if not self._fh:
@@ -945,6 +969,9 @@ def make_dispatcher(pipeline: Pipeline, log: LogWriter, inputs: InputManager):
                 + (f" ({len(content)} chars)" if content else ""),
                 file=sys.stderr,
             )
+        elif kind == "rows":
+            # Compact array rows (controller telemetry cc/cf/cs) — verbatim lines.
+            log.write_rows(obj.get("rows"))
         else:
             # {"type":"log", ...} and anything else → straight to the log file.
             log.write_inbound(raw)

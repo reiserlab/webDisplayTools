@@ -442,6 +442,138 @@ async function main() {
         );
     }
 
+    console.log('\n=== #199: indices wrap into the configured frame count before apply ===');
+    {
+        const applied = [];
+        const client = new FicTracBridgeClient({
+            applyFrame: (i) => {
+                applied.push(i);
+                return Promise.resolve();
+            },
+            clampFrame: (i) => i
+        });
+        client.setApply(true);
+        client.setConfig({ frames: 20 });
+        client.handleFrame(156); // computed with the previous 200-frame modulus
+        await tick();
+        client.handleFrame(19);
+        await tick();
+        client.handleFrame(-1); // negative wraps too
+        await tick();
+        check('156 mod 20 → 16, in-range untouched, -1 → 19', applied, [16, 19, 19]);
+        client.setConfig({ frames: 200 });
+        client.handleFrame(156);
+        await tick();
+        check('with the 200-frame modulus 156 passes through', applied[applied.length - 1], 156);
+        const c2 = new FicTracBridgeClient({
+            applyFrame: (i) => {
+                applied.push(i);
+                return Promise.resolve();
+            },
+            clampFrame: (i) => i
+        });
+        c2.setApply(true);
+        c2.handleFrame(999); // no frames configured → no wrap
+        await tick();
+        check('no configured frame count → index untouched', applied[applied.length - 1], 999);
+    }
+
+    console.log('\n=== fault latch (fw #50): repeated apply failures fail closed ===');
+    {
+        // applyFrame fails (link timeout) for the given indices, succeeds otherwise.
+        const failOn = new Set();
+        const mk = (opts) => {
+            const client = new FicTracBridgeClient(
+                Object.assign(
+                    {
+                        applyFrame: (i) =>
+                            failOn.has(i)
+                                ? Promise.reject(
+                                      new Error('response timeout after 500 ms (cmd 0x70)')
+                                  )
+                                : Promise.resolve(),
+                        clampFrame: (i) => i,
+                        now: () => 42
+                    },
+                    opts || {}
+                )
+            );
+            const faults = [];
+            const applyEv = [];
+            client.on('fault', (f) => faults.push(f));
+            client.on('apply', (on) => applyEv.push(on));
+            client.setApply(true);
+            return { client, faults, applyEv };
+        };
+        const drive = async (client, indices) => {
+            for (const i of indices) {
+                client.handleFrame(i);
+                await tick();
+                await tick();
+            }
+        };
+
+        // Three straight timeouts → one fault, apply forced off, loop stops.
+        failOn.clear();
+        [10, 11, 12].forEach((i) => failOn.add(i));
+        let t = mk();
+        await drive(t.client, [1, 2, 10, 11, 12, 13]);
+        check('three consecutive failures → exactly one fault', t.faults.length, 1);
+        check('fault kind', t.faults[0] && t.faults[0].kind, 'controller_unresponsive');
+        check('fault counts failures in window', t.faults[0] && t.faults[0].failures, 3);
+        check('fault carries the last error', /timeout/.test(t.faults[0].lastError), true);
+        check('apply forced OFF on fault', t.client.apply, false);
+        check('apply=false event emitted', t.applyEv[t.applyEv.length - 1], false);
+        check('stats expose the fault', !!t.client.stats.fault, true);
+        check('stats count failures', t.client.stats.applyFailures, 3);
+        check('frame 13 was NOT applied (loop stopped)', t.client.stats.applied, 2);
+
+        // An isolated timeout (one failure, then successes) must NOT fault.
+        failOn.clear();
+        failOn.add(5);
+        t = mk();
+        await drive(t.client, [1, 2, 5, 6, 7, 8, 9]);
+        check('isolated failure → no fault', t.faults.length, 0);
+        check('isolated failure keeps apply ON', t.client.apply, true);
+        check('isolated failure counted', t.client.stats.applyFailures, 1);
+
+        // Interleaved: fail, ok, fail, ok, fail — "3 of the last 10", not
+        // "3 consecutive" (a late reply to an old 0x70 can look like a success).
+        failOn.clear();
+        [20, 22, 24].forEach((i) => failOn.add(i));
+        t = mk();
+        await drive(t.client, [20, 21, 22, 23, 24, 25]);
+        check('3 failures within the window → fault (interleaved)', t.faults.length, 1);
+
+        // Window is bounded: 2 failures, then 10 successes, then 1 failure → no fault.
+        failOn.clear();
+        [30, 31, 45].forEach((i) => failOn.add(i));
+        t = mk();
+        await drive(t.client, [30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 45]);
+        check('old failures age out of the window', t.faults.length, 0);
+
+        // setApply(true) after a fault clears the latch + window.
+        failOn.clear();
+        [50, 51, 52].forEach((i) => failOn.add(i));
+        t = mk();
+        await drive(t.client, [50, 51, 52]);
+        check('faulted', t.faults.length, 1);
+        t.client.setApply(true);
+        check('re-arming apply clears the fault', t.client.fault, null);
+        failOn.clear();
+        await drive(t.client, [60, 61]);
+        check('drives again after re-arm', t.client.stats.applied, 2);
+        check('no second fault without new failures', t.faults.length, 1);
+
+        // Configurable threshold/window.
+        failOn.clear();
+        [70, 71].forEach((i) => failOn.add(i));
+        t = mk({ faultThreshold: 2, faultWindow: 4 });
+        await drive(t.client, [70, 71]);
+        check('custom threshold 2 → fault after two failures', t.faults.length, 1);
+        check('custom window reported', t.faults[0] && t.faults[0].window, 2);
+    }
+
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);

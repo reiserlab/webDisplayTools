@@ -276,6 +276,19 @@ const pb = R.parseRunLog(behLog);
 check('format detected behavior_v1', pb.format, 'behavior_v1');
 check('behavior_v1 2 samples', pb.samples.length, 2);
 approx('behavior_v1 ft passthrough (already ms)', pb.samples[1].ft, 8.272, 1e-9);
+// Controller telemetry rows ("cc"/"cf"/"cs", js/arena-telemetry.js) share the file
+// with behavior rows — they are other streams, never samples (review finding).
+const pbCtl = R.parseRunLog(
+    behLog +
+        '\n' +
+        JSON.stringify(['cc', 9, 5000, 1, 112, 0, '03704e00']) +
+        '\n' +
+        JSON.stringify(['cf', 9, 5100, 2, 78, 36, 129000, 812]) +
+        '\n' +
+        JSON.stringify(['cs', 9, 5200, 3, 1, 0, 0])
+);
+check('tagged telemetry rows are not behavior samples', pbCtl.samples.length, 2);
+check('samples unchanged by the tagged rows', pbCtl.samples[1].fc, 101);
 check('behavior_v1 x/y/hd', [pb.samples[1].x, pb.samples[1].y, pb.samples[1].hd], [0.01, 0, 0.02]);
 
 // ── metadata + explicit timing + arena frame commands ─────────────────────────────────────

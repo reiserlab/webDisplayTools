@@ -251,6 +251,24 @@ def write_session(level, inbound, frames=1):
         lw.close()
         return bridge.read_jsonl(os.path.join(d, name))
 
+# tagged array rows ({type:"rows"}, bridge ≥ 3.1): written verbatim, shape-checked per tag
+with tempfile.TemporaryDirectory() as d:
+    lw = bridge.LogWriter(None, "behavior_v2", d)
+    lw.start_new_log()
+    n = lw.write_rows([
+        ["cf", 1, 5000, 1, 7, 36, 129000, 812],   # ok
+        ["cc"],                                    # too short for its tag → dropped
+        ["cs", 1, 5000, 2, 1, 0],                  # cs needs 7 → dropped
+        ["zz", 1],                                 # unknown tag, generic minimum 2 → kept
+        "not a list",                              # dropped
+    ])
+    name = lw.current_name
+    lw.close()
+    got = [r for r in bridge.read_jsonl(os.path.join(d, name)) if isinstance(r, list) and r and r[0] in ("cf", "cc", "cs", "zz")]
+    check("write_rows count (shape-checked)", n, 2)
+    check("kept rows", [r[0] for r in got], ["cf", "zz"])
+    check("cf row verbatim (u32 sd_load)", got[0][6], 129000)
+
 check("default level is behavior_v2", bridge.LogWriter(None).level, "behavior_v2")
 check("legacy log_frames=True → full", bridge.LogWriter(None, True).level, "full")
 check("legacy log_frames=False → default", bridge.LogWriter(None, False).level, "behavior_v2")
@@ -310,6 +328,8 @@ async def drive():
         await dispatch(json.dumps({"type": "log_control", "enabled": True, "level": "behavior_v2"}), ws)
         ack_v2 = ws.sent[-1]
         f_v2 = log.current_name
+        # controller telemetry rows: written verbatim while logging; shape-checked
+        await dispatch(json.dumps({"type": "rows", "rows": [["cc", 1789000000000, 1000, 10, 112, 0, "03704e00"], ["cf", 1789000000000, 1500, 11, 78, 36, 1961, 812], ["bad-tag-too-long", 1], "not-a-row", [1, 2, 3]]}), ws)
         await dispatch(json.dumps({"type": "log_control", "enabled": False}), ws)
         ack_off = ws.sent[-1]
         await dispatch(json.dumps({"type": "log_control", "enabled": True, "level": "behavior_v9"}), ws)
@@ -332,6 +352,9 @@ check("log_control_ack off: enabled false, level kept", (ack_off["enabled"], ack
 check("unknown level: ack reports the level ACTUALLY in force", (ack_bogus["level"], ack_bogus["requested"], ack_bogus["enabled"]), ("behavior_v2", "behavior_v9", True))
 check("behavior_v1 still selectable", ack_v1["level"], "behavior_v1")
 check("the v2 file: hello + log_control logged, schema is v2", (first[0]["type"], first[1]["level"], first[2]["type"]), ("session", "behavior_v2", "log_control"))
+rows = [o for o in first if isinstance(o, list) and o and isinstance(o[0], str) and o[0] in ("cc", "cf")]
+check("telemetry rows written verbatim (2 of 5 candidates)", rows, [["cc", 1789000000000, 1000, 10, 112, 0, "03704e00"], ["cf", 1789000000000, 1500, 11, 78, 36, 1961, 812]])
+check("bad rows dropped, not rewritten", any(isinstance(o, list) and o and o[0] in ("bad-tag-too-long",) for o in first) or any(o == [1, 2, 3] for o in first), False)
 
 print("\n=== Summary ===")
 print(f"{total - failures} / {total} checks passed")

@@ -180,6 +180,13 @@ var ArenaRunnerG6 = (function () {
     // isKnownControllerCommand, duplicated on purpose because this module must stay
     // import-free (no sibling imports). Anything else (e.g. a legacy setColorDepth →
     // SWITCH_GRAYSCALE 0x06, dropped on G6) is an error, not a silent no-op.
+    // A link "response timeout" (ArenaLink's message) — the controller-unresponsive
+    // signature of firmware #50, as opposed to a rejected/odd reply.
+    function isTimeoutError(e) {
+        const m = e && (e.message || String(e));
+        return typeof m === 'string' && /response timeout/i.test(m);
+    }
+
     const RUNNABLE_CONTROLLER_COMMANDS = [
         'trialParams',
         'allOn',
@@ -738,6 +745,8 @@ var ArenaRunnerG6 = (function () {
             this._ledActivator = null; // active conditional-LED evaluator (Mode 3)
             this._ledUnsub = null; // bridge 'applied' unsubscribe for the above
             this._emit = null; // current run's status emit (for async LED events)
+            this._faultReason = null; // set by fault() / a timed-out wire command
+            this._faultDetail = null;
         }
 
         get active() {
@@ -844,6 +853,40 @@ var ArenaRunnerG6 = (function () {
          *  `_clear()` (ArenaSession calls this on the link's onDisconnect). */
         abort() {
             this._clear();
+        }
+
+        /**
+         * External FAULT (firmware #50): the closed-loop bridge client saw repeated
+         * 0x70 timeouts, or some other watcher decided the controller is gone.
+         * Records the reason, emits a `fault` status event into the current run,
+         * then unwinds like abort() (wakes the host-side wait, disarms closed loop,
+         * NO STOP send here — the sequence's finally still tries a best-effort
+         * STOP and records whether it was acked). The terminal `aborted` event's
+         * summary carries `fault`, which the run-log adapter turns into the
+         * CONTROLLER_FAULT outcome (never ABORTED_BY_USER).
+         * @param {string} [reason='controller_unresponsive']
+         * @param {object} [detail] JSON-safe context (failures, window, lastError…)
+         */
+        fault(reason, detail) {
+            this._faultReason = reason || 'controller_unresponsive';
+            this._faultDetail = detail && typeof detail === 'object' ? detail : null;
+            if (this._emit) {
+                try {
+                    this._emit({
+                        phase: 'fault',
+                        reason: this._faultReason,
+                        detail: this._faultDetail
+                    });
+                } catch (_) {
+                    /* a status sink must not break the unwind */
+                }
+            }
+            this._clear();
+        }
+
+        /** The fault reason of the current/last run, or null. */
+        get faultReason() {
+            return this._faultReason;
         }
 
         /** Clear run-state without sending STOP (used on disconnect/error). Also
@@ -1015,9 +1058,12 @@ var ArenaRunnerG6 = (function () {
                 if (typeof a.onProgress === 'function') a.onProgress(s);
             };
             this._emit = emit; // for async side-effects (LED activation on 'applied')
+            let terminal = null; // emitted after cleanup (see finally)
 
             this._active = true;
             this._abort = false;
+            this._faultReason = null;
+            this._faultDetail = null;
             // A stale closed-loop apply (left on by Console use or an aborted run)
             // would push FicTrac frames into the opening Mode-2 step — the firmware
             // rejects each 0x70 with status 1 and the log fills with errors
@@ -1192,6 +1238,18 @@ var ArenaRunnerG6 = (function () {
                             // past a possible protocol desync.
                             summary.errors++;
                             this._abort = true;
+                            // A response TIMEOUT on a protocol command is the same
+                            // controller-unresponsive fault the closed-loop path
+                            // detects (fw #50: the 0x08 after the 0x70s) — label
+                            // it so the run's outcome is CONTROLLER_FAULT, not a
+                            // generic user abort.
+                            if (isTimeoutError(e) && !this._faultReason) {
+                                this._faultReason = 'controller_unresponsive';
+                                this._faultDetail = {
+                                    op: ir.op,
+                                    error: e && (e.message || String(e))
+                                };
+                            }
                             emit({
                                 phase: 'error',
                                 index: i,
@@ -1215,7 +1273,15 @@ var ArenaRunnerG6 = (function () {
                 }
                 summary.aborted = this._abort;
                 summary.completed = !this._abort;
-                emit({ phase: this._abort ? 'aborted' : 'sequence-complete', summary });
+                // fault: null for a clean run or a user STOP; a reason string when
+                // the controller stopped answering (fault() / a timed-out command).
+                summary.fault = this._faultReason || null;
+                if (this._faultDetail) summary.faultDetail = this._faultDetail;
+                // The terminal event is emitted from `finally`, AFTER the best-effort
+                // STOP, so the serialized summary (run log, auto-commit trigger)
+                // carries `stopAcked` — review finding: it used to be present only
+                // on the returned object.
+                terminal = { phase: this._abort ? 'aborted' : 'sequence-complete', summary };
                 return summary;
             } finally {
                 // Best-effort STOP at the end / on abort, then reset run-state.
@@ -1224,13 +1290,21 @@ var ArenaRunnerG6 = (function () {
                 this._resolveSleep();
                 this._clearLedActivator(); // LED off + stop gating on completion/abort
                 this._disarmClosedLoop(); // never leak apply=true into the next run
+                // "Fail closed" is two claims — the host stopped advancing (true
+                // here) and the display is quiescent (only if this STOP is acked;
+                // it rides the same possibly-wedged link, and panels latch their
+                // last frame). Record which, never assume.
+                summary.stopAcked = false;
                 try {
                     if (this._link && this._link.connected) {
-                        await this._link.send(this._wire.encodeStop());
+                        const f = await this._link.send(this._wire.encodeStop());
+                        const d = this._wire.decodeResponse(f);
+                        summary.stopAcked = !!(d && d.ok);
                     }
                 } catch (_) {
                     /* best-effort */
                 }
+                if (terminal) emit(terminal);
                 this._emit = null;
             }
         }

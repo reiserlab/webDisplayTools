@@ -314,6 +314,11 @@
                 }
                 continue;
             }
+            // Tagged stream rows (["cc"|"cf"|"cs", ...] controller telemetry, or any
+            // future string-tagged stream) are NOT behavior samples — only "a" is
+            // decoded (above). Review finding: they used to become samples with a
+            // hex string as heading.
+            if (Array.isArray(o) && typeof o[0] === 'string') continue;
             // behavior_v1/v2 positional row: [ms, fc, idx, ft, x, y, hd] (ft already ms)
             if (Array.isArray(o)) {
                 sawBehaviorV1 = true;

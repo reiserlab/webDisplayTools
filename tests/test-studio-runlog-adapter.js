@@ -177,6 +177,51 @@ check('aborted terminal', A.isTerminal('aborted'), true);
 check('command not terminal', A.isTerminal('command'), false);
 check('led-activation not terminal', A.isTerminal('led-activation'), false);
 
+// ── controller fault (fw #50) ─────────────────────────────────────────────────
+console.log('\n=== controller fault outcome ===');
+{
+    const log2 = RunLog.createRunLog({
+        meta: { protocol: 'p', run_id: 'r2', bench_id: 'b' },
+        intent: 'experiment',
+        now: fixedClock()
+    });
+    A.feedRunStatus(log2, { phase: 'sequence-start', total: 1 });
+    const f = A.feedRunStatus(log2, {
+        phase: 'fault',
+        reason: 'controller_unresponsive',
+        detail: { failures: 3, window: 10, lastError: 'response timeout after 500 ms (cmd 0x70)' }
+    });
+    checkBool('fault phase is recorded (not dropped as unknown)', !!f.event);
+    check('fault is not terminal', f.terminal, false);
+    const r = A.feedRunStatus(log2, {
+        phase: 'aborted',
+        summary: {
+            completed: false,
+            aborted: true,
+            steps: 1,
+            errors: 0,
+            skipped: 0,
+            fault: 'controller_unresponsive',
+            stopAcked: false
+        }
+    });
+    check('aborted-with-fault is terminal', r.terminal, true);
+    check(
+        'outcome CONTROLLER_FAULT (not ABORTED_BY_USER)',
+        log2.summary.outcome,
+        'CONTROLLER_FAULT'
+    );
+    checkBool('transcript names the fault', /FAULT controller_unresponsive/.test(log2.toText()));
+    // A plain user abort is unchanged.
+    const log3 = RunLog.createRunLog({
+        meta: { protocol: 'p', run_id: 'r3', bench_id: 'b' },
+        intent: 'experiment',
+        now: fixedClock()
+    });
+    A.feedRunStatus(log3, { phase: 'aborted', summary: { aborted: true, fault: null } });
+    check('plain abort stays ABORTED_BY_USER', log3.summary.outcome, 'ABORTED_BY_USER');
+}
+
 console.log('\n=== Summary ===');
 console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures ? 1 : 0);
