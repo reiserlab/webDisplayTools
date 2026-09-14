@@ -583,6 +583,17 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   `pass`, `trial_quality` after the last controller row, counts reconciled (34,820 cc / 34,822 a). The Studio banner
   for a real stall therefore remains unexercised (the 19:49 run had the stall but the overlapping-run bug ate it).
   20:14: arm back to 0 (production); watchdog drill next.
+- **2026-09-13 20:14–20:17 ET — drill step 2, forced watchdog reset (R2):** production arm, drill trial started
+  20:14:05; `SET_TELEMETRY` flags 0x31 (starve) sent 20:15:07 → controller reset ≈ 2 s later → link dropped →
+  runner aborted → **post-mortem `self-reset`**: quiet → confirm 0xC2 → HEALTH → ring dump (`survivedReboot: true`,
+  19 records, the last FRAMEs before the reset intact) → crash report (`present: false`, as expected for a watchdog
+  reset) → probes → firmware identity; ring rows include kind 1 `boot` and kind 8 `wdog_context`; **the Studio
+  reconnected WITHOUT a port picker** (the Web Serial grant survived the re-enumeration — the unattended night can
+  recover from a watchdog reset); soak iteration-end `outcome: fault, fault: link_dropped, postmortem: self-reset`;
+  the trial `unknown` (correct). Two findings: (1) **two panels stayed lit after the reset** (Michael) — the boot
+  blank's three dark frames did not reach them; all-off sent 20:17:08 to see whether the bus takes it now; (2) the
+  runner's terminal event carried `fault: null` because the disconnect listener ran after the broker's abort → the
+  run's stored outcome would read ABORTED_BY_USER — fixed in v0.79 (link down at an unrequested abort ⇒ fault).
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
