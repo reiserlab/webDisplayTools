@@ -608,6 +608,20 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   (old cursor discarded, not trusted), crash report read, probes, identity, reconnected; soak ended on the fault.
   Codex on the boot-blank one-liner: no defect, "an unverified retry" — comment reworded, rebuilt `781efe2`;
   verification = one forced reset with Michael counting dark panels after the flash.
+- **2026-09-13 20:23–20:30 ET — flashed `781efe2` (boot-blank retry); all 20 panels dark after the flash reboot;
+  the Studio reconnected by itself (grant survived the bootloader trip). Forced watchdog reset 20:28:34 on a trial:**
+  recovery chain complete again (fault, self-reset, boot + wdog_context records, reconnect); **panels: 19 dark, one
+  showed a panel-side error glyph ("02/03"), then the arena came back lit** — the ring holds NO frame transfer after
+  the reboot (only identity/header reads incl. 48 × 0x88 from the frame-count fill, which reads headers via
+  `readPatternInfo`, no display), so the re-lighting is panel-side (persistent panels restoring their last frame after
+  the glyph), not a controller command. Not blocking for the night; lab plan: after any reset, check the arena and
+  send all-off if lit. Steady state to be confirmed by Michael.
+- **2026-09-13 20:35 ET — OVERNIGHT STARTED** (Studio v0.79 build 20:17 with all of tonight's fixes, firmware
+  `781efe2`, `protocols/soak_mode3_stress.yaml` = sine idx 46 (2000 frames, gain 0.18) ⇄ bar idx 36 (200 frames,
+  gain 1.8), simulator 200 Hz seed 1 jumps 90°/100 (restarted 19:55 with the ft fix), bridge 3.1 logging behavior_v2,
+  `sdDiag` 0, rig `cshl_g6_2x10_ball` derived, `hours: 10, gapS: 10, firstFault: halt, policy: reset-continue,
+  maxResets: 3`). Michael: "super fast pattern movement" — the sine at 0.18°/frame, as designed. Judge in the morning
+  per `overnight-soak-test-plan-2026-09-13.md` (T1–T8, L1–L7, R1–R5).
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 

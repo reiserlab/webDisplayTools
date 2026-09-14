@@ -1,4 +1,4 @@
-# Overnight soak — what exactly we are testing for (2026-09-13, candidate firmware `488d5b9` on `feat/mode3-reliability` + Studio v0.79)
+# Overnight soak — what exactly we are testing for (2026-09-13, candidate firmware `781efe2` on `feat/mode3-reliability` + Studio v0.79; started 20:35 ET)
 
 Three questions, each with the metric, where it comes from in the log, the pass line, and the command that checks it.
 The overnight run goes through the **Studio** (soak driver + bridge + simulator), not the browser-free harness:
@@ -27,7 +27,7 @@ iterations, ≈ 560 trials, ≈ 6 M frame commands.
 
 | # | claim | metric | source | pass | check |
 |---|---|---|---|---|---|
-| L1 | **Every iteration produced one committed run log** with the tail (v0.78 ordering fix) | per file: `run_metadata` (firmware label `488d5b9b … freerun sdfast`, `sd_card`, `sd_diag` 0), `stream_schema`, `trial_quality` event present, and it comes AFTER the last `cc`/`cf`/`cs` row | run-log `.jsonl(.gz)` | 28 of 28 files; `trial_quality` last among controller rows in every file | `runlog-check.py` (below) |
+| L1 | **Every iteration produced one committed run log** with the tail (v0.78 ordering fix) | per file: `run_metadata` (firmware label `781efe2b … freerun sdfast`, `sd_card`, `sd_diag` 0), `stream_schema`, `trial_quality` event present, and it comes AFTER the last `cc`/`cf`/`cs` row | run-log `.jsonl(.gz)` | 28 of 28 files; `trial_quality` last among controller rows in every file | `runlog-check.py` (below) |
 | L2 | **Nothing lost in the drain** | drainer stats at iteration end: `dropped`, `gaps`, `notStored`, `errors`; `cc` accepted 0x70 count vs `a` accepted count | soak `iteration-end.telemetry`; row counts | all four 0; counts equal ±1 per file | `runlog-check.py` |
 | L3 | **Sequence continuity** across the night | ring `seq` of `cc`/`cf`/`cs` monotonic, no gap between files except at the ring's version/incarnation boundary (none expected) | rows field 3 | 0 gaps | `wedge-scan.py` `seq gaps` |
 | L4 | **Per-trial read accounting closes** | `sd_reads` (kind 13) present for every trial and ≈ index changes + 1 | `cs` kind 13, `cc` rows | every trial has it; |reads − (index changes + 1)| ≤ 2 | `telemetry-report.py` per-trial table (`reads_fw`) |
