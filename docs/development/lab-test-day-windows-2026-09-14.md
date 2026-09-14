@@ -1,7 +1,10 @@
 # Lab test day (Windows PC, no Claude) — Mode-3 reliability candidate, 2026-09-14
 
 For whoever runs the bench tomorrow morning. Everything below is a command to type or a thing to look at, in order.
-Budget: ~2.5 h including a 1 h soak. Background and the full pass criteria: `overnight-soak-test-plan-2026-09-13.md`;
+Budget: ~2 h for the first arena (1 h of it is the soak), ~1.5 h for the second (flash + sine + soak only).
+**Streamlined 2026-09-14 09:30 ET:** the Studio runs from GitHub Pages (no local server), there is no separate smoke run (the
+soak's first iteration is the smoke run), test E is dropped, test F is optional, and the benchmark table is filled by Michael
+from the posted outputs. Background and the full pass criteria: `overnight-soak-test-plan-2026-09-13.md`;
 what changed and why: `mode3-reliability-handoff-2026-09-14.md`.
 
 ## 0. Before you start (Michael)
@@ -19,13 +22,14 @@ what changed and why: `mode3-reliability-handoff-2026-09-14.md`.
 ## 1. Install (once, ~15 min)
 
 ```powershell
-git clone https://github.com/reiserlab/webDisplayTools.git; cd webDisplayTools        # Studio v0.79 is on main (merged 2026-09-14 06:55 ET)
+git clone https://github.com/reiserlab/webDisplayTools.git; cd webDisplayTools        # for the bridge, simulator, pattern generator and analysis scripts
 pixi install                              # Node + Python + websockets (needs pixi: https://pixi.sh)
 cd ..; git clone https://github.com/reiserlab/LED-Display_G6_Firmware_Arena.git; cd LED-Display_G6_Firmware_Arena
 git checkout feat/mode3-reliability
 pip install platformio pyserial          # or the PlatformIO VS Code extension; Teensy Loader comes with PlatformIO
 ```
-Chrome or Edge (Web Serial). Use **PowerShell**, not Git Bash, for anything with times (Git Bash prints UTC labelled ET).
+The Studio itself is NOT served from this clone — use GitHub Pages (§2). Chrome or Edge (Web Serial). Use **PowerShell**,
+not Git Bash, for anything with times (Git Bash prints UTC labelled ET).
 
 ## 2. Flash and identify (10 min)
 
@@ -33,8 +37,11 @@ Chrome or Edge (Web Serial). Use **PowerShell**, not Git Bash, for anything with
 pio run -e teensy41-2-10-performance -t upload --upload-port COM5   # 2×10 variant; find COMx in Device Manager: "USB Serial Device"
 ```
 Windows gotchas (fw PR #49 notes): the **first upload attempt often fails — run it again**; the arena must be powered;
-if the port vanishes, unplug/replug once. Then in Chrome: `pixi run python -m http.server 8092` in the webDisplayTools
-checkout → `http://localhost:8092/arena_studio.html?advanced=1&soak=1` → **Connect** → pick the Teensy port.
+if the port vanishes, unplug/replug once. Then in Chrome: **`https://reiserlab.github.io/webDisplayTools/arena_studio.html?advanced=1&soak=1`** (hard-refresh once,
+Ctrl+Shift+R; the footer must read `Arena Studio v0.79`) → **Connect** → pick the Teensy port. The local FicTrac bridge
+(`ws://localhost:8765`) is reachable from the Pages site — loopback is exempt from Chrome's mixed-content rule. Only if the
+bridge Connect fails from Pages, serve locally instead: `pixi run python -m http.server 8092` in the webDisplayTools
+checkout → `http://localhost:8092/arena_studio.html?advanced=1&soak=1`.
 **Look for**, in the Console log: `firmware 781efe2b 2x10 2026-09-14 feat/mode3-reliability freerun sdfast`, then
 `session rig follows the controller: cshl_g6_2x10_ball (2×10)` (v0.79) and an `sd card: … SD8GB … FAT32 4 KiB
 clusters` line. If the label is not `781efe2b`, stop: wrong build. After ANY controller reset (flash, watchdog, power) glance at the arena: it should be dark; if a panel shows a glyph or the arena re-lights, send all-off from the Console (panel-side behaviour seen once on the bench).
@@ -61,16 +68,17 @@ Console → Arena Trial panel → SD listing → **Refresh**. Two names must be 
 If a run's log ever says `… not on the SD by name — the run will fall back to the numeric pattern_ID`, the upload did not
 land or the name differs: stop and redo this step, do not run the tests on the fallback pattern.
 
-## 4. Bridge, simulator, one smoke run (10 min)
+## 4. Bridge and simulator (2 min) — no separate smoke run
 
 Two PowerShell windows in the webDisplayTools checkout:
 ```powershell
 pixi run bridge -- --log-dir soak-logs
 pixi run sim -- --count 0 --rate 200 --seed 1 --jump-every 100 --jump-deg 90
 ```
-Studio: File ▾ → Open → `protocols/soak_mode3_stress.yaml`; rig `cshl_g6_2x10_ball`; Run (Test is fine).
-**Look for** during the 21 min: the Console log line `telemetry poller … running`; at the end the banner
-`stimulus quality: 20 pass · 0 flagged · 0 unknown`. Anything flagged or unknown → keep the log, note the time, go on.
+Studio: File ▾ → Open → `protocols/soak_mode3_stress.yaml` (from the clone's `protocols\` folder); rig
+`cshl_g6_2x10_ball`; the FicTrac panel's Connect must go green. Then go straight to test A — its first iteration IS the smoke
+run, and the soak halts by itself on a first fault. **Look for** during each 21-min iteration: `telemetry poller … running`;
+at its end the banner `stimulus quality: 20 pass · 0 flagged · 0 unknown`.
 
 ## 5. The tests (in order) and what each must show
 
@@ -80,8 +88,10 @@ Studio: File ▾ → Open → `protocols/soak_mode3_stress.yaml`; rig `cshl_g6_2
 | B | **Injected stall** (checks the flagging path): in the browser console `await Studio.setSdDiag(3)`, open `protocols/mode3_drill_1trial.yaml` and run it as a 1-iteration Soak (File ▾ → Soak…, iterations 1), then `await Studio.setSdDiag(0)` | during the run: `display gap NN ms (sd_slow, body) in trial …` lines; at the end `⚠ stimulus quality: … flagged`; after `setSdDiag(0)`, Console identity shows `sd diag 0` | at least one trial flagged; the soak did NOT stop; switches back to 0 |
 | C | **Simulator kill:** during a Soak (start a 2-iteration soak), close the sim window for 30 s, restart it | `soak: no FicTrac frames — waiting for the simulator`, then the next iteration starts | soak resumes by itself; no fault counted |
 | D | **Link drop:** during a trial pull the controller's USB cable, wait 5 s, plug it back | `run ended by a link drop … treating as a controller event`; post-mortem lines (`confirm`, `probe`, `reconnect`); the run's outcome `CONTROLLER_FAULT`. The controller is powered from the arena supply, so it does NOT reset: the panels keep the last stimulus until the next trial or an all-off (bench 2026-09-13). If the Studio asks for the port again, pick the Teensy — on the bench it reconnected by itself | reconnects; next iteration runs |
-| F | **An old course protocol runs unchanged:** sign in to the course repo (Settings), open rig1 `p3-heisenberg-ts-full.yaml`, run it once as a Test run (simulator running) | it runs to the end exactly as in July; banner `… pass`; the run log has `trial_quality` and `run_metadata.firmware` = `781efe2b …` | completes, all trials pass |
-| E | **Panel firmware update still works with the watchdog** (5 min, only if a spare panel/known-good image is at hand): Console → Firmware → program one panel | progress completes; no controller reboot mid-update (the Console would show a disconnect) | update completes |
+| F | **Optional — only if you have a course-repo token:** sign in to the course repo (Settings), open rig1 `p3-heisenberg-ts-full.yaml`, run it once as a Test run (simulator running) | it runs to the end exactly as in July; banner `… pass`; the run log has `trial_quality` and `run_metadata.firmware` = `781efe2b …` | completes, all trials pass |
+
+(Test E, a panel firmware update under the watchdog, is dropped from the lab day — it needs a spare panel and is covered by
+the bench.) **Second arena:** repeat §2 (flash), §3 (sine upload) and test A only.
 
 Never power-cycle the controller after something odd: the evidence is in RAM until the Studio's post-mortem has read it.
 
@@ -98,8 +108,9 @@ pixi run python scripts/telemetry-report.py soak-logs\arena-log-*.jsonl*
 - `telemetry-report`: **0 SD reads > 10 ms** outside test B; `req_age_us` max < 10 ms; per-read cost ≈ 0.62 ms (+1) /
   ≤ 1.8 ms (random) for BOTH patterns; every trial's `layout: contiguous`.
 
-Zip `soak-logs\` and post the three outputs (and anything red, with the local time) to webDisplayTools #201 (or #197
-for a wedge, firmware #54 for an SD stall). Do not post to firmware #50 or PJRC.
+Zip `soak-logs\` and post the three outputs (and anything red, with the local time) in the lab-day Slack thread; Michael
+moves them to webDisplayTools #201 / firmware PR #56 (a wedge goes to #197, an SD stall to firmware #54). Do not post to
+firmware #50 or PJRC.
 
 ## 7. Cross-machine timing benchmark (macOS bench vs lab PC) — small, but keep it
 
@@ -116,7 +127,7 @@ numbers must NOT change with the host; the host-side ones may — that differenc
 | commands accepted per iteration | `runlog-check.py` (`a_ok`) | 231–241 k | | within 2 % |
 | trials pass / flagged / unknown | banner / `trial_quality` | 20 / 0 / 0 (one iteration 19 / 1 / 0) | | 20 / 0 / 0 |
 
-Write the Windows column into this file and commit it on the branch (no Prettier on HTML; this is Markdown).
+Michael fills the Windows column from the posted outputs — nothing to commit from the lab PC.
 
 ## 8. Optional browser-free path (if the Studio misbehaves on the PC)
 
