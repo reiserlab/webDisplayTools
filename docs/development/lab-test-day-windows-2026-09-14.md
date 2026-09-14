@@ -12,7 +12,7 @@ what changed and why: `mode3-reliability-handoff-2026-09-14.md`.
       (`781efe2` is compiled in from git).
 - [ ] The CSHL 2×10 controller + its bench card (patterns 36 = bar, 46 = sine already on it) travel to the lab PC,
       or plan 10 extra minutes to upload the two patterns (step 3).
-- [ ] Overnight results from the Mac pasted into §6 of the hand-off document (the reference numbers for §5 below).
+- [x] Overnight results from the Mac in §6 of the hand-off document (the reference numbers for §7 below).
 - [ ] Studio: PRs #198 + #202 merged to `main` first thing in the morning if the night is clean (Michael 17:30 ET:
       no separate review; the lab tests main; revert if anything is wrong). Until then the lab can serve the branch.
 
@@ -92,13 +92,13 @@ numbers must NOT change with the host; the host-side ones may — that differenc
 
 | metric | source | macOS (2026-09-13 night) | Windows lab PC | expect |
 |---|---|---|---|---|
-| host round trip `a`-row dt p50 / p99 | `wedge-scan.py` | fill in from the overnight | | Windows USB-CDC often +1–3 ms; p99 must stay ≤ 11 ms |
-| request→display `req_age_us` p50 / p99 / max | `telemetry-report.py` | 1.7 / 2.6 / ~3 ms | | same on both (controller-side) |
-| SD read cost +1 / random (p50, max) | `telemetry-report.py` | 0.62 / 1.46 ms, max 1.8 | | same on both |
-| drainer dropped / gaps / notStored | `runlog-check.py` (`drainer:`) | | | 0 / 0 / 0; Chrome background-tab throttling is the usual culprit — keep the Studio tab visible |
-| FicTrac rows per command | `runlog-check.py` (`fictrac_per_cmd`) | ≈ 1.0 during trials | | ≈ 1.0 |
-| commands accepted per iteration | `runlog-check.py` (`a_ok`) | ≈ 240 k | | within 2 % |
-| trials pass / flagged / unknown | banner / `trial_quality` | 20 / 0 / 0 | | 20 / 0 / 0 |
+| host round trip `a`-row dt p50 / p99 | `wedge-scan.py` | 3 / 4–11 ms (29 iterations; one 271 ms browser outlier) | | Windows USB-CDC often +1–3 ms; p99 must stay ≤ 11 ms |
+| request→display `req_age_us` p50 / p99 / max | `telemetry-report.py` | 1.75 / 2.56 / 4.83 ms | | same on both (controller-side) |
+| SD read cost +1 / random (p50, max) | `telemetry-report.py` | 0.62 / 1.39–1.46 ms, max 1.8 (sine / bar) | | same on both |
+| drainer dropped / gaps / notStored | `runlog-check.py` (`drainer:`) | 0 / 0 / 0 (29 iterations) | | 0 / 0 / 0; Chrome background-tab throttling is the usual culprit — keep the Studio tab visible |
+| FicTrac rows per command | `runlog-check.py` (`fictrac_per_cmd`) | 1.32 (includes the 10 s gaps) | | ≈ 1.0–1.3 |
+| commands accepted per iteration | `runlog-check.py` (`a_ok`) | 231–241 k | | within 2 % |
+| trials pass / flagged / unknown | banner / `trial_quality` | 20 / 0 / 0 (one iteration 19 / 1 / 0) | | 20 / 0 / 0 |
 
 Write the Windows column into this file and commit it on the branch (no Prettier on HTML; this is Markdown).
 

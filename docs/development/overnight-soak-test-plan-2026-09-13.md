@@ -84,3 +84,24 @@ pixi run python scripts/runlog-check.py soak-logs/arena-log-*.jsonl*      # L1, 
 ```
 Fill the tables above with numbers, then §6 of `mode3-reliability-handoff-2026-09-14.md` ("Overnight benchmark").
 Anything red → the log excerpt goes into the bench log with its ET time before anyone touches the controller.
+
+## 6. Results (2026-09-14 06:52 ET; details in `mode3-reliability-handoff-2026-09-14.md` §6)
+
+| # | pass? | measured |
+|---|---|---|
+| T1 | ✅ | 0 faults, 0 resets, 0 timeouts in 29 iterations (`wedge-scan`: 0 onsets) |
+| T2 | ✅ (1 flagged) | 1 read > 10 ms in 5.86 M (26 ms, sine); 579 pass / 1 flagged / 0 unknown |
+| T3 | ✅ | req_age p50 1.75 · p99 2.56 · max 4.83 ms (26.2 in the event iteration); no drift |
+| T4 | ✅ | host RTT median 3 ms in every file, p99 4–11 ms; one 271 ms browser outlier |
+| T5 | ✅ | superseded 1.39 %; 0 `timer_fail` |
+| T6 | ✅ | sine 1.39 / bar 1.46 ms p50 random, both max 1.80; +1 0.62 ms |
+| T7 | ✅ | boot count and incarnations unchanged all night |
+| T8 | ✅ | 200/200 and 2000/2000 distinct indices in every iteration |
+| L1–L7 | ✅ | 29/29 files complete; counts equal; verdict after the last controller row; drainer 0/0/0/0; 46 MB raw per iteration |
+| R1 | — | no wedge occurred |
+| R2 | ✅ (drill) | forced watchdog reset ×2: full chain, panels blanked (retry build), reconnect without picker |
+| R3 | ✅ (live) | the 26 ms read → `display_gap` events, trial flagged, soak continued |
+| R4 | ✅ (drill 09-11) | not exercised tonight |
+| R5 | ✅ | no drops; the coverage path was exercised by the drills' drain errors → `unknown` |
+Drills also covered a USB unplug (link drop without reset) and an arena power cycle (fresh ring recognised).
+Untested list in §4 unchanged.

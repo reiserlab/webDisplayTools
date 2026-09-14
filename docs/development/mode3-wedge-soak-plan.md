@@ -636,6 +636,12 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   a fault).** Second data-region event of the day on the sine (17:40: 19.5 + 6.4 ms), none on the bar; both on the
   contiguous fast path with no FAT access → card-internal, rate ≈ 1 per 2–3 M reads of the large file (≈ one per
   3 h at 200 Hz). Below Michael's 30 ms "detectable" line, above the 10 ms flag line.
+- **2026-09-14 06:52 ET — OVERNIGHT COMPLETE: 29 iterations / 10.3 h (reason `hours`), 0 faults, 0 resets,
+  6.85 M commands, 579 trials pass / 1 flagged / 0 unknown; the only event the 23:45 26 ms read; every other read
+  ≤ 1.8 ms; req_age p50 1.75 / p99 2.56 / max 4.83 ms; superseded 1.39 %; host RTT 3 ms median every file, p99
+  4–11 ms; drainer 0/0/0/0 in every iteration; `runlog-check` 29/29 complete (after correcting its host-side count to
+  0x70 rows in both hex spellings); `wedge-scan` 0 onsets. Full table: hand-off §6. Next: Studio #198 → #202 to
+  `main` (squash), lab day on PR #56's `781efe2`.**
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 

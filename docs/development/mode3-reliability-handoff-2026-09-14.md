@@ -131,7 +131,7 @@ behaviour samples; `cf` rows have 8 or 11 fields; readers go through `js/runlog-
 | 2026-09-13 16:12–18:16 | `e59767e` (review fixes) | campaign: 13 × 10 min at 286 Hz, 8 MB sine ⇄ 813 KB bar | 2.2 M commands; one 19.4 ms + one 6.4 ms data read 12 ms apart on the sine (single event, no driver error); everything else ≤ 1.8 ms |
 | 2026-09-13 18:16–21:00 | `e59767e` | campaign at 200 Hz | *(running; see the bench log)* |
 | 2026-09-13 19:17–20:30 | `488d5b9` → `781efe2` | recovery drill through the Studio: injected stall arm (200/200 frames, verdict path proven; the one real stall fell into an overlapping-run bug, fixed), forced watchdog reset ×2, USB unplug, arena power cycle | all three recovery paths complete in the log (fault → self-reset → ring dump → reconnect without a picker); found and fixed: stale 20-frame bridge modulus, run-bound verdict finalize, link-drop outcome timing, boot blank reaching 18/20 panels (retry added), sim `ft` units |
-| 2026-09-13 20:35 → 09-14 | `781efe2` + Studio v0.79 | **overnight Studio soak**, stress protocol (8 MB sine ⇄ 813 KB bar) at 200 Hz, 10 h, halt on first fault | *(to be filled in the morning)* |
+| 2026-09-13 20:35 → 09-14 06:52 | `781efe2` + Studio v0.79 | **overnight Studio soak**, stress protocol (8 MB sine ⇄ 813 KB bar) at 200 Hz, 29 iterations / 10.3 h, halt on first fault | **0 faults, 0 resets, 6.9 M commands; 579 trials pass, 1 flagged (one 26 ms read on the 8 MB sine at 23:45), 0 unknown; every other read ≤ 1.8 ms; req_age max 4.83 ms in 28 of 29 iterations; drainer 0/0/0/0 throughout; every log complete** |
 | offline, every commit | — | firmware `pytest tests/test_telemetry_codec.py tests/test_sd_stall_stats.py` (17), `soak_mode3_selftest.py`; web `pixi run test` (all suites incl. 25 trial-quality, 41 telemetry-report, 65 arena-telemetry, 280 wire), `format-check` | green |
 | HIL (port free) | each flash | `test_firmware_version.py`, `test_health.py`, `test_telemetry.py` subsets | green except two pre-existing flakes and one open item (`test_loop_max_1s_window_is_populated` at 3 s uptime on `e59767e`; re-run at the drill) |
 
@@ -157,8 +157,31 @@ same-index skip does not affect the stalls (it saves 24 % of reads). Arm 3 also 
 (see the bench log for the numbers). **Per-read cost on the production build:** +1 step 0.62 ms; random/backward
 1.39–1.46 ms median, 1.8 ms max; request→display age 1.7 ms median, 2.9 ms max at 200 Hz.
 
-**Overnight benchmark (candidate build):** *to be filled in the morning from `telemetry-report.py` over the campaign
-segments — stalls, clusters, per-file read cost, request ages, reboots.*
+**Overnight benchmark (candidate `781efe2` + Studio v0.79, 2026-09-13 20:35 → 09-14 06:52 ET, 29 iterations,
+10.3 h, `soak_mode3_stress.yaml` at 200 Hz, simulator seed 1 with 90° jumps every 100 samples):**
+
+| metric | result | pass line |
+|---|---|---|
+| controller faults / resets / watchdog | 0 / 0 / 0 | 0 |
+| commands accepted | 6,853,000 (≈ 238k per 21-min iteration) | — |
+| trials pass / flagged / unknown | 579 / 1 / 0 | 0 unknown |
+| SD reads over 10 ms | 1 (26.0 ms, sine frame 1942, body phase, no driver error, followed 2 frames later by 6.6 ms) | report |
+| every other read | ≤ 1.8 ms (2 reads over 3 ms in 5.86 M) | — |
+| per-read cost, sine (8 MB) | +1 0.62 ms · random 1.39 ms p50 / 1.77 p99 / 1.80 max | ≤ 1.5 p50, ≤ 1.8 max |
+| per-read cost, bar (813 KB) | +1 0.62 ms · random 1.46 ms p50 / 1.75 p99 / 1.80 max | same |
+| request→display age | 1.75 ms p50 · 2.56 p99 · 4.83 max (26.2 in the event iteration) | p99 < 5, max < 10 |
+| superseded loads | 1.39 % of frames (200 Hz commands vs 300 Hz refresh) | < 2 % |
+| index coverage per iteration | bar 200/200, sine 2000/2000 | ≥ 95 % |
+| host round trip (`a` rows) | 3 ms median every file · p99 4–11 ms · one 271 ms outlier (browser) | p99 ≤ 11 |
+| drainer dropped / gaps / refused / errors | 0 / 0 / 0 / 0 in all 29 iterations | 0 |
+| log completeness (`runlog-check`) | 29 / 29 complete (the flagged file is complete and correctly flagged); controller vs host 0x70 counts equal; `trial_quality` after the last controller row | all |
+| ring incarnations / boot count | unchanged all night (2 / 2) | unchanged |
+
+Interpretation: problem A did not recur in 6.9 M commands; problem B's FAT stalls did not recur in 5.9 M reads. The
+one 26 ms event (and the 19.5 + 6.4 ms pair at 17:40 the same day) are on the 8 MB file only, on the contiguous
+path with no FAT access — a card-internal data-region episode at roughly one per 3 M reads of the large file (one
+flagged trial per ~4 h at 200 Hz). Course-sized patterns saw nothing all day. Remedies if that rate matters: the
+read-free RAM path for large patterns (§7) or a card comparison with `sd_stall_test.py`.
 
 ## 7. Known limits and open items
 
