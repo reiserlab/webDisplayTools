@@ -1,7 +1,7 @@
 # Codex (gpt-6-astra) adversarial review — Mode-3 wedge campaign status + branch diff — reconciliation
 
 **Date:** 2026-09-12 · **Reviewer model:** `gpt-6-astra` (standard + adversarial passes, both runs) ·
-**Inputs:** `docs/development/mode3-wedge-status-2026-09-12.md` (plan/status review, run
+**Inputs:** `mode3-wedge-status-2026-09-12.md` (plan/status review, run
 `codex-plan-review-20260912-114033-86155`) and the branch diff `main...claude/mode3-wedge-soak`
 (5,597 lines, 31 files, run `codex-diff-review-20260912-114034-86380`). Claude's independent
 analyses were written first: `claude-analysis-20260912-status.md`, `claude-analysis-20260912-diff.md`.

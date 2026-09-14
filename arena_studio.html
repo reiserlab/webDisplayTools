@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.76 | 2026-09-12 23:18 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.79 | 2026-09-13 20:17 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -2992,6 +2992,7 @@
 <script src="js/studio-runlog-adapter.js"></script>
 <script src="js/studio-postmortem.js"></script>
 <script src="js/arena-telemetry.js"></script>
+<script src="js/trial-quality.js"></script>
 <script src="js/kinematics.js"></script> <!-- shared scope/dashboard kinematic derivations -->
 <script src="js/studio-github.js"></script>
 <script src="js/runlog-format.js?v=20260906-1829"></script>
@@ -3194,6 +3195,20 @@
         if (window.Scope && window.Scope.onRunStatus) window.Scope.onRunStatus(s);
         // feed the recorded-run accumulator
         if (Studio.activeRunLog) {
+            // A run that ended because the LINK DROPPED (watchdog self-reset re-enumerates the
+            // controller) and not because the user pressed STOP is a controller fault. Decide it
+            // HERE, before the adapter derives the terminal outcome — deciding it afterwards (as
+            // runSteps also does, as a fallback) left the stored outcome ABORTED_BY_USER and
+            // skipped the auto-commit (whole-stack review, 2026-09-13).
+            const sm = s && s.summary;
+            // `_linkDropped` is set by the Studio's own disconnect listener, which can run AFTER the
+            // broker has already aborted the runner (bench 2026-09-13, forced watchdog reset: the
+            // terminal event arrived with fault null). The link being down at the terminal event
+            // of an abort nobody requested is the same evidence — use either.
+            if (sm && !sm.fault && sm.aborted && !Studio._userStopRequested && (Studio._linkDropped || !(Studio.session && Studio.session.connected))) {
+                sm.fault = 'link_dropped';
+                sm.faultDetail = { kind: 'link_dropped', note: 'controller re-enumerated mid-run (watchdog self-reset?)' };
+            }
             const r = Adapter.feedRunStatus(Studio.activeRunLog, s);
             if (r.event) renderRunEvent(r.event);
             if (r.terminal) onRunFinished(r.summary);
@@ -3330,11 +3345,18 @@
         // Controller fault (fw #50): the export closes the bridge's log file, so it
         // must wait for the post-mortem (STOP result, probes, ring crash dump) —
         // Studio.handleControllerFault runs the deferred commit in its finally.
+        // The export closes the bridge's log file, so the final telemetry drain and the
+        // per-trial `trial_quality` verdict must be written FIRST (whole-stack review,
+        // 2026-09-13: they used to land after the export and were lost from committed logs).
+        const finalizeThenCommit = async () => {
+            try { if (Studio.finalizeTrialQuality) await Studio.finalizeTrialQuality(log.meta && log.meta.run_id); } catch (_) { /* best effort */ }
+            await maybeCommitRunLog(log, summary);
+        };
         if (summary && summary.outcome === 'CONTROLLER_FAULT' && Studio.handleControllerFault) {
-            Studio._pendingCommit = () => maybeCommitRunLog(log, summary);
+            Studio._pendingCommit = finalizeThenCommit;
             rawLine('run log commit deferred until the controller post-mortem finishes', 'warn');
         } else {
-            maybeCommitRunLog(log, summary); // course pipeline — async, best-effort
+            finalizeThenCommit(); // course pipeline — async, best-effort
         }
     }
 
@@ -3685,6 +3707,9 @@
     // firmware answers an unknown opcode with an error glyph on the arena, so we
     // never ask blind. Falls back to the 0xC2 format byte ("v1") on old builds.
     Studio.firmwareVersion = null; // decoded 0xCB record, or null
+    // SD card identity (GET_SD_INFO 0xCD, fw sd_fastpath): every stall measurement and card
+    // comparison must be attributable to a physical card → run_metadata.sd_card.
+    Studio.sdCard = null;
     Studio.refreshFirmwareVersion = async function () {
         if (!Studio.session || !Studio.session.connected) return null;
         const caps = Studio.capabilities || [];
@@ -3699,8 +3724,25 @@
             if (v) {
                 Studio.firmwareVersion = v;
                 Studio.firmware = v.label;
+                if (Studio.deriveRigFromController) Studio.deriveRigFromController(v.rows, v.cols); // no explicit rig → follow the hardware
                 if ($('pvFw')) { $('pvFw').textContent = v.label; $('pvFw').title = 'git ' + v.sha + (v.dirty ? ' (dirty tree)' : '') + ' · ' + v.branch + ' · built ' + v.date + ' · ' + v.arena + (v.debug ? ' · DEBUG_SERIAL' : ''); }
                 rawLine('‹ firmware build: ' + v.label, 'info');
+                Studio.sdCard = null;
+                if (v.sdFastPath && Wire.encodeGetSdInfo) {
+                    try {
+                        const si = Wire.decodeSdInfo(await Studio.session.send(Wire.encodeGetSdInfo(), { timeoutMs: 2000 }));
+                        Studio.sdCard = si;
+                        if (si) rawLine('‹ sd card: ' + si.label + (si.mounted ? ' · cid ' + si.cidHex : ''), si.mounted ? 'info' : 'warn');
+                        // The bench A/B switches (SET_SD_DIAG) persist until the controller reboots: a stray
+                        // arm silently degrades every later trial (legacy FAT-chain seeks / no read skip).
+                        // Say so loudly at connect; production is 0 (Michael, 2026-09-13: keep the switch, banner it).
+                        if (si && (si.sdDiag & 0x03)) {
+                            const arm = (si.sdDiag & 1 ? 'legacy FAT-chain seek' : '') + (si.sdDiag & 3 ? (si.sdDiag & 1 && si.sdDiag & 2 ? ' + ' : '') : '') + (si.sdDiag & 2 ? 'no same-index read skip' : '');
+                            rawLine('⚠ SD diagnostic switches are ON (' + arm + ') — every trial runs degraded until Studio.setSdDiag(0) or a controller reboot', 'warn');
+                            showBanner('⚠ SD diagnostic switches are ON (arm ' + (si.sdDiag & 3) + ': ' + arm + '). Production is 0 — run `await Studio.setSdDiag(0)` unless this is the causal test.');
+                        }
+                    } catch (e) { rawLine('sd info: ' + (e && e.message ? e.message : e), 'warn'); }
+                }
                 return v;
             }
         } catch (e) {
@@ -6341,6 +6383,27 @@ async function populateSessionRig() {
     });
     if (rigIndex && rigIndex[0]) setSessionRig(rigIndex[0].name, { explicit: false });
 }
+// The controller knows its own geometry (GET_FIRMWARE_VERSION rows × cols). When nobody
+// has chosen a rig explicitly (no ?rig=, no user pick), follow the hardware instead of
+// the index's first entry — a fresh browser profile used to come up as g6_3x10 on a
+// 2×10 controller, which is the wrong geometry for streamed frames and the wrong rig
+// io: power-on defaults (bench 2026-09-13). First index entry whose arena is RxC wins
+// (for 2×10 that is the CSHL fly-on-ball rig). Explicit choices are never overridden.
+Studio.deriveRigFromController = function (rows, cols) {
+    rows = Number(rows); cols = Number(cols); // decodeFirmwareVersion parses them from the label text
+    if (!(rows > 0 && cols > 0) || !rigIndex) return null;
+    const cur = Studio.currentRig;
+    if (cur && cur.explicit) return null;
+    const hit = rigIndex.find((r) => {
+        const m = /^G6_(\d+)x(\d+)/.exec(String(r.arena || ''));
+        return m && Number(m[1]) === rows && Number(m[2]) === cols;
+    });
+    if (!hit || (cur && cur.name === hit.name)) return null;
+    setSessionRig(hit.name, { explicit: false });
+    Studio.rawLog('session rig follows the controller: ' + hit.name + ' (' + rows + '×' + cols + ')', 'info');
+    if (Studio.applyRigIo) { Studio.applyRigIo().catch(() => {}); } // the derived rig's io: defaults, not the placeholder's
+    return hit.name;
+};
 // Point the session rig at a rig name. `explicit` marks a user/URL choice
 // (encoded to the URL); a derived follow (protocol load) never overrides an
 // explicit choice — updateDeviceLine raises the mismatch chip instead.
@@ -7254,7 +7317,30 @@ Studio.onSdListing = function (names) {
     });
     populatePatDropdown(); // empty set clears the dropdown + unlocks cPat
     Studio.updateRunGate(); // the missing-pattern preflight tracks the SD listing
+    fillPatternFramesFromCard(m); // frame counts via GET_PATTERN_INFO (the closed-loop index modulus)
 };
+// Frame counts for every card pattern from GET_PATTERN_INFO 0x88 (a header read, ~ms each),
+// filled right after the listing so `patternFramesByName` — which the closed-loop resolver
+// pushes to the bridge as the heading→index modulus — is correct for patterns whose preview
+// was never rendered (an 8 MB pattern is never fetched for a thumbnail; the bridge then used
+// its default of 200 and wrapped the index — bench 2026-09-13, #201). Sequential, single-flight,
+// abandons on a new listing, a disconnect or a run (a run owns the link).
+let patFramesGen = 0;
+async function fillPatternFramesFromCard(m) {
+    const gen = ++patFramesGen;
+    const W = window.ArenaWireG6;
+    if (!W || !W.encodeGetPatternInfo || !Studio.session || !Studio.session.connected) return;
+    const todo = Object.values(m.patterns).filter((p) => !(p.preview && Number.isFinite(p.preview.frames)));
+    let n = 0;
+    for (const p of todo) {
+        if (gen !== patFramesGen || !Studio.session.connected || Studio.session.running) return;
+        try {
+            const info = W.decodePatternInfo(await Studio.session.send(W.encodeGetPatternInfo(p.index), { timeoutMs: 1500, silent: true }));
+            if (info && info.frameCount > 0) { p.preview = Object.assign(p.preview || {}, { frames: info.frameCount }); n++; }
+        } catch (_) { /* best effort: the preview path can still fill it later */ }
+    }
+    if (n && gen === patFramesGen) (Studio.clog || Studio.rawLog || function () {})('pattern frame counts read from the card for ' + n + ' pattern' + (n === 1 ? '' : 's') + ' (GET_PATTERN_INFO)', 'dim');
+}
 function wirePatPicker() {
     const sel = $('cPatName');
     if (sel) sel.addEventListener('change', () => {
@@ -8150,6 +8236,51 @@ Studio.openSoakDialog = async function () {
     await Studio.startSoak(parseSoakSpec(spec));
 };
 
+// Stimulus quality (SD-card stalls, 2026-09-13): the run's final ring records must land in
+// THIS log file and the per-trial pass / flagged / unknown verdict must be written before the
+// export closes the file. Called from onRunFinished (before the commit) and from runSteps (a
+// fallback); runs once per run — later callers await the first. Flag only — excluding or
+// repeating a trial is the experimenter's decision (selection-bias caveat, Codex review).
+Studio.finalizeTrialQuality = function (runId) {
+    if (runId !== undefined && runId !== Studio._tqRunId) {
+        Studio.rawLog('stimulus quality: ignoring a finalize for a previous run (' + runId + ')', 'dim');
+        return Promise.resolve(null); // stale caller: a previous run's terminal event
+    }
+    if (Studio._tqFinal) return Studio._tqFinal;
+    Studio._tqFinal = (async () => {
+        if (!Studio.trialQuality) return null;
+        const tel = Studio.telemetry;
+        const bridge = Studio.session.bridge;
+        if (tel && Studio.telemetryAvailable && Studio.session.connected && !Studio._activePostmortem) {
+            const st = tel.drainer.stats;
+            const before = { errors: st.errors, notStored: st.notStored, gaps: st.gaps };
+            try {
+                await tel.drainer.idle();       // a poll in flight would make drainOnce() a no-op
+                await tel.drainer.drainOnce();  // the trailing sd_reads / state_change records
+            } catch (_) { /* accounted below */ }
+            // An incomplete final drain means the tail (where the last stall would be) may be
+            // missing: the open trial cannot be 'pass' (whole-stack review, 2026-09-13).
+            if (st.errors > before.errors || st.notStored > before.notStored || st.gaps > before.gaps) {
+                Studio.trialQuality.noteCoverage('final_drain_incomplete', { errors: st.errors - before.errors, not_stored: st.notStored - before.notStored, gaps: st.gaps - before.gaps });
+            }
+        } else if (tel && Studio.telemetryAvailable && Studio.activeRunLog) {
+            Studio.trialQuality.noteCoverage('final_drain_skipped', { connected: !!Studio.session.connected, postmortem: !!Studio._activePostmortem });
+        }
+        const tq = Studio.trialQuality.finish();
+        Studio.lastTrialQuality = tq;
+        if (tq.trials.length) {
+            if (bridge && bridge.connected && bridge.logging) bridge.log(Object.assign({ event: 'trial_quality' }, tq));
+            const thr = tq.threshold_us / 1000;
+            const msg = 'stimulus quality: ' + (tq.counts.pass || 0) + ' pass · ' + (tq.counts.fail || 0) + ' flagged · ' + (tq.counts.unknown || 0) + ' unknown'
+                + (tq.flagged_trials.length ? ' — display gap > ' + thr + ' ms in trial' + (tq.flagged_trials.length > 1 ? 's ' : ' ') + tq.flagged_trials.join(', ') + ' (worst ' + Math.round(tq.worst_gap_us / 100) / 10 + ' ms)' : '');
+            Studio.rawLog(msg, tq.counts.fail ? 'warn' : 'info');
+            if (tq.counts.fail && !Studio.soak) Studio.showBanner('⚠ ' + msg);
+        }
+        return tq;
+    })();
+    return Studio._tqFinal;
+};
+
 Studio.startSoak = async function (cfg) {
     if (Studio.soak) return;
     if (!Studio.advanced) { Studio.showBanner('Soak is an advanced-mode feature.'); return; }
@@ -8177,9 +8308,13 @@ Studio.startSoak = async function (cfg) {
         return;
     }
     // Input freshness: without simulator/FicTrac frames a Mode-3 soak drives nothing.
+    // An OPEN-LOOP soak (no fictrac plugin in the protocol — e.g. the Mode-2 SD
+    // control, protocols/soak_mode2_open_loop.yaml) needs the bridge only as the
+    // run logger: skip the frames gate and the applied-0x70 exposure test.
+    const closedLoop = fictracPluginNames(doc.experiment).length > 0;
     let rate = bridge.stats ? bridge.stats.rateHz : 0;
-    if (!(rate > 0)) { await sleepMs(1500); rate = bridge.stats ? bridge.stats.rateHz : 0; }
-    if (!(rate > 0)) { Studio.showBanner('Soak refused: no FicTrac frames arriving at the bridge — start `pixi run sim -- --count 0 --rate 100`.'); return; }
+    if (closedLoop && !(rate > 0)) { await sleepMs(1500); rate = bridge.stats ? bridge.stats.rateHz : 0; }
+    if (closedLoop && !(rate > 0)) { Studio.showBanner('Soak refused: no FicTrac frames arriving at the bridge — start `pixi run sim -- --count 0 --rate 100`.'); return; }
     const s = Studio.soak = Object.assign({}, SOAK_DEFAULTS, cfg || {}, {
         iteration: 0, faults: 0, resets: 0, stop: false, stopReason: null, startedMs: Date.now(),
         untilMs: 0
@@ -8190,7 +8325,7 @@ Studio.startSoak = async function (cfg) {
     const logSoak = (o) => { if (bridge.logging) bridge.log(Object.assign({ event: 'soak' }, o)); };
     const desc = (s.iterations ? s.iterations + ' iterations' : 'until stopped') + (s.hours ? ', ≤ ' + s.hours + ' h' : '') +
         ', gap ' + s.gapS + ' s, first fault: ' + s.firstFault + ', then: ' + s.policy + ' (max ' + s.maxResets + ' resets)';
-    logSoak({ phase: 'start', protocol: doc.filename, sha256: doc.sha256, config: { iterations: s.iterations, hours: s.hours, gap_s: s.gapS, first_fault: s.firstFault, policy: s.policy, max_resets: s.maxResets }, sim_rate_hz: rate });
+    logSoak({ phase: 'start', protocol: doc.filename, sha256: doc.sha256, config: { iterations: s.iterations, hours: s.hours, gap_s: s.gapS, first_fault: s.firstFault, policy: s.policy, max_resets: s.maxResets }, sim_rate_hz: rate, closed_loop: closedLoop });
     Studio.rawLog('soak started — ' + desc, 'info');
     Studio.showBanner('Soak running — ' + desc + '. File ▾ → Soak… to stop.');
     (async () => {
@@ -8215,7 +8350,9 @@ Studio.startSoak = async function (cfg) {
                 // 'unexercised', not 'completed' — it must not count as clean soak time.
                 const applied = (bridge.stats ? bridge.stats.applied : 0) - applied0;
                 const durS = (Date.now() - t0) / 1000;
-                const exercised = applied >= Math.min(1000, 5 * durS); // ≥ 5 Hz average, or 1000 total
+                // Open loop: the controller steps the pattern itself (no 0x70s) — exposure is
+                // in the telemetry FRAME rows, judged by telemetry-report.py, not here.
+                const exercised = !closedLoop || applied >= Math.min(1000, 5 * durS); // ≥ 5 Hz average, or 1000 total
                 let outcome = !res ? 'not-started' : res.fault ? 'fault' : res.aborted ? 'aborted' : exercised ? 'completed' : 'unexercised';
                 logSoak({
                     phase: 'iteration-end', iteration: s.iteration,
@@ -8249,6 +8386,7 @@ Studio.startSoak = async function (cfg) {
                     for (let i = 0; i < 40 && !bridge.connected; i++) await sleepMs(50);
                     await sleepMs(1200); // one rate-timer tick so rateHz is fresh
                 }
+                if (!closedLoop) { if (!bridge.connected) { reason = 'bridge-lost'; break; } continue; }
                 let r2 = bridge.stats ? bridge.stats.rateHz : 0;
                 let waited = 0;
                 while (!(r2 > 0) && !s.stop && waited < 600) {
@@ -8329,13 +8467,30 @@ Studio.initTelemetry = async function () {
             session: Studio.session,
             wire: Wire,
             maxBytes: 178, // firmware reply budget: 3 + payload < 200 ⇒ 196 − 18 B header
+            // A drain error, a refused batch or a sequence gap while a run is recorded means
+            // the open trial may be missing records: 'unknown', never 'pass'.
+            onCoverage: (kind, detail) => {
+                if (Studio.trialQuality && Studio.activeRunLog) Studio.trialQuality.noteCoverage(kind, detail);
+            },
             onRecords: (block, rows) => {
+                // Per-trial stimulus quality (js/trial-quality.js): fed BEFORE the sink
+                // decides, in ring order; the module dedups re-delivered records by seq.
+                if (Studio.trialQuality) Studio.trialQuality.feed(block.records);
                 // Return the bridge's acceptance: false ⇒ the drainer withholds its ack
                 // and the controller keeps the records (bridge down / logging off).
                 const b = Studio.session.bridge;
                 return b && typeof b.logRows === 'function' ? b.logRows(rows) !== false : false;
             }
         });
+        if (!Studio.trialQuality && window.TrialQuality) {
+            Studio.trialQuality = window.TrialQuality.createTrialQuality({
+                onGap: (ev) => {
+                    const b = Studio.session.bridge;
+                    if (b && b.logging) b.log(ev);
+                    Studio.rawLog('display gap ' + ev.ms + ' ms (' + ev.kind + (ev.phase ? ', ' + ev.phase : '') + ') in trial ' + ev.trial + ' pattern ' + ev.pattern, 'warn');
+                }
+            });
+        }
         const poller = AT.createPoller({
             drainer,
             canPoll: () => {
@@ -8349,7 +8504,13 @@ Studio.initTelemetry = async function () {
                 if (Studio.session.outputInhibited) return { ok: false, reason: 'output inhibited' };
                 return { ok: true };
             },
-            onState: (s, r) => { if (s === 'paused' && r) Studio.rawLog('telemetry poller paused: ' + r, 'dim'); }
+            onState: (s, r) => {
+                if (s === 'paused' && r) {
+                    Studio.rawLog('telemetry poller paused: ' + r, 'dim');
+                    // Coverage gap: a trial classified while the drain was paused is 'unknown', never 'pass'.
+                    if (Studio.trialQuality && Studio.activeRunLog) Studio.trialQuality.noteCoverage('poller_paused', r);
+                }
+            }
         });
         Studio.telemetry = { drainer, poller, startedMs: Date.now(), lastReport: null };
         poller.start(100);
@@ -8372,6 +8533,26 @@ Studio.initTelemetry = async function () {
 // PJRC CrashReport passthrough (0xCC, fw fb11681) — gated like the ring on the
 // 0xCB telemetry flag. Logged as a `crash_report` event (raw hex kept). Null when
 // the firmware lacks it or the link is down; never throws.
+// Bench A/B switches for the causal test of the SD-card stalls (SET_SD_DIAG 0xCE,
+// fw sd_fastpath only): flags bit0 = legacy FAT-chain seek at the next pattern open,
+// bit1 = no same-index skip. Refreshes Studio.sdCard so run_metadata.sd_card.sd_diag
+// records the arm. Console: `await Studio.setSdDiag(1)` … `await Studio.setSdDiag(0)`.
+Studio.setSdDiag = async function (flags) {
+    const fv = Studio.firmwareVersion;
+    if (!fv || !fv.sdDiag || !Wire.encodeSetSdDiag || !Studio.session || !Studio.session.connected) {
+        Studio.rawLog('sd diag: firmware has no SET_SD_DIAG (0xCB bit 6) or not connected', 'warn');
+        return null;
+    }
+    const r = Wire.decodeResponse(await Studio.session.send(Wire.encodeSetSdDiag(flags), { timeoutMs: 2000 }));
+    if (!r || !r.ok) { Studio.rawLog('sd diag: refused', 'warn'); return null; }
+    const si = Wire.decodeSdInfo(await Studio.session.send(Wire.encodeGetSdInfo(), { timeoutMs: 2000 }));
+    if (si) Studio.sdCard = si;
+    const b = Studio.session.bridge;
+    if (b && b.logging) b.log({ event: 'sd_diag', flags: flags, in_force: si ? si.sdDiag : null, label: si ? si.label : null });
+    Studio.rawLog('sd diag flags now ' + (si ? si.sdDiag : '?') + (flags & 1 ? ' — legacy FAT-chain seek from the next pattern open' : '') + (flags & 2 ? ' — every 0x70 reads (no same-index skip)' : '') + (!flags ? ' — production behaviour' : ''), 'info');
+    return si;
+};
+
 Studio.readCrashReport = async function () {
     const fv = Studio.firmwareVersion;
     if (!fv || !fv.crashReport || !Wire.encodeGetCrashReport || !Studio.session || !Studio.session.connected) return null; // 0xCB flags bit 3, never the ring bit (c47ee68 has the ring but not 0xCC)
@@ -8399,7 +8580,7 @@ Studio.drainTelemetry = async function (tag) {
     }
     const tail = recs.slice(-30).map((r) =>
         r.kind === 'cmd' ? 'CMD 0x' + r.cmd.toString(16) + ' st' + r.status + ' @' + r.tUs :
-        r.kind === 'frame' ? 'FRAME idx' + r.idx + ' sd' + r.sdLoadUs + 'us spi' + r.spiUs + 'us @' + r.tUs :
+        r.kind === 'frame' ? 'FRAME idx' + r.idx + ' sd' + r.sdLoadUs + 'us spi' + r.spiUs + 'us' + (r.reqAgeUs != null ? ' age' + r.reqAgeUs + 'us sup' + r.superseded + (r.contiguous ? ' contig' : '') : '') + ' @' + r.tUs :
         r.kind === 'state' ? 'STATE ' + r.stateName + ' ' + (r.codeName || r.code) + ' ' + r.arg + ' @' + r.tUs : '?');
     const summary = { tag: tag || 'drain', records: recs.length, blocks: blocks.length, survivedReboot: d.stats.survivedReboot, bootCount: d.stats.bootCount, dropped: d.stats.dropped, gaps: d.stats.gaps, heapCollision: !!d.stats.heapCollision, tail };
     Studio.rawLog('telemetry dump (' + summary.tag + '): ' + recs.length + ' records' + (d.stats.survivedReboot ? ' — ring survived the reboot' : '') + (tail.length ? '\n  ' + tail.join('\n  ') : ''), recs.length ? 'warn' : 'dim');
@@ -8549,6 +8730,16 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             // Instrumentation is an experimental factor — say whether the 10 Hz
             // ring drain was interleaved with this run's commands.
             md.telemetry = Studio.telemetryAvailable ? 'ring-10hz' : 'off';
+            // Which physical SD card served this run (fw sd_fastpath, 0xCD) — the card's
+            // read-count housekeeping is the dominant display-freeze source (2026-09-13).
+            const sc = Studio.sdCard;
+            md.sd_card = sc && sc.mounted ? {
+                label: sc.label, manufacturer: sc.manufacturer, pnm: sc.pnm, prv: sc.prv, psn_hex: sc.psnHex,
+                mdt: sc.mdtYear + '-' + String(sc.mdtMonth).padStart(2, '0'), capacity_gb: sc.capacityGB,
+                card_type: sc.cardTypeName, fat: sc.fatTypeName, bytes_per_cluster: sc.bytesPerCluster, cid_hex: sc.cidHex
+            } : null;
+            md.gap_threshold_ms = Studio.trialQuality ? Studio.trialQuality.thresholdUs / 1000 : null;
+            if (md.sd_card) md.sd_card.sd_diag = sc.sdDiag || 0; // A/B arm in force (SET_SD_DIAG 0xCE); 0 = production
             bridge.log(md);
         }
         // Controller telemetry streams (T4): declare the compact row schema once
@@ -8560,6 +8751,12 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
     let summary = null;
     Studio._userStopRequested = false;
     Studio._linkDropped = false;
+    if (Studio.trialQuality) Studio.trialQuality.reset(); // per-trial stimulus-quality verdicts start fresh
+    Studio._tqFinal = null; // finalizeTrialQuality() runs once per run (first caller wins, others await it)
+    // Bind the verdict to THIS run: a late terminal event from a previous (aborted) run must not finalize
+    // this one's trials — bench 2026-09-13: an overlapping start let the old run's finalize close the new
+    // run's trials one second in, and the real stall went unjudged.
+    Studio._tqRunId = (Studio.activeRunLog && Studio.activeRunLog.meta && Studio.activeRunLog.meta.run_id) || ('run-' + Date.now());
     try {
         // NOTE: do NOT pass onProgress — the session broadcasts 'runstatus' which
         // Studio.onRunStatus (subscribed once) consumes, so the log/highlight stay
@@ -8591,6 +8788,9 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         if (summary && summary.fault) {
             Studio._lastPostmortem = await Studio.handleControllerFault(summary);
         }
+        // Stimulus quality: normally already finalized by onRunFinished (before the export);
+        // this is the fallback for runs without a run log (Test runs).
+        await Studio.finalizeTrialQuality(Studio._tqRunId);
     } catch (e) {
         Studio.rawLog('run error: ' + (e && e.message ? e.message : e), 'err');
         if (Studio.activeRunLog && !Studio.activeRunLog.summary) {

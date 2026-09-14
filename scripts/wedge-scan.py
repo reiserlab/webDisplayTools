@@ -85,6 +85,10 @@ CTL_STATE_KINDS = {
     8: "wdog_context",  # code = EXC_RETURN low byte; arg bits 0-8 = stacked IPSR, bits 9-15 = prior isr_last
     9: "prev_isr_count",  # code = ISR id; arg = previous boot's entry count >> 12
     10: "timer_fail",  # IntervalTimer::begin() failed; arg = requested refresh rate
+    11: "sd_layout",  # after sd_open: code bit0 contiguous file, bit1 exFAT; arg = sectors/cluster (fw sd_fastpath)
+    12: "sd_slow_ctx",  # follows sd_slow: code = SdFat card errorCode(), arg = errorData() & 0xFFFF
+    13: "sd_reads",  # at STOP / next trial start: arg = readFrame calls while that pattern was open
+    14: "sd_reads_ckpt",  # every 30k reads while open: cumulative so far = arg << code
 }
 ISR_NAMES = ["none", "refresh_timer", "spi_dma", "watchdog", "usb", "sdhc", "lpspi", "pit"]
 
@@ -430,6 +434,8 @@ class RunScan:
             elif arr[4] == 9 and len(arr) >= 7 and isinstance(arr[5], int):
                 nm = ISR_NAMES[arr[5]] if arr[5] < len(ISR_NAMES) else f"isr_{arr[5]}"
                 kind = f"prev_isr_count({nm})"
+            elif arr[4] == 11 and len(arr) >= 7 and isinstance(arr[5], int):
+                kind = f"sd_layout({'contig' if arr[5] & 1 else 'FRAGMENTED'}, spc={arr[6]})"
             self.ctl_states[kind] += 1
         elif tag == "cc" and len(arr) >= 7 and arr[5] not in (0, None):
             self.ctl_cmd_rejects += 1

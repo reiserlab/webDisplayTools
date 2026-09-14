@@ -236,7 +236,7 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   the `IntervalTimer::end()` null-callback/`TFLG` race in the Teensy core → PIT interrupt storm with the main
   context's return address exactly at the captured PC (`channel->TCTRL = 0`); verified in the installed core
   1.160.0; quantitatively consistent with Isabel's ~292 k commands/failure (≈ 11 ns window). Now the leading
-  mechanism; bus hang is the alternative. Reconciliation: `codex-review-2026-09-13-mode3-wedge-fix.md`; evidence
+  mechanism; bus hang is the alternative. Reconciliation: `archive/mode3-2026-09/codex-review-2026-09-13-mode3-wedge-fix.md`; evidence
   doc §2b. Diff review of the free-running commit: keep the timer policy; fix the non-atomic ISR-lite record
   update, sticky `armed_hz_` on a failed `begin()`, the lost pre-watchdog ISR identity, the historical-record
   test assertion; README claims softened. All folded into one follow-up firmware commit (safe PRIMASK-guarded
@@ -281,7 +281,7 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
 - **2026-09-13 07:58 ET — morning summary (soak still running, iteration 20 on `394dee45`).**
   Exposure in the 200 Hz + jumps block: baseline `4860fef8` 1.96 h streaming, 1.42 M 0x70s, **2 wedges** (#5 at
   909 s of its run, #6 at 1022 s); fix build `394dee45` 6.53 h, 4.41 M 0x70s, **0 wedges**, 19/19 runs completed
-  (P ≈ 0.002 for zero events at the baseline's rate). Full table: `mode3-wedge-night2-scan-2026-09-13.md`.
+  (P ≈ 0.002 for zero events at the baseline's rate). Full table: `archive/mode3-2026-09/mode3-wedge-night2-scan-2026-09-13.md`.
   Display: 34–45 → 73–75 distinct frames/s at 190 commands/s (145 distinct requests/s), same SD/SPI timings; host
   RTT median 2 → 3 ms, p99 8–9 → 11 ms (more transfers competing in `loop()`). No kind 8/9 records on the fix build
   (no watchdog reset). fw #50 comment drafted (session scratchpad `fw50-comment-draft.md`) — outward-facing, for
@@ -303,9 +303,345 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
 
 - **2026-09-13 09:40 ET — soak wound down (operator stop; iteration 2 of the third soak aborted).** Fix build
   `394dee45` totals: 24 runs, 5.15 M 0x70s, ~7.7 h streaming, 0 wedges. Codex review of the findings/fix/upstream
-  note reconciled (`mode3-wedge-upstream-note-2026-09-13.md` — baseline restated to the 200 Hz block, conditional
+  note reconciled (`archive/mode3-2026-09/mode3-wedge-upstream-note-2026-09-13.md` — baseline restated to the 200 Hz block, conditional
   3 % instead of P ≈ 0.0007, invariant-framed upstream fix); final texts await Michael. Handover for the
-  performance session: `mode3-perf-handover-2026-09-13.md`. Controller left on `394dee45`, Studio connected idle.
+  performance session: `archive/mode3-2026-09/mode3-perf-handover-2026-09-13.md`. Controller left on `394dee45`, Studio connected idle.
+
+- **2026-09-13 09:53–11:30 ET — performance session (Claude, worktree `vigilant-tereshkova`, host branch
+  `claude/mode3-perf-sd` on #198; firmware `feat/sd-fastpath-2x10` on the ring branch, local).** Bench untouched so far
+  (Studio connected idle on `394dee45`, bridge + sim still up). Log analysis of the 75 ring-era files: per-read cost by
+  index step (+1 620 µs; non-sequential 1.18 ms grating / 1.46–2.0 ms bar — SdFat FAT-chain walk on backward seeks);
+  **the 30–90 ms stalls are card-internal**: 716 stalls / 197 clusters, quantised 23/33/41/67/89 ms, every ~48k accepted
+  0x70s at every rate, **712/716 while the 813 KB bar pattern was open** (24,573 bar reads between clusters, IQR
+  23.5–25.5k), position-dependent inside the file (frames 80–160 stall 1.5× the mean, frames 20–59 0.2×), unbroken
+  across the 16:45 power cycle; displayed-frame gap = stall + ~2 ms. Michael: acceptable freeze 5 ms target / 10 ms
+  worst case; ≥ 30 ms invalidates a trial; cards for comparison available later, not today. Codex plan review
+  (`.codex-review/report-20260913-1030-sd-stalls.md`): copy rotation withdrawn (conservation), FAT-cache explanation
+  corrected (separate FAT cache on ARM), u32 request age, screen ≠ qualify, current card is the untouched baseline.
+  Built + reviewed: fw `200fada` (contiguous O(1) seeks, same-index skip, sd_slow phase + ctx, sd_layout/sd_reads,
+  FRAME 26 B ring v2, GET_SD_INFO 0xCD, 0xCB bit 5) + `8968fb7` hygiene + `519d794` Codex round-1 fixes (skip requires
+  a running timer; presentation accounting on every transfer; provenance reset; USDHC error bits; sd_reads shift) +
+  `3c71953` `scripts/sd_stall_test.py`; host Studio v0.77 (`b96ea85`, `cfbe8a8`): trial-quality pass/flagged/unknown,
+  0xCD → `run_metadata.sd_card`, telemetry-report.py; all suites green. Read-free access-pattern research (agent +
+  Codex brainstorm): every course motion pattern except looming is an exact +1 px/frame roll; independent-frame LZ4
+  shrinks the 813 KB bar to 15 KB → complete compressed RAM cache loaded in the ITI is the recommended next step;
+  panel PSRAM write path is specified but unimplemented in panel firmware (`docs/development/archive/mode3-2026-09/sd-read-jitter-2026-09-13.md` §6).
+  Codex round 2 on the round-1 fixes running; flash follows its reconciliation.
+
+- **2026-09-13 11:35:07–11:35:13 ET — flashed `3c71953` (SD fast path build) via the bootloader route** after Michael
+  disconnected the old Studio tab (port free; HalfKay immediate; CDC back in 6 s; no button). Codex round 2 on the
+  round-1 fixes: firmware accepted, harness findings deferred (`.codex-review/report-20260913-fw-sdfast-rounds.md` in
+  the ring worktree). HIL subset (version/health/telemetry) run with the port free before the Studio reconnects.
+
+- **2026-09-13 11:36–11:48 ET — HIL on `3c71953` (port free):** version/health/telemetry: same-index skip verified
+  (3 repeated 0x70s → cmd70 +3, sd_reads +0), frame storm: 26 B FRAMEs, `sd_layout` + trailing `sd_reads` after
+  ALL_OFF as designed (needed an 81 KB grating uploaded as `conftest.pat`, deleted again; listing back to 45 files,
+  idx 36/5 unchanged). **Card identity (0xCD): MID 0x00, OEM "42", PNM `SD8GB`, PRV 0.0, PSN 0x14d4, made 2025-06,
+  8.0 GB SDHC, FAT32, 4 KB clusters (8 sectors/cluster)** — an unbranded 8 GB card; the 4 KB clusters (≈ 200-cluster
+  chain for the 813 KB pattern → two FAT sectors) are what made the backward-seek FAT walk cost ~0.5 ms. Two unrelated
+  failures noted, not chased: `test_crashreport_passthrough` (PJRC CrashReport region holds junk after the HalfKay
+  reflash, len 35340264) and `test_overfill_evicts_oldest_and_reports_dropped` (ring_overrun marker position, timing
+  sensitive). Next: Studio v0.77 on :8092 connects (user gesture), soak protocol rebuilt, 2 iterations.
+
+- **2026-09-13 11:45 ET — soak restarted on `3c71953`** from Studio v0.77 (worktree served on :8092; new origin →
+  Michael clicked Connect once). Protocol `soak_mode3_card.yaml` rebuilt from the repo soak protocol (ids 36/5, frames
+  200/20 via the `__framesRepatch` hook), rig set explicitly to `cshl_g6_2x10_ball` (the page derived `g6_3x10`; the
+  mismatch chip still reads "bench ≠ protocol" — cosmetic, to check), advanced mode forced on the new origin,
+  `startSoak({iterations:2, gapS:10, firstFault:'halt', policy:'reset-continue'})`; sim 200 Hz + 90° jumps unchanged,
+  bridge 3.1 logging behavior_v2. This is the CONTROL iteration on the new build (same card, same workload).
+
+- **2026-09-13 11:46 ET — first look at the control iteration (66 s snapshot, `telemetry-report.py`):** fw reads per
+  accepted 0x70 = **0.755** (8,972 reads / 11,884 commands on the bar — the same-index skip removes the 24 % as
+  predicted); bar pattern non-sequential reads now **all ≈ 1.46 ms** (−1 was 2.00 ms: the FAT-walk penalty is gone;
+  +2..9 unchanged at 1.44; jumps 1.96 → 1.46); grating non-sequential 1.18 ms as before; +1 sequential 620 µs both.
+  Bar (813 KB) still costs ~280 µs more per random read than the grating (81 KB) with identical code paths → consistent
+  with the card serving part of the small working set from its own cache (the H-cache reading of the small file's
+  stall immunity). `req_age_us` (0x70 dispatch → SPI start) p50 1.77 ms, p99 2.56 ms, max 2.56 ms; superseded 1.2 %
+  of frames. No stall yet in 66 s (expected spacing ~250 s). Layout: contiguous, 8 sectors/cluster, both patterns.
+
+- **2026-09-13 11:55 ET — prediction recorded before the iteration completes:** 10 min / 11 trials into the control
+  iteration on `3c71953`, **zero `sd_slow` records** (baseline `394dee45`: a cluster every ~250 s at this rate; with 24 %
+  fewer reads the first cluster was due by ~330 s). Hypothesis H-FAT: the card's read-count hot spot was the **FAT
+  sector(s)**, not the pattern data — on this 4 KB-cluster card the 813 KB pattern's cluster chain (≈ 200 entries ×
+  4 B = 800 B) spans TWO FAT sectors, so every backward seek's chain walk (`FatFile::seekSet` from the first cluster)
+  missed SdFat's one-sector FAT cache and re-read a FAT sector from the card (~12k FAT reads per 24.5k pattern reads);
+  the 81 KB grating's chain (80 B) lives in one FAT sector that stays cached → never a FAT read → never a stall.
+  Explains: per-file, count-based, rate-independent, power-cycle-persistent, position-dependent (seeks to high frames
+  cross the FAT-sector boundary), non-sequential-only. `contiguousRange()` (fix A) removed every FAT read, so if the
+  full iteration and iteration 2 stay at zero stalls, the stall was firmware-induced (a read-disturb hot spot on the
+  FAT's flash block) and fix A is the fix for this workload. Discriminator if wanted: one iteration on `394dee45`
+  (stalls return at ~24.5k reads) or a build with `contiguousRange()` disabled — the new `sd_slow` phase byte would
+  read `seek`.
+
+- **2026-09-13 12:00 ET — offline check of H-FAT on the 200 Hz fix-build block (21 files, 200 bar trials, 1.77 M reads,
+  308 stalls):** a one-sector FAT-cache simulation of SdFat's chain walk (unknown first-cluster offset swept 0–127)
+  puts 42–77 % of stalls on FAT-fetching reads, but only by driving the fetch rate toward 100 %, and it does not
+  reproduce the position dependence (stalls 14–17 % in bins 4–8 vs 9–13 % simulated). Inconclusive — the model may
+  miss SdFat details or the stall may attach to a later command than the fetch. The bench A/B (zero stalls on
+  `3c71953` vs one cluster per ~250 s on `394dee45`, same card, same workload) is the discriminator.
+
+- **2026-09-13 12:06 ET — control iteration 1 on `3c71953` COMPLETE (1273 s, 20 trials, 240,258 accepted 0x70s, 0 faults)
+  vs the baseline iteration `arena-log-20260913-014056-656.jsonl` on `394dee45` (same card, same sim/protocol):**
+  | quantity | baseline 394dee45 | new 3c71953 |
+  |---|---|---|
+  | stalls > 10 ms / clusters | 15 / 4 (every 253 s ≈ 47.4k cmds) | **0 / 0** |
+  | bar −1 / −2..−9 / jump / +2..9 (p50 µs) | 1999 / 1998 / 1977 / 1461 | **1460 / 1460 / 1460 / 1460** |
+  | bar +1 | 621 | 621 |
+  | grating non-sequential | 1181 | 1181 |
+  | max sd_load (bar) | 88.6 ms | **1.8 ms** |
+  | SD reads per accepted 0x70 | 1.0 (every command read) | **0.761** (= index changes; kind 13 confirms) |
+  | req_age (0x70 dispatch → SPI start) | n/a | p50 1.73 ms · p99 2.56 · **max 4.8 ms** (under the 5 ms target) |
+  | superseded loads | n/a | 0.6 % of frames |
+  | trials flagged (> 10 ms) | 4 of 20 | **0 of 20** |
+  All 20 trials `pass` with full coverage. Zero clusters where ~3 were expected (P ≈ 0.05 for one iteration under the
+  baseline rate × 0.76) — iteration 2 doubles the exposure. If it stays clean, H-FAT (the FAT-sector re-reads were the
+  card's hot spot) is the working explanation and fix A removed the stalls on this card; a back-to-back reflash of
+  `394dee45` for one iteration would make it causal (proposed to Michael).
+
+- **2026-09-13 12:27 ET — iteration 2 COMPLETE, soak ended (2 iterations, 0 faults, 0 resets, 2576 s).** Iteration 2:
+  1281 s, 242,178 accepted 0x70s, **0 reads > 10 ms**, 20/20 trials pass, reads/cmd 0.76, req_age p50 1.72 ms / max
+  4.8 ms, superseded 0.5 %. Two iterations on `3c71953`: **482k commands, 2554 s of streaming, 0 stalls** where the
+  baseline rate (4 clusters / 1238 s, scaled by 0.76 reads/cmd) predicts ≈ 6 clusters (P(0) ≈ 0.003). Controller left
+  idle on `3c71953`, Studio v0.77 (:8092) connected. Awaiting Michael's decision on the causal test (reflash
+  `394dee45` for one iteration).
+
+- **2026-09-13 12:29 ET — session closed at the bench (Michael: laptop must disconnect; no third trial).** Causal
+  reflash test of `394dee45` DEFERRED (next bench session: one iteration on the old build, stalls expected at ~24.5k bar
+  reads; then back to the fast-path build). Controller left on `3c71953`, display stopped, Studio disconnected (port
+  free); the :8092 worktree server stopped; bridge 3.1 + sim (200 Hz) left as Michael started them. Host branch
+  `claude/mode3-perf-sd` pushed; firmware `feat/sd-fastpath-2x10` stays local (tip `f6c11d2` built, `3c71953` on the
+  controller). Standing next steps: causal reflash; card screening with `sd_stall_test.py` when cards arrive; read-free
+  path (compressed RAM cache in the ITI, `archive/mode3-2026-09/sd-read-jitter-2026-09-13.md` §6); Codex diff review of `f6c11d2` before it
+  is flashed; #201 PR consolidation; telemetry review session (`telemetry-review-handoff-2026-09-13.md`).
+
+- **2026-09-13 12:45 ET — causal test prepared (bench later, Michael):** firmware `2c83f45` adds `SET_SD_DIAG` 0xCE
+  (bit0 legacy FAT-chain seek at the next open, bit1 no same-index skip; readback 0xCD byte 29; `sd_layout` bits 2/3;
+  STATE marker), built, Codex round 3 running — NOT flashed (controller stays on `3c71953`). Studio v0.77 gains
+  `Studio.setSdDiag(flags)` + `run_metadata.sd_card.sd_diag`; telemetry-report labels the arm. Plan with predictions,
+  stopping rules and procedure: `docs/development/archive/mode3-2026-09/sd-stall-causal-test-plan-2026-09-13.md` (arms 3 → 1 → 2 → 0 on one
+  build, ~70 min; H-FAT fingerprint = `sd_slow` phase `seek` in the legacy-seek arms).
+
+- **2026-09-13 13:00 ET — Codex round 3 on the 0xCE build (`.codex-review/codex-diff-review-20260913-123149-22302`):**
+  blocking — `openPattern` reused the open handle on a same-pattern restart, so the legacy-seek arm would not have
+  applied there (fixed `35bb196`: reopen when the applied mode differs; 0xCD byte 29 bit 2 = applied); also fixed:
+  cache reuse separated from presentation accounting (`sd_cache_ok_`), checkpoints as STATE kind 14 (kind 13 unchanged),
+  0xCB bit 6 gates 0xCE, exFAT caveat documented; harness `sd_stall_test.py` hardened (capture completeness incl.
+  trial open/close + command reconciliation + incarnation check, exact over-gap counter, block-anchored wrap-safe
+  controller time, bounded stall detail, per-open read totals, resync after a timeout, `--sd-diag N` arm with
+  applied-mode verification, exit 4 unless usable). Firmware tip built, NOT flashed; a Codex diff review of the
+  round-3 delta is owed before it goes on the controller. Extended campaign matrix (patterns × Mode 2/3 × speeds)
+  added to `archive/mode3-2026-09/sd-stall-causal-test-plan-2026-09-13.md` §7.
+- **2026-09-13 13:30–14:15 ET — Michael back online (remote, no bench). Codex round 4 on the round-3 delta
+  (`0fc6b01..9de97fe`, `.codex-review/codex-diff-review-20260913-133230-26229`, report `report-20260913-fw-round4.md`):
+  no blocking firmware finding; harness/codec fixes committed as `75405ee` (exact worst/cluster statistics, legacy
+  kind-13 checkpoint decode, `--allow-v1` completion, single-probe resync, arm restore + consistency, exFAT refusal,
+  offline `tests/test_sd_stall_stats.py`, two stale comments) and built — **`75405ee` is the build to flash next
+  session** (bootloader route, port released first). Campaign trimmed to stress-first (plan §7: S1 8 MB sine + 813 KB
+  bar at 286 Hz overnight, S2 at 200 Hz, C1 Mode-2 200 fps control); new `protocols/soak_mode3_stress.yaml`,
+  `protocols/soak_mode2_open_loop.yaml`, `scripts/make-stress-patterns.js` (8.1 MB `sine_2000f_gs16`, 213 KB
+  `bar_200f_gs2`, verified by re-parse), Studio soak driver accepts open-loop protocols (v0.77, 13:58 ET). Michael's
+  design question answered in plan §5: cache the cluster chain per pattern open (extent table) → no contiguity
+  precondition; to implement after the causal test.
+- **2026-09-13 14:30–14:55 ET — hand-off shape (Michael: 2 h stress, not overnight; then ONE consolidated build
+  soaked overnight, clean and mergeable for the lab tomorrow).** Finding: the consolidated build already exists —
+  firmware `feat/sd-fastpath-2x10` `75405ee` is a linear stack of health → ring → watchdog → free-running timer (fw #50
+  fix) → SD fast path on top of `arena-2x10-local` (fast-forward, 31 commits; conflicts with `main` only because #48
+  moved main to per-board `-DARENA_HW_*` headers — the main port is a later PR, superseding #53). Web: PR #202 opened
+  (`claude/mode3-perf-sd` → `claude/mode3-wedge-soak`, stacked on #198; both merge cleanly onto main, #198 CI green,
+  `pixi run test` green). One-page run sheet `docs/development/archive/mode3-2026-09/soak-handoff-2026-09-14.md` (flash, serve, card,
+  three runs, pass criteria, merge order). Firmware branch still LOCAL — push + PR against `arena-2x10-local`
+  awaits Michael's go. RAM-cached FAT chain (extent table): deferred — decide on the 70-min causal result
+  (§5 of the causal plan).
+- **2026-09-13 14:46 ET — Michael at the bench (35–40 min).** Flashed `75405ee` (bootloader route, 6 s; label
+  `75405ee6 2x10 2026-09-13 feat/sd-fastpath-2x10 freerun sdfast`). Causal test shortened: bar-only, 6 min per arm,
+  driven by `scripts/sd_stall_test.py --sd-diag N` (first hardware use). **14:46:22 smoke, arm 3, 15 s:** 2,936
+  commands, reads/cmd 1.00 (skip off), `sd_layout` legacy+no-skip, contiguous = 0 → **one cluster after ~600 reads:
+  32.5 / 41.3 / 95.4 ms, all phase `body`, sd_slow_ctx 0/0** (card held the bus, no driver error). Phase body is
+  consistent with H-FAT (SdFat `fatGet` at cluster crossings inside `read`, verified in `FatFile.cpp`); the plan's
+  "phase = seek" fingerprint corrected. 14:47 arms started in order 3 → 2 → 1 → 0, 6 min each (logs
+  `soak-logs/sdstall-*-armN.jsonl` in the ring worktree).
+- **2026-09-13 15:04 ET — arms 3 and 2 done (each 6 min, 200 Hz, bar id 36 only, capture valid, no reboot, cmds
+  reconciled).** **Arm 3** (legacy seek, no skip): 71,882 commands = 71,882 reads → **2 clusters**, spacing **23,275
+  commands** (= the baseline 24.5k period): one of 16 stalls of 12–19 ms (a sub-20 ms signature never visible under the
+  old 20 ms threshold) at 309 s and one classic 21.6 / 41.4 / 48.2 / **90.8 ms** at 426 s; phases body (one seek);
+  bar −1 step 2.0 ms p50. **Arm 2** (contiguous seek, no skip): 71,992 commands = 71,992 reads — the SAME read count —
+  → **0 reads over 10 ms, 0 slow reads at all, worst read 1.8 ms, req_age max 3.0 ms**; bar −1 step 1.46 ms.
+  ⇒ **H-count and H-data rejected, H-FAT confirmed:** identical data-read exposure, the only difference is whether the
+  FAT is touched. The same-index skip (B) is not what removed the stalls. Arms 1 and 0 running (1 = legacy seek with
+  skip on → clusters expected, closes the "B did it" loophole from the other side; 0 = production on `75405ee`).
+- **2026-09-13 15:08 ET — arm 1 done** (legacy seek, skip ON): 71,959 commands, 54,885 reads (0.763 reads/cmd) →
+  **1 cluster of 6 stalls (21.4 / 19.5 / 22.9 / 48.0 / 19.1 / 70.2 ms)**, capture valid. Stalls persist with 24 % fewer
+  data reads and the FAT still touched ⇒ the same-index skip is irrelevant to the stalls (as arm 2 vs 3 already showed).
+  Arm 0 (production) running until ~15:12.
+- **2026-09-13 15:11 ET — arm 0 done, causal test COMPLETE (4 × 6 min, all captures valid, 0 reboots).**
+
+  | arm | FAT touched | reads/cmd | reads | stalls > 10 ms | clusters | worst read | req_age max |
+  |---|---|---|---|---|---|---|---|
+  | 3 legacy seek, no skip | yes | 1.00 | 71,882 | 20 | 2 (spacing 23,275 cmds) | 90.8 ms | 76.7 ms |
+  | 2 contiguous, no skip | no | 1.00 | 71,992 | **0** | 0 | 1.8 ms | 3.0 ms |
+  | 1 legacy seek, skip | yes | 0.76 | 54,885 | 6 | 1 | 70.2 ms | — |
+  | 0 production | no | 0.76 | 54,900 | **0** | 0 | 1.8 ms | 2.9 ms |
+
+  **Conclusion: H-FAT confirmed, H-count and H-data rejected.** The stalls were induced by the firmware's FAT access
+  (SdFat chain walk on backward seeks + `fatGet` at cluster crossings inside `read`) hammering the card's FAT block;
+  the contiguous-seek fix removes them at identical data-read exposure; the same-index skip is irrelevant to them.
+  Production build `75405ee`: bar −1 step 1.46 ms p50 / 1.8 ms max, req_age p50 1.7 ms / max 2.9 ms at 200 Hz.
+  15:12 started the 2 h production run at 286 Hz on the bar (`--label prod-286hz-2h`), unattended.
+- **2026-09-13 15:20–15:50 ET — whole-stack Codex reviews + fixes (Michael: laptop stays; review, adversarial pass,
+  one hand-off document; 2 h stress then the candidate overnight).** Firmware `arena-2x10-local..75405ee` and web
+  `main..claude/mode3-perf-sd` reviewed whole (`.codex-review/report-20260913-fw-fullstack.md`, `…-web-fullstack.md`).
+  Fixed and re-reviewed (fw round 5): **firmware `e59767e`** (panels blanked at boot after a watchdog/software reset,
+  watchdog kicked inside the ISP loops, same-index skip only after a successful DAC/LUT update, exFAT refusal for the
+  legacy arm, harness backlog drain, campaign/upload script fixes; built, hex sha `578cc29e…`, NOT yet flashed) and
+  **Studio v0.78** (verdict + final drain before the export, drain problems → unknown, bridge send failure not acked,
+  FRAME read time in verdicts, link-drop = CONTROLLER_FAULT, stress gain 0.18; PR #202 updated, `pixi run test`
+  green). New docs: `mode3-reliability-handoff-2026-09-14.md` (the one hand-off document),
+  `runlog-format-review-2026-09-13.md` (≈133 MB/h raw, 35–40 gz at 200 Hz; R1 stream-gzip, R2 schema v3),
+  `archive/mode3-2026-09/consolidation-plan-2026-09-13.md`. Plan for 16:12: stop the 286 Hz run (1 h), flash `e59767e`, HIL subset, upload
+  the 8 MB sine browser-free, verify indices, start the alternating campaign (286 Hz → 18:15, 200 Hz → 21:00).
+- **2026-09-13 16:02 ET — overnight test plan written (`overnight-soak-test-plan-2026-09-13.md`: timing T1–T7, log
+  completeness L1–L7, recovery R1–R5 + a pre-overnight drill: injected stall via 0xCE, injected watchdog reset via
+  0xA8 flags 0x31, simulator kill). New `scripts/runlog-check.py`; on this morning's v0.77 log it FAILS as predicted:
+  `trial_quality` 359 lines before the last controller row, 22 command records lost to the export, ring dropped
+  1,157 between runs — the v0.78 fix is what the overnight must prove.**
+- **2026-09-13 16:12 ET — switch.** 1 h production run on `75405ee`, bar only, **286 Hz: 1,036,992 commands, 788,704
+  reads, 0 reads > 10 ms (worst 1.8 ms), req_age p50 1.7 / max 3.0 ms, 0.76 reads/cmd, capture valid, usable.**
+  Flashed **`e59767e`** (bootloader route, 7 s). HIL subset (`-x`, no `--pat`): `test_firmware_version` passed;
+  `test_health.py::test_loop_max_1s_window_is_populated` FAILED (`loop_max_1s_us == 0` at ~3 s uptime) — open item:
+  re-run at the drill, decide flake vs regression before the overnight. Uploaded `sine_2000f_gs16.pat` browser-free:
+  **index 46, 2000 frames, 8.1 MB in 1.4 s (5.7 MB/s)**; verified idx 36 = 200 frames, idx 46 = 2000. Campaign started
+  16:12:53 (`sd_soak_campaign.sh … "46 36" 286 1815 200 2100 10`, detached under caffeinate): segment 1 = sine at
+  286 Hz, `sd_layout` code 1 → **contiguous**, 8 sectors/cluster.
+- **2026-09-13 16:23 ET — campaign segment 1, 8 MB sine (idx 46) at 286 Hz on `e59767e`, 10 min: 171,482 commands,
+  130,758 reads, 0 reads > 10 ms (worst 1.8 ms), random-step read p50 1.39 ms — the same as the 813 KB bar —
+  req_age p50 1.67 / max 2.94 ms, contiguous, usable.** First evidence that the fast path has no size dependence
+  (2000-entry chain, 2 MB seeks). Segment 2 = bar at 286 Hz.
+- **2026-09-13 17:27 ET — segments 1–7 (286 Hz, sine/bar alternating) all clean:** ~171.5k commands each, 0 reads
+  > 10 ms, worst 1.8 ms, random read p50 1.39 (sine) / 1.46 (bar) ms, req_age max 2.9–3.0 ms, 0 reboots.
+- **2026-09-13 17:35 ET — hand-off paths decided (Michael):** firmware stays on `feat/sd-fastpath-2x10` as the merge
+  candidate — PUSHED, PR reiserlab/LED-Display_G6_Firmware_Arena#55 against `arena-2x10-local`; Studio #198 + #202
+  go to `main` tomorrow morning without a separate review once the night is clean (revert if needed).
+- **2026-09-13 18:16 ET — stress phase done (13 segments at 286 Hz, ~2.2 M commands, ~1.7 M reads); ONE slow read.**
+  Segment 9 (`sdstall-20260913-173259-camp-286-p46`, 8 MB sine), 472 s in: frame 47 → 44 (−3 step), **body phase,
+  19.4 ms, `sd_slow_ctx` 0/0 (no driver error), single event (no cluster), next read 0.62 ms; req_age max 19.6 ms.**
+  Not the FAT signature (contiguous file, no FAT access, not quantised 23/33/41…, not clustered) — the exact
+  "phase body on the 8 MB file" watch item from the campaign plan (a data-region event?). Rate so far: 1 in
+  ~2.5 M fast-path reads today; below Michael's 30 ms "detectable" line, above the 10 ms flag line → that trial would
+  be *flagged*. Night phase (200 Hz) started 18:16; watching for recurrence and whether it stays on the 8 MB file.
+- **2026-09-13 18:25–18:58 ET — port onto `main` (Michael: build tonight's candidate on Frank's #48).** A Fable
+  sub-agent produced `feat/mode3-reliability` = main + the stack + a 2×10 variant (`ARENA_HW_2_10`, envs
+  `teensy41-2-10[-performance]`), three commits (`6782cda` variant, `165dc8f` stack, `488d5b9` tests+tools); all
+  three arena variants build; `src/` byte-identical to `e59767e` except the variant plumbing; 2×10 `panel_sets`
+  (50 numbers) and tie-high list verified equal to the bench build. Codex pass (`…-port/.codex-review/report-20260913-port.md`):
+  nothing against the plumbing; HIL `SET_SD_DIAG` tests made exFAT-aware; blank-before-`sd.begin()` and the test
+  geometry fixture deferred. **Pushed; PR #56 against `main` = merge candidate; #55 and #53 closed.** Hex
+  `firmware-488d5b9-2-10.hex` (sha `d8b31ca7…`) archived in the scratchpad; flash at the drill. Studio v0.79 (session
+  rig follows the controller's rows × cols — fresh profiles came up `g6_3x10`). Docs: wedge-era notes archived;
+  PRs #198/#202 carry a History-and-tests section; hand-off §6.0 test history.
+- **2026-09-13 19:09 ET — campaign stopped (18 complete segments: 13 × 286 Hz, 5 × 200 Hz, all usable; the only
+  event the 19.4/6.4 ms pair in segment 9); flashed `488d5b9` (2×10 variant on main) 19:09:59.** HIL subset: 26 passed,
+  3 failed = the two pre-existing flakes (`test_crashreport_passthrough` after HalfKay, `test_overfill…`) +
+  `test_loop_max_1s_window_is_populated` at ~3 s uptime, which **passes when re-run at normal uptime** → early-boot
+  artefact, not a regression. Studio v0.79 on :8092 (Michael picked the port after the re-enumeration): label
+  `488d5b9b 2x10 2026-09-13 feat/mode3-reliability freerun sdfast`, **session rig derived `cshl_g6_2x10_ball`** (the
+  log shows the g6_3x10 io defaults applied first, then re-applied for the derived rig one second later — ordering
+  follow-up, same io values), sd card line, `sdDiag` 0, telemetry available. 19:17 drill step 1: `setSdDiag(3)` +
+  one-trial drill protocol (`protocols/mode3_drill_1trial.yaml`).
+- **2026-09-13 19:17–19:30 ET — drill step 1 (injected stall), two runs.** (a) 60 s Test run via `runOnce(false)`:
+  ran **pattern 4** (`p100_slow_bar`), not the bar — the bench card is the COURSE card (36 = `p3_heisenberg_ts`, the
+  813 KB/200-frame file used all day; 5 = `course_grating_36deg`; 46 = the sine) and the protocols' names
+  `frame2_h_ccw_200f`/`grating_sq` do not exist on it, so they fell back to `pattern_ID`; the Test-run log had no
+  `run_metadata` and v1-style `arena_command` objects instead of `a` rows. Fixed the protocols (names + ids 36/46,
+  drill 180 s) and documented "drill via a 1-iteration soak". (b) **180 s via the soak driver, arm 3 (legacy seek +
+  no skip), pattern 36: 34,903 commands, 34,904 reads, reads/cmd 1.00, sd_layout = legacy applied + no-skip —
+  0 stalls, worst read 2.0 ms, −1 step p50 1.39 ms (the FAST-path cost; the same arm showed 2.0 ms and clusters
+  every 23k reads at 15:00 on `75405ee`).** Log completeness on this soak-path file: `run_metadata` (label
+  `488d5b9b…`, card + arm), 34,905 `a` rows vs 34,903 `cc`, drainer gaps/notStored/errors 0, `trial_quality` AFTER
+  the last controller row → **the v0.78 export-ordering fix confirmed on a real run**; `runlog-check` fails it only
+  for the expected arm ≠ 0. Frame-count-from-0x88 fill added to the Studio (v0.79) — the sine would otherwise have
+  run with the bridge's 200-frame default modulus tonight. 19:32: harness arm 3 on `488d5b9` to see whether the
+  legacy arm stopped biting because of the Studio path or the build.
+- **2026-09-13 19:35 ET — RESOLVED: the Studio drill ran a 20-frame loop.** Harness arm 3 on `488d5b9`, 3 min,
+  pattern 36: −1 step 1.99 ms, 1 stall (21.8 ms) → the build and the arm are fine. Index coverage: harness 200
+  distinct frames, uniform; **Studio drill: frames 0–19 only** — the bridge's heading→index modulus was still 20
+  (the last `config.frames` it had received, the grating this morning) because the Studio had no frame count for
+  `p3_heisenberg_ts` and passed none. 20 frames = 80 KB inside one FAT sector → no chain walk, no stall, fast-path
+  costs. The frames-from-`GET_PATTERN_INFO` fill (v0.79, 19:25) is the fix; without it the overnight would have run
+  every pattern as a 20-frame loop. Lesson for the test plan: **index coverage (distinct frames per trial) is a
+  pass criterion**, added as T8.
+- **2026-09-13 19:49–19:55 ET — drill via the reloaded Studio (frame counts from the card: bar 200, sine 2000;
+  index coverage 200/200):** the legacy arm now bit through the Studio path too — −1 step 1.99 ms, **one 18.3 ms
+  body-phase stall** in 35.7k reads. But the Studio's verdict said `pass` with two phantom trials: my two start
+  commands overlapped; the first soak was aborted and its LATE terminal event finalized the second run's trials one
+  second in (v0.78 finalize memoised per run, reset at run start, so the second run's own finalize was a no-op and the
+  stall was fed with no open trial). **Fixed (v0.79): the finalize is bound to the run id; a stale caller is
+  ignored.** Also fixed: simulator field 22 written in ms instead of ns (every sim log's `ft` was 1000× too small;
+  found by the telemetry-review session) — sim restarted 19:55 with the fix; a footer stamp mangled by `sed -E`.
+  `pixi run test` green. Retrying the drill with a single start.
+- **2026-09-13 20:09–20:13 ET — drill, single start, arm 3, pattern 36, 180 s:** 34,821 reads over **200/200
+  frames**, legacy arm applied, −1 step at the legacy cost; **0 stalls this time** (max read 3.4 ms); verdict 1 trial
+  `pass`, `trial_quality` after the last controller row, counts reconciled (34,820 cc / 34,822 a). The Studio banner
+  for a real stall therefore remains unexercised (the 19:49 run had the stall but the overlapping-run bug ate it).
+  20:14: arm back to 0 (production); watchdog drill next.
+- **2026-09-13 20:14–20:17 ET — drill step 2, forced watchdog reset (R2):** production arm, drill trial started
+  20:14:05; `SET_TELEMETRY` flags 0x31 (starve) sent 20:15:07 → controller reset ≈ 2 s later → link dropped →
+  runner aborted → **post-mortem `self-reset`**: quiet → confirm 0xC2 → HEALTH → ring dump (`survivedReboot: true`,
+  19 records, the last FRAMEs before the reset intact) → crash report (`present: false`, as expected for a watchdog
+  reset) → probes → firmware identity; ring rows include kind 1 `boot` and kind 8 `wdog_context`; **the Studio
+  reconnected WITHOUT a port picker** (the Web Serial grant survived the re-enumeration — the unattended night can
+  recover from a watchdog reset); soak iteration-end `outcome: fault, fault: link_dropped, postmortem: self-reset`;
+  the trial `unknown` (correct). Two findings: (1) **two panels stayed lit after the reset** (Michael) — the boot
+  blank's three dark frames did not reach them; all-off sent 20:17:08 to see whether the bus takes it now; (2) the
+  runner's terminal event carried `fault: null` because the disconnect listener ran after the broker's abort → the
+  run's stored outcome would read ABORTED_BY_USER — fixed in v0.79 (link down at an unrequested abort ⇒ fault).
+- **2026-09-13 20:17 ET — all-off from the Studio blanked the two panels** (bus fine; the boot blank was too early for
+  them) → one-line firmware fix: a second `blankPanelsAtBoot()` at the END of setup (`f736cae` in the port worktree,
+  built; Codex pass running; flash before the overnight with Michael's OK).
+- **2026-09-13 20:18–20:21 ET — drill step 3, USB cable pulled 5 s during a trial (Michael):** link dropped → runner
+  aborted → post-mortem `self-reset` path → ring dump `survivedReboot: true`, **no boot record: the controller never
+  rebooted** (it is powered from the arena supply; USB is data only) → crash report read → probes → **reconnected
+  without a port picker**; soak iteration-end `fault: link_dropped, postmortem: self-reset`. Panels kept the running
+  stimulus through the unplug (no reset, no blank) — expected; only a controller reset blanks them.
+- **2026-09-13 20:20–20:23 ET — drill step 4, arena power pulled ~10 s during a trial (Michael):** the controller
+  is on the arena supply → full power-on: link dropped → post-mortem `self-reset` → **fresh ring** (`survivedReboot:
+  false`, bootCount 0, records `boot`, `state_change ALL_OFF` from the boot blank), drainer incarnations 1 → 2
+  (old cursor discarded, not trusted), crash report read, probes, identity, reconnected; soak ended on the fault.
+  Codex on the boot-blank one-liner: no defect, "an unverified retry" — comment reworded, rebuilt `781efe2`;
+  verification = one forced reset with Michael counting dark panels after the flash.
+- **2026-09-13 20:23–20:30 ET — flashed `781efe2` (boot-blank retry); all 20 panels dark after the flash reboot;
+  the Studio reconnected by itself (grant survived the bootloader trip). Forced watchdog reset 20:28:34 on a trial:**
+  recovery chain complete again (fault, self-reset, boot + wdog_context records, reconnect); **panels: 19 dark, one
+  showed a panel-side error glyph ("02/03"), then the arena came back lit** — the ring holds NO frame transfer after
+  the reboot (only identity/header reads incl. 48 × 0x88 from the frame-count fill, which reads headers via
+  `readPatternInfo`, no display), so the re-lighting is panel-side (persistent panels restoring their last frame after
+  the glyph), not a controller command. Not blocking for the night; lab plan: after any reset, check the arena and
+  send all-off if lit. Steady state to be confirmed by Michael.
+- **2026-09-13 20:35 ET — OVERNIGHT STARTED** (Studio v0.79 build 20:17 with all of tonight's fixes, firmware
+  `781efe2`, `protocols/soak_mode3_stress.yaml` = sine idx 46 (2000 frames, gain 0.18) ⇄ bar idx 36 (200 frames,
+  gain 1.8), simulator 200 Hz seed 1 jumps 90°/100 (restarted 19:55 with the ft fix), bridge 3.1 logging behavior_v2,
+  `sdDiag` 0, rig `cshl_g6_2x10_ball` derived, `hours: 10, gapS: 10, firstFault: halt, policy: reset-continue,
+  maxResets: 3`). Michael: "super fast pattern movement" — the sine at 0.18°/frame, as designed. Judge in the morning
+  per `overnight-soak-test-plan-2026-09-13.md` (T1–T8, L1–L7, R1–R5).
+- **2026-09-13 21:36 ET — overnight, 1 h in: 2 iterations complete (1238 s each, ~231.7k commands each), 40/40
+  trials pass, 0 reads > 10 ms, req_age p50 1.68 / max 4.83 ms (under the 5 ms target), drainer dropped/gaps/
+  notStored/errors 0/0/0/0, both files contiguous; per-read cost sine 1.385 ms p50 random (max 1.80) vs bar 1.459
+  (max 1.80); superseded share 3.6 % (200 Hz commands vs 300 Hz refresh); `trial_quality` after the last controller
+  row in both files. Only checker complaint: host-accepted exceeds controller-recorded 0x70 by 21 per file (0.01 %,
+  the last ~100 ms before the file rolls) — tolerance question for `runlog-check`, morning item.
+- **2026-09-13 22:36 ET — overnight, 2 h in: 5 iterations complete, 100/100 trials pass, 0 reads > 10 ms, req_age max
+  4.83 ms in every iteration, drainer 0/0/0/0 throughout, ~1.16 M commands; bridge + simulator alive.**
+- **2026-09-13 23:45 ET — overnight event: one 26 ms body-phase read on the 8 MB sine (pattern 46, frame 1942,
+  trial 3 of iteration 9, no driver error) → the Studio emitted `display_gap` (sd_slow 26 ms + frame_age 26.2 ms) and
+  will flag the trial — the real-stall verdict path exercised for the first time; the soak continues (a stall is not
+  a fault).** Second data-region event of the day on the sine (17:40: 19.5 + 6.4 ms), none on the bar; both on the
+  contiguous fast path with no FAT access → card-internal, rate ≈ 1 per 2–3 M reads of the large file (≈ one per
+  3 h at 200 Hz). Below Michael's 30 ms "detectable" line, above the 10 ms flag line.
+- **2026-09-14 06:52 ET — OVERNIGHT COMPLETE: 29 iterations / 10.3 h (reason `hours`), 0 faults, 0 resets,
+  6.85 M commands, 579 trials pass / 1 flagged / 0 unknown; the only event the 23:45 26 ms read; every other read
+  ≤ 1.8 ms; req_age p50 1.75 / p99 2.56 / max 4.83 ms; superseded 1.39 %; host RTT 3 ms median every file, p99
+  4–11 ms; drainer 0/0/0/0 in every iteration; `runlog-check` 29/29 complete (after correcting its host-side count to
+  0x70 rows in both hex spellings); `wedge-scan` 0 onsets. Full table: hand-off §6. Next: Studio #198 → #202 to
+  `main` (squash), lab day on PR #56's `781efe2`.**
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 

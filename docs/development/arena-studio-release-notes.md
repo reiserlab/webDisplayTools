@@ -4,6 +4,70 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.79 (2026-09-13) · Session rig follows the controller
+
+- **A fresh Studio no longer starts on the wrong arena.** With no explicit rig (no `?rig=`, no user pick) the
+  session rig used to be the first entry of the rig index (`g6_3x10`), whatever controller was plugged in. It now
+  follows the geometry the controller reports at connect (`GET_FIRMWARE_VERSION` rows × cols): on a 2×10
+  controller that is the CSHL fly-on-ball rig. Explicit choices are never overridden; the derived rig's I/O
+  power-on defaults are applied.
+- **Frame counts come from the card.** After the SD listing the Studio reads every pattern's header
+  (`GET_PATTERN_INFO`), so the closed-loop heading→index modulus is right for patterns whose thumbnail
+  was never rendered (an 8 MB pattern used to fall back to 200 frames and wrap).
+- **A link drop mid-run is a controller fault even when the runner's terminal event beats the disconnect
+  listener** (the link being down at an abort nobody requested is the evidence; forced-watchdog drill, bench).
+- **The stimulus-quality verdict is bound to its run.** A late terminal event from a previous, aborted run
+  can no longer finalize the next run's trials (it did once on the bench, one second into a drill, and
+  the real stall went unjudged).
+- **Banner when the SD diagnostic switches are on at connect** (`SET_SD_DIAG` readback ≠ 0): the switches persist
+  until a controller reboot and silently degrade every trial; the banner names the arm and how to clear it.
+
+## v0.78 (2026-09-13) · Whole-stack review fixes: the verdict lands in the log
+
+- **The stimulus-quality verdict is written before the run log is exported.** The final telemetry
+  drain and the `trial_quality` event used to run after the export had closed the bridge's file, so
+  committed logs lost the run's last records and the verdict. Both now run first, on normal runs and on
+  controller-fault runs (after the post-mortem, before the deferred commit).
+- **Missing telemetry can no longer produce a `pass`.** A drain error, a refused batch, a sequence gap
+  or an incomplete final drain marks the open trial `unknown`; a batch the bridge socket failed to send
+  is no longer acknowledged (the controller keeps those records for the next poll).
+- **Slow reads visible only in a FRAME record count.** A read over 10 ms flags the trial even without
+  an `sd_slow` event (ring-v1 firmware only emits those above 20 ms); counted once per read. Same rule
+  in `scripts/telemetry-report.py`.
+- **A watchdog self-reset mid-run is recorded as a controller fault** (outcome `CONTROLLER_FAULT`,
+  auto-committed) instead of `ABORTED_BY_USER`.
+- Stress protocol gain corrected to 0.18 °/frame for the 2000-frame sine (the bridge divides heading
+  by gain; 18 moved 5 frames per 90° jump instead of 500). Wire-comment fixes (crash report gate = flag
+  bit 3, SD diag gate = bit 6, FRAME `sd_load_us` is u32).
+
+## v0.77 (2026-09-13) · SD-card stall visibility: per-trial stimulus quality, card identity, request→display latency
+
+- **Display freezes are now flagged per trial.** The controller's SD card stalls for 30–90 ms every
+  ~24 k reads of a large pattern (card-internal housekeeping; the display holds the last frame and
+  the queued closed-loop commands are coalesced). With firmware that reports it (`sdfast` in the
+  firmware label), the Studio classifies every trial **pass / flagged / unknown** from the controller
+  telemetry ring: any SD read or request→display age over **10 ms** (Michael's worst-case acceptable
+  freeze; 5 ms is the target) flags the trial; incomplete telemetry coverage is `unknown`, never
+  `pass`. Each gap is a `display_gap` event in the run log, the per-trial table is a
+  `trial_quality` event at run end, and a banner names the flagged trials. Flag only — excluding or
+  repeating a trial stays the experimenter's decision.
+- **Which SD card ran the experiment** is recorded: the Studio reads the card's identity (maker,
+  product name, serial, manufacture date, capacity, FAT type, cluster size) at connect and writes
+  it into `run_metadata.sd_card`, so card comparisons are attributable.
+- **Request→display latency in the log.** Frame rows now carry how long the request waited before
+  the panels got it (`req_age_us`), how many loads were replaced before being shown, and whether the
+  pattern file is on the fast (contiguous) seek path. Readers treat the new columns as optional.
+- Telemetry drain keeps up in a background tab (per-poll budget raised 5×); new analysis script
+  `scripts/telemetry-report.py` (SD read cost by step, stall clusters, per-trial verdicts).
+- Bench A/B helper `Studio.setSdDiag(flags)` (firmware with `SET_SD_DIAG` 0xCE): forces the legacy FAT-chain
+  seek and/or disables the same-index read skip per iteration for the causal test of the card stalls
+  (`docs/development/archive/mode3-2026-09/sd-stall-causal-test-plan-2026-09-13.md`); the arm is recorded in `run_metadata.sd_card.sd_diag`.
+- **Open-loop soak.** The soak driver accepts protocols without a FicTrac plugin (e.g. the Mode-2
+  SD control `protocols/soak_mode2_open_loop.yaml`): the bridge is still the logger, but the
+  "simulator frames arriving" gate and the 0x70 exposure test are skipped. New campaign protocols
+  `soak_mode3_stress.yaml` (8 MB sine + 813 KB bar at 286 Hz) and the generator
+  `scripts/make-stress-patterns.js`.
+
 ## v0.76 (2026-09-11) · Controller-fault detection, post-mortem probes, soak driver (fw #50)
 
 - **2026-09-12 review fixes (Codex gpt-6-astra, see `.codex-review/report-20260912-status.md`):**

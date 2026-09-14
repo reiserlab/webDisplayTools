@@ -34,8 +34,20 @@ function rec(type, seq, tUs, payload) {
     return [body.length + 1].concat(body);
 }
 const cmdRec = (seq, t, cmd, status, req) => rec(1, seq, t, [cmd, status, req.length].concat(req));
-const frameRec = (seq, t, idx, pat, sd, spi) =>
-    rec(2, seq, t, [].concat(u16(idx), u16(pat), u32(sd), u16(spi)));
+// v1 (20 B) when `v2` is omitted; ring-v2 (26 B: req_age_us u32, superseded u8, flags u8) otherwise.
+const frameRec = (seq, t, idx, pat, sd, spi, v2) =>
+    rec(
+        2,
+        seq,
+        t,
+        [].concat(
+            u16(idx),
+            u16(pat),
+            u32(sd),
+            u16(spi),
+            v2 ? u32(v2.age).concat([v2.sup, v2.flags]) : []
+        )
+    );
 const stateRec = (seq, t, kind, code, arg) => rec(3, seq, t, [kind, code].concat(u16(arg)));
 const padRec = (n) => [n, 0].concat(new Array(n - 2).fill(0));
 function block(h, records) {
@@ -207,6 +219,12 @@ function block(h, records) {
             ['state_change', 'SHOW_FRAME', 36]
         );
         check('no malformed', b.malformed, 0);
+        check('v1 frame has no req_age', b.records[1].reqAgeUs, undefined);
+        check(
+            'sd_slow (v1 code 0): phase unknown, read_us',
+            [b.records[2].phase, b.records[2].readUs, b.records[2].readError],
+            ['unknown', 129000, false]
+        );
         const rows = T.toRows(b, 1789000000000);
         check('rows', rows, [
             ['cc', 1789000000000, 1000, 10, 0x70, 0, '03704e00'],
@@ -214,6 +232,90 @@ function block(h, records) {
             ['cs', 1789000000000, 2000, 12, 4, 0, 1290],
             ['cs', 1789000000000, 2100, 13, 2, 4, 36]
         ]);
+        // Ring v2: 26 B FRAME + kinds 11-13 + sd_slow phase byte.
+        const b2 = T.parseBlock(
+            block({ tNowUs: 9000, firstSeq: 20 }, [
+                frameRec(20, 3000, 152, 36, 88700, 771, { age: 91200, sup: 3, flags: 0x03 }),
+                stateRec(21, 3100, 4, 0x82, 887), // sd_slow: body phase, read error, 88.7 ms
+                stateRec(22, 3200, 11, 0x01, 8), // sd_layout: contiguous, FAT32, 8 sectors/cluster
+                stateRec(23, 3300, 12, 0, 1), // sd_slow_ctx
+                stateRec(24, 3400, 14, 3, 45000) // sd_reads_ckpt: 45000 << 3 = 360000 (cumulative checkpoint)
+            ]),
+            Wire
+        );
+        check(
+            'v2 frame fields',
+            [
+                b2.records[0].reqAgeUs,
+                b2.records[0].superseded,
+                b2.records[0].sdRead,
+                b2.records[0].contiguous
+            ],
+            [91200, 3, true, true]
+        );
+        check('v2 frame req_age > 65 ms representable', b2.records[0].reqAgeUs > 65535, true);
+        check(
+            'sd_slow v2 phase/error',
+            [b2.records[1].phase, b2.records[1].readError, b2.records[1].readUs],
+            ['body', true, 88700]
+        );
+        check(
+            'sd_layout',
+            [
+                b2.records[2].stateName,
+                b2.records[2].contiguous,
+                b2.records[2].exfat,
+                b2.records[2].sectorsPerCluster
+            ],
+            ['sd_layout', true, false, 8]
+        );
+        check(
+            'sd_layout diag bits default off',
+            [b2.records[2].legacySeek, b2.records[2].noSameIndexSkip],
+            [false, false]
+        );
+        const b3 = T.parseBlock(
+            block({ tNowUs: 1, firstSeq: 30 }, [stateRec(30, 10, 11, 0x0c, 8)]),
+            Wire
+        );
+        check(
+            'sd_layout arm bits',
+            [b3.records[0].contiguous, b3.records[0].legacySeek, b3.records[0].noSameIndexSkip],
+            [false, true, true]
+        );
+        check(
+            'sd_slow_ctx + sd_reads',
+            [
+                b2.records[3].stateName,
+                b2.records[3].cardErrorCode,
+                b2.records[3].driverSawError,
+                b2.records[4].stateName,
+                b2.records[4].reads,
+                b2.records[4].checkpoint
+            ],
+            ['sd_slow_ctx', 0, false, 'sd_reads_ckpt', 360000, true]
+        );
+        check('v2 malformed = 0', b2.malformed, 0);
+        const rows2 = T.toRows(b2, 1);
+        check('v2 cf row carries 3 extra fields', rows2[0], [
+            'cf',
+            1,
+            3000,
+            20,
+            152,
+            36,
+            88700,
+            771,
+            91200,
+            3,
+            3
+        ]);
+        check('schema cf cols = 10', T.STREAM_SCHEMA.cf.cols.length, 10);
+        check(
+            'schema kinds 11-13 named',
+            [T.STATE_KINDS[11], T.STATE_KINDS[12], T.STATE_KINDS[13]],
+            ['sd_layout', 'sd_slow_ctx', 'sd_reads']
+        );
         checkBool(
             'status!=0 reply → null',
             T.parseBlock(Uint8Array.from([2, 1, 0xa9]), Wire) === null

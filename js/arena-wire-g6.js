@@ -67,8 +67,10 @@ const ArenaWireG6 = (function () {
         SET_DIAG_OUTPUT: 0xc3, // [len=2,0xC3,on] mute/unmute DEBUG_SERIAL diagnostics
         GET_DIAG_OUTPUT: 0xc4, // returns current g_dbg_on state (0/1)
         GET_HEALTH: 0xca, // [01 CA] controller health counters + previous-boot breadcrumb (fw #50)
-        GET_CRASHREPORT: 0xcc, // [01 CC] raw 128 B at OCRAM 0x2027FF80: PJRC arm_fault_info_struct + breadcrumbs (ring fw; gate on 0xCB flags bit 2)
+        GET_CRASHREPORT: 0xcc, // [01 CC] raw 128 B at OCRAM 0x2027FF80: PJRC arm_fault_info_struct + breadcrumbs (gate on 0xCB flags bit 3 = crash report)
         GET_FIRMWARE_VERSION: 0xcb, // [01 CB] build identity: git SHA, branch, date, arena rows×cols (gate on cap bit 7)
+        GET_SD_INFO: 0xcd, // SD card identity + volume geometry (fw sd_fastpath; gate on 0xCB flags bit 5)
+        SET_SD_DIAG: 0xce, // [02 CE flags] bench A/B: bit0 legacy FAT-chain seek (next open), bit1 no same-index skip (gate on 0xCB bit 6 = sdDiag)
         SET_TELEMETRY: 0xa8, // [04 A8 flags rate_lo rate_hi] telemetry ring: bit0 events on/off (fw feat/telemetry-ring)
         GET_TELEMETRY_BLOCK: 0xa9, // [08 A9 ack_seq u32 max_bytes u16 flags] ack-cursor drain of the ring (js/arena-telemetry.js decodes)
         SET_AO_VOLTAGE: 0xa0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV
@@ -956,6 +958,8 @@ const ArenaWireG6 = (function () {
             telemetry: !!(m[3] & 0x04), // ring buffer (0xA8/0xA9) present — the ONLY gate for SET_TELEMETRY
             crashReport: !!(m[3] & 0x08), // GET_CRASHREPORT 0xCC + GET_HEALTH ver 2 (fw fb11681+): the ONLY gate for 0xCC
             freeRunningTimer: !!(m[3] & 0x10), // fw eca07f6+: SET_FRAME_POSITION never disarms/re-arms the refresh timer
+            sdFastPath: !!(m[3] & 0x20), // fw 200fada+: O(1) seeks, same-index skip, 26 B FRAME (ring v2), GET_SD_INFO 0xCD — the ONLY gate for 0xCD
+            sdDiag: !!(m[3] & 0x40), // fw 2c83f45+: SET_SD_DIAG 0xCE + STATE kind 14 — the ONLY gate for 0xCE
             sha: ascii(4, 8),
             date: ascii(12, 10),
             branch: ascii(22, 24)
@@ -970,7 +974,129 @@ const ArenaWireG6 = (function () {
             (v.date || '?') +
             (v.branch ? ' ' + v.branch : '') +
             (v.debug ? ' (debug)' : '') +
-            (v.freeRunningTimer ? ' freerun' : '');
+            (v.freeRunningTimer ? ' freerun' : '') +
+            (v.sdFastPath ? ' sdfast' : '');
+        return v;
+    }
+
+    // get-sd-info (0xCD) — the SD CARD's identity (CID/CSD, cached by SdFat at
+    // mount, so O(1)) plus volume geometry. Every stall measurement / card
+    // comparison must be attributable to a physical card. Gate on 0xCB flags
+    // bit 5 (`sdFastPath`); older firmware flashes an error glyph on unknown opcodes.
+    function encodeGetSdInfo() {
+        return frame(OPCODES.GET_SD_INFO); // 01 CD
+    }
+    // set-sd-diag (0xCE) — bench A/B switches for the causal test of the SD-card
+    // stalls: bit0 legacy seek (the NEXT pattern open skips contiguousRange →
+    // FAT-chain-walking seeks), bit1 no same-index skip (every 0x70 reads). Both
+    // off at boot; readback = GET_SD_INFO byte 29. Gate on 0xCB flags bit 5.
+    const SD_DIAG_LEGACY_SEEK = 0x01;
+    const SD_DIAG_NO_SAME_INDEX_SKIP = 0x02;
+    function encodeSetSdDiag(flags) {
+        const f = u8(flags, 'sd diag flags');
+        if (f & ~0x03) throw new RangeError('sd diag flags: bits 2-7 are reserved');
+        return frame(OPCODES.SET_SD_DIAG, [f]); // 02 CE flags
+    }
+    // Payload (30 B): ver u8 · flags u8 (bit0 mounted, bit1 CID valid, bit2 CSD
+    // valid) · card_type u8 · fat_type u8 (12/16/32, 64 = exFAT) · sectors u32 ·
+    // bytes_per_cluster u32 · cid[16] raw · sd_status_maint u8 (0xFF = not read) ·
+    // reserved u8. Status 1 (no card) still carries the payload.
+    const SD_INFO_PAYLOAD_BYTES = 30;
+    // SD manufacturer IDs (CID byte 0) — the common ones; unknown → hex.
+    const SD_MANUFACTURERS = {
+        0x01: 'Panasonic',
+        0x02: 'Toshiba/Kioxia',
+        0x03: 'SanDisk',
+        0x09: 'ATP',
+        0x13: 'KingMax',
+        0x1b: 'Samsung',
+        0x1d: 'ADATA',
+        0x27: 'Phison',
+        0x28: 'Lexar',
+        0x31: 'Silicon Power',
+        0x41: 'Kingston',
+        0x5d: 'Swissbit',
+        0x6f: 'STMicro',
+        0x74: 'Transcend',
+        0x76: 'Patriot',
+        0x82: 'Sony/Gobe',
+        0x9c: 'Angelbird/Hoodman'
+    };
+    const SD_CARD_TYPES = ['none', 'SD1', 'SD2', 'SDHC/SDXC'];
+    function decodeSdInfo(resp) {
+        const r = asResponse(resp);
+        if (!r || r.payload.length < SD_INFO_PAYLOAD_BYTES) return null; // status 1 (no card) still decodes
+        const m = r.payload;
+        const u32le = (o) => (m[o] | (m[o + 1] << 8) | (m[o + 2] << 16) | (m[o + 3] << 24)) >>> 0;
+        const ascii = (from, len) =>
+            Array.from(m.subarray(from, from + len))
+                .map((b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : ''))
+                .join('')
+                .trim();
+        const cid = m.subarray(12, 28);
+        const v = {
+            ver: m[0],
+            flags: m[1],
+            mounted: !!(m[1] & 0x01),
+            cidValid: !!(m[1] & 0x02),
+            csdValid: !!(m[1] & 0x04),
+            cardType: m[2],
+            cardTypeName: SD_CARD_TYPES[m[2]] || 'type_' + m[2],
+            fatType: m[3],
+            fatTypeName: m[3] === 64 ? 'exFAT' : m[3] ? 'FAT' + m[3] : 'unknown',
+            sectors: u32le(4),
+            capacityGB: Math.round((u32le(4) * 512) / 1e7) / 100, // decimal GB, 2 dp
+            bytesPerCluster: u32le(8),
+            sectorsPerCluster: u32le(8) >> 9,
+            cidHex: Array.from(cid)
+                .map((b) => b.toString(16).padStart(2, '0'))
+                .join(''),
+            mid: cid[0],
+            manufacturer:
+                SD_MANUFACTURERS[cid[0]] || 'mid_0x' + cid[0].toString(16).padStart(2, '0'),
+            oid: ascii(13, 2),
+            pnm: ascii(15, 5),
+            prv: (cid[8] >> 4) + '.' + (cid[8] & 0x0f),
+            psn: ((cid[9] << 24) | (cid[10] << 16) | (cid[11] << 8) | cid[12]) >>> 0,
+            mdtYear: 2000 + (((cid[13] & 0x0f) << 4) | (cid[14] >> 4)),
+            mdtMonth: cid[14] & 0x0f,
+            sdStatusMaint: m[28],
+            sdDiag: m[29], // SET_SD_DIAG flags in force (0 = production behaviour)
+            legacySeek: !!(m[29] & 0x01), // requested (next open)
+            noSameIndexSkip: !!(m[29] & 0x02),
+            legacySeekApplied: !!(m[29] & 0x04) // in force for the currently open file
+        };
+        v.psnHex = v.psn.toString(16).padStart(8, '0');
+        v.label = !v.mounted
+            ? 'no card'
+            : v.manufacturer +
+              ' ' +
+              (v.pnm || '?') +
+              ' ' +
+              v.prv +
+              ' sn ' +
+              v.psnHex +
+              ' (' +
+              v.mdtYear +
+              '-' +
+              String(v.mdtMonth).padStart(2, '0') +
+              ') ' +
+              v.capacityGB +
+              ' GB ' +
+              v.cardTypeName +
+              ' ' +
+              v.fatTypeName +
+              ' ' +
+              (v.bytesPerCluster >= 1024
+                  ? v.bytesPerCluster / 1024 + ' KiB'
+                  : v.bytesPerCluster + ' B') +
+              ' clusters' +
+              (v.sdDiag & 0x03
+                  ? ' [diag ' +
+                    (v.legacySeek ? 'legacy-seek ' : '') +
+                    (v.noSameIndexSkip ? 'no-skip' : '') +
+                    ']'
+                  : '');
         return v;
     }
 
@@ -1192,6 +1318,10 @@ const ArenaWireG6 = (function () {
         encodeGetHealth,
         encodeGetFramePosition,
         encodeGetFirmwareVersion,
+        encodeGetSdInfo,
+        encodeSetSdDiag,
+        SD_DIAG_LEGACY_SEEK,
+        SD_DIAG_NO_SAME_INDEX_SKIP,
         encodeSetTelemetry,
         encodeGetTelemetryBlock,
         TELEMETRY_NO_ACK,
@@ -1226,6 +1356,8 @@ const ArenaWireG6 = (function () {
         decodeFramePosition,
         decodeFirmwareVersion,
         FIRMWARE_VERSION_PAYLOAD_BYTES,
+        decodeSdInfo,
+        SD_INFO_PAYLOAD_BYTES,
         HEALTH_PAYLOAD_BYTES,
         HEALTH_PAYLOAD_BYTES_FULL,
         HEALTH_PAYLOAD_BYTES_V2,

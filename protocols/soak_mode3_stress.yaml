@@ -1,0 +1,140 @@
+version: 3
+
+# ============================================================================
+# Mode-3 STRESS soak — the SD-card stall campaign's worst case on purpose
+# (docs/development/sd-stall-causal-test-plan-2026-09-13.md §7): the LARGEST
+# pattern we can make (sine_2000f_gs16, ≈ 8 MB, 2000 × 4 KB frames) alternating
+# with the 813 KB bar that produced every stall on the bench card, driven by the
+# FicTrac SIMULATOR at the HIGHEST command rate (286 Hz) with 90° jumps. One
+# iteration ≈ 21 min (twenty 60 s trials + 2 s ITIs); the soak driver repeats it
+# for hours. Verdicts: per-trial `trial_quality` (pass / flagged / unknown) and
+# `scripts/telemetry-report.py`.
+#
+# Gains are DEGREES OF HEADING PER FRAME (the bridge computes round(deg / gain)):
+#   0.18 = 360 / 2000 → one revolution sweeps the WHOLE 8 MB file (a 90° jump =
+#          500 frames = 2 MB seek); 1.8 = 360 / 200 for the bar (as in the
+#          standard soak). (An earlier draft said 18 — that was 100× too small a
+#          step: 5 frames per 90° jump. Whole-stack review, 2026-09-13.) Both files must be contiguous on the card (sd_layout
+#         bit0 = 1); make them with scripts/make-stress-patterns.js and upload
+#         through the Studio Console.
+#
+# Bench recipe:
+#   pixi run sim -- --count 0 --rate 286 --seed 1 --jump-every 100 --jump-deg 90
+#   pixi run bridge -- --log-dir soak-logs
+#   Studio ?advanced=1&soak=1 → open this protocol → File ▾ → Soak…
+#   after: pixi run python scripts/telemetry-report.py soak-logs/arena-log-*.jsonl
+# ============================================================================
+
+experiment_info:
+  name: "Mode-3 STRESS soak (SD stalls, 8 MB + 286 Hz)"
+  author: "webDisplayTools"
+
+rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
+
+plugins:
+  - name: "fictrac"
+    type: "class"
+    matlab:
+      class: "FicTracPlugin"
+    config:
+      bridge_url: "ws://localhost:8765"
+      fictrac_port: 60000
+      proto: "udp"
+      gain: 0.18
+      offset: 0
+
+variables:
+  cl_dur: &cl_dur 60
+  iti_dur: &iti_dur 2
+
+experiment:
+  - "soak_setup"
+  - block: "stress_block"
+    trials:
+      - "cl_sine_2000f"
+      - "cl_bar_200f"
+    repetitions: 10
+    randomize: false
+    intertrial: "soak_iti"
+  - "soak_shutdown"
+
+conditions:
+  - name: "soak_setup"
+    commands:
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "connect"
+      - type: "plugin"
+        plugin_name: "log"
+        command_name: "log"
+        params:
+          message: "SD stress soak iteration starting (Mode-3, sim-driven, 8 MB sine + 813 KB bar)"
+          level: "INFO"
+
+  # 8 MB, 2000 frames, GS16 (4 KB frames): the longest FAT chain / widest seeks we can produce.
+  # pattern_ID is a fallback only — the Studio resolves the name against the card's listing.
+  - name: "cl_sine_2000f"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "sine_2000f_gs16"
+        pattern_ID: 46
+        duration: *cl_dur
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: 0.18
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  # The file every bench stall happened on (813 KB, 200 frames) — continuity with the evidence.
+  # The 813 KB, 200-frame bar on the CSHL course card is p3's pattern (036_p3_heisenberg_ts.pat);
+  # names resolve against the card listing, pattern_ID is only the fallback.
+  - name: "cl_bar_200f"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "p3_heisenberg_ts"
+        pattern_ID: 36
+        duration: *cl_dur
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: 1.8
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "soak_iti"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *iti_dur
+
+  # No fictrac.disconnect (the bridge is the run's logger; see soak_mode3_closed_loop.yaml).
+  - name: "soak_shutdown"
+    commands:
+      - type: "controller"
+        command_name: "stopDisplay"
+      - type: "plugin"
+        plugin_name: "log"
+        command_name: "log"
+        params:
+          message: "SD stress soak iteration finished"
+          level: "INFO"
