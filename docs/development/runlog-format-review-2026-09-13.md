@@ -23,13 +23,14 @@ Measured on real files from this weekend (Studio + bridge iteration `arena-log-2
 |---|---|---|---|---|
 | FicTrac frame | bridge, every FicTrac/simulator frame (200 Hz) | `[4,7167479,12,0.0,-16.1773,580.57226,4.14543]` | `ms` (t0-relative), `fc`, `idx` (applied frame), `ft` (FicTrac col-22, relative), `x`, `y`, `hd` | 55 |
 | `a` | browser, one per command sent (0x70 at 200 Hz) | `["a",312.652,2.285,"03 70 02 00",0,314.953]` | `t_off` (t0-relative ms), `dt` (round-trip ms), `hex` (request bytes), `status`, `rx_off`(, `error`) | 34 (Studio) / 49 (harness, longer hex) |
-| `cc` | controller ring via the drainer, one per dispatched command | `["cc",1789325242813.438,28600458,5203,112,0,"b800"]` | `rx` (host epoch ms **of the drain block**), `t_us` (controller µs at dispatch), `seq`, `cmd`, `status`, `req` (params hex) | 54 |
+| `cc` | controller ring via the drainer, one per dispatched command | `["cc",1789325242813.438,28600458,5203,112,0,"b800"]` | `rx` (the browser's `Date.now()` **when the drain block was parsed**), `t_us` (controller µs at dispatch), `seq`, `cmd`, `status`, `req` (params hex) | 54 |
 | `cf` | controller ring, one per displayed frame change | `["cf",1789325242917.999,73238920,5229,2,36,1956,776,3029,1,1]` | `rx`, `t_us` (SPI start), `seq`, `idx`, `pattern`, `sd_load_us`, `spi_us`(, `req_age_us`, `superseded`, `flags`) | 55–66 |
 | `cs` | controller ring, state/error events | `["cs",1789325242813.438,28611677,5205,2,0,36]` | `rx`, `t_us`, `seq`, `kind`, `code`, `arg` | 48 |
 | objects | bridge/browser events | `{"type":"log","event":"runner",…}` | `run_metadata`, `runner`, `config`, `log_control`, `stream_schema`, `frame_schema`, `trial_quality`, `display_gap`, `soak`, `arena_command` (non-0x70 commands, full object) | 100–1200, rare |
 
-Schema lines: `frame_schema` names the FicTrac columns and `arena_cols` for `a`; `stream_schema` names the `cc`/`cf`/
-`cs` columns and the `cs` kind table. Readers: `js/runlog-format.js` (normalizer, gzip-aware), `js/runlog-replay.js`,
+Schema lines: `frame_schema` names the FicTrac columns (`cols[0]` ↔ `row[0]`) and `arena_cols` for `a`; `stream_schema`
+names the `cc`/`cf`/`cs` columns WITHOUT the tag (`cols[i]` ↔ `row[i+1]`) and the `cs` kind table. Full authority:
+`telemetry-logging-reference.md`. Readers: `js/runlog-format.js` (normalizer, gzip-aware), `js/runlog-replay.js`,
 dashboard `analysis-core.js` (vendored copy, test-enforced), `scripts/wedge-scan.py`, `scripts/telemetry-report.py`.
 
 ## 3. Where the bytes go (per active hour, Mode 3, 200 Hz, Studio + bridge path)
@@ -63,7 +64,7 @@ analysis step the telemetry review session owns).
 the same rows), which is the property that matters for a data pipeline: the log is the truth, the banner is a view.
 
 **Weak points, honestly:**
-1. `rx` on `cc`/`cf`/`cs` is the host time the *block* was drained, so it is up to 100 ms late and identical for all
+1. `rx` on `cc`/`cf`/`cs` is the browser's time when the *block* was parsed after the drain, so it is up to 100 ms late and identical for all
    records of a block. It is documented in the module header but readers keep mistaking it for the command's time;
    `t_us` is the controller-side time. → Rename in the schema-v3 pass (`drain_ms`) and make it t0-relative.
 2. The `a` row has no key to its `cc` row; the join is by command order (both are complete sequences, and

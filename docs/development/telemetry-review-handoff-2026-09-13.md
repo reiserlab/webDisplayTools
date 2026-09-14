@@ -1,5 +1,7 @@
 # Handoff — telemetry review session: what is logged now, how the three clocks relate, how to measure round-trip latency, and what to test next (Teensy-only timing)
 
+> **Status (2026-09-13 evening):** Deliverables (1)–(4) landed in `telemetry-logging-reference.md`; kept for the experiment rationale in §5. Two facts below were corrected there: `rx` on `cc`/`cf`/`cs` rows is the **browser's** `Date.now()` when the 0xA9 block was parsed (`js/arena-telemetry.js`), not a bridge receipt; and `stream_schema.cols` omit the tag (`cols[i]` ↔ `row[i+1]`) while `frame_schema.cols[0]` ↔ `row[0]`.
+
 **Written:** 2026-09-13 (performance session, Studio v0.77 / firmware `feat/sd-fastpath-2x10` `3c71953`).
 **For:** a review session that does NOT implement anything. Deliverables of that session: (1) an authoritative
 "what gets logged" reference (the pieces below are scattered over five docs and three code bases); (2) a
@@ -21,9 +23,9 @@ worktree `/Users/reiserm/Documents/GitHub/LED-Display_G6_Firmware_Arena-ring/REA
 | system | clock | what it stamps | where it lands |
 |---|---|---|---|
 | **FicTrac (or `fictrac_sim.py`)** | camera hardware clock (real rigs: col 22 in ns, converted to ms by the bridge; sim: `frame × dt_ms`, monotonic from 0) | one row per tracked frame: `fc` frame counter, `ft` col-22 timestamp, heading, x/y | behavior_v2 frame rows `[ms, fc, idx, ft, x, y, hd]` |
-| **bridge** (`fictrac-bridge/bridge.py` 3.1, Python, same machine as the browser) | `time.time()` wall clock, epoch ms | `ms` = bridge receipt of the FicTrac packet; `rx_off` = bridge receipt of a Studio echo; `rx` = bridge receipt of a drained ring block; `t0` in `frame_schema` = log origin (epoch ms) | every row it writes; `frame_schema.t0`; `log_control_ack` |
+| **bridge** (`fictrac-bridge/bridge.py` 3.1, Python, same machine as the browser) | `time.time()` wall clock, epoch ms | `ms` = bridge receipt of the FicTrac packet; `rx_off` = bridge receipt of a Studio echo; `rx` = the BROWSER's `Date.now()` when it parsed the drained 0xA9 block (not the bridge); `t0` in `frame_schema` = log origin (epoch ms) | every row it writes; `frame_schema.t0`; `log_control_ack` |
 | **Studio** (browser, `js/arena-session.js`) | `Date.now()` epoch for stamps, `performance.now()` for durations | `t_off` = `Date.now() − t0` when the command is SENT; `dt` = monotonic round trip **including queue wait** (single-flight link) | `["a", t_off, dt, hex, status, rx_off(, error)]` |
-| **controller** (Teensy, `micros()` u32, wraps every 71.6 min) | `t_us` | CMD record: dispatch entry of every command; FRAME record: **start of the SPI transfer** of a displayed frame change; STATE records: at the event; 0xA9 block header `t_now_us`: reply time | ring records → `cc` / `cf` / `cs` rows (`rx` = bridge receipt of the DRAIN, not of the event) |
+| **controller** (Teensy, `micros()` u32, wraps every 71.6 min) | `t_us` | CMD record: dispatch entry of every command; FRAME record: **start of the SPI transfer** of a displayed frame change; STATE records: at the event; 0xA9 block header `t_now_us`: reply time | ring records → `cc` / `cf` / `cs` rows (`rx` = the browser's parse time of the DRAIN block, not of the event) |
 
 Known relationships (measured): host↔controller drift **−3 ppm** (fit of `a`-row send time vs `cc.t_us` paired by
 order, 2026-09-12); Chrome background-tab throttling quantises timers to ~1 s (night 1). Missing today: **no field
@@ -94,7 +96,7 @@ end-to-end latency (FicTrac frame → LED) is wanted (§4).
 | dispatch → SPI start | `cc.t_us` → next `cf.t_us` (seq+1) = 4.7 ms median / 5.8 p99 at 100 Hz (2026-09-12); now directly as `cf.req_age_us` per displayed frame | measured; now first-class |
 | SPI start → photons | `spi_us` 0.77 ms is the transfer; panel latch + LED update after that is **unmeasured** (needs an optical sensor) | not measured |
 | controller reply → Studio | `a.dt` − (controller time) — `dt` includes queue wait, so subtract the in-controller time from `cc`/`cf` pairing | derivable |
-| ring record → log | `rx` is drain receipt (≤ 100 ms late, up to seconds when the bridge refuses rows); ordering by `seq` is exact; a CMD is appended AFTER its handler's STATE records (lower seq for the STATEs, later `t_us`) | documented |
+| ring record → log | `rx` is the browser's drain-block parse time (≤ 100 ms late, up to seconds when the bridge refuses rows); ordering by `seq` is exact; a CMD is appended AFTER its handler's STATE records (lower seq for the STATEs, later `t_us`) | documented |
 
 ## 4. How to determine round-trip latency (recipe for the review)
 
@@ -168,7 +170,7 @@ light. Options, cheapest first:
 - FRAME records exist only for displayed CHANGES; held frames and superseded loads are invisible except via
   `superseded` and the per-trial `sd_reads`.
 - `sd_slow_ctx` is sticky last-error context, not per-read evidence; `sd_slow` is a threshold event (10 ms).
-- The bridge log's `rx` for ring rows can lag by the drain period (100 ms) or more when the bridge refuses rows.
+- `rx` for ring rows (stamped by the browser at block parse) can lag by the drain period (100 ms) or more when the bridge refuses rows.
 - Ring capacity ≈ 5–6 s of Mode-3 traffic; drops are counted (`dropped`, seq gaps) — the trial-quality module marks
   such trials `unknown`.
 - No log carries which physical card served runs before 2026-09-13 11:44 ET (0xCD did not exist).
