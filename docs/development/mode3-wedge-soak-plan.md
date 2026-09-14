@@ -628,6 +628,8 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   (max 1.80); superseded share 3.6 % (200 Hz commands vs 300 Hz refresh); `trial_quality` after the last controller
   row in both files. Only checker complaint: host-accepted exceeds controller-recorded 0x70 by 21 per file (0.01 %,
   the last ~100 ms before the file rolls) — tolerance question for `runlog-check`, morning item.
+- **2026-09-13 22:36 ET — overnight, 2 h in: 5 iterations complete, 100/100 trials pass, 0 reads > 10 ms, req_age max
+  4.83 ms in every iteration, drainer 0/0/0/0 throughout, ~1.16 M commands; bridge + simulator alive.**
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
