@@ -22,9 +22,15 @@ open), so candidate cards must be **FAT32**.
 ## Per card (≈ 45 min, unattended after step 3)
 
 0. Studio must release the port first: in the Studio tab console `Studio.session.disconnect()` (or Disconnect).
-1. **Format FAT32 on the Mac** (candidate cards only, never the course card):
-   `diskutil list` → find the card → `diskutil eraseDisk FAT32 ARENA MBRFormat /dev/diskN` (32 KiB clusters by default —
-   record it; 4 KiB on the course card). Cards above 32 GB ship exFAT and must be reformatted this way.
+1. **Make sure the candidate is FAT32** (never touch the course card). By capacity:
+   - **≤ 32 GB:** it is FAT32 as shipped. Use it as is, or Purge it from the Studio Console (PURGE_MEMORY → the firmware's
+     `SD.format()`, which yields FAT32 at this size). Nothing to do on the Mac.
+   - **> 32 GB:** it ships exFAT, and both the factory format and the Studio's Purge give exFAT (SD Association rule). The
+     arm-1 test is refused on exFAT (the library flags exFAT files contiguous at open, so the legacy seek has nothing to
+     walk), and the course cards are FAT32 — so reformat on the Mac: `diskutil list` → find the card →
+     `diskutil eraseDisk FAT32 ARENA MBRFormat /dev/diskN`. Windows' GUI and the SD Association formatter refuse FAT32
+     above 32 GB; `diskutil` does not.
+   Record the cluster size the harness prints (course card: 4 KiB; a `diskutil` format may differ).
 2. Power the controller down, swap the card, power up (the card is mounted at boot). No evidence is lost: this is not a
    fault investigation.
 3. Upload the two patterns browser-free (firmware checkout, `scripts/`):
