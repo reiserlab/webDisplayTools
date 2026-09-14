@@ -602,6 +602,12 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   rebooted** (it is powered from the arena supply; USB is data only) → crash report read → probes → **reconnected
   without a port picker**; soak iteration-end `fault: link_dropped, postmortem: self-reset`. Panels kept the running
   stimulus through the unplug (no reset, no blank) — expected; only a controller reset blanks them.
+- **2026-09-13 20:20–20:23 ET — drill step 4, arena power pulled ~10 s during a trial (Michael):** the controller
+  is on the arena supply → full power-on: link dropped → post-mortem `self-reset` → **fresh ring** (`survivedReboot:
+  false`, bootCount 0, records `boot`, `state_change ALL_OFF` from the boot blank), drainer incarnations 1 → 2
+  (old cursor discarded, not trusted), crash report read, probes, identity, reconnected; soak ended on the fault.
+  Codex on the boot-blank one-liner: no defect, "an unverified retry" — comment reworded, rebuilt `781efe2`;
+  verification = one forced reset with Michael counting dark panels after the flash.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
