@@ -36,7 +36,7 @@ def check_file(path):
                 fictrac += 1
             elif k == "a":
                 # host-accepted FRAME commands only (hex "03 70 …"): the controller-side count below is 0x70-only too
-                if o[4] == 0 and isinstance(o[3], str) and o[3].startswith("03 70"): a_ok += 1
+                if o[4] == 0 and isinstance(o[3], str) and o[3].replace(" ", "").lower().startswith("0370"): a_ok += 1  # Studio "0370…", harness "03 70 …"
             elif k in ("cc", "cf", "cs"):
                 last_ctl_line = n
                 if k == "cc" and len(o) > 5 and o[4] == 0x70 and o[5] == 0: cc70 += 1
