@@ -594,6 +594,14 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   blank's three dark frames did not reach them; all-off sent 20:17:08 to see whether the bus takes it now; (2) the
   runner's terminal event carried `fault: null` because the disconnect listener ran after the broker's abort → the
   run's stored outcome would read ABORTED_BY_USER — fixed in v0.79 (link down at an unrequested abort ⇒ fault).
+- **2026-09-13 20:17 ET — all-off from the Studio blanked the two panels** (bus fine; the boot blank was too early for
+  them) → one-line firmware fix: a second `blankPanelsAtBoot()` at the END of setup (`f736cae` in the port worktree,
+  built; Codex pass running; flash before the overnight with Michael's OK).
+- **2026-09-13 20:18–20:21 ET — drill step 3, USB cable pulled 5 s during a trial (Michael):** link dropped → runner
+  aborted → post-mortem `self-reset` path → ring dump `survivedReboot: true`, **no boot record: the controller never
+  rebooted** (it is powered from the arena supply; USB is data only) → crash report read → probes → **reconnected
+  without a port picker**; soak iteration-end `fault: link_dropped, postmortem: self-reset`. Panels kept the running
+  stimulus through the unplug (no reset, no blank) — expected; only a controller reset blanks them.
 
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
