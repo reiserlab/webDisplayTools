@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.80 | 2026-09-15 15:32 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.81 | 2026-09-15 16:59 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3077,24 +3077,41 @@
     // ---- unified log: raw transport trace (console 'log' events) --------------
     // The raw log is BOUNDED (bench 2026-09-12 23:10): every arena command appends a
     // line, so a 286 Hz closed-loop run grew it to 43k rows in 10 min and each
-    // append (+ scroll-to-bottom layout) got slower — the apply loop lost half its
-    // throughput over one 20-min iteration while the controller stayed flat. Keep
-    // the newest RAW_LOG_MAX_LINES; trim in one range delete every RAW_LOG_TRIM
-    // lines; only follow the tail when the user has not scrolled up.
+    // append (+ scroll-to-bottom layout) got slower. Keep the newest RAW_LOG_MAX_LINES;
+    // trim in one range delete every RAW_LOG_TRIM lines; only follow the tail when the
+    // user has not scrolled up.
+    //
+    // …and it is BATCHED (lab day 2026-09-15, Windows PC, found by Isabel): with the dock
+    // on Log, every command appended two lines and each append read scrollHeight (a forced
+    // layout) before and after — 400+ layouts/s on the main thread, and the closed-loop
+    // apply rate fell from 175 Hz to 51 Hz. With the dock on Scope the box is display:none
+    // and the same reads cost nothing, which is why only the Log view "chugged" and every
+    // earlier run (Scope by default) was fast. Writers now QUEUE nodes; a flush every
+    // LOG_FLUSH_MS appends a single fragment, does ONE layout read and ONE scroll. The three
+    // writers below (rawLine, logTransport, renderRunEvent) all go through enqueueLogNode.
     const RAW_LOG_MAX_LINES = 3000;
     const RAW_LOG_TRIM = 500;
-    function rawLine(text, cls) {
-        const box = $('runlogBox');
-        if (!box) return;
-        // Clear the placeholder on first real line.
+    let _logQ = [];
+    let _logFlushScheduled = false;
+    function clearLogPlaceholder(box) {
         if (box.firstChild && box.firstChild.classList && box.firstChild.classList.contains('dim')) {
             box.textContent = '';
         }
-        const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
-        const div = document.createElement('div');
-        if (cls) div.className = 'l-' + cls;
-        div.textContent = text;
-        box.appendChild(div);
+    }
+    function flushRunLog() {
+        _logFlushScheduled = false;
+        const box = $('runlogBox');
+        const q = _logQ;
+        _logQ = [];
+        if (!box || !q.length) return;
+        clearLogPlaceholder(box);
+        const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40; // the one layout read
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < q.length; i++) {
+            q[i]._queued = false;
+            frag.appendChild(q[i]);
+        }
+        box.appendChild(frag);
         const n = box.childElementCount;
         if (n > RAW_LOG_MAX_LINES + RAW_LOG_TRIM) {
             const r = document.createRange();
@@ -3104,22 +3121,56 @@
         }
         if (atBottom) box.scrollTop = box.scrollHeight;
     }
+    // 20 flushes/s: each flush costs one layout read of a ~3000-line box (~2.4 ms measured on
+    // the Mac bench) whatever the line count, so a fixed cadence caps the log's share of the
+    // main thread at ~5 % while a human still sees a live tail. setTimeout also fires in a
+    // hidden tab (clamped to ~1 s), where rAF would not; the queue cap bounds the backlog.
+    const LOG_FLUSH_MS = 50;
+    function scheduleLogFlush() {
+        if (_logFlushScheduled) return;
+        _logFlushScheduled = true;
+        setTimeout(flushRunLog, LOG_FLUSH_MS);
+    }
+    function enqueueLogNode(div) {
+        div._queued = true;
+        _logQ.push(div);
+        if (_logQ.length > RAW_LOG_MAX_LINES) {
+            // never let a hidden tab hoard: drop the oldest queued lines (they would be trimmed anyway)
+            const dropped = _logQ.splice(0, _logQ.length - RAW_LOG_MAX_LINES);
+            for (let i = 0; i < dropped.length; i++) dropped[i]._queued = false;
+        }
+        scheduleLogFlush();
+    }
+    // Clear paths call this so a pending TX line / queued nodes never land in a fresh box.
+    function resetRunLog() {
+        _logQ = [];
+        _pendTxLine = null;
+    }
+    function rawLine(text, cls) {
+        if (!$('runlogBox')) return;
+        const div = document.createElement('div');
+        if (cls) div.className = 'l-' + cls;
+        div.textContent = text;
+        enqueueLogNode(div);
+    }
     Studio.rawLog = rawLine;
+    Studio.flushRunLog = flushRunLog;
+    Studio.resetRunLog = resetRunLog;
 
     // ---- paired transport trace ------------------------------------------------
     // A command (TX ›, cyan) and its reply (RX ‹, green) share ONE line in two
     // colors — compact, and the direction of flow is obvious. A TX with no reply,
     // or any non-RX line arriving next, flushes cleanly; a lone RX prints on its
     // own line. Only the raw 'log' transport events use this; rawLine stays the
-    // general one-line appender (recorded-run events, bridge, errors).
+    // general one-line appender (recorded-run events, bridge, errors). The pending
+    // TX line may still be queued (not yet in the DOM) when its RX arrives — pairing
+    // appends to the node either way; a cleared/trimmed line is no longer pairable.
     let _pendTxLine = null;
     function logTransport(m) {
-        const box = $('runlogBox');
-        if (!box) return;
+        if (!$('runlogBox')) return;
         const isTx = /(^|\s)›|->|tx/i.test(m);
         const isRx = /(^|\s)‹|<-|rx/i.test(m);
-        // Pair an RX onto the pending TX line (guard against a cleared log box).
-        if (isRx && _pendTxLine && _pendTxLine.parentNode === box) {
+        if (isRx && _pendTxLine && (_pendTxLine._queued || _pendTxLine.isConnected)) {
             const sep = document.createElement('span');
             sep.className = 'l-info';
             sep.textContent = '   ';
@@ -3129,22 +3180,17 @@
             _pendTxLine.appendChild(sep);
             _pendTxLine.appendChild(rx);
             _pendTxLine = null;
-            box.scrollTop = box.scrollHeight;
             return;
         }
         _pendTxLine = null;
         if (isTx) {
-            if (box.firstChild && box.firstChild.classList && box.firstChild.classList.contains('dim')) {
-                box.textContent = '';
-            }
             const div = document.createElement('div');
             const tx = document.createElement('span');
             tx.className = 'l-tx';
             tx.textContent = m;
             div.appendChild(tx);
-            box.appendChild(div);
+            enqueueLogNode(div);
             _pendTxLine = div; // await its reply to pair on the same line
-            box.scrollTop = box.scrollHeight;
             return;
         }
         rawLine(m, isRx ? 'rx' : 'info');
@@ -3152,11 +3198,7 @@
 
     // ---- unified log: recorded-run stream (run-log.js accumulator) ------------
     function renderRunEvent(ev) {
-        const box = $('runlogBox');
-        if (!box || !ev) return;
-        if (box.firstChild && box.firstChild.classList && box.firstChild.classList.contains('dim')) {
-            box.textContent = '';
-        }
+        if (!$('runlogBox') || !ev) return;
         const div = document.createElement('div');
         if (ev.phase === 'error') div.className = 'l-err';
         else if (ev.phase === 'skip') div.className = 'l-warn';
@@ -3168,8 +3210,7 @@
             (ev.op ? ' ' + ev.op : '') +
             (ev.plugin_name ? ' ' + ev.plugin_name + (ev.command_name ? '.' + ev.command_name : '') : '') +
             (ev.reason ? ' (' + ev.reason + ')' : '');
-        box.appendChild(div);
-        box.scrollTop = box.scrollHeight;
+        enqueueLogNode(div);
     }
 
     // The single run-status sink (subscribed once at the session level).
@@ -4908,6 +4949,7 @@
     // ---- log strip controls ---------------------------------------------------
     $('btnLogClear').addEventListener('click', () => {
         const box = $('runlogBox');
+        resetRunLog();
         box.innerHTML = '<span class="dim">cleared</span>';
         $('rlSaved').classList.remove('show');
     });
@@ -8634,7 +8676,8 @@ function startRunLog(isExperiment) {
     if (typeof Studio.prepareRuntimeControls === 'function') {
         Studio.prepareRuntimeControls(runId, isExperiment);
     }
-    // reset the log surface
+    // reset the log surface (drop queued lines + any pending TX line first)
+    if (Studio.resetRunLog) Studio.resetRunLog();
     const box = $('runlogBox');
     box.innerHTML = '';
     $('btnLogSave').disabled = true;

@@ -4,6 +4,14 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.81 (2026-09-15) · Watching the Run log no longer slows the experiment
+
+- **The Run view's Log dock no longer throttles closed loop.** Every command appended two lines to the visible log,
+  each with a forced layout — on the Windows lab PC that cut the closed-loop apply rate from 175 Hz to 51 Hz whenever
+  the dock showed the Log (found by Isabel, 2026-09-15; the Scope and Console views were unaffected because the log box
+  is hidden there). Log lines are now queued and rendered 20 times a second in one batch, with one layout read and one
+  scroll. Nothing changes in what is logged or recorded.
+
 ## v0.80 (2026-09-15) · Slow host no longer fails a recovered controller
 
 - **After a link drop or reset, slow replies from a healthy controller no longer halt the soak.** The post-mortem
