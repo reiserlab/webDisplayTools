@@ -4,6 +4,16 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.80 (2026-09-15) · Slow host no longer fails a recovered controller
+
+- **After a link drop or reset, slow replies from a healthy controller no longer halt the soak.** The post-mortem
+  used to declare `self-reset-failed` / `reset-failed` whenever any post-reconnect probe took longer than 50 ms,
+  even with the controller identity verified and every probe answered ok. On the Windows lab PC (2026-09-15) the
+  host itself added 36–80 ms per round trip, so a perfectly recovered controller was judged dead and the soak
+  stopped. The verdict now asks the controller: if GET_HEALTH's loop-max over the last second is fast, slow replies
+  are host-side latency — recovery stands, the log row carries `hostSlow: true`, and the Console message says so.
+  A controller that is slow by its own account (or an old firmware with no health reading) is judged as before.
+
 ## v0.79 (2026-09-13) · Session rig follows the controller
 
 - **A fresh Studio no longer starts on the wrong arena.** With no explicit rig (no `?rig=`, no user pick) the
