@@ -655,6 +655,19 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   this is the card's own count-triggered maintenance on the physical block holding pattern 41, not H-FAT. The Studio flagged
   every one (trial_quality + 34 display_gap events per run). Logs reviewed offline from the course repo; nothing changed on the rig.
 
+- **2026-09-15 13:52 ET — Isabel's lab-day logs reviewed (`soak-logs.zip`, 20 files, TEST-MAP.md + her three analysis outputs).** Card
+  `SD8GB sn 000014ca FAT32 4 KiB` (course card), sine landed at index 54 (name resolution worked). **A:** 3 iterations, 0 faults /
+  0 resets, 59 pass / 1 flagged (one 20.9 ms sine read, trial 1) — but iteration 2 ran the whole 21 min at ~110 ms host RTT
+  (≈ 9 Hz commands, controller clean). **B:** arm 3 confirmed in force (`FRAGMENTED, LEGACY-SEEK, NO-SKIP`) but only 8.4 k reads in
+  3 × 180 s because the host was in the slow state — no stall, so B is *inconclusive*, not a pass (the bench card needed ≈ 24.5 k
+  reads per cluster). **C:** pass (40 s simulator outage, trial completed, soak resumed). **D:** attempt 1 under arm 3
+  (discarded); attempt 2 `self-reset-failed` although reconnected + MAC verified + all probes status 0 — the 50 ms
+  `degradedDtMs` rule tripped on 36–80 ms host-slow replies; attempt 3 `self-reset` in 3.5 s, probes 0–4 ms, soak continued,
+  D passes. Isabel found two analyzer defects, both confirmed in code: `wedge-scan` counts post-mortem `phase: reset/post-reset`
+  rows as resets (10 per link drop; real 0/0/1); `runlog-check` FAILs by design cases (header fragments without run_metadata,
+  fault files whose post-reset ring dump lands after `trial_quality`, cumulative session drainer counters). Windows benchmark
+  column filled in the lab plan; open host-side finding in its §7.1.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1

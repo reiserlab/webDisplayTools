@@ -127,15 +127,27 @@ numbers must NOT change with the host; the host-side ones may — that differenc
 
 | metric | source | macOS (2026-09-13 night) | Windows lab PC | expect |
 |---|---|---|---|---|
-| host round trip `a`-row dt p50 / p99 | `wedge-scan.py` | 3 / 4–11 ms (29 iterations; one 271 ms browser outlier) | | Windows USB-CDC often +1–3 ms; p99 must stay ≤ 11 ms |
-| request→display `req_age_us` p50 / p99 / max | `telemetry-report.py` | 1.75 / 2.56 / 4.83 ms | | same on both (controller-side) |
-| SD read cost +1 / random (p50, max) | `telemetry-report.py` | 0.62 / 1.39–1.46 ms, max 1.8 (sine / bar) | | same on both |
-| drainer dropped / gaps / notStored | `runlog-check.py` (`drainer:`) | 0 / 0 / 0 (29 iterations) | | 0 / 0 / 0; Chrome background-tab throttling is the usual culprit — keep the Studio tab visible |
-| FicTrac rows per command | `runlog-check.py` (`fictrac_per_cmd`) | 1.32 (includes the 10 s gaps) | | ≈ 1.0–1.3 |
-| commands accepted per iteration | `runlog-check.py` (`a_ok`) | 231–241 k | | within 2 % |
-| trials pass / flagged / unknown | banner / `trial_quality` | 20 / 0 / 0 (one iteration 19 / 1 / 0) | | 20 / 0 / 0 |
+| host round trip `a`-row dt p50 / p99 | `wedge-scan.py` | 3 / 4–11 ms (29 iterations; one 271 ms browser outlier) | 3 / 19–24 ms (test A iterations 1 and 3); **iteration 2 and every 09-15 drill ran at 60–120 ms after the first ~30 s** (host-side, see §7.1) | Windows USB-CDC often +1–3 ms; p99 must stay ≤ 11 ms |
+| request→display `req_age_us` p50 / p99 / max | `telemetry-report.py` | 1.75 / 2.56 / 4.83 ms | 1.62 / 2.56 / 4.83 ms (one 21 ms card read excluded) | same on both (controller-side) |
+| SD read cost +1 / random (p50, max) | `telemetry-report.py` | 0.62 / 1.39–1.46 ms, max 1.8 (sine / bar) | 0.62 / 1.16 ms, max 1.51 (both patterns, 4 KiB-cluster course card sn 000014ca) | same on both |
+| drainer dropped / gaps / notStored | `runlog-check.py` (`drainer:`) | 0 / 0 / 0 (29 iterations) | 0 / 0 / 1 (one not-stored ack on the day's session) | 0 / 0 / 0; Chrome background-tab throttling is the usual culprit — keep the Studio tab visible |
+| FicTrac rows per command | `runlog-check.py` (`fictrac_per_cmd`) | 1.32 (includes the 10 s gaps) | 1.51 (iter 1) / 4.03 (iter 3, includes idle tail); 23 in the slow iteration | ≈ 1.0–1.3 |
+| commands accepted per iteration | `runlog-check.py` (`a_ok`) | 231–241 k | 165 938 / 174 025 (iter 1 / 3) — ≈ 30 % fewer than the Mac: the Windows host coalesces more frames per command | within 2 % |
+| trials pass / flagged / unknown | banner / `trial_quality` | 20 / 0 / 0 (one iteration 19 / 1 / 0) | 59 / 1 / 0 over the 3 iterations (the flag: one 20.9 ms sine read, trial 1 of iteration 1) | 20 / 0 / 0 |
 
-Michael fills the Windows column from the posted outputs — nothing to commit from the lab PC.
+Windows column filled 2026-09-15 13:52 ET from Isabel's `soak-logs.zip` (TEST-MAP.md + the three analysis outputs).
+
+### 7.1 Open host-side finding (Windows lab PC)
+
+In test A iteration 2 and in every 09-15 drill run, the host round trip rose from 3 ms to 60–120 ms within the first
+~30 s of the run and stayed there (command rate ≈ 9 Hz while FicTrac kept 200 Hz; controller-side `req_age` max 4.8 ms
+throughout, so the controller is not involved). It is **not** Chrome background-tab throttling: the telemetry poller kept its
+100 ms cadence in the slow state (a hidden tab would clamp it to 1 s). The poller's period stretched to ~150 ms, which points at
+the page's main thread or the USB path on that PC being busy. Iterations 1 and 3 ran 21 min each at 3 ms. Same slow state made
+the test-D attempt-2 post-mortem declare `self-reset-failed` on 36–80 ms probe replies (identity OK, every probe status 0).
+To characterise on the PC (2 min each): Chrome Task Manager CPU of the Studio tab during a drill; the drill with the Console
+log collapsed; a different USB port / no hub; `pixi run sim` on its own core. Until then, treat RTT numbers from that PC as
+provisional.
 
 ## 8. Optional browser-free path (if the Studio misbehaves on the PC)
 
