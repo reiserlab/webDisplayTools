@@ -87,14 +87,20 @@ const infoFrame = (mac, cap) => ok(0xc2, [2, cap == null ? 0xa3 : cap].concat(ma
 const u32 = (v) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
 function healthFrame(fields) {
     const f = Object.assign(
-        { prevBreadcrumb: 0, prevSlowOp: 1, prevSlowUs: 1300000, resetCause: 0x00000800 },
+        {
+            prevBreadcrumb: 0,
+            prevSlowOp: 1,
+            prevSlowUs: 1300000,
+            resetCause: 0x00000800,
+            loopMax1sUs: 300
+        },
         fields || {}
     );
     const p = [1, 0x03].concat(
         u32(1000),
         u32(500),
         u32(4000),
-        u32(300),
+        u32(f.loopMax1sUs),
         u32(10),
         u32(2000),
         [0],
@@ -128,7 +134,9 @@ function healthyModel() {
         }
     };
 }
-// Wedged controller: every reply slow (300 ms) or, when `dead`, timing out.
+// Wedged controller: every reply slow (300 ms) or, when `dead`, timing out. Its own
+// health reading says so too (loop_max_1s 300 ms) — that is what distinguishes it from a
+// slow HOST talking to a healthy controller (hostSlowModel below).
 function wedgedModel(opts) {
     opts = opts || {};
     const m = {
@@ -136,11 +144,37 @@ function wedgedModel(opts) {
         reply(cmd) {
             if (!m.wedged) return healthyModel().reply(cmd);
             if (opts.dead) return 'timeout';
+            if (cmd === 0xca) {
+                return {
+                    frame: healthFrame({ loopMax1sUs: (opts.slowMs || 300) * 1000 }),
+                    dt: opts.slowMs || 300
+                };
+            }
             const h = healthyModel().reply(cmd);
             return { frame: h.frame, dt: opts.slowMs || 300 };
         },
         afterReset() {
             if (!opts.stayWedged) m.wedged = false;
+        }
+    };
+    return m;
+}
+
+// Slow HOST, healthy controller: the link is up but every round trip takes `slowMs`
+// (Windows lab PC, 2026-09-15). The controller's health says its loop is fast. A link
+// drop on such a host must still be judged "recovered" after reconnect.
+function hostSlowModel(opts) {
+    opts = opts || {};
+    const slow = opts.slowMs || 70;
+    const m = {
+        wedged: true,
+        dropAfter: opts.dropAfter, // reconnect() flips wedged=false → link-drop path
+        reply(cmd) {
+            const h = healthyModel().reply(cmd);
+            return { frame: h.frame, dt: slow };
+        },
+        afterReset() {
+            m.wedged = false;
         }
     };
     return m;
@@ -457,6 +491,50 @@ function wedgedModel(opts) {
         const res = await pm.run({ policy: 'reset-continue' });
         check('outcome operator-stop', res.outcome, 'operator-stop');
         checkBool('no reset after operator stop', !t.sent.some((s) => s.cmd === 0x01));
+    }
+
+    console.log(
+        '\n=== slow HOST, healthy controller: reset-continue → recovered despite 70 ms replies ==='
+    );
+    {
+        const t = makeSession(hostSlowModel({ slowMs: 70 }));
+        const said = [];
+        const pm = PM.createPostmortem(
+            Object.assign({}, t.deps, {
+                log: function () {
+                    said.push(Array.prototype.slice.call(arguments).join(' '));
+                },
+                opts: { probeWindowMs: 1000, probeEveryMs: 500 }
+            })
+        );
+        const res = await pm.run({ policy: 'reset-continue' });
+        check('outcome recovered', res.outcome, 'recovered');
+        check('summary degraded (replies > 50 ms)', res.reset.postSummary.degraded, true);
+        check(
+            'controller not slow by its own account',
+            res.reset.postSummary.controllerSlow,
+            false
+        );
+        const end = t.rows.find((r) => r.phase === 'end');
+        check('end row flags hostSlow', end && end.hostSlow, true);
+        checkBool(
+            'operator message names host-side latency',
+            said.some((m) => /host-side latency/.test(m))
+        );
+    }
+
+    console.log('\n=== slow host but NO health reading (old firmware) → still reset-failed ===');
+    {
+        const m = hostSlowModel({ slowMs: 70 });
+        m.reply = ((base) => (cmd) =>
+            cmd === 0xc2 ? { frame: infoFrame(macA, 0x23), dt: 70 } : base(cmd))(m.reply);
+        const t = makeSession(m);
+        const pm = PM.createPostmortem(
+            Object.assign({}, t.deps, { opts: { probeWindowMs: 500, probeEveryMs: 500 } })
+        );
+        const res = await pm.run({ policy: 'reset-continue' });
+        check('controllerSlow unknown', res.reset.postSummary.controllerSlow, null);
+        check('outcome reset-failed', res.outcome, 'reset-failed');
     }
 
     console.log('\n=== probe set skips capability-gated health on old firmware ===');
