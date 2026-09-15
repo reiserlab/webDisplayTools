@@ -668,6 +668,14 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   fault files whose post-reset ring dump lands after `trial_quality`, cumulative session drainer counters). Windows benchmark
   column filled in the lab plan; open host-side finding in its §7.1.
 
+- **2026-09-15 17:04 ET — Windows "slow host" explained and fixed.** Isabel (16:25 ET): the slowdown is watching the Run log during
+  a run (dock on Log); Scope/Console are fast; the arena visibly chugs. Root cause in `arena_studio.html`: each transport
+  line appended to the visible log with a forced layout before and after (≈ 400 layouts/s at 200 Hz); the Scope hides the
+  box so the same reads cost nothing. Measured on the Mac bench, dock on Log, 8000 lines: v0.79 18.5 s (2.3 ms/line) →
+  v0.81 5 ms to queue + 10 ms to flush (PR #205, stacked on the analyzer fixes #204). Post-mortem recovery rule fixed in
+  the same PR (host latency no longer vetoes a healthy controller). Isabel re-ran test B watching the Scope (16:44 ET,
+  three files posted in #panels) — to be reviewed once downloaded.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1

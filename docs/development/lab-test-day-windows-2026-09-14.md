@@ -137,7 +137,14 @@ numbers must NOT change with the host; the host-side ones may — that differenc
 
 Windows column filled 2026-09-15 13:52 ET from Isabel's `soak-logs.zip` (TEST-MAP.md + the three analysis outputs).
 
-### 7.1 Open host-side finding (Windows lab PC)
+### 7.1 Host-side finding (Windows lab PC) — RESOLVED 2026-09-15 17:04 ET
+
+**Cause (found by Isabel, 16:25 ET):** the slow state happened only with the Run view's bottom dock on **Log**. Every
+command appended two transport lines to the visible log, each with a forced layout — 400+ layouts/s; the apply rate
+fell from 175 Hz (dock on Scope) to 51 Hz (dock on Log), visible as the arena "chugging". The Scope is the default,
+which is why no earlier run (hers or the Mac bench) showed it. Fix: Studio v0.81 batches the log rendering
+(webDisplayTools PR #205); measured on the Mac: 2.3 ms per line → 5 ms per 8000 lines. Until it is merged: keep the
+dock on Scope during a run. The original write-up follows for the record.
 
 In test A iteration 2 and in every 09-15 drill run, the host round trip rose from 3 ms to 60–120 ms within the first
 ~30 s of the run and stayed there (command rate ≈ 9 Hz while FicTrac kept 200 Hz; controller-side `req_age` max 4.8 ms
