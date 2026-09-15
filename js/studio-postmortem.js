@@ -27,7 +27,12 @@
         resetTimeoutMs: 3000,
         resetSettleMs: 3000, // SYSRESETREQ → re-enumeration
         reconnectTimeoutMs: 15000,
-        degradedDtMs: 50 // a reply slower than this counts as "degraded" in summaries
+        degradedDtMs: 50, // a reply slower than this counts as "degraded" in summaries
+        // GET_HEALTH loop_max_1s above this = the CONTROLLER itself is slow. Slow replies with a
+        // fast controller loop are host-side latency (USB/browser) and must not veto recovery —
+        // lab day 2026-09-15: every post-reset probe answered status 0 in 36–80 ms on a slow
+        // Windows host, identity verified, and the soak halted with self-reset-failed.
+        controllerBusyUs: 50000
     };
 
     const hex = (u8) =>
@@ -183,6 +188,15 @@
             const max = dts.length ? Math.max.apply(null, dts) : null;
             const sdDts = answered.filter((r) => r.sd).map((r) => r.dt);
             const ramDts = answered.filter((r) => !r.sd).map((r) => r.dt);
+            // The controller's own word on whether IT is slow: loop_max_1s from the health probe.
+            // null when no decoded health (old firmware / probe skipped) → unknown.
+            const health = results.find((r) => r.name === 'health' && r.decoded);
+            const loopMax1sUs =
+                health && Number.isFinite(health.decoded.loopMax1sUs)
+                    ? health.decoded.loopMax1sUs
+                    : null;
+            const controllerSlow =
+                loopMax1sUs === null ? null : loopMax1sUs > opts.controllerBusyUs;
             const med = (a) => {
                 if (!a.length) return null;
                 const s = a.slice().sort((x, y) => x - y);
@@ -199,6 +213,8 @@
                 medianDtSd: med(sdDts),
                 medianDtRam: med(ramDts),
                 degraded: max !== null && max > opts.degradedDtMs,
+                controllerLoopMax1sUs: loopMax1sUs,
+                controllerSlow,
                 unresponsive: answered.length === 0 && results.some((r) => !r.skipped)
             };
         }
@@ -403,6 +419,39 @@
         }
 
         /**
+         * "Recovered" = reconnected to the SAME controller, every required probe answered ok,
+         * no timeouts / errors, and the controller is not slow BY ITS OWN ACCOUNT. Slow replies
+         * (summary.degraded) veto recovery only when the health probe says the controller loop
+         * is slow too, or when there is no health reading to tell host latency from a wedge.
+         */
+        function isRecovered(reset) {
+            const ps = reset && reset.postSummary;
+            if (!ps) return false;
+            const hostSideOnly = ps.degraded && ps.controllerSlow === false;
+            return !!(
+                reset.reconnected &&
+                reset.identityOk &&
+                (!ps.degraded || hostSideOnly) &&
+                ps.answered > 0 &&
+                ps.timeouts === 0 &&
+                ps.failedRequired === 0 &&
+                ps.errors === 0
+            );
+        }
+
+        function slowNote(reset) {
+            const ps = reset && reset.postSummary;
+            if (!ps || !ps.degraded) return '';
+            return (
+                ' — replies slow (max ' +
+                ps.maxDt +
+                ' ms) but the controller loop is fast (loop max ' +
+                ps.controllerLoopMax1sUs +
+                ' µs): host-side latency'
+            );
+        }
+
+        /**
          * The whole lifecycle after a declared fault.
          * @param {object} a {policy: 'halt'|'reset-continue', expectMac?, windowMs?, faultDetail?}
          * @returns {Promise<object>} {confirmed, window, reset?, outcome}
@@ -413,23 +462,21 @@
                 skipReset: true
             });
             const ps = reset.postSummary;
-            const recovered = !!(
-                reset.reconnected &&
-                reset.identityOk &&
-                ps &&
-                !ps.degraded &&
-                ps.answered > 0 &&
-                ps.timeouts === 0 &&
-                ps.failedRequired === 0 &&
-                ps.errors === 0
-            );
+            const recovered = isRecovered(reset);
             const outcome = recovered ? 'self-reset' : 'self-reset-failed';
-            record({ phase: 'end', outcome, policy, selfReset: true });
+            record({
+                phase: 'end',
+                outcome,
+                policy,
+                selfReset: true,
+                hostSlow: !!(recovered && ps && ps.degraded)
+            });
             say(
                 recovered
                     ? 'controller came back after resetting itself (prev breadcrumb: ' +
                           (reset.prevBreadcrumb || '?') +
-                          ')'
+                          ')' +
+                          slowNote(reset)
                     : 'controller reset itself but did NOT come back healthy — halting',
                 recovered ? 'warn' : 'err'
             );
@@ -487,26 +534,22 @@
                 return { confirmed: true, window: win, outcome: 'halted' };
             }
             const reset = await resetAndReconnect({ expectMac: a.expectMac || c.mac });
-            // "Recovered" = every REQUIRED probe answered ok and fast. Timeouts and
-            // failed required probes disqualify; optional SD-image refusals
-            // (0xE3 status 1 on a card without a panel image) do not.
+            // "Recovered": see isRecovered(). Optional SD-image refusals (0xE3 status 1 on a
+            // card without a panel image) do not disqualify.
             const ps = reset.postSummary;
-            const recovered = !!(
-                reset.reconnected &&
-                reset.identityOk &&
-                ps &&
-                !ps.degraded &&
-                ps.answered > 0 &&
-                ps.timeouts === 0 &&
-                ps.failedRequired === 0 &&
-                ps.errors === 0
-            );
-            record({ phase: 'end', outcome: recovered ? 'recovered' : 'reset-failed', policy });
+            const recovered = isRecovered(reset);
+            record({
+                phase: 'end',
+                outcome: recovered ? 'recovered' : 'reset-failed',
+                policy,
+                hostSlow: !!(recovered && ps && ps.degraded)
+            });
             say(
                 recovered
                     ? 'controller recovered after SYSTEM_RESET (prev breadcrumb: ' +
                           (reset.prevBreadcrumb || '?') +
-                          ')'
+                          ')' +
+                          slowNote(reset)
                     : 'controller did NOT recover after SYSTEM_RESET — halting',
                 recovered ? 'warn' : 'err'
             );
