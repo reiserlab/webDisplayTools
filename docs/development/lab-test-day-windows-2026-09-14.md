@@ -147,7 +147,11 @@ the page's main thread or the USB path on that PC being busy. Iterations 1 and 3
 the test-D attempt-2 post-mortem declare `self-reset-failed` on 36–80 ms probe replies (identity OK, every probe status 0).
 To characterise on the PC (2 min each): Chrome Task Manager CPU of the Studio tab during a drill; the drill with the Console
 log collapsed; a different USB port / no hub; `pixi run sim` on its own core. Until then, treat RTT numbers from that PC as
-provisional.
+provisional. **Baseline from the same PC (checked 2026-09-15):** six of Isabel's own closed-loop runs in
+`isabel-hess/fly-behavior` (2026-08-11 → 09-11, Studio v0.70/v0.71, previous firmware, 5–10 min each, real FicTrac,
+14–17 k commands per minute) ran at 2–3 ms host RTT in every minute, max 107 ms, zero slow minutes. The slow state is new
+this week — it arrived with Studio v0.79 + the telemetry poller/drainer/trial-quality machinery + the soak driver on that PC,
+or with something that changed on the PC at the same time (DevTools open for `setSdDiag`, the new pixi/PlatformIO install).
 
 ## 8. Optional browser-free path (if the Studio misbehaves on the PC)
 
