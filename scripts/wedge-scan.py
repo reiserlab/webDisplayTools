@@ -487,13 +487,14 @@ class RunScan:
             return
         if ev == "runner":
             self._runner(obj, lineno)
-        # reset detection on structured fields only (never free-text notes);
-        # RESET_FRAMES_SENT / resetFramesSent is a counter clear, not a reboot.
-        for k in ("event", "phase", "op", "command", "cmd"):
-            v = obj.get(k)
-            if isinstance(v, str) and "reset" in v.lower() and "frames" not in v.lower():
-                self.resets += 1
-                break
+        # Reset evidence, structured only. A SYSTEM_RESET (0x01) arena row is counted in
+        # _arena(); here we count the post-mortem's verdict that the controller rebooted
+        # itself (`probe end` with outcome self-reset — the hardware-watchdog / re-enumeration
+        # path). The old substring rule ("reset" anywhere in event/phase/op) counted the
+        # post-mortem's OWN probe rows (phase "reset", "post-reset-first", "post-reset" ×7 =
+        # 10 per link drop, lab day 2026-09-15) — never match on phase/op text again.
+        if ev in RESET_EVENTS or (ev == "probe" and obj.get("phase") == "end" and obj.get("outcome") == "self-reset"):
+            self.resets += 1
 
     def _runner(self, obj: dict, lineno: int) -> None:
         phase = obj.get("phase")
@@ -688,6 +689,9 @@ class RunScan:
         }
 
 
+# Structured event names that mean "the controller was reset" (nothing text-matched).
+RESET_EVENTS = frozenset({"reset", "controller_reset", "system_reset"})
+
 # ── Studio .runlog.json envelope ─────────────────────────────────────────────
 def scan_runlog_json(path: str, doc: dict) -> dict:
     """Report a Studio run-log envelope (runner events only, no command rows)."""
@@ -704,11 +708,11 @@ def scan_runlog_json(path: str, doc: dict) -> dict:
         if ev.get("phase") == "error" or "timeout" in text.lower():
             if len(errors) < 5:
                 errors.append(f"ev{i} t+{ev.get('t_offset_s')}s: {text or ev.get('phase')}")
-        for k in ("phase", "op", "command"):
-            v = ev.get(k)
-            if isinstance(v, str) and "reset" in v.lower():
-                resets += 1
-                break
+        # same structured rule as the stream scanner: an explicit reset event, or a
+        # SYSTEM_RESET command echo; never the post-mortem's probe phases
+        if ev.get("event") in RESET_EVENTS or ev.get("op") == "SYSTEM_RESET" or ev.get("command") == "SYSTEM_RESET" \
+                or (ev.get("event") == "probe" and ev.get("phase") == "end" and ev.get("outcome") == "self-reset"):
+            resets += 1
     timeout_errors = [e for e in errors if "timeout" in e.lower()]
     flags = ["runlog.json: no per-command rows"]
     if summary.get("outcome"):

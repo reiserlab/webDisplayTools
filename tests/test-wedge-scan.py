@@ -348,6 +348,29 @@ with tempfile.TemporaryDirectory() as d:
     check("SYSTEM_RESET does not count as 0x70", r["cmd70_total"], 4)
     check("non-zero status counted + attributed", (r["nonzero_status"], r["nonzero_by_op"]), (1, {"GET_FIRMWARE_INFO (0xE3)": 1}))
 
+    # (h) post-mortem probe rows are NOT resets (lab day 2026-09-15: 10 fake resets per link drop) ──
+    print("=== (h) post-mortem probe phases do not count as resets; the self-reset verdict counts once ===")
+    def probe(phase, extra=None, t=1500):
+        d = {"type": "log", "event": "probe", "phase": phase, "dir": "browser\u2192bridge", "rx_ms": T0 + t}
+        d.update(extra or {})
+        return d
+    lines = header("behavior_v2")
+    lines.append(arena("behavior_v2", 0, 3, hex70(5), 0))
+    lines += [probe("begin", {"policy": "halt"}), probe("quiet"), probe("reset", {"name": "self_reset"}),
+              probe("confirm", {"name": "controller_info", "dt": 50}), probe("post-reset-first", {"name": "health", "dt": 42})]
+    lines += [probe("post-reset", {"name": n, "dt": 40}) for n in ("controller_info", "frames_sent", "frame_position", "health", "firmware_version", "pattern_info_1", "firmware_info")]
+    lines.append(probe("reset", {"name": "reconnect", "reconnected": True}))
+    lines.append(probe("end", {"outcome": "self-reset-failed"}))
+    lines += terminal(3000, phase="aborted")
+    r = scan(write_ndjson(p("pm_failed.jsonl"), lines))
+    check("self-reset-failed: 0 resets", r["resets"], 0)
+    lines[-3] = probe("end", {"outcome": "self-reset"})
+    r = scan(write_ndjson(p("pm_ok.jsonl"), lines))
+    check("self-reset: exactly 1 reset", r["resets"], 1)
+    lines.append({"type": "log", "event": "runner", "phase": "resetFramesSent", "rx_ms": T0 + 3500})
+    r = scan(write_ndjson(p("pm_ok2.jsonl"), lines))
+    check("counter-clear phase still not a reset", r["resets"], 1)
+
     # (h) helpers ─────────────────────────────────────────────────────────
     print("=== (h) helpers ===")
     check("opcode_name 0x70", ws.opcode_name(0x70), "SET_FRAME_POSITION (0x70)")
@@ -378,7 +401,7 @@ with tempfile.TemporaryDirectory() as d:
     out = subprocess.run([sys.executable, SCRIPT, "--json", d], capture_output=True, text=True)
     check("exit code 0", out.returncode, 0)
     rows = json.loads(out.stdout)
-    check("one row per file in dir", len(rows), 13)
+    check("one row per file in dir", len(rows), 16)  # 13 + the three (h) post-mortem files
     check("no _context key without --verbose", any("_context" in r for r in rows), False)
     by = {r["file"]: r["outcome"] for r in rows}
     check("dir scan classifies wedge", by["wedge.jsonl"], "wedge")
