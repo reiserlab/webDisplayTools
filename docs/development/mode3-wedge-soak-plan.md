@@ -676,6 +676,16 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   the same PR (host latency no longer vetoes a healthy controller). Isabel re-ran test B watching the Scope (16:44 ET,
   three files posted in #panels) — to be reviewed once downloaded.
 
+- **2026-09-16 09:18 ET — Isabel's 16:16–16:44 files reviewed (zip; the individual Slack downloads arrived as zero-byte placeholders).**
+  `161609-170`: 2 ms RTT for 50 s, then 72–102 ms the moment the dock went Console → Run>Log — the Log-dock cause, confirmed
+  in the log itself. `162033-164` (Scope, telemetry off): 2 ms and ≈ 200 Hz for the whole 3 min. **Test B rerun `163915-240`
+  (Scope, arm 3):** 200 Hz for the full 180 s, RTT 3/4 ms; layout `FRAGMENTED, LEGACY-SEEK, NO-SKIP`, reads/cmd 1.0,
+  35 833 legacy-path reads (44 k with the morning's runs), per-read cost +2 % median / max 2.87 ms (the chain walk), **0 stalls
+  > 10 ms, verdict pass**. This course card (sn 000014ca) does not reproduce the FAT stall at the bench card's rate (1 per
+  ≈ 24.5 k reads): card-to-card variation, consistent with rig03's card stalling on the data region instead. B recorded as
+  "arm verified, card does not reproduce"; the flagging path stands on rig03 (6 flags) and the bench drills. Third
+  runlog-check false alarm found on this file (idle telemetry after the verdict) → fixed on PR #204.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
