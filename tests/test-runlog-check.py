@@ -89,12 +89,18 @@ with tempfile.TemporaryDirectory() as d:
     check("unknown not a problem", any("unknown" in p for p in res[0]["problems"]), False)
     check("ordering noted", "note_order" in res[0], True)
 
-    print("=== same fault file WITHOUT a fault marker → ordering IS a problem ===")
+    print("=== same file WITHOUT a fault marker: a FRAME after the verdict IS a problem; idle cc rows are not ===")
     rows2 = [r for r in rows if not (isinstance(r, dict) and r.get("event") == "probe")]
     rows2[-1] = iter_end(2000, 0, 0)
     nofault = write(d, "arena-log-nofault.jsonl", rows2)
     rc, res = run([nofault])
-    check("ordering flagged", any("BEFORE the last controller row" in p for p in res[0]["problems"]), True)
+    check("idle cc rows after the verdict → note, not a problem", any("BEFORE the last" in p for p in res[0]["problems"]), False)
+    check("idle tail noted", "note_order" in res[0], True)
+    rows3 = list(rows2)
+    rows3.insert(len(rows3) - 1, ["cf", T0 + 5000, 5000000, 999, 7, 36, 620, 776, 1200, 0, 1])
+    lostframe = write(d, "arena-log-lostframe.jsonl", rows3)
+    rc, res = run([lostframe])
+    check("FRAME after the verdict → flagged", any("BEFORE the last FRAME row" in p for p in res[0]["problems"]), True)
 
     print("=== drainer counters are session-cumulative → per-file deltas ===")
     f1 = write(d, "arena-log-s1.jsonl", normal("s1", records=1000, gaps=1, errors=2))

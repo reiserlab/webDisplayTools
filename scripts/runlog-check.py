@@ -27,7 +27,7 @@ def read(path):
 
 def check_file(path):
     c = {"file": path, "problems": []}
-    meta = schema = tq = None; tq_line = 0; last_ctl_line = 0
+    meta = schema = tq = None; tq_line = 0; last_ctl_line = 0; last_cf_line = 0
     cc70 = a_ok = fictrac = malformed = 0
     trials_planned = 0; iter_end = None; gaps = []; trial_secs = 0.0
     fault = None  # set when the file holds a controller-fault run (post-mortem rows / fault outcome)
@@ -43,6 +43,7 @@ def check_file(path):
                 if o[4] == 0 and isinstance(o[3], str) and o[3].replace(" ", "").lower().startswith("0370"): a_ok += 1  # Studio "0370…", harness "03 70 …"
             elif k in ("cc", "cf", "cs"):
                 last_ctl_line = n
+                if k == "cf": last_cf_line = n  # a displayed FRAME belongs to a trial; idle polling never produces one
                 if k == "cc" and len(o) > 5 and o[4] == 0x70 and o[5] == 0: cc70 += 1
             continue
         ev = o.get("event") or o.get("type")
@@ -81,8 +82,13 @@ def check_file(path):
             if fault:
                 # by design: the post-mortem's post-reset ring dump lands after the verdict of a fault run
                 c["note_order"] = f"trial_quality at line {tq_line}, controller rows continue to {last_ctl_line} (post-mortem ring dump — expected for a fault run)"
+            elif last_cf_line > tq_line:
+                # a FRAME row after the verdict = a trial's tail was finalized away (the v0.78 export-ordering bug)
+                p.append(f"trial_quality at line {tq_line} BEFORE the last FRAME row at {last_cf_line} (trial tail lost to the export)")
             else:
-                p.append(f"trial_quality at line {tq_line} BEFORE the last controller row at {last_ctl_line} (tail lost to the export)")
+                # only cc/cs rows after the verdict: the bridge stayed open and kept logging the idle controller's
+                # telemetry (poller commands, state changes) after the run — benign
+                c["note_order"] = f"trial_quality at line {tq_line}; idle telemetry rows continue to {last_ctl_line} (bridge left open after the run)"
         counts = tq.get("counts") or {}
         c["verdicts"] = counts
         if counts.get("unknown"):
