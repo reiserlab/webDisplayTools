@@ -1,5 +1,12 @@
 # SD card comparison — quick, browser-free, minimal hands (2026-09-14)
 
+> **Status 2026-09-16 09:28 ET: ON HOLD (Michael).** No explicit card test now. The flagged-trial rate is monitored through ongoing
+> experiments instead — every run log carries the per-trial verdict, the stall signature and the card identity, so the
+> data accumulate for free (rig03 today: 6 flags in 638 trials, one pattern's block; Isabel's card: none). Revisit after a
+> few weeks of data and design the test then; the two candidate cards (SanDisk Endurance, Gigastone MLC) stay in the drawer.
+> What to watch meanwhile: `runlog-check` verdicts per rig, `telemetry-report` "Card stalls" per pattern, and whether
+> re-uploading pattern 41 on rig03 moved or removed its stalls.
+
 **Goal.** Put a number on two candidate cards against the course card (the baseline) with the production firmware
 (`781efe2` / PR #56) in under an afternoon, with Michael's hands needed only to swap cards. Not a qualification (see the
 archived causal-test plan §I.3 for what that would take); a screen with the same build, patterns, host and harness on all

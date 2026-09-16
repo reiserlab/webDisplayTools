@@ -686,6 +686,10 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   "arm verified, card does not reproduce"; the flagging path stands on rig03 (6 flags) and the bench drills. Third
   runlog-check false alarm found on this file (idle telemetry after the verdict) → fixed on PR #204.
 
+- **2026-09-16 09:28 ET — SD card comparison ON HOLD (Michael).** Monitor the flagged-trial rate through ongoing experiments (every log has
+  the verdict, stall signature and card identity), collect a few weeks of data, then design the test. Candidate cards stay
+  unused. Watch: rig03 after pattern 41 is re-uploaded. Studio v0.81 live on Pages; web #201/#197 closed; fw #56 with Frank.
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
