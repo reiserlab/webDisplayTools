@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.81 | 2026-09-15 16:59 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.82 | 2026-09-17 12:38 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -14094,14 +14094,11 @@ async function initFromUrl() {
             }
         }
 
-        // Write a whole led_activation object at cmdPath (one undo step). The
-        // object is small machine config, so rewriting it wholesale — rather
-        // than deep docSet into on_ranges[i] — is simpler and robust (docSet /
-        // setIn serialize a plain object/array into the CST + mirror the model).
-        function setLedActivation(cmdPath, obj) {
+        // One undo step around a doc edit inside a led_activation object.
+        function ledDocEdit(fn) {
             if (!pushUndo()) return;
             try {
-                docSet(experiment, [...cmdPath, 'led_activation'], obj);
+                fn();
                 commitInspectorEdit();
             } catch (err) {
                 showError('LED activation edit failed', err.message);
@@ -14112,73 +14109,94 @@ async function initFromUrl() {
         // hysteresis, and a list of [start,end] ON ranges (add/remove rows),
         // plus a ✕ to drop the whole activation. Only meaningful in Mode 3
         // (host-visible live index) — a hint shows when the trial isn't Mode 3.
+        //
+        // Every scalar is edited BY PATH through renderEditableField (the same
+        // renderer as the card's top-level fields), so each one carries the 🔗
+        // anchor button and an alias chip when bound. Ranges are appended /
+        // removed in place (docSet at the next index / docDelete of one index).
+        // Never rewrite the whole object: that flattens every `*alias` inside
+        // it to its resolved number (v0.81 and earlier did exactly that).
         function renderLedActivation(cmd, cmdPath) {
             const la = cmd.led_activation || {};
+            const laPath = [...cmdPath, 'led_activation'];
             const box = el('div', { class: 'led-act-box', style: 'border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin:4px 0;background:rgba(0,230,118,0.04)' });
             const head = el('div', { class: 'kv-line', style: 'display:flex;align-items:center;gap:6px' },
                 el('span', { class: 'k', style: 'color:var(--accent)' }, 'LED activation'));
             head.appendChild(el('button', {
                 class: 'param-x-btn',
                 title: 'Remove LED activation entirely (Ctrl+Z to undo)',
-                onClick: (e) => { e.stopPropagation(); onDeleteControllerParam([...cmdPath, 'led_activation']); }
+                onClick: (e) => { e.stopPropagation(); onDeleteControllerParam(laPath); }
             }, '✕'));
             box.appendChild(head);
             if (Number(cmd.mode) !== 3) {
                 box.appendChild(el('div', { class: 'dim', style: 'font-size:0.82em;color:var(--warn)' },
                     '⚠ only runs in Mode 3 (FicTrac closed loop) — this trial is Mode ' + (cmd.mode != null ? cmd.mode : '?')));
             }
-            // A numeric sub-field editor that rewrites the whole object on change.
-            const numRow = (label, key, opts) => {
-                const inp = el('input', {
-                    type: 'number', class: 'field-edit', style: 'width:70px',
-                    value: la[key] != null ? la[key] : '',
-                    title: opts && opts.title ? opts.title : label
-                });
-                if (opts && opts.min != null) inp.min = opts.min;
-                if (opts && opts.max != null) inp.max = opts.max;
-                if (opts && opts.step != null) inp.step = opts.step;
-                inp.addEventListener('change', () => {
-                    const next = { ...la, on_ranges: (la.on_ranges || []).map((r) => r.slice()) };
-                    next[key] = inp.value === '' ? 0 : Number(inp.value);
-                    setLedActivation(cmdPath, next);
-                });
-                return el('label', { class: 'kv-line', style: 'display:flex;gap:6px;align-items:center' },
-                    el('span', { class: 'k' }, label), inp);
-            };
-            box.appendChild(numRow('level (%)', 'level', { min: 0, max: 100, step: 0.1, title: 'LED brightness % while active (BuckPuck curve)' }));
-            box.appendChild(numRow('hysteresis', 'hysteresis', { min: 0, step: 1, title: 'Frames past a band edge before the LED turns OFF (0 = none) — prevents chatter at a boundary' }));
+            // The whole object bound to one anchor (`led_activation: *cfg`): the
+            // sub-fields live on the anchor, so show the chip + 🔗 (unbind copies
+            // the resolved object in as literals) instead of per-field editors.
+            if (aliasNameAt(experiment, laPath)) {
+                box.appendChild(renderEditableField('bound', laPath, la, 'string'));
+                return box;
+            }
 
-            // on_ranges: one row per [start,end] pair, each with a ✕; + range adds one.
+            const sch = getV3CommandParams(experiment, 'controller', null, cmd.command_name);
+            const fields = (sch && sch.led_activation && sch.led_activation.fields) || {};
+            const levelSchema = fields.level || { type: 'number', min: 0, max: 100, label: 'LED level (%)' };
+            const hystSchema = fields.hysteresis || { type: 'number', min: 0, integer: true, label: 'Hysteresis (frames, 0 = none)' };
+            // A missing key runs as 0 (arena-runner-g6 normalizeLedActivation), so
+            // that is what the field shows; typing a value creates the key.
+            box.appendChild(renderEditableField('level (%)', [...laPath, 'level'],
+                la.level != null ? la.level : 0, levelSchema));
+            box.appendChild(renderEditableField('hysteresis', [...laPath, 'hysteresis'],
+                la.hysteresis != null ? la.hysteresis : 0, hystSchema));
+
+            // on_ranges: one row per [start,end] pair (each endpoint bindable), a ✕
+            // per row that deletes just that index; + range appends [0, 0].
             const ranges = Array.isArray(la.on_ranges) ? la.on_ranges : [];
+            const rangesPath = [...laPath, 'on_ranges'];
+            const endpointSchema = { type: 'number', min: 0, integer: true, label: 'Frame index (0-based, inclusive)' };
             const rangesWrap = el('div', { style: 'margin-top:2px' });
             rangesWrap.appendChild(el('div', { class: 'k', style: 'font-size:0.85em' },
                 'on ranges (0-based frame index, inclusive):'));
-            const commitRanges = (newRanges) => {
-                setLedActivation(cmdPath, { ...la, on_ranges: newRanges });
+            const compact = (fieldRow) => {
+                fieldRow.style.flex = '0 0 auto';
+                const k = fieldRow.querySelector('.k');
+                if (k) k.style.minWidth = '0';
+                return fieldRow;
             };
             ranges.forEach((pair, i) => {
-                const a = el('input', { type: 'number', class: 'field-edit', style: 'width:64px', min: 0, value: pair[0] });
-                const b = el('input', { type: 'number', class: 'field-edit', style: 'width:64px', min: 0, value: pair[1] });
-                const onEdit = () => {
-                    const copy = ranges.map((r) => r.slice());
-                    copy[i] = [a.value === '' ? 0 : Number(a.value), b.value === '' ? 0 : Number(b.value)];
-                    commitRanges(copy);
-                };
-                a.addEventListener('change', onEdit);
-                b.addEventListener('change', onEdit);
-                const row = el('div', { class: 'kv-line', style: 'display:flex;gap:4px;align-items:center' },
-                    a, el('span', { class: 'dim' }, '–'), b);
+                const row = el('div', { class: 'led-range-row', style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap' });
+                if (aliasNameAt(experiment, [...rangesPath, i])) {
+                    // Whole pair bound to a list anchor (`- *band`): chip + 🔗 only.
+                    row.appendChild(compact(renderEditableField('range', [...rangesPath, i], pair, 'string')));
+                } else {
+                    const p = Array.isArray(pair) ? pair : [0, 0];
+                    row.appendChild(compact(renderEditableField('from', [...rangesPath, i, 0],
+                        p[0] != null ? p[0] : 0, endpointSchema)));
+                    row.appendChild(compact(renderEditableField('to', [...rangesPath, i, 1],
+                        p[1] != null ? p[1] : 0, endpointSchema)));
+                }
                 row.appendChild(el('button', {
                     class: 'param-x-btn',
-                    title: 'Remove this range',
-                    onClick: (e) => { e.stopPropagation(); commitRanges(ranges.filter((_, j) => j !== i).map((r) => r.slice())); }
+                    title: 'Remove this range (Ctrl+Z to undo)',
+                    onClick: (e) => {
+                        e.stopPropagation();
+                        ledDocEdit(() => docDelete(experiment, [...rangesPath, i]));
+                    }
                 }, '✕'));
                 rangesWrap.appendChild(row);
             });
             rangesWrap.appendChild(el('button', {
                 class: 'pill', style: 'font-size:0.8em;margin-top:2px',
-                title: 'Add an ON range',
-                onClick: (e) => { e.stopPropagation(); commitRanges([...ranges.map((r) => r.slice()), [0, 0]]); }
+                title: 'Add an ON range (start 0, end 0 — edit the endpoints or bind them to anchors)',
+                onClick: (e) => {
+                    e.stopPropagation();
+                    ledDocEdit(() => {
+                        if (Array.isArray(la.on_ranges)) docSet(experiment, [...rangesPath, ranges.length], [0, 0]);
+                        else docSet(experiment, rangesPath, [[0, 0]]);
+                    });
+                }
             }, '+ range'));
             box.appendChild(rangesWrap);
             return box;

@@ -837,8 +837,25 @@ function docSet(experiment, path, value) {
     if (!Array.isArray(path) || path.length === 0) {
         throw new V3ParseError('docSet: path must be a non-empty array', 'BAD_PATH');
     }
-    experiment._doc.setIn(path, value);
+    experiment._doc.setIn(path, _toDocValue(experiment._doc, value));
     mirrorIntoModel(experiment, path, value);
+}
+
+/**
+ * Plain objects/arrays must enter the CST as real YAML nodes. `setIn` stores a
+ * raw JS object as-is (yaml only converts it at stringify time), which leaves
+ * a hole in the tree: `getIn(path, true)` on anything beneath it returns
+ * undefined and a nested `setIn` throws "Expected YAML collection". That bit
+ * the trialParams `led_activation` editor — after one wholesale write, no
+ * sub-field could be bound to an anchor or edited by path. Scalars and
+ * existing YAML nodes (Alias, Scalar, collections) pass through unchanged.
+ * `aliasDuplicateObjects: false` — two identical `[0, 0]` ranges must not be
+ * emitted as an anchor + alias pair.
+ */
+function _toDocValue(doc, value) {
+    if (value === null || typeof value !== 'object') return value;
+    if (YAML.isNode(value) || YAML.isPair(value)) return value;
+    return doc.createNode(value, { aliasDuplicateObjects: false });
 }
 
 /**
@@ -2025,7 +2042,7 @@ function docUnbindAnchor(experiment, path) {
         // path's current resolved JS-mirror value, if any.
         resolved = experiment._doc.getIn(path);
     }
-    experiment._doc.setIn(path, resolved);
+    experiment._doc.setIn(path, _toDocValue(experiment._doc, resolved));
     // JS mirror was already holding the resolved value — no-op.
 }
 

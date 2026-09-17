@@ -4,6 +4,17 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.82 (2026-09-17) · LED activation fields can be bound to variables
+
+- **The LED activation pane now has the 🔗 button on every value.** Level, hysteresis, and both ends of each ON
+  range are edited on their own YAML path, exactly like the other trialParams fields, so each one can be bound to an
+  existing anchor, given a new one ("Create & bind"), rebound, or unbound, and shows the `→ &name = value` chip
+  when bound. Before, the pane had no binding controls at all.
+- **Editing the pane no longer flattens existing bindings.** Every change used to rewrite the whole
+  `led_activation` object with resolved numbers, so adding a range silently replaced a hand-written `level: *led_level`
+  with the literal. Ranges are now appended and removed in place and scalars are written one at a time. (Shared fix:
+  a plain object written through `docSet` is stored as a real YAML node, so fields beneath it stay addressable.)
+
 ## v0.81 (2026-09-15) · Watching the Run log no longer slows the experiment
 
 - **The Run view's Log dock no longer throttles closed loop.** Every command appended two lines to the visible log,

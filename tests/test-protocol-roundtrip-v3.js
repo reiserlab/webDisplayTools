@@ -4397,6 +4397,155 @@ console.log('\n--- Suite 36: trialParams led_activation (conditional LED) ---');
     );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Suite 37: led_activation sub-fields are addressable by path (v0.82)
+// The Studio's LED activation pane binds level / hysteresis / range endpoints
+// to anchors on their own paths. That needs (a) a plain object written via
+// docSet to land as a real YAML node (setIn used to store the raw JS object,
+// so any nested setIn threw "Expected YAML collection"), (b) in-place range
+// append/delete, and (c) sibling edits that leave existing aliases alone.
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n--- Suite 37: led_activation sub-fields by path (anchor binding) ---');
+{
+    const yaml37 = [
+        'version: 3',
+        'experiment_info:',
+        '  name: "led37"',
+        '  author: "test"',
+        'rig: rigs/x.yaml',
+        'variables:',
+        '  led_level: &led_level 35',
+        '  band_lo: &band_lo 50',
+        'conditions:',
+        '  - name: c1',
+        '    commands:',
+        '      - type: controller',
+        '        command_name: trialParams',
+        '        pattern: p.pat',
+        '        duration: 5',
+        '        mode: 3',
+        '      - type: controller',
+        '        command_name: trialParams',
+        '        pattern: q.pat',
+        '        duration: 5',
+        '        mode: 3',
+        '        led_activation:',
+        '          level: *led_level',
+        '          hysteresis: 2',
+        '          on_ranges:',
+        '            - [*band_lo, 100]',
+        'experiment:',
+        '  - c1',
+        ''
+    ].join('\n');
+    const exp = parseV3Protocol(yaml37);
+    const cmd0 = ['conditions', 0, 'commands', 0];
+    const la0 = [...cmd0, 'led_activation'];
+
+    // (a) wholesale seed (what "+ add led_activation" does) → nested writes work
+    docSet(exp, la0, { level: 20, hysteresis: 0, on_ranges: [] });
+    let threw = null;
+    try {
+        docSet(exp, [...la0, 'level'], 40);
+    } catch (e) {
+        threw = e.message;
+    }
+    check('37.1: nested docSet after a plain-object docSet does not throw', threw, null);
+    check('37.2: nested value mirrored', exp.conditions[0].commands[0].led_activation.level, 40);
+    checkTrue(
+        '37.3: nested value in YAML',
+        /led_activation:\n\s+level: 40\n/.test(generateV3Protocol(exp))
+    );
+
+    // bind level to an anchor by nested path
+    docBindToAnchor(exp, [...la0, 'level'], 'led_level');
+    check(
+        '37.4: aliasNameAt sees the nested alias',
+        aliasNameAt(exp, [...la0, 'level']),
+        'led_level'
+    );
+    check(
+        '37.5: mirror holds the resolved value',
+        exp.conditions[0].commands[0].led_activation.level,
+        35
+    );
+    checkTrue(
+        '37.6: YAML has level: *led_level',
+        /level: \*led_level/.test(generateV3Protocol(exp))
+    );
+
+    // (b) in-place range append / endpoint bind / delete
+    docSet(exp, [...la0, 'on_ranges', 0], [0, 0]);
+    docSet(exp, [...la0, 'on_ranges', 1], [10, 20]);
+    check(
+        '37.7: two ranges appended in place',
+        JSON.stringify(exp.conditions[0].commands[0].led_activation.on_ranges),
+        '[[0,0],[10,20]]'
+    );
+    threw = null;
+    try {
+        docSet(exp, [...la0, 'on_ranges', 1, 1], 25);
+    } catch (e) {
+        threw = e.message;
+    }
+    check('37.8: endpoint docSet on an appended range does not throw', threw, null);
+    docBindToAnchor(exp, [...la0, 'on_ranges', 1, 0], 'band_lo');
+    check('37.9: endpoint alias visible', aliasNameAt(exp, [...la0, 'on_ranges', 1, 0]), 'band_lo');
+    check(
+        '37.10: endpoint mirror resolved',
+        JSON.stringify(exp.conditions[0].commands[0].led_activation.on_ranges[1]),
+        '[50,25]'
+    );
+    docDelete(exp, [...la0, 'on_ranges', 0]);
+    check(
+        '37.11: docDelete removes one range, keeps the bound one',
+        JSON.stringify(exp.conditions[0].commands[0].led_activation.on_ranges),
+        '[[50,25]]'
+    );
+    checkTrue(
+        '37.12: no anchor/alias pair synthesized for identical [0, 0] ranges',
+        !/&a\d|\*a\d/.test(generateV3Protocol(exp))
+    );
+
+    // (c) sibling edits leave hand-written aliases alone (the v0.81 flattening bug)
+    const la1 = ['conditions', 0, 'commands', 1, 'led_activation'];
+    docSet(exp, [...la1, 'hysteresis'], 3);
+    docSet(exp, [...la1, 'on_ranges', 1], [150, 180]);
+    docDelete(exp, [...la1, 'on_ranges', 1]);
+    check(
+        '37.13: level alias survives sibling edits',
+        aliasNameAt(exp, [...la1, 'level']),
+        'led_level'
+    );
+    check(
+        '37.14: range-endpoint alias survives',
+        aliasNameAt(exp, [...la1, 'on_ranges', 0, 0]),
+        'band_lo'
+    );
+
+    // unbind by nested path → literal; round-trip
+    docUnbindAnchor(exp, [...la0, 'level']);
+    check('37.15: unbound nested field is literal', aliasNameAt(exp, [...la0, 'level']), null);
+    const regen = generateV3Protocol(exp);
+    const exp2 = parseV3Protocol(regen);
+    check(
+        '37.16: re-parse level (unbound literal)',
+        exp2.conditions[0].commands[0].led_activation.level,
+        35
+    );
+    check(
+        '37.17: re-parse bound endpoint resolves',
+        JSON.stringify(exp2.conditions[0].commands[0].led_activation.on_ranges),
+        '[[50,25]]'
+    );
+    check(
+        '37.18: re-parse cmd1 level still aliased',
+        exp2.conditions[0].commands[1].led_activation.level,
+        35
+    );
+    check('37.19: no blocking errors', collectBlockingErrors(exp2).errors.length, 0);
+}
+
 // ─── Results ────────────────────────────────────────────────────────────────
 console.log('\n=== Results: ' + passedTests + '/' + totalTests + ' passed ===');
 if (failedTests.length > 0) {
