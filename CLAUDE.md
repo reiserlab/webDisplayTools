@@ -361,6 +361,13 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   removed by the contiguous-seek fast path — never re-introduce per-seek chain walks; see
   `docs/development/mode3-reliability-handoff-2026-09-14.md`.
 - Bump the footer version/timestamp on every edit; never Prettier the HTML.
+- **Nested protocol objects are edited BY PATH, never rewritten wholesale (v0.82).** `docSet` wraps a
+  plain object/array in `doc.createNode` before `setIn` (yaml would otherwise store the raw JS object,
+  after which `getIn(path, true)` beneath it is undefined and a nested `setIn` throws "Expected YAML
+  collection"). Sub-fields of `trialParams.led_activation` (level / hysteresis / `on_ranges[i][0|1]`)
+  go through `renderEditableField` on their own paths so they carry the 🔗 anchor button; ranges are
+  appended with `docSet(..., ['on_ranges', len], [0, 0])` and removed with `docDelete`. Rewriting the
+  whole object flattens every `*alias` inside it to a literal — suite 37 guards this.
 
 - **Telemetry ring — four rules from the 2026-09-12 Codex review (all tested):** (1) the ONLY gate
   for SET_TELEMETRY 0xA8 is GET_FIRMWARE_VERSION `flags` bit 2 (`decodeFirmwareVersion().telemetry`);
