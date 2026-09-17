@@ -14,6 +14,8 @@ history lives here. Newest first. (Per-session engineering detail stays in
   `led_activation` object with resolved numbers, so adding a range silently replaced a hand-written `level: *led_level`
   with the literal. Ranges are now appended and removed in place and scalars are written one at a time. (Shared fix:
   a plain object written through `docSet` is stored as a real YAML node, so fields beneath it stay addressable.)
+- **Block `repetitions` gets the 🔗 button too.** The sequence inspector's repetitions field can now be bound to an
+  anchor (or created as one) like any command parameter; a bound block shows the chip with the resolved count.
 
 ## v0.81 (2026-09-15) · Watching the Run log no longer slows the experiment
 

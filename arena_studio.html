@@ -2959,7 +2959,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.82 | 2026-09-17 12:38 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.82 | 2026-09-17 12:56 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -13177,6 +13177,25 @@ async function initFromUrl() {
             return bits.length ? base + ' — ' + bits.join(', ') : 'Edit ' + base;
         }
 
+        // The 🔗 anchor-binding button for the scalar at `path`. Click opens the
+        // popover that offers bind / rebind / unbind / create-new based on the
+        // node's alias state. Shared by renderEditableField (command-card fields,
+        // LED activation) and the block repetitions row — any new editable scalar
+        // that can sensibly be a variable should append one of these.
+        function makeBindBtn(path, value, schema, typeHint) {
+            const bound = !!aliasNameAt(experiment, path);
+            return el('button', {
+                class: 'bind-icon-btn' + (bound ? ' bound' : ''),
+                title: bound
+                    ? 'Edit anchor binding (rebind, unbind, or edit anchor value)'
+                    : 'Bind this value to an anchor variable',
+                onClick: (e) => {
+                    e.stopPropagation();
+                    openAnchorPopover(e.currentTarget, path, value, schema, typeHint);
+                }
+            }, '🔗');
+        }
+
         // Render a single editable scalar field. If the underlying YAML node is
         // an Alias, show a read-only badge instead of an input. Otherwise, an
         // input that calls docSet() on commit.
@@ -13201,19 +13220,9 @@ async function initFromUrl() {
                 typeHint = schema.type === 'number' ? 'number' : (schema.type === 'select' ? 'select' : 'string');
             }
 
-            // Build the 🔗 anchor-binding button — appended to every editable
-            // scalar regardless of alias state. Click opens a popover that
-            // offers bind / rebind / unbind / create-new based on context.
-            const bindBtn = el('button', {
-                class: 'bind-icon-btn' + (aliasNameAt(experiment, path) ? ' bound' : ''),
-                title: aliasNameAt(experiment, path)
-                    ? 'Edit anchor binding (rebind, unbind, or edit anchor value)'
-                    : 'Bind this value to an anchor variable',
-                onClick: (e) => {
-                    e.stopPropagation();
-                    openAnchorPopover(e.currentTarget, path, value, schema, typeHint);
-                }
-            }, '🔗');
+            // The 🔗 anchor-binding button — appended to every editable scalar
+            // regardless of alias state.
+            const bindBtn = makeBindBtn(path, value, schema, typeHint);
 
             const aliasName = aliasNameAt(experiment, path);
             if (aliasName) {
@@ -13745,15 +13754,18 @@ async function initFromUrl() {
             const row = el('div', { class: 'block-prop-row' },
                 el('span', { class: 'k' }, 'repetitions:')
             );
-            const aliasName = aliasNameAt(experiment, ['experiment', blockIdx, 'repetitions']);
+            const repsPath = ['experiment', blockIdx, 'repetitions'];
+            const repsSchema = { type: 'number', min: 1, integer: true, label: 'Repetitions' };
+            const aliasName = aliasNameAt(experiment, repsPath);
             if (aliasName) {
                 row.appendChild(el('span', {
                     class: 'alias-chip',
-                    title: 'Bound to anchor &' + aliasName + '. Edit via Variables when the variables editor lands.'
+                    title: 'Bound to anchor &' + aliasName + ' (resolved: ' + entry.repetitions + '). Click 🔗 to rebind or unbind.'
                 },
                     '→ &' + aliasName,
                     el('span', { class: 'resolved-val' }, '= ' + entry.repetitions)
                 ));
+                row.appendChild(makeBindBtn(repsPath, entry.repetitions, repsSchema, 'number'));
                 return row;
             }
             const input = el('input', {
@@ -13773,7 +13785,7 @@ async function initFromUrl() {
                 if (n === entry.repetitions) return;
                 if (!pushUndo()) return;
                 try {
-                    docSet(experiment, ['experiment', blockIdx, 'repetitions'], n);
+                    docSet(experiment, repsPath, n);
                     commitBlockEdit();
                 } catch (err) {
                     showError('Edit failed', err.message);
@@ -13781,6 +13793,7 @@ async function initFromUrl() {
                 }
             });
             row.appendChild(input);
+            row.appendChild(makeBindBtn(repsPath, entry.repetitions, repsSchema, 'number'));
             return row;
         }
 
