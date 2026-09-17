@@ -690,6 +690,18 @@ count (#199). Logs: `soak-logs/arena-log-20260912-001625-545.jsonl` (wedge) and 
   the verdict, stall signature and card identity), collect a few weeks of data, then design the test. Candidate cards stay
   unused. Watch: rig03 after pattern 41 is re-uploaded. Studio v0.81 live on Pages; web #201/#197 closed; fw #56 with Frank.
 
+- **2026-09-17 00:06 ET — rig03 after the pattern-41 re-upload (Shubham, 7 runs 2026-09-16 20:09–22:30 ET, log level now behavior_v2).**
+  0 faults / 0 resets, RTT 2 ms. **5 of 7 runs again have exactly one flagged trial, all on pattern 41**, every 10–18.6 k reads
+  of that pattern (unchanged period), now 23 stalls per cluster (22 × 19–22 ms + one 70 ms ≈ 0.5 s). Pattern 36: 100 k reads,
+  0 stalls. Both files `contiguous, 64 spc`; per-read cost identical (0.62 / 1.18 ms). **Re-uploading did not move the
+  problem.** LED hypothesis excluded: 6 of the 11 rig03 stalls had no 0xA0 in their trial, and 0xA0 counts are equal for 36
+  and 41 (5.7 vs 6.0 per trial). `sd_slow_ctx` 0/0 = no card error code, so not ECC retries visible to the host. Remaining
+  candidate: the re-upload landed on the same physical block (delete → fully-freed block erased and reused by the FTL, and
+  SdFat re-allocates the lowest free clusters) — a weak block that follows the file. Cheap discriminator for later (card work
+  on hold): upload the same .pat under a NEW name while the old one still exists (forces new clusters/blocks), point a copy
+  of the protocol at the new name, run 3 iterations: stalls gone → weak block; stalls follow → something about the content /
+  access pattern of 41 itself (both are 813 KB, 200 frames; 41 = 36 shifted 90°).
+
 ## 11. T4 as built (2026-09-12) — soak with ring-buffer logging
 
 Decision (Michael, 11:30 ET): skip the instrument-dependent T2/T3 for now; build the ring (T1
