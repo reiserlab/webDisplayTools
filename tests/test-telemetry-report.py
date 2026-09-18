@@ -182,5 +182,44 @@ with tempfile.TemporaryDirectory() as d:
     bad = subprocess.run([sys.executable, SCRIPT, os.path.join(d, "missing.jsonl")], capture_output=True, text=True)
     check("missing file → 2", bad.returncode, 2)
 
+
+    print("=== clock fit (host ↔ controller two-way exchange) ===")
+    def build_clock_fixture(ppm, v2=True, n=1500, t0=1_700_000_000_000, ctl0_us=40_000_000, rtt_ms=2):
+        """n accepted 0x70s at 5 ms spacing; controller clock runs (1 + ppm·1e-6) faster; RTT symmetric."""
+        lines = [{"type": "session", "event": "logging_started", "ms": t0},
+                 {"type": "frame_schema", "level": "behavior_v2" if v2 else "behavior_v1", "cols": ["ms"], "t0": t0},
+                 {"type": "log", "event": "run_metadata", "firmware": "x", "log_format": "behavior_v2" if v2 else "behavior_v1"}]
+        seq = 10
+        for i in range(n):
+            t_send = t0 + 5 * i
+            jitter = (i % 7) * 0.3                                 # host-side queueing, asymmetric on purpose
+            rtt = rtt_ms + jitter
+            t_ctl_ms = (ctl0_us / 1000.0) + (5 * i + rtt / 2.0) * (1 + ppm * 1e-6)
+            if v2:
+                lines.append(["a", 5 * i, rtt, "037000%02x00" % (i & 0xff), 0, 5 * i + int(rtt)])
+            else:
+                lines.append({"type": "log", "event": "arena_command", "t": t_send, "dt": rtt, "head": "03 70 %02x 00" % (i & 0xff), "status": 0, "ok": True})
+            seq += 1
+            lines.append(["cc", t_send + 60, int(t_ctl_ms * 1000), seq, 0x70, 0, "%02x00" % (i & 0xff)])   # drained ≤ 100 ms later
+        return lines
+    for ppm in (50, -20):
+        pc = os.path.join(d, f"clock_{ppm}.jsonl")
+        write(build_clock_fixture(ppm), pc)
+        cf = tr.analyze_file(pc)["clock_fit"]
+        check(f"v2 drift {ppm:+} ppm recovered", cf is not None and abs(cf["drift_ppm"] - ppm) < 3, True)
+        check(f"v2 residual small ({ppm:+} ppm)", cf["residual_ms"]["p95"] < 1.0, True)
+        check(f"v2 all matched ({ppm:+} ppm)", cf["matched_share"] > 0.99, True)
+        check(f"v2 no warnings ({ppm:+} ppm)", cf["warnings"], [])
+    pc1 = os.path.join(d, "clock_v1.jsonl")
+    write(build_clock_fixture(50, v2=False), pc1)
+    cf1 = tr.analyze_file(pc1)["clock_fit"]
+    check("v1 arena_command path: drift recovered", cf1 is not None and abs(cf1["drift_ppm"] - 50) < 3, True)
+    pcw = os.path.join(d, "clock_wild.jsonl")
+    write(build_clock_fixture(400), pcw)
+    check("400 ppm → warning", any("beyond a crystal" in w for w in tr.analyze_file(pcw)["clock_fit"]["warnings"]), True)
+    check("fixture without host rows → None", tr.analyze_file(p)["clock_fit"], None)
+    md = subprocess.run([sys.executable, SCRIPT, os.path.join(d, "clock_50.jsonl")], capture_output=True, text=True).stdout
+    check("markdown has the clock-fit section", "## Clock fit (host ↔ controller): drift +5" in md, True)
+
 print(f"\n{total - failures} / {total} checks passed")
 sys.exit(1 if failures else 0)

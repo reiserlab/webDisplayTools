@@ -151,6 +151,90 @@ class Trial:
         }
 
 
+# ── host ↔ controller clock fit ────────────────────────────────────────────────
+# Every accepted 0x70 is a two-way time exchange (the same thing PTP does): the host logs
+# when it sent the command and how long the reply took (`a` row / arena_command), the
+# controller logs when it received it (`cc` row, t_us). offset(t) = t_ctl − (t_send + RTT/2).
+# The controller crystal drifts a few ppm against the PC, so the offset is a LINE, not a
+# constant: fit it on the lowest-RTT quartile of pairs (least host-side queueing, NTP-style
+# clock filter). Residuals are USB/CDC jitter, not clock error — no firmware time protocol
+# could beat them over this link. Design note: docs/development/clock-sync-analysis-2026-09-18.md
+CLOCK_FIT_MATCH_MS = 4.0         # after the offset search, a send and a receipt farther apart than this are not the same command (commands are ≥ 5 ms apart at 200 Hz)
+CLOCK_FIT_WARN_PPM = 100.0       # a Teensy crystal is ±~50 ppm; more means a wrong clock or a mis-pairing
+CLOCK_FIT_WARN_P95_MS = 20.0     # residual p95 above this = the pairing broke down (host slow state, reboot mid-run)
+CLOCK_FIT_MIN_PAIRS = 200
+
+
+def fit_clocks(host_sends, ctl_recv) -> dict | None:
+    """Linear fit of controller time vs host time from paired 0x70 sends/receipts. None without enough data."""
+    if len(host_sends) < CLOCK_FIT_MIN_PAIRS or len(ctl_recv) < CLOCK_FIT_MIN_PAIRS:
+        return None
+    import bisect
+    ctl_ms = sorted(t_us / 1000.0 for rx, t_us in ctl_recv)                # controller receipts, controller ms
+    mids = [t_send + rtt / 2.0 for t_send, rtt in host_sends]
+
+    def nearest(vals, x):
+        i = bisect.bisect_left(vals, x)
+        cands = [vals[j] for j in (i - 1, i) if 0 <= j < len(vals)]
+        return min(cands, key=lambda v: abs(v - x)) if cands else None
+
+    # Offset search. The drain timestamp (rx) lags the controller receipt by 0…one poll interval, so
+    # `rx − t_ctl` only brackets the offset. Scan candidates across that bracket in 1 ms steps and keep the
+    # one that lines host sends up with controller receipts best (median |nearest receipt − send mid| on a
+    # subsample). At 5 ms command spacing the right offset scores ~0 ms; a wrong one scores ≥ 1–2 ms.
+    env = sorted(rx - t_us / 1000.0 for rx, t_us in ctl_recv)
+    hi = env[len(env) // 20]                                                # ≈ offset + smallest drain lag
+    sample = mids[:: max(1, len(mids) // 400)]
+    best_off, best_score = hi, None
+    for k in range(0, 200):                                                 # drain lag up to ~200 ms
+        off = hi - k
+        sc = sorted(abs((nearest(ctl_ms, m - off) or 1e9) + off - m) for m in sample)[len(sample) // 2]
+        if best_score is None or sc < best_score:
+            best_off, best_score = off, sc
+        if sc < 0.05:
+            break
+    off0 = best_off
+    pairs = []
+    for (t_send, rtt), mid in zip(host_sends, mids):
+        tc = nearest(ctl_ms, mid - off0)
+        if tc is not None and abs(tc + off0 - mid) < CLOCK_FIT_MATCH_MS:
+            pairs.append((t_send, rtt, tc))                                 # (host send, RTT, controller ms)
+    if len(pairs) < CLOCK_FIT_MIN_PAIRS:
+        return {"pairs": len(pairs), "matched_share": _round(len(pairs) / len(host_sends), 3), "warnings": ["too few matched pairs for a fit"]}
+    cut = sorted(p[1] for p in pairs)[len(pairs) // 4]
+    good = [p for p in pairs if p[1] <= cut] or pairs
+    # Work RELATIVE to the first pair: host times are epoch ms (~1.7e12) and the fit needs
+    # sub-ms differences — absolute doubles would lose them (catastrophic cancellation).
+    x0, _, c0 = good[0]
+    xs = [p[0] - x0 for p in good]                                          # host ms since the first paired send
+    ys = [(p[2] - c0) - ((p[0] - x0) + p[1] / 2.0) for p in good]           # controller-minus-host, relative
+    mx = sum(xs) / len(xs)
+    my = sum(ys) / len(ys)
+    sxx = sum((x - mx) ** 2 for x in xs)
+    slope = (sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx) if sxx else 0.0
+    res = sorted(abs(y - (my + slope * (x - mx))) for x, y in zip(xs, ys))
+    span_ms = xs[-1] - xs[0]
+    out = {
+        "pairs": len(pairs), "matched_share": _round(len(pairs) / len(host_sends), 3),
+        "fit_pairs": len(good), "rtt_cut_ms": cut,
+        "host_first_send_epoch_ms": _round(x0, 0),
+        "controller_ms_at_first_send": _round(c0 + (my - slope * mx), 1),   # controller clock (ms since boot) at the first paired send
+        "drift_ppm": _round(slope * 1e6, 1),
+        "drift_ms_per_min": _round(slope * 60000.0, 3),
+        "drift_over_run_ms": _round(slope * span_ms, 2),
+        "span_s": _round(span_ms / 1000.0, 1),
+        "residual_ms": {"median": _round(res[len(res) // 2], 2), "p95": _round(res[int(0.95 * (len(res) - 1))], 2), "max": _round(res[-1], 2)},
+        "warnings": [],
+    }
+    if abs(out["drift_ppm"]) > CLOCK_FIT_WARN_PPM:
+        out["warnings"].append(f"drift {out['drift_ppm']} ppm is beyond a crystal (±~50): host clock stepped, controller rebooted, or mis-paired")
+    if out["residual_ms"]["p95"] > CLOCK_FIT_WARN_P95_MS:
+        out["warnings"].append(f"residual p95 {out['residual_ms']['p95']} ms: pairing unreliable (host slow state / reboot mid-run)")
+    if out["matched_share"] < 0.8:
+        out["warnings"].append(f"only {out['matched_share']:.0%} of host sends matched a controller receipt")
+    return out
+
+
 def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dict:
     gap_us = gap_ms * 1000.0
     target_us = target_ms * 1000.0
@@ -179,6 +263,10 @@ def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dic
     pending_first = set()   # patterns whose next cf is the first after open
     malformed = 0
     lines = 0
+    # host↔controller clock fit inputs: host-accepted 0x70 sends (abs host ms, RTT ms) and controller 0x70 receipts
+    t0_host = None          # frame_schema.t0 (v2) — origin of a-row offsets
+    host_sends = []         # (t_send_ms, rtt_ms)
+    ctl_recv = []           # (rx_ms, t_us) for status-0 0x70 cc rows
 
     with open_text(path) as f:
         for raw in f:
@@ -193,6 +281,12 @@ def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dic
                     malformed += 1
                     continue
                 ev = obj.get("event")
+                if obj.get("type") == "frame_schema" and isinstance(obj.get("t0"), (int, float)):
+                    t0_host = obj["t0"]
+                elif ev == "arena_command" and obj.get("ok") is True and isinstance(obj.get("t"), (int, float)) \
+                        and isinstance(obj.get("dt"), (int, float)) and isinstance(obj.get("head"), str) \
+                        and obj["head"].replace(" ", "").lower().startswith("0370"):
+                    host_sends.append((float(obj["t"]), float(obj["dt"])))          # behavior_v1 echo
                 if ev == "run_metadata":
                     meta["firmware"] = obj.get("firmware")
                     sd = obj.get("sd_card")
@@ -201,6 +295,17 @@ def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dic
                     meta["telemetry"] = obj.get("telemetry")
                     meta["protocol"] = obj.get("protocol") or obj.get("protocol_name")
                     meta["run_id"] = obj.get("run_id") or obj.get("id")
+                continue
+            if raw.startswith('["a"'):
+                try:
+                    arr = json.loads(raw)
+                except json.JSONDecodeError:
+                    malformed += 1
+                    continue
+                # ["a", t_off, dt, hex, status, rx_off] — accepted 0x70 only (Studio "0370…", harness "03 70 …")
+                if len(arr) >= 5 and arr[4] == 0 and isinstance(arr[1], (int, float)) and isinstance(arr[2], (int, float)) \
+                        and isinstance(arr[3], str) and arr[3].replace(" ", "").lower().startswith("0370") and t0_host is not None:
+                    host_sends.append((t0_host + arr[1], float(arr[2])))
                 continue
             if raw[0] != "[" or not raw.startswith('["c'):
                 continue
@@ -226,6 +331,9 @@ def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dic
                         cur.coverage.append("seq_gap")
                 last_seq = seq
 
+            if tag == "cc" and len(arr) >= 6 and arr[4] == 0x70 and arr[5] == 0 \
+                    and isinstance(rx, (int, float)) and isinstance(t_us, (int, float)):
+                ctl_recv.append((rx, t_us))
             if tag == "cs" and len(arr) >= 7:
                 kind, code, arg = arr[4], arr[5], arr[6]
                 if kind == 7 and code == 0:
@@ -380,6 +488,8 @@ def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dic
             "layout": layout_by_pattern.get(pattern),
         }
 
+    clock_fit = fit_clocks(host_sends, ctl_recv)
+
     duration_s = _round((last_rx - first_rx) / 1000.0, 1) if first_rx is not None and last_rx is not None else None
     trial_rows = [t.row() for t in trials]
     counts = Counter(r["status"] for r in trial_rows)
@@ -409,6 +519,7 @@ def analyze_file(path: str, gap_ms: float = 10.0, target_ms: float = 5.0) -> dic
             "superseded_share": _round(superseded_frames / v2_frames, 3) if v2_frames else None,
             "contiguous_share": _round(contiguous_frames / v2_frames, 3) if v2_frames else None,
         },
+        "clock_fit": clock_fit,
         "trials": trial_rows,
         "trial_counts": dict(counts),
         "flagged_trials": [r["trial"] for r in trial_rows if r["status"] == "fail"],
@@ -459,6 +570,20 @@ def render_markdown(rep: dict) -> str:
                    f"superseded frames {pr['superseded_share']} ({pr['superseded_total']} loads never shown) · contiguous-path share {pr['contiguous_share']}")
     else:
         out.append("## Request→presentation: no ring-v2 FRAME fields in this log (firmware without sd_fastpath)")
+    out.append("")
+    cf = rep.get("clock_fit")
+    if cf is None:
+        out.append("## Clock fit (host ↔ controller): not enough paired 0x70 rows (needs host `a`/arena_command rows AND controller `cc` rows)")
+    elif "drift_ppm" not in cf:
+        out.append(f"## Clock fit (host ↔ controller): {cf['pairs']} pairs matched ({cf['matched_share']}) — {'; '.join(cf['warnings'])}")
+    else:
+        r = cf["residual_ms"]
+        out.append(f"## Clock fit (host ↔ controller): drift {cf['drift_ppm']:+} ppm ({cf['drift_ms_per_min']:+} ms/min, "
+                   f"{cf['drift_over_run_ms']:+} ms over {cf['span_s']} s) · controller clock at first send {cf['controller_ms_at_first_send']} ms (host epoch {cf['host_first_send_epoch_ms']}) · "
+                   f"residual median {r['median']} ms, p95 {r['p95']}, max {r['max']} · {cf['fit_pairs']} low-RTT pairs (RTT ≤ {cf['rtt_cut_ms']} ms) "
+                   f"of {cf['pairs']} matched ({cf['matched_share']} of host sends)"
+                   + (" · ⚠ " + " · ".join(cf["warnings"]) if cf["warnings"] else ""))
+        out.append("_controller_ms ≈ offset + (1 + drift) × host_ms: use the fit, not a constant, when comparing controller and host times across a run; the residual is USB queueing jitter, not clock error._")
     out.append("")
     out.append(f"## Trials: {rep['trial_counts']} · flagged {rep['flagged_trials']}")
     out.append("| trial | pattern | dur s | 0x70 | idx chg | fw reads | frames | slow | max read ms | age gaps | max age ms | >target | superseded | coverage | status |")

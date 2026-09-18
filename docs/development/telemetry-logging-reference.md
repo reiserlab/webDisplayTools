@@ -238,13 +238,13 @@ host times without a marker; both are host epoch, so the mix is harmless for ali
 3. **`a` ↔ `cc` join is by order**, not by key: both are complete sequences of the same commands (host echo vs
    controller record); counts differ by the commands in flight at the end (and, on v0.77 files, by the tail written
    after `trial_quality` — `runlog-check.py` reports both). A host command counter on `a` is R2 in the format review.
-4. **Host↔controller offset is a fit, not a constant.** Pair 0x70 `a` rows with 0x70 `cc` rows by order, take
-   `t_host = t0 + a.t_off` vs `cc.t_us` (unwrapped), fit `t_host = α + β·t_us`. Measured 2026-09-12 on one run: slope
-   **−3 ppm**; residuals = USB/CDC queueing + `serviceUsb` (one command per `loop()`). **Not implemented in any
-   script** — `telemetry-report.py` and `wedge-scan.py` never fit clocks; it is a recipe. A cleaner pair point is
-   (`rx`, `t_now_us`) once the block header time is logged (§8).
-5. **FicTrac ↔ host:** `ms − ft` is constant plus camera→UDP latency, only on a real rig (sim `ft` is unusable).
-   Never measured.
+4. **Host↔controller offset is a fit, not a constant.** Every accepted 0x70 is a two-way exchange (host send time + RTT in
+   the `a` row / `arena_command`, controller receipt in `cc.t_us`): `offset(t) = t_us/1000 − (t_send + RTT/2)`. Fit a line
+   on the lowest-RTT quartile of pairs (NTP-style clock filter). Measured: **−3 ppm** (Mac bench, 2026-09-12), **−4.2 ppm**
+   (rig03 Windows PC, 2026-09-16; 4.4 ms over an 18-min run; residual median 0.3 ms, p95 1 ms = USB/CDC queueing, not
+   clock error). **Implemented in `scripts/telemetry-report.py` as the "Clock fit" section / `clock_fit` JSON field** (offset found by
+   an alignment search across the drain-lag bracket, then nearest-receipt pairing, so a pre-run ring backlog cannot mis-pair). Why this and not
+   PTP on the controller: `docs/development/clock-sync-analysis-2026-09-18.md`.
 
 ### 5.3 Per-edge evidence
 
