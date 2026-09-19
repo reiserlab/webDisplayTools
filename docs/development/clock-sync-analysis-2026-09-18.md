@@ -43,7 +43,8 @@ same idea as NTP's clock filter):
 | host | run | drift $\beta$ | accumulated | residual after the fit |
 |---|---|---|---|---|
 | Mac bench (2026-09-12) | one soak iteration | −3 ppm | — | USB/CDC queueing |
-| rig03 Windows PC (2026-09-16, Shubham, real flies) | 18 min, 109 k commands, 105 k pairs matched | **−4.2 ppm** (0.25 ms/min) | **4.4 ms** over the run | median 0.33 ms, p95 1.0 ms, max 6.9 ms |
+| rig03 Windows PC (2026-09-16, Shubham, real flies) | 18 min, 109 k commands, 106 k pairs matched | **−5.1 ± 0.01 ppm** (0.31 ms/min) | **5.4 ms** over the run | median 0.25 ms, p95 0.58 ms, max 1.9 ms |
+| the same log, host sends subsampled to open-loop density | 52 pairs over 15 min | **−5.7 ± 0.23 ppm** | — | median 0.19 ms, p95 0.37 ms |
 
 For orientation: a Teensy 4.1 crystal is specified around ±20–50 ppm; ±50 ppm would be 3 ms per minute. What we see is
 well inside that, and it is *stable* within a run (the fit residual has no trend).
@@ -68,10 +69,22 @@ pixi run python scripts/telemetry-report.py soak-logs/arena-log-*.jsonl*     # l
 pixi run python scripts/telemetry-report.py --json run.jsonl.gz               # clock_fit: {drift_ppm, residual_ms, …}
 ```
 
-The line reads like: `Clock fit (host ↔ controller): drift +4.1 ppm (+0.246 ms/min, +4.33 ms over 1055 s) · controller
+The line reads like: `Clock fit (host ↔ controller): drift −5.1 ± 0.01 ppm (−0.31 ms/min, −5.4 ms over 1055 s) · controller
 clock at first send 40 123.4 ms · residual median 1.96 ms, p95 5.25, max 21.2 · 34 436 low-RTT pairs (RTT ≤ 1 ms) of
 106 453 matched (0.976 of host sends)`. To place a controller event on the host timeline:
 `t_host = t_first_send + (t_us/1000 − controller_ms_at_first_send) / (1 + drift_ppm·1e-6)`.
+
+### Open-loop runs (Mode 2, few commands)
+
+Nothing about the method is closed-loop specific: **every** command the host sends — `trialParams`, `allOff`,
+`ledDrive`, a 0x70 — is a two-way exchange, and the controller's telemetry ring records the receipt (`cc` row) of every
+command regardless of display mode. An open-loop protocol simply produces far fewer pairs: 3–5 per trial instead of
+50–200 per second. That does not weaken the fit much, because the slope's precision comes from the **time span**, not the
+pair count — the standard error is roughly `residual / span`, so 0.3 ms of USB jitter over a 10-minute run pins the
+drift to ~0.5 ppm whether there are 60 pairs or 60 000. The script therefore fits anything with ≥ 20 matched pairs
+spanning ≥ 60 s, prints the slope's standard error (`drift +4.1 ± 0.4 ppm`), and labels fits under 200 pairs
+"sparse". Shorter runs get a span warning and no slope; for them a constant offset (the first pair) is already good to
+the ~10 µs per-trial drift discussed in §4, which is the case that matters for a per-trial analysis anyway.
 
 Warnings the fit raises, and what they mean:
 
@@ -80,10 +93,23 @@ Warnings the fit raises, and what they mean:
 | drift beyond ±100 ppm | the host clock stepped during the run (NTP), the controller rebooted mid-run (its clock restarted), or the pairing is wrong |
 | residual p95 > 20 ms | the host was in a slow state (see the 2026-09-15 Run-log-dock finding) or the link dropped |
 | matched share < 80 % | a second run in the same file, or a large pre-run ring backlog |
+| run spans only N s | too short for a slope (< 60 s); use a constant offset from the first pair |
+| too few matched pairs | fewer than 20 commands paired — a bench snippet, not a run |
 
 Pairing detail: host sends are matched to the *nearest* controller receipt after a coarse offset taken from the drain
 envelope (`rx − t_us` is the offset plus at most one poll interval), so a ring backlog from before the run cannot
-mis-pair the two lists (pairing purely by order does — measured: a 500 000 ppm nonsense slope).
+mis-pair the two lists (pairing purely by order does — measured: a 500 000 ppm nonsense slope). The match is then
+made **drift-aware in a second pass**: a constant offset only holds while drift × elapsed stays under the 4 ms match
+window (15 min at 4 ppm, 10 s at 400 ppm), so a rough slope from the first-pass pairs predicts each receipt and the
+second pass keeps pairing to the end of the run. On the rig03 log this recovered the pairs at both ends of the run
+(106 352 matched vs 105 490, residual p95 0.58 ms vs 1.0) and moved the drift from −4.2 to **−5.1 ppm** — the
+end-of-run pairs carry most of the slope's leverage. It is also what lets a genuinely wild drift surface as the
+"beyond a crystal" warning instead of as a shrinking matched share.
+
+Subsampling that same real log to open-loop density confirms the span argument: keeping 1 in 100 / 500 / 2000 host
+sends (1056 / 211 / 52 pairs over ~17 min) fits −5.2 / −5.3 / −5.7 ± 0.23 ppm against −5.1 dense. The reported
+standard error assumes independent residuals, which USB queueing is not — treat a sparse fit as good to a few ppm,
+which is still a few ms over a whole run.
 
 ## 6. When we would revisit
 

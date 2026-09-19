@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import math
 import os
 import statistics
 import sys
@@ -162,11 +163,18 @@ class Trial:
 CLOCK_FIT_MATCH_MS = 4.0         # after the offset search, a send and a receipt farther apart than this are not the same command (commands are ≥ 5 ms apart at 200 Hz)
 CLOCK_FIT_WARN_PPM = 100.0       # a Teensy crystal is ±~50 ppm; more means a wrong clock or a mis-pairing
 CLOCK_FIT_WARN_P95_MS = 20.0     # residual p95 above this = the pairing broke down (host slow state, reboot mid-run)
-CLOCK_FIT_MIN_PAIRS = 200
+# The fit's precision comes from the time SPAN, not the pair count (slope error ≈ residual / span:
+# 0.3 ms over 10 min ≈ 0.5 ppm), so an open-loop (Mode-2) run with a few commands per trial fits
+# fine as long as it lasts a minute or more. MIN_PAIRS is only what a line needs to be believable;
+# below DENSE_PAIRS the report labels the fit "sparse" and prints its standard error.
+CLOCK_FIT_MIN_PAIRS = 20
+CLOCK_FIT_MIN_SPAN_S = 60.0
+CLOCK_FIT_DENSE_PAIRS = 200
 
 
 def fit_clocks(host_sends, ctl_recv) -> dict | None:
-    """Linear fit of controller time vs host time from paired 0x70 sends/receipts. None without enough data."""
+    """Linear fit of controller time vs host time from paired command sends/receipts (every command is
+    a two-way exchange — closed-loop 0x70 streams or open-loop trialParams alike). None without enough data."""
     if len(host_sends) < CLOCK_FIT_MIN_PAIRS or len(ctl_recv) < CLOCK_FIT_MIN_PAIRS:
         return None
     import bisect
@@ -194,13 +202,37 @@ def fit_clocks(host_sends, ctl_recv) -> dict | None:
         if sc < 0.05:
             break
     off0 = best_off
+    # Two-pass pairing. The first pass matches against a constant offset, which only holds while
+    # drift × elapsed stays under CLOCK_FIT_MATCH_MS (≈ 4 ms: 10 s at 400 ppm, 15 min at 4 ppm). A
+    # rough slope from those pairs then predicts each receipt, so the second pass keeps pairing
+    # for the whole run and a wild drift shows up as the drift warning instead of as a shrinking
+    # matched share / short span.
+    mid0 = mids[0]
+    a_est, s_est = 0.0, 0.0                                                 # receipt ≈ (mid − off0) + a + s·(mid − mid0)
     pairs = []
-    for (t_send, rtt), mid in zip(host_sends, mids):
-        tc = nearest(ctl_ms, mid - off0)
-        if tc is not None and abs(tc + off0 - mid) < CLOCK_FIT_MATCH_MS:
-            pairs.append((t_send, rtt, tc))                                 # (host send, RTT, controller ms)
+    for _pass in range(2):
+        pairs = []
+        for (t_send, rtt), mid in zip(host_sends, mids):
+            pred = mid - off0 + a_est + s_est * (mid - mid0)
+            tc = nearest(ctl_ms, pred)
+            if tc is not None and abs(tc - pred) < CLOCK_FIT_MATCH_MS:
+                pairs.append((t_send, rtt, tc))                             # (host send, RTT, controller ms)
+        if _pass == 0 and len(pairs) >= 2:
+            xs0 = [p[0] + p[1] / 2.0 - mid0 for p in pairs]
+            ys0 = [p[2] - (p[0] + p[1] / 2.0 - off0) for p in pairs]
+            mx0 = sum(xs0) / len(xs0)
+            my0 = sum(ys0) / len(ys0)
+            sxx0 = sum((x - mx0) ** 2 for x in xs0)
+            s_est = (sum((x - mx0) * (y - my0) for x, y in zip(xs0, ys0)) / sxx0) if sxx0 else 0.0
+            a_est = my0 - s_est * mx0
     if len(pairs) < CLOCK_FIT_MIN_PAIRS:
-        return {"pairs": len(pairs), "matched_share": _round(len(pairs) / len(host_sends), 3), "warnings": ["too few matched pairs for a fit"]}
+        return {"pairs": len(pairs), "matched_share": _round(len(pairs) / len(host_sends), 3),
+                "warnings": [f"too few matched pairs for a fit ({len(pairs)} < {CLOCK_FIT_MIN_PAIRS})"]}
+    span_all_ms = pairs[-1][0] - pairs[0][0]
+    if span_all_ms < CLOCK_FIT_MIN_SPAN_S * 1000.0:
+        return {"pairs": len(pairs), "matched_share": _round(len(pairs) / len(host_sends), 3),
+                "span_s": _round(span_all_ms / 1000.0, 1),
+                "warnings": [f"run spans only {span_all_ms / 1000.0:.0f} s — a drift fit needs ≥ {CLOCK_FIT_MIN_SPAN_S:.0f} s (a constant offset is fine at this length)"]}
     cut = sorted(p[1] for p in pairs)[len(pairs) // 4]
     good = [p for p in pairs if p[1] <= cut] or pairs
     # Work RELATIVE to the first pair: host times are epoch ms (~1.7e12) and the fit needs
@@ -212,14 +244,20 @@ def fit_clocks(host_sends, ctl_recv) -> dict | None:
     my = sum(ys) / len(ys)
     sxx = sum((x - mx) ** 2 for x in xs)
     slope = (sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx) if sxx else 0.0
-    res = sorted(abs(y - (my + slope * (x - mx))) for x, y in zip(xs, ys))
+    signed = [y - (my + slope * (x - mx)) for x, y in zip(xs, ys)]
+    res = sorted(abs(r) for r in signed)
     span_ms = xs[-1] - xs[0]
+    # Standard error of the slope (ordinary least squares): how well the span + residuals pin the drift.
+    n = len(good)
+    slope_se = math.sqrt(sum(r * r for r in signed) / (n - 2) / sxx) if n > 2 and sxx > 0 else float("nan")
     out = {
         "pairs": len(pairs), "matched_share": _round(len(pairs) / len(host_sends), 3),
         "fit_pairs": len(good), "rtt_cut_ms": cut,
+        "sparse": len(pairs) < CLOCK_FIT_DENSE_PAIRS,                          # open-loop run: few commands, fit still valid over the span
         "host_first_send_epoch_ms": _round(x0, 0),
         "controller_ms_at_first_send": _round(c0 + (my - slope * mx), 1),   # controller clock (ms since boot) at the first paired send
         "drift_ppm": _round(slope * 1e6, 1),
+        "drift_ppm_se": _round(slope_se * 1e6, 2) if math.isfinite(slope_se) else None,
         "drift_ms_per_min": _round(slope * 60000.0, 3),
         "drift_over_run_ms": _round(slope * span_ms, 2),
         "span_s": _round(span_ms / 1000.0, 1),
@@ -578,10 +616,12 @@ def render_markdown(rep: dict) -> str:
         out.append(f"## Clock fit (host ↔ controller): {cf['pairs']} pairs matched ({cf['matched_share']}) — {'; '.join(cf['warnings'])}")
     else:
         r = cf["residual_ms"]
-        out.append(f"## Clock fit (host ↔ controller): drift {cf['drift_ppm']:+} ppm ({cf['drift_ms_per_min']:+} ms/min, "
+        se = f" ± {cf['drift_ppm_se']}" if cf.get("drift_ppm_se") is not None else ""
+        out.append(f"## Clock fit (host ↔ controller): drift {cf['drift_ppm']:+}{se} ppm ({cf['drift_ms_per_min']:+} ms/min, "
                    f"{cf['drift_over_run_ms']:+} ms over {cf['span_s']} s) · controller clock at first send {cf['controller_ms_at_first_send']} ms (host epoch {cf['host_first_send_epoch_ms']}) · "
                    f"residual median {r['median']} ms, p95 {r['p95']}, max {r['max']} · {cf['fit_pairs']} low-RTT pairs (RTT ≤ {cf['rtt_cut_ms']} ms) "
                    f"of {cf['pairs']} matched ({cf['matched_share']} of host sends)"
+                   + (" · sparse fit (few commands — an open-loop run; precision comes from the span)" if cf.get("sparse") else "")
                    + (" · ⚠ " + " · ".join(cf["warnings"]) if cf["warnings"] else ""))
         out.append("_controller_ms ≈ offset + (1 + drift) × host_ms: use the fit, not a constant, when comparing controller and host times across a run; the residual is USB queueing jitter, not clock error._")
     out.append("")

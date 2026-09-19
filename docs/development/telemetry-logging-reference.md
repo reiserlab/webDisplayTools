@@ -238,13 +238,16 @@ host times without a marker; both are host epoch, so the mix is harmless for ali
 3. **`a` ↔ `cc` join is by order**, not by key: both are complete sequences of the same commands (host echo vs
    controller record); counts differ by the commands in flight at the end (and, on v0.77 files, by the tail written
    after `trial_quality` — `runlog-check.py` reports both). A host command counter on `a` is R2 in the format review.
-4. **Host↔controller offset is a fit, not a constant.** Every accepted 0x70 is a two-way exchange (host send time + RTT in
-   the `a` row / `arena_command`, controller receipt in `cc.t_us`): `offset(t) = t_us/1000 − (t_send + RTT/2)`. Fit a line
-   on the lowest-RTT quartile of pairs (NTP-style clock filter). Measured: **−3 ppm** (Mac bench, 2026-09-12), **−4.2 ppm**
-   (rig03 Windows PC, 2026-09-16; 4.4 ms over an 18-min run; residual median 0.3 ms, p95 1 ms = USB/CDC queueing, not
-   clock error). **Implemented in `scripts/telemetry-report.py` as the "Clock fit" section / `clock_fit` JSON field** (offset found by
-   an alignment search across the drain-lag bracket, then nearest-receipt pairing, so a pre-run ring backlog cannot mis-pair). Why this and not
-   PTP on the controller: `docs/development/clock-sync-analysis-2026-09-18.md`.
+4. **Host↔controller offset is a fit, not a constant.** Every accepted command — a closed-loop 0x70 or an open-loop
+   trialParams alike — is a two-way exchange (host send time + RTT in the `a` row / `arena_command`, controller receipt in
+   `cc.t_us`): `offset(t) = t_us/1000 − (t_send + RTT/2)`. Fit a line on the lowest-RTT quartile of pairs (NTP-style clock
+   filter). Measured: **−3 ppm** (Mac bench, 2026-09-12), **−5.1 ± 0.01 ppm** (rig03 Windows PC, 2026-09-16; 5.4 ms over an
+   18-min run; residual median 0.25 ms, p95 0.6 ms = USB/CDC queueing, not clock error; the same log subsampled to 52 sends
+   fits −5.7 ± 0.23). The fit's precision comes from the span, not the pair count, so open-loop runs (few commands) fit
+   too: ≥ 20 pairs over ≥ 60 s, labelled `sparse` under 200. **Implemented in `scripts/telemetry-report.py` as the "Clock
+   fit" section / `clock_fit` JSON field** (offset found by an alignment search across the drain-lag bracket, then
+   drift-aware nearest-receipt pairing in two passes, so neither a pre-run ring backlog nor drift × elapsed can mis-pair).
+   Why this and not PTP on the controller: `docs/development/clock-sync-analysis-2026-09-18.md`.
 
 ### 5.3 Per-edge evidence
 
