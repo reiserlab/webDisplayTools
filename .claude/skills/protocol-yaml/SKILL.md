@@ -115,13 +115,47 @@ streams frames for the wait's duration. Declare a `fictrac` plugin. Shape:
       frame_index: 0
       frame_rate: 0        # mode 3: fixed 0
       gain: 0              # mode 3: fixed 0
-    - type: "controller"
+    - type: "plugin"        # NOT "controller" — these are fictrac PLUGIN commands
+      plugin_name: "fictrac"
       command_name: "startClosedLoop"
     - type: "wait"
       duration: *cl_dur    # FicTrac drives frames for this long (same anchor)
-    - type: "controller"
+    - type: "plugin"
+      plugin_name: "fictrac"
       command_name: "stopClosedLoop"
 ```
+
+`startClosedLoop` / `stopClosedLoop` are **plugin** commands on the declared `fictrac`
+plugin. Typing them as `controller` makes the runner skip them with a warning, so the
+loop never opens and the trial silently runs open-loop.
+
+### Bias / disturbance waveforms (LAB-185)
+
+`startClosedLoop` takes three optional params that add a smooth disturbance to the
+loop, so the display keeps moving even when the fly holds still (disturbance
+rejection). Authored as an added rotational **velocity**:
+
+```yaml
+    - type: "plugin"
+      plugin_name: "fictrac"
+      command_name: "startClosedLoop"
+      params:
+        gain: 1.8
+        bias_type: "sine"   # none | constant | sine | square
+        bias_amplitude: 90  # PEAK velocity, deg/s — negate to reverse direction
+        bias_frequency: 0.5 # Hz — sine/square only; ignored by constant
+```
+
+- `constant` drifts steadily; `sine`/`square` are **zero-mean in position**, so the
+  display is pushed equally both ways and starts where it already was.
+- Amplitude is a *velocity*, so the position excursion is derived and **shrinks as
+  frequency rises**: `±A/(2πf)` for sine, `±A/(4f)` for square. At 90 deg/s a sine
+  covers ±28.6° at 0.5 Hz but only ±14.3° at 1 Hz.
+- `bias_frequency` **must be non-zero** for `sine`/`square` — 0 Hz fails the step.
+  A negative frequency is a harmless no-op (warned): negate `bias_amplitude` instead.
+- `stopClosedLoop` clears the bias automatically. Reference:
+  `docs/development/closed-loop-bias.md`; worked example:
+  `protocols/fictrac_bias_test.yaml`.
 
 ### Conditional LED activation (index-gated LED, Mode 3 only)
 
