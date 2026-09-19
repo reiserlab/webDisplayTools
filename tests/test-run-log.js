@@ -57,6 +57,11 @@ check('slug empty → anon', RunLog.slug(''), 'anon');
 check('baseName strips .yaml', RunLog.baseName('looming_v3.yaml'), 'looming_v3');
 check('baseName strips .yml', RunLog.baseName('x.yml'), 'x');
 check('deriveOutcome aborted', RunLog.deriveOutcome({ aborted: true }), 'ABORTED_BY_USER');
+check(
+    'deriveOutcome fault beats aborted (fw #50)',
+    RunLog.deriveOutcome({ aborted: true, fault: 'controller_unresponsive' }),
+    'CONTROLLER_FAULT'
+);
 check('deriveOutcome errors', RunLog.deriveOutcome({ errors: 2 }), 'ERRORED');
 check('deriveOutcome completed', RunLog.deriveOutcome({ completed: true }), 'COMPLETED');
 check(

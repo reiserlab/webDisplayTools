@@ -8,7 +8,7 @@ CSHL 2026 course.
 - Opens one or more local JSONL files.
 - Loads a same-origin JSONL URL.
 - Browses a locally served course-repository checkout.
-- Signs in to the private GitHub course repository with the same fine-grained
+- Signs in to the GitHub course repository with the same personal access
   personal-access-token flow and storage keys used by Arena Studio.
 - Indexes run metadata without downloading complete runlogs, then loads full
   files only when selected.
@@ -32,6 +32,25 @@ Time-series matrices default to dashboard-controlled manual ranges (turning
 +/-300 deg/s and forward 0-25 mm/s). Users can edit and persist those values or
 choose Fit selected to compute one padded, rounded range spanning every
 displayed trace in the selected dataset.
+
+## Run catalog
+
+The run list has titled, sortable columns (click a title to sort ascending,
+again for descending, again to reset) and a ⚙ picker to choose which columns are
+shown; the choice is remembered in this browser. Besides run, rig/protocol,
+genotype, sex, fly and notes it shows the **start** time (local clock, from
+`run_metadata.timestamp_start`) and the **duration**. Duration is exact for loaded
+runs; for GitHub-indexed runs that have not been loaded it comes from the folder's
+`runlogs/<folder>/index.json`, fetched once per folder. (A tail `Range` read of each
+file was tried first, but browsers cannot do it: raw.githubusercontent.com refuses
+the CORS preflight; the GitHub API ignores `Range` entirely.) Build or refresh the
+index with `scripts/build-runlog-index.py --github owner/repo --write` (reads only
+a 64 KB head + 4 KB tail per file). In the data repos this runs automatically: the
+`runlog-index` GitHub Action (template in `scripts/data-repo-workflows/`) rebuilds a
+folder's index on every push under `runlogs/`, so a run shows its duration about a
+minute after it lands. Arena Studio does not write the index. Runs missing from an
+index show "—" until the Action has run. Aborted runs are flagged ⚠ with
+the tooltip naming the end state. Optional columns: age, experimenter, file size.
 
 ## Analysis pages
 
@@ -86,6 +105,14 @@ displayed trace in the selected dataset.
   retained in CSV and scalar preference metrics remain unsmoothed.
 - Classic trial preference index `(time safe - time reinforced) / total`, using
   unsmoothed frame samples and separate phase markers
+- Heisenberg-style bundled PI bars (two pages: 2-trial and 4-trial bundles):
+  consecutive same-stage trials are pooled into one interval and scored
+  time-weighted as `(t safe - t reinforced) / (t safe + t reinforced)`, drawn as
+  empty (baseline), hatched (training) and dotted (memory test) bars on a real
+  minutes axis, SEM across flies in group mode. A 2-trial bundle spans one
+  pattern flip; 4 spans two. Trial length (20 s or 40 s) only changes the bar
+  width; a stage whose trial count is not a multiple of the bundle ends with a
+  flagged partial bundle. Axis titles read the trial length from the log.
 - Phase-matched baseline-corrected probe PI
 - Logged LED-on fraction and safe-to-reinforced sector-entry count by trial
 - Per-trial cue stabilization strength, movement fraction, speed, absolute
@@ -101,9 +128,9 @@ relative-heading pages instead of failing import.
 
 ## Public page, private data
 
-The dashboard itself can be public while its URL is distributed through private
-course documentation. Private runlogs remain in
-`reiserlab/cshl-2026-course`.
+The dashboard itself is public. Runlogs live in `reiserlab/cshl-2026-course`,
+which was private during the course and has been public since 2026-08 (reads work
+signed-out; writes still need a token).
 
 The sign-in flow uses:
 
@@ -112,8 +139,10 @@ The sign-in flow uses:
 - `Authorization: Bearer <token>` headers to `api.github.com`
 
 The token is never placed in a URL, request body, runlog, CSV export, or console
-message. The course token should be a fine-grained PAT restricted to the course
-repository with Contents read/write access, matching Arena Studio.
+message. The shared course token is a **classic** PAT from the `cshl-2026` guest
+account (scope `public_repo`); lab members use a fine-grained PAT scoped to the one
+repo with Contents read/write — matching Arena Studio. See
+`docs/development/data-repo-token-runbook.md`.
 
 The dashboard currently performs read operations only. Write permission is
 retained on the shared course token so the same sign-in remains compatible with
@@ -168,6 +197,11 @@ value still pre-fills the local-server path.
 - `plot-specs.js`: protocol adapters and Plotly figure/CSV specifications
 - `github-repo.js`: PAT storage and private GitHub Contents API reads
 - `vendor/kinematics.js`: unchanged shared Arena Studio FicTrac math
+- `vendor/runlog-format.js`: exact copy of `webDisplayTools/js/runlog-format.js` — run-log
+  FILE decoding shared with the Studio's replay: gzip (`.jsonl.gz`, Studio v0.72+) and the
+  `behavior_v2` compact arena echoes, expanded to the v1 `arena_command` object at parse
+  time so every metric sees one shape. `tests/test-runlog-format.js` (repo root) fails if
+  the two copies diverge.
 
 ## Validation
 
@@ -180,6 +214,18 @@ node dashboard/data-browser/tests/test-github-client.js
 
 The analysis test parses live p0, p1, p2, current P3, and legacy P3 fixtures;
 validates stimulus alignment, P2 occupancy, P3 phase normalization, logged LED
-settings, and skipped-frame QC; builds every protocol page; and checks two-fly
-aggregation. The GitHub test verifies that the token appears only in the
-Authorization header.
+settings, and skipped-frame QC; builds every protocol page; checks two-fly
+aggregation; and re-reads the P3 fixture as `behavior_v2` + gzip asserting identical
+frames, events, preference indices and page CSV rows. The GitHub test verifies that
+the token appears only in the Authorization header.
+
+```bash
+node dashboard/data-browser/tests/corpus-v2-parity.js [/path/to/cshl-2026-course]
+```
+
+runs that v1-vs-v2.gz comparison over EVERY log in a course-repo clone (the
+behavior_v2 corpus gate; prints a Markdown table).
+
+Both `.jsonl` and `.jsonl.gz` open from the repo, a local server, a URL or a dropped
+file; the catalog shows the committed (compressed) size, with the inflated size and
+line format in the hover once a run is loaded.

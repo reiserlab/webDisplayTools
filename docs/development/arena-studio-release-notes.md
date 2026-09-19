@@ -4,11 +4,17 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
-## Bridge 2.2 (2026-08-20) · Closed-loop trials start in front of the fly
+## v0.83 (2026-09-19) · Closed-loop bias (disturbance) waveforms, heading tare, any-length closed loop
+
+Isabel's closed-loop work (PR #175, built against v0.71) merged onto the current Studio.
+Three user-visible changes, described in the sections below as they were written; the
+version numbers inside them refer to that branch. **Restart the FicTrac bridge** —
+`pixi run bridge` must report **3.2** for the bias and the tare to take effect.
+
+### Closed-loop trials start in front of the fly (bridge)
 
 A **FicTrac bridge** change — no Studio update needed, but the bridge must be
-restarted to pick it up (`pixi run bridge` should report **2.2**). Protocols are
-unchanged.
+restarted to pick it up. Protocols are unchanged.
 
 - **Fixed: a closed-loop trial no longer jumps the display away from the fly on its
   first frame.** The pattern would appear centred in front of the fly (`frame_index:
@@ -33,7 +39,7 @@ unchanged.
 - Unchanged: the plain Console closed loop (no protocol) still maps absolute heading
   exactly as before. The tare applies to protocol-driven trials.
 
-## v0.71 (2026-08-12) · Closed loop works with any pattern length, not just 200-frame ones
+### Closed loop works with any pattern length, not just 200-frame ones
 
 - **Fixed: a closed-loop trial on a pattern with fewer than 200 frames drove the
   arena to frames that did not exist.** The display showed a flickering diagnostic
@@ -55,7 +61,7 @@ unchanged.
 - If you hit the old symptom before updating: **Disconnect → Connect** in the
   Studio is worth trying before a power cycle.
 
-## v0.70 (2026-08-04) · Closed-loop bias — add a disturbance to a fly-on-ball trial
+### Closed-loop bias — add a disturbance to a fly-on-ball trial
 
 - **A closed-loop condition can now add a smooth disturbance to the visual
   display**, so the arena keeps moving even when the fly holds still. This is
@@ -84,14 +90,230 @@ unchanged.
   the arena after STOP). Bench-reported and fixed before release.
 - A ready-made sweep of all four waveforms ships as **FicTrac closed-loop
   bias/disturbance test** in File ▾ → Open from library.
-- Needs an updated FicTrac bridge (`pixi run bridge`, reports version 2.1 or
+- Needs an updated FicTrac bridge (`pixi run bridge`, reports version 3.2 or
   later) — the bias is computed there. An older bridge simply ignores it (verified:
   a stale bridge keeps streaming normally, it just applies no disturbance).
 - **Validated on arena hardware.** A full 8-condition run drove a real controller
   and the recorded log matches the intended frame index on every one of its 328,733
   frames; the rotation direction was checked by eye. Not yet used in an experiment
   with a behaving fly.
+## v0.82 (2026-09-17) · LED activation fields can be bound to variables
 
+- **The LED activation pane now has the 🔗 button on every value.** Level, hysteresis, and both ends of each ON
+  range are edited on their own YAML path, exactly like the other trialParams fields, so each one can be bound to an
+  existing anchor, given a new one ("Create & bind"), rebound, or unbound, and shows the `→ &name = value` chip
+  when bound. Before, the pane had no binding controls at all.
+- **Editing the pane no longer flattens existing bindings.** Every change used to rewrite the whole
+  `led_activation` object with resolved numbers, so adding a range silently replaced a hand-written `level: *led_level`
+  with the literal. Ranges are now appended and removed in place and scalars are written one at a time. (Shared fix:
+  a plain object written through `docSet` is stored as a real YAML node, so fields beneath it stay addressable.)
+- **Block `repetitions` gets the 🔗 button too.** The sequence inspector's repetitions field can now be bound to an
+  anchor (or created as one) like any command parameter; a bound block shows the chip with the resolved count.
+
+## v0.81 (2026-09-15) · Watching the Run log no longer slows the experiment
+
+- **The Run view's Log dock no longer throttles closed loop.** Every command appended two lines to the visible log,
+  each with a forced layout — on the Windows lab PC that cut the closed-loop apply rate from 175 Hz to 51 Hz whenever
+  the dock showed the Log (found by Isabel, 2026-09-15; the Scope and Console views were unaffected because the log box
+  is hidden there). Log lines are now queued and rendered 20 times a second in one batch, with one layout read and one
+  scroll. Nothing changes in what is logged or recorded.
+
+## v0.80 (2026-09-15) · Slow host no longer fails a recovered controller
+
+- **After a link drop or reset, slow replies from a healthy controller no longer halt the soak.** The post-mortem
+  used to declare `self-reset-failed` / `reset-failed` whenever any post-reconnect probe took longer than 50 ms,
+  even with the controller identity verified and every probe answered ok. On the Windows lab PC (2026-09-15) the
+  host itself added 36–80 ms per round trip, so a perfectly recovered controller was judged dead and the soak
+  stopped. The verdict now asks the controller: if GET_HEALTH's loop-max over the last second is fast, slow replies
+  are host-side latency — recovery stands, the log row carries `hostSlow: true`, and the Console message says so.
+  A controller that is slow by its own account (or an old firmware with no health reading) is judged as before.
+
+## v0.79 (2026-09-13) · Session rig follows the controller
+
+- **A fresh Studio no longer starts on the wrong arena.** With no explicit rig (no `?rig=`, no user pick) the
+  session rig used to be the first entry of the rig index (`g6_3x10`), whatever controller was plugged in. It now
+  follows the geometry the controller reports at connect (`GET_FIRMWARE_VERSION` rows × cols): on a 2×10
+  controller that is the CSHL fly-on-ball rig. Explicit choices are never overridden; the derived rig's I/O
+  power-on defaults are applied.
+- **Frame counts come from the card.** After the SD listing the Studio reads every pattern's header
+  (`GET_PATTERN_INFO`), so the closed-loop heading→index modulus is right for patterns whose thumbnail
+  was never rendered (an 8 MB pattern used to fall back to 200 frames and wrap).
+- **A link drop mid-run is a controller fault even when the runner's terminal event beats the disconnect
+  listener** (the link being down at an abort nobody requested is the evidence; forced-watchdog drill, bench).
+- **The stimulus-quality verdict is bound to its run.** A late terminal event from a previous, aborted run
+  can no longer finalize the next run's trials (it did once on the bench, one second into a drill, and
+  the real stall went unjudged).
+- **Banner when the SD diagnostic switches are on at connect** (`SET_SD_DIAG` readback ≠ 0): the switches persist
+  until a controller reboot and silently degrade every trial; the banner names the arm and how to clear it.
+
+## v0.78 (2026-09-13) · Whole-stack review fixes: the verdict lands in the log
+
+- **The stimulus-quality verdict is written before the run log is exported.** The final telemetry
+  drain and the `trial_quality` event used to run after the export had closed the bridge's file, so
+  committed logs lost the run's last records and the verdict. Both now run first, on normal runs and on
+  controller-fault runs (after the post-mortem, before the deferred commit).
+- **Missing telemetry can no longer produce a `pass`.** A drain error, a refused batch, a sequence gap
+  or an incomplete final drain marks the open trial `unknown`; a batch the bridge socket failed to send
+  is no longer acknowledged (the controller keeps those records for the next poll).
+- **Slow reads visible only in a FRAME record count.** A read over 10 ms flags the trial even without
+  an `sd_slow` event (ring-v1 firmware only emits those above 20 ms); counted once per read. Same rule
+  in `scripts/telemetry-report.py`.
+- **A watchdog self-reset mid-run is recorded as a controller fault** (outcome `CONTROLLER_FAULT`,
+  auto-committed) instead of `ABORTED_BY_USER`.
+- Stress protocol gain corrected to 0.18 °/frame for the 2000-frame sine (the bridge divides heading
+  by gain; 18 moved 5 frames per 90° jump instead of 500). Wire-comment fixes (crash report gate = flag
+  bit 3, SD diag gate = bit 6, FRAME `sd_load_us` is u32).
+
+## v0.77 (2026-09-13) · SD-card stall visibility: per-trial stimulus quality, card identity, request→display latency
+
+- **Display freezes are now flagged per trial.** The controller's SD card stalls for 30–90 ms every
+  ~24 k reads of a large pattern (card-internal housekeeping; the display holds the last frame and
+  the queued closed-loop commands are coalesced). With firmware that reports it (`sdfast` in the
+  firmware label), the Studio classifies every trial **pass / flagged / unknown** from the controller
+  telemetry ring: any SD read or request→display age over **10 ms** (Michael's worst-case acceptable
+  freeze; 5 ms is the target) flags the trial; incomplete telemetry coverage is `unknown`, never
+  `pass`. Each gap is a `display_gap` event in the run log, the per-trial table is a
+  `trial_quality` event at run end, and a banner names the flagged trials. Flag only — excluding or
+  repeating a trial stays the experimenter's decision.
+- **Which SD card ran the experiment** is recorded: the Studio reads the card's identity (maker,
+  product name, serial, manufacture date, capacity, FAT type, cluster size) at connect and writes
+  it into `run_metadata.sd_card`, so card comparisons are attributable.
+- **Request→display latency in the log.** Frame rows now carry how long the request waited before
+  the panels got it (`req_age_us`), how many loads were replaced before being shown, and whether the
+  pattern file is on the fast (contiguous) seek path. Readers treat the new columns as optional.
+- Telemetry drain keeps up in a background tab (per-poll budget raised 5×); new analysis script
+  `scripts/telemetry-report.py` (SD read cost by step, stall clusters, per-trial verdicts).
+- Bench A/B helper `Studio.setSdDiag(flags)` (firmware with `SET_SD_DIAG` 0xCE): forces the legacy FAT-chain
+  seek and/or disables the same-index read skip per iteration for the causal test of the card stalls
+  (`docs/development/archive/mode3-2026-09/sd-stall-causal-test-plan-2026-09-13.md`); the arm is recorded in `run_metadata.sd_card.sd_diag`.
+- **Open-loop soak.** The soak driver accepts protocols without a FicTrac plugin (e.g. the Mode-2
+  SD control `protocols/soak_mode2_open_loop.yaml`): the bridge is still the logger, but the
+  "simulator frames arriving" gate and the 0x70 exposure test are skipped. New campaign protocols
+  `soak_mode3_stress.yaml` (8 MB sine + 813 KB bar at 286 Hz) and the generator
+  `scripts/make-stress-patterns.js`.
+
+## v0.76 (2026-09-11) · Controller-fault detection, post-mortem probes, soak driver (fw #50)
+
+- **2026-09-12 review fixes (Codex gpt-6-astra, see `.codex-review/report-20260912-status.md`):**
+  a faulted run's log is committed only after the post-mortem (probes + controller ring dump) has
+  finished; "recovered" now requires the same controller (MAC) and every required probe answering
+  fast; the controller ring drain acknowledges records only once the bridge stored them; the ring is
+  enabled only when the firmware declares it (no blind 0xA8 on older builds) and has an on/off
+  switch in Console → Debug ▾ for a telemetry-off control arm; replay and dashboard readers ignore
+  the new `cc`/`cf`/`cs` rows; soak iterations that streamed almost nothing are marked
+  `unexercised`; the wedge analyzer reports runner-declared faults (`fault-declared`).
+
+- **A frozen controller now stops the run instead of finishing it.** During Mode-3 closed loop the
+  Studio used to ignore every frame-command timeout and let a run "complete" (and auto-commit) with
+  the arena dead. Now 3 failed frame commands out of the last 10 trip a fault: closed loop stops, the
+  run aborts with outcome **CONTROLLER_FAULT** (never "aborted by user"), and the run log is still
+  committed — the record of a run the controller killed is evidence. A timed-out trial command is
+  labelled the same way.
+- **Post-mortem probes after a fault.** The Studio waits a moment, confirms the controller is really
+  unresponsive, then for about a minute asks it a fixed set of questions (controller info, frame
+  counters, an SD read, the new health counters) with long timeouts, so the run log records how
+  slow it actually is — not just "timed out". Everything lands in the run log as `probe` rows.
+- **Soak (repeat protocol)…** (File ▾, advanced only, or `?soak=1`): repeats the open protocol
+  unattended — N times or for H hours with a gap — to reproduce the rare freeze overnight with the
+  FicTrac simulator. Refuses to start unless the bridge confirms `behavior_v2` logging and frames
+  are arriving. On a fault: first fault halts (controller left as-is for inspection) by default;
+  later faults can reset the controller, reconnect without a click, verify it is the same
+  controller, and continue. Soak runs are never auto-committed; scan them with
+  `scripts/wedge-scan.py`. Ships with `protocols/soak_mode3_closed_loop.yaml`.
+- **Console → Debug ▾ → Controller health**: reads the controller's loop timing, SD-read stats,
+  counters and what it was doing before its last restart (firmware with GET_HEALTH, capability
+  bit 7). The runner's own commands (trial start, STOP) now appear in the run log too.
+- **Controller telemetry ring (first cut).** With firmware that has the ring, the Studio drains
+  the controller's own event log ten times a second while connected and writes it into the run
+  log as compact `cc` (command received + status), `cf` (frame displayed, SD load time, SPI time)
+  and `cs` (state changes, error glyphs, slow SD reads, boots) rows next to the FicTrac frames.
+  The ring survives a controller reset, so after a fault the post-mortem pulls the controller's
+  last seconds as a crash dump. `scripts/wedge-scan.py` reports the counts, worst SD read, state
+  events and, with `--verbose`, the records before a wedge. Needs bridge ≥ 3.1.
+- **Firmware build identity in every run log.** On connect (and after any automatic reconnect)
+  the Studio reads the controller's build — git commit, branch, build date, arena size — and
+  records it as `firmware` in the run details and in `run_metadata` of every committed log, so a
+  problem can be pinned to a build. Needs firmware with GET_FIRMWARE_VERSION (ships with the
+  health capability); older builds still show the legacy "v1".
+
+## v0.74 (2026-09-07) · Console "Analog In" panel — live readout + loopback self-test
+
+- **New Console tool: Analog In.** A left-rail button opens a live readout of both
+  "Analog In (±10V)" connectors — value, a ±10 V bar, min/max, and a 30 s trace —
+  polled at 10 Hz (or 5 / 2 Hz) while the panel is open. Polling pauses by itself
+  during a run, when the link is down, or when the controller lacks the io_ext
+  firmware, and it never floods the Console log. Readings are on the nominal scale;
+  per-board calibration arrives with a later firmware, and the panel shows the
+  controller's own report of its ADC resolution and calibration state.
+- **Loopback self-test.** Cable "Analog Out (0-5V)" to an input and run the sweep:
+  the Studio steps the output 0 → 5000 mV, reads the input at each step, fits slope
+  and offset, shows the table, copies it as CSV, and restores the previous output
+  level. A flat reading near +10 V at every step is the signature of a board that
+  still has the swapped front-end resistors (LAB-209).
+- **Mode 4 gain field** now says what the number means: ×10, so 10 is unity = 100
+  frames/s per volt (the G3 convention), and 2–5 gives the everyday 20–50 fps/V.
+- Loopback sweep: a refused `SET_AO_VOLTAGE` (e.g. Analog Out in `frame_number` mode) now aborts the sweep with a hint instead of recording readings against an unapplied level; a refused restore is reported. The live poller also pauses while the Console's FicTrac closed loop is active (it owns the link). The sweep verdict now also requires |offset| ≤ 150 mV — a linear reading 1 V high is `check`, not `ok`.
+
+## v0.73 (2026-09-06) · Replay opens gzipped and `behavior_v2` run logs
+
+- **Replay reads the new log files.** The Alt replay picker lists and opens `.jsonl.gz`
+  files (from the repo or a local file) and understands the compact `behavior_v2`
+  arena echoes, so runs recorded by a v0.72 Studio replay exactly like older ones.
+  The shared decoder (`js/runlog-format.js`) is the same code the analysis dashboard
+  now uses, which also opens `.jsonl.gz` and `behavior_v2` from the repo, a local
+  server, a URL or a dropped file and shows the committed size in its catalog.
+
+## v0.72 (2026-09-06) · Run logs commit gzipped; compact `behavior_v2` log format; the bridge confirms the log level
+
+- **Run logs now commit as `.jsonl.gz`.** The Studio gzips the exported log in the
+  browser before committing it to the course repo (lossless, 6–8× smaller), so 40 s
+  and hour-long runs no longer hit GitHub's ~35 MiB per-file ceiling (the rig03-sr
+  40 s run that failed to auto-commit was 51 MB raw → about 6 MB gzipped). Anything
+  still over 30 MiB after compression goes through GitHub's Git Database API
+  instead of the Contents API. The run summary and the upload dialog show the
+  committed size and, when used, the large-file path. **Readers must inflate:**
+  the analysis dashboard and the replay viewer learn to open `.jsonl.gz` in the
+  next release; until then open new logs with `gunzip` or the bridge's
+  `--convert`. Old `.jsonl` files are untouched.
+- **New default log format `behavior_v2`** (File ▾ → Run logging). Same frame
+  rows as before; the per-command arena echoes (three quarters of a log's bytes)
+  are written compactly by the bridge. `behavior_v1` stays selectable for one
+  release; `full` is unchanged. Needs bridge 3.0 — benches `git pull` and restart
+  `pixi run bridge`.
+- **The bridge now confirms the log level it writes.** The run-start banner names
+  the confirmed level and warns "bridge too old for behavior_v2 — logging
+  behavior_v1" when the running bridge cannot write the chosen format (an old
+  bridge used to fall back silently). The Console's read-only level mirror shows
+  the confirmed level. `run_metadata` gains `log_format`.
+
+## v0.71 (2026-09-04) · Closed-loop apply is reset at run start and abort
+
+- **No more error floods at the start of a run.** If FicTrac closed-loop "apply"
+  had been left on (Console use, or a run that aborted mid-trial), the next run
+  pushed ball-tracking frames into its opening Mode-2 step and the controller
+  rejected every one — hundreds of error lines in the first seconds (seen on
+  rig03-sr, 2026-09-04). The runner now forces apply off at sequence start, at
+  sequence end, and whenever a run aborts or the link drops. Protocol data and
+  timing are unchanged.
+
+## v0.70 (2026-09-04) · Metadata pick-lists restored; course age/sex/fly# lists load; token guidance
+
+- **The Experimenter dropdown is populated again when no data repo is signed in.**
+  A GitHub-UI edit to the site library's `configs/metadata/people.yaml` (2026-08-27)
+  left an indentation error; the Studio swallowed the parse failure and showed an
+  empty list, which blocked recorded runs. Fixed, and the metadata files are now
+  parsed in the test suite and CI so a bad edit fails loudly.
+- **Fly age / sex / fly-number lists now really load from the connected repo.** The
+  read allowlist only permitted `roster.yaml` and `genotypes.yaml`, so the three other
+  root vocab files were refused and the site list was silently kept. The opt-in
+  post-run SD pattern archive (`pattern-sets/…`) was blocked by the write allowlist the
+  same way; both are allowed now.
+- **Sign-in text explains which token to use.** Org members: a fine-grained token
+  scoped to the one repo (Contents read/write). Shared course account / outside
+  collaborators: a classic token (`public_repo` for a public repo) — GitHub does not let
+  a non-member own a fine-grained token for an org repo. Also says what an expired token
+  looks like and where the renewal runbook is
+  (`docs/development/data-repo-token-runbook.md`).
 ## v0.69 (2026-07-21) · ISP batch retries a failed panel twice
 
 - **A failed panel flash now gets up to two retries** (was one) before being

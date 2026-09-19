@@ -4,6 +4,14 @@
     const K =
         global.Kinematics ||
         (typeof require === 'function' ? require('./vendor/kinematics.js') : null);
+    // Run-log FILE format (gzip + behavior_v1/v2 line formats): the shared
+    // js/runlog-format.js, vendored byte-identical like kinematics. parseJsonl
+    // takes TEXT — loaders inflate with F.readRunlogText first — and normalizes
+    // every line through F.createNormalizer() so behavior_v2's compact arena
+    // echoes reach every consumer as the v1 `arena_command` object.
+    const F =
+        global.RunlogFormat ||
+        (typeof require === 'function' ? require('./vendor/runlog-format.js') : null);
     const DEFAULT_BALL_DIAMETER_MM = 9;
     const DEFAULT_SMOOTH_WINDOW_S = 0.5;
     const ANALOG_OFF_FLOOR_MV = 4900;
@@ -175,7 +183,8 @@
 
     function parseFilename(sourceName) {
         const fileName = safeText(sourceName).split('/').pop() || 'runlog.jsonl';
-        const stem = fileName.replace(/\.jsonl$/i, '');
+        // `.jsonl.gz` (Studio v0.72+) and `.jsonl` share the same stem grammar.
+        const stem = fileName.replace(/\.gz$/i, '').replace(/\.jsonl$/i, '');
         const fields = stem.split('__');
         return {
             fileName,
@@ -207,8 +216,13 @@
             heisenberg_relational: 'relational slashes',
             dill_random_checkers: 'Dill random checkers'
         };
+        // Rig-saved variants carry suffixes after the timing token
+        // (p3-heisenberg-ts-full-led8.yaml, …-full-led8-40strain.yaml); without
+        // the suffix group they fell through to "legacy diagnostic" in the
+        // catalog (metadata-only classification) even though the parsed run
+        // was classified correctly from its condition names.
         const namedP3 = filename.match(
-            /(?:^|\/)p3_(heisenberg_ts|heisenberg_high_low|heisenberg_slashes|heisenberg_relational|dill_random_checkers)_(short|full)(?:\.yaml)?$/
+            /(?:^|\/)p3_(heisenberg_ts|heisenberg_high_low|heisenberg_slashes|heisenberg_relational|dill_random_checkers)_(short|full)(?:_[a-z0-9]+)*(?:\.yaml)?$/
         );
         const hasP3Phases = names.some((name) =>
             /^(baseline|training|probe)_phase(?:0|90)$/.test(name)
@@ -280,9 +294,125 @@
             experimenter: safeText(metadata && metadata.experimenter) || parsed.experimenter,
             bench: safeText(metadata && (metadata.rig_id || metadata.bench)),
             timestamp: safeText(metadata && metadata.timestamp_start) || parsed.timestamp,
+            startedMs: startedMsFromMetadata(metadata),
             notes: safeText(metadata && metadata.notes),
             metadata: metadata || {}
         };
+    }
+
+    // Epoch ms of the run start from run_metadata (ISO timestamp_start, else the
+    // bridge receive stamp), NaN when neither parses.
+    function startedMsFromMetadata(metadata) {
+        const iso = Date.parse(safeText(metadata && metadata.timestamp_start));
+        if (Number.isFinite(iso)) return iso;
+        const rx = finite(metadata && metadata.rx_ms);
+        return rx > 1e9 ? rx : NaN;
+    }
+
+    /**
+     * Session bounds from the FIRST and LAST few lines of a run log — enough to show
+     * a duration in the catalog without downloading the file. The bridge writes
+     * {"type":"session","event":"logging_started","ms":…} first and
+     * {"type":"session","event":"logging_stopped","ms":…} last; the runner's final
+     * 'sequence-complete' / 'aborted' event (rx_ms) is the fallback stop marker.
+     * @param {string} prefixText  head of the file (may end mid-line)
+     * @param {string} [suffixText] tail of the file (may start mid-line)
+     * @returns {{startMs:number, stopMs:number, durationSec:number, complete:boolean|null}}
+     */
+    function sessionBounds(prefixText, suffixText) {
+        const parseLines = (text) => {
+            const out = [];
+            for (const line of safeText(text).split(/\r?\n/)) {
+                if (!line.startsWith('{')) continue;
+                try {
+                    out.push(JSON.parse(line));
+                } catch (_) {
+                    /* partial line at a prefix/suffix boundary */
+                }
+            }
+            return out;
+        };
+        const head = parseLines(prefixText);
+        const tail = parseLines(suffixText);
+        let startMs = NaN;
+        for (const rec of head) {
+            if (rec.event === 'logging_started' && finite(rec.ms) > 1e9) {
+                startMs = finite(rec.ms);
+                break;
+            }
+        }
+        if (!Number.isFinite(startMs)) {
+            const meta = head.find((rec) => rec.event === 'run_metadata');
+            if (meta) startMs = startedMsFromMetadata(meta);
+        }
+        let stopMs = NaN;
+        let complete = null;
+        for (const rec of tail.slice().reverse()) {
+            if (rec.event === 'logging_stopped' && finite(rec.ms) > 1e9) {
+                stopMs = finite(rec.ms);
+                break;
+            }
+        }
+        for (const rec of tail) {
+            if (rec.event === 'runner' && rec.phase === 'sequence-complete') complete = true;
+            if (rec.event === 'runner' && rec.phase === 'aborted') complete = false;
+            if (!Number.isFinite(stopMs) && rec.event === 'runner' && finite(rec.rx_ms) > 1e9)
+                stopMs = Math.max(finite(stopMs) || 0, finite(rec.rx_ms));
+        }
+        const durationSec =
+            Number.isFinite(startMs) && Number.isFinite(stopMs) && stopMs >= startMs
+                ? (stopMs - startMs) / 1000
+                : NaN;
+        return { startMs, stopMs, durationSec, complete };
+    }
+
+    /**
+     * `runlogs/<folder>/index.json` (written by scripts/build-runlog-index.py and,
+     * later, appended by Arena Studio after each auto-commit): per-run start /
+     * duration / end state so the catalog shows them without downloading logs.
+     * Browsers cannot read a file TAIL from GitHub (raw.githubusercontent.com
+     * rejects the CORS preflight a `Range` header triggers), so this index is the
+     * only cheap source for unloaded runs.
+     * @returns {Map<string, {startedMs:number,durationSec:number,complete:boolean|null,size:number}>}
+     *          keyed by file name (and by run_id as a second key)
+     */
+    function runIndexLookup(indexJson) {
+        const map = new Map();
+        const runs = indexJson && Array.isArray(indexJson.runs) ? indexJson.runs : [];
+        for (const r of runs) {
+            if (!r) continue;
+            const entry = {
+                startedMs:
+                    finite(r.started_ms) > 1e9 ? finite(r.started_ms) : startedMsFromMetadata(r),
+                durationSec: r.duration_s == null ? NaN : finite(r.duration_s),
+                complete: r.complete === true ? true : r.complete === false ? false : null,
+                size: r.size == null ? NaN : finite(r.size)
+            };
+            if (r.file) map.set(String(r.file), entry);
+            if (r.run_id) map.set('run:' + String(r.run_id), entry);
+        }
+        return map;
+    }
+
+    /** Wall-clock duration (s) of a fully parsed run: logging_stopped − logging_started,
+     *  else the last frame / runner event. */
+    function runDurationSec(run) {
+        if (!run) return NaN;
+        const start = finite(run.sessionStartMs);
+        const stopped = (run.events || []).find((rec) => rec.event === 'logging_stopped');
+        if (stopped && Number.isFinite(start) && finite(stopped.ms) > start) {
+            return (finite(stopped.ms) - start) / 1000;
+        }
+        const lastFrame =
+            run.frames && run.frames.length ? run.frames[run.frames.length - 1].ms : NaN;
+        const lastEvent = Math.max(
+            ...(run.events || []).map((rec) => relativeEventMs(rec, start)).filter(Number.isFinite)
+        );
+        const last = Math.max(
+            finite(lastFrame) || -Infinity,
+            Number.isFinite(lastEvent) ? lastEvent : -Infinity
+        );
+        return Number.isFinite(last) && last > 0 ? last / 1000 : NaN;
     }
 
     function extractSteps(events, sessionStartMs) {
@@ -598,6 +728,7 @@
         let schema = [];
         let metadata = {};
         let sessionStartMs = NaN;
+        const normalizer = F ? F.createNormalizer() : null;
 
         for (let index = 0; index < lines.length; index += 1) {
             const line = lines[index].trim();
@@ -605,11 +736,17 @@
             let rec;
             try {
                 rec = JSON.parse(line);
+                // behavior_v2: ["a", …] arena echoes → the v1 arena_command object
+                // (needs the v2 frame_schema's t0, which precedes them in the file).
+                if (normalizer) rec = normalizer.normalize(rec);
             } catch (error) {
                 parseErrors.push({ lineNumber: index + 1, message: error.message });
                 continue;
             }
             if (Array.isArray(rec)) {
+                // String-tagged rows ("cc"/"cf"/"cs" controller telemetry) are other
+                // streams in the same file, not FicTrac samples.
+                if (typeof rec[0] === 'string') continue;
                 const frame = parseFrameArray(rec, schema, index + 1);
                 if (frame) frames.push(frame);
                 continue;
@@ -642,7 +779,10 @@
             events,
             steps,
             parseErrors,
-            sessionStartMs
+            sessionStartMs,
+            // 'behavior_v2' | 'behavior_v1' | 'full' | 'legacy' | 'unknown'
+            logFormat: normalizer ? normalizer.format : 'unknown',
+            rawBytes: text ? text.length : 0 // code units (≈ bytes for ASCII-dominant logs)
         };
         deriveSignals(run, options);
         assignFramesToSteps(run);
@@ -830,7 +970,10 @@
         return {
             level: NaN,
             hysteresis: NaN,
-            ranges: [[0, 49], [100, 149]],
+            ranges: [
+                [0, 49],
+                [100, 149]
+            ],
             condition: '',
             variant: ''
         };
@@ -838,7 +981,10 @@
 
     function p3AnalysisRanges(run) {
         return p3UsesCueNormalization(run)
-            ? [[0, 49], [100, 149]]
+            ? [
+                  [0, 49],
+                  [100, 149]
+              ]
             : p3Reinforcement(run).ranges;
     }
 
@@ -882,8 +1028,7 @@
             if (change.on && !active) {
                 active = { startMs: change.ms, level: change.level };
             } else if (!change.on && active) {
-                if (change.ms > active.startMs)
-                    epochs.push({ ...active, endMs: change.ms });
+                if (change.ms > active.startMs) epochs.push({ ...active, endMs: change.ms });
                 active = null;
             }
         }
@@ -903,8 +1048,9 @@
         const phase = p3Phase(step && step.condition);
         if (!phase) return [];
         const startMs = step.startMs + Math.max(0, finite(dropSec) || 0) * 1000;
-        return (run.framesByStep.get(step.index) || [])
-            .filter((frame) => frame.ms >= startMs && Number.isFinite(frame.index));
+        return (run.framesByStep.get(step.index) || []).filter(
+            (frame) => frame.ms >= startMs && Number.isFinite(frame.index)
+        );
     }
 
     function p3TrialIndices(run, step, dropSec) {
@@ -1113,6 +1259,81 @@
         return metric;
     }
 
+    /**
+     * Classic Heisenberg / Wolf / Dill preference-index bundles: pool `size`
+     * consecutive trials of the SAME stage (baseline, training_1, probe_1, …)
+     * and score them as one interval, exactly like the 2-min PI of the flight-
+     * simulator papers: PI = (t_safe − t_reinforced) / (t_safe + t_reinforced),
+     * time-weighted over every frame sample in the bundle (NOT a mean of per-
+     * trial PIs, so a trial with fewer samples counts less). With the P3
+     * phase0/phase90 alternation a 2-trial bundle spans one pattern flip and a
+     * 4-trial bundle two flips. Trial length is irrelevant to the definition —
+     * 20 s or 40 s trials both work; the bundle's wall-clock span comes from
+     * the logged step timestamps. A stage whose trial count is not a multiple
+     * of `size` ends with a shorter bundle flagged `partial: true`.
+     *
+     * @param {Array} rows   ordered trial rows ({stage, phase, variant, trial,
+     *                       samples, safeFraction, reinforcedFraction, step})
+     *                       — the shape p3TrialRows / p3AlignedTrialRows emit
+     * @param {number} size  trials per bundle (2 or 4)
+     * @returns {Array} bundles {key, bundle, stage, stageBundle, phase, trials,
+     *          variants, size, partial, samples, safe, reinforced, preference,
+     *          startMs, endMs, durationSec}
+     */
+    function p3BundleTrials(rows, size) {
+        const n = Math.max(1, Math.round(finite(size) || 1));
+        const ordered = (rows || []).filter((row) => row && row.stage);
+        const bundles = [];
+        let i = 0;
+        let bundleNo = 0;
+        const perStage = new Map();
+        while (i < ordered.length) {
+            const stage = ordered[i].stage;
+            const chunk = [];
+            while (i < ordered.length && ordered[i].stage === stage && chunk.length < n) {
+                chunk.push(ordered[i]);
+                i += 1;
+            }
+            let safe = 0;
+            let reinforced = 0;
+            for (const row of chunk) {
+                const samples = finite(row.samples) || 0;
+                safe += Math.round((finite(row.safeFraction) || 0) * samples);
+                reinforced += Math.round((finite(row.reinforcedFraction) || 0) * samples);
+            }
+            const total = safe + reinforced;
+            const starts = chunk.map((row) => row.step && row.step.startMs).filter(Number.isFinite);
+            const ends = chunk.map((row) => row.step && row.step.endMs).filter(Number.isFinite);
+            const startMs = starts.length ? Math.min(...starts) : NaN;
+            const endMs = ends.length ? Math.max(...ends) : NaN;
+            bundleNo += 1;
+            const stageBundle = (perStage.get(stage) || 0) + 1;
+            perStage.set(stage, stageBundle);
+            bundles.push({
+                key: stage + '#' + stageBundle,
+                bundle: bundleNo,
+                stage,
+                stageBundle,
+                phase: chunk[0].phase,
+                trials: chunk.map((row) => row.trial),
+                variants: chunk.map((row) => row.variant),
+                size: chunk.length,
+                partial: chunk.length < n,
+                samples: total,
+                safe,
+                reinforced,
+                preference: total ? (safe - reinforced) / total : NaN,
+                startMs,
+                endMs,
+                durationSec:
+                    Number.isFinite(startMs) && Number.isFinite(endMs)
+                        ? Math.max(0, (endMs - startMs) / 1000)
+                        : NaN
+            });
+        }
+        return bundles;
+    }
+
     const DashboardAnalysis = {
         DEFAULT_BALL_DIAMETER_MM,
         DEFAULT_SMOOTH_WINDOW_S,
@@ -1126,6 +1347,9 @@
         parseFilename,
         parseMetadataPrefix,
         descriptorFromMetadata,
+        sessionBounds,
+        runDurationSec,
+        runIndexLookup,
         protocolInfo,
         parseJsonl,
         deriveSignals,
@@ -1146,6 +1370,7 @@
         p3TrialIndices,
         p3TrialAngles,
         p3PreferenceIndex,
+        p3BundleTrials,
         p3TrialDoseMetrics,
         p3DwellBouts,
         p3TrialQualityMetrics,

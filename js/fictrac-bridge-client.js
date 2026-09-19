@@ -14,9 +14,16 @@
  *                  "x":<rad>,"y":<rad>,"hd":<rad>}   (behavior_v1 fields — the live
  *                    oscilloscope's raw state; index/seq/t kept for back-compat)
  *                 {"type":"log_export_result","name":..,"content":..}  (or {"error":..})
+ *                 {"type":"hello_ack","bridge":..,"levels":[..],"level":..,"logging":..}
+ *                    (bridge ≥ 3.0 only — an OLD bridge never answers hello)
+ *                 {"type":"log_control_ack","enabled":..,"level":..,"requested":..,"file":..}
+ *                    (`level` = the level the bridge will ACTUALLY write; an unknown
+ *                     requested level is ignored by the bridge, so this is how a
+ *                     stale bridge becomes visible instead of silently logging v1)
  *   us → bridge:  {"type":"hello","client":...,"v":1}
  *                 {"type":"config","fictrac_port":..,"gain":..,"offset":..,"frames":..}
- *                 {"type":"log_control","enabled":<bool>,"level":"behavior_v1"|"full"}
+ *                 {"type":"log_control","enabled":<bool>,
+ *                                       "level":"behavior_v2"|"behavior_v1"|"full"}
  *                     (opens/closes the log file; level picks the frame-row format)
  *                 {"type":"log", ...}                        (an event to append)
  *                 {"type":"log_export"}                      (close + stream back the log)
@@ -45,6 +52,12 @@
  *   'bias'    (bias:object|null)           — the bias waveform pushed to the bridge
  *                                            changed: {type, amplitude, frequency}
  *   'log'     (msg:string, kind:string)    — human-readable trace line
+ *   'loglevel' (info:object)               — the bridge acknowledged a log level:
+ *                                            {requested, level, ok, levels, enabled,
+ *                                             file, source:'log_control'|'hello'}.
+ *                                            ok=false ⇒ the bridge cannot write the
+ *                                            requested level (too old) and `level`
+ *                                            is what it logs instead.
  */
 (function (global) {
     'use strict';
@@ -58,8 +71,14 @@
         'blocked',
         'apply',
         'bias',
-        'log'
+        'log',
+        'loglevel',
+        'fault'
     ];
+    // Log levels this client knows how to request, most-preferred first. The
+    // bridge advertises ITS list in hello_ack; a level missing there is one the
+    // running bridge is too old for. Mirrors bridge.py LOG_LEVELS.
+    const LOG_LEVELS = ['behavior_v2', 'behavior_v1', 'full'];
 
     class FicTracBridgeClient {
         /**
@@ -102,10 +121,27 @@
             this._lastBlockedMs = 0;
             this._biasNowDeg = null; // live bias angle from the newest frame (display only)
 
+            // Fault detector (firmware #50 — the Mode-3 controller wedge). The
+            // apply loop used to swallow every 0x70 timeout and keep spinning at
+            // 2 Hz for the rest of the run, so a wedged controller produced a
+            // "completed" run. Now a rolling window of apply outcomes trips a
+            // latched fault once `faultThreshold` of the last `faultWindow`
+            // applies failed ("≥3 of 10", not "3 consecutive": a late reply to
+            // an earlier 0x70 can satisfy the next request and reset a
+            // consecutive counter). On fault: apply is forced OFF (fail closed)
+            // and a 'fault' event fires — ArenaSession routes it to the runner.
+            this._faultThreshold = Number.isInteger(o.faultThreshold) ? o.faultThreshold : 3;
+            this._faultWindow = Number.isInteger(o.faultWindow) ? o.faultWindow : 10;
+            this._applyOutcomes = []; // most recent apply results, 1 = failed, 0 = ok
+            this._applyFailures = 0; // total failed applies (timeouts, rejects, link errors)
+            this._fault = null; // latched fault record, or null
+
             // Bridge config (mirrors the console inputs). Sent on connect + on change.
-            // logLevel is the frame-logging level requested when logging starts
-            // ('behavior_v1' default | 'full'); the browser ASSERTS it so the runner
-            // logs behavior_v1 regardless of how the bridge process was launched.
+            // logLevel is the log format requested when logging starts
+            // ('behavior_v2' default | 'behavior_v1' | 'full'); the browser ASSERTS
+            // it so the runner logs deterministically regardless of how the bridge
+            // process was launched. The bridge answers with the level it will
+            // actually write (log_control_ack) — see ackedLogLevel.
             // `bias` is the one OBJECT-valued config key (LAB-185): the closed-loop
             // disturbance waveform {type, amplitude, frequency}. null = never set, so
             // nothing is pushed and an old bridge is unaffected.
@@ -115,8 +151,11 @@
                 offset: 0,
                 frames: null,
                 bias: null,
-                logLevel: 'behavior_v1'
+                logLevel: LOG_LEVELS[0]
             };
+            this._bridgeInfo = null; // from hello_ack: {version, levels, level} (null = old bridge / not yet)
+            this._ackedLevel = null; // from log_control_ack while logging is enabled
+            this._ackWaiters = []; // waitForLogLevelAck() resolvers
         }
 
         // ---- events ----------------------------------------------------------
@@ -159,8 +198,48 @@
                 recv: this._recv,
                 applied: this._applied,
                 drop: Math.max(0, this._recv - this._applied),
-                rateHz: this._rateHz
+                rateHz: this._rateHz,
+                applyFailures: this._applyFailures,
+                fault: this._fault
             };
+        }
+
+        /** The latched fault record ({kind, failures, window, …}) or null. */
+        get fault() {
+            return this._fault;
+        }
+
+        /** Clear the fault latch + outcome window (a new run / apply session starts clean). */
+        resetFaultWindow() {
+            this._applyOutcomes = [];
+            this._fault = null;
+        }
+
+        // Record one apply outcome; trip the fault latch when the window fills
+        // with failures. Fail closed: apply goes OFF before anyone is told.
+        _recordApply(failed, err, index) {
+            const w = this._applyOutcomes;
+            w.push(failed ? 1 : 0);
+            if (w.length > this._faultWindow) w.shift();
+            if (!failed) return;
+            this._applyFailures++;
+            if (this._fault) return;
+            const n = w.reduce((a, b) => a + b, 0);
+            if (n < this._faultThreshold) return;
+            this._fault = {
+                kind: 'controller_unresponsive',
+                failures: n,
+                window: w.length,
+                threshold: this._faultThreshold,
+                lastIndex: index,
+                lastError: err ? err.message || String(err) : null,
+                t: this._now()
+            };
+            if (this._apply) {
+                this._apply = false;
+                this._emit('apply', false);
+            }
+            this._emit('fault', this._fault);
         }
 
         // ---- connection ------------------------------------------------------
@@ -214,11 +293,16 @@
                 }
                 if (msg && msg.type === 'frame') this.handleFrame(msg.index, msg);
                 else if (msg && msg.type === 'log_export_result') this._handleExportResult(msg);
+                else if (msg && msg.type === 'hello_ack') this._handleHelloAck(msg);
+                else if (msg && msg.type === 'log_control_ack') this._handleLogControlAck(msg);
             };
             ws.onerror = () => this._emit('status', 'error', 'err');
             ws.onclose = () => {
                 this._stopRateTimer();
                 this._ws = null;
+                this._bridgeInfo = null;
+                this._ackedLevel = null;
+                this._settleAckWaiters(null);
                 this._settleExport('reject', new Error('bridge disconnected during log export'));
                 this._emit('status', 'disconnected', 'dim');
                 this._emit('stats', this.stats);
@@ -337,23 +421,135 @@
         setApply(on) {
             const next = !!on;
             const changed = next !== this._apply;
+            if (changed && next) this.resetFaultWindow(); // a fresh apply session starts clean
             this._apply = next;
             if (changed) this._emit('apply', this._apply);
         }
 
         /**
-         * Select the frame-logging level for the NEXT log the bridge opens:
-         * 'behavior_v1' (compact, the runner default) or 'full' (25-column). Takes
-         * effect at the next setLogging(true) / reconnect (the bridge applies it
-         * when it opens a fresh file). Unknown values are ignored.
+         * Select the log level for the NEXT log the bridge opens: 'behavior_v2'
+         * (compact arena echoes, the default), 'behavior_v1' (the pre-2026-09
+         * format) or 'full' (25-column FicTrac record). Takes effect at the next
+         * setLogging(true) / reconnect (the bridge applies it when it opens a fresh
+         * file). Unknown values are ignored.
          */
         setLogLevel(level) {
-            if (level === 'behavior_v1' || level === 'full') this._config.logLevel = level;
+            if (LOG_LEVELS.includes(level)) this._config.logLevel = level;
+        }
+        /** The level this client will request (not necessarily what the bridge writes). */
+        get logLevel() {
+            return this._config.logLevel;
+        }
+        /**
+         * The level the bridge acknowledged for the CURRENT log file (log_control_ack
+         * with enabled=true), or null: not yet acked, logging off, or an old bridge
+         * that never acks (then it writes behavior_v1 / whatever --log-frames said).
+         */
+        get ackedLogLevel() {
+            return this._ackedLevel;
+        }
+        /** hello_ack facts {version, levels, level} — null until a ≥3.0 bridge answers. */
+        get bridgeInfo() {
+            return this._bridgeInfo;
+        }
+        /**
+         * Can the connected bridge write `level`? true/false from hello_ack; null when
+         * unknown (no hello_ack yet — including every pre-3.0 bridge).
+         */
+        bridgeSupportsLevel(level) {
+            const lv = level || this._config.logLevel;
+            if (!this._bridgeInfo || !Array.isArray(this._bridgeInfo.levels)) return null;
+            return this._bridgeInfo.levels.includes(lv);
+        }
+        /**
+         * Resolve with the acked level once the bridge answers the pending
+         * log_control (or immediately if it already has); null after `timeoutMs`
+         * (default 1000) — i.e. an old bridge, or not connected.
+         */
+        waitForLogLevelAck(timeoutMs) {
+            if (this._ackedLevel) return Promise.resolve(this._ackedLevel);
+            if (!this.connected || !this._logging) return Promise.resolve(null);
+            return new Promise((resolve) => {
+                const w = { resolve, timer: null };
+                w.timer = setTimeout(() => {
+                    this._ackWaiters = this._ackWaiters.filter((x) => x !== w);
+                    resolve(null);
+                }, timeoutMs || 1000);
+                this._ackWaiters.push(w);
+            });
+        }
+        _settleAckWaiters(level) {
+            const ws = this._ackWaiters;
+            this._ackWaiters = [];
+            for (const w of ws) {
+                if (w.timer && typeof clearTimeout !== 'undefined') clearTimeout(w.timer);
+                w.resolve(level);
+            }
+        }
+        _handleHelloAck(msg) {
+            this._bridgeInfo = {
+                version: msg.bridge || null,
+                levels: Array.isArray(msg.levels) ? msg.levels.slice() : [],
+                level: msg.level || null
+            };
+            const requested = this._config.logLevel;
+            const ok = this._bridgeInfo.levels.includes(requested);
+            if (!ok) {
+                this._emit(
+                    'log',
+                    'bridge ' +
+                        (msg.bridge || '?') +
+                        ' cannot write ' +
+                        requested +
+                        ' (it offers ' +
+                        this._bridgeInfo.levels.join(', ') +
+                        ') — restart `pixi run bridge` from the current checkout',
+                    'err'
+                );
+            }
+            this._emit('loglevel', {
+                source: 'hello',
+                requested: requested,
+                level: ok ? requested : this._bridgeInfo.level,
+                ok: ok,
+                levels: this._bridgeInfo.levels,
+                enabled: !!msg.logging,
+                file: null
+            });
+        }
+        _handleLogControlAck(msg) {
+            const requested = msg.requested != null ? msg.requested : this._config.logLevel;
+            const level = msg.level || null;
+            const enabled = !!msg.enabled;
+            this._ackedLevel = enabled ? level : null;
+            const ok = !enabled || level === requested;
+            if (!ok) {
+                this._emit(
+                    'log',
+                    'bridge too old for ' +
+                        requested +
+                        ' — logging ' +
+                        level +
+                        ' instead (restart `pixi run bridge` from the current checkout)',
+                    'err'
+                );
+            }
+            this._emit('loglevel', {
+                source: 'log_control',
+                requested: requested,
+                level: level,
+                ok: ok,
+                levels: this._bridgeInfo ? this._bridgeInfo.levels : null,
+                enabled: enabled,
+                file: msg.file || null
+            });
+            if (enabled) this._settleAckWaiters(level);
         }
 
         /** Turn the bridge's session log file on/off (sends log_control + the level). */
         setLogging(on) {
             this._logging = !!on;
+            this._ackedLevel = null; // pending until the bridge acks this request
             const msg = { type: 'log_control', enabled: this._logging };
             if (this._logging) msg.level = this._config.logLevel;
             this._send(msg);
@@ -364,6 +560,25 @@
             if (this._logging && this.connected) {
                 this._send(Object.assign({ type: 'log' }, obj));
             }
+        }
+
+        /**
+         * Compact array rows for the run log (controller telemetry streams
+         * "cc"/"cf"/"cs" from js/arena-telemetry.js). The bridge writes each row
+         * verbatim as one NDJSON line — same shape as the behavior_v2 ["a", …]
+         * arena echoes, so readers dispatch on Array.isArray + row[0]. Needs
+         * bridge ≥ 3.1 (a 3.0 bridge writes the whole message as one verbatim
+         * object instead). Returns false when NOT logging/connected, so the caller
+         * (the telemetry drainer) withholds its ack and the controller keeps the rows.
+         * @param {Array<Array>} rows
+         * @returns {boolean} accepted
+         */
+        logRows(rows) {
+            if (!Array.isArray(rows) || !rows.length) return true;
+            if (!(this._logging && this.connected)) return false; // not stored — caller keeps them
+            // A send on a closing socket throws inside _send: that batch was NOT stored,
+            // so report false and the drainer withholds its ack (whole-stack review, 2026-09-13).
+            return this._send({ type: 'rows', rows });
         }
 
         /**
@@ -473,15 +688,32 @@
             this._inFlight = true;
             try {
                 while (this._pending != null && this._apply && this._canApply()) {
-                    const i = this._clampFrame(this._pending);
+                    // #199: the bridge applies a new `frames` modulus one frame late
+                    // (its config message is async), so the first index after a
+                    // trial change can carry the PREVIOUS pattern's modulus →
+                    // "index out of range" + an error glyph on the arena. Wrap
+                    // locally into the configured range first; the consumer's
+                    // clampFrame still runs after. Now that controller rejects count
+                    // toward the fault window, this also keeps short alternating
+                    // trials from tripping a false CONTROLLER_FAULT.
+                    let idx = this._pending;
+                    const n = this._config.frames;
+                    if (Number.isFinite(n) && n > 0 && Number.isFinite(idx)) {
+                        idx = ((Math.round(idx) % n) + n) % n;
+                    }
+                    const i = this._clampFrame(idx);
                     this._pending = null;
                     try {
                         await this._applyFrame(i);
                         this._applied++;
+                        this._recordApply(false, null, i);
                         this._emit('applied', i);
                         this._emit('stats', this.stats);
                     } catch (e) {
                         this._emit('log', 'bridge apply failed: ' + (e && (e.message || e)), 'err');
+                        // Counted, not swallowed (fw #50): enough failures in the
+                        // window latch a fault and stop the loop (apply → false).
+                        this._recordApply(true, e, i);
                     }
                 }
             } finally {
@@ -495,10 +727,12 @@
             if (ws && ws.readyState === 1 /* OPEN */) {
                 try {
                     ws.send(JSON.stringify(obj));
+                    return true;
                 } catch (_) {
-                    /* a closing socket can throw on send — ignore */
+                    return false; // a closing socket can throw on send — the caller decides
                 }
             }
+            return false;
         }
         _startRateTimer() {
             if (this._rateTimer || typeof setInterval === 'undefined') return;
@@ -518,6 +752,8 @@
     }
 
     // Dual-export: CommonJS (Node tests) + window global (classic <script src>).
+    FicTracBridgeClient.LOG_LEVELS = LOG_LEVELS.slice();
+
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = FicTracBridgeClient;
     }

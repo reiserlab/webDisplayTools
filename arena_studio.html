@@ -251,6 +251,8 @@
   body.safemode #ghLock{cursor:not-allowed;opacity:.6}
   /* Session-rig selector stays hard-locked (its unlock padlock is hidden). */
   body.safemode #sessionRigLock{display:none}
+  body.safemode #fmSoak{display:none}
+  #fmSoak.soaking{color:var(--accent)}
   /* Pattern WRITES greyed in safe mode: the Add ▾ menu button has no data-cmd
      (its items do, and are in SAFE_BLOCKED_CMDS), so grey the parent so the menu
      can't be opened; the per-row × delete bypasses the dispatcher (guarded in JS)
@@ -1983,6 +1985,18 @@
   .console-view .rail-btn:hover{border-color:var(--accent)}
   .console-view .rail-btn.sel{border-color:var(--accent);background:rgba(0,230,118,.08)}
   .console-view .rail-btn .sub{font-size:9px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:126px}
+  /* Analog In panel (analog-input-plan § 4 S1): value, ±10 V bar, 30 s strip chart, sweep table */
+  .console-view .ai-val{font-family:var(--head);font-size:15px;min-width:92px;text-align:right;color:var(--text)}
+  .console-view .ai-bar{position:relative;display:inline-block;width:150px;height:10px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);overflow:hidden;vertical-align:middle}
+  .console-view .ai-bar .mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--dim);opacity:.7}
+  .console-view .ai-bar .fill{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.85}
+  .console-view .ai-range{font-size:10px;color:var(--dim);min-width:130px}
+  .console-view #cAiChart{display:block;width:100%;max-width:460px;height:90px;border:1px solid var(--border);border-radius:4px;background:#0b0f14}
+  .console-view .ai-table{font-size:10.5px;border-collapse:collapse}
+  .console-view .ai-table td,.console-view .ai-table th{padding:1px 10px 1px 0;text-align:right;color:var(--text);font-family:var(--mono)}
+  .console-view .ai-table th{color:var(--dim);font-weight:normal}
+  .console-view .ai-table td.bad{color:#ff8a80}
+  .console-view .pill[aria-pressed="false"]{opacity:.6}
   .console-view .stage{flex:1 1 auto;overflow:auto;padding:2px 2px 2px 10px;display:flex;flex-direction:column;gap:6px}
   /* Outer panel box: soft near-white 1.5px edge so panels stay distinct on a
      dark monitor in a lit room (grey var(--border) washed out). Internal
@@ -2120,6 +2134,7 @@
       <div class="sep"></div>
       <button id="fmCopyConditions" class="edit-only" title="Copy conditions from a second protocol YAML into this one — brings their anchors and plugins along">Copy conditions from another protocol…</button>
       <button id="fmReset" class="edit-only" title="Clear everything to a blank minimum-valid v3 skeleton (reversible with Undo)">Reset protocol…</button>
+      <button id="fmSoak" title="Advanced: repeat the open protocol unattended (N times / for H hours, with a gap) to reproduce the Mode-3 controller wedge (fw #50). Requires the bridge to confirm behavior_v2 logging and FicTrac/simulator frames to be arriving. On a fault: quiet period → probes → halt (first fault) or SYSTEM_RESET + reconnect + continue. Logs stay on the bridge (not auto-committed).">Soak (repeat protocol)…</button>
       <div class="sep"></div>
       <div class="gh-block gh-locked" id="ghBlock">
         <div class="gh-row">
@@ -2136,8 +2151,9 @@
         <label class="gh-check"><input type="checkbox" id="ghDirect" title="Save commits straight to the target repo's default branch — no branch, no PR. Course-repo mode: safe there because bench-id namespacing means no two rigs write the same file"> Commit directly to default branch</label>
         <label class="gh-check"><input type="checkbox" id="ghArchivePatterns" title="Advanced: after each completed run, snapshot the SD card's patterns to pattern-sets/&lt;hash&gt;/patterns.zip in the repo (content-hash deduped) — redundancy for on-card edits. OFF by default: the SD bulk-download is still under investigation (it can disconnect the arena on large cards)."> Archive SD patterns to repo after each run <span class="dim">(advanced)</span></label>
         <div class="gh-row"><label for="fmLogLevel">Run logging</label>
-          <select id="fmLogLevel" title="FicTrac frame logging verbosity for recorded runs (and ad-hoc Console logging). behavior_v1 = the compact [ms,fc,idx,ft,x,y,hd] row the live scope + analysis dashboard use (default); full = the whole 25-column FicTrac record (debug/archival, ~4× larger). Asserted at run start — overrides the Console log toggle for deterministic experiment logging.">
-            <option value="behavior_v1">behavior_v1 (compact — default)</option>
+          <select id="fmLogLevel" title="Run-log format for recorded runs (and ad-hoc Console logging). behavior_v2 = compact arena-command echoes + the [ms,fc,idx,ft,x,y,hd] frame row the live scope + analysis dashboard use (default; ~0.4× the size of v1, lossless); behavior_v1 = the pre-2026-09 format (readable by every tool); full = the whole 25-column FicTrac record (debug/archival, ~4× larger). Asserted at run start — overrides the Console log toggle; the bridge acknowledges the level it will actually write and the run banner warns if it is too old for the chosen one.">
+            <option value="behavior_v2">behavior_v2 (compact — default)</option>
+            <option value="behavior_v1">behavior_v1 (legacy)</option>
             <option value="full">full 25-column (debug)</option>
           </select></div>
         <div class="gh-dest" id="ghDest">→ writes a local .yaml file (sign in to GitHub to open a PR instead)</div>
@@ -2252,7 +2268,7 @@
             <button class="pill log-only" id="btnLogClear">Clear</button>
             <button class="pill log-only" id="btnLogCopy" title="Copy log to clipboard">Copy</button>
             <button class="pill log-only" id="btnLogSave" title="Download the recorded run log (.json + .txt)" disabled>⬇ Save</button>
-            <button class="pill log-only" id="btnLogPush" title="Push this run's log to the course repo (runlogs/&lt;bench-id&gt;/) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one." disabled>⇪ Push log</button>
+            <button class="pill log-only" id="btnLogPush" title="Push this run's log to the course repo (runlogs/&lt;bench-id&gt;/, gzipped .jsonl.gz) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one." disabled>⇪ Push log</button>
           </span>
           <!-- Scope controls live ON the header row in scope mode (maximizes the
                canvas); hidden in log mode. The .acts group is hidden in scope mode. -->
@@ -2648,6 +2664,9 @@
           </div>
           <div class="cmenu-sep">Send raw hex</div>
           <div class="cmenu-row"><input id="cRawHex" type="text" placeholder="01 C2" title="Raw hex bytes to send verbatim (e.g. 01 C2)"><button class="cmenu-item" data-cmd="crawsend" style="width:auto" title="Send the raw hex bytes to the controller">Send</button></div>
+          <div class="cmenu-sep">Health</div>
+          <button class="cmenu-item" data-cmd="ctelem" title="Toggle the controller telemetry ring drain (SET_TELEMETRY 0xA8 / GET_TELEMETRY_BLOCK 0xA9, 10 Hz, rows cc/cf/cs into the run log). Remembered. Off = the telemetry-off control arm for the fw #50 soak.">Telemetry ring: on/off</button>
+          <button class="cmenu-item" data-cmd="chealth" title="GET_HEALTH (0xCA) — controller loop timing, SD read stats, frame/command counters and the previous boot's breadcrumb + slowest op (needs health-capable firmware; logged to the Console and the run log)">Controller health</button>
           <div class="cmenu-sep">Danger</div>
           <button class="cmenu-item" data-cmd="sysreset" title="SYSTEM_RESET (0x01) — ack then reboot the controller firmware">Reset controller</button>
         </div>
@@ -2671,6 +2690,7 @@
         <div class="rail-btn sel" data-panel="step" role="button" tabindex="0" title="Show single frames of the selected pattern (mode 3)">Step frames<span class="sub">mode 3</span></div>
         <div class="rail-btn sel" data-panel="test" role="button" tabindex="0" title="Test figures + one-off frames">Test display<span class="sub">GS16</span></div>
         <div class="rail-btn" data-panel="io" role="button" tabindex="0" title="Analog / digital BNCs on the controller">I/O<span class="sub" id="cIoSum">AO – · DIO –</span></div>
+        <div class="rail-btn" data-panel="ai" role="button" tabindex="0" title="Live readout of both 'Analog In (±10V)' BNCs — preview at up to 10 Hz, min/max, strip chart, and the Analog Out → Analog In loopback self-test">Analog In<span class="sub" id="cAiSum">AI1 – · AI2 –</span></div>
         <div class="rail-btn sel" data-panel="led" role="button" tabindex="0" title="Stimulus LED — set brightness % or turn off (BuckPuck on Analog Out)">LED<span class="sub">BuckPuck</span></div>
         <div class="rail-btn" data-panel="fw" role="button" tabindex="0" title="Program the panels’ firmware">Panel firmware<span class="sub" id="cFwSum">flash · verify</span></div>
         <div class="rail-btn sel" data-panel="fictrac" role="button" tabindex="0" title="Closed loop from the FicTrac bridge">FicTrac<span class="sub" id="cFtSum">ws · idle</span></div>
@@ -2733,7 +2753,7 @@
               <span class="pchip" title="The pattern this trial runs — change it in Patterns"><span class="thumb"></span><b id="cTrialPatName">—</b></span>
               <label>mode <select id="cMode"><option value="2">2 · play</option><option value="3">3 · show frame</option><option value="4">4 · closed loop</option></select></label>
               <label class="tf" data-modes="2" title="Frames per second — negative plays in reverse (mode 2)">rate (Hz) <input id="cRate" type="number" min="-32768" max="32767" value="30" style="width:56px"></label>
-              <label class="tf" data-modes="4" title="Loop gain (mode 4) — signed int16, -32768 to 32767">gain <input id="cGain" type="number" min="-32768" max="32767" value="0" style="width:62px"></label>
+              <label class="tf" data-modes="4" title="Loop gain (mode 4), ×10 — 10 = unity = 100 frames/s per volt on Analog In 1 (G3-faithful); the everyday 2–5 = 20–50 fps/V; negative reverses the coupling. Signed int16.">gain <input id="cGain" type="number" min="-32768" max="32767" value="0" style="width:62px"></label>
               <label class="tf" data-modes="34" title="Start frame (modes 3/4) — SET_FRAME_POSITION 0x70">start <input id="cInit" type="number" value="0" style="width:50px"></label>
               <label title="Per-trial brightness override 0–255 (optional 12th TRIAL_PARAMS byte) — blank = use the pattern's stored duty">duty <input id="cTrialDuty" type="number" min="0" max="255" step="1" placeholder="pat" style="width:50px"></label>
               <label title="Trial duration in seconds — sent in TRIAL_PARAMS (controller-timed stop); the host arms a backup STOP 2 s later. 0 = run until Stop">duration (s) <input id="cDur" type="number" min="0" step="0.1" value="0" style="width:52px"></label>
@@ -2798,6 +2818,28 @@
             <span class="seg2"><button id="cDoLow" class="on" data-cmd="cdolow">LOW</button><button id="cDoHigh" data-cmd="cdohigh">HIGH</button></span>
             <button class="pill" data-cmd="cdoset" title="SET_DIGITAL_OUT 0xAA">Set</button>
             <button class="pill" data-cmd="cdoget" title="GET_DIGITAL_OUT 0xAB">Get</button></div>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="ai">
+          <div class="panel-h"><span class="panel-title" title="GET_ANALOG_IN 0xA4, polled while this panel is open — both BNCs silkscreened 'Analog In 1/2 (±10V)' (J28/J29). A preview: the controller's own Mode-4 sampling runs at 500 Hz.">Analog In</span><span class="spacer"></span><span class="dim" id="cAiStatus" title="Poller state — pauses by itself while a run is active or the link is down">connect to read</span><span class="panel-x" data-close="ai" role="button" title="Collapse to the rail (stops polling)">✕</span></div>
+          <div class="panel-b">
+          <div class="crow"><span class="lbl" title="Live readout controls">preview</span>
+            <button class="pill" id="cAiPoll" data-cmd="caipoll" aria-pressed="true" title="Pause / resume the live readout. While live, the controller is asked for both inputs at the chosen rate; polling pauses by itself during a run.">Live</button>
+            <label title="Poll rate — how often GET_ANALOG_IN is sent (preview only; not the controller's 500 Hz Mode-4 sampling)">rate <select id="cAiRate"><option value="10">10 Hz</option><option value="5">5 Hz</option><option value="2">2 Hz</option></select></label>
+            <button class="pill" data-cmd="caireset" title="Reset the min / max readings and clear the trace">Reset</button>
+            <span class="dim" id="cAiFlags" title="What the controller reports about its reads: ADC resolution and whether a per-board calibration is applied (firmware F1/F2)">—</span></div>
+          <div class="crow"><span class="lbl" title="BNC 'Analog In 1 (±10V)' (J28) — the input Mode-4 closed loop follows">analog in 1</span><span class="ai-val" id="cAi1Val">—</span><span class="ai-bar" title="−10 V … +10 V (centre = 0 V)"><span class="mid"></span><span class="fill" id="cAi1Bar"></span></span><span class="ai-range" id="cAi1Range"></span></div>
+          <div class="crow"><span class="lbl" title="BNC 'Analog In 2 (±10V)' (J29) — free for the experimenter (not used by Mode 4)">analog in 2</span><span class="ai-val" id="cAi2Val">—</span><span class="ai-bar" title="−10 V … +10 V (centre = 0 V)"><span class="mid"></span><span class="fill" id="cAi2Bar"></span></span><span class="ai-range" id="cAi2Range"></span></div>
+          <div class="crow"><canvas id="cAiChart" width="460" height="90" title="Last 30 s of both inputs, ±10 V full scale — green = Analog In 1, blue = Analog In 2"></canvas></div>
+          <div class="crow"><span class="lbl" title="Self-test with no instrument: cable 'Analog Out (0-5V)' (J27) to an Analog In BNC, then step the output and read the input back">loopback</span>
+            <label title="Which input the cable from Analog Out is plugged into">into <select id="cAiLoopCh"><option value="1">Analog In 1</option><option value="2">Analog In 2</option></select></label>
+            <label title="Step size of the 0 → 5000 mV sweep">step <select id="cAiLoopStep"><option value="500">500 mV</option><option value="1000">1000 mV</option><option value="250">250 mV</option></select></label>
+            <button class="pill" data-cmd="caisweep" title="Sweep Analog Out from 0 to 5000 mV (SET_AO_VOLTAGE 0xA0), read the chosen input at each step, fit slope and offset, then restore the previous Analog Out level. Note: the stimulus LED shares that BNC, so it will flash during the sweep.">Run sweep</button>
+            <button class="pill" id="cAiSweepCsv" data-cmd="caisweepcsv" disabled title="Copy the last sweep (ao_mv, ai1_mv, ai2_mv) to the clipboard as CSV">Copy CSV</button>
+            <span class="dim" id="cAiSweepSum"></span></div>
+          <div class="crow" id="cAiSweepRow" style="display:none"><table class="ai-table" id="cAiSweepTable"></table></div>
+          <div class="crow" style="margin-bottom:0"><span class="dim" style="font-size:10.5px" title="Status of the analog-input path (docs/development/analog-input-plan.md)">±10 V front end · nominal scale, per-board calibration not yet applied · a board without the LAB-209 resistor rework reads ≈ +10 V for any input above 0 V · needs io_ext firmware</span></div>
           </div>
         </section>
 
@@ -2920,7 +2962,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.71 | 2026-08-12 16:56 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.83 | 2026-09-19 12:58 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -2936,6 +2978,7 @@
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
 <!-- ============================================================ -->
 <script src="js/arena-wire-g6.js"></script>
+<script src="js/studio-analog-in.js"></script>
 <script src="js/arena-link.js"></script>
 <script src="js/arena-runner-g6.js"></script>
 <script src="js/run-log.js"></script>
@@ -2950,9 +2993,13 @@
 <script src="js/studio-meta.js"></script>
 <script src="js/studio-url-state.js"></script>
 <script src="js/studio-runlog-adapter.js"></script>
+<script src="js/studio-postmortem.js"></script>
+<script src="js/arena-telemetry.js"></script>
+<script src="js/trial-quality.js"></script>
 <script src="js/kinematics.js"></script> <!-- shared scope/dashboard kinematic derivations -->
 <script src="js/studio-github.js"></script>
-<script src="js/runlog-replay.js?v=20260712-stackfix"></script>
+<script src="js/runlog-format.js?v=20260906-1829"></script>
+<script src="js/runlog-replay.js?v=20260906-1829"></script>
 <script src="js/runtime-controls.js"></script>
 <script src="js/arena-replay-viewer-protocol.js"></script>
 
@@ -3031,35 +3078,102 @@
     });
 
     // ---- unified log: raw transport trace (console 'log' events) --------------
-    function rawLine(text, cls) {
-        const box = $('runlogBox');
-        if (!box) return;
-        // Clear the placeholder on first real line.
+    // The raw log is BOUNDED (bench 2026-09-12 23:10): every arena command appends a
+    // line, so a 286 Hz closed-loop run grew it to 43k rows in 10 min and each
+    // append (+ scroll-to-bottom layout) got slower. Keep the newest RAW_LOG_MAX_LINES;
+    // trim in one range delete every RAW_LOG_TRIM lines; only follow the tail when the
+    // user has not scrolled up.
+    //
+    // …and it is BATCHED (lab day 2026-09-15, Windows PC, found by Isabel): with the dock
+    // on Log, every command appended two lines and each append read scrollHeight (a forced
+    // layout) before and after — 400+ layouts/s on the main thread, and the closed-loop
+    // apply rate fell from 175 Hz to 51 Hz. With the dock on Scope the box is display:none
+    // and the same reads cost nothing, which is why only the Log view "chugged" and every
+    // earlier run (Scope by default) was fast. Writers now QUEUE nodes; a flush every
+    // LOG_FLUSH_MS appends a single fragment, does ONE layout read and ONE scroll. The three
+    // writers below (rawLine, logTransport, renderRunEvent) all go through enqueueLogNode.
+    const RAW_LOG_MAX_LINES = 3000;
+    const RAW_LOG_TRIM = 500;
+    let _logQ = [];
+    let _logFlushScheduled = false;
+    function clearLogPlaceholder(box) {
         if (box.firstChild && box.firstChild.classList && box.firstChild.classList.contains('dim')) {
             box.textContent = '';
         }
+    }
+    function flushRunLog() {
+        _logFlushScheduled = false;
+        const box = $('runlogBox');
+        const q = _logQ;
+        _logQ = [];
+        if (!box || !q.length) return;
+        clearLogPlaceholder(box);
+        const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40; // the one layout read
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < q.length; i++) {
+            q[i]._queued = false;
+            frag.appendChild(q[i]);
+        }
+        box.appendChild(frag);
+        const n = box.childElementCount;
+        if (n > RAW_LOG_MAX_LINES + RAW_LOG_TRIM) {
+            const r = document.createRange();
+            r.setStartBefore(box.firstChild);
+            r.setEndBefore(box.children[n - RAW_LOG_MAX_LINES]);
+            r.deleteContents();
+        }
+        if (atBottom) box.scrollTop = box.scrollHeight;
+    }
+    // 20 flushes/s: each flush costs one layout read of a ~3000-line box (~2.4 ms measured on
+    // the Mac bench) whatever the line count, so a fixed cadence caps the log's share of the
+    // main thread at ~5 % while a human still sees a live tail. setTimeout also fires in a
+    // hidden tab (clamped to ~1 s), where rAF would not; the queue cap bounds the backlog.
+    const LOG_FLUSH_MS = 50;
+    function scheduleLogFlush() {
+        if (_logFlushScheduled) return;
+        _logFlushScheduled = true;
+        setTimeout(flushRunLog, LOG_FLUSH_MS);
+    }
+    function enqueueLogNode(div) {
+        div._queued = true;
+        _logQ.push(div);
+        if (_logQ.length > RAW_LOG_MAX_LINES) {
+            // never let a hidden tab hoard: drop the oldest queued lines (they would be trimmed anyway)
+            const dropped = _logQ.splice(0, _logQ.length - RAW_LOG_MAX_LINES);
+            for (let i = 0; i < dropped.length; i++) dropped[i]._queued = false;
+        }
+        scheduleLogFlush();
+    }
+    // Clear paths call this so a pending TX line / queued nodes never land in a fresh box.
+    function resetRunLog() {
+        _logQ = [];
+        _pendTxLine = null;
+    }
+    function rawLine(text, cls) {
+        if (!$('runlogBox')) return;
         const div = document.createElement('div');
         if (cls) div.className = 'l-' + cls;
         div.textContent = text;
-        box.appendChild(div);
-        box.scrollTop = box.scrollHeight;
+        enqueueLogNode(div);
     }
     Studio.rawLog = rawLine;
+    Studio.flushRunLog = flushRunLog;
+    Studio.resetRunLog = resetRunLog;
 
     // ---- paired transport trace ------------------------------------------------
     // A command (TX ›, cyan) and its reply (RX ‹, green) share ONE line in two
     // colors — compact, and the direction of flow is obvious. A TX with no reply,
     // or any non-RX line arriving next, flushes cleanly; a lone RX prints on its
     // own line. Only the raw 'log' transport events use this; rawLine stays the
-    // general one-line appender (recorded-run events, bridge, errors).
+    // general one-line appender (recorded-run events, bridge, errors). The pending
+    // TX line may still be queued (not yet in the DOM) when its RX arrives — pairing
+    // appends to the node either way; a cleared/trimmed line is no longer pairable.
     let _pendTxLine = null;
     function logTransport(m) {
-        const box = $('runlogBox');
-        if (!box) return;
+        if (!$('runlogBox')) return;
         const isTx = /(^|\s)›|->|tx/i.test(m);
         const isRx = /(^|\s)‹|<-|rx/i.test(m);
-        // Pair an RX onto the pending TX line (guard against a cleared log box).
-        if (isRx && _pendTxLine && _pendTxLine.parentNode === box) {
+        if (isRx && _pendTxLine && (_pendTxLine._queued || _pendTxLine.isConnected)) {
             const sep = document.createElement('span');
             sep.className = 'l-info';
             sep.textContent = '   ';
@@ -3069,22 +3183,17 @@
             _pendTxLine.appendChild(sep);
             _pendTxLine.appendChild(rx);
             _pendTxLine = null;
-            box.scrollTop = box.scrollHeight;
             return;
         }
         _pendTxLine = null;
         if (isTx) {
-            if (box.firstChild && box.firstChild.classList && box.firstChild.classList.contains('dim')) {
-                box.textContent = '';
-            }
             const div = document.createElement('div');
             const tx = document.createElement('span');
             tx.className = 'l-tx';
             tx.textContent = m;
             div.appendChild(tx);
-            box.appendChild(div);
+            enqueueLogNode(div);
             _pendTxLine = div; // await its reply to pair on the same line
-            box.scrollTop = box.scrollHeight;
             return;
         }
         rawLine(m, isRx ? 'rx' : 'info');
@@ -3092,11 +3201,7 @@
 
     // ---- unified log: recorded-run stream (run-log.js accumulator) ------------
     function renderRunEvent(ev) {
-        const box = $('runlogBox');
-        if (!box || !ev) return;
-        if (box.firstChild && box.firstChild.classList && box.firstChild.classList.contains('dim')) {
-            box.textContent = '';
-        }
+        if (!$('runlogBox') || !ev) return;
         const div = document.createElement('div');
         if (ev.phase === 'error') div.className = 'l-err';
         else if (ev.phase === 'skip' || ev.phase === 'warn') div.className = 'l-warn';
@@ -3108,8 +3213,7 @@
             (ev.op ? ' ' + ev.op : '') +
             (ev.plugin_name ? ' ' + ev.plugin_name + (ev.command_name ? '.' + ev.command_name : '') : '') +
             (ev.reason ? ' (' + ev.reason + ')' : '');
-        box.appendChild(div);
-        box.scrollTop = box.scrollHeight;
+        enqueueLogNode(div);
     }
 
     // The single run-status sink (subscribed once at the session level).
@@ -3135,6 +3239,20 @@
         if (window.Scope && window.Scope.onRunStatus) window.Scope.onRunStatus(s);
         // feed the recorded-run accumulator
         if (Studio.activeRunLog) {
+            // A run that ended because the LINK DROPPED (watchdog self-reset re-enumerates the
+            // controller) and not because the user pressed STOP is a controller fault. Decide it
+            // HERE, before the adapter derives the terminal outcome — deciding it afterwards (as
+            // runSteps also does, as a fallback) left the stored outcome ABORTED_BY_USER and
+            // skipped the auto-commit (whole-stack review, 2026-09-13).
+            const sm = s && s.summary;
+            // `_linkDropped` is set by the Studio's own disconnect listener, which can run AFTER the
+            // broker has already aborted the runner (bench 2026-09-13, forced watchdog reset: the
+            // terminal event arrived with fault null). The link being down at the terminal event
+            // of an abort nobody requested is the same evidence — use either.
+            if (sm && !sm.fault && sm.aborted && !Studio._userStopRequested && (Studio._linkDropped || !(Studio.session && Studio.session.connected))) {
+                sm.fault = 'link_dropped';
+                sm.faultDetail = { kind: 'link_dropped', note: 'controller re-enumerated mid-run (watchdog self-reset?)' };
+            }
             const r = Adapter.feedRunStatus(Studio.activeRunLog, s);
             if (r.event) renderRunEvent(r.event);
             if (r.terminal) onRunFinished(r.summary);
@@ -3268,7 +3386,22 @@
         }
         $('rlCtr').textContent =
             (log.meta.run_id || 'run') + ' · ' + (log.summary ? log.summary.outcome : 'done');
-        maybeCommitRunLog(log, summary); // course pipeline — async, best-effort
+        // Controller fault (fw #50): the export closes the bridge's log file, so it
+        // must wait for the post-mortem (STOP result, probes, ring crash dump) —
+        // Studio.handleControllerFault runs the deferred commit in its finally.
+        // The export closes the bridge's log file, so the final telemetry drain and the
+        // per-trial `trial_quality` verdict must be written FIRST (whole-stack review,
+        // 2026-09-13: they used to land after the export and were lost from committed logs).
+        const finalizeThenCommit = async () => {
+            try { if (Studio.finalizeTrialQuality) await Studio.finalizeTrialQuality(log.meta && log.meta.run_id); } catch (_) { /* best effort */ }
+            await maybeCommitRunLog(log, summary);
+        };
+        if (summary && summary.outcome === 'CONTROLLER_FAULT' && Studio.handleControllerFault) {
+            Studio._pendingCommit = finalizeThenCommit;
+            rawLine('run log commit deferred until the controller post-mortem finishes', 'warn');
+        } else {
+            finalizeThenCommit(); // course pipeline — async, best-effort
+        }
     }
 
     // ---- run-log upload modal — greys the screen during export+commit so a push
@@ -3288,12 +3421,14 @@
     function hideUploadModal() { const ov = $('rlUploadOverlay'); if (ov) ov.style.display = 'none'; }
 
     // ---- course-repo run-log auto-commit (CSHL pipeline) -----------------------
-    // On COMPLETED recorded runs only: export the bridge's JSONL — the canonical
-    // run artifact (run_metadata line + every runner/arena/FicTrac event) — and
-    // direct-commit it as ONE file under runlogs/<bench-id>/. Aborted or
-    // disconnected runs never auto-commit (deliberate: a partial run is bench
-    // debris until someone decides otherwise). Filename STAMP is colon-free —
-    // a raw ISO ':' breaks git checkout on Windows clones.
+    // On COMPLETED recorded runs — and on CONTROLLER_FAULT runs (fw #50: the
+    // record of a run the controller killed is evidence, and must be durable) —
+    // export the bridge's JSONL — the canonical run artifact (run_metadata line +
+    // every runner/arena/FicTrac event) — and direct-commit it gzipped as ONE
+    // `.jsonl.gz` under runlogs/<bench-id>/. User-aborted or disconnected runs
+    // never auto-commit (deliberate: a partial run is bench debris until someone
+    // decides otherwise). Filename STAMP is colon-free — a raw ISO ':' breaks git
+    // checkout on Windows clones.
     async function maybeCommitRunLog(log, summary) {
         if (!log || log.intent !== 'experiment') return;
         const outcome = (summary && summary.outcome) || (log.summary && log.summary.outcome) || 'UNKNOWN';
@@ -3394,26 +3529,45 @@
         const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
         const proto = GH.slug(String(log.meta.protocol_filename || 'protocol').replace(/\.ya?ml$/i, ''));
         const who = GH.slug(log.meta.experimenter || 'unknown');
-        const path =
+        const basePath =
             'runlogs/' + cs.benchId + '/' +
             proto + '__' + who + '__' + stamp + '__' + (log.meta.run_id || 'run') + '.jsonl';
-        rawLine((opts.manual ? 'pushing' : 'committing') + ' run log → ' + cs.repo.full + ' · ' + path + ' (' + exported.content.length + ' chars)…', 'info');
-        showUploadModal('Uploading run log…', { busy: true, msg: 'committing to ' + cs.repo.full + '\n' + path });
+        // The archival format is `.jsonl.gz` (behavior_v2 plan, Part 2): gzip in the
+        // browser (lossless, 6–8× smaller) so 40 s and hour-long runs clear the
+        // Contents API's ~35 MiB ceiling; GH.commitFile routes anything still
+        // over 30 MiB through the Git Database API. Readers inflate on the gzip
+        // magic. A browser without CompressionStream falls back to raw .jsonl.
+        const fmtMB = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' KB');
+        const rawBytes = new TextEncoder().encode(exported.content).length;
+        let path = basePath + '.gz';
+        let payload = null;
         try {
-            const res = await GH.directCommit(fetch, {
+            payload = { contentBytes: await GH.gzipBytes(exported.content) };
+        } catch (e) {
+            rawLine('gzip unavailable (' + (e && e.message ? e.message : e) + ') — committing uncompressed .jsonl', 'warn');
+            path = basePath;
+            payload = { contentText: exported.content };
+        }
+        const sizeNote = payload.contentBytes
+            ? fmtMB(rawBytes) + ' → ' + fmtMB(payload.contentBytes.length) + ' gzip'
+            : fmtMB(rawBytes);
+        rawLine((opts.manual ? 'pushing' : 'committing') + ' run log → ' + cs.repo.full + ' · ' + path + ' (' + sizeNote + ')…', 'info');
+        showUploadModal('Uploading run log…', { busy: true, msg: 'committing to ' + cs.repo.full + '\n' + path + '\n' + sizeNote });
+        try {
+            const res = await GH.commitFile(fetch, Object.assign({
                 owner: cs.repo.owner,
                 repo: cs.repo.name,
                 token: token,
                 path: path,
-                message: 'runlog: ' + proto + ' on ' + cs.benchId + ' (run ' + (log.meta.run_id || '?') + ')',
-                contentText: exported.content
-            });
+                message: 'runlog: ' + proto + ' on ' + cs.benchId + ' (run ' + (log.meta.run_id || '?') + ')'
+            }, payload));
             if (!res.ok) throw new Error(res.error || 'HTTP ' + res.status);
-            rawLine('✓ run log committed: ' + path, 'info');
-            showUploadModal('✓ Run log committed', { ok: true, msg: cs.repo.full + '\n' + path });
+            const via = res.via === 'git-db' ? ' · via Git Database API (large file)' : '';
+            rawLine('✓ run log committed: ' + path + ' (' + fmtMB(res.bytes) + via + ')', 'info');
+            showUploadModal('✓ Run log committed', { ok: true, msg: cs.repo.full + '\n' + path + '\n' + fmtMB(res.bytes) + via });
             setTimeout(hideUploadModal, 1800); // auto-dismiss on success
             const saved = $('rlSaved');
-            if (saved && !/committed to course repo/.test(saved.textContent)) saved.textContent += ' · ✓ committed to course repo';
+            if (saved && !/committed to course repo/.test(saved.textContent)) saved.textContent += ' · ✓ committed to course repo (' + fmtMB(res.bytes) + ')';
             // Redundancy: stash the actual on-card patterns (deduped by content
             // hash). Best-effort — a failure here never fails the run-log commit.
             try {
@@ -3590,6 +3744,57 @@
         Studio.session.bridge.on('status', () => updateRunGate());
     }
 
+    // ---- controller build identity (GET_FIRMWARE_VERSION 0xCB) ---------------
+    // Permanent feature: every connection records WHICH firmware build the
+    // controller runs, and run_metadata.firmware carries it into every committed
+    // run log. Gated on capability bit 7 (`health`, shipped together): older
+    // firmware answers an unknown opcode with an error glyph on the arena, so we
+    // never ask blind. Falls back to the 0xC2 format byte ("v1") on old builds.
+    Studio.firmwareVersion = null; // decoded 0xCB record, or null
+    // SD card identity (GET_SD_INFO 0xCD, fw sd_fastpath): every stall measurement and card
+    // comparison must be attributable to a physical card → run_metadata.sd_card.
+    Studio.sdCard = null;
+    Studio.refreshFirmwareVersion = async function () {
+        if (!Studio.session || !Studio.session.connected) return null;
+        const caps = Studio.capabilities || [];
+        if (!caps.includes('health') || !Wire.encodeGetFirmwareVersion) {
+            Studio.firmwareVersion = null;
+            if ($('pvFw')) $('pvFw').textContent = Studio.firmware || '—';
+            return null;
+        }
+        try {
+            const resp = await Studio.session.send(Wire.encodeGetFirmwareVersion(), { timeoutMs: 2000 });
+            const v = Wire.decodeFirmwareVersion(resp);
+            if (v) {
+                Studio.firmwareVersion = v;
+                Studio.firmware = v.label;
+                if (Studio.deriveRigFromController) Studio.deriveRigFromController(v.rows, v.cols); // no explicit rig → follow the hardware
+                if ($('pvFw')) { $('pvFw').textContent = v.label; $('pvFw').title = 'git ' + v.sha + (v.dirty ? ' (dirty tree)' : '') + ' · ' + v.branch + ' · built ' + v.date + ' · ' + v.arena + (v.debug ? ' · DEBUG_SERIAL' : ''); }
+                rawLine('‹ firmware build: ' + v.label, 'info');
+                Studio.sdCard = null;
+                if (v.sdFastPath && Wire.encodeGetSdInfo) {
+                    try {
+                        const si = Wire.decodeSdInfo(await Studio.session.send(Wire.encodeGetSdInfo(), { timeoutMs: 2000 }));
+                        Studio.sdCard = si;
+                        if (si) rawLine('‹ sd card: ' + si.label + (si.mounted ? ' · cid ' + si.cidHex : ''), si.mounted ? 'info' : 'warn');
+                        // The bench A/B switches (SET_SD_DIAG) persist until the controller reboots: a stray
+                        // arm silently degrades every later trial (legacy FAT-chain seeks / no read skip).
+                        // Say so loudly at connect; production is 0 (Michael, 2026-09-13: keep the switch, banner it).
+                        if (si && (si.sdDiag & 0x03)) {
+                            const arm = (si.sdDiag & 1 ? 'legacy FAT-chain seek' : '') + (si.sdDiag & 3 ? (si.sdDiag & 1 && si.sdDiag & 2 ? ' + ' : '') : '') + (si.sdDiag & 2 ? 'no same-index read skip' : '');
+                            rawLine('⚠ SD diagnostic switches are ON (' + arm + ') — every trial runs degraded until Studio.setSdDiag(0) or a controller reboot', 'warn');
+                            showBanner('⚠ SD diagnostic switches are ON (arm ' + (si.sdDiag & 3) + ': ' + arm + '). Production is 0 — run `await Studio.setSdDiag(0)` unless this is the causal test.');
+                        }
+                    } catch (e) { rawLine('sd info: ' + (e && e.message ? e.message : e), 'warn'); }
+                }
+                return v;
+            }
+        } catch (e) {
+            rawLine('firmware version: ' + (e && e.message ? e.message : e), 'warn');
+        }
+        return null;
+    };
+
     // ---- connection ----------------------------------------------------------
     async function toggleConnect() {
         if (!Studio.session) {
@@ -3620,6 +3825,8 @@
                         (info.mac ? ' · id ' + info.mac : ''), 'info');
                     const ctl = $('pvCtl');
                     if (ctl) ctl.textContent = Studio.controllerId || '— (needs fw with MAC in 0xC2)';
+                    await Studio.refreshFirmwareVersion(); // build identity → run_metadata.firmware
+                    if (Studio.initTelemetry) await Studio.initTelemetry(); // ring drain (T4) when the fw has it
                     // Un-grey the fw-gated rig-I/O roles now that caps are known
                     // (the role menu may have rendered before this reply landed).
                     if (Studio.updateRigIoGating) Studio.updateRigIoGating();
@@ -3801,6 +4008,8 @@
         const repoRef = Studio.currentDoc && Studio.currentDoc.repoRef;
         const q = window.StudioUrlState.encodeApp({
             mode: Studio.mode,
+            // fw #50 soak driver armed in this tab (advanced-only; clean-URL rule).
+            soak: !!Studio.soak,
             protocolKey: Studio.currentDoc && Studio.currentDoc.protocolKey,
             // Course-repo provenance (?repo=owner/name&p=<path>): set by a
             // validated ?repo= load or an in-app course-repo open/save.
@@ -3851,6 +4060,7 @@
     // ---- STOP (both buttons) --------------------------------------------------
     async function doStop() {
         if (!Studio.session) return;
+        Studio._userStopRequested = true; // distinguishes a user STOP from a link drop (watchdog self-reset)
         try { await Studio.session.stop(); } catch (e) { rawLine('stop error: ' + e.message, 'err'); }
     }
     $('btnStopRun').addEventListener('click', doStop);
@@ -4709,22 +4919,28 @@
     })();
 
     // ---- Run logging level (runtime setting; File ▾ → Run logging) ------------
-    // Frame-logging verbosity for recorded runs AND ad-hoc Console logging. A
-    // SESSION setting (localStorage), NOT per-protocol: `behavior_v1` (compact,
-    // default) or `full` (the 25-column record). The runner asserts it at run start
-    // (deterministic — overrides the Console log toggle); the Console keeps the
-    // manual on/off for non-protocol sessions and shows this level read-only.
+    // Run-log format for recorded runs AND ad-hoc Console logging. A SESSION
+    // setting (localStorage), NOT per-protocol: `behavior_v2` (compact arena
+    // echoes, default since v0.72), `behavior_v1` (the pre-2026-09 format — an
+    // explicitly stored choice is honored for one release, then dropped) or `full`
+    // (the 25-column record). The runner asserts it at run start (deterministic —
+    // overrides the Console log toggle); the bridge ACKS the level it will actually
+    // write (a pre-3.0 bridge never acks and silently writes behavior_v1), and the
+    // Console shows the acked level read-only.
+    const LOG_LEVELS = ['behavior_v2', 'behavior_v1', 'full'];
     function sessionLogLevel() {
-        return localStorage.getItem('studio_log_level') === 'full' ? 'full' : 'behavior_v1';
+        const v = localStorage.getItem('studio_log_level');
+        return LOG_LEVELS.includes(v) ? v : 'behavior_v2';
     }
     Studio.sessionLogLevel = sessionLogLevel;
     function applyLogLevel(level) {
-        const lvl = level === 'full' ? 'full' : 'behavior_v1';
+        const lvl = LOG_LEVELS.includes(level) ? level : 'behavior_v2';
         localStorage.setItem('studio_log_level', lvl);
         const b = Studio.session && Studio.session.bridge;
         if (b && b.setLogLevel) b.setLogLevel(lvl); // so ad-hoc Console logging uses it too
         const sel = $('fmLogLevel'); if (sel && sel.value !== lvl) sel.value = lvl;
-        const disp = $('cFtLogLevel'); if (disp) disp.textContent = lvl;
+        const disp = $('cFtLogLevel');
+        if (disp) { disp.textContent = lvl; disp.title = 'Requested log format (read-only here — change it in File ▾ → Run logging); the bridge confirms it when logging starts'; }
     }
     Studio.applyLogLevel = applyLogLevel;
     (function initLogLevel() {
@@ -4736,6 +4952,7 @@
     // ---- log strip controls ---------------------------------------------------
     $('btnLogClear').addEventListener('click', () => {
         const box = $('runlogBox');
+        resetRunLog();
         box.innerHTML = '<span class="dim">cleared</span>';
         $('rlSaved').classList.remove('show');
     });
@@ -4793,6 +5010,37 @@
     // ---- session subscriptions (the single spine) ----------------------------
     if (Studio.session) {
         Studio.session.on('state', refreshState);
+        // Identity on EVERY connection, including the gesture-free reconnect()
+        // paths (post-mortem reset, soak): re-read 0xC2 + 0xCB once per link-up
+        // so run_metadata.firmware is never stale or null after a reset. The
+        // manual Connect button does its own inline probe; this is the catch-all.
+        (function identityOnConnect() {
+            let identified = false;
+            Studio.session.on('state', async () => {
+                const on = Studio.session.connected;
+                if (!on) { identified = false; return; }
+                if (identified) return;
+                identified = true;
+                await new Promise((r) => setTimeout(r, 400)); // let the connect-time bring-up finish
+                if (!Studio.session.connected) return;
+                // Never skip on cached identity: after a reset/reflash the MAC is the
+                // same but the build (and its telemetry flag) may not be. 0xC2/0xCB are
+                // RAM reads (~2 ms) — a duplicate after the Connect button is harmless.
+                Studio.firmwareVersion = null;
+                try {
+                    const info = Wire.decodeControllerInfo(await Studio.session.send(Wire.encodeGetControllerInfo(), { timeoutMs: 2000 }));
+                    if (info) {
+                        Studio.capabilities = info.capabilities || [];
+                        Studio.controllerId = info.mac || Studio.controllerId || null;
+                        if (!Studio.firmware) Studio.firmware = 'v' + info.version;
+                        if ($('pvCtl')) $('pvCtl').textContent = Studio.controllerId || '—';
+                    }
+                    await Studio.refreshFirmwareVersion();
+                    if (Studio.initTelemetry) await Studio.initTelemetry();
+                    refreshState();
+                } catch (_) { /* best-effort: a wedged controller answers nothing */ }
+            });
+        })();
         Studio.session.on('runstatus', (s) => Studio.onRunStatus(s));
         Studio.session.on('log', (m) => logTransport(m));
         Studio.session.on('error', (e) => rawLine('error: ' + (e && e.message ? e.message : e), 'err'));
@@ -4801,8 +5049,34 @@
         if (Studio.session.bridge) {
             Studio.session.bridge.on('log', (m, kind) => rawLine('bridge: ' + m, kind === 'err' ? 'err' : 'info'));
             Studio.session.bridge.on('status', (text, kind) => rawLine('bridge: ' + text, kind === 'err' ? 'err' : 'info'));
+            // Level ack (bridge ≥ 3.0): the Console mirror shows what the bridge
+            // will ACTUALLY write, flagged when it is too old for the chosen level.
+            Studio.session.bridge.on('loglevel', (info) => {
+                const disp = $('cFtLogLevel');
+                if (!disp || !info) return;
+                if (info.ok) {
+                    disp.textContent = info.level || info.requested;
+                    disp.title = 'Log format confirmed by the bridge' + (info.levels ? ' (it offers: ' + info.levels.join(', ') + ')' : '') + ' — change it in File ▾ → Run logging';
+                } else {
+                    disp.textContent = (info.level || '?') + ' ⚠';
+                    disp.title = 'Bridge too old for ' + info.requested + ' — it logs ' + (info.level || 'behavior_v1') + '. Restart `pixi run bridge` from the current checkout.';
+                }
+            });
         }
+        // Controller fault (fw #50): the closed-loop client latched
+        // controller_unresponsive → the runner is already aborting. Tell the
+        // operator now; the post-mortem lifecycle starts once the run's cleanup
+        // (best-effort STOP) has finished — see Studio.handleControllerFault.
+        Studio.session.on('fault', (f) => {
+            Studio._pendingFault = f || { kind: 'controller_unresponsive' };
+            const d = f || {};
+            rawLine('⚠ controller fault: ' + (d.kind || 'controller_unresponsive') +
+                (d.failures != null ? ' — ' + d.failures + ' of the last ' + d.window + ' frame commands failed' : '') +
+                (d.lastError ? ' (' + d.lastError + ')' : ''), 'err');
+            showBanner('⚠ Controller stopped answering — run aborted. Post-mortem probes follow (see the run log).');
+        });
         Studio.session.on('disconnect', (info) => {
+            if (info && info.involuntary) Studio._linkDropped = true; // consumed by runSteps (fault lifecycle)
             if (info && info.involuntary && Studio.activeRunLog && !Studio.activeRunLog.summary) {
                 Adapter.finishDisconnected(Studio.activeRunLog, { aborted: true, steps: 0, errors: 0, skipped: 0 });
                 onRunFinished(Studio.activeRunLog.summary);
@@ -4885,6 +5159,7 @@
         // bench action should confirm + STOP first (design §5 collision rule).
         if (session && session.running) {
             if (!confirm('A sequence is running. Interrupt it (STOP) and run this bench action?')) return;
+            Studio._userStopRequested = true;
             session.stop();
         }
         fn();
@@ -4928,6 +5203,167 @@
     }
 
     const num = (id) => Number($(id).value);
+
+    // ---- Analog In panel: quiet poller + loopback sweep (analog-input-plan § 4 S1) ----
+    // Reads GET_ANALOG_IN 0xA4 through session.send DIRECTLY — not the logging
+    // send() — so the Console log is not flooded at 10 Hz; state CHANGES and errors
+    // are logged. The poller is a single-flight ticker (js/studio-analog-in.js) that
+    // pauses itself whenever the gate says no: panel closed, link down, no io_ext
+    // firmware, user pause, a run in progress, or a sweep in flight.
+    const AI = window.StudioAnalogIn;
+    const aiMon = AI ? AI.createMonitor({ windowMs: 30000 }) : null;
+    const aiUser = { enabled: true, sweeping: false, lastSweep: null, lastFlags: undefined };
+    function aiPanelOpen() {
+        const p = document.querySelector('.panel[data-panel="ai"]');
+        return !!(p && p.classList.contains('open'));
+    }
+    function aiCanPoll() {
+        if (!aiPanelOpen()) return { ok: false, reason: 'panel closed' };
+        if (!session || !session.connected) return { ok: false, reason: 'connect to read' };
+        if (!Array.isArray(Studio.capabilities) || !Studio.capabilities.includes('io_ext')) return { ok: false, reason: 'needs io_ext firmware' };
+        if (!aiUser.enabled) return { ok: false, reason: 'paused' };
+        if (session.running) return { ok: false, reason: 'paused — run active' };
+        if (Studio._activePostmortem) return { ok: false, reason: 'paused — post-mortem owns the link' };
+        // The Console's own FicTrac closed loop (bridge 'apply') streams 0x70 at
+        // ~100 Hz outside the runner — a 10 Hz read interleaved into that stream
+        // adds latency jitter to frames, so yield the link to it as well.
+        const br = Studio.session && Studio.session.bridge;
+        if (br && br.apply) return { ok: false, reason: 'paused — FicTrac closed loop active' };
+        if (aiUser.sweeping) return { ok: false, reason: 'sweep running' };
+        return { ok: true };
+    }
+    async function aiRead() {
+        const resp = await session.send(Wire.encodeGetAnalogIn());
+        const a = Wire.decodeAnalogIn(resp);
+        if (!a) throw new Error('bad GET_ANALOG_IN reply');
+        return a;
+    }
+    function aiSetBar(id, mv) {
+        const el = $(id);
+        if (!el || !AI) return;
+        const f = AI.barFraction(mv);
+        const lo = Math.min(0.5, f);
+        const hi = Math.max(0.5, f);
+        el.style.left = (lo * 100).toFixed(1) + '%';
+        el.style.width = (Math.max(0.6, (hi - lo) * 100)).toFixed(1) + '%';
+    }
+    function aiRender(a) {
+        if (!AI || !aiMon) return;
+        for (const ch of [1, 2]) {
+            const st = aiMon.stats(ch);
+            const v = a ? (ch === 1 ? a.ain1Mv : a.ain2Mv) : st.last;
+            const val = $('cAi' + ch + 'Val');
+            if (val) val.textContent = AI.formatMv(v);
+            aiSetBar('cAi' + ch + 'Bar', v);
+            const rg = $('cAi' + ch + 'Range');
+            if (rg) rg.textContent = Number.isFinite(st.min) ? 'min ' + AI.formatMv(st.min) + ' · max ' + AI.formatMv(st.max) : '';
+        }
+        const sum = $('cAiSum');
+        if (sum) sum.textContent = 'AI1 ' + AI.formatMv(aiMon.stats(1).last).replace(' mV', '') + ' · AI2 ' + AI.formatMv(aiMon.stats(2).last).replace(' mV', '');
+        if (a && a.flags !== aiUser.lastFlags) {
+            aiUser.lastFlags = a.flags;
+            const fl = $('cAiFlags');
+            if (fl) fl.textContent = AI.describeFlags(a.flags).text;
+        }
+        const hz = aiMon.rateHz();
+        const stat = $('cAiStatus');
+        if (stat && aiPoller && aiPoller.state === 'polling') stat.textContent = 'live' + (Number.isFinite(hz) ? ' · ' + hz.toFixed(1) + ' Hz' : '');
+        AI.drawStripChart($('cAiChart'), aiMon.samples(), { windowMs: aiMon.windowMs });
+    }
+    const aiPoller = AI ? AI.createPoller({
+        read: aiRead,
+        canPoll: aiCanPoll,
+        onSample: (a) => { aiMon.push(Date.now(), a.ain1Mv, a.ain2Mv); aiRender(a); },
+        onState: (state, reason) => {
+            const stat = $('cAiStatus');
+            if (stat) stat.textContent = state === 'polling' ? 'live' : state === 'error' ? 'error: ' + reason : reason;
+            // Log transitions only — never per sample — and only ones a user acts on.
+            if (state === 'error') clog('analog in: ' + reason, 'err');
+            else if (state === 'polling') clog('analog in: live readout running', 'info');
+            else if (/run active|closed loop|io_ext/.test(reason)) clog('analog in: ' + reason, 'warn');
+        }
+    }) : null;
+    function aiStartTicker() {
+        if (!aiPoller) return;
+        const hz = Number(($('cAiRate') || {}).value) || 10;
+        aiPoller.start(Math.round(1000 / hz));
+    }
+    if (aiPoller) {
+        aiStartTicker();
+        const rateSel = $('cAiRate');
+        if (rateSel) rateSel.addEventListener('change', aiStartTicker);
+    }
+    function aiRenderSweepTable(rep) {
+        const row = $('cAiSweepRow');
+        const tbl = $('cAiSweepTable');
+        if (!row || !tbl) return;
+        const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+        let html = '<tr><th>AO mV</th><th>AI' + rep.ch + ' mV</th><th>err mV</th></tr>';
+        for (const r of rep.rows) {
+            const bad = Number.isFinite(r.errMv) && Math.abs(r.errMv) > 150;
+            html += '<tr><td>' + esc(r.aoMv) + '</td><td>' + esc(Math.round(r.aiMv)) + '</td><td class="' + (bad ? 'bad' : '') + '">' + esc(Number.isFinite(r.errMv) ? Math.round(r.errMv) : '') + '</td></tr>';
+        }
+        tbl.innerHTML = html;
+        row.style.display = '';
+    }
+    async function aiRunSweep() {
+        if (!AI || !session || !session.connected) { clog('loopback sweep: not connected', 'err'); return; }
+        if (!Array.isArray(Studio.capabilities) || !Studio.capabilities.includes('io_ext')) {
+            clog('loopback sweep: controller lacks io_ext (0xC2 bit 5) — needs fw feat/dio-roles-ao-modes or later', 'warn');
+            return;
+        }
+        if (aiUser.sweeping) return;
+        const ch = Number($('cAiLoopCh').value) === 2 ? 2 : 1;
+        const plan = AI.sweepPlan(0, 5000, Number($('cAiLoopStep').value) || 500);
+        aiUser.sweeping = true;
+        $('cAiSweepSum').textContent = 'sweeping…';
+        clog('loopback sweep: AO 0→5000 mV into Analog In ' + ch + ' (' + plan.length + ' steps) — cable J27 → J' + (ch === 1 ? '28' : '29'), 'info');
+        let prevMv = null;
+        try {
+            const r0 = await send(Wire.encodeGetAoVoltage(), 'GET_AO_VOLTAGE 0xA1 (before sweep)');
+            prevMv = r0 && Wire.decodeAoVoltage ? Wire.decodeAoVoltage(r0) : null;
+            const rows = [];
+            for (const mv of plan) {
+                // send() returns the reply frame even on an error status (it logs the
+                // firmware's reason) — decode it, or a refused step (e.g. AO in
+                // frame_number mode) would be recorded as if the level were applied.
+                const r = await send(Wire.encodeSetAoVoltage(mv), 'SET_AO_VOLTAGE 0xA0 ' + mv + ' mV (sweep)');
+                const d = r && Wire.decodeResponse(r);
+                if (!d || !d.ok) {
+                    throw new Error('Analog Out refused ' + mv + ' mV' + (d ? ' (status ' + d.status + ')' : '') +
+                        ' — is Analog Out in frame_number mode? Set the AO role to programmable (I/O panel) and retry');
+                }
+                await new Promise((r) => setTimeout(r, 150)); // DAC + front-end settle
+                const reads = [];
+                for (let i = 0; i < 3; i++) reads.push(await aiRead());
+                const row = { aoMv: mv, ai1Mv: AI.median(reads.map((r) => r.ain1Mv)), ai2Mv: AI.median(reads.map((r) => r.ain2Mv)) };
+                rows.push(row);
+                aiMon.push(Date.now(), row.ai1Mv, row.ai2Mv);
+                aiRender(reads[reads.length - 1]);
+            }
+            const rep = AI.summarizeSweep(rows, ch);
+            aiUser.lastSweep = { rows, ch, rep, at: new Date().toISOString() };
+            aiRenderSweepTable(rep);
+            $('cAiSweepSum').textContent = rep.text;
+            $('cAiSweepCsv').disabled = false;
+            clog('loopback sweep AO→AI' + ch + ': ' + rep.text, rep.verdict === 'ok' ? 'info' : rep.verdict === 'check' ? 'warn' : 'err');
+            if (rep.verdict === 'fail') clog('loopback sweep: a flat reading near +10 V for every step means the board still has the swapped stage-2 resistors (LAB-209)', 'warn');
+            const bridge = Studio.session && Studio.session.bridge;
+            if (bridge && bridge.log) bridge.log({ event: 'analog_loopback_sweep', channel: ch, rows, fit: rep.fit, verdict: rep.verdict });
+        } catch (e) {
+            clog('loopback sweep failed: ' + (e && e.message ? e.message : e), 'err');
+            $('cAiSweepSum').textContent = 'failed';
+        } finally {
+            if (prevMv != null) {
+                const rr = await send(Wire.encodeSetAoVoltage(prevMv), 'SET_AO_VOLTAGE 0xA0 ' + prevMv + ' mV (restore)');
+                const dd = rr && Wire.decodeResponse(rr);
+                if (!dd || !dd.ok) clog('loopback sweep: could not restore Analog Out to ' + prevMv + ' mV — the LED/AO level may be wrong; set it from the I/O or LED panel', 'err');
+            } else {
+                clog('loopback sweep: previous Analog Out level unknown — not restored (AO left at the last sweep step)', 'warn');
+            }
+            aiUser.sweeping = false;
+        }
+    }
 
     // ---- command dispatch ----
     const handlers = {
@@ -5106,7 +5542,33 @@
             }
             const resp = await send(Wire.encodeGetAnalogIn(), 'GET_ANALOG_IN 0xA4');
             const a = resp && Wire.decodeAnalogIn(resp);
-            if (a) $('cAiRead').textContent = 'AI1 ' + a.ain1Mv + ' mV · AI2 ' + a.ain2Mv + ' mV';
+            if (a) $('cAiRead').textContent = 'AI1 ' + a.ain1Mv + ' mV · AI2 ' + a.ain2Mv + ' mV' + (a.flags != null ? ' · ' + window.StudioAnalogIn.describeFlags(a.flags).text : '');
+        },
+        // Analog In panel (analog-input-plan § 4 S1)
+        caipoll: () => {
+            aiUser.enabled = !aiUser.enabled;
+            const b = $('cAiPoll');
+            if (b) { b.setAttribute('aria-pressed', String(aiUser.enabled)); b.textContent = aiUser.enabled ? 'Live' : 'Paused'; }
+            if (aiUser.enabled && aiPoller) aiPoller.resume();
+            clog('analog in: preview ' + (aiUser.enabled ? 'resumed' : 'paused by user'), 'info');
+            if (aiPoller) aiPoller.tick();
+        },
+        caireset: () => {
+            if (!aiMon) return;
+            aiMon.resetMinMax();
+            aiMon.clear();
+            aiRender(null);
+        },
+        caisweep: () => guardDestructive(() => { aiRunSweep(); }),
+        caisweepcsv: async () => {
+            if (!aiUser.lastSweep || !AI) return;
+            const csv = AI.sweepCsv(aiUser.lastSweep.rows);
+            try {
+                await navigator.clipboard.writeText(csv);
+                clog('loopback sweep: CSV copied (' + aiUser.lastSweep.rows.length + ' rows)', 'info');
+            } catch (e) {
+                clog('clipboard unavailable — sweep CSV:\n' + csv, 'warn');
+            }
         },
         cioget: async () => {
             if (!Studio.capabilities || !Studio.capabilities.includes('io_ext')) {
@@ -5131,6 +5593,10 @@
                 if (Studio.updateRigIoGating) Studio.updateRigIoGating(); // refresh fw-gated role options
                 clog('  fw v' + info.version + ' · caps [' + info.capabilities.join(', ') + ']' +
                     (info.mac ? ' · id ' + info.mac : ' · (no MAC in reply — older fw)'), 'info');
+                const fv = await Studio.refreshFirmwareVersion();
+                if (fv) clog('  build ' + fv.label, 'info');
+                else if ((info.capabilities || []).includes('health')) clog('  build: (no 0xCB reply)', 'warn');
+                else clog('  build: unknown — this firmware predates GET_FIRMWARE_VERSION (0xCB)', 'warn');
             }
         },
         ip: async () => { const r = await send(Wire.encodeGetIp(), 'GET_ETHERNET_IP 0xC1'); const ip = r && Wire.decodeIp && Wire.decodeIp(r); if (ip) clog('  ip ' + ip, 'info'); },
@@ -5144,6 +5610,31 @@
         setrate: () => send(Wire.encodeSetRefreshRate(num('cRrHz')), 'SET_REFRESH_RATE 0x16 ' + num('cRrHz') + ' Hz'),
         getrate: async () => { const r = await send(Wire.encodeGetRefreshRate(), 'GET_REFRESH_RATE 0x17'); const v = r && Wire.decodeRefreshRate(r); if (v != null) $('cRrHz').value = String(v); },
         sysreset: () => guardDestructive(() => { if (confirm('SYSTEM_RESET (0x01) reboots the controller firmware. Continue?')) send(Wire.encodeSystemReset(), 'SYSTEM_RESET 0x01'); }),
+        // Controller health (fw #50): one GET_HEALTH read, decoded into the log.
+        // The reply is also an ordinary arena_command row; the decoded fields go
+        // into the run log as a typed `health` event when the bridge is logging.
+        ctelem: () => {
+            const on = !Studio.telemetryEnabled();
+            Studio.setTelemetryEnabled(on);
+            clog('telemetry ring ' + (on ? 'ENABLED' : 'DISABLED') + ' (remembered)', on ? 'info' : 'warn');
+        },
+        chealth: async () => {
+            const r = await send(Wire.encodeGetHealth(), 'GET_HEALTH 0xCA', { timeoutMs: 2000 });
+            const h = r && Wire.decodeHealth(r);
+            if (!h) { clog('health: no/short reply — firmware without GET_HEALTH (capability bit 7)?', 'warn'); return; }
+            clog('health: up ' + (h.uptimeMs / 1000).toFixed(0) + ' s · loop max ' + h.loopMaxUs + ' µs (1 s: ' + h.loopMax1sUs + ') · SD reads ' + h.sdReads + ' max ' + h.sdReadMaxUs + ' µs err ' + h.sdErr +
+                 ' · frames ' + h.framesSent + ' · isr ' + h.isrCount + ' · 0x70 ' + h.cmd70Count + ' · state ' + h.state + ' frame ' + h.curFrame +
+                 ' · reset 0x' + h.resetCause.toString(16) + ' · prev boot: ' + h.prevBreadcrumbOp + (h.prevSlowOpName ? ' (slowest ' + h.prevSlowOpName + ' ' + h.prevSlowUs + ' µs)' : '') +
+                 (h.slowOpName ? ' · this boot slowest ' + h.slowOpName + ' ' + h.slowUs + ' µs' : ''), 'info');
+            if (h.wdogFlags !== undefined) {
+                clog('health v2: prev boot ISR ' + h.prevIsrLastName + ' (' + h.prevIsrCount + ' entries)' + (h.prevResetWasWatchdog ? ' · PREVIOUS RESET = WATCHDOG' : '') + (h.prevPcCaptured ? ' · captured PC ' + h.prevWdogPcHex + ' LR ' + h.prevWdogLrHex : '') +
+                     ' · wdog ' + (h.wdogArmed ? 'armed' : 'OFF') + (h.wdogSuspended ? ' (suspended)' : '') + (h.wdogStarving ? ' STARVING' : '') + (h.wdogConfigFailed ? ' CONFIG FAILED' : '') + ' kicks ' + h.wdogKicks + ' · this boot ISR ' + h.isrLastName + ' (' + h.isrCount + ')' + (h.wdogCsNow !== undefined ? ' · WDOG3_CS boot ' + h.wdogCsBootHex + ' now ' + h.wdogCsNowHex + (h.wdogHwEnabled ? ' (HW ENABLED)' : ' (HW OFF!)') : '') + (h.wdogTimeoutS != null ? ' · timeout ' + h.wdogTimeoutS + ' s (tick ' + h.wdogTickHz + ' Hz, verify 0x' + h.wdogVerify.toString(16) + ')' : ''), h.prevResetWasWatchdog ? 'warn' : 'info');
+            }
+            const cr = await Studio.readCrashReport();
+            if (cr) clog('crash report: ' + (cr.present ? cr.faultName + ' ret ' + cr.retAddrHex + ' cfsr 0x' + cr.cfsr.toString(16) + ' hfsr 0x' + cr.hfsr.toString(16) + ' bfar 0x' + cr.bfar.toString(16) + ' mmfar 0x' + cr.mmfar.toString(16) : 'none recorded'), cr.present ? 'warn' : 'dim');
+            const b = Studio.session && Studio.session.bridge;
+            if (b && b.logging) b.log({ event: 'health', source: 'console', health: h });
+        },
         // Rig I/O (#135) — reapply the rig's power-on defaults (module-block hook)
         cioapply: () => { if (Studio.applyRigIo) Studio.applyRigIo({ manual: true }); else clog('rig io: module block not loaded', 'err'); },
         // raw hex
@@ -5952,6 +6443,27 @@ async function populateSessionRig() {
     });
     if (rigIndex && rigIndex[0]) setSessionRig(rigIndex[0].name, { explicit: false });
 }
+// The controller knows its own geometry (GET_FIRMWARE_VERSION rows × cols). When nobody
+// has chosen a rig explicitly (no ?rig=, no user pick), follow the hardware instead of
+// the index's first entry — a fresh browser profile used to come up as g6_3x10 on a
+// 2×10 controller, which is the wrong geometry for streamed frames and the wrong rig
+// io: power-on defaults (bench 2026-09-13). First index entry whose arena is RxC wins
+// (for 2×10 that is the CSHL fly-on-ball rig). Explicit choices are never overridden.
+Studio.deriveRigFromController = function (rows, cols) {
+    rows = Number(rows); cols = Number(cols); // decodeFirmwareVersion parses them from the label text
+    if (!(rows > 0 && cols > 0) || !rigIndex) return null;
+    const cur = Studio.currentRig;
+    if (cur && cur.explicit) return null;
+    const hit = rigIndex.find((r) => {
+        const m = /^G6_(\d+)x(\d+)/.exec(String(r.arena || ''));
+        return m && Number(m[1]) === rows && Number(m[2]) === cols;
+    });
+    if (!hit || (cur && cur.name === hit.name)) return null;
+    setSessionRig(hit.name, { explicit: false });
+    Studio.rawLog('session rig follows the controller: ' + hit.name + ' (' + rows + '×' + cols + ')', 'info');
+    if (Studio.applyRigIo) { Studio.applyRigIo().catch(() => {}); } // the derived rig's io: defaults, not the placeholder's
+    return hit.name;
+};
 // Point the session rig at a rig name. `explicit` marks a user/URL choice
 // (encoded to the URL); a derived follow (protocol load) never overrides an
 // explicit choice — updateDeviceLine raises the mismatch chip instead.
@@ -6865,7 +7377,30 @@ Studio.onSdListing = function (names) {
     });
     populatePatDropdown(); // empty set clears the dropdown + unlocks cPat
     Studio.updateRunGate(); // the missing-pattern preflight tracks the SD listing
+    fillPatternFramesFromCard(m); // frame counts via GET_PATTERN_INFO (the closed-loop index modulus)
 };
+// Frame counts for every card pattern from GET_PATTERN_INFO 0x88 (a header read, ~ms each),
+// filled right after the listing so `patternFramesByName` — which the closed-loop resolver
+// pushes to the bridge as the heading→index modulus — is correct for patterns whose preview
+// was never rendered (an 8 MB pattern is never fetched for a thumbnail; the bridge then used
+// its default of 200 and wrapped the index — bench 2026-09-13, #201). Sequential, single-flight,
+// abandons on a new listing, a disconnect or a run (a run owns the link).
+let patFramesGen = 0;
+async function fillPatternFramesFromCard(m) {
+    const gen = ++patFramesGen;
+    const W = window.ArenaWireG6;
+    if (!W || !W.encodeGetPatternInfo || !Studio.session || !Studio.session.connected) return;
+    const todo = Object.values(m.patterns).filter((p) => !(p.preview && Number.isFinite(p.preview.frames)));
+    let n = 0;
+    for (const p of todo) {
+        if (gen !== patFramesGen || !Studio.session.connected || Studio.session.running) return;
+        try {
+            const info = W.decodePatternInfo(await Studio.session.send(W.encodeGetPatternInfo(p.index), { timeoutMs: 1500, silent: true }));
+            if (info && info.frameCount > 0) { p.preview = Object.assign(p.preview || {}, { frames: info.frameCount }); n++; }
+        } catch (_) { /* best effort: the preview path can still fill it later */ }
+    }
+    if (n && gen === patFramesGen) (Studio.clog || Studio.rawLog || function () {})('pattern frame counts read from the card for ' + n + ' pattern' + (n === 1 ? '' : 's') + ' (GET_PATTERN_INFO)', 'dim');
+}
 function wirePatPicker() {
     const sel = $('cPatName');
     if (sel) sel.addEventListener('change', () => {
@@ -7676,6 +8211,16 @@ Studio.beginRun = async function (isExperiment) {
     if (!Studio.session.connected) {
         try { await Studio.session.connect(); } catch (e) { Studio.showBanner('Connect failed: ' + e.message); return; }
     }
+    return Studio.runOnce(isExperiment);
+};
+
+// The repeatable half of beginRun — no dialogs, no port request; the caller
+// has done the one-time preflight (rig confirm + connect). Returns the runner
+// summary ({completed, aborted, fault, stopAcked, …}) or null if it could not
+// start. The soak driver loops on this.
+Studio.runOnce = async function (isExperiment) {
+    const doc = Studio.currentDoc;
+    if (!doc || !Studio.session || !Studio.session.connected) return null;
     const exp = doc.experiment;
     const { steps } = RunnerLib.flattenStructure(exp, { shuffle: shuffleInPlace });
     const conditionsByName = new Map((exp.conditions || []).map((c) => [c.name, c]));
@@ -7704,7 +8249,407 @@ Studio.beginRun = async function (isExperiment) {
     Studio._runCmdCount = cmdCount;
     const totalSec = durSum + cmdCount * Studio.runOverheadPerCmd();
     if (Studio.startRunTimer) Studio.startRunTimer(totalSec);
-    await runSteps(steps, conditionsByName, exp, isExperiment);
+    return runSteps(steps, conditionsByName, exp, isExperiment);
+};
+
+// ---- soak driver (fw #50 reproduction harness; advanced-only) --------------
+// Repeats the open protocol unattended. Each iteration is a TEST-intent run
+// (bridge-logged, never auto-committed). Refuses to start unless the bridge
+// confirms behavior_v2 logging (fail closed) and FicTrac/simulator frames are
+// arriving. A fault ends the iteration through the normal path; the
+// post-mortem result decides whether the soak continues (recovered) or stops.
+Studio.soak = null;
+const SOAK_DEFAULTS = { iterations: 0, hours: 12, gapS: 10, firstFault: 'halt', policy: 'reset-continue', maxResets: 3 };
+function parseSoakSpec(text) {
+    const cfg = Object.assign({}, SOAK_DEFAULTS);
+    String(text || '').split(/[\s,;]+/).filter(Boolean).forEach((kv) => {
+        const m = kv.match(/^([a-z_]+)=(.+)$/i);
+        if (!m) return;
+        const k = m[1].toLowerCase(); const v = m[2];
+        if (k === 'iterations' || k === 'n') cfg.iterations = Math.max(0, parseInt(v, 10) || 0);
+        else if (k === 'hours' || k === 'h') cfg.hours = Math.max(0, parseFloat(v) || 0);
+        else if (k === 'gap') cfg.gapS = Math.max(0, parseFloat(v) || 0);
+        else if (k === 'first') cfg.firstFault = /^reset/i.test(v) ? 'reset-continue' : 'halt';
+        else if (k === 'then' || k === 'policy') cfg.policy = /^halt/i.test(v) ? 'halt' : 'reset-continue';
+        else if (k === 'max' || k === 'max_resets') cfg.maxResets = Math.max(0, parseInt(v, 10) || 0);
+    });
+    return cfg;
+}
+Studio.parseSoakSpec = parseSoakSpec;
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+Studio.openSoakDialog = async function () {
+    if (!Studio.advanced) { Studio.showBanner('Soak is an advanced-mode feature (unlock with ?advanced=1).'); return; }
+    if (Studio.soak) {
+        if (confirm('A soak is running (iteration ' + Studio.soak.iteration + '). Stop it after the current run?')) Studio.stopSoak('operator');
+        return;
+    }
+    if (!Studio.currentDoc) { Studio.showBanner('Open the soak protocol first (File ▾ → Open… → protocols/soak_mode3_closed_loop.yaml).'); return; }
+    const spec = prompt(
+        'Soak the open protocol. Edit and OK:\n' +
+        '  iterations=N (0 = until hours elapse)   hours=H   gap=S (seconds between runs)\n' +
+        '  first=halt|reset   (first fault: halt = leave wedged for inspection)\n' +
+        '  then=reset|halt    max=R (SYSTEM_RESET attempts before halting)',
+        'iterations=0 hours=12 gap=10 first=halt then=reset max=3'
+    );
+    if (spec == null) return;
+    await Studio.startSoak(parseSoakSpec(spec));
+};
+
+// Stimulus quality (SD-card stalls, 2026-09-13): the run's final ring records must land in
+// THIS log file and the per-trial pass / flagged / unknown verdict must be written before the
+// export closes the file. Called from onRunFinished (before the commit) and from runSteps (a
+// fallback); runs once per run — later callers await the first. Flag only — excluding or
+// repeating a trial is the experimenter's decision (selection-bias caveat, Codex review).
+Studio.finalizeTrialQuality = function (runId) {
+    if (runId !== undefined && runId !== Studio._tqRunId) {
+        Studio.rawLog('stimulus quality: ignoring a finalize for a previous run (' + runId + ')', 'dim');
+        return Promise.resolve(null); // stale caller: a previous run's terminal event
+    }
+    if (Studio._tqFinal) return Studio._tqFinal;
+    Studio._tqFinal = (async () => {
+        if (!Studio.trialQuality) return null;
+        const tel = Studio.telemetry;
+        const bridge = Studio.session.bridge;
+        if (tel && Studio.telemetryAvailable && Studio.session.connected && !Studio._activePostmortem) {
+            const st = tel.drainer.stats;
+            const before = { errors: st.errors, notStored: st.notStored, gaps: st.gaps };
+            try {
+                await tel.drainer.idle();       // a poll in flight would make drainOnce() a no-op
+                await tel.drainer.drainOnce();  // the trailing sd_reads / state_change records
+            } catch (_) { /* accounted below */ }
+            // An incomplete final drain means the tail (where the last stall would be) may be
+            // missing: the open trial cannot be 'pass' (whole-stack review, 2026-09-13).
+            if (st.errors > before.errors || st.notStored > before.notStored || st.gaps > before.gaps) {
+                Studio.trialQuality.noteCoverage('final_drain_incomplete', { errors: st.errors - before.errors, not_stored: st.notStored - before.notStored, gaps: st.gaps - before.gaps });
+            }
+        } else if (tel && Studio.telemetryAvailable && Studio.activeRunLog) {
+            Studio.trialQuality.noteCoverage('final_drain_skipped', { connected: !!Studio.session.connected, postmortem: !!Studio._activePostmortem });
+        }
+        const tq = Studio.trialQuality.finish();
+        Studio.lastTrialQuality = tq;
+        if (tq.trials.length) {
+            if (bridge && bridge.connected && bridge.logging) bridge.log(Object.assign({ event: 'trial_quality' }, tq));
+            const thr = tq.threshold_us / 1000;
+            const msg = 'stimulus quality: ' + (tq.counts.pass || 0) + ' pass · ' + (tq.counts.fail || 0) + ' flagged · ' + (tq.counts.unknown || 0) + ' unknown'
+                + (tq.flagged_trials.length ? ' — display gap > ' + thr + ' ms in trial' + (tq.flagged_trials.length > 1 ? 's ' : ' ') + tq.flagged_trials.join(', ') + ' (worst ' + Math.round(tq.worst_gap_us / 100) / 10 + ' ms)' : '');
+            Studio.rawLog(msg, tq.counts.fail ? 'warn' : 'info');
+            if (tq.counts.fail && !Studio.soak) Studio.showBanner('⚠ ' + msg);
+        }
+        return tq;
+    })();
+    return Studio._tqFinal;
+};
+
+Studio.startSoak = async function (cfg) {
+    if (Studio.soak) return;
+    if (!Studio.advanced) { Studio.showBanner('Soak is an advanced-mode feature.'); return; }
+    const doc = Studio.currentDoc;
+    if (!doc || !Studio.session) { Studio.showBanner('Soak: open a protocol first.'); return; }
+    if (!Studio.session.connected) {
+        try { await Studio.session.connect(); } catch (e) { Studio.showBanner('Soak: connect failed — ' + e.message); return; }
+    }
+    const bridge = Studio.session.bridge;
+    if (!bridge) { Studio.showBanner('Soak: the FicTrac bridge client is not loaded.'); return; }
+    // Fail closed on the log format: a night of behavior_v1 is 4× the disk and
+    // the analyzer's slow path. The runner asserts the level per run; we need the
+    // ACK before the first run starts.
+    if (bridge.setLogLevel) bridge.setLogLevel('behavior_v2');
+    bridge.setLogging(true);
+    const ftUrl = ((($('cFtUrl') || {}).value) || 'ws://localhost:8765').trim();
+    if (!bridge.connected) {
+        try { bridge.connect(ftUrl); } catch (_) { /* surfaces below */ }
+        for (let i = 0; i < 40 && !bridge.connected; i++) await sleepMs(25);
+    }
+    if (!bridge.connected) { Studio.showBanner('Soak refused: bridge not connected (' + ftUrl + ') — start `pixi run bridge`.'); return; }
+    const ack = bridge.waitForLogLevelAck ? await bridge.waitForLogLevelAck(1500) : null;
+    if (ack !== 'behavior_v2') {
+        Studio.showBanner('Soak refused: the bridge did not confirm behavior_v2 logging (' + (ack || 'no ack') + ') — `git pull` + restart `pixi run bridge`.');
+        return;
+    }
+    // Input freshness: without simulator/FicTrac frames a Mode-3 soak drives nothing.
+    // An OPEN-LOOP soak (no fictrac plugin in the protocol — e.g. the Mode-2 SD
+    // control, protocols/soak_mode2_open_loop.yaml) needs the bridge only as the
+    // run logger: skip the frames gate and the applied-0x70 exposure test.
+    const closedLoop = fictracPluginNames(doc.experiment).length > 0;
+    let rate = bridge.stats ? bridge.stats.rateHz : 0;
+    if (closedLoop && !(rate > 0)) { await sleepMs(1500); rate = bridge.stats ? bridge.stats.rateHz : 0; }
+    if (closedLoop && !(rate > 0)) { Studio.showBanner('Soak refused: no FicTrac frames arriving at the bridge — start `pixi run sim -- --count 0 --rate 100`.'); return; }
+    const s = Studio.soak = Object.assign({}, SOAK_DEFAULTS, cfg || {}, {
+        iteration: 0, faults: 0, resets: 0, stop: false, stopReason: null, startedMs: Date.now(),
+        untilMs: 0
+    });
+    if (s.hours > 0) s.untilMs = s.startedMs + s.hours * 3600e3;
+    $('fmSoak') && $('fmSoak').classList.add('soaking');
+    Studio.updateUrl && Studio.updateUrl({ push: false });
+    const logSoak = (o) => { if (bridge.logging) bridge.log(Object.assign({ event: 'soak' }, o)); };
+    const desc = (s.iterations ? s.iterations + ' iterations' : 'until stopped') + (s.hours ? ', ≤ ' + s.hours + ' h' : '') +
+        ', gap ' + s.gapS + ' s, first fault: ' + s.firstFault + ', then: ' + s.policy + ' (max ' + s.maxResets + ' resets)';
+    logSoak({ phase: 'start', protocol: doc.filename, sha256: doc.sha256, config: { iterations: s.iterations, hours: s.hours, gap_s: s.gapS, first_fault: s.firstFault, policy: s.policy, max_resets: s.maxResets }, sim_rate_hz: rate, closed_loop: closedLoop });
+    Studio.rawLog('soak started — ' + desc, 'info');
+    Studio.showBanner('Soak running — ' + desc + '. File ▾ → Soak… to stop.');
+    (async () => {
+        let reason = 'done';
+        try {
+            for (;;) {
+                if (s.stop) { reason = s.stopReason || 'operator'; break; }
+                if (s.iterations && s.iteration >= s.iterations) { reason = 'iterations'; break; }
+                if (s.untilMs && Date.now() >= s.untilMs) { reason = 'hours'; break; }
+                if (!Studio.session.connected) { reason = 'disconnected'; break; }
+                s.iteration++;
+                Studio._lastPostmortem = null;
+                logSoak({ phase: 'iteration-start', iteration: s.iteration, elapsed_s: Math.round((Date.now() - s.startedMs) / 1000) });
+                Studio.rawLog('soak iteration ' + s.iteration + (s.iterations ? ' / ' + s.iterations : '') + ' starting', 'info');
+                const applied0 = bridge.stats ? bridge.stats.applied : 0;
+                const t0 = Date.now();
+                const res = await Studio.runOnce(false);
+                const pmo = Studio._lastPostmortem;
+                // Exposure, not iteration count, is the unit of evidence: record how
+                // many 0x70s this iteration actually delivered. A completed iteration
+                // that streamed almost nothing (simulator died mid-trial) is
+                // 'unexercised', not 'completed' — it must not count as clean soak time.
+                const applied = (bridge.stats ? bridge.stats.applied : 0) - applied0;
+                const durS = (Date.now() - t0) / 1000;
+                // Open loop: the controller steps the pattern itself (no 0x70s) — exposure is
+                // in the telemetry FRAME rows, judged by telemetry-report.py, not here.
+                const exercised = !closedLoop || applied >= Math.min(1000, 5 * durS); // ≥ 5 Hz average, or 1000 total
+                let outcome = !res ? 'not-started' : res.fault ? 'fault' : res.aborted ? 'aborted' : exercised ? 'completed' : 'unexercised';
+                logSoak({
+                    phase: 'iteration-end', iteration: s.iteration,
+                    outcome,
+                    fault: res && res.fault ? res.fault : null,
+                    stop_acked: res ? res.stopAcked : null,
+                    postmortem: pmo ? pmo.outcome : null,
+                    applied_0x70: applied, duration_s: Math.round(durS),
+                    telemetry: Studio.telemetry ? Object.assign({}, Studio.telemetry.drainer.stats) : null
+                });
+                if (!res) { reason = 'run-not-started'; break; }
+                if (outcome === 'unexercised') {
+                    s.unexercised = (s.unexercised || 0) + 1;
+                    Studio.rawLog('soak: iteration ' + s.iteration + ' delivered only ' + applied + ' frame commands in ' + Math.round(durS) + ' s — unexercised (simulator/bridge?)', 'warn');
+                }
+                if (res.fault) {
+                    s.faults++;
+                    if (!pmo || (pmo.outcome !== 'recovered' && pmo.outcome !== 'self-reset')) { reason = pmo ? 'fault-' + pmo.outcome : 'fault'; break; }
+                    s.resets++;
+                    Studio.rawLog('soak: controller recovered (reset ' + s.resets + '/' + s.maxResets + ') — continuing', 'warn');
+                } else if (res.aborted) { reason = 'operator-stop'; break; }
+                if (s.stop) { reason = s.stopReason || 'operator'; break; }
+                // Gap + input freshness re-check (a dead simulator is a harness
+                // problem, not a controller fault — pause, don't count it).
+                await sleepMs(s.gapS * 1000);
+                // A protocol whose last step disconnects the fictrac plugin takes
+                // the bridge down with it; bring it back before judging freshness
+                // (bench 2026-09-11: the loop otherwise waits 10 min for frames).
+                if (!bridge.connected) {
+                    try { bridge.connect(ftUrl); } catch (_) { /* surfaces below */ }
+                    for (let i = 0; i < 40 && !bridge.connected; i++) await sleepMs(50);
+                    await sleepMs(1200); // one rate-timer tick so rateHz is fresh
+                }
+                if (!closedLoop) { if (!bridge.connected) { reason = 'bridge-lost'; break; } continue; }
+                let r2 = bridge.stats ? bridge.stats.rateHz : 0;
+                let waited = 0;
+                while (!(r2 > 0) && !s.stop && waited < 600) {
+                    if (waited === 0) { Studio.rawLog('soak: no FicTrac frames — waiting for the simulator (restart `pixi run sim`)', 'warn'); logSoak({ phase: 'paused', iteration: s.iteration, reason: 'no-frames' }); }
+                    await sleepMs(5000); waited += 5;
+                    r2 = bridge.stats ? bridge.stats.rateHz : 0;
+                }
+                if (s.stop) { reason = s.stopReason || 'operator'; break; }
+                if (!(r2 > 0)) { reason = 'no-frames'; break; }
+            }
+        } catch (e) {
+            reason = 'error: ' + (e && e.message ? e.message : e);
+        }
+        logSoak({ phase: 'end', reason, iterations: s.iteration, faults: s.faults, resets: s.resets, elapsed_s: Math.round((Date.now() - s.startedMs) / 1000) });
+        Studio.rawLog('soak ended (' + reason + ') after ' + s.iteration + ' iteration(s), ' + s.faults + ' fault(s), ' + s.resets + ' reset(s)', /fault|error/.test(reason) ? 'err' : 'info');
+        Studio.showBanner('Soak ended: ' + reason + ' — ' + s.iteration + ' iteration(s), ' + s.faults + ' fault(s). Logs are on the bridge (`pixi run python scripts/wedge-scan.py <log-dir>`).');
+        Studio.soak = null;
+        $('fmSoak') && $('fmSoak').classList.remove('soaking');
+        Studio.updateUrl && Studio.updateUrl({ push: false });
+    })();
+};
+
+Studio.stopSoak = function (reason) {
+    if (!Studio.soak) return;
+    Studio.soak.stop = true;
+    Studio.soak.stopReason = reason || 'operator';
+    if (Studio._activePostmortem) Studio._activePostmortem.abort();
+    Studio.rawLog('soak: stop requested — finishing the current run', 'warn');
+};
+$('fmSoak') && $('fmSoak').addEventListener('click', () => Studio.openSoakDialog());
+
+// ---- controller telemetry ring (T4: soak with ring-buffer logging) ---------
+// The controller keeps CMD/FRAME/STATE records in reboot-surviving RAM; we
+// drain them at 10 Hz over the same link (single-flight, ack cursor — lossless)
+// and write them into the run log as compact "cc"/"cf"/"cs" rows next to the
+// FicTrac frames and arena echoes. Enabled per connection when the firmware
+// advertises `health` AND answers SET_TELEMETRY; silent otherwise.
+Studio.telemetry = null;
+Studio.telemetryAvailable = false;
+// Instrumentation is an experimental factor: an off switch (remembered) so a
+// telemetry-off control arm is one click, not a firmware swap. Default ON.
+Studio.telemetryEnabled = function () { try { return localStorage.getItem('studio_telemetry') !== 'off'; } catch (_) { return true; } };
+Studio.setTelemetryEnabled = function (on) {
+    try { localStorage.setItem('studio_telemetry', on ? 'on' : 'off'); } catch (_) { /* private mode */ }
+    if (!on) Studio.stopTelemetry('switched off');
+    else if (Studio.session && Studio.session.connected) Studio.initTelemetry();
+    Studio.rawLog('telemetry ring: ' + (on ? 'enabled (drains on the next connection or now)' : 'disabled — telemetry-off control arm'), 'info');
+};
+Studio.stopTelemetry = function (why) {
+    Studio.telemetryAvailable = false;
+    if (Studio.telemetry) { Studio.telemetry.poller.stop(); Studio.rawLog('telemetry ring: poller stopped (' + (why || '') + ')', 'dim'); }
+};
+Studio.initTelemetry = async function () {
+    const AT = window.ArenaTelemetry;
+    if (!AT || !Studio.session || !Studio.session.connected) return false;
+    // Gate: ONLY the firmware's own declaration (GET_FIRMWARE_VERSION flags bit 2).
+    // `health` alone is not enough — health-only builds (22b756dd) answer 0xA8
+    // with CE_UNKNOWN_CMD and an error glyph on the arena (no blind probes).
+    const fv = Studio.firmwareVersion;
+    if (!fv || !fv.telemetry || !Wire.encodeSetTelemetry || !Studio.telemetryEnabled()) {
+        Studio.stopTelemetry(!fv || !fv.telemetry ? 'firmware has no ring' : 'disabled by setting');
+        return false;
+    }
+    try {
+        const r = await Studio.session.send(Wire.encodeSetTelemetry(1), { timeoutMs: 2000 });
+        const d = Wire.decodeResponse(r);
+        Studio.telemetryAvailable = !!(d && d.ok);
+    } catch (_) {
+        Studio.telemetryAvailable = false;
+    }
+    if (!Studio.telemetryAvailable) {
+        Studio.stopTelemetry('SET_TELEMETRY refused');
+        Studio.rawLog('telemetry ring: firmware declares it but SET_TELEMETRY was refused', 'warn');
+        return false;
+    }
+    if (!Studio.telemetry) {
+        const drainer = AT.createDrainer({
+            session: Studio.session,
+            wire: Wire,
+            maxBytes: 178, // firmware reply budget: 3 + payload < 200 ⇒ 196 − 18 B header
+            // A drain error, a refused batch or a sequence gap while a run is recorded means
+            // the open trial may be missing records: 'unknown', never 'pass'.
+            onCoverage: (kind, detail) => {
+                if (Studio.trialQuality && Studio.activeRunLog) Studio.trialQuality.noteCoverage(kind, detail);
+            },
+            onRecords: (block, rows) => {
+                // Per-trial stimulus quality (js/trial-quality.js): fed BEFORE the sink
+                // decides, in ring order; the module dedups re-delivered records by seq.
+                if (Studio.trialQuality) Studio.trialQuality.feed(block.records);
+                // Return the bridge's acceptance: false ⇒ the drainer withholds its ack
+                // and the controller keeps the records (bridge down / logging off).
+                const b = Studio.session.bridge;
+                return b && typeof b.logRows === 'function' ? b.logRows(rows) !== false : false;
+            }
+        });
+        if (!Studio.trialQuality && window.TrialQuality) {
+            Studio.trialQuality = window.TrialQuality.createTrialQuality({
+                onGap: (ev) => {
+                    const b = Studio.session.bridge;
+                    if (b && b.logging) b.log(ev);
+                    Studio.rawLog('display gap ' + ev.ms + ' ms (' + ev.kind + (ev.phase ? ', ' + ev.phase : '') + ') in trial ' + ev.trial + ' pattern ' + ev.pattern, 'warn');
+                }
+            });
+        }
+        const poller = AT.createPoller({
+            drainer,
+            canPoll: () => {
+                if (!Studio.session.connected) return { ok: false, reason: 'disconnected' };
+                if (Studio._activePostmortem) return { ok: false, reason: 'post-mortem owns the link' };
+                // No sink ⇒ don't poll: rows would be refused (ack withheld) and the same
+                // block re-read every 100 ms. The ring keeps the last ~6 s on the
+                // controller; when logging starts the drain resumes with that backlog.
+                const b = Studio.session.bridge;
+                if (!(b && b.connected && b.logging)) return { ok: false, reason: 'bridge not logging' };
+                if (Studio.session.outputInhibited) return { ok: false, reason: 'output inhibited' };
+                return { ok: true };
+            },
+            onState: (s, r) => {
+                if (s === 'paused' && r) {
+                    Studio.rawLog('telemetry poller paused: ' + r, 'dim');
+                    // Coverage gap: a trial classified while the drain was paused is 'unknown', never 'pass'.
+                    if (Studio.trialQuality && Studio.activeRunLog) Studio.trialQuality.noteCoverage('poller_paused', r);
+                }
+            }
+        });
+        Studio.telemetry = { drainer, poller, startedMs: Date.now(), lastReport: null };
+        poller.start(100);
+        // A quiet stats line once a minute (only when something changed).
+        setInterval(() => {
+            const st = drainer.stats;
+            const key = [st.records, st.dropped, st.gaps, st.errors, st.notStored].join('/');
+            if (key === Studio.telemetry.lastReport) return;
+            Studio.telemetry.lastReport = key;
+            Studio.rawLog('telemetry ring: ' + st.records + ' records · ' + st.blocks + ' blocks · ' + (st.bytes / 1024).toFixed(1) + ' KiB · dropped ' + st.dropped + ' · gaps ' + st.gaps + ' · errors ' + st.errors + (st.notStored ? ' · refused by bridge ' + st.notStored : '') + (st.heapCollision ? ' · RING DISABLED (heap collision)' : '') + (st.survivedReboot ? ' · ring survived a reboot (boot #' + st.bootCount + ')' : ''), 'dim');
+        }, 60000);
+    } else {
+        Studio.telemetry.drainer.rearm(); // NO_ACK first: learn the ring incarnation before freeing anything
+        Studio.telemetry.poller.start(100);
+    }
+    Studio.rawLog('telemetry ring: on (10 Hz drain, rows cc/cf/cs → run log)', 'info');
+    return true;
+};
+
+// PJRC CrashReport passthrough (0xCC, fw fb11681) — gated like the ring on the
+// 0xCB telemetry flag. Logged as a `crash_report` event (raw hex kept). Null when
+// the firmware lacks it or the link is down; never throws.
+// Bench A/B switches for the causal test of the SD-card stalls (SET_SD_DIAG 0xCE,
+// fw sd_fastpath only): flags bit0 = legacy FAT-chain seek at the next pattern open,
+// bit1 = no same-index skip. Refreshes Studio.sdCard so run_metadata.sd_card.sd_diag
+// records the arm. Console: `await Studio.setSdDiag(1)` … `await Studio.setSdDiag(0)`.
+Studio.setSdDiag = async function (flags) {
+    const fv = Studio.firmwareVersion;
+    if (!fv || !fv.sdDiag || !Wire.encodeSetSdDiag || !Studio.session || !Studio.session.connected) {
+        Studio.rawLog('sd diag: firmware has no SET_SD_DIAG (0xCB bit 6) or not connected', 'warn');
+        return null;
+    }
+    const r = Wire.decodeResponse(await Studio.session.send(Wire.encodeSetSdDiag(flags), { timeoutMs: 2000 }));
+    if (!r || !r.ok) { Studio.rawLog('sd diag: refused', 'warn'); return null; }
+    const si = Wire.decodeSdInfo(await Studio.session.send(Wire.encodeGetSdInfo(), { timeoutMs: 2000 }));
+    if (si) Studio.sdCard = si;
+    const b = Studio.session.bridge;
+    if (b && b.logging) b.log({ event: 'sd_diag', flags: flags, in_force: si ? si.sdDiag : null, label: si ? si.label : null });
+    Studio.rawLog('sd diag flags now ' + (si ? si.sdDiag : '?') + (flags & 1 ? ' — legacy FAT-chain seek from the next pattern open' : '') + (flags & 2 ? ' — every 0x70 reads (no same-index skip)' : '') + (!flags ? ' — production behaviour' : ''), 'info');
+    return si;
+};
+
+Studio.readCrashReport = async function () {
+    const fv = Studio.firmwareVersion;
+    if (!fv || !fv.crashReport || !Wire.encodeGetCrashReport || !Studio.session || !Studio.session.connected) return null; // 0xCB flags bit 3, never the ring bit (c47ee68 has the ring but not 0xCC)
+    try {
+        const cr = Wire.decodeCrashReport(await Studio.session.send(Wire.encodeGetCrashReport(), { timeoutMs: 2000 }));
+        const b = Studio.session.bridge;
+        if (cr && b && b.logging) b.log({ event: 'crash_report', present: cr.present, fault: cr.faultName, ret_addr: cr.retAddrHex, cfsr: cr.cfsr, hfsr: cr.hfsr, bfar: cr.bfar, mmfar: cr.mmfar, raw_hex: cr.rawHex });
+        return cr;
+    } catch (_) { return null; }
+};
+
+// Drain everything the controller holds (post-reboot crash dump). Returns a
+// JSON-safe summary; the rows themselves go to the bridge log via onRecords.
+Studio.drainTelemetry = async function (tag) {
+    if (!Studio.telemetry || !Studio.session.connected) return null;
+    const d = Studio.telemetry.drainer;
+    const before = d.stats.records;
+    d.rearm(); // post-reboot: never free records with a pre-reboot ack (incarnation check)
+    const blocks = await d.drainAll(600);
+    const recs = [];
+    const rawBlocks = []; // raw payload hex per block — decoder-independent evidence
+    for (const b of blocks) {
+        for (const r of b.records) recs.push(r);
+        if (b.rawHex) rawBlocks.push(b.rawHex);
+    }
+    const tail = recs.slice(-30).map((r) =>
+        r.kind === 'cmd' ? 'CMD 0x' + r.cmd.toString(16) + ' st' + r.status + ' @' + r.tUs :
+        r.kind === 'frame' ? 'FRAME idx' + r.idx + ' sd' + r.sdLoadUs + 'us spi' + r.spiUs + 'us' + (r.reqAgeUs != null ? ' age' + r.reqAgeUs + 'us sup' + r.superseded + (r.contiguous ? ' contig' : '') : '') + ' @' + r.tUs :
+        r.kind === 'state' ? 'STATE ' + r.stateName + ' ' + (r.codeName || r.code) + ' ' + r.arg + ' @' + r.tUs : '?');
+    const summary = { tag: tag || 'drain', records: recs.length, blocks: blocks.length, survivedReboot: d.stats.survivedReboot, bootCount: d.stats.bootCount, dropped: d.stats.dropped, gaps: d.stats.gaps, heapCollision: !!d.stats.heapCollision, tail };
+    Studio.rawLog('telemetry dump (' + summary.tag + '): ' + recs.length + ' records' + (d.stats.survivedReboot ? ' — ring survived the reboot' : '') + (tail.length ? '\n  ' + tail.join('\n  ') : ''), recs.length ? 'warn' : 'dim');
+    const b = Studio.session.bridge;
+    if (b && b.logging) b.log({ event: 'telemetry_dump', summary, raw_blocks: rawBlocks });
+    // Evidence order: health (caller) → ring (above) → PJRC crash report (RAM read).
+    const cr = await Studio.readCrashReport();
+    if (cr) summary.crashReport = { present: cr.present, fault: cr.faultName, retAddr: cr.retAddrHex };
+    return summary;
 };
 
 Studio.runCondition = async function (name) {
@@ -7749,7 +8694,8 @@ function startRunLog(isExperiment) {
     if (typeof Studio.prepareRuntimeControls === 'function') {
         Studio.prepareRuntimeControls(runId, isExperiment);
     }
-    // reset the log surface
+    // reset the log surface (drop queued lines + any pending TX line first)
+    if (Studio.resetRunLog) Studio.resetRunLog();
     const box = $('runlogBox');
     box.innerHTML = '';
     $('btnLogSave').disabled = true;
@@ -7788,8 +8734,10 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         // Frame-logging level is a runtime/session setting (File ▾ → Run logging),
         // NOT per-protocol. Assert it here so a recorded run logs deterministically
         // at the chosen level — this OVERRIDES any ad-hoc Console log toggle state.
+        // A soak ALWAYS logs behavior_v2 (its preflight negotiated it; a remembered
+        // behavior_v1 session setting must not override it — bench 2026-09-11).
         if (bridge.setLogLevel)
-            bridge.setLogLevel(Studio.sessionLogLevel ? Studio.sessionLogLevel() : 'behavior_v1');
+            bridge.setLogLevel(Studio.soak ? 'behavior_v2' : Studio.sessionLogLevel ? Studio.sessionLogLevel() : 'behavior_v2');
         bridge.setLogging(true); // universal default-on: no experiment untracked
         if ($('cFtLog')) $('cFtLog').checked = true; // keep the console toggle honest
         const ftUrl = ((($('cFtUrl') || {}).value) || 'ws://localhost:8765').trim();
@@ -7799,18 +8747,31 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
                 await new Promise((r) => setTimeout(r, 25));
             }
         }
+        // Log-level negotiation (behavior_v2 plan, Part 1 §5): a ≥3.0 bridge acks
+        // the level it will ACTUALLY write; a pre-3.0 bridge never acks and silently
+        // writes behavior_v1 (or full, if it was launched with --log-frames). Name
+        // the outcome in the banner + transcript so a stale bridge is visible at run
+        // start, not at analysis time. `logLevel` is what goes into run_metadata.
+        const wantLevel = bridge.logLevel || 'behavior_v2';
+        const ackLevel = bridge.connected && bridge.waitForLogLevelAck ? await bridge.waitForLogLevelAck(800) : null;
+        const logLevel = ackLevel || (wantLevel === 'behavior_v2' ? 'behavior_v1' : wantLevel);
+        Studio._runLogFormat = bridge.connected ? logLevel : null;
+        const levelNote = !bridge.connected ? ''
+            : ackLevel === wantLevel ? ' (' + ackLevel + ')'
+            : ackLevel ? ' ⚠ bridge too old for ' + wantLevel + ' — logging ' + ackLevel + ' (restart `pixi run bridge` from the current checkout)'
+            : ' ⚠ bridge did not confirm the log level (old bridge?) — assuming ' + logLevel + '; restart `pixi run bridge` from the current checkout';
         const ftMsg = bridge.connected
-            ? 'bridge connected (' + ftUrl + ') · run logging to JSONL' + (ftNames.length ? ' · fictrac closed-loop armed' : '')
+            ? 'bridge connected (' + ftUrl + ') · run logging to JSONL' + levelNote + (ftNames.length ? ' · fictrac closed-loop armed' : '')
             : 'bridge NOT connected (' + ftUrl + ') — ' +
               (ftNames.length ? 'closed-loop + ' : '') +
               'JSONL run logging INACTIVE. Start it (`pixi run bridge`) and re-run.';
-        Studio.rawLog((bridge.connected ? '' : '⚠ ') + ftMsg, bridge.connected ? 'info' : 'err');
+        Studio.rawLog((bridge.connected ? '' : '⚠ ') + ftMsg, !bridge.connected ? 'err' : (ackLevel === wantLevel ? 'info' : 'warn'));
         // Also into the RECORDED transcript — a saved runlog.txt must be
         // self-documenting about whether the bridge was live (bench finding:
         // the pre-fix log showed fictracApply firing into nothing, silently).
         if (Studio.activeRunLog) {
             Studio.activeRunLog.event('log', {
-                level: bridge.connected ? 'INFO' : 'WARN',
+                level: !bridge.connected || ackLevel !== wantLevel ? 'WARN' : 'INFO',
                 message: ftMsg
             });
         }
@@ -7818,16 +8779,50 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         // bridge log (setLogging(true) above rotated a fresh file server-side;
         // messages ride the same socket FIFO, so this lands right after the
         // logging_started marker). The committed artifact is self-describing.
-        if (isExperiment && bridge.connected && Studio.activeRunLog) {
-            bridge.log(Object.assign({ event: 'run_metadata', rig_id: Studio.rigId || null },
-                Studio.activeRunLog.meta));
+        // `log_format` names the line format of THIS file (the bridge's acked
+        // level, or the inferred one for a non-acking old bridge) so readers that
+        // skip the frame_schema line still know what they hold.
+        // Soak iterations are TEST-intent runs (never auto-committed) but still
+        // get the run_metadata line so a soak log is self-describing.
+        if ((isExperiment || Studio.soak) && bridge.connected && Studio.activeRunLog) {
+            const md = Object.assign({ event: 'run_metadata', rig_id: Studio.rigId || null, log_format: logLevel },
+                Studio.activeRunLog.meta);
+            if (Studio.soak) md.soak = { iteration: Studio.soak.iteration, policy: Studio.soak.policy, first_fault: Studio.soak.firstFault };
+            // Instrumentation is an experimental factor — say whether the 10 Hz
+            // ring drain was interleaved with this run's commands.
+            md.telemetry = Studio.telemetryAvailable ? 'ring-10hz' : 'off';
+            // Which physical SD card served this run (fw sd_fastpath, 0xCD) — the card's
+            // read-count housekeeping is the dominant display-freeze source (2026-09-13).
+            const sc = Studio.sdCard;
+            md.sd_card = sc && sc.mounted ? {
+                label: sc.label, manufacturer: sc.manufacturer, pnm: sc.pnm, prv: sc.prv, psn_hex: sc.psnHex,
+                mdt: sc.mdtYear + '-' + String(sc.mdtMonth).padStart(2, '0'), capacity_gb: sc.capacityGB,
+                card_type: sc.cardTypeName, fat: sc.fatTypeName, bytes_per_cluster: sc.bytesPerCluster, cid_hex: sc.cidHex
+            } : null;
+            md.gap_threshold_ms = Studio.trialQuality ? Studio.trialQuality.thresholdUs / 1000 : null;
+            if (md.sd_card) md.sd_card.sd_diag = sc.sdDiag || 0; // A/B arm in force (SET_SD_DIAG 0xCE); 0 = production
+            bridge.log(md);
+        }
+        // Controller telemetry streams (T4): declare the compact row schema once
+        // per log file so readers know the cc/cf/cs columns.
+        if (Studio.telemetryAvailable && bridge.connected && window.ArenaTelemetry) {
+            bridge.log({ event: 'stream_schema', streams: window.ArenaTelemetry.STREAM_SCHEMA });
         }
     }
+    let summary = null;
+    Studio._userStopRequested = false;
+    Studio._linkDropped = false;
+    if (Studio.trialQuality) Studio.trialQuality.reset(); // per-trial stimulus-quality verdicts start fresh
+    Studio._tqFinal = null; // finalizeTrialQuality() runs once per run (first caller wins, others await it)
+    // Bind the verdict to THIS run: a late terminal event from a previous (aborted) run must not finalize
+    // this one's trials — bench 2026-09-13: an overlapping start let the old run's finalize close the new
+    // run's trials one second in, and the real stall went unjudged.
+    Studio._tqRunId = (Studio.activeRunLog && Studio.activeRunLog.meta && Studio.activeRunLog.meta.run_id) || ('run-' + Date.now());
     try {
         // NOTE: do NOT pass onProgress — the session broadcasts 'runstatus' which
         // Studio.onRunStatus (subscribed once) consumes, so the log/highlight stay
         // live across view switches.
-        await Studio.session.runSequence({
+        summary = await Studio.session.runSequence({
             steps,
             conditionsByName,
             resolvePatternId: resolvePatternIdForCmd,
@@ -7837,6 +8832,26 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
                 : undefined,
             fictracPluginNames: new Set(ftNames)
         });
+        // Controller fault (fw #50) — either the closed-loop client tripped
+        // (bridge 'fault' → runner.fault) or a protocol command timed out; both
+        // land in summary.fault. The runner's cleanup (best-effort STOP) has
+        // finished by now, so the post-mortem lifecycle owns the link.
+        // A run that ended because the LINK DROPPED (controller re-enumerated
+        // mid-run) and not because the user pressed STOP is a controller event:
+        // with the hardware watchdog (fw 86eeb4a) a hang shows up exactly like
+        // this, ~0.5 s in. Route it through the same lifecycle — the post-mortem
+        // takes its self-reset path (reconnect → identity → health → ring dump).
+        if (summary && !summary.fault && summary.aborted && Studio._linkDropped && !Studio._userStopRequested) {
+            summary.fault = 'link_dropped';
+            summary.faultDetail = { kind: 'link_dropped', note: 'controller re-enumerated mid-run (watchdog self-reset?)' };
+            Studio.rawLog('run ended by a link drop, not a STOP — treating as a controller event', 'warn');
+        }
+        if (summary && summary.fault) {
+            Studio._lastPostmortem = await Studio.handleControllerFault(summary);
+        }
+        // Stimulus quality: normally already finalized by onRunFinished (before the export);
+        // this is the fallback for runs without a run log (Test runs).
+        await Studio.finalizeTrialQuality(Studio._tqRunId);
     } catch (e) {
         Studio.rawLog('run error: ' + (e && e.message ? e.message : e), 'err');
         if (Studio.activeRunLog && !Studio.activeRunLog.summary) {
@@ -7846,7 +8861,68 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         document.body.classList.remove('testing');
         Studio.refreshState();
     }
+    return summary;
 }
+
+// ---- controller-fault post-mortem (fw #50) --------------------------------
+// Runs AFTER the faulted run has unwound. Policy: outside a soak, or on a
+// soak's FIRST fault when configured halt-first, probe and leave the controller
+// as-is (evidence first); otherwise probe → SYSTEM_RESET → reconnect → verify
+// the MAC → post-reset probe, and the soak continues if it recovered.
+Studio._lastPostmortem = null;
+Studio._activePostmortem = null;
+Studio.handleControllerFault = async function (summary) {
+    const PM = window.StudioPostmortem;
+    if (!PM || !Studio.session) return null;
+    const s = Studio.soak;
+    let policy = 'halt';
+    if (s) {
+        if (s.faults === 0 && s.firstFault === 'halt') policy = 'halt';
+        else if (s.resets < s.maxResets) policy = s.policy;
+    }
+    const pm = PM.createPostmortem({
+        session: Studio.session,
+        wire: Wire,
+        log: (m, k) => Studio.rawLog('post-mortem: ' + m, k || 'info'),
+        // After a successful reset+reconnect, pull the ring's crash dump.
+        afterReconnect: () => Studio.drainTelemetry('post-reset')
+    });
+    Studio._activePostmortem = pm;
+    // Exclusive link: stop the 10 Hz drain and wait for any chunk loop in flight
+    // BEFORE the quiet period starts (otherwise the quiet period is not quiet).
+    if (Studio.telemetry) {
+        Studio.telemetry.poller.stop();
+        try { await Studio.telemetry.drainer.idle(); } catch (_) { /* never blocks the lifecycle */ }
+    }
+    Studio.showBanner('⚠ Controller fault — post-mortem probes running (' + policy + '). Do not unplug.');
+    try {
+        const res = await pm.run({
+            policy,
+            expectMac: Studio.controllerId || null,
+            faultDetail: Object.assign({ reason: summary.fault }, summary.faultDetail || {})
+        });
+        Studio.showBanner(
+            res.outcome === 'transient' ? 'Controller answered normally again — transient stall, run still aborted.' :
+            res.outcome === 'self-reset' ? 'Controller reset itself (watchdog) and came back — evidence captured (health, ring, crash report); soak continues.' :
+            res.outcome === 'recovered' ? 'Controller recovered after SYSTEM_RESET' + (res.reset && res.reset.prevSlowOp ? ' (slowest op before: ' + res.reset.prevSlowOp + ')' : '') + '.' :
+            res.outcome === 'halted' ? 'Post-mortem done — controller left wedged for inspection (halt policy). Power-cycle or Debug ▾ → Reset controller when finished.' :
+            'Post-mortem: ' + res.outcome + ' — see the run log.'
+        );
+        return res;
+    } catch (e) {
+        Studio.rawLog('post-mortem error: ' + (e && e.message ? e.message : e), 'err');
+        return { outcome: 'error', error: e && e.message };
+    } finally {
+        Studio._activePostmortem = null;
+        Studio._pendingFault = null;
+        // The run log's export/commit waited for this post-mortem (evidence first).
+        const commit = Studio._pendingCommit;
+        Studio._pendingCommit = null;
+        if (commit) { try { await commit(); } catch (e) { Studio.rawLog('deferred run-log commit failed: ' + (e && e.message ? e.message : e), 'err'); } }
+        // Resume the ring drain only on a live, identified link (recovered controller).
+        if (Studio.telemetry && Studio.telemetryAvailable && Studio.session.connected && Studio.telemetryEnabled()) Studio.telemetry.poller.start(100);
+    }
+};
 
 function shuffleInPlace(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -8202,13 +9278,19 @@ $('ghSignInBtn').addEventListener('click', async (e) => {
     e.stopPropagation();
     const signInBtn = $('ghSignInBtn');
     const pat = prompt(
-        'Paste a GitHub fine-grained personal access token for ' + ghTargetRepo().full +
-        '\nFor private read-only access: Contents read. For saving: Contents read/write' +
-        ' + Pull requests read/write. Public protocol/replay reads need no token.\n\n' +
+        'Paste a GitHub personal access token for ' + ghTargetRepo().full + '\n\n' +
+        'Lab / org members: a FINE-GRAINED token — Resource owner = the repo\'s org, ' +
+        'Only select repositories = this repo, Contents: Read and write (Pull requests ' +
+        'read/write only if you save as PR). Shared course account or outside ' +
+        'collaborators: a CLASSIC token (scope public_repo for a public repo, repo for ' +
+        'a private one) — fine-grained tokens cannot target an org you are not a ' +
+        'member of. Public protocol/replay reads need no token.\n\n' +
         'Stored in sessionStorage (cleared when this tab closes). The follow-up ' +
-        '"remember" option keeps it in localStorage — REQUIRED for course bench ' +
-        'setup (a sessionStorage-only token evaporates when the tab closes); ' +
-        'do NOT use it on a personal shared machine.'
+        '"remember" option keeps it in localStorage — REQUIRED on a dedicated bench/rig ' +
+        'computer (a sessionStorage-only token evaporates when the tab closes); ' +
+        'say NO on a shared or borrowed machine. Tokens expire: when the Studio reports ' +
+        'the stored token is no longer valid, create a new one (see ' +
+        'docs/development/data-repo-token-runbook.md).'
     );
     if (!pat) return;
     const token = pat.trim();
@@ -8410,7 +9492,7 @@ function wireCourseSettings() {
             signIn.classList.toggle('gh-signin-while-locked', locked);
             signIn.title = locked
                 ? 'Sign in for course-repo read access; repo, bench, and write settings remain instructor-locked'
-                : 'Sign in to GitHub with a fine-grained personal access token';
+                : 'Sign in to GitHub with a personal access token (fine-grained for org members; classic for the shared course account) — see docs/development/data-repo-token-runbook.md';
         }
         if (ghLock) {
             ghLock.textContent = locked ? '🔒' : '🔓';
@@ -9216,6 +10298,12 @@ async function initFromUrl() {
         // NOTE: lockSafe/unlockAdvanced live in the classic shell IIFE, not this
         // module scope — call them via the exposed Studio.* refs (a bare name here
         // throws a ReferenceError that the finally-block would silently mask).
+        // ?soak=1 arms the soak driver (advanced-only). It never auto-starts —
+        // connecting needs a click — it just tells the operator where the switch is.
+        if (state.soak === true) {
+            Studio.soakRequested = true;
+            setTimeout(() => Studio.showBanner('Soak armed — open protocols/soak_mode3_closed_loop.yaml, connect, then File ▾ → Soak…'), 800);
+        }
         if (state.advanced === true) {
             Studio.advancedUrlRequested = true;
             if (!Studio.advanced) Studio.unlockAdvanced();
@@ -11896,7 +12984,7 @@ async function initFromUrl() {
                     class: 'arena-test-btn',
                     disabled: !serialSupported,
                     title: 'Stop the running pattern (STOP_DISPLAY 0x30) — best-effort queued via the shared session',
-                    onClick: () => { if (window.Studio.session) window.Studio.session.stop(); }
+                    onClick: () => { if (window.Studio.session) { window.Studio._userStopRequested = true; window.Studio.session.stop(); } }
                 }, '■ Stop'));
                 const plugins = RunnerLib.listSkippedPlugins(cond);
                 wrap.appendChild(el('span', { class: 'arena-test-note' },
@@ -12107,6 +13195,25 @@ async function initFromUrl() {
             return bits.length ? base + ' — ' + bits.join(', ') : 'Edit ' + base;
         }
 
+        // The 🔗 anchor-binding button for the scalar at `path`. Click opens the
+        // popover that offers bind / rebind / unbind / create-new based on the
+        // node's alias state. Shared by renderEditableField (command-card fields,
+        // LED activation) and the block repetitions row — any new editable scalar
+        // that can sensibly be a variable should append one of these.
+        function makeBindBtn(path, value, schema, typeHint) {
+            const bound = !!aliasNameAt(experiment, path);
+            return el('button', {
+                class: 'bind-icon-btn' + (bound ? ' bound' : ''),
+                title: bound
+                    ? 'Edit anchor binding (rebind, unbind, or edit anchor value)'
+                    : 'Bind this value to an anchor variable',
+                onClick: (e) => {
+                    e.stopPropagation();
+                    openAnchorPopover(e.currentTarget, path, value, schema, typeHint);
+                }
+            }, '🔗');
+        }
+
         // Render a single editable scalar field. If the underlying YAML node is
         // an Alias, show a read-only badge instead of an input. Otherwise, an
         // input that calls docSet() on commit.
@@ -12131,19 +13238,9 @@ async function initFromUrl() {
                 typeHint = schema.type === 'number' ? 'number' : (schema.type === 'select' ? 'select' : 'string');
             }
 
-            // Build the 🔗 anchor-binding button — appended to every editable
-            // scalar regardless of alias state. Click opens a popover that
-            // offers bind / rebind / unbind / create-new based on context.
-            const bindBtn = el('button', {
-                class: 'bind-icon-btn' + (aliasNameAt(experiment, path) ? ' bound' : ''),
-                title: aliasNameAt(experiment, path)
-                    ? 'Edit anchor binding (rebind, unbind, or edit anchor value)'
-                    : 'Bind this value to an anchor variable',
-                onClick: (e) => {
-                    e.stopPropagation();
-                    openAnchorPopover(e.currentTarget, path, value, schema, typeHint);
-                }
-            }, '🔗');
+            // The 🔗 anchor-binding button — appended to every editable scalar
+            // regardless of alias state.
+            const bindBtn = makeBindBtn(path, value, schema, typeHint);
 
             const aliasName = aliasNameAt(experiment, path);
             if (aliasName) {
@@ -12675,15 +13772,18 @@ async function initFromUrl() {
             const row = el('div', { class: 'block-prop-row' },
                 el('span', { class: 'k' }, 'repetitions:')
             );
-            const aliasName = aliasNameAt(experiment, ['experiment', blockIdx, 'repetitions']);
+            const repsPath = ['experiment', blockIdx, 'repetitions'];
+            const repsSchema = { type: 'number', min: 1, integer: true, label: 'Repetitions' };
+            const aliasName = aliasNameAt(experiment, repsPath);
             if (aliasName) {
                 row.appendChild(el('span', {
                     class: 'alias-chip',
-                    title: 'Bound to anchor &' + aliasName + '. Edit via Variables when the variables editor lands.'
+                    title: 'Bound to anchor &' + aliasName + ' (resolved: ' + entry.repetitions + '). Click 🔗 to rebind or unbind.'
                 },
                     '→ &' + aliasName,
                     el('span', { class: 'resolved-val' }, '= ' + entry.repetitions)
                 ));
+                row.appendChild(makeBindBtn(repsPath, entry.repetitions, repsSchema, 'number'));
                 return row;
             }
             const input = el('input', {
@@ -12703,7 +13803,7 @@ async function initFromUrl() {
                 if (n === entry.repetitions) return;
                 if (!pushUndo()) return;
                 try {
-                    docSet(experiment, ['experiment', blockIdx, 'repetitions'], n);
+                    docSet(experiment, repsPath, n);
                     commitBlockEdit();
                 } catch (err) {
                     showError('Edit failed', err.message);
@@ -12711,6 +13811,7 @@ async function initFromUrl() {
                 }
             });
             row.appendChild(input);
+            row.appendChild(makeBindBtn(repsPath, entry.repetitions, repsSchema, 'number'));
             return row;
         }
 
@@ -13024,14 +14125,11 @@ async function initFromUrl() {
             }
         }
 
-        // Write a whole led_activation object at cmdPath (one undo step). The
-        // object is small machine config, so rewriting it wholesale — rather
-        // than deep docSet into on_ranges[i] — is simpler and robust (docSet /
-        // setIn serialize a plain object/array into the CST + mirror the model).
-        function setLedActivation(cmdPath, obj) {
+        // One undo step around a doc edit inside a led_activation object.
+        function ledDocEdit(fn) {
             if (!pushUndo()) return;
             try {
-                docSet(experiment, [...cmdPath, 'led_activation'], obj);
+                fn();
                 commitInspectorEdit();
             } catch (err) {
                 showError('LED activation edit failed', err.message);
@@ -13042,73 +14140,94 @@ async function initFromUrl() {
         // hysteresis, and a list of [start,end] ON ranges (add/remove rows),
         // plus a ✕ to drop the whole activation. Only meaningful in Mode 3
         // (host-visible live index) — a hint shows when the trial isn't Mode 3.
+        //
+        // Every scalar is edited BY PATH through renderEditableField (the same
+        // renderer as the card's top-level fields), so each one carries the 🔗
+        // anchor button and an alias chip when bound. Ranges are appended /
+        // removed in place (docSet at the next index / docDelete of one index).
+        // Never rewrite the whole object: that flattens every `*alias` inside
+        // it to its resolved number (v0.81 and earlier did exactly that).
         function renderLedActivation(cmd, cmdPath) {
             const la = cmd.led_activation || {};
+            const laPath = [...cmdPath, 'led_activation'];
             const box = el('div', { class: 'led-act-box', style: 'border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin:4px 0;background:rgba(0,230,118,0.04)' });
             const head = el('div', { class: 'kv-line', style: 'display:flex;align-items:center;gap:6px' },
                 el('span', { class: 'k', style: 'color:var(--accent)' }, 'LED activation'));
             head.appendChild(el('button', {
                 class: 'param-x-btn',
                 title: 'Remove LED activation entirely (Ctrl+Z to undo)',
-                onClick: (e) => { e.stopPropagation(); onDeleteControllerParam([...cmdPath, 'led_activation']); }
+                onClick: (e) => { e.stopPropagation(); onDeleteControllerParam(laPath); }
             }, '✕'));
             box.appendChild(head);
             if (Number(cmd.mode) !== 3) {
                 box.appendChild(el('div', { class: 'dim', style: 'font-size:0.82em;color:var(--warn)' },
                     '⚠ only runs in Mode 3 (FicTrac closed loop) — this trial is Mode ' + (cmd.mode != null ? cmd.mode : '?')));
             }
-            // A numeric sub-field editor that rewrites the whole object on change.
-            const numRow = (label, key, opts) => {
-                const inp = el('input', {
-                    type: 'number', class: 'field-edit', style: 'width:70px',
-                    value: la[key] != null ? la[key] : '',
-                    title: opts && opts.title ? opts.title : label
-                });
-                if (opts && opts.min != null) inp.min = opts.min;
-                if (opts && opts.max != null) inp.max = opts.max;
-                if (opts && opts.step != null) inp.step = opts.step;
-                inp.addEventListener('change', () => {
-                    const next = { ...la, on_ranges: (la.on_ranges || []).map((r) => r.slice()) };
-                    next[key] = inp.value === '' ? 0 : Number(inp.value);
-                    setLedActivation(cmdPath, next);
-                });
-                return el('label', { class: 'kv-line', style: 'display:flex;gap:6px;align-items:center' },
-                    el('span', { class: 'k' }, label), inp);
-            };
-            box.appendChild(numRow('level (%)', 'level', { min: 0, max: 100, step: 0.1, title: 'LED brightness % while active (BuckPuck curve)' }));
-            box.appendChild(numRow('hysteresis', 'hysteresis', { min: 0, step: 1, title: 'Frames past a band edge before the LED turns OFF (0 = none) — prevents chatter at a boundary' }));
+            // The whole object bound to one anchor (`led_activation: *cfg`): the
+            // sub-fields live on the anchor, so show the chip + 🔗 (unbind copies
+            // the resolved object in as literals) instead of per-field editors.
+            if (aliasNameAt(experiment, laPath)) {
+                box.appendChild(renderEditableField('bound', laPath, la, 'string'));
+                return box;
+            }
 
-            // on_ranges: one row per [start,end] pair, each with a ✕; + range adds one.
+            const sch = getV3CommandParams(experiment, 'controller', null, cmd.command_name);
+            const fields = (sch && sch.led_activation && sch.led_activation.fields) || {};
+            const levelSchema = fields.level || { type: 'number', min: 0, max: 100, label: 'LED level (%)' };
+            const hystSchema = fields.hysteresis || { type: 'number', min: 0, integer: true, label: 'Hysteresis (frames, 0 = none)' };
+            // A missing key runs as 0 (arena-runner-g6 normalizeLedActivation), so
+            // that is what the field shows; typing a value creates the key.
+            box.appendChild(renderEditableField('level (%)', [...laPath, 'level'],
+                la.level != null ? la.level : 0, levelSchema));
+            box.appendChild(renderEditableField('hysteresis', [...laPath, 'hysteresis'],
+                la.hysteresis != null ? la.hysteresis : 0, hystSchema));
+
+            // on_ranges: one row per [start,end] pair (each endpoint bindable), a ✕
+            // per row that deletes just that index; + range appends [0, 0].
             const ranges = Array.isArray(la.on_ranges) ? la.on_ranges : [];
+            const rangesPath = [...laPath, 'on_ranges'];
+            const endpointSchema = { type: 'number', min: 0, integer: true, label: 'Frame index (0-based, inclusive)' };
             const rangesWrap = el('div', { style: 'margin-top:2px' });
             rangesWrap.appendChild(el('div', { class: 'k', style: 'font-size:0.85em' },
                 'on ranges (0-based frame index, inclusive):'));
-            const commitRanges = (newRanges) => {
-                setLedActivation(cmdPath, { ...la, on_ranges: newRanges });
+            const compact = (fieldRow) => {
+                fieldRow.style.flex = '0 0 auto';
+                const k = fieldRow.querySelector('.k');
+                if (k) k.style.minWidth = '0';
+                return fieldRow;
             };
             ranges.forEach((pair, i) => {
-                const a = el('input', { type: 'number', class: 'field-edit', style: 'width:64px', min: 0, value: pair[0] });
-                const b = el('input', { type: 'number', class: 'field-edit', style: 'width:64px', min: 0, value: pair[1] });
-                const onEdit = () => {
-                    const copy = ranges.map((r) => r.slice());
-                    copy[i] = [a.value === '' ? 0 : Number(a.value), b.value === '' ? 0 : Number(b.value)];
-                    commitRanges(copy);
-                };
-                a.addEventListener('change', onEdit);
-                b.addEventListener('change', onEdit);
-                const row = el('div', { class: 'kv-line', style: 'display:flex;gap:4px;align-items:center' },
-                    a, el('span', { class: 'dim' }, '–'), b);
+                const row = el('div', { class: 'led-range-row', style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap' });
+                if (aliasNameAt(experiment, [...rangesPath, i])) {
+                    // Whole pair bound to a list anchor (`- *band`): chip + 🔗 only.
+                    row.appendChild(compact(renderEditableField('range', [...rangesPath, i], pair, 'string')));
+                } else {
+                    const p = Array.isArray(pair) ? pair : [0, 0];
+                    row.appendChild(compact(renderEditableField('from', [...rangesPath, i, 0],
+                        p[0] != null ? p[0] : 0, endpointSchema)));
+                    row.appendChild(compact(renderEditableField('to', [...rangesPath, i, 1],
+                        p[1] != null ? p[1] : 0, endpointSchema)));
+                }
                 row.appendChild(el('button', {
                     class: 'param-x-btn',
-                    title: 'Remove this range',
-                    onClick: (e) => { e.stopPropagation(); commitRanges(ranges.filter((_, j) => j !== i).map((r) => r.slice())); }
+                    title: 'Remove this range (Ctrl+Z to undo)',
+                    onClick: (e) => {
+                        e.stopPropagation();
+                        ledDocEdit(() => docDelete(experiment, [...rangesPath, i]));
+                    }
                 }, '✕'));
                 rangesWrap.appendChild(row);
             });
             rangesWrap.appendChild(el('button', {
                 class: 'pill', style: 'font-size:0.8em;margin-top:2px',
-                title: 'Add an ON range',
-                onClick: (e) => { e.stopPropagation(); commitRanges([...ranges.map((r) => r.slice()), [0, 0]]); }
+                title: 'Add an ON range (start 0, end 0 — edit the endpoints or bind them to anchors)',
+                onClick: (e) => {
+                    e.stopPropagation();
+                    ledDocEdit(() => {
+                        if (Array.isArray(la.on_ranges)) docSet(experiment, [...rangesPath, ranges.length], [0, 0]);
+                        else docSet(experiment, rangesPath, [[0, 0]]);
+                    });
+                }
             }, '+ range'));
             box.appendChild(rangesWrap);
             return box;
@@ -14900,7 +16019,7 @@ initFromUrl();
     '#fmOpenCourse': 'Open a protocol this bench saved (or one shared with the course) from the course repo.',
     '#fmSave': 'Save the protocol. Where it goes depends on the GitHub settings below — a local file, a Pull Request, or straight to the course repo.',
     '#fmPromote': 'Copy this bench’s saved protocol (and its patterns) to the course’s shared folder so other benches can use it.',
-    '#ghSignInBtn': 'Sign in with a GitHub token so the Studio can read and write the course repo.',
+    '#ghSignInBtn': 'Sign in with a GitHub token so the Studio can read and write the course repo. Tokens expire — if the Studio says the stored token is no longer valid, make a new one and sign in again.',
     '#ghLock': 'Instructor lock — the repo and bench settings stay fixed during a course.',
     '#ghRepoInput': 'The GitHub repo saves go to (owner/name).',
     '#ghBenchId': 'This bench’s name — saves and run logs are filed under it.',
@@ -14952,7 +16071,11 @@ initFromUrl();
     '.rail-btn[data-panel="step"]': 'Show the selected pattern one frame at a time.',
     '.rail-btn[data-panel="test"]': 'Test figures the browser draws and streams to the display — no memory card needed.',
     '.rail-btn[data-panel="io"]': 'The controller’s analog and digital input/output connectors.',
+    '.rail-btn[data-panel="ai"]': 'Watch the two analog inputs live, and check the wiring by looping Analog Out back into an input.',
     '.rail-btn[data-panel="fw"]': 'Update or check the firmware on the LED panels.',
+    '[data-cmd="ctelem"]': 'Turn the controller\'s built-in activity recording on or off (it is written into the run log alongside the tracking data).',
+    '[data-cmd="chealth"]': 'Ask the controller how it is doing — loop timing, memory-card read times, and what it was doing before its last restart.',
+    '#fmSoak': 'Repeat the open protocol unattended (overnight) to catch the rare controller freeze; on a freeze it records diagnostics and, if you chose so, restarts the controller and continues.',
     '.rail-btn[data-panel="fictrac"]': 'Closed loop with FicTrac: the fly’s walking steers the pattern.',
     /* Console bench strip + panels */
     '#ctlMenu > .cmenu-btn': 'Questions for the controller — firmware version, network address, frame counters — plus advanced settings (locked).',
@@ -15011,6 +16134,7 @@ initFromUrl();
     step: 'Load the selected pattern, then walk through it frame by frame — good for checking exactly what each frame shows.',
     test: 'Built-in test figures (full field, panel map, orientation, checker) and files streamed straight from this computer.',
     io: 'Read the analog input, set the analog output, and drive the two digital connectors.',
+    ai: 'Both analog inputs, live. Cable Analog Out to an input and run the loopback sweep to check the wiring end to end; polling pauses by itself during a run.',
     fw: 'Check what firmware the panels run, and program new firmware into every panel from here.',
     fictrac: 'Closed loop: connect the bridge, load a pattern in Step frames, set the gain, then Activate — the fly steers the pattern.'
   };

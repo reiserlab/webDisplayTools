@@ -214,9 +214,10 @@ running, so the next run inherited a stale, already-drifted disturbance until so
 condition happened to push a new one — and separately left the bridge still streaming
 `SET_FRAME_POSITION` at the arena after STOP. Two independent guards now cover it:
 
-1. **Every teardown path clears the closed loop.** `ArenaRunner._clearClosedLoop()`
-   does `setApply(false)` plus a `bias: {type:'none'}` push, and is called from all
-   three teardown paths, symmetric with `_clearLedActivator()`: `runSequence`'s
+1. **Every teardown path clears the closed loop.** `ArenaRunner._disarmClosedLoop()`
+   (the same helper the fail-closed controller-fault work uses — one teardown, not two)
+   does `setApply(false)` plus a `bias: {type:'none'}` push, and is called from every
+   teardown path, symmetric with `_clearLedActivator()`: sequence start, `runSequence`'s
    `finally` (normal end *and* abort unwind), `stop()` (the STOP button), and
    `_clear()`/`abort()` (involuntary disconnect). It is bridge-only, so it still works
    when the serial link is already gone. It clears the bias only when the *client* has
@@ -228,7 +229,7 @@ condition happened to push a new one — and separately left the bridge still st
    `buildTrialParams`: relying on someone else having cleared state leaks one trial's
    settings into the next.
 
-When adding any new run-teardown path, call `_clearClosedLoop()` from it.
+When adding any new run-teardown path, call `_disarmClosedLoop()` from it.
 
 ## The frame modulus is load-bearing (bench, 2026-08-12)
 

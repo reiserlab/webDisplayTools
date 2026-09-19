@@ -173,6 +173,14 @@
         // remembered-unlocked (state.advanced === false ⇒ the app calls lockSafe()).
         // Absent ⇒ safe mode by default, but with NO re-lock (a remembered unlock
         // stands). NOT a security boundary — see docs/development/safe-mode-spec.md.
+        // soak (fw #50 harness) — `soak=1` REQUESTS the Studio's unattended soak
+        // driver (repeat the loaded protocol, fault lifecycle, post-mortem
+        // probes). Advanced-only in the app; here it is just a validated flag.
+        const soak = params.get('soak');
+        if (soak != null) {
+            if (soak === '1') state.soak = true;
+            else if (soak !== '0') warnings.push('Ignored soak=' + soak + ' (expected 0 or 1)');
+        }
         const adv = params.get('advanced');
         if (adv != null) {
             if (adv === '1') state.advanced = true;
@@ -212,6 +220,9 @@
         // clean-URL rule, mirroring rig: a browser remembered-unlocked without
         // ?advanced=1 keeps a clean URL; advanced state lives in localStorage).
         if (s.advanced) params.set('advanced', '1');
+        // soak: emitted only when the soak driver is armed in this tab (same
+        // clean-URL rule as advanced — a plain bench tab never carries it).
+        if (s.soak) params.set('soak', '1');
         // URLSearchParams percent-encodes '/', which is legal un-encoded in a
         // query string (RFC 3986) — keep repo/path params human-readable.
         const q = params.toString().replace(/%2F/gi, '/');
@@ -245,6 +256,7 @@
                 p: a.repoPath,
                 rig: a.rigKey || undefined,
                 advanced: a.advanced || undefined,
+                soak: a.soak || undefined,
                 source: 'committed'
             });
         }
@@ -253,6 +265,7 @@
             p: a.protocolKey || undefined,
             rig: a.rigKey || undefined,
             advanced: a.advanced || undefined,
+            soak: a.soak || undefined,
             source: a.protocolKey ? 'committed' : 'local'
         });
     }

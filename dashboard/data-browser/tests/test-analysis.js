@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const A = require('../analysis-core.js');
 const P = require('../plot-specs.js');
+const F = require('../vendor/runlog-format.js');
+const zlib = require('zlib');
 
 const repo = process.argv[2] || '/Users/reiserm/Documents/GitHub/cshl-2026-course';
 const bench = path.join(repo, 'runlogs', 'bench02');
@@ -23,6 +25,25 @@ const fixtures = {
         'p3-conditioning-closedloop-short-negative__michael__2026-07-10T23-37-38__kibvj85p.jsonl'
     )
 };
+
+// Controller telemetry rows ("cc"/"cf"/"cs") interleaved with behavior rows are
+// other streams in the same file — never FicTrac frames (review finding).
+{
+    const text = [
+        JSON.stringify({
+            type: 'frame_schema',
+            level: 'behavior_v1',
+            cols: ['ms', 'fc', 'idx', 'ft', 'x', 'y', 'hd']
+        }),
+        JSON.stringify([0, 100, 5, 0.0, 0.0, 0.0, 0.0]),
+        JSON.stringify(['cc', 9, 5000, 1, 112, 0, '03704e00']),
+        JSON.stringify(['cf', 9, 5100, 2, 78, 36, 129000, 812]),
+        JSON.stringify([8, 101, 5, 8.272, 0.01, 0.0, 0.02])
+    ].join('\n');
+    const r = A.parseJsonl(text, 'ctl.jsonl', '/x/ctl.jsonl', {});
+    assert.strictEqual(r.frames.length, 2, 'tagged telemetry rows are not frames');
+    assert.strictEqual(r.frames[1].fc, 101);
+}
 
 function load(file) {
     const fullPath = path.join(bench, file);
@@ -63,6 +84,26 @@ assert.strictEqual(
     A.protocolInfo({ protocol_filename: 'p3_dill_random_checkers_short.yaml' }, []).family,
     'p3-dill-random-checkers'
 );
+// Rig-saved variants (hyphenated, LED-level / trial-length suffixes) must classify
+// from metadata alone — the catalog has no condition names yet.
+for (const [file, timing] of [
+    ['p3-heisenberg-ts-full-led8.yaml', 'full'],
+    ['p3-heisenberg-ts-full-led8-40sTrain.yaml', 'full'],
+    ['p3-heisenberg-ts-short-led5.yaml', 'short'],
+    ['p3_heisenberg_high_low_full_v2.yaml', 'full']
+]) {
+    const info = A.protocolInfo({ protocol_filename: file }, []);
+    assert.strictEqual(info.p3Legacy, false, file + ' is not legacy');
+    assert.strictEqual(info.p3Timing, timing, file + ' timing');
+}
+assert.strictEqual(
+    A.protocolInfo({ protocol_filename: 'p3-heisenberg-ts-full-led8.yaml' }, []).family,
+    'p3-heisenberg-ts'
+);
+assert.strictEqual(
+    A.protocolInfo({ protocol_filename: 'p3_heisenberg_high_low_full_v2.yaml' }, []).family,
+    'p3-heisenberg-high-low'
+);
 assert.strictEqual(p0.parseErrors.length, 0);
 assert.strictEqual(p1.parseErrors.length, 0);
 assert.strictEqual(p2.parseErrors.length, 0);
@@ -91,31 +132,41 @@ assert.deepStrictEqual(
         ranges: activation.ranges
     })),
     [
-        { variant: 'phase0', level: 25, ranges: [[0, 49], [100, 149]] },
-        { variant: 'phase90', level: 25, ranges: [[50, 99], [150, 199]] }
+        {
+            variant: 'phase0',
+            level: 25,
+            ranges: [
+                [0, 49],
+                [100, 149]
+            ]
+        },
+        {
+            variant: 'phase90',
+            level: 25,
+            ranges: [
+                [50, 99],
+                [150, 199]
+            ]
+        }
     ]
 );
-assert.deepStrictEqual(A.p3AnalysisRanges(p3), [[0, 49], [100, 149]]);
+assert.deepStrictEqual(A.p3AnalysisRanges(p3), [
+    [0, 49],
+    [100, 149]
+]);
 const p3Phase90 = p3Trials.find((step) => step.condition === 'baseline_phase90');
 const p3Phase90Raw = p3.framesByStep.get(p3Phase90.index)[0].index;
-assert.strictEqual(
-    A.p3TrialIndices(p3, p3Phase90, 0)[0],
-    (Math.round(p3Phase90Raw) + 50) % 200
-);
+assert.strictEqual(A.p3TrialIndices(p3, p3Phase90, 0)[0], (Math.round(p3Phase90Raw) + 50) % 200);
 const legacyTrial = p3Legacy.steps.find((step) => step.condition === 'baseline_b');
 const legacyRaw = p3Legacy.framesByStep.get(legacyTrial.index)[0].index;
 assert.strictEqual(A.p3TrialIndices(p3Legacy, legacyTrial, 0)[0], Math.round(legacyRaw) % 200);
 const p3LedEpochs = A.p3LedEpochs(p3);
 assert(p3LedEpochs.length > 0, 'p3 should recover logged LED-on intervals');
-const p3TrainingSteps = p3Trials.filter(
-    (step) => A.p3Phase(step.condition) === 'training'
-);
+const p3TrainingSteps = p3Trials.filter((step) => A.p3Phase(step.condition) === 'training');
 const p3TrainingStart = Math.min(...p3TrainingSteps.map((step) => step.startMs));
 const p3TrainingEnd = Math.max(...p3TrainingSteps.map((step) => step.endMs));
 assert(
-    p3LedEpochs.every(
-        (epoch) => epoch.startMs >= p3TrainingStart && epoch.endMs <= p3TrainingEnd
-    ),
+    p3LedEpochs.every((epoch) => epoch.startMs >= p3TrainingStart && epoch.endMs <= p3TrainingEnd),
     'p3 LED intervals should stay inside the training block'
 );
 const firstP3Preference = A.p3PreferenceIndex(p3, p3Trials[0], 0);
@@ -190,10 +241,11 @@ const p0Pages = P.buildPages([p0], { mode: 'single', showIndividuals: true });
 const p1Pages = P.buildPages([p1], { mode: 'single', showIndividuals: true });
 const p2Pages = P.buildPages([p2], { mode: 'single', showIndividuals: true });
 const p3Pages = P.buildPages([p3], { mode: 'single', showIndividuals: true });
+const p3Page = (id) => p3Pages.find((page) => page.id === id);
 assert.strictEqual(p0Pages.length, 7);
 assert.strictEqual(p1Pages.length, 9);
 assert.strictEqual(p2Pages.length, 9);
-assert.strictEqual(p3Pages.length, 7);
+assert.strictEqual(p3Pages.length, 9); // + p3-heisenberg-2 and -4
 assert(p0Pages.every((page) => page.figure.data.length > 0));
 assert(p1Pages.every((page) => page.figure.data.length > 0));
 assert(p2Pages.every((page) => page.figure.data.length > 0));
@@ -204,6 +256,8 @@ assert.deepStrictEqual(
         'p3-timeline',
         'p3-orientation',
         'p3-preference',
+        'p3-heisenberg-2',
+        'p3-heisenberg-4',
         'p3-corrected-probe',
         'p3-dose-entries',
         'p3-quality-qc',
@@ -241,48 +295,45 @@ assert(
     'single-fly occupancy display should use the 10-index circular boxcar'
 );
 assert(
-    Math.abs(
-        p3OrientationRows.reduce((sum, row) => sum + row.occupancy_percent, 0) - 100
-    ) < 1e-9
+    Math.abs(p3OrientationRows.reduce((sum, row) => sum + row.occupancy_percent, 0) - 100) < 1e-9
 );
 assert.strictEqual(
     p3Pages[2].figure.layout.images[0].source,
     'assets/p3_heisenberg_ts.png',
     'trial PI should show the logged stimulus image along the left side'
 );
+assert.strictEqual(p3Pages[2].csvRows.filter((row) => row.level === 'fly_trial').length, 24);
 assert.strictEqual(
-    p3Pages[2].csvRows.filter((row) => row.level === 'fly_trial').length,
-    24
-);
-assert.strictEqual(
-    p3Pages[3].csvRows.filter((row) => row.level === 'fly_trial').length,
+    p3Page('p3-corrected-probe').csvRows.filter((row) => row.level === 'fly_trial').length,
     6
 );
 assert.strictEqual(
-    Object.keys(p3Pages[4].figure.layout).filter((key) => /^yaxis\d*$/.test(key)).length,
+    Object.keys(p3Page('p3-dose-entries').figure.layout).filter((key) => /^yaxis\d*$/.test(key))
+        .length,
     2
 );
 assert.strictEqual(
-    p3Pages[4].csvRows.filter((row) => row.level === 'fly_trial').length,
+    p3Page('p3-dose-entries').csvRows.filter((row) => row.level === 'fly_trial').length,
     48
 );
 assert(
-    p3Pages[4].csvRows.some(
+    p3Page('p3-dose-entries').csvRows.some(
         (row) => row.metric === 'ledOnPercent' && row.led_level_percent === 25
     ),
     'dose CSV should retain actual logged LED level and raw ranges'
 );
 assert.strictEqual(
-    Object.keys(p3Pages[5].figure.layout).filter((key) => /^yaxis\d*$/.test(key)).length,
+    Object.keys(p3Page('p3-quality-qc').figure.layout).filter((key) => /^yaxis\d*$/.test(key))
+        .length,
     5
 );
 assert.strictEqual(
-    p3Pages[5].csvRows.filter((row) => row.level === 'fly_trial').length,
+    p3Page('p3-quality-qc').csvRows.filter((row) => row.level === 'fly_trial').length,
     120
 );
 assert(
-    p3Pages[6].csvRows.some((row) => row.sector === 'safe') &&
-        p3Pages[6].csvRows.some((row) => row.sector === 'reinforced')
+    p3Page('p3-dwell').csvRows.some((row) => row.sector === 'safe') &&
+        p3Page('p3-dwell').csvRows.some((row) => row.sector === 'reinforced')
 );
 assert(p2Pages.find((page) => page.id === 'p2-occupancy').csvRows.length > 0);
 assert(
@@ -323,8 +374,7 @@ const foldedTurning = p1Folded.figure.data.find(
 );
 assert(foldedTurning);
 assert(
-    Math.abs(foldedTurning.y[foldedTurning.x.indexOf(2)] - (rawP1Cw - rawP1Ccw) / 2) <
-        1e-9,
+    Math.abs(foldedTurning.y[foldedTurning.x.indexOf(2)] - (rawP1Cw - rawP1Ccw) / 2) < 1e-9,
     'folded turning should average CW with sign-flipped CCW'
 );
 const rawP1CwForward = A.mean(
@@ -342,10 +392,8 @@ const foldedForward = p1Folded.figure.data.find(
 );
 assert(foldedForward);
 assert(
-    Math.abs(
-        foldedForward.y[foldedForward.x.indexOf(2)] -
-            (rawP1CwForward + rawP1CcwForward) / 2
-    ) < 1e-9,
+    Math.abs(foldedForward.y[foldedForward.x.indexOf(2)] - (rawP1CwForward + rawP1CcwForward) / 2) <
+        1e-9,
     'folded forward should average CW and CCW without sign reversal'
 );
 
@@ -356,23 +404,17 @@ const manualP1Pages = P.buildPages([p1], {
     useCourseAxisFloor: false
 });
 assert.deepStrictEqual(
-    manualP1Pages.find((page) => page.id === 'p1-optomotor-turning').figure.layout.yaxis
-        .range,
+    manualP1Pages.find((page) => page.id === 'p1-optomotor-turning').figure.layout.yaxis.range,
     [-300, 300]
 );
 assert.deepStrictEqual(
-    manualP1Pages.find((page) => page.id === 'p1-optomotor-forward').figure.layout.yaxis
-        .range,
+    manualP1Pages.find((page) => page.id === 'p1-optomotor-forward').figure.layout.yaxis.range,
     [0, 25]
 );
-const manualMatched = manualP1Pages.find(
-    (page) => page.id === 'p1-optomotor-matched-summary'
-);
+const manualMatched = manualP1Pages.find((page) => page.id === 'p1-optomotor-matched-summary');
 assert.deepStrictEqual(manualMatched.figure.layout.yaxis.range, [-300, 300]);
 assert.deepStrictEqual(manualMatched.figure.layout.yaxis3.range, [0, 25]);
-const manualFolded = manualP1Pages.find(
-    (page) => page.id === 'p1-optomotor-folded-summary'
-);
+const manualFolded = manualP1Pages.find((page) => page.id === 'p1-optomotor-folded-summary');
 assert.deepStrictEqual(manualFolded.figure.layout.yaxis.range, [-300, 300]);
 assert.deepStrictEqual(manualFolded.figure.layout.yaxis3.range, [0, 25]);
 
@@ -420,3 +462,252 @@ console.log(
         groupedP0Pages: grouped.length
     })
 );
+
+// ---- p3 Heisenberg-style bundled preference index --------------------------
+{
+    // Pure bundling on synthetic rows: pooled (time-weighted) PI, same-stage
+    // chunking, partial trailing bundle, real step times.
+    const mk = (stage, trial, safe, reinforced, t0) => ({
+        stage,
+        phase: stage.startsWith('probe') || stage === 'final_probe' ? 'probe' : stage.split('_')[0],
+        variant: trial % 2 ? 'phase0' : 'phase90',
+        trial,
+        samples: safe + reinforced,
+        safeFraction: safe / (safe + reinforced),
+        reinforcedFraction: reinforced / (safe + reinforced),
+        step: { startMs: t0, endMs: t0 + 20000 }
+    });
+    const rows = [
+        mk('baseline', 1, 50, 50, 0),
+        mk('baseline', 2, 90, 10, 20000), // pooled: 140 safe / 60 reinf → 0.4
+        mk('training_1', 3, 100, 0, 40000),
+        mk('training_1', 4, 100, 0, 60000),
+        mk('training_1', 5, 0, 100, 80000) // odd count → partial bundle of 1
+    ];
+    const b2 = A.p3BundleTrials(rows, 2);
+    assert.strictEqual(b2.length, 3);
+    assert.deepStrictEqual(b2[0].trials, [1, 2]);
+    assert.strictEqual(b2[0].stage, 'baseline');
+    assert.ok(Math.abs(b2[0].preference - 0.4) < 1e-9, 'pooled PI is time-weighted');
+    assert.strictEqual(b2[0].startMs, 0);
+    assert.strictEqual(b2[0].endMs, 40000);
+    assert.strictEqual(b2[0].durationSec, 40);
+    assert.strictEqual(b2[0].partial, false);
+    assert.deepStrictEqual(b2[1].trials, [3, 4]); // never crosses a stage boundary
+    assert.strictEqual(b2[1].preference, 1);
+    assert.deepStrictEqual(b2[2].trials, [5]);
+    assert.strictEqual(b2[2].partial, true);
+    assert.strictEqual(b2[2].preference, -1);
+    assert.deepStrictEqual(
+        b2.map((b) => b.key),
+        ['baseline#1', 'training_1#1', 'training_1#2']
+    );
+    const b4 = A.p3BundleTrials(rows, 4);
+    assert.strictEqual(b4.length, 2);
+    assert.deepStrictEqual(b4[1].trials, [3, 4, 5]);
+    assert.strictEqual(b4[1].partial, true);
+    assert.ok(Math.abs(b4[1].preference - (200 - 100) / 300) < 1e-9);
+    assert.strictEqual(A.p3BundleTrials([], 2).length, 0);
+
+    // Real run: pages exist, every trial lands in exactly one bundle, bars
+    // carry the classic styling, and the axis label follows the trial length.
+    const pages = P.buildPages([p3], { mode: 'single' });
+    const h2 = pages.find((page) => page.id === 'p3-heisenberg-2');
+    const h4 = pages.find((page) => page.id === 'p3-heisenberg-4');
+    assert.ok(h2 && h4, 'both bundle pages registered');
+    const trialCount = p3.steps.filter((step) => A.p3Phase(step.condition)).length;
+    const flyRows2 = h2.csvRows.filter((row) => row.level === 'fly_bundle');
+    const covered2 = flyRows2.reduce((sum, row) => sum + row.bundle_size, 0);
+    assert.strictEqual(covered2, trialCount, 'every trial in exactly one 2-bundle');
+    const covered4 = h4.csvRows
+        .filter((row) => row.level === 'fly_bundle')
+        .reduce((sum, row) => sum + row.bundle_size, 0);
+    assert.strictEqual(covered4, trialCount, 'every trial in exactly one 4-bundle');
+    assert.ok(
+        flyRows2.every((row) => row.stage && row.phase),
+        'stage + phase on every bundle'
+    );
+    const training = h2.figure.data.find((trace) => trace.name === 'training');
+    const probe = h2.figure.data.find((trace) => trace.name === 'memory test');
+    assert.ok(training && training.marker.pattern.shape === '/', 'training bars hatched');
+    assert.ok(probe && probe.marker.pattern.shape === '.', 'memory-test bars dotted');
+    assert.ok(
+        h2.figure.data.every((trace) => trace.x.every(Number.isFinite)),
+        'finite minute positions'
+    );
+    assert.strictEqual(h2.figure.layout.xaxis.title, 't [min]');
+    const pref = pages.find((page) => page.id === 'p3-preference');
+    assert.ok(
+        /^\d+ s trial$/.test(pref.figure.layout.xaxis.title),
+        'trial axis title derived from log'
+    );
+    console.log(
+        'p3 Heisenberg bundles OK:',
+        b2.length,
+        'synthetic;',
+        flyRows2.length,
+        '2-bundles /',
+        trialCount,
+        'trials in',
+        fixtures.p3.split('/').pop()
+    );
+}
+
+// ---- catalog: session bounds from head/tail + loaded-run duration -------------
+{
+    const head =
+        '{"type":"session","event":"logging_started","file":"x.jsonl","ms":1788636439304}\n' +
+        '{"type":"frame_schema","level":"behavior_v1","cols":["ms","fc","idx","ft","x","y","hd"]}\n' +
+        '{"type":"log","event":"run_metadata","run_id":"r1","timestamp_start":"2026-09-05T19:27:19.251Z","rx_ms":1788636439305}\n' +
+        '[6,37638,53,0.0,1.99288,-0.91475,4.6'; // partial trailing line
+    const tail =
+        ',41.68795,1.02512]\n' + // partial leading line
+        '{"type":"log","event":"runner","phase":"sequence-complete","dir":"browser→bridge","rx_ms":1788638604507}\n' +
+        '{"type":"session","event":"logging_stopped","ms":1788638604509}\n';
+    const b = A.sessionBounds(head, tail);
+    assert.strictEqual(b.startMs, 1788636439304);
+    assert.strictEqual(b.stopMs, 1788638604509);
+    assert.ok(Math.abs(b.durationSec - 2165.205) < 1e-6, 'duration from session bookends');
+    assert.strictEqual(b.complete, true);
+    // aborted run, no logging_stopped in the tail → runner rx_ms fallback + complete=false
+    const tail2 = '{"type":"log","event":"runner","phase":"aborted","rx_ms":1788637000000}\n';
+    const b2 = A.sessionBounds(head, tail2);
+    assert.strictEqual(b2.complete, false);
+    assert.ok(Math.abs(b2.durationSec - 560.696) < 1e-6);
+    // no tail at all → NaN, never throws
+    assert.ok(Number.isNaN(A.sessionBounds(head, null).durationSec));
+    assert.ok(Number.isNaN(A.sessionBounds('', '').durationSec));
+    // metadata start fallback when logging_started is missing
+    const b3 = A.sessionBounds(head.split('\n').slice(1).join('\n'), tail);
+    assert.strictEqual(b3.startMs, Date.parse('2026-09-05T19:27:19.251Z'));
+    // descriptor carries startedMs
+    const d = A.descriptorFromMetadata({ timestamp_start: '2026-09-05T19:27:19.251Z' }, 'x.jsonl');
+    assert.strictEqual(d.startedMs, Date.parse('2026-09-05T19:27:19.251Z'));
+    // loaded-run duration on the real fixture matches its own bookends
+    const dur = A.runDurationSec(p3);
+    assert.ok(Number.isFinite(dur) && dur > 60, 'fixture duration ' + dur);
+    const text = fs.readFileSync(path.join(bench, fixtures.p3), 'utf8');
+    const fromBounds = A.sessionBounds(text.slice(0, 4096), text.slice(-4096));
+    assert.ok(
+        Math.abs(fromBounds.durationSec - dur) < 0.01,
+        `bounds ${fromBounds.durationSec} vs run ${dur}`
+    );
+    console.log('catalog duration helpers OK: fixture', dur.toFixed(1), 's');
+}
+
+// ---- catalog: runlogs/<folder>/index.json lookup -------------------------------
+{
+    const idx = A.runIndexLookup({
+        format_version: 1,
+        runs: [
+            {
+                run_id: 'r1',
+                file: 'a.jsonl',
+                started_ms: 1788636439304,
+                duration_s: 2165.2,
+                complete: true,
+                size: 5
+            },
+            {
+                run_id: 'r2',
+                file: 'b.jsonl',
+                timestamp_start: '2026-09-05T19:27:19.251Z',
+                duration_s: null,
+                complete: false
+            },
+            null
+        ]
+    });
+    assert.strictEqual(idx.get('a.jsonl').durationSec, 2165.2);
+    assert.strictEqual(idx.get('a.jsonl').complete, true);
+    assert.strictEqual(idx.get('run:r1').startedMs, 1788636439304);
+    assert.ok(Number.isNaN(idx.get('b.jsonl').durationSec));
+    assert.strictEqual(idx.get('b.jsonl').complete, false);
+    assert.strictEqual(idx.get('b.jsonl').startedMs, Date.parse('2026-09-05T19:27:19.251Z'));
+    assert.strictEqual(A.runIndexLookup(null).size, 0);
+    assert.strictEqual(A.runIndexLookup({ runs: 'nope' }).size, 0);
+    console.log('runlog index lookup OK');
+}
+
+// ── behavior_v2 + gzip: the same run read as v1 .jsonl and as v2 .jsonl.gz must
+// produce identical analysis (runlog-behavior-v2-plan.md Part 3 §4). The v2 text is
+// generated from the v1 fixture by the JS mirror of the bridge converter.
+(async () => {
+    const v1Path = path.join(bench, fixtures.p3);
+    const v1Text = fs.readFileSync(v1Path, 'utf8');
+    assert.strictEqual(F.detectFormat(v1Text), 'behavior_v1');
+    const v2Text = F.convertV1ToV2Text(v1Text);
+    assert.strictEqual(F.detectFormat(v2Text), 'behavior_v2');
+    const v2Lines = v2Text.trim().split('\n');
+    const compact = v2Lines.filter((l) => l.startsWith('["a",')).length;
+    assert.ok(compact > 1000, `compact arena echoes present (${compact})`);
+    assert.ok(v2Text.length < v1Text.length * 0.6, 'v2 text is much smaller');
+    // Byte identity is not expected (the bridge escapes non-ASCII as \u2192, JS
+    // emits the literal arrow); JSON identity line by line is the lossless claim.
+    const parseAll = (text) =>
+        text
+            .trim()
+            .split('\n')
+            .map((line) => JSON.parse(line));
+    assert.deepStrictEqual(
+        parseAll(F.convertV2ToV1Text(v2Text)),
+        parseAll(v1Text),
+        'v2 → v1 restores every fixture line'
+    );
+    const gz = new Uint8Array(zlib.gzipSync(Buffer.from(v2Text)));
+    assert.ok(F.isGzip(gz));
+    const name = fixtures.p3.split('/').pop();
+    const readBack = await F.readRunlogText(gz);
+    assert.strictEqual(readBack, v2Text, 'gz inflates to the v2 text');
+    const p3v2 = A.parseJsonl(readBack, name + '.gz', v1Path + '.gz', {
+        ballDiameterMm: 9,
+        smoothWindowS: 0.5
+    });
+    assert.strictEqual(p3.logFormat, 'behavior_v1');
+    assert.strictEqual(p3v2.logFormat, 'behavior_v2');
+    assert.strictEqual(p3v2.id, p3.id, 'same run id from .jsonl.gz');
+    assert.strictEqual(A.parseFilename(name + '.gz').runId, A.parseFilename(name).runId);
+    assert.strictEqual(p3v2.frames.length, p3.frames.length, 'same frame count');
+    assert.deepStrictEqual(p3v2.frames[0], p3.frames[0]);
+    assert.deepStrictEqual(p3v2.frames[p3.frames.length - 1], p3.frames[p3.frames.length - 1]);
+    assert.strictEqual(p3v2.events.length, p3.events.length, 'same event count (expanded echoes)');
+    const arena1 = p3.events.filter((e) => e.event === 'arena_command');
+    const arena2 = p3v2.events.filter((e) => e.event === 'arena_command');
+    assert.strictEqual(arena2.length, arena1.length, 'same arena_command count');
+    assert.deepStrictEqual(
+        arena2.map(({ lineNumber, ...rest }) => rest),
+        arena1.map(({ lineNumber, ...rest }) => rest),
+        'every expanded arena_command equals the v1 object'
+    );
+    assert.strictEqual(p3v2.parseErrors.length, 0);
+    assert.strictEqual(p3v2.steps.length, p3.steps.length);
+    const pi1 = p3.steps.map((s) => A.p3PreferenceIndex(p3, s, 0));
+    const pi2 = p3v2.steps.map((s) => A.p3PreferenceIndex(p3v2, s, 0));
+    assert.deepStrictEqual(pi2, pi1, 'identical P3 preference indices');
+    assert.deepStrictEqual(A.p3LedEpochs(p3v2), A.p3LedEpochs(p3), 'identical LED epochs');
+    const pages1 = P.buildPages([p3], { mode: 'single', showIndividuals: true });
+    const pages2 = P.buildPages([p3v2], { mode: 'single', showIndividuals: true });
+    assert.strictEqual(pages2.length, pages1.length);
+    pages1.forEach((page, i) => {
+        assert.strictEqual(pages2[i].id, page.id);
+        assert.deepStrictEqual(
+            pages2[i].csvRows,
+            page.csvRows,
+            `identical CSV rows for ${page.id}`
+        );
+    });
+    // and the prefix read used by the catalog still finds run_metadata in a .gz head
+    const head = await F.readRunlogPrefixText(gz.subarray(0, 65536));
+    const desc = A.parseMetadataPrefix(head, name + '.gz', v1Path + '.gz');
+    assert.strictEqual(desc.runId, p3.descriptor.runId, 'metadata from a gz prefix');
+    console.log(
+        'behavior_v2 + gzip parity OK:',
+        compact,
+        'compact echoes;',
+        pages1.length,
+        'pages identical'
+    );
+})().catch((e) => {
+    console.error(e);
+    process.exit(1);
+});

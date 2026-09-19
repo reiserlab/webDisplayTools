@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
   <title>CSHL 2026 Course Data Dashboard</title>
-  <link rel="stylesheet" href="styles.css?v=20260710-1647">
+  <link rel="stylesheet" href="styles.css?v=20260906-3">
   <script defer src="https://cdn.plot.ly/plotly-3.6.0.min.js" charset="utf-8"></script>
   <script defer src="vendor/kinematics.js?v=20260710-1647"></script>
-  <script defer src="analysis-core.js?v=20260710-2236"></script>
-  <script defer src="plot-specs.js?v=20260710-2236"></script>
-  <script defer src="github-repo.js?v=20260710-1647"></script>
-  <script defer src="app.js?v=20260710-1653"></script>
+  <script defer src="vendor/runlog-format.js?v=20260907-1"></script>
+  <script defer src="analysis-core.js?v=20260907-1"></script>
+  <script defer src="plot-specs.js?v=20260906"></script>
+  <script defer src="github-repo.js?v=20260907-1"></script>
+  <script defer src="app.js?v=20260907-1"></script>
 </head>
 <body>
   <header class="app-header">
@@ -40,7 +41,7 @@
       <div class="source-grid">
         <label class="file-button command-button">
           Open JSONL files
-          <input id="fileInput" type="file" accept=".jsonl,.ndjson,.json,text/plain" multiple>
+          <input id="fileInput" type="file" accept=".jsonl,.gz,.ndjson,.json,text/plain" multiple title="Open run logs (.jsonl or gzipped .jsonl.gz; behavior_v1 and behavior_v2 formats)">
         </label>
 
         <div class="inline-control url-loader">
@@ -289,7 +290,7 @@
   </dialog>
 
   <footer class="app-footer">
-    Course Data Dashboard v1 | 2026-07-10 22:36 ET &middot;
+    Course Data Dashboard v4 | 2026-09-06 17:50 ET &middot;
     <a href="https://github.com/reiserlab/webDisplayTools/tree/main/dashboard/data-browser" target="_blank" rel="noreferrer">GitHub</a>
   </footer>
 </body>

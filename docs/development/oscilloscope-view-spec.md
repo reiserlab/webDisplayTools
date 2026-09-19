@@ -1,6 +1,8 @@
 # Live Oscilloscope View — Specification
 
 **Status:** ✅ IMPLEMENTED in Arena Studio v0.15 (2026-07-07). As-built notes below.
+Run-log format authority (all rows and events, `behavior_v2` + controller streams):
+[`telemetry-logging-reference.md`](telemetry-logging-reference.md).
 
 > **As built (2026-07-07) — the §3 data contract changed.** Per the #140 decision
 > (comment 4900650706) the bridge now forwards + logs the **`behavior_v1`** schema

@@ -7,6 +7,13 @@
             "runtimeArgs": ["-c", "PORT=${PORT:-8091} python3 .claude/nocache-server.py"],
             "port": 8091,
             "autoPort": true
+        },
+        {
+            "name": "webDisplayTools-win",
+            "runtimeExecutable": "pixi",
+            "runtimeArgs": ["run", "python", ".claude/nocache-server.py"],
+            "port": 8091,
+            "autoPort": true
         }
     ]
 }

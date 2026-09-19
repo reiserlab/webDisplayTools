@@ -1424,14 +1424,11 @@ async function main() {
             }
         });
         check('bridge.connect called once', bridge.connectCalls, 1);
-        // Enabled once by startClosedLoop, then disabled — by stopClosedLoop AND again
-        // by the sequence-end teardown (idempotent). What matters is that it ENDS
-        // disabled and was only ever enabled once.
+        // Runner disarms at sequence start and again at sequence end, so the
+        // protocol's own true/false sits between two safety falses.
         checkBool(
-            'apply enabled once, and ends disabled',
-            bridge.applyStates[0] === true &&
-                bridge.applyStates[bridge.applyStates.length - 1] === false &&
-                bridge.applyStates.filter((v) => v === true).length === 1,
+            'apply disarmed at start, toggled true then false, disarmed at end',
+            JSON.stringify(bridge.applyStates) === JSON.stringify([false, true, false, false]),
             bridge.applyStates.join(',')
         );
         checkBool(
@@ -1921,6 +1918,238 @@ async function main() {
                 JSON.stringify(bridge.configs)
             );
         }
+    }
+
+    console.log('\n=== FicTrac closed-loop: stale apply is disarmed before the first step ===');
+    {
+        // Regression for rig03-sr 2026-09-04: apply left ON from earlier Console use
+        // pushed 0x70 frames into the opening Mode-2 step (304 firmware rejects).
+        const order = [];
+        const link = makeFakeLink();
+        const origSend = link.send.bind(link);
+        link.send = (bytes) => {
+            order.push('send:0x' + bytes[1].toString(16));
+            return origSend(bytes);
+        };
+        const bridge = {
+            apply: true, // stale state from before the run
+            connect() {},
+            disconnect() {},
+            setApply(on) {
+                this.apply = !!on;
+                order.push('apply:' + this.apply);
+            },
+            setConfig() {},
+            log() {}
+        };
+        const runner = new Runner.ArenaRunner(link, Wire, bridge);
+        const steps = [{ kind: 'ref', conditionName: 'bg', label: 'bg', seqIdx: 0, dur: 1 }];
+        const conditionsByName = new Map([
+            [
+                'bg',
+                {
+                    name: 'bg',
+                    commands: [
+                        {
+                            type: 'controller',
+                            command_name: 'trialParams',
+                            mode: 2,
+                            frame_rate: 10,
+                            gain: 0,
+                            frame_index: 0,
+                            duration: 1,
+                            pattern: 'p'
+                        },
+                        { type: 'wait', duration: 1 }
+                    ]
+                }
+            ]
+        ]);
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            sleep: () => Promise.resolve()
+        });
+        check('run completed', summary.completed, true);
+        check('first bridge/link action is apply:false', order[0], 'apply:false');
+        checkBool(
+            'apply:false precedes the first controller send',
+            order.indexOf('apply:false') < order.findIndex((o) => o.startsWith('send:')),
+            order.slice(0, 3).join(' → ')
+        );
+        check('apply is OFF after the run', bridge.apply, false);
+    }
+
+    console.log('\n=== FicTrac closed-loop: abort mid-trial leaves apply OFF ===');
+    {
+        const link = makeFakeLink();
+        const bridge = {
+            apply: false,
+            states: [],
+            connect() {},
+            disconnect() {},
+            setApply(on) {
+                this.apply = !!on;
+                this.states.push(!!on);
+            },
+            setConfig() {},
+            log() {}
+        };
+        const runner = new Runner.ArenaRunner(link, Wire, bridge);
+        const steps = [{ kind: 'ref', conditionName: 'cl', label: 'cl', seqIdx: 0, dur: 20 }];
+        const conditionsByName = new Map([
+            [
+                'cl',
+                {
+                    name: 'cl',
+                    commands: [
+                        {
+                            type: 'controller',
+                            command_name: 'trialParams',
+                            mode: 3,
+                            frame_rate: 0,
+                            gain: 0,
+                            frame_index: 0,
+                            duration: 20,
+                            pattern: 'p'
+                        },
+                        { type: 'plugin', plugin_name: 'fictrac', command_name: 'startClosedLoop' },
+                        { type: 'wait', duration: 20 },
+                        { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' }
+                    ]
+                }
+            ]
+        ]);
+        let applyDuringWait = null;
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            // The loop refuses to start on an unknown frame modulus (LAB-185 bench
+            // rule), so the fixture must supply one for apply to ever go ON.
+            resolvePatternFrames: () => 200,
+            fictracPluginNames: new Set(['fictrac']),
+            sleep: () => {
+                // Mid-closed-loop the apply must be ON; then the link drops.
+                applyDuringWait = bridge.apply;
+                runner.abort();
+                return Promise.resolve();
+            }
+        });
+        check('apply was ON during the closed-loop wait', applyDuringWait, true);
+        check('run reported aborted', summary.aborted, true);
+        check('apply is OFF after the abort', bridge.apply, false);
+        check('last apply state recorded is false', bridge.states[bridge.states.length - 1], false);
+    }
+
+    console.log('\n=== fault() mid-run (fw #50): unwinds the wait, labels the summary ===');
+    {
+        const link = makeFakeLink();
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const phases = [];
+        const steps = [
+            { kind: 'ref', conditionName: 'arena check', label: 'a', seqIdx: 0, dur: 5 }
+        ];
+        const conditionsByName = new Map([['arena check', arenaCheckCond]]);
+        // Default abort-aware sleep (5 s trial) — fault() must cut it short.
+        const t0 = Date.now();
+        const p = runner.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            onProgress: (s) => phases.push(s)
+        });
+        await delay(30);
+        checkBool('run is active before the fault', runner.active === true);
+        runner.fault('controller_unresponsive', { failures: 3, window: 10 });
+        const summary = await p;
+        checkBool('fault() ended the run promptly', Date.now() - t0 < 2000);
+        check('summary.aborted', summary.aborted, true);
+        check('summary.fault', summary.fault, 'controller_unresponsive');
+        check(
+            'summary.faultDetail passthrough',
+            JSON.stringify(summary.faultDetail),
+            JSON.stringify({ failures: 3, window: 10 })
+        );
+        check('summary.stopAcked (fake link acks STOP)', summary.stopAcked, true);
+        checkBool(
+            "a 'fault' status event preceded the terminal 'aborted'",
+            phases.findIndex((s) => s.phase === 'fault') >= 0 &&
+                phases.findIndex((s) => s.phase === 'fault') <
+                    phases.findIndex((s) => s.phase === 'aborted')
+        );
+        const term = phases[phases.length - 1];
+        check(
+            'terminal event carries the fault',
+            term.phase === 'aborted' && term.summary.fault,
+            'controller_unresponsive'
+        );
+        checkBytes('final STOP still attempted', link.sent[link.sent.length - 1], '01 30');
+        check('faultReason getter', runner.faultReason, 'controller_unresponsive');
+    }
+
+    console.log(
+        '\n=== a timed-out protocol command is a controller fault, a rejected one is not ==='
+    );
+    {
+        // trialParams send times out (the 0x08-after-the-0x70s signature).
+        const link = makeFakeLink();
+        link.send = async function (bytes) {
+            this.sent.push(Array.from(bytes));
+            if (bytes[1] === 0x08) throw new Error('response timeout after 500 ms (cmd 0x8)');
+            return new Uint8Array([0x02, 0x00, bytes[1]]);
+        };
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const trialCond = { name: 'trial', commands: [trialCmd, { type: 'wait', duration: 1 }] };
+        const steps = [{ kind: 'ref', conditionName: 'trial', label: 't', seqIdx: 0, dur: 5 }];
+        const conditionsByName = new Map([['trial', trialCond]]);
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            sleep: () => Promise.resolve()
+        });
+        check('timeout → aborted', summary.aborted, true);
+        check('timeout → fault labelled', summary.fault, 'controller_unresponsive');
+        check(
+            'timeout → faultDetail names the op',
+            summary.faultDetail && summary.faultDetail.op,
+            'trialParams'
+        );
+
+        // A plain send failure (not a timeout) still aborts but is NOT a fault.
+        const link2 = makeFakeLink({ failSend: true });
+        const runner2 = new Runner.ArenaRunner(link2, Wire);
+        const s2 = await runner2.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            sleep: () => Promise.resolve()
+        });
+        check('non-timeout failure → aborted', s2.aborted, true);
+        check('non-timeout failure → fault null', s2.fault, null);
+        // A controller REJECT (status 1) is neither an abort nor a fault.
+        const link3 = makeFakeLink({ reply: new Uint8Array([0x02, 0x01, 0x08]) });
+        const runner3 = new Runner.ArenaRunner(link3, Wire);
+        const s3 = await runner3.runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            sleep: () => Promise.resolve()
+        });
+        check('reject → fault null', s3.fault, null);
+        // The fake link answers every command (incl. STOP) with status 1 here.
+        check('stopAcked reflects the STOP reply', s3.stopAcked, false);
+        const link4 = makeFakeLink();
+        const s4 = await new Runner.ArenaRunner(link4, Wire).runSequence({
+            steps,
+            conditionsByName,
+            resolvePatternId: () => 1,
+            sleep: () => Promise.resolve()
+        });
+        check('clean run → fault null', s4.fault, null);
+        check('clean run → stopAcked true', s4.stopAcked, true);
     }
 
     console.log('\n=== Summary ===');

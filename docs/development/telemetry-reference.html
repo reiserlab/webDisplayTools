@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telemetry Reference — clocks and the closed-loop latency chain</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0f1419; --surface:#1a1f26; --border:#2d3640; --text:#e6edf3; --dim:#8b949e; --accent:#00e676; --hover:#00c853;
+          --fictrac:#ffb86b; --host:#7dd3fc; --ctl:#00e676; --panel:#c4b5fd; --warn:#ff7b72; --unk:#8b949e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:14px; line-height:1.5; }
+  header, main, footer { max-width:1180px; margin:0 auto; padding:0 24px; }
+  header { padding-top:28px; }
+  h1 { font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:600; margin:0 0 6px; }
+  h2 { font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:600; margin:36px 0 8px; color:var(--accent); }
+  p.lead { color:var(--dim); margin:0 0 8px; }
+  a { color:var(--accent); text-decoration:none; } a:hover { color:var(--hover); text-decoration:underline; }
+  figure { margin:12px 0 0; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px; }
+  figcaption { color:var(--dim); font-size:12.5px; margin-top:10px; }
+  svg { width:100%; height:auto; display:block; font-family:'IBM Plex Mono',monospace; }
+  .lane-label { font-family:'JetBrains Mono',monospace; font-weight:600; font-size:13px; }
+  .lbl { font-size:12px; fill:var(--text); }
+  .dim { font-size:11px; fill:var(--dim); }
+  .stamp { font-size:12px; font-weight:500; }
+  .legend { display:flex; flex-wrap:wrap; gap:18px; color:var(--dim); font-size:12.5px; margin-top:10px; }
+  .legend span::before { content:''; display:inline-block; width:22px; height:0; border-top:3px solid; margin-right:6px; vertical-align:middle; }
+  .legend .m::before { border-color:var(--ctl); } .legend .d::before { border-color:var(--host); border-top-style:dashed; }
+  .legend .u::before { border-color:var(--warn); border-top-style:dotted; } .legend .n::before { border-color:var(--unk); border-top-style:dotted; }
+  code { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:0 5px; font-size:12.5px; }
+  footer { border-top:1px solid var(--border); margin-top:40px; padding:14px 24px 28px; color:var(--dim); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Telemetry Reference — the three clocks and the closed-loop latency chain</h1>
+  <p class="lead">Companion figures for <a href="telemetry-logging-reference.md">telemetry-logging-reference.md</a> (Arena Studio v0.79 · bridge 3.1 · firmware candidate 488d5b9, ring v2). Field names are the ones in the run log.</p>
+</header>
+<main>
+
+<h2>1. Where every timestamp is taken</h2>
+<figure>
+<svg viewBox="0 0 1120 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Swimlane of FicTrac, bridge, browser, controller and panels with every log timestamp placed on its lane">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8b949e"/></marker>
+  </defs>
+  <!-- lanes -->
+  <g font-size="12">
+    <rect x="0" y="20" width="1120" height="70" fill="#141a21"/>
+    <rect x="0" y="90" width="1120" height="70" fill="#111720"/>
+    <rect x="0" y="160" width="1120" height="70" fill="#141a21"/>
+    <rect x="0" y="230" width="1120" height="70" fill="#111720"/>
+    <rect x="0" y="300" width="1120" height="70" fill="#141a21"/>
+    <text x="14" y="50" class="lane-label" fill="#ffb86b">FicTrac / sim</text><text x="14" y="68" class="dim">camera clock · col 22 (ns)</text>
+    <text x="14" y="120" class="lane-label" fill="#7dd3fc">bridge (py)</text><text x="14" y="138" class="dim">host wall clock · time.time()</text>
+    <text x="14" y="190" class="lane-label" fill="#7dd3fc">Studio (browser)</text><text x="14" y="208" class="dim">host wall clock · Date.now() (+ performance.now() for dt)</text>
+    <text x="14" y="260" class="lane-label" fill="#00e676">controller (Teensy)</text><text x="14" y="278" class="dim">micros() · u32, wraps 71.6 min</text>
+    <text x="14" y="330" class="lane-label" fill="#c4b5fd">panels</text><text x="14" y="348" class="dim">no clock · light is unmeasured</text>
+  </g>
+  <!-- flow arrows -->
+  <g stroke="#8b949e" stroke-width="1.4" fill="none" marker-end="url(#arr)">
+    <path d="M300 62 L300 112"/>                       <!-- UDP -->
+    <path d="M380 128 L380 182"/>                      <!-- websocket frame -->
+    <path d="M470 198 L470 252"/>                      <!-- usb 0x70 -->
+    <path d="M720 268 L720 322"/>                      <!-- spi -->
+    <path d="M790 252 L790 198"/>                      <!-- reply -->
+    <path d="M850 182 L850 128"/>                      <!-- a row echo to bridge -->
+    <path d="M990 252 L990 198"/>                      <!-- 0xA9 block -->
+    <path d="M1040 182 L1040 128"/>                    <!-- rows to bridge -->
+  </g>
+  <g class="dim">
+    <text x="306" y="92">UDP</text>
+    <text x="386" y="160">WebSocket frame</text>
+    <text x="476" y="230">USB · 0x70 idx</text>
+    <text x="634" y="313">SPI transfer</text>
+    <text x="796" y="230">reply status</text>
+    <text x="856" y="160">{event:arena_command}</text>
+    <text x="996" y="230">0xA9 block</text>
+    <text x="1046" y="160">{type:rows}</text>
+  </g>
+  <!-- stamps -->
+  <g class="stamp">
+    <circle cx="300" cy="50" r="5" fill="#ffb86b"/><text x="230" y="45" fill="#ffb86b">ft</text>
+    <circle cx="300" cy="120" r="5" fill="#7dd3fc"/><text x="240" y="115" fill="#7dd3fc">ms</text>
+    <text x="300" y="112" class="dim" text-anchor="middle"></text>
+    <circle cx="470" cy="190" r="5" fill="#7dd3fc"/><text x="440" y="180" fill="#7dd3fc">t → t_off</text>
+    <circle cx="790" cy="190" r="5" fill="#7dd3fc"/><text x="700" y="180" fill="#7dd3fc">dt = reply − t (mono)</text>
+    <circle cx="850" cy="120" r="5" fill="#7dd3fc"/><text x="820" y="115" fill="#7dd3fc">rx_off</text>
+    <circle cx="470" cy="260" r="5" fill="#00e676"/><text x="428" y="290" fill="#00e676">CMD t_us</text>
+    <circle cx="720" cy="260" r="5" fill="#00e676"/><text x="672" y="290" fill="#00e676">FRAME t_us</text>
+    <circle cx="600" cy="260" r="4" fill="#00e676" opacity=".7"/><text x="560" y="290" fill="#00e676" opacity=".8">STATE t_us</text>
+    <circle cx="990" cy="260" r="5" fill="#00e676"/><text x="920" y="290" fill="#00e676">t_now_us · header only</text>
+    <circle cx="990" cy="190" r="5" fill="#7dd3fc"/><text x="962" y="180" fill="#7dd3fc">rx (per block)</text>
+  </g>
+  <!-- horizontal spans -->
+  <g stroke-width="3" fill="none">
+    <path d="M470 260 L720 260" stroke="#00e676"/><text x="595" y="248" class="lbl" text-anchor="middle" fill="#00e676">req_age_us</text>
+    <path d="M720 330 L760 330" stroke="#c4b5fd"/><text x="740" y="348" class="lbl" text-anchor="middle" fill="#c4b5fd">spi_us</text>
+    <path d="M760 330 L870 330" stroke="#ff7b72" stroke-dasharray="3 4"/><text x="815" y="322" class="lbl" text-anchor="middle" fill="#ff7b72">latch → light ?</text>
+    <path d="M470 166 L790 166" stroke="#7dd3fc" stroke-dasharray="6 4" opacity=".6"/>
+  </g>
+  <!-- file row -->
+  <g>
+    <rect x="0" y="380" width="1120" height="52" fill="#1a1f26" stroke="#2d3640"/>
+    <text x="14" y="401" class="lane-label" fill="#e6edf3">run log</text>
+    <text x="14" y="420" class="dim">one NDJSON file</text>
+    <text x="190" y="401" class="lbl" fill="#ffb86b">[ms, fc, idx, ft, x, y, hd]</text>
+    <text x="190" y="420" class="dim">bridge · relative to activation</text>
+    <text x="470" y="401" class="lbl" fill="#7dd3fc">["a", t_off, dt, hex, status, rx_off]</text>
+    <text x="470" y="420" class="dim">browser t, dt · bridge rx_off · − t0</text>
+    <text x="790" y="401" class="lbl" fill="#00e676">["cc"|"cf"|"cs", rx, t_us, seq, …]</text>
+    <text x="790" y="420" class="dim">t_us controller · rx browser, per block · by seq</text>
+  </g>
+</svg>
+<figcaption>Bridge and browser run on the same PC — <code>t0</code>, <code>ms</code>, <code>t_off</code>, <code>rx_off</code> and <code>rx</code> are all host epoch ms. <code>ft</code> is the only tracker-clock stamp (unusable from the simulator, which writes ms where the bridge expects ns). <code>t_us</code> is the only controller-clock stamp; <code>req_age_us</code> is measured entirely on that clock and needs no alignment. The host↔controller offset is a linear fit over paired <code>a</code>/<code>cc</code> rows (−3 ppm measured), not a constant.</figcaption>
+</figure>
+
+<h2>2. One closed-loop step — what each edge costs and how you get the number</h2>
+<figure>
+<svg viewBox="0 0 1120 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Latency chain from a FicTrac frame to light on the panels and back to the host, with the log fields that give each edge">
+  <defs><marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8b949e"/></marker></defs>
+  <!-- nodes -->
+  <g font-size="12" text-anchor="middle">
+    <g><rect x="20" y="110" width="120" height="50" rx="6" fill="#1a1f26" stroke="#ffb86b"/><text x="80" y="131" class="lbl">FicTrac frame k</text><text x="80" y="148" class="dim">ft · fc</text></g>
+    <g><rect x="185" y="110" width="110" height="50" rx="6" fill="#1a1f26" stroke="#7dd3fc"/><text x="240" y="131" class="lbl">bridge</text><text x="240" y="148" class="dim">ms · idx</text></g>
+    <g><rect x="340" y="110" width="120" height="50" rx="6" fill="#1a1f26" stroke="#7dd3fc"/><text x="400" y="131" class="lbl">0x70 sent</text><text x="400" y="148" class="dim">a.t_off</text></g>
+    <g><rect x="505" y="110" width="120" height="50" rx="6" fill="#1a1f26" stroke="#00e676"/><text x="565" y="131" class="lbl">received</text><text x="565" y="148" class="dim">cc.t_us</text></g>
+    <g><rect x="670" y="110" width="120" height="50" rx="6" fill="#1a1f26" stroke="#00e676"/><text x="730" y="131" class="lbl">SPI start</text><text x="730" y="148" class="dim">cf.t_us</text></g>
+    <g><rect x="835" y="110" width="110" height="50" rx="6" fill="#1a1f26" stroke="#c4b5fd"/><text x="890" y="131" class="lbl">light</text><text x="890" y="148" class="dim">—</text></g>
+    <g><rect x="990" y="110" width="110" height="50" rx="6" fill="#1a1f26" stroke="#7dd3fc"/><text x="1045" y="131" class="lbl">reply at host</text><text x="1045" y="148" class="dim">a.t_off + a.dt</text></g>
+  </g>
+  <!-- edges -->
+  <g stroke-width="3" fill="none" marker-end="url(#arr2)">
+    <path d="M140 135 L183 135" stroke="#ff7b72" stroke-dasharray="2 4"/>
+    <path d="M295 135 L338 135" stroke="#8b949e" stroke-dasharray="2 4"/>
+    <path d="M460 135 L503 135" stroke="#7dd3fc" stroke-dasharray="7 4"/>
+    <path d="M625 135 L668 135" stroke="#00e676"/>
+    <path d="M790 135 L833 135" stroke="#ff7b72" stroke-dasharray="2 4"/>
+  </g>
+  <path d="M565 160 C565 230 1045 230 1045 160" stroke="#7dd3fc" stroke-width="3" stroke-dasharray="7 4" fill="none" marker-end="url(#arr2)"/>
+  <!-- edge labels -->
+  <g stroke="#2d3640" stroke-width="1">
+    <line x1="317" y1="60" x2="317" y2="126"/><line x1="482" y1="60" x2="482" y2="126"/><line x1="812" y1="60" x2="812" y2="126"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="162" y="98" class="lbl" fill="#ff7b72">ms − ft</text><text x="162" y="84" class="dim">real rig only</text>
+    <text x="317" y="42" class="lbl" fill="#8b949e">not derivable</text><text x="317" y="56" class="dim">no fc on a · coalescing</text>
+    <text x="482" y="42" class="lbl" fill="#7dd3fc">fit(cc.t_us) − a.t_off</text><text x="482" y="56" class="dim">USB + queue · ~1–2 ms</text>
+    <text x="647" y="98" class="lbl" fill="#00e676">cf.req_age_us</text><text x="647" y="84" class="dim">1.7 ms p50 · 4.8 max</text>
+    <text x="647" y="70" class="dim">= sd_load_us + tick wait (0–3.3 ms)</text>
+    <text x="812" y="42" class="lbl" fill="#ff7b72">spi_us 0.78 + latch ?</text><text x="812" y="56" class="dim">needs a light sensor</text>
+    <text x="805" y="222" class="lbl" fill="#7dd3fc">a.dt − req_age_us</text><text x="805" y="238" class="dim">USB both ways + host queue wait · a.dt ≈ 2 ms median</text>
+  </g>
+  <!-- acceptance scale -->
+  <g>
+    <line x1="20" y1="275" x2="1100" y2="275" stroke="#2d3640"/>
+    <text x="20" y="266" class="dim">display-freeze acceptance (req_age_us / sd_load_us):</text>
+    <g font-size="12">
+      <line x1="440" y1="268" x2="440" y2="282" stroke="#00e676" stroke-width="2"/><text x="440" y="296" text-anchor="middle" fill="#00e676">5 ms target</text>
+      <line x1="640" y1="268" x2="640" y2="282" stroke="#ffb86b" stroke-width="2"/><text x="640" y="296" text-anchor="middle" fill="#ffb86b">10 ms worst case → trial flagged</text>
+      <line x1="960" y1="268" x2="960" y2="282" stroke="#ff7b72" stroke-width="2"/><text x="960" y="296" text-anchor="middle" fill="#ff7b72">≥ 30 ms visible artifact</text>
+    </g>
+  </g>
+</svg>
+<div class="legend"><span class="m">measured on one clock</span><span class="d">derivable (fit or subtraction)</span><span class="u">unmeasured today</span><span class="n">not derivable from the file</span></div>
+<figcaption>Numbers are from <code>arena-log-20260913-120611-713.jsonl</code> (fw 3c71953, 20 trials). The two dotted edges are why the reference's §8 ranks a photodiode on Analog In first and <code>fc</code> on the <code>a</code> row second. Superseded frames (<code>cf.superseded</code>) are the controller-side coalescing; the host-side coalescing in the bridge client is not counted.</figcaption>
+</figure>
+
+</main>
+<footer>Telemetry Reference v1 | 2026-09-13 19:30 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener">GitHub</a></footer>
+</body>
+</html>

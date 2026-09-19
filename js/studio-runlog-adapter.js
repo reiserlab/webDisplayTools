@@ -28,6 +28,7 @@
         command: 1,
         skip: 1,
         error: 1,
+        fault: 1, // controller stopped answering (fw #50) — precedes a terminal `aborted`
         'step-done': 1,
         'sequence-complete': 1,
         aborted: 1
@@ -57,7 +58,15 @@
         }
         const ev = log.event(phase, s);
         if (isTerminal(phase)) {
-            const override = phase === 'aborted' ? 'ABORTED_BY_USER' : undefined;
+            // An `aborted` whose summary carries a fault reason is the CONTROLLER
+            // giving up, not the operator — label it so (it also auto-commits).
+            const faulted = phase === 'aborted' && s.summary && s.summary.fault;
+            const override =
+                phase === 'aborted'
+                    ? faulted
+                        ? 'CONTROLLER_FAULT'
+                        : 'ABORTED_BY_USER'
+                    : undefined;
             const summary = log.finish(s.summary || null, override);
             return { event: ev, terminal: true, summary: summary };
         }

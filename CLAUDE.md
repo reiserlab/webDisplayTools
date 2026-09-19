@@ -19,7 +19,9 @@ Example: `Arena Editor v2 | 2026-01-16 14:30 ET · GitHub`
 
 **IMPORTANT**: Always include timestamp in Eastern Time (ET) to distinguish multiple updates per day. Update the timestamp whenever the page is modified.
 
-**To get current time**: Run `TZ='America/New_York' date "+%Y-%m-%d %H:%M ET"` in Bash to get the actual current time. Never guess or make up timestamps.
+**To get current time**: on macOS/Linux run `TZ='America/New_York' date "+%Y-%m-%d %H:%M ET"` in Bash. **On Windows do NOT use that** — Git Bash has no tzdata, so it silently prints UTC labelled "ET" (this stamped #190's footer four hours off). Use PowerShell instead:
+`[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date),'Eastern Standard Time').ToString('yyyy-MM-dd HH:mm') + ' ET'`.
+Never guess or make up timestamps.
 
 ## Design System
 
@@ -214,6 +216,11 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   firmware's ASCII error payload on non-ok status — keep that for new ops.
   New `.cmenu` popups: the document click-away closer ignores clicks inside
   `.cmenu-pop`; one-shot `.cmenu-item`s (not in a `.cmenu-row`) auto-close.
+  **Periodic reads (the Analog In panel's 10 Hz poller, `js/studio-analog-in.js`)
+  go through `session.send` directly, NOT `send()`** — `send()` logs every command
+  and would flood the Console log; log state transitions instead. Any new poller must
+  be single-flight and gated on `session.running` (a run owns the link) — reuse
+  `StudioAnalogIn.createPoller` rather than adding another `setInterval`.
 - **Metadata / controlled-vocab sourcing (THE rule):** when a **course repo is
   configured AND signed in**, ALL metadata vocabularies load from that repo (its
   root-level YAML) and their ↗ source links repoint there — the connected repo is
@@ -226,9 +233,17 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `fetchCourseGenotypes` / the generic `fetchCourseVocab(file, key, srcId, apply)`.
   **Any NEW controlled vocab MUST follow this course-first, site-fallback pattern:**
   add a site YAML under `configs/metadata/`, load it in `populateMetaDatalists`, AND
-  add a `fetchCourseVocab(...)` call in `refreshCourseMeta` + seed the file into the
-  course repo root. The course repo (`reiserlab/cshl-2026-course`) is PRIVATE, so
-  the course override needs a token; the site files are same-origin (always work).
+  add a `fetchCourseVocab(...)` call in `refreshCourseMeta`, ADD THE FILENAME TO
+  `READABLE_EXACT` in `js/studio-github.js` (the read allowlist — a miss throws inside
+  the loader's try/catch and the override silently falls back; that is exactly how
+  ages/sexes/fly_numbers were broken until v0.70), + seed the file into the repo root.
+  The course override runs only when a token is stored (token + repo = "course-repo
+  mode") even though `reiserlab/cshl-2026-course` has been PUBLIC since 2026-08; the
+  site files are same-origin (always work). `configs/metadata/*.yaml` are parsed by
+  `tests/test-metadata-yaml.js` (pixi + CI) because they get edited in the GitHub UI.
+  Token types: org members use a fine-grained PAT scoped to the one repo; the shared
+  course guest account (`cshl-2026`, an outside collaborator) can only use a CLASSIC
+  token — see `docs/development/data-repo-token-runbook.md`.
 - **Session rig (#135, v0.4):** `Studio.currentRig` (`{name, arenaConfig,
   explicit}`) is THE bench rig for all three views — one top-bar selector,
   locked by default. Always change it via the module block's
@@ -247,6 +262,41 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   equal to both the silkscreen number and the 0xAA wire channel (one number
   everywhere; `parseRigIo` rejects `port: 0` with a warning). Label new I/O UI
   with the silkscreen names, not DO1/DO2/J3/J4 refdes.
+- **Controller-fault lifecycle (fw #50, v0.76) — THE fail-closed rule:** a Mode-3 controller
+  wedge is detected in `js/fictrac-bridge-client.js` (`_recordApply`: ≥ `faultThreshold` (3) failed
+  applies in the last `faultWindow` (10) — NOT "3 consecutive", a late same-opcode reply can satisfy
+  the next request) → latched `fault` event, apply forced OFF → `ArenaSession` calls
+  `runner.fault(reason, detail)` (wakes the wait, `summary.fault`, `summary.stopAcked`) → the
+  run's outcome is `CONTROLLER_FAULT` (`run-log.js` `deriveOutcome`, adapter) and it **auto-commits**
+  (only `ABORTED_BY_USER`/`DISCONNECTED` skip). A timed-out protocol command (`isTimeoutError`) is
+  labelled the same. After the run unwinds, `runSteps` (module block) calls
+  `Studio.handleControllerFault(summary)` → `js/studio-postmortem.js` (`createPostmortem().run`):
+  quiet ≥ 1 s + `session.flushRx()` → confirm 0xC2 (2 s) → probe window (5 s timeouts; typed
+  `probe` rows with decoded + raw hex, because `["a",…]` rows carry no payload) → policy `halt` |
+  `reset-continue` (0x01 → `session.reconnect()` via `ArenaLink.reconnect()`/`getPorts()`, VID/PID
+  match, ambiguity refused → MAC verified → post-reset probe). Runner sends go through
+  `session.send` (a link facade) so trialParams/STOP are logged. New wire commands used by probes
+  MUST be exported + golden-tested (`GET_HEALTH` 0xCA decodes 55 B + optional 11 B slowest-op tail;
+  `GET_FRAME_POSITION` 0x72). **Soak driver** (`Studio.startSoak`, File ▾ → Soak…, `?soak=1`,
+  advanced-only) loops `Studio.runOnce(false)` (the no-dialog half of `beginRun`), refuses without
+  a `behavior_v2` ack or without bridge frames, halts on the first fault by default, never
+  auto-commits. Analyzer: `scripts/wedge-scan.py` (+ `tests/test-wedge-scan.py`, standalone
+  harness, no pytest). Design + campaign spec: `docs/development/mode3-wedge-soak-plan.md`.
+  **Firmware build identity (permanent):** `GET_FIRMWARE_VERSION` 0xCB (`encodeGetFirmwareVersion` /
+  `decodeFirmwareVersion` → `label` "sha[*] RxC date branch") is read by `Studio.refreshFirmwareVersion()`
+  on every link-up (Connect button AND the `identityOnConnect` state hook that covers gesture-free
+  `session.reconnect()`), stored as `Studio.firmware` → `run_metadata.firmware`. **Gate it on the
+  `health` capability bit**: this firmware answers an unknown opcode with `CE_UNKNOWN_CMD` and an
+  error GLYPH on the arena, so never send 0xCB (or 0xCA) blind. Firmware `main` is compiled for a
+  **4×10** arena (`panel_count_per_frame_row = 4`); the CSHL 2×10 controllers run `arena-2x10-local` —
+  a build from `main` rejects every 2×10 pattern (`TRIAL_PARAMS: load failed`, CE_ARENA_MISMATCH).
+  **Telemetry ring (T4):** `js/arena-telemetry.js` decodes 0xA9 blocks (18 B header + records) and
+  runs the ack-cursor drainer; `Studio.initTelemetry()` starts the 10 Hz poller on link-up (gated on
+  GET_FIRMWARE_VERSION `flags` bit 2 — NOT on `health` — then a SET_TELEMETRY 0xA8 ack; Debug ▾
+  toggle `studio_telemetry`); rows go to the bridge as `{type:'rows'}` (bridge ≥ 3.1
+  `write_rows`, verbatim `["cc"|"cf"|"cs", …]`). The record schema lives in ONE place — the header
+  comment of `js/arena-telemetry.js` — mirror any firmware change there + in `wedge-scan.py`
+  (`CTL_TAGS`/`CTL_STATE_KINDS`). Never drain while the post-mortem owns the link (its `canPoll`).
 - **Wire module exports:** `js/arena-wire-g6.js` defines more than it exports —
   when adding encoders/decoders, add them to the export list AND a test; audit
   with `Object.keys(require('./js/arena-wire-g6.js'))` vs the page's `Wire.*`
@@ -264,11 +314,12 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   registry test pins them equal; (2) `stopClosedLoop` MUST push
   `bias:{type:'none'}` or the waveform keeps accumulating into the frame index
   through later trials — and because a mid-trial STOP never REACHES it, the loop
-  is torn down twice over: `_clearClosedLoop()` (setApply(false) + bias none) is
-  called from ALL THREE teardown paths (`runSequence` finally, `stop()`,
-  `_clear()`/`abort()`, symmetric with `_clearLedActivator()`) and
-  `startClosedLoop` ALWAYS carries an explicit bias so an epoch can never inherit
-  a stale one. Call `_clearClosedLoop()` from any NEW teardown path;
+  is torn down twice over: `_disarmClosedLoop()` (setApply(false) + bias none — ONE
+  helper, shared with the fw #50 fail-closed work) is called from ALL teardown paths
+  (sequence start, `runSequence` finally, `stop()`, `_clear()`/`abort()`, symmetric
+  with `_clearLedActivator()`) and `startClosedLoop` ALWAYS carries an explicit bias
+  so an epoch can never inherit a stale one. Call `_disarmClosedLoop()` from any NEW
+  teardown path;
   (3) `bias` is the one OBJECT-valued key in
   `FicTracBridgeClient.setConfig`, whose scalar keys gate on `Number.isFinite`;
   (4a) every epoch also TARES THE HEADING (`hd0`, latched on the epoch's first frame,
@@ -332,7 +383,65 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   recurring mistake. The changelog lives ONLY in
   `docs/development/arena-studio-release-notes.md` — add an entry there for user-visible
   changes.
+- **Run logs are `.jsonl.gz` (v0.72+, `docs/development/runlog-behavior-v2-plan.md`).**
+  `commitRunLog` gzips the bridge export (`GH.gzipBytes`) and commits
+  `runlogs/<bench>/<name>.jsonl.gz` via `GH.commitFile`, which routes >30 MiB payloads
+  through the Git Database API (`GH.directCommitLarge`) because the Contents API
+  rejects ~35 MiB+ files. Every reader must go through **`js/runlog-format.js`**
+  (`readRunlogText` to inflate on the gzip magic, `createNormalizer().normalize(rec)` per
+  parsed line so `behavior_v2` `["a",…]` echoes become the v1 `arena_command` object) —
+  the dashboard uses an exact vendored copy at `dashboard/data-browser/vendor/`, and
+  `tests/test-runlog-format.js` fails when the copies diverge (re-copy after editing). The
+  log level is a runtime setting (File ▾ → Run logging, localStorage `studio_log_level`,
+  default `behavior_v2`); the runner asserts it via `log_control` and the bridge ACKS
+  the level it will actually write (`bridge.waitForLogLevelAck`) — a pre-3.0 bridge
+  never acks, so treat "no ack" as behavior_v1. Never write `log_format` into
+  `run_metadata` from anything but the acked/inferred level. **The format authority for every
+  row and event (FicTrac rows, `a`, controller `cc`/`cf`/`cs`, all `{type:"log"}` events), the
+  three-clock model and the round-trip recipe is `docs/development/telemetry-logging-reference.md`.**
+- **Controller telemetry rows + stimulus quality (v0.77, fw `sdfast`):** `cf` rows carry three OPTIONAL trailing fields
+  (`req_age_us`, `superseded`, `flags`) from ring-v2 firmware (0xCB flags bit 5) — readers must accept 8- or
+  11-element `cf` rows and STATE kinds 11–13 (`sd_layout`/`sd_slow_ctx`/`sd_reads`, reads = arg << code). `GET_SD_INFO`
+  0xCD is gated on 0xCB bit 5 only. Per-trial pass/flagged/unknown verdicts come from `js/trial-quality.js` (fed from
+  the drainer in ring order, dedup by seq; fail = any read or request age > 10 ms; `unknown` never becomes `pass`) →
+  `display_gap` + `trial_quality` run-log events; the Studio flags, never auto-excludes. Offline analysis:
+  `scripts/telemetry-report.py` (also reads the firmware repo's `scripts/sd_stall_test.py` logs). The 30–90 ms card stalls were
+  firmware FAT access (chain-walking seeks + `fatGet` at cluster crossings), proven by the 4-arm causal test on 2026-09-13 and
+  removed by the contiguous-seek fast path — never re-introduce per-seek chain walks; see
+  `docs/development/mode3-reliability-handoff-2026-09-14.md`.
 - Bump the footer version/timestamp on every edit; never Prettier the HTML.
+- **Nested protocol objects are edited BY PATH, never rewritten wholesale (v0.82).** `docSet` wraps a
+  plain object/array in `doc.createNode` before `setIn` (yaml would otherwise store the raw JS object,
+  after which `getIn(path, true)` beneath it is undefined and a nested `setIn` throws "Expected YAML
+  collection"). Sub-fields of `trialParams.led_activation` (level / hysteresis / `on_ranges[i][0|1]`)
+  go through `renderEditableField` on their own paths so they carry the 🔗 anchor button; ranges are
+  appended with `docSet(..., ['on_ranges', len], [0, 0])` and removed with `docDelete`. Rewriting the
+  whole object flattens every `*alias` inside it to a literal — suite 37 guards this.
+
+- **Telemetry ring — four rules from the 2026-09-12 Codex review (all tested):** (1) the ONLY gate
+  for SET_TELEMETRY 0xA8 is GET_FIRMWARE_VERSION `flags` bit 2 (`decodeFirmwareVersion().telemetry`);
+  never infer it from the `health` capability (the 0xC2 capability byte is full; health-only builds
+  answer 0xA8 with CE_UNKNOWN_CMD + an error glyph). (2) **Ack means stored**: the drainer advances
+  its cursor only when `onRecords` returned non-false; the Studio sink returns the bridge's
+  acceptance (`FicTracBridgeClient.logRows` → boolean) — never ack rows that went nowhere.
+  (3) Run-log readers must treat ANY string-tagged array row (`"cc"/"cf"/"cs"`, future streams) as a
+  stream, not a behavior sample; only `"a"` is decoded (`js/runlog-replay.js`, dashboard
+  `analysis-core.js`). (4) A controller-fault run's export/auto-commit is DEFERRED until
+  `Studio.handleControllerFault` finishes (the export closes the bridge's file); the runner emits its
+  terminal event from `finally`, after the best-effort STOP, so `stopAcked` is in the serialized
+  summary. Post-mortem owns the link: stop the poller, `await drainer.idle()`, then go quiet;
+  capability-gated probes are skipped (and recorded) when 0xC2 gave no capabilities.
+- **Hardware-watchdog world (fw fb11681+, 2026-09-12):** the controller resets itself ~2 s into a
+  hang, so after a fault the link DROPS. `studio-postmortem.js run()` checks `session.connected`
+  after the quiet period and after the confirm probe; a dropped link takes the **self-reset path**
+  (`resetAndReconnect({skipReset:true})`: reconnect → MAC → GET_HEALTH → `afterReconnect` ring dump
+  + crash report → post probes) regardless of policy, outcome `self-reset` (soak continues, counts
+  as a reset) or `self-reset-failed`. GET_HEALTH ver 2 = 89 B (`HEALTH_PAYLOAD_BYTES_V2`): previous
+  boot's ISR (`prevIsrLastName`), watchdog-captured PC/LR (`prevWdogPcHex`, valid when
+  `prevPcCaptured`), `wdogFlags` (armed / prev reset was watchdog / suspended / starving / config
+  failed). `GET_CRASHREPORT` 0xCC (128 B raw PJRC record, `decodeCrashReport().present`) is gated
+  like 0xA8 on the 0xCB telemetry flag; `Studio.readCrashReport()` logs a `crash_report` event.
+  Breadcrumb ops 6–9 are the SET_FRAME_POSITION sub-steps (disarm timer / preload / arm / respond).
 
 ## Pattern Designer (`pattern_editor.html`)
 

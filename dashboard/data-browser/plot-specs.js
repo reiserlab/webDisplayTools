@@ -1509,11 +1509,7 @@
     function p3TimelineOrientationShapes(run) {
         const durationMin = (run.frames[run.frames.length - 1] || {}).timeS / 60 || 0;
         const reinforced = p3ReinforcedAngleSegments(run);
-        const boundaries = [
-            -180,
-            180,
-            ...reinforced.flatMap(([start, end]) => [start, end])
-        ]
+        const boundaries = [-180, 180, ...reinforced.flatMap(([start, end]) => [start, end])]
             .filter(Number.isFinite)
             .sort((a, b) => a - b)
             .filter((value, index, values) => index === 0 || value !== values[index - 1]);
@@ -1559,9 +1555,7 @@
                 label: 'Cue-normalized orientation, A = 0 deg',
                 color: COLORS.cw,
                 value: (frame, run) =>
-                    A.wrapDeg(
-                        ((A.p3CueIndex(run, frame.condition, frame.index) - 25) * 360) / 200
-                    )
+                    A.wrapDeg(((A.p3CueIndex(run, frame.condition, frame.index) - 25) * 360) / 200)
             },
             {
                 key: 'forward',
@@ -1820,9 +1814,7 @@
             ) * 1.08;
         const activations = runs.flatMap(A.p3LoggedLedActivations);
         const levels = [
-            ...new Set(
-                activations.map((activation) => activation.level).filter(Number.isFinite)
-            )
+            ...new Set(activations.map((activation) => activation.level).filter(Number.isFinite))
         ].sort((a, b) => a - b);
         const rangeSets = [
             ...new Set(
@@ -1929,9 +1921,7 @@
         for (const stage of stages) {
             offsets.set(stage, offset);
             offset += Math.max(
-                ...perRun.map(
-                    (item) => item.rows.filter((row) => row.stage === stage).length
-                )
+                ...perRun.map((item) => item.rows.filter((row) => row.stage === stage).length)
             );
         }
         return perRun.map((item) => ({
@@ -2082,8 +2072,7 @@
                 level: options.mode === 'group' ? 'group_mean' : 'fly_mean',
                 run_id: options.mode === 'group' ? 'all' : runs[0].id,
                 trial,
-                phase:
-                    (referenceRows.find((row) => row.trial === trial) || {}).phase || '',
+                phase: (referenceRows.find((row) => row.trial === trial) || {}).phase || '',
                 preference_index: means[index],
                 sem: errors[index],
                 n: perRun.length
@@ -2121,7 +2110,7 @@
                     ],
                     shapes,
                     xaxis: {
-                        title: '20 s trial',
+                        title: p3TrialAxisTitle(runs),
                         domain: [0.18, 1],
                         range: [0.5, Math.max(1.5, ...trialNumbers) + 0.5],
                         dtick: 1,
@@ -2132,6 +2121,204 @@
                         range: [-1.05, 1.05],
                         gridcolor: COLORS.grid,
                         zeroline: false
+                    }
+                }
+            },
+            csvRows
+        };
+    }
+
+    // "20 s trial" was hard-coded; the P3 protocols now run 20 s AND 40 s trials.
+    function p3TrialSeconds(runs) {
+        const secs = runs.flatMap((run) =>
+            (run.steps || [])
+                .filter((step) => A.p3Phase(step.condition))
+                .map((step) => step.durationSec)
+                .filter((value) => Number.isFinite(value) && value > 0)
+        );
+        return secs.length ? A.median(secs) : NaN;
+    }
+    function p3TrialAxisTitle(runs) {
+        const sec = p3TrialSeconds(runs);
+        return Number.isFinite(sec) ? `${Math.round(sec)} s trial` : 'trial';
+    }
+
+    // Classic Heisenberg-style PI bars (Science 2004 Fig. 1B): consecutive
+    // same-stage trials pooled into one interval, empty = baseline (no heat/LED),
+    // hatched = training, dotted = memory test (probe). x is real time in minutes
+    // from the first trial, so 20 s and 40 s trials both lay out correctly.
+    const P3_BUNDLE_STYLE = {
+        baseline: { name: 'baseline (no LED)', pattern: '', fill: '#ffffff' },
+        training: { name: 'training', pattern: '/', fill: '#ffffff' },
+        probe: { name: 'memory test', pattern: '.', fill: '#ffffff' }
+    };
+    function p3HeisenbergPage(runs, options, size) {
+        const perRun = p3AlignedTrialRows(runs).map((item) => ({
+            run: item.run,
+            bundles: A.p3BundleTrials(item.rows, size),
+            t0: Math.min(
+                ...item.rows.map((row) => row.step && row.step.startMs).filter(Number.isFinite)
+            )
+        }));
+        const keys = [...new Set(perRun.flatMap((item) => item.bundles.map((b) => b.key)))];
+        // Order bundle keys by stage rank, then position within the stage.
+        keys.sort((a, b) => {
+            const [sa, ia] = a.split('#');
+            const [sb, ib] = b.split('#');
+            return p3StageRank(sa) - p3StageRank(sb) || Number(ia) - Number(ib);
+        });
+        const pick = (item, key) => item.bundles.find((b) => b.key === key);
+        const source = options.mode === 'group' ? perRun : perRun.slice(0, 1);
+        const summary = keys.map((key) => {
+            const hits = source.map((item) => ({ item, b: pick(item, key) })).filter((h) => h.b);
+            const pis = hits.map((h) => h.b.preference);
+            const startMin = A.mean(hits.map((h) => (h.b.startMs - h.item.t0) / 60000));
+            const endMin = A.mean(hits.map((h) => (h.b.endMs - h.item.t0) / 60000));
+            const ref = hits[0] ? hits[0].b : null;
+            return {
+                key,
+                ref,
+                mean: A.mean(pis),
+                sem: hits.length > 1 ? A.sem(pis) : NaN,
+                n: hits.filter((h) => Number.isFinite(h.b.preference)).length,
+                startMin,
+                endMin
+            };
+        });
+        const traces = [];
+        for (const phase of ['baseline', 'training', 'probe']) {
+            const rows = summary.filter((s) => s.ref && s.ref.phase === phase);
+            if (!rows.length) continue;
+            const style = P3_BUNDLE_STYLE[phase];
+            const phaseColor = (P3_PHASES.find((p) => p.key === phase) || {}).color || '#000';
+            traces.push({
+                type: 'bar',
+                name: style.name,
+                x: rows.map((s) => (s.startMin + s.endMin) / 2),
+                width: rows.map((s) => Math.max(0.01, s.endMin - s.startMin) * 0.96),
+                y: rows.map((s) => s.mean),
+                marker: {
+                    color: style.fill,
+                    line: { color: '#111', width: 1.4 },
+                    pattern: style.pattern
+                        ? {
+                              shape: style.pattern,
+                              fgcolor: '#111',
+                              bgcolor: '#fff',
+                              size: 7,
+                              solidity: 0.35
+                          }
+                        : undefined
+                },
+                error_y: rows.some((s) => Number.isFinite(s.sem))
+                    ? {
+                          type: 'data',
+                          array: rows.map((s) => (Number.isFinite(s.sem) ? s.sem : 0)),
+                          visible: true,
+                          color: '#111',
+                          thickness: 1.4,
+                          width: 6
+                      }
+                    : undefined,
+                customdata: rows.map((s) => [
+                    s.ref.stage,
+                    s.ref.trials.join(', '),
+                    s.ref.partial ? ` (partial: ${s.ref.size} of ${size} trials)` : '',
+                    s.n,
+                    phaseColor
+                ]),
+                hovertemplate:
+                    '%{customdata[0]} · trials %{customdata[1]}%{customdata[2]}<br>' +
+                    'PI = %{y:.3f} · n = %{customdata[3]}<br>' +
+                    '%{x:.1f} min<extra>' +
+                    style.name +
+                    '</extra>'
+            });
+        }
+        // "PI 8 / PI 9" style labels on the memory-test bars of the final probe.
+        const annotations = summary
+            .filter((s) => s.ref && s.ref.stage === 'final_probe' && Number.isFinite(s.mean))
+            .map((s) => ({
+                x: (s.startMin + s.endMin) / 2,
+                y: Math.max(0, s.mean + (Number.isFinite(s.sem) ? s.sem : 0)) + 0.08,
+                text: `<i>PI</i> ${s.ref.bundle}`,
+                showarrow: false,
+                font: { size: 11, color: COLORS.text }
+            }));
+        const csvRows = [];
+        perRun.forEach((item) =>
+            item.bundles.forEach((b) =>
+                csvRows.push({
+                    plot: `p3-heisenberg-${size}`,
+                    level: 'fly_bundle',
+                    run_id: item.run.id,
+                    bundle: b.bundle,
+                    stage: b.stage,
+                    stage_bundle: b.stageBundle,
+                    phase: b.phase,
+                    trials: b.trials.join(' '),
+                    trial_variants: b.variants.join(' '),
+                    bundle_size: b.size,
+                    partial: b.partial,
+                    start_min: (b.startMs - item.t0) / 60000,
+                    duration_s: b.durationSec,
+                    samples: b.samples,
+                    safe_samples: b.safe,
+                    reinforced_samples: b.reinforced,
+                    preference_index: b.preference
+                })
+            )
+        );
+        summary.forEach((s) =>
+            csvRows.push({
+                plot: `p3-heisenberg-${size}`,
+                level: options.mode === 'group' ? 'group' : 'single',
+                bundle: s.ref ? s.ref.bundle : '',
+                stage: s.ref ? s.ref.stage : '',
+                phase: s.ref ? s.ref.phase : '',
+                start_min: s.startMin,
+                end_min: s.endMin,
+                preference_index: s.mean,
+                sem: s.sem,
+                n: s.n
+            })
+        );
+        const trialSec = p3TrialSeconds(runs);
+        const bundleSec = Number.isFinite(trialSec) ? Math.round(trialSec * size) : NaN;
+        const lastMin = Math.max(0.5, ...summary.map((s) => s.endMin).filter(Number.isFinite));
+        return {
+            id: `p3-heisenberg-${size}`,
+            title: `p3 Heisenberg PI — ${size}-trial bundles${Number.isFinite(bundleSec) ? ` (${bundleSec} s)` : ''}`,
+            description:
+                `Classic flight-simulator style performance index (Heisenberg, Wolf & Dill; Brembs & Heisenberg): ${size} consecutive trials of the same stage are pooled into one interval` +
+                (size === 2 ? ' (one pattern flip)' : size === 4 ? ' (two pattern flips)' : '') +
+                " and scored as PI = (t safe − t reinforced) / (t safe + t reinforced), time-weighted over every frame sample. Empty bars = baseline (no LED), hatched = training (LED on in the reinforced sector), dotted = memory test (probe, LED off). Bar width is the bundle's real duration, so 20 s and 40 s trials both lay out on the same minutes axis. Error bars are SEM across flies (group mode). A stage whose trial count is not a multiple of the bundle size ends with a shorter, flagged bundle.",
+            figure: {
+                data: traces,
+                layout: {
+                    paper_bgcolor: '#ffffff',
+                    plot_bgcolor: '#ffffff',
+                    font: { family: 'Inter, system-ui, sans-serif', color: COLORS.text },
+                    margin: { l: 82, r: 30, t: 35, b: 62 },
+                    height: 470,
+                    barmode: 'overlay',
+                    bargap: 0,
+                    hovermode: 'closest',
+                    legend: { orientation: 'h', x: 0.18, y: 1.08 },
+                    annotations,
+                    xaxis: {
+                        title: 't [min]',
+                        range: [0, lastMin + 0.25],
+                        gridcolor: COLORS.grid,
+                        zeroline: false
+                    },
+                    yaxis: {
+                        title: 'PI [rel. units]',
+                        range: [-1.05, 1.05],
+                        gridcolor: COLORS.grid,
+                        zeroline: true,
+                        zerolinecolor: '#111',
+                        zerolinewidth: 1.2
                     }
                 }
             },
@@ -2276,8 +2463,7 @@
                 level: options.mode === 'group' ? 'group_mean' : 'fly_mean',
                 run_id: options.mode === 'group' ? 'all' : runs[0].id,
                 trial,
-                phase:
-                    (referenceRows.find((row) => row.trial === trial) || {}).phase || '',
+                phase: (referenceRows.find((row) => row.trial === trial) || {}).phase || '',
                 value: means[index],
                 sem: errors[index],
                 n: perRun.length
@@ -2312,12 +2498,12 @@
         return pageFromCells(
             'p3-dose-entries',
             'p3 LED dose and sector entries',
-            `Actual logged LED-on fraction and cue-normalized safe-to-reinforced sector crossings for each 20 s trial. Raw LED level and on-ranges are retained in the CSV. ${p3LoggedLedSummary(runs)}`,
+            `Actual logged LED-on fraction and cue-normalized safe-to-reinforced sector crossings for each trial. Raw LED level and on-ranges are retained in the CSV. ${p3LoggedLedSummary(runs)}`,
             cells,
             2,
             1,
             {
-                xLabel: '20 s trial',
+                xLabel: p3TrialAxisTitle(runs),
                 rowMetrics: metrics.map((metric) => metric.key),
                 rowLabels: metrics.map((metric) => metric.label),
                 axisRanges: { ledOnPercent: [0, 100] },
@@ -2374,7 +2560,7 @@
             metrics.length,
             1,
             {
-                xLabel: '20 s trial',
+                xLabel: p3TrialAxisTitle(runs),
                 rowMetrics: metrics.map((metric) => metric.key),
                 rowLabels: metrics.map((metric) => metric.label),
                 axisRanges: {
@@ -2433,8 +2619,7 @@
                         showlegend: false,
                         line: { color: rgba(sector.color, 0.25), width: 1 },
                         text: sourceLabel(item.run),
-                        hovertemplate:
-                            '%{text}<br>dwell >= %{x:.1f} s<br>%{y:.1f}%<extra></extra>'
+                        hovertemplate: '%{text}<br>dwell >= %{x:.1f} s<br>%{y:.1f}%<extra></extra>'
                     })
                 );
             }
@@ -2499,11 +2684,7 @@
         variants.forEach((variant) => {
             baseline[variant] = A.mean(
                 rows
-                    .filter(
-                        (row) =>
-                            row.phase === 'baseline' &&
-                            row.variant === variant
-                    )
+                    .filter((row) => row.phase === 'baseline' && row.variant === variant)
                     .map((row) => row.preference)
             );
         });
@@ -2555,14 +2736,12 @@
         );
         const maxProbeTrial = Math.max(
             1,
-            ...runs.flatMap((run) =>
-                p3CorrectedProbeRows(run).map((row) => row.probeTrial)
-            )
+            ...runs.flatMap((run) => p3CorrectedProbeRows(run).map((row) => row.probeTrial))
         );
         return pageFromCells(
             'p3-corrected-probe',
             'p3 Baseline-corrected probe preference',
-            'Probe PI minus the same fly\'s mean baseline PI for the matching phase0/phase90 trial variant. Legacy diagnostic runs are matched by their original A/B labels without phase normalization.',
+            "Probe PI minus the same fly's mean baseline PI for the matching phase0/phase90 trial variant. Legacy diagnostic runs are matched by their original A/B labels without phase normalization.",
             [
                 {
                     title: 'Probe after matched baseline correction',
@@ -2654,6 +2833,8 @@
                 p3TimelinePage(runs, opts),
                 p3OrientationPage(runs, opts),
                 p3PreferencePage(runs, opts),
+                p3HeisenbergPage(runs, opts, 2),
+                p3HeisenbergPage(runs, opts, 4),
                 p3CorrectedProbePage(runs, opts),
                 p3DoseEntriesPage(runs, opts),
                 p3QualityPage(runs, opts),

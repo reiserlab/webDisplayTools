@@ -1,0 +1,94 @@
+version: 3
+
+# ============================================================================
+# Mode-2 OPEN-LOOP soak — the sequential-read CONTROL for the SD-card stall
+# campaign (docs/development/sd-stall-causal-test-plan-2026-09-13.md §7). The
+# controller steps the pattern itself at frame_rate fps (no host 0x70s, no
+# seeks: every read is the next frame), on the same two files as the stress
+# soak. If stalls are seek-/FAT-induced this runs clean at any size; if they
+# are per-read count maintenance they recur here at the same read spacing.
+# One iteration ≈ 21 min. No FicTrac plugin: the soak driver skips the
+# simulator-frames check for protocols without one (Studio v0.77).
+#
+# Bench recipe:
+#   pixi run bridge -- --log-dir soak-logs        # still the run logger
+#   Studio ?advanced=1&soak=1 → open this protocol → File ▾ → Soak…
+# ============================================================================
+
+experiment_info:
+  name: "Mode-2 open-loop soak (SD sequential control)"
+  author: "webDisplayTools"
+
+rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
+
+variables:
+  ol_dur: &ol_dur 60
+  iti_dur: &iti_dur 2
+  fps: &fps 200
+
+experiment:
+  - "soak_setup"
+  - block: "open_loop_block"
+    trials:
+      - "ol_sine_2000f"
+      - "ol_bar_200f"
+    repetitions: 10
+    randomize: false
+    intertrial: "soak_iti"
+  - "soak_shutdown"
+
+conditions:
+  - name: "soak_setup"
+    commands:
+      - type: "plugin"
+        plugin_name: "log"
+        command_name: "log"
+        params:
+          message: "SD open-loop control soak iteration starting (Mode-2, 200 fps)"
+          level: "INFO"
+
+  - name: "ol_sine_2000f"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "sine_2000f_gs16"
+        pattern_ID: 0
+        duration: *ol_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+      - type: "wait"
+        duration: *ol_dur
+
+  - name: "ol_bar_200f"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: *ol_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+      - type: "wait"
+        duration: *ol_dur
+
+  - name: "soak_iti"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *iti_dur
+
+  - name: "soak_shutdown"
+    commands:
+      - type: "controller"
+        command_name: "stopDisplay"
+      - type: "plugin"
+        plugin_name: "log"
+        command_name: "log"
+        params:
+          message: "SD open-loop control soak iteration finished"
+          level: "INFO"

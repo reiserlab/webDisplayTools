@@ -123,6 +123,21 @@ checkThrows('ao mode 2 throws', () => Wire.encodeSetAoMode(2));
     const a = Wire.decodeAnalogIn(Uint8Array.from([0x06, 0x00, 0xa4, 0xa1, 0xe3, 0xd2, 0x04]));
     check('decodeAnalogIn ain1 signed', a.ain1Mv, -7263);
     check('decodeAnalogIn ain2', a.ain2Mv, 1234);
+    check(
+        'decodeAnalogIn pre-F1: no flags byte → null/false',
+        String([a.flags, a.bits12, a.cal1, a.cal2]),
+        String([null, false, false, false])
+    );
+    // F1 firmware appends a flags byte: 0x04 = 12-bit raw scale, 0x01/0x02 = per-channel cal.
+    const b = Wire.decodeAnalogIn(
+        Uint8Array.from([0x07, 0x00, 0xa4, 0xa1, 0xe3, 0xd2, 0x04, 0x06])
+    );
+    check(
+        'decodeAnalogIn F1 flags',
+        String([b.flags, b.bits12, b.cal1, b.cal2]),
+        '6,true,false,true'
+    );
+    check('decodeAnalogIn F1 values unchanged', String([b.ain1Mv, b.ain2Mv]), '-7263,1234');
 }
 
 console.log('\n=== trial-params (0x08) — golden vectors from play_pattern.py ===');
@@ -557,6 +572,347 @@ checkBool(
     'decodePanelDisplayMode rejects status!=0',
     Wire.decodePanelDisplayMode(Uint8Array.from([0x03, 0x01, 0x1c, 0x02])) === null
 );
+
+// ── GET_HEALTH 0xCA (fw #50 soak/post-mortem probe) ─────────────────────────
+console.log('\n=== GET_HEALTH (0xCA) ===');
+checkBytes('encodeGetHealth', Wire.encodeGetHealth(), '01 ca');
+check('OPCODES.GET_HEALTH', Wire.OPCODES.GET_HEALTH, 0xca);
+check('HEALTH_PAYLOAD_BYTES', Wire.HEALTH_PAYLOAD_BYTES, 55);
+{
+    // Build a 55-byte payload field by field (LE).
+    const u8 = (v) => [v & 0xff];
+    const u16 = (v) => [v & 0xff, (v >> 8) & 0xff];
+    const u32 = (v) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
+    const payload = [].concat(
+        u8(1), // ver
+        u8(0x0b), // flags: sd_mounted | pattern_open | breadcrumb_valid (not display_active)
+        u32(123456), // uptime_ms
+        u32(9876543), // loop_count
+        u32(4800), // loop_max_us
+        u32(310), // loop_max_1s_us
+        u32(77777), // sd_reads
+        u32(2900), // sd_read_max_us
+        u8(0), // sd_err
+        u32(0), // sd_err_data
+        u32(0x12345678), // frames_sent
+        u32(0xfffffffe), // isr_count (unsigned)
+        u32(70707), // cmd70_count
+        u8(4), // state = SHOW_FRAME
+        u16(199), // cur_frame
+        u32(0x00000800), // reset_cause (bit 11 = ... any u32 survives)
+        u8(1), // prev_breadcrumb = sd_read
+        u32(4000000000) // prev_breadcrumb_us (unsigned)
+    );
+    check('fixture is 55 bytes', payload.length, 55);
+    const frame = Uint8Array.from([payload.length + 2, 0x00, 0xca].concat(payload));
+    const h = Wire.decodeHealth(frame);
+    checkBool('decodeHealth returns an object', !!h);
+    check('ver', h.ver, 1);
+    check(
+        'flags decoded',
+        [h.sdMounted, h.patternOpen, h.displayActive, h.breadcrumbValid].join(','),
+        'true,true,false,true'
+    );
+    check('uptimeMs', h.uptimeMs, 123456);
+    check('loopCount', h.loopCount, 9876543);
+    check('loopMaxUs / loopMax1sUs', [h.loopMaxUs, h.loopMax1sUs].join(','), '4800,310');
+    check('sdReads / sdReadMaxUs', [h.sdReads, h.sdReadMaxUs].join(','), '77777,2900');
+    check('sdErr / sdErrData', [h.sdErr, h.sdErrData].join(','), '0,0');
+    check('framesSent', h.framesSent, 0x12345678);
+    check('isrCount unsigned', h.isrCount, 4294967294);
+    check('cmd70Count', h.cmd70Count, 70707);
+    check('state / curFrame', [h.state, h.curFrame].join(','), '4,199');
+    check('resetCause u32', h.resetCause, 0x800);
+    check('prevBreadcrumb + name', [h.prevBreadcrumb, h.prevBreadcrumbOp].join(','), '1,sd_read');
+    check('prevBreadcrumbUs unsigned', h.prevBreadcrumbUs, 4000000000);
+    checkBool('short payload → null', Wire.decodeHealth(frame.slice(0, 20)) === null);
+    checkBool(
+        'status!=0 → null',
+        Wire.decodeHealth(Uint8Array.from([payload.length + 2, 0x01, 0xca].concat(payload))) ===
+            null
+    );
+    // Longer payload (future fields appended) still decodes.
+    const longer = Uint8Array.from([payload.length + 4, 0x00, 0xca].concat(payload, [9, 9]));
+    checkBool('longer payload tolerated', Wire.decodeHealth(longer) !== null);
+    checkBool(
+        '2-byte tail does not decode as the slow-op tail',
+        Wire.decodeHealth(longer).slowOp === undefined
+    );
+    // The shipped 66-byte layout: 11-byte slowest-op tail.
+    const tail = [].concat(u8(0x01), u8(1), u32(1300000), u8(2), u32(4200));
+    const full = Uint8Array.from(
+        [payload.length + tail.length + 2, 0x00, 0xca].concat(payload, tail)
+    );
+    const hf = Wire.decodeHealth(full);
+    check('HEALTH_PAYLOAD_BYTES_FULL', Wire.HEALTH_PAYLOAD_BYTES_FULL, 66);
+    check('tail: prevBreadcrumbArg (opcode of the reset command)', hf.prevBreadcrumbArg, 0x01);
+    check('tail: prevSlowOp + name', [hf.prevSlowOp, hf.prevSlowOpName].join(','), '1,sd_read');
+    check('tail: prevSlowUs', hf.prevSlowUs, 1300000);
+    check('tail: slowOp + name', [hf.slowOp, hf.slowOpName].join(','), '2,spi_transfer');
+    check('tail: slowUs', hf.slowUs, 4200);
+}
+// GET_FRAME_POSITION 0x72: cur_frame u16 LE + frame_count u16 LE.
+checkBytes('encodeGetFramePosition', Wire.encodeGetFramePosition(), '01 72');
+{
+    const fp = Wire.decodeFramePosition(
+        Uint8Array.from([0x06, 0x00, 0x72, 0xc7, 0x00, 0xc8, 0x00])
+    );
+    check('decodeFramePosition index', fp && fp.index, 199);
+    check('decodeFramePosition frameCount', fp && fp.frameCount, 200);
+    checkBool(
+        'decodeFramePosition rejects status!=0',
+        Wire.decodeFramePosition(Uint8Array.from([0x06, 0x01, 0x72, 0, 0, 0, 0])) === null
+    );
+}
+// GET_FIRMWARE_VERSION 0xCB: build identity (ships with the health capability).
+checkBytes('encodeGetFirmwareVersion', Wire.encodeGetFirmwareVersion(), '01 cb');
+check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46);
+{
+    const pad = (s, n) => (s + ' '.repeat(n)).slice(0, n);
+    const bytes = (s) => Array.from(s).map((c) => c.charCodeAt(0));
+    const payload = [1, 2, 10, 0x01].concat(
+        bytes(pad('06a6f25', 8)),
+        bytes('2026-09-12'),
+        bytes(pad('feat/controller-health-2x10', 24))
+    );
+    check('fixture is 46 bytes', payload.length, 46);
+    const v = Wire.decodeFirmwareVersion(
+        Uint8Array.from([payload.length + 2, 0x00, 0xcb].concat(payload))
+    );
+    check('ver', v.ver, 1);
+    check('arena rows×cols', v.arena, '2x10');
+    check('sha trimmed', v.sha, '06a6f25');
+    check('date', v.date, '2026-09-12');
+    check('flags bit 2 = telemetry ring (absent here)', v.telemetry, false);
+    check('flags bit 3 = crash report / health v2 (absent here)', v.crashReport, false);
+    check('flags bit 4 = free-running refresh timer (absent here)', v.freeRunningTimer, false);
+    check('flags bit 5 = SD fast path / GET_SD_INFO (absent here)', v.sdFastPath, false);
+    {
+        const p2 = payload.slice();
+        p2[3] = 0x3c; // telemetry + crashreport + freerun + sdfast, clean tree
+        const v2 = Wire.decodeFirmwareVersion(
+            Uint8Array.from([p2.length + 2, 0x00, 0xcb].concat(p2))
+        );
+        check(
+            'flags 0x3c decode',
+            [v2.telemetry, v2.crashReport, v2.freeRunningTimer, v2.sdFastPath, v2.dirty].join(','),
+            'true,true,true,true,false'
+        );
+        check('label suffixes', v2.label.endsWith(' freerun sdfast'), true);
+    }
+    // GET_SD_INFO (0xCD): 30 B fixture — SanDisk-style CID, 32 GB SDHC, FAT32, 32 KiB clusters.
+    {
+        checkBytes('encodeGetSdInfo', Wire.encodeGetSdInfo(), '01 cd');
+        const cid = [
+            0x03, 0x53, 0x44, 0x53, 0x43, 0x33, 0x32, 0x47, 0x80, 0x12, 0x34, 0xab, 0xcd, 0x01,
+            0x75, 0x01
+        ];
+        const sd = [1, 0x07, 3, 32].concat(
+            [0x00, 0xb0, 0xb9, 0x03], // 62,500,864 sectors = 32.0 GB
+            [0x00, 0x80, 0x00, 0x00], // 32 KiB clusters
+            cid,
+            [0xff, 0]
+        );
+        check('sd_info fixture is 30 bytes', sd.length, 30);
+        const si = Wire.decodeSdInfo(Uint8Array.from([sd.length + 2, 0x00, 0xcd].concat(sd)));
+        check(
+            'sd_info mounted/cid/csd',
+            [si.mounted, si.cidValid, si.csdValid].join(','),
+            'true,true,true'
+        );
+        check(
+            'sd_info manufacturer + name',
+            [si.manufacturer, si.oid, si.pnm, si.prv].join('|'),
+            'SanDisk|SD|SC32G|8.0'
+        );
+        check(
+            'sd_info serial + date',
+            [si.psnHex, si.mdtYear, si.mdtMonth].join(','),
+            '1234abcd,2023,5'
+        );
+        check(
+            'sd_info geometry',
+            [
+                si.cardTypeName,
+                si.fatTypeName,
+                si.capacityGB,
+                si.bytesPerCluster,
+                si.sectorsPerCluster
+            ].join(','),
+            'SDHC/SDXC,FAT32,32,32768,64'
+        );
+        check(
+            'sd_info label',
+            si.label,
+            'SanDisk SC32G 8.0 sn 1234abcd (2023-05) 32 GB SDHC/SDXC FAT32 32 KiB clusters'
+        );
+        const none = sd.slice();
+        none[1] = 0;
+        const sn = Wire.decodeSdInfo(Uint8Array.from([none.length + 2, 0x01, 0xcd].concat(none)));
+        check(
+            'sd_info status 1 (no card) still decodes',
+            [sn && sn.mounted, sn && sn.label].join(','),
+            'false,no card'
+        );
+        checkBool(
+            'sd_info short payload → null',
+            Wire.decodeSdInfo(Uint8Array.from([5, 0x00, 0xcd, 1, 0, 0])) === null
+        );
+        check(
+            'sd_info diag byte 0 → no diag',
+            [si.sdDiag, si.legacySeek, si.noSameIndexSkip].join(','),
+            '0,false,false'
+        );
+        const dg = sd.slice();
+        dg[29] = 0x03;
+        const sdg = Wire.decodeSdInfo(Uint8Array.from([dg.length + 2, 0x00, 0xcd].concat(dg)));
+        check(
+            'sd_info diag byte 3 decodes + label suffix',
+            [
+                sdg.legacySeek,
+                sdg.noSameIndexSkip,
+                sdg.label.endsWith('[diag legacy-seek no-skip]')
+            ].join(','),
+            'true,true,true'
+        );
+        checkBytes('encodeSetSdDiag(1)', Wire.encodeSetSdDiag(1), '02 ce 01');
+        checkBytes(
+            'encodeSetSdDiag(legacy|noskip)',
+            Wire.encodeSetSdDiag(Wire.SD_DIAG_LEGACY_SEEK | Wire.SD_DIAG_NO_SAME_INDEX_SKIP),
+            '02 ce 03'
+        );
+        checkThrows('encodeSetSdDiag rejects reserved bits', () => Wire.encodeSetSdDiag(4));
+    }
+    check(
+        'ISR names 4–7 (usb/sdhc/lpspi/pit)',
+        Wire.HEALTH_ISR_NAMES.slice(4).join(','),
+        'usb,sdhc,lpspi,pit'
+    );
+    check('branch truncated to 24', v.branch, 'feat/controller-health-2');
+    check('dirty flag', v.dirty, true);
+    check('debug flag', v.debug, false);
+    check('label', v.label, '06a6f25* 2x10 2026-09-12 feat/controller-health-2');
+    checkBool(
+        'status!=0 → null',
+        Wire.decodeFirmwareVersion(
+            Uint8Array.from([payload.length + 2, 0x01, 0xcb].concat(payload))
+        ) === null
+    );
+    checkBool(
+        'short → null',
+        Wire.decodeFirmwareVersion(Uint8Array.from([5, 0x00, 0xcb, 1, 2, 10])) === null
+    );
+}
+// GET_HEALTH ver 2 tail (fw fb11681): 89 B — ISR breadcrumb + watchdog PC capture.
+{
+    const u32 = (v) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
+    const base = new Array(66).fill(0);
+    base[0] = 2; // ver
+    base[55] = 0x70; // prev_breadcrumb_arg
+    const tail = [3].concat(
+        u32(123456),
+        u32(0x6000abcd),
+        u32(0x60001235),
+        [0x0f],
+        [0],
+        u32(42),
+        u32(9999)
+    );
+    const payload = base.concat(tail);
+    check('v2 payload is 89 B', payload.length, Wire.HEALTH_PAYLOAD_BYTES_V2);
+    const h = Wire.decodeHealth(Uint8Array.from([payload.length + 2, 0x00, 0xca].concat(payload)));
+    check('prev ISR = watchdog', h.prevIsrLastName, 'watchdog');
+    check('prev ISR count', h.prevIsrCount, 123456);
+    check('captured PC hex', h.prevWdogPcHex, '0x6000abcd');
+    check(
+        'wdog flags decoded',
+        [
+            h.wdogArmed,
+            h.prevResetWasWatchdog,
+            h.prevPcCaptured,
+            h.wdogCompiledIn,
+            h.wdogSuspended
+        ].join(),
+        'true,true,true,true,false'
+    );
+    check('kicks', h.wdogKicks, 9999);
+    check(
+        'sub-op names',
+        [Wire.HEALTH_BREADCRUMB_OPS[6], Wire.HEALTH_BREADCRUMB_OPS[9]].join(),
+        'cmd_disarm_timer,cmd_respond'
+    );
+    const v3 = payload.concat(u32(0x2520), u32(0x36e0));
+    check('v3 payload is 97 B', v3.length, Wire.HEALTH_PAYLOAD_BYTES_V3);
+    const h3 = Wire.decodeHealth(Uint8Array.from([v3.length + 2, 0x00, 0xca].concat(v3)));
+    check('v3 CS at boot', h3.wdogCsBootHex, '0x2520');
+    check(
+        'v3 hardware EN/INT/UPDATE/RCS/CMD32',
+        [h3.wdogHwEnabled, h3.wdogHwInt, h3.wdogHwUpdate, h3.wdogHwRcs, h3.wdogHwCmd32].join(),
+        'true,true,true,true,true'
+    );
+    check('v2 payload has no v3 fields', h.wdogCsNow, undefined);
+    const v4 = v3.concat(u32(500), u32(1000), [0x10]);
+    check('v4 payload is 106 B', v4.length, Wire.HEALTH_PAYLOAD_BYTES_V4);
+    const h4 = Wire.decodeHealth(Uint8Array.from([v4.length + 2, 0x00, 0xca].concat(v4)));
+    check('v4 timeout seconds', h4.wdogTimeoutS, 2);
+    check('v4 verify bits', [h4.wdogVerifyRcsTimeout, h4.wdogVerifyKeyRetry].join(), 'false,true');
+    const u16b = (v) => [v & 0xff, (v >> 8) & 0xff];
+    const v5 = v4.concat(u16b(16), u16b(0), u16b(1), u16b(7));
+    check('v5 payload is 114 B', v5.length, Wire.HEALTH_PAYLOAD_BYTES_V5);
+    const h5 = Wire.decodeHealth(Uint8Array.from([v5.length + 2, 0x00, 0xca].concat(v5)));
+    check(
+        'v5 CNT diagnostics',
+        [h5.wdogCntBeforeMax, h5.wdogCntAfterMin, h5.wdogCntAfterMax, h5.wdogCntNow].join(),
+        '16,0,1,7'
+    );
+    const h66 = Wire.decodeHealth(Uint8Array.from([66 + 2, 0x00, 0xca].concat(base)));
+    check('66 B payload has no v2 fields', h66.wdogFlags, undefined);
+}
+// GET_CRASHREPORT 0xCC: PJRC arm_fault_info_struct passthrough.
+{
+    check('encodeGetCrashReport', Array.from(Wire.encodeGetCrashReport()).join(), '1,204');
+    const u32 = (v) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
+    const rec = [].concat(
+        u32(11), // len in WORDS (sizeof(arm_fault_info_struct)/4)
+        u32(3),
+        u32(0x00008200),
+        u32(0x40000000),
+        u32(0),
+        u32(0x2027f000),
+        u32(0x60001234),
+        u32(0x21000000),
+        [0, 0, 0x48, 0x42],
+        u32(1789242267),
+        u32(0xdeadbeef)
+    );
+    const payload = rec.concat(new Array(128 - rec.length).fill(0));
+    payload[0x40] = 1;
+    payload[0x44] = 7;
+    const c = Wire.decodeCrashReport(
+        Uint8Array.from([payload.length + 2, 0x00, 0xcc].concat(payload))
+    );
+    check('fault present', c.present, true);
+    check('fault name', c.faultName, 'HardFault');
+    check('bfar', c.bfar, 0x2027f000);
+    check('return address', c.retAddrHex, '0x60001234');
+    checkBool('temperature decoded (~50 °C)', Math.abs(c.tempC - 50) < 0.01, c.tempC);
+    check(
+        'pjrc breadcrumb mask + first word',
+        [c.pjrcBreadcrumbMask, c.pjrcBreadcrumbs[0]].join(),
+        '1,7'
+    );
+    const empty = Wire.decodeCrashReport(
+        Uint8Array.from([130, 0x00, 0xcc].concat(new Array(128).fill(0)))
+    );
+    check('empty record → present=false', empty.present, false);
+}
+// Capability bit 7 = health.
+{
+    const ci = Uint8Array.from([0x04, 0x00, 0xc2, 0x02, 0xa3]);
+    const d = Wire.decodeControllerInfo(ci);
+    checkBool('capability bit 7 → health', d.capabilities.includes('health'));
+    checkBool('bit 5 io_ext still decoded alongside', d.capabilities.includes('io_ext'));
+}
 
 console.log(`\n=== Summary ===\n${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures > 0 ? 1 : 0);

@@ -4397,57 +4397,206 @@ console.log('\n--- Suite 36: trialParams led_activation (conditional LED) ---');
     );
 }
 
-// ─── Suite 37: closed-loop bias params on startClosedLoop (LAB-185) ─────────
+// ─── Suite 38: closed-loop bias params on startClosedLoop (LAB-185) ─────────
 // The bias/disturbance waveform is authored as three params on the `fictrac`
 // plugin's startClosedLoop command. Nothing in protocol-yaml-v3.js knows about
 // them by name — plugin `params` is a whitelisted, deep-cloned free-form mapping —
 // so this suite PINS that assumption instead of trusting it, and closes a real
 // coverage gap: v3_fictrac_closed_loop.yaml matches the CI path filter but was
 // previously loaded by no test at all.
-console.log('\n--- Suite 37: startClosedLoop bias params (closed-loop disturbance) ---');
+console.log('\n--- Suite 38: startClosedLoop bias params (closed-loop disturbance) ---');
 {
     const text = readFixture('v3_fictrac_closed_loop.yaml');
     const exp = parseV3Protocol(text);
 
     const byName = (n) => exp.conditions.find((c) => c.name === n);
     const biasCond = byName('closed_loop_bias_sine');
-    checkTrue('37.1: the bias condition parses', !!biasCond);
+    checkTrue('38.1: the bias condition parses', !!biasCond);
     const scl = biasCond.commands.find((c) => c.command_name === 'startClosedLoop');
-    checkTrue('37.2: startClosedLoop command found', !!scl);
-    check('37.3: bias_type parses', scl.params.bias_type, 'sine');
-    check('37.4: bias_amplitude parses (deg/s peak)', scl.params.bias_amplitude, 90);
-    check('37.5: bias_frequency parses', scl.params.bias_frequency, 0.5);
-    check('37.6: the gain override still parses alongside', scl.params.gain, 1.8);
+    checkTrue('38.2: startClosedLoop command found', !!scl);
+    check('38.3: bias_type parses', scl.params.bias_type, 'sine');
+    check('38.4: bias_amplitude parses (deg/s peak)', scl.params.bias_amplitude, 90);
+    check('38.5: bias_frequency parses', scl.params.bias_frequency, 0.5);
+    check('38.6: the gain override still parses alongside', scl.params.gain, 1.8);
     checkTrue(
-        '37.7: bias params are NOT swallowed into _unknownKeys',
+        '38.7: bias params are NOT swallowed into _unknownKeys',
         !(scl._unknownKeys && 'params' in scl._unknownKeys)
     );
     // The plain closed-loop condition must stay bias-free — no default injection.
     const plain = byName('closed_loop_rotation');
     const plainScl = plain.commands.find((c) => c.command_name === 'startClosedLoop');
-    checkTrue('37.8: omitting bias leaves it absent', plainScl.params.bias_type === undefined);
+    checkTrue('38.8: omitting bias leaves it absent', plainScl.params.bias_type === undefined);
 
     const regen = generateV3Protocol(exp);
-    checkTrue('37.9: bias_type survives regen YAML', /bias_type:/.test(regen));
-    checkTrue('37.10: bias_amplitude survives regen', /bias_amplitude:/.test(regen));
-    checkTrue('37.11: bias_frequency survives regen', /bias_frequency:/.test(regen));
+    checkTrue('38.9: bias_type survives regen YAML', /bias_type:/.test(regen));
+    checkTrue('38.10: bias_amplitude survives regen', /bias_amplitude:/.test(regen));
+    checkTrue('38.11: bias_frequency survives regen', /bias_frequency:/.test(regen));
     const exp2 = parseV3Protocol(regen);
     const scl2 = exp2.conditions
         .find((c) => c.name === 'closed_loop_bias_sine')
         .commands.find((c) => c.command_name === 'startClosedLoop');
-    check('37.12: re-parse bias_type matches', scl2.params.bias_type, 'sine');
-    check('37.13: re-parse bias_amplitude matches', scl2.params.bias_amplitude, 90);
-    check('37.14: re-parse bias_frequency matches', scl2.params.bias_frequency, 0.5);
-    check('37.15: no blocking errors', collectBlockingErrors(exp).errors.length, 0);
+    check('38.12: re-parse bias_type matches', scl2.params.bias_type, 'sine');
+    check('38.13: re-parse bias_amplitude matches', scl2.params.bias_amplitude, 90);
+    check('38.14: re-parse bias_frequency matches', scl2.params.bias_frequency, 0.5);
+    check('38.15: no blocking errors', collectBlockingErrors(exp).errors.length, 0);
 
     // The designer builds its param editors from the registry schema, so the three
     // fields must be discoverable through the same lookup the UI uses.
     const sch = getV3CommandParams(exp, 'plugin', 'fictrac', 'startClosedLoop');
-    checkTrue('37.16: bias_type in schema', !!sch.bias_type);
-    check('37.17: bias_type renders as a select', sch.bias_type.type, 'select');
-    checkTrue('37.18: bias_amplitude in schema', !!sch.bias_amplitude);
-    checkTrue('37.19: bias_frequency in schema', !!sch.bias_frequency);
-    check('37.20: bias_frequency default is 1, not the illegal 0', sch.bias_frequency.default, 1);
+    checkTrue('38.16: bias_type in schema', !!sch.bias_type);
+    check('38.17: bias_type renders as a select', sch.bias_type.type, 'select');
+    checkTrue('38.18: bias_amplitude in schema', !!sch.bias_amplitude);
+    checkTrue('38.19: bias_frequency in schema', !!sch.bias_frequency);
+    check('38.20: bias_frequency default is 1, not the illegal 0', sch.bias_frequency.default, 1);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Suite 37: led_activation sub-fields are addressable by path (v0.82)
+// The Studio's LED activation pane binds level / hysteresis / range endpoints
+// to anchors on their own paths. That needs (a) a plain object written via
+// docSet to land as a real YAML node (setIn used to store the raw JS object,
+// so any nested setIn threw "Expected YAML collection"), (b) in-place range
+// append/delete, and (c) sibling edits that leave existing aliases alone.
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n--- Suite 37: led_activation sub-fields by path (anchor binding) ---');
+{
+    const yaml37 = [
+        'version: 3',
+        'experiment_info:',
+        '  name: "led37"',
+        '  author: "test"',
+        'rig: rigs/x.yaml',
+        'variables:',
+        '  led_level: &led_level 35',
+        '  band_lo: &band_lo 50',
+        'conditions:',
+        '  - name: c1',
+        '    commands:',
+        '      - type: controller',
+        '        command_name: trialParams',
+        '        pattern: p.pat',
+        '        duration: 5',
+        '        mode: 3',
+        '      - type: controller',
+        '        command_name: trialParams',
+        '        pattern: q.pat',
+        '        duration: 5',
+        '        mode: 3',
+        '        led_activation:',
+        '          level: *led_level',
+        '          hysteresis: 2',
+        '          on_ranges:',
+        '            - [*band_lo, 100]',
+        'experiment:',
+        '  - c1',
+        ''
+    ].join('\n');
+    const exp = parseV3Protocol(yaml37);
+    const cmd0 = ['conditions', 0, 'commands', 0];
+    const la0 = [...cmd0, 'led_activation'];
+
+    // (a) wholesale seed (what "+ add led_activation" does) → nested writes work
+    docSet(exp, la0, { level: 20, hysteresis: 0, on_ranges: [] });
+    let threw = null;
+    try {
+        docSet(exp, [...la0, 'level'], 40);
+    } catch (e) {
+        threw = e.message;
+    }
+    check('37.1: nested docSet after a plain-object docSet does not throw', threw, null);
+    check('37.2: nested value mirrored', exp.conditions[0].commands[0].led_activation.level, 40);
+    checkTrue(
+        '37.3: nested value in YAML',
+        /led_activation:\n\s+level: 40\n/.test(generateV3Protocol(exp))
+    );
+
+    // bind level to an anchor by nested path
+    docBindToAnchor(exp, [...la0, 'level'], 'led_level');
+    check(
+        '37.4: aliasNameAt sees the nested alias',
+        aliasNameAt(exp, [...la0, 'level']),
+        'led_level'
+    );
+    check(
+        '37.5: mirror holds the resolved value',
+        exp.conditions[0].commands[0].led_activation.level,
+        35
+    );
+    checkTrue(
+        '37.6: YAML has level: *led_level',
+        /level: \*led_level/.test(generateV3Protocol(exp))
+    );
+
+    // (b) in-place range append / endpoint bind / delete
+    docSet(exp, [...la0, 'on_ranges', 0], [0, 0]);
+    docSet(exp, [...la0, 'on_ranges', 1], [10, 20]);
+    check(
+        '37.7: two ranges appended in place',
+        JSON.stringify(exp.conditions[0].commands[0].led_activation.on_ranges),
+        '[[0,0],[10,20]]'
+    );
+    threw = null;
+    try {
+        docSet(exp, [...la0, 'on_ranges', 1, 1], 25);
+    } catch (e) {
+        threw = e.message;
+    }
+    check('37.8: endpoint docSet on an appended range does not throw', threw, null);
+    docBindToAnchor(exp, [...la0, 'on_ranges', 1, 0], 'band_lo');
+    check('37.9: endpoint alias visible', aliasNameAt(exp, [...la0, 'on_ranges', 1, 0]), 'band_lo');
+    check(
+        '37.10: endpoint mirror resolved',
+        JSON.stringify(exp.conditions[0].commands[0].led_activation.on_ranges[1]),
+        '[50,25]'
+    );
+    docDelete(exp, [...la0, 'on_ranges', 0]);
+    check(
+        '37.11: docDelete removes one range, keeps the bound one',
+        JSON.stringify(exp.conditions[0].commands[0].led_activation.on_ranges),
+        '[[50,25]]'
+    );
+    checkTrue(
+        '37.12: no anchor/alias pair synthesized for identical [0, 0] ranges',
+        !/&a\d|\*a\d/.test(generateV3Protocol(exp))
+    );
+
+    // (c) sibling edits leave hand-written aliases alone (the v0.81 flattening bug)
+    const la1 = ['conditions', 0, 'commands', 1, 'led_activation'];
+    docSet(exp, [...la1, 'hysteresis'], 3);
+    docSet(exp, [...la1, 'on_ranges', 1], [150, 180]);
+    docDelete(exp, [...la1, 'on_ranges', 1]);
+    check(
+        '37.13: level alias survives sibling edits',
+        aliasNameAt(exp, [...la1, 'level']),
+        'led_level'
+    );
+    check(
+        '37.14: range-endpoint alias survives',
+        aliasNameAt(exp, [...la1, 'on_ranges', 0, 0]),
+        'band_lo'
+    );
+
+    // unbind by nested path → literal; round-trip
+    docUnbindAnchor(exp, [...la0, 'level']);
+    check('37.15: unbound nested field is literal', aliasNameAt(exp, [...la0, 'level']), null);
+    const regen = generateV3Protocol(exp);
+    const exp2 = parseV3Protocol(regen);
+    check(
+        '37.16: re-parse level (unbound literal)',
+        exp2.conditions[0].commands[0].led_activation.level,
+        35
+    );
+    check(
+        '37.17: re-parse bound endpoint resolves',
+        JSON.stringify(exp2.conditions[0].commands[0].led_activation.on_ranges),
+        '[[50,25]]'
+    );
+    check(
+        '37.18: re-parse cmd1 level still aliased',
+        exp2.conditions[0].commands[1].led_activation.level,
+        35
+    );
+    check('37.19: no blocking errors', collectBlockingErrors(exp2).errors.length, 0);
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────

@@ -73,6 +73,11 @@ jobs:
       - name: Run G6 wire encoder tests
         run: node tests/test-arena-wire-g6.js
 
+      - name: Validate configs/metadata controlled-vocab YAML
+        # These pick-lists are edited in the GitHub UI; a bad indent silently
+        # empties the Arena Studio experimenter dropdown (2026-08-27).
+        run: node tests/test-metadata-yaml.js
+
       - name: Run G6 sequence runner tests
         run: node tests/test-arena-runner-g6.js
 

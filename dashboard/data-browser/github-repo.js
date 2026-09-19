@@ -8,6 +8,12 @@
     const BENCH_KEY = 'studio_bench_id';
     const FOLDERS_KEY_PREFIX = 'dashboard_runlog_folders:';
     const DEFAULT_REPO = 'reiserlab/cshl-2026-course';
+    // Run logs are committed as `.jsonl.gz` since Studio v0.72; fetchRaw reads
+    // BYTES and lets the shared format module inflate (magic-detected, so a raw
+    // `.jsonl` still works). Vendored byte-identical copy of js/runlog-format.js.
+    const F =
+        global.RunlogFormat ||
+        (typeof require === 'function' ? require('./vendor/runlog-format.js') : null);
 
     function currentToken() {
         return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '';
@@ -124,7 +130,7 @@
     async function signIn(repoValue) {
         const repo = parseRepo(repoValue || currentRepo());
         const pat = prompt(
-            `Paste a GitHub fine-grained personal access token for ${repo.full}.\n` +
+            `Paste a GitHub personal access token for ${repo.full} (fine-grained for org members; classic for the shared course account).\n` +
                 'The course token should have Contents read/write access.\n\n' +
                 'It is stored in sessionStorage first. The next prompt can remember it on this browser.'
         );
@@ -175,21 +181,37 @@
         if (prefixBytes) requestHeaders.Range = `bytes=0-${Math.max(1023, prefixBytes - 1)}`;
         const response = await fetch(contentsUrl(repo, path, ref), { headers: requestHeaders });
         if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
-        if (!prefixBytes || !response.body || !response.body.getReader) return response.text();
+        const inflateAll = (bytes) =>
+            F ? F.readRunlogText(bytes) : new TextDecoder().decode(bytes);
+        if (!prefixBytes || !response.body || !response.body.getReader) {
+            return inflateAll(new Uint8Array(await response.arrayBuffer()));
+        }
 
+        // Prefix read (catalog metadata): stream bytes until the budget is spent, or
+        // — for a plain-text file — until a complete run_metadata line is in hand.
+        // A gzip prefix cannot be scanned as text; it is inflated (truncation-
+        // tolerant) once the budget is read, which still yields the file's head.
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        const chunks = [];
+        let total = 0;
         let text = '';
+        let gzip = null;
         try {
-            while (text.length < prefixBytes) {
+            while (total < prefixBytes) {
                 const part = await reader.read();
                 if (part.done) break;
-                text += decoder.decode(part.value, { stream: true });
-                if (
-                    text.includes('"run_metadata"') &&
-                    text.split(/\r?\n/).some((line) => line.includes('"run_metadata"'))
-                )
-                    break;
+                chunks.push(part.value);
+                total += part.value.length;
+                if (gzip === null) gzip = F ? F.isGzip(part.value) : false;
+                if (!gzip) {
+                    text += decoder.decode(part.value, { stream: true });
+                    if (
+                        text.includes('"run_metadata"') &&
+                        text.split(/\r?\n/).some((line) => line.includes('"run_metadata"'))
+                    )
+                        break;
+                }
             }
         } finally {
             try {
@@ -198,11 +220,42 @@
                 /* response may already be complete */
             }
         }
-        return text;
+        if (!gzip) return text;
+        const all = new Uint8Array(total);
+        let at = 0;
+        for (const c of chunks) {
+            all.set(c, at);
+            at += c.length;
+        }
+        return F.readRunlogPrefixText(all);
     }
 
     function fetchPrefix(repoValue, path, ref, bytes) {
         return fetchRaw(repoValue, path, ref, bytes || 65536);
+    }
+
+    /**
+     * Last `bytes` of a file via its Contents-API `download_url`
+     * (raw.githubusercontent.com honours suffix Range requests — probed 2026-09-06:
+     * 206 with 2048 bytes; api.github.com ignores Range and streams the whole file).
+     * Returns the tail text, or null when the server did not return a partial
+     * response (so callers never accidentally download a 50 MB log for a duration).
+     */
+    async function fetchSuffix(downloadUrl, bytes) {
+        if (!downloadUrl) return null;
+        const token = currentToken();
+        const requestHeaders = { Range: `bytes=-${Math.max(512, bytes || 2048)}` };
+        if (token) requestHeaders.Authorization = `Bearer ${token}`;
+        const response = await fetch(downloadUrl, { headers: requestHeaders });
+        if (response.status !== 206) {
+            try {
+                if (response.body && response.body.cancel) await response.body.cancel();
+            } catch (_) {
+                /* nothing to cancel */
+            }
+            return null;
+        }
+        return response.text();
     }
 
     function fetchText(repoValue, path, ref) {
@@ -255,6 +308,7 @@
         repoInfo,
         listPath,
         fetchPrefix,
+        fetchSuffix,
         fetchText,
         mapLimit,
         repoTreeUrl

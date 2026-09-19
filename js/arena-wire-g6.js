@@ -66,6 +66,13 @@ const ArenaWireG6 = (function () {
         GET_CONTROLLER_INFO: 0xc2, // returns {version, capability_bitmap}
         SET_DIAG_OUTPUT: 0xc3, // [len=2,0xC3,on] mute/unmute DEBUG_SERIAL diagnostics
         GET_DIAG_OUTPUT: 0xc4, // returns current g_dbg_on state (0/1)
+        GET_HEALTH: 0xca, // [01 CA] controller health counters + previous-boot breadcrumb (fw #50)
+        GET_CRASHREPORT: 0xcc, // [01 CC] raw 128 B at OCRAM 0x2027FF80: PJRC arm_fault_info_struct + breadcrumbs (gate on 0xCB flags bit 3 = crash report)
+        GET_FIRMWARE_VERSION: 0xcb, // [01 CB] build identity: git SHA, branch, date, arena rows×cols (gate on cap bit 7)
+        GET_SD_INFO: 0xcd, // SD card identity + volume geometry (fw sd_fastpath; gate on 0xCB flags bit 5)
+        SET_SD_DIAG: 0xce, // [02 CE flags] bench A/B: bit0 legacy FAT-chain seek (next open), bit1 no same-index skip (gate on 0xCB bit 6 = sdDiag)
+        SET_TELEMETRY: 0xa8, // [04 A8 flags rate_lo rate_hi] telemetry ring: bit0 events on/off (fw feat/telemetry-ring)
+        GET_TELEMETRY_BLOCK: 0xa9, // [08 A9 ack_seq u32 max_bytes u16 flags] ack-cursor drain of the ring (js/arena-telemetry.js decodes)
         SET_AO_VOLTAGE: 0xa0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV
         GET_AO_VOLTAGE: 0xa1, // [01 A1] returns last commanded AO level as uint16 LE mV
         SET_AO_MODE: 0xa3, // [02 A3 mode] 0=programmable | 1=frame_number (io_ext fw)
@@ -75,6 +82,7 @@ const ArenaWireG6 = (function () {
         SET_DIO_ROLE: 0xac, // [03 AC port role] "Digital IO 1/2 (5V)" role (io_ext fw)
         GET_DIO_ROLE: 0xad, // [01 AD] returns [role1, level1, role2, level2] (io_ext fw)
         SET_FRAME_POSITION: 0x70, // Mode 3: host-commanded frame index
+        GET_FRAME_POSITION: 0x72, // [01 72] returns cur_frame_index + frame_count, both uint16 LE
         // Panel firmware / ISP (g6_03-controller.md § Panel firmware update).
         SET_FIRMWARE_FILE: 0xe0, // [0xE0, len64 LE, data…] upload image → /firmware/panel.bin; reply u32 LE CRC-32
         GET_FIRMWARE_INFO: 0xe3, // [01 E3] reply: 32-byte footer {magic[8], version[16], crc32 LE, size LE}
@@ -115,7 +123,10 @@ const ArenaWireG6 = (function () {
         // Extended I/O command set (#135): SET_DIO_ROLE 0xAC / GET_DIO_ROLE
         // 0xAD / SET_AO_MODE 0xA3 / GET_ANALOG_IN 0xA4 — hosts detect the
         // DIO-role machinery by this bit, not by firmware-version guessing.
-        [5, 'io_ext']
+        [5, 'io_ext'],
+        // Controller health counters + reset breadcrumb (GET_HEALTH 0xCA) — the
+        // fw #50 soak/post-mortem probe. Hosts grey the health readout without it.
+        [7, 'health']
     ];
 
     // ───────────────────────── validation helpers ─────────────────────────
@@ -670,6 +681,451 @@ const ArenaWireG6 = (function () {
         return r.payload[0] | (r.payload[1] << 8);
     }
 
+    // get-frame-position (0x72) — Mode-3 current frame index + open pattern's frame count.
+    function encodeGetFramePosition() {
+        return frame(OPCODES.GET_FRAME_POSITION); // 01 72
+    }
+    // Reply: cur_frame_index u16 LE, frame_count u16 LE.
+    function decodeFramePosition(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 4) return null;
+        const m = r.payload;
+        return { index: m[0] | (m[1] << 8), frameCount: m[2] | (m[3] << 8) };
+    }
+
+    // get-health (0xCA) — controller health counters (fw #50 soak/post-mortem probe).
+    function encodeGetHealth() {
+        return frame(OPCODES.GET_HEALTH); // 01 CA
+    }
+
+    // Reply payload (schema ver 1, 55 bytes, all little-endian; cumulative counters,
+    // nothing clears on read):
+    //   ver u8 · flags u8 (bit0 sd_mounted, bit1 pattern_open, bit2 display_active,
+    //   bit3 breadcrumb_valid) · uptime_ms u32 · loop_count u32 · loop_max_us u32 ·
+    //   loop_max_1s_us u32 · sd_reads u32 · sd_read_max_us u32 · sd_err u8 ·
+    //   sd_err_data u32 · frames_sent u32 · isr_count u32 · cmd70_count u32 ·
+    //   state u8 · cur_frame u16 · reset_cause u32 (SRC_SRSR at boot) ·
+    //   prev_breadcrumb u8 · prev_breadcrumb_us u32
+    // The breadcrumb is what the PREVIOUS boot was doing when it last wrote it
+    // (survives SYSTEM_RESET 0x01, not a power cycle). Returns null on a bad/short
+    // reply; tolerant of longer payloads — the shipped firmware appends an 11-byte
+    // slowest-op tail (66 B total, decoded below when present).
+    const HEALTH_PAYLOAD_BYTES = 55;
+    const HEALTH_PAYLOAD_BYTES_FULL = 66;
+    const HEALTH_BREADCRUMB_OPS = [
+        'idle',
+        'sd_read',
+        'spi_transfer',
+        'usb_write',
+        'command',
+        'sd_open',
+        // fw fb11681: sub-ops inside handleSetFramePosition (arg = 0x70)
+        'cmd_disarm_timer',
+        'cmd_preload',
+        'cmd_arm_timer',
+        'cmd_respond'
+    ];
+    // ids 4–7 = driver-vector trampolines added by the free-running build (fw eca07f6+): usb = IRQ_USB1,
+    // sdhc = IRQ_SDHC1, lpspi = IRQ_LPSPI3/4, pit = IRQ_PIT (the refresh timer's own interrupt).
+    const HEALTH_ISR_NAMES = [
+        'none',
+        'refresh_timer',
+        'spi_dma',
+        'watchdog',
+        'usb',
+        'sdhc',
+        'lpspi',
+        'pit'
+    ];
+    const HEALTH_PAYLOAD_BYTES_V2 = 89; // fw fb11681: + ISR breadcrumb + RTWDOG pre-reset PC capture
+    const HEALTH_PAYLOAD_BYTES_V3 = 97; // fw 86eeb4a: + raw WDOG3_CS at boot and live
+    const HEALTH_PAYLOAD_BYTES_V4 = 106; // fw 54b57d0: + measured tick rate, live TOVAL, verify bits
+    const HEALTH_PAYLOAD_BYTES_V5 = 114; // fw 4860fef: + WDOG3_CNT around each kick (offset diagnostics)
+    function decodeHealth(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < HEALTH_PAYLOAD_BYTES) return null;
+        const m = r.payload;
+        let o = 0;
+        const u8 = () => m[o++];
+        const u16 = () => {
+            const v = m[o] | (m[o + 1] << 8);
+            o += 2;
+            return v;
+        };
+        const u32 = () => {
+            const v = (m[o] | (m[o + 1] << 8) | (m[o + 2] << 16) | (m[o + 3] << 24)) >>> 0;
+            o += 4;
+            return v;
+        };
+        const ver = u8();
+        const flags = u8();
+        const h = {
+            ver,
+            flags,
+            sdMounted: !!(flags & 0x01),
+            patternOpen: !!(flags & 0x02),
+            displayActive: !!(flags & 0x04),
+            breadcrumbValid: !!(flags & 0x08),
+            uptimeMs: u32(),
+            loopCount: u32(),
+            loopMaxUs: u32(),
+            loopMax1sUs: u32(),
+            sdReads: u32(),
+            sdReadMaxUs: u32(),
+            sdErr: u8(),
+            sdErrData: u32(),
+            framesSent: u32(),
+            isrCount: u32(),
+            cmd70Count: u32(),
+            state: u8(),
+            curFrame: u16(),
+            resetCause: u32(),
+            prevBreadcrumb: u8(),
+            prevBreadcrumbUs: u32()
+        };
+        h.prevBreadcrumbOp = HEALTH_BREADCRUMB_OPS[h.prevBreadcrumb] || 'op_' + h.prevBreadcrumb;
+        // Additive tail (firmware feat/controller-health, 66 B): a host-commanded
+        // SYSTEM_RESET is itself a dispatched command, so `prevBreadcrumb` after a
+        // 0x01 always reads "command 0x01" — the firmware therefore also keeps
+        // the single SLOWEST op + duration of the previous boot (and of this one).
+        //   prev_breadcrumb_arg u8 (opcode when prev op = command) · prev_slow_op u8 ·
+        //   prev_slow_us u32 · slow_op u8 · slow_us u32
+        if (m.length >= o + 11) {
+            h.prevBreadcrumbArg = u8();
+            h.prevSlowOp = u8();
+            h.prevSlowUs = u32();
+            h.slowOp = u8();
+            h.slowUs = u32();
+            h.prevSlowOpName = HEALTH_BREADCRUMB_OPS[h.prevSlowOp] || 'op_' + h.prevSlowOp;
+            h.slowOpName = HEALTH_BREADCRUMB_OPS[h.slowOp] || 'op_' + h.slowOp;
+        }
+        // ver 2 tail (fw fb11681): which ISR the previous boot was inside when it
+        // died, the stacked PC/LR captured by the watchdog's pre-reset IRQ, and the
+        // watchdog state of this boot. Offsets 0–65 are unchanged.
+        if (m.length >= HEALTH_PAYLOAD_BYTES_V2) {
+            h.prevIsrLast = u8();
+            h.prevIsrLastName = HEALTH_ISR_NAMES[h.prevIsrLast] || 'isr_' + h.prevIsrLast;
+            h.prevIsrCount = u32();
+            h.prevWdogPc = u32();
+            h.prevWdogLr = u32();
+            h.wdogFlags = u8();
+            h.isrLast = u8();
+            h.isrLastName = HEALTH_ISR_NAMES[h.isrLast] || 'isr_' + h.isrLast;
+            h.isrCount = u32();
+            h.wdogKicks = u32();
+            h.wdogArmed = !!(h.wdogFlags & 0x01);
+            h.prevResetWasWatchdog = !!(h.wdogFlags & 0x02);
+            h.prevPcCaptured = !!(h.wdogFlags & 0x04);
+            h.wdogCompiledIn = !!(h.wdogFlags & 0x08);
+            h.wdogSuspended = !!(h.wdogFlags & 0x10);
+            h.wdogStarving = !!(h.wdogFlags & 0x20);
+            h.wdogConfigFailed = !!(h.wdogFlags & 0x40);
+            h.prevWdogPcHex = h.prevPcCaptured
+                ? '0x' + h.prevWdogPc.toString(16).padStart(8, '0')
+                : null;
+            h.prevWdogLrHex = h.prevPcCaptured
+                ? '0x' + h.prevWdogLr.toString(16).padStart(8, '0')
+                : null;
+        }
+        // ver 3 tail (fw 86eeb4a): the RTWDOG control register as read at boot (reset
+        // default, expected 0x2520) and live — the hardware's own word on whether the
+        // watchdog is enabled (CS bit 7 EN), independent of the firmware's flags.
+        if (m.length >= HEALTH_PAYLOAD_BYTES_V3) {
+            h.wdogCsBoot = u32();
+            h.wdogCsNow = u32();
+            h.wdogCsBootHex = '0x' + h.wdogCsBoot.toString(16);
+            h.wdogCsNowHex = '0x' + h.wdogCsNow.toString(16);
+            h.wdogHwEnabled = !!(h.wdogCsNow & 0x80);
+            h.wdogHwInt = !!(h.wdogCsNow & 0x40);
+            h.wdogHwUpdate = !!(h.wdogCsNow & 0x20);
+            h.wdogHwRcs = !!(h.wdogCsNow & 0x400);
+            h.wdogHwCmd32 = !!(h.wdogCsNow & 0x2000);
+        }
+        // ver 4 tail (fw 54b57d0): the RTWDOG clock is measured at boot (128 kHz/256
+        // ≈ 500 Hz on this silicon, not the 125 Hz the datasheet's LPO implies) and
+        // TOVAL derived from it; `wdogVerify` bits explain any config complaint.
+        if (m.length >= HEALTH_PAYLOAD_BYTES_V4) {
+            h.wdogTickHz = u32();
+            h.wdogTovalNow = u32();
+            h.wdogVerify = u8();
+            h.wdogTimeoutS = h.wdogTickHz
+                ? Math.round((h.wdogTovalNow / h.wdogTickHz) * 100) / 100
+                : null;
+            h.wdogVerifyRcsTimeout = !!(h.wdogVerify & 0x01);
+            h.wdogVerifyEnMismatch = !!(h.wdogVerify & 0x02);
+            h.wdogVerifyTovalMismatch = !!(h.wdogVerify & 0x04);
+            h.wdogVerifyTickFallback = !!(h.wdogVerify & 0x08);
+            h.wdogVerifyKeyRetry = !!(h.wdogVerify & 0x10);
+        }
+        // ver 5 tail (fw 4860fef): WDOG3_CNT read before/after each refresh (min/max since
+        // boot) and live — settles whether the ~190-tick expiry offset is a comparator
+        // constant, a non-zero refresh base, or refreshes being ignored.
+        if (m.length >= HEALTH_PAYLOAD_BYTES_V5) {
+            h.wdogCntBeforeMax = u16();
+            h.wdogCntAfterMin = u16();
+            h.wdogCntAfterMax = u16();
+            h.wdogCntNow = u16();
+        }
+        return h;
+    }
+
+    // get-crashreport (0xCC, fw fb11681) — raw top 128 B of OCRAM: PJRC's
+    // arm_fault_info_struct {len, ipsr, cfsr, hfsr, mmfar, bfar, ret_addr, xpsr,
+    // temp f32, time, crc} (44 B) written by the core's fault handler, then PJRC's
+    // own breadcrumb words at +0x40. Never cleared by the read. Gate on the 0xCB
+    // telemetry flag (bit 2) like 0xA8/0xA9 — older firmware glyphs on it.
+    function encodeGetCrashReport() {
+        return frame(OPCODES.GET_CRASHREPORT); // 01 CC
+    }
+    const CRASHREPORT_PAYLOAD_BYTES = 128;
+    function decodeCrashReport(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < 44) return null;
+        const m = r.payload;
+        const dv = new DataView(m.buffer, m.byteOffset, m.byteLength);
+        const u = (o) => dv.getUint32(o, true);
+        const c = {
+            len: u(0),
+            ipsr: u(4),
+            cfsr: u(8),
+            hfsr: u(12),
+            mmfar: u(16),
+            bfar: u(20),
+            retAddr: u(24),
+            xpsr: u(28),
+            tempC: dv.getFloat32(32, true),
+            time: u(36),
+            crc: u(40),
+            rawHex: Array.from(m)
+                .map((b) => b.toString(16).padStart(2, '0'))
+                .join('')
+        };
+        // PJRC's fault handler stores len = sizeof(struct)/4 = 11 WORDS (startup.c),
+        // and isvalid() checks that plus a CRC (the core's private detail). We check
+        // the length (accepting a byte count too, defensively) and decode the fault
+        // bits so a reader does not need the datasheet.
+        c.present = (c.len === 11 || c.len === 44) && c.ipsr !== 0;
+        c.faultName =
+            c.ipsr === 3
+                ? 'HardFault'
+                : c.ipsr === 4
+                  ? 'MemManage'
+                  : c.ipsr === 5
+                    ? 'BusFault'
+                    : c.ipsr === 6
+                      ? 'UsageFault'
+                      : c.ipsr
+                        ? 'exception_' + c.ipsr
+                        : null;
+        c.retAddrHex = '0x' + c.retAddr.toString(16).padStart(8, '0');
+        if (m.length >= 0x40 + 4) {
+            c.pjrcBreadcrumbMask = u(0x40);
+            c.pjrcBreadcrumbs = [];
+            for (let i = 0; i < 6 && 0x44 + i * 4 + 4 <= m.length; i++)
+                c.pjrcBreadcrumbs.push(u(0x44 + i * 4));
+        }
+        return c;
+    }
+
+    // get-firmware-version (0xCB) — the controller's BUILD identity, compiled in
+    // by the firmware's PlatformIO pre-script. Ships with GET_HEALTH; older
+    // firmware answers an unknown opcode with an error GLYPH on the arena, so
+    // hosts must gate this on capability bit 7 (`health`).
+    function encodeGetFirmwareVersion() {
+        return frame(OPCODES.GET_FIRMWARE_VERSION); // 01 CB
+    }
+    // Payload (46 B): ver u8 · rows u8 · cols u8 · flags u8 (bit0 dirty tree,
+    // bit1 DEBUG_SERIAL build) · sha[8] ASCII · date[10] "YYYY-MM-DD" · branch[24]
+    // ASCII, space/NUL padded. `label` is the one-line form the Studio records in
+    // run_metadata.firmware, e.g. "06a6f25 2x10 2026-09-12 feat/controller-health".
+    const FIRMWARE_VERSION_PAYLOAD_BYTES = 46;
+    function decodeFirmwareVersion(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok || r.payload.length < FIRMWARE_VERSION_PAYLOAD_BYTES) return null;
+        const m = r.payload;
+        const ascii = (from, len) =>
+            Array.from(m.subarray(from, from + len))
+                .map((b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : ''))
+                .join('')
+                .trim();
+        const v = {
+            ver: m[0],
+            rows: m[1],
+            cols: m[2],
+            flags: m[3],
+            dirty: !!(m[3] & 0x01),
+            debug: !!(m[3] & 0x02),
+            telemetry: !!(m[3] & 0x04), // ring buffer (0xA8/0xA9) present — the ONLY gate for SET_TELEMETRY
+            crashReport: !!(m[3] & 0x08), // GET_CRASHREPORT 0xCC + GET_HEALTH ver 2 (fw fb11681+): the ONLY gate for 0xCC
+            freeRunningTimer: !!(m[3] & 0x10), // fw eca07f6+: SET_FRAME_POSITION never disarms/re-arms the refresh timer
+            sdFastPath: !!(m[3] & 0x20), // fw 200fada+: O(1) seeks, same-index skip, 26 B FRAME (ring v2), GET_SD_INFO 0xCD — the ONLY gate for 0xCD
+            sdDiag: !!(m[3] & 0x40), // fw 2c83f45+: SET_SD_DIAG 0xCE + STATE kind 14 — the ONLY gate for 0xCE
+            sha: ascii(4, 8),
+            date: ascii(12, 10),
+            branch: ascii(22, 24)
+        };
+        v.arena = v.rows + 'x' + v.cols;
+        v.label =
+            (v.sha || 'unknown') +
+            (v.dirty ? '*' : '') +
+            ' ' +
+            v.arena +
+            ' ' +
+            (v.date || '?') +
+            (v.branch ? ' ' + v.branch : '') +
+            (v.debug ? ' (debug)' : '') +
+            (v.freeRunningTimer ? ' freerun' : '') +
+            (v.sdFastPath ? ' sdfast' : '');
+        return v;
+    }
+
+    // get-sd-info (0xCD) — the SD CARD's identity (CID/CSD, cached by SdFat at
+    // mount, so O(1)) plus volume geometry. Every stall measurement / card
+    // comparison must be attributable to a physical card. Gate on 0xCB flags
+    // bit 5 (`sdFastPath`); older firmware flashes an error glyph on unknown opcodes.
+    function encodeGetSdInfo() {
+        return frame(OPCODES.GET_SD_INFO); // 01 CD
+    }
+    // set-sd-diag (0xCE) — bench A/B switches for the causal test of the SD-card
+    // stalls: bit0 legacy seek (the NEXT pattern open skips contiguousRange →
+    // FAT-chain-walking seeks), bit1 no same-index skip (every 0x70 reads). Both
+    // off at boot; readback = GET_SD_INFO byte 29. Gate on 0xCB flags bit 5.
+    const SD_DIAG_LEGACY_SEEK = 0x01;
+    const SD_DIAG_NO_SAME_INDEX_SKIP = 0x02;
+    function encodeSetSdDiag(flags) {
+        const f = u8(flags, 'sd diag flags');
+        if (f & ~0x03) throw new RangeError('sd diag flags: bits 2-7 are reserved');
+        return frame(OPCODES.SET_SD_DIAG, [f]); // 02 CE flags
+    }
+    // Payload (30 B): ver u8 · flags u8 (bit0 mounted, bit1 CID valid, bit2 CSD
+    // valid) · card_type u8 · fat_type u8 (12/16/32, 64 = exFAT) · sectors u32 ·
+    // bytes_per_cluster u32 · cid[16] raw · sd_status_maint u8 (0xFF = not read) ·
+    // reserved u8. Status 1 (no card) still carries the payload.
+    const SD_INFO_PAYLOAD_BYTES = 30;
+    // SD manufacturer IDs (CID byte 0) — the common ones; unknown → hex.
+    const SD_MANUFACTURERS = {
+        0x01: 'Panasonic',
+        0x02: 'Toshiba/Kioxia',
+        0x03: 'SanDisk',
+        0x09: 'ATP',
+        0x13: 'KingMax',
+        0x1b: 'Samsung',
+        0x1d: 'ADATA',
+        0x27: 'Phison',
+        0x28: 'Lexar',
+        0x31: 'Silicon Power',
+        0x41: 'Kingston',
+        0x5d: 'Swissbit',
+        0x6f: 'STMicro',
+        0x74: 'Transcend',
+        0x76: 'Patriot',
+        0x82: 'Sony/Gobe',
+        0x9c: 'Angelbird/Hoodman'
+    };
+    const SD_CARD_TYPES = ['none', 'SD1', 'SD2', 'SDHC/SDXC'];
+    function decodeSdInfo(resp) {
+        const r = asResponse(resp);
+        if (!r || r.payload.length < SD_INFO_PAYLOAD_BYTES) return null; // status 1 (no card) still decodes
+        const m = r.payload;
+        const u32le = (o) => (m[o] | (m[o + 1] << 8) | (m[o + 2] << 16) | (m[o + 3] << 24)) >>> 0;
+        const ascii = (from, len) =>
+            Array.from(m.subarray(from, from + len))
+                .map((b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : ''))
+                .join('')
+                .trim();
+        const cid = m.subarray(12, 28);
+        const v = {
+            ver: m[0],
+            flags: m[1],
+            mounted: !!(m[1] & 0x01),
+            cidValid: !!(m[1] & 0x02),
+            csdValid: !!(m[1] & 0x04),
+            cardType: m[2],
+            cardTypeName: SD_CARD_TYPES[m[2]] || 'type_' + m[2],
+            fatType: m[3],
+            fatTypeName: m[3] === 64 ? 'exFAT' : m[3] ? 'FAT' + m[3] : 'unknown',
+            sectors: u32le(4),
+            capacityGB: Math.round((u32le(4) * 512) / 1e7) / 100, // decimal GB, 2 dp
+            bytesPerCluster: u32le(8),
+            sectorsPerCluster: u32le(8) >> 9,
+            cidHex: Array.from(cid)
+                .map((b) => b.toString(16).padStart(2, '0'))
+                .join(''),
+            mid: cid[0],
+            manufacturer:
+                SD_MANUFACTURERS[cid[0]] || 'mid_0x' + cid[0].toString(16).padStart(2, '0'),
+            oid: ascii(13, 2),
+            pnm: ascii(15, 5),
+            prv: (cid[8] >> 4) + '.' + (cid[8] & 0x0f),
+            psn: ((cid[9] << 24) | (cid[10] << 16) | (cid[11] << 8) | cid[12]) >>> 0,
+            mdtYear: 2000 + (((cid[13] & 0x0f) << 4) | (cid[14] >> 4)),
+            mdtMonth: cid[14] & 0x0f,
+            sdStatusMaint: m[28],
+            sdDiag: m[29], // SET_SD_DIAG flags in force (0 = production behaviour)
+            legacySeek: !!(m[29] & 0x01), // requested (next open)
+            noSameIndexSkip: !!(m[29] & 0x02),
+            legacySeekApplied: !!(m[29] & 0x04) // in force for the currently open file
+        };
+        v.psnHex = v.psn.toString(16).padStart(8, '0');
+        v.label = !v.mounted
+            ? 'no card'
+            : v.manufacturer +
+              ' ' +
+              (v.pnm || '?') +
+              ' ' +
+              v.prv +
+              ' sn ' +
+              v.psnHex +
+              ' (' +
+              v.mdtYear +
+              '-' +
+              String(v.mdtMonth).padStart(2, '0') +
+              ') ' +
+              v.capacityGB +
+              ' GB ' +
+              v.cardTypeName +
+              ' ' +
+              v.fatTypeName +
+              ' ' +
+              (v.bytesPerCluster >= 1024
+                  ? v.bytesPerCluster / 1024 + ' KiB'
+                  : v.bytesPerCluster + ' B') +
+              ' clusters' +
+              (v.sdDiag & 0x03
+                  ? ' [diag ' +
+                    (v.legacySeek ? 'legacy-seek ' : '') +
+                    (v.noSameIndexSkip ? 'no-skip' : '') +
+                    ']'
+                  : '');
+        return v;
+    }
+
+    // Telemetry ring (fw feat/telemetry-ring; proposal § 3.1). Requests only —
+    // block/record DECODING lives in js/arena-telemetry.js (it owns the record
+    // schema, seq/drop accounting and the compact log rows).
+    function encodeSetTelemetry(flags, rateHz) {
+        const f = u8(flags == null ? 1 : flags, 'flags');
+        const r = rateHz == null ? 0 : rateHz;
+        return frame(OPCODES.SET_TELEMETRY, [f].concat(u16le(r, 'rateHz'))); // 04 A8 flags lo hi
+    }
+    // ack_seq: highest record seq the host has safely stored (freed on the
+    // controller); 0xFFFFFFFF = no ack. max_bytes: cap on returned record bytes
+    // (the firmware also caps at ~180 so the reply stays one framed message).
+    const TELEMETRY_NO_ACK = 0xffffffff;
+    function encodeGetTelemetryBlock(ackSeq, maxBytes, flags) {
+        const a = ackSeq == null ? TELEMETRY_NO_ACK : ackSeq >>> 0;
+        const m = maxBytes == null ? 180 : maxBytes;
+        requireInt(m, 'maxBytes');
+        if (m < 0 || m > 0xffff) throw new RangeError('maxBytes out of range: ' + m);
+        return frame(
+            OPCODES.GET_TELEMETRY_BLOCK,
+            [a & 0xff, (a >>> 8) & 0xff, (a >>> 16) & 0xff, (a >>> 24) & 0xff].concat(
+                u16le(m, 'maxBytes'),
+                [u8(flags || 0, 'flags')]
+            )
+        ); // 08 A9 a0 a1 a2 a3 m_lo m_hi flags
+    }
+
     // get-frames-sent (0x33) reply carries the master-sent count as uint32 LE.
     function decodeFramesSent(resp) {
         const r = asResponse(resp);
@@ -763,8 +1219,11 @@ const ArenaWireG6 = (function () {
         ];
     }
 
-    // get-analog-in (0xA4) reply: two int16 LE mV (±10V front-end, calibration
-    // TBD — bench diagnostic values, not precision reads).
+    // get-analog-in (0xA4) reply: two int16 LE mV on the nominal ±10 V scale,
+    // plus — since firmware F1 (analog-input-plan § 3) — a flags byte:
+    // bit0 = channel 1 per-board calibration applied (F2), bit1 = channel 2,
+    // bit2 = raw scale is 12-bit. Pre-F1 firmware sends 4 bytes → flags null,
+    // all false (10-bit, uncalibrated). Bench diagnostic values until calibrated.
     function decodeAnalogIn(resp) {
         const r = asResponse(resp);
         if (!r || !r.ok || r.payload.length < 4) return null;
@@ -772,7 +1231,15 @@ const ArenaWireG6 = (function () {
             const u = lo | (hi << 8);
             return u >= 0x8000 ? u - 0x10000 : u;
         };
-        return { ain1Mv: i16(r.payload[0], r.payload[1]), ain2Mv: i16(r.payload[2], r.payload[3]) };
+        const flags = r.payload.length >= 5 ? r.payload[4] : null;
+        return {
+            ain1Mv: i16(r.payload[0], r.payload[1]),
+            ain2Mv: i16(r.payload[2], r.payload[3]),
+            flags: flags,
+            cal1: flags !== null && !!(flags & 0x01),
+            cal2: flags !== null && !!(flags & 0x02),
+            bits12: flags !== null && !!(flags & 0x04)
+        };
     }
 
     // set-firmware-file (0xE0) reply: uint32 LE CRC-32 of the stored image.
@@ -848,6 +1315,16 @@ const ArenaWireG6 = (function () {
         encodeGetControllerInfo,
         // Alias under the name the handoff lists for the get-info request.
         getControllerInfo: encodeGetControllerInfo,
+        encodeGetHealth,
+        encodeGetFramePosition,
+        encodeGetFirmwareVersion,
+        encodeGetSdInfo,
+        encodeSetSdDiag,
+        SD_DIAG_LEGACY_SEEK,
+        SD_DIAG_NO_SAME_INDEX_SKIP,
+        encodeSetTelemetry,
+        encodeGetTelemetryBlock,
+        TELEMETRY_NO_ACK,
         encodeGetFileCount,
         encodeGetPatternFilename,
         encodeGetPatternInfo,
@@ -875,6 +1352,23 @@ const ArenaWireG6 = (function () {
         // Decoders
         decodeResponse,
         decodeControllerInfo,
+        decodeHealth,
+        decodeFramePosition,
+        decodeFirmwareVersion,
+        FIRMWARE_VERSION_PAYLOAD_BYTES,
+        decodeSdInfo,
+        SD_INFO_PAYLOAD_BYTES,
+        HEALTH_PAYLOAD_BYTES,
+        HEALTH_PAYLOAD_BYTES_FULL,
+        HEALTH_PAYLOAD_BYTES_V2,
+        HEALTH_PAYLOAD_BYTES_V3,
+        HEALTH_PAYLOAD_BYTES_V4,
+        HEALTH_PAYLOAD_BYTES_V5,
+        HEALTH_BREADCRUMB_OPS,
+        HEALTH_ISR_NAMES,
+        encodeGetCrashReport,
+        decodeCrashReport,
+        CRASHREPORT_PAYLOAD_BYTES,
         decodeSpiClock,
         decodeRefreshRate,
         decodePanelDisplayMode,

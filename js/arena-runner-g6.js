@@ -180,6 +180,13 @@ var ArenaRunnerG6 = (function () {
     // isKnownControllerCommand, duplicated on purpose because this module must stay
     // import-free (no sibling imports). Anything else (e.g. a legacy setColorDepth →
     // SWITCH_GRAYSCALE 0x06, dropped on G6) is an error, not a silent no-op.
+    // A link "response timeout" (ArenaLink's message) — the controller-unresponsive
+    // signature of firmware #50, as opposed to a rejected/odd reply.
+    function isTimeoutError(e) {
+        const m = e && (e.message || String(e));
+        return typeof m === 'string' && /response timeout/i.test(m);
+    }
+
     const RUNNABLE_CONTROLLER_COMMANDS = [
         'trialParams',
         'allOn',
@@ -836,6 +843,8 @@ var ArenaRunnerG6 = (function () {
             this._ledActivator = null; // active conditional-LED evaluator (Mode 3)
             this._ledUnsub = null; // bridge 'applied' unsubscribe for the above
             this._emit = null; // current run's status emit (for async LED events)
+            this._faultReason = null; // set by fault() / a timed-out wire command
+            this._faultDetail = null;
         }
 
         get active() {
@@ -928,7 +937,7 @@ var ArenaRunnerG6 = (function () {
             this._active = false;
             this._conditionName = null;
             this._clearLedActivator(); // sends LED off (before the STOP below)
-            this._clearClosedLoop(); // stop streaming frames + clear any bias waveform
+            this._disarmClosedLoop(); // stop streaming frames + clear any bias waveform
             this._emit = null;
             if (this._link && this._link.connected) {
                 return this._link.send(this._wire.encodeStop());
@@ -945,6 +954,40 @@ var ArenaRunnerG6 = (function () {
             this._clear();
         }
 
+        /**
+         * External FAULT (firmware #50): the closed-loop bridge client saw repeated
+         * 0x70 timeouts, or some other watcher decided the controller is gone.
+         * Records the reason, emits a `fault` status event into the current run,
+         * then unwinds like abort() (wakes the host-side wait, disarms closed loop,
+         * NO STOP send here — the sequence's finally still tries a best-effort
+         * STOP and records whether it was acked). The terminal `aborted` event's
+         * summary carries `fault`, which the run-log adapter turns into the
+         * CONTROLLER_FAULT outcome (never ABORTED_BY_USER).
+         * @param {string} [reason='controller_unresponsive']
+         * @param {object} [detail] JSON-safe context (failures, window, lastError…)
+         */
+        fault(reason, detail) {
+            this._faultReason = reason || 'controller_unresponsive';
+            this._faultDetail = detail && typeof detail === 'object' ? detail : null;
+            if (this._emit) {
+                try {
+                    this._emit({
+                        phase: 'fault',
+                        reason: this._faultReason,
+                        detail: this._faultDetail
+                    });
+                } catch (_) {
+                    /* a status sink must not break the unwind */
+                }
+            }
+            this._clear();
+        }
+
+        /** The fault reason of the current/last run, or null. */
+        get faultReason() {
+            return this._faultReason;
+        }
+
         /** Clear run-state without sending STOP (used on disconnect/error). Also
          *  aborts a running sequence and unblocks its current wait. */
         _clear() {
@@ -957,8 +1000,39 @@ var ArenaRunnerG6 = (function () {
             this._active = false;
             this._conditionName = null;
             this._clearLedActivator(); // guarded: no-op send when the link is gone
-            this._clearClosedLoop(); // bridge-side, so it still works with no link
+            this._disarmClosedLoop(); // bridge-side, so it still works with no link
             this._emit = null;
+        }
+
+        /**
+         * Tear down the FicTrac closed loop: force the shared bridge's apply OFF AND
+         * clear any bias waveform (idempotent, never throws). Called at sequence start,
+         * at sequence end/abort, from stop() and on disconnect — `stopClosedLoop` only
+         * runs on the happy path, and a mid-trial STOP used to leave the bridge (a)
+         * still streaming SET_FRAME_POSITION at the arena, so a stale apply=true from
+         * Console use or an aborted run drove frames into the next run's non-Mode-3
+         * steps, and (b) integrating a disturbance whose phase clock kept running, so
+         * the NEXT run inherited a stale, already-drifted bias.
+         *
+         * Bridge-only (WebSocket), so it is safe even when the serial link is gone —
+         * which is exactly the _clear()/abort() case. Best-effort: a dead bridge
+         * socket must never break teardown.
+         *
+         * The bias is cleared only when the CLIENT has one installed, so a bias set
+         * on the bridge's own CLI (--bias-type) survives a run rather than being
+         * silently stomped by it.
+         */
+        _disarmClosedLoop() {
+            const b = this._bridge;
+            if (!b) return;
+            try {
+                if (typeof b.setApply === 'function') b.setApply(false);
+                if (b.bias && b.bias.type !== 'none' && typeof b.setConfig === 'function') {
+                    b.setConfig({ bias: { type: 'none' } });
+                }
+            } catch (_) {
+                /* best-effort */
+            }
         }
 
         // ---- conditional LED activation (install / teardown) --------------
@@ -1036,37 +1110,6 @@ var ArenaRunnerG6 = (function () {
             }
             this._frameCountCache.set(pat, frames); // negative caching included
             return frames;
-        }
-
-        // ---- closed-loop teardown ------------------------------------------
-        /**
-         * Tear down the FicTrac closed loop: stop applying frames AND clear any bias
-         * waveform. Called from EVERY run-teardown path (sequence end, stop(),
-         * _clear()) because `stopClosedLoop` only runs on the happy path — a STOP
-         * mid-trial skips it, which used to leave the bridge (a) still streaming
-         * SET_FRAME_POSITION at the arena and (b) integrating a disturbance whose
-         * phase clock kept running, so the NEXT run inherited a stale, already-drifted
-         * bias until some condition happened to push a new one.
-         *
-         * Bridge-only (WebSocket), so it is safe even when the serial link is gone —
-         * which is exactly the _clear()/abort() case. Best-effort: a dead bridge
-         * socket must never break teardown.
-         *
-         * The bias is cleared only when the CLIENT has one installed, so a bias set
-         * on the bridge's own CLI (--bias-type) survives a run rather than being
-         * silently stomped by it.
-         */
-        _clearClosedLoop() {
-            const b = this._bridge;
-            if (!b) return;
-            try {
-                if (typeof b.setApply === 'function') b.setApply(false);
-                if (b.bias && b.bias.type !== 'none' && typeof b.setConfig === 'function') {
-                    b.setConfig({ bias: { type: 'none' } });
-                }
-            } catch (_) {
-                /* best-effort */
-            }
         }
 
         _clearLedActivator() {
@@ -1178,12 +1221,20 @@ var ArenaRunnerG6 = (function () {
                 if (typeof a.onProgress === 'function') a.onProgress(s);
             };
             this._emit = emit; // for async side-effects (LED activation on 'applied')
+            let terminal = null; // emitted after cleanup (see finally)
 
             this._active = true;
             this._abort = false;
             // Per-run: the card's contents (and so any pattern index's frame count)
             // can change between runs via an SD upload, but never mid-run.
             this._frameCountCache = new Map();
+            this._faultReason = null;
+            this._faultDetail = null;
+            // A stale closed-loop apply (left on by Console use or an aborted run)
+            // would push FicTrac frames into the opening Mode-2 step — the firmware
+            // rejects each 0x70 with status 1 and the log fills with errors
+            // (rig03-sr, 2026-09-04: 304 rejects in the first 3 s). Start clean.
+            this._disarmClosedLoop();
             const summary = {
                 completed: false,
                 aborted: false,
@@ -1362,6 +1413,18 @@ var ArenaRunnerG6 = (function () {
                             // past a possible protocol desync.
                             summary.errors++;
                             this._abort = true;
+                            // A response TIMEOUT on a protocol command is the same
+                            // controller-unresponsive fault the closed-loop path
+                            // detects (fw #50: the 0x08 after the 0x70s) — label
+                            // it so the run's outcome is CONTROLLER_FAULT, not a
+                            // generic user abort.
+                            if (isTimeoutError(e) && !this._faultReason) {
+                                this._faultReason = 'controller_unresponsive';
+                                this._faultDetail = {
+                                    op: ir.op,
+                                    error: e && (e.message || String(e))
+                                };
+                            }
                             emit({
                                 phase: 'error',
                                 index: i,
@@ -1385,7 +1448,15 @@ var ArenaRunnerG6 = (function () {
                 }
                 summary.aborted = this._abort;
                 summary.completed = !this._abort;
-                emit({ phase: this._abort ? 'aborted' : 'sequence-complete', summary });
+                // fault: null for a clean run or a user STOP; a reason string when
+                // the controller stopped answering (fault() / a timed-out command).
+                summary.fault = this._faultReason || null;
+                if (this._faultDetail) summary.faultDetail = this._faultDetail;
+                // The terminal event is emitted from `finally`, AFTER the best-effort
+                // STOP, so the serialized summary (run log, auto-commit trigger)
+                // carries `stopAcked` — review finding: it used to be present only
+                // on the returned object.
+                terminal = { phase: this._abort ? 'aborted' : 'sequence-complete', summary };
                 return summary;
             } finally {
                 // Best-effort STOP at the end / on abort, then reset run-state.
@@ -1393,15 +1464,25 @@ var ArenaRunnerG6 = (function () {
                 this._conditionName = null;
                 this._resolveSleep();
                 this._clearLedActivator(); // LED off + stop gating on completion/abort
-                this._clearClosedLoop(); // idempotent after a stopClosedLoop; THE fix
-                // when a mid-trial STOP skipped stopClosedLoop entirely
+                // Idempotent after a stopClosedLoop; THE fix when a mid-trial STOP
+                // skipped stopClosedLoop entirely — never leak apply=true (or a bias
+                // waveform) into the next run.
+                this._disarmClosedLoop();
+                // "Fail closed" is two claims — the host stopped advancing (true
+                // here) and the display is quiescent (only if this STOP is acked;
+                // it rides the same possibly-wedged link, and panels latch their
+                // last frame). Record which, never assume.
+                summary.stopAcked = false;
                 try {
                     if (this._link && this._link.connected) {
-                        await this._link.send(this._wire.encodeStop());
+                        const f = await this._link.send(this._wire.encodeStop());
+                        const d = this._wire.decodeResponse(f);
+                        summary.stopAcked = !!(d && d.ok);
                     }
                 } catch (_) {
                     /* best-effort */
                 }
+                if (terminal) emit(terminal);
                 this._emit = null;
             }
         }

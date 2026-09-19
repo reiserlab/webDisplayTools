@@ -1,6 +1,7 @@
 'use strict';
 
 const A = window.DashboardAnalysis;
+const F = window.RunlogFormat; // run-log file format: gzip + behavior_v1/v2 (vendor/runlog-format.js)
 const P = window.DashboardPlots;
 const G = window.DashboardGitHub;
 const ANALYSIS_AXES_KEY = 'dashboard_analysis_axes';
@@ -308,6 +309,12 @@ function addRun(run, descriptorPatch) {
         ...run.descriptor,
         ...descriptorPatch,
         metadata: run.metadata,
+        durationSec: A.runDurationSec(run),
+        complete: (run.events || []).some((rec) => rec.phase === 'sequence-complete')
+            ? true
+            : (run.events || []).some((rec) => rec.phase === 'aborted')
+              ? false
+              : null,
         loaded: true
     };
     run.catalogKey = descriptor.key;
@@ -395,8 +402,199 @@ function warningText(descriptor) {
     return notes;
 }
 
+// ---- catalog columns: registry, visibility (localStorage), sort ----------------
+const CATALOG_COLUMNS_KEY = 'dashboard_catalog_columns';
+const CATALOG_COLUMNS = [
+    {
+        key: 'run',
+        label: 'Run',
+        width: 'minmax(96px, 0.55fr)',
+        fixed: true,
+        cell: (d) => `<strong title="${escapeHtml(d.runId)}">${escapeHtml(d.runId)}</strong>`,
+        sort: (d) => d.runId
+    },
+    {
+        key: 'protocol',
+        label: 'Rig · protocol',
+        width: 'minmax(170px, 0.9fr)',
+        fixed: true,
+        cell: (d) =>
+            `<span class="run-protocol" title="${escapeHtml(`${rigName(d)} | ${d.protocol}`)}"><span class="run-rig">${escapeHtml(rigName(d))}</span>${escapeHtml(d.protocolFamily)}</span>`,
+        sort: (d) => `${rigName(d)} ${d.protocolFamily}`
+    },
+    {
+        key: 'date',
+        label: 'Start',
+        width: 'minmax(118px, 0.6fr)',
+        narrowHide: true,
+        cell: (d) =>
+            `<span class="run-date" title="${escapeHtml(d.timestamp || '')}">${escapeHtml(formatStart(d))}</span>`,
+        sort: (d) => (Number.isFinite(d.startedMs) ? d.startedMs : Date.parse(d.timestamp) || 0)
+    },
+    {
+        key: 'duration',
+        label: 'Duration',
+        width: 'minmax(72px, 0.4fr)',
+        narrowHide: true,
+        cell: (d) =>
+            `<span class="run-duration ${d.complete === false ? 'warning-note' : ''}" title="${escapeHtml(durationTitle(d))}">${escapeHtml(formatDuration(d.durationSec))}${d.complete === false ? ' ⚠' : ''}</span>`,
+        sort: (d) => (Number.isFinite(d.durationSec) ? d.durationSec : -1)
+    },
+    {
+        key: 'genotype',
+        label: 'Genotype',
+        width: 'minmax(180px, 1.3fr)',
+        narrowHide: true,
+        cell: (d) =>
+            `<span class="run-genotype" title="${escapeHtml(d.genotype)}">${escapeHtml(d.genotype)}</span>`,
+        sort: (d) => d.genotype
+    },
+    {
+        key: 'sex',
+        label: 'Sex',
+        width: '44px',
+        cell: (d) => `<span class="run-sex">${escapeHtml(d.sex || '?')}</span>`,
+        sort: (d) => d.sex
+    },
+    {
+        key: 'fly',
+        label: 'Fly',
+        width: '56px',
+        narrowHide: true,
+        cell: (d) => `<span class="run-fly">fly ${escapeHtml(d.flyNumber || '?')}</span>`,
+        sort: (d) => Number(d.flyNumber) || 0
+    },
+    {
+        key: 'age',
+        label: 'Age',
+        width: 'minmax(70px, 0.4fr)',
+        narrowHide: true,
+        defaultHidden: true,
+        cell: (d) => `<span class="run-age">${escapeHtml(d.age || '')}</span>`,
+        sort: (d) => d.age
+    },
+    {
+        key: 'experimenter',
+        label: 'Experimenter',
+        width: 'minmax(90px, 0.5fr)',
+        narrowHide: true,
+        defaultHidden: true,
+        cell: (d) =>
+            `<span class="run-experimenter">${escapeHtml(experimenterName(d) || '')}</span>`,
+        sort: (d) => experimenterName(d)
+    },
+    {
+        key: 'note',
+        label: 'Notes',
+        width: 'minmax(105px, 0.8fr)',
+        narrowHide: true,
+        cell: (d) => {
+            const note = warningText(d);
+            const text = note || d.notes || '';
+            return `<span class="run-note ${note ? 'warning-note' : ''}" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`;
+        },
+        sort: (d) => warningText(d) || d.notes || ''
+    },
+    {
+        key: 'size',
+        label: 'Size',
+        width: '62px',
+        narrowHide: true,
+        defaultHidden: true,
+        cell: (d) =>
+            `<span class="run-size" title="${escapeHtml(sizeTitle(d))}">${escapeHtml(sizeLabel(d))}</span>`,
+        sort: (d) => d.size || 0
+    }
+];
+function loadColumnPrefs() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(CATALOG_COLUMNS_KEY) || 'null');
+        if (Array.isArray(saved))
+            return new Set(saved.filter((k) => CATALOG_COLUMNS.some((c) => c.key === k)));
+    } catch (_) {
+        /* fall through */
+    }
+    return new Set(CATALOG_COLUMNS.filter((c) => !c.defaultHidden).map((c) => c.key));
+}
+state.catalogColumns = loadColumnPrefs();
+state.catalogSort = { key: '', dir: 1 };
+function visibleColumns() {
+    return CATALOG_COLUMNS.filter((c) => c.fixed || state.catalogColumns.has(c.key));
+}
+function applyCatalogGrid() {
+    const cols = visibleColumns();
+    const full = ['26px', ...cols.map((c) => c.width), '58px'].join(' ');
+    const narrow = ['26px', ...cols.filter((c) => !c.narrowHide).map((c) => c.width), '52px'].join(
+        ' '
+    );
+    els.runCatalog.style.setProperty('--catalog-cols', full);
+    els.runCatalog.style.setProperty('--catalog-cols-narrow', narrow);
+}
+function formatStart(d) {
+    const ms = Number.isFinite(d.startedMs) ? d.startedMs : Date.parse(d.timestamp);
+    if (!Number.isFinite(ms)) return A.safeText(d.timestamp).slice(0, 16).replace('T', ' ');
+    const t = new Date(ms);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())} ${pad(t.getHours())}:${pad(t.getMinutes())}`;
+}
+function formatDuration(sec) {
+    if (!Number.isFinite(sec)) return '—';
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec - m * 60);
+    return m >= 60
+        ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
+        : `${m}:${String(s).padStart(2, '0')}`;
+}
+function durationTitle(d) {
+    if (!Number.isFinite(d.durationSec))
+        return "Duration unknown — not in this folder's index.json yet (refresh it with scripts/build-runlog-index.py) and the run is not loaded";
+    const how = d.loaded ? 'from the loaded run' : 'from the folder index';
+    const end =
+        d.complete === true ? 'completed' : d.complete === false ? 'ABORTED' : 'end state unknown';
+    return `${d.durationSec.toFixed(1)} s (${how}) — ${end}`;
+}
+function sortedCatalog() {
+    const { key, dir } = state.catalogSort;
+    const col = CATALOG_COLUMNS.find((c) => c.key === key);
+    if (!col) return state.catalog;
+    return state.catalog
+        .map((d, i) => ({ d, i }))
+        .sort((a, b) => {
+            const va = col.sort(a.d);
+            const vb = col.sort(b.d);
+            const cmp =
+                typeof va === 'number' && typeof vb === 'number'
+                    ? va - vb
+                    : String(va).localeCompare(String(vb));
+            return (cmp || a.i - b.i) * dir;
+        })
+        .map((x) => x.d);
+}
+function renderCatalogHead() {
+    const cols = visibleColumns();
+    const { key, dir } = state.catalogSort;
+    return `<div class="run-head">
+        <span></span>
+        ${cols
+            .map(
+                (c) =>
+                    `<button type="button" class="col-sort ${c.key === key ? 'active' : ''} ${c.narrowHide ? 'narrow-hide' : ''}" data-sort="${c.key}" title="Sort by ${escapeHtml(c.label.toLowerCase())}${c.key === key ? (dir > 0 ? ' (ascending — click for descending)' : ' (descending — click to reset)') : ''}">${escapeHtml(c.label)}${c.key === key ? (dir > 0 ? ' ▲' : ' ▼') : ''}</button>`
+            )
+            .join('')}
+        <details class="col-picker" title="Choose which columns to show"><summary>⚙</summary><div class="col-picker-menu">
+          ${CATALOG_COLUMNS.filter((c) => !c.fixed)
+              .map(
+                  (c) =>
+                      `<label><input type="checkbox" class="col-toggle" data-col="${c.key}" ${state.catalogColumns.has(c.key) ? 'checked' : ''}> ${escapeHtml(c.label)}</label>`
+              )
+              .join('')}
+        </div></details>
+      </div>`;
+}
+
 function renderCatalog() {
     const visible = new Set(visibleDescriptors().map((item) => item.key));
+    applyCatalogGrid();
     if (!state.catalog.length) {
         els.runCatalog.innerHTML = '<div class="empty-state">No runlogs indexed</div>';
         els.catalogStatus.textContent = 'Open files or connect to the course repository.';
@@ -412,29 +610,50 @@ function renderCatalog() {
         ? state.github.selectedFolders.join(', ')
         : 'loaded sources';
     els.catalogStatus.textContent = `${visible.size} shown of ${state.catalog.length} runlogs | ${state.selectedKeys.size} selected | rigs: ${rigScope}`;
-    els.runCatalog.innerHTML = state.catalog
-        .map((descriptor) => {
-            const selected =
-                state.mode === 'single'
-                    ? descriptor.key === state.focusKey
-                    : state.selectedKeys.has(descriptor.key);
-            const note = warningText(descriptor);
-            const hidden = !visible.has(descriptor.key);
-            const date = A.safeText(descriptor.timestamp).slice(0, 10);
-            return `
+    const cols = visibleColumns();
+    els.runCatalog.innerHTML =
+        renderCatalogHead() +
+        sortedCatalog()
+            .map((descriptor) => {
+                const selected =
+                    state.mode === 'single'
+                        ? descriptor.key === state.focusKey
+                        : state.selectedKeys.has(descriptor.key);
+                const hidden = !visible.has(descriptor.key);
+                const date = formatStart(descriptor);
+                return `
       <div class="run-row ${selected ? 'selected' : ''} ${hidden ? 'hidden-by-group' : ''}" data-key="${escapeHtml(descriptor.key)}">
         <input class="run-select" type="checkbox" data-key="${escapeHtml(descriptor.key)}" ${selected ? 'checked' : ''} aria-label="Select ${escapeHtml(descriptor.runId)}">
-        <strong title="${escapeHtml(descriptor.runId)}">${escapeHtml(descriptor.runId)}</strong>
-        <span class="run-protocol" title="${escapeHtml(`${rigName(descriptor)} | ${descriptor.protocol}`)}"><span class="run-rig">${escapeHtml(rigName(descriptor))}</span>${escapeHtml(descriptor.protocolFamily)}</span>
-        <span class="run-genotype" title="${escapeHtml(descriptor.genotype)}">${escapeHtml(descriptor.genotype)}</span>
-        <span class="run-sex">${escapeHtml(descriptor.sex || '?')}</span>
-        <span class="run-fly">fly ${escapeHtml(descriptor.flyNumber || '?')}</span>
-        <span class="run-note ${note ? 'warning-note' : ''}" title="${escapeHtml(note || descriptor.experimenter)}">${escapeHtml(note || descriptor.experimenter || '')}</span>
-        <button class="focus-run" type="button" data-key="${escapeHtml(descriptor.key)}" title="View ${escapeHtml(descriptor.runId)} from ${escapeHtml(date)}">View</button>
+        ${cols.map((c) => c.cell(descriptor)).join('')}
+        <button class="focus-run" type="button" data-key="${escapeHtml(descriptor.key)}" title="View ${escapeHtml(descriptor.runId)} (${escapeHtml(date)}, ${escapeHtml(formatDuration(descriptor.durationSec))})">View</button>
       </div>`;
-        })
-        .join('');
+            })
+            .join('');
     renderFocusOptions();
+}
+
+// Catalog size column: the committed size (gzip for `.jsonl.gz`); the hover adds
+// the inflated size once the run has been loaded.
+function formatBytes(n) {
+    if (!Number.isFinite(n) || n <= 0) return '';
+    return n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`;
+}
+function sizeLabel(descriptor) {
+    const label = formatBytes(descriptor.size);
+    if (!label) return '';
+    return /\.gz$/i.test(descriptor.path || descriptor.sourceName || '') ? `${label} gz` : label;
+}
+function sizeTitle(descriptor) {
+    const gz = /\.gz$/i.test(descriptor.path || descriptor.sourceName || '');
+    const run = state.runs.get(descriptor.key);
+    const parts = [];
+    if (Number.isFinite(descriptor.size))
+        parts.push(`${gz ? 'compressed (gzip)' : 'file'} size ${formatBytes(descriptor.size)}`);
+    // rawBytes is the inflated text's length in code units — a byte count for the
+    // ASCII-dominant logs we write, hence the ≈.
+    if (run && run.rawBytes) parts.push(`≈ ${formatBytes(run.rawBytes)} of JSONL text`);
+    if (run && run.logFormat) parts.push(`format ${run.logFormat}`);
+    return parts.join(' · ');
 }
 
 function renderFocusOptions() {
@@ -522,7 +741,8 @@ async function ensureRun(descriptor) {
         setStatus('', `Fetching ${descriptor.runId}`);
         const response = await fetch(descriptor.url);
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-        text = await response.text();
+        // bytes, not text: `.jsonl.gz` inflates on the gzip magic
+        text = await F.readRunlogText(new Uint8Array(await response.arrayBuffer()));
     } else {
         throw new Error(`No loader for ${descriptor.runId}`);
     }
@@ -535,11 +755,12 @@ async function loadFiles(files) {
     let firstKey = '';
     for (const file of files) {
         const key = `file:${file.name}:${file.size}:${file.lastModified}`;
-        const text = await file.text();
+        const text = await F.readRunlogText(file); // inflates `.jsonl.gz`
         const result = await parseAndAddText(text, file.name, {
             key,
             path: file.name,
-            sourceType: 'file'
+            sourceType: 'file',
+            size: file.size
         });
         if (!firstKey) firstKey = result.descriptor.key;
     }
@@ -551,7 +772,8 @@ async function loadUrl(url) {
     setStatus('', `Fetching ${url}`);
     const response = await fetch(url);
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    const text = await response.text();
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const text = await F.readRunlogText(bytes); // inflates `.jsonl.gz`
     const sourceName = decodeURIComponent(
         new URL(url, window.location.href).pathname.split('/').pop() || 'runlog.jsonl'
     );
@@ -560,7 +782,8 @@ async function loadUrl(url) {
         key,
         path: url,
         url,
-        sourceType: 'url'
+        sourceType: 'url',
+        size: bytes.length
     });
     await focusDescriptor(result.descriptor.key, true);
     setStatus('ok', `Loaded ${result.descriptor.runId}`);
@@ -642,7 +865,7 @@ async function browseGithub() {
     setStatus('', `Indexing ${state.github.selectedFolders.join(', ')}`);
     try {
         const directFiles = state.github.rootItems.filter(
-            (item) => item.type === 'file' && item.name.toLowerCase().endsWith('.jsonl')
+            (item) => item.type === 'file' && F.isRunlogName(item.name)
         );
         const directoryFiles = await G.mapLimit(directories, 4, async (directory, index) => {
             setStatus('', `Indexing runlog folders ${index + 1}/${directories.length}`);
@@ -652,7 +875,22 @@ async function browseGithub() {
         const files = [
             ...directFiles.map((item) => ({ ...item, rigFolder: 'runlogs root' })),
             ...directoryFiles.flat()
-        ].filter((item) => item.type === 'file' && item.name.toLowerCase().endsWith('.jsonl'));
+        ].filter((item) => item.type === 'file' && F.isRunlogName(item.name));
+        // Per-folder index.json → start / duration / end state without downloading
+        // logs (browsers can't Range-read a tail from GitHub — CORS preflight 403).
+        const indexByFolder = new Map();
+        await G.mapLimit(directories, 4, async (directory) => {
+            try {
+                const text = await G.fetchText(
+                    repo.full,
+                    `${directory.path}/index.json`,
+                    state.github.branch
+                );
+                indexByFolder.set(directory.name, A.runIndexLookup(JSON.parse(text)));
+            } catch (_) {
+                indexByFolder.set(directory.name, new Map()); // no index yet → '—'
+            }
+        });
         const descriptors = await G.mapLimit(
             files,
             4,
@@ -664,15 +902,30 @@ async function browseGithub() {
                     65536
                 );
                 const descriptor = A.parseMetadataPrefix(prefix, item.name, item.path);
+                // Start / duration / end state come from the folder's index.json
+                // (scripts/build-runlog-index.py, run by the data repo's runlog-index
+                // GitHub Action on every push under runlogs/). A tail Range
+                // read was tried first but the browser's CORS preflight is refused by
+                // raw.githubusercontent.com — G.fetchSuffix stays for non-browser use.
+                const indexed =
+                    (indexByFolder.get(item.rigFolder) || new Map()).get(item.name) ||
+                    (indexByFolder.get(item.rigFolder) || new Map()).get('run:' + descriptor.runId);
+                const bounds = indexed || { durationSec: NaN, complete: null, startedMs: NaN };
                 return {
                     ...descriptor,
                     key: `github:${repo.full}:${item.path}`,
                     path: item.path,
                     githubPath: item.path,
+                    downloadUrl: item.download_url,
                     sourceType: 'github',
                     repoFull: repo.full,
                     folder: item.rigFolder,
-                    size: item.size
+                    size: item.size,
+                    startedMs: Number.isFinite(bounds.startedMs)
+                        ? bounds.startedMs
+                        : descriptor.startedMs,
+                    durationSec: bounds.durationSec,
+                    complete: bounds.complete
                 };
             },
             (done, total) => setStatus('', `Reading run metadata ${done}/${total}`)
@@ -725,16 +978,29 @@ async function listDirectoryLinks(directoryUrl) {
 async function fetchUrlPrefix(url, bytes) {
     const response = await fetch(url, { headers: { Range: `bytes=0-${bytes - 1}` } });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    if (!response.body || !response.body.getReader) return (await response.text()).slice(0, bytes);
+    if (!response.body || !response.body.getReader) {
+        const all = new Uint8Array(await response.arrayBuffer());
+        return (await F.readRunlogPrefixText(all.subarray(0, bytes))).slice(0, bytes);
+    }
+    // Stream bytes; a plain file stops at the run_metadata line, a `.jsonl.gz`
+    // prefix is inflated (truncation-tolerant) once the byte budget is read.
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const chunks = [];
+    let total = 0;
     let text = '';
+    let gzip = null;
     try {
-        while (text.length < bytes) {
+        while (total < bytes) {
             const part = await reader.read();
             if (part.done) break;
-            text += decoder.decode(part.value, { stream: true });
-            if (text.includes('"run_metadata"')) break;
+            chunks.push(part.value);
+            total += part.value.length;
+            if (gzip === null) gzip = F.isGzip(part.value);
+            if (!gzip) {
+                text += decoder.decode(part.value, { stream: true });
+                if (text.includes('"run_metadata"')) break;
+            }
         }
     } finally {
         try {
@@ -743,7 +1009,14 @@ async function fetchUrlPrefix(url, bytes) {
             /* already complete */
         }
     }
-    return text;
+    if (!gzip) return text;
+    const all = new Uint8Array(total);
+    let at = 0;
+    for (const c of chunks) {
+        all.set(c, at);
+        at += c.length;
+    }
+    return F.readRunlogPrefixText(all);
 }
 
 async function scanLocal() {
@@ -753,13 +1026,11 @@ async function scanLocal() {
     setStatus('', `Scanning ${base.pathname}`);
     try {
         const first = await listDirectoryLinks(base);
-        const direct = first.filter((url) => url.pathname.toLowerCase().endsWith('.jsonl'));
+        const direct = first.filter((url) => F.isRunlogName(url.pathname));
         const directories = first.filter((url) => url.pathname.endsWith('/'));
         const childFiles = await Promise.all(
             directories.map(async (directory) =>
-                (await listDirectoryLinks(directory)).filter((url) =>
-                    url.pathname.toLowerCase().endsWith('.jsonl')
-                )
+                (await listDirectoryLinks(directory)).filter((url) => F.isRunlogName(url.pathname))
             )
         );
         const files = [...direct, ...childFiles.flat()];
@@ -1536,6 +1807,17 @@ els.clearSelectionButton.addEventListener('click', () => {
 });
 
 els.runCatalog.addEventListener('change', (event) => {
+    const toggle = event.target.closest('.col-toggle');
+    if (toggle) {
+        if (toggle.checked) state.catalogColumns.add(toggle.dataset.col);
+        else state.catalogColumns.delete(toggle.dataset.col);
+        localStorage.setItem(CATALOG_COLUMNS_KEY, JSON.stringify([...state.catalogColumns]));
+        const open = els.runCatalog.querySelector('.col-picker')?.open;
+        renderCatalog();
+        const picker = els.runCatalog.querySelector('.col-picker');
+        if (picker && open) picker.open = true;
+        return;
+    }
     const input = event.target.closest('.run-select');
     if (!input) return;
     const key = input.dataset.key;
@@ -1549,6 +1831,15 @@ els.runCatalog.addEventListener('change', (event) => {
 });
 
 els.runCatalog.addEventListener('click', (event) => {
+    const sortBtn = event.target.closest('.col-sort');
+    if (sortBtn) {
+        const key = sortBtn.dataset.sort;
+        if (state.catalogSort.key !== key) state.catalogSort = { key, dir: 1 };
+        else if (state.catalogSort.dir === 1) state.catalogSort = { key, dir: -1 };
+        else state.catalogSort = { key: '', dir: 1 };
+        renderCatalog();
+        return;
+    }
     const button = event.target.closest('.focus-run');
     if (!button) return;
     focusDescriptor(button.dataset.key, state.mode === 'single').catch((error) =>
@@ -1709,8 +2000,10 @@ els.scopeAutoY.addEventListener('click', () => {
 document.body.addEventListener('dragover', (event) => event.preventDefault());
 document.body.addEventListener('drop', async (event) => {
     event.preventDefault();
-    const files = [...((event.dataTransfer && event.dataTransfer.files) || [])].filter((file) =>
-        /\.(jsonl|ndjson|json)$/i.test(file.name)
+    // Same acceptance as the file input (`accept=".jsonl,.ndjson,.json,…"`): a
+    // dropped `.json` is a user's choice; directory listings use F.isRunlogName alone.
+    const files = [...((event.dataTransfer && event.dataTransfer.files) || [])].filter(
+        (file) => F.isRunlogName(file.name) || /\.json$/i.test(file.name)
     );
     if (!files.length) return;
     try {
