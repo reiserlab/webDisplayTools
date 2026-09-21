@@ -314,6 +314,62 @@ delay. It plays once, then exits. Lines without ≥22 fields or a numeric col 22
 (e.g. a header) are skipped. Any comma-separated FicTrac `.dat`/CSV with ≥22
 columns works.
 
+## Replaying a REAL fly from one of our run logs
+
+Every committed run log (`runlogs/<rig>/*.jsonl.gz`) carries the fly's FicTrac trace as
+`[ms, fc, idx, ft, x, y, hd]` rows. `--replay` re-emits that heading/position as FicTrac
+records at the original pacing — real saccade, bout and pause statistics with no model:
+
+```bash
+pixi run sim -- --replay path/to/run.jsonl.gz            # once, real time
+pixi run sim -- --replay path/to/run.jsonl.gz --loop     # forever; heading stays continuous
+pixi run sim -- --replay path/to/run.jsonl.gz --speed 3
+```
+
+The fly is **not reactive** (it cannot see what the arena shows), so this tests the
+mapping — tare, wrap, modulus, coupling, link load — with realistic kinematics, not the
+fly's response. `ms` restarts at 0 on every log activation; a backwards step is treated
+as no delay, and gaps are capped at 1 s.
+
+## A model fly in the loop (no camera, no ball, real arena)
+
+`--model fly` closes the loop without FicTrac: the sim subscribes to the bridge's
+WebSocket, reads the frame index the arena is showing (the bridge broadcasts every
+`frame` to all clients), converts it to the feature's azimuth in the fly's view, and
+turns like a fly would:
+
+```bash
+pixi run bridge                                          # 3.2+ (bias + tare)
+pixi run sim -- --model fly --kp 2                       # fixates the feature
+pixi run sim -- --model fly --kv 1 --kp 0                # pure optomotor follower
+pixi run sim -- --model fly --kp 2 --pause-s 2 --seed 1  # walks in bouts, reproducible
+```
+
+```
+ω_target = −kp·az − kv·d(az)/dt     az = wrap180(frame_dir · idx · deg_per_frame + feature_az0)
+τ dω/dt  = ω_target − ω              + Ornstein–Uhlenbeck noise + Poisson saccades + walking bouts
+```
+
+Signs, once: FicTrac heading is **CCW-positive** (turning LEFT increases it); feature
+azimuth is **right-positive**; `--frame-dir +1` (default) says an index increase moves
+the feature RIGHT — the on-arena direction confirmed for a positive bias at gain +1.8.
+Turning toward the feature is therefore `−kp·az`. With a correctly signed rig a `--kp`
+fly parks the feature in front and, when a bias is installed, counter-turns it
+(`closed-loop-report.py` prints that as `rejection ≈ 1`, with the steady-state lag a
+proportional controller must have: 45° at kp 2 against 90 °/s). A `--kv` fly is
+stabilizing too — following the retinal slip *is* counter-rotating the display
+(rejection ≈ 0.5 at kv 1). The two failure signatures are unmistakable: a mis-signed
+rig (or `--frame-dir`) parks a `--kp` fly's feature at **±180°** (anti-fixation), and
+drives a `--kv` fly into a **runaway spin** (rejection ≪ 0). Measured in the virtual
+loop (bridge + sim, no arena): kp 2 → frontal 92 %, rejection +0.99; kv 1 → +0.52;
+kp 2 mis-signed → frontal 4–21 %, feature at 130–164°; kv 1 mis-signed → −61.
+A frame older than `--stale-s` (no run in progress) counts as "display unseen": the fly
+free-runs on noise and saccades so the ball keeps moving between trials.
+
+Afterwards: `pixi run python scripts/closed-loop-report.py run.jsonl.gz --svg out.svg`
+— per closed-loop epoch, the fly's turning, where the feature sat, the reconstructed
+bias, the rejection index and the idx-consistency check.
+
 ## fictrac_sim.py options
 
 | Option | Default | Meaning |
@@ -321,10 +377,23 @@ columns works.
 | `file` (positional) | — | FicTrac log (CSV) to replay; omit to generate random data. |
 | `--proto {udp,tcp}` | `udp` | UDP: send datagrams. TCP: act as server (FicTrac role). |
 | `--host` / `--port` | `127.0.0.1` / `60000` | UDP destination / TCP bind address. |
-| `--rate` | `50` | *Generated mode:* records per second. |
-| `--seed` | — | *Generated mode:* RNG seed for byte-reproducible output. |
-| `--count N` | `0` | *Generated mode:* emit N records then exit (0 = forever). |
-| `--speed` | `1.0` | *Playback mode:* speed multiplier (`2` = twice real time). |
+| `--rate` | `50` | *Generated / model mode:* records per second. |
+| `--seed` | — | *Generated / model mode:* RNG seed for byte-reproducible output. |
+| `--count N` | `0` | *Generated / model mode:* emit N records then exit (0 = forever). |
+| `--speed` | `1.0` | *Playback / replay mode:* speed multiplier (`2` = twice real time). |
+| `--noise`, `--turn-sigma`, `--jump-every`, `--jump-deg` | `1.0`, `0.05`, `0`, `90` | *Generated mode:* random-walk scale and the fw #50 soak knobs. |
+| `--replay RUNLOG` / `--loop` | — | *Replay mode:* a bridge run log (`.jsonl[.gz]`) to re-emit; loop forever. |
+| `--model fly` | — | *Model mode:* the closed-loop model fly (below). |
+| `--bridge` | `ws://127.0.0.1:8765` | *Model:* bridge WebSocket to watch frames on. |
+| `--kp` / `--kv` | `0` / `0` | *Model:* fixation gain (°/s per °) / optomotor gain (fly ω ÷ world ω). |
+| `--tau` | `0.1` | *Model:* turning-response time constant (s). |
+| `--noise-dps` / `--noise-tau` | `30` / `0.3` | *Model:* OU turning noise sigma (°/s) and time constant (s). |
+| `--saccade-rate` / `--saccade-deg` / `--saccade-ms` | `0.5` / `45` / `80` | *Model:* Poisson saccades per s, mean amplitude, duration. |
+| `--bout-s` / `--pause-s` | `4` / `0` | *Model:* mean walking bout / pause (0 = never pauses). |
+| `--speed-rad-s` | `0.6` | *Model:* forward speed while walking (ball rad/s → cols 15/16/19/20). |
+| `--heading0` | `0` | *Model:* initial heading (°). |
+| `--deg-per-frame` / `--frame-dir` / `--feature-az0` | `1.8` / `+1` / `0` | *Model:* how a frame index becomes a feature azimuth (see signs above). |
+| `--stale-s` | `1.0` | *Model:* a published frame older than this counts as "display unseen". |
 
 ## Notes & limitations
 
