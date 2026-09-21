@@ -80,10 +80,12 @@ class Walker:
         turn_sigma: float = 0.05,
         jump_every: int = 0,
         jump_deg: float = 90.0,
+        noise: float = 1.0,
     ) -> None:
         self.rng = random.Random(seed)
         self.dt = 1.0 / rate_hz
         self.dt_ms = 1000.0 * self.dt
+        self.noise = noise  # scales every random-walk sigma (0 = a perfectly still ball)
         # Soak-harness knobs (fw #50): `turn_sigma` is the per-frame heading step
         # (rad) — 0.05 rad ≈ 2.9° ≈ ±1.6 frames/sample at the 1.8°/frame default
         # gain, i.e. a FicTrac-like random walk that keeps the SD reads on the
@@ -100,7 +102,7 @@ class Walker:
         self.side = 0.0  # integrated side motion, field 21
 
     def _gauss(self, sigma: float) -> float:
-        return self.rng.gauss(0.0, sigma)
+        return self.rng.gauss(0.0, sigma * self.noise)
 
     def next_record(self) -> list[float]:
         self.frame += 1
@@ -260,6 +262,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"port (default: {DEFAULT_PORT})")
     p.add_argument("--rate", type=float, default=50.0, help="generated mode: frames per second (default: 50)")
     p.add_argument("--seed", type=int, default=None, help="generated mode: RNG seed for reproducible output")
+    p.add_argument(
+        "--noise",
+        type=float,
+        default=1.0,
+        help="generated mode: scales all random-walk noise sigmas (default: 1.0)",
+    )
     p.add_argument("--count", type=int, default=0, help="generated mode: frames to emit then exit (0 = forever)")
     p.add_argument("--speed", type=float, default=1.0, help="playback mode: speed multiplier (default: 1.0)")
     p.add_argument(
@@ -299,6 +307,8 @@ def main(argv: list[str] | None = None) -> int:
         # ── generated mode: synthetic random walk ──
         if args.rate <= 0:
             p.error("--rate must be > 0")
+        if args.noise < 0:
+            p.error("--noise must be >= 0")
         if args.turn_sigma < 0 or args.jump_every < 0:
             p.error("--turn-sigma and --jump-every must be >= 0")
         walker = Walker(
@@ -307,6 +317,7 @@ def main(argv: list[str] | None = None) -> int:
             turn_sigma=args.turn_sigma,
             jump_every=args.jump_every,
             jump_deg=args.jump_deg,
+            noise=args.noise,
         )
         emit = emit_generated(walker, args.rate, args.count)
 
