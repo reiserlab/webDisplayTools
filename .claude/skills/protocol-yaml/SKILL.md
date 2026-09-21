@@ -243,6 +243,37 @@ YAML aliases must appear **after** their anchor textually — put `variables:` a
 anything a colleague will want to tweak (durations, gains). The Studio's Variables panel
 edits them with rename-cascade; hand-edits are fine too.
 
+### Runtime variables (operator-adjustable DURING a run — Studio v0.84)
+
+Expose a variable to the rig operator by declaring it under `runtime_controls:` (only these
+can change; everything else stays fixed). The Studio's Run view shows them in a "Runtime
+variables" panel; **Apply** validates against the bounds and the change takes effect at the
+**next trial boundary**, logged with operator/reason/old→new; the YAML is never rewritten.
+The first use is opto LED intensity (`protocols/opto_intensity_runtime_test.yaml`):
+
+```yaml
+variables:
+  opto_pct: &opto_pct 10        # the default = the value at run start
+  pulse_s:  &pulse_s 5
+
+runtime_controls:               # top level, after variables:
+  opto_pct: {type: number, units: percent, minimum: 0, maximum: 100, label: "Opto LED intensity"}
+  pulse_s:  {type: integer, units: s, minimum: 1, maximum: 20}
+# types: number | integer | boolean | enum (values: [a, b]); number/integer need minimum+maximum
+```
+
+Bind them with ordinary aliases **inside command parameters** (`percent: *opto_pct`,
+`duration: *pulse_s`, `led_activation: {level: *opto_pct, …}`). A control aliased anywhere
+else — a `pattern`, a `command_name`, a block `repetitions` — is a validation error: runtime
+changes may tune a trial, never restructure it. Web-only; MATLAB ignores `runtime_controls`.
+
+### `requires:` — capabilities the runner must have
+
+`requires: [flow_control]` marks a protocol that uses the trial-check / repeat-until constructs
+(`docs/development/v3-flow-control-design.md`). The Studio opens it for editing but **refuses
+to run it** until the web runner implements that capability; MATLAB may run it. Leave it out
+otherwise.
+
 ## Plugins
 
 `plugins:` normally comes from the rig (the Studio pre-fills New protocols from the rig

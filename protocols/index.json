@@ -29,6 +29,11 @@
       "path": "./protocols/led_activation_quadrant_test.yaml"
     },
     {
+      "key": "opto_intensity_runtime_test",
+      "label": "Opto intensity as a runtime variable (Mode 2, ledDrive; ~2 min)",
+      "path": "./protocols/opto_intensity_runtime_test.yaml"
+    },
+    {
       "key": "full_experiment",
       "label": "Full experiment (blocks, plugins, ITI)",
       "path": "./protocols/full_experiment.yaml"

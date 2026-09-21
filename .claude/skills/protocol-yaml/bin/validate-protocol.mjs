@@ -62,6 +62,33 @@ let warnings = [];
 try { warnings = (v3.collectExportWarnings(exp) || {}).warnings || []; } catch (_) { /* soft */ }
 for (const w of warnings) console.warn('⚠ ' + (w && w.message ? w.message : w));
 
+// ── requires: + runtime_controls: ───────────────────────────────────────────
+// `requires:` tokens the web runner lacks make the Studio REFUSE to run (editing is fine).
+// `runtime_controls:` are validated by the same module the Studio uses, so an operator
+// finds out here — not at the rig — that a control is out of scope or mis-declared.
+if (Array.isArray(exp.requires) && exp.requires.length) {
+    const missing = v3.unsupportedRequires ? v3.unsupportedRequires(exp) : exp.requires;
+    console.log('ℹ requires: [' + exp.requires.join(', ') + ']' +
+        (missing.length ? ' — the WEB runner refuses to run this (missing: ' + missing.join(', ') + ')' : ''));
+}
+const rcNames = Object.keys(exp.runtime_controls || {});
+if (rcNames.length) {
+    const { createRequire } = await import('node:module');
+    const RuntimeControls = createRequire(import.meta.url)(resolve('js/runtime-controls.js'));
+    const report = RuntimeControls.validateRuntimeControls(exp);
+    for (const e of report.errors) console.error('✗ runtime_controls: ' + e.message);
+    for (const w of report.warnings) console.warn('⚠ runtime_controls: ' + w.message);
+    if (report.ok) {
+        console.log('✓ runtime_controls: ' + rcNames.map((n) => {
+            const d = report.controls[n];
+            const bound = report.bindings.filter((b) => b.variable === n).length;
+            const range = d.type === 'enum' ? (d.values || []).join('|') : d.type === 'boolean' ? 'true|false' : d.minimum + '..' + d.maximum;
+            return n + ' (' + d.type + ' ' + range + (d.units ? ' ' + d.units : '') + ', default ' + JSON.stringify(d.default_value) + ', ' + bound + ' binding' + (bound === 1 ? '' : 's') + ')';
+        }).join('; '));
+    }
+    if (report.errors.length) process.exitCode = 1;
+}
+
 // ── THE WAITS RULE ──────────────────────────────────────────────────────────
 // conditionDuration = max(trialParams.duration, Σ waits): a trialParams is
 // fire-and-forget, so waits are the only protocol clock. Lint each condition.

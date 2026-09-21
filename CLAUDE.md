@@ -372,6 +372,23 @@ fix flows to every page automatically; two hand-written HTML pages never will.
 - **Open lands in Edit:** `Studio.loadProtocol(text, name, source, opts)` switches to Edit
   after a successful load unless `opts.landIn === 'run'` (only the `initFromUrl` `?p=`/
   `?repo=` loads pass that). Never re-add an unconditional force-to-Run.
+- **Runtime variables (v0.84) + the `requires:` gate.** The mechanism is `js/runtime-controls.js`
+  (counter-proposal Extension 1: only `runtime_controls:`-declared variables change; explicit Apply
+  stages; ALL pending changes activate atomically at the next trial boundary via the runner's
+  `resolveCondition` hook; the YAML is never rewritten; provenance events
+  `runtime_control_apply_requested` / `_apply` / `_trial_parameters` + `run_metadata.runtime_controls`).
+  The Run view panel is `js/studio-runtime-vars.js` (pure helpers + `createPanel`), wired by the
+  classic "(2b) RUNTIME VARIABLES" glue script (`Studio.prepareRuntimeControls`,
+  `Studio.resolveRuntimeCondition`, `Studio.runtimeVars.{render,onRunStatus}`) — classic on purpose,
+  like Connect/STOP. Bindings may only target command PARAMETERS (never `pattern`/`command_name`);
+  the module validates every alias use, so a protocol author can expose `ledDrive.percent`,
+  `led_activation.level`, a `wait.duration`, … by anchoring them. Allowed in safe mode (the author
+  bounds what can change). **`requires:`** (v3-flow-control-design.md §7): the parser keeps the
+  list; `unsupportedRequires(exp)` vs `WEB_RUNNER_CAPABILITIES` (empty today) gates `runOnce` /
+  `runCondition` via `refuseUnsupportedRequires` — a `flow_control` protocol OPENS for editing but is
+  REFUSED to run (a `repeat_until` block would otherwise flatten to a plain block and run wrong).
+  When the web runner implements a capability, add its token to `WEB_RUNNER_CAPABILITIES`.
+  Tests: `tests/test-studio-runtime-vars.js`, `tests/test-runtime-controls.js`.
 - **? Help mode:** top-bar `?` toggles `body.helpmode`; a managed tooltip shows curated
   `data-help` text (applied from the `HELP` map in the v6 glue classic script — extend the
   map, don't scatter attributes) and suppresses the native engineer `title=` while shown.
