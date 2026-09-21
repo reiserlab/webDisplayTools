@@ -4,6 +4,30 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.84 (2026-09-21) · Runtime variables — adjust opto intensity (or any exposed variable) during a run
+
+- **New "Runtime variables" panel in the Run view.** A protocol can expose a few of its variables to
+  the operator by declaring them under `runtime_controls:` (type, allowed range or values, units).
+  Those — and only those — appear in the panel with their allowed range, the value currently in
+  force, an input, and a state chip. Protocols that declare none show "None declared". The first
+  use is optogenetic LED intensity: see the new library protocol *Opto intensity as a runtime
+  variable* (`opto_intensity_runtime_test.yaml`, Mode 2, no FicTrac needed).
+- **Apply is explicit and takes effect at the next trial.** Type a value, press **Apply**: the
+  panel validates it against the declared bounds first (out-of-range or non-integer values are
+  refused inline), then the change is *pending* (amber, pulsing) until the next trial boundary,
+  where every pending change takes effect at once and the chip turns green **applied · from
+  trial N**. Nothing changes mid-trial; the new value stays until you Apply again. If the run ends
+  before another trial starts, the chip turns red **not applied** and the log says so.
+- **Fully logged, YAML untouched.** Each Apply is written to the run log with who (the Experimenter
+  field), when, an optional reason, old → new values and the first affected trial; every trial's
+  fully resolved parameters are recorded too, and `run_metadata` lists the exposed controls. The
+  protocol file is never rewritten. Available in safe mode — the protocol author bounds what can
+  change.
+- **Protocols that need features the web runner lacks are refused, not run wrong.** A protocol
+  listing `requires: [flow_control]` (the coming trial-check / repeat-until constructs) still
+  opens for editing, but ▶ Run / ▶ Test refuse with a clear banner — MATLAB may run it. The
+  validator (`validate-protocol.mjs`) also reports `requires:` and checks `runtime_controls:`.
+
 ## v0.82 (2026-09-17) · LED activation fields can be bound to variables
 
 - **The LED activation pane now has the 🔗 button on every value.** Level, hysteresis, and both ends of each ON

@@ -1,0 +1,109 @@
+version: 3
+
+# ============================================================================
+# Optogenetic intensity as a RUNTIME VARIABLE — test protocol (web runner)
+#
+# Demonstrates `runtime_controls:` (Arena Studio v0.84, Run view → "Runtime
+# variables" panel): two ordinary variables are EXPOSED to the operator at the
+# rig, within declared bounds, and can be changed during the run without
+# stopping it or editing this file.
+#
+#   opto_pct   LED drive in % of full brightness (BuckPuck curve) — 0..100
+#   pulse_s    how long the LED stays on per trial, seconds — 1..20 (integer)
+#
+# HOW IT WORKS: type a new value in the panel, press Apply. Nothing changes
+# for the trial that is running; ALL staged changes take effect atomically at
+# the NEXT trial boundary and stay in force until Apply is used again. Each
+# apply is logged (who, when, why, old → new, first affected trial) and every
+# trial's fully resolved parameters go to the run log — this YAML is never
+# rewritten. Undeclared variables (e.g. `trial_dur`) stay fixed.
+#
+# Open loop only (Mode 2) — no FicTrac needed: 6 opto trials with a dark
+# inter-trial interval, ~2 min at defaults. Requires fw #33+ (Analog Out) and
+# a BuckPuck LED on the "Analog Out (0-5V)" BNC. The bridge is only needed for
+# a recorded run. Web-only — MATLAB does not read runtime_controls.
+# ============================================================================
+
+experiment_info:
+  name: "Opto intensity — runtime variable test"
+  author: "webDisplayTools"
+
+rig: "./configs/rigs/cshl_g6_2x10.yaml"
+
+variables:
+  opto_pct: &opto_pct 10 # LED drive % — RUNTIME-ADJUSTABLE (see runtime_controls)
+  pulse_s: &pulse_s 5 # LED-on seconds per trial — RUNTIME-ADJUSTABLE
+  trial_dur: &trial_dur 12 # whole-trial display time, s (fixed)
+  iti_dur: &iti_dur 6 # dark inter-trial interval, s (fixed)
+
+# Only these two variables may be changed at run time, and only within bounds.
+runtime_controls:
+  opto_pct:
+    type: number
+    units: percent
+    minimum: 0
+    maximum: 100
+    label: "Opto LED intensity"
+    description: "BuckPuck drive as % of full brightness; 0 = LED off"
+  pulse_s:
+    type: integer
+    units: s
+    minimum: 1
+    maximum: 20
+    label: "LED pulse duration"
+
+experiment:
+  - name: "opto_block"
+    trials:
+      - "opto_pulse"
+    repetitions: 6
+    intertrial: "dark_iti"
+  - "shutdown"
+
+conditions:
+  # ---- one opto trial ---------------------------------------------------------
+  # Pattern runs for trial_dur; the LED comes on 2 s in, for pulse_s, then off.
+  # The waits sum to trial_dur so the timeline and the display agree
+  # (conditionDuration = max(trialParams.duration, Σ waits)).
+  - name: "opto_pulse"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: 20
+        gain: 0
+      - type: "wait"
+        duration: 2
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *opto_pct
+      - type: "wait"
+        duration: *pulse_s
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: 0
+      - type: "wait"
+        duration: 5
+
+  # ---- dark ITI ---------------------------------------------------------------
+  - name: "dark_iti"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *iti_dur
+
+  # ---- shutdown ---------------------------------------------------------------
+  - name: "shutdown"
+    commands:
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: 0
+      - type: "controller"
+        command_name: "stopDisplay"
+      - type: "controller"
+        command_name: "allOff"

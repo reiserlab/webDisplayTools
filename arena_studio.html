@@ -310,6 +310,31 @@
   .run-bridge .rb-cl.active{color:var(--accent);opacity:1;text-shadow:0 0 8px rgba(0,230,118,.7);animation:pulse 1.1s infinite}
   /* quick safety button: drive the stimulus LED dark (AO 5000 mV) — pink */
   .pill.led-off{border-color:#ff408c;color:#ff6fa8;font-weight:700;letter-spacing:.3px}
+  /* Run-view "Runtime variables" panel (v0.84) */
+  .run-vars h3{font-family:var(--head);font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 8px}
+  .run-vars h3 .run-vars-hint{text-transform:none;letter-spacing:0;font-weight:400;font-size:11px}
+  .run-vars-rows{display:flex;flex-direction:column;gap:4px}
+  .run-vars-row{display:grid;grid-template-columns:minmax(120px,1.3fr) minmax(90px,1fr) 72px 96px minmax(120px,1fr);gap:8px;align-items:center;font-size:12px;padding:3px 0;border-top:1px solid var(--edge)}
+  .run-vars-row:first-child{border-top:0}
+  .run-vars-name{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .run-vars-allowed{font-size:11px}
+  .run-vars-active{font-family:var(--head);font-size:12px;color:var(--accent);text-align:right}
+  .run-vars-input{width:100%;min-width:0;background:#0f1419;color:var(--text);border:1px solid var(--edge);border-radius:6px;padding:3px 6px;font:inherit;font-size:12px}
+  .run-vars-input.bad{border-color:#ff5c5c}
+  .run-vars-chip{font-size:10.5px;font-family:var(--head);letter-spacing:.3px;padding:2px 7px;border-radius:9px;border:1px solid var(--edge);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .run-vars-chip.pending{border-color:#f0b429;color:#f0b429;animation:pulse 1.1s infinite}
+  .run-vars-chip.applied{border-color:var(--accent);color:var(--accent)}
+  .run-vars-chip.unapplied{border-color:#ff5c5c;color:#ff8080}
+  .run-vars-actions{display:flex;gap:8px;align-items:center;margin-top:8px}
+  .run-vars-reason{flex:1;min-width:0;background:#0f1419;color:var(--text);border:1px solid var(--edge);border-radius:6px;padding:3px 8px;font:inherit;font-size:12px}
+  .run-vars-apply{border-color:#f0b429;color:#f0b429;font-weight:700;padding:4px 14px}
+  .run-vars-apply:disabled{opacity:.4;cursor:not-allowed}
+  .run-vars-status{font-size:11px;color:var(--dim);margin-top:6px;min-height:14px}
+  .run-vars-status.pending{color:#f0b429}
+  .run-vars-status.ok{color:var(--accent)}
+  .run-vars-status.bad{color:#ff8080}
+  .run-vars-status.warn{color:#f0b429}
+  .run-vars-empty.bad{color:#ff8080;font-size:12px}
   .pill.led-off:hover{background:rgba(255,64,140,.16);border-color:#ff408c;color:#ff8fbd}
   .pat-warn{margin-top:7px;font-size:11.5px;color:var(--warn);background:rgba(227,160,8,.08);border:1px solid rgba(227,160,8,.35);border-radius:6px;padding:6px 9px;line-height:1.4}
   .running-panel{display:none;align-items:center;gap:14px;background:#06210f;border:1px solid var(--accent);border-radius:8px;padding:8px 14px}
@@ -2240,6 +2265,17 @@
         </div>
       </div>
 
+      <!-- RUNTIME VARIABLES (v0.84) — the counter-proposal's Extension 1: only variables the
+           YAML exposes under `runtime_controls:` appear here; Apply stages a change that
+           takes effect at the NEXT trial boundary and is logged with provenance. The
+           mechanism is js/runtime-controls.js; the panel is js/studio-runtime-vars.js.
+           Allowed in safe mode on purpose: the protocol author bounds what can change. -->
+      <div class="card run-vars" id="runVarsCard" title="Variables the protocol exposes for adjustment during a run (declared under runtime_controls: in the YAML). Apply stages a change; it takes effect at the next trial and is logged.">
+        <h3>Runtime variables <span class="dim run-vars-hint">· changes apply at the next trial</span></h3>
+        <div id="runVarsBody"><span class="dim">None — open a protocol to see its runtime variables.</span></div>
+        <div class="run-vars-status" id="runVarsStatus"></div>
+      </div>
+
       <div class="card seqlist">
         <h3>Sequence · test any single condition ▶ <span id="docSummary" class="doc-summary"></span></h3>
         <div id="seqBody"><span class="dim">Open a protocol (File ▾ → Open) to see its sequence.</span></div>
@@ -2959,7 +2995,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.82 | 2026-09-17 12:56 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.84 | 2026-09-21 11:56 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -2998,6 +3034,7 @@
 <script src="js/runlog-format.js?v=20260906-1829"></script>
 <script src="js/runlog-replay.js?v=20260906-1829"></script>
 <script src="js/runtime-controls.js"></script>
+<script src="js/studio-runtime-vars.js"></script> <!-- Run view "Runtime variables" panel (v0.84) -->
 <script src="js/arena-replay-viewer-protocol.js"></script>
 
 <!-- ============================================================ -->
@@ -3234,6 +3271,8 @@
         if (typeof Studio.editRunStatus === 'function') Studio.editRunStatus(s);
         // feed the live oscilloscope's overlays (condition/visual/LED spans) + run reset
         if (window.Scope && window.Scope.onRunStatus) window.Scope.onRunStatus(s);
+        // runtime-variables panel: applied/pending chips + "run ended with a pending Apply"
+        if (Studio.runtimeVars && Studio.runtimeVars.onRunStatus) Studio.runtimeVars.onRunStatus(s);
         // feed the recorded-run accumulator
         if (Studio.activeRunLog) {
             // A run that ended because the LINK DROPPED (watchdog self-reset re-enumerates the
@@ -6285,6 +6324,129 @@
 </script>
 
 <!-- ============================================================ -->
+<!-- (2b) RUNTIME VARIABLES — Run view panel glue (v0.84). The Classic port of the Alt
+     sidecar, through the shared modules js/runtime-controls.js (mechanism) and
+     js/studio-runtime-vars.js (panel). Classic script on purpose: it owns the run-state
+     hooks (prepare / resolve at each trial boundary) that must survive a failed ES-module
+     import, exactly like Connect / STOP. Allowed in safe mode: the protocol author bounds
+     what can change, and every Apply is logged with operator + reason. -->
+<!-- ============================================================ -->
+<script>
+'use strict';
+(function () {
+    const $ = (id) => document.getElementById(id);
+    const RC = window.RuntimeControls;
+    const RV = window.StudioRuntimeVars;
+    const Studio = window.Studio;
+    if (!Studio || !RV || !$('runVarsBody')) return;
+    Studio.runtimeControlSession = null;
+    Studio.runtimeControlEndedWithPending = null;
+
+    function bridgeLog(obj) {
+        const b = Studio.session && Studio.session.bridge;
+        if (b && b.logging && b.log) b.log(obj);
+    }
+    function operatorName() {
+        const e = $('mExp');
+        const v = e && e.value && e.value.trim();
+        return v || (Studio.currentRig && Studio.currentRig.name) || 'Arena Studio operator';
+    }
+
+    const panel = RV.createPanel({
+        host: $('runVarsBody'),
+        statusEl: $('runVarsStatus'),
+        RuntimeControls: RC,
+        getProtocol: () => Studio.currentDoc && Studio.currentDoc.experiment,
+        getSession: () => Studio.runtimeControlSession,
+        isRunning: () => !!(Studio.session && Studio.session.running),
+        getEndedPending: () => Studio.runtimeControlEndedWithPending,
+        onApply(changes, reason) {
+            const session = Studio.runtimeControlSession;
+            const requested = session.stageApply(changes, { operator: operatorName(), reason });
+            if (Studio.activeRunLog) Studio.activeRunLog.event('runtime-control-requested', { request: requested });
+            bridgeLog(requested);
+            if (Studio.rawLog) {
+                Studio.rawLog('runtime variables: Apply staged for the next trial — ' + RV.describeRequest(requested) +
+                    (requested.reason ? ' (' + requested.reason + ')' : ''), 'info');
+            }
+            return requested;
+        }
+    });
+
+    // Called by startRunLog() with the run's immutable YAML/run identity.
+    Studio.prepareRuntimeControls = function (runId) {
+        const doc = Studio.currentDoc;
+        const protocol = doc && doc.experiment;
+        Studio.runtimeControlSession = null;
+        Studio.runtimeControlEndedWithPending = null;
+        if (!protocol || !RC) { panel.render(true); return null; }
+        const report = RC.validateRuntimeControls(protocol);
+        if (!report.ok || !Object.keys(report.controls || {}).length) { panel.render(true); return null; }
+        const yamlHash = doc.sha256 || 'unhashed-' + String(doc.filename || 'protocol');
+        const session = RC.createRuntimeControlSession({
+            protocol, sessionId: runId, yamlId: doc.filename || 'protocol.yaml', yamlHash
+        });
+        Studio.runtimeControlSession = session;
+        if (Studio.activeRunLog) {
+            Studio.activeRunLog.meta.runtime_controls = session.getControlDefinitions();
+            Studio.activeRunLog.meta.runtime_control_initial_values = session.getActiveValues();
+            Studio.activeRunLog.meta.runtime_control_yaml_id = doc.filename || null;
+            Studio.activeRunLog.meta.runtime_control_yaml_hash = yamlHash;
+        }
+        if (Studio.rawLog) {
+            Studio.rawLog('runtime variables: ' + Object.keys(report.controls).join(', ') +
+                ' exposed for this run (Apply takes effect at the next trial)', 'info');
+        }
+        panel.render(true);
+        return session;
+    };
+
+    // The runner's trial-boundary hook: activates pending Apply requests atomically and
+    // returns the condition with its commands RESOLVED against the active values.
+    Studio.resolveRuntimeCondition = async function (conditionName, context) {
+        const session = Studio.runtimeControlSession;
+        if (!session) return context.condition;
+        const record = session.beginTrial({
+            trialIndex: context.index,
+            trialId: 'trial-' + String(context.index + 1).padStart(4, '0'),
+            conditionName
+        });
+        return {
+            condition: Object.assign({}, context.condition, { commands: record.resolved_commands }),
+            runtimeRecord: record
+        };
+    };
+
+    Studio.runtimeVars = {
+        render: () => panel.render(),
+        onRunStatus(s) {
+            if (!s) return;
+            if (s.phase === 'runtime-control-applied' && s.runtimeControlApply) {
+                const a = s.runtimeControlApply;
+                if (Studio.rawLog) {
+                    Studio.rawLog('runtime variables: ' + a.variable + ' ' + a.old_value + ' → ' + a.new_value +
+                        ' applied from trial ' + (a.first_affected_trial + 1), 'info');
+                }
+            }
+            if (s.phase === 'runtime-control-applied' || s.phase === 'trial-resolved') panel.syncInputsToPlanned();
+            if ((s.phase === 'sequence-complete' || s.phase === 'aborted') &&
+                Studio.runtimeControlSession && Studio.runtimeControlSession.hasPending()) {
+                const pending = Studio.runtimeControlSession.getPendingRequests();
+                Studio.runtimeControlEndedWithPending = pending;
+                const payload = { reason: 'run-ended-before-next-trial', pending_requests: pending };
+                if (Studio.activeRunLog) Studio.activeRunLog.event('runtime-control-unapplied', payload);
+                bridgeLog(Object.assign({ event: 'runtime_control_apply_unapplied' }, payload));
+                if (Studio.rawLog) Studio.rawLog('runtime variables: Apply was NOT used — the run ended before another trial', 'warn');
+            }
+            panel.update();
+        }
+    };
+    if (Studio.session && Studio.session.on) Studio.session.on('runstatus', () => panel.update());
+    panel.render(true);
+})();
+</script>
+
+<!-- ============================================================ -->
 <!-- (3) MODULE BLOCK — ES-import-dependent code (protocol parse + run) -->
 <!-- ============================================================ -->
 <script type="module">
@@ -6328,7 +6490,8 @@ import {
     anchorExists,
     docInsertPluginNode,
     docRemovePlugin,
-    parseRigYAMLText
+    parseRigYAMLText,
+    unsupportedRequires
 } from './js/protocol-yaml-v3.js';
 import {
     CONTROLLER_COMMANDS,
@@ -8073,6 +8236,7 @@ Studio.syncFromEditor = async function (info) {
     // rig — unless the user/URL picked one explicitly, in which case the
     // bench choice stands and updateDeviceLine raises the mismatch chip.
     if (info.isLoad && doc.rig.name) setSessionRig(doc.rig.name, { explicit: false });
+    if (Studio.runtimeVars) Studio.runtimeVars.render(); // Run view "Runtime variables" panel
     Studio.refreshState();
 };
 
@@ -8204,6 +8368,7 @@ Studio.runOnce = async function (isExperiment) {
     const doc = Studio.currentDoc;
     if (!doc || !Studio.session || !Studio.session.connected) return null;
     const exp = doc.experiment;
+    if (refuseUnsupportedRequires(exp)) return null;
     const { steps } = RunnerLib.flattenStructure(exp, { shuffle: shuffleInPlace });
     const conditionsByName = new Map((exp.conditions || []).map((c) => [c.name, c]));
     startRunLog(isExperiment);
@@ -8642,6 +8807,7 @@ Studio.runCondition = async function (name) {
     }
     const cond = (doc.experiment.conditions || []).find((c) => c.name === name);
     if (!cond) return;
+    if (refuseUnsupportedRequires(doc.experiment)) return;
     const steps = [{ kind: 'ref', label: name, conditionName: name, seqIdx: 0, dur: RunnerLib.conditionDuration(cond) }];
     const conditionsByName = new Map([[name, cond]]);
     startRunLog(false); // per-condition test is never recorded
@@ -8650,6 +8816,20 @@ Studio.runCondition = async function (name) {
     if (Studio.startRunTimer) Studio.startRunTimer(RunnerLib.conditionDuration(cond) || 0);
     await runSteps(steps, conditionsByName, doc.experiment, false);
 };
+
+// The capability gate (v3-flow-control-design.md §7): a protocol whose `requires:` names
+// something the web runner lacks (e.g. `flow_control`) must be REFUSED, never run wrong —
+// a repeat_until block would otherwise flatten into a plain block with its criterion
+// silently ignored. Editing such a file stays allowed; only running is blocked.
+function refuseUnsupportedRequires(exp) {
+    const missing = unsupportedRequires(exp);
+    if (!missing.length) return false;
+    const msg = 'This protocol requires ' + missing.map((t) => '"' + t + '"').join(', ') +
+        ' — not implemented in the web runner yet (MATLAB may run it). Run refused.';
+    Studio.showBanner(msg);
+    if (Studio.rawLog) Studio.rawLog(msg, 'err');
+    return true;
+}
 
 function startRunLog(isExperiment) {
     const doc = Studio.currentDoc;
@@ -16022,6 +16202,9 @@ initFromUrl();
     '#mNotes': 'Anything worth remembering about this run — temperature, fly age, oddities.',
     '#provBox': 'Filled in automatically — which protocol, arena, and controller produced this run.',
     '#runBridge': 'The FicTrac bridge program records runs and drives closed-loop trials. Connect it before a recorded run.',
+    '#runVarsCard': 'Variables the protocol lets you adjust during a run, within the limits its author set. Type a new value and press Apply — it takes effect at the next trial and is written to the run log with your name.',
+    '#runVarsApply': 'Stage the changed values. Nothing changes mid-trial; the new values start at the next trial and stay until you Apply again.',
+    '#runVarsReason': 'Optional: why you changed it. Saved with the change in the run log.',
     /* File ▾ — relocated Edit actions */
     '#fmOpenDemo': 'Open one of the bundled demo protocols to explore how experiments are built.',
     '#fmSaveCopy': 'Download a regenerated copy of the protocol for diffing or MATLAB checks — this does NOT count as saving.',

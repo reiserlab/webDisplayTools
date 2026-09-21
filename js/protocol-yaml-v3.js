@@ -44,10 +44,18 @@ const KNOWN_TOP_LEVEL_KEYS = [
     'rig',
     'variables',
     'runtime_controls',
+    'requires',
     'plugins',
     'experiment',
     'conditions'
 ];
+
+// Capability tokens the WEB runner implements (docs/development/v3-flow-control-design.md §7).
+// A protocol lists what it needs under `requires:`; anything not in this set must make the
+// runner REFUSE to run rather than run wrong (a `repeat_until` block would otherwise flatten
+// into a plain block with its criterion silently ignored). `version:` stays 3 — capabilities
+// compose as a set; nothing here ever needs a version number.
+const WEB_RUNNER_CAPABILITIES = Object.freeze([]);
 
 const KNOWN_EXPERIMENT_INFO_KEYS = ['name', 'date_created', 'author', 'pattern_library'];
 
@@ -206,6 +214,7 @@ function parseV3Protocol(yamlText) {
         // detached copy for the runner/UI; apply state lives in
         // js/runtime-controls.js and never writes back into this YAML document.
         runtime_controls: extractRuntimeControls(data.runtime_controls),
+        requires: extractRequires(data.requires),
         plugins: Array.isArray(data.plugins) ? data.plugins.map(extractPlugin) : [],
         conditions: data.conditions.map(extractCondition),
         sequence: data.experiment.map(extractSequenceEntry),
@@ -264,6 +273,26 @@ function extractRuntimeControls(raw) {
     if (raw === undefined) return {};
     if (raw === null || typeof raw !== 'object') return raw;
     return JSON.parse(JSON.stringify(raw));
+}
+
+/**
+ * `requires:` — the capability tokens a protocol needs from its runner (a list of strings;
+ * a bare string is accepted as a one-element list). Tolerant on read so the Studio can
+ * still OPEN such a file for editing; the run gate is `unsupportedRequires`.
+ */
+function extractRequires(raw) {
+    if (raw === undefined || raw === null) return [];
+    const list = Array.isArray(raw) ? raw : [raw];
+    return list.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim());
+}
+
+/**
+ * Capability tokens under `requires:` that the web runner does NOT implement. Non-empty ⇒
+ * the Studio must refuse to run the protocol (never run it wrong). Editing stays allowed.
+ */
+function unsupportedRequires(experiment) {
+    const req = experiment && Array.isArray(experiment.requires) ? experiment.requires : [];
+    return req.filter((t) => !WEB_RUNNER_CAPABILITIES.includes(t));
 }
 
 /**
@@ -632,6 +661,18 @@ function collectExportWarnings(experiment, arenaGeneration) {
     const warnings = [];
     if (!experiment || !Array.isArray(experiment.conditions)) {
         return { warnings, totalCount: 0 };
+    }
+
+    // 0. Capabilities the web runner lacks — editing is fine, running is refused.
+    for (const token of unsupportedRequires(experiment)) {
+        warnings.push({
+            kind: 'unsupported-requires',
+            name: token,
+            message:
+                'Protocol requires "' +
+                token +
+                '", which the web runner does not implement yet — the Studio will refuse to run it (MATLAB may run it).'
+        });
     }
 
     // 1. Unused conditions
@@ -2265,6 +2306,8 @@ function docRemovePlugin(experiment, pluginName) {
 const ProtocolV3 = {
     parseV3Protocol,
     parseRigYAMLText,
+    WEB_RUNNER_CAPABILITIES,
+    unsupportedRequires,
     generateV3Protocol,
     validateReferences,
     collectBlockingErrors,
@@ -2322,6 +2365,8 @@ if (typeof module !== 'undefined' && module.exports) {
 export {
     parseV3Protocol,
     parseRigYAMLText,
+    WEB_RUNNER_CAPABILITIES,
+    unsupportedRequires,
     generateV3Protocol,
     validateReferences,
     collectBlockingErrors,

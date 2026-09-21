@@ -186,6 +186,11 @@ Studio v0.79 (`arena_studio.html`) or the named module; the bridge only adds the
 | `crash_report` | `arena_studio.html:8554` | post-mortem, fw flag bit 3 | `present`, `fault`, `ret_addr`, `cfsr`, `hfsr`, `bfar`, `mmfar`, `raw_hex` (junk after a HalfKay reflash — known) |
 | `health` | `arena_studio.html:5587` | **Console `chealth` only** | `source:"console"`, `health` (decoded 0xCA) |
 | `analog_loopback_sweep` | `arena_studio.html:5303` | Console Analog In panel | `channel`, `rows`, `fit`, `verdict` |
+| `runtime_control_apply_requested` | `js/runtime-controls.js` `stageApply` → Studio (2b) glue `bridgeLog` (v0.84) | operator presses **Apply** in the Run view's Runtime variables panel | `request_id`, `session_id` (= run id), `yaml_id`, `yaml_hash`, `operator`, `reason`, `request_time`, `changes[] {variable, old_value, new_value}` — STAGED only; nothing has changed yet |
+| `runner` with `phase:"runtime-control-applied"` | `js/arena-runner-g6.js` (trial boundary) via `_sanitizeRunStatus` | next trial boundary after a request | nested `runtimeControlApply {apply_event_id, request_id, variable, old_value, new_value, operator, reason, request_time, effective_time, first_affected_trial, first_affected_trial_id}` — one per changed variable; the moment the value took effect |
+| `runner` with `phase:"trial-resolved"` | same | every trial boundary while a runtime session exists | nested `runtimeRecord` = `runtime_control_trial_parameters {trial_index, trial_id, condition_name, boundary_time, resolved_variables, resolved_commands[], parameter_bindings[], runtime_control_provenance, apply_events[]}` — **the per-trial authority** for what parameters actually ran |
+| `runtime_control_apply_unapplied` | Studio (2b) glue at `sequence-complete` / `aborted` | a run ended with a staged Apply that never reached a trial boundary | `reason:"run-ended-before-next-trial"`, `pending_requests[]` |
+| (in `run_metadata`) | `Studio.prepareRuntimeControls` | run start | `runtime_controls` (the declarations), `runtime_control_initial_values`, `runtime_control_yaml_id`, `runtime_control_yaml_hash` |
 
 Not log lines: `hello_ack`, `log_control_ack` (socket replies). Not implemented: `soak_note` (an operator can type
 `bridge.log({event:'soak_note', …})` in the console; no code emits it).
