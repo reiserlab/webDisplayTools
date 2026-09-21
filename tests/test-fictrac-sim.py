@@ -170,7 +170,13 @@ def synth_log(path, rejecting: bool, gain=1.8, frames=200, amp=90.0, dur_s=4.0, 
          {"type": "bias_config", "dir": "bridge", "ms": 1000, "bias": {"type": "constant", "amplitude": amp, "frequency": 0.0}},
          ]
     hd0_deg = 300.0
-    L.append({"type": "heading_tare", "dir": "bridge", "ms": 1000, "hd0_deg": hd0_deg})
+    # Real runner ordering (Isabel's 2026-09-21 bench logs): the PREVIOUS trial's stopClosedLoop
+    # pushes `bias: none` (+ a tare) a few ms before this trial's fictracApply, and the real
+    # waveform push (+ its tare) lands a few ms AFTER it. The report must pair the epoch with the
+    # LAST push near its start, not the first — the first is the stale `none`.
+    L.insert(4, {"type": "bias_config", "dir": "bridge", "ms": 996, "bias": {"type": "none", "amplitude": 0.0, "frequency": 0.0}})
+    L.insert(5, {"type": "heading_tare", "dir": "bridge", "ms": 997, "hd0_deg": 123.4})
+    L.append({"type": "heading_tare", "dir": "bridge", "ms": 1001, "hd0_deg": hd0_deg})
     n = int(dur_s * rate)
     for i in range(n + 1):
         t_s = i / rate

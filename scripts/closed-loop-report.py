@@ -175,11 +175,22 @@ def _latest_before(items, ms, default=None, slack_ms=0.0):
     return out
 
 
-def _first_within(items, start_ms, end_ms, default=None):
+def _last_within(items, start_ms, end_ms, default=None):
+    """The LAST (time, value) with start−50 ms ≤ time ≤ end — returns (time, value) or (None, default).
+
+    Last, not first: the runner's stopClosedLoop pushes `bias: none` a few ms BEFORE the next
+    startClosedLoop pushes the real waveform (both land inside the slack around the epoch start),
+    and the bridge latches one heading tare per push. Taking the first would pair every epoch with
+    the previous trial's `none` and a stale tare — exactly the 90 % idx-mismatch Isabel saw on the
+    2026-09-21 bench logs.
+    """
+    hit = (None, default)
     for t, v in items:
-        if start_ms - 50.0 <= t <= end_ms:
-            return v
-    return default
+        if t > end_ms:
+            break
+        if t >= start_ms - 50.0:
+            hit = (t, v)
+    return hit
 
 
 def unwrap_deg(seq):
@@ -215,16 +226,15 @@ def analyze_epoch(log: dict, ep: dict, deg_per_frame: float, frame_dir: int, az0
     gain = _num(cfg.get("gain"), 1.8)
     frames = int(_num(cfg.get("frames"), 200) or 200)
     dpf = deg_per_frame if deg_per_frame else abs(gain)
-    bias = _first_within(log["bias"], ep["start_ms"], ep["start_ms"] + 1500.0) or \
-        _latest_before(log["bias"], ep["start_ms"], {"type": "none", "amplitude": 0.0, "frequency": 0.0})
-    bias_t0 = None
-    for t, b in log["bias"]:
-        if ep["start_ms"] - 50.0 <= t <= ep["start_ms"] + 1500.0:
-            bias_t0 = t
-            break
-    if bias_t0 is None:
+    # The waveform + tare that govern this epoch = the LAST push in the window around its start
+    # (see _last_within). Fall back to the latest push before the start (Console-only use).
+    bias_t0, bias = _last_within(log["bias"], ep["start_ms"], ep["start_ms"] + 1500.0)
+    if bias is None:
         bias_t0 = _latest_before([(t, t) for t, _ in log["bias"]], ep["start_ms"], ep["start_ms"])
-    hd0 = _first_within(log["tares"], ep["start_ms"], ep["end_ms"])
+        bias = _latest_before(log["bias"], ep["start_ms"], {"type": "none", "amplitude": 0.0, "frequency": 0.0})
+    _, hd0 = _last_within(log["tares"], ep["start_ms"], ep["start_ms"] + 1500.0)
+    if hd0 is None:
+        _, hd0 = _last_within(log["tares"], ep["start_ms"], ep["end_ms"])
     out = {
         "condition": ep.get("condition"), "start_s": round(ep["start_ms"] / 1000.0, 2),
         "duration_s": round((ep["end_ms"] - ep["start_ms"]) / 1000.0, 2), "rows": len(rows),
