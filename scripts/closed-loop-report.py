@@ -7,7 +7,7 @@ a real fly, `fictrac_sim.py --replay`, or `fictrac_sim.py --model fly`. Stdlib o
 For every closed-loop epoch (runner `fictracApply` true → false; falls back to `bias_config`
 pushes when the runner events are absent, e.g. Console-only use) it reports:
 
-  * the condition name, bias waveform, gain and frame modulus in force;
+  * the condition name, bias waveform, coupling / display pitch and frame modulus in force;
   * the FLY: net heading change, mean and RMS angular velocity (deg/s), from the `hd` column
     unwrapped (FicTrac heading is CCW-positive: a positive net turn is a LEFT turn);
   * the DISPLAY: the feature's azimuth in the fly's view, az = wrap180(frame_dir·idx·dpf + az0),
@@ -16,7 +16,8 @@ pushes when the runner events are absent, e.g. Console-only use) it reports:
   * the BIAS: b(t) reconstructed analytically from the `bias_config` event + each row's `ms`, and
     REJECTION = −slope of unwrapped heading regressed on b(t) — 1.0 = the fly fully counter-turned
     the disturbance (display held still), 0 = ignored it, negative = followed it;
-  * a CONSISTENCY check: `round((wrap180(hd − hd0) + b)/gain) mod frames` vs the logged idx
+  * a CONSISTENCY check: `round((coupling · Δheading + offset + b)/deg_per_frame) mod frames` (bridge 3.3,
+    unwrapped) — or `round((wrap180(hd − hd0) + b)/gain)` for older logs — vs the logged idx
     (the LAB-185 bench check — mismatches beyond ±1 frame mean the log and the mapping disagree).
 
 Usage:
@@ -116,7 +117,7 @@ def parse_log(path: str) -> dict:
             elif typ == "config":
                 rel = _rel(o.get("rx_ms"), t0)
                 if rel is not None:
-                    configs.append((rel, {k: o[k] for k in ("gain", "frames") if _num(o.get(k)) is not None}))
+                    configs.append((rel, {k: o[k] for k in ("gain", "deg_per_frame", "coupling", "offset", "frames") if _num(o.get(k)) is not None}))
             elif typ == "log" and o.get("event") == "runner":
                 rel = _rel(o.get("rx_ms"), t0)
                 if rel is None:
@@ -223,9 +224,14 @@ def analyze_epoch(log: dict, ep: dict, deg_per_frame: float, frame_dir: int, az0
     for t, c in log["configs"]:
         if t <= ep["start_ms"] + 500.0:
             cfg.update(c)
-    gain = _num(cfg.get("gain"), 1.8)
+    # bridge 3.3 logs carry `coupling` + `deg_per_frame` (unwrapped-heading mapping); older logs
+    # carry only `gain` (= the pitch, wrapped-heading mapping, coupling 1).
+    coupling = _num(cfg.get("coupling"))
+    pitch = _num(cfg.get("deg_per_frame")) or _num(cfg.get("gain"), 1.8)
+    gain = pitch
+    offset = _num(cfg.get("offset"), 0.0) or 0.0
     frames = int(_num(cfg.get("frames"), 200) or 200)
-    dpf = deg_per_frame if deg_per_frame else abs(gain)
+    dpf = deg_per_frame if deg_per_frame else abs(pitch)
     # The waveform + tare that govern this epoch = the LAST push in the window around its start
     # (see _last_within). Fall back to the latest push before the start (Console-only use).
     bias_t0, bias = _last_within(log["bias"], ep["start_ms"], ep["start_ms"] + 1500.0)
@@ -238,7 +244,8 @@ def analyze_epoch(log: dict, ep: dict, deg_per_frame: float, frame_dir: int, az0
     out = {
         "condition": ep.get("condition"), "start_s": round(ep["start_ms"] / 1000.0, 2),
         "duration_s": round((ep["end_ms"] - ep["start_ms"]) / 1000.0, 2), "rows": len(rows),
-        "gain": gain, "frames": frames, "bias": bias, "hd0_deg": None if hd0 is None else round(hd0, 2),
+        "gain": gain, "deg_per_frame": pitch, "coupling": coupling, "frames": frames, "bias": bias,
+        "hd0_deg": None if hd0 is None else round(hd0, 2),
     }
     if len(rows) < 3:
         out["note"] = "too few FicTrac rows"
@@ -273,13 +280,25 @@ def analyze_epoch(log: dict, ep: dict, deg_per_frame: float, frame_dir: int, az0
         slope = _ols_slope(b, rel_hd)
         out["bias_angle_end_deg"] = round(b[-1], 1)
         out["rejection"] = None if slope is None else round(-slope, 3)
-    if hd0 is not None and gain:
+    if hd0 is not None and pitch:
         mism = 0
-        for m_, h_, i_, b_ in zip(ms, hd, idx, b):
-            pred = round((wrap180(h_ - hd0) + b_) / gain) % frames
-            d = (pred - i_) % frames
-            if min(d, frames - d) > 1:
-                mism += 1
+        if coupling is None:
+            # bridge <= 3.2: wrapped tared difference, coupling 1
+            for h_, i_, b_ in zip(hd, idx, b):
+                pred = round((wrap180(h_ - hd0) + offset + b_) / pitch) % frames
+                d = (pred - i_) % frames
+                if min(d, frames - d) > 1:
+                    mism += 1
+        else:
+            # bridge 3.3: UNWRAPPED turn since the tare row x coupling; the bias is outside it
+            tare_t = _last_within(log["tares"], ep["start_ms"], ep["start_ms"] + 1500.0)[0]
+            i0 = next((i for i, m in enumerate(ms) if tare_t is not None and m >= tare_t), 0)
+            rel_from_tare = [r - rel_hd[i0] for r in rel_hd]
+            for r_, i_, b_ in zip(rel_from_tare, idx, b):
+                pred = round((coupling * r_ + offset + b_) / pitch) % frames
+                d = (pred - i_) % frames
+                if min(d, frames - d) > 1:
+                    mism += 1
         out["idx_mismatch_fraction"] = round(mism / len(rows), 4)
     out["_series"] = {"t": [(m - ms[0]) / 1000.0 for m in ms], "hd": rel_hd, "az": az, "b": b}
     return out
@@ -290,6 +309,13 @@ def analyze(path: str, deg_per_frame: float, frame_dir: int, az0: float) -> dict
     epochs = [analyze_epoch(log, ep, deg_per_frame, frame_dir, az0) for ep in find_epochs(log)]
     return {"file": os.path.basename(path), "fictrac_rows": len(log["rows"]), "epochs": epochs,
             "epoch_source": "runner fictracApply" if log["applies"] else "bias_config pushes"}
+
+
+def _kpitch(e):
+    """'k 0.75 · 1.8°/f' for bridge-3.3 logs, 'gain 1.8' (pitch, coupling 1) for older ones."""
+    if e.get("coupling") is not None:
+        return f"k {e['coupling']:g} · {e['deg_per_frame']:g}°/f"
+    return f"gain {e['gain']:g}"
 
 
 def _bias_label(b):
@@ -307,15 +333,15 @@ def to_markdown(rep: dict) -> str:
     if not rep["epochs"]:
         out.append("_no closed-loop epochs found_")
         return "\n".join(out)
-    out.append("| # | condition | dur s | bias | gain | frames | fly net turn ° | fly ω mean / rms °/s | feature mean\\|az\\| ° | frontal | rejection | idx mismatch |")
+    out.append("| # | condition | dur s | bias | coupling · °/frame | frames | fly net turn ° | fly ω mean / rms °/s | feature mean\\|az\\| ° | frontal | rejection | idx mismatch |")
     out.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for i, e in enumerate(rep["epochs"], 1):
         if "fly" not in e:
-            out.append(f"| {i} | {e.get('condition') or '—'} | {e['duration_s']} | {_bias_label(e['bias'])} | {e['gain']:g} | {e['frames']} | — | — | — | — | — | {e.get('note', '')} |")
+            out.append(f"| {i} | {e.get('condition') or '—'} | {e['duration_s']} | {_bias_label(e['bias'])} | {_kpitch(e)} | {e['frames']} | — | — | — | — | — | {e.get('note', '')} |")
             continue
         rej = e.get("rejection")
         out.append(
-            f"| {i} | {e.get('condition') or '—'} | {e['duration_s']} | {_bias_label(e['bias'])} | {e['gain']:g} | {e['frames']} "
+            f"| {i} | {e.get('condition') or '—'} | {e['duration_s']} | {_bias_label(e['bias'])} | {_kpitch(e)} | {e['frames']} "
             f"| {e['fly']['net_turn_deg']:+} | {e['fly']['mean_omega_dps']:+} / {e['fly']['rms_omega_dps']} "
             f"| {e['display']['mean_abs_az_deg']} | {e['display']['frontal_fraction']:.0%} "
             f"| {'—' if rej is None else f'{rej:+.2f}'} "
@@ -324,7 +350,7 @@ def to_markdown(rep: dict) -> str:
     out.append("")
     out.append("_rejection: −slope of unwrapped heading on the bias angle — 1 = fully counter-turned (display held), 0 = ignored, "
                "negative = followed. frontal: fraction of rows with the feature within ±30°. idx mismatch: logged frame vs "
-               "round((heading − tare + bias)/gain) mod frames, beyond ±1 frame._")
+               "round((coupling · Δheading + offset + bias) / deg_per_frame) mod frames (bridge 3.3, unwrapped) or round((wrap180(hd − hd0) + bias)/gain) (older logs), beyond ±1 frame._")
     return "\n".join(out)
 
 
@@ -341,7 +367,7 @@ def to_svg(rep: dict, width: int = 900, row_h: int = 150) -> str:
         t = s["t"]
         tmax = max(t[-1], 1e-3)
         pl, pr, pt, pb = 60, width - 20, y0 + 16, y0 + row_h - 18
-        lab = f"{k + 1}. {e.get('condition') or ''} {_bias_label(e['bias'])} gain {e['gain']:g}"
+        lab = f"{k + 1}. {e.get('condition') or ''} {_bias_label(e['bias'])} {_kpitch(e)}"
         if e.get("rejection") is not None:
             lab += f" rejection {e['rejection']:+.2f}"
         lab += f" frontal {e['display']['frontal_fraction']:.0%}"

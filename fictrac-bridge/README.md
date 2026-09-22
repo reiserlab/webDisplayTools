@@ -131,14 +131,16 @@ bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>,
                    {"type":"log_export_result", "name":<str>, "content":<str>}
                      (reply to log_export; {"error":<str>} when nothing was written)
 browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
-                   {"type":"config", "fictrac_port":<int>, "gain":<float>,
-                                     "offset":<float>, "frames":<int>,
+                   {"type":"config", "fictrac_port":<int>, "coupling":<float>,
+                                     "deg_per_frame":<float>, "offset":<float>, "frames":<int>,
+                                     "epoch":true,
                                      "bias":{"type":"none"|"constant"|"sine"|"square",
                                              "amplitude":<deg/s>, "frequency":<Hz>}}
-                                                              (any subset; a message
-                                                               CARRYING "bias" re-zeros
-                                                               the bias phase clock AND
-                                                               re-tares the heading)
+                                                              (any subset; "epoch":true or a
+                                                               message CARRYING "bias" re-tares
+                                                               the heading + re-zeros the bias
+                                                               phase clock; "gain" = deprecated
+                                                               alias of "deg_per_frame")
                    {"type":"log_control", "enabled":<bool>,
                                           "level":"behavior_v2"|"behavior_v1"|"full"}
                                                               (open the log file; level
@@ -218,19 +220,25 @@ log transfers without chunking.
 Edit **one function** in `bridge.py`:
 
 ```python
-def frame_index_from_fictrac(fields, n_frames, gain, offset, bias_deg=0.0) -> int:
+def frame_index_from_heading(rel_heading_deg, n_frames, deg_per_frame, offset=0.0, bias_deg=0.0, coupling=1.0) -> int:
     ...
 ```
 
-The default maps the animal's integrated **heading** (FicTrac field 17 →
-`fields[16]`, 0-based) to
-`index = round((heading° + offset + bias°) / gain) mod n_frames`.
-`gain` is **degrees of heading per frame index** — `360/200 = 1.8` advances one
-azimuthal position (one of 20 pixels × 10 surrounding columns) per index; a negative
-gain reverses direction. `offset` is in degrees. Swap in integrated position
-(`fields[14]`, `fields[15]`), speed (`fields[18]`), or any combination. `--frames N`
-(the index modulus) should match the loaded pattern's frame count — the console
-sends it automatically when you load a Mode-3 pattern.
+The default (bridge 3.3) maps the fly's **unwrapped turn since the epoch tare** — the
+Pipeline accumulates `wrap180(Δ heading)` per frame from FicTrac field 17 (`fields[16]`) —
+to `index = round((coupling · turn° + offset + bias°) / deg_per_frame) mod n_frames`.
+`coupling` is dimensionless: `1` = the display follows the ball 1:1, `0.75` / `1.25` = the
+world turns less / more than the ball, negative = reversed, `0` = the display ignores the
+fly (bias-only replay). `deg_per_frame` is the **pattern pitch** — `360/200 = 1.8` on a
+10-column G6 (one azimuth pixel per frame) — pushed by the Studio from the session rig;
+it is NOT 360/frame_count (a 20-frame tiled grating still steps 1.8°/frame). The bias is
+outside the coupling, so a negative coupling never reverses the disturbance. Keeping the
+turn unwrapped is what makes fractional couplings seamless: the pre-3.3 wrapped mapping
+jumped the display by (k − 1)·360° once per ball revolution for any `gain` but ±1.8.
+`--frames N` (the index modulus) should match the loaded pattern's frame count — the
+console sends it automatically when you load a Mode-3 pattern. Swap in integrated position
+(`fields[14]`, `fields[15]`) or speed (`fields[18]`) in `Pipeline.handle_line` if you need a
+different policy.
 
 ## Bias / disturbance waveforms
 
@@ -287,7 +295,9 @@ Full reference, including the validation policy and the authoring YAML:
 | `--in-host` / `--in-port` | `127.0.0.1` / `60000` | FicTrac source address. |
 | `--ws-host` / `--ws-port` | `127.0.0.1` / `8765` | WebSocket server address. |
 | `--frames N` | `200` | Frame count of the loaded pattern (the index modulus); re-sent live by the console. |
-| `--gain` | `1.8` | Degrees of heading per frame index (360/200); negative reverses. Re-settable live. |
+| `--coupling` | `1.0` | Dimensionless closed-loop coupling: 1 = 1:1, 0.75/1.25 = under/over, negative = reversed, 0 = bias only. Re-settable live (per `startClosedLoop`). |
+| `--deg-per-frame` | `1.8` | Display degrees per frame index — the pattern pitch (360/200 px on a 10-column G6). The Studio pushes the rig's value live. |
+| `--gain` | — | **Deprecated** alias of `--deg-per-frame` (pre-3.3 name). |
 | `--offset` | `0.0` | Heading offset in degrees. |
 | `--bias-type` | `none` | Bias/disturbance waveform: `none`, `constant`, `sine`, `square`. A protocol's `startClosedLoop` overrides this live. |
 | `--bias-amplitude` | `0.0` | Bias PEAK velocity in deg/s; negative reverses. |

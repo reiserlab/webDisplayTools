@@ -1168,10 +1168,68 @@ async function main() {
             );
         check('connect -> fictracConnect', t('connect').op, 'fictracConnect');
         check('disconnect -> fictracDisconnect', t('disconnect').op, 'fictracDisconnect');
-        const scl = t('startClosedLoop', { gain: 3.6 });
+        const scl = t('startClosedLoop', { coupling: 0.75 });
         check('startClosedLoop -> fictracApply', scl.op, 'fictracApply');
         checkBool('startClosedLoop on=true', scl.on === true);
-        check('startClosedLoop carries gain override', scl.gain, 3.6);
+        check('startClosedLoop carries the coupling', scl.coupling, 0.75);
+        check('no deg_per_frame → null (rig pitch)', scl.degPerFrame, null);
+        check('coupling defaults to 1', t('startClosedLoop', {}).coupling, 1);
+        check(
+            'deg_per_frame override carried',
+            t('startClosedLoop', { deg_per_frame: 3.6 }).degPerFrame,
+            3.6
+        );
+        check(
+            'coupling 0 is legal (bias-only replay)',
+            t('startClosedLoop', { coupling: 0 }).coupling,
+            0
+        );
+        // The pre-v0.85 `gain` (deg/frame) is RETIRED. ±1.8 (= coupling ±1, the only
+        // unambiguous legacy values) run with a deprecation warning; anything else (a
+        // fractional coupling that used to jump once per revolution) is refused.
+        const legacyPos = t('startClosedLoop', { gain: 1.8 });
+        checkDeep(
+            'legacy gain 1.8 → coupling 1 (soft-accept)',
+            [legacyPos.op, legacyPos.coupling],
+            ['fictracApply', 1]
+        );
+        checkBool(
+            '...with a deprecation warning',
+            /retired/.test(legacyPos.warning) && /coupling: 1/.test(legacyPos.warning),
+            legacyPos.warning
+        );
+        check('legacy gain -1.8 → coupling -1', t('startClosedLoop', { gain: -1.8 }).coupling, -1);
+        check(
+            'explicit coupling wins over a legacy gain',
+            t('startClosedLoop', { gain: 1.8, coupling: 0.5 }).coupling,
+            0.5
+        );
+        check(
+            'defaultCoupling (from a legacy plugin-config gain) applies when the step names none',
+            Runner.translateCommand(
+                { type: 'plugin', plugin_name: 'fictrac', command_name: 'startClosedLoop' },
+                { fictracPluginNames: new Set(['fictrac']), defaultCoupling: -1 }
+            ).coupling,
+            -1
+        );
+        const retired = t('startClosedLoop', { gain: 1.2 });
+        check('retired gain 1.2 (a fractional coupling) → error step', retired.op, 'error');
+        checkBool(
+            '...hinting the equivalent coupling 1.5',
+            /coupling 1\.5/.test(retired.reason),
+            retired.reason
+        );
+        checkBool(
+            '...naming coupling as the replacement',
+            /coupling/.test(retired.reason) && /retired/.test(retired.reason),
+            retired.reason
+        );
+        check('bad coupling → error', t('startClosedLoop', { coupling: 'x' }).op, 'error');
+        check(
+            'non-positive deg_per_frame → error',
+            t('startClosedLoop', { deg_per_frame: 0 }).op,
+            'error'
+        );
         // Every closed-loop epoch is SELF-DESCRIBING: with no bias authored the IR still
         // carries {type:'none'} so the bridge can't keep driving this trial with a
         // waveform left over from an earlier condition or an aborted run.
@@ -1279,7 +1337,6 @@ async function main() {
         );
 
         const biased = scl({
-            gain: 1.8,
             bias_type: 'sine',
             bias_amplitude: 90,
             bias_frequency: 0.5
@@ -1289,7 +1346,7 @@ async function main() {
             amplitude: 90,
             frequency: 0.5
         });
-        check('bias does not disturb the gain override', biased.gain, 1.8);
+        check('coupling defaults to 1 alongside a bias', biased.coupling, 1);
         check('no warning on a clean spec', biased.warning, null);
 
         // --- FAIL the step (not the run) on a malformed spec -------------------
@@ -1397,7 +1454,7 @@ async function main() {
                             type: 'plugin',
                             plugin_name: 'fictrac',
                             command_name: 'startClosedLoop',
-                            params: { gain: 3.6 }
+                            params: { coupling: 0.75 }
                         },
                         { type: 'wait', duration: 2 },
                         { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' },
@@ -1436,9 +1493,14 @@ async function main() {
             bridge.configs.some((c) => c.frames === 60)
         );
         checkBool(
-            'pushed gain override 3.6',
-            bridge.configs.some((c) => c.gain === 3.6)
+            'pushed coupling 0.75',
+            bridge.configs.some((c) => c.coupling === 0.75)
         );
+        checkBool(
+            'pushed epoch:true with the start (bridge re-tares the heading)',
+            bridge.configs.some((c) => c.epoch === true && c.coupling === 0.75)
+        );
+        checkBool('no retired gain key pushed', !bridge.configs.some((c) => c.gain !== undefined));
         checkBool(
             'log message routed to bridge',
             bridge.logs.some((l) => l.event === 'log' && l.message === 'done')
@@ -1512,7 +1574,6 @@ async function main() {
 
         {
             const { bridge, summary, slept } = await runCl({
-                gain: 1.8,
                 bias_type: 'sine',
                 bias_amplitude: 90,
                 bias_frequency: 0.5
@@ -1523,7 +1584,8 @@ async function main() {
             const start = bridge.configs.find((c) => c.bias && c.bias.type === 'sine');
             checkBool('startClosedLoop pushed the bias', !!start, JSON.stringify(bridge.configs));
             check('bias rides with frames', start.frames, 200);
-            check('bias rides with gain', start.gain, 1.8);
+            check('bias rides with coupling 1 (the default)', start.coupling, 1);
+            check('bias rides with epoch:true (the bridge re-tares)', start.epoch, true);
             checkDeep('bias spec pushed intact', start.bias, {
                 type: 'sine',
                 amplitude: 90,
@@ -1544,7 +1606,7 @@ async function main() {
         {
             // A malformed bias must skip its STEP, not abort the run, and must never
             // reach the bridge as a silently-degraded no-op.
-            const { bridge, summary } = await runCl({ gain: 1.8, bias_type: 'triangle' });
+            const { bridge, summary } = await runCl({ bias_type: 'triangle' });
             check('bad bias -> one error', summary.errors, 1);
             checkBool(
                 'bad bias never pushed a bias config',
@@ -1558,7 +1620,6 @@ async function main() {
             // A negative frequency runs, but emits a 'warn' event (its own phase — NOT
             // 'skip', which would inflate summary.skipped) and a bridge log line.
             const { bridge, summary, events } = await runCl({
-                gain: 1.8,
                 bias_type: 'sine',
                 bias_amplitude: 90,
                 bias_frequency: -0.5
@@ -1628,7 +1689,7 @@ async function main() {
                     type: 'plugin',
                     plugin_name: 'fictrac',
                     command_name: 'startClosedLoop',
-                    params: { gain: 1.8, bias_type: 'constant', bias_amplitude: 90 }
+                    params: { bias_type: 'constant', bias_amplitude: 90 }
                 },
                 { type: 'wait', duration: 5 },
                 { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' }
@@ -1670,7 +1731,7 @@ async function main() {
             // Now the reported symptom: the NEXT run must not inherit the old waveform.
             // Re-run with a condition that authors NO bias at all.
             const noBias = JSON.parse(JSON.stringify(clCondition));
-            noBias.commands[1].params = { gain: 1.8 }; // no bias_* keys
+            noBias.commands[1].params = {}; // no bias_* keys
             bridge.configs.length = 0;
             await runner.runSequence({
                 ...runArgs(bridge, runner, () => Promise.resolve()),
@@ -1799,7 +1860,7 @@ async function main() {
                     type: 'plugin',
                     plugin_name: 'fictrac',
                     command_name: 'startClosedLoop',
-                    params: { gain: 1.8, bias_type: 'constant', bias_amplitude: 90 }
+                    params: { bias_type: 'constant', bias_amplitude: 90 }
                 },
                 { type: 'wait', duration: 1 },
                 { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' }

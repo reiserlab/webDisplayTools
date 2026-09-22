@@ -666,12 +666,13 @@ var BUILTIN_PLUGINS = {
                     { value: 'tcp', label: 'TCP' }
                 ]
             },
-            gain: {
-                type: 'number',
-                label: 'Gain (deg heading / frame index)',
-                default: 1.8,
-                placeholder: '1.8'
-            },
+            // `gain` (deg heading / frame index) was RETIRED in Studio v0.85: it was a
+            // display pitch masquerading as a coupling strength, and any value other than
+            // ±1.8 jumped the display once per ball revolution. The pitch now comes from
+            // the rig (360 / azimuth px, override per startClosedLoop) and the coupling is
+            // the dimensionless `coupling` param on startClosedLoop. A protocol that still
+            // writes config `gain: ±1.8` runs as coupling ±1 with a warning; any other value
+            // is refused at run start with a migration message.
             offset: {
                 type: 'number',
                 label: 'Heading offset (deg)',
@@ -698,12 +699,32 @@ var BUILTIN_PLUGINS = {
                 // ONLY: deliberately absent from configFields so there is no second source
                 // of truth. Semantics + formulas: docs/development/closed-loop-bias.md.
                 params: {
-                    gain: {
+                    // COUPLING (Studio v0.85, bridge 3.3): dimensionless — the display turns
+                    // coupling × the fly's turn. 1 = 1:1 (the natural closed loop), 0.75 /
+                    // 1.25 = under/over-compensating worlds, negative = reversed, 0 = the
+                    // display ignores the fly (pure bias replay, a control condition). The
+                    // bridge keeps the heading UNWRAPPED so fractional couplings are seamless
+                    // (the old deg/frame `gain` jumped once per revolution for k ≠ integer).
+                    // The bias is NOT scaled by the coupling — reversing the fly never
+                    // reverses the disturbance.
+                    coupling: {
                         type: 'number',
                         required: false,
-                        default: 1.8,
-                        label: 'Gain override (deg/index)',
-                        placeholder: 'default: plugin config gain'
+                        default: 1,
+                        label: 'Coupling (1 = follows the ball 1:1; − reverses; 0 = bias only)',
+                        placeholder: '1'
+                    },
+                    // The display pitch — a PATTERN property (1 px per frame ⇒ 360 / azimuth
+                    // px = 1.8° on a 10-column G6). Blank = derived from the session rig by
+                    // the runner; set it only for a pattern that steps more than one pixel
+                    // per frame. NOT 360 / frame_count: a 20-frame tiled grating still steps
+                    // 1.8°/frame.
+                    deg_per_frame: {
+                        type: 'number',
+                        required: false,
+                        default: '',
+                        label: 'Degrees per frame (pattern pitch; blank = from the rig)',
+                        placeholder: 'from rig: 360 / azimuth px'
                     },
                     bias_type: {
                         type: 'select',

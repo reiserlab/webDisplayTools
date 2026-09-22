@@ -129,6 +129,14 @@ streams frames for the wait's duration. Declare a `fictrac` plugin. Shape:
 plugin. Typing them as `controller` makes the runner skip them with a warning, so the
 loop never opens and the trial silently runs open-loop.
 
+**Coupling (Studio v0.85 / bridge 3.3).** `startClosedLoop` takes an optional `coupling`
+(default `1`): the display turns `coupling ×` the fly's turn — `0.75`/`1.25` for a world
+that under-/over-compensates, `-1` reversed, `0` = the display ignores the fly (pure bias
+replay). The display pitch (°/frame) comes from the rig automatically; only set
+`deg_per_frame` for a pattern that steps more than one pixel per frame. **`gain` is
+retired** — the legacy `gain: ±1.8` still runs as coupling ±1 with a deprecation warning; any
+other value is REFUSED with a migration message. Delete `gain`, and use `coupling` if you need ≠ 1.
+
 ### Bias / disturbance waveforms (LAB-185)
 
 `startClosedLoop` takes three optional params that add a smooth disturbance to the
@@ -140,7 +148,7 @@ rejection). Authored as an added rotational **velocity**:
       plugin_name: "fictrac"
       command_name: "startClosedLoop"
       params:
-        gain: 1.8
+        coupling: 1         # optional (default 1): the display follows the ball 1:1; 0.75 / 1.25 = less / more; -1 reversed; 0 = bias only
         bias_type: "sine"   # none | constant | sine | square
         bias_amplitude: 90  # PEAK velocity, deg/s — negate to reverse direction
         bias_frequency: 0.5 # Hz — sine/square only; ignored by constant

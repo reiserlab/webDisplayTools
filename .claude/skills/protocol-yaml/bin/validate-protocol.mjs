@@ -137,6 +137,28 @@ for (const cond of conds) {
     }
 }
 
+// ── RETIRED closed-loop `gain` (Studio v0.85 / bridge 3.3) ─────────────────
+// `gain` was the display pitch in deg/frame masquerading as a coupling; any value but ±1.8
+// jumped the display once per ball revolution. The pitch now comes from the rig and the
+// strength is `coupling` (1 = 1:1). The Studio REFUSES to run a protocol still carrying it.
+for (const p of plugins) {
+    if (p && p.matlab && p.matlab.class === 'FicTracPlugin' && p.config && p.config.gain !== undefined) {
+        const g = Number(p.config.gain); const soft = Number.isFinite(g) && Math.abs(Math.abs(g) - 1.8) < 1e-9;
+        lintBias('plugin "' + p.name + '" config has `gain: ' + p.config.gain + '` — RETIRED. ' + (soft ? 'The Studio runs it as coupling ' + (g > 0 ? 1 : -1) + ' with a warning; delete it (the display pitch comes from the rig).' : 'The Studio REFUSES to run this protocol; delete it and use `coupling` (this gain ≈ coupling ' + (g ? Math.round(180 / g) / 100 : '?') + ').'));
+    }
+}
+for (const cond of conds) {
+    for (const c of cond.commands || []) {
+        if (c.type === 'plugin' && c.command_name === 'startClosedLoop' && c.params && c.params.gain !== undefined) {
+            const g = Number(c.params.gain); const soft = Number.isFinite(g) && Math.abs(Math.abs(g) - 1.8) < 1e-9;
+            lintBias('"' + cond.name + '" startClosedLoop has `gain: ' + c.params.gain + '` — RETIRED. ' + (soft ? 'Runs as coupling ' + (g > 0 ? 1 : -1) + ' with a warning; replace it with `coupling: ' + (g > 0 ? 1 : -1) + '`.' : 'The Studio refuses this step; use `coupling` (1 = 1:1, -1 = reversed, 0.75 / 1.25 = under / over; this gain ≈ coupling ' + (g ? Math.round(180 / g) / 100 : '?') + ').'));
+        }
+        if (c.type === 'plugin' && c.command_name === 'startClosedLoop' && c.params && c.params.coupling !== undefined && !Number.isFinite(Number(c.params.coupling))) {
+            lintBias('"' + cond.name + '" startClosedLoop coupling ' + JSON.stringify(c.params.coupling) + ' is not a number.');
+        }
+    }
+}
+
 // ── BIAS SANITY (LAB-185) ───────────────────────────────────────────────────
 // The bias params live on the fictrac plugin's startClosedLoop, not on trialParams,
 // so this needs its own pass over plugin commands. Mirrors the runner's rules

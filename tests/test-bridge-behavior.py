@@ -159,60 +159,86 @@ check("square at 0 Hz → 0.0, no raise", bridge.bias_angle_deg("square", A, 0.0
 approx("sine at −f equals sine at +f", bridge.bias_angle_deg("sine", A, -F, T / 4), bridge.bias_angle_deg("sine", A, F, T / 4), tol=1e-9)
 approx("square at −f equals square at +f", bridge.bias_angle_deg("square", A, -F, T / 4), bridge.bias_angle_deg("square", A, F, T / 4))
 
-print("=== frame_index_from_fictrac: bias folds into the mapping ===")
-GAIN = 1.8   # deg of heading per frame index (360/200)
+print("=== frame_index_from_heading: coupling · Δheading + offset + bias, over the pattern pitch ===")
+DPF = 1.8   # display degrees per frame index (360/200 px on a 10-column G6) — the PATTERN pitch
 NFR = 200
-still = rec(fc=1, x=0.0, y=0.0, hd=0.0, ts=0)  # a fly holding perfectly still
-check("no bias + still fly → frame 0", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0), 0)
-check("bias_deg defaults to 0 (back-compat signature)", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0), 0)
-# THE feature: a still fly still moves the display, purely from the bias.
-check("bias 90 deg → frame 50 with a still fly", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0, 90.0), 50)
-check("bias 180 deg → frame 100", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0, 180.0), 100)
-check("bias wraps past a full turn (450 deg → frame 50)", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0, 450.0), 50)
-check("negative bias wraps non-negative (−90 deg → frame 150)", bridge.frame_index_from_fictrac(still, NFR, GAIN, 0.0, -90.0), 150)
-# Bias lives in the same heading-equivalent space as `offset`, so they add...
-check("bias adds to offset", bridge.frame_index_from_fictrac(still, NFR, GAIN, 45.0, 45.0), 50)
-# ...and a NEGATIVE gain reverses the bias along with the fly coupling.
-check("negative gain reverses the bias direction", bridge.frame_index_from_fictrac(still, NFR, -GAIN, 0.0, 90.0), 150)
-# gain 0 has no deg→index scale, so there is nothing to map — bias included.
-check("gain 0 short-circuits to 0 even with a bias", bridge.frame_index_from_fictrac(still, NFR, 0.0, 0.0, 90.0), 0)
-# Fly heading and bias sum: 90 deg of heading + 90 deg of bias = 180 deg → frame 100.
-walking = rec(fc=2, x=0.0, y=0.0, hd=3.141592653589793 / 2, ts=0)  # hd = 90 deg
-check("heading + bias sum (90 + 90 deg → frame 100)", bridge.frame_index_from_fictrac(walking, NFR, GAIN, 0.0, 90.0), 100)
+FI = bridge.frame_index_from_heading
+check("still fly, no bias → frame 0", FI(0.0, NFR, DPF), 0)
+check("+18 deg turn → +10 frames (coupling 1)", FI(18.0, NFR, DPF), 10)
+check("−18 deg turn → −10 frames (wraps to 190)", FI(-18.0, NFR, DPF), 190)
+check("a full revolution reads as 360 deg → frame 0 again (unwrapped, seamless)", FI(360.0, NFR, DPF), 0)
+check("+380 deg (past one revolution) → frame 11, no jump", FI(380.0, NFR, DPF), 11)
+# THE bias feature: a still fly still moves the display, purely from the bias.
+check("bias 90 deg → frame 50 with a still fly", FI(0.0, NFR, DPF, 0.0, 90.0), 50)
+check("bias 180 deg → frame 100", FI(0.0, NFR, DPF, 0.0, 180.0), 100)
+check("bias wraps past a full turn (450 deg → frame 50)", FI(0.0, NFR, DPF, 0.0, 450.0), 50)
+check("negative bias wraps non-negative (−90 deg → frame 150)", FI(0.0, NFR, DPF, 0.0, -90.0), 150)
+check("bias adds to offset", FI(0.0, NFR, DPF, 45.0, 45.0), 50)
+check("heading + bias sum (90 + 90 deg → frame 100)", FI(90.0, NFR, DPF, 0.0, 90.0), 100)
+check("pitch 0 short-circuits to 0 even with a bias", FI(0.0, NFR, 0.0, 0.0, 90.0), 0)
+check("offset places the epoch start (90 deg → frame 50)", FI(0.0, NFR, DPF, 90.0), 50)
 
-print("=== frame_index_from_fictrac: HEADING TARE (bench03 field bug) ===")
-# FicTrac's integrated heading is ABSOLUTE and wraps 0..360, so without a tare a
-# closed-loop epoch opens by snapping the display to round(heading/gain) — an
-# essentially arbitrary index. On bench03 real-fly logs that measured as a median
-# 55-156 frame jump (up to 189 of 200 = 340 deg of azimuth) on a full-azimuth
-# pattern, i.e. the stimulus leaving the fly's field of view on the first frame.
-def hdrec(deg):
-    a = [0.0] * 25
-    a[16] = math.radians(deg)
-    return a
+print("=== coupling: the display moves k× the ball; the bias does NOT scale with it ===")
+check("coupling 0.75: 36 deg turn → 15 frames (not 20)", FI(36.0, NFR, DPF, 0.0, 0.0, 0.75), 15)
+check("coupling 1.25: 36 deg turn → 25 frames", FI(36.0, NFR, DPF, 0.0, 0.0, 1.25), 25)
+check("coupling 2: 36 deg → 40 frames", FI(36.0, NFR, DPF, 0.0, 0.0, 2.0), 40)
+check("negative coupling reverses the FLY (+18 deg → 190)", FI(18.0, NFR, DPF, 0.0, 0.0, -1.0), 190)
+check("...but NOT the bias (bias 90 deg → 50 at coupling −1)", FI(0.0, NFR, DPF, 0.0, 90.0, -1.0), 50)
+check("coupling 0 ignores the fly: 500 deg turn → frame 0", FI(500.0, NFR, DPF, 0.0, 0.0, 0.0), 0)
+check("coupling 0 still plays the bias (pure replay)", FI(500.0, NFR, DPF, 0.0, 90.0, 0.0), 50)
+# THE fix for "any gain but ±1.8 did odd things": a full ball revolution at a fractional
+# coupling used to jump the display by (k−1)·360 deg at FicTrac's zero. With the UNWRAPPED
+# turn there is no seam — 360 deg at 0.75 is 150 frames, 361 deg is 150 or 151, never 0.
+seq = [FI(d, NFR, DPF, 0.0, 0.0, 0.75) for d in range(350, 372)]
+steps = [((b - a + NFR // 2) % NFR) - NFR // 2 for a, b in zip(seq, seq[1:])]
+check("coupling 0.75 through 360 deg: every step ≤ 1 frame (no wrap jump)", max(abs(x) for x in steps) <= 1, True)
+seq = [FI(d, NFR, DPF, 0.0, 0.0, 1.25) for d in range(350, 372)]
+steps = [((b - a + NFR // 2) % NFR) - NFR // 2 for a, b in zip(seq, seq[1:])]
+check("coupling 1.25 through 360 deg: every step ≤ 2 frames (no wrap jump)", max(abs(x) for x in steps) <= 2, True)
+check("tiled 20-frame grating keeps the 1.8 deg pitch: +18 deg → 10 (not 360/20 rescaled)", FI(18.0, 20, DPF), 10)
+check("tiled grating: +54 deg → 30 → wraps to 10", FI(54.0, 20, DPF), 10)
 
-FI = bridge.frame_index_from_fictrac
-check("no tare: 137 deg heading snaps to frame 76 (THE BUG)", FI(hdrec(137), 200, 1.8, 0.0), 76)
-check("tared: same heading stays at the loaded frame 0", FI(hdrec(137), 200, 1.8, 0.0, 0.0, 137.0), 0)
-check("tare is back-compatible (hd0 defaults to 0)", FI(hdrec(137), 200, 1.8, 0.0, 0.0, 0.0), 76)
-# Tared, the index tracks the fly's turn RELATIVE to onset.
-check("tared: +18 deg turn -> +10 frames", FI(hdrec(155), 200, 1.8, 0.0, 0.0, 137.0), 10)
-check("tared: -18 deg turn -> -10 frames (wraps to 190)", FI(hdrec(119), 200, 1.8, 0.0, 0.0, 137.0), 190)
-# The tare composes with the other terms rather than replacing them.
-check("tared + 90 deg bias -> 50 frames", FI(hdrec(137), 200, 1.8, 0.0, 90.0, 137.0), 50)
-check("tared + 90 deg offset -> 50 frames", FI(hdrec(137), 200, 1.8, 90.0, 0.0, 137.0), 50)
-check("bias stays unbounded so constant keeps rotating", FI(hdrec(137), 200, 1.8, 0.0, 1350.0, 137.0), 150)
-check("gain 0 still short-circuits", FI(hdrec(137), 200, 0.0, 0.0, 0.0, 137.0), 0)
-
-print("=== ...and the tared difference is a RELATIVE turn (0/360 wrap) ===")
-# A fly tared at 350 deg that turns +20 deg reads 10 deg absolute. Naively that is
-# -340, not +20. Those differ by 360 deg = 360/gain frames, which only aliases away
-# when the pattern spans the full azimuth — so a short TILED pattern needs the wrap.
-check("full azimuth (200f): +20 deg past a 350 deg tare -> 11", FI(hdrec(10), 200, 1.8, 0.0, 0.0, 350.0), 11)
-check("tiled 20f grating: same case still -> 11, not aliased", FI(hdrec(10), 20, 1.8, 0.0, 0.0, 350.0), 11)
-check("wrap is symmetric: -20 deg past a 10 deg tare -> -11 (wraps 189)", FI(hdrec(350), 200, 1.8, 0.0, 0.0, 10.0), 189)
-# Exactly antipodal is the wrap boundary; (-180, 180] means +180 is chosen.
-check("180 deg from tare resolves to +100, not -100", FI(hdrec(180), 200, 1.8, 0.0, 0.0, 0.0), 100)
+print("=== Pipeline.advance_heading: tare, unwrap across 0/360, dropped frames, FicTrac restart ===")
+class _NullLog:
+    def __init__(self):
+        self.events = []
+    def write_event(self, o):
+        self.events.append(o)
+pl = bridge.Pipeline(None, _NullLog(), NFR, DPF, 0.0)
+T = 1_000
+# Before any tare: absolute heading, seeded from the first frame (Console-only behaviour).
+pl.advance_heading(137.0, 1, T)
+approx("no tare: first frame seeds rel = absolute heading", pl.rel_deg, 137.0)
+pl.advance_heading(155.0, 2, T + 20)
+approx("no tare: +18 deg step accumulates", pl.rel_deg, 155.0)
+# A new epoch: tare on the NEXT frame → rel 0 at that frame, logged with reason.
+pl.arm_tare("epoch")
+pl.advance_heading(350.0, 3, T + 40)
+approx("tared: rel is 0 at the tare frame", pl.rel_deg, 0.0)
+check("heading_tare logged with hd0 + reason", (pl.log.events[-1]["type"], pl.log.events[-1]["hd0_deg"], pl.log.events[-1]["reason"]), ("heading_tare", 350.0, "epoch"))
+check("tare frame maps to the pattern's start index", FI(pl.rel_deg, NFR, DPF), 0)
+# Cross FicTrac's 0/360 seam: 350 → 10 is a +20 deg turn, not −340.
+pl.advance_heading(10.0, 4, T + 60)
+approx("+20 deg across the 360→0 seam", pl.rel_deg, 20.0)
+pl.advance_heading(30.0, 5, T + 80)
+approx("keeps accumulating (40 deg)", pl.rel_deg, 40.0)
+# A dropped frame telescopes: 30 → 90 in one step is +60 (< 180, unambiguous).
+pl.advance_heading(90.0, 7, T + 120)
+approx("dropped frame: the gap's turn is not lost", pl.rel_deg, 100.0)
+# Keep turning the same way through a full revolution — UNWRAPPED, never resets.
+for i, hd in enumerate(range(120, 480, 30)):
+    pl.advance_heading(hd % 360.0, 8 + i, T + 140 + 20 * i)
+approx("a full revolution later rel is 460, not 100", pl.rel_deg, 460.0)
+# FicTrac restart: the frame counter goes backwards → re-tare (reason ft_reset).
+pl.advance_heading(5.0, 1, T + 5000)
+approx("ft restart re-tares to 0", pl.rel_deg, 0.0)
+check("restart tare is labelled", pl.log.events[-1]["reason"], "ft_reset")
+# The bias phase clock is evaluated at the caller's `now`, not a second wall-clock read.
+pl.set_bias({"type": "constant", "amplitude": 90.0, "frequency": 0.0}, log_event=False, tare=False)
+approx("bias_now_deg(at_ms) is exact for the given instant", pl.bias_now_deg(pl.bias_t0_ms + 2000), 180.0)
+check("gain is an alias of deg_per_frame", pl.gain, DPF)
+pl.gain = 3.6
+check("...both ways", pl.deg_per_frame, 3.6)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # behavior_v2 — compact arena echo + round trip + ack (plan Part 1)

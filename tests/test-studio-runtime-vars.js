@@ -429,6 +429,25 @@ checkBool(
     'requires gate on runOnce and runCondition',
     (studioHtml.match(/refuseUnsupportedRequires\(/g) || []).length >= 3
 );
+// v0.85: the retired closed-loop `gain` is refused through the same run gate, and the
+// rig-derived display pitch reaches the runner + bridge (Console coupling box, no gain box).
+checkBool(
+    'retired gain gate rides the run gate',
+    /refuseRetiredGain\(exp\)/.test(studioHtml) && /function refuseRetiredGain/.test(studioHtml)
+);
+checkBool(
+    'rig pitch helper exists and feeds runSequence',
+    /Studio\.rigDegPerFrame = function/.test(studioHtml) &&
+        /degPerFrame: Studio\.rigDegPerFrame\(\)/.test(studioHtml)
+);
+checkBool(
+    'run-start plugin config no longer pushes gain',
+    !/cfg\.gain = Number\(pcfg\.gain\)/.test(studioHtml)
+);
+checkBool(
+    'Console has the coupling box and no gain box',
+    studioHtml.includes('id="cFtCoupling"') && !studioHtml.includes('id="cFtGain"')
+);
 checkBool(
     'unsupportedRequires imported in the module block',
     /unsupportedRequires\n\} from '\.\/js\/protocol-yaml-v3\.js'/.test(studioHtml)
@@ -442,8 +461,8 @@ checkBool(
     studioHtml.includes("'#runVarsCard':") && studioHtml.includes("'#runVarsApply':")
 );
 checkBool(
-    'footer bumped to v0.84',
-    /Arena Studio v0\.84 \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET/.test(studioHtml)
+    'footer at v0.84 or later',
+    /Arena Studio v0\.(8[4-9]|9\d) \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET/.test(studioHtml)
 );
 const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'protocols', 'index.json'), 'utf8'));
 checkBool(
