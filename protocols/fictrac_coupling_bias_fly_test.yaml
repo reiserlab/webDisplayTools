@@ -7,42 +7,42 @@ version: 3
 # Pattern: the built-in 200-frame full-azimuth rotation on the G6 2×10 card:
 #   4  frame2_h_ccw_200f   (1 frame = 1 azimuth pixel = 1.8°, the pitch the rig supplies)
 #
-# WHAT IT TESTS, in three blocks of 20 s closed-loop trials with a 5 s dark ITI:
+# COUPLING SIGN. On the fly-on-ball rigs the NATURAL, stabilizing closed loop is
+# coupling **−1** (it is exactly what the old `gain: -1.8` did: same frame index for
+# the same turn). `k_nat` below is that value; every other coupling is expressed
+# relative to it, so flipping ONE number adapts the whole protocol to a +1 rig:
+#   k_nat   -1     natural closed loop (the display counter-rotates the fly's turn 1:1)
+#   k_under -0.75  the world turns LESS than the ball
+#   k_over  -1.25  the world turns MORE than the ball
+#   k_rev   +1     reversed — the sanity check; the fly should NOT be able to stabilize
 #
-#   A. coupling — how much the display turns per turn of the ball, no disturbance:
-#        1     the natural closed loop (the display follows the ball 1:1)
-#        0.75  the world turns LESS than the ball (an under-compensating world)
-#        1.25  the world turns MORE than the ball
-#       -1     reversed — the classic sanity check (the fly should NOT stabilize)
-#      With bridge 3.3 a fractional coupling is seamless: watch the display for the
-#      once-per-revolution jump the old `gain` produced — there must be none.
+# BIAS SIGN (bridge 3.3): the disturbance is defined in DISPLAY degrees and is NOT
+# scaled by the coupling — a positive bias_amplitude turns the display CLOCKWISE from
+# above (pattern sweeps rightward across the fly's view) on every rig, including the
+# −1 rigs. (Under the old `gain: -1.8` it was counter-clockwise — do not carry that over.)
 #
-#   B. bias at coupling 1 — a gentle disturbance the fly should counter-turn:
-#        constant  ±30 °/s   (one revolution every 12 s; ~17 frames/s)
-#        sine      30 °/s @ 0.25 Hz  → position swings ±19°
-#        sine      60 °/s @ 0.5 Hz   → ±19° twice as fast
-#        square    30 °/s @ 0.25 Hz  → triangle in position, ±30°
-#      A positive amplitude turns the display CLOCKWISE from above (pattern sweeps
-#      rightward across the fly's view). The bias is defined in display degrees and is
-#      NOT scaled by the coupling.
+# BLOCKS (20 s closed-loop trials, 5 s dark ITI, 2 repetitions each, randomized):
+#   A. coupling only:      k_nat · k_under · k_over · k_rev
+#   B. bias at k_nat:      constant ±30 °/s (one revolution per 12 s)
+#                          sine 30 °/s @ 0.25 Hz (position ±19°) · sine 60 °/s @ 0.5 Hz (±19°)
+#                          square 30 °/s @ 0.25 Hz (position ±30°)
+#   C. bias × coupling:    k_under + constant 30 · k_over + constant 30
+#                          k_under + sine 30 @ 0.25 · k_over + sine 30 @ 0.25
+#                          coupling 0 + constant 30 — OPEN-LOOP REPLAY: the display
+#                          ignores the fly and just drifts; the control for block B
+#   plus a k_nat baseline at the start and the end.  ≈ 13 min total.
 #
-#   C. bias × coupling:
-#        coupling 0.75 + constant 30 °/s — rejection with a weaker loop
-#        coupling 0    + constant 30 °/s — OPEN-LOOP REPLAY: the display ignores the fly
-#                                          and just drifts; the control for block B
+# WHAT TO LOOK FOR. Bridge 3.3 keeps the heading unwrapped, so the fractional
+# couplings must show NO once-per-revolution jump (the old `gain` bug). The report
+# (`pixi run python scripts/closed-loop-report.py <run.jsonl.gz> --svg cl.svg`) gives,
+# per trial, the fly's turning, the feature's frontal fraction, the reconstructed bias
+# and a REJECTION index (1 = fully counter-turned the bias, 0 = ignored it). Expect a
+# high frontal fraction at k_nat and none at k_rev; rejection > 0 on block B; ≈ 0
+# rejection and a steady 30 °/s drift on the coupling-0 control; block C shows how a
+# weaker / stronger loop changes the rejection.
 #
-# ≈ 10 min total (22 trials × 25 s + two 20 s baselines). Everything is bound to the
-# variables below — shorten `cl_dur` for a first look.
-#
-# READOUT: `pixi run python scripts/closed-loop-report.py <run.jsonl.gz> --svg cl.svg`
-# gives, per trial, the fly's turning, where the feature sat (frontal fraction), the
-# reconstructed bias and a REJECTION index (1 = fully counter-turned the bias, 0 =
-# ignored it). Expect: high frontal fraction at coupling 1, none at −1; rejection well
-# above 0 on block B; ≈ 0 rejection and a steady drift on the coupling-0 control.
-#
-# Dry run without a fly: `pixi run sim -- --model fly --kp 2` (docs/development/
-# model-fly-bench.md) — the model fly fixates, so it exercises every block.
-# Web-only: MATLAB has no FicTracPlugin.
+# Dry run without a fly: `pixi run sim -- --model fly --kp 2 --frame-dir -1` for a −1
+# rig (docs/development/model-fly-bench.md). Web-only: MATLAB has no FicTracPlugin.
 # ============================================================================
 
 experiment_info:
@@ -66,9 +66,11 @@ variables:
   # ── durations (drive trialParams duration AND the closed-loop wait together) ──
   cl_dur: &cl_dur 20 # seconds per closed-loop trial
   iti_dur: &iti_dur 5 # dark inter-trial interval, s
-  # ── couplings ────────────────────────────────────────────────────────────────
-  k_under: &k_under 0.75 # the world turns 0.75× the ball
-  k_over: &k_over 1.25 # the world turns 1.25× the ball
+  # ── couplings — flip the signs of all four for a +1 rig ─────────────────────
+  k_nat: &k_nat -1 # natural closed loop on the fly-on-ball rigs (= the old gain -1.8)
+  k_under: &k_under -0.75 # the world turns 0.75× the ball
+  k_over: &k_over -1.25 # the world turns 1.25× the ball
+  k_rev: &k_rev 1 # reversed — the fly cannot stabilize
   # ── disturbances (peak velocity deg/s, frequency Hz) — gentle on purpose ─────
   amp_slow: &amp_slow 30 # 30 deg/s: one revolution per 12 s
   amp_fast: &amp_fast 60 # 60 deg/s at twice the frequency = the same ±19° excursion
@@ -79,14 +81,14 @@ experiment:
   - "cl_baseline"
   - name: "A_coupling"
     trials:
-      - "cl_k1"
-      - "cl_k075"
-      - "cl_k125"
-      - "cl_kneg1"
+      - "cl_nat"
+      - "cl_under"
+      - "cl_over"
+      - "cl_rev"
     repetitions: 2
     randomize: true
     intertrial: "dark_iti"
-  - name: "B_bias_at_k1"
+  - name: "B_bias_at_natural"
     trials:
       - "cl_bias_const_pos"
       - "cl_bias_const_neg"
@@ -98,7 +100,10 @@ experiment:
     intertrial: "dark_iti"
   - name: "C_bias_x_coupling"
     trials:
-      - "cl_k075_bias_const"
+      - "cl_under_bias_const"
+      - "cl_over_bias_const"
+      - "cl_under_bias_sine"
+      - "cl_over_bias_sine"
       - "cl_k0_bias_const"
     repetitions: 2
     randomize: true
@@ -127,7 +132,7 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          coupling: 1
+          coupling: *k_nat
       - type: "wait"
         duration: *cl_dur
       - type: "plugin"
@@ -135,7 +140,7 @@ conditions:
         command_name: "stopClosedLoop"
 
   # ---- A. coupling sweep -------------------------------------------------------
-  - name: "cl_k1"
+  - name: "cl_nat"
     commands:
       - type: "controller"
         command_name: "trialParams"
@@ -150,14 +155,14 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          coupling: 1
+          coupling: *k_nat
       - type: "wait"
         duration: *cl_dur
       - type: "plugin"
         plugin_name: "fictrac"
         command_name: "stopClosedLoop"
 
-  - name: "cl_k075"
+  - name: "cl_under"
     commands:
       - type: "controller"
         command_name: "trialParams"
@@ -179,7 +184,7 @@ conditions:
         plugin_name: "fictrac"
         command_name: "stopClosedLoop"
 
-  - name: "cl_k125"
+  - name: "cl_over"
     commands:
       - type: "controller"
         command_name: "trialParams"
@@ -201,7 +206,7 @@ conditions:
         plugin_name: "fictrac"
         command_name: "stopClosedLoop"
 
-  - name: "cl_kneg1"
+  - name: "cl_rev"
     commands:
       - type: "controller"
         command_name: "trialParams"
@@ -216,14 +221,14 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          coupling: -1
+          coupling: *k_rev
       - type: "wait"
         duration: *cl_dur
       - type: "plugin"
         plugin_name: "fictrac"
         command_name: "stopClosedLoop"
 
-  # ---- B. bias at coupling 1 ---------------------------------------------------
+  # ---- B. bias at the natural coupling -----------------------------------------
   - name: "cl_bias_const_pos"
     commands:
       - type: "controller"
@@ -239,9 +244,9 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          coupling: 1
+          coupling: *k_nat
           bias_type: "constant"
-          bias_amplitude: *amp_slow
+          bias_amplitude: *amp_slow # clockwise from above
       - type: "wait"
         duration: *cl_dur
       - type: "plugin"
@@ -263,7 +268,7 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          coupling: 1
+          coupling: *k_nat
           bias_type: "constant"
           bias_amplitude: -30 # counter-clockwise (negate the amplitude, never the frequency)
       - type: "wait"
@@ -287,7 +292,7 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          coupling: 1
+          coupling: *k_nat
           bias_type: "sine"
           bias_amplitude: *amp_slow
           bias_frequency: *f_slow
@@ -312,7 +317,7 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          coupling: 1
+          coupling: *k_nat
           bias_type: "sine"
           bias_amplitude: *amp_fast
           bias_frequency: *f_fast
@@ -337,7 +342,7 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          coupling: 1
+          coupling: *k_nat
           bias_type: "square"
           bias_amplitude: *amp_slow
           bias_frequency: *f_slow
@@ -348,7 +353,7 @@ conditions:
         command_name: "stopClosedLoop"
 
   # ---- C. bias × coupling ------------------------------------------------------
-  - name: "cl_k075_bias_const"
+  - name: "cl_under_bias_const"
     commands:
       - type: "controller"
         command_name: "trialParams"
@@ -366,6 +371,80 @@ conditions:
           coupling: *k_under
           bias_type: "constant"
           bias_amplitude: *amp_slow
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "cl_over_bias_const"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: *cl_dur
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          coupling: *k_over
+          bias_type: "constant"
+          bias_amplitude: *amp_slow
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "cl_under_bias_sine"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: *cl_dur
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          coupling: *k_under
+          bias_type: "sine"
+          bias_amplitude: *amp_slow
+          bias_frequency: *f_slow
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "cl_over_bias_sine"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: *cl_dur
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          coupling: *k_over
+          bias_type: "sine"
+          bias_amplitude: *amp_slow
+          bias_frequency: *f_slow
       - type: "wait"
         duration: *cl_dur
       - type: "plugin"

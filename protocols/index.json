@@ -30,7 +30,7 @@
     },
     {
       "key": "fictrac_coupling_bias_fly_test",
-      "label": "Closed-loop coupling × bias — fly test (Mode 3, ~10 min)",
+      "label": "Closed-loop coupling × bias — fly test (Mode 3, natural coupling −1, ~13 min)",
       "path": "./protocols/fictrac_coupling_bias_fly_test.yaml"
     },
     {
