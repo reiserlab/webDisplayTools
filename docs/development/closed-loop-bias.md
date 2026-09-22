@@ -74,22 +74,33 @@ The `(A/f)` ratio values in this table are calculated for sine wave bias wavefor
 | 565 | Hemispherical, `(A/ω)=90°`, 180° pp|
 | 1130 | Likely absolute maximum, `(A/ω)=180°`, 360° pp|
 
-### Direction, and the sign of `gain`
+### Direction, coupling and the display pitch (bridge 3.3)
 
-The bias angle is summed in the same **heading-equivalent degrees** space as the
-existing `offset`:
+The bias angle is summed in **display degrees**, alongside `offset`, OUTSIDE the coupling:
 
 ```
-rel     = wrap180(heading_deg - hd0_deg)          # turn since the epoch's tare
-idx     = round((rel + offset + b(t)) / gain) mod n_frames
+rel     = unwrapped turn since the epoch's tare      # Σ wrap180(Δheading) per frame — never wrapped itself
+idx     = round((coupling · rel + offset + b(t)) / deg_per_frame) mod n_frames
 ```
 
-So a positive `bias_amplitude` moves the display the same direction as increasing fly
-heading, and a **negative `gain` reverses the bias along with the fly coupling**.
+`coupling` is dimensionless (1 = the display follows the ball 1:1, 0.75 / 1.25 = the world
+turns less / more than the ball, negative = reversed, 0 = the display ignores the fly).
+`deg_per_frame` is the pattern pitch (1.8 = 360°/200 px on a 10-column G6), pushed by the
+Studio from the session rig. A positive `bias_amplitude` moves the display in the same
+direction as a positive turn of the fly at coupling 1 — and **a negative coupling does NOT
+reverse the bias**: the disturbance is defined in display space, so reversing the fly's
+coupling never reverses the disturbance, and `coupling: 0` gives a pure bias replay.
+
+> Until Studio v0.85 / bridge 3.2 the formula was `round((wrap180(rel) + offset + b) / gain)`
+> with `gain` = the pitch in deg/frame. Because the tared heading was WRAPPED, any `gain`
+> other than ±1.8 (i.e. any effective coupling other than an integer) jumped the display by
+> (k − 1)·360° once per ball revolution — the "odd behaviour at other gains". Bridge 3.3
+> keeps the turn unwrapped, and `gain` is retired from protocols (the Studio refuses to run
+> one that still carries it).
 
 ### On-arena direction (confirmed by eye, 2026-08-04)
 
-With a **positive `gain`** (the normal 1.8) on the fly-on-ball rig:
+With a **positive coupling** (the normal 1) on the fly-on-ball rig:
 
 | `bias_amplitude` | Viewed from above | From the fly's point of view |
 | --- | --- | --- |
@@ -100,17 +111,17 @@ Both descriptions agree on this rig geometry, so either phrasing is safe to use.
 
 **This is the sign an analysis must assume.** Get it backwards and an apparent
 disturbance-rejection response inverts: a fly correctly counter-turning against a
-clockwise disturbance would read as following it. Note the qualifier — a negative
-`gain` flips the table, because the bias is divided by `gain` along with the heading.
+clockwise disturbance would read as following it. Since bridge 3.3 the sign of the
+coupling does NOT flip this table — the bias is outside the coupling.
 
 **To reverse the disturbance, negate `bias_amplitude`.** Negating `bias_frequency` is
 a **no-op**: both velocity waveforms are cosines, which are even in `ω`. (For the
 sine's `b(t)`, the sign flips in `A/ω` and `sin(ωt)` cancel.) The runner warns when
 it sees a negative frequency rather than silently doing nothing.
 
-`gain == 0` short-circuits the mapping to index 0, bias included — with no
-deg→index scale there is nothing to map. To watch the bias alone at the bench, keep a
-real `gain` and hold the ball still.
+`deg_per_frame == 0` short-circuits the mapping to index 0, bias included — with no
+deg→index scale there is nothing to map. To watch the bias alone at the bench, set
+`coupling: 0` (the display ignores the fly) — no need to hold the ball still.
 
 ## Authoring
 
@@ -134,7 +145,7 @@ there is exactly one source of truth.
       plugin_name: "fictrac"
       command_name: "startClosedLoop"
       params:
-        gain: 1.8
+        coupling: 1         # optional: 1 = the display follows the ball 1:1 (0.75 / 1.25 / -1 / 0)
         bias_type: "sine" # none | constant | sine | square
         bias_amplitude: 90 # PEAK velocity, deg/s (negative reverses)
         bias_frequency: 0.5 # Hz — sine/square only; ignored by constant
@@ -170,16 +181,17 @@ and the last-seen one may be stale. The epoch therefore opens at index 0, i.e. w
 
 - The fly's turn **since onset** drives the display, not its absolute heading.
 - `offset` still applies on top, so it can deliberately place the start elsewhere
-  (`offset = 90` at `gain 1.8` starts 50 frames round).
+  (`offset = 90` at 1.8°/frame starts 50 frames round).
 - **A bias epoch is the trigger.** Any `config` carrying `bias` re-tares — and the
   runner always sends one on `startClosedLoop` (self-describing epochs), so *every*
   condition tares, including a `bias_type: none` baseline.
 
-The tared difference is wrapped into `(-180, 180]` so it reads as a true relative turn:
-a fly tared at 350° that turns +20° reads 10° absolute, which naively is −340°. Those
-differ by 360° = `360/gain` frames, which only aliases away when the pattern spans the
-full azimuth — the wrap keeps the nearest-angle reading correct for **short tiled
-patterns** too. Only the heading is wrapped; `bias_deg` stays unbounded so a constant
+The turn since the tare is kept **unwrapped** (bridge 3.3): each frame's heading step
+`wrap180(hd − previous hd)` is wrapped — so a fly tared at 350° that turns +20° reads +20°,
+not −340° — but the running sum is not, so a full revolution reads as 360° and a fractional
+`coupling` never sees a seam. Dropped FicTrac frames telescope (the gap's turn is not lost
+as long as the fly turned < 180° across it); a FicTrac restart (frame counter going
+backwards) re-tares with `reason: ft_reset`. `bias_deg` stays unbounded too, so a constant
 disturbance keeps rotating.
 
 **Scope of the change:** the tare is armed by epochs only, *not* at bridge startup, so
@@ -190,7 +202,7 @@ exactly as it always did. That path keeps the old jump; a protocol is what fixes
 
 The tare zeroes to index **0**, not to the trialParams `frame_index`. With
 `frame_index: 50` the pattern loads at 50 and the loop still moves it to 0 on the first
-frame. Use `offset = frame_index × gain` to line them up (`50 × 1.8 = 90`). Pushing the
+frame. Use `offset = frame_index × deg_per_frame` to line them up (`50 × 1.8 = 90`). Pushing the
 start index through to the bridge would remove the need for that, and is the obvious
 follow-up if anyone authors a non-zero `frame_index` closed-loop condition.
 
@@ -353,15 +365,19 @@ it, then:
 
 ```python
 b   = bias_angle_deg(spec.type, spec.amplitude, spec.frequency, (ms - bias_ms) / 1000)
-rel = ((hd_deg - hd0_deg + 180) % 360) - 180
-idx = round((rel + offset + b) / gain) % n_frames
+rel = unwrap(hd_deg)[i] - unwrap(hd_deg)[i_tare]         # bridge 3.3: cumulative turn since the tare row
+idx = round((coupling * rel + offset + b) / deg_per_frame) % n_frames
+# bridge <= 3.2 logs: rel = ((hd_deg - hd0_deg + 180) % 360) - 180;  idx = round((rel + offset + b) / gain) % n_frames
 ```
+
+`scripts/closed-loop-report.py` does exactly this (it picks the formula from whether the
+`config` echo carries `coupling`) and reports the mismatch fraction per epoch.
 
 Because the waveform is analytic and deterministic, this recovers the exact value the
 bridge used — no per-frame bias column is needed.
 
 **`heading_tare` is not optional for analysis.** Omit it and every recomputed index is
-off by `round(hd0/gain)` frames — up to 189 of 200 on the bench03 logs. (It is also
+off by `round(hd0/deg_per_frame)` frames — up to 189 of 200 on the bench03 logs. (It is also
 derivable as the `hd` of the first row at or after the epoch's `bias_config.ms`, but
 the explicit event is what the bridge actually used, including across a dropped frame.)
 

@@ -4,6 +4,35 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.85 (2026-09-21) · Closed-loop `coupling` replaces `gain`; fractional couplings no longer jump
+
+**Restart the FicTrac bridge** — `pixi run bridge` must report **3.3**.
+
+- **Why:** the old closed-loop `gain` was a display pitch in degrees per frame (1.8 = 360°/200
+  pixels) pretending to be a coupling strength — and it was applied to a heading that wraps at
+  0/360°, so any value other than ±1.8 made the display **jump once per ball revolution** (for
+  example 2.4 jumped 90°, 1.44 jumped −88°). That is why "any gain but −1.8 did odd things".
+- **Now:** `startClosedLoop` takes a dimensionless **`coupling`** — `1` = the display follows the
+  ball 1:1 (the default), `0.75` / `1.25` = the world turns less / more than the ball, `-1` =
+  reversed, `0` = the display ignores the fly (a pure-bias control condition). The bridge keeps
+  the fly's turn *unwrapped*, so every coupling is seamless through any number of revolutions.
+  The display pitch comes from the session rig automatically (360° over the arena's azimuth
+  pixels); a `deg_per_frame` override exists for patterns that step more than one pixel per frame.
+- **A bias is no longer reversed by a negative coupling** — the disturbance is defined in display
+  degrees, so `coupling: -1` reverses the fly, not the waveform. (Isabel's docs used to say the
+  opposite for `gain`; they are updated.)
+- **`gain` is retired — gently for the common case.** The legacy `gain: 1.8` / `-1.8` (the only
+  values that meant an exact coupling of ±1) still run, as coupling ±1, with a deprecation warning
+  in the run log; any other value (`1.2`, `0.18` …) meant a fractional coupling that used to jump,
+  so it is **refused** with the migration recipe (banner names the equivalent coupling). All
+  library protocols are updated (`soak_mode3_stress`'s `gain: 0.18` became `coupling: 10`), and a
+  companion PR migrates the 37 course-repo protocols. `validate-protocol.mjs` flags leftovers.
+- **Console:** the FicTrac panel's *gain* box is now **coupling** (presets 1 · −1 · 0.75 · 1.25)
+  next to a read-only "°/frame" from the rig. The Run view's bias readout is unchanged.
+- **Reports:** `closed-loop-report.py` reconstructs `idx` with the new formula on bridge-3.3 logs
+  (and the old one on older logs) and prints the coupling and pitch per epoch. A FicTrac restart
+  mid-epoch now re-tares the heading and is logged (`heading_tare` `reason: ft_reset`).
+
 ## v0.84 (2026-09-21) · Runtime variables — adjust opto intensity (or any exposed variable) during a run
 
 - **New "Runtime variables" panel in the Run view.** A protocol can expose a few of its variables to

@@ -146,6 +146,21 @@ console.log('\n=== fictrac startClosedLoop bias params (LAB-185) ===');
         Object.keys(cfgFields).filter((k) => /bias/.test(k)).length,
         0
     );
+    // v0.85: `gain` (deg/frame) retired everywhere; `coupling` (dimensionless, default 1)
+    // + an optional `deg_per_frame` pitch override live on startClosedLoop.
+    check('fictrac configFields have no gain', cfgFields.gain, undefined);
+    check('startClosedLoop has no gain param', scl.gain, undefined);
+    check('startClosedLoop coupling defaults to 1', scl.coupling && scl.coupling.default, 1);
+    check(
+        'coupling is a number, optional',
+        [scl.coupling.type, scl.coupling.required],
+        ['number', false]
+    );
+    check(
+        'deg_per_frame is an optional number with an EMPTY default (rig-derived)',
+        [scl.deg_per_frame.type, scl.deg_per_frame.required, scl.deg_per_frame.default],
+        ['number', false, '']
+    );
 }
 
 console.log('\n=== isG6OnlyCommand ===');

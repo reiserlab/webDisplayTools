@@ -576,7 +576,8 @@ var ArenaRunnerG6 = (function () {
      *   { op:'wait', durationSec }
      *   { op:'logMessage', message, level }          // built-in log plugin → bridge log
      *   { op:'fictracConnect' | 'fictracDisconnect' }        // FicTrac bridge lifecycle
-     *   { op:'fictracApply', on, gain, bias, warning } // start/stop Mode-3 closed-loop
+     *   { op:'fictracApply', on, coupling, degPerFrame, bias, warning } // start/stop Mode-3 closed-loop
+     *          coupling: dimensionless (1 = 1:1); degPerFrame: pitch override or null (rig)
      *          bias: {type, amplitude, frequency} disturbance waveform, or null when
      *          none was authored; stopClosedLoop always carries {type:'none'} to clear it
      *   { op:'skip', reason, plugin_name, command_name }   // other plugin → not driveable
@@ -626,10 +627,86 @@ var ArenaRunnerG6 = (function () {
                         } catch (e) {
                             return { op: 'error', reason: e.message };
                         }
+                        // `gain` (deg/frame) was RETIRED in v0.85. The legacy ±1.8 — the pitch
+                        // of every 10-column G6 pattern, i.e. an unambiguous coupling ±1 — is
+                        // accepted with a deprecation WARNING (37 course protocols carried it on
+                        // the day this shipped); any other value meant a fractional coupling
+                        // that jumped once per revolution, so it is refused with the recipe.
+                        let legacyWarning = null;
+                        let legacyCoupling = null;
+                        if (
+                            params.gain !== undefined &&
+                            params.gain !== null &&
+                            params.gain !== ''
+                        ) {
+                            const g = Number(params.gain);
+                            if (Number.isFinite(g) && Math.abs(Math.abs(g) - 1.8) < 1e-9) {
+                                legacyCoupling = g > 0 ? 1 : -1;
+                                legacyWarning =
+                                    'startClosedLoop.gain ' +
+                                    g +
+                                    ' is retired (v0.85) — running as coupling ' +
+                                    legacyCoupling +
+                                    '. Replace it with `coupling: ' +
+                                    legacyCoupling +
+                                    '` (the display pitch now comes from the rig).';
+                            } else {
+                                const approx =
+                                    Number.isFinite(g) && g
+                                        ? Math.round((1.8 / g) * 100) / 100
+                                        : '?';
+                                return {
+                                    op: 'error',
+                                    reason:
+                                        'startClosedLoop.gain (' +
+                                        JSON.stringify(params.gain) +
+                                        ') was retired in Studio v0.85: the display pitch now comes from the rig ' +
+                                        '(360 / azimuth px; override with deg_per_frame) and the closed-loop ' +
+                                        'strength is `coupling` (1 = the display follows the ball 1:1, -1 = ' +
+                                        'reversed, 0.75 / 1.25 = under / over; this gain ≈ coupling ' +
+                                        approx +
+                                        '). Replace `gain` with `coupling`.'
+                                };
+                            }
+                        }
+                        const coupling =
+                            params.coupling === undefined ||
+                            params.coupling === null ||
+                            params.coupling === ''
+                                ? legacyCoupling !== null
+                                    ? legacyCoupling
+                                    : Number.isFinite(Number(opts.defaultCoupling))
+                                      ? Number(opts.defaultCoupling)
+                                      : 1
+                                : Number(params.coupling);
+                        if (!Number.isFinite(coupling)) {
+                            return {
+                                op: 'error',
+                                reason:
+                                    'coupling is not a number: ' + JSON.stringify(params.coupling)
+                            };
+                        }
+                        const dpfRaw = params.deg_per_frame;
+                        const degPerFrame =
+                            dpfRaw === undefined || dpfRaw === null || dpfRaw === ''
+                                ? null
+                                : Number(dpfRaw);
+                        if (
+                            degPerFrame !== null &&
+                            !(Number.isFinite(degPerFrame) && degPerFrame > 0)
+                        ) {
+                            return {
+                                op: 'error',
+                                reason:
+                                    'deg_per_frame must be a positive number, got ' +
+                                    JSON.stringify(dpfRaw)
+                            };
+                        }
                         return {
                             op: 'fictracApply',
                             on: true,
-                            gain: Number.isFinite(Number(params.gain)) ? Number(params.gain) : null,
+                            coupling,
+                            degPerFrame, // null = use the rig-derived pitch the caller supplies
                             // ALWAYS carry a bias, `{type:'none'}` when none was
                             // authored — same reasoning as `duty` in buildTrialParams:
                             // every closed-loop epoch must be self-describing. Sending
@@ -637,7 +714,7 @@ var ArenaRunnerG6 = (function () {
                             // installed (a previous condition's waveform, or a stale
                             // one from an aborted run) silently driving this trial.
                             bias: bias || { type: 'none' },
-                            warning: warning
+                            warning: [legacyWarning, warning].filter(Boolean).join(' · ') || null
                         };
                     }
                     case 'stopClosedLoop':
@@ -1182,6 +1259,13 @@ var ArenaRunnerG6 = (function () {
          * @param {function} a.resolvePatternId  (trialParamsCmd) ⇒ 1-based SD index | null
          * @param {function} [a.resolvePatternFrames] (trialParamsCmd) ⇒ frame count | null
          *                                        (Mode-3 index modulus for closed-loop)
+         * @param {number}   [a.degPerFrame]     display pitch, deg per frame index, from the
+         *                                        rig (360 / azimuth px); pushed to the bridge
+         *                                        at each startClosedLoop unless the command
+         *                                        sets its own deg_per_frame
+         * @param {number}   [a.defaultCoupling] coupling for a startClosedLoop that names none
+         *                                        (default 1; ±1 when the caller mapped a legacy
+         *                                        plugin-config gain ±1.8)
          * @param {function} [a.resolveCondition] async optional trial-boundary hook:
          *        (conditionName, {index,total,step,condition,conditionsByName}) ⇒
          *        condition | {condition, runtimeRecord}.  A runtimeRecord may
@@ -1207,6 +1291,18 @@ var ArenaRunnerG6 = (function () {
                 typeof a.resolvePatternId === 'function' ? a.resolvePatternId : () => null;
             const resolvePatternFrames =
                 typeof a.resolvePatternFrames === 'function' ? a.resolvePatternFrames : () => null;
+            // Display pitch for the closed loop (deg per frame index), derived by the caller
+            // from the rig (360 / azimuth px). A startClosedLoop `deg_per_frame` overrides it;
+            // with neither the bridge keeps its own default (1.8).
+            const degPerFrame =
+                Number.isFinite(Number(a.degPerFrame)) && Number(a.degPerFrame) > 0
+                    ? Number(a.degPerFrame)
+                    : null;
+            // Coupling used by a startClosedLoop that names none. 1 unless the caller derived
+            // ±1 from a legacy fictrac plugin-config `gain: ±1.8` (the soft-accept path).
+            const defaultCoupling = Number.isFinite(Number(a.defaultCoupling))
+                ? Number(a.defaultCoupling)
+                : 1;
             const resolveCondition =
                 typeof a.resolveCondition === 'function' ? a.resolveCondition : null;
             const fictracPluginNames =
@@ -1391,13 +1487,15 @@ var ArenaRunnerG6 = (function () {
                         trialTargetSec: 0,
                         waitedSec: 0,
                         fictracFrames: null,
-                        fictracPatternId: null
+                        fictracPatternId: null,
+                        degPerFrame // the rig's display pitch (deg per frame index), or null
                     };
                     for (const cmd of cond.commands) {
                         if (this._abort) break;
                         const ir = translateCommand(cmd, {
                             patternId: resolvePatternId(cmd),
-                            fictracPluginNames
+                            fictracPluginNames,
+                            defaultCoupling
                         });
                         if (cmd.type === 'controller' && cmd.command_name === 'trialParams') {
                             const f = Number(resolvePatternFrames(cmd));
@@ -1648,12 +1746,18 @@ var ArenaRunnerG6 = (function () {
                                 return;
                             }
                         }
-                        // One setConfig carries frames + gain + bias: the bridge re-zeros
-                        // its bias PHASE clock on any config message containing `bias`, so
-                        // pushing it here makes every closed-loop epoch start at phase 0.
+                        // One setConfig carries frames + coupling + pitch + bias + epoch: the
+                        // bridge re-zeros its bias PHASE clock on any config message containing
+                        // `bias` and re-TARES the heading on `epoch`, so pushing them together
+                        // makes every closed-loop epoch start at phase 0 from the loaded frame.
                         const cfg = {};
                         if (frames != null) cfg.frames = frames;
-                        if (ir.on && ir.gain != null) cfg.gain = ir.gain;
+                        if (ir.on) {
+                            cfg.coupling = Number.isFinite(ir.coupling) ? ir.coupling : 1;
+                            const pitch = ir.degPerFrame != null ? ir.degPerFrame : acc.degPerFrame;
+                            if (Number.isFinite(pitch) && pitch > 0) cfg.deg_per_frame = pitch;
+                            cfg.epoch = true;
+                        }
                         if (ir.bias) cfg.bias = ir.bias;
                         if (Object.keys(cfg).length) this._bridge.setConfig(cfg);
                         this._bridge.setApply(!!ir.on);

@@ -145,14 +145,21 @@
             // `bias` is the one OBJECT-valued config key (LAB-185): the closed-loop
             // disturbance waveform {type, amplitude, frequency}. null = never set, so
             // nothing is pushed and an old bridge is unaffected.
+            // `coupling` (bridge 3.3) is the dimensionless closed-loop strength; `deg_per_frame`
+            // the display pitch (the pre-3.3 `gain`). `gain` is kept mirrored to deg_per_frame
+            // and sent alongside so a 3.2 bridge still tracks the pitch; it ignores `coupling`
+            // (see supportsCoupling — the Studio warns when it asks a 3.2 bridge for k ≠ 1).
             this._config = {
                 fictrac_port: 60000,
+                coupling: 1,
+                deg_per_frame: 1.8,
                 gain: 1.8,
                 offset: 0,
                 frames: null,
                 bias: null,
                 logLevel: LOG_LEVELS[0]
             };
+            this._epochPending = false; // transient: next config push carries epoch:true
             this._bridgeInfo = null; // from hello_ack: {version, levels, level} (null = old bridge / not yet)
             this._ackedLevel = null; // from log_control_ack while logging is enabled
             this._ackWaiters = []; // waitForLogLevelAck() resolvers
@@ -330,13 +337,60 @@
          */
         setConfig(partial) {
             if (partial && typeof partial === 'object') {
-                for (const k of ['fictrac_port', 'gain', 'offset', 'frames']) {
+                for (const k of ['fictrac_port', 'coupling', 'offset', 'frames']) {
                     if (partial[k] !== undefined && partial[k] !== null)
                         this._config[k] = partial[k];
                 }
+                // deg_per_frame and its pre-3.3 alias `gain` are ONE value (the pitch).
+                const pitch =
+                    partial.deg_per_frame !== undefined && partial.deg_per_frame !== null
+                        ? partial.deg_per_frame
+                        : partial.gain !== undefined && partial.gain !== null
+                          ? partial.gain
+                          : undefined;
+                if (pitch !== undefined) {
+                    this._config.deg_per_frame = pitch;
+                    this._config.gain = pitch;
+                }
+                if (partial.epoch) this._epochPending = true;
                 if (partial.bias !== undefined) this.setBias(partial.bias, true);
+                if (
+                    partial.coupling !== undefined &&
+                    Number(partial.coupling) !== 1 &&
+                    this.supportsCoupling() === false
+                ) {
+                    this._emit(
+                        'log',
+                        'bridge ' +
+                            (this._bridgeInfo && this._bridgeInfo.version) +
+                            ' predates coupling (needs 3.3+): it will run the closed loop at 1:1, ignoring coupling ' +
+                            partial.coupling,
+                        'warn'
+                    );
+                }
             }
             this.sendConfig();
+        }
+        /** Dimensionless closed-loop coupling last pushed (1 = 1:1). */
+        get coupling() {
+            return this._config.coupling;
+        }
+        /** Display pitch (deg per frame index) last pushed. */
+        get degPerFrame() {
+            return this._config.deg_per_frame;
+        }
+        /**
+         * Does the connected bridge implement `coupling` (≥ 3.3)? true/false from the
+         * hello_ack version string; null when unknown (no hello_ack yet / pre-3.0 bridge).
+         */
+        supportsCoupling() {
+            const v = this._bridgeInfo && this._bridgeInfo.version;
+            if (typeof v !== 'string') return null;
+            const m = v.match(/^\s*(\d+)\.(\d+)/);
+            if (!m) return null;
+            const major = Number(m[1]);
+            const minor = Number(m[2]);
+            return major > 3 || (major === 3 && minor >= 3);
         }
         /**
          * Install the closed-loop bias waveform. Emits 'bias' when it changes so a UI can
@@ -374,10 +428,18 @@
             const cfg = { type: 'config' };
             const c = this._config;
             if (Number.isFinite(c.fictrac_port)) cfg.fictrac_port = c.fictrac_port;
-            if (Number.isFinite(c.gain)) cfg.gain = c.gain;
+            if (Number.isFinite(c.coupling)) cfg.coupling = c.coupling;
+            if (Number.isFinite(c.deg_per_frame)) {
+                cfg.deg_per_frame = c.deg_per_frame;
+                cfg.gain = c.deg_per_frame; // pre-3.3 bridges read the pitch under this name
+            }
             if (Number.isFinite(c.offset)) cfg.offset = c.offset;
             if (Number.isFinite(c.frames)) cfg.frames = c.frames;
             if (c.bias) cfg.bias = c.bias;
+            if (this._epochPending) {
+                cfg.epoch = true; // a new closed-loop epoch: the bridge re-tares the heading
+                this._epochPending = false;
+            }
             this._send(cfg);
         }
 

@@ -159,12 +159,14 @@ for kind, amp, fr, t in (("constant", 90, 0, 1.3), ("sine", 90, 0.5, 0.37), ("sq
     check_close(f"{kind} A={amp} f={fr} t={t}", rep.bias_angle_deg(kind, amp, fr, t), bridge.bias_angle_deg(kind, amp, fr, t), 1e-9)
 
 
-def synth_log(path, rejecting: bool, gain=1.8, frames=200, amp=90.0, dur_s=4.0, rate=50):
+def synth_log(path, rejecting: bool, gain=1.8, frames=200, amp=90.0, dur_s=4.0, rate=50, coupling=None, spin_dps=0.0):
     """A run with one constant-bias epoch. rejecting=True: the fly's heading exactly cancels the bias."""
     t0 = 1_700_000_000_000
     L = [{"type": "session", "event": "logging_started", "ms": t0},
          {"type": "frame_schema", "level": "behavior_v2", "cols": ["ms", "fc", "idx", "ft", "x", "y", "hd"], "t0": t0},
-         {"type": "config", "gain": gain, "frames": frames, "dir": "browser→bridge", "rx_ms": t0 + 100},
+         {"type": "config", "gain": gain, "frames": frames, "dir": "browser→bridge", "rx_ms": t0 + 100}
+            if coupling is None else
+         {"type": "config", "coupling": coupling, "deg_per_frame": gain, "frames": frames, "dir": "browser→bridge", "rx_ms": t0 + 100},
          {"type": "log", "event": "runner", "phase": "step-start", "index": 0, "condition": "cl_bias_constant", "rx_ms": t0 + 900},
          {"type": "log", "event": "runner", "phase": "command", "op": "fictracApply", "value": True, "condition": "cl_bias_constant", "rx_ms": t0 + 1000},
          {"type": "bias_config", "dir": "bridge", "ms": 1000, "bias": {"type": "constant", "amplitude": amp, "frequency": 0.0}},
@@ -182,9 +184,13 @@ def synth_log(path, rejecting: bool, gain=1.8, frames=200, amp=90.0, dur_s=4.0, 
         t_s = i / rate
         ms = 1000 + int(round(t_s * 1000))
         b = amp * t_s
-        rel = -b if rejecting else 0.0              # fly turns against the bias (heading −) or not at all
+        k_eff = coupling if coupling else 1.0
+        rel = -b / k_eff if rejecting else spin_dps * t_s   # holds the display (Δheading = −b/k), spins, or sits still
         hd_deg = hd0_deg + rel
-        idx = round((rep.wrap180(rel) + b) / gain) % frames
+        if coupling is None:
+            idx = round((rep.wrap180(rel) + b) / gain) % frames            # bridge ≤ 3.2: wrapped, coupling 1
+        else:
+            idx = round((coupling * rel + b) / gain) % frames              # bridge 3.3: UNWRAPPED × coupling
         L.append([ms, i + 1, idx, t_s * 1000.0, 0.0, 0.0, math.radians(hd_deg % 360.0)])
     L.append({"type": "log", "event": "runner", "phase": "command", "op": "fictracApply", "value": False, "condition": "cl_bias_constant", "rx_ms": t0 + 1000 + int(dur_s * 1000) + 20})
     L.append({"type": "bias_config", "dir": "bridge", "ms": 1000 + int(dur_s * 1000) + 20, "bias": {"type": "none", "amplitude": 0.0, "frequency": 0.0}})
@@ -215,6 +221,26 @@ with tempfile.TemporaryDirectory() as d:
     check("passive fly: idx span covers the pattern", N["display"]["idx_span"], [0, 199])
     md = rep.to_markdown(R)
     check("markdown has the table row", "cl_bias_constant" in md and "+1.00" in md, True)
+    # bridge 3.3 logs: coupling 0.75, a fly spinning 720 deg with no bias — the reconstruction must
+    # use the UNWRAPPED turn x coupling (wrapping would mismatch after the first revolution).
+    p_k = os.path.join(d, "k075.jsonl")
+    synth_log(p_k, False, coupling=0.75, amp=0.0, dur_s=8.0, spin_dps=90.0)
+    K = rep.analyze(p_k, 0.0, 1, 0.0)["epochs"][0]
+    check("coupling read from the config echo", [K["coupling"], K["deg_per_frame"]], [0.75, 1.8])
+    check("coupling 0.75 spinning fly: idx reconstruction exact across two revolutions", K["idx_mismatch_fraction"], 0.0)
+    check_close("net turn 720 deg", K["fly"]["net_turn_deg"], 720.0, 0.5)
+    check("markdown shows k and pitch", "k 0.75" in rep.to_markdown(rep.analyze(p_k, 0.0, 1, 0.0)), True)
+    # The natural loop on the fly-on-ball rigs is coupling −1: a fly that HOLDS the display against a
+    # constant bias turns +b (not −b), and rejection must still read +1 (normalized by the coupling).
+    p_n = os.path.join(d, "kneg1_rej.jsonl")
+    synth_log(p_n, True, coupling=-1.0)
+    N1 = rep.analyze(p_n, 0.0, -1, 0.0)["epochs"][0]
+    check_close("coupling -1, display held → rejection +1", N1["rejection"], 1.0, 0.02)
+    check_close("...the fly turned WITH the bias angle (+360)", N1["fly"]["net_turn_deg"], 360.0, 1.0)
+    check("coupling -1 held display: idx reconstruction exact", N1["idx_mismatch_fraction"], 0.0)
+    p_z = os.path.join(d, "k0.jsonl")
+    synth_log(p_z, False, coupling=0.0, spin_dps=45.0)
+    check("coupling 0: rejection undefined", rep.analyze(p_z, 0.0, 1, 0.0)["epochs"][0]["rejection"], None)
     svg = rep.to_svg(R)
     check("svg has three polylines", svg.count("<polyline"), 3)
     out_svg = os.path.join(d, "o.svg")

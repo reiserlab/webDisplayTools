@@ -4417,7 +4417,16 @@ console.log('\n--- Suite 38: startClosedLoop bias params (closed-loop disturbanc
     check('38.3: bias_type parses', scl.params.bias_type, 'sine');
     check('38.4: bias_amplitude parses (deg/s peak)', scl.params.bias_amplitude, 90);
     check('38.5: bias_frequency parses', scl.params.bias_frequency, 0.5);
-    check('38.6: the gain override still parses alongside', scl.params.gain, 1.8);
+    check('38.6: no retired gain in the fixture', scl.params.gain, undefined);
+    check(
+        '38.6b: the coupling param parses on the plain closed-loop condition',
+        (
+            exp.conditions
+                .find((c) => c.name === 'closed_loop_rotation')
+                .commands.find((c) => c.command_name === 'startClosedLoop').params || {}
+        ).coupling,
+        1
+    );
     checkTrue(
         '38.7: bias params are NOT swallowed into _unknownKeys',
         !(scl._unknownKeys && 'params' in scl._unknownKeys)

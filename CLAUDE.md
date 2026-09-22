@@ -324,11 +324,22 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `FicTracBridgeClient.setConfig`, whose scalar keys gate on `Number.isFinite`;
   (4a) every epoch also TARES THE HEADING (`hd0`, latched on the epoch's first frame,
   logged as `heading_tare`) — FicTrac heading is absolute, so without it an epoch
-  opened by jumping the display up to 340° away (bench03, real flies). The tared
-  difference is wrapped to (-180,180]; only the heading, never the bias. Armed by
-  epochs ONLY, not at bridge startup, so the plain Console path is unchanged.
-  Offline analysis MUST apply `heading_tare` or every index is off by
-  round(hd0/gain);
+  opened by jumping the display up to 340° away (bench03, real flies). Since bridge 3.3
+  the turn since the tare is UNWRAPPED (Σ wrap180(Δhd) per frame, never wrapped itself) and
+  the mapping is `round((coupling·Δh + offset + b)/deg_per_frame) mod n` — `coupling`
+  dimensionless (1 = 1:1, 0 = bias-only replay, negative = reversed; the bias is OUTSIDE
+  it), `deg_per_frame` the PATTERN pitch from the rig (`Studio.rigDegPerFrame()` =
+  360/(num_cols×pixels_per_panel); NOT 360/frame_count). The pre-3.3 `gain` (deg/frame on a
+  WRAPPED heading) jumped the display (k−1)·360° once per revolution for any value but
+  ±1.8 — it is RETIRED with a SOFT edge: `gain: ±1.8` (= coupling ±1, 37 course protocols on
+  ship day) runs with a deprecation warning (runner: legacy param → `coupling` ±1 + `warning`;
+  Studio `refuseRetiredGain`: plugin-config ±1.8 → `Studio._legacyDefaultCoupling` →
+  `runSequence({defaultCoupling})`), any other value is refused (runner error step / run banner). The
+  runner pushes `{coupling, deg_per_frame, epoch:true, bias, frames}` per startClosedLoop;
+  `epoch` re-tares (bias presence still does too). Armed by epochs ONLY, not at bridge
+  startup. Offline analysis MUST apply `heading_tare` (+ `reason`, `ft_reset` on a FicTrac
+  restart) or every index is off by round(hd0/deg_per_frame); `closed-loop-report.py`
+  picks the 3.3 vs ≤3.2 formula from whether the config echo carries `coupling`;
   (4) never widen `BEHAVIOR_V1_COLS` to log it — the per-frame `bias` on the
   WebSocket is display-only, and offline reconstruction uses the `bias_config`
   log event, which `js/runlog-replay.js` surfaces as a status event
@@ -348,7 +359,7 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   rather than starting the loop on a guess. `FicTracBridgeClient` also defaults
   `clampFrame` to wrap on the last pushed count. Resolve the modulus this way from
   any NEW closed-loop entry point. A short pattern is legitimate — a 20-px grating
-  needs 20 frames and the modulus tiles it; keep `gain = 360/azimuth_pixels`.
+  needs 20 frames and the modulus tiles it; the pitch stays 360/azimuth_pixels.
   Full spec: `docs/development/closed-loop-bias.md`.
 - URL state ([#107](https://github.com/reiserlab/webDisplayTools/issues/107),
   read+write): `js/studio-url-state.js` (`mode` ∈ run|edit|console; a shared

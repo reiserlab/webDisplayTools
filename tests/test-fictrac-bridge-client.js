@@ -732,6 +732,72 @@ async function main() {
         check('custom window reported', t.faults[0] && t.faults[0].window, 2);
     }
 
+    console.log('\n=== coupling + deg_per_frame (bridge 3.3) — gain is the pitch alias ===');
+    {
+        const client = new FicTracBridgeClient({ WebSocketImpl: FakeWS });
+        const warns = [];
+        client.on('log', (m, kind) => warns.push([kind, m]));
+        client.connect('ws://x');
+        FakeWS.last.readyState = 1;
+        FakeWS.last.onopen && FakeWS.last.onopen();
+        const lastCfg = () => FakeWS.last.sent.filter((m) => m.type === 'config').pop();
+        check(
+            'defaults: coupling 1, pitch 1.8 under both names',
+            [lastCfg().coupling, lastCfg().deg_per_frame, lastCfg().gain],
+            [1, 1.8, 1.8]
+        );
+        client.setConfig({ coupling: 0.75, deg_per_frame: 3.6 });
+        check(
+            'coupling + pitch pushed',
+            [lastCfg().coupling, lastCfg().deg_per_frame],
+            [0.75, 3.6]
+        );
+        check('legacy gain key mirrors the pitch for a 3.2 bridge', lastCfg().gain, 3.6);
+        check('getters', [client.coupling, client.degPerFrame], [0.75, 3.6]);
+        client.setConfig({ gain: 1.8 });
+        check(
+            'gain (alias) sets the pitch',
+            [client.degPerFrame, lastCfg().deg_per_frame],
+            [1.8, 1.8]
+        );
+        client.setConfig({ epoch: true, coupling: 1 });
+        check('epoch:true rides ONE push', lastCfg().epoch, true);
+        client.setConfig({ offset: 0 });
+        check('...and is not repeated', lastCfg().epoch, undefined);
+        check('no hello_ack yet → supportsCoupling unknown', client.supportsCoupling(), null);
+        FakeWS.last.onmessage({
+            data: JSON.stringify({
+                type: 'hello_ack',
+                bridge: '3.2 · behavior_v2 (…)',
+                levels: ['behavior_v2'],
+                level: 'behavior_v2',
+                logging: false
+            })
+        });
+        check('3.2 bridge → no coupling support', client.supportsCoupling(), false);
+        const before = warns.length;
+        client.setConfig({ coupling: 1.25 });
+        checkBool(
+            'asking a 3.2 bridge for k≠1 warns',
+            warns.length === before + 1 && /predates coupling/.test(warns[warns.length - 1][1]),
+            JSON.stringify(warns.slice(-1))
+        );
+        client.setConfig({ coupling: 1 });
+        check('k = 1 does not warn', warns.length, before + 1);
+        FakeWS.last.onmessage({
+            data: JSON.stringify({
+                type: 'hello_ack',
+                bridge: '3.3 · behavior_v2 + coupling',
+                levels: ['behavior_v2'],
+                level: 'behavior_v2',
+                logging: false
+            })
+        });
+        check('3.3 bridge → coupling supported', client.supportsCoupling(), true);
+        client.setConfig({ coupling: 0.5 });
+        check('no warning on a 3.3 bridge', warns.length, before + 1);
+    }
+
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);

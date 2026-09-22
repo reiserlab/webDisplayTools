@@ -2934,8 +2934,9 @@
           <div class="crow" style="margin-bottom:0"><span class="lbl">closed-loop</span>
             <label title="Apply each FicTrac heading → SET_FRAME_POSITION (needs a Mode-3 pattern loaded in the stepper)"><input type="checkbox" id="cFtApply" disabled> activate</label>
             <label>port <input id="cFtPort" type="number" min="1" max="65535" value="60000" style="width:72px" title="UDP/TCP port the bridge listens on for FicTrac"></label>
-            <label>gain <input id="cFtGain" type="number" step="0.1" value="1.8" style="width:64px" title="heading degrees per frame index (1.8 = 360°/200)"></label>
+            <label>coupling <input id="cFtCoupling" type="number" step="0.05" value="1" style="width:64px" title="Closed-loop coupling: 1 = the display follows the ball 1:1, 0.75 / 1.25 = the world moves less / more than the ball, negative = reversed, 0 = ignore the fly (bias only). Range: any finite number"></label>
             <span id="cFtPresets" class="seg2"></span>
+            <span class="dim" id="cFtDpf" title="Display pitch pushed to the bridge — degrees per frame index, from the session rig (360° / azimuth pixels). A protocol's startClosedLoop deg_per_frame overrides it.">1.8°/frame</span>
             <label title="Log FicTrac frames + arena commands to a JSONL file. For ad-hoc sessions (no protocol) — a recorded experiment run logs automatically and overrides this. Verbosity is set in File ▾ → Run logging."><input type="checkbox" id="cFtLog"> log</label>
             <span class="dim" id="cFtLogLevel" title="Frame-logging level (read-only here — change it in File ▾ → Run logging)">behavior_v1</span></div>
           </div>
@@ -2998,7 +2999,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.84 | 2026-09-21 16:01 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.85 | 2026-09-21 16:34 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -6222,9 +6223,14 @@
         if (!bridge) return;
         const cfg = {};
         const port = parseInt($('cFtPort').value, 10);
-        const gain = parseFloat($('cFtGain').value);
+        const coupling = parseFloat($('cFtCoupling').value);
         if (Number.isFinite(port)) cfg.fictrac_port = port;
-        if (Number.isFinite(gain)) cfg.gain = gain;
+        if (Number.isFinite(coupling)) cfg.coupling = coupling;
+        // The display pitch comes from the session rig (360 / azimuth px), never typed.
+        const dpf = Studio.rigDegPerFrame ? Studio.rigDegPerFrame() : null;
+        if (Number.isFinite(dpf) && dpf > 0) cfg.deg_per_frame = dpf;
+        const dpfEl = $('cFtDpf');
+        if (dpfEl) dpfEl.textContent = (Number.isFinite(dpf) && dpf > 0 ? (Math.round(dpf * 1000) / 1000) : 1.8) + '°/frame';
         if (consoleState.frameCount) cfg.frames = consoleState.frameCount;
         bridge.setConfig(cfg);
     }
@@ -6247,12 +6253,13 @@
             if (!n) return i;
             return ((i % n) + n) % n;
         });
-        // gain presets (forward / reverse)
+        // coupling presets: 1:1, reversed, under- and over-compensating worlds
         const presets = $('cFtPresets');
-        [['1.8', 1.8], ['−1.8', -1.8]].forEach(([label, val]) => {
+        [['1', 1, 'natural closed loop: the display follows the ball 1:1'], ['−1', -1, 'reversed coupling'], ['0.75', 0.75, 'the world turns 0.75× the ball'], ['1.25', 1.25, 'the world turns 1.25× the ball']].forEach(([label, val, tip]) => {
             const b = document.createElement('button');
             b.textContent = label;
-            b.addEventListener('click', () => { $('cFtGain').value = val; if (bridge.connected) ftSendConfig(); });
+            b.title = tip;
+            b.addEventListener('click', () => { $('cFtCoupling').value = val; if (bridge.connected) ftSendConfig(); });
             presets.appendChild(b);
         });
         bridge.on('status', (text, kind) => {
@@ -6270,7 +6277,7 @@
         bridge.on('blocked', () => { $('cFtStat').textContent = 'blocked (load a Mode-3 pattern first)'; });
         $('cFtApply').addEventListener('change', (e) => bridge.setApply(e.target.checked));
         $('cFtLog').addEventListener('change', (e) => bridge.setLogging(e.target.checked));
-        $('cFtGain').addEventListener('change', () => { if (bridge.connected) ftSendConfig(); });
+        $('cFtCoupling').addEventListener('change', () => { if (bridge.connected) ftSendConfig(); });
         $('cFtPort').addEventListener('change', () => { if (bridge.connected) ftSendConfig(); });
 
         // ---- Run-view bridge mirror ------------------------------------------
@@ -8839,7 +8846,58 @@ Studio.runCondition = async function (name) {
 // something the web runner lacks (e.g. `flow_control`) must be REFUSED, never run wrong —
 // a repeat_until block would otherwise flatten into a plain block with its criterion
 // silently ignored. Editing such a file stays allowed; only running is blocked.
+// The closed loop's display pitch (deg per frame index) from the SESSION rig: 360° over the
+// arena's azimuth pixels (num_cols × pixels_per_panel — 200 on a 10-column G6 ⇒ 1.8). A
+// PATTERN property really (1 px per frame), which every shipped closed-loop pattern has; a
+// startClosedLoop `deg_per_frame` overrides it for exotic patterns. NOT 360 / frame_count.
+Studio.rigDegPerFrame = function () {
+    const name = Studio.currentRig && Studio.currentRig.arenaConfig;
+    const cfg = name ? getConfig(name) : null;
+    const arena = cfg && cfg.arena; // getConfig → {label, description, arena:{generation, num_cols, …}}
+    if (!arena) return null;
+    const specs = window.PANEL_SPECS && window.PANEL_SPECS[arena.generation];
+    const px = specs && specs.pixels_per_panel;
+    const cols = Number(arena.num_cols);
+    if (!px || !Number.isFinite(cols) || cols <= 0) return null;
+    return 360 / (cols * px);
+};
+
+// Retired closed-loop `gain` (deg/frame, pre-v0.85) in the fictrac PLUGIN CONFIG. The soft
+// policy (2026-09-21): the legacy ±1.8 — the pitch of every 10-column G6 pattern, i.e. an
+// unambiguous coupling ±1 — is ACCEPTED with a warning and becomes the run's default
+// coupling (a startClosedLoop that names its own coupling/gain still wins, as before);
+// any other value meant a fractional coupling that jumped once per revolution and is
+// REFUSED with the migration recipe. Per-step `gain` params are handled by the runner
+// (same rule). `Studio._legacyDefaultCoupling` feeds runSequence({defaultCoupling}).
+Studio._legacyDefaultCoupling = null;
+function refuseRetiredGain(exp) {
+    Studio._legacyDefaultCoupling = null;
+    const ftPlugins = (exp.plugins || []).filter((p) => p && p.matlab && p.matlab.class === 'FicTracPlugin');
+    const bad = [];
+    ftPlugins.forEach((p) => {
+        const g = p.config ? p.config.gain : undefined;
+        if (g === undefined || g === null || g === '') return;
+        const n = Number(g);
+        if (Number.isFinite(n) && Math.abs(Math.abs(n) - 1.8) < 1e-9) {
+            Studio._legacyDefaultCoupling = n > 0 ? 1 : -1;
+            const w = 'fictrac plugin "' + p.name + '" config gain ' + n + ' is retired (v0.85): running with default coupling ' +
+                Studio._legacyDefaultCoupling + ' — delete `gain` from the plugin config and put `coupling: ' + Studio._legacyDefaultCoupling +
+                '` on startClosedLoop where needed.';
+            if (Studio.rawLog) Studio.rawLog(w, 'warn');
+        } else {
+            bad.push('plugin "' + p.name + '" config gain: ' + g);
+        }
+    });
+    if (!bad.length) return false;
+    const msg = 'Closed-loop `gain` was retired in v0.85 (' + bad.join('; ') +
+        '). Delete it — the display pitch now comes from the rig — and use `coupling` (1 = the display follows the ball 1:1, -1 = reversed, 0.75 / 1.25 = under / over) on startClosedLoop instead. Run refused.';
+    Studio.showBanner(msg);
+    if (Studio.rawLog) Studio.rawLog(msg, 'err');
+    return true;
+}
+
 function refuseUnsupportedRequires(exp) {
+    if (refuseRetiredGain(exp)) return true;
     const missing = unsupportedRequires(exp);
     if (!missing.length) return false;
     const msg = 'This protocol requires ' + missing.map((t) => '"' + t + '"').join(', ') +
@@ -8907,8 +8965,11 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             const pcfg = (plug && plug.config) || {};
             const cfg = {};
             if (Number.isFinite(Number(pcfg.fictrac_port))) cfg.fictrac_port = Number(pcfg.fictrac_port);
-            if (Number.isFinite(Number(pcfg.gain))) cfg.gain = Number(pcfg.gain);
             if (Number.isFinite(Number(pcfg.offset))) cfg.offset = Number(pcfg.offset);
+            // The display pitch comes from the session rig; `gain` in the plugin config is
+            // retired (v0.85) — a protocol still carrying it is refused before the run.
+            const dpf = Studio.rigDegPerFrame();
+            if (Number.isFinite(dpf) && dpf > 0) cfg.deg_per_frame = dpf;
             if (Object.keys(cfg).length) bridge.setConfig(cfg);
         }
         // Frame-logging level is a runtime/session setting (File ▾ → Run logging),
@@ -9010,7 +9071,9 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             resolveCondition: typeof Studio.resolveRuntimeCondition === 'function'
                 ? Studio.resolveRuntimeCondition
                 : undefined,
-            fictracPluginNames: new Set(ftNames)
+            fictracPluginNames: new Set(ftNames),
+            degPerFrame: Studio.rigDegPerFrame(),
+            defaultCoupling: Studio._legacyDefaultCoupling == null ? 1 : Studio._legacyDefaultCoupling
         });
         // Controller fault (fw #50) — either the closed-loop client tripped
         // (bridge 'fault' → runner.fault) or a protocol command timed out; both
@@ -16296,7 +16359,8 @@ initFromUrl();
     '[data-cmd="cloadfile"]': 'Stream a pattern file from this computer straight to the display (nothing is written to the card).',
     '[data-cmd="cftconn"]': 'Connect to the FicTrac bridge program running on this computer.',
     '#cFtApply': 'Start closed loop — FicTrac steers the pattern from the fly’s walking.',
-    '#cFtGain': 'How strongly the fly’s turning moves the pattern. Negative = opposite direction.',
+    '#cFtCoupling': 'How much the pattern turns for each turn of the ball: 1 = one-to-one, 0.75 or 1.25 = less or more than the fly, negative = the opposite way, 0 = the pattern ignores the fly.',
+    '#cFtDpf': 'How many degrees one frame of the pattern spans — set by the arena (360° divided by its pixels around). Nothing to change here.',
     '[data-cmd="crawcopy"]': 'Copy the bench log to the clipboard.',
     '[data-cmd="crawclear"]': 'Clear the bench log.',
     '#cLogChev': 'Hide or show the bench log.',

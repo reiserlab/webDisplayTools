@@ -12,8 +12,9 @@ version: 3
 #
 # The bias is authored as an added rotational VELOCITY in deg/s (`bias_amplitude`
 # = the PEAK velocity), which the bridge integrates into a bias ANGLE and folds
-# into its heading→frame-index mapping. So at gain 1.8 (= 360/200), a bias of
-# 90 deg/s advances the display 90°/s = 50 frames/s.
+# into its heading→frame-index mapping. At the rig's 1.8°/frame pitch (360/200 px),
+# a bias of 90 deg/s advances the display 90°/s = 50 frames/s — independent of the
+# closed-loop `coupling` (default 1 = the display follows the ball 1:1).
 #
 #   bias_type   what the display does (with a still fly)
 #   none        nothing — the plain closed-loop baseline
@@ -62,7 +63,6 @@ plugins:
       bridge_url: "ws://localhost:8765"
       fictrac_port: 60000
       proto: "udp"
-      gain: 1.8
       offset: 0
 
 variables:
@@ -114,7 +114,6 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          gain: 1.8
           bias_type: "none"
       - type: "wait"
         duration: *cl_dur
@@ -141,7 +140,6 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          gain: 1.8
           bias_type: "constant"
           bias_amplitude: *bias_amp
       - type: "wait"
@@ -165,7 +163,6 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          gain: 1.8
           bias_type: "constant"
           bias_amplitude: -90
       - type: "wait"
@@ -191,7 +188,6 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          gain: 1.8
           bias_type: "sine"
           bias_amplitude: *bias_amp
           bias_frequency: *bias_freq
@@ -216,7 +212,6 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          gain: 1.8
           bias_type: "sine"
           bias_amplitude: *bias_amp
           bias_frequency: *bias_freq_fast
@@ -241,7 +236,6 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          gain: 1.8
           bias_type: "sine"
           bias_amplitude: *bias_amp_slow
           bias_frequency: *bias_freq
@@ -268,7 +262,6 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          gain: 1.8
           bias_type: "square"
           bias_amplitude: *bias_amp
           bias_frequency: *bias_freq
@@ -293,7 +286,6 @@ conditions:
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
         params:
-          gain: 1.8
           bias_type: "square"
           bias_amplitude: *bias_amp
           bias_frequency: *bias_freq_fast
