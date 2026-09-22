@@ -445,6 +445,17 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   go through `renderEditableField` on their own paths so they carry the 🔗 anchor button; ranges are
   appended with `docSet(..., ['on_ranges', len], [0, 0])` and removed with `docDelete`. Rewriting the
   whole object flattens every `*alias` inside it to a literal — suite 37 guards this.
+- **LED activation = graded zones (v0.86).** `led_activation: {baseline, zones:[{level, ramp_in:[a,b],
+  ramp_out:[c,d]}]}`; `level`+`on_ranges` stay as sugar (`[s,e]` ≡ hard edges `[s,s]`/`[e+1,e+1]`);
+  `hysteresis` is accepted + warned (`ir.warning` → `{phase:'warn'}`) + IGNORED. ONE code path: `normalizeLedActivation`
+  unrolls sugar into `zones`, `buildLedLevelVector(spec, n)` is the per-frame % vector (unroll modulo n so
+  zones wrap, overlap → max, sub-1 % → `LED_MIN_LEVEL_PCT`), `makeLedActivator(spec, n).step(i)` returns
+  `{level, mv, on, changed}` with `changed` = ≥ `LED_MIN_STEP_MV` (4) from the last intended mV. The runner
+  installs at trialParams with `acc.fictracFrames` (may be null) and MUST `setModulus(frames)` in the
+  startClosedLoop path before the first apply. Sends are single-flight latest-wins in `_drainLed()`, skip a
+  no-op (`_ledSentMv`), and **never go out while `bridge.hasPending`** (a 0x70 queued) — any new AO/LED
+  writer in the loop must respect the same yield. Teardown sends OFF, not baseline. Docs:
+  `docs/development/conditional-led-activation.md`.
 
 - **Telemetry ring — four rules from the 2026-09-12 Codex review (all tested):** (1) the ONLY gate
   for SET_TELEMETRY 0xA8 is GET_FIRMWARE_VERSION `flags` bit 2 (`decodeFirmwareVersion().telemetry`);

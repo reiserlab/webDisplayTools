@@ -4395,6 +4395,65 @@ console.log('\n--- Suite 36: trialParams led_activation (conditional LED) ---');
         '36.16: schema advertises sub-fields',
         !!(sch.led_activation.fields && sch.led_activation.fields.level)
     );
+
+    // v0.86 graded zones: baseline + zones[{level, ramp_in, ramp_out}] round-trip
+    // as nested structure (lists of lists inside a list of maps), and the legacy
+    // sugar keys stay untouched beside them.
+    const zText = [
+        'version: 3',
+        '',
+        'experiment_info:',
+        '  name: "graded LED"',
+        '',
+        'rig: "./configs/rigs/cshl_g6_2x10.yaml"',
+        '',
+        'experiment:',
+        '  - "graded"',
+        '',
+        'conditions:',
+        '  - name: "graded"',
+        '    commands:',
+        '      - type: "controller"',
+        '        command_name: "trialParams"',
+        '        pattern: "closed_loop_grating"',
+        '        pattern_ID: 2',
+        '        duration: 30',
+        '        mode: 3',
+        '        frame_index: 0',
+        '        frame_rate: 0',
+        '        gain: 0',
+        '        led_activation:',
+        '          baseline: 2',
+        '          zones:',
+        '            - level: 10.5',
+        '              ramp_in: [40, 50]',
+        '              ramp_out: [100, 110]',
+        '            - level: 5',
+        '              ramp_in: 190',
+        '              ramp_out: [5, 5]',
+        ''
+    ].join('\n');
+    const zexp = parseV3Protocol(zText);
+    const zla = zexp.conditions[0].commands[0].led_activation;
+    check('36.17: baseline parses', zla.baseline, 2);
+    check('36.18: two zones parse', zla.zones.length, 2);
+    check('36.19: fractional zone level preserved', zla.zones[0].level, 10.5);
+    check('36.20: ramp_in pair preserved', JSON.stringify(zla.zones[0].ramp_in), '[40,50]');
+    check('36.21: bare-int ramp preserved as authored', zla.zones[1].ramp_in, 190);
+    check('36.22: no blocking errors (zones)', collectBlockingErrors(zexp).errors.length, 0);
+    const zregen = generateV3Protocol(zexp);
+    const zexp2 = parseV3Protocol(zregen);
+    check(
+        '36.23: zones survive regen byte-for-byte (structure)',
+        JSON.stringify(zexp2.conditions[0].commands[0].led_activation),
+        JSON.stringify(zla)
+    );
+    checkTrue('36.24: schema advertises baseline', !!sch.led_activation.fields.baseline);
+    checkTrue('36.25: schema advertises zoneFields', !!sch.led_activation.zoneFields);
+    checkTrue(
+        '36.26: hysteresis no longer in the schema fields',
+        !sch.led_activation.fields.hysteresis
+    );
 }
 
 // ─── Suite 38: closed-loop bias params on startClosedLoop (LAB-185) ─────────
@@ -4583,6 +4642,62 @@ console.log('\n--- Suite 37: led_activation sub-fields by path (anchor binding) 
         '37.14: range-endpoint alias survives',
         aliasNameAt(exp, [...la1, 'on_ranges', 0, 0]),
         'band_lo'
+    );
+
+    // (d) v0.86 zones: the Studio's zone editor appends a plain zone object,
+    // then edits its level / ramp endpoints BY PATH (each 🔗-bindable), and
+    // deletes one zone in place — same contract as the range rows.
+    const zonesPath = [...la0, 'zones'];
+    docSet(exp, zonesPath, [{ level: 20, ramp_in: [0, 0], ramp_out: [0, 0] }]);
+    docSet(exp, [...zonesPath, 1], { level: 5, ramp_in: [100, 110], ramp_out: [150, 160] });
+    check(
+        '37.18: two zones appended in place',
+        exp.conditions[0].commands[0].led_activation.zones.length,
+        2
+    );
+    threw = null;
+    try {
+        docSet(exp, [...zonesPath, 0, 'ramp_in', 1], 10);
+        docSet(exp, [...zonesPath, 0, 'ramp_out', 0], 50);
+        docSet(exp, [...zonesPath, 0, 'ramp_out', 1], 60);
+    } catch (e) {
+        threw = e.message;
+    }
+    check('37.19: nested ramp endpoint docSet does not throw', threw, null);
+    check(
+        '37.20: zone 0 edited by path',
+        JSON.stringify(exp.conditions[0].commands[0].led_activation.zones[0]),
+        '{"level":20,"ramp_in":[0,10],"ramp_out":[50,60]}'
+    );
+    docBindToAnchor(exp, [...zonesPath, 1, 'level'], 'led_level');
+    check(
+        '37.21: zone level bound to an anchor',
+        aliasNameAt(exp, [...zonesPath, 1, 'level']),
+        'led_level'
+    );
+    check(
+        '37.22: bound zone level mirrors the anchor value',
+        exp.conditions[0].commands[0].led_activation.zones[1].level,
+        35
+    );
+    docBindToAnchor(exp, [...zonesPath, 1, 'ramp_in', 0], 'band_lo');
+    check(
+        '37.23: zone ramp endpoint bound',
+        aliasNameAt(exp, [...zonesPath, 1, 'ramp_in', 0]),
+        'band_lo'
+    );
+    docDelete(exp, [...zonesPath, 0]);
+    check(
+        '37.24: docDelete removes one zone, keeps the bound one',
+        JSON.stringify(exp.conditions[0].commands[0].led_activation.zones),
+        '[{"level":35,"ramp_in":[50,110],"ramp_out":[150,160]}]'
+    );
+    checkTrue(
+        '37.25: zone aliases survive in YAML',
+        /level: \*led_level/.test(generateV3Protocol(exp)) &&
+            /ramp_in:\s*\n?\s*-?\s*\[?\*band_lo/.test(
+                generateV3Protocol(exp).replace(/\n\s+/g, ' ')
+            )
     );
 
     // unbind by nested path → literal; round-trip

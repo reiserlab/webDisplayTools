@@ -117,21 +117,45 @@ var CONTROLLER_COMMANDS = {
                 required: false,
                 label: 'LED activation (closed loop)',
                 fields: {
+                    baseline: {
+                        type: 'number',
+                        default: 0,
+                        min: 0,
+                        max: 100,
+                        step: 0.1,
+                        label: 'Baseline LED level (%) outside every zone'
+                    },
+                    // `level` is the legacy sugar for hard-edged on_ranges zones; a
+                    // fresh activation seeds zones instead (seed: false).
                     level: {
                         type: 'number',
                         default: 20,
                         min: 0,
                         max: 100,
-                        label: 'LED level (%)'
-                    },
-                    hysteresis: {
+                        step: 0.1,
+                        seed: false,
+                        label: 'LED level (%) for on_ranges'
+                    }
+                    // zones: [{level, ramp_in:[a,b], ramp_out:[c,d]}, ...] — zone editor
+                    // on_ranges: [[start,end], ...] — legacy sugar (range list UI)
+                    // hysteresis: accepted + warned + ignored since v0.86
+                },
+                // Per-zone sub-field schema (the zone editor's field metadata).
+                zoneFields: {
+                    level: {
                         type: 'number',
-                        default: 0,
+                        default: 20,
+                        min: 0,
+                        max: 100,
+                        step: 0.1,
+                        label: 'Zone LED level (%)'
+                    },
+                    edge: {
+                        type: 'number',
                         min: 0,
                         integer: true,
-                        label: 'Hysteresis (frames, 0 = none)'
+                        label: 'Frame index (0-based)'
                     }
-                    // on_ranges: [[start,end], ...] — edited via the range list UI
                 }
             }
         }

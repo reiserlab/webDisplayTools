@@ -96,6 +96,7 @@ const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 let lintCount = 0;
 const lint = (msg) => { lintCount++; console.warn('⚠ waits: ' + msg); };
 const lintBias = (msg) => { lintCount++; console.warn('⚠ bias: ' + msg); };
+const lintLed = (msg) => { lintCount++; console.warn('⚠ led_activation: ' + msg); };
 
 for (const cond of conds) {
     const cmds = cond.commands || [];
@@ -133,6 +134,34 @@ for (const cond of conds) {
         if ((mode === 3 || mode === 4) && num(tp.frame_rate) !== 0) {
             lint(label + ' is mode ' + mode + ' with frame_rate ' + tp.frame_rate +
                 ' — modes 3/4 want frame_rate 0.');
+        }
+        // led_activation (Studio v0.86: graded zones). hysteresis is accepted but IGNORED;
+        // a zone needs both ramps; a zone's level falls back to the top-level `level`.
+        const la = tp.led_activation;
+        if (la && typeof la === 'object') {
+            if (la.hysteresis !== undefined && la.hysteresis !== null && la.hysteresis !== '') {
+                lintLed(label + ' `hysteresis` is IGNORED since Studio v0.86 — delete it; ' +
+                    'use `zones:` with `ramp_in: [a, b]` / `ramp_out: [c, d]` spanning a few frames for chatter-free edges.');
+            }
+            if (mode !== 3) {
+                lintLed(label + ' has led_activation but is mode ' + tp.mode + ' — it only runs in Mode 3 (FicTrac closed loop).');
+            }
+            if (Array.isArray(la.zones)) {
+                la.zones.forEach((z, zi) => {
+                    if (!z || typeof z !== 'object') { lintLed(label + ' zones[' + zi + '] is not a mapping.'); return; }
+                    if (z.ramp_in === undefined || z.ramp_out === undefined) {
+                        lintLed(label + ' zones[' + zi + '] needs both ramp_in and ramp_out ([a, b] / [c, d], or one index for a hard edge).');
+                    }
+                    if (z.level === undefined && la.level === undefined) {
+                        lintLed(label + ' zones[' + zi + '] has no level and there is no top-level level to inherit.');
+                    }
+                });
+            } else if (la.zones !== undefined) {
+                lintLed(label + ' zones must be a list.');
+            }
+            if (la.zones === undefined && la.on_ranges === undefined) {
+                console.log('ℹ ' + label + ' led_activation has neither zones nor on_ranges — the LED just sits at baseline ' + (la.baseline ?? 0) + ' %.');
+            }
         }
     }
 }

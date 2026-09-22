@@ -243,81 +243,218 @@ var ArenaRunnerG6 = (function () {
         return c[c.length - 1].mv;
     }
 
-    // ---- conditional LED activation (index-gated LED, closed loop) --------
+    // ---- conditional LED activation (graded zones, closed loop) -----------
     //
     // A closed-loop (Mode 3, FicTrac-stepped) trial can drive the BuckPuck LED
-    // ON only while the displayed frame index falls inside author-specified
-    // bands. The frame index is live (computed by the bridge from FicTrac), so
-    // this is HOST-side: the runner subscribes to the bridge's per-frame
-    // 'applied' event and sends SET_AO_VOLTAGE (0xA0) — but ONLY on a state
-    // transition (a handful of commands per trial), never per frame, so it
-    // doesn't starve the SET_FRAME_POSITION traffic on the same serial link.
+    // as a FUNCTION of the displayed frame index: author-specified ZONES, each
+    // with its own level and linear ramp edges, over a baseline level. The frame
+    // index is live (computed by the bridge from FicTrac — post-bias, i.e. the
+    // stimulus position actually on the arena), so this is HOST-side: the
+    // runner subscribes to the bridge's per-frame 'applied' event and sends
+    // SET_AO_VOLTAGE (0xA0) whenever the commanded voltage moves by at least
+    // LED_MIN_STEP_MV — a handful of commands per zone crossing, never one per
+    // frame on a plateau — and never ahead of a frame the bridge client is
+    // about to send (see ArenaRunner._drainLed), so it doesn't starve the
+    // SET_FRAME_POSITION traffic on the same serial link.
     //
-    // Spec (trialParams `led_activation`): { level:%, hysteresis:int, on_ranges:[[a,b],...] }.
-    //   - level      LED brightness % when ON (BuckPuck curve; 0 = never lights)
-    //   - on_ranges  0-based frame-index bands (inclusive) where the LED is ON,
-    //                indexed by the SAME value the wire uses (SET_FRAME_POSITION)
-    //   - hysteresis frames of overshoot past a band edge before the LED turns
-    //                OFF (0 = none). Kills chatter when the fly dithers on a
-    //                boundary: ON at the true edge, OFF only once the index is
-    //                MORE than `hysteresis` positions outside every band.
+    // Spec (trialParams `led_activation`):
+    //   baseline    % outside every zone (default 0 = dark; Shubham's "dim
+    //               baseline + brighter probe zone" is baseline 2 / zone 10)
+    //   zones       [{ level:%, ramp_in:[a,b], ramp_out:[c,d] }, …]
+    //                 ramp_in  [a,b]: baseline at a → level at b (a == b: hard edge, level from a)
+    //                 ramp_out [c,d]: level at c → baseline at d (c == d: hard edge, baseline from d)
+    //               so a zone occupies frames [a, d) and holds `level` on b..c. Frame
+    //               indices are 0-based, in the SAME space the wire uses (SET_FRAME_POSITION).
+    //               A zone may wrap through frame 0 (a > d): it is unrolled modulo the
+    //               pattern's frame count. Overlapping zones → the brighter one wins.
+    //               A single integer for a ramp is a hard edge ([x] ≡ [x,x]).
+    //   level + on_ranges   SUGAR for hard-edged zones at one level: [s, e] (inclusive)
+    //               ≡ { level, ramp_in:[s,s], ramp_out:[e+1,e+1] }. Kept for existing protocols.
+    //   hysteresis  ACCEPTED, WARNED, IGNORED since v0.86 — a ramp of ≥ 2 frames is the
+    //               anti-chatter now (a dithering fly just modulates the LED a little).
+    //
+    // Levels are % of full brightness on the shared BuckPuck curve (ledPercentToMv);
+    // fractional % is fine (≈ 24 mV per % at the dim end of the 12-bit DAC). Any
+    // non-zero level below LED_MIN_LEVEL_PCT snaps UP to it — below that the
+    // driver is in its dead zone and the LED is dark while the log says "on".
+    const LED_MIN_LEVEL_PCT = 1;
+    // Smallest commanded-voltage change worth a serial command (≈ 3 LSB of the
+    // 12-bit 0–5 V DAC). Ramps step ~20 mV per frame at typical levels, so a
+    // ramp costs about one AO write per frame; a plateau costs none.
+    const LED_MIN_STEP_MV = 4;
 
-    // Validate + normalize a raw led_activation spec. Returns the normalized
-    // spec, or null when absent. THROWS (clear message) on malformed input so
-    // translateCommand turns it into a skip-this-trial {op:'error'} rather than
-    // a mid-run failure. Coerces string scalars (YAML) like the rest of the runner.
+    // Snap a level (%) into what the LED can actually show: 0 stays dark,
+    // (0, LED_MIN_LEVEL_PCT) → LED_MIN_LEVEL_PCT, cap 100, 0.01 % resolution
+    // (keeps ramp arithmetic from surfacing 7.999999 in the run log).
+    function snapLedLevel(v) {
+        const p = Number(v);
+        if (!Number.isFinite(p) || p <= 0) return 0;
+        if (p < LED_MIN_LEVEL_PCT) return LED_MIN_LEVEL_PCT;
+        return Math.round(Math.min(100, p) * 100) / 100;
+    }
+
+    // Parse one ramp edge: [a, b] (a → b) or a bare integer x (≡ [x, x]).
+    function parseLedRamp(raw, where) {
+        const pair = Array.isArray(raw) ? raw : [raw, raw];
+        if (pair.length === 1) pair.push(pair[0]);
+        if (pair.length !== 2) {
+            throw new Error(
+                'led_activation.' +
+                    where +
+                    ' must be [from, to] (or one index), got ' +
+                    JSON.stringify(raw)
+            );
+        }
+        const a = toNumber(pair[0], where + '[0]');
+        const b = toNumber(pair[1], where + '[1]');
+        if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) {
+            throw new Error(
+                'led_activation.' +
+                    where +
+                    ' must be non-negative integer frame indices, got ' +
+                    JSON.stringify(raw)
+            );
+        }
+        return [a, b];
+    }
+
+    function parseLedLevel(raw, where, fallback) {
+        const v = raw === undefined || raw === '' ? fallback : toNumber(raw, where);
+        if (v === undefined) throw new Error('led_activation.' + where + ' is required');
+        if (v < 0 || v > 100) {
+            throw new Error(
+                'led_activation.' + where + ' must be 0..100 %, got ' + JSON.stringify(raw)
+            );
+        }
+        return v;
+    }
+
+    // Validate + normalize a raw led_activation spec. Returns
+    // { baseline, zones:[{level, ramp_in:[a,b], ramp_out:[c,d]}], level?, on_ranges?, warning? }
+    // (on_ranges are ALSO unrolled into `zones`, so the runner has one code path;
+    // the sugar keys are echoed for run-log readability), or null when absent.
+    // THROWS (clear message) on malformed input so translateCommand turns it into
+    // a skip-this-trial {op:'error'} rather than a mid-run failure. Coerces string
+    // scalars (YAML) like the rest of the runner.
     function normalizeLedActivation(raw) {
         if (raw === undefined || raw === null || raw === '') return null;
         if (typeof raw !== 'object' || Array.isArray(raw)) {
-            throw new Error('led_activation must be a mapping {level, hysteresis, on_ranges}');
+            throw new Error('led_activation must be a mapping {baseline, zones, level, on_ranges}');
         }
-        const level = raw.level === undefined ? 0 : toNumber(raw.level, 'led_activation.level');
-        if (level < 0 || level > 100) {
-            throw new Error(
-                'led_activation.level must be 0..100 %, got ' + JSON.stringify(raw.level)
-            );
+        const baseline = parseLedLevel(raw.baseline, 'baseline', 0);
+        // `level` (sugar) defaults to 0 = "never lights" for a bare on_ranges list,
+        // exactly as before v0.86; explicit zones each carry their own level.
+        const level = raw.level === undefined ? undefined : parseLedLevel(raw.level, 'level', 0);
+        const out = { baseline, zones: [] };
+        let warning = null;
+
+        if (raw.hysteresis !== undefined && raw.hysteresis !== '' && raw.hysteresis !== null) {
+            const h = toNumber(raw.hysteresis, 'led_activation.hysteresis');
+            warning =
+                'led_activation.hysteresis (' +
+                h +
+                ') is ignored since Arena Studio v0.86 — use zones with ramp_in/ramp_out of a few frames for chatter-free edges';
         }
-        const hysteresis =
-            raw.hysteresis === undefined || raw.hysteresis === ''
-                ? 0
-                : toNumber(raw.hysteresis, 'led_activation.hysteresis');
-        if (!Number.isInteger(hysteresis) || hysteresis < 0) {
-            throw new Error(
-                'led_activation.hysteresis must be an integer >= 0, got ' +
-                    JSON.stringify(raw.hysteresis)
-            );
+
+        if (raw.on_ranges !== undefined) {
+            if (!Array.isArray(raw.on_ranges)) {
+                throw new Error('led_activation.on_ranges must be a list of [start, end] pairs');
+            }
+            const lvl = level === undefined ? 0 : level;
+            out.level = lvl;
+            out.on_ranges = raw.on_ranges.map((pair, i) => {
+                if (!Array.isArray(pair) || pair.length !== 2) {
+                    throw new Error(
+                        'led_activation.on_ranges[' +
+                            i +
+                            '] must be a [start, end] pair, got ' +
+                            JSON.stringify(pair)
+                    );
+                }
+                let [a, b] = parseLedRamp(pair, 'on_ranges[' + i + ']');
+                if (a > b) {
+                    const t = a;
+                    a = b;
+                    b = t;
+                } // tolerate a reversed pair
+                out.zones.push({ level: lvl, ramp_in: [a, a], ramp_out: [b + 1, b + 1] });
+                return [a, b];
+            });
+        } else if (level !== undefined) {
+            out.level = level; // authored without ranges: harmless, echoed
         }
-        const rawRanges = raw.on_ranges === undefined ? [] : raw.on_ranges;
-        if (!Array.isArray(rawRanges)) {
-            throw new Error('led_activation.on_ranges must be a list of [start, end] pairs');
-        }
-        const ranges = rawRanges.map((pair, i) => {
-            if (!Array.isArray(pair) || pair.length !== 2) {
+
+        if (raw.zones !== undefined && raw.zones !== null) {
+            if (!Array.isArray(raw.zones)) {
                 throw new Error(
-                    'led_activation.on_ranges[' +
-                        i +
-                        '] must be a [start, end] pair, got ' +
-                        JSON.stringify(pair)
+                    'led_activation.zones must be a list of {level, ramp_in, ramp_out}'
                 );
             }
-            let a = toNumber(pair[0], 'on_ranges[' + i + '][0]');
-            let b = toNumber(pair[1], 'on_ranges[' + i + '][1]');
-            if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) {
-                throw new Error(
-                    'led_activation.on_ranges[' +
-                        i +
-                        '] must be non-negative integer indices, got ' +
-                        JSON.stringify(pair)
-                );
+            raw.zones.forEach((z, i) => {
+                const where = 'zones[' + i + ']';
+                if (!z || typeof z !== 'object' || Array.isArray(z)) {
+                    throw new Error(
+                        'led_activation.' + where + ' must be a mapping {level, ramp_in, ramp_out}'
+                    );
+                }
+                if (z.ramp_in === undefined || z.ramp_out === undefined) {
+                    throw new Error('led_activation.' + where + ' needs both ramp_in and ramp_out');
+                }
+                out.zones.push({
+                    level: parseLedLevel(z.level, where + '.level', level),
+                    ramp_in: parseLedRamp(z.ramp_in, where + '.ramp_in'),
+                    ramp_out: parseLedRamp(z.ramp_out, where + '.ramp_out')
+                });
+            });
+        }
+        if (warning) out.warning = warning;
+        return out;
+    }
+
+    // The per-frame level vector (%), length = the pattern's frame count `n`.
+    // Zones are unrolled modulo n (each edge index is bumped by n until it is
+    // ≥ the previous one, so a > d wraps through frame 0) and written over the
+    // baseline; where zones overlap the brighter value wins. With n unknown
+    // (null) the vector is sized to the highest authored index + 1 and nothing
+    // wraps — the runner calls setModulus() with the controller-resolved count
+    // before the first frame is ever applied (startClosedLoop), so that is only
+    // the pre-loop placeholder. PURE.
+    function buildLedLevelVector(spec, n) {
+        const s = spec || { baseline: 0, zones: [] };
+        const zones = Array.isArray(s.zones) ? s.zones : [];
+        let N = Number.isInteger(n) && n > 0 ? n : 0;
+        if (!N) {
+            let hi = 0;
+            for (const z of zones)
+                hi = Math.max(hi, z.ramp_in[0], z.ramp_in[1], z.ramp_out[0], z.ramp_out[1]);
+            N = hi + 1;
+        }
+        const base = snapLedLevel(s.baseline);
+        const vec = new Array(N).fill(base);
+        const touched = new Array(N).fill(false);
+        for (const z of zones) {
+            const a = z.ramp_in[0];
+            let b = z.ramp_in[1];
+            let c = z.ramp_out[0];
+            let d = z.ramp_out[1];
+            while (b < a) b += N;
+            while (c < b) c += N;
+            while (d < c) d += N;
+            const span = Math.min(d - a, N); // never more than one full turn
+            for (let k = 0; k < span; k++) {
+                const i = a + k;
+                let frac;
+                if (i <= b) frac = a === b ? 1 : (i - a) / (b - a);
+                else if (i <= c) frac = 1;
+                else frac = (d - i) / (d - c);
+                const lvl = base + (Number(z.level) - base) * frac;
+                const j = i % N;
+                vec[j] = touched[j] ? Math.max(vec[j], lvl) : lvl;
+                touched[j] = true;
             }
-            if (a > b) {
-                const t = a;
-                a = b;
-                b = t;
-            } // tolerate a reversed pair
-            return [a, b];
-        });
-        return { level, hysteresis, on_ranges: ranges };
+        }
+        for (let j = 0; j < N; j++) vec[j] = snapLedLevel(vec[j]);
+        return vec;
     }
 
     // ---- closed-loop bias waveform (LAB-185) ------------------------------
@@ -395,36 +532,57 @@ var ArenaRunnerG6 = (function () {
         return { bias: { type, amplitude, frequency }, warning };
     }
 
-    // Build a STATEFUL evaluator from a normalized spec. step(index) returns
-    // { on, changed } — `changed` is true only when the ON/OFF state flips, so
-    // the caller sends an LED command only on transitions. Baseline is OFF
-    // (the caller sends an explicit LED-off when installing, so `changed` need
-    // not fire on the first frame unless it actually enters a band). PURE +
-    // offline-testable (no bridge, no wire).
-    function makeLedActivator(spec) {
-        const s = spec || { level: 0, hysteresis: 0, on_ranges: [] };
-        const h = Math.max(0, Math.floor(Number(s.hysteresis) || 0));
-        const ranges = Array.isArray(s.on_ranges) ? s.on_ranges : [];
-        const rawOn = (i) => ranges.some((r) => i >= r[0] && i <= r[1]);
-        const expandedOn = (i) => ranges.some((r) => i >= r[0] - h && i <= r[1] + h);
-        let on = false;
+    // Build a STATEFUL evaluator from a (normalized or raw) spec and the pattern's
+    // frame count. step(index) returns { level, mv, on, changed } — `changed` is
+    // true only when the commanded voltage moved by ≥ LED_MIN_STEP_MV (or crossed
+    // dark/lit) since the last value the caller was told to send, so the caller
+    // sends one AO command per real change and none on a plateau. prime(mv)
+    // records what the caller already put on the wire (the install-time
+    // baseline) so the first frame doesn't repeat it. PURE + offline-testable
+    // (no bridge, no wire).
+    function makeLedActivator(spec, modulus) {
+        const s =
+            spec && Array.isArray(spec.zones)
+                ? spec
+                : normalizeLedActivation(spec) || { baseline: 0, zones: [] };
+        let vec = buildLedLevelVector(s, modulus);
+        let lastMv = null; // last mV handed back as `changed` (≈ what is on the wire)
+        const wrap = (index) => {
+            const k = Math.round(Number(index));
+            if (!Number.isFinite(k)) return null;
+            return ((k % vec.length) + vec.length) % vec.length;
+        };
         return {
-            get on() {
-                return on;
+            get modulus() {
+                return vec.length;
             },
-            // Feed one applied frame index; returns whether the LED is now ON
-            // and whether that changed vs the previous call.
+            get levels() {
+                return vec.slice();
+            },
+            get on() {
+                return lastMv != null && lastMv !== LED_OFF_MV;
+            },
+            // Re-size to the controller-resolved frame count (zones re-unroll).
+            setModulus(n) {
+                if (Number.isInteger(n) && n > 0 && n !== vec.length)
+                    vec = buildLedLevelVector(s, n);
+            },
+            levelAt(index) {
+                const j = wrap(index);
+                return j == null ? snapLedLevel(s.baseline) : vec[j];
+            },
+            prime(mv) {
+                lastMv = mv;
+            },
             step(index) {
-                const i = Math.round(Number(index));
-                let next = on;
-                if (!on) {
-                    if (rawOn(i)) next = true; // enter a band at its true edge
-                } else if (!expandedOn(i)) {
-                    next = false; // leave only past the band edge by > hysteresis
-                }
-                const changed = next !== on;
-                on = next;
-                return { on, changed };
+                const level = this.levelAt(index);
+                const mv = ledPercentToMv(level);
+                let changed;
+                if (lastMv == null) changed = true;
+                else if ((mv === LED_OFF_MV) !== (lastMv === LED_OFF_MV)) changed = true;
+                else changed = Math.abs(mv - lastMv) >= LED_MIN_STEP_MV;
+                if (changed) lastMv = mv;
+                return { level, mv, on: level > 0, changed };
             }
         };
     }
@@ -762,7 +920,7 @@ var ArenaRunnerG6 = (function () {
                 } catch (e) {
                     return { op: 'error', reason: e.message };
                 }
-                return {
+                const ir = {
                     op: 'trialParams',
                     params,
                     durationSec: Number(cmd.duration) > 0 ? Number(cmd.duration) : 0,
@@ -770,6 +928,10 @@ var ArenaRunnerG6 = (function () {
                     // the spec regardless and let the runner apply it when mode===3.
                     ledActivation: ledActivation || null
                 };
+                // A deprecated-but-tolerated key (hysteresis) runs, with a warning
+                // the run log keeps (same {phase:'warn'} path as startClosedLoop).
+                if (ledActivation && ledActivation.warning) ir.warning = ledActivation.warning;
+                return ir;
             }
             if (name === 'allOn') return { op: 'allOn' };
             if (name === 'allOff') return { op: 'allOff' };
@@ -1114,34 +1276,76 @@ var ArenaRunnerG6 = (function () {
 
         // ---- conditional LED activation (install / teardown) --------------
         // Installed by a Mode-3 trialParams carrying led_activation; driven by
-        // the bridge's per-frame 'applied' event; sends SET_AO_VOLTAGE only on
-        // an ON/OFF transition. Superseded by the next trialParams, and cleared
-        // by allOff / stopDisplay, sequence end, stop(), and disconnect.
-        _installLedActivator(spec) {
+        // the bridge's per-frame 'applied' event; sends SET_AO_VOLTAGE whenever
+        // the zone level vector moves the commanded voltage by ≥ LED_MIN_STEP_MV
+        // (hard edges = one send per crossing; ramps ≈ one per frame while
+        // ramping; plateaus = none). Superseded by the next trialParams, and
+        // cleared by allOff / stopDisplay, sequence end, stop(), and disconnect.
+        // `modulus` is the pattern's frame count when the caller already knows
+        // it; startClosedLoop re-sizes via setModulus() once the controller says.
+        _installLedActivator(spec, modulus) {
             this._clearLedActivator();
             if (!spec || !this._bridge || typeof this._bridge.on !== 'function') return;
-            const act = makeLedActivator(spec);
+            const act = makeLedActivator(spec, modulus);
             this._ledActivator = act;
-            const onBytes = () => this._wire.encodeSetAoVoltage(ledPercentToMv(spec.level));
-            const offBytes = () => this._wire.encodeSetAoVoltage(ledPercentToMv(0));
-            this._sendLed(offBytes()); // deterministic OFF baseline at trial start
+            this._ledPending = null;
+            // Deterministic start state: the baseline level (dark when 0). Prime
+            // the activator with it so the first applied frame on the baseline
+            // doesn't repeat the send.
+            const baseMv = ledPercentToMv(act.levelAt(null));
+            act.prime(baseMv);
+            this._ledSentMv = baseMv; // what is on the wire (drain skips a no-op re-send)
+            this._sendLed(this._wire.encodeSetAoVoltage(baseMv));
             // on() returns an unsubscribe fn.
             this._ledUnsub = this._bridge.on('applied', (index) => {
                 if (this._ledActivator !== act) return; // superseded — ignore late events
                 const r = act.step(index);
-                if (!r.changed) return;
-                this._sendLed(r.on ? onBytes() : offBytes());
-                // Log each transition so the run log captures WHEN the LED
-                // switched during the closed-loop trial (analysis provenance).
-                if (this._emit) {
-                    this._emit({
-                        phase: 'led-activation',
-                        on: r.on,
-                        index,
-                        ledPercent: r.on ? spec.level : 0
-                    });
-                }
+                // Latest-wins: a newer level supersedes one still waiting for the link.
+                if (r.changed) this._ledPending = { mv: r.mv, level: r.level, on: r.on, index };
+                this._drainLed();
             });
+        }
+
+        /**
+         * Single-flight sender for the LED level. Yields to the stimulus: while the
+         * bridge client holds a frame it is about to send (`hasPending`), the AO
+         * write waits for the next 'applied' event instead of queueing ahead of
+         * that SET_FRAME_POSITION on the serial link (protects the per-frame
+         * `req_age_us` budget). One 'led-activation' status per send — the run
+         * log gets WHEN each level took effect (analysis provenance).
+         */
+        async _drainLed() {
+            if (this._ledInFlight) return;
+            this._ledInFlight = true;
+            try {
+                while (this._ledPending && this._ledActivator) {
+                    if (this._bridge && this._bridge.hasPending) return; // re-entered on the next 'applied'
+                    const p = this._ledPending;
+                    this._ledPending = null;
+                    // A change that was superseded straight back to the level already
+                    // on the wire (dark→lit→dark while yielding) is not worth a write.
+                    if (p.mv === this._ledSentMv) continue;
+                    this._ledSentMv = p.mv;
+                    if (this._link && this._link.connected) {
+                        try {
+                            await this._link.send(this._wire.encodeSetAoVoltage(p.mv));
+                        } catch (_) {
+                            /* best-effort: the next change re-sends */
+                        }
+                    }
+                    if (this._emit) {
+                        this._emit({
+                            phase: 'led-activation',
+                            on: p.on,
+                            index: p.index,
+                            ledPercent: p.level,
+                            mv: p.mv
+                        });
+                    }
+                }
+            } finally {
+                this._ledInFlight = false;
+            }
         }
         // ---- closed-loop frame modulus -------------------------------------
         /**
@@ -1198,9 +1402,13 @@ var ArenaRunnerG6 = (function () {
                 }
                 this._ledUnsub = null;
             }
+            this._ledPending = null; // a level still waiting for the link is moot now
             if (this._ledActivator) {
                 this._ledActivator = null;
-                this._sendLed(this._wire.encodeSetAoVoltage(ledPercentToMv(0))); // LED off on teardown
+                // LED OFF on teardown — the baseline is a per-trial level, not a
+                // between-trials one (the link serializes, so this lands after any
+                // in-flight level write).
+                this._sendLed(this._wire.encodeSetAoVoltage(ledPercentToMv(0)));
             }
         }
         _sendLed(bytes) {
@@ -1626,9 +1834,17 @@ var ArenaRunnerG6 = (function () {
                     // always supersedes the previous activator (install replaces,
                     // or clears when this trial has no spec / isn't Mode 3).
                     if (ir.params && ir.params.mode === 3 && ir.ledActivation) {
-                        this._installLedActivator(ir.ledActivation);
+                        // acc.fictracFrames is the host-resolved frame count when the
+                        // page knows it (else null → startClosedLoop re-sizes the
+                        // zone vector from the controller's 0x88 answer).
+                        this._installLedActivator(ir.ledActivation, acc.fictracFrames);
                     } else {
                         this._clearLedActivator();
+                    }
+                    if (ir.warning) {
+                        if (this._bridge)
+                            this._bridge.log({ event: 'warn', message: ir.warning, level: 'WARN' });
+                        emit({ phase: 'warn', index, step, op: 'trialParams', reason: ir.warning });
                     }
                     // Trial timing is host-side (interim — firmware #4) but does NOT
                     // block here: the controller displays the pattern autonomously
@@ -1745,6 +1961,14 @@ var ArenaRunnerG6 = (function () {
                                 });
                                 return;
                             }
+                            // The LED zone vector wraps on the same modulus the bridge
+                            // does — re-size it now, before the first frame is applied.
+                            if (
+                                this._ledActivator &&
+                                typeof this._ledActivator.setModulus === 'function'
+                            ) {
+                                this._ledActivator.setModulus(frames);
+                            }
                         }
                         // One setConfig carries frames + coupling + pitch + bias + epoch: the
                         // bridge re-zeros its bias PHASE clock on any config message containing
@@ -1811,8 +2035,12 @@ var ArenaRunnerG6 = (function () {
         LED_OFF_MV, // BuckPuck "LED dark" analog level (mV) — the scope's on/off threshold
         ledPercentToMv, // BuckPuck brightness % → AO control voltage (mV); 0% → LED_OFF_MV
         normalizeLedActivation, // validate/normalize a trialParams led_activation spec (throws on bad)
+        buildLedLevelVector, // per-frame LED level (%) vector from a normalized spec + frame count
+        snapLedLevel, // 0 stays dark, (0, LED_MIN_LEVEL_PCT) → LED_MIN_LEVEL_PCT, cap 100
+        LED_MIN_LEVEL_PCT, // BuckPuck dead-zone floor for a lit LED (%)
+        LED_MIN_STEP_MV, // smallest AO change the activator bothers to send (mV)
         normalizeBias, // validate/normalize startClosedLoop bias params → {bias, warning} (throws on bad)
-        makeLedActivator, // pure stateful index→ON/OFF evaluator with hysteresis
+        makeLedActivator, // pure stateful index→{level, mv, changed} evaluator over the zone vector
         ArenaRunner
     };
 })();

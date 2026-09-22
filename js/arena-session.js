@@ -539,6 +539,7 @@
                 // had transition times/index but not whether the LED went on/off).
                 'on',
                 'ledPercent',
+                'mv', // v0.86 graded zones: the commanded AO voltage per level step
                 'ledActivation'
             ];
             for (const k of keys) if (s[k] !== undefined) out[k] = s[k];

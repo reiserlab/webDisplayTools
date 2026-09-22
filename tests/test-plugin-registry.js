@@ -71,10 +71,21 @@ check('led_activation type is object', ledAct.type, 'object');
 check('led_activation is optional', !!ledAct.required, false);
 check('led_activation has NO default (not auto-seeded)', ledAct.default, undefined);
 check('led_activation advertises level sub-field', !!(ledAct.fields && ledAct.fields.level), true);
+check('led_activation level is fractional (step 0.1)', ledAct.fields.level.step, 0.1);
+check('led_activation level is NOT seeded (sugar only)', ledAct.fields.level.seed, false);
+check('led_activation advertises baseline sub-field', !!ledAct.fields.baseline, true);
+check('led_activation baseline default 0', ledAct.fields.baseline.default, 0);
+check('led_activation baseline is fractional (step 0.1)', ledAct.fields.baseline.step, 0.1);
 check(
-    'led_activation advertises hysteresis sub-field',
-    !!(ledAct.fields && ledAct.fields.hysteresis),
+    'led_activation zoneFields.level present',
+    !!(ledAct.zoneFields && ledAct.zoneFields.level),
     true
+);
+check('led_activation zoneFields.edge is an integer index', ledAct.zoneFields.edge.integer, true);
+check(
+    'led_activation no longer advertises hysteresis (v0.86: accepted, ignored)',
+    !!(ledAct.fields && ledAct.fields.hysteresis),
+    false
 );
 
 const dur = P.CONTROLLER_COMMANDS.trialParams.params.duration; // {min:0, step:0.1} (not integer)

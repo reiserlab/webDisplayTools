@@ -507,11 +507,34 @@ async function main() {
         );
         checkBool('trialParams led_activation carried in IR', !!irLa.ledActivation);
         check('led_activation.level normalized', irLa.ledActivation.level, 20);
-        check('led_activation.hysteresis normalized', irLa.ledActivation.hysteresis, 3);
         check(
             'led_activation.on_ranges normalized',
             JSON.stringify(irLa.ledActivation.on_ranges),
             '[[50,100]]'
+        );
+        // v0.86: hysteresis is tolerated + IGNORED — the IR carries a warning the
+        // runner surfaces as {phase:'warn'} (same path as startClosedLoop's).
+        checkBool(
+            'hysteresis → IR warning (accepted, ignored)',
+            /hysteresis \(3\) is ignored/.test(irLa.warning || '')
+        );
+        check(
+            'on_ranges sugar unrolled into one hard-edged zone',
+            JSON.stringify(irLa.ledActivation.zones),
+            '[{"level":20,"ramp_in":[50,50],"ramp_out":[101,101]}]'
+        );
+        check(
+            'no warning without hysteresis',
+            Runner.translateCommand(
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    mode: 3,
+                    led_activation: { level: 20, on_ranges: [[50, 100]] }
+                },
+                { patternId: 1 }
+            ).warning,
+            undefined
         );
         check(
             'no led_activation -> null on IR',
@@ -664,7 +687,7 @@ async function main() {
         }).op,
         'error'
     );
-    console.log('\n=== conditional LED activation (normalize + hysteresis engine) ===');
+    console.log('\n=== conditional LED activation (normalize: zones + on_ranges sugar) ===');
     // normalizeLedActivation: validation + coercion, or null when absent.
     check('normalize null -> null', Runner.normalizeLedActivation(null), null);
     check('normalize undefined -> null', Runner.normalizeLedActivation(undefined), null);
@@ -678,130 +701,589 @@ async function main() {
             ]
         });
         check('level coerced', n.level, 20);
-        check('hysteresis coerced', n.hysteresis, 3);
+        check('baseline defaults to 0', n.baseline, 0);
         // reversed pair [180,150] is tolerated (swapped); strings coerced.
         check(
             'on_ranges normalized + sorted-pair',
             JSON.stringify(n.on_ranges),
             '[[50,100],[150,180]]'
         );
+        check(
+            'on_ranges → hard-edged zones (end+1 is the first baseline frame)',
+            JSON.stringify(n.zones),
+            '[{"level":20,"ramp_in":[50,50],"ramp_out":[101,101]},{"level":20,"ramp_in":[150,150],"ramp_out":[181,181]}]'
+        );
+        checkBool(
+            'hysteresis → warning string',
+            /ignored since Arena Studio v0\.86/.test(n.warning)
+        );
+        check('hysteresis is NOT carried as a field', n.hysteresis, undefined);
+    }
+    {
+        // explicit zones: per-zone level, ramps as pairs or bare ints, strings coerced
+        const n = Runner.normalizeLedActivation({
+            baseline: '2',
+            zones: [
+                { level: 10, ramp_in: ['40', '50'], ramp_out: [100, 110] },
+                { level: 5, ramp_in: 190, ramp_out: [5] } // bare int / one-element → hard edges
+            ]
+        });
+        check('baseline coerced', n.baseline, 2);
+        check(
+            'zones normalized',
+            JSON.stringify(n.zones),
+            '[{"level":10,"ramp_in":[40,50],"ramp_out":[100,110]},{"level":5,"ramp_in":[190,190],"ramp_out":[5,5]}]'
+        );
+        check('no sugar keys when none authored', n.on_ranges, undefined);
+        check('no warning without hysteresis', n.warning, undefined);
+        // zones inherit the top-level `level` when they omit their own
+        const m = Runner.normalizeLedActivation({
+            level: 7.5,
+            zones: [{ ramp_in: [0, 0], ramp_out: [10, 10] }]
+        });
+        check('zone level falls back to top-level level (fractional ok)', m.zones[0].level, 7.5);
+        // both forms together: sugar zones first, then explicit ones
+        const both = Runner.normalizeLedActivation({
+            level: 20,
+            on_ranges: [[0, 9]],
+            zones: [{ level: 5, ramp_in: [100, 110], ramp_out: [120, 130] }]
+        });
+        check('sugar + explicit zones coexist', both.zones.length, 2);
     }
     checkThrows('level > 100 throws', () => Runner.normalizeLedActivation({ level: 120 }));
-    checkThrows('negative hysteresis throws', () =>
-        Runner.normalizeLedActivation({ hysteresis: -1 })
-    );
-    checkThrows('non-integer hysteresis throws', () =>
-        Runner.normalizeLedActivation({ hysteresis: 2.5 })
-    );
+    checkThrows('baseline > 100 throws', () => Runner.normalizeLedActivation({ baseline: 101 }));
+    checkThrows('negative baseline throws', () => Runner.normalizeLedActivation({ baseline: -1 }));
     checkThrows('bad on_ranges pair throws', () =>
         Runner.normalizeLedActivation({ on_ranges: [[10]] })
     );
     checkThrows('non-array on_ranges throws', () =>
         Runner.normalizeLedActivation({ on_ranges: 5 })
     );
+    checkThrows('non-array zones throws', () => Runner.normalizeLedActivation({ zones: {} }));
+    checkThrows('zone without level (and no top-level level) throws', () =>
+        Runner.normalizeLedActivation({ zones: [{ ramp_in: [0, 0], ramp_out: [1, 1] }] })
+    );
+    checkThrows('zone missing ramp_out throws', () =>
+        Runner.normalizeLedActivation({ zones: [{ level: 5, ramp_in: [0, 0] }] })
+    );
+    checkThrows('zone level > 100 throws', () =>
+        Runner.normalizeLedActivation({ zones: [{ level: 150, ramp_in: 0, ramp_out: 1 }] })
+    );
+    checkThrows('non-integer ramp index throws', () =>
+        Runner.normalizeLedActivation({ zones: [{ level: 5, ramp_in: [0, 2.5], ramp_out: 9 }] })
+    );
+    checkThrows('negative ramp index throws', () =>
+        Runner.normalizeLedActivation({ zones: [{ level: 5, ramp_in: [-1, 2], ramp_out: 9 }] })
+    );
+    checkThrows('3-element ramp throws', () =>
+        Runner.normalizeLedActivation({ zones: [{ level: 5, ramp_in: [0, 1, 2], ramp_out: 9 }] })
+    );
 
-    // makeLedActivator: index → {on, changed}. No hysteresis first.
+    console.log('\n=== conditional LED activation (level vector: ramps, wrap, overlap, snap) ===');
+    // snapLedLevel: dark stays dark, dim-but-lit snaps up to the BuckPuck floor.
+    check('snap 0 → 0', Runner.snapLedLevel(0), 0);
+    check('snap 0.3 → LED_MIN_LEVEL_PCT', Runner.snapLedLevel(0.3), Runner.LED_MIN_LEVEL_PCT);
+    check('snap 1 → 1', Runner.snapLedLevel(1), 1);
+    check('snap 7.999999 → 8 (0.01 % resolution)', Runner.snapLedLevel(7.999999), 8);
+    check('snap 250 → 100', Runner.snapLedLevel(250), 100);
+    check('snap NaN → 0', Runner.snapLedLevel(NaN), 0);
     {
-        const act = Runner.makeLedActivator({ level: 20, hysteresis: 0, on_ranges: [[50, 100]] });
-        const step = (i) => act.step(i);
-        check(
-            'below band: off, no change',
-            JSON.stringify(step(10)),
-            JSON.stringify({ on: false, changed: false })
-        );
-        check(
-            'enter band: on + changed',
-            JSON.stringify(step(50)),
-            JSON.stringify({ on: true, changed: true })
-        );
-        check(
-            'inside band: on, no change',
-            JSON.stringify(step(80)),
-            JSON.stringify({ on: true, changed: false })
-        );
-        check(
-            'leave band (h=0): off + changed',
-            JSON.stringify(step(101)),
-            JSON.stringify({ on: false, changed: true })
-        );
-    }
-    // Hysteresis: turn ON at the true edge, stay ON until > h past it.
-    {
-        const act = Runner.makeLedActivator({ level: 20, hysteresis: 3, on_ranges: [[50, 100]] });
-        act.step(60); // on
-        check(
-            'h=3: 2 past edge (102) stays ON (no change)',
-            JSON.stringify(act.step(102)),
-            JSON.stringify({ on: true, changed: false })
-        );
-        check(
-            'h=3: exactly h past (103) still ON',
-            JSON.stringify(act.step(103)),
-            JSON.stringify({ on: true, changed: false })
-        );
-        check(
-            'h=3: > h past (104) turns OFF',
-            JSON.stringify(act.step(104)),
-            JSON.stringify({ on: false, changed: true })
-        );
-        // dithering at the far edge with h=3 must NOT chatter
-        const d = Runner.makeLedActivator({ level: 20, hysteresis: 3, on_ranges: [[50, 100]] });
-        d.step(100); // on
-        let chatter = 0;
-        [101, 100, 102, 99, 103, 100].forEach((i) => {
-            if (d.step(i).changed) chatter++;
+        // Sugar band [50,99] on a 200-frame pattern: exactly frames 50..99 lit.
+        const spec = Runner.normalizeLedActivation({ level: 20, on_ranges: [[50, 99]] });
+        const v = Runner.buildLedLevelVector(spec, 200);
+        check('vector length = modulus', v.length, 200);
+        check('49 dark', v[49], 0);
+        check('50 lit', v[50], 20);
+        check('99 lit (inclusive end)', v[99], 20);
+        check('100 dark', v[100], 0);
+        check('lit frame count = 50', v.filter((x) => x > 0).length, 50);
+        // Explicit hard-edged zone form is IDENTICAL to the sugar
+        const z = Runner.normalizeLedActivation({
+            zones: [{ level: 20, ramp_in: [50, 50], ramp_out: [100, 100] }]
         });
-        check('dither near edge with h=3: no on/off chatter', chatter, 0);
+        check(
+            'sugar ≡ explicit hard-edged zone',
+            JSON.stringify(Runner.buildLedLevelVector(z, 200)),
+            JSON.stringify(v)
+        );
+    }
+    {
+        // Linear ramps: baseline at a → level at b; level at c → baseline at d.
+        const spec = Runner.normalizeLedActivation({
+            zones: [{ level: 20, ramp_in: [40, 50], ramp_out: [100, 110] }]
+        });
+        const v = Runner.buildLedLevelVector(spec, 200);
+        check('ramp_in start frame (a) is baseline', v[40], 0);
+        check('ramp_in midpoint = half level', v[45], 10);
+        check('ramp_in end frame (b) = level', v[50], 20);
+        check('plateau', v[75], 20);
+        check('ramp_out start frame (c) = level', v[100], 20);
+        check('ramp_out midpoint = half level', v[105], 10);
+        check('ramp_out end frame (d) is baseline', v[110], 0);
+        check('after d is baseline', v[111], 0);
+        // 1 % floor: the first ramp step 2 % of 20 = 0.4 % … wait: (41-40)/10 * 20 = 2 %
+        check('first ramp step = 2 %', v[41], 2);
+        // ramp toward a level small enough that early steps fall below 1 %:
+        const dim = Runner.buildLedLevelVector(
+            Runner.normalizeLedActivation({
+                zones: [{ level: 4, ramp_in: [0, 10], ramp_out: [20, 20] }]
+            }),
+            50
+        );
+        check('sub-1 % ramp steps snap UP to 1 % (0.4 → 1)', dim[1], 1);
+        check('… but frame 0 (exactly baseline) stays dark', dim[0], 0);
+        check('… 2 → 0.8 → 1', dim[2], 1);
+        check('… 3 → 1.2 stays 1.2', dim[3], 1.2);
+        checkBool(
+            'ramp is monotone non-decreasing',
+            dim.slice(0, 11).every((x, i, a) => i === 0 || x >= a[i - 1])
+        );
+    }
+    {
+        // Baseline + probe (Shubham): 2 % everywhere, a 10 % zone with 5-frame ramps.
+        const spec = Runner.normalizeLedActivation({
+            baseline: 2,
+            zones: [{ level: 10, ramp_in: [100, 105], ramp_out: [150, 155] }]
+        });
+        const v = Runner.buildLedLevelVector(spec, 200);
+        check('outside zones = baseline', v[0], 2);
+        check('ramp starts AT baseline (not 0)', v[100], 2);
+        check('ramp midpoint between baseline and level', v[102.5 | 0], 2 + (10 - 2) * (2 / 5));
+        check('plateau = zone level', v[120], 10);
+        check('back to baseline at d', v[155], 2);
+        // A DIP zone (level below baseline) lowers the level — zones override baseline.
+        const dip = Runner.buildLedLevelVector(
+            Runner.normalizeLedActivation({
+                baseline: 10,
+                zones: [{ level: 0, ramp_in: [50, 50], ramp_out: [60, 60] }]
+            }),
+            100
+        );
+        check('dip zone: dark inside', dip[55], 0);
+        check('dip zone: baseline outside', dip[49], 10);
+        check(
+            'baseline 0.5 snaps to 1 %',
+            Runner.buildLedLevelVector(Runner.normalizeLedActivation({ baseline: 0.5 }), 10)[3],
+            1
+        );
+    }
+    {
+        // Wrap through frame 0: a > d unrolls modulo n.
+        const spec = Runner.normalizeLedActivation({
+            zones: [{ level: 20, ramp_in: [190, 195], ramp_out: [5, 10] }]
+        });
+        const v = Runner.buildLedLevelVector(spec, 200);
+        check('wrap: 189 dark', v[189], 0);
+        check('wrap: 190 baseline (ramp start)', v[190], 0);
+        check('wrap: 195 lit', v[195], 20);
+        check('wrap: 199 lit', v[199], 20);
+        check('wrap: 0 lit (crossed the seam)', v[0], 20);
+        check('wrap: 5 lit (ramp_out start)', v[5], 20);
+        check('wrap: 8 mid-ramp', v[8], 20 * (2 / 5));
+        check('wrap: 10 dark', v[10], 0);
+        check('wrap: 100 dark', v[100], 0);
+        // A whole ramp wrapping (b < a): [198, 2]
+        const w2 = Runner.buildLedLevelVector(
+            Runner.normalizeLedActivation({
+                zones: [{ level: 20, ramp_in: [198, 2], ramp_out: [10, 10] }]
+            }),
+            200
+        );
+        check('wrapping ramp_in: 198 baseline', w2[198], 0);
+        check('wrapping ramp_in: 0 = 2/4 of level', w2[0], 10);
+        check('wrapping ramp_in: 2 = level', w2[2], 20);
+        // sugar on_ranges ending at the last frame: end+1 == n is fine
+        const tail = Runner.buildLedLevelVector(
+            Runner.normalizeLedActivation({ level: 20, on_ranges: [[150, 199]] }),
+            200
+        );
+        check('band to the last frame: 199 lit', tail[199], 20);
+        check('band to the last frame: 0 dark', tail[0], 0);
+        // A zone spanning more than a full turn is capped at one turn (all lit).
+        const full = Runner.buildLedLevelVector(
+            Runner.normalizeLedActivation({
+                zones: [{ level: 20, ramp_in: [0, 0], ramp_out: [0, 0] }]
+            }),
+            8
+        );
+        check(
+            'a==b==c==d zone is EMPTY (d is the first baseline frame)',
+            full.filter((x) => x > 0).length,
+            0
+        );
+        const allOn = Runner.buildLedLevelVector(
+            Runner.normalizeLedActivation({ level: 20, on_ranges: [[0, 7]] }),
+            8
+        );
+        check('band covering every frame lights all', allOn.filter((x) => x > 0).length, 8);
+    }
+    {
+        // Overlap → brighter wins; both ramped.
+        const spec = Runner.normalizeLedActivation({
+            zones: [
+                { level: 10, ramp_in: [0, 0], ramp_out: [100, 100] },
+                { level: 30, ramp_in: [50, 60], ramp_out: [70, 80] }
+            ]
+        });
+        const v = Runner.buildLedLevelVector(spec, 200);
+        check('overlap: below the brighter ramp, dimmer zone shows', v[52], 10);
+        // at 55 the bright ramp is 15 > 10
+        check('overlap: bright ramp overtakes dimmer plateau', v[55], 15);
+        check('overlap: bright plateau', v[65], 30);
+        check('overlap: bright ramp_out back under 10 shows 10', v[79], 10);
+        check('overlap: dimmer zone alone', v[90], 10);
+    }
+    {
+        // Unknown modulus (null): sized to the highest index + 1, nothing wraps.
+        const spec = Runner.normalizeLedActivation({ level: 20, on_ranges: [[50, 99]] });
+        const v = Runner.buildLedLevelVector(spec, null);
+        check('unknown modulus: vector sized to highest index + 1', v.length, 101);
+        check('unknown modulus: band intact', v[99], 20);
+        check(
+            'empty spec, unknown modulus: length 1 baseline',
+            Runner.buildLedLevelVector({ baseline: 0, zones: [] }, null).length,
+            1
+        );
     }
 
+    console.log('\n=== conditional LED activation (activator: ΔmV threshold, setModulus) ===');
+    {
+        const act = Runner.makeLedActivator(
+            Runner.normalizeLedActivation({ level: 20, on_ranges: [[50, 100]] }),
+            200
+        );
+        check('activator modulus', act.modulus, 200);
+        // Nothing primed yet → the first step is a change (whatever the level).
+        const r0 = act.step(10);
+        check('first step: dark level', r0.level, 0);
+        check('first step: OFF mV', r0.mv, Runner.LED_OFF_MV);
+        check('first step reports changed (nothing on the wire yet)', r0.changed, true);
+        check('on=false when dark', r0.on, false);
+        check('same plateau: no change', act.step(20).changed, false);
+        const r1 = act.step(50);
+        check('enter band: level 20', r1.level, 20);
+        check('enter band: changed', r1.changed, true);
+        check('enter band: on', r1.on, true);
+        check('enter band: mV = ledPercentToMv(20)', r1.mv, Runner.ledPercentToMv(20));
+        check('inside band: no change', act.step(80).changed, false);
+        const r2 = act.step(101);
+        check('leave band: dark + changed', JSON.stringify([r2.level, r2.changed]), '[0,true]');
+        // wrap: index 250 ≡ 50 on a 200 modulus
+        check('index wraps on the modulus (250 ≡ 50)', act.step(250).level, 20);
+        check('negative index wraps too (-150 ≡ 50)', act.levelAt(-150), 20);
+        check('non-finite index → baseline', act.levelAt(NaN), 0);
+        // prime(): tells the activator what is already on the wire
+        const p = Runner.makeLedActivator(
+            Runner.normalizeLedActivation({ level: 20, on_ranges: [[50, 100]] }),
+            200
+        );
+        p.prime(Runner.LED_OFF_MV);
+        check('primed OFF: first dark frame is NOT a change', p.step(10).changed, false);
+        check('primed OFF: entering the band IS', p.step(60).changed, true);
+        check('on getter follows the last change', p.on, true);
+    }
+    {
+        // ΔmV threshold on a long shallow ramp: sends only when ≥ LED_MIN_STEP_MV apart.
+        const act = Runner.makeLedActivator(
+            Runner.normalizeLedActivation({
+                zones: [{ level: 20, ramp_in: [0, 100], ramp_out: [150, 150] }]
+            }),
+            200
+        );
+        act.prime(Runner.LED_OFF_MV);
+        let sends = 0;
+        let lastMv = Runner.LED_OFF_MV;
+        let minGap = Infinity;
+        for (let i = 0; i <= 100; i++) {
+            const r = act.step(i);
+            if (r.changed) {
+                sends++;
+                if (lastMv !== Runner.LED_OFF_MV)
+                    minGap = Math.min(minGap, Math.abs(r.mv - lastMv));
+                lastMv = r.mv;
+            }
+        }
+        checkBool('shallow ramp: fewer sends than frames', sends < 101, sends + ' sends');
+        checkBool(
+            'shallow ramp: every send moved ≥ LED_MIN_STEP_MV',
+            minGap >= Runner.LED_MIN_STEP_MV,
+            'min gap ' + minGap
+        );
+        check('shallow ramp: final level reached', act.step(100).level, 20);
+        // OFF ↔ lit always counts as a change, however small the mV difference
+        // (there is none in practice: 0 % is 5000 mV, 1 % is 4075 mV).
+        const flick = Runner.makeLedActivator(
+            Runner.normalizeLedActivation({ level: 1, on_ranges: [[5, 5]] }),
+            10
+        );
+        flick.prime(Runner.LED_OFF_MV);
+        check('dark → 1 % is a change', flick.step(5).changed, true);
+        check('1 % → dark is a change', flick.step(6).changed, true);
+    }
+    {
+        // setModulus re-unrolls a wrapping zone on the controller-resolved count.
+        const act = Runner.makeLedActivator(
+            Runner.normalizeLedActivation({
+                zones: [{ level: 20, ramp_in: [190, 190], ramp_out: [10, 10] }]
+            }),
+            null
+        );
+        check('pre-loop placeholder modulus = highest index + 1', act.modulus, 191);
+        act.setModulus(200);
+        check('setModulus resizes', act.modulus, 200);
+        check('wrapped zone lit at 0 after setModulus', act.levelAt(0), 20);
+        check('wrapped zone lit at 195', act.levelAt(195), 20);
+        check('wrapped zone dark at 100', act.levelAt(100), 0);
+        act.setModulus(200);
+        check('same modulus is a no-op', act.modulus, 200);
+        act.setModulus(0);
+        check('invalid modulus ignored', act.modulus, 200);
+        // raw (un-normalized) spec is accepted too
+        const raw = Runner.makeLedActivator({ level: 20, on_ranges: [[1, 2]] }, 4);
+        check('raw spec normalized on the way in', JSON.stringify(raw.levels), '[0,20,20,0]');
+    }
+
+    console.log(
+        '\n=== conditional LED activation (runner wiring: coalesced sends, hasPending yield) ==='
+    );
     // Runner wiring: _installLedActivator subscribes to the bridge 'applied'
-    // event, sends SET_AO_VOLTAGE only on a transition, and emits a
-    // 'led-activation' status per transition (run-log provenance).
+    // event, sends SET_AO_VOLTAGE per level change (single-flight, latest wins),
+    // yields while the bridge client has a frame pending, and emits a
+    // 'led-activation' status per send (run-log provenance).
     {
         const AO = 0xa0;
-        const sent = [];
-        const link = {
-            connected: true,
-            async send(b) {
-                sent.push(Array.from(b));
-                return new Uint8Array([0x02, 0x00, b[1]]);
-            }
+        const tick = () => new Promise((r) => setTimeout(r, 0));
+        const mkHarness = () => {
+            const sent = [];
+            const link = {
+                connected: true,
+                async send(b) {
+                    sent.push(Array.from(b));
+                    return new Uint8Array([0x02, 0x00, b[1]]);
+                }
+            };
+            const handlers = {};
+            const bridge = {
+                hasPending: false,
+                on(ev, fn) {
+                    (handlers[ev] = handlers[ev] || new Set()).add(fn);
+                    return () => handlers[ev].delete(fn);
+                },
+                off(ev, fn) {
+                    if (handlers[ev]) handlers[ev].delete(fn);
+                },
+                emit(ev, x) {
+                    (handlers[ev] || []).forEach((f) => f(x));
+                }
+            };
+            const runner = new Runner.ArenaRunner(link, Wire, bridge);
+            const events = [];
+            runner._emit = (s) => events.push(s); // stand in for a run's status sink
+            const ao = () => sent.filter((f) => f[1] === AO);
+            return { sent, link, bridge, runner, events, ao };
         };
-        const handlers = {};
-        const bridge = {
-            on(ev, fn) {
-                (handlers[ev] = handlers[ev] || new Set()).add(fn);
-                return () => handlers[ev].delete(fn);
-            },
-            off(ev, fn) {
-                if (handlers[ev]) handlers[ev].delete(fn);
-            },
-            emit(ev, x) {
-                (handlers[ev] || []).forEach((f) => f(x));
+        {
+            const h = mkHarness();
+            h.runner._installLedActivator(
+                Runner.normalizeLedActivation({ level: 20, on_ranges: [[50, 100]] }),
+                200
+            );
+            check('install sends 1 baseline AO frame (dark)', h.ao().length, 1);
+            checkBytes(
+                'baseline frame is SET_AO_VOLTAGE 5000 mV',
+                h.sent[0],
+                Array.from(Wire.encodeSetAoVoltage(5000))
+                    .map((b) => b.toString(16).padStart(2, '0'))
+                    .join(' ')
+            );
+            for (const i of [10, 50, 80, 101, 103, 60]) {
+                h.bridge.emit('applied', i);
+                await tick();
             }
-        };
-        const runner = new Runner.ArenaRunner(link, Wire, bridge);
-        const events = [];
-        runner._emit = (s) => events.push(s); // stand in for a run's status sink
-        runner._installLedActivator({ level: 20, hysteresis: 3, on_ranges: [[50, 100]] });
-        const baselineOff = sent.filter((f) => f[1] === AO).length; // 1 = OFF baseline
-        [10, 50, 80, 101, 103, 104, 60].forEach((i) => bridge.emit('applied', i));
-        const aoSends = sent.filter((f) => f[1] === AO).length;
-        const transitions = events.filter((e) => e.phase === 'led-activation');
-        check('install sends 1 OFF-baseline AO frame', baselineOff, 1);
-        // 3 transitions: ON@50, OFF@104, ON@60 (101/103 held by hysteresis; 80 inside).
-        check('AO sent only on transitions (1 baseline + 3)', aoSends, 4);
-        check('3 led-activation events emitted', transitions.length, 3);
-        check('first transition ON', transitions[0].on, true);
-        check('first transition frame', transitions[0].index, 50);
-        check('second transition OFF (past hysteresis)', transitions[1].on, false);
-        check('second transition frame', transitions[1].index, 104);
-        // Teardown forces the LED off and stops gating.
-        runner._clearLedActivator();
-        const afterClear = sent.filter((f) => f[1] === AO).length;
-        check('teardown sends a final OFF', afterClear, aoSends + 1);
-        bridge.emit('applied', 60); // superseded — must NOT send or emit
-        check('no AO after teardown', sent.filter((f) => f[1] === AO).length, afterClear);
+            const transitions = h.events.filter((e) => e.phase === 'led-activation');
+            // 3 sends: ON@50, OFF@101, ON@60 (10 = primed baseline, 80 inside, 103 still dark).
+            check('AO sent only on level changes (1 baseline + 3)', h.ao().length, 4);
+            check('3 led-activation events emitted', transitions.length, 3);
+            check('first: on', transitions[0].on, true);
+            check('first: frame', transitions[0].index, 50);
+            check('first: ledPercent', transitions[0].ledPercent, 20);
+            check('first: mv = ledPercentToMv(20)', transitions[0].mv, Runner.ledPercentToMv(20));
+            check(
+                'second: off @101',
+                JSON.stringify([transitions[1].on, transitions[1].index]),
+                '[false,101]'
+            );
+            check('second: ledPercent 0', transitions[1].ledPercent, 0);
+            // Teardown forces the LED off and stops gating.
+            h.runner._clearLedActivator();
+            const afterClear = h.ao().length;
+            check('teardown sends a final OFF', afterClear, 5);
+            h.bridge.emit('applied', 60); // superseded — must NOT send or emit
+            await tick();
+            check('no AO after teardown', h.ao().length, afterClear);
+            check(
+                'no events after teardown',
+                h.events.filter((e) => e.phase === 'led-activation').length,
+                3
+            );
+        }
+        {
+            // Ramp: one send per frame while the level moves ≥ 4 mV, none on the plateau.
+            const h = mkHarness();
+            h.runner._installLedActivator(
+                Runner.normalizeLedActivation({
+                    zones: [{ level: 20, ramp_in: [0, 10], ramp_out: [50, 60] }]
+                }),
+                100
+            );
+            for (let i = 0; i <= 30; i++) {
+                h.bridge.emit('applied', i);
+                await tick();
+            }
+            const ev = h.events.filter((e) => e.phase === 'led-activation');
+            check('ramp 0→10 then plateau: 10 sends (frames 1..10)', ev.length, 10);
+            checkBool(
+                'levels increase monotonically',
+                ev.every((e, i, a) => i === 0 || e.ledPercent > a[i - 1].ledPercent)
+            );
+            check('first ramp step is 2 %', ev[0].ledPercent, 2);
+            check('last ramp step is 20 %', ev[ev.length - 1].ledPercent, 20);
+            checkBool(
+                'mV decreases as level rises (BuckPuck: lower V = brighter)',
+                ev.every((e, i, a) => i === 0 || e.mv < a[i - 1].mv)
+            );
+            check('no sends on the plateau (11..30)', h.ao().length, 1 + 10);
+        }
+        {
+            // Latest-wins coalescing: frames arriving while a send is in flight
+            // collapse to the newest level.
+            const h = mkHarness();
+            let release = null;
+            h.link.send = (b) => {
+                h.sent.push(Array.from(b));
+                return new Promise((res) => {
+                    release = () => res(new Uint8Array([0x02, 0x00, b[1]]));
+                });
+            };
+            h.runner._installLedActivator(
+                Runner.normalizeLedActivation({
+                    zones: [{ level: 20, ramp_in: [0, 10], ramp_out: [50, 60] }]
+                }),
+                100
+            );
+            release(); // baseline send completes
+            await tick();
+            h.bridge.emit('applied', 1); // 2 % → send in flight
+            await tick();
+            h.bridge.emit('applied', 2); // 4 %  (pending)
+            h.bridge.emit('applied', 3); // 6 %  (supersedes)
+            h.bridge.emit('applied', 5); // 10 % (supersedes)
+            await tick();
+            check('only the in-flight send so far (1 baseline + 1)', h.ao().length, 2);
+            release(); // in-flight completes → drain picks up the NEWEST pending (10 %)
+            await tick();
+            check('coalesced: one more send (newest wins)', h.ao().length, 3);
+            release();
+            await tick();
+            const ev = h.events.filter((e) => e.phase === 'led-activation');
+            check(
+                'events: 2 % then 10 % (4 %, 6 % dropped)',
+                JSON.stringify(ev.map((e) => e.ledPercent)),
+                '[2,10]'
+            );
+            check('event index is the frame the level came from', ev[1].index, 5);
+        }
+        {
+            // hasPending yield: while the bridge client holds a frame, no AO write.
+            const h = mkHarness();
+            h.runner._installLedActivator(
+                Runner.normalizeLedActivation({ level: 20, on_ranges: [[50, 100]] }),
+                200
+            );
+            await tick();
+            h.bridge.hasPending = true;
+            h.bridge.emit('applied', 50); // enter band, but a 0x70 is queued
+            await tick();
+            check('yield: no AO while a frame is pending', h.ao().length, 1);
+            check(
+                'yield: nothing emitted yet',
+                h.events.filter((e) => e.phase === 'led-activation').length,
+                0
+            );
+            h.bridge.emit('applied', 51); // still pending
+            await tick();
+            check('yield: still nothing', h.ao().length, 1);
+            h.bridge.hasPending = false;
+            h.bridge.emit('applied', 52); // link free → the waiting level goes out
+            await tick();
+            check('resumed: the pending level is sent once', h.ao().length, 2);
+            const ev = h.events.filter((e) => e.phase === 'led-activation');
+            check(
+                'resumed: one event, level 20',
+                JSON.stringify([ev.length, ev[0].ledPercent]),
+                '[1,20]'
+            );
+            // A level change while yielding is superseded, not queued twice.
+            h.bridge.hasPending = true;
+            h.bridge.emit('applied', 101); // dark (pending)
+            h.bridge.emit('applied', 60); // lit again (supersedes the dark)
+            await tick();
+            h.bridge.hasPending = false;
+            h.bridge.emit('applied', 61);
+            await tick();
+            check('superseded while yielding: no extra send', h.ao().length, 2);
+            check(
+                'superseded while yielding: no extra event',
+                h.events.filter((e) => e.phase === 'led-activation').length,
+                1
+            );
+        }
+        {
+            // Baseline > 0: install sends the BASELINE level, teardown sends OFF.
+            const h = mkHarness();
+            h.runner._installLedActivator(
+                Runner.normalizeLedActivation({
+                    baseline: 2,
+                    zones: [{ level: 10, ramp_in: [50, 50], ramp_out: [60, 60] }]
+                }),
+                100
+            );
+            checkBytes(
+                'install sends the baseline (2 %)',
+                h.sent[0],
+                Array.from(Wire.encodeSetAoVoltage(Runner.ledPercentToMv(2)))
+                    .map((b) => b.toString(16).padStart(2, '0'))
+                    .join(' ')
+            );
+            h.bridge.emit('applied', 10); // on the baseline → primed, no send
+            await tick();
+            check('baseline frame: no send', h.ao().length, 1);
+            h.runner._clearLedActivator();
+            checkBytes(
+                'teardown sends OFF (not baseline)',
+                h.sent[h.sent.length - 1],
+                Array.from(Wire.encodeSetAoVoltage(5000))
+                    .map((b) => b.toString(16).padStart(2, '0'))
+                    .join(' ')
+            );
+        }
+        {
+            // Link gone: no throw, nothing sent, events still recorded.
+            const h = mkHarness();
+            h.link.connected = false;
+            h.runner._installLedActivator(
+                Runner.normalizeLedActivation({ level: 20, on_ranges: [[50, 100]] }),
+                200
+            );
+            h.bridge.emit('applied', 50);
+            await tick();
+            check('link down: nothing sent', h.ao().length, 0);
+            check(
+                'link down: event still logged',
+                h.events.filter((e) => e.phase === 'led-activation').length,
+                1
+            );
+        }
     }
 
     const trWait = Runner.translateCommand({ type: 'wait', duration: 3 });

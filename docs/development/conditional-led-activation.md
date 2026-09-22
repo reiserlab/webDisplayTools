@@ -1,15 +1,20 @@
-# Conditional LED activation (index-gated LED in closed loop)
+# Conditional LED activation (index-driven LED in closed loop)
 
-**Status:** implemented on the web path (Arena Studio v0.59), tested in Node +
-in-browser, **not yet bench-validated**. Web-only (MATLAB does not read it).
+**Status:** graded zones implemented on the web path (Arena Studio v0.86), tested in
+Node + in-browser, **not yet bench-validated with a photodiode**. Web-only (MATLAB does
+not read it). The v0.59 hard-edged form (`level` + `on_ranges`) still works unchanged.
 
 ## What it does
 
-During a **Mode-3 (FicTrac closed-loop)** trial, drive the BuckPuck LED **ON only
-while the displayed pattern frame index is inside author-specified bands**, with
-optional hysteresis to prevent chatter at a band edge. The frame index is live
-(driven by the fly's behavior via FicTrac), so this is a host-side reaction to
-each displayed frame.
+During a **Mode-3 (FicTrac closed-loop)** trial, drive the BuckPuck LED as a
+**function of the displayed pattern frame index**: a baseline level everywhere,
+plus author-specified **zones**, each with its own level and **linear ramp edges**.
+The frame index is live (driven by the fly's behavior via FicTrac, with any bias
+waveform already folded in), so this is a host-side reaction to each displayed
+frame — the LED marks *where the stimulus is on the arena*.
+
+Ramps replace the old `hysteresis`: a fly dithering on a zone edge now modulates
+the LED a little instead of chattering it on and off.
 
 ## YAML schema
 
@@ -27,93 +32,144 @@ command** (NOT a separate command). Add it to a Mode-3 trialParams:
   frame_rate: 0
   gain: 0
   led_activation:
-    level: 20            # LED brightness % when ON (BuckPuck curve; 0 = never lights)
-    hysteresis: 3        # frames of overshoot past a band edge before OFF (0 = none)
-    on_ranges:           # 0-based frame-index bands, inclusive, where the LED is ON
-      - [50, 100]
-      - [150, 180]
+    baseline: 2           # % outside every zone (default 0 = dark)
+    zones:
+      - level: 10         # % inside the zone (fractional OK: 7.5)
+        ramp_in:  [40, 50]   # baseline at frame 40 → level at frame 50
+        ramp_out: [100, 110] # level at frame 100 → baseline at frame 110
+      - level: 5
+        ramp_in:  190        # one index = hard edge (≡ [190, 190])
+        ramp_out: [5, 5]     # wraps through frame 0 (a > d is fine)
 ```
 
-- **`on_ranges`** are **0-based** frame indices (same value the wire uses for
-  `SET_FRAME_POSITION`), inclusive on both ends. A 200-frame pattern is `0..199`.
-- **`level`** is a percentage (0–100) mapped to control voltage by the shared
-  BuckPuck curve (`ledPercentToMv`); `0` never turns the LED on.
-- **`hysteresis`** (integer ≥ 0): the LED turns **ON at the true band edge**, and
-  turns **OFF only once the index is more than `hysteresis` frames outside every
-  band**. `0` = flip exactly at the edges. Higher = stickier (kills chatter when
-  the fly dithers on a boundary).
-- Omit `led_activation` entirely for a normal trial (no LED gating).
+Semantics of one zone `{level, ramp_in: [a, b], ramp_out: [c, d]}`:
+
+| frames | level |
+|---|---|
+| `< a` | baseline |
+| `a .. b` | linear, baseline at `a` → `level` at `b` (`a == b`: `level` from `a`, a hard edge) |
+| `b .. c` | `level` |
+| `c .. d` | linear, `level` at `c` → baseline at `d` (`c == d`: baseline from `d`, a hard edge) |
+| `≥ d` | baseline |
+
+So a zone occupies frames `[a, d)` — `d` is the **first frame back at baseline**.
+Frame indices are **0-based**, in the same space as `frame_index`/`setPositionX`
+and the wire's `SET_FRAME_POSITION`. A zone may **wrap** through frame 0 (each edge
+index is unrolled modulo the pattern's frame count). Where zones **overlap, the
+brighter one wins**. A zone whose `level` is *below* the baseline is a dip.
+
+Legacy sugar (unchanged since v0.59, still accepted):
+
+```yaml
+  led_activation:
+    level: 20
+    on_ranges: [[50, 99], [150, 180]]   # inclusive bands
+```
+
+`[s, e]` ≡ `{level, ramp_in: [s, s], ramp_out: [e + 1, e + 1]}`. Both forms may be
+mixed in one object (sugar zones first). `hysteresis` is **accepted, warned about
+in the run log, and ignored** — delete it and widen the ramps instead.
+
+Levels are % of full brightness on the shared BuckPuck curve (`ledPercentToMv`,
+same as `ledDrive`). Any non-zero level below **1 %** snaps up to 1 % — below that
+the driver is in its dead zone and the LED is dark while the log says "on".
 
 ## Semantics / guarantees
 
-- **Transition-only:** the LED command (`SET_AO_VOLTAGE`, 0xA0) is sent **only when
-  the ON/OFF state changes**, never every frame — so it doesn't compete with the
-  per-frame `SET_FRAME_POSITION` traffic on the same serial link.
-- **Self-contained per trial:** the LED is set to a known OFF baseline when the
-  trial starts, and forced OFF at trial end, on the next trialParams, on
+- **Sends only on change:** the LED command (`SET_AO_VOLTAGE`, 0xA0) goes out when
+  the commanded voltage moves by ≥ **4 mV** (~3 DAC LSB) or crosses dark/lit. A
+  hard edge costs one write per crossing; a ramp about one write per frame *while
+  ramping*; a plateau costs nothing.
+- **Yields to the stimulus:** the LED write is single-flight, latest-wins, and is
+  **never queued ahead of a frame the bridge client is about to send**
+  (`FicTracBridgeClient.hasPending`). It waits for the next applied frame instead,
+  so the per-frame `req_age_us` budget (≤ 10 ms) is not spent on LED traffic.
+- **Self-contained per trial:** the LED is set to the **baseline** when the trial
+  starts and forced **OFF** at trial end, on the next trialParams, on
   allOff/stopDisplay, on Stop, and on disconnect.
 - **Mode 3 only:** Mode 4 (analog closed loop) computes the frame on the
-  controller, so the host can't gate on it; the runner ignores `led_activation`
+  controller, so the host can't follow it; the runner ignores `led_activation`
   outside Mode 3 and the designer shows a warning.
-- **Run-log provenance:** the trial's `led_activation` spec is recorded on the
-  `trial-running` event, and each LED transition is logged as a `led-activation`
-  event (`{on, index, ledPercent}`) in `runlog.json` / `runlog.txt`.
+- **Frame modulus:** the zone vector wraps on the same frame count the bridge
+  uses. The runner sizes it from the page's pattern knowledge at trialParams time
+  and **re-sizes it from the controller's answer (GET_PATTERN_INFO) at
+  `startClosedLoop`**, before the first frame is applied.
+- **Run-log provenance:** the trial's normalized `led_activation` (baseline + every
+  zone, sugar unrolled) is recorded on the `trial-running` event; each LED write is
+  a `led-activation` runner event `{on, index, ledPercent, mv}` — `ledPercent` is
+  the level that took effect, so a ramp is reconstructable step by step.
 
 ## How to author
 
 - **Arena Studio designer (Edit view):** select the condition → on its
-  `trialParams` card, use the **"+ add:" dropdown → `led_activation`**. A sub-panel
-  appears with **level**, **hysteresis**, and an add/remove **on-ranges** list. The
-  ✕ on its header removes it. Requires advanced mode (safe mode is read-only).
+  `trialParams` card, use the **"+ add:" dropdown → `led_activation`**. The
+  sub-panel shows **baseline**, a **zones** list (**+ zone** adds a hard-edged
+  placeholder; edit *level*, *in from/to*, *out from/to*; ✕ removes a zone) and, if
+  the protocol still carries them, the legacy *level* + *on ranges* rows. Every
+  number is path-bound, so it carries the 🔗 anchor button (`level: *opto_pct`,
+  `ramp_in: [*z_a, *z_b]` all work). Requires advanced mode.
 - **By hand / another tool:** write the `led_activation:` block shown above. It
-  round-trips through load → edit → save unchanged.
+  round-trips through load → edit → save unchanged. `validate-protocol.mjs` lints
+  a leftover `hysteresis`, a zone missing a ramp, and a non-Mode-3 trial.
 
 ## Where it lives (code)
 
-- `js/arena-runner-g6.js` — `normalizeLedActivation()` (validate/normalize; throws
-  → the trial is skipped, not the run) and `makeLedActivator()` (pure stateful
-  index→{on,changed} with hysteresis). The `ArenaRunner` installs an activator on a
-  Mode-3 trialParams, subscribes to the FicTrac bridge's `applied` event, and sends
-  the LED command on transitions.
+- `js/arena-runner-g6.js` — `normalizeLedActivation()` (validate/normalize; sugar →
+  zones; throws → the trial is skipped, not the run), `buildLedLevelVector(spec, n)`
+  (per-frame % vector, unroll + overlap + snap), `makeLedActivator(spec, n)` (stateful
+  index → `{level, mv, on, changed}` with the ΔmV threshold, `setModulus`), and the
+  `ArenaRunner` wiring: `_installLedActivator(spec, n)` (baseline send + `applied`
+  subscription), `_drainLed()` (single-flight, `hasPending` yield, no-op skip),
+  `_clearLedActivator()` (OFF). Constants `LED_MIN_LEVEL_PCT`, `LED_MIN_STEP_MV`.
+- `js/fictrac-bridge-client.js` — `hasPending` getter.
 - `js/protocol-yaml-v3.js` — `led_activation` is a known controller key, deep-cloned
   so the nested object survives round-trips.
-- `js/plugin-registry.js` — object-typed optional schema entry (advertises the
-  `level`/`hysteresis` sub-fields; no default so it isn't auto-added).
+- `js/plugin-registry.js` — object-typed optional schema entry: `fields.baseline`,
+  `fields.level` (sugar, `seed: false`), `zoneFields.level` / `zoneFields.edge`.
 - `arena_studio.html` — the `renderLedActivation` sub-editor + `controllerParamSeed`.
+- `js/arena-session.js` — `_sanitizeRunStatus` allow-lists `on`, `ledPercent`, `mv`,
+  `ledActivation`.
 
 ## Tests
 
-- `tests/test-arena-runner-g6.js` — normalize validation, hysteresis transitions
-  (incl. a dither-no-chatter case), the install→bridge-event→SET_AO_VOLTAGE wiring
-  (transition-only + emit), and bad-spec-skips-trial.
-- `tests/test-protocol-roundtrip-v3.js` Suite 36 — nested round-trip, omitted stays
-  absent, schema shape.
-- `tests/test-plugin-registry.js` — object schema.
+- `tests/test-arena-runner-g6.js` — normalize (sugar, zones, inheritance, every
+  malformed shape), level vector (ramps, baseline+probe, dip, wrap, whole-turn cap,
+  overlap, unknown modulus, 1 % snap), activator (ΔmV threshold, prime, wrap,
+  `setModulus`), runner wiring (coalesced sends with a tick between frames,
+  latest-wins under an in-flight send, `hasPending` yield + supersede, baseline send
+  vs OFF teardown, link-down), IR warning for `hysteresis`.
+- `tests/test-fictrac-bridge-client.js` — `hasPending`.
+- `tests/test-protocol-roundtrip-v3.js` Suite 36 (zones round-trip, schema) and
+  Suite 37 (zone sub-fields by path: append, edit, bind, delete).
+- `tests/test-plugin-registry.js` — schema shape.
 - Run all: `pixi run test`.
 
 ## Bench testing (what to check on real hardware)
 
 **Prerequisite:** fw #39+ controller, a rig with FicTrac + the BuckPuck LED wired to
-Analog Out, and the FicTrac bridge running (`pixi run bridge`).
+Analog Out, the FicTrac bridge running (`pixi run bridge`), and a photodiode on the LED.
 
-1. **Closed loop must actually be applying frames.** `led_activation` fires off the
-   bridge's `applied` events — confirm the Run view / Console has closed-loop
-   **apply enabled** for the Mode-3 trial (the LED won't gate if frames aren't being
-   pushed). *This is the main open question to verify first.*
-2. Author a trial with `on_ranges: [[a, b]]` covering a clearly-visible slice of the
-   pattern. Run it closed-loop and rotate the ball so the displayed frame sweeps
-   through `a..b`: the LED should come on entering the band and go off leaving it.
-3. **Hysteresis:** with `hysteresis: 5`, dither the fly right at edge `b` — the LED
-   should stay solidly on, not chatter.
-4. **Teardown:** end the trial / press Stop — the LED must go off.
-5. **Run log:** confirm `led-activation` events appear in the committed run log with
-   plausible frame indices.
+1. Run `protocols/led_activation_quadrant_test.yaml` (conditions 1–2 hard edges,
+   3 ramped, 4 baseline + wrapping probe). Closed loop must actually be applying
+   frames — if the arena rotates with the fly (or `pixi run sim --model fly`), the
+   LED is receiving frames too.
+2. **Ramps:** sweep through the 10-frame ramp — the photodiode trace must be
+   monotone with ~10 steps and no flicker; with a fly dithering on the edge the
+   LED should waver slightly, never chatter.
+3. **Baseline + probe:** the LED must sit dim (2 %) between zones, never dark, and
+   the ramp must start from that dim level.
+4. **Stimulus budget:** in the committed run log, the `cf` rows' max `req_age_us`
+   during condition 3/4 should match conditions 1/2 (the LED writes yield).
+5. **Teardown:** end the trial / press Stop — the LED must go off (not to baseline).
+6. **Run log:** `led-activation` events with plausible frame indices and a
+   `ledPercent` staircase through each ramp.
 
 ## Not done / caveats
 
-- **No bench validation yet** (see above).
+- **No photodiode bench validation yet** (see above).
 - **MATLAB** does not read `led_activation` (web runner only), like `duty`.
-- **Wraparound:** `on_ranges` are compared linearly; a band that should wrap across
-  the 0/last-frame seam isn't special-cased (author two ranges instead).
+- The dashboard's opto-epoch view (`analysis-core.js`) treats the first lit
+  `led-activation` event of a run of lit events as the epoch level; ramps are
+  logged step by step but drawn as one epoch at the entry level.
 - **Standalone `experiment_designer_v3.html`** runs and round-trips `led_activation`
   but can't edit it (Studio only) — by design (maintenance mode).

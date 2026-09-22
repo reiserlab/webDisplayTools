@@ -25,7 +25,7 @@
     },
     {
       "key": "led_activation_quadrant_test",
-      "label": "Conditional LED activation — quadrant test (Mode-3 closed loop)",
+      "label": "Conditional LED activation — graded zones test (Mode-3 closed loop, ~2 min)",
       "path": "./protocols/led_activation_quadrant_test.yaml"
     },
     {
