@@ -73,6 +73,68 @@ async function main() {
         check('applies once enabled', applied, [7]);
     }
 
+    console.log(
+        '\n=== hasPending: a coalesced frame is waiting for the drain loop (LED yield) ==='
+    );
+    {
+        const gates = [];
+        const client = new FicTracBridgeClient({
+            applyFrame: () => new Promise((res) => gates.push(res)),
+            clampFrame: (i) => i
+        });
+        checkBool('idle: hasPending false', client.hasPending === false);
+        client.setApply(true);
+        client.handleFrame(1); // taken by the drain immediately (in flight)
+        await tick();
+        checkBool('in flight, nothing queued: hasPending false', client.hasPending === false);
+        client.handleFrame(2); // coalesced behind the in-flight apply
+        checkBool(
+            'frame queued behind the in-flight one: hasPending true',
+            client.hasPending === true
+        );
+        gates[0]();
+        await tick();
+        checkBool('drain picked it up: hasPending false again', client.hasPending === false);
+        gates[1]();
+        await tick();
+        // apply OFF: handleFrame still records the newest index (the stats path)
+        // but nothing will drain it — a STALE index is not "about to be sent", so
+        // it must NOT hold the LED writer off (between epochs the runner's
+        // baseline/OFF writes would otherwise see a permanently-true hasPending).
+        client.setApply(false);
+        client.handleFrame(9);
+        checkBool('apply off: a stale coalesced index is NOT pending', client.hasPending === false);
+        // …and the moment apply is re-enabled with that index still queued, it is —
+        // setApply alone does not drain; the NEXT frame's handleFrame does (≤ one
+        // FicTrac frame period in a live loop), taking the newest index in flight.
+        client.setApply(true);
+        checkBool('apply back on with the index queued: pending again', client.hasPending === true);
+        client.handleFrame(10);
+        await tick();
+        checkBool(
+            'next frame drained it (in flight, none queued): not pending',
+            client.hasPending === false
+        );
+        gates[2]();
+        await tick();
+        // canApply gate: a queued index the consumer refuses is not about to be sent either
+        let allow = true;
+        const gated = new FicTracBridgeClient({
+            applyFrame: () => new Promise((res) => gates.push(res)),
+            canApply: () => allow,
+            now: () => 100000
+        });
+        gated.setApply(true);
+        allow = false;
+        gated.handleFrame(4); // blocked → stays coalesced
+        checkBool('canApply false: queued index is NOT pending', gated.hasPending === false);
+        allow = true;
+        checkBool(
+            'canApply true again: the same queued index IS pending',
+            gated.hasPending === true
+        );
+    }
+
     console.log("\n=== 'apply' event fires on setApply transitions (closed-loop indicator) ===");
     {
         const client = new FicTracBridgeClient({});

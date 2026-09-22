@@ -1,10 +1,12 @@
 version: 3
 
 # ============================================================================
-# Conditional LED activation — quadrant test (web runner, Mode-3 closed loop)
+# Conditional LED activation — graded zones test (web runner, Mode-3 closed loop)
 #
-# Tests the new per-trial `led_activation` (Arena Studio v0.59). Reuses the SAME
-# built-in SD pattern the closed-loop block uses — NO new patterns needed:
+# Tests the per-trial `led_activation` on trialParams (Arena Studio v0.86: graded
+# ZONES with linear ramp edges over a baseline; v0.59's hard-edged `on_ranges`
+# still works as sugar). Reuses the SAME built-in SD pattern the closed-loop
+# block uses — NO new patterns needed:
 #   4  frame2_h_ccw_200f   (a 200-frame full-azimuth rotation)
 #
 # The 200 frames map 1:1 onto azimuth (1.8°/frame = 360°/200 px), so the pattern
@@ -14,7 +16,9 @@ version: 3
 #   Q3  frames 100–149   (180–270°)
 #   Q4  frames 150–199   (270–360°)
 # In closed loop the displayed frame index tracks the fly's heading, so gating
-# the LED on quadrant bands turns it on/off as the fly rotates through them.
+# the LED on quadrant zones drives it as the fly rotates through them. The
+# index the LED follows is the DISPLAYED one (after any bias), i.e. where the
+# stimulus actually is on the arena.
 #
 # HOW IT DRIVES THE LED: `startClosedLoop` enables the bridge's frame apply —
 # that same event stream is what feeds led_activation, so the LED gating only
@@ -22,18 +26,23 @@ version: 3
 # the bench check for "is closed-loop apply active?" — if the arena rotates with
 # the fly, the LED gating is receiving frames too.)
 #
-# THREE conditions, each 30 s (`hold_dur`):
-#   1. led_one_quadrant   — LED on in Q2 only            (single band, no hysteresis)
-#   2. led_opposite       — LED on in Q1 + Q3            (two bands; 4 flips / rev)
-#   3. led_one_quadrant_h — LED on in Q2, hysteresis 5   (anti-chatter at the edges)
+# FOUR conditions, each 30 s (`hold_dur`):
+#   1. led_one_quadrant   — hard edges: LED on in Q2 only        (on_ranges sugar)
+#   2. led_opposite       — hard edges: LED on in Q1 + Q3        (two bands; 4 flips / rev)
+#   3. led_ramped         — one zone, 10-frame (18°) ramps in/out around Q2
+#   4. led_baseline_probe — dim baseline everywhere + a brighter ramped probe zone
+#                           that WRAPS through frame 0 (Q4 → Q1)
 #
 # Needs the FicTrac bridge (`pixi run bridge`); with no fly, `pixi run sim`
-# supplies synthetic heading. Requires fw #33+ (duty/AO) and a BuckPuck LED on
-# Analog Out. Web-only — MATLAB does not read led_activation.
+# supplies synthetic heading (`--model fly` for a fixating one). Requires fw #33+
+# (duty/AO) and a BuckPuck LED on Analog Out. Web-only — MATLAB does not read
+# led_activation. Bench check: photodiode on the LED — the ramps must be
+# monotone with no flicker, and the `cf` rows' max req_age_us must not grow
+# while a ramp is active (the LED writes yield to frame writes).
 # ============================================================================
 
 experiment_info:
-  name: "Conditional LED activation — quadrant test"
+  name: "Conditional LED activation — graded zones test"
   author: "webDisplayTools"
 
 rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
@@ -53,18 +62,23 @@ variables:
   # Change ONE number to rescale. hold_dur drives each trial's trialParams
   # duration AND its bracketing wait (they must agree — see the waits rule).
   hold_dur: &hold_dur 30 # seconds of closed-loop hold per condition
-  led_pct: &led_pct 20 # LED brightness % while active (BuckPuck curve)
+  led_pct: &led_pct 20 # LED brightness % inside a zone (BuckPuck curve; fractional OK)
+  base_pct: &base_pct 2 # dim baseline % for the baseline+probe condition
+  # Ramp endpoints are literal frame indices below (10-frame ramps = 18° at
+  # 1.8°/frame); bind them to anchors from the Studio's 🔗 if you sweep them.
 
 experiment:
   - "led_one_quadrant"
   - "led_opposite"
-  - "led_one_quadrant_h"
+  - "led_ramped"
+  - "led_baseline_probe"
   - "shutdown"
 
 conditions:
-  # ---- 1) single quadrant, no hysteresis -----------------------------------
+  # ---- 1) single quadrant, hard edges (legacy on_ranges sugar) ---------------
   # LED on across Q2 (frames 50–99), off elsewhere. As the fly's heading sweeps
   # through Q2 the LED switches on entering frame 50 and off leaving frame 99.
+  # `on_ranges: [[50, 99]]` ≡ `zones: [{level, ramp_in: [50, 50], ramp_out: [100, 100]}]`.
   - name: "led_one_quadrant"
     commands:
       - type: "controller"
@@ -78,19 +92,20 @@ conditions:
         gain: 0
         led_activation:
           level: *led_pct
-          hysteresis: 0
           on_ranges:
             - [50, 99]
       - type: "plugin"
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
+        params:
+          coupling: -1
       - type: "wait"
         duration: *hold_dur
       - type: "plugin"
         plugin_name: "fictrac"
         command_name: "stopClosedLoop"
 
-  # ---- 2) two opposite quadrants -------------------------------------------
+  # ---- 2) two opposite quadrants, hard edges ---------------------------------
   # LED on across Q1 (0–49) and Q3 (100–149) — four transitions per revolution,
   # exercising the multi-range on_ranges list.
   - name: "led_opposite"
@@ -106,24 +121,25 @@ conditions:
         gain: 0
         led_activation:
           level: *led_pct
-          hysteresis: 0
           on_ranges:
             - [0, 49]
             - [100, 149]
       - type: "plugin"
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
+        params:
+          coupling: -1
       - type: "wait"
         duration: *hold_dur
       - type: "plugin"
         plugin_name: "fictrac"
         command_name: "stopClosedLoop"
 
-  # ---- 3) single quadrant WITH hysteresis ----------------------------------
-  # Same Q2 band, but hysteresis 5 frames (~9° at gain 1.8): the LED stays on
-  # until the heading is >5 frames past the band edge, so dithering on the
-  # boundary won't chatter the LED. Compare against condition 1 at the edges.
-  - name: "led_one_quadrant_h"
+  # ---- 3) one zone with linear ramps -----------------------------------------
+  # Dark at frame 40, full `led_pct` by frame 50, held through 99, back to dark
+  # at frame 110. A fly dithering on a boundary now just modulates the LED a
+  # little instead of chattering it (this is what hysteresis used to be for).
+  - name: "led_ramped"
     commands:
       - type: "controller"
         command_name: "trialParams"
@@ -135,13 +151,49 @@ conditions:
         frame_rate: 0
         gain: 0
         led_activation:
-          level: *led_pct
-          hysteresis: 5
-          on_ranges:
-            - [50, 99]
+          baseline: 0
+          zones:
+            - level: *led_pct
+              ramp_in: [40, 50] # baseline at 40 → level at 50
+              ramp_out: [100, 110] # level at 100 → baseline at 110
       - type: "plugin"
         plugin_name: "fictrac"
         command_name: "startClosedLoop"
+        params:
+          coupling: -1
+      - type: "wait"
+        duration: *hold_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  # ---- 4) dim baseline + brighter probe zone that wraps through frame 0 ------
+  # The LED sits at `base_pct` everywhere and ramps up to `led_pct` in a zone
+  # centred on frame 0 (Q4 → Q1): ramp in 170→180, hold 180..19 (through the
+  # 199/0 seam), ramp out 20→30. Checks the wrap unrolling and that ramps start
+  # from the BASELINE, not from dark.
+  - name: "led_baseline_probe"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: *hold_dur
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          baseline: *base_pct
+          zones:
+            - level: *led_pct
+              ramp_in: [170, 180]
+              ramp_out: [20, 30]
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          coupling: -1
       - type: "wait"
         duration: *hold_dur
       - type: "plugin"

@@ -4,6 +4,35 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.86 (2026-09-22) · LED activation: graded zones with linear ramps replace hysteresis
+
+- **Why:** the closed-loop LED (`led_activation` on a Mode-3 `trialParams`) could only be
+  ON or OFF inside hard-edged frame bands, with `hysteresis` as the anti-chatter — and a
+  common request was a dim baseline with a brighter probe zone, and soft edges.
+- **Now:** `led_activation` takes a **`baseline`** level (% outside every zone, default 0)
+  and a list of **`zones`**, each with its own **`level`** and linear **`ramp_in: [a, b]`** /
+  **`ramp_out: [c, d]`** edges (baseline at `a` → level at `b`; level at `c` → baseline at
+  `d`; `a == b` or `c == d` is a hard edge; one index means a hard edge). Zones may wrap
+  through frame 0; where they overlap the brighter one wins; a level below the baseline
+  is a dip. Levels are fractional (0.1 % steps in the designer); anything below 1 % is
+  raised to 1 % because the driver is dark down there.
+- **The LED follows the displayed frame** — after any bias waveform — so a zone marks where
+  the stimulus is on the arena, whatever the fly or the bias did.
+- **Old protocols keep working:** `level` + `on_ranges` are still accepted (each inclusive
+  band is a hard-edged zone). `hysteresis` is accepted and **ignored**, with a warning in
+  the run log and the Edit pane; delete it and give the zone a few-frame ramp instead.
+- **Stimulus-safe sending:** the LED voltage is re-sent only when it moves by ≥ 4 mV (about
+  one write per frame *while ramping*, none on a plateau) and never ahead of a frame the
+  closed loop is about to send, so ramps don't cost closed-loop latency.
+- **Designer:** the LED activation pane shows *baseline*, a *zones* list (**+ zone**, per-zone
+  level / in from–to / out from–to, ✕) and the legacy range rows only when present. Every
+  number is anchor-bindable (🔗). `validate-protocol.mjs` lints leftovers.
+- **Run log:** each LED write is a `led-activation` event with the level that took effect
+  (`ledPercent`) and the commanded `mv`, so ramps are reconstructable step by step.
+- Library protocol `led_activation_quadrant_test` gained a ramped condition and a
+  baseline + wrapping-probe condition. **Bench check still needed:** a photodiode on the
+  LED through a ramp (monotone, no flicker) and unchanged `req_age_us` with ramps active.
+
 ## v0.85 (2026-09-21) · Closed-loop `coupling` replaces `gain`; fractional couplings no longer jump
 
 **Restart the FicTrac bridge** — `pixi run bridge` must report **3.3**.

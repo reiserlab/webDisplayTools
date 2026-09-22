@@ -2999,7 +2999,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.85 | 2026-09-21 16:34 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.86 | 2026-09-22 00:50 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -14343,16 +14343,18 @@ async function initFromUrl() {
 
         // Seed value for a freshly-added optional controller param. Object-typed
         // params (led_activation) get a default nested object built from the
-        // schema's `fields` defaults + an empty on_ranges list; scalars use
-        // defaultParamValue.
+        // schema's `fields` defaults (skipping `seed: false` sugar fields) + an
+        // empty zones list (v0.86 graded zones; on_ranges is the legacy sugar);
+        // scalars use defaultParamValue.
         function controllerParamSeed(sch) {
             if (!sch) return '';
             if (sch.type === 'object') {
                 const obj = {};
                 for (const [fk, fs] of Object.entries(sch.fields || {})) {
+                    if (fs.seed === false) continue;
                     obj[fk] = fs.default !== undefined ? fs.default : (fs.type === 'number' ? 0 : '');
                 }
-                obj.on_ranges = []; // authored via the range-list editor
+                obj.zones = []; // authored via the zone editor
                 return obj;
             }
             return defaultParamValue(sch);
@@ -14379,15 +14381,18 @@ async function initFromUrl() {
             }
         }
 
-        // Sub-editor for a trialParams `led_activation` object: LED level,
-        // hysteresis, and a list of [start,end] ON ranges (add/remove rows),
-        // plus a ✕ to drop the whole activation. Only meaningful in Mode 3
-        // (host-visible live index) — a hint shows when the trial isn't Mode 3.
+        // Sub-editor for a trialParams `led_activation` object (v0.86 graded
+        // zones): baseline level, a list of zones — each with its own level and
+        // linear ramp_in [a,b] / ramp_out [c,d] edges (a==b / c==d = hard edge) —
+        // the legacy `level` + `on_ranges` rows when a protocol still carries
+        // them, a deprecation notice for `hysteresis` (accepted, ignored), plus
+        // a ✕ to drop the whole activation. Only meaningful in Mode 3 (host-
+        // visible live index) — a hint shows when the trial isn't Mode 3.
         //
         // Every scalar is edited BY PATH through renderEditableField (the same
         // renderer as the card's top-level fields), so each one carries the 🔗
-        // anchor button and an alias chip when bound. Ranges are appended /
-        // removed in place (docSet at the next index / docDelete of one index).
+        // anchor button and an alias chip when bound. Zones / ranges are appended
+        // / removed in place (docSet at the next index / docDelete of one index).
         // Never rewrite the whole object: that flattens every `*alias` inside
         // it to its resolved number (v0.81 and earlier did exactly that).
         function renderLedActivation(cmd, cmdPath) {
@@ -14415,30 +14420,107 @@ async function initFromUrl() {
             }
 
             const sch = getV3CommandParams(experiment, 'controller', null, cmd.command_name);
-            const fields = (sch && sch.led_activation && sch.led_activation.fields) || {};
-            const levelSchema = fields.level || { type: 'number', min: 0, max: 100, label: 'LED level (%)' };
-            const hystSchema = fields.hysteresis || { type: 'number', min: 0, integer: true, label: 'Hysteresis (frames, 0 = none)' };
-            // A missing key runs as 0 (arena-runner-g6 normalizeLedActivation), so
-            // that is what the field shows; typing a value creates the key.
-            box.appendChild(renderEditableField('level (%)', [...laPath, 'level'],
-                la.level != null ? la.level : 0, levelSchema));
-            box.appendChild(renderEditableField('hysteresis', [...laPath, 'hysteresis'],
-                la.hysteresis != null ? la.hysteresis : 0, hystSchema));
-
-            // on_ranges: one row per [start,end] pair (each endpoint bindable), a ✕
-            // per row that deletes just that index; + range appends [0, 0].
-            const ranges = Array.isArray(la.on_ranges) ? la.on_ranges : [];
-            const rangesPath = [...laPath, 'on_ranges'];
-            const endpointSchema = { type: 'number', min: 0, integer: true, label: 'Frame index (0-based, inclusive)' };
-            const rangesWrap = el('div', { style: 'margin-top:2px' });
-            rangesWrap.appendChild(el('div', { class: 'k', style: 'font-size:0.85em' },
-                'on ranges (0-based frame index, inclusive):'));
+            const laSch = (sch && sch.led_activation) || {};
+            const fields = laSch.fields || {};
+            const zf = laSch.zoneFields || {};
+            const baselineSchema = fields.baseline || { type: 'number', min: 0, max: 100, step: 0.1, label: 'Baseline LED level (%) outside every zone' };
+            const levelSchema = fields.level || { type: 'number', min: 0, max: 100, step: 0.1, label: 'LED level (%) for on_ranges' };
+            const zoneLevelSchema = zf.level || { type: 'number', min: 0, max: 100, step: 0.1, label: 'Zone LED level (%)' };
+            const edgeSchema = zf.edge || { type: 'number', min: 0, integer: true, label: 'Frame index (0-based)' };
             const compact = (fieldRow) => {
                 fieldRow.style.flex = '0 0 auto';
                 const k = fieldRow.querySelector('.k');
                 if (k) k.style.minWidth = '0';
                 return fieldRow;
             };
+            // A missing baseline runs as 0 (arena-runner-g6 normalizeLedActivation),
+            // so that is what the field shows; typing a value creates the key.
+            box.appendChild(renderEditableField('baseline (%)', [...laPath, 'baseline'],
+                la.baseline != null ? la.baseline : 0, baselineSchema));
+
+            // hysteresis: accepted + ignored since v0.86 — say so, offer to drop it.
+            if (la.hysteresis != null) {
+                const hrow = el('div', { class: 'dim', style: 'display:flex;align-items:center;gap:6px;font-size:0.82em;color:var(--warn)' },
+                    el('span', {}, '⚠ hysteresis ' + la.hysteresis + ' is ignored since v0.86 — ramps replace it'));
+                hrow.appendChild(el('button', {
+                    class: 'param-x-btn',
+                    title: 'Remove the ignored hysteresis key (Ctrl+Z to undo)',
+                    onClick: (e) => { e.stopPropagation(); ledDocEdit(() => docDelete(experiment, [...laPath, 'hysteresis'])); }
+                }, '✕'));
+                box.appendChild(hrow);
+            }
+
+            // zones: one row per {level, ramp_in:[a,b], ramp_out:[c,d]} (every
+            // number bindable), a ✕ per row that deletes just that index; + zone
+            // appends a hard-edged placeholder the author then widens.
+            const zones = Array.isArray(la.zones) ? la.zones : [];
+            const zonesPath = [...laPath, 'zones'];
+            const zonesWrap = el('div', { style: 'margin-top:4px' });
+            zonesWrap.appendChild(el('div', { class: 'k', style: 'font-size:0.85em' },
+                'zones — ramp in a→b, ramp out c→d (0-based frames; a=b or c=d is a hard edge; zones may wrap past the last frame):'));
+            const rampFields = (row, zz, i, key, label) => {
+                const rp = [...zonesPath, i, key];
+                if (aliasNameAt(experiment, rp)) {
+                    row.appendChild(compact(renderEditableField(label, rp, zz[key], 'string')));
+                } else if (Array.isArray(zz[key])) {
+                    const p = zz[key];
+                    row.appendChild(compact(renderEditableField(label + ' from', [...rp, 0],
+                        p[0] != null ? p[0] : 0, edgeSchema)));
+                    row.appendChild(compact(renderEditableField('to', [...rp, 1],
+                        p[1] != null ? p[1] : 0, edgeSchema)));
+                } else {
+                    // authored as one index (hard edge) — edit it in place
+                    row.appendChild(compact(renderEditableField(label + ' @', rp,
+                        zz[key] != null ? zz[key] : 0, edgeSchema)));
+                }
+            };
+            zones.forEach((z, i) => {
+                const row = el('div', { class: 'led-zone-row', style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:2px 0;border-top:1px dashed var(--border)' });
+                if (aliasNameAt(experiment, [...zonesPath, i])) {
+                    // Whole zone bound to an anchor (`- *probe`): chip + 🔗 only.
+                    row.appendChild(compact(renderEditableField('zone', [...zonesPath, i], z, 'string')));
+                } else {
+                    const zz = z && typeof z === 'object' ? z : {};
+                    row.appendChild(compact(renderEditableField('level (%)', [...zonesPath, i, 'level'],
+                        zz.level != null ? zz.level : (la.level != null ? la.level : 0), zoneLevelSchema)));
+                    rampFields(row, zz, i, 'ramp_in', 'in');
+                    rampFields(row, zz, i, 'ramp_out', 'out');
+                }
+                row.appendChild(el('button', {
+                    class: 'param-x-btn',
+                    title: 'Remove this zone (Ctrl+Z to undo)',
+                    onClick: (e) => {
+                        e.stopPropagation();
+                        ledDocEdit(() => docDelete(experiment, [...zonesPath, i]));
+                    }
+                }, '✕'));
+                zonesWrap.appendChild(row);
+            });
+            zonesWrap.appendChild(el('button', {
+                class: 'pill', style: 'font-size:0.8em;margin-top:2px',
+                title: 'Add a zone (level 20 %, hard edges at frame 0 — edit the level and ramp endpoints, or bind them to anchors)',
+                onClick: (e) => {
+                    e.stopPropagation();
+                    const seed = { level: la.level != null ? la.level : 20, ramp_in: [0, 0], ramp_out: [0, 0] };
+                    ledDocEdit(() => {
+                        if (Array.isArray(la.zones)) docSet(experiment, [...zonesPath, zones.length], seed);
+                        else docSet(experiment, zonesPath, [seed]);
+                    });
+                }
+            }, '+ zone'));
+            box.appendChild(zonesWrap);
+
+            // Legacy sugar: `level` + `on_ranges` (hard-edged zones at one level).
+            // Shown only when the protocol carries them; new activations use zones.
+            if (!Array.isArray(la.on_ranges)) return box;
+            box.appendChild(el('div', { class: 'k', style: 'font-size:0.85em;margin-top:6px' },
+                'on ranges — legacy hard-edged zones at one level (0-based frame index, inclusive):'));
+            box.appendChild(renderEditableField('level (%)', [...laPath, 'level'],
+                la.level != null ? la.level : 0, levelSchema));
+            const ranges = la.on_ranges;
+            const rangesPath = [...laPath, 'on_ranges'];
+            const endpointSchema = { type: 'number', min: 0, integer: true, label: 'Frame index (0-based, inclusive)' };
+            const rangesWrap = el('div', { style: 'margin-top:2px' });
             ranges.forEach((pair, i) => {
                 const row = el('div', { class: 'led-range-row', style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap' });
                 if (aliasNameAt(experiment, [...rangesPath, i])) {
@@ -14463,13 +14545,10 @@ async function initFromUrl() {
             });
             rangesWrap.appendChild(el('button', {
                 class: 'pill', style: 'font-size:0.8em;margin-top:2px',
-                title: 'Add an ON range (start 0, end 0 — edit the endpoints or bind them to anchors)',
+                title: 'Add an ON range (start 0, end 0 — edit the endpoints or bind them to anchors). Prefer + zone for ramped edges.',
                 onClick: (e) => {
                     e.stopPropagation();
-                    ledDocEdit(() => {
-                        if (Array.isArray(la.on_ranges)) docSet(experiment, [...rangesPath, ranges.length], [0, 0]);
-                        else docSet(experiment, rangesPath, [[0, 0]]);
-                    });
+                    ledDocEdit(() => docSet(experiment, [...rangesPath, ranges.length], [0, 0]));
                 }
             }, '+ range'));
             box.appendChild(rangesWrap);

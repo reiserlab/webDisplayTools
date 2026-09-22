@@ -168,9 +168,11 @@ rejection). Authored as an added rotational **velocity**:
 ### Conditional LED activation (index-gated LED, Mode 3 only)
 
 A Mode-3 `trialParams` may carry an optional **`led_activation`** attribute to drive
-the BuckPuck LED **on only while the live frame index is inside author-specified
-bands** (host-side; the web runner watches each applied frame and toggles the LED on
-transitions). It's an attribute ON the trialParams command, NOT a separate command:
+the BuckPuck LED **as a function of the live (displayed, post-bias) frame index**:
+a baseline level plus **zones**, each with its own level and linear **ramp** edges
+(host-side; the web runner watches each applied frame and re-sends the LED level when
+it moves ≥ 4 mV, yielding to frame writes). It's an attribute ON the trialParams
+command, NOT a separate command (Studio v0.86):
 
 ```yaml
 - type: "controller"
@@ -183,16 +185,25 @@ transitions). It's an attribute ON the trialParams command, NOT a separate comma
   frame_rate: 0
   gain: 0
   led_activation:
-    level: 20            # LED % when ON (0 = never lights)
-    hysteresis: 3        # frames past a band edge before OFF (0 = none; higher = anti-chatter)
-    on_ranges: [[50, 100], [150, 180]]   # 0-based frame bands, inclusive
+    baseline: 2            # % outside every zone (default 0 = dark)
+    zones:
+      - level: 10          # % inside (fractional OK)
+        ramp_in:  [40, 50]    # baseline at 40 → level at 50  (a == b: hard edge)
+        ramp_out: [100, 110]  # level at 100 → baseline at 110 (c == d: hard edge)
+      - level: 5
+        ramp_in:  190         # one index ≡ [190, 190]; this zone WRAPS through frame 0
+        ramp_out: [5, 5]
 ```
 
-- `on_ranges` indices are **0-based** (same as `frame_index`/`setPositionX`), inclusive.
-- Hysteresis is asymmetric: ON at the true edge, OFF only once **> hysteresis** frames
-  outside every band. Omit `led_activation` for no gating.
-- **Mode 3 only** (Mode 4 computes frames on the controller; the host can't gate it).
-  Web-only — MATLAB does not read it. Full reference: `docs/development/conditional-led-activation.md`.
+- Indices are **0-based** (same as `frame_index`/`setPositionX`); a zone occupies `[a, d)`
+  (`d` is the first baseline frame); zones may wrap; overlapping zones → brighter wins.
+- **Legacy sugar still works:** `level: 20` + `on_ranges: [[50, 99]]` (inclusive) ≡ a
+  hard-edged zone `{level: 20, ramp_in: [50, 50], ramp_out: [100, 100]}`.
+- **`hysteresis` is accepted, warned, IGNORED** since v0.86 — delete it; ramps of a few
+  frames are the anti-chatter. Levels below 1 % snap to 1 % (driver dead zone).
+- Omit `led_activation` for no LED drive. **Mode 3 only** (Mode 4 computes frames on the
+  controller; the host can't follow it). Web-only — MATLAB does not read it. Full
+  reference: `docs/development/conditional-led-activation.md`.
 
 ## Other controller commands
 

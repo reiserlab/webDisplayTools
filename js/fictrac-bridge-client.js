@@ -191,6 +191,20 @@
         get connected() {
             return !!(this._ws && this._ws.readyState === 1 /* OPEN */);
         }
+        /**
+         * True while a frame index is coalesced and ABOUT TO BE SENT — apply is on,
+         * the consumer permits it, and the drain loop has not picked it up yet —
+         * i.e. the next thing this client will put on the serial link is a
+         * SET_FRAME_POSITION. The runner's LED activator checks this before
+         * queueing an AO write so a level change never lands ahead of a frame
+         * (keeps the per-frame `req_age_us` budget intact). While apply is off,
+         * handleFrame still records the newest index (stats / scope path) but
+         * nothing will drain it, so that stale index does NOT count here.
+         */
+        get hasPending() {
+            if (this._pending == null || !this._apply || !this._applyFrame) return false;
+            return typeof this._canApply !== 'function' || !!this._canApply();
+        }
         get apply() {
             return this._apply;
         }
