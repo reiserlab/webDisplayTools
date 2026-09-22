@@ -14,8 +14,9 @@ pushes when the runner events are absent, e.g. Console-only use) it reports:
     as mean |az|, the fraction of time it was frontal (|az| < 30°) and its circular mean — a
     fixating fly keeps |az| small; a mis-signed rig parks it near ±180°;
   * the BIAS: b(t) reconstructed analytically from the `bias_config` event + each row's `ms`, and
-    REJECTION = −slope of unwrapped heading regressed on b(t) — 1.0 = the fly fully counter-turned
-    the disturbance (display held still), 0 = ignored it, negative = followed it;
+    REJECTION = −slope(unwrapped heading vs b(t)) · coupling — 1.0 = the fly fully counter-turned
+    the disturbance (display held still) whatever the coupling sign, 0 = ignored it, negative =
+    followed it; undefined ("—") at coupling 0, where the fly cannot move the display;
   * a CONSISTENCY check: `round((coupling · Δheading + offset + b)/deg_per_frame) mod frames` (bridge 3.3,
     unwrapped) — or `round((wrap180(hd − hd0) + b)/gain)` for older logs — vs the logged idx
     (the LAB-185 bench check — mismatches beyond ±1 frame mean the log and the mapping disagree).
@@ -279,7 +280,16 @@ def analyze_epoch(log: dict, ep: dict, deg_per_frame: float, frame_dir: int, az0
     if kind != "none":
         slope = _ols_slope(b, rel_hd)
         out["bias_angle_end_deg"] = round(b[-1], 1)
-        out["rejection"] = None if slope is None else round(-slope, 3)
+        # Holding the display against the bias means coupling·Δheading + b = const, i.e.
+        # Δheading = −b / coupling. So rejection = −slope · coupling: 1 = fully counter-turned
+        # on ANY coupling sign (the natural loop on the fly-on-ball rigs is −1), 0 = ignored,
+        # < 0 = the fly followed the disturbance. Undefined at coupling 0 — the fly cannot
+        # move the display at all (that is the point of the replay control).
+        k = 1.0 if coupling is None else coupling
+        if slope is None or k == 0:
+            out["rejection"] = None
+        else:
+            out["rejection"] = round(-slope * k, 3)
     if hd0 is not None and pitch:
         mism = 0
         if coupling is None:
@@ -348,8 +358,8 @@ def to_markdown(rep: dict) -> str:
             f"| {'—' if 'idx_mismatch_fraction' not in e else f'{e['idx_mismatch_fraction']:.2%}'} |"
         )
     out.append("")
-    out.append("_rejection: −slope of unwrapped heading on the bias angle — 1 = fully counter-turned (display held), 0 = ignored, "
-               "negative = followed. frontal: fraction of rows with the feature within ±30°. idx mismatch: logged frame vs "
+    out.append("_rejection: −slope(unwrapped heading vs bias angle) · coupling — 1 = fully counter-turned (display held) on any coupling sign, 0 = ignored, "
+               "negative = followed; — at coupling 0 (the fly cannot move the display). frontal: fraction of rows with the feature within ±30°. idx mismatch: logged frame vs "
                "round((coupling · Δheading + offset + bias) / deg_per_frame) mod frames (bridge 3.3, unwrapped) or round((wrap180(hd − hd0) + bias)/gain) (older logs), beyond ±1 frame._")
     return "\n".join(out)
 

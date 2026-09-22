@@ -184,7 +184,8 @@ def synth_log(path, rejecting: bool, gain=1.8, frames=200, amp=90.0, dur_s=4.0, 
         t_s = i / rate
         ms = 1000 + int(round(t_s * 1000))
         b = amp * t_s
-        rel = -b if rejecting else spin_dps * t_s   # fly turns against the bias (heading −), spins, or holds still
+        k_eff = coupling if coupling else 1.0
+        rel = -b / k_eff if rejecting else spin_dps * t_s   # holds the display (Δheading = −b/k), spins, or sits still
         hd_deg = hd0_deg + rel
         if coupling is None:
             idx = round((rep.wrap180(rel) + b) / gain) % frames            # bridge ≤ 3.2: wrapped, coupling 1
@@ -229,6 +230,17 @@ with tempfile.TemporaryDirectory() as d:
     check("coupling 0.75 spinning fly: idx reconstruction exact across two revolutions", K["idx_mismatch_fraction"], 0.0)
     check_close("net turn 720 deg", K["fly"]["net_turn_deg"], 720.0, 0.5)
     check("markdown shows k and pitch", "k 0.75" in rep.to_markdown(rep.analyze(p_k, 0.0, 1, 0.0)), True)
+    # The natural loop on the fly-on-ball rigs is coupling −1: a fly that HOLDS the display against a
+    # constant bias turns +b (not −b), and rejection must still read +1 (normalized by the coupling).
+    p_n = os.path.join(d, "kneg1_rej.jsonl")
+    synth_log(p_n, True, coupling=-1.0)
+    N1 = rep.analyze(p_n, 0.0, -1, 0.0)["epochs"][0]
+    check_close("coupling -1, display held → rejection +1", N1["rejection"], 1.0, 0.02)
+    check_close("...the fly turned WITH the bias angle (+360)", N1["fly"]["net_turn_deg"], 360.0, 1.0)
+    check("coupling -1 held display: idx reconstruction exact", N1["idx_mismatch_fraction"], 0.0)
+    p_z = os.path.join(d, "k0.jsonl")
+    synth_log(p_z, False, coupling=0.0, spin_dps=45.0)
+    check("coupling 0: rejection undefined", rep.analyze(p_z, 0.0, 1, 0.0)["epochs"][0]["rejection"], None)
     svg = rep.to_svg(R)
     check("svg has three polylines", svg.count("<polyline"), 3)
     out_svg = os.path.join(d, "o.svg")

@@ -63,13 +63,25 @@ Measured 2026-09-19 in the **virtual loop** (real bridge 3.2 + model fly, no are
 `idx mismatch` was **0.00 %** in every run — the logged frame equals `round((heading − tare + bias)/gain) mod 200`
 on the merged bridge.
 
+## Rigs whose natural coupling is −1
+
+On the fly-on-ball rigs the stabilizing loop is `coupling: -1` (the old `gain: -1.8`). Run the
+model fly with `--frame-dir -1` there — it tells the fly which way the display physically turns
+per frame, so a fixating fly stays stable. `closed-loop-report.py` normalizes `rejection` by the
+coupling, so +1 means "held the display" on either sign; pass `--frame-dir -1` to it too so the
+feature azimuth reads in the fly's frame. `fictrac_coupling_bias_fly_test.yaml` is written for a
+−1 rig (flip its four `k_*` variables for a +1 rig).
+
 ## Hardware-free variant (CI-style)
 
 The bridge computes and broadcasts the frame index whether or not a browser applies it, so
 `bridge + sim --model fly` alone closes a *virtual* loop: push a bias via a WebSocket
 `config` message, log with `log_control`, and run the report on the bridge's file. That is
 what `tests/test-fictrac-sim.py` cannot do (no sockets) but a one-off smoke can; see the
-PR that added this doc for the script.
+PR that added this doc for the script. Gotcha when scripting the bridge CLIENT: its default
+`fictrac_port` is 60000 and the bridge re-binds its UDP input to whatever the client pushes on
+connect — set `client.setConfig({fictrac_port})` to the sim's port first, or the sim's records go
+nowhere (the Studio takes the port from the protocol's fictrac plugin config).
 
 ## Sign conventions, once more
 
