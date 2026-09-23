@@ -23,16 +23,42 @@ version: 3
 #      1000 Hz; every re-streamed frame costs the panel ~1–2 line edges).
 #   4. Telemetry ring: on (default) — cc/cf/cs rows land in the run log.
 #
-# WHAT TO RECORD IN SCANIMAGE (vDAQ) — minimal version, everything in the TIFF:
-#   • arena J3 (Digital IO 1 = frame-transfer pulse, 300 Hz) → vDAQ D2.0, and
-#     Triggers tab → Aux trigger 1 = D2.0. Timestamps land in every frame's
-#     header (auxTrigger0). The 2 s allOff between steps stops the pulses, so
-#     each duty epoch is a block of timestamps separated by a gap.
-#   • Ch2 / Ch3 as before. Optional: photodiode → rear SMB AI3 (Ch4, <2 Vpp).
-#   Nothing here triggers ScanImage; start the Grab by hand before Run.
-#   Full version (Data Recorder .h5, line/frame clock copies, AO marker on an
-#   AI): docs/development/2p-scanimage-signal-logging.md. The AO steps below
-#   are harmless if unrecorded.
+# WHAT TO RECORD IN SCANIMAGE (vDAQ) — MINIMAL VERSION, everything lands in the TIFF
+#
+#   We only STORE data. Nothing here triggers ScanImage: start the Grab by hand,
+#   then press Run. The aux trigger below does not start/stop/gate anything —
+#   it writes edge timestamps into frames you are already saving.
+#
+#   Wiring (one BNC):  arena J3 ("Digital IO 1 (5V)", role out_debug_framescan,
+#                      a ~0.7 ms 5 V pulse per SPI frame transfer, 300 Hz)
+#                      → vDAQ breakout digital input D2.0.
+#                      The line-clock cable into arena J4 stays as it is.
+#   ScanImage (one dropdown):  Resource Configuration → your imaging system →
+#                      Triggers tab → "Aux trigger 1" = D2.0. Save. Ch2/Ch3 as before.
+#   What gets logged:  every TIFF frame's header (ImageDescription) gains
+#                      "Aux Trigger 1 = [t1 t2 …]" — the times (s, 8 ns resolution,
+#                      same FPGA clock as frameTimestamps_sec) of each frame
+#                      transfer that happened during that frame: ~5–6 per 18 ms
+#                      frame while the arena streams, [] while it is off.
+#   How epochs are marked:  the 2 s allOff between steps (the "iti" condition)
+#                      disarms the controller refresh timer and pushes a dark
+#                      frame, so the J3 pulses PAUSE for 2 s. In the header
+#                      record each duty step is a block of timestamps separated
+#                      by a gap; block order = the order in `experiment:` below.
+#   Read it back:      Python  ScanImageTiffReader(p).description(n)   or
+#                      MATLAB  scanimage.util.opentif(file) / imfinfo → ImageDescription.
+#                      Expect "Aux Trigger 1 = [ … ]" non-empty on frames during a
+#                      step, [] during iti/blank. All-[] = wrong port, or arena
+#                      DIO 1 not in out_debug_framescan (Studio raw hex 01 AD lists roles).
+#   Optional (only if a photodiode is at the rig):  photodiode → PCIe rear SMB
+#                      AI3 (= Channel 4, keep < 2 Vpp) → Channels window → Save.
+#                      The only way to tell a residual at low duty apart from SiPM
+#                      recovery after the in-gap flash.
+#   Not needed for this test:  line clock (same FPGA as the pixel clock → image
+#                      columns already ARE its phase; shape known from the scope),
+#                      frame clock, AO marker, Data Recorder .h5. Full version:
+#                      docs/development/2p-scanimage-signal-logging.md. The
+#                      setAnalogOut steps below are harmless if unrecorded.
 #   Ch3 is NOT a display sync; it is the leak signal you are measuring.
 #
 # Notes
