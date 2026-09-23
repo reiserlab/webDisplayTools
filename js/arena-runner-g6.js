@@ -1292,10 +1292,26 @@ var ArenaRunnerG6 = (function () {
             // Deterministic start state: the baseline level (dark when 0). Prime
             // the activator with it so the first applied frame on the baseline
             // doesn't repeat the send.
-            const baseMv = ledPercentToMv(act.levelAt(null));
+            const baseLevel = act.levelAt(null);
+            const baseMv = ledPercentToMv(baseLevel);
             act.prime(baseMv);
             this._ledSentMv = baseMv; // what is on the wire (drain skips a no-op re-send)
             this._sendLed(this._wire.encodeSetAoVoltage(baseMv));
+            // A lit baseline (baseline > 0, or a zone covering every frame — e.g. the
+            // course "uniform heat" baseline/probe trials) is the LED turning ON at
+            // trial start. Nothing later "changes", so without this event the scope's
+            // LED box and the run log would never show the LED on at all (rig03,
+            // 2026-09-23). index null = not tied to an applied frame.
+            if (baseLevel > 0 && this._emit) {
+                this._emit({
+                    phase: 'led-activation',
+                    on: true,
+                    index: null,
+                    ledPercent: baseLevel,
+                    mv: baseMv,
+                    baseline: true
+                });
+            }
             // on() returns an unsubscribe fn.
             this._ledUnsub = this._bridge.on('applied', (index) => {
                 if (this._ledActivator !== act) return; // superseded — ignore late events
@@ -1408,7 +1424,23 @@ var ArenaRunnerG6 = (function () {
                 // LED OFF on teardown — the baseline is a per-trial level, not a
                 // between-trials one (the link serializes, so this lands after any
                 // in-flight level write).
-                this._sendLed(this._wire.encodeSetAoVoltage(ledPercentToMv(0)));
+                const offMv = ledPercentToMv(0);
+                const wasLit = this._ledSentMv !== undefined && this._ledSentMv !== offMv;
+                this._ledSentMv = offMv;
+                this._sendLed(this._wire.encodeSetAoVoltage(offMv));
+                // If the LED was lit when the trial ended, say so: the scope closes its
+                // LED box here and the run log gets the OFF edge (otherwise a trial that
+                // ends inside a zone leaves the box open into the next trial).
+                if (wasLit && this._emit) {
+                    this._emit({
+                        phase: 'led-activation',
+                        on: false,
+                        index: null,
+                        ledPercent: 0,
+                        mv: offMv,
+                        teardown: true
+                    });
+                }
             }
         }
         _sendLed(bytes) {

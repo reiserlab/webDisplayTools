@@ -4,6 +4,18 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.87 (2026-09-23) · The scope shows a trial whose LED is on from the first frame
+
+- **Lit-baseline trials now emit their LED events.** A `led_activation` whose zone covers every frame
+  (the course "uniform heat" baseline/probe trials, `level: 3, on_ranges: [[0, 199]]`) or whose
+  `baseline` is above 0 lit the LED at trial start but never emitted a `led-activation` event, because
+  nothing "changed" on any later frame — so the scope drew no pink LED box and the run log (and the
+  dashboard's LED trace) read the whole trial as LED off (rig03, 2026-09-23, `2zo017ag`). The runner
+  now emits `on: true` (`baseline: true`, no frame index) when a trial starts lit, and `on: false`
+  (`teardown: true`) when a trial ends with the LED lit, so the box also closes at the trial boundary
+  instead of bleeding into the next trial. Dark starts and dark teardowns stay silent. Readers already
+  tolerate the null index (`run-log.js`, `arena-studio-alt.js`, dashboard `analysis-core.js`).
+
 ## v0.86 (2026-09-22) · LED activation: graded zones with linear ramps replace hysteresis
 
 - **Why:** the closed-loop LED (`led_activation` on a Mode-3 `trialParams`) could only be

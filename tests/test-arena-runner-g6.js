@@ -1118,13 +1118,77 @@ async function main() {
             h.runner._clearLedActivator();
             const afterClear = h.ao().length;
             check('teardown sends a final OFF', afterClear, 5);
+            // The LED was ON (@60) when torn down → teardown emits the OFF edge, so the
+            // scope's LED box closes at trial end instead of bleeding into the next trial.
+            const tearEv = h.events.filter((e) => e.phase === 'led-activation');
+            check('teardown of a lit LED emits one OFF event', tearEv.length, 4);
+            check(
+                'teardown event: off, teardown flag, no frame',
+                JSON.stringify([tearEv[3].on, tearEv[3].teardown, tearEv[3].index]),
+                '[false,true,null]'
+            );
             h.bridge.emit('applied', 60); // superseded — must NOT send or emit
             await tick();
             check('no AO after teardown', h.ao().length, afterClear);
             check(
                 'no events after teardown',
                 h.events.filter((e) => e.phase === 'led-activation').length,
-                3
+                4
+            );
+        }
+        {
+            // THE rig03 2026-09-23 bug: a zone covering EVERY frame (course "uniform
+            // heat" baseline/probe: level 3, on_ranges [[0,199]]) lights the LED at
+            // install, nothing ever "changes", and no event was emitted — the scope
+            // showed no LED box and the run log had no ON edge for the whole trial.
+            const h = mkHarness();
+            h.runner._installLedActivator(
+                Runner.normalizeLedActivation({ level: 3, on_ranges: [[0, 199]] }),
+                200
+            );
+            checkBytes(
+                'all-frames zone: install sends 3 % (lit baseline)',
+                h.sent[0],
+                Array.from(Wire.encodeSetAoVoltage(Runner.ledPercentToMv(3)))
+                    .map((b) => b.toString(16).padStart(2, '0'))
+                    .join(' ')
+            );
+            let ev = h.events.filter((e) => e.phase === 'led-activation');
+            check('all-frames zone: install emits ONE on-event', ev.length, 1);
+            check(
+                'install event: on, baseline flag, 3 %, no frame',
+                JSON.stringify([ev[0].on, ev[0].baseline, ev[0].ledPercent, ev[0].index]),
+                '[true,true,3,null]'
+            );
+            for (const i of [0, 57, 108, 199]) {
+                h.bridge.emit('applied', i);
+                await tick();
+            }
+            check('frames inside the zone: no extra sends', h.ao().length, 1);
+            check(
+                'frames inside the zone: no extra events',
+                h.events.filter((e) => e.phase === 'led-activation').length,
+                1
+            );
+            h.runner._clearLedActivator();
+            ev = h.events.filter((e) => e.phase === 'led-activation');
+            check('teardown emits the OFF edge', ev.length, 2);
+            check('teardown event is off', ev[1].on, false);
+        }
+        {
+            // Dark baseline + teardown while dark: no spurious events either way.
+            const h = mkHarness();
+            h.runner._installLedActivator(
+                Runner.normalizeLedActivation({ level: 20, on_ranges: [[50, 100]] }),
+                200
+            );
+            h.bridge.emit('applied', 10); // dark
+            await tick();
+            h.runner._clearLedActivator();
+            check(
+                'dark install + dark teardown: zero events',
+                h.events.filter((e) => e.phase === 'led-activation').length,
+                0
             );
         }
         {
@@ -1258,7 +1322,21 @@ async function main() {
             h.bridge.emit('applied', 10); // on the baseline → primed, no send
             await tick();
             check('baseline frame: no send', h.ao().length, 1);
+            check(
+                'lit baseline: install emitted on @ 2 %',
+                JSON.stringify(
+                    h.events
+                        .filter((e) => e.phase === 'led-activation')
+                        .map((e) => [e.on, e.ledPercent, e.baseline === true])
+                ),
+                '[[true,2,true]]'
+            );
             h.runner._clearLedActivator();
+            check(
+                'lit baseline: teardown emitted off',
+                h.events.filter((e) => e.phase === 'led-activation').pop().on,
+                false
+            );
             checkBytes(
                 'teardown sends OFF (not baseline)',
                 h.sent[h.sent.length - 1],
