@@ -47,6 +47,11 @@
       "key": "g6_2x10_2p_duty_sweep",
       "label": "2P line-sync duty sweep — G6 2×10 on the Bergamo (~62 s, 2 s allOff between steps)",
       "path": "./protocols/g6_2x10_2p_duty_sweep.yaml"
+    },
+    {
+      "key": "g6_2x10_2p_diagnostics",
+      "label": "2P line-sync diagnostics — full-field brightness ramp/steps, 1 Hz flash, 10 % sparse, 6 s all-off (~52 s; upload its _patterns folder first)",
+      "path": "./protocols/g6_2x10_2p_diagnostics.yaml"
     }
   ]
 }

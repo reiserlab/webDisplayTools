@@ -92,6 +92,26 @@ timing source for this test).
    TIFF; it is the record of which duty ran when, and of the panel-mode / DIO-role commands.
 4. If time allows, roll back (§ 6) and run the same protocol again on the old firmware.
 
+### 4b. The diagnostic runs of the week of 23 Sept (before the Thorlabs email)
+
+Run order, all unidirectional, fill 0.9, Ch2 + Ch3, one Grab per run (plan and predictions:
+`Bergamo_testing/092226_SNR/analysis/PLAN_rig_tests_before_thorlabs_email.md`):
+
+1. **Objective capped**, the duty sweep above, unchanged. Decides optical vs electrical.
+2. **SiPM bias series**: the sweep at the current gain setting, then at two lower gain settings on both
+   modules. Write down what the control is (voltage or gain number) and its value for each file.
+3. **Brightness diagnostics**: protocol **"2P line-sync diagnostics — full-field brightness ramp/steps,
+   1 Hz flash, 10 % sparse, 6 s all-off"** (~52 s, duty 128 throughout except the last flash at 255).
+   It needs four new patterns on the SD card, once: **⛭ Console → Patterns → Add ▾ → From course repo…**
+   → the protocol's folder `g6_2x10_2p_diagnostics_patterns` (four small GS16 files; keep the four
+   existing patterns). The run view's pattern preflight must show all four resolved before you press
+   ▶ Test experiment.
+4. **Arena covered** (cloth over the LEDs, or emitters unplugged) with the panels running, objective
+   uncapped: the duty sweep again. Panel electrical pickup on its own.
+
+Duty 255 stays in these diagnostic protocols on purpose (it is the anomaly under study); for experiments
+keep duty ≤ ~190 in every scan mode.
+
 ## 5. What to expect / what would mean trouble
 
 - Expected: no pedestal in the imaged part of the line at any duty; no 300 Hz line in Ch3. Edge

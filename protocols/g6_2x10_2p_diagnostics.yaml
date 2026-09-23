@@ -1,0 +1,213 @@
+version: 3
+
+# ============================================================================
+# 2P line-sync DIAGNOSTICS — G6 2x10 arena on the Bergamo (Sept 2026). ≈ 52 s.
+#
+# Companion to g6_2x10_2p_duty_sweep.yaml. Same wiring and ScanImage setup
+# (panel mode 2, DIO 1 = out_debug_framescan → Aux trigger 1 on a free D2.x,
+# DIO 2 = in_trigger ← line clock; see the sweep file's header). The SWEEP is
+# re-run unchanged for the hardware-only controls (objective capped, arena
+# covered, SiPM bias series). THIS file varies the pattern CONTENT at a fixed
+# duty, which the sweep cannot do:
+#
+#   The residual offset in the SiPM channels is expected to follow the TOTAL
+#   light the display emits. Full-field GS16 patterns make that a clean test:
+#   ramp_128   grey level 0→15 in 16 steps of 0.5 s (ascending)      → offset vs emitted light, one trial
+#   steps_128  the same 16 levels in a fixed pseudo-random order      → same, immune to slow drift
+#   flash_128  full field 0/15 square wave at 1 Hz                    → the stimulus-locked offset step and its
+#                                                                        build-up/decay kinetics, 8 repeats to average
+#   sparse_128 10 % of the LEDs at full, static                       → is 10 % of LEDs at full the same as all LEDs
+#                                                                        at ~10 % (ramp level 1–2)? per-LED vs total light
+#   flash_255  the 1 Hz flash at duty 255                              → does the duty-255 anomaly (Ch3) follow lit
+#                                                                        fraction / on-time; followed by 6 s all-off
+#                                                                        so the suspected slow tail can be followed
+#                                                                        to zero with margin
+#
+# Patterns: protocols/g6_2x10_2p_diagnostics_patterns/ (built by
+# scripts/make-2p-diagnostic-patterns.js; README.txt lists the per-frame mean
+# level of each). Upload the folder once from Arena Studio: Console → Patterns →
+# Add ▾ → From course repo… → this protocol's folder. The Studio resolves patterns
+# by NAME; the pattern_ID numbers below are only the fallback (alphabetical SD
+# index after the four existing patterns) and the run-view preflight will flag
+# a mismatch. Keep the four existing patterns on the card.
+#
+# Epochs in the TIFF header (auxTrigger0 blocks separated by the allOff gaps), in
+# order: ramp_128, steps_128, flash_128, sparse_128, flash_255, then 6 s off.
+# Within ramp/steps, level k occupies [t0 + 0.5 k, t0 + 0.5 (k+1)) s of the block
+# (frame_rate 2). Within flash, frames alternate 0.5 s dark / 0.5 s full.
+# Analysis: check_aux_triggers.py prints the blocks; compare the core mean per
+# level with the display-off frames of the same file (see quick_checks_review.py
+# for the local-reference and frame-block-SE approach).
+#
+# ALIGNMENT of the level changes inside a block. Three marks are available:
+#   1. The aux-trigger block start (first J3 pulse of the block) + k × 0.5 s.
+#      The controller steps frames on its own clock (frame_rate 2), so this is
+#      good to a few ms (host start jitter) — enough for 0.5 s levels.
+#   2. Ch3 itself (ungated, red-channel detector): it sees the LED light of every
+#      row flash, so each level change is a step in the Ch3 row mean at the exact
+#      line where the new frame was applied (126 µs resolution). Use this for the
+#      flash kinetics — it is the cleanest mark and needs no extra wiring.
+#   3. The setAnalogOut markers below (0.5–2.5 V per condition, arena J27). Only
+#      recorded if the vDAQ Data Recorder logs an AI (docs/development/
+#      2p-scanimage-signal-logging.md § 2c); host-timed like (1), so they add a
+#      cross-check, not precision. A frame-locked AO ("frame_number" role) is not
+#      validated on this controller yet — do not rely on it.
+# ============================================================================
+
+experiment_info:
+  name: "2P line-sync diagnostics: brightness steps, flash, sparse (G6 2x10)"
+  author: "mreiser"
+  date_created: "2026-09-23"
+
+rig: "./configs/rigs/cshl_g6_2x10.yaml"
+
+plugins: []
+
+variables:
+  - &ramp_pattern "G6_2x10_ff_ramp16"          # 16 frames, full field, level = frame index
+  - &ramp_id 6
+  - &steps_pattern "G6_2x10_ff_steps_pr16"     # 16 frames, full field, levels in pseudo-random order
+  - &steps_id 7
+  - &flash_pattern "G6_2x10_ff_flash_0_15"     # 2 frames: full field dark / full
+  - &flash_id 5
+  - &sparse_pattern "G6_2x10_sparse10"         # 1 frame: 10 % of LEDs at 15
+  - &sparse_id 8
+  - &level_hz 2            # frames/s: 0.5 s per grey level; 16 levels → 8 s; flash → 1 Hz
+  - &pre_dur 3
+  - &ramp_dur 8            # = 16 levels / level_hz: exactly one pass
+  - &flash_dur 8           # 8 flashes at 1 Hz
+  - &sparse_dur 5
+  - &flash255_dur 6
+  - &iti_dur 2             # allOff between steps: pauses the J3 pulses → epoch marker
+  - &long_off 6            # allOff after the last step: slow-tail test
+  - &duty_50 128
+  - &duty_100 255          # diagnostics only; experiments stay ≤ ~190
+
+experiment:
+  - "pre_blank"
+  - name: "diagnostics"
+    trials: ["ramp_128", "steps_128", "flash_128", "sparse_128", "flash_255"]
+    repetitions: 1
+    intertrial: "iti"
+  - "post_blank"
+
+conditions:
+  - name: "pre_blank"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 0
+      - type: "wait"
+        duration: *pre_dur
+
+  - name: "ramp_128"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 500
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *ramp_pattern
+        pattern_ID: *ramp_id
+        duration: *ramp_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *level_hz
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *ramp_dur
+
+  - name: "steps_128"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 1000
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *steps_pattern
+        pattern_ID: *steps_id
+        duration: *ramp_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *level_hz
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *ramp_dur
+
+  - name: "flash_128"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 1500
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *flash_pattern
+        pattern_ID: *flash_id
+        duration: *flash_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *level_hz
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *flash_dur
+
+  # static: frame_rate 0 holds frame 0 (the sparse frame)
+  - name: "sparse_128"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 2000
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *sparse_pattern
+        pattern_ID: *sparse_id
+        duration: *sparse_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *sparse_dur
+
+  - name: "flash_255"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 2500
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *flash_pattern
+        pattern_ID: *flash_id
+        duration: *flash255_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *level_hz
+        gain: 0
+        duty: *duty_100
+      - type: "wait"
+        duration: *flash255_dur
+
+  # Between steps: display dark AND controller refresh stopped (J3 pulses pause).
+  - name: "iti"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *iti_dur
+
+  # The long all-off after flash_255: recovery / slow-tail measurement. End with allOff, not stopDisplay.
+  - name: "post_blank"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 0
+      - type: "wait"
+        duration: *long_off
