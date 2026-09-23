@@ -75,10 +75,21 @@ not a sync signal.
 
 ## 4. Run
 
-Studio → **Open protocol** → **Open from Library…** → **"2P line-sync duty sweep — G6 2×10 on the Bergamo"** (~62 s):
-blank · duty 25 · 64 · 128 · 191 · 255 (rotating) · duty 128 static · blank, with a 2 s allOff between steps. Start the ScanImage
-acquisition first, then Run. Save the Studio run log (it holds every command with its timestamp and
-the telemetry rows). If time allows, roll back (§ 6) and run the same file on the old firmware.
+The Bergamo PC has **no bridge process** (the `pixi run bridge` logger the course rigs use), and none is
+needed: use the **blue ▶ Test experiment** button, not the green ▶ Run experiment. The green button is
+gated on the bridge and will refuse with "Bridge not connected". Test experiment runs the whole sequence
+on the arena exactly the same way; the only differences are that nothing is auto-committed to the course
+repo and the controller telemetry ring is not drained (not needed — the TIFF aux-trigger record is the
+timing source for this test).
+
+1. Studio → **Open protocol** → **Open from Library…** → **"2P line-sync duty sweep — G6 2×10 on the
+   Bergamo"** (~62 s: blank · duty 25 · 64 · 128 · 191 · 255 (rotating) · duty 128 static · blank, with a
+   2 s allOff between steps).
+2. Start the ScanImage **Grab** first, then **▶ Test experiment**.
+3. When it finishes, click **⬇ Save** in the log strip — it downloads the browser run log (`.json` +
+   `.txt`: every condition and command with host timestamps and controller replies). Keep it next to the
+   TIFF; it is the record of which duty ran when, and of the panel-mode / DIO-role commands.
+4. If time allows, roll back (§ 6) and run the same protocol again on the old firmware.
 
 ## 5. What to expect / what would mean trouble
 
