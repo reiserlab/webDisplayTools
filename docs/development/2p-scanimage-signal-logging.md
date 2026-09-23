@@ -9,8 +9,9 @@ Nothing here triggers ScanImage; you start the Grab by hand. Aux triggers only s
 you are already acquiring.
 
 1. **One cable:** arena **J3** (Digital IO 1 = `out_debug_framescan`, a ~0.7 ms pulse per 300 Hz frame
-   transfer) → vDAQ breakout **`D2.0`**.
-2. **One dropdown:** Resource Configuration → imaging system → **Triggers** tab → **Aux trigger 1** = `D2.0`.
+   transfer) → a **FREE** vDAQ breakout digital input (Bergamo: **`D2.1`**), on its own cable. **Use a FREE digital input.** The resonant scanner sync already occupies one `D2.x` port (on the Bergamo it is `D2.0`) and the acquisition triggers may occupy others — check the Resource Configuration. Never T the arena signal into an existing cable: on 2026-09-23 J3 spliced into the sync cable clamped the sync during every frame transfer, ScanImage lost period lock, and no frames were formed while the display was on.
+2. **One dropdown:** Resource Configuration → imaging system → **Triggers** tab → **Aux trigger 1** = that port
+   (`D2.1`). GUI "Aux trigger 1" lands in header key `auxTrigger0`.
 3. **Protocol:** `g6_2x10_2p_duty_sweep.yaml` already has a 2 s `allOff` between steps. `allOff` disarms
    the controller's refresh timer, so the J3 pulses stop, and each duty epoch is a block of ~5.5
    timestamps per frame in `Aux Trigger 1` separated by a ~2 s gap. Epoch order = protocol order.
@@ -51,10 +52,11 @@ Input high ≥ 2.0–2.3 V, so the arena's 5 V outputs and a 3.3 V line clock bo
 
 ### 2b. Aux triggers → TIFF header
 
-1. Same **Triggers** tab → **Aux trigger 1** → pick an input line, e.g. `D2.0`; **Aux trigger 2** → `D2.1`.
+1. Same **Triggers** tab → **Aux trigger 1** → pick a FREE input line (Bergamo: `D2.1`; `D2.0` carries the
+   resonant sync); **Aux trigger 2** → another free line (`D2.2`).
    ([Auxiliary Trigger](https://docs.scanimage.org/Concepts/Triggers/Auxiliary+Trigger.html))
 2. Wire **arena J3** (Digital IO 1 = `out_debug_framescan`, one ~0.7 ms HIGH pulse per SPI frame transfer,
-   300 Hz) → `D2.0`. Optionally the **frame clock** (D3.1 → T → `D2.1`) so every TIFF frame also carries its
+   300 Hz) → `D2.1` on its own cable. Optionally the **frame clock** (D3.1 → T → `D2.2`) so every TIFF frame also carries its
    own clock edge, which lets you align the HDF5 recording to the TIFF (§ 3).
 3. Constraints from the docs page: resonant scanning only (the Bergamo is); **mutually exclusive with
    I2C recording and photon counting**; hard limit 1000 timestamps per frame, **keep it to ~10** — the
@@ -113,8 +115,8 @@ Input high ≥ 2.0–2.3 V, so the arena's 5 V outputs and a 3.3 V line clock bo
 | Signal | Source | vDAQ input | Route |
 |---|---|---|---|
 | Line clock | D3.0 (Line clock out) | → arena J4, and AI0 | Data Recorder |
-| Frame clock | D3.1 (Frame clock out) | D2.1 and AI3 | aux trigger 2 + Data Recorder |
-| Frame-transfer envelope | arena J3 (DIO 1) | D2.0 and AI2 | aux trigger 1 + Data Recorder |
+| Frame clock | D3.1 (Frame clock out) | D2.2 and AI3 | aux trigger 2 + Data Recorder |
+| Frame-transfer envelope | arena J3 (DIO 1) | D2.1 and AI2 | aux trigger 1 + Data Recorder |
 | Condition marker | arena J27 (AO) | AI1 | Data Recorder |
 | Photodiode | amplifier | AI4, and SMB AI3 (Ch4) | Data Recorder + image channel |
 | Leak (what you measure) | SiPM | Ch2 (gated), Ch3 (ungated) | TIFF |

@@ -31,10 +31,14 @@ version: 3
 #
 #   Wiring (one BNC):  arena J3 ("Digital IO 1 (5V)", role out_debug_framescan,
 #                      a ~0.7 ms 5 V pulse per SPI frame transfer, 300 Hz)
-#                      → vDAQ breakout digital input D2.0.
-#                      The line-clock cable into arena J4 stays as it is.
+#                      → a FREE vDAQ breakout digital input on its OWN cable
+#                      (Bergamo: D2.1 — D2.0 carries the resonant scanner sync;
+#                      never T into an existing cable: a J3 splice into the sync
+#                      on 2026-09-23 stopped frame formation whenever the display
+#                      was on). The line-clock cable into arena J4 stays as it is.
 #   ScanImage (one dropdown):  Resource Configuration → your imaging system →
-#                      Triggers tab → "Aux trigger 1" = D2.0. Save. Ch2/Ch3 as before.
+#                      Triggers tab → "Aux trigger 1" = that port (D2.1). Save.
+#                      Ch2/Ch3 as before. GUI "Aux trigger 1" = header auxTrigger0.
 #   What gets logged:  every TIFF frame's header (ImageDescription) gains
 #                      "Aux Trigger 1 = [t1 t2 …]" — the times (s, 8 ns resolution,
 #                      same FPGA clock as frameTimestamps_sec) of each frame

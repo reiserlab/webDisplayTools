@@ -62,7 +62,8 @@ path are unchanged.
 
 Record in ScanImage (vDAQ) alongside Ch2 / Ch3 — **minimal version, everything in the TIFF**:
 
-- **Arena J3 → vDAQ `D2.0`**, and on the imaging system's **Triggers** tab set **Aux trigger 1 = `D2.0`**.
+- **Arena J3 → a FREE vDAQ `D2.x` input on its own cable** (Bergamo: `D2.1`; `D2.0` is the resonant
+  sync), and on the imaging system's **Triggers** tab set **Aux trigger 1** to that port. **Use a FREE digital input.** The resonant scanner sync already occupies one `D2.x` port (on the Bergamo it is `D2.0`) and the acquisition triggers may occupy others — check the Resource Configuration. Never T the arena signal into an existing cable: on 2026-09-23 J3 spliced into the sync cable clamped the sync during every frame transfer, ScanImage lost period lock, and no frames were formed while the display was on.
   That puts the 300 Hz frame-transfer times into every frame header. The protocol's 2 s `allOff` between
   steps stops those pulses, so each duty epoch shows up as a block of timestamps with gaps between.
 - **Optional:** photodiode on one panel → rear SMB **AI3 = Channel 4** (keep it under 2 Vpp), Channels
