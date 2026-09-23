@@ -90,6 +90,23 @@
         "sha256": "784857cb8026e0f2335e1c595dbb9411d623425d0cb92830e5ea75d1da588e6e"
       },
       "default": false
+    },
+    {
+      "rev": "v0.3.1",
+      "variant": "production",
+      "env": "pico_v031_eintlow_2p",
+      "label": "v0.3.1 \u2014 BETA 2P line-sync: active-low EINT + 1 \u00b5s BCM base + free-running Triggered (9014b5b + branch claude/display-timing-sync-protocol, footer 2p-9014b5bb-d, bench-UNTESTED 2026-09-23) \u2014 imaging rigs only; roll back = Active-low EINT (9014b5b)",
+      "usb_product": "G6 Panel v0.3",
+      "uf2": {
+        "file": "g6-panel-v0.3.1-BETA-eintlow-2p-9014b5b.uf2",
+        "sha256": "79facba35bea5150406a5506b404a0f904ed53ffb4a5ddcfd10e4e53423f7854"
+      },
+      "bin": {
+        "file": "g6-panel-v0.3.1-isp-BETA-eintlow-2p-9014b5b.bin",
+        "sha256": "8d0d7e791d2054968aa3e5c7b5fecb81a197f4514063899c2184deada14c7ad8"
+      },
+      "default": false,
+      "beta": true
     }
   ]
 }

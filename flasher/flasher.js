@@ -322,6 +322,30 @@ const LOCAL_BUILDS = [
         usb_product: 'G6 Panel v0.2',
         local: true,
         default: false
+    },
+    // BETA 2P line-sync build (panel repo branch claude/display-timing-sync-protocol
+    // on 9014b5b, env pico_v031_eintlow_2p, ISP footer "2p-9014b5bb-d"). Same
+    // SPI ingest as production, so `variant: 'production'`; the `caution` text
+    // below replaces the generic "no SPI ingest" note. Bench-UNTESTED as of
+    // 2026-09-23 — for resonant-scanning imaging rigs only.
+    {
+        rev: 'v0.3.1',
+        variant: 'production',
+        beta: true,
+        section: 'BETA builds (2P line-sync — bench-untested)',
+        label: 'v0.3.1 BETA 2P line-sync: active-low EINT + 1 µs BCM base + free-running Triggered (9014b5b+)',
+        file: 'firmware/g6-panel-v0.3.1-BETA-eintlow-2p-9014b5b.uf2',
+        usb_product: 'G6 Panel v0.3',
+        local: true,
+        default: false,
+        caution:
+            'BETA — not bench-tested. For two-photon imaging rigs feeding the ScanImage line clock to ' +
+            'the arena BNC J4 (active-low). Differences from production: (1) brightness at a given duty ' +
+            'is ⅓ (BCM base 1 µs, so a full-duty row is ~15 µs and fits an ~18 µs turnaround gap); ' +
+            '(2) panel display mode 2 (Triggered) free-runs — one row per line-clock edge forever — so ' +
+            '<em>stopDisplay does not blank; use allOff</em>; (3) panels are dark whenever the line clock is ' +
+            'absent; (4) use Gray_16 patterns (300 Hz refresh), never Gray_2 at 1000 Hz. Roll back with ' +
+            '“Active-low EINT trigger (9014b5b)”. Do not flash behaviour-rig panels with this build.'
     }
 ];
 
@@ -419,7 +443,12 @@ function onBuildChange() {
     const b = chosenFile ? firmware.byFile[chosenFile] : null;
     $('flash-btn').disabled = !b;
     const note = $('build-note');
-    if (b && b.variant && b.variant !== 'production') {
+    if (b && b.caution) {
+        // Build-specific caution (beta / imaging-only builds) takes precedence
+        // over the generic non-production note below.
+        note.hidden = false;
+        note.innerHTML = `<strong>${b.label}</strong>: ${b.caution}`;
+    } else if (b && b.variant && b.variant !== 'production') {
         note.hidden = false;
         note.innerHTML =
             `<strong>${b.label || b.variant}</strong> is a bench / bring-up build: it runs a ` +

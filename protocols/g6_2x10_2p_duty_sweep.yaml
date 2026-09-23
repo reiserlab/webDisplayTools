@@ -1,0 +1,211 @@
+version: 3
+
+# ============================================================================
+# 2P line-sync duty sweep — G6 2x10 arena on the Bergamo (Sept 2026).
+#
+# Purpose: quantify display-light leak into the SiPM channels as a function of
+# panel duty_cycle, with unambiguous timing marks recorded by ScanImage.
+# Replaces the hand-driven 22 Sept 2026 run (HANDOVER_300Hz_display_leak.md).
+# Total ≈ 56 s. Any pattern works; the default is the built-in 200-frame GS16
+# rotation so the arena is visibly running. Swap `pattern`/`pattern_ID` for the
+# dark-bar pattern if it is on the card (keep it Gray_16 — see note 3).
+#
+# BEFORE PRESSING RUN (Arena Studio, once per connection — not YAML-able):
+#   1. Controller ▾ → panel display mode = 2 (Triggered).  Wire: 02 1B 02
+#      NOT 3 (Gated): Gated restarts at row 0 on every gate drop and only the
+#      top rows of each panel ever light with a line-clock gate.
+#   2. Digital IO 1 role = out_debug_framescan.            Wire: 03 AC 01 03
+#      DO1 (BNC J3) is then HIGH for the duration of every SPI frame transfer
+#      (one ~0.7 ms pulse per controller refresh tick). Record it in ScanImage.
+#      Digital IO 2 (J4) stays in_trigger — it IS the line-clock → EINT route.
+#   3. Refresh rate (Debug ▾, unlock): 300 Hz for GS16 is the default. Do NOT
+#      run a Gray_2 pattern without setting refresh ≤ 300 (GS2 default is
+#      1000 Hz; every re-streamed frame costs the panel ~1–2 line edges).
+#   4. Telemetry ring: on (default) — cc/cf/cs rows land in the run log.
+#
+# WHAT TO RECORD IN SCANIMAGE (vDAQ), besides Ch2/Ch3:
+#   • DO1 frame-transfer envelope   → a digital input or a spare AI channel
+#   • the line clock itself         → loop back into a DI/AI (phase reference)
+#   • AO (BNC J27)                  → an AI channel: the condition marker below
+#     steps 0 → 0.5 → 1.0 → … V, one level per condition, so epoch boundaries
+#     come from the recording, not from frame-number guesses.
+#   Ch3 is NOT a display sync; it is the leak signal you are measuring.
+#
+# Notes
+#   1. duty: 0 in trialParams means "pattern's stored duty", NOT off. Off is allOff.
+#   2. duty values 25/64/128/191/255 ≈ 10/25/50/75/100 % of 255, 8 s each.
+#      With the 2P panel firmware (BCM base 1 µs) a duty-255 row is ~15 µs,
+#      so EVERY step fits inside the ~18 µs line-clock LOW gap and the sweep
+#      maps the usable brightness range end to end (255 is the tight-margin
+#      case). With the 9014b5b firmware (3 µs base) steps above duty ~85
+#      overrun into the imaged part of the line — the same sweep run on both
+#      firmwares is the comparison.
+#   3. GS16 pattern → 300 Hz refresh. frame2_h_ccw_200f and grating_sine are
+#      GS16; all_on and grating_sq are GS2.
+#   4. End with allOff, not stopDisplay: in the free-running Triggered firmware
+#      a stopped controller leaves the last frame lit, one row per line.
+# ============================================================================
+
+experiment_info:
+  name: "2P line-sync duty sweep (G6 2x10)"
+  author: "mreiser"
+  date_created: "2026-09-22"
+
+rig: "./configs/rigs/cshl_g6_2x10.yaml"
+
+plugins: []
+
+variables:
+  - &pattern_name "frame2_h_ccw_200f"
+  - &pattern_id 4
+  - &rotate_hz 20          # frames/s; 200-frame pattern → one revolution per 10 s
+  - &blank_dur 4
+  - &step_dur 8
+  - &duty_10 25
+  - &duty_25 64
+  - &duty_50 128
+  - &duty_75 191
+  - &duty_100 255          # ~15 µs row on the 2P firmware: tight-margin case; overruns on 9014b5b
+
+experiment:
+  - "pre_blank"
+  - "duty_10"
+  - "duty_25"
+  - "duty_50"
+  - "duty_75"
+  - "duty_100"
+  - "static_50"
+  - "post_blank"
+
+conditions:
+  # Display dark, AO marker 0 V. Baseline for the SiPM channels.
+  - name: "pre_blank"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 0
+      - type: "wait"
+        duration: *blank_dur
+
+  - name: "duty_10"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 500
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *rotate_hz
+        gain: 0
+        duty: *duty_10
+      - type: "wait"
+        duration: *step_dur
+
+  - name: "duty_25"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 1000
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *rotate_hz
+        gain: 0
+        duty: *duty_25
+      - type: "wait"
+        duration: *step_dur
+
+  - name: "duty_50"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 1500
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *rotate_hz
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *step_dur
+
+  - name: "duty_75"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 2000
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *rotate_hz
+        gain: 0
+        duty: *duty_75
+      - type: "wait"
+        duration: *step_dur
+
+  - name: "duty_100"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 2500
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *rotate_hz
+        gain: 0
+        duty: *duty_100
+      - type: "wait"
+        duration: *step_dur
+
+  # Same pattern and duty as duty_50 but frame_rate 0 (static frame). The
+  # controller still re-streams at the refresh rate, so any difference from
+  # duty_50 isolates pattern-content change from re-streaming.
+  - name: "static_50"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 3000
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *step_dur
+
+  - name: "post_blank"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 0
+      - type: "wait"
+        duration: *blank_dur

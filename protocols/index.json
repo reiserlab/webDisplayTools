@@ -42,6 +42,11 @@
       "key": "full_experiment",
       "label": "Full experiment (blocks, plugins, ITI)",
       "path": "./protocols/full_experiment.yaml"
+    },
+    {
+      "key": "g6_2x10_2p_duty_sweep",
+      "label": "2P line-sync duty sweep — G6 2×10 on the Bergamo (~56 s, AO condition marker)",
+      "path": "./protocols/g6_2x10_2p_duty_sweep.yaml"
     }
   ]
 }
