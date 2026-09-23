@@ -13,6 +13,7 @@ push of an image already in the Studio's catalog (§ 6).
 | Panel firmware `.bin` (ISP image) | https://raw.githubusercontent.com/reiserlab/webDisplayTools/claude/2p-line-sync-beta/flasher/firmware/g6-panel-v0.3.1-isp-BETA-eintlow-2p-9014b5b.bin |
 | Protocol YAML | https://raw.githubusercontent.com/reiserlab/webDisplayTools/claude/2p-line-sync-beta/protocols/g6_2x10_2p_duty_sweep.yaml |
 | This checklist | https://github.com/reiserlab/webDisplayTools/blob/claude/2p-line-sync-beta/docs/development/2p-line-sync-rig-checklist.md |
+| ScanImage signal-logging guide (aux triggers, Data Recorder, image channels) | https://github.com/reiserlab/webDisplayTools/blob/claude/2p-line-sync-beta/docs/development/2p-scanimage-signal-logging.md |
 | Background (why / what changed) | https://github.com/reiserlab/LED-Display_G6_Firmware_Panel/blob/claude/display-timing-sync-protocol-2d4f49/panel/bench/2p-line-sync-2026-09-22.md |
 
 Save the `.bin` and the `.yaml` to the rig PC (right-click → Save link as…). Check the `.bin` is
@@ -55,7 +56,9 @@ path are unchanged.
 | telemetry ring | on (default) | — |
 | pattern | `frame2_h_ccw_200f`, SD index 4 (built-in g6_2x10 set) — or any **Gray_16** pattern on the card | edit the two anchors at the top of the YAML |
 
-Record in ScanImage (vDAQ) alongside Ch2 / Ch3:
+Record in ScanImage (vDAQ) alongside Ch2 / Ch3 — **how to wire and configure each of these, and where
+the data ends up (TIFF header vs HDF5 vs image channel), is in
+[`2p-scanimage-signal-logging.md`](2p-scanimage-signal-logging.md)**:
 
 - **J3** — frame-transfer envelope, one ~0.7 ms pulse per 300 Hz controller refresh.
 - **The line clock**, looped back into a spare DI/AI — the phase reference for everything.
