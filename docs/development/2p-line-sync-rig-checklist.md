@@ -56,22 +56,23 @@ path are unchanged.
 | telemetry ring | on (default) | — |
 | pattern | `frame2_h_ccw_200f`, SD index 4 (built-in g6_2x10 set) — or any **Gray_16** pattern on the card | edit the two anchors at the top of the YAML |
 
-Record in ScanImage (vDAQ) alongside Ch2 / Ch3 — **how to wire and configure each of these, and where
-the data ends up (TIFF header vs HDF5 vs image channel), is in
-[`2p-scanimage-signal-logging.md`](2p-scanimage-signal-logging.md)**:
+Record in ScanImage (vDAQ) alongside Ch2 / Ch3 — **minimal version, everything in the TIFF**:
 
-- **J3** — frame-transfer envelope, one ~0.7 ms pulse per 300 Hz controller refresh.
-- **The line clock**, looped back into a spare DI/AI — the phase reference for everything.
-- **J27 (AO)** — the condition marker; the protocol steps it 0 / 0.5 / 1.0 / 1.5 / 2.0 / 2.5 / 3.0 / 0 V.
-- **Photodiode** on one panel into a spare AI if at all possible — it is the one signal that separates
-  "light present during the imaged line" from "detector tail after a flash in the gap".
+- **Arena J3 → vDAQ `D2.0`**, and on the imaging system's **Triggers** tab set **Aux trigger 1 = `D2.0`**.
+  That puts the 300 Hz frame-transfer times into every frame header. The protocol's 2 s `allOff` between
+  steps stops those pulses, so each duty epoch shows up as a block of timestamps with gaps between.
+- **Optional:** photodiode on one panel → rear SMB **AI3 = Channel 4** (keep it under 2 Vpp), Channels
+  window → Save. Only needed to separate real leak light from SiPM recovery at low duty.
+- Nothing triggers ScanImage: start the Grab by hand, then press Run.
 
-Ch3 is the leak you are measuring, not a sync signal.
+The full version (Data Recorder `.h5`, line/frame clock copies, AO marker) and the verification steps are
+in [`2p-scanimage-signal-logging.md`](2p-scanimage-signal-logging.md). Ch3 is the leak you are measuring,
+not a sync signal.
 
 ## 4. Run
 
-Studio → Open protocol → local `.yaml` → `g6_2x10_2p_duty_sweep.yaml` (~56 s):
-blank · duty 25 · 64 · 128 · 191 · 255 (rotating) · duty 128 static · blank. Start the ScanImage
+Studio → Open protocol → local `.yaml` → `g6_2x10_2p_duty_sweep.yaml` (~62 s):
+blank · duty 25 · 64 · 128 · 191 · 255 (rotating) · duty 128 static · blank, with a 2 s allOff between steps. Start the ScanImage
 acquisition first, then Run. Save the Studio run log (it holds every command with its timestamp and
 the telemetry rows). If time allows, roll back (§ 6) and run the same file on the old firmware.
 

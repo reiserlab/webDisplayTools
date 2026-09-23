@@ -6,7 +6,7 @@ version: 3
 # Purpose: quantify display-light leak into the SiPM channels as a function of
 # panel duty_cycle, with unambiguous timing marks recorded by ScanImage.
 # Replaces the hand-driven 22 Sept 2026 run (HANDOVER_300Hz_display_leak.md).
-# Total ≈ 56 s. Any pattern works; the default is the built-in 200-frame GS16
+# Total ≈ 62 s. Any pattern works; the default is the built-in 200-frame GS16
 # rotation so the arena is visibly running. Swap `pattern`/`pattern_ID` for the
 # dark-bar pattern if it is on the card (keep it Gray_16 — see note 3).
 #
@@ -23,12 +23,16 @@ version: 3
 #      1000 Hz; every re-streamed frame costs the panel ~1–2 line edges).
 #   4. Telemetry ring: on (default) — cc/cf/cs rows land in the run log.
 #
-# WHAT TO RECORD IN SCANIMAGE (vDAQ), besides Ch2/Ch3:
-#   • DO1 frame-transfer envelope   → a digital input or a spare AI channel
-#   • the line clock itself         → loop back into a DI/AI (phase reference)
-#   • AO (BNC J27)                  → an AI channel: the condition marker below
-#     steps 0 → 0.5 → 1.0 → … V, one level per condition, so epoch boundaries
-#     come from the recording, not from frame-number guesses.
+# WHAT TO RECORD IN SCANIMAGE (vDAQ) — minimal version, everything in the TIFF:
+#   • arena J3 (Digital IO 1 = frame-transfer pulse, 300 Hz) → vDAQ D2.0, and
+#     Triggers tab → Aux trigger 1 = D2.0. Timestamps land in every frame's
+#     header (auxTrigger0). The 2 s allOff between steps stops the pulses, so
+#     each duty epoch is a block of timestamps separated by a gap.
+#   • Ch2 / Ch3 as before. Optional: photodiode → rear SMB AI3 (Ch4, <2 Vpp).
+#   Nothing here triggers ScanImage; start the Grab by hand before Run.
+#   Full version (Data Recorder .h5, line/frame clock copies, AO marker on an
+#   AI): docs/development/2p-scanimage-signal-logging.md. The AO steps below
+#   are harmless if unrecorded.
 #   Ch3 is NOT a display sync; it is the leak signal you are measuring.
 #
 # Notes
@@ -60,7 +64,8 @@ variables:
   - &pattern_id 4
   - &rotate_hz 20          # frames/s; 200-frame pattern → one revolution per 10 s
   - &blank_dur 4
-  - &step_dur 8
+  - &step_dur 7
+  - &iti_dur 2             # allOff between steps: stops the 300 Hz re-stream → gap in the J3 aux-trigger record
   - &duty_10 25
   - &duty_25 64
   - &duty_50 128
@@ -69,12 +74,10 @@ variables:
 
 experiment:
   - "pre_blank"
-  - "duty_10"
-  - "duty_25"
-  - "duty_50"
-  - "duty_75"
-  - "duty_100"
-  - "static_50"
+  - name: "duty_sweep"
+    trials: ["duty_10", "duty_25", "duty_50", "duty_75", "duty_100", "static_50"]
+    repetitions: 1
+    intertrial: "iti"
   - "post_blank"
 
 conditions:
@@ -199,6 +202,15 @@ conditions:
         duty: *duty_50
       - type: "wait"
         duration: *step_dur
+
+  # Between steps: display dark AND controller refresh stopped, so the J3
+  # frame-transfer pulses pause — the epoch boundary marker in the TIFF header.
+  - name: "iti"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *iti_dur
 
   - name: "post_blank"
     commands:
