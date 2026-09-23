@@ -45,7 +45,7 @@
     },
     {
       "key": "g6_2x10_2p_duty_sweep",
-      "label": "2P line-sync duty sweep — G6 2×10 on the Bergamo (~56 s, AO condition marker)",
+      "label": "2P line-sync duty sweep — G6 2×10 on the Bergamo (~62 s, 2 s allOff between steps)",
       "path": "./protocols/g6_2x10_2p_duty_sweep.yaml"
     }
   ]
