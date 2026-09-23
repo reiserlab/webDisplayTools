@@ -1,0 +1,249 @@
+version: 3
+
+# ============================================================================
+# 2P line-sync duty sweep — G6 2x10 arena on the Bergamo (Sept 2026).
+#
+# Purpose: quantify display-light leak into the SiPM channels as a function of
+# panel duty_cycle, with unambiguous timing marks recorded by ScanImage.
+# Replaces the hand-driven 22 Sept 2026 run (HANDOVER_300Hz_display_leak.md).
+# Total ≈ 62 s. Any pattern works; the default is the built-in 200-frame GS16
+# rotation so the arena is visibly running. Swap `pattern`/`pattern_ID` for the
+# dark-bar pattern if it is on the card (keep it Gray_16 — see note 3).
+#
+# BEFORE PRESSING RUN (Arena Studio, once per connection — not YAML-able):
+#   1. Controller ▾ → panel display mode = 2 (Triggered).  Wire: 02 1B 02
+#      NOT 3 (Gated): Gated restarts at row 0 on every gate drop and only the
+#      top rows of each panel ever light with a line-clock gate.
+#   2. Digital IO 1 role = out_debug_framescan.            Wire: 03 AC 01 03
+#      DO1 (BNC J3) is then HIGH for the duration of every SPI frame transfer
+#      (one ~0.7 ms pulse per controller refresh tick). Record it in ScanImage.
+#      Digital IO 2 (J4) stays in_trigger — it IS the line-clock → EINT route.
+#   3. Refresh rate (Debug ▾, unlock): 300 Hz for GS16 is the default. Do NOT
+#      run a Gray_2 pattern without setting refresh ≤ 300 (GS2 default is
+#      1000 Hz; every re-streamed frame costs the panel ~1–2 line edges).
+#   4. Telemetry ring: on (default) — cc/cf/cs rows land in the run log.
+#
+# WHAT TO RECORD IN SCANIMAGE (vDAQ) — MINIMAL VERSION, everything lands in the TIFF
+#
+#   We only STORE data. Nothing here triggers ScanImage: start the Grab by hand,
+#   then press Run. The aux trigger below does not start/stop/gate anything —
+#   it writes edge timestamps into frames you are already saving.
+#
+#   Wiring (one BNC):  arena J3 ("Digital IO 1 (5V)", role out_debug_framescan,
+#                      a ~0.7 ms 5 V pulse per SPI frame transfer, 300 Hz)
+#                      → vDAQ breakout digital input D2.0.
+#                      The line-clock cable into arena J4 stays as it is.
+#   ScanImage (one dropdown):  Resource Configuration → your imaging system →
+#                      Triggers tab → "Aux trigger 1" = D2.0. Save. Ch2/Ch3 as before.
+#   What gets logged:  every TIFF frame's header (ImageDescription) gains
+#                      "Aux Trigger 1 = [t1 t2 …]" — the times (s, 8 ns resolution,
+#                      same FPGA clock as frameTimestamps_sec) of each frame
+#                      transfer that happened during that frame: ~5–6 per 18 ms
+#                      frame while the arena streams, [] while it is off.
+#   How epochs are marked:  the 2 s allOff between steps (the "iti" condition)
+#                      disarms the controller refresh timer and pushes a dark
+#                      frame, so the J3 pulses PAUSE for 2 s. In the header
+#                      record each duty step is a block of timestamps separated
+#                      by a gap; block order = the order in `experiment:` below.
+#   Read it back:      Python  ScanImageTiffReader(p).description(n)   or
+#                      MATLAB  scanimage.util.opentif(file) / imfinfo → ImageDescription.
+#                      Expect "Aux Trigger 1 = [ … ]" non-empty on frames during a
+#                      step, [] during iti/blank. All-[] = wrong port, or arena
+#                      DIO 1 not in out_debug_framescan (Studio raw hex 01 AD lists roles).
+#   Optional (only if a photodiode is at the rig):  photodiode → PCIe rear SMB
+#                      AI3 (= Channel 4, keep < 2 Vpp) → Channels window → Save.
+#                      The only way to tell a residual at low duty apart from SiPM
+#                      recovery after the in-gap flash.
+#   Not needed for this test:  line clock (same FPGA as the pixel clock → image
+#                      columns already ARE its phase; shape known from the scope),
+#                      frame clock, AO marker, Data Recorder .h5. Full version:
+#                      docs/development/2p-scanimage-signal-logging.md. The
+#                      setAnalogOut steps below are harmless if unrecorded.
+#   Ch3 is NOT a display sync; it is the leak signal you are measuring.
+#
+# Notes
+#   1. duty: 0 in trialParams means "pattern's stored duty", NOT off. Off is allOff.
+#   2. duty values 25/64/128/191/255 ≈ 10/25/50/75/100 % of 255, 8 s each.
+#      With the 2P panel firmware (BCM base 1 µs) a duty-255 row is ~15 µs,
+#      so EVERY step fits inside the ~18 µs line-clock LOW gap and the sweep
+#      maps the usable brightness range end to end (255 is the tight-margin
+#      case). With the 9014b5b firmware (3 µs base) steps above duty ~85
+#      overrun into the imaged part of the line — the same sweep run on both
+#      firmwares is the comparison.
+#   3. GS16 pattern → 300 Hz refresh. frame2_h_ccw_200f and grating_sine are
+#      GS16; all_on and grating_sq are GS2.
+#   4. End with allOff, not stopDisplay: in the free-running Triggered firmware
+#      a stopped controller leaves the last frame lit, one row per line.
+# ============================================================================
+
+experiment_info:
+  name: "2P line-sync duty sweep (G6 2x10)"
+  author: "mreiser"
+  date_created: "2026-09-22"
+
+rig: "./configs/rigs/cshl_g6_2x10.yaml"
+
+plugins: []
+
+variables:
+  - &pattern_name "frame2_h_ccw_200f"
+  - &pattern_id 4
+  - &rotate_hz 20          # frames/s; 200-frame pattern → one revolution per 10 s
+  - &blank_dur 4
+  - &step_dur 7
+  - &iti_dur 2             # allOff between steps: stops the 300 Hz re-stream → gap in the J3 aux-trigger record
+  - &duty_10 25
+  - &duty_25 64
+  - &duty_50 128
+  - &duty_75 191
+  - &duty_100 255          # ~15 µs row on the 2P firmware: tight-margin case; overruns on 9014b5b
+
+experiment:
+  - "pre_blank"
+  - name: "duty_sweep"
+    trials: ["duty_10", "duty_25", "duty_50", "duty_75", "duty_100", "static_50"]
+    repetitions: 1
+    intertrial: "iti"
+  - "post_blank"
+
+conditions:
+  # Display dark, AO marker 0 V. Baseline for the SiPM channels.
+  - name: "pre_blank"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 0
+      - type: "wait"
+        duration: *blank_dur
+
+  - name: "duty_10"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 500
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *rotate_hz
+        gain: 0
+        duty: *duty_10
+      - type: "wait"
+        duration: *step_dur
+
+  - name: "duty_25"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 1000
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *rotate_hz
+        gain: 0
+        duty: *duty_25
+      - type: "wait"
+        duration: *step_dur
+
+  - name: "duty_50"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 1500
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *rotate_hz
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *step_dur
+
+  - name: "duty_75"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 2000
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *rotate_hz
+        gain: 0
+        duty: *duty_75
+      - type: "wait"
+        duration: *step_dur
+
+  - name: "duty_100"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 2500
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *rotate_hz
+        gain: 0
+        duty: *duty_100
+      - type: "wait"
+        duration: *step_dur
+
+  # Same pattern and duty as duty_50 but frame_rate 0 (static frame). The
+  # controller still re-streams at the refresh rate, so any difference from
+  # duty_50 isolates pattern-content change from re-streaming.
+  - name: "static_50"
+    commands:
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 3000
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *step_dur
+
+  # Between steps: display dark AND controller refresh stopped, so the J3
+  # frame-transfer pulses pause — the epoch boundary marker in the TIFF header.
+  - name: "iti"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *iti_dur
+
+  - name: "post_blank"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "setAnalogOut"
+        mv: 0
+      - type: "wait"
+        duration: *blank_dur
