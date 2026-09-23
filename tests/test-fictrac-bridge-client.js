@@ -401,6 +401,25 @@ async function main() {
         checkBool('bias still rides along', lastCfg().bias.type === 'sine', 'bias intact');
         client.setConfig({ gain: 3.6 }); // restore for the checks below
 
+        // start_frame (per-trial start position) is a ONE-SHOT: on this push only.
+        client.setConfig({ coupling: -1, frames: 200, start_frame: 57, epoch: true });
+        check(
+            'start_frame rides with coupling/frames/epoch on the same push',
+            [lastCfg().coupling, lastCfg().frames, lastCfg().start_frame, lastCfg().epoch],
+            [-1, 200, 57, true]
+        );
+        checkBool('start_frame is NOT stored in config', client.config.start_frame === undefined);
+        client.sendConfig();
+        checkBool(
+            'a later plain push carries no start_frame',
+            lastCfg().start_frame === undefined,
+            JSON.stringify(lastCfg())
+        );
+        client.setConfig({ start_frame: 12.5 });
+        checkBool('non-integer start_frame is dropped', lastCfg().start_frame === undefined);
+        client.setConfig({ start_frame: -3 });
+        checkBool('negative start_frame is dropped', lastCfg().start_frame === undefined);
+
         // Coercion: string scalars from YAML/DOM must become numbers.
         client.setConfig({ bias: { type: 'square', amplitude: '30', frequency: '2' } });
         check('string amplitude/frequency coerced', lastCfg().bias, {

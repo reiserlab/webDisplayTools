@@ -4,6 +4,16 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## Unreleased (rig03 working tree, 2026-09-23) · Per-trial closed-loop start position
+
+- **`startClosedLoop` accepts `params: { start_frame: N }`.** Since bridge 3.3 every closed-loop epoch
+  re-tares the heading, so the display always opened on frame 0. `start_frame` becomes the bridge's
+  `offset` (N × pitch) for that epoch, so the trial opens on frame N and the fly's turning moves away from
+  it with the protocol's coupling. This is how a place-learning protocol starts every trial a fixed
+  distance outside the safe zone, alternating sides (the MATLAB p058 rig). Set the trial's `frame_index`
+  to the same N so the display shows it before the first FicTrac frame. A non-integer or negative value
+  fails the step with a message. Needs the matching bridge; an older bridge ignores the key.
+
 ## v0.88 (2026-09-24) · Replay a recorded run — from its log alone, or from a link
 
 - **↺ Replay a run** (Run view, next to Test experiment; also File ▾ → *Replay a recorded

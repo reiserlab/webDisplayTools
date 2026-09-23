@@ -367,6 +367,11 @@
                     this._config.gain = pitch;
                 }
                 if (partial.epoch) this._epochPending = true;
+                // Per-trial start position: a ONE-SHOT that rides on this push only and is
+                // never stored, so a later plain sendConfig() cannot re-open a running
+                // epoch on that frame. The bridge turns it into offset = start_frame × pitch.
+                if (Number.isInteger(partial.start_frame) && partial.start_frame >= 0)
+                    this._startFrameOnce = partial.start_frame;
                 if (partial.bias !== undefined) this.setBias(partial.bias, true);
                 if (
                     partial.coupling !== undefined &&
@@ -441,6 +446,10 @@
         sendConfig() {
             const cfg = { type: 'config' };
             const c = this._config;
+            if (Number.isInteger(this._startFrameOnce)) {
+                cfg.start_frame = this._startFrameOnce; // one-shot (see setConfig)
+                this._startFrameOnce = null;
+            }
             if (Number.isFinite(c.fictrac_port)) cfg.fictrac_port = c.fictrac_port;
             if (Number.isFinite(c.coupling)) cfg.coupling = c.coupling;
             if (Number.isFinite(c.deg_per_frame)) {

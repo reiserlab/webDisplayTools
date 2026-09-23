@@ -236,6 +236,17 @@ check("restart tare is labelled", pl.log.events[-1]["reason"], "ft_reset")
 # The bias phase clock is evaluated at the caller's `now`, not a second wall-clock read.
 pl.set_bias({"type": "constant", "amplitude": 90.0, "frequency": 0.0}, log_event=False, tare=False)
 approx("bias_now_deg(at_ms) is exact for the given instant", pl.bias_now_deg(pl.bias_t0_ms + 2000), 180.0)
+print("=== Pipeline.start_frame_to_offset: a tared epoch opens on the requested frame ===")
+ps = bridge.Pipeline(None, _NullLog(), NFR, DPF, 0.0)
+ps.arm_tare("epoch")
+ps.advance_heading(213.0, 1, T)        # tare frame: rel 0 whatever the absolute heading
+ps.offset = ps.start_frame_to_offset(57)
+approx("offset = 57 × pitch", ps.offset, 57 * DPF)
+check("epoch opens on frame 57", FI(ps.rel_deg, NFR, DPF, ps.offset), 57)
+check("frame 57 with coupling -1 too (offset is outside the coupling)", FI(ps.rel_deg, NFR, DPF, ps.offset, 0.0, -1.0), 57)
+ps.advance_heading(231.0, 2, T + 20)   # +18 deg
+check("+18 deg at coupling -1 → 10 frames back (47)", FI(ps.rel_deg, NFR, DPF, ps.offset, 0.0, -1.0), 47)
+check("start_frame wraps modulo n_frames", ps.start_frame_to_offset(NFR + 108), 108 * DPF)
 check("gain is an alias of deg_per_frame", pl.gain, DPF)
 pl.gain = 3.6
 check("...both ways", pl.deg_per_frame, 3.6)

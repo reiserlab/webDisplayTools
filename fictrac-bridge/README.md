@@ -133,14 +133,18 @@ bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>,
 browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
                    {"type":"config", "fictrac_port":<int>, "coupling":<float>,
                                      "deg_per_frame":<float>, "offset":<float>, "frames":<int>,
-                                     "epoch":true,
+                                     "start_frame":<int>, "epoch":true,
                                      "bias":{"type":"none"|"constant"|"sine"|"square",
                                              "amplitude":<deg/s>, "frequency":<Hz>}}
                                                               (any subset; "epoch":true or a
                                                                message CARRYING "bias" re-tares
                                                                the heading + re-zeros the bias
                                                                phase clock; "gain" = deprecated
-                                                               alias of "deg_per_frame")
+                                                               alias of "deg_per_frame";
+                                                               "start_frame" sets offset =
+                                                               start_frame × deg_per_frame so
+                                                               the tared epoch OPENS on that
+                                                               frame — per-trial start position)
                    {"type":"log_control", "enabled":<bool>,
                                           "level":"behavior_v2"|"behavior_v1"|"full"}
                                                               (open the log file; level

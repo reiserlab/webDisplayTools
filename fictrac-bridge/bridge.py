@@ -903,6 +903,18 @@ class Pipeline:
         self._tare_pending = True
         self._tare_reason = reason
 
+    def start_frame_to_offset(self, start_frame: int) -> float:
+        """The `offset` (display degrees) that opens a tared epoch on `start_frame`.
+
+        After the tare rel_heading is 0, so idx = round(offset / deg_per_frame) mod
+        n_frames; offset = (start_frame mod n_frames) × deg_per_frame lands exactly on
+        the requested 0-based frame, and the fly's turning then moves away from it with
+        the usual coupling. Used by the config `start_frame` key (per-trial start
+        position, e.g. a place-learning trial opening 90° outside the safe zone).
+        """
+        n = max(1, int(self.n_frames))
+        return (int(start_frame) % n) * float(self.deg_per_frame)
+
     def set_bias(self, spec: dict | None, log_event: bool = True, tare: bool = True) -> dict:
         """Install a bias waveform, RE-ZERO its phase clock, and ARM THE HEADING TARE,
         so every closed-loop epoch starts at b(0) = 0 with the display where the
@@ -1213,6 +1225,15 @@ def make_dispatcher(pipeline: Pipeline, log: LogWriter, inputs: InputManager):
             if obj.get("frames"):
                 pipeline.n_frames = max(1, int(obj["frames"]))
                 applied["frames"] = pipeline.n_frames
+            if obj.get("start_frame") is not None:
+                # Per-trial START POSITION (protocol startClosedLoop params.start_frame):
+                # the epoch tare zeroes rel_heading, so the epoch opens at
+                # round(offset / deg_per_frame). Set offset = start_frame × pitch to open it
+                # on that frame. Applied AFTER deg_per_frame/frames so it uses this
+                # message's values; an explicit "offset" in the same message is overridden.
+                pipeline.offset = pipeline.start_frame_to_offset(int(obj["start_frame"]))
+                applied["start_frame"] = int(obj["start_frame"]) % max(1, pipeline.n_frames)
+                applied["offset"] = pipeline.offset
             if obj.get("fictrac_port"):
                 await inputs.rebind(int(obj["fictrac_port"]))
                 applied["fictrac_port"] = inputs.port

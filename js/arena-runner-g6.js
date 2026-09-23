@@ -860,10 +860,32 @@ var ArenaRunnerG6 = (function () {
                                     JSON.stringify(dpfRaw)
                             };
                         }
+                        // Optional per-trial START POSITION (0-based frame). Bridge 3.3 re-tares
+                        // the heading at every epoch, so without this the display always opens
+                        // at round(offset / pitch) = frame 0. `start_frame` becomes the bridge's
+                        // `offset` (start_frame × pitch) for THIS epoch — the way a place-learning
+                        // protocol starts each trial a fixed distance outside the safe zone,
+                        // alternating sides (MATLAB p058). Pair it with the same `frame_index`
+                        // on the trialParams so the display shows it before the first frame.
+                        const sfRaw = params.start_frame;
+                        let startFrame = null;
+                        if (sfRaw !== undefined && sfRaw !== null && sfRaw !== '') {
+                            const sf = Number(sfRaw);
+                            if (!Number.isInteger(sf) || sf < 0) {
+                                return {
+                                    op: 'error',
+                                    reason:
+                                        'start_frame must be a non-negative integer frame index, got ' +
+                                        JSON.stringify(sfRaw)
+                                };
+                            }
+                            startFrame = sf;
+                        }
                         return {
                             op: 'fictracApply',
                             on: true,
                             coupling,
+                            startFrame, // null = open the epoch at the bridge's current offset (frame 0)
                             degPerFrame, // null = use the rig-derived pitch the caller supplies
                             // ALWAYS carry a bias, `{type:'none'}` when none was
                             // authored — same reasoning as `duty` in buildTrialParams:
@@ -2012,6 +2034,9 @@ var ArenaRunnerG6 = (function () {
                             cfg.coupling = Number.isFinite(ir.coupling) ? ir.coupling : 1;
                             const pitch = ir.degPerFrame != null ? ir.degPerFrame : acc.degPerFrame;
                             if (Number.isFinite(pitch) && pitch > 0) cfg.deg_per_frame = pitch;
+                            // Per-trial start position: the bridge turns it into `offset`
+                            // (start_frame × pitch) so the tared epoch opens on this frame.
+                            if (ir.startFrame != null) cfg.start_frame = ir.startFrame;
                             cfg.epoch = true;
                         }
                         if (ir.bias) cfg.bias = ir.bias;
