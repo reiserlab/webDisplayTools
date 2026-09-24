@@ -3137,7 +3137,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.88 | 2026-09-24 12:13 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.89 | 2026-09-24 15:36 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -6454,7 +6454,9 @@
             if (conn) conn.textContent = on ? 'Disconnect' : 'Connect';
             if (st) st.textContent = on ? 'connected' : 'disconnected';
             const s = bridge.stats;
-            if (cnt) cnt.textContent = (on && s && s.recv) ? 'rx ' + s.recv + ' · applied ' + s.applied : '';
+            // `stale` = pre-tare frames withheld at closed-loop start (bridge ≥ 3.4 epoch gate);
+            // shown only when non-zero so the row stays short on older bridges.
+            if (cnt) cnt.textContent = (on && s && s.recv) ? 'rx ' + s.recv + ' · applied ' + s.applied + (s.stale ? ' · stale ' + s.stale : '') : '';
             if (cl) cl.classList.toggle('active', on && bridge.apply); // 'apply' = closed-loop live
             if (bias) bias.textContent = on ? biasText() : '';
         }
