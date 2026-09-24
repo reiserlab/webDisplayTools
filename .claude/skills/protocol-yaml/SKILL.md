@@ -293,6 +293,39 @@ changes may tune a trial, never restructure it. Web-only; MATLAB ignores `runtim
 to run it** until the web runner implements that capability; MATLAB may run it. Leave it out
 otherwise.
 
+### `controller:` — sticky controller settings the run must assert (Studio v0.88)
+
+The controller keeps a few **sticky** settings across runs (panel display mode, refresh rate,
+Digital IO roles…). Wiring belongs in the rig YAML; what the *experiment* needs goes in a
+top-level `controller:` block, and the Studio asserts it before every run (GET → SET → GET,
+refuse on mismatch) and writes the before/after snapshot into the run header. Design:
+`docs/development/controller-settings-strategy.md`; user doc: `docs/development/controller-settings.md`.
+
+```yaml
+rig: "./configs/rigs/bergamo_g6_2x10_2p.yaml"
+requires: [controller_block]        # a runner without this feature REFUSES the file instead of ignoring the block
+controller:
+  panel_mode: triggered             # 0 oneshot | 1 persistent | 2 triggered | 3 gated (names or numbers)
+  refresh_policy: line_sync_safe    # cap the re-stream rate at the rig's limits.max_refresh_hz — OR refresh_hz: <int>
+  panel_firmware: "2p"              # SD footer version (or prefix) the panel image must match; "2p" = the line-sync build
+```
+
+- **Most protocols do not need the block.** A course protocol inherits the rig's
+  `defaults.panel_mode` (persistent); the Studio asserts that too. Only declare a mode when the
+  experiment depends on it (imaging: `triggered`).
+- **A protocol with a `controller:` block is strict**: rig mismatch (its `rig:` vs the session
+  rig), an unreadable setting, or the wrong panel firmware **blocks the run** (green and blue
+  buttons). On rigs with `strict: true` in the rig YAML this holds for every protocol.
+- `refresh_hz` and `refresh_policy` are mutually exclusive. Prefer the policy: the refresh a
+  pattern needs follows its grayscale (GS2 streams at 1000 Hz by default, GS16 at 300), so the
+  Studio derives it from the referenced patterns and the rig cap; a bare number is for refresh
+  experiments only and must not exceed the rig's `limits.max_refresh_hz`.
+- Panel firmware is checked against the SD footer (what image was uploaded) **and** the
+  session's fleet verify (which panels actually run it). Unverified panels only warn; a failed
+  verify blocks. Settings → Controller → *Verify panels* runs the fleet check (~1 s per panel).
+- The validator prints the block and cross-checks it against the rig file when that is in the repo.
+- MATLAB does not implement the block yet; the `requires` token is what makes it refuse.
+
 ## Plugins
 
 `plugins:` normally comes from the rig (the Studio pre-fills New protocols from the rig

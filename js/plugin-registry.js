@@ -1224,6 +1224,48 @@ function _rigIoRole(raw, allowed, label, warnings) {
  *   `default` in VOLTS (nullable; wire 0xA0 takes mV) — some hardware expects
  *   a 5 V idle, so an authored default is applied at connect.
  */
+// Panel display mode in a rig YAML: 0–3 or oneshot/persist(ent)/triggered/gated.
+var RIG_PANEL_MODES = { oneshot: 0, persist: 1, persistent: 1, triggered: 2, gated: 3 };
+function _rigPanelMode(raw, warnings) {
+    if (raw == null || raw === '') return null;
+    if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw <= 3) return raw;
+    var s = String(raw).trim().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(RIG_PANEL_MODES, s)) return RIG_PANEL_MODES[s];
+    if (/^[0-3]$/.test(s)) return Number(s);
+    warnings.push('unknown defaults.panel_mode "' + raw + '" — ignored (0–3 or oneshot/persistent/triggered/gated)');
+    return null;
+}
+
+// `defaults:` / `limits:` / `requires:` / `strict:` of a rig YAML (tolerant; bad values warn).
+function _parseRigSettings(rigData, result) {
+    var d = rigData.defaults;
+    if (d && typeof d === 'object' && !Array.isArray(d)) {
+        result.defaults.panel_mode = _rigPanelMode(d.panel_mode, result.warnings);
+    } else if (d != null) {
+        result.warnings.push('defaults: must be a mapping — ignored');
+    }
+    var l = rigData.limits;
+    if (l && typeof l === 'object' && !Array.isArray(l)) {
+        if (l.max_refresh_hz != null) {
+            var hz = Number(l.max_refresh_hz);
+            if (Number.isInteger(hz) && hz >= 1 && hz <= 2000) result.limits.max_refresh_hz = hz;
+            else result.warnings.push('limits.max_refresh_hz "' + l.max_refresh_hz + '" must be an integer 1–2000 — ignored');
+        }
+    } else if (l != null) {
+        result.warnings.push('limits: must be a mapping — ignored');
+    }
+    var r = rigData.requires;
+    if (r && typeof r === 'object' && !Array.isArray(r)) {
+        if (r.panel_firmware != null) {
+            if (typeof r.panel_firmware === 'string' && r.panel_firmware.trim()) result.requires.panel_firmware = r.panel_firmware.trim();
+            else result.warnings.push('requires.panel_firmware must be a non-empty string — ignored');
+        }
+    } else if (r != null) {
+        result.warnings.push('requires: must be a mapping — ignored');
+    }
+    if (rigData.strict != null) result.strict = rigData.strict === true || String(rigData.strict).toLowerCase() === 'true';
+}
+
 function parseRigIo(rigData) {
     var result = {
         dio: [
@@ -1232,9 +1274,20 @@ function parseRigIo(rigData) {
         ],
         ai: { role: 'off' },
         ao: { role: 'off', default: null },
+        // Sticky-setting policy (docs/development/controller-settings-strategy.md):
+        // defaults are asserted at connect and at every run start, limits cap what a
+        // protocol may ask for, requires names installed state a run needs, strict makes
+        // mismatches block instead of warn.
+        name: null,
+        defaults: { panel_mode: null },
+        limits: { max_refresh_hz: null },
+        requires: { panel_firmware: null },
+        strict: false,
         warnings: []
     };
     if (!rigData || typeof rigData !== 'object') return result;
+    if (typeof rigData.name === 'string' && rigData.name.trim()) result.name = rigData.name.trim();
+    _parseRigSettings(rigData, result);
     var io = rigData.io;
     if (!io || typeof io !== 'object' || Array.isArray(io)) return result;
 

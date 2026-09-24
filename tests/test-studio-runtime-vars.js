@@ -132,7 +132,7 @@ checkBool(
     'collectExportWarnings flags it (soft: editing stays possible)',
     !!warn && /refuse to run/.test(warn.message)
 );
-check('WEB_RUNNER_CAPABILITIES is exported (empty today)', v3.WEB_RUNNER_CAPABILITIES, []);
+check('WEB_RUNNER_CAPABILITIES is exported (controller_block since v0.88)', v3.WEB_RUNNER_CAPABILITIES, ['controller_block']);
 checkBool('requires survives regeneration', /requires:/.test(v3.generateV3Protocol(reqExp)));
 
 console.log('\n=== opto protocol end to end through runtime-controls.js ===');
