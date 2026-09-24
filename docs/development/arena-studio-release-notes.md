@@ -4,7 +4,9 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
-## Unreleased (rig03 working tree, 2026-09-23) · Per-trial closed-loop start position
+## Unreleased (branch `feat/start-frame-sbd`, 2026-09-23/24) · Per-trial closed-loop start position
+
+Why this exists, the bench evidence and the alternatives considered: `docs/development/closed-loop-start-frame.md`.
 
 - **`startClosedLoop` accepts `params: { start_frame: N }`.** Since bridge 3.3 every closed-loop epoch
   re-tares the heading, so the display always opened on frame 0. `start_frame` becomes the bridge's
