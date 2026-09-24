@@ -4,7 +4,7 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
-## Unreleased (branch `feat/start-frame-sbd`, 2026-09-23/24) · Per-trial closed-loop start position
+## v0.89 (2026-09-24) · Per-trial closed-loop start position; no stale frame at epoch start — bridge 3.4
 
 Why this exists, the bench evidence and the alternatives considered: `docs/development/closed-loop-start-frame.md`.
 

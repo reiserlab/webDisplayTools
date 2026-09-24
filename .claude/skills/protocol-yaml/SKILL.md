@@ -165,7 +165,7 @@ rejection). Authored as an added rotational **velocity**:
   `docs/development/closed-loop-bias.md`; worked example:
   `protocols/fictrac_bias_test.yaml`.
 
-**Per-trial start position (`start_frame`, Studio v0.87 working tree).** Bridge 3.3 re-tares the
+**Per-trial start position (`start_frame`, Studio v0.89 / bridge 3.4).** Bridge 3.3 re-tares the
 heading at every `startClosedLoop`, so a closed-loop trial always opens on frame 0. To open it on a
 chosen frame (place learning: a fixed distance outside the safe zone, alternating sides), give
 `startClosedLoop` `params: { start_frame: N }` (0-based, wraps mod n_frames; non-integer or

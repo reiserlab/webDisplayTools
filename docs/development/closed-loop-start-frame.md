@@ -35,7 +35,7 @@ path; the tare just made the absence deterministic.
 
 ## What the branch adds
 
-### 1. `startClosedLoop params.start_frame` → bridge `offset` (commit 02d6cc4)
+### 1. `startClosedLoop params.start_frame` → bridge `offset` (commit 41efa9d)
 
 The tare gives us a clean anchor: after it, `offset` alone decides the opening frame. So the smallest
 correct change is to let the protocol set `offset` per epoch, in frame units:
@@ -55,7 +55,7 @@ panorama but cannot place the fly; a bridge-side "tare to index" needs the headi
 same thing under another name; setting `offset` in degrees from the YAML would make authors do the
 pitch arithmetic. Frames are what every other field (`frame_index`, `on_ranges`, zones) already use.
 
-### 2. Epoch-stamped frames + client gate (commit b4522bb, bridge 3.4)
+### 2. Epoch-stamped frames + client gate (commit 00022b0, bridge 3.4)
 
 Verification runs (`knqkkyi3`, `ueykyxxz`) showed the start frame working in 41 of 44 epochs. The
 misses were a race that predates this branch: the runner pushes `{epoch:true}` and turns apply on; a
@@ -74,7 +74,7 @@ view bridge row as `stale N`. Frames without the stamp (older bridge) are never 
 - `feat/led-activation` events for lit-baseline / lit-teardown trials went to **main** directly
   (e2d3783, Studio v0.87, Michael's OK on Slack 2026-09-23) — not part of this branch.
 - `docs/development/sbd-place-learning-handoff-2026-09-23.md`: rig-side state and evidence.
-- Release notes: "Unreleased" entry; the protocol-yaml skill and the bridge README document the
+- Release notes: the v0.89 entry; the protocol-yaml skill and the bridge README document the
   YAML shape and the wire schema (`start_frame`, `epoch`).
 
 ## Tests
@@ -100,8 +100,8 @@ LED ramps 1 → 5 % over frames 8–16 and 150–158 as designed.
 
 ## Open questions for review
 
-1. Version numbering: the branch labels itself Studio v0.87 / bridge 3.4; main is at v0.88. Rebase will
-   take whatever numbers you want.
+1. Version numbering: rebased onto main at v0.88 on 2026-09-24; this PR is labelled **Studio v0.89 /
+   bridge 3.4** (footer, release notes, skill). Renumber freely if something else lands first.
 2. Should `stopClosedLoop` reset `offset` to 0 so a following trial *without* `start_frame` opens on
    frame 0 rather than on the previous trial's start? Today it keeps the last value (the Studio
    re-pushes the plugin-config offset at run start, so runs never inherit from each other).

@@ -12,7 +12,7 @@ Claude; this file is the pick-up point for the next session.
 | Pattern (SD ID **46**) | `reiserlab/cshl-2026-course` → `patterns/046_p3_sbd_placelearning.pat` (source `patterns/p3_conditioning/011_…`) | **on GitHub main**, on the rig03 card, displays correctly |
 | Pattern generator | `C:\Users\rathores\Desktop\sbd_g6\make_sbd_g6.mjs` (+ `_frame0.svg` preview) | local only |
 | Protocol | `C:\Users\rathores\Documents\GitHub\cshl-2026-course\protocols\rig03-sr\p3-sbd-placelearning-led5.yaml` | **untracked, local only** (validates clean) |
-| `start_frame` feature (runner + client + bridge + tests + docs) | webDisplayTools branch **`feat/start-frame-sbd`**, commit `02d6cc4`, pushed | branch only; PR not opened: https://github.com/reiserlab/webDisplayTools/pull/new/feat/start-frame-sbd |
+| `start_frame` feature (runner + client + bridge + tests + docs) | webDisplayTools branch **`feat/start-frame-sbd`**, commit `41efa9d`, pushed | branch only; PR not opened: https://github.com/reiserlab/webDisplayTools/pull/new/feat/start-frame-sbd |
 | LED-event fix (lit-baseline / lit-teardown events) | webDisplayTools **main** `e2d3783`, Studio **v0.87**, live on Pages | done, verified on the rig twice |
 | webDisplayTools working tree | checked out on `feat/start-frame-sbd` | `pixi run serve` / `pixi run bridge` from here = start_frame-capable Studio + bridge |
 | Controller firmware | fw #56 `781efe2b 2x10 2026-09-23 feat/mode3-reliability freerun sdfast` | flashed today (first `deploy-2-10-performance` failed "error writing to Teensy", immediate retry succeeded) |
@@ -29,7 +29,7 @@ first frames were idx 0, and the first LED-on of each bout came at index 9 (fly 
 of the zone). The branch adds `startClosedLoop params: {start_frame: N}` → runner IR
 `startFrame` → client one-shot `start_frame` → bridge `offset = (N mod n_frames) × deg_per_frame`
 (`Pipeline.start_frame_to_offset`). Until Michael merges it, SBD runs MUST use the local
-Studio (`http://127.0.0.1:8000/arena_studio.html`, footer v0.87 from the branch).
+Studio (`http://127.0.0.1:8000/arena_studio.html`, footer v0.89 from the branch).
 
 ## Protocol design (as in the YAML)
 
@@ -97,7 +97,7 @@ Studio (`http://127.0.0.1:8000/arena_studio.html`, footer v0.87 from the branch)
 
 ```
 pixi run bridge     # terminal 1 — banner must end in "coupling (unwrapped heading)"
-pixi run serve      # terminal 2 — then http://127.0.0.1:8000/arena_studio.html (footer v0.87)
+pixi run serve      # terminal 2 — then http://127.0.0.1:8000/arena_studio.html (footer v0.89)
 ```
 Studio: Connect controller → Bridge Connect → File ▾ → Open → the SBD YAML → Test check_seam_front → Run.
 Validate the YAML after edits:
