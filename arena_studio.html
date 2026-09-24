@@ -55,7 +55,7 @@
        brighter, thicker treatment for structural frame boxes (panels/cards/etc). */
     --bg:#0f1419; --surface:#1a1f26; --surface2:#141a20; --border:rgba(255,255,255,.18); --edge:rgba(255,255,255,.30);
     --text:#e6edf3; --dim:#8b949e; --accent:#00e676; --hover:#00c853;
-    --danger:#ff5252; --warn:#e3a008; --beta:#4aa8ff; --rec:#ff5252;
+    --danger:#ff5252; --warn:#e3a008; --beta:#4aa8ff; --rec:#ff5252; --replay:#b58cff;
     --mode:#00e676; --modec:#062a16;
     --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
     --head:'JetBrains Mono',var(--mono);
@@ -284,7 +284,11 @@
   .run-dock{grid-column:1 / -1;grid-row:2;display:flex;flex-direction:column;min-width:0;min-height:0}
   @media (max-width:860px){.run-view{grid-template-columns:1fr;grid-template-rows:auto}
     .run-view>.run-main,.run-view>.meta-panel,.run-dock{grid-column:auto;grid-row:auto}}
-  .run-main{min-width:0;align-self:stretch;display:flex;flex-direction:column;min-height:0}
+  /* The column SCROLLS inside its grid row: on a short window (Scope dock at 50vh + the
+     SD-pattern warning or the replay bar) its cards can't shrink below their content, and
+     without a scroll container they painted over the dock (2026-09-24). The sequence still
+     takes the flexible middle and keeps its own scroller. */
+  .run-main{min-width:0;align-self:stretch;display:flex;flex-direction:column;min-height:0;overflow-y:auto;overflow-x:hidden}
   .card{background:var(--surface);border:1.5px solid var(--edge);border-radius:10px;padding:10px 14px;margin-bottom:10px}
   .launch-card{padding:8px 12px}
   .launch-row{display:flex;gap:10px;align-items:stretch}
@@ -297,6 +301,61 @@
   .btn-testexp .sub{display:block;font-size:9.5px;font-weight:400;color:var(--dim);margin-top:2px}
   .btn-testexp[disabled]{opacity:.4;cursor:not-allowed}
   body.running .launch-row{display:none}
+  /* ── Run-log REPLAY (v0.88 · js/studio-replay.js) ────────────────────────────
+     Lavender = playback of a RECORDED run (green = live recorded, blue = test). */
+  .btn-replay{flex:0 0 158px;background:transparent;border:1px solid var(--replay);color:var(--replay);border-radius:8px;font-family:var(--head);font-weight:700;font-size:13px;padding:6px 12px;letter-spacing:.2px}
+  .btn-replay:hover{background:rgba(181,140,255,.09)}
+  .btn-replay .sub{display:block;font-size:9.5px;font-weight:400;color:var(--dim);margin-top:2px}
+  html.arena-alt .btn-replay,html.arena-alt #fmReplay{display:none}
+  .replay-card{border-color:var(--replay);padding:9px 14px 8px}
+  .replay-card[hidden]{display:none}
+  .rpl-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .rpl-badge{font-family:var(--head);font-weight:700;font-size:10.5px;letter-spacing:.8px;color:#1a1030;background:var(--replay);border-radius:4px;padding:2px 7px}
+  .rpl-title{font-family:var(--head);font-weight:700;font-size:13.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:48%}
+  .rpl-meta{font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 180px;min-width:0}
+  .rpl-acts{display:flex;gap:6px;align-items:center;margin-left:auto}
+  .rpl-stop{background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:6px;font-family:var(--head);font-weight:700;font-size:12px;padding:5px 12px}
+  .rpl-stop:hover{background:rgba(255,82,82,.10)}
+  .rpl-transport{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+  .rpl-play{min-width:96px;background:var(--replay);color:#1a1030;border:1px solid var(--replay);border-radius:6px;font-family:var(--head);font-weight:700;font-size:12.5px;padding:6px 12px}
+  .rpl-play[aria-pressed="true"]{background:transparent;color:var(--replay)}
+  .rpl-play:disabled{opacity:.45;cursor:not-allowed}
+  #rplSlider{flex:1 1 260px;min-width:140px;accent-color:var(--replay)}
+  .rpl-clock{font-family:var(--head);font-size:12px;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .replay-card select.pill{padding:4px 6px}
+  .replay-card .pill.on{border-color:var(--replay);color:var(--replay);background:rgba(181,140,255,.10)}
+  .rpl-step{margin-top:7px;font-size:12.5px;color:var(--replay);font-weight:600;min-height:16px}
+  .rpl-proto{font-size:11px;color:var(--dim);margin-top:2px;min-height:14px}
+  .rpl-proto.ok{color:var(--accent)}
+  .rpl-proto.warn{color:var(--warn)}
+  .rpl-seqnote{font-size:11px;margin:0 0 6px}
+  body.replay-active .launch-card,body.replay-active #runVarsCard{display:none}
+  body.replay-active .meta-panel{opacity:.4}
+  body.replay-active .seqrow .play{display:none}
+  body.replay-active .seqrow.active{border-color:var(--replay);background:rgba(181,140,255,.10)}
+  body.replay-active .seqrow.active .nm,body.replay-active .seqrow.active .idx{color:var(--replay)}
+  body.replay-active .seqrow.active::before{background:var(--replay)}
+  body.replay-active #modeSeg,body.replay-active #connectBtn,body.replay-active #openProtoBtn,body.replay-active #fileMenu{opacity:.4}
+  .rpd-box{width:min(780px,94vw);max-width:none;max-height:86vh}
+  .rpd-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border)}
+  .rpd-head .picker-title{border:0;padding:0}
+  .rpd-head .rpd-repo{font-size:11px;color:var(--dim);margin-right:auto}
+  .rpd-tools{display:flex;gap:8px;align-items:center;padding:8px 12px 4px}
+  .rpd-tools input[type=search]{flex:1;min-width:0;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 9px;font:inherit;font-size:12px}
+  .rpd-tools select{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font:inherit;font-size:12px}
+  .rpd-list{overflow-y:auto;padding:4px 6px 6px;display:flex;flex-direction:column;gap:2px;min-height:180px;flex:1 1 auto}
+  .rpd-run{display:flex;flex-direction:column;align-items:stretch;gap:2px;background:transparent;border:0;color:var(--text);padding:7px 10px;border-radius:6px;text-align:left;font-size:12.5px;cursor:pointer}
+  .rpd-run:hover,.rpd-run:focus-visible{background:var(--surface2);outline:1px solid var(--replay)}
+  .rpd-run-top{display:flex;gap:12px;justify-content:space-between;align-items:baseline}
+  .rpd-run .sub{font-size:10.5px;color:var(--dim)}
+  .rpd-when{color:var(--dim);font-size:11px;font-family:var(--head);white-space:nowrap}
+  .rpd-foot{border-top:1px solid var(--border);padding:9px 14px 11px;display:flex;flex-direction:column;gap:8px;font-size:12px}
+  .rpd-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .rpd-row .dim{font-size:11px}
+  .rpd-adv summary{cursor:pointer;color:var(--dim);font-size:11.5px}
+  .rpd-adv .rpd-row{margin-top:6px}
+  .rpd-status{font-size:11.5px;color:var(--dim);min-height:14px}
+  .rpd-status.err{color:var(--danger)}
   /* Run-view FicTrac bridge strip — mirrors the Console's shared bridge; stays
      visible during a run so the closed-loop indicator can light. */
   .run-bridge{display:flex;align-items:center;gap:9px;margin-top:9px;font-size:12px;flex-wrap:wrap}
@@ -313,6 +372,7 @@
   /* quick safety button: drive the stimulus LED dark (AO 5000 mV) — pink */
   .pill.led-off{border-color:#ff408c;color:#ff6fa8;font-weight:700;letter-spacing:.3px}
   /* Run-view "Runtime variables" panel (v0.84) */
+  #runVarsCard[hidden]{display:none}
   .run-vars h3{font-family:var(--head);font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 8px}
   .run-vars h3 .run-vars-hint{text-transform:none;letter-spacing:0;font-weight:400;font-size:11px}
   .run-vars-rows{display:flex;flex-direction:column;gap:4px}
@@ -2152,6 +2212,7 @@
       <button id="fmOpenLibrary" title="Pick a committed protocol from this site's own registry (protocols/index.json)">Open from Library…</button>
       <button id="fmOpenCourse" title="List this bench's saves (protocols/&lt;bench-id&gt;/) and promoted shared protocols (protocols/shared/) in the course-data repo">Open from Repo…</button>
       <button id="fmOpenDemo" class="edit-only" title="Load a bundled demo protocol to explore — same list the designer's Load demo ▾ used to hold">Open demo…</button>
+      <button id="fmReplay" title="Play back a recorded run from its run log (course repo or this computer) — the matching protocol is found automatically; the arena is not driven">↺ Replay a recorded run…</button>
       <button id="fmSave" class="edit-only">Save → local file</button>
       <button id="fmSaveAs" class="edit-only" title="Save under a NEW filename (defaults to the protocol's name). The destination — course repo, Pull Request, or local file — is shown in the label and the prompt; a repo name that already exists asks before overwriting">Save as → local file…</button>
       <button id="fmSaveCopy" class="edit-only" title="Download a regenerated copy (*_roundtrip.yaml) for diffing/MATLAB checks — does NOT mark the protocol saved">Save copy (download)…</button>
@@ -2219,6 +2280,52 @@
   </div>
 </div>
 
+<!-- run-log REPLAY chooser (v0.88, js/studio-replay.js): the course repo's recent
+     runs (runlogs/<bench>/index.json, newest first) or a local log. The protocol is
+     found from the log's run_metadata — overrides live under Advanced. -->
+<div class="picker-overlay" id="replayOverlay" style="display:none">
+  <div class="picker-box rpd-box" role="dialog" aria-label="Replay a recorded run">
+    <div class="rpd-head">
+      <div class="picker-title">↺ Replay a recorded run</div>
+      <span class="rpd-repo" id="rpdRepo"></span>
+      <button class="pill" id="rpdClose" title="Close without replaying (Esc)">✕</button>
+    </div>
+    <div class="rpd-tools">
+      <input type="search" id="rpdFilter" placeholder="filter — protocol, experimenter, genotype, rig, date, run id…" title="Filter the runs: every word must appear (protocol, experimenter, genotype, rig, date, notes, run id)" autocomplete="off">
+      <select id="rpdFolder" title="Show runs from one bench / rig folder, or all of them"><option value="">All benches</option></select>
+      <button class="pill" id="rpdRefresh" title="Re-read the run index from the repo (new runs appear a minute after they are committed)">↻</button>
+    </div>
+    <div class="rpd-list" id="rpdList"><div class="picker-note">—</div></div>
+    <div class="rpd-foot">
+      <div class="rpd-row">
+        <button class="pill" id="rpdLocalBtn" title="Replay a run log saved on this computer (.jsonl or .jsonl.gz). The protocol is looked up automatically from the log's metadata.">📂 Open a run log from this computer…</button>
+        <span class="dim">.jsonl / .jsonl.gz — the protocol is found automatically</span>
+        <input type="file" id="rpdLocalInput" accept=".jsonl,.gz,.ndjson,.json,.txt" style="display:none">
+      </div>
+      <div class="rpd-row">
+        <label title="Open the synchronized 3D arena window (a separate, movable browser window) when the replay starts"><input type="checkbox" id="rpdViewer" checked> Open the 3D arena window</label>
+        <label title="Playback speed (also on the replay bar)">Speed
+          <select id="rpdSpeed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+        </label>
+      </div>
+      <details class="rpd-adv">
+        <summary title="Only needed when the automatic lookup cannot find the protocol or patterns">Advanced — override the protocol or patterns</summary>
+        <div class="rpd-row">
+          <button class="pill" id="rpdYamlBtn" title="Use this protocol YAML instead of the automatic lookup (e.g. a protocol that was never committed)">Protocol YAML…</button>
+          <span class="dim" id="rpdYamlName">automatic</span>
+          <input type="file" id="rpdYamlInput" accept=".yaml,.yml" style="display:none">
+        </div>
+        <div class="rpd-row">
+          <button class="pill" id="rpdPatBtn" title="Supply .pat files for the 3D window (matched by pattern name) when they are not in the repo or this site">Pattern files (.pat)…</button>
+          <span class="dim" id="rpdPatName">automatic</span>
+          <input type="file" id="rpdPatInput" accept=".pat" multiple style="display:none">
+        </div>
+      </details>
+      <div class="rpd-status" id="rpdStatus"></div>
+    </div>
+  </div>
+</div>
+
 <!-- run-log upload modal (auto commit at run end + manual "⇪ Push log") -->
 <div class="rlup-overlay" id="rlUploadOverlay" style="display:none">
   <div class="rlup-box">
@@ -2234,6 +2341,34 @@
   <!-- RUN view -->
   <div class="run-view" id="runView">
     <div class="run-main">
+      <!-- REPLAY bar (v0.88) — shown while a recorded run plays back. The arena is
+           NOT driven: the page-wide output interlock is latched for the whole replay. -->
+      <div class="card replay-card" id="replayCard" hidden>
+        <div class="rpl-head">
+          <span class="rpl-badge" title="Playing back a recorded run — nothing is sent to the arena">REPLAY</span>
+          <span class="rpl-title" id="rplTitle">—</span>
+          <span class="rpl-meta" id="rplMeta"></span>
+          <span class="rpl-acts">
+            <button class="pill" id="rplViewer" title="Open (or focus) the synchronized 3D arena window">🧊 3D view</button>
+            <button class="pill" id="rplLink" title="Copy a link that opens straight into this replay">🔗 Copy link</button>
+            <button class="pill" id="rplAnother" title="Choose a different run to replay">↺ Another run…</button>
+            <button class="rpl-stop" id="rplStop" title="End the replay and return to the live Run view">■ Stop replay</button>
+          </span>
+        </div>
+        <div class="rpl-transport">
+          <button class="rpl-play" id="rplPlay" aria-pressed="false" title="Play / pause (Space)">▶ Play</button>
+          <input type="range" id="rplSlider" min="0" max="0" step="10" value="0" aria-label="Replay time" title="Seek — drag to any point of the run (← / → jump 5 s)">
+          <span class="rpl-clock" id="rplClock">00:00.00 / 00:00.00</span>
+          <select class="pill" id="rplSpeed" aria-label="Replay speed" title="Playback speed">
+            <option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+          </select>
+          <button class="pill" id="rplSound" aria-pressed="false" title="Sonify the recorded fly: turning → pitch, speed → volume">♪ Sound: off</button>
+          <button class="pill" id="rplSoundCfg" title="Sound settings — channel mapping, ranges, waveform, note scale, volume">Sound settings ▾</button>
+        </div>
+        <div class="rpl-step" id="rplStep"></div>
+        <div class="rpl-proto" id="rplProto"></div>
+      </div>
+
       <div class="card launch-card">
         <div class="launch-row">
           <button class="btn-run" id="btnRunExp">▶ Run experiment
@@ -2241,6 +2376,9 @@
           </button>
           <button class="btn-testexp" id="btnTestExp">▶ Test experiment
             <span class="sub">not recorded</span>
+          </button>
+          <button class="btn-replay" id="replayOpenBtn" title="Play back a recorded run from its log — pick one of the course repo's recent runs or open a .jsonl/.jsonl.gz from this computer; the matching protocol is found automatically. The arena is not driven.">↺ Replay a run
+            <span class="sub">from its run log</span>
           </button>
         </div>
         <div class="pat-warn" id="runPatWarn" style="display:none"></div>
@@ -2999,7 +3137,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.87 | 2026-09-23 16:02 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.88 | 2026-09-24 11:34 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3028,18 +3166,19 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script> <!-- Pattern Set ZIP export -->
 <!-- (1b) DOM-free studio helpers -->
 <script src="js/studio-meta.js"></script>
-<script src="js/studio-url-state.js"></script>
+<script src="js/studio-url-state.js?v=20260924-replay"></script>
 <script src="js/studio-runlog-adapter.js"></script>
 <script src="js/studio-postmortem.js"></script>
 <script src="js/arena-telemetry.js"></script>
 <script src="js/trial-quality.js"></script>
 <script src="js/kinematics.js"></script> <!-- shared scope/dashboard kinematic derivations -->
-<script src="js/studio-github.js"></script>
+<script src="js/studio-github.js?v=20260924-replay"></script>
 <script src="js/runlog-format.js?v=20260906-1829"></script>
 <script src="js/runlog-replay.js?v=20260906-1829"></script>
 <script src="js/runtime-controls.js"></script>
 <script src="js/studio-runtime-vars.js"></script> <!-- Run view "Runtime variables" panel (v0.84) -->
 <script src="js/arena-replay-viewer-protocol.js"></script>
+<script src="js/studio-replay.js?v=20260924-replay"></script> <!-- run-log replay (v0.88): pure core + Run-view controller -->
 
 <!-- ============================================================ -->
 <!-- (2) STUDIO SHELL — the spine (classic; owns view model + wiring) -->
@@ -3305,7 +3444,7 @@
     // reorder trials at run time, so their trialIdxInBlock is a shuffled position —
     // fall back to matching the condition name within that block. `step` may be a
     // bare name string (legacy callers) — handled by the final fallback.
-    function highlightSeq(step) {
+    function highlightSeq(step, opts) {
         document.querySelectorAll('.seqrow.active').forEach((el) => el.classList.remove('active'));
         let row = null;
         if (step && typeof step === 'object') {
@@ -3335,12 +3474,17 @@
         if (row) {
             row.classList.add('active');
             // MR#2a: keep the active step on screen during a run (it can otherwise scroll below the fold)
-            try { row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {}
+            // (replay seeks pass {instant:true} so a slider drag doesn't queue smooth scrolls)
+            const behavior = opts && opts.instant ? 'auto' : 'smooth';
+            try { row.scrollIntoView({ block: 'nearest', behavior: behavior }); } catch (_) {}
         }
     }
     function clearSeqHighlight() {
         document.querySelectorAll('.seqrow.active').forEach((el) => el.classList.remove('active'));
     }
+    // Run-log replay (js/studio-replay.js) drives the same "you are here" highlight.
+    Studio.highlightSeq = highlightSeq;
+    Studio.clearSeqHighlight = clearSeqHighlight;
     function cssEscape(s) {
         return String(s).replace(/["\\]/g, '\\$&');
     }
@@ -4046,7 +4190,12 @@
     Studio.updateUrl = function (opts) {
         if (Studio._urlSuppress || !window.StudioUrlState) return;
         const repoRef = Studio.currentDoc && Studio.currentDoc.repoRef;
+        // Run-log replay (js/studio-replay.js): an active/loading repo-backed replay
+        // owns the link — ?repo=…&replay=runlogs/… (encodeApp drops `p` then).
+        const rp = Studio.replay && Studio.replay.urlState ? Studio.replay.urlState() : null;
         const q = window.StudioUrlState.encodeApp({
+            replayRepo: rp ? rp.repo : null,
+            replayPath: rp ? rp.path : null,
             mode: Studio.mode,
             // fw #50 soak driver armed in this tab (advanced-only; clean-URL rule).
             soak: !!Studio.soak,
@@ -4700,7 +4849,7 @@
             // Header status shows the live rate/samples only when data is flowing;
             // the "waiting" state is a big message drawn on the canvas (below).
             const waitMsg = replayMode
-                ? 'No FicTrac samples recorded — event timeline only'
+                ? 'Replay — no behavior samples in this window yet (▶ Play)'
                 : b && b.connected
                 ? 'waiting for FicTrac frames…'
                 : 'waiting for FicTrac bridge — Console → FicTrac';
@@ -6380,6 +6529,7 @@
     const panel = RV.createPanel({
         host: $('runVarsBody'),
         statusEl: $('runVarsStatus'),
+        cardEl: $('runVarsCard'), // hidden when the protocol declares none (frees Run-view height)
         RuntimeControls: RC,
         getProtocol: () => Studio.currentDoc && Studio.currentDoc.experiment,
         getSession: () => Studio.runtimeControlSession,
@@ -6472,6 +6622,21 @@
 </script>
 
 <!-- ============================================================ -->
+<!-- (2c) RUN-LOG REPLAY (v0.88) — install the Run-view replay controller
+     (js/studio-replay.js). Classic on purpose, like Connect/STOP: it owns the
+     hardware-output interlock for the whole replay, so it must survive a failed
+     ES-module import. Module-block helpers it uses (loadProtocol, protocolDocSha,
+     webBytesForName, …) are read lazily at call time. Allowed in safe mode — a
+     replay never drives the arena. -->
+<!-- ============================================================ -->
+<script>
+'use strict';
+if (window.StudioReplay && window.Studio && window.Scope) {
+    window.StudioReplay.install({ Studio: window.Studio, Scope: window.Scope });
+}
+</script>
+
+<!-- ============================================================ -->
 <!-- (3) MODULE BLOCK — ES-import-dependent code (protocol parse + run) -->
 <!-- ============================================================ -->
 <script type="module">
@@ -6560,6 +6725,13 @@ async function sha256Hex(text) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
     return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+// The protocol sha a run log records (run_metadata.protocol_sha256) is over the
+// designer's SERIALIZATION of the file (syncFromEditor: exp._doc.toString()), which can
+// differ from the raw bytes. Run-log replay (js/studio-replay.js) matches a candidate
+// YAML against the log with this — same parser, same serializer. Throws on bad YAML.
+Studio.protocolDocSha = async function (text) {
+    return sha256Hex(parseV3Protocol(String(text))._doc.toString());
+};
 
 // ---- rig index: map a protocol's rig_path → {name, arenaConfig} (no YAML parse) ----
 let rigIndex = null;
@@ -7188,6 +7360,18 @@ Studio.webBytesForName = function (name) {
     const target = sdLogicalName(name);
     for (const [k, fn] of webPreviewBySdName) {
         if (sdLogicalName(k) === target) return fn;
+    }
+    return null;
+};
+// Byte source by SD pattern ID — the NNN_ prefix of a wired repo/library filename
+// (patterns/036_p3_heisenberg_ts.pat ⇒ 36). Run-log replay uses it when a log's
+// trialParams names only `patternId` (no protocol file to map id → name).
+Studio.webBytesForId = function (id) {
+    const n = Number(id);
+    if (!Number.isInteger(n) || n < 1) return null;
+    for (const [k, fn] of webPreviewBySdName) {
+        const m = /^(\d+)[_-]/.exec(String(k));
+        if (m && Number(m[1]) === n) return fn;
     }
     return null;
 };
@@ -8287,6 +8471,14 @@ function condChips(cond) {
     if (hasIO) chips.push('<span class="kchip io">AO/DO</span>');
     return chips.join('');
 }
+
+// Run-log replay renders a log-only step list into #seqBody when no protocol file was
+// found; Stop restores the open protocol's own sequence through this.
+Studio.rerenderSequence = function () {
+    const exp = Studio.currentDoc && Studio.currentDoc.experiment;
+    if (exp) renderSequence(exp);
+    else $('seqBody').innerHTML = '<span class="dim">Open a protocol (File ▾ → Open) to see its sequence.</span>';
+};
 
 function renderSequence(exp) {
     const body = $('seqBody');
@@ -9894,6 +10086,12 @@ function showPicker(title, items, onPick) {
 // Exposing the existing function preserves one modal implementation and its
 // current keyboard/cancel behavior.
 Studio.showPicker = showPicker;
+// Run-log replay (js/studio-replay.js) wires the replayed run's pattern sources the
+// same way a course-repo open does, so the 3D window resolves patterns by name.
+Studio.registerRepoPatternPreviews = (repo, protoPath, token) =>
+    registerRepoPatternPreviews(repo, protoPath, token);
+Studio.registerRepoSharedPatternPreviews = (repo, token) =>
+    registerRepoSharedPatternPreviews(repo, token);
 function hidePicker() {
     $('pickerOverlay').style.display = 'none';
     // tear down any multi-select footer extras so the single-select picker's
@@ -10139,6 +10337,23 @@ async function rewireRepoPatternPreviews() {
     registerRepoPatternPreviews({ owner: rp.owner, name: rp.name, full: rp.full }, rp.path, token);
 }
 
+// Lazy .pat byte source for a repo file → ArrayBuffer. Signed out, a PUBLIC repo is
+// read from raw.githubusercontent.com (CORS *, outside the 60/hour anonymous API
+// quota that listings share); with a token — or if the raw read fails — the Contents
+// API (raw media type) serves private repos too. The token is resolved at CALL time.
+async function repoFileBytes(repo, path) {
+    const token = ghToken();
+    if (!token && typeof GH.rawUrl === 'function') {
+        try {
+            const res = await fetch(GH.rawUrl(repo.owner, repo.name, 'HEAD', path));
+            if (res.ok) return await res.arrayBuffer();
+        } catch (_) { /* fall through to the API */ }
+    }
+    const r = await GH.runBytes(fetch, GH.reqGetContentsRaw(repo.owner, repo.name, path, null, token));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.bytes.buffer.slice(r.bytes.byteOffset, r.bytes.byteOffset + r.bytes.byteLength);
+}
+
 // A linked course repo's root patterns/ folder is the shared pattern library.
 // Wire it independently of protocol loading so an SD-card pattern can preview
 // as soon as its filename matches the repo library. Bytes stay lazy: this
@@ -10159,13 +10374,7 @@ async function registerRepoSharedPatternPreviews(repo, token) {
             .forEach((f) => {
                 n++;
                 repoSharedPreviewKeys.add(f.name);
-                webPreviewBySdName.set(f.name, async () => {
-                    const currentToken = ghToken();
-                    const r = await GH.runBytes(fetch,
-                        GH.reqGetContentsRaw(repo.owner, repo.name, f.path, null, currentToken));
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.bytes.buffer;
-                });
+                webPreviewBySdName.set(f.name, () => repoFileBytes(repo, f.path));
             });
         if (n) {
             patPreviewCache = {};
@@ -10200,21 +10409,7 @@ async function registerRepoPatternPreviews(repo, protoPath, token) {
             .forEach((f) => {
                 n++;
                 names.add(sdLogicalName(f.name));
-                webPreviewBySdName.set(f.name, async () => {
-                    const currentToken = ghToken();
-                    const r = await GH.runBytes(
-                        fetch,
-                        GH.reqGetContentsRaw(
-                            repo.owner,
-                            repo.name,
-                            f.path,
-                            null,
-                            currentToken
-                        )
-                    );
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.bytes.buffer;
-                });
+                webPreviewBySdName.set(f.name, () => repoFileBytes(repo, f.path));
             });
         if (n) {
             // The colocated _patterns/ set IS this protocol's web pattern set
@@ -10559,6 +10754,19 @@ async function initFromUrl() {
             Studio.lockSafe();
         }
         if (state.mode && state.mode !== 'run') Studio.setMode(state.mode);
+        // ?replay= (run-log playback, v0.88): open straight into a replay of a committed
+        // run log (repo defaults to the configured course repo). NOT awaited: its
+        // synchronous prefix records the pending link so the canonical URL write in
+        // `finally` keeps it; the download + protocol lookup run in the background and
+        // land PAUSED at t=0 (no user gesture yet — ▶ Play also opens the 3D window).
+        if ((state.replay || state.replayRun) && Studio.replay && Studio.replay.openFromUrl) {
+            Studio.replay.openFromUrl({
+                repo: state.repo,
+                path: state.replay,
+                runId: state.replayRun,
+                hintPath: state.p
+            });
+        }
     } finally {
         Studio._urlSuppress = false;
         Studio.updateUrl({ push: false });
@@ -16401,6 +16609,20 @@ initFromUrl();
     '[data-cmd="ctelem"]': 'Turn the controller\'s built-in activity recording on or off (it is written into the run log alongside the tracking data).',
     '[data-cmd="chealth"]': 'Ask the controller how it is doing — loop timing, memory-card read times, and what it was doing before its last restart.',
     '#fmSoak': 'Repeat the open protocol unattended (overnight) to catch the rare controller freeze; on a freeze it records diagnostics and, if you chose so, restarts the controller and continues.',
+    /* Run-log replay */
+    '#replayOpenBtn': 'Watch a recorded run again: the sequence, the fly’s behaviour on the Scope, and (optionally) the arena in 3D. Pick a recent run or a log file — the protocol is found for you. Nothing is sent to the arena.',
+    '#fmReplay': 'Watch a recorded run again from its log — the protocol is found for you, and nothing is sent to the arena.',
+    '#rpdList': 'Recent runs saved to the course repo, newest first. Click one to replay it.',
+    '#rpdFilter': 'Type words to narrow the list — a protocol, a person, a genotype, a rig, or a date.',
+    '#rpdLocalBtn': 'Replay a log file saved on this computer. Its protocol is looked up automatically.',
+    '#rplPlay': 'Play or pause the replay (Space bar).',
+    '#rplSlider': 'Drag to jump to any moment of the run. The ← and → keys jump 5 seconds.',
+    '#rplSpeed': 'Replay speed.',
+    '#rplSound': 'Hear the fly: turning sets the pitch, walking speed sets the volume.',
+    '#rplViewer': 'Open the 3D arena in its own window, in step with the replay — with the fly on its ball.',
+    '#rplLink': 'Copy a link that opens this exact replay — share it or bookmark it.',
+    '#rplStop': 'End the replay and go back to running experiments.',
+    '#rplProto': 'Which protocol file the replay is using, and whether it is exactly the version that ran.',
     '.rail-btn[data-panel="fictrac"]': 'Closed loop with FicTrac: the fly’s walking steers the pattern.',
     /* Console bench strip + panels */
     '#ctlMenu > .cmenu-btn': 'Questions for the controller — firmware version, network address, frame counters — plus advanced settings (locked).',
@@ -16508,7 +16730,7 @@ initFromUrl();
     '<b>Run an experiment:</b> ① Open a protocol — File ▾ (this computer, the library, or your course repo). ' +
     '② Check the rig shown in the top bar matches your bench. ③ <b>Connect</b> (top right) and pick the arena’s USB port. ' +
     '④ Fill in <b>Experimenter</b> and <b>Genotype</b> on the right, then <b>▶ Run experiment</b> — recorded runs save a log automatically. ' +
-    '<b>■ STOP</b> always stops the arena. ' +
+    '<b>■ STOP</b> always stops the arena. <b>↺ Replay a run</b> plays back any recorded run from its log. ' +
     '<a href="https://github.com/reiserlab/webDisplayTools/blob/main/docs/protocol-pattern-workflow.md" target="_blank" rel="noopener" title="Making a protocol + patterns from scratch — the full GitHub workflow, step by step">Full workflow guide ↗</a>');
   helpCard('#editView',
     '<b>Edit the protocol:</b> conditions are listed on the left; the middle column is the run sequence; click a condition to see and change its details on the right. ' +
