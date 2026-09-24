@@ -418,7 +418,10 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   the link — `encodeApp({replayRepo, replayPath})` → `?repo=&replay=` with NO `p`; `initFromUrl`
   calls `Studio.replay.openFromUrl` un-awaited (its sync prefix records the pending link so the
   canonical write keeps it) and lands PAUSED (no gesture → the first ▶ Play opens the 3D popup).
-  (6) The tick uses rAF, and a timer while `document.hidden` (a minimized Studio would otherwise
+  (6) The 3D popup is sized/placed by the pure `viewerPlacement()` (beside the Studio window →
+  over the greyed-out Run-details column → screen corner; outer metrics sanitized), and the viewer
+  has a compact `@media (max-width: 680px), (max-height: 500px)` layout for that small window.
+  (6b) The tick uses rAF, and a timer while `document.hidden` (a minimized Studio would otherwise
   freeze the 3D window). (7) Alt keeps its own reference replay; `install()` refuses on
   `html.arena-alt`. **3D viewer** (`js/arena-replay-viewer.js`): the ball, its Ø12 mm holder and
   the cartoon fly (drawn at `FLY_DISPLAY_SCALE` = 2× life size; `buildFly` solves the legs against
