@@ -251,6 +251,184 @@ function disposeObject(root) {
 // before it draws (the panels' depth is irrelevant to the overlay), then ball + fly
 // depth-test normally. three's clear() does not force the depth mask on, and the
 // previous material may have left it off, so set it first.
+// FicTrac-style ball: white with LARGE black markings — a mix of irregular round blobs
+// (clusters of overlapping discs) and sharp-edged shapes (triangles, quads, a pentagon,
+// an L) — so the rotation is easy to follow from frame to frame. Positions/shapes are
+// a FIXED pseudo-random draw (same ball every time), spread over the sphere by jittered
+// Fibonacci points. Drawn in the shader from the OBJECT-space surface direction, so the
+// pattern turns with the mesh, has no texture seam or pole pinch, and keeps the
+// standard lighting (incl. the LED glow). Sharp shapes are convex polygons in each
+// feature's gnomonic tangent plane (an L = two rectangles).
+const BALL_FEATURES = 14;
+const BALL_SPOT_SEED = 20260924;
+const BALL_FEATURE_KINDS = [
+    'blob',
+    'tri',
+    'blob',
+    'quad',
+    'tri',
+    'blob',
+    'pent',
+    'L',
+    'blob',
+    'tri',
+    'blob',
+    'quad',
+    'tri',
+    'blob'
+];
+const BALL_POLY_EDGES = 5; // max edges per convex polygon (unused = never limiting)
+
+function ficTracBallFeatures(count, seed) {
+    let state = seed >>> 0;
+    const rnd = () => {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        return state / 4294967296;
+    };
+    const deg = Math.PI / 180;
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    const discs = []; // Vector4(dir, cos radius)
+    const polys = []; // {c, u, v, edges:[Vector3(nx, ny, d)]}
+    const addPoly = (frame, verts) => {
+        // verts: CCW [x, y] in the tangent plane → outward half-planes n·p <= d
+        const edges = verts.map((a, k) => {
+            const b = verts[(k + 1) % verts.length];
+            const nx = b[1] - a[1];
+            const ny = -(b[0] - a[0]);
+            const len = Math.hypot(nx, ny) || 1;
+            return new THREE.Vector3(nx / len, ny / len, (nx * a[0] + ny * a[1]) / len);
+        });
+        while (edges.length < BALL_POLY_EDGES) edges.push(new THREE.Vector3(0, 0, 1e3));
+        polys.push({ c: frame.c, u: frame.u, v: frame.v, edges });
+    };
+    const ring = (n, size, angJitter, radJitter) => {
+        const a0 = rnd() * Math.PI * 2;
+        return Array.from({ length: n }, (_, k) => {
+            const a = a0 + (k * 2 * Math.PI) / n + (rnd() - 0.5) * 2 * angJitter;
+            const r = size * (1 + (rnd() - 0.5) * 2 * radJitter);
+            return [Math.cos(a) * r, Math.sin(a) * r];
+        });
+    };
+    for (let i = 0; i < count; i++) {
+        const y = 1 - (2 * (i + 0.5)) / count;
+        const rr = Math.sqrt(1 - y * y);
+        const c = new THREE.Vector3(Math.cos(golden * i) * rr, y, Math.sin(golden * i) * rr);
+        c.add(new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).multiplyScalar(0.22));
+        c.normalize();
+        const helper =
+            Math.abs(c.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+        const u0 = helper.clone().cross(c).normalize();
+        const v0 = c.clone().cross(u0).normalize();
+        const spin = rnd() * Math.PI * 2;
+        const u = u0.clone().multiplyScalar(Math.cos(spin)).addScaledVector(v0, Math.sin(spin));
+        const v = c.clone().cross(u).normalize();
+        const frame = { c, u, v };
+        const kind = BALL_FEATURE_KINDS[i % BALL_FEATURE_KINDS.length];
+        const size = Math.tan((14 + rnd() * 6) * deg); // ~28–40° across
+        if (kind === 'blob') {
+            const main = (13 + rnd() * 6) * deg;
+            discs.push(new THREE.Vector4(c.x, c.y, c.z, Math.cos(main)));
+            const satellites = 2 + Math.floor(rnd() * 2);
+            for (let k = 0; k < satellites; k++) {
+                const a = rnd() * Math.PI * 2;
+                const t = u.clone().multiplyScalar(Math.cos(a)).addScaledVector(v, Math.sin(a));
+                const off = main * (0.65 + rnd() * 0.45);
+                const d = c
+                    .clone()
+                    .multiplyScalar(Math.cos(off))
+                    .addScaledVector(t, Math.sin(off))
+                    .normalize();
+                const r = main * (0.45 + rnd() * 0.35);
+                discs.push(new THREE.Vector4(d.x, d.y, d.z, Math.cos(r)));
+            }
+        } else if (kind === 'tri') {
+            addPoly(frame, ring(3, size * 1.15, 0.22, 0.18));
+        } else if (kind === 'quad') {
+            addPoly(frame, ring(4, size, 0.18, 0.15));
+        } else if (kind === 'pent') {
+            addPoly(frame, ring(5, size * 0.95, 0.1, 0.1));
+        } else {
+            // L: two rectangles sharing the corner block
+            const s = size;
+            const w = s * 0.5;
+            addPoly(frame, [
+                [-s, -s],
+                [s, -s],
+                [s, -s + w],
+                [-s, -s + w]
+            ]);
+            addPoly(frame, [
+                [-s, -s],
+                [-s + w, -s],
+                [-s + w, s],
+                [-s, s]
+            ]);
+        }
+    }
+    return { discs, polys };
+}
+
+function applyFicTracSpots(material) {
+    const { discs, polys } = ficTracBallFeatures(BALL_FEATURES, BALL_SPOT_SEED);
+    const nd = discs.length;
+    const np = polys.length;
+    const ne = BALL_POLY_EDGES;
+    material.onBeforeCompile = (shader) => {
+        shader.uniforms.uBallDiscs = { value: discs };
+        shader.uniforms.uBallPolyC = { value: polys.map((p) => p.c) };
+        shader.uniforms.uBallPolyU = { value: polys.map((p) => p.u) };
+        shader.uniforms.uBallPolyV = { value: polys.map((p) => p.v) };
+        shader.uniforms.uBallPolyE = { value: [].concat(...polys.map((p) => p.edges)) };
+        shader.vertexShader = shader.vertexShader
+            .replace('#include <common>', '#include <common>\nvarying vec3 vBallDir;')
+            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBallDir = position;');
+        shader.fragmentShader = shader.fragmentShader
+            .replace(
+                '#include <common>',
+                [
+                    '#include <common>',
+                    'varying vec3 vBallDir;',
+                    'uniform vec4 uBallDiscs[' + nd + '];',
+                    'uniform vec3 uBallPolyC[' + np + '];',
+                    'uniform vec3 uBallPolyU[' + np + '];',
+                    'uniform vec3 uBallPolyV[' + np + '];',
+                    'uniform vec3 uBallPolyE[' + np * ne + '];'
+                ].join('\n')
+            )
+            .replace(
+                'vec4 diffuseColor = vec4( diffuse, opacity );',
+                [
+                    'vec4 diffuseColor = vec4( diffuse, opacity );',
+                    'vec3 ballDir = normalize( vBallDir );',
+                    'float ballInk = 0.0;',
+                    'for ( int i = 0; i < ' + nd + '; i ++ ) {',
+                    '    float d = dot( ballDir, uBallDiscs[ i ].xyz );',
+                    '    float w = max( fwidth( d ) * 1.25, 1e-4 );',
+                    '    ballInk = max( ballInk, smoothstep( uBallDiscs[ i ].w - w, uBallDiscs[ i ].w + w, d ) );',
+                    '}',
+                    'for ( int i = 0; i < ' + np + '; i ++ ) {',
+                    '    float dc = dot( ballDir, uBallPolyC[ i ] );',
+                    '    vec2 p = vec2( dot( ballDir, uBallPolyU[ i ] ), dot( ballDir, uBallPolyV[ i ] ) ) / max( dc, 0.05 );',
+                    '    float m = -1e3;',
+                    '    for ( int k = 0; k < ' + ne + '; k ++ ) {',
+                    '        vec3 e = uBallPolyE[ i * ' + ne + ' + k ];',
+                    '        m = max( m, dot( e.xy, p ) - e.z );',
+                    '    }',
+                    '    float w = max( fwidth( m ) * 1.0, 1e-4 );',
+                    '    ballInk = max( ballInk, ( 1.0 - smoothstep( -w, w, m ) ) * step( 0.5, dc ) );',
+                    '}',
+                    'diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.025 ), ballInk );'
+                ].join('\n')
+            )
+            .replace(
+                'vec3 totalEmissiveRadiance = emissive;',
+                'vec3 totalEmissiveRadiance = emissive * ( 1.0 - 0.85 * ballInk );'
+            );
+    };
+    material.customProgramCacheKey = () => 'fictrac-ball-features-' + nd + '-' + np;
+    material.needsUpdate = true;
+}
+
 function clearDepthBeforeDraw(renderer) {
     renderer.state.buffers.depth.setMask(true);
     renderer.clearDepth();
@@ -451,6 +629,7 @@ function rebuildApparatus() {
             emissiveIntensity: 0.3
         })
     );
+    applyFicTracSpots(ballMaterial);
     const ball = foregroundMesh(
         new THREE.Mesh(new THREE.SphereGeometry(ballRadius, 40, 24), ballMaterial),
         44
@@ -615,12 +794,21 @@ function rebuildApparatus() {
         lensMaterial,
         spot,
         fly,
+        ball,
         arenaRadius,
         arenaHeight,
         ballRadius
     };
     setLedState(replayState.ledOn, true);
+    applyBallOrientation(replayState.ball);
     updateFlyVisibility();
+}
+
+// The Studio integrates the ball's rotation from the replayed FicTrac data (js/studio-
+// replay.js ballDelta/ballStep) and sends it as a quaternion with every state update.
+function applyBallOrientation(q) {
+    if (!apparatus || !apparatus.ball || !Array.isArray(q) || q.length !== 4) return;
+    apparatus.ball.quaternion.set(q[0], q[1], q[2], q[3]);
 }
 
 // The fly-eye camera sits just above the ball — inside the fly's head. Hide the fly
@@ -710,6 +898,7 @@ function applyReplayState(nextState) {
     }
     updateFrameReadout();
     if (normalized.ledOn !== before.ledOn) setLedState(normalized.ledOn, true);
+    if (normalized.ball) applyBallOrientation(normalized.ball);
 }
 
 function handleInit(payload) {

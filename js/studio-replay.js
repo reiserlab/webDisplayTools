@@ -310,8 +310,89 @@
         };
     }
 
+    // ── Ball rotation from FicTrac (the 3D window's ball turns with the data) ──────
+    // FicTrac logs the integrated lab-frame path (x, y — radians of ball arc) and heading
+    // (hd, rad). Conventions are js/kinematics.js's: forward = dx·cos h + dy·sin h, side
+    // (right) = −dx·sin h + dy·cos h, turning + = increasing heading = clockwise seen from
+    // above (a right turn). Scene frame of the replay viewer: +Y up, the tethered fly faces
+    // −X (front, column 3), so its right is −Z. The ball moves OPPOSITE the fly's
+    // intended motion:
+    //   right turn   → ball yaws counter-clockwise from above → +Δh   about +Y
+    //   walk forward → the top surface slides back (+X)       → −fwd  about +Z
+    //   step right   → the top surface slides left (+Z)       → +side about +X
+    // One sign knob per axis in case a rig's FicTrac config is mirrored.
+    const BALL_SIGNS = { yaw: 1, pitch: 1, roll: 1 };
+    const BALL_MAX_STEP_RAD = 0.35; // per sample; larger = a FicTrac reset/jump, not motion
+    const BALL_MAX_GAP_MS = 250; // don't integrate across dropped stretches
+
+    function quatMul(a, b) {
+        return [
+            a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+            a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+            a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+            a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]
+        ];
+    }
+
+    function quatAxisAngle(ax, ay, az, angle) {
+        const s = Math.sin(angle / 2);
+        return [ax * s, ay * s, az * s, Math.cos(angle / 2)];
+    }
+
+    function quatNormalize(q) {
+        const n = Math.hypot(q[0], q[1], q[2], q[3]);
+        return n > 1e-12 ? [q[0] / n, q[1] / n, q[2] / n, q[3] / n] : [0, 0, 0, 1];
+    }
+
+    function wrapPi(r) {
+        let x = r % (2 * Math.PI);
+        if (x <= -Math.PI) x += 2 * Math.PI;
+        else if (x > Math.PI) x -= 2 * Math.PI;
+        return x;
+    }
+
+    /**
+     * The ball rotation (yaw/pitch/roll, radians) between two consecutive FicTrac samples,
+     * or null when the step must not be integrated (gap, non-monotone time, reset jump).
+     */
+    function ballDelta(prev, cur) {
+        if (!prev || !cur) return null;
+        const vals = [prev.x, prev.y, prev.hd, cur.x, cur.y, cur.hd].map(Number);
+        if (vals.some((v) => !Number.isFinite(v))) return null;
+        const t0 = Number.isFinite(Number(prev.ft)) ? Number(prev.ft) : Number(prev.ms);
+        const t1 = Number.isFinite(Number(cur.ft)) ? Number(cur.ft) : Number(cur.ms);
+        if (Number.isFinite(t0) && Number.isFinite(t1)) {
+            if (!(t1 > t0) || t1 - t0 > BALL_MAX_GAP_MS) return null;
+        }
+        const dx = vals[3] - vals[0];
+        const dy = vals[4] - vals[1];
+        const dh = wrapPi(vals[5] - vals[2]);
+        if (Math.abs(dx) > BALL_MAX_STEP_RAD || Math.abs(dy) > BALL_MAX_STEP_RAD) return null;
+        if (Math.abs(dh) > BALL_MAX_STEP_RAD * 3) return null;
+        const h = vals[5];
+        const fwd = dx * Math.cos(h) + dy * Math.sin(h);
+        const side = -dx * Math.sin(h) + dy * Math.cos(h);
+        return {
+            yaw: BALL_SIGNS.yaw * dh,
+            pitch: -BALL_SIGNS.pitch * fwd,
+            roll: BALL_SIGNS.roll * side
+        };
+    }
+
+    /** Apply one step to the orientation quaternion [x,y,z,w] (world-frame increment). */
+    function ballStep(q, d) {
+        if (!d) return q;
+        let dq = quatAxisAngle(0, 1, 0, d.yaw);
+        dq = quatMul(quatAxisAngle(0, 0, 1, d.pitch), dq);
+        dq = quatMul(quatAxisAngle(1, 0, 0, d.roll), dq);
+        return quatMul(dq, q);
+    }
+
     function createProjection() {
         return {
+            ball: [0, 0, 0, 1], // the 3D window's ball orientation (quaternion x,y,z,w)
+            ballPrev: null,
+            ballSteps: 0,
             condition: '—',
             step: null,
             stepIndex: null,
@@ -406,6 +487,14 @@
         if (!item) return { stepStarted: false, trialChanged: false };
         const c = ctx || {};
         if (item.kind === 'status') return applyStatus(proj, item.status, item.ms, c);
+        if (item.kind === 'sample' && item.sample) {
+            // Every FicTrac sample turns the ball (seek-priming integrates the same path).
+            if (proj.ball) {
+                proj.ball = ballStep(proj.ball, ballDelta(proj.ballPrev, item.sample));
+                if (++proj.ballSteps % 256 === 0) proj.ball = quatNormalize(proj.ball);
+            }
+            proj.ballPrev = item.sample;
+        }
         if (item.kind === 'frame') {
             proj.frame = positiveModulo(item.index, c.patternFrames);
         } else if (
@@ -1583,8 +1672,14 @@
                     R.viewerReady = true;
                     sendViewerInit();
                 } else if (v.message.type === 'close') {
-                    R.viewer = null;
+                    // A viewer RELOAD also says "close" (pagehide) but keeps its window;
+                    // only forget it once the window is really gone, so the reloaded page's
+                    // "ready" re-links (same WindowProxy, same session id).
                     R.viewerReady = false;
+                    const win = R.viewer;
+                    setTimeout(() => {
+                        if (R.viewer === win && (!win || win.closed)) R.viewer = null;
+                    }, 1000);
                 }
             });
         }
@@ -1712,7 +1807,8 @@
                 condition: R.proj.condition,
                 frame: R.proj.frame,
                 ledOn: R.proj.ledOn,
-                displayMode: R.proj.displayMode
+                displayMode: R.proj.displayMode,
+                ball: R.proj.ball ? R.proj.ball.slice() : undefined
             };
         }
 
@@ -2208,6 +2304,12 @@
         seekIndex,
         primeProjection,
         viewerPlacement,
+        BALL_SIGNS,
+        ballDelta,
+        ballStep,
+        quatMul,
+        quatAxisAngle,
+        quatNormalize,
         install
     };
 

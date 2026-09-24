@@ -222,7 +222,25 @@
                     ? displayCandidate
                     : 'off';
         }
+        // Ball orientation (quaternion [x, y, z, w]) integrated from FicTrac by the
+        // Studio; kept only when valid, and carried over like displayMode.
+        var ball = normalizeQuaternion(input.ball !== undefined ? input.ball : before.ball);
+        if (ball) output.ball = ball;
         return output;
+    }
+
+    function normalizeQuaternion(value) {
+        if (!Array.isArray(value) || value.length !== 4) return null;
+        var q = value.map(Number);
+        if (
+            q.some(function (v) {
+                return !Number.isFinite(v);
+            })
+        )
+            return null;
+        var n = Math.sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+        if (!(n > 1e-9)) return null;
+        return [q[0] / n, q[1] / n, q[2] / n, q[3] / n];
     }
 
     function formatElapsed(elapsedMs) {
