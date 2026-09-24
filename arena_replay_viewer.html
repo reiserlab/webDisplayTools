@@ -410,7 +410,8 @@
                 <button type="button" id="view-reset">Reset</button>
                 <button type="button" id="view-top">Top</button>
                 <button type="button" id="view-rear" title="Look into the arena from the rear camera gap">Rear</button>
-                <button type="button" id="view-fly-eye" title="View from just above the ball, facing the calibrated front column">Fly eye</button>
+                <button type="button" id="view-fly" title="Close-up of the fly on its ball, from just behind it, looking at the front of the display">Fly</button>
+                <button type="button" id="view-fly-eye" title="View from just above the ball, facing the calibrated front column (the fly is hidden here — the camera is where its head is)">Fly eye</button>
                 <label class="view-angle" title="Horizontal camera viewing angle">
                     <span>Width</span>
                     <select id="view-fov" aria-label="Horizontal viewing angle">
@@ -427,7 +428,7 @@
         <footer class="status-strip" aria-live="polite">
             <span class="connection" id="connection-status" data-tone="idle">Starting</span>
             <span id="pattern-status" data-loaded="false">No pattern · cylinder idle</span>
-            <span class="orbit-hint">Drag to orbit · scroll to zoom</span>
+            <span class="orbit-hint">Drag to orbit · scroll to zoom · “Fly” for a close-up</span>
         </footer>
 
         <script src="js/arena-replay-viewer-protocol.js?v=0713-solid-ball"></script>

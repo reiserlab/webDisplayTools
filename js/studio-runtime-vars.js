@@ -172,6 +172,10 @@
     /**
      * Build the panel. `opts`:
      *   host, statusEl            — DOM nodes (body + one status line)
+     *   cardEl                    — optional: the whole panel card; HIDDEN while there is
+     *                               nothing to show (no protocol / none declared) so it
+     *                               does not take Run-view height from the sequence. Stays
+     *                               visible for real controls and for declaration errors.
      *   document                  — the Document to create elements in (default: global.document)
      *   RuntimeControls           — the js/runtime-controls.js global
      *   getProtocol()             — parseV3Protocol() result (Studio.currentDoc.experiment) or null
@@ -209,6 +213,10 @@
             return names.join(',') + '|' + JSON.stringify(protocol.runtime_controls || {});
         }
 
+        function setCardVisible(visible) {
+            if (o.cardEl) o.cardEl.hidden = !visible;
+        }
+
         function setStatus(text, cls) {
             if (!o.statusEl) return;
             o.statusEl.textContent = text || '';
@@ -241,6 +249,7 @@
                     )
                 );
                 setStatus('');
+                setCardVisible(false);
                 return;
             }
             if (!RC) {
@@ -252,6 +261,7 @@
                     )
                 );
                 setStatus('');
+                setCardVisible(true);
                 return;
             }
             const report = RC.validateRuntimeControls(protocol);
@@ -263,6 +273,7 @@
                     report.errors.map((e) => e.message).join(' · ');
                 o.host.appendChild(box);
                 setStatus('The run will use the YAML values as written.', 'bad');
+                setCardVisible(true);
                 return;
             }
             if (!names.length) {
@@ -270,8 +281,10 @@
                     el('div', 'run-vars-empty dim', 'None declared in this protocol.')
                 );
                 setStatus('Declare `runtime_controls:` in the YAML to expose a variable here.');
+                setCardVisible(false);
                 return;
             }
+            setCardVisible(true);
             ui.defs = report.controls;
             const session = o.getSession ? o.getSession() : null;
             const planned = session

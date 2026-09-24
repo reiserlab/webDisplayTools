@@ -347,7 +347,8 @@ check(
 );
 check(
     'viewer capability handshake advertises the corrected camera controls',
-    viewerModule.includes("views: ['reset', 'top', 'rear', 'fly-eye']") &&
+    // v0.88 adds the "fly" close-up preset (the cartoon fly on the ball).
+    viewerModule.includes("views: ['reset', 'top', 'rear', 'fly', 'fly-eye']") &&
         viewerModule.includes('horizontalFovOptions: [60, 90, 120, 135, 150]')
 );
 check(

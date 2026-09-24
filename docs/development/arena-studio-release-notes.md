@@ -4,6 +4,43 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.88 (2026-09-24) · Replay a recorded run — from its log alone, or from a link
+
+- **↺ Replay a run** (Run view, next to Test experiment; also File ▾ → *Replay a recorded
+  run…*) plays a recorded experiment back through the Run view: the sequence highlights the
+  step that was running, the Scope redraws the fly's turning / forward / heading with the
+  trial, closed-loop and LED annotations, and optional **sound** follows the fly. Play /
+  Pause (Space), a seek slider (← / → jump 5 s), 0.5× / 1× / 2× / 4×. **The arena is never
+  driven** — the page's hardware-output interlock is on for the whole replay and every live
+  control is locked; **■ Stop replay** returns to the live Run view.
+- **Only the log is needed.** Pick one of the course repo's **Recent runs** (every bench,
+  newest first, filterable by protocol / person / genotype / rig / date / run id) or open a
+  `.jsonl` / `.jsonl.gz` from this computer. The protocol is **found for you** from the log's
+  metadata: the open protocol if it is the same version, else the course repo (the rig's
+  folder, `shared/`, every other bench), else this site's library — and if the file has been
+  edited since the run, the repo history is searched for the **exact version that ran**
+  (the replay bar says "Protocol ✓ exact version … @ <commit>"). A run whose protocol was
+  never committed still replays from the log alone (steps from the log, patterns matched by
+  their SD number). Advanced ▸ lets you supply the YAML or `.pat` files by hand.
+- **Links.** A replay of a repo run puts itself in the address bar —
+  `arena_studio.html?repo=reiserlab/cshl-2026-course&replay=runlogs/<bench>/<file>.jsonl.gz`
+  (or `&replay=<run id>`) — and **🔗 Copy link** copies it. Opening such a link loads the run
+  paused at its first step; the first ▶ Play also opens the 3D window.
+- **3D arena window** (🧊 3D view): a separate, movable window in step with the replay — the
+  pattern and frame the arena showed, the LED glow, and now a **cartoon fly** (drawn 2× life
+  size — 4.6 mm on the 9 mm ball — so it reads at arena scale) standing on the ball and facing
+  the front of the display, with the
+  ball sitting in a **black Ø 12 mm holder** that rises to just below its equator, as on the
+  rigs. New **Fly** camera: a close-up from just behind the fly. (The fly hides itself in the
+  Fly eye view, whose camera is where its head is.)
+- **Run view no longer spills over the Scope.** On a short window (the Scope dock at half the
+  screen plus the SD-pattern warning or the replay bar), the Run column's cards used to paint
+  over the dock; the column now scrolls inside its own area instead. The **Runtime variables**
+  card is hidden when the open protocol declares none (it only said "None declared"), giving
+  that height back to the sequence.
+- Repo pattern previews are now read from `raw.githubusercontent.com` when signed out, which
+  does not use the GitHub API's 60-requests/hour anonymous allowance.
+
 ## v0.87 (2026-09-23) · The scope shows a trial whose LED is on from the first frame
 
 - **Lit-baseline trials now emit their LED events.** A `led_activation` whose zone covers every frame

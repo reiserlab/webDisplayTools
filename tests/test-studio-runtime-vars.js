@@ -376,21 +376,34 @@ const plain = v3.parseV3Protocol(
 );
 const host2 = fakeDoc().createElement('div');
 const status2 = fakeDoc().createElement('div');
-RV.createPanel({
+const card2 = fakeDoc().createElement('div');
+card2.hidden = false;
+let proto2 = null;
+const panel2 = RV.createPanel({
     host: host2,
     statusEl: status2,
+    cardEl: card2,
     document: fakeDoc(),
     RuntimeControls,
-    getProtocol: () => plain,
+    getProtocol: () => proto2,
     getSession: () => null,
     isRunning: () => false,
     onApply: () => {}
-}).render(true);
+});
+panel2.render(true);
+check('no protocol → card hidden', card2.hidden, true);
+proto2 = plain;
+panel2.render(true);
 check(
     'no controls → "None declared"',
     host2.children[0].textContent,
     'None declared in this protocol.'
 );
+check('no controls → card hidden (frees Run-view height)', card2.hidden, true);
+proto2 = exp;
+panel2.render(true);
+check('declared controls → card shown', card2.hidden, false);
+checkBool('page passes the card to the panel', studioHtml.includes("cardEl: $('runVarsCard')"));
 
 console.log('\n=== arena_studio.html wiring ===');
 checkBool(

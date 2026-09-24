@@ -400,6 +400,32 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   REFUSED to run (a `repeat_until` block would otherwise flatten to a plain block and run wrong).
   When the web runner implements a capability, add its token to `WEB_RUNNER_CAPABILITIES`.
   Tests: `tests/test-studio-runtime-vars.js`, `tests/test-runtime-controls.js`.
+- **Run-log replay (v0.88) — `js/studio-replay.js`** (pure core, dual-export, Node-tested in
+  `tests/test-studio-replay.js`; `install()` is the Run-view controller, called from the classic
+  "(2c) RUN-LOG REPLAY" glue script — classic on purpose, it owns the interlock). Rules:
+  (1) `enterShell` latches `session.setOutputInhibited` + `inert` BEFORE any file is read, and
+  refuses while a run or FicTrac apply is active — never add a replay entry point that skips it;
+  `stop()`/pagehide release it. (2) ONE projection (`applyStatus`/`applyItem`) serves playback AND
+  seek-priming (`primeProjection`) — put replay semantics there, never in the UI loop; the display
+  changes only on display commands (an ITI that only waits HOLDS the previous pattern, as the
+  controller does). (3) Protocol lookup matches `run_metadata.protocol_sha256`, which is the sha of
+  the DESIGNER SERIALIZATION (`exp._doc.toString()`), not the raw bytes — compare both
+  (`Studio.protocolDocSha` = same parser); order: open doc → repo `protocols/<rig_id>|<log
+  bench>|shared|<every dir>/` → site `protocols/index.json` → the file's git history
+  (`GH.reqListCommits`) → HEAD-with-warning → log-only. (4) Signed-out reads of public repos go
+  through `GH.rawUrl` (raw.githubusercontent.com — CORS `*`, outside the 60/h anonymous API quota);
+  directory listings + commit lists still use the API. (5) URL: an active repo-backed replay owns
+  the link — `encodeApp({replayRepo, replayPath})` → `?repo=&replay=` with NO `p`; `initFromUrl`
+  calls `Studio.replay.openFromUrl` un-awaited (its sync prefix records the pending link so the
+  canonical write keeps it) and lands PAUSED (no gesture → the first ▶ Play opens the 3D popup).
+  (6) The tick uses rAF, and a timer while `document.hidden` (a minimized Studio would otherwise
+  freeze the 3D window). (7) Alt keeps its own reference replay; `install()` refuses on
+  `html.arena-alt`. **3D viewer** (`js/arena-replay-viewer.js`): the ball, its Ø12 mm holder and
+  the cartoon fly (drawn at `FLY_DISPLAY_SCALE` = 2× life size; `buildFly` solves the legs against
+  the ball radius in model units so the feet stay on the ball at any scale) are one depth domain on
+  top of the cutaway — the ball's `onBeforeRender` sets
+  the depth mask then clears depth (three's `clear()` does not force the mask on). The popup's
+  entry `?v=` token must equal the ThreeViewer import token (tests pin it) — bump them together.
 - **? Help mode:** top-bar `?` toggles `body.helpmode`; a managed tooltip shows curated
   `data-help` text (applied from the `HELP` map in the v6 glue classic script — extend the
   map, don't scatter attributes) and suppresses the native engineer `title=` while shown.

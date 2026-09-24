@@ -13,6 +13,16 @@
  * presence — e.g. `?repo=reiserlab/cshl-2026-course-data&p=protocols/bench03/
  * looming.yaml`). Shape-validated only; the browser's PAT gates real access.
  *
+ * `replay` (run-log playback, Studio v0.88): `?repo=owner/name&replay=runlogs/
+ * <bench>/<file>.jsonl.gz` opens straight into a replay of that committed run log;
+ * `replay=<run id>` (8-ish lowercase alphanumerics) is the short form, resolved
+ * through the repo's runlogs/<bench>/index.json. Without `repo` the app uses its
+ * configured course repo. A replay link always lands in Run, and while a
+ * repo-backed replay is active encodeApp emits ONLY {repo, replay} (+ rig /
+ * advanced) — never `p`: the replay finds its own protocol from the log's
+ * run_metadata, and `p` would mean something else if the protocol came from the
+ * site registry.
+ *
  * `rig` (#135): the SESSION (bench) rig, validated against
  * configs/rigs/index.json names by the caller (allowedRigs) — a per-setup
  * bookmark, never an override of the protocol's own rig: field. It has no
@@ -61,6 +71,10 @@
     // unlike SAFE_PATH_RE which validates a document's rig: field). Only
     // protocols/ is loadable — e.g. protocols/bench03/looming.yaml.
     const REPO_PATH_RE = /^protocols\/[\w.-]+(?:\/[\w.-]+)*\.ya?ml$/;
+    // `replay`: a committed run log under runlogs/ (Studio commits .jsonl.gz), or a
+    // bare run id (the __<runid> suffix of a committed log's name).
+    const RUNLOG_PATH_RE = /^runlogs\/[\w.-]+(?:\/[\w.-]+)*\.(jsonl|ndjson)(\.gz)?$/;
+    const RUN_ID_RE = /^[a-z0-9]{6,16}$/;
 
     function isSafeKey(k) {
         return typeof k === 'string' && KEY_RE.test(k);
@@ -83,6 +97,17 @@
         if (typeof p !== 'string' || !p) return false;
         if (p.includes('..') || p.includes('\\') || p.startsWith('/')) return false;
         return REPO_PATH_RE.test(p);
+    }
+
+    // Repo-relative committed run-log path (the `replay` param).
+    function isSafeRunlogPath(p) {
+        if (typeof p !== 'string' || !p) return false;
+        if (p.includes('..') || p.includes('\\') || p.startsWith('/')) return false;
+        return RUNLOG_PATH_RE.test(p);
+    }
+
+    function isSafeRunId(id) {
+        return typeof id === 'string' && RUN_ID_RE.test(id);
     }
 
     /**
@@ -137,11 +162,29 @@
             }
         }
 
+        // replay — a committed run log (path) or its run id; the app plays it back.
+        const rv = params.get('replay');
+        if (rv != null) {
+            if (isSafeRunlogPath(rv)) state.replay = rv;
+            else if (isSafeRunId(rv)) state.replayRun = rv;
+            else
+                warnings.push(
+                    'Ignored replay=' +
+                        rv +
+                        ' (expected runlogs/<bench>/<file>.jsonl.gz or a run id)'
+                );
+        }
+
         // mode — clamp; shared links (a `p`/`lib` present) always open in Run.
         let mode = params.get('mode');
         if (mode != null && !MODES.includes(mode)) {
             warnings.push('Ignored mode=' + mode);
             mode = null;
+        }
+        // A replay plays in the Run view (its transport lives there).
+        if (mode && mode !== 'run' && (state.replay || state.replayRun)) {
+            warnings.push('Replay link opened in Run (mode=' + mode + ' ignored)');
+            mode = 'run';
         }
         // A shared PRIMARY protocol (`p`) always opens in Run (newbie-safety). A
         // `lib`-only link is a D4 import source → authoring intent → honor `edit`.
@@ -204,16 +247,22 @@
         const s = state || {};
         const params = new URLSearchParams();
         const local = s.source === 'local';
-        const repoMode = !local && isSafeRepo(s.repo) && isSafeRepoPath(s.p);
-        if (s.mode && s.mode !== 'run' && MODES.includes(s.mode)) params.set('mode', s.mode);
-        if (repoMode) {
+        const replayMode = isSafeRepo(s.repo) && isSafeRunlogPath(s.replay);
+        const repoMode = !replayMode && !local && isSafeRepo(s.repo) && isSafeRepoPath(s.p);
+        if (s.mode && s.mode !== 'run' && MODES.includes(s.mode) && !replayMode)
+            params.set('mode', s.mode);
+        if (replayMode) {
+            // The replay resolves its own protocol from the log — no `p` (see header).
+            params.set('repo', s.repo);
+            params.set('replay', s.replay);
+        } else if (repoMode) {
             params.set('repo', s.repo);
             params.set('p', s.p);
         } else if (!local && isSafeKey(s.p)) {
             params.set('p', s.p);
         }
-        if (isSafeKey(s.lib)) params.set('lib', s.lib);
-        if (!local && isSafeKey(s.set)) params.set('set', s.set);
+        if (!replayMode && isSafeKey(s.lib)) params.set('lib', s.lib);
+        if (!replayMode && !local && isSafeKey(s.set)) params.set('set', s.set);
         if (isSafeKey(s.rig)) params.set('rig', s.rig);
         // advanced: emitted only when the caller passes it true (the write side
         // does so ONLY when advanced is active AND was URL-requested — the
@@ -249,6 +298,17 @@
      */
     function encodeApp(app) {
         const a = app || {};
+        // An active (or loading) repo-backed replay owns the link: {repo, replay}.
+        if (a.replayRepo && a.replayPath) {
+            return encode({
+                mode: 'run',
+                repo: a.replayRepo,
+                replay: a.replayPath,
+                rig: a.rigKey || undefined,
+                advanced: a.advanced || undefined,
+                soak: a.soak || undefined
+            });
+        }
         if (a.repo && a.repoPath) {
             return encode({
                 mode: a.mode,
@@ -292,6 +352,8 @@
         isSafePath,
         isSafeRepo,
         isSafeRepoPath,
+        isSafeRunlogPath,
+        isSafeRunId,
         MODES
     };
 

@@ -8,6 +8,20 @@ const DEFAULT_ARENA = 'G6_2x10';
 const MM_PER_INCH = 25.4;
 const BALL_DIAMETER_MM = 9;
 const FLY_EYE_CLEARANCE_MM = 1;
+// Ball holder (the rigs' air-supported cup): black cylinder, wider than the ball.
+const HOLDER_DIAMETER_MM = 12;
+const HOLDER_TOP_FRACTION = 0.45; // top rim at 45 % of the ball's height (just below the equator)
+const HOLDER_BELOW_FLOOR_MM = 3; // starts just below the arena's bottom edge
+// Cartoon Drosophila on the ball (a real fly is ~2.3 mm head-to-abdomen tip on a
+// 9 mm ball; drawn at FLY_DISPLAY_SCALE). It faces the calibrated FRONT (−X, column
+// 3 — the display's centre), i.e. away from the default rear-quarter camera.
+const FLY_LENGTH_MM = 2.3;
+// Drawn 2× life size (4.6 mm on the 9 mm ball) so it reads at arena scale — the
+// lab's call (2026-09-24). Set to 1 for a true-scale fly; the feet stay on the ball.
+const FLY_DISPLAY_SCALE = 2;
+const FLY_MODEL_LENGTH_MM = 2.3; // buildFly(): head front −0.86 … abdomen tip +1.44 (model units)
+const FLY_STANCE_MM = 0.72; // thorax centre above the ball's top (model units)
+const FLY_HIDE_WITHIN_MM = 3; // hide when the camera is this close (fly-eye: ~0.3 mm)
 const MIN_HORIZONTAL_FOV = 60;
 const MAX_HORIZONTAL_FOV = 150;
 const DEFAULT_HORIZONTAL_FOV = 120;
@@ -25,6 +39,7 @@ const elements = {
     resetView: document.getElementById('view-reset'),
     topView: document.getElementById('view-top'),
     rearView: document.getElementById('view-rear'),
+    flyView: document.getElementById('view-fly'),
     flyEyeView: document.getElementById('view-fly-eye'),
     viewFov: document.getElementById('view-fov')
 };
@@ -223,7 +238,148 @@ function disposeObject(root) {
         }
     });
     geometries.forEach((geometry) => geometry.dispose());
-    materials.forEach((material) => material.dispose());
+    materials.forEach((material) => {
+        if (material.map) material.map.dispose();
+        material.dispose();
+    });
+}
+
+// The apparatus is a cutaway overlay (depthTest off, drawn after the LED cylinder).
+// For the ball and the fly standing on it, depth still matters AMONG themselves —
+// otherwise far legs paint over the body. The ball clears the depth buffer right
+// before it draws (the panels' depth is irrelevant to the overlay), then ball + fly
+// depth-test normally. three's clear() does not force the depth mask on, and the
+// previous material may have left it off, so set it first.
+function clearDepthBeforeDraw(renderer) {
+    renderer.state.buffers.depth.setMask(true);
+    renderer.clearDepth();
+}
+
+function flyMaterial(color, opts) {
+    const o = opts || {};
+    const material = new THREE.MeshStandardMaterial({
+        color,
+        roughness: o.roughness != null ? o.roughness : 0.62,
+        metalness: 0.02,
+        emissive: o.emissive != null ? o.emissive : color,
+        emissiveIntensity: o.emissiveIntensity != null ? o.emissiveIntensity : 0.22,
+        map: o.map || null
+    });
+    material.transparent = true; // stay in the overlay's (transparent) render queue
+    material.opacity = o.opacity != null ? o.opacity : 1;
+    material.depthTest = true;
+    material.depthWrite = o.opacity == null || o.opacity >= 1;
+    if (o.doubleSide) material.side = THREE.DoubleSide;
+    return material;
+}
+
+// Banded abdomen: a 1×64 canvas mapped along the sphere's pole-to-pole axis.
+function abdomenTexture() {
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 4;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#d7b478';
+    ctx.fillRect(0, 0, 4, 64);
+    ctx.fillStyle = '#5a3d22';
+    // tergite bands on the posterior half (v = 0 is the tip after the rotation below)
+    [8, 17, 26].forEach((y) => ctx.fillRect(0, y, 4, 5));
+    ctx.fillRect(0, 0, 4, 4);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+}
+
+/**
+ * A cartoon fly built in MILLIMETRES, facing −X (+Y up), with the thorax centre at
+ * the origin and the feet on a sphere of radius `ballRadiusMm` whose top is
+ * `FLY_STANCE_MM` below the origin. The caller scales mm → scene units.
+ */
+function buildFly(ballRadiusMm) {
+    const fly = new THREE.Group();
+    fly.name = 'replay-fly';
+    const order = 46;
+    const add = (mesh, renderOrder) => {
+        mesh.renderOrder = renderOrder || order;
+        fly.add(mesh);
+        return mesh;
+    };
+    const ellipsoid = (rx, ry, rz, material, x, y, z) => {
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), material);
+        mesh.scale.set(rx, ry, rz);
+        mesh.position.set(x, y, z);
+        return add(mesh);
+    };
+    const tan = flyMaterial(0xc89a5a);
+    const thoraxTan = flyMaterial(0xb3843f);
+    const legTan = flyMaterial(0x7c5a34, { emissiveIntensity: 0.15 });
+    const eyeRed = flyMaterial(0xd0141f, {
+        roughness: 0.35,
+        emissive: 0x7a0008,
+        emissiveIntensity: 0.55
+    });
+    const wing = flyMaterial(0xcfe3ef, {
+        opacity: 0.34,
+        roughness: 0.2,
+        emissiveIntensity: 0.08,
+        doubleSide: true
+    });
+
+    // Head (wider than long), big red compound eyes, thorax.
+    ellipsoid(0.22, 0.25, 0.3, tan, -0.64, 0.06, 0);
+    ellipsoid(0.15, 0.21, 0.13, eyeRed, -0.66, 0.1, 0.24);
+    ellipsoid(0.15, 0.21, 0.13, eyeRed, -0.66, 0.1, -0.24);
+    ellipsoid(0.46, 0.35, 0.34, thoraxTan, -0.1, 0.02, 0);
+    // Abdomen: a sphere turned so its poles run along the body axis (bands = rings).
+    const abdomenMat = flyMaterial(0xffffff, { map: abdomenTexture(), emissive: 0x3a2a14 });
+    const abdomen = ellipsoid(1, 1, 1, abdomenMat, 0.8, -0.04, 0);
+    // The sphere's +Y pole carries the texture's top rows (the dark tip + bands);
+    // −90° about Z sends it to +X, the posterior tip. Local y is the long axis.
+    abdomen.rotation.z = -Math.PI / 2;
+    abdomen.scale.set(0.37, 0.64, 0.38);
+
+    // Folded wings over the abdomen, slightly splayed.
+    [1, -1].forEach((side) => {
+        const w = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 10), wing);
+        w.scale.set(0.82, 0.018, 0.27);
+        w.position.set(0.66, 0.34, side * 0.19);
+        w.rotation.y = side * 0.2;
+        w.rotation.z = -0.1;
+        add(w, order + 1);
+    });
+
+    // Six two-segment legs from the thorax underside to feet ON the ball.
+    const up = new THREE.Vector3(0, 1, 0);
+    const limb = (a, b, r) => {
+        const dir = new THREE.Vector3().subVectors(b, a);
+        const len = dir.length();
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.85, r, len, 8), legTan);
+        mesh.position.copy(a).addScaledVector(dir, 0.5);
+        mesh.quaternion.setFromUnitVectors(up, dir.normalize());
+        add(mesh);
+    };
+    const footY = (x, z) => {
+        const r2 = x * x + z * z;
+        return (
+            Math.sqrt(Math.max(0, ballRadiusMm * ballRadiusMm - r2)) - ballRadiusMm - FLY_STANCE_MM
+        );
+    };
+    [
+        [-0.32, -0.8, 0.46],
+        [-0.1, -0.12, 0.62],
+        [0.12, 0.62, 0.5]
+    ].forEach(([hipX, footX, footZ]) => {
+        [1, -1].forEach((side) => {
+            const hip = new THREE.Vector3(hipX, -0.22, side * 0.16);
+            const foot = new THREE.Vector3(footX, footY(footX, side * footZ), side * footZ);
+            const knee = new THREE.Vector3((hipX + footX) / 2, 0.08, side * (footZ * 0.82));
+            limb(hip, knee, 0.045);
+            limb(knee, foot, 0.035);
+        });
+    });
+    return fly;
 }
 
 // The apparatus sits inside an opaque LED cylinder. Keep its physically sized
@@ -300,24 +456,49 @@ function rebuildApparatus() {
     );
     ball.position.y = ballY;
     ball.castShadow = true;
+    // Ball + fly form their own depth domain on top of the cutaway (see
+    // clearDepthBeforeDraw): still drawn over the panels, but the fly's legs and
+    // body occlude one another — and the ball hides whatever of the fly is below it.
+    ballMaterial.depthTest = true;
+    ballMaterial.depthWrite = true;
+    ball.onBeforeRender = clearDepthBeforeDraw;
     group.add(ball);
 
-    const supportHeight = Math.max(0.01, ballY - ballRadius - arenaBottom);
-    const support = foregroundMesh(
-        new THREE.Mesh(
-            new THREE.CylinderGeometry(0.018, 0.025, supportHeight, 16),
-            foregroundMaterial(
-                new THREE.MeshStandardMaterial({
-                    color: 0x73787b,
-                    roughness: 0.55,
-                    metalness: 0.65
-                })
-            )
-        ),
-        40
+    // Model units → mm: s. The legs are solved against the ball's radius IN MODEL
+    // UNITS (4.5 mm / s) so the feet land on the real ball at any display scale.
+    const flyScaleMm = (FLY_LENGTH_MM * FLY_DISPLAY_SCALE) / FLY_MODEL_LENGTH_MM;
+    const fly = buildFly(BALL_DIAMETER_MM / 2 / flyScaleMm);
+    fly.scale.setScalar(flyScaleMm / MM_PER_INCH);
+    fly.position.set(0, ballY + ballRadius + (FLY_STANCE_MM * flyScaleMm) / MM_PER_INCH, 0);
+    group.add(fly);
+
+    // Ball holder, as on the rigs: a black vertical cylinder (Ø 12 mm, wider than
+    // the ball) from just below the arena floor up to just below the ball's
+    // equator (45 % of the ball's height), so the ball sits in it. It joins the
+    // ball+fly depth domain (drawn right after the ball clears depth) so it hides
+    // the ball's lower part while the ball above its rim stays visible.
+    const holderRadius = HOLDER_DIAMETER_MM / 2 / MM_PER_INCH;
+    const holderTop = ballY - ballRadius + HOLDER_TOP_FRACTION * 2 * ballRadius;
+    const holderBottom = arenaBottom - HOLDER_BELOW_FLOOR_MM / MM_PER_INCH;
+    const holderHeight = Math.max(0.01, holderTop - holderBottom);
+    const holderMaterial = new THREE.MeshStandardMaterial({
+        color: 0x0b0b0c,
+        roughness: 0.58,
+        metalness: 0.15,
+        emissive: 0x050505,
+        emissiveIntensity: 0.4
+    });
+    holderMaterial.transparent = true; // same (transparent) queue as the ball
+    holderMaterial.opacity = 1;
+    holderMaterial.depthTest = true;
+    holderMaterial.depthWrite = true;
+    const holder = new THREE.Mesh(
+        new THREE.CylinderGeometry(holderRadius, holderRadius, holderHeight, 48),
+        holderMaterial
     );
-    support.position.y = arenaBottom + supportHeight / 2;
-    group.add(support);
+    holder.renderOrder = 44.5; // after the ball's depth clear, before the fly
+    holder.position.y = holderBottom + holderHeight / 2;
+    group.add(holder);
 
     const tubeMaterial = foregroundMaterial(
         new THREE.MeshStandardMaterial({
@@ -432,11 +613,23 @@ function rebuildApparatus() {
         beam,
         lensMaterial,
         spot,
+        fly,
         arenaRadius,
         arenaHeight,
         ballRadius
     };
     setLedState(replayState.ledOn, true);
+    updateFlyVisibility();
+}
+
+// The fly-eye camera sits just above the ball — inside the fly's head. Hide the fly
+// whenever the camera is that close; every other view shows it.
+const _flyWorld = new THREE.Vector3();
+function updateFlyVisibility() {
+    if (!viewer || !viewer.camera || !apparatus || !apparatus.fly) return;
+    apparatus.fly.getWorldPosition(_flyWorld);
+    apparatus.fly.visible =
+        viewer.camera.position.distanceTo(_flyWorld) > FLY_HIDE_WITHIN_MM / MM_PER_INCH;
 }
 
 function setLedState(isOn, force) {
@@ -554,25 +747,46 @@ function resetCamera() {
     viewer.controls.target.set(0, 0, 0);
     viewer.controls.update();
     applyHorizontalViewFov(horizontalViewFov);
+    updateFlyVisibility();
 }
 
 function bindControls() {
     elements.resetView.addEventListener('click', resetCamera);
     elements.topView.addEventListener('click', setTopView);
     elements.rearView.addEventListener('click', setRearView);
+    if (elements.flyView) elements.flyView.addEventListener('click', setFlyView);
     elements.flyEyeView.addEventListener('click', setFlyEyeView);
     elements.viewFov.addEventListener('change', handleViewFovChange);
     window.addEventListener('resize', reapplyViewFov);
+    if (viewer && viewer.controls) viewer.controls.addEventListener('change', updateFlyVisibility);
+}
+
+// Close-up from just behind and above the fly, looking past it at the front of the
+// display — the view to see the fly on its ball facing the pattern.
+function setFlyView() {
+    if (!viewer || !apparatus) return;
+    const mm = 1 / MM_PER_INCH;
+    const top = apparatus.ballRadius;
+    // Rear three-quarter, slightly above: straight behind would foreshorten the body.
+    // Distances scale with the drawn fly so it frames the same at any display scale.
+    const k = FLY_DISPLAY_SCALE;
+    viewer.camera.position.set(4.6 * k * mm, top + 3.4 * k * mm, 4.4 * k * mm);
+    viewer.controls.target.set(-3 * k * mm, top + 0.3 * k * mm, -0.8 * k * mm);
+    viewer.controls.update();
+    applyHorizontalViewFov(horizontalViewFov);
+    updateFlyVisibility();
 }
 
 function setTopView() {
     if (viewer) viewer.setViewPreset('top-down');
+    updateFlyVisibility();
 }
 
 // The course calibration puts column 3/front at -X and column 8/rear at +X.
 // Looking from behind therefore means an external camera on the +X/east side.
 function setRearView() {
     if (viewer) viewer.setViewPreset('from-east');
+    updateFlyVisibility();
 }
 
 function setFlyEyeView() {
@@ -586,6 +800,7 @@ function setFlyEyeView() {
     viewer.camera.position.y = eyeHeight;
     viewer.controls.target.y = eyeHeight;
     viewer.controls.update();
+    updateFlyVisibility(); // the eye point is inside the fly's head — hide it
 }
 
 function applyHorizontalViewFov(value) {
@@ -616,7 +831,10 @@ function cleanupViewer() {
     elements.resetView.removeEventListener('click', resetCamera);
     elements.topView.removeEventListener('click', setTopView);
     elements.rearView.removeEventListener('click', setRearView);
+    if (elements.flyView) elements.flyView.removeEventListener('click', setFlyView);
     elements.flyEyeView.removeEventListener('click', setFlyEyeView);
+    if (viewer && viewer.controls)
+        viewer.controls.removeEventListener('change', updateFlyVisibility);
     elements.viewFov.removeEventListener('change', handleViewFovChange);
     if (apparatus && viewer && viewer.scene) {
         viewer.scene.remove(apparatus.group);
@@ -657,7 +875,7 @@ function initialize() {
             defaultArenaConfigName: DEFAULT_ARENA,
             accepts: ['parsed-pattern', 'pattern-bytes'],
             stateFrameBase: 0,
-            views: ['reset', 'top', 'rear', 'fly-eye'],
+            views: ['reset', 'top', 'rear', 'fly', 'fly-eye'],
             horizontalFovOptions: [60, 90, 120, 135, 150]
         });
     } else {
