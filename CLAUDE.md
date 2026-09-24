@@ -421,6 +421,12 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   (6) The 3D popup is sized/placed by the pure `viewerPlacement()` (beside the Studio window →
   over the greyed-out Run-details column → screen corner; outer metrics sanitized), and the viewer
   has a compact `@media (max-width: 680px), (max-height: 500px)` layout for that small window.
+  (6a) The ball's orientation is integrated IN THE CORE per FicTrac sample (`ballDelta`/`ballStep`,
+  kinematics.js conventions; +Δh about +Y, −fwd about +Z, +side about +X in the viewer's frame —
+  fly faces −X; `BALL_SIGNS` is the one knob if a rig is mirrored) and sent as `state.ball`
+  (quaternion, validated by `normalizeReplayState`) — seek-priming integrates the same path, so
+  never integrate it in the viewer. The markings are drawn in the ball material's shader
+  (`applyFicTracSpots`: discs + convex polygons from a fixed seed), not a texture.
   (6b) The tick uses rAF, and a timer while `document.hidden` (a minimized Studio would otherwise
   freeze the 3D window). (7) Alt keeps its own reference replay; `install()` refuses on
   `html.arena-alt`. **3D viewer** (`js/arena-replay-viewer.js`): the ball, its Ø12 mm holder and

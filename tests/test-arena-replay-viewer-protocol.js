@@ -171,6 +171,24 @@ equal(
 
 console.log('\n=== replay-state normalization ===');
 equal(
+    'ball quaternion is normalized and kept',
+    Protocol.normalizeReplayState({ ball: [0, 0, 0, 2] }).ball,
+    [0, 0, 0, 1]
+);
+equal(
+    'an invalid ball is dropped (no key)',
+    Object.prototype.hasOwnProperty.call(
+        Protocol.normalizeReplayState({ ball: [1, 2, 'x', 4] }),
+        'ball'
+    ),
+    false
+);
+equal(
+    'the last ball carries over when a state omits it',
+    Protocol.normalizeReplayState({ frame: 1 }, { ball: [0, 1, 0, 0] }).ball,
+    [0, 1, 0, 0]
+);
+equal(
     'canonical state stays canonical',
     Protocol.normalizeReplayState({
         elapsedMs: 6250,
@@ -310,8 +328,10 @@ const ballStart = viewerModule.indexOf('const ballMaterial = foregroundMaterial(
 const ballEnd = viewerModule.indexOf('group.add(ball);', ballStart);
 const ballBody = viewerModule.slice(ballStart, ballEnd);
 check(
-    '9 mm ball is solid pure white and renders over the red beam',
+    // v0.88 (lab request): white with FicTrac-style black spots, drawn in its shader.
+    '9 mm ball is white with FicTrac spots and renders over the red beam',
     ballBody.includes('color: 0xffffff') &&
+        ballBody.includes('applyFicTracSpots(ballMaterial);') &&
         ballBody.includes('new THREE.SphereGeometry(ballRadius, 40, 24)') &&
         ballBody.includes('44') &&
         viewerModule.includes('beam.renderOrder = 41;')
