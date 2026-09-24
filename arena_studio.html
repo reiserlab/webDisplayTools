@@ -2999,7 +2999,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.87 | 2026-09-23 16:02 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.88 | 2026-09-24 09:30 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3015,6 +3015,7 @@
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
 <!-- ============================================================ -->
 <script src="js/arena-wire-g6.js"></script>
+<script src="js/controller-settings.js"></script>
 <script src="js/studio-analog-in.js"></script>
 <script src="js/arena-link.js"></script>
 <script src="js/arena-runner-g6.js"></script>
@@ -3741,6 +3742,16 @@
                     ' matches multiple SD files — delete or rename the extra copy (Console → Patterns)'
             };
         }
+        // Sticky controller state (panel mode / refresh / panel firmware) — the planned verdict
+        // from the last dry preflight; recomputed when protocol, rig or controller changed.
+        const ctlKey = Studio._controllerGateKey ? Studio._controllerGateKey() : '';
+        if (Studio.refreshControllerGate && Studio.session && Studio.session.connected && doc &&
+            (!Studio._controllerGate || Studio._controllerGate.key !== ctlKey)) {
+            Studio.refreshControllerGate(); // async; calls back into updateRunGate
+        }
+        const ctlBlocked = (Studio._controllerGate && !Studio._controllerGate.ok) ? Studio._controllerGate.reason
+            : Studio.rigStrictFault ? 'rig (strict): ' + Studio.rigStrictFault : null;
+        if (gate.ok && ctlBlocked) gate = { ok: false, reason: ctlBlocked };
         const runBtn = $('btnRunExp');
         runBtn.disabled = !gate.ok;
         // Show the experiment length up front (steps + estimated wall-clock) so you
@@ -3750,7 +3761,9 @@
         const estTxt = est ? est.steps + ' step' + (est.steps === 1 ? '' : 's') + ' · ~' + fmtEstClock(est.sec) : '';
         $('runHint').textContent = gate.ok ? estTxt : (estTxt ? estTxt + ' · ' + gate.reason : gate.reason);
         const testBtn = $('btnTestExp');
-        testBtn.disabled = !(Studio.session && Studio.session.connected && doc);
+        // A wrong panel mode ruins a TEST run as much as an experiment: the controller gate applies to both.
+        testBtn.disabled = !(Studio.session && Studio.session.connected && doc) || !!ctlBlocked;
+        if (ctlBlocked && !gate.ok) $('runHint').textContent = (estTxt ? estTxt + ' · ' : '') + ctlBlocked;
         // Non-blocking warning: a pattern NAME doesn't match the SD but a
         // pattern_ID fallback resolves — the run proceeds playing that index,
         // NOT the named pattern (silent-wrong-pattern footgun). Distinct from
@@ -5763,6 +5776,7 @@
         const fi = Wire.decodeFirmwareInfo(await q(Wire.encodeGetFirmwareInfo()));
         if (fi && fi.version) { $('cFwName').textContent = 'on SD: ' + fi.version; got.push('SD fw «' + fi.version + '»'); }
         if (got.length) clog('init from controller: ' + got.join(' · '), 'info');
+        if (Studio.refreshControllerGate) Studio.refreshControllerGate(); // sticky-state verdict for the run gate
     }
     function downloadBlob(bytes, name, mime) {
         const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
@@ -6658,6 +6672,7 @@ function setSessionRig(rigName, opts) {
     };
     invalidateRigIo();
     renderRigIoMenu();
+    Studio._controllerGate = null; // rig changed → the sticky-state verdict must be recomputed
     updateIspShowUI(); // the batch progress map needs a 20-panel layout
     if (window.Scope && window.Scope.applyRigBallDiameter) window.Scope.applyRigBallDiameter(); // scope forward-velocity calibration
     Studio.refreshState(); // device line + mismatch chip
@@ -6838,11 +6853,222 @@ Studio.applyRigIo = async function (opts) {
     if (roleOf('cIoRoleAi', io.ai.role) === 'in') {
         clog('rig io: AI "in" not applied — Mode-4 front-end calibration TBD (bench)', 'warn');
     }
+    // Sticky panel display mode default (rig `defaults.panel_mode`): GET → SET → GET, logged.
+    // On a strict rig a failure here blocks the run gate until it is resolved.
+    const CSm = window.ControllerSettings;
+    const wantMode = CSm && io.defaults ? CSm.normalizePanelMode(io.defaults.panel_mode) : null;
+    Studio.rigStrictFault = null;
+    if (wantMode !== null) {
+        const r = await Studio.assertPanelMode(wantMode, { source: 'rig default' });
+        if (r.applied) applied.push('panel mode→' + CSm.panelModeName(wantMode));
+        if (!r.ok && io.strict) Studio.rigStrictFault = r.message;
+    }
     if (applied.length) {
         clog('rig io defaults applied (' + (Studio.currentRig && Studio.currentRig.name) + '): ' + applied.join(' · '), 'info');
     } else if (manual) {
         clog('rig io: nothing to apply (all roles off / no defaults declared)', 'info');
     }
+};
+
+// ---- controller settings: assert before run, snapshot into the run header ----
+// docs/development/controller-settings-strategy.md. The planner (js/controller-settings.js)
+// is pure; this block is the hardware side: GET → SET → GET with logging, the snapshot the
+// run header carries, the run-gate reason, and the fleet firmware verify.
+Studio.panelVerify = null; // {at, footer, ok, verified, total, mismatched[]} — batch flasher / Verify panels
+Studio.controllerSnapshot = null; // last readControllerSnapshot()
+Studio._controllerGate = null; // {ok, reason, key} — consulted by updateRunGate
+Studio.rigStrictFault = null; // connect-time rig-default failure on a strict rig
+async function ctlSend(bytes, timeoutMs) {
+    try {
+        return await Studio.session.send(bytes, { timeoutMs: timeoutMs || 2000, silent: true });
+    } catch (_) {
+        return null;
+    }
+}
+Studio.assertPanelMode = async function (want, opts) {
+    const CS = window.ControllerSettings;
+    const clog = Studio.clog || Studio.rawLog;
+    const src = (opts && opts.source) || 'protocol';
+    const before = Wire.decodePanelDisplayMode(await ctlSend(Wire.encodeGetPanelDisplayMode()));
+    if (before === want) {
+        clog('panel mode: ' + CS.panelModeName(want) + ' (' + want + ') already set — ' + src, 'info');
+        return { ok: true, applied: false, before, after: before, message: '' };
+    }
+    await ctlSend(Wire.encodeSetPanelDisplayMode(want));
+    const after = Wire.decodePanelDisplayMode(await ctlSend(Wire.encodeGetPanelDisplayMode()));
+    const ok = after === want;
+    const message = 'panel mode: ' + (before == null ? '?' : CS.panelModeName(before)) + ' → ' + CS.panelModeName(want) +
+        (ok ? ' (verified — ' + src + ')' : ' FAILED (read back ' + (after == null ? 'nothing' : CS.panelModeName(after)) + ') — ' + src);
+    clog(message, ok ? 'info' : 'err');
+    if ($('cPanelMode') && after != null) $('cPanelMode').value = String(after);
+    return { ok, applied: ok, before, after, message };
+};
+Studio.assertRefreshHz = async function (want, opts) {
+    const clog = Studio.clog || Studio.rawLog;
+    const src = (opts && opts.source) || 'protocol';
+    const before = Wire.decodeRefreshRate(await ctlSend(Wire.encodeGetRefreshRate()));
+    if (before === want) {
+        clog('refresh: ' + want + ' Hz already set — ' + src, 'info');
+        return { ok: true, applied: false, before, after: before, message: '' };
+    }
+    await ctlSend(Wire.encodeSetRefreshRate(want));
+    const after = Wire.decodeRefreshRate(await ctlSend(Wire.encodeGetRefreshRate()));
+    const ok = after === want;
+    const message = 'refresh: ' + (before == null ? '?' : before + ' Hz') + ' → ' + want + ' Hz' +
+        (ok ? ' (verified — ' + src + ')' : ' FAILED (read back ' + (after == null ? 'nothing' : after + ' Hz') + ') — ' + src);
+    clog(message, ok ? 'info' : 'err');
+    if ($('cRrHz') && after != null) $('cRrHz').value = String(after);
+    return { ok, applied: ok, before, after, message };
+};
+// Everything readable about the controller's sticky state, in one object. ~7 round-trips.
+Studio.readControllerSnapshot = async function () {
+    if (!Studio.session || !Studio.session.connected) return null;
+    await ensureCapabilities();
+    const snap = {
+        at: new Date().toISOString(),
+        panel_mode: Wire.decodePanelDisplayMode(await ctlSend(Wire.encodeGetPanelDisplayMode())),
+        refresh_hz: Wire.decodeRefreshRate(await ctlSend(Wire.encodeGetRefreshRate())),
+        spi_mhz: Wire.decodeSpiClock(await ctlSend(Wire.encodeGetSpiClock())),
+        ao_mv: Wire.decodeAoVoltage(await ctlSend(Wire.encodeGetAoVoltage())),
+        dio_roles: hasIoExt() ? Wire.decodeDioRole(await ctlSend(Wire.encodeGetDioRole())) : null,
+        panel_firmware: Wire.decodeFirmwareInfo(await ctlSend(Wire.encodeGetFirmwareInfo())),
+        controller_firmware: Studio.firmware || null,
+        controller_id: Studio.controllerId || null,
+        capabilities: Array.isArray(Studio.capabilities) ? Studio.capabilities.slice() : [],
+        verified: Studio.panelVerify
+    };
+    Studio.controllerSnapshot = snap;
+    return snap;
+};
+// Grayscale of every pattern the sequence references, from the SD listing's cached
+// pattern info (fillPatternFramesFromCard) or a direct GET_PATTERN_INFO. Best effort.
+Studio.referencedPatternInfo = async function (exp) {
+    const names = new Set();
+    for (const c of (exp && exp.conditions) || []) {
+        for (const cmd of c.commands || []) {
+            if (cmd && cmd.type === 'controller' && cmd.command_name === 'trialParams' && cmd.pattern) names.add(String(cmd.pattern));
+        }
+    }
+    const out = [];
+    const m = Studio.patternSet || null; // the SD listing (patEntry uses the same object)
+    for (const name of names) {
+        let gsVal = null;
+        const p = m && m.patterns ? Object.values(m.patterns).find((x) => x && x.name === name) : null;
+        if (p && p.preview && (p.preview.gsVal === 1 || p.preview.gsVal === 2)) gsVal = p.preview.gsVal;
+        else if (p && Number.isFinite(p.index) && Studio.session && Studio.session.connected && !Studio.session.running) {
+            const info = Wire.decodePatternInfo(await ctlSend(Wire.encodeGetPatternInfo(p.index), 1500));
+            if (info) {
+                gsVal = info.gsVal;
+                p.preview = Object.assign(p.preview || {}, { gsVal: info.gsVal, frames: info.frameCount });
+            }
+        }
+        out.push({ name, gsVal });
+    }
+    return out;
+};
+function rigNameForProtocol(exp) {
+    const rp = exp && exp.rig_path ? String(exp.rig_path) : '';
+    if (!rp) return null;
+    const base = rp.split('/').pop().replace(/\.ya?ml$/i, '');
+    const entry = (rigIndex || []).find((r) => r && (r.path === rp || String(r.path || '').split('/').pop().replace(/\.ya?ml$/i, '') === base));
+    return entry ? entry.name : null; // unknown (MATLAB-side) rig paths are not compared
+}
+/**
+ * The run preflight for sticky controller state. dry=true only plans (for the run gate);
+ * otherwise executes the SETs and returns the header the run log carries.
+ * @returns {{ok:boolean, header:object, plan:object}}
+ */
+Studio.assertControllerSettings = async function (exp, opts) {
+    const CS = window.ControllerSettings;
+    const clog = Studio.clog || Studio.rawLog;
+    const dry = !!(opts && opts.dry);
+    if (!Studio.session || !Studio.session.connected) return { ok: false, header: null, plan: null };
+    const rig = (await fetchRigIo()) || parseRigIo(null);
+    const snap = await Studio.readControllerSnapshot();
+    const patterns = await Studio.referencedPatternInfo(exp);
+    const sessionRig = Studio.currentRig && Studio.currentRig.name;
+    const plan = CS.planAssertions({ block: exp.controller, rig, snapshot: snap, patterns, protocolRig: rigNameForProtocol(exp), sessionRig });
+    const src = exp.controller && exp.controller.declared ? 'protocol controller: block' : 'rig default';
+    const header = {
+        rig: rig.name || sessionRig || null,
+        strict: plan.strict,
+        intended: plan.intended,
+        before: snap,
+        actions: [],
+        after: null,
+        blocking: plan.blocking.slice(),
+        warnings: plan.warnings.slice()
+    };
+    if (!dry) {
+        for (const w of plan.warnings) clog('controller preflight: ' + w, 'warn');
+        for (const b of plan.blocking) clog('controller preflight: ' + b, 'err');
+        if (plan.ok) {
+            for (const act of plan.actions) {
+                const r = act.setting === 'panel_mode'
+                    ? await Studio.assertPanelMode(act.to, { source: src })
+                    : await Studio.assertRefreshHz(act.to, { source: src });
+                header.actions.push({ setting: act.setting, from: act.from, to: act.to, ok: r.ok });
+                if (!r.ok) header.blocking.push(r.message || (act.setting + ' could not be set'));
+            }
+            header.after = plan.actions.length ? await Studio.readControllerSnapshot() : snap;
+        }
+        clog('controller: ' + CS.formatSnapshot(header.after || snap), 'info');
+    }
+    const ok = header.blocking.length === 0;
+    if (!ok && !dry) Studio.showBanner('Run refused — controller preflight: ' + header.blocking.join('; '));
+    Studio._controllerGate = { ok, reason: ok ? '' : 'controller preflight: ' + header.blocking[0], key: Studio._controllerGateKey() };
+    return { ok, header, plan };
+};
+Studio._controllerGateKey = function () {
+    const doc = Studio.currentDoc;
+    return [doc ? doc.filename : '', doc ? doc.sha256 : '', Studio.currentRig ? Studio.currentRig.name : '', Studio.controllerSnapshot ? Studio.controllerSnapshot.at : '', Studio.panelVerify ? Studio.panelVerify.at : ''].join('|');
+};
+// Recompute the run-gate verdict (plan only, no SETs) when the protocol, rig or controller
+// changed. Debounced single-flight; calls updateRunGate when done.
+let ctlGateBusy = false;
+Studio.refreshControllerGate = async function () {
+    const doc = Studio.currentDoc;
+    if (!doc || !Studio.session || !Studio.session.connected || Studio.session.running) {
+        Studio._controllerGate = null;
+        return;
+    }
+    if (ctlGateBusy) return;
+    ctlGateBusy = true;
+    try {
+        await Studio.assertControllerSettings(doc.experiment, { dry: true });
+    } catch (e) {
+        Studio._controllerGate = { ok: false, reason: 'controller preflight failed: ' + (e && e.message ? e.message : e), key: Studio._controllerGateKey() };
+    } finally {
+        ctlGateBusy = false;
+    }
+    if (Studio.updateRunGate) Studio.updateRunGate();
+    if (Studio.renderSettingsCard) Studio.renderSettingsCard();
+};
+// Fleet firmware verify: CRC every panel's running app flash against the SD footer
+// (G6_VERIFY_PANEL 0xC9). Stops the display first. ~1 s per panel. Result feeds the
+// snapshot / run header and the gate.
+Studio.verifyPanels = async function () {
+    const clog = Studio.clog || Studio.rawLog;
+    if (!Studio.session || !Studio.session.connected) return null;
+    const cfgName = Studio.currentRig && Studio.currentRig.arenaConfig;
+    const cfg = cfgName ? getConfig(cfgName) : null;
+    const arena = cfg && cfg.arena;
+    const total = arena && arena.num_rows && arena.num_cols ? Number(arena.num_rows) * Number(arena.num_cols) : 20;
+    if (Studio.quiesceDisplay) await Studio.quiesceDisplay();
+    const footer = Wire.decodeFirmwareInfo(await ctlSend(Wire.encodeGetFirmwareInfo()));
+    const res = { at: new Date().toISOString(), footer: footer ? footer.version : null, ok: false, verified: 0, total, mismatched: [] };
+    clog('verify panels: checking ' + total + ' panels against SD footer «' + (res.footer || '?') + '»…', 'info');
+    for (let p = 1; p <= total; p++) {
+        const r = await ctlSend(Wire.encodeG6VerifyPanel(p), 10000);
+        const v = r && Wire.decodeProgramPanelResponse(r);
+        if (v && v.ok) res.verified++;
+        else res.mismatched.push(p);
+    }
+    res.ok = res.mismatched.length === 0;
+    Studio.panelVerify = res;
+    clog('verify panels: ' + res.verified + '/' + total + ' match' + (res.ok ? '' : ' — MISMATCH on panels ' + res.mismatched.join(', ')), res.ok ? 'info' : 'err');
+    Studio.refreshControllerGate();
+    return res;
 };
 
 // ---- metadata controlled vocabularies ----
@@ -7982,6 +8208,18 @@ Studio.ispBatchRun = async function () {
         if (sum) sum.textContent = 'flash · verify · batch';
         ispLog('isp batch — ' + summary, nBad ? 'err' : 'info');
         isp.reportText = buildIspReportText(states, summary);
+        // Fleet verify result → controller snapshot / run header / gate (controller-settings).
+        if (verify) {
+            Studio.panelVerify = {
+                at: new Date().toISOString(),
+                footer: Studio.controllerSnapshot && Studio.controllerSnapshot.panel_firmware ? Studio.controllerSnapshot.panel_firmware.version : null,
+                ok: nBad === 0 && nVerified === panels.length,
+                verified: nVerified,
+                total: panels.length,
+                mismatched: states.filter((s) => s.state === 'mismatch' || s.state === 'skipped').map((s) => s.panel)
+            };
+            if (Studio.refreshControllerGate) Studio.refreshControllerGate();
+        }
         // Batch over — leave the final report map lit (nothing guarded follows;
         // All off / Stop clears it).
         await pushIspStatus(states, { final: true });
@@ -8394,6 +8632,14 @@ Studio.runOnce = async function (isExperiment) {
     if (!doc || !Studio.session || !Studio.session.connected) return null;
     const exp = doc.experiment;
     if (refuseUnsupportedRequires(exp)) return null;
+    // Sticky controller state (panel mode, refresh, panel firmware) — assert before the run,
+    // refuse on mismatch, and keep the before/after snapshot for the run header.
+    Studio._controllerHeader = null;
+    if (Studio.assertControllerSettings) {
+        const cs = await Studio.assertControllerSettings(exp);
+        if (!cs.ok) return null;
+        Studio._controllerHeader = cs.header;
+    }
     const { steps } = RunnerLib.flattenStructure(exp, { shuffle: shuffleInPlace });
     const conditionsByName = new Map((exp.conditions || []).map((c) => [c.name, c]));
     startRunLog(isExperiment);
@@ -8926,6 +9172,19 @@ function startRunLog(isExperiment) {
         toolVersion: Studio.TOOL_VERSION
     });
     Studio.activeRunLog = RunLog.createRunLog({ intent: isExperiment ? 'experiment' : 'test', meta });
+    // Controller snapshot (intended / before / actions / after) — the run header that makes a
+    // run interpretable afterwards (docs/development/controller-settings-strategy.md § 5).
+    if (Studio._controllerHeader) {
+        Studio.activeRunLog.meta.controller = Studio._controllerHeader;
+        const CS = window.ControllerSettings;
+        const h = Studio._controllerHeader;
+        Studio.activeRunLog.event('log', {
+            level: h.warnings && h.warnings.length ? 'WARN' : 'INFO',
+            message: 'controller: ' + (CS ? CS.formatSnapshot(h.after || h.before) : JSON.stringify(h.after || h.before)) +
+                (h.actions && h.actions.length ? ' · set ' + h.actions.map((a) => a.setting + ' ' + a.from + '→' + a.to + (a.ok ? '' : ' FAILED')).join(', ') : ' · nothing to set') +
+                (h.warnings && h.warnings.length ? ' · warnings: ' + h.warnings.join('; ') : '')
+        });
+    }
     // Arena Studio Alt may attach the proposal's narrowly scoped runtime
     // controls to this immutable YAML/run identity. The original Studio has no
     // hook and therefore behaves exactly as before.
@@ -11500,6 +11759,56 @@ async function initFromUrl() {
                 }
             }
             root.appendChild(rigBox);
+
+            // ── Controller (sticky settings asserted before every run) ─────────────
+            // docs/development/controller-settings-strategy.md — the protocol's controller:
+            // block (read-only here; edit the YAML), the rig's defaults, what the controller
+            // reports now, and the fleet firmware verify.
+            const ctlBox = el('div', { class: 'settings-section' });
+            ctlBox.appendChild(el('h3', {}, 'Controller'));
+            {
+                const CS = window.ControllerSettings;
+                const cb = experiment.controller || { declared: false, errors: [], warnings: [] };
+                const parts = [];
+                if (cb.declared) {
+                    if (cb.panel_mode != null) parts.push('panel mode ' + (CS ? CS.panelModeName(cb.panel_mode) : cb.panel_mode));
+                    if (cb.refresh_hz != null) parts.push('refresh ' + cb.refresh_hz + ' Hz');
+                    if (cb.refresh_policy) parts.push('refresh policy ' + cb.refresh_policy);
+                    if (cb.panel_firmware) parts.push('panel firmware "' + cb.panel_firmware + '"');
+                }
+                const ro = el('div', { class: 'set-ro' + (cb.errors && cb.errors.length ? ' set-warn' : cb.declared ? ' set-ok' : '') },
+                    cb.declared
+                        ? 'protocol declares: ' + (parts.join(' · ') || '(empty controller: block)')
+                        : 'no controller: block — this protocol inherits the rig defaults (panel mode) and is asserted against them');
+                ro.setAttribute('data-help', 'Sticky controller settings the Studio asserts before every run (GET → SET → GET) and records in the run header. Declared under controller: in the YAML (panel_mode, refresh_hz | refresh_policy, panel_firmware) — edit the YAML to change them. A protocol with a controller: block also needs requires: [controller_block].');
+                ctlBox.appendChild(ro);
+                for (const e of cb.errors || []) ctlBox.appendChild(el('div', { class: 'set-ro set-warn' }, '✗ ' + e));
+                for (const w of cb.warnings || []) ctlBox.appendChild(el('div', { class: 'set-ro set-warn' }, '⚠ ' + w));
+                const req = Array.isArray(experiment.requires) ? experiment.requires : [];
+                if (cb.declared && !req.includes('controller_block')) {
+                    ctlBox.appendChild(el('div', { class: 'set-ro set-warn' }, '⚠ add `requires: [controller_block]` so a runner without this feature refuses instead of ignoring the block'));
+                }
+                const snap = window.Studio && window.Studio.controllerSnapshot;
+                const st = el('div', { class: 'set-ro' }, snap && CS ? 'controller now: ' + CS.formatSnapshot(snap) : 'controller now: not read yet (connect)');
+                st.setAttribute('data-help', 'What the controller reports right now: panel display mode, refresh rate, SPI clock, Digital IO roles, analog-out level, the panel-firmware footer on the SD card, and the last fleet verify.');
+                ctlBox.appendChild(st);
+                const gate = window.Studio && window.Studio._controllerGate;
+                if (gate && !gate.ok) ctlBox.appendChild(el('div', { class: 'set-ro set-warn' }, '✗ ' + gate.reason));
+                else if (gate && gate.ok && snap) ctlBox.appendChild(el('div', { class: 'set-ro set-ok' }, '✓ controller preflight would pass'));
+                const row = el('div', { class: 'set-row' });
+                const vb = el('button', { class: 'zone-head-btn', title: 'CRC-check every panel\'s running firmware against the SD footer (G6_VERIFY_PANEL 0xC9). Stops the display first; about 1 s per panel. The result goes into the run header and the run gate.' }, 'Verify panels');
+                vb.disabled = !(window.Studio && window.Studio.session && window.Studio.session.connected && window.Studio.verifyPanels);
+                vb.addEventListener('click', async () => {
+                    vb.disabled = true;
+                    try { await window.Studio.verifyPanels(); } finally { renderSettings(); }
+                });
+                row.appendChild(vb);
+                const pv = window.Studio && window.Studio.panelVerify;
+                row.appendChild(el('span', { class: 'set-ro' }, pv ? (pv.ok ? '✓ ' : '✗ ') + pv.verified + '/' + pv.total + ' panels match «' + (pv.footer || '?') + '» (' + pv.at.slice(11, 19) + ')' : 'panels not verified this session'));
+                ctlBox.appendChild(row);
+            }
+            root.appendChild(ctlBox);
+            window.Studio.renderSettingsCard = renderSettings; // re-render when the gate / snapshot changes
 
             // ── Pattern set ─────────────────────────────────────────────────
             const psBox = el('div', { class: 'settings-section' });

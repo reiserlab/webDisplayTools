@@ -1,0 +1,54 @@
+version: 3
+
+# ============================================================================
+# controller: block fixture — a protocol that declares the sticky controller
+# settings it needs (panel display mode, refresh policy, panel firmware) and
+# the `controller_block` capability token so a runner that does not implement
+# the block refuses to run it instead of silently ignoring it.
+# ============================================================================
+
+experiment_info:
+  name: "v3 fixture — controller block"
+  date_created: "2026-09-24"
+  author: "webDisplayTools test fixture"
+
+rig: "./configs/rigs/bergamo_g6_2x10_2p.yaml"
+
+requires: [controller_block]
+
+controller:
+  panel_mode: triggered
+  refresh_policy: line_sync_safe
+  panel_firmware: "2p"
+
+plugins: []
+
+variables:
+  - &dur 2
+
+experiment:
+  - "blank"
+  - "show"
+  - "blank"
+
+conditions:
+  - name: "blank"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *dur
+  - name: "show"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "frame2_h_ccw_200f"
+        pattern_ID: 4
+        duration: *dur
+        mode: 2
+        frame_index: 0
+        frame_rate: 20
+        gain: 0
+        duty: 128
+      - type: "wait"
+        duration: *dur

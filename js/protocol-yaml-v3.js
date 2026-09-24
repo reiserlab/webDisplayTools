@@ -45,6 +45,7 @@ const KNOWN_TOP_LEVEL_KEYS = [
     'variables',
     'runtime_controls',
     'requires',
+    'controller',
     'plugins',
     'experiment',
     'conditions'
@@ -55,7 +56,9 @@ const KNOWN_TOP_LEVEL_KEYS = [
 // runner REFUSE to run rather than run wrong (a `repeat_until` block would otherwise flatten
 // into a plain block with its criterion silently ignored). `version:` stays 3 — capabilities
 // compose as a set; nothing here ever needs a version number.
-const WEB_RUNNER_CAPABILITIES = Object.freeze([]);
+// `controller_block`: the runner asserts a protocol's `controller:` block (panel_mode, refresh,
+// panel_firmware) before the run and records the controller snapshot in the run header.
+const WEB_RUNNER_CAPABILITIES = Object.freeze(['controller_block']);
 
 const KNOWN_EXPERIMENT_INFO_KEYS = ['name', 'date_created', 'author', 'pattern_library'];
 
@@ -215,6 +218,8 @@ function parseV3Protocol(yamlText) {
         // js/runtime-controls.js and never writes back into this YAML document.
         runtime_controls: extractRuntimeControls(data.runtime_controls),
         requires: extractRequires(data.requires),
+        // Sticky controller settings the run must assert (docs/development/controller-settings-strategy.md).
+        controller: extractControllerBlock(data.controller),
         plugins: Array.isArray(data.plugins) ? data.plugins.map(extractPlugin) : [],
         conditions: data.conditions.map(extractCondition),
         sequence: data.experiment.map(extractSequenceEntry),
@@ -293,6 +298,69 @@ function extractRequires(raw) {
 function unsupportedRequires(experiment) {
     const req = experiment && Array.isArray(experiment.requires) ? experiment.requires : [];
     return req.filter((t) => !WEB_RUNNER_CAPABILITIES.includes(t));
+}
+
+/**
+ * `controller:` — sticky controller settings the run must assert before it starts
+ * (docs/development/controller-settings-strategy.md). Keys: panel_mode (0–3 or
+ * oneshot/persistent/triggered/gated), refresh_hz (int) XOR refresh_policy
+ * ("line_sync_safe" = cap at the rig's limits.max_refresh_hz), panel_firmware (footer
+ * version or prefix the SD's panel image must match). Tolerant on read so the Studio can
+ * open a malformed file; problems land in `errors` (blocking) / `warnings`.
+ * Mirrors js/controller-settings.js normalizeControllerBlock (that module is the runtime
+ * side and cannot be imported from this ESM module without a bundler).
+ */
+const CONTROLLER_PANEL_MODES = Object.freeze({ oneshot: 0, persist: 1, persistent: 1, triggered: 2, gated: 3 });
+const CONTROLLER_REFRESH_POLICIES = Object.freeze(['line_sync_safe']);
+function extractControllerBlock(raw) {
+    const out = {
+        declared: false,
+        panel_mode: null,
+        refresh_hz: null,
+        refresh_policy: null,
+        panel_firmware: null,
+        errors: [],
+        warnings: [],
+        raw: null
+    };
+    if (raw === undefined || raw === null) return out;
+    out.declared = true;
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+        out.errors.push('controller: must be a mapping (panel_mode / refresh_hz / refresh_policy / panel_firmware)');
+        return out;
+    }
+    out.raw = JSON.parse(JSON.stringify(raw));
+    const known = ['panel_mode', 'refresh_hz', 'refresh_policy', 'panel_firmware'];
+    for (const k of Object.keys(raw)) {
+        if (!known.includes(k)) out.warnings.push('controller: unknown key "' + k + '" is ignored (known: ' + known.join(', ') + ')');
+    }
+    if (raw.panel_mode !== undefined && raw.panel_mode !== null) {
+        let m = null;
+        if (typeof raw.panel_mode === 'number' && Number.isInteger(raw.panel_mode) && raw.panel_mode >= 0 && raw.panel_mode <= 3) m = raw.panel_mode;
+        else if (typeof raw.panel_mode === 'string') {
+            const k = raw.panel_mode.trim().toLowerCase();
+            if (Object.prototype.hasOwnProperty.call(CONTROLLER_PANEL_MODES, k)) m = CONTROLLER_PANEL_MODES[k];
+            else if (/^[0-3]$/.test(k)) m = Number(k);
+        }
+        if (m === null) out.errors.push('controller.panel_mode ' + JSON.stringify(raw.panel_mode) + ' is not 0–3 or one of oneshot/persistent/triggered/gated');
+        else out.panel_mode = m;
+    }
+    if (raw.refresh_hz !== undefined && raw.refresh_hz !== null) {
+        const hz = Number(raw.refresh_hz);
+        if (!Number.isInteger(hz) || hz < 1 || hz > 2000) out.errors.push('controller.refresh_hz ' + JSON.stringify(raw.refresh_hz) + ' must be an integer 1–2000');
+        else out.refresh_hz = hz;
+    }
+    if (raw.refresh_policy !== undefined && raw.refresh_policy !== null) {
+        const pol = String(raw.refresh_policy).trim();
+        if (!CONTROLLER_REFRESH_POLICIES.includes(pol)) out.errors.push('controller.refresh_policy ' + JSON.stringify(raw.refresh_policy) + ' must be one of ' + CONTROLLER_REFRESH_POLICIES.join('/'));
+        else out.refresh_policy = pol;
+    }
+    if (out.refresh_hz !== null && out.refresh_policy !== null) out.errors.push('controller: declare refresh_hz OR refresh_policy, not both');
+    if (raw.panel_firmware !== undefined && raw.panel_firmware !== null) {
+        if (typeof raw.panel_firmware !== 'string' || !raw.panel_firmware.trim()) out.errors.push('controller.panel_firmware must be a non-empty string (a footer version or its prefix, e.g. "2p")');
+        else out.panel_firmware = raw.panel_firmware.trim();
+    }
+    return out;
 }
 
 /**
@@ -559,6 +627,11 @@ function collectBlockingErrors(experiment) {
     const base = validateReferences(experiment);
     const errors = base.ok ? [] : base.errors.slice();
 
+    // controller: block — a malformed declaration blocks (a wrong panel mode ruins data silently).
+    if (experiment && experiment.controller && Array.isArray(experiment.controller.errors)) {
+        for (const msg of experiment.controller.errors) errors.push({ kind: 'controller-block', message: msg });
+    }
+
     // The two anchor checks need the CST; skip gracefully when it's absent.
     if (experiment && experiment._doc && typeof YAML.visit === 'function') {
         // Re-parse the to-be-exported text with a LineCounter so error
@@ -673,6 +746,22 @@ function collectExportWarnings(experiment, arenaGeneration) {
                 token +
                 '", which the web runner does not implement yet — the Studio will refuse to run it (MATLAB may run it).'
         });
+    }
+    // 0b. controller: block declared without its capability token — a runner that does not
+    // implement the block (MATLAB today) would run with the wrong panel mode/refresh instead
+    // of refusing. Editing is fine; the validator and the Studio both say so.
+    if (experiment.controller && experiment.controller.declared) {
+        const req = Array.isArray(experiment.requires) ? experiment.requires : [];
+        if (!req.includes('controller_block')) {
+            warnings.push({
+                kind: 'controller-block-unrequired',
+                message:
+                    'Protocol declares a controller: block but not `requires: [controller_block]` — a runner without the block would run it with the wrong panel mode/refresh instead of refusing. Add the token.'
+            });
+        }
+        for (const w of experiment.controller.warnings || []) {
+            warnings.push({ kind: 'controller-block', message: w });
+        }
     }
 
     // 1. Unused conditions
@@ -2308,6 +2397,8 @@ const ProtocolV3 = {
     parseRigYAMLText,
     WEB_RUNNER_CAPABILITIES,
     unsupportedRequires,
+    extractControllerBlock,
+    CONTROLLER_PANEL_MODES,
     generateV3Protocol,
     validateReferences,
     collectBlockingErrors,
@@ -2367,6 +2458,8 @@ export {
     parseRigYAMLText,
     WEB_RUNNER_CAPABILITIES,
     unsupportedRequires,
+    extractControllerBlock,
+    CONTROLLER_PANEL_MODES,
     generateV3Protocol,
     validateReferences,
     collectBlockingErrors,

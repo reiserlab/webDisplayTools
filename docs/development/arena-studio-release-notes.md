@@ -4,6 +4,23 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.88 (2026-09-24) · Sticky controller settings are asserted before every run and recorded
+
+- **Panel display mode, refresh rate and panel firmware are no longer a menu setting nobody
+  records.** A rig YAML now carries `defaults.panel_mode` (asserted at connect and before every run),
+  `limits.max_refresh_hz`, `requires.panel_firmware` and `strict`; a protocol that depends on a mode
+  declares a top-level `controller:` block (`panel_mode`, `refresh_policy: line_sync_safe` |
+  `refresh_hz`, `panel_firmware`) plus `requires: [controller_block]`. Before each Run/Test the Studio
+  reads the controller, sets what differs, reads it back, and **refuses to run** on a mismatch it
+  cannot fix (wrong rig, unreadable setting, wrong panel firmware, failed fleet verify). The before /
+  after snapshot (mode, refresh, SPI, DIO roles, AO, panel-firmware footer, controller firmware,
+  fleet verify) goes into the run header (`meta.controller`) and one transcript line. The 2P
+  Bergamo protocols use it; course protocols need nothing and inherit `persistent` from their rig,
+  which also puts a bench back into persistent mode if a previous session left it triggered.
+  New rig `bergamo_g6_2x10_2p` (strict). Settings → **Controller** card shows the declaration, the live
+  snapshot, the gate verdict and a **Verify panels** button (fleet CRC check, 0xC9, ~1 s per panel).
+  Docs: `docs/development/controller-settings.md`; design: `controller-settings-strategy.md`.
+
 ## v0.87 (2026-09-23) · The scope shows a trial whose LED is on from the first frame
 
 - **Lit-baseline trials now emit their LED events.** A `led_activation` whose zone covers every frame
