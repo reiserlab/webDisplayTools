@@ -107,9 +107,13 @@ touch this parsing path.
 ## WebSocket message schema
 
 ```
-bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>,
+bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>, "epoch":<int>,
                     "ms":<int>, "fc":<int>, "idx":<int>, "ft":<ms|null>,
                     "x":<rad>, "y":<rad>, "hd":<rad>, "bias":<deg>}
+                     `epoch` (bridge ≥ 3.4) counts heading tares (+1 each time one fires,
+                     0 before the first). After the browser requests an epoch it withholds
+                     frames still stamped with the previous id — those were computed before
+                     the tare and would flash a stale index at closed-loop start.
                      (the behavior_v1 fields — ms/fc/idx/ft/x/y/hd — drive the live
                       oscilloscope; index/seq/t stay for back-compatibility)
                      `bias` is present ONLY while a bias waveform is active: the angle

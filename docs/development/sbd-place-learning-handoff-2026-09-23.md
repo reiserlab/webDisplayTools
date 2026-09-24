@@ -81,6 +81,18 @@ Studio (`http://127.0.0.1:8000/arena_studio.html`, footer v0.87 from the branch)
    Pages picker + Pages Studio can run it). Additive only; never delete in that repo.
 5. Optional: `runtime_controls:` for `led_percent` if live intensity changes are wanted.
 
+## 2026-09-24 addendum
+
+- Behaviour in run `knqkkyi3`: training 79 % of frames inside the defined cool zone (chance 25 %),
+  preprobe 26 %, probe 0 % (fly parked at frames 150–157 — probably stopped walking). The zone as
+  defined in frames works; whether it coincides with the visual seam still needs one look at the
+  arena parked on frame 183 (the `check_*` conditions are NOT listed in the Run view because it
+  lists only sequence entries — use Console → Step frames, or a separate checks protocol).
+- The bout-6 "148/0 frame" glitch is a stale PRE-TARE frame applied at `setApply(true)`: fixed on
+  this branch (bridge 3.4 stamps frames with `epoch`, +1 per tare; the client withholds frames
+  carrying the pre-tare id; `stats.stale`). Restart the bridge (banner must say 3.4) and hard-refresh
+  the local Studio to pick it up.
+
 ## Commands (all from `C:\Users\rathores\Documents\GitHub\webDisplayTools`, branch `feat/start-frame-sbd`)
 
 ```

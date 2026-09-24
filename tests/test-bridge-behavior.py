@@ -507,6 +507,45 @@ rows = [o for o in first if isinstance(o, list) and o and isinstance(o[0], str) 
 check("telemetry rows written verbatim (2 of 5 candidates)", rows, [["cc", 1789000000000, 1000, 10, 112, 0, "03704e00"], ["cf", 1789000000000, 1500, 11, 78, 36, 1961, 812]])
 check("bad rows dropped, not rewritten", any(isinstance(o, list) and o and o[0] in ("bad-tag-too-long",) for o in first) or any(o == [1, 2, 3] for o in first), False)
 
+print("=== epoch id: +1 per tare, stamped on every published frame (bridge 3.4) ===")
+
+
+class _CaptureHub:
+    def __init__(self):
+        self.msgs = []
+
+    async def publish(self, msg):
+        self.msgs.append(msg)
+
+
+class _NullLog2:
+    def __init__(self):
+        self.events = []
+
+    def write_event(self, o):
+        self.events.append(o)
+
+    def write_frame(self, beh, fields):
+        pass
+
+
+hub = _CaptureHub()
+pe = bridge.Pipeline(hub, _NullLog2(), 200, 1.8, 0.0)
+check("epoch_id starts at 0", pe.epoch_id, 0)
+line = lambda fc, hd: ",".join(str(v) for v in rec(fc, 0.0, 0.0, math.radians(hd), 1e9))
+asyncio.run(pe.handle_line(line(1, 10.0)))
+check("frame before any tare is stamped epoch 0", hub.msgs[-1]["epoch"], 0)
+pe.arm_tare("epoch")
+asyncio.run(pe.handle_line(line(2, 12.0)))   # the tare fires on this frame
+check("tare bumps epoch_id to 1", pe.epoch_id, 1)
+check("the tare frame itself is stamped with the NEW epoch", hub.msgs[-1]["epoch"], 1)
+check("heading_tare event carries the epoch", pe.log.events[-1]["epoch"], 1)
+asyncio.run(pe.handle_line(line(3, 14.0)))
+check("later frames keep epoch 1", hub.msgs[-1]["epoch"], 1)
+pe.arm_tare("epoch")
+asyncio.run(pe.handle_line(line(4, 16.0)))
+check("second tare → epoch 2", hub.msgs[-1]["epoch"], 2)
+
 print("\n=== Summary ===")
 print(f"{total - failures} / {total} checks passed")
 sys.exit(1 if failures else 0)

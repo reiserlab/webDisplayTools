@@ -129,7 +129,7 @@ WS_MAX_SIZE = 16 * 1024 * 1024
 # leads the startup banner. (An OLD bridge has no --version flag → argparse errors,
 # which is itself the tell.) "behavior_v1" here means frames carry ms/fc/idx/ft/x/y/hd
 # with `ft` normalized ns→ms — i.e. the live scope + dashboard will work.
-BRIDGE_VERSION = "3.3 · behavior_v2 (compact arena echo, log_control ack, controller telemetry rows) + bias waveforms + heading tare + coupling (unwrapped heading)"
+BRIDGE_VERSION = "3.4 · behavior_v2 (compact arena echo, log_control ack, controller telemetry rows) + bias waveforms + heading tare + coupling (unwrapped heading) + start_frame + epoch-stamped frames"
 
 # The `config` message the runner sends at each startClosedLoop. `gain` is the pre-3.3
 # name of `deg_per_frame`; still accepted so an old Console / protocol keeps working.
@@ -879,6 +879,11 @@ class Pipeline:
         self.hd0 = 0.0
         self._tare_pending = False
         self._tare_reason = "epoch"
+        # Epoch counter: +1 every time a tare FIRES. Stamped on every frame message so
+        # the browser can tell a frame computed BEFORE the tare it just requested from
+        # the first post-tare one — the race that flashed a stale index for one frame
+        # at closed-loop start (rig03 bout 6, 2026-09-23). 0 = no tare yet.
+        self.epoch_id = 0
         if bias:
             self.set_bias(bias, log_event=False, tare=False)
 
@@ -995,6 +1000,7 @@ class Pipeline:
             self.hd0 = hd_deg
             self.rel_deg = 0.0
             self._prev_hd_deg = hd_deg
+            self.epoch_id += 1
             self.log.write_event(
                 {
                     "type": "heading_tare",
@@ -1002,6 +1008,7 @@ class Pipeline:
                     "ms": now - self.t0_ms,
                     "hd0_deg": round(hd_deg, 4),
                     "reason": self._tare_reason,
+                    "epoch": self.epoch_id,
                 }
             )
             return
@@ -1055,7 +1062,7 @@ class Pipeline:
             self.ft0 = fields[21]
         beh = behavior_v1_row(fields, index, now - self.t0_ms, self.ft0)
         # Legacy index/seq/t kept alongside the behavior_v1 fields for back-compat.
-        msg = {"type": "frame", "index": index, "seq": beh["fc"], "t": now}
+        msg = {"type": "frame", "index": index, "seq": beh["fc"], "t": now, "epoch": self.epoch_id}
         msg.update(beh)
         # Live bias angle, for the Studio's read-only readout only. Additive on the
         # WebSocket (unknown fields are ignored by older clients) and deliberately NOT

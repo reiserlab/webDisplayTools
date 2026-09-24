@@ -13,6 +13,13 @@ history lives here. Newest first. (Per-session engineering detail stays in
   distance outside the safe zone, alternating sides (the MATLAB p058 rig). Set the trial's `frame_index`
   to the same N so the display shows it before the first FicTrac frame. A non-integer or negative value
   fails the step with a message. Needs the matching bridge; an older bridge ignores the key.
+- **No more stale frame at closed-loop start (bridge 3.4).** The runner pushes `epoch: true` and then
+  turns apply on; a frame the bridge had computed just before it processed that config could still
+  arrive afterwards and was applied, flashing a wrong index for one frame period (rig03 bout 6,
+  2026-09-23: frame 0 instead of 108, 1 epoch in 22). The bridge now stamps every frame with an
+  `epoch` counter (+1 per tare) and the client withholds frames still carrying the pre-tare id until
+  the first post-tare frame (or 1 s). Withheld frames show as `stale` in the bridge stats. An older
+  bridge without the stamp is unaffected.
 
 ## v0.88 (2026-09-24) · Replay a recorded run — from its log alone, or from a link
 

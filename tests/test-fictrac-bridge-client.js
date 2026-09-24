@@ -273,6 +273,59 @@ async function main() {
         }
     }
 
+    console.log('\n=== epoch gate: pre-tare frames are withheld at closed-loop start ===');
+    {
+        // THE rig03 bout-6 glitch (2026-09-23): the runner pushes {epoch:true} then turns
+        // apply on; a frame the bridge computed BEFORE it processed that config can still
+        // arrive afterwards and was applied → a stale index for one frame. Bridge ≥ 3.4
+        // stamps frames with `epoch` (+1 per tare); frames still carrying the old id are
+        // withheld until the first post-tare frame.
+        const applied = [];
+        const client = new FicTracBridgeClient({
+            WebSocketImpl: FakeWS,
+            applyFrame: (i) => {
+                applied.push(i);
+                return Promise.resolve();
+            },
+            clampFrame: (i) => i
+        });
+        client.connect('ws://localhost:8765');
+        FakeWS.last.open();
+        client.setApply(true);
+        client.handleFrame(5, { type: 'frame', index: 5, epoch: 1 });
+        await tick();
+        check('frame in epoch 1 applied normally', applied, [5]);
+        client.setConfig({ coupling: -1, start_frame: 108, epoch: true }); // new epoch requested
+        client.handleFrame(7, { type: 'frame', index: 7, epoch: 1 }); // computed pre-tare
+        await tick();
+        check('pre-tare frame (old epoch id) is NOT applied', applied, [5]);
+        check('…and is counted as stale', client.stats.stale, 1);
+        client.handleFrame(108, { type: 'frame', index: 108, epoch: 2 }); // first post-tare frame
+        await tick();
+        check('first post-tare frame applied (the start frame)', applied, [5, 108]);
+        client.handleFrame(109, { type: 'frame', index: 109, epoch: 2 });
+        await tick();
+        check('gate is open again (later frames flow)', applied, [5, 108, 109]);
+        check('stale count unchanged', client.stats.stale, 1);
+
+        // An old bridge (no `epoch` on frames) must be unaffected: no gate, nothing withheld.
+        const applied2 = [];
+        const old = new FicTracBridgeClient({
+            applyFrame: (i) => {
+                applied2.push(i);
+                return Promise.resolve();
+            },
+            clampFrame: (i) => i
+        });
+        old.setApply(true);
+        old.handleFrame(5, { type: 'frame', index: 5 });
+        old.setConfig({ epoch: true });
+        old.handleFrame(7, { type: 'frame', index: 7 });
+        await tick();
+        check('old bridge without epoch stamps: every frame applied', applied2, [5, 7]);
+        check('old bridge: stale stays 0', old.stats.stale, 0);
+    }
+
     console.log('\n=== exportLog (log_export request/response) ===');
     {
         const client = new FicTracBridgeClient({ WebSocketImpl: FakeWS });

@@ -160,6 +160,13 @@
                 logLevel: LOG_LEVELS[0]
             };
             this._epochPending = false; // transient: next config push carries epoch:true
+            // Epoch gate (bridge ≥ 3.4 stamps frames with `epoch`, +1 per tare). After we
+            // request an epoch, frames still carrying the PREVIOUS epoch id were computed
+            // before the tare — applying one flashed a stale index for one frame at
+            // closed-loop start. They are counted in stats.stale and not applied.
+            this._lastEpochId = null; // last `epoch` seen on a frame (null = bridge doesn't stamp)
+            this._epochGate = null; // { since, at } while waiting for the post-tare epoch
+            this._stale = 0;
             this._bridgeInfo = null; // from hello_ack: {version, levels, level} (null = old bridge / not yet)
             this._ackedLevel = null; // from log_control_ack while logging is enabled
             this._ackWaiters = []; // waitForLogLevelAck() resolvers
@@ -218,6 +225,7 @@
             return {
                 recv: this._recv,
                 applied: this._applied,
+                stale: this._stale, // pre-tare frames withheld at an epoch start
                 drop: Math.max(0, this._recv - this._applied),
                 rateHz: this._rateHz,
                 applyFailures: this._applyFailures,
@@ -366,7 +374,14 @@
                     this._config.deg_per_frame = pitch;
                     this._config.gain = pitch;
                 }
-                if (partial.epoch) this._epochPending = true;
+                if (partial.epoch) {
+                    this._epochPending = true;
+                    // Arm the epoch gate: frames still stamped with the current epoch id
+                    // predate the tare we are about to request. Only when the bridge
+                    // stamps epochs (an old bridge never sets _lastEpochId → no gate).
+                    if (this._lastEpochId != null)
+                        this._epochGate = { since: this._lastEpochId, at: this._now() };
+                }
                 // Per-trial start position: a ONE-SHOT that rides on this push only and is
                 // never stored, so a later plain sendConfig() cannot re-open a running
                 // epoch on that frame. The bridge turns it into offset = start_frame × pitch.
@@ -754,8 +769,22 @@
                     t: typeof msg.t === 'number' ? msg.t : this._now()
                 });
             }
+            // Epoch stamp (bridge ≥ 3.4): remember it, and while an epoch gate is armed
+            // withhold frames that still carry the pre-tare epoch id. The gate opens on
+            // the first frame with a new id, or after 1 s (never wedge the loop if the
+            // bridge somehow never tares).
+            const epoch = msg && Number.isFinite(msg.epoch) ? msg.epoch : null;
+            if (epoch != null) this._lastEpochId = epoch;
+            let stale = false;
+            if (this._epochGate) {
+                const g = this._epochGate;
+                if (epoch != null && epoch === g.since && this._now() - g.at < 1000) stale = true;
+                else this._epochGate = null;
+            }
+            if (stale && this._apply) this._stale++;
             this._emit('stats', this.stats);
             if (!this._apply) return;
+            if (stale) return; // computed before the tare — the next frame lands on the start frame
             if (!this._applyFrame) return;
             if (!this._canApply()) {
                 const now = this._now();
