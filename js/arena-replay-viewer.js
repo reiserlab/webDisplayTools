@@ -37,6 +37,7 @@ const elements = {
     pattern: document.getElementById('pattern-status'),
     time: document.getElementById('time-value'),
     resetView: document.getElementById('view-reset'),
+    overviewView: document.getElementById('view-overview'),
     topView: document.getElementById('view-top'),
     rearView: document.getElementById('view-rear'),
     flyView: document.getElementById('view-fly'),
@@ -740,7 +741,24 @@ function handleMessage(event) {
     }
 }
 
+// Starting view (and Reset): inside the arena, just behind and above the fly, looking
+// slightly down past it at the front of the display — the fly at a comfortable size
+// with most (not all) of the display around it. Scales with the drawn fly.
 function resetCamera() {
+    if (!viewer || !apparatus) return;
+    const mm = 1 / MM_PER_INCH;
+    const k = FLY_DISPLAY_SCALE;
+    const top = apparatus.ballRadius;
+    // ~18° down, a touch off-axis so the abdomen doesn't hide the head.
+    viewer.camera.position.set(6 * k * mm, top + 3.6 * k * mm, 0.8 * k * mm);
+    viewer.controls.target.set(-6 * k * mm, top - 0.3 * k * mm, 0);
+    viewer.controls.update();
+    applyHorizontalViewFov(horizontalViewFov);
+    updateFlyVisibility();
+}
+
+// The whole arena from outside (the pre-v0.88 starting view).
+function setOverviewView() {
     if (!viewer || !apparatus) return;
     const span = Math.max(apparatus.arenaRadius * 2, apparatus.arenaHeight);
     viewer.camera.position.set(span * 1.05, span * 0.82, span * 1.25);
@@ -752,6 +770,7 @@ function resetCamera() {
 
 function bindControls() {
     elements.resetView.addEventListener('click', resetCamera);
+    if (elements.overviewView) elements.overviewView.addEventListener('click', setOverviewView);
     elements.topView.addEventListener('click', setTopView);
     elements.rearView.addEventListener('click', setRearView);
     if (elements.flyView) elements.flyView.addEventListener('click', setFlyView);
@@ -829,6 +848,7 @@ function cleanupViewer() {
     window.removeEventListener('message', handleMessage);
     window.removeEventListener('resize', reapplyViewFov);
     elements.resetView.removeEventListener('click', resetCamera);
+    if (elements.overviewView) elements.overviewView.removeEventListener('click', setOverviewView);
     elements.topView.removeEventListener('click', setTopView);
     elements.rearView.removeEventListener('click', setRearView);
     if (elements.flyView) elements.flyView.removeEventListener('click', setFlyView);
@@ -875,7 +895,7 @@ function initialize() {
             defaultArenaConfigName: DEFAULT_ARENA,
             accepts: ['parsed-pattern', 'pattern-bytes'],
             stateFrameBase: 0,
-            views: ['reset', 'top', 'rear', 'fly', 'fly-eye'],
+            views: ['reset', 'overview', 'top', 'rear', 'fly', 'fly-eye'],
             horizontalFovOptions: [60, 90, 120, 135, 150]
         });
     } else {

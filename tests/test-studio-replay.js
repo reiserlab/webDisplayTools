@@ -440,6 +440,79 @@ check(
     true
 );
 
+// ── 3D window placement (out of the way of the replay controls) ─────────────
+console.log('=== 3D window placement ===');
+const SCREEN = { availLeft: 0, availTop: 25, availWidth: 1440, availHeight: 875 };
+const MAXED = {
+    screenX: 0,
+    screenY: 25,
+    outerWidth: 1440,
+    outerHeight: 875,
+    innerWidth: 1440,
+    innerHeight: 790
+};
+let pl = S.viewerPlacement({
+    screen: { availLeft: 0, availTop: 0, availWidth: 2560, availHeight: 1400 },
+    win: {
+        screenX: 0,
+        screenY: 40,
+        outerWidth: 1440,
+        outerHeight: 900,
+        innerWidth: 1440,
+        innerHeight: 815
+    }
+});
+check('screen has room → beside the Studio window, 4:3, ≤ 720 wide', pl, {
+    width: 720,
+    height: 540,
+    left: 1444,
+    top: 40
+});
+pl = S.viewerPlacement({
+    screen: SCREEN,
+    win: MAXED,
+    panel: { left: 1012, top: 90, width: 300, height: 310 }
+});
+check('maximized Studio → over the Run-details column, below the top bar', pl, {
+    width: 420,
+    height: 280,
+    left: 1012,
+    top: 200
+});
+checkBool(
+    '…and it stays inside the screen',
+    pl.left + pl.width <= 1440 && pl.top + pl.height <= 900
+);
+pl = S.viewerPlacement({ screen: SCREEN, win: MAXED, panel: null });
+check('no Run-details column (narrow layout) → bottom-right corner', pl, {
+    width: 520,
+    height: 390,
+    left: 916,
+    top: 480
+});
+pl = S.viewerPlacement({
+    screen: { availLeft: 0, availTop: 39, availWidth: 1800, availHeight: 1083 },
+    win: {
+        screenX: 0,
+        screenY: 1169,
+        outerWidth: 252,
+        outerHeight: 158,
+        innerWidth: 1312,
+        innerHeight: 822
+    }
+});
+check('nonsense outer metrics (outer < inner, off-screen) are sanitized', pl, {
+    width: 480,
+    height: 360,
+    left: 1316,
+    top: 300
+});
+pl = S.viewerPlacement({});
+checkBool(
+    'no environment at all → still a sane on-screen size',
+    pl.width >= 320 && pl.left >= 0 && pl.top >= 0
+);
+
 // ── page wiring ──────────────────────────────────────────────────────────────
 console.log('=== arena_studio.html wiring ===');
 const iReplay = studioHtml.indexOf('src="js/studio-replay.js');
@@ -546,6 +619,17 @@ checkBool(
             'const holderBottom = arenaBottom - HOLDER_BELOW_FLOOR_MM / MM_PER_INCH;'
         ) &&
         viewerJs.includes('holder.renderOrder = 44.5;')
+);
+
+checkBool(
+    'viewer has a compact layout for the small sidecar window',
+    viewerHtml.includes('@media (max-width: 680px), (max-height: 500px)')
+);
+checkBool(
+    'Studio opens the 3D window placed + sized (not a fixed 900×720)',
+    fs
+        .readFileSync(path.join(ROOT, 'js', 'studio-replay.js'), 'utf8')
+        .includes('const place = currentViewerPlacement();')
 );
 
 console.log('\n=== Summary ===');

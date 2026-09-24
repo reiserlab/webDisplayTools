@@ -31,8 +31,13 @@ history lives here. Newest first. (Per-session engineering detail stays in
   size — 4.6 mm on the 9 mm ball — so it reads at arena scale) standing on the ball and facing
   the front of the display, with the
   ball sitting in a **black Ø 12 mm holder** that rises to just below its equator, as on the
-  rigs. New **Fly** camera: a close-up from just behind the fly. (The fly hides itself in the
-  Fly eye view, whose camera is where its head is.)
+  rigs. The window **opens behind the fly**, slightly above it, looking past it at the front of
+  the display (most of the display in view, not all); **Reset** returns there and **Overview**
+  shows the whole arena from outside. New **Fly** camera: a close-up from just behind the fly.
+  (The fly hides itself in the Fly eye view, whose camera is where its head is.) The window
+  opens **small and out of the way** — beside the Studio if the screen has room, otherwise over
+  the greyed-out Run-details column — so it never covers the replay bar, sequence or Scope; in a
+  small window its info bar collapses to one slim row.
 - **Run view no longer spills over the Scope.** On a short window (the Scope dock at half the
   screen plus the SD-pattern warning or the replay bar), the Run column's cards used to paint
   over the dock; the column now scrolls inside its own area instead. The **Runtime variables**

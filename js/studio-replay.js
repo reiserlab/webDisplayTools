@@ -457,6 +457,76 @@
         return steps;
     }
 
+    /**
+     * Where to open the 3D window so it does not cover the replay controls. Screen
+     * coordinates; `width`/`height` are the window's CONTENT size (window.open).
+     * env: {screen:{availLeft,availTop,availWidth,availHeight},
+     *       win:{screenX,screenY,outerWidth,outerHeight,innerWidth,innerHeight},
+     *       panel:{left,top,width,height}|null}  — panel = the Run-details column's
+     *       viewport rect (greyed out and unused during a replay).
+     * Order: beside the Studio window if the screen has room → over the Run-details
+     * column → bottom-right corner of the screen. Always clamped on-screen.
+     */
+    function viewerPlacement(env) {
+        const e = env || {};
+        const sc = e.screen || {};
+        const w = e.win || {};
+        const sx0 = Number(sc.availLeft) || 0;
+        const sy0 = Number(sc.availTop) || 0;
+        const sw = Number(sc.availWidth) || 1280;
+        const sh = Number(sc.availHeight) || 800;
+        const MIN_W = 420;
+        const MAX_W = 720;
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        const fit = (p) => {
+            const width = Math.round(clamp(p.width, 320, sw));
+            const height = Math.round(clamp(p.height, 240, sh));
+            return {
+                width,
+                height,
+                left: Math.round(clamp(p.left, sx0, sx0 + sw - width)),
+                top: Math.round(clamp(p.top, sy0, sy0 + sh - height))
+            };
+        };
+        const iw0 = Number(w.innerWidth) || 0;
+        const ih0 = Number(w.innerHeight) || 0;
+        // Some windows report nonsense outer metrics (outer < inner, or off-screen) —
+        // never trust a window smaller than its own viewport, and keep it on-screen.
+        const ow = Math.max(Number(w.outerWidth) || sw, iw0);
+        const oh = Math.max(Number(w.outerHeight) || sh, ih0);
+        const wx = clamp(Number(w.screenX) || 0, sx0, Math.max(sx0, sx0 + sw - ow));
+        const wy = clamp(Number(w.screenY) || 0, sy0, Math.max(sy0, sy0 + sh - oh));
+        const spaceRight = sx0 + sw - (wx + ow);
+        const spaceLeft = wx - sx0;
+        if (spaceRight >= MIN_W || spaceLeft >= MIN_W) {
+            const right = spaceRight >= spaceLeft;
+            const width = Math.min(MAX_W, (right ? spaceRight : spaceLeft) - 8);
+            return fit({
+                width,
+                height: width * 0.75,
+                left: right ? wx + ow + 4 : sx0 + 4,
+                top: wy
+            });
+        }
+        const p = e.panel;
+        const iw = Number(w.innerWidth) || ow;
+        const ih = Number(w.innerHeight) || oh;
+        if (p && p.width >= 200 && p.height >= 160) {
+            // Viewport origin on screen (browser chrome sits above the page).
+            const vx = wx + Math.max(0, (ow - iw) / 2);
+            const vy = wy + Math.max(0, oh - ih);
+            const width = clamp(iw - p.left - 8, MIN_W, 640);
+            const height = Math.min(width * 0.75, Math.max(240, p.height - 30));
+            return fit({
+                width,
+                height,
+                left: Math.min(vx + p.left, vx + iw - width - 4),
+                top: vy + p.top
+            });
+        }
+        return fit({ width: 520, height: 390, left: sx0 + sw - 524, top: sy0 + sh - 420 });
+    }
+
     /** Binary search: first timeline index whose ms >= target. */
     function seekIndex(timeline, targetMs) {
         let lo = 0;
@@ -1519,6 +1589,34 @@
             });
         }
 
+        function currentViewerPlacement() {
+            try {
+                const s = global.screen || {};
+                const panel = $('metaPanel');
+                const r =
+                    panel && panel.offsetParent !== null ? panel.getBoundingClientRect() : null;
+                return viewerPlacement({
+                    screen: {
+                        availLeft: s.availLeft,
+                        availTop: s.availTop,
+                        availWidth: s.availWidth,
+                        availHeight: s.availHeight
+                    },
+                    win: {
+                        screenX: window.screenX,
+                        screenY: window.screenY,
+                        outerWidth: window.outerWidth,
+                        outerHeight: window.outerHeight,
+                        innerWidth: window.innerWidth,
+                        innerHeight: window.innerHeight
+                    },
+                    panel: r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null
+                });
+            } catch (_) {
+                return null;
+            }
+        }
+
         function openViewer(userGesture) {
             if (!ViewerProtocol) return null;
             if (R.viewer && !R.viewer.closed) {
@@ -1536,10 +1634,23 @@
                 '&origin=' +
                 encodeURIComponent(R.viewerOrigin);
             bindViewerMessages();
+            // Small, and placed out of the way (beside the Studio, else over the greyed-out
+            // Run-details column) so it never covers the replay bar, sequence or Scope.
+            const place = currentViewerPlacement();
             R.viewer = window.open(
                 url,
                 'arena-studio-replay-viewer',
-                'popup=yes,width=900,height=720,resizable=yes'
+                'popup=yes,resizable=yes,' +
+                    (place
+                        ? 'width=' +
+                          place.width +
+                          ',height=' +
+                          place.height +
+                          ',left=' +
+                          place.left +
+                          ',top=' +
+                          place.top
+                        : 'width=560,height=420')
             );
             if (!R.viewer) {
                 R.viewerPending = true;
@@ -2096,6 +2207,7 @@
         logOnlySteps,
         seekIndex,
         primeProjection,
+        viewerPlacement,
         install
     };
 
