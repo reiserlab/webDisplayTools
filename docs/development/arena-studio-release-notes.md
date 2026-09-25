@@ -62,6 +62,12 @@ Why this exists, the bench evidence and the alternatives considered: `docs/devel
   over the dock; the column now scrolls inside its own area instead. The **Runtime variables**
   card is hidden when the open protocol declares none (it only said "None declared"), giving
   that height back to the sequence.
+- **The ball rolls with the fly.** In the 3D window the ball now carries FicTrac-style
+  markings — large black blobs plus a few sharp-edged shapes (triangles, a quad, a pentagon,
+  an L), easy to follow from frame to frame — and it turns exactly as the recorded FicTrac
+  data says: it yaws with the fly's turns and rolls under its forward and sideways steps
+  (the fly stays fixed, facing the display, as on the rig). Seeking lands on the same ball
+  orientation as playing through. Reloading the 3D window keeps it in sync.
 - Repo pattern previews are now read from `raw.githubusercontent.com` when signed out, which
   does not use the GitHub API's 60-requests/hour anonymous allowance.
 

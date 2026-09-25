@@ -423,14 +423,16 @@ check('end: display off', w.displayMode, 'off');
             primed.frame,
             primed.ledOn,
             primed.displayMode,
-            primed.trial && primed.trial.patternId
+            primed.trial && primed.trial.patternId,
+            primed.ball.map((v) => v.toFixed(9))
         ],
         [
             walked.condition,
             walked.frame,
             walked.ledOn,
             walked.displayMode,
-            walked.trial && walked.trial.patternId
+            walked.trial && walked.trial.patternId,
+            walked.ball.map((v) => v.toFixed(9))
         ]
     );
 });
@@ -438,6 +440,59 @@ check(
     'seekIndex = first item at/after target',
     timeline[S.seekIndex(timeline, 2010)].ms >= 2010,
     true
+);
+
+// ── ball rotation from FicTrac (the 3D window's ball) ───────────────────────
+console.log('=== ball rotation from FicTrac ===');
+const near = (q, e, tol) => q.every((v, i) => Math.abs(v - e[i]) < (tol || 1e-6));
+function rollBall(samples) {
+    const p = S.createProjection();
+    samples.forEach((sm, i) =>
+        S.applyItem(p, { kind: 'sample', ms: sm.ms || i * 10, sample: sm }, {})
+    );
+    return S.quatNormalize(p.ball);
+}
+const ballPath = (n, f) =>
+    Array.from({ length: n }, (_, i) => Object.assign({ ms: i * 10, ft: i * 10 }, f(i)));
+let q = rollBall(ballPath(101, (i) => ({ x: i * 0.01, y: 0, hd: 0 })));
+checkBool(
+    'walking forward 1 rad → ball top rolls BACK: −1 rad about +Z',
+    near(q, [0, 0, -Math.sin(0.5), Math.cos(0.5)], 1e-6),
+    JSON.stringify(q)
+);
+q = rollBall(ballPath(51, (i) => ({ x: 0, y: 0, hd: i * 0.01 })));
+checkBool(
+    'turning right 0.5 rad (heading up) → ball yaws CCW from above: +0.5 about +Y',
+    near(q, [0, Math.sin(0.25), 0, Math.cos(0.25)], 1e-6),
+    JSON.stringify(q)
+);
+q = rollBall(ballPath(41, (i) => ({ x: 0, y: i * 0.01, hd: 0 })));
+checkBool(
+    'side-step right 0.4 rad → top slides to the fly’s left: +0.4 about +X',
+    near(q, [Math.sin(0.2), 0, 0, Math.cos(0.2)], 1e-6),
+    JSON.stringify(q)
+);
+q = rollBall(ballPath(101, (i) => ({ x: 0, y: i * 0.01, hd: Math.PI / 2 })));
+checkBool(
+    'walking along a 90° heading is still forward for the fly (−Z roll only)',
+    near(q, [0, 0, -Math.sin(0.5), Math.cos(0.5)], 1e-6),
+    JSON.stringify(q)
+);
+q = rollBall([
+    { ms: 0, ft: 0, x: 0, y: 0, hd: 0 },
+    { ms: 400, ft: 400, x: 0.2, y: 0, hd: 0 },
+    { ms: 410, ft: 410, x: 0.9, y: 0, hd: 0 }
+]);
+checkBool(
+    'gaps (>250 ms) and FicTrac-reset jumps are not integrated',
+    near(q, [0, 0, 0, 1]),
+    JSON.stringify(q)
+);
+q = rollBall(ballPath(3, (i) => ({ x: 0, y: 0, hd: [3.1, -3.1, -3.0][i] })));
+checkBool(
+    'heading wrap at ±π is a small turn, not a spin',
+    Math.abs(2 * Math.acos(Math.min(1, Math.abs(q[3]))) - (2 * Math.PI - 6.2 + 0.1)) < 1e-6,
+    JSON.stringify(q)
 );
 
 // ── 3D window placement (out of the way of the replay controls) ─────────────
@@ -579,8 +634,8 @@ checkBool(
 );
 checkBool('Help text for the replay entry point', studioHtml.includes("'#replayOpenBtn':"));
 checkBool(
-    'footer v0.88',
-    /Arena Studio v0\.88 \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET · <a/.test(studioHtml)
+    'footer v0.89',
+    /Arena Studio v0\.89 \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET · <a/.test(studioHtml)
 );
 checkBool(
     'replay hides Test buttons',
