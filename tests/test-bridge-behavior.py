@@ -236,6 +236,17 @@ check("restart tare is labelled", pl.log.events[-1]["reason"], "ft_reset")
 # The bias phase clock is evaluated at the caller's `now`, not a second wall-clock read.
 pl.set_bias({"type": "constant", "amplitude": 90.0, "frequency": 0.0}, log_event=False, tare=False)
 approx("bias_now_deg(at_ms) is exact for the given instant", pl.bias_now_deg(pl.bias_t0_ms + 2000), 180.0)
+print("=== Pipeline.start_frame_to_offset: a tared epoch opens on the requested frame ===")
+ps = bridge.Pipeline(None, _NullLog(), NFR, DPF, 0.0)
+ps.arm_tare("epoch")
+ps.advance_heading(213.0, 1, T)        # tare frame: rel 0 whatever the absolute heading
+ps.offset = ps.start_frame_to_offset(57)
+approx("offset = 57 × pitch", ps.offset, 57 * DPF)
+check("epoch opens on frame 57", FI(ps.rel_deg, NFR, DPF, ps.offset), 57)
+check("frame 57 with coupling -1 too (offset is outside the coupling)", FI(ps.rel_deg, NFR, DPF, ps.offset, 0.0, -1.0), 57)
+ps.advance_heading(231.0, 2, T + 20)   # +18 deg
+check("+18 deg at coupling -1 → 10 frames back (47)", FI(ps.rel_deg, NFR, DPF, ps.offset, 0.0, -1.0), 47)
+check("start_frame wraps modulo n_frames", ps.start_frame_to_offset(NFR + 108), 108 * DPF)
 check("gain is an alias of deg_per_frame", pl.gain, DPF)
 pl.gain = 3.6
 check("...both ways", pl.deg_per_frame, 3.6)
@@ -495,6 +506,45 @@ check("the v2 file: hello + log_control logged, schema is v2", (first[0]["type"]
 rows = [o for o in first if isinstance(o, list) and o and isinstance(o[0], str) and o[0] in ("cc", "cf")]
 check("telemetry rows written verbatim (2 of 5 candidates)", rows, [["cc", 1789000000000, 1000, 10, 112, 0, "03704e00"], ["cf", 1789000000000, 1500, 11, 78, 36, 1961, 812]])
 check("bad rows dropped, not rewritten", any(isinstance(o, list) and o and o[0] in ("bad-tag-too-long",) for o in first) or any(o == [1, 2, 3] for o in first), False)
+
+print("=== epoch id: +1 per tare, stamped on every published frame (bridge 3.4) ===")
+
+
+class _CaptureHub:
+    def __init__(self):
+        self.msgs = []
+
+    async def publish(self, msg):
+        self.msgs.append(msg)
+
+
+class _NullLog2:
+    def __init__(self):
+        self.events = []
+
+    def write_event(self, o):
+        self.events.append(o)
+
+    def write_frame(self, beh, fields):
+        pass
+
+
+hub = _CaptureHub()
+pe = bridge.Pipeline(hub, _NullLog2(), 200, 1.8, 0.0)
+check("epoch_id starts at 0", pe.epoch_id, 0)
+line = lambda fc, hd: ",".join(str(v) for v in rec(fc, 0.0, 0.0, math.radians(hd), 1e9))
+asyncio.run(pe.handle_line(line(1, 10.0)))
+check("frame before any tare is stamped epoch 0", hub.msgs[-1]["epoch"], 0)
+pe.arm_tare("epoch")
+asyncio.run(pe.handle_line(line(2, 12.0)))   # the tare fires on this frame
+check("tare bumps epoch_id to 1", pe.epoch_id, 1)
+check("the tare frame itself is stamped with the NEW epoch", hub.msgs[-1]["epoch"], 1)
+check("heading_tare event carries the epoch", pe.log.events[-1]["epoch"], 1)
+asyncio.run(pe.handle_line(line(3, 14.0)))
+check("later frames keep epoch 1", hub.msgs[-1]["epoch"], 1)
+pe.arm_tare("epoch")
+asyncio.run(pe.handle_line(line(4, 16.0)))
+check("second tare → epoch 2", hub.msgs[-1]["epoch"], 2)
 
 print("\n=== Summary ===")
 print(f"{total - failures} / {total} checks passed")

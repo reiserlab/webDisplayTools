@@ -361,6 +361,12 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   any NEW closed-loop entry point. A short pattern is legitimate — a 20-px grating
   needs 20 frames and the modulus tiles it; the pitch stays 360/azimuth_pixels.
   Full spec: `docs/development/closed-loop-bias.md`.
+- **Per-trial closed-loop start position (`start_frame`) + epoch gate (bridge 3.4):** since the 3.3
+  tare every epoch opens on `round(offset / pitch)` = frame 0, so `startClosedLoop params.start_frame: N`
+  becomes the bridge `offset` (N × pitch) for that epoch — one-shot in the client, never stored. The
+  bridge stamps frames with `epoch` (+1 per tare) and the client withholds pre-tare frames after an
+  epoch request (`stats.stale`). Why, evidence, alternatives, open questions:
+  `docs/development/closed-loop-start-frame.md`.
 - URL state ([#107](https://github.com/reiserlab/webDisplayTools/issues/107),
   read+write): `js/studio-url-state.js` (`mode` ∈ run|edit|console; a shared
   `p` forces `edit`→Run on fresh loads, never `console`). Write side:

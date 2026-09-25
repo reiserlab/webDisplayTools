@@ -1733,6 +1733,27 @@ async function main() {
         checkBool('startClosedLoop on=true', scl.on === true);
         check('startClosedLoop carries the coupling', scl.coupling, 0.75);
         check('no deg_per_frame → null (rig pitch)', scl.degPerFrame, null);
+        check('no start_frame → startFrame null (epoch opens at frame 0)', scl.startFrame, null);
+        check(
+            'start_frame carried as an integer (per-trial start position)',
+            t('startClosedLoop', { start_frame: 57 }).startFrame,
+            57
+        );
+        check(
+            'start_frame "108" (string from YAML) is accepted',
+            t('startClosedLoop', { start_frame: '108' }).startFrame,
+            108
+        );
+        check(
+            'non-integer start_frame → error (not silently dropped)',
+            t('startClosedLoop', { start_frame: 57.5 }).op,
+            'error'
+        );
+        check(
+            'negative start_frame → error',
+            t('startClosedLoop', { start_frame: -1 }).op,
+            'error'
+        );
         check('coupling defaults to 1', t('startClosedLoop', {}).coupling, 1);
         check(
             'deg_per_frame override carried',
@@ -2014,7 +2035,7 @@ async function main() {
                             type: 'plugin',
                             plugin_name: 'fictrac',
                             command_name: 'startClosedLoop',
-                            params: { coupling: 0.75 }
+                            params: { coupling: 0.75, start_frame: 57 }
                         },
                         { type: 'wait', duration: 2 },
                         { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' },
@@ -2055,6 +2076,15 @@ async function main() {
         checkBool(
             'pushed coupling 0.75',
             bridge.configs.some((c) => c.coupling === 0.75)
+        );
+        checkBool(
+            'pushed start_frame 57 in the SAME config as epoch (opens the tared epoch on 57)',
+            bridge.configs.some((c) => c.start_frame === 57 && c.epoch === true),
+            JSON.stringify(bridge.configs)
+        );
+        checkBool(
+            'stopClosedLoop config carries no start_frame',
+            !bridge.configs.some((c) => c.start_frame !== undefined && c.epoch !== true)
         );
         checkBool(
             'pushed epoch:true with the start (bridge re-tares the heading)',
