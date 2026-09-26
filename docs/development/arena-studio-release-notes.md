@@ -4,6 +4,21 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.90 (2026-09-26) · The replay fly walks
+
+- **The fly in the replay 3D window now walks with the recorded data.** Its legs step in a
+  tripod gait (front and hind legs on one side move together with the middle leg on the
+  other side, the two groups alternating), driven by the fly's forward speed and turning rate
+  averaged over the last 100 ms. Faster walking means quicker steps. While a leg is on the
+  ball its foot moves with the ball's surface, so the feet stay planted as the ball rolls
+  under them. Turning changes each leg's stroke the way real flies' strokes change: in a
+  gentle turn the outer legs take longer strides, and in a sharp turn on the spot the inner
+  legs step backward. When the fly stops, it stands still. The model follows the Ramdya lab's
+  NeuroMechFly v2 (tripod oscillators steered by left/right drive asymmetry).
+- **The fly is tethered, as on the rigs:** a steel pin glued on the middle of the thorax (a
+  quarter of the way back from its front), held by a brass rod that leans back and leaves the
+  arena through its open top.
+
 ## v0.89 (2026-09-24) · Per-trial closed-loop start position; no stale frame at epoch start — bridge 3.4
 
 Why this exists, the bench evidence and the alternatives considered: `docs/development/closed-loop-start-frame.md`.

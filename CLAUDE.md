@@ -433,12 +433,23 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   (quaternion, validated by `normalizeReplayState`) — seek-priming integrates the same path, so
   never integrate it in the viewer. The markings are drawn in the ball material's shader
   (`applyFicTracSpots`: discs + convex polygons from a fixed seed), not a texture.
+  (6c) The fly WALKS (v0.90) from **`js/fly-gait.js`** (pure, dual-export, classic `<script>`
+  loaded before studio-replay.js in the Studio AND before the module in
+  `arena_replay_viewer.html`; both sides tolerate it missing → the fly just stands). The 2-D
+  drive is (forward mm/s, yaw rad/s), a 100 ms sliding average of the SAME `ballDelta` the ball
+  integrates; `stepGait` runs in `applyItem` beside `ballStep` and integrates the tripod phase
+  in LOG time (so seek == walk and 4× plays 4× faster), and `state.gait` = `gaitState()`
+  (validated by `normalizeGait`). The viewer only poses: `footPosition` puts stance feet on the
+  ball moving with ω × r (no slip — per-leg stride = surface velocity × stance time, which
+  yields NeuroMechFly v2's left/right drive regimes), knees by two-bone IK (`poseFlyLegs`).
+  Keep gait semantics in fly-gait.js; tune the cadence law there (`gaitDrive`).
   (6b) The tick uses rAF, and a timer while `document.hidden` (a minimized Studio would otherwise
   freeze the 3D window). (7) Alt keeps its own reference replay; `install()` refuses on
   `html.arena-alt`. **3D viewer** (`js/arena-replay-viewer.js`): the ball, its Ø12 mm holder and
   the cartoon fly (drawn at `FLY_DISPLAY_SCALE` = 2× life size; `buildFly` solves the legs against
-  the ball radius in model units so the feet stay on the ball at any scale) are one depth domain on
-  top of the cutaway — the ball's `onBeforeRender` sets
+  the ball radius in model units so the feet stay on the ball at any scale) and the tether
+  (steel pin in the fly model, so it scales with the fly; real-size brass rod leaning back out of
+  the arena's open top) are one depth domain on top of the cutaway — the ball's `onBeforeRender` sets
   the depth mask then clears depth (three's `clear()` does not force the mask on). The popup's
   entry `?v=` token must equal the ThreeViewer import token (tests pin it) — bump them together.
 - **? Help mode:** top-bar `?` toggles `body.helpmode`; a managed tooltip shows curated

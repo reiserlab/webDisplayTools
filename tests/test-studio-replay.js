@@ -424,7 +424,8 @@ check('end: display off', w.displayMode, 'off');
             primed.ledOn,
             primed.displayMode,
             primed.trial && primed.trial.patternId,
-            primed.ball.map((v) => v.toFixed(9))
+            primed.ball.map((v) => v.toFixed(9)),
+            [primed.gait.phase, primed.gait.pitch, primed.gait.walk].map((v) => v.toFixed(9))
         ],
         [
             walked.condition,
@@ -432,7 +433,8 @@ check('end: display off', w.displayMode, 'off');
             walked.ledOn,
             walked.displayMode,
             walked.trial && walked.trial.patternId,
-            walked.ball.map((v) => v.toFixed(9))
+            walked.ball.map((v) => v.toFixed(9)),
+            [walked.gait.phase, walked.gait.pitch, walked.gait.walk].map((v) => v.toFixed(9))
         ]
     );
 });
@@ -494,6 +496,31 @@ checkBool(
     Math.abs(2 * Math.acos(Math.min(1, Math.abs(q[3]))) - (2 * Math.PI - 6.2 + 0.1)) < 1e-6,
     JSON.stringify(q)
 );
+
+// ── the fly's gait rides the same per-sample path (js/fly-gait.js) ───────────
+console.log('=== fly gait from FicTrac ===');
+function walkGait(samples) {
+    const p = S.createProjection();
+    samples.forEach((sm, i) =>
+        S.applyItem(p, { kind: 'sample', ms: sm.ms || i * 10, sample: sm }, {})
+    );
+    return p.gait;
+}
+// 10 mm/s forward on the 9 mm ball = 10/4.5 rad/s = 0.0222 rad per 10 ms sample.
+let gait = walkGait(ballPath(60, (i) => ({ x: (i * 0.1) / 4.5, y: 0, hd: 0 })));
+checkBool(
+    'forward 10 mm/s → gait forward speed 10 mm/s, walking, phase moving',
+    Math.abs(gait.forward - 10) < 1e-6 && gait.walk === 1 && gait.phase > 0,
+    JSON.stringify({ forward: gait.forward, walk: gait.walk, phase: gait.phase })
+);
+gait = walkGait(ballPath(60, (i) => ({ x: 0, y: 0, hd: i * 0.03 })));
+checkBool(
+    'turning right 3 rad/s → gait yaw +3 rad/s (the ball’s +Y rate)',
+    Math.abs(gait.yaw - 3) < 1e-6,
+    String(gait.yaw)
+);
+gait = walkGait(ballPath(60, () => ({ x: 0.5, y: 0.2, hd: 1 })));
+check('a still ball → a standing fly', [gait.walk, gait.phase], [0, 0]);
 
 // ── 3D window placement (out of the way of the replay controls) ─────────────
 console.log('=== 3D window placement ===');
@@ -576,6 +603,11 @@ checkBool(
     /src="js\/studio-replay\.js\?v=[^"]+"/.test(studioHtml)
 );
 checkBool(
+    'the fly walking model (fly-gait.js) loads before studio-replay.js',
+    studioHtml.indexOf('src="js/fly-gait.js?v=') > 0 &&
+        studioHtml.indexOf('src="js/fly-gait.js?v=') < iReplay
+);
+checkBool(
     'loaded after runlog-replay + viewer protocol + github + url-state',
     iReplay > studioHtml.indexOf('src="js/runlog-replay.js') &&
         iReplay > studioHtml.indexOf('src="js/arena-replay-viewer-protocol.js"') &&
@@ -634,8 +666,8 @@ checkBool(
 );
 checkBool('Help text for the replay entry point', studioHtml.includes("'#replayOpenBtn':"));
 checkBool(
-    'footer v0.89',
-    /Arena Studio v0\.89 \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET · <a/.test(studioHtml)
+    'footer v0.90',
+    /Arena Studio v0\.90 \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET · <a/.test(studioHtml)
 );
 checkBool(
     'replay hides Test buttons',
@@ -685,6 +717,35 @@ checkBool(
     fs
         .readFileSync(path.join(ROOT, 'js', 'studio-replay.js'), 'utf8')
         .includes('const place = currentViewerPlacement();')
+);
+
+checkBool(
+    'the fly walks: legs posed from the gait on every state + rebuild',
+    viewerJs.includes('function poseFlyLegs(fly, gait)') &&
+        viewerJs.includes('poseFlyLegs(apparatus.fly, normalized.gait);') &&
+        viewerJs.includes('poseFlyLegs(fly, replayState.gait);')
+);
+checkBool(
+    'tether: steel pin on the thorax midline, a quarter back from its front, leaning back',
+    /const TETHER_PIN_X_MODEL = -0\.33;/.test(viewerJs) &&
+        /const THORAX_CENTER = \[-0\.1, 0\.02, 0\];/.test(viewerJs) &&
+        /const THORAX_RADII = \[0\.46, 0\.35, 0\.34\];/.test(viewerJs) &&
+        viewerJs.includes("pin.name = 'tether-pin';") &&
+        viewerJs.includes('fly.userData.tether = { top: pinTop, dir: tetherDir };')
+);
+checkBool(
+    'tether: brass rod continues the pin and ends above the arena (leaves through the top)',
+    /const TETHER_ROD_DIAMETER_MM = 1;/.test(viewerJs) &&
+        viewerJs.includes("rod.name = 'tether-rod';") &&
+        viewerJs.includes(
+            '(arenaTop + TETHER_ROD_ABOVE_ARENA_MM / MM_PER_INCH - rodBottom.y) / rodDir.y'
+        )
+);
+checkBool(
+    'the Studio sends the gait state with every viewer update',
+    fs
+        .readFileSync(path.join(ROOT, 'js', 'studio-replay.js'), 'utf8')
+        .includes('gait: R.proj.gait && flyGait() ? flyGait().gaitState(R.proj.gait) : undefined')
 );
 
 console.log('\n=== Summary ===');

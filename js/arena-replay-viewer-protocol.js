@@ -226,7 +226,28 @@
         // Studio; kept only when valid, and carried over like displayMode.
         var ball = normalizeQuaternion(input.ball !== undefined ? input.ball : before.ball);
         if (ball) output.ball = ball;
+        // The fly's walking state (js/fly-gait.js gaitState), carried over the same way.
+        var gait = normalizeGait(input.gait !== undefined ? input.gait : before.gait);
+        if (gait) output.gait = gait;
         return output;
+    }
+
+    function normalizeGait(value) {
+        if (!isPlainObject(value)) return null;
+        var keys = ['phase', 'yaw', 'pitch', 'freq', 'duty', 'walk'];
+        var g = {};
+        for (var i = 0; i < keys.length; i++) {
+            var v = Number(value[keys[i]]);
+            if (!Number.isFinite(v)) return null;
+            g[keys[i]] = v;
+        }
+        g.phase = ((g.phase % 1) + 1) % 1;
+        g.yaw = Math.max(-50, Math.min(50, g.yaw));
+        g.pitch = Math.max(-50, Math.min(50, g.pitch));
+        g.freq = Math.max(0, Math.min(40, g.freq));
+        g.duty = Math.max(0.05, Math.min(0.95, g.duty));
+        g.walk = Math.max(0, Math.min(1, g.walk));
+        return g;
     }
 
     function normalizeQuaternion(value) {
