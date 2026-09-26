@@ -98,12 +98,32 @@ view bridge row as `stale N`. Frames without the stamp (older bridge) are never 
 Behaviour in both full runs: training-bout occupancy of the LED-off zone 71–79 % (chance 25 %);
 LED ramps 1 → 5 % over frames 8–16 and 150–158 as designed.
 
-## Open questions for review
+## Open questions from the review (answered 2026-09-25, merged as #223)
 
-1. Version numbering: rebased onto main at v0.88 on 2026-09-24; this PR is labelled **Studio v0.89 /
-   bridge 3.4** (footer, release notes, skill). Renumber freely if something else lands first.
-2. Should `stopClosedLoop` reset `offset` to 0 so a following trial *without* `start_frame` opens on
-   frame 0 rather than on the previous trial's start? Today it keeps the last value (the Studio
-   re-pushes the plugin-config offset at run start, so runs never inherit from each other).
+1. Version numbering: shipped as **Studio v0.89 / bridge 3.4**.
+2. *Should `stopClosedLoop` reset `offset`?* Already does, in practice: the client's `sendConfig()`
+   sends its stored `offset` (the plugin-config value, default 0) on EVERY config push, and
+   `stopClosedLoop` always pushes `bias: none`. Only a bare bridge client would keep the last value.
 3. `deg_per_frame` on the bridge is the rig pitch (1.8°); `start_frame` assumes one frame = one pixel
    column, like every other frame-unit field.
+
+## v0.90: the closed loop opens at `frame_index` — one field, not two
+
+Having both `frame_index` (what the controller shows from trialParams until the first FicTrac frame)
+and `start_frame` (where the tared epoch opens) meant two numbers that must always agree: setting only
+`frame_index` jumps the display to frame 0 on the first FicTrac frame (run `2zo017ag`), setting only
+`start_frame` shows frame 0 for the tens of ms before the loop starts. There is no use for them
+differing, and the course repo showed authors already expect `frame_index` to be the start: of 286
+closed-loop conditions, 268 use `frame_index: 0`, 4 are SBD (both equal), and 18 — the rig7 P3
+conditioning protocols `p3-conditioning-closedloop-short-{negative,dillpat-ng,lowg}.yaml`, "starts
+alternate frame 25 (cue A in front) and frame 75 (cue B)" — use 25 / 75 and had been opening on 0
+since bridge 3.3.
+
+So the runner now records each trialParams' wire `init_pos` (`acc.fictracInitPos`, the value
+`frame_index` maps to) and pushes it as the bridge `start_frame` (mod the resolved frame count) with
+every `startClosedLoop`. Nothing changes for `frame_index: 0` or absent; the rig7 trials open where
+they were authored. `params.start_frame` is deprecated: still accepted (v0.89 protocols), silent when
+it equals `frame_index`, and when it differs it wins with a run warning that the display jumps. The
+runner also warns ONCE per run when the bridge is older than 3.4 (`FicTracBridgeClient.supportsStartFrame()`)
+and a trial should open off frame 0 — that bridge ignores the key. The bridge and wire schema are
+unchanged; `start_frame` stays the config key between the browser and the bridge.

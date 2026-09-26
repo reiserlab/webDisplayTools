@@ -930,6 +930,27 @@ async function main() {
         check('3.3 bridge → coupling supported', client.supportsCoupling(), true);
         client.setConfig({ coupling: 0.5 });
         check('no warning on a 3.3 bridge', warns.length, before + 1);
+        // start_frame (the closed-loop start position) needs 3.4; a 3.3 bridge opens on 0.
+        check('3.3 bridge → start_frame NOT supported', client.supportsStartFrame(), false);
+        FakeWS.last.onmessage({
+            data: JSON.stringify({
+                type: 'hello_ack',
+                bridge: '3.4 · behavior_v2 + start_frame + epoch-stamped frames',
+                levels: ['behavior_v2'],
+                level: 'behavior_v2',
+                logging: false
+            })
+        });
+        check('3.4 bridge → start_frame supported', client.supportsStartFrame(), true);
+        check('3.4 bridge → coupling still supported', client.supportsCoupling(), true);
+        FakeWS.last.onmessage({
+            data: JSON.stringify({ type: 'hello_ack', bridge: '4.0', levels: [], logging: false })
+        });
+        check(
+            '4.0 bridge → start_frame supported (major beats minor)',
+            client.supportsStartFrame(),
+            true
+        );
     }
 
     console.log('\n=== Summary ===');

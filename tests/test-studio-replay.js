@@ -634,8 +634,8 @@ checkBool(
 );
 checkBool('Help text for the replay entry point', studioHtml.includes("'#replayOpenBtn':"));
 checkBool(
-    'footer v0.89',
-    /Arena Studio v0\.89 \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET · <a/.test(studioHtml)
+    'footer v0.90',
+    /Arena Studio v0\.90 \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET · <a/.test(studioHtml)
 );
 checkBool(
     'replay hides Test buttons',

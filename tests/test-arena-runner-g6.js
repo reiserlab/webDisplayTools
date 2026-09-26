@@ -2050,17 +2050,28 @@ async function main() {
             ]
         ]);
         let slept = 0;
+        const clEvents = [];
         const summary = await runner.runSequence({
             steps,
             conditionsByName,
             resolvePatternId: () => 1,
             resolvePatternFrames: (cmd) => (cmd.command_name === 'trialParams' ? 60 : null),
             fictracPluginNames: new Set(['fictrac']),
+            onProgress: (e) => clEvents.push(e),
             sleep: (ms) => {
                 slept += ms;
                 return Promise.resolve();
             }
         });
+        checkBool(
+            'explicit start_frame 57 ≠ frame_index 0 → warns (display jumps)',
+            clEvents.some(
+                (e) =>
+                    e.phase === 'warn' &&
+                    /start_frame 57 differs from the trialParams frame_index 0/.test(e.reason)
+            ),
+            JSON.stringify(clEvents.filter((e) => e.phase === 'warn'))
+        );
         check('bridge.connect called once', bridge.connectCalls, 1);
         // Runner disarms at sequence start and again at sequence end, so the
         // protocol's own true/false sits between two safety falses.
@@ -2098,6 +2109,130 @@ async function main() {
         check('no skips (fictrac + log executed)', summary.skipped, 0);
         check('no errors', summary.errors, 0);
         check('closed-loop timing = 2s (fictrac ops add no time)', slept, 2000);
+    }
+
+    console.log('\n=== closed loop opens at the trialParams frame_index (v0.90) ===');
+    {
+        // rig7 P3 conditioning (course repo): trials authored `frame_index: 25` / `75`
+        // ("starts alternate frame 25 / 75") opened on frame 0 once bridge 3.3 tared every
+        // epoch. The runner now sends the trialParams frame_index as the bridge start frame.
+        const runCl = async (conds, bridgeOpts = {}) => {
+            const configs = [];
+            const bridge = Object.assign(
+                {
+                    logging: true,
+                    logs: [],
+                    connect() {},
+                    disconnect() {},
+                    setApply() {},
+                    setConfig(cfg) {
+                        configs.push(cfg);
+                    },
+                    log(obj) {
+                        this.logs.push(obj);
+                    }
+                },
+                bridgeOpts
+            );
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, bridge);
+            const conditionsByName = new Map();
+            const steps = conds.map((c, i) => {
+                conditionsByName.set('c' + i, {
+                    name: 'c' + i,
+                    commands: [
+                        Object.assign(
+                            {
+                                type: 'controller',
+                                command_name: 'trialParams',
+                                mode: 3,
+                                frame_rate: 0,
+                                gain: 0,
+                                duration: 1,
+                                pattern: 'p'
+                            },
+                            c.frame_index === undefined ? {} : { frame_index: c.frame_index }
+                        ),
+                        {
+                            type: 'plugin',
+                            plugin_name: 'fictrac',
+                            command_name: 'startClosedLoop',
+                            params: Object.assign(
+                                { coupling: -1 },
+                                c.start_frame === undefined ? {} : { start_frame: c.start_frame }
+                            )
+                        },
+                        { type: 'wait', duration: 1 },
+                        { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' }
+                    ]
+                });
+                return { kind: 'ref', conditionName: 'c' + i, label: 'c' + i, seqIdx: i, dur: 1 };
+            });
+            const events = [];
+            const summary = await runner.runSequence({
+                steps,
+                conditionsByName,
+                resolvePatternId: () => 1,
+                resolvePatternFrames: () => 100,
+                fictracPluginNames: new Set(['fictrac']),
+                onProgress: (e) => events.push(e),
+                sleep: () => Promise.resolve()
+            });
+            const starts = configs.filter((c) => c.epoch === true).map((c) => c.start_frame);
+            const warns = events.filter((e) => e.phase === 'warn').map((e) => e.reason);
+            return { starts, warns, summary, configs };
+        };
+
+        let r = await runCl([{ frame_index: 25 }, { frame_index: 75 }]);
+        checkDeep(
+            'epochs open at frame_index 25 / 75 (no start_frame authored)',
+            r.starts,
+            [25, 75]
+        );
+        checkDeep('…with no warnings', r.warns, []);
+        check('…and no errors', r.summary.errors, 0);
+        checkBool(
+            'start_frame rides in the SAME config as epoch',
+            r.configs.every((c) => c.epoch !== true || c.start_frame !== undefined)
+        );
+
+        r = await runCl([{}, { frame_index: 0 }]);
+        checkDeep('no / zero frame_index → opens on frame 0 (unchanged)', r.starts, [0, 0]);
+
+        r = await runCl([{ frame_index: 130 }]);
+        checkDeep(
+            'frame_index past the pattern wraps modulo the frame count (130 % 100)',
+            r.starts,
+            [30]
+        );
+
+        r = await runCl([{ frame_index: 57, start_frame: 57 }]);
+        checkDeep('v0.89 protocol (start_frame = frame_index) still opens on 57', r.starts, [57]);
+        checkDeep('…silently (the values agree)', r.warns, []);
+
+        r = await runCl([{ frame_index: 10, start_frame: 40 }]);
+        checkDeep('explicit start_frame still wins when it disagrees', r.starts, [40]);
+        checkBool(
+            '…with a warning naming both values',
+            r.warns.length === 1 &&
+                /start_frame 40 differs from the trialParams frame_index 10/.test(r.warns[0]),
+            JSON.stringify(r.warns)
+        );
+
+        const oldBridge = {
+            supportsStartFrame: () => false,
+            bridgeInfo: { version: '3.3 · behavior_v2' }
+        };
+        r = await runCl([{ frame_index: 25 }, { frame_index: 75 }, { frame_index: 25 }], oldBridge);
+        checkBool(
+            'bridge < 3.4 → ONE warning per run that trials open on frame 0',
+            r.warns.length === 1 &&
+                /bridge 3\.3 .* ignores the closed-loop start frame/.test(r.warns[0]),
+            JSON.stringify(r.warns)
+        );
+        r = await runCl([{}, { frame_index: 0 }], oldBridge);
+        checkDeep('bridge < 3.4 but every trial opens on 0 → no warning', r.warns, []);
+        r = await runCl([{ frame_index: 25 }], { supportsStartFrame: () => null });
+        checkDeep('bridge version unknown → no warning (cannot tell)', r.warns, []);
     }
 
     console.log('\n=== closed-loop bias: runSequence pushes it to the bridge ===');

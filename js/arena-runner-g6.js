@@ -860,13 +860,11 @@ var ArenaRunnerG6 = (function () {
                                     JSON.stringify(dpfRaw)
                             };
                         }
-                        // Optional per-trial START POSITION (0-based frame). Bridge 3.3 re-tares
-                        // the heading at every epoch, so without this the display always opens
-                        // at round(offset / pitch) = frame 0. `start_frame` becomes the bridge's
-                        // `offset` (start_frame × pitch) for THIS epoch — the way a place-learning
-                        // protocol starts each trial a fixed distance outside the safe zone,
-                        // alternating sides (MATLAB p058). Pair it with the same `frame_index`
-                        // on the trialParams so the display shows it before the first frame.
+                        // DEPRECATED explicit START POSITION (0-based frame, v0.89). Since v0.90
+                        // the epoch opens at the condition's trialParams frame_index (see the
+                        // fictracApply case in _runIR), so this is redundant; still accepted
+                        // for protocols written for v0.89, and it wins (with a warning) when it
+                        // disagrees with frame_index.
                         const sfRaw = params.start_frame;
                         let startFrame = null;
                         if (sfRaw !== undefined && sfRaw !== null && sfRaw !== '') {
@@ -885,7 +883,7 @@ var ArenaRunnerG6 = (function () {
                             op: 'fictracApply',
                             on: true,
                             coupling,
-                            startFrame, // null = open the epoch at the bridge's current offset (frame 0)
+                            startFrame, // null = open the epoch at the trialParams frame_index
                             degPerFrame, // null = use the rig-derived pitch the caller supplies
                             // ALWAYS carry a bias, `{type:'none'}` when none was
                             // authored — same reasoning as `duty` in buildTrialParams:
@@ -1588,6 +1586,7 @@ var ArenaRunnerG6 = (function () {
             this._frameCountCache = new Map();
             this._faultReason = null;
             this._faultDetail = null;
+            this._oldBridgeStartWarned = false; // one "bridge ignores the start frame" warning per run
             // A stale closed-loop apply (left on by Console use or an aborted run)
             // would push FicTrac frames into the opening Mode-2 step — the firmware
             // rejects each 0x70 with status 1 and the log fills with errors
@@ -1745,11 +1744,14 @@ var ArenaRunnerG6 = (function () {
                     // the right modulus to the bridge. fictracPatternId records which
                     // pattern that count must describe, so the modulus can be recovered
                     // from the CONTROLLER (0x88) when the host resolver comes up empty.
+                    // fictracInitPos is that trialParams' frame_index (wire init_pos):
+                    // the frame a following startClosedLoop opens its epoch on.
                     const acc = {
                         trialTargetSec: 0,
                         waitedSec: 0,
                         fictracFrames: null,
                         fictracPatternId: null,
+                        fictracInitPos: null,
                         degPerFrame // the rig's display pitch (deg per frame index), or null
                     };
                     for (const cmd of cond.commands) {
@@ -1764,6 +1766,8 @@ var ArenaRunnerG6 = (function () {
                             acc.fictracFrames = Number.isFinite(f) && f > 0 ? f : null;
                             acc.fictracPatternId =
                                 ir.op === 'trialParams' && ir.params ? ir.params.patternId : null;
+                            acc.fictracInitPos =
+                                ir.op === 'trialParams' && ir.params ? ir.params.initPos : null;
                         }
                         try {
                             await this._runIR(ir, { step, index: i, emit, sleep, summary, acc });
@@ -1981,7 +1985,8 @@ var ArenaRunnerG6 = (function () {
                     }
                     emit({ phase: 'command', index, step, op: ir.op });
                     return;
-                case 'fictracApply':
+                case 'fictracApply': {
+                    const warnings = ir.warning ? [ir.warning] : [];
                     if (this._bridge) {
                         // The index MODULUS is not optional. The bridge wraps every
                         // frame index with `% n_frames`, so if we don't push the loaded
@@ -2034,24 +2039,66 @@ var ArenaRunnerG6 = (function () {
                             cfg.coupling = Number.isFinite(ir.coupling) ? ir.coupling : 1;
                             const pitch = ir.degPerFrame != null ? ir.degPerFrame : acc.degPerFrame;
                             if (Number.isFinite(pitch) && pitch > 0) cfg.deg_per_frame = pitch;
-                            // Per-trial start position: the bridge turns it into `offset`
-                            // (start_frame × pitch) so the tared epoch opens on this frame.
-                            if (ir.startFrame != null) cfg.start_frame = ir.startFrame;
+                            // Where the tared epoch OPENS: the trialParams frame_index, i.e.
+                            // the frame the controller is already showing, so the loop
+                            // carries on from it. Without this the first FicTrac frame
+                            // jumped the display to frame 0 (bridge ≥ 3.3 tares every
+                            // epoch; rig7 P3 trials authored to open on 25/75 all opened
+                            // on 0). The bridge turns it into offset = start × pitch. An
+                            // explicit params.start_frame (v0.89, now redundant) still wins.
+                            const shown = acc.fictracInitPos;
+                            const open = ir.startFrame != null ? ir.startFrame : shown;
+                            if (Number.isInteger(open) && open >= 0) {
+                                cfg.start_frame = open % frames;
+                                if (
+                                    ir.startFrame != null &&
+                                    Number.isInteger(shown) &&
+                                    shown >= 0 &&
+                                    shown % frames !== cfg.start_frame
+                                ) {
+                                    warnings.push(
+                                        'start_frame ' +
+                                            ir.startFrame +
+                                            ' differs from the trialParams frame_index ' +
+                                            shown +
+                                            ': the display shows ' +
+                                            shown +
+                                            ' until the first FicTrac frame, then jumps. The closed loop opens at frame_index — set frame_index and drop start_frame.'
+                                    );
+                                }
+                                const b = this._bridge;
+                                if (
+                                    cfg.start_frame !== 0 &&
+                                    !this._oldBridgeStartWarned &&
+                                    typeof b.supportsStartFrame === 'function' &&
+                                    b.supportsStartFrame() === false
+                                ) {
+                                    this._oldBridgeStartWarned = true;
+                                    warnings.push(
+                                        'bridge ' +
+                                            (b.bridgeInfo && b.bridgeInfo.version) +
+                                            ' ignores the closed-loop start frame (needs 3.4+): trials open on frame 0, not ' +
+                                            cfg.start_frame +
+                                            '. Restart the bridge from the current repo.'
+                                    );
+                                }
+                            }
                             cfg.epoch = true;
                         }
                         if (ir.bias) cfg.bias = ir.bias;
                         if (Object.keys(cfg).length) this._bridge.setConfig(cfg);
                         this._bridge.setApply(!!ir.on);
                     }
-                    if (ir.warning) {
+                    for (const w of warnings) {
                         // A warning is NOT a skip — the step ran. Its own phase keeps
                         // summary.skipped honest while still surfacing in the run log.
                         if (this._bridge)
-                            this._bridge.log({ event: 'warn', message: ir.warning, level: 'WARN' });
-                        emit({ phase: 'warn', index, step, op: ir.op, reason: ir.warning });
+                            this._bridge.log({ event: 'warn', message: w, level: 'WARN' });
+                        emit({ phase: 'warn', index, step, op: ir.op, reason: w });
                     }
                     emit({ phase: 'command', index, step, op: ir.op, value: !!ir.on });
                     return;
+                }
                 case 'logMessage':
                     if (this._bridge)
                         this._bridge.log({ event: 'log', message: ir.message, level: ir.level });

@@ -165,21 +165,25 @@ rejection). Authored as an added rotational **velocity**:
   `docs/development/closed-loop-bias.md`; worked example:
   `protocols/fictrac_bias_test.yaml`.
 
-**Per-trial start position (`start_frame`, Studio v0.89 / bridge 3.4).** Bridge 3.3 re-tares the
-heading at every `startClosedLoop`, so a closed-loop trial always opens on frame 0. To open it on a
-chosen frame (place learning: a fixed distance outside the safe zone, alternating sides), give
-`startClosedLoop` `params: { start_frame: N }` (0-based, wraps mod n_frames; non-integer or
-negative fails the step) AND set the trialParams `frame_index` to the same N so the display shows
-it before the first FicTrac frame. Bind both to one anchor (`&start_frame_plus`) so they cannot
-drift. The bridge turns it into `offset = N × pitch` for that epoch only.
+**Per-trial start position = the trialParams `frame_index` (Studio v0.90 / bridge 3.4).** A
+closed-loop trial opens on the Mode-3 `trialParams` `frame_index` (0-based, wraps mod the pattern's
+frame count) and the fly's turning moves it from there — e.g. place learning, a fixed distance
+outside the safe zone, alternating sides. Nothing else to set: the runner passes it to the bridge as
+the epoch's start frame. Bridge < 3.4 ignores it and opens on frame 0 (the run warns once).
+`startClosedLoop params.start_frame` (v0.89) is deprecated and redundant — don't author it; a value
+that differs from `frame_index` still wins, with a warning that the display jumps.
 
 ```yaml
+    - type: "controller"
+      command_name: "trialParams"
+      mode: 3
+      frame_index: *start_frame_plus   # the closed loop below opens here
+      ...
     - type: "plugin"
       plugin_name: "fictrac"
       command_name: "startClosedLoop"
       params:
         coupling: -1
-        start_frame: *start_frame_plus
 ```
 
 ### Conditional LED activation (index-gated LED, Mode 3 only)

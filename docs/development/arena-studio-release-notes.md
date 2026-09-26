@@ -4,6 +4,20 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.90 (2026-09-26) · A closed-loop trial opens where `frame_index` puts it
+
+- **The closed loop now starts from the trial's `frame_index`.** Before, the display showed the
+  `frame_index` frame only until the first FicTrac frame, then jumped to frame 0. Now the closed loop
+  carries on from the frame already on the arena, so one number sets where a trial starts. Protocols
+  that start on frame 0 behave exactly as before. The P3 conditioning protocols that alternate starts
+  on frames 25 and 75 now really start there. They had all been opening on frame 0 since v0.85.
+- **`start_frame` is no longer needed.** A protocol written for v0.89 still runs unchanged. If its
+  `start_frame` differs from the trial's `frame_index`, `start_frame` is used and the run shows a
+  warning, because the display jumps between the two.
+- **An out-of-date bridge is now flagged.** The start position needs FicTrac bridge 3.4 or later; an
+  older bridge silently opens every trial on frame 0. The run now says so once, with the fix (restart
+  the bridge from the current repo).
+
 ## v0.89 (2026-09-24) · Per-trial closed-loop start position; no stale frame at epoch start — bridge 3.4
 
 Why this exists, the bench evidence and the alternatives considered: `docs/development/closed-loop-start-frame.md`.
