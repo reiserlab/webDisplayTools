@@ -726,6 +726,22 @@ checkBool(
         viewerJs.includes('poseFlyLegs(fly, replayState.gait);')
 );
 checkBool(
+    'tether: steel pin on the thorax midline, a quarter back from its front, leaning back',
+    /const TETHER_PIN_X_MODEL = -0\.33;/.test(viewerJs) &&
+        /const THORAX_CENTER = \[-0\.1, 0\.02, 0\];/.test(viewerJs) &&
+        /const THORAX_RADII = \[0\.46, 0\.35, 0\.34\];/.test(viewerJs) &&
+        viewerJs.includes("pin.name = 'tether-pin';") &&
+        viewerJs.includes('fly.userData.tether = { top: pinTop, dir: tetherDir };')
+);
+checkBool(
+    'tether: brass rod continues the pin and ends above the arena (leaves through the top)',
+    /const TETHER_ROD_DIAMETER_MM = 1;/.test(viewerJs) &&
+        viewerJs.includes("rod.name = 'tether-rod';") &&
+        viewerJs.includes(
+            '(arenaTop + TETHER_ROD_ABOVE_ARENA_MM / MM_PER_INCH - rodBottom.y) / rodDir.y'
+        )
+);
+checkBool(
     'the Studio sends the gait state with every viewer update',
     fs
         .readFileSync(path.join(ROOT, 'js', 'studio-replay.js'), 'utf8')

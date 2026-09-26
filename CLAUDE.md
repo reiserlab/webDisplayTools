@@ -447,8 +447,9 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   freeze the 3D window). (7) Alt keeps its own reference replay; `install()` refuses on
   `html.arena-alt`. **3D viewer** (`js/arena-replay-viewer.js`): the ball, its Ø12 mm holder and
   the cartoon fly (drawn at `FLY_DISPLAY_SCALE` = 2× life size; `buildFly` solves the legs against
-  the ball radius in model units so the feet stay on the ball at any scale) are one depth domain on
-  top of the cutaway — the ball's `onBeforeRender` sets
+  the ball radius in model units so the feet stay on the ball at any scale) and the tether
+  (steel pin in the fly model, so it scales with the fly; real-size brass rod leaning back out of
+  the arena's open top) are one depth domain on top of the cutaway — the ball's `onBeforeRender` sets
   the depth mask then clears depth (three's `clear()` does not force the mask on). The popup's
   entry `?v=` token must equal the ThreeViewer import token (tests pin it) — bump them together.
 - **? Help mode:** top-bar `?` toggles `body.helpmode`; a managed tooltip shows curated
