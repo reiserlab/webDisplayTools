@@ -529,15 +529,16 @@ function buildFly(ballRadiusMm) {
         add(w, order + 1);
     });
 
-    // Six two-segment legs from the thorax underside to feet ON the ball.
-    const up = new THREE.Vector3(0, 1, 0);
+    // Six two-segment legs from the thorax underside to feet ON the ball. Each keeps its
+    // resting pose (hip, neutral foot, knee-bend direction, segment lengths) so poseFlyLegs
+    // can walk it: the feet follow js/fly-gait.js, the knees are solved by two-bone IK.
     const limb = (a, b, r) => {
-        const dir = new THREE.Vector3().subVectors(b, a);
-        const len = dir.length();
-        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.85, r, len, 8), legTan);
-        mesh.position.copy(a).addScaledVector(dir, 0.5);
-        mesh.quaternion.setFromUnitVectors(up, dir.normalize());
-        add(mesh);
+        const mesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(r * 0.85, r, a.distanceTo(b), 8),
+            legTan
+        );
+        placeLimb(mesh, a, b);
+        return add(mesh);
     };
     const footY = (x, z) => {
         const r2 = x * x + z * z;
@@ -545,20 +546,92 @@ function buildFly(ballRadiusMm) {
             Math.sqrt(Math.max(0, ballRadiusMm * ballRadiusMm - r2)) - ballRadiusMm - FLY_STANCE_MM
         );
     };
+    const legs = [];
     [
         [-0.32, -0.8, 0.46],
         [-0.1, -0.12, 0.62],
         [0.12, 0.62, 0.5]
-    ].forEach(([hipX, footX, footZ]) => {
+    ].forEach(([hipX, footX, footZ], row) => {
         [1, -1].forEach((side) => {
             const hip = new THREE.Vector3(hipX, -0.22, side * 0.16);
             const foot = new THREE.Vector3(footX, footY(footX, side * footZ), side * footZ);
             const knee = new THREE.Vector3((hipX + footX) / 2, 0.08, side * (footZ * 0.82));
-            limb(hip, knee, 0.045);
-            limb(knee, foot, 0.035);
+            const reach = new THREE.Vector3().subVectors(foot, hip).normalize();
+            const bend = new THREE.Vector3().subVectors(knee, hip);
+            bend.addScaledVector(reach, -bend.dot(reach)).normalize();
+            legs.push({
+                key: (side > 0 ? 'L' : 'R') + (row + 1), // fly's left is +Z (it faces −X)
+                hip,
+                neutral: foot,
+                bend,
+                femurLength: hip.distanceTo(knee),
+                tibiaLength: knee.distanceTo(foot),
+                femur: limb(hip, knee, 0.045),
+                tibia: limb(knee, foot, 0.035)
+            });
         });
     });
+    fly.userData.legs = legs;
+    fly.userData.ballCenter = new THREE.Vector3(0, -ballRadiusMm - FLY_STANCE_MM, 0);
     return fly;
+}
+
+const _limbUp = new THREE.Vector3(0, 1, 0);
+const _limbDir = new THREE.Vector3();
+// A leg segment is a +Y cylinder of fixed length: centre it on a→b and point it at b.
+function placeLimb(mesh, a, b) {
+    _limbDir.subVectors(b, a);
+    mesh.position.copy(a).addScaledVector(_limbDir, 0.5);
+    mesh.quaternion.setFromUnitVectors(_limbUp, _limbDir.normalize());
+}
+
+// Walking (js/fly-gait.js): the Studio sends the gait state — tripod phase, cadence and
+// the ball's 100 ms-average angular velocity — and every foot follows footPosition:
+// stance feet ride the ball surface, swing feet lift and return. Model units (mm/2 at
+// FLY_DISPLAY_SCALE 2); the ball's angular velocity is scale-free, so stance feet stay
+// planted on the drawn ball. Knees: two-bone IK in the plane of hip→foot and the leg's
+// resting bend direction (segment lengths never change).
+const GAIT_LIFT_MODEL_MM = 0.16; // swing clearance
+const GAIT_MAX_STRIDE_MODEL_MM = 0.6; // longest stance arc a leg can reach
+const _ikReach = new THREE.Vector3();
+const _ikBend = new THREE.Vector3();
+const _ikKnee = new THREE.Vector3();
+const _ikFoot = new THREE.Vector3();
+function poseFlyLegs(fly, gait) {
+    const Gait = window.FlyGait;
+    const legs = fly && fly.userData && fly.userData.legs;
+    if (!legs) return;
+    const c = fly.userData.ballCenter;
+    const center = [c.x, c.y, c.z];
+    const walking = Boolean(Gait && gait && gait.walk > 0 && gait.freq > 0);
+    const omega = walking ? [0, gait.yaw, gait.pitch] : [0, 0, 0];
+    legs.forEach((leg) => {
+        const n = leg.neutral;
+        let foot = [n.x, n.y, n.z];
+        if (walking) {
+            const step = Gait.footTau(gait.phase, leg.key, gait.duty, gait.freq);
+            foot = Gait.footPosition(foot, center, omega, step.tau, step.lift, {
+                walk: gait.walk,
+                liftHeight: GAIT_LIFT_MODEL_MM,
+                stanceTime: step.tSt,
+                maxStride: GAIT_MAX_STRIDE_MODEL_MM
+            });
+        }
+        const a = leg.femurLength;
+        const b = leg.tibiaLength;
+        _ikReach.set(foot[0] - leg.hip.x, foot[1] - leg.hip.y, foot[2] - leg.hip.z);
+        const d = Math.min(a + b - 1e-4, Math.max(Math.abs(a - b) + 1e-4, _ikReach.length()));
+        _ikReach.normalize();
+        _ikBend.copy(leg.bend).addScaledVector(_ikReach, -leg.bend.dot(_ikReach));
+        if (_ikBend.lengthSq() < 1e-10) _ikBend.set(0, 1, 0);
+        _ikBend.normalize();
+        const along = (a * a - b * b + d * d) / (2 * d);
+        const lift = Math.sqrt(Math.max(0, a * a - along * along));
+        _ikKnee.copy(leg.hip).addScaledVector(_ikReach, along).addScaledVector(_ikBend, lift);
+        _ikFoot.copy(leg.hip).addScaledVector(_ikReach, d);
+        placeLimb(leg.femur, leg.hip, _ikKnee);
+        placeLimb(leg.tibia, _ikKnee, _ikFoot);
+    });
 }
 
 // The apparatus sits inside an opaque LED cylinder. Keep its physically sized
@@ -801,6 +874,7 @@ function rebuildApparatus() {
     };
     setLedState(replayState.ledOn, true);
     applyBallOrientation(replayState.ball);
+    poseFlyLegs(fly, replayState.gait);
     updateFlyVisibility();
 }
 
@@ -899,6 +973,7 @@ function applyReplayState(nextState) {
     updateFrameReadout();
     if (normalized.ledOn !== before.ledOn) setLedState(normalized.ledOn, true);
     if (normalized.ball) applyBallOrientation(normalized.ball);
+    if (apparatus && apparatus.fly) poseFlyLegs(apparatus.fly, normalized.gait);
 }
 
 function handleInit(payload) {

@@ -52,6 +52,20 @@
     const PROTOCOL_PATH_RE = /^protocols\/[\w.-]+(?:\/[\w.-]+)*\.ya?ml$/;
     const SPEEDS = [0.5, 1, 2, 4];
 
+    // The 3D fly's walking model (js/fly-gait.js — a classic script loaded before this one;
+    // required directly under Node). Optional: without it the fly stands still.
+    function flyGait() {
+        if (global && global.FlyGait) return global.FlyGait;
+        if (typeof require === 'function') {
+            try {
+                return require('./fly-gait.js');
+            } catch (e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     function formatClock(ms) {
         const sec = Math.max(0, Number(ms) || 0) / 1000;
         const min = Math.floor(sec / 60);
@@ -351,6 +365,12 @@
         return x;
     }
 
+    /** A FicTrac sample's time (ms): FicTrac's own timestamp when logged, else the bridge's. */
+    function sampleTimeMs(s) {
+        if (!s) return NaN;
+        return Number.isFinite(Number(s.ft)) ? Number(s.ft) : Number(s.ms);
+    }
+
     /**
      * The ball rotation (yaw/pitch/roll, radians) between two consecutive FicTrac samples,
      * or null when the step must not be integrated (gap, non-monotone time, reset jump).
@@ -359,8 +379,8 @@
         if (!prev || !cur) return null;
         const vals = [prev.x, prev.y, prev.hd, cur.x, cur.y, cur.hd].map(Number);
         if (vals.some((v) => !Number.isFinite(v))) return null;
-        const t0 = Number.isFinite(Number(prev.ft)) ? Number(prev.ft) : Number(prev.ms);
-        const t1 = Number.isFinite(Number(cur.ft)) ? Number(cur.ft) : Number(cur.ms);
+        const t0 = sampleTimeMs(prev);
+        const t1 = sampleTimeMs(cur);
         if (Number.isFinite(t0) && Number.isFinite(t1)) {
             if (!(t1 > t0) || t1 - t0 > BALL_MAX_GAP_MS) return null;
         }
@@ -389,10 +409,12 @@
     }
 
     function createProjection() {
+        const Gait = flyGait();
         return {
             ball: [0, 0, 0, 1], // the 3D window's ball orientation (quaternion x,y,z,w)
             ballPrev: null,
             ballSteps: 0,
+            gait: Gait ? Gait.createGait() : null, // the 3D fly's walking state (fly-gait.js)
             condition: '—',
             step: null,
             stepIndex: null,
@@ -488,11 +510,15 @@
         const c = ctx || {};
         if (item.kind === 'status') return applyStatus(proj, item.status, item.ms, c);
         if (item.kind === 'sample' && item.sample) {
-            // Every FicTrac sample turns the ball (seek-priming integrates the same path).
+            // Every FicTrac sample turns the ball and steps the fly's gait (its 100 ms
+            // speed/turn average + tripod phase); seek-priming integrates the same path.
+            const delta = ballDelta(proj.ballPrev, item.sample);
             if (proj.ball) {
-                proj.ball = ballStep(proj.ball, ballDelta(proj.ballPrev, item.sample));
+                proj.ball = ballStep(proj.ball, delta);
                 if (++proj.ballSteps % 256 === 0) proj.ball = quatNormalize(proj.ball);
             }
+            const Gait = proj.gait ? flyGait() : null;
+            if (Gait) Gait.stepGait(proj.gait, sampleTimeMs(item.sample), delta);
             proj.ballPrev = item.sample;
         }
         if (item.kind === 'frame') {
@@ -1808,7 +1834,8 @@
                 frame: R.proj.frame,
                 ledOn: R.proj.ledOn,
                 displayMode: R.proj.displayMode,
-                ball: R.proj.ball ? R.proj.ball.slice() : undefined
+                ball: R.proj.ball ? R.proj.ball.slice() : undefined,
+                gait: R.proj.gait && flyGait() ? flyGait().gaitState(R.proj.gait) : undefined
             };
         }
 
@@ -2305,6 +2332,7 @@
         primeProjection,
         viewerPlacement,
         BALL_SIGNS,
+        sampleTimeMs,
         ballDelta,
         ballStep,
         quatMul,
