@@ -22,6 +22,18 @@ const FLY_DISPLAY_SCALE = 2;
 const FLY_MODEL_LENGTH_MM = 2.3; // buildFly(): head front −0.86 … abdomen tip +1.44 (model units)
 const FLY_STANCE_MM = 0.72; // thorax centre above the ball's top (model units)
 const FLY_HIDE_WITHIN_MM = 3; // hide when the camera is this close (fly-eye: ~0.3 mm)
+// Tether, as on the rigs: a steel pin glued (UV glue) on the dorsal midline of the thorax,
+// a quarter of the way back from its front, held by a brass rod that leaves the arena
+// through its open top. The pin is part of the fly model (it scales with the fly); the rod
+// is real size. Both lean back toward the rear (+X): behind the fly the rod stays out of
+// the display it sees and out of the way of the default camera.
+const TETHER_PIN_X_MODEL = -0.33; // thorax spans −0.56 (front) … +0.36 (model units)
+const TETHER_PIN_LENGTH_MODEL = 1.6; // exposed steel above the glue
+const TETHER_PIN_RADIUS_MODEL = 0.035;
+const TETHER_TILT_DEG = 25; // lean from vertical, toward the rear
+const TETHER_ROD_DIAMETER_MM = 1;
+const TETHER_ROD_SLEEVE_MM = 0.5; // the pin's top sits this far inside the rod's bore
+const TETHER_ROD_ABOVE_ARENA_MM = 25; // the rod ends this far above the arena's top edge
 const MIN_HORIZONTAL_FOV = 60;
 const MAX_HORIZONTAL_FOV = 150;
 const DEFAULT_HORIZONTAL_FOV = 120;
@@ -439,7 +451,7 @@ function flyMaterial(color, opts) {
     const material = new THREE.MeshStandardMaterial({
         color,
         roughness: o.roughness != null ? o.roughness : 0.62,
-        metalness: 0.02,
+        metalness: o.metalness != null ? o.metalness : 0.02,
         emissive: o.emissive != null ? o.emissive : color,
         emissiveIntensity: o.emissiveIntensity != null ? o.emissiveIntensity : 0.22,
         map: o.map || null
@@ -470,6 +482,9 @@ function abdomenTexture() {
     texture.colorSpace = THREE.SRGBColorSpace;
     return texture;
 }
+
+const THORAX_CENTER = [-0.1, 0.02, 0]; // model units
+const THORAX_RADII = [0.46, 0.35, 0.34];
 
 /**
  * A cartoon fly built in MILLIMETRES, facing −X (+Y up), with the thorax centre at
@@ -510,7 +525,7 @@ function buildFly(ballRadiusMm) {
     ellipsoid(0.22, 0.25, 0.3, tan, -0.64, 0.06, 0);
     ellipsoid(0.15, 0.21, 0.13, eyeRed, -0.66, 0.1, 0.24);
     ellipsoid(0.15, 0.21, 0.13, eyeRed, -0.66, 0.1, -0.24);
-    ellipsoid(0.46, 0.35, 0.34, thoraxTan, -0.1, 0.02, 0);
+    ellipsoid(...THORAX_RADII, thoraxTan, ...THORAX_CENTER);
     // Abdomen: a sphere turned so its poles run along the body axis (bands = rings).
     const abdomenMat = flyMaterial(0xffffff, { map: abdomenTexture(), emissive: 0x3a2a14 });
     const abdomen = ellipsoid(1, 1, 1, abdomenMat, 0.8, -0.04, 0);
@@ -529,15 +544,16 @@ function buildFly(ballRadiusMm) {
         add(w, order + 1);
     });
 
-    // Six two-segment legs from the thorax underside to feet ON the ball.
-    const up = new THREE.Vector3(0, 1, 0);
+    // Six two-segment legs from the thorax underside to feet ON the ball. Each keeps its
+    // resting pose (hip, neutral foot, knee-bend direction, segment lengths) so poseFlyLegs
+    // can walk it: the feet follow js/fly-gait.js, the knees are solved by two-bone IK.
     const limb = (a, b, r) => {
-        const dir = new THREE.Vector3().subVectors(b, a);
-        const len = dir.length();
-        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.85, r, len, 8), legTan);
-        mesh.position.copy(a).addScaledVector(dir, 0.5);
-        mesh.quaternion.setFromUnitVectors(up, dir.normalize());
-        add(mesh);
+        const mesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(r * 0.85, r, a.distanceTo(b), 8),
+            legTan
+        );
+        placeLimb(mesh, a, b);
+        return add(mesh);
     };
     const footY = (x, z) => {
         const r2 = x * x + z * z;
@@ -545,20 +561,123 @@ function buildFly(ballRadiusMm) {
             Math.sqrt(Math.max(0, ballRadiusMm * ballRadiusMm - r2)) - ballRadiusMm - FLY_STANCE_MM
         );
     };
+    const legs = [];
     [
         [-0.32, -0.8, 0.46],
         [-0.1, -0.12, 0.62],
         [0.12, 0.62, 0.5]
-    ].forEach(([hipX, footX, footZ]) => {
+    ].forEach(([hipX, footX, footZ], row) => {
         [1, -1].forEach((side) => {
             const hip = new THREE.Vector3(hipX, -0.22, side * 0.16);
             const foot = new THREE.Vector3(footX, footY(footX, side * footZ), side * footZ);
             const knee = new THREE.Vector3((hipX + footX) / 2, 0.08, side * (footZ * 0.82));
-            limb(hip, knee, 0.045);
-            limb(knee, foot, 0.035);
+            const reach = new THREE.Vector3().subVectors(foot, hip).normalize();
+            const bend = new THREE.Vector3().subVectors(knee, hip);
+            bend.addScaledVector(reach, -bend.dot(reach)).normalize();
+            legs.push({
+                key: (side > 0 ? 'L' : 'R') + (row + 1), // fly's left is +Z (it faces −X)
+                hip,
+                neutral: foot,
+                bend,
+                femurLength: hip.distanceTo(knee),
+                tibiaLength: knee.distanceTo(foot),
+                femur: limb(hip, knee, 0.045),
+                tibia: limb(knee, foot, 0.035)
+            });
         });
     });
+    fly.userData.legs = legs;
+    fly.userData.ballCenter = new THREE.Vector3(0, -ballRadiusMm - FLY_STANCE_MM, 0);
+
+    // Tether pin (steel) in a bead of UV glue on the thorax's dorsal midline. Metals get
+    // some emissive so they read without an environment map (as the LED tube does).
+    const tilt = (TETHER_TILT_DEG * Math.PI) / 180;
+    const tetherDir = new THREE.Vector3(Math.sin(tilt), Math.cos(tilt), 0);
+    const tx = (TETHER_PIN_X_MODEL - THORAX_CENTER[0]) / THORAX_RADII[0];
+    const thoraxTop = THORAX_CENTER[1] + THORAX_RADII[1] * Math.sqrt(Math.max(0, 1 - tx * tx));
+    const pinBase = new THREE.Vector3(TETHER_PIN_X_MODEL, thoraxTop - 0.04, 0);
+    const pinTop = pinBase.clone().addScaledVector(tetherDir, TETHER_PIN_LENGTH_MODEL + 0.04);
+    const steel = flyMaterial(0xc3c9d0, {
+        metalness: 0.55,
+        roughness: 0.28,
+        emissive: 0x3c4148,
+        emissiveIntensity: 0.55
+    });
+    const pinRadius = TETHER_PIN_RADIUS_MODEL;
+    const pin = new THREE.Mesh(
+        new THREE.CylinderGeometry(pinRadius, pinRadius, pinBase.distanceTo(pinTop), 10),
+        steel
+    );
+    pin.name = 'tether-pin';
+    placeLimb(pin, pinBase, pinTop);
+    add(pin);
+    const glue = flyMaterial(0xf2eed6, {
+        opacity: 0.6,
+        roughness: 0.15,
+        emissiveIntensity: 0.12
+    });
+    const bead = ellipsoid(0.1, 0.055, 0.09, glue, TETHER_PIN_X_MODEL, thoraxTop + 0.01, 0);
+    bead.renderOrder = order + 1;
+    fly.userData.tether = { top: pinTop, dir: tetherDir };
     return fly;
+}
+
+const _limbUp = new THREE.Vector3(0, 1, 0);
+const _limbDir = new THREE.Vector3();
+// A leg segment is a +Y cylinder of fixed length: centre it on a→b and point it at b.
+function placeLimb(mesh, a, b) {
+    _limbDir.subVectors(b, a);
+    mesh.position.copy(a).addScaledVector(_limbDir, 0.5);
+    mesh.quaternion.setFromUnitVectors(_limbUp, _limbDir.normalize());
+}
+
+// Walking (js/fly-gait.js): the Studio sends the gait state — tripod phase, cadence and
+// the ball's 100 ms-average angular velocity — and every foot follows footPosition:
+// stance feet ride the ball surface, swing feet lift and return. Model units (mm/2 at
+// FLY_DISPLAY_SCALE 2); the ball's angular velocity is scale-free, so stance feet stay
+// planted on the drawn ball. Knees: two-bone IK in the plane of hip→foot and the leg's
+// resting bend direction (segment lengths never change).
+const GAIT_LIFT_MODEL_MM = 0.16; // swing clearance
+const GAIT_MAX_STRIDE_MODEL_MM = 0.6; // longest stance arc a leg can reach
+const _ikReach = new THREE.Vector3();
+const _ikBend = new THREE.Vector3();
+const _ikKnee = new THREE.Vector3();
+const _ikFoot = new THREE.Vector3();
+function poseFlyLegs(fly, gait) {
+    const Gait = window.FlyGait;
+    const legs = fly && fly.userData && fly.userData.legs;
+    if (!legs) return;
+    const c = fly.userData.ballCenter;
+    const center = [c.x, c.y, c.z];
+    const walking = Boolean(Gait && gait && gait.walk > 0 && gait.freq > 0);
+    const omega = walking ? [0, gait.yaw, gait.pitch] : [0, 0, 0];
+    legs.forEach((leg) => {
+        const n = leg.neutral;
+        let foot = [n.x, n.y, n.z];
+        if (walking) {
+            const step = Gait.footTau(gait.phase, leg.key, gait.duty, gait.freq);
+            foot = Gait.footPosition(foot, center, omega, step.tau, step.lift, {
+                walk: gait.walk,
+                liftHeight: GAIT_LIFT_MODEL_MM,
+                stanceTime: step.tSt,
+                maxStride: GAIT_MAX_STRIDE_MODEL_MM
+            });
+        }
+        const a = leg.femurLength;
+        const b = leg.tibiaLength;
+        _ikReach.set(foot[0] - leg.hip.x, foot[1] - leg.hip.y, foot[2] - leg.hip.z);
+        const d = Math.min(a + b - 1e-4, Math.max(Math.abs(a - b) + 1e-4, _ikReach.length()));
+        _ikReach.normalize();
+        _ikBend.copy(leg.bend).addScaledVector(_ikReach, -leg.bend.dot(_ikReach));
+        if (_ikBend.lengthSq() < 1e-10) _ikBend.set(0, 1, 0);
+        _ikBend.normalize();
+        const along = (a * a - b * b + d * d) / (2 * d);
+        const lift = Math.sqrt(Math.max(0, a * a - along * along));
+        _ikKnee.copy(leg.hip).addScaledVector(_ikReach, along).addScaledVector(_ikBend, lift);
+        _ikFoot.copy(leg.hip).addScaledVector(_ikReach, d);
+        placeLimb(leg.femur, leg.hip, _ikKnee);
+        placeLimb(leg.tibia, _ikKnee, _ikFoot);
+    });
 }
 
 // The apparatus sits inside an opaque LED cylinder. Keep its physically sized
@@ -651,6 +770,38 @@ function rebuildApparatus() {
     fly.scale.setScalar(flyScaleMm / MM_PER_INCH);
     fly.position.set(0, ballY + ballRadius + (FLY_STANCE_MM * flyScaleMm) / MM_PER_INCH, 0);
     group.add(fly);
+
+    // Tether rod (brass, real size): continues the pin's lean from just below the pin's
+    // top out through the arena's open top. Same depth domain as the fly (drawn after the
+    // ball clears depth), so it reads over the cutaway like the ball and fly do.
+    const tether = fly.userData.tether;
+    const rodDir = tether.dir.clone(); // the fly group is scaled, never rotated
+    const rodBottom = tether.top
+        .clone()
+        .multiplyScalar(flyScaleMm / MM_PER_INCH)
+        .add(fly.position)
+        .addScaledVector(rodDir, -TETHER_ROD_SLEEVE_MM / MM_PER_INCH);
+    const rodTop = rodBottom
+        .clone()
+        .addScaledVector(
+            rodDir,
+            (arenaTop + TETHER_ROD_ABOVE_ARENA_MM / MM_PER_INCH - rodBottom.y) / rodDir.y
+        );
+    const rodRadius = TETHER_ROD_DIAMETER_MM / 2 / MM_PER_INCH;
+    const brass = flyMaterial(0xc9a646, {
+        metalness: 0.6,
+        roughness: 0.32,
+        emissive: 0x5a4412,
+        emissiveIntensity: 0.5
+    });
+    const rod = new THREE.Mesh(
+        new THREE.CylinderGeometry(rodRadius, rodRadius, rodBottom.distanceTo(rodTop), 20),
+        brass
+    );
+    rod.name = 'tether-rod';
+    placeLimb(rod, rodBottom, rodTop);
+    rod.renderOrder = 46;
+    group.add(rod);
 
     // Ball holder, as on the rigs: a black vertical cylinder (Ø 12 mm, wider than
     // the ball) from just below the arena floor up to just below the ball's
@@ -801,6 +952,7 @@ function rebuildApparatus() {
     };
     setLedState(replayState.ledOn, true);
     applyBallOrientation(replayState.ball);
+    poseFlyLegs(fly, replayState.gait);
     updateFlyVisibility();
 }
 
@@ -899,6 +1051,7 @@ function applyReplayState(nextState) {
     updateFrameReadout();
     if (normalized.ledOn !== before.ledOn) setLedState(normalized.ledOn, true);
     if (normalized.ball) applyBallOrientation(normalized.ball);
+    if (apparatus && apparatus.fly) poseFlyLegs(apparatus.fly, normalized.gait);
 }
 
 function handleInit(payload) {

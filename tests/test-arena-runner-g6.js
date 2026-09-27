@@ -2111,7 +2111,7 @@ async function main() {
         check('closed-loop timing = 2s (fictrac ops add no time)', slept, 2000);
     }
 
-    console.log('\n=== closed loop opens at the trialParams frame_index (v0.90) ===');
+    console.log('\n=== closed loop opens at the trialParams frame_index (v0.91) ===');
     {
         // rig7 P3 conditioning (course repo): trials authored `frame_index: 25` / `75`
         // ("starts alternate frame 25 / 75") opened on frame 0 once bridge 3.3 tared every

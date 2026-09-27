@@ -860,7 +860,7 @@ var ArenaRunnerG6 = (function () {
                                     JSON.stringify(dpfRaw)
                             };
                         }
-                        // DEPRECATED explicit START POSITION (0-based frame, v0.89). Since v0.90
+                        // DEPRECATED explicit START POSITION (0-based frame, v0.89). Since v0.91
                         // the epoch opens at the condition's trialParams frame_index (see the
                         // fictracApply case in _runIR), so this is redundant; still accepted
                         // for protocols written for v0.89, and it wins (with a warning) when it

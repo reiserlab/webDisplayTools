@@ -188,6 +188,30 @@ equal(
     Protocol.normalizeReplayState({ frame: 1 }, { ball: [0, 1, 0, 0] }).ball,
     [0, 1, 0, 0]
 );
+const gaitIn = { phase: 1.25, yaw: 3, pitch: -2, freq: 6.5, duty: 0.7, walk: 1 };
+equal(
+    'gait state is kept (phase wrapped to [0, 1))',
+    Protocol.normalizeReplayState({ gait: gaitIn }).gait,
+    { phase: 0.25, yaw: 3, pitch: -2, freq: 6.5, duty: 0.7, walk: 1 }
+);
+equal(
+    'a gait with a non-finite field is dropped (no key)',
+    Object.prototype.hasOwnProperty.call(
+        Protocol.normalizeReplayState({ gait: { ...gaitIn, freq: 'x' } }),
+        'gait'
+    ),
+    false
+);
+equal(
+    'gait values are clamped to sane ranges',
+    Protocol.normalizeReplayState({ gait: { ...gaitIn, yaw: 900, walk: 4, duty: 2 } }).gait,
+    { phase: 0.25, yaw: 50, pitch: -2, freq: 6.5, duty: 0.95, walk: 1 }
+);
+equal(
+    'the last gait carries over when a state omits it',
+    Protocol.normalizeReplayState({ frame: 1 }, { gait: { ...gaitIn, phase: 0.5 } }).gait.phase,
+    0.5
+);
 equal(
     'canonical state stays canonical',
     Protocol.normalizeReplayState({
@@ -309,6 +333,11 @@ check(
     'popup cache-busts the camera projection helper with its entry module',
     html.includes('arena-replay-viewer-protocol.js?v=0713-solid-ball') &&
         html.includes('arena-replay-viewer.js?v=0713-solid-ball')
+);
+check(
+    'popup loads the walking model (classic) before the viewer module',
+    html.indexOf('src="js/fly-gait.js?v=') > 0 &&
+        html.indexOf('src="js/fly-gait.js?v=') < html.indexOf('src="js/arena-replay-viewer.js?v=')
 );
 check(
     'apparatus declares the required 9 mm ball',

@@ -107,7 +107,7 @@ LED ramps 1 → 5 % over frames 8–16 and 150–158 as designed.
 3. `deg_per_frame` on the bridge is the rig pitch (1.8°); `start_frame` assumes one frame = one pixel
    column, like every other frame-unit field.
 
-## v0.90: the closed loop opens at `frame_index` — one field, not two
+## v0.91: the closed loop opens at `frame_index` — one field, not two
 
 Having both `frame_index` (what the controller shows from trialParams until the first FicTrac frame)
 and `start_frame` (where the tared epoch opens) meant two numbers that must always agree: setting only

@@ -165,7 +165,7 @@ rejection). Authored as an added rotational **velocity**:
   `docs/development/closed-loop-bias.md`; worked example:
   `protocols/fictrac_bias_test.yaml`.
 
-**Per-trial start position = the trialParams `frame_index` (Studio v0.90 / bridge 3.4).** A
+**Per-trial start position = the trialParams `frame_index` (Studio v0.91 / bridge 3.4).** A
 closed-loop trial opens on the Mode-3 `trialParams` `frame_index` (0-based, wraps mod the pattern's
 frame count) and the fly's turning moves it from there — e.g. place learning, a fixed distance
 outside the safe zone, alternating sides. Nothing else to set: the runner passes it to the bridge as
