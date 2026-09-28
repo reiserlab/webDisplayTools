@@ -4,6 +4,16 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.92 (2026-09-28) · Release tiers on the page; SD purge timeout
+
+<!-- #227 -->
+- **The top bar shows which build you're on.** A grey "beta" badge on the regular site, an orange "NEXT" badge on the testing build at `/next/`. Hover it for the exact build.
+- **Runs on the testing build ask once for confirmation** and are marked as such in the run log, so they're never confused with regular experiment data.
+- **Switching between the regular site and the testing build no longer resets your scope and dock preferences.**
+
+<!-- #228 -->
+- **Formatting the SD card (Console → Patterns → Purge…) no longer gives up after 30 seconds.** A full-card format can take longer on large cards; the Studio now waits up to 2 minutes for the controller to finish.
+
 ## v0.91 (2026-09-26) · A closed-loop trial opens where `frame_index` puts it
 
 - **The closed loop now starts from the trial's `frame_index`.** Before, the display showed the
