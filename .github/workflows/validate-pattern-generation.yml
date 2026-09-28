@@ -55,7 +55,7 @@ jobs:
           echo "- Spherical Grating (30 tests)" >> $GITHUB_STEP_SUMMARY
           echo "- Comprehensive MATLAB Reference (32 tests)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ $? -eq 0 ]; then
+          if [ "${{ job.status }}" = "success" ]; then
             echo "✅ All 73 tests passed" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Some tests failed - check logs for details" >> $GITHUB_STEP_SUMMARY

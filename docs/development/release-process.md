@@ -48,6 +48,7 @@ pixi run candidate -- 219 178 --headline "Controller settings + lab repo picker"
 pixi run candidate -- --continue         # after resolving a merge conflict (or --abort)
 pixi run tiers -- status                 # live candidate, head drift, CI, validation notes
 pixi run tiers -- validate --rig rig5 --by Isabel --notes "P3 epochs open on 25/75"
+pixi run tiers -- validate --rig rig5 --by Isabel --notes-file /path/to/notes.md  # multi-line / `code`
 pixi run release                         # promote the validated candidate
 pixi run candidate -- --hotfix "why" 230 # safety/data-loss fix: skips the soak, not CI
 pixi run tiers -- rollback --to release-2026-10-02 [--revert release-2026-10-09]
@@ -104,9 +105,11 @@ same on macOS, Linux and Windows (CI runs the tooling tests on all three).
 - Validate on a rig **between sessions**. Never open `/next/` on a rig PC while an experiment is
   running: the FicTrac bridge accepts several browser clients and a second tab can change its config
   mid-run (`fictrac-bridge/bridge.py`), and two tabs compete for the serial port.
-- Post the note with `pixi run tiers -- validate …` (it names the candidate SHA). Any change to a
-  constituent PR, or to main beyond docs, means rebuild → rc+1 → validate again; `status` and
-  `release` detect both.
+- Post the note with `pixi run tiers -- validate …` (it names the candidate SHA). Put anything
+  longer than one plain line in a file and pass `--notes-file` (an absolute path: pixi tasks run
+  from the repo root). pixi's task shell re-parses `--notes "…"`, so backticks and line breaks there
+  break the command. Any change to a constituent PR, or to main beyond docs, means rebuild → rc+1 →
+  validate again; `status` and `release` detect both.
 - If a candidate touches `fictrac-bridge/`, testers run the bridge from a checkout of the
   candidate's `release/<name>` branch (a pinned commit, not a moving ref).
 
