@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "name": "2026-09-28",
+  "kind": "candidate",
+  "rc": 1,
+  "created_at": "2026-09-28T14:45:57Z",
+  "created_at_et": "2026-09-28 10:45 ET",
+  "main_sha": "10db8bf03fd3b37d6b74dba89b7b14420cb9d658",
+  "headline": "Release tiers on the page; SD purge timeout",
+  "prs": [
+    {
+      "number": 227,
+      "title": "Release-tier badge, run provenance, typed migration markers, tier-suffixed windows",
+      "head_sha": "bbfa1ac4b9e987a5a18eff5f8ac5deee545a0531",
+      "head_ref": "feat/build-channel",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/227"
+    },
+    {
+      "number": 228,
+      "title": "SD purge (0x8F): 120 s shared timeout + refresh-rate tooltip (LAB-160)",
+      "head_sha": "f866e3147ece7cb65ecb9af2fdb51d5b78fff8d2",
+      "head_ref": "fix/lab-160-purge-timeout",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/228"
+    }
+  ],
+  "versions": {
+    "console": {
+      "from": "v9",
+      "to": "v10"
+    },
+    "pattern-designer": {
+      "from": "v0.10",
+      "to": "v0.11"
+    },
+    "studio": {
+      "from": "v0.91",
+      "to": "v0.92"
+    }
+  },
+  "hotfix_reason": null,
+  "bridge_changed": false
+}

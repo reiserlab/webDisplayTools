@@ -327,12 +327,17 @@
                 grid-template-columns: 1fr;
             }
         }
+        /* Release-tier badge (js/build-channel.js; docs/development/release-process.md) */
+        .wdt-channel{font:600 10px/1.6 'JetBrains Mono', monospace;padding:0 6px;border-radius:9px;margin-left:8px;white-space:nowrap;cursor:help;vertical-align:middle}
+        .wdt-ch-prod{color:#8b949e;border:1px solid #2d3640}
+        .wdt-ch-next{color:#0f1419;background:#ff9100;font-weight:700}
+        .wdt-ch-local{color:#8b949e;border:1px dashed #2d3640}
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>PanelDisplayTools</h1>
+            <h1>PanelDisplayTools<span id="tierBadge"></span></h1>
             <p class="subtitle">Web-based tools for LED panel arena design and pattern creation</p>
         </header>
 
@@ -496,8 +501,32 @@
             <p>
                 <a href="https://github.com/reiserlab/webDisplayTools" target="_blank">GitHub</a> |
                 <a href="https://github.com/reiserlab" target="_blank">Reiser Lab</a>
+                <span id="tierSwitch"></span>
             </p>
         </footer>
     </div>
+    <script src="js/build-channel.js"></script>
+    <script>
+        // Release tier badge + a discreet link to the other tier (docs/development/release-process.md).
+        (function () {
+            if (!window.BuildChannel) return;
+            var b = BuildChannel.detect();
+            BuildChannel.renderBadge(document, document.getElementById('tierBadge'), b);
+            var host = document.getElementById('tierSwitch');
+            if (!host || b.channel === 'local') return;
+            var a = document.createElement('a');
+            if (b.channel === 'next') {
+                a.href = '../index.html';
+                a.textContent = 'Production';
+                a.title = 'The Production tools — the version the rigs run';
+            } else {
+                a.href = 'next/index.html';
+                a.textContent = 'Next (testing build)';
+                a.title = 'The Next tier: the release candidate being validated — not for routine experiments';
+            }
+            host.appendChild(document.createTextNode('| '));
+            host.appendChild(a);
+        })();
+    </script>
 </body>
 </html>

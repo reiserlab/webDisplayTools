@@ -1556,7 +1556,9 @@
         replay.viewerReady = false;
         replay.viewer = window.open(
             target,
-            'arena-studio-alt-replay-viewer',
+            window.BuildChannel
+                ? window.BuildChannel.windowName('arena-studio-alt-replay-viewer')
+                : 'arena-studio-alt-replay-viewer',
             'popup=yes,width=880,height=720,resizable=yes'
         );
         if (!replay.viewer) {
