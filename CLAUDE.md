@@ -17,11 +17,39 @@ Format in footer: `Tool Name vX | YYYY-MM-DD HH:MM ET · GitHub` — ONLY the to
 
 Example: `Arena Editor v2 | 2026-01-16 14:30 ET · GitHub`
 
-**IMPORTANT**: Always include timestamp in Eastern Time (ET) to distinguish multiple updates per day. Update the timestamp whenever the page is modified.
+**Versions and ET timestamps are bumped at RELEASE time, never in a feature PR** (since
+2026-09-28 — see "Release tiers" below). The release commit built by `pixi run candidate`
+bumps each touched tool's footer (`vX` last component + 1) with the ET stamp and folds the
+PRs' release notes in. A feature PR leaves the footer version/timestamp, the top of every
+release-notes file, and the footer tests alone.
 
-**To get current time**: on macOS/Linux run `TZ='America/New_York' date "+%Y-%m-%d %H:%M ET"` in Bash. **On Windows do NOT use that** — Git Bash has no tzdata, so it silently prints UTC labelled "ET" (this stamped #190's footer four hours off). Use PowerShell instead:
-`[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date),'Eastern Standard Time').ToString('yyyy-MM-dd HH:mm') + ' ET'`.
-Never guess or make up timestamps.
+**Timestamps are computed by the tooling** (`scripts/tiers/tierlib.py`, Python `zoneinfo` with a
+built-in US-DST fallback — correct on Windows too). If you ever need one by hand: on macOS/Linux
+`TZ='America/New_York' date "+%Y-%m-%d %H:%M ET"`; **on Windows do NOT use that** — Git Bash has no
+tzdata, so it silently prints UTC labelled "ET" (this stamped #190's footer four hours off). Never
+guess or make up timestamps.
+
+## Release tiers — Production + Next (THE shipping rule)
+
+Authority: **`docs/development/release-process.md`** (+ `.claude/skills/g6-release/SKILL.md`).
+- **Production** = the root URLs = the tree of `main` (rigs run experiments here; tagged "beta").
+  **Next** = `/next/` = ONE frozen release candidate (main + an explicit list of pinned PR heads +
+  a release commit), or a placeholder. One Pages artifact built by `deploy-pages.yml` via
+  `scripts/tiers/stamp.py`, which stamps every page with `<meta name="wdt-build">` + `build.json`.
+- **Ask the tier question at three decision points (AskUserQuestion, never assume):** opening a PR
+  (next candidate / hotfix / docs-only), building a candidate (which ≤ 4 PRs), promoting (go? window?).
+  Routine pushes to a feature branch never prompt.
+- **Code reaches `main` only through a release PR** from `pixi run candidate`, merged with a MERGE
+  COMMIT by `pixi run release` (never squash — constituent PRs close as indirectly merged).
+  Docs/skills-only PRs are the exception. Hotfix (safety/data-loss only, reason required):
+  `pixi run candidate -- --hotfix "why" N`.
+- **Feature PRs never bump versions;** user-facing notes go in the PR body's `## Release notes`
+  (template: `.github/pull_request_template.md`).
+- **Same-origin coexistence:** migration markers compare typed + monotonic (never `!== current`);
+  a storage key's format never changes meaning (new key instead); window names are tier-suffixed;
+  never open `/next/` on a rig PC mid-experiment (the FicTrac bridge takes several clients).
+- **`next/` is a reserved top-level path.** Never use `pull_request_target` for the deploy (blocked
+  by default on public repos from 2026-11-02); `workflow_dispatch` on main publishes candidates.
 
 ## Design System
 
@@ -465,8 +493,9 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   repo link (e.g. `Arena Studio v0.9 | 2026-07-07 00:03 ET · GitHub`). NEVER put a
   changelog, release-notes summary, or "what changed" keywords in the footer — this is a
   recurring mistake. The changelog lives ONLY in
-  `docs/development/arena-studio-release-notes.md` — add an entry there for user-visible
-  changes.
+  `docs/development/arena-studio-release-notes.md` — but a feature PR does NOT edit it:
+  write user-visible notes in the PR body's `## Release notes`; the release commit folds them
+  in (and `tests/test-studio-replay.js` checks footer version = newest notes entry).
 - **Run logs are `.jsonl.gz` (v0.72+, `docs/development/runlog-behavior-v2-plan.md`).**
   `commitRunLog` gzips the bridge export (`GH.gzipBytes`) and commits
   `runlogs/<bench>/<name>.jsonl.gz` via `GH.commitFile`, which routes >30 MiB payloads
@@ -493,7 +522,8 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   firmware FAT access (chain-walking seeks + `fatGet` at cluster crossings), proven by the 4-arm causal test on 2026-09-13 and
   removed by the contiguous-seek fast path — never re-introduce per-seek chain walks; see
   `docs/development/mode3-reliability-handoff-2026-09-14.md`.
-- Bump the footer version/timestamp on every edit; never Prettier the HTML.
+- Never bump the footer version/timestamp in a feature PR (the release commit does — see
+  "Release tiers"); never Prettier the HTML.
 - **Nested protocol objects are edited BY PATH, never rewritten wholesale (v0.82).** `docSet` wraps a
   plain object/array in `doc.createNode` before `setIn` (yaml would otherwise store the raw JS object,
   after which `getIn(path, true)` beneath it is undefined and a nested `setIn` throws "Expected YAML

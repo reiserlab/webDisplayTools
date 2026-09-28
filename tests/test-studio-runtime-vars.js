@@ -474,8 +474,8 @@ checkBool(
     studioHtml.includes("'#runVarsCard':") && studioHtml.includes("'#runVarsApply':")
 );
 checkBool(
-    'footer at v0.84 or later',
-    /Arena Studio v0\.(8[4-9]|9\d) \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET/.test(studioHtml)
+    'footer carries a version stamp',
+    /Arena Studio v\d+(?:\.\d+)* \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET/.test(studioHtml)
 );
 const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'protocols', 'index.json'), 'utf8'));
 checkBool(

@@ -80,8 +80,9 @@ interface.
   **Colocation is the protocol↔set link**: `protocols/<bench>/<name>_patterns/` next to
   `<name>.yaml`; reusable patterns live in the repo-level `patterns/` library.
 - **Protocols** — v3 YAML → the **`protocol-yaml`** skill (waits rule, trial modes, I/O, FicTrac).
-- **Versioning** — two-digit `vX` (no semver); footer `Tool vX | YYYY-MM-DD HH:MM ET`; get ET
-  via `TZ='America/New_York' date "+%Y-%m-%d %H:%M ET"` (never guess a timestamp).
+- **Versioning** — two-digit `vX` (no semver); footer `Tool vX | YYYY-MM-DD HH:MM ET`. Versions
+  and ET stamps are bumped **at release time by the tooling** (`pixi run candidate`), never in a
+  feature PR — see *Release tiers* below.
 - **Design system** — dark theme (`--bg #0f1419`, surface `#1a1f26`, border `#2d3640`, accent
   `#00e676`); JetBrains Mono headings, IBM Plex Mono body.
 - **Dev env = pixi only** — `pixi install` provisions Node + Prettier + Python + websockets
@@ -90,6 +91,16 @@ interface.
   reflows the whole file). And an **ES-module import failure is catastrophic** — the entire
   `<script type="module">` block dies (empty dropdowns / dead page), classically from a cached
   stale module missing a newly-added export.
+
+## Release tiers — Production + Next (web tools)
+
+- **Production** = `https://reiserlab.github.io/webDisplayTools/…` (unchanged URLs; the rigs run
+  here; tagged "beta"). **Next** = `…/webDisplayTools/next/…` = ONE frozen release candidate
+  (main + pinned PR heads + a release commit), or a placeholder.
+- **Before sharing/merging web-tool code, use the `g6-release` skill.** It asks the tier question at
+  three points — opening a PR (next candidate / hotfix / docs-only), building a candidate, promoting —
+  and drives `pixi run candidate` / `pixi run release`. Code reaches `main` only via a release PR.
+- Authority: `docs/development/release-process.md` in webDisplayTools.
 
 ## How the web connects to the arena
 
