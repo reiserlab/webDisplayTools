@@ -914,7 +914,7 @@
                                     min="0"
                                     max="65535"
                                     value="1000"
-                                    title="Refresh rate: 0–65535 Hz. Applies only if > 0. GS16 streaming defaults to ~300 Hz, GS2 ~1000 Hz."
+                                    title="Refresh rate: 0–65535 Hz. Applies only if > 0. Firmware defaults: GS16 400 Hz, GS2 1200 Hz."
                                 />
                                 <button
                                     class="cmd menu-item"
@@ -2595,7 +2595,8 @@
                     'purge-memory',
                     Wire.encodePurgeMemory(),
                     (r) => (r && r.ok ? 'done' : null),
-                    { timeoutMs: 30000 }
+                    // full-card format scales with card capacity (LAB-160) — shared timeout
+                    { timeoutMs: Wire.PURGE_MEMORY_TIMEOUT_MS || 120000 }
                 );
                 if (resp && resp.ok) await refreshSdCount();
             });

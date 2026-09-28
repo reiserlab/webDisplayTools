@@ -5659,7 +5659,8 @@
             if (!connected()) return;
             if (!confirm('Format the SD card? This wipes ALL patterns, the panel firmware image, and manifests. This cannot be undone.')) return;
             await quiesceDisplay(); // 0x8F requires the display stopped
-            const r = await send(Wire.encodePurgeMemory(), 'PURGE_MEMORY 0x8F', { timeoutMs: 30000 });
+            // A full-card format scales with card capacity (LAB-160): the shared timeout, not 30 s.
+            const r = await send(Wire.encodePurgeMemory(), 'PURGE_MEMORY 0x8F', { timeoutMs: Wire.PURGE_MEMORY_TIMEOUT_MS || 120000 });
             if (r && Wire.decodeResponse(r) && Wire.decodeResponse(r).ok) sdRefresh();
         }),
         // panel firmware
