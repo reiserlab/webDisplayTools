@@ -23,9 +23,11 @@ behind the test fixtures.
 
 ## 1. What the skill is
 
-A "skill" in Claude Code is a small folder that teaches the assistant a specific,
-stable body of knowledge — it loads automatically for anyone working in this repo. Ours
-lives at `.claude/skills/protocol-yaml/` and has two parts:
+A project skill is a small folder that teaches an assistant a specific, stable body of
+knowledge. The maintained cross-model skill lives at `.agents/skills/protocol-yaml/`.
+Codex discovers it there directly; Claude Code discovers the thin wrapper at
+`.claude/skills/protocol-yaml/`, which routes to the same canonical instructions. The skill
+has two substantive parts:
 
 **`SKILL.md`** — the reference. It captures the things that are *true but not obvious from
 looking at a protocol file*, the kind of knowledge that otherwise gets re-learned painfully
@@ -45,15 +47,18 @@ each time:
   closed-loop command shape, the G6-only analog/digital I/O command shapes, `frame_index`
   conventions (including the stripe-fixation start-position rule), and duration granularity.
 
-**`bin/validate-protocol.mjs`** — the checker. It runs the repo's own parser and
+**`scripts/validate-protocol.mjs`** — the checker. It runs the repo's own parser and
 error/warning collectors *plus* a custom lint for the waits rule and the mode/field
 sanity checks, and prints a plain-language report with an exit code. Anyone can run it on a
 protocol before it ever touches a browser or the arena:
 
 ```
 pixi run node --import ./tests/vendor-yaml.register.mjs \
-    .claude/skills/protocol-yaml/bin/validate-protocol.mjs path/to/protocol.yaml
+    .agents/skills/protocol-yaml/scripts/validate-protocol.mjs path/to/protocol.yaml
 ```
+
+The original `.claude/skills/protocol-yaml/bin/validate-protocol.mjs` command remains as a
+compatibility shim and forwards to the maintained validator.
 
 **Why bother:** protocol mistakes (a missing wait, a wrong mode field, a mistyped pattern
 name) are invisible in the YAML and only bite at run time on the bench. The skill moves

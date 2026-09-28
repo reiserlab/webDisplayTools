@@ -1,0 +1,4 @@
+interface:
+  display_name: "G6 Orientation"
+  short_description: "Navigate the Reiser Lab G6 display project"
+  default_prompt: "Use $g6-orientation to locate the authoritative repository, documentation, and conventions for this G6 task."
