@@ -1,0 +1,5 @@
+competent-montalcini-076abe base=6216d8e branch=claude/competent-montalcini-076abe
+sharp-gagarin-281c6f base=408ce10 branch=claude/modest-khorana-7cee4b
+dazzling-jang-4b2959 base=fb1d5c0 branch=claude/dazzling-jang-4b2959
+cranky-leavitt-cba88e base=fa74437 branch=claude/cranky-leavitt-cba88e
+priceless-sanderson-ae43af base=8bc97e6 branch=claude/priceless-sanderson-ae43af

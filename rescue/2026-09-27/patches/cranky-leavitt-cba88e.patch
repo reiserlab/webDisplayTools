@@ -1,0 +1,26 @@
+diff --git a/pattern_editor.html b/pattern_editor.html
+index a69b8f1..dae6b6e 100644
+--- a/pattern_editor.html
++++ b/pattern_editor.html
+@@ -1706,7 +1706,7 @@
+ <body>
+     <!-- Development Banner -->
+     <div class="dev-banner">
+-        🚧 Pattern Editor v0.9.40 | 2026-07-01 12:33 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
++        🚧 Pattern Editor v0.9.41 | 2026-07-04 10:51 ET — <a href="https://github.com/reiserlab/webDisplayTools/issues/6" target="_blank">View progress on GitHub</a>
+     </div>
+ 
+     <div class="app-container">
+@@ -5909,9 +5909,10 @@
+             // Build pattern from sequence first
+             previewFrameAnimation();
+ 
+-            // Then trigger save
++            // Then trigger save (handleSave is the shared .pat save handler,
++            // also wired to the Save button; operates on state.pattern)
+             if (state.pattern) {
+-                savePatternFile();
++                handleSave();
+             }
+         }
+ 

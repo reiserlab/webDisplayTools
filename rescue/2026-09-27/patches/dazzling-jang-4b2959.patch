@@ -1,0 +1,122 @@
+diff --git a/arena_console.html b/arena_console.html
+index efe73ab..0be3127 100644
+--- a/arena_console.html
++++ b/arena_console.html
+@@ -1387,7 +1387,7 @@
+                             <input id="fw-batch-verify" type="checkbox" checked /> verify each
+                         </label>
+                         <label class="small" id="fw-batch-show-wrap"
+-                            title="Light programmed panels bright and pending panels dim on the arena as it runs (20-panel arenas only).">
++                            title="Persist-mode status map on the arena — one frame at the start, one at the end, no streaming during flashing (20-panel arenas only). Staying lit through each flash depends on the panel firmware.">
+                             <input id="fw-batch-show" type="checkbox" checked /> show on arena
+                         </label>
+                     </div>
+@@ -1521,7 +1521,7 @@
+                 </div>
+                 <div id="log"></div>
+             </div>
+-            <footer id="footer">Arena Console v7 | 2026-07-01 20:51 ET</footer>
++            <footer id="footer">Arena Console v8 | 2026-07-02 00:18 ET</footer>
+         </div>
+ 
+         <!-- Paste-a-frame modal -->
+@@ -2803,6 +2803,9 @@
+                 fwStatus.textContent = 'flashing panel ' + panel + '…';
+                 $('fw-flash-btn').disabled = true;
+                 try {
++                    // The controller rejects a flash while it is "displaying" (status
++                    // 10 «Stop display before flashing a panel»), so stop first.
++                    await stopDisplay();
+                     // g6-program-panel (0xC8): long-running (panel stages to LittleFS,
+                     // reboots, OTA stub installs — ~20 s), so allow a generous timeout.
+                     const resp = await run(
+@@ -3006,6 +3009,21 @@
+                 }
+             }
+ 
++            // Best-effort STOP_DISPLAY (0x30). The controller rejects a flash while
++            // it is "displaying" — status 10 «Stop display before flashing a panel».
++            // Any streamed frame (incl. our progress map) sets that state, as does a
++            // pattern the user was running, so we clear it before every flash.
++            async function stopDisplay() {
++                try {
++                    await session.send(Wire.encodeStop(), {
++                        expectedCmd: Wire.OPCODES.STOP_DISPLAY,
++                        timeoutMs: 3000
++                    });
++                } catch (e) {
++                    log('isp: stop-display failed: ' + (e.message || e), 'dim');
++                }
++            }
++
+             // Send a flash/verify command; log a one-liner and return a structured
+             // { ok, message, timeout } so the loop can retry vs. skip.
+             async function ispSend(label, bytes, expectedCmd, timeoutMs) {
+@@ -3080,6 +3098,24 @@
+                 states.forEach((s) => (byPanel[s.panel] = s));
+                 $('fw-batch-report-wrap').style.display = '';
+                 renderIspReport(states);
++                // Put panels in "persist" mode so the status map latches locally:
++                // one frame at the start (all target panels) + one at the end, with
++                // NO streaming during the flash loop. STOP before each flash clears
++                // the controller's "displaying" state so ISP is allowed; whether a
++                // persisted image survives the STOP + a neighbour-panel flash is
++                // firmware-dependent — if not, the map just isn't visible mid-flash,
++                // but flashing still works.
++                if ($('fw-batch-show').checked && streamable()) {
++                    try {
++                        await session.send(Wire.encodeSetPanelDisplayMode(1), {
++                            expectedCmd: Wire.OPCODES.SET_PANEL_DISPLAY_MODE,
++                            timeoutMs: 3000
++                        });
++                        log('isp: panels set to persist display mode for the status map', 'dim');
++                    } catch (e) {
++                        log('isp: set persist mode failed: ' + (e.message || e), 'dim');
++                    }
++                }
+                 await pushIspStatus(states);
+ 
+                 let nVerified = 0;
+@@ -3101,7 +3137,10 @@
+                         st.state = 'flashing';
+                         st.detail = '';
+                         renderIspReport(states);
+-                        await pushIspStatus(states);
++                        // Must NOT stream here — that would put the controller back
++                        // into "displaying" and the flash would be rejected. Instead
++                        // stop the display so ISP is allowed.
++                        await stopDisplay();
+ 
+                         // Flash with one retry on timeout/failure.
+                         let flashed = false;
+@@ -3131,7 +3170,6 @@
+                             st.detail = lastMsg || 'no response';
+                             nBad++;
+                             renderIspReport(states);
+-                            await pushIspStatus(states);
+                             await ispSleep(300);
+                             continue;
+                         }
+@@ -3160,9 +3198,12 @@
+                             nFlashed++;
+                         }
+                         renderIspReport(states);
+-                        await pushIspStatus(states);
+                         await ispSleep(300); // settle before hitting the next panel
+                     }
++                    // One persist frame with the final done/failed map — no flash
++                    // follows, so it is safe to leave up. No per-panel streaming
++                    // during the loop: panels hold the start frame in persist mode.
++                    await pushIspStatus(states);
+                 } finally {
+                     ispRunning = false;
+                     $('fw-batch-stop-btn').disabled = true;
+@@ -3194,7 +3235,7 @@
+                 const wrap = $('fw-batch-show-wrap');
+                 if (wrap)
+                     wrap.title = ok
+-                        ? 'Light programmed panels bright and pending panels dim on the arena as it runs (20-panel arenas only).'
++                        ? 'Persist-mode status map on the arena — one frame at the start, one at the end, no streaming during flashing (20-panel arenas only). Staying lit through each flash depends on the panel firmware.'
+                         : 'Progress display needs a 20-panel arena (e.g. G6_2x10); the batch still runs without it.';
+             }
+             document.addEventListener('arena:changed', updateIspShowUI);

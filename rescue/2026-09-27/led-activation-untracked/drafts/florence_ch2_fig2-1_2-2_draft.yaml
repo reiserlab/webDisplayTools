@@ -1,0 +1,695 @@
+version: 3
+
+# ============================================================================
+# DRAFT v2 — Florence (2018) thesis Ch. 2, Figs 2.1 + 2.2 ("az_PL": head-fixed
+# fly-on-ball visual place learning with virtual heat), ported to the CSHL G6
+# 2x10 fly-on-ball rig. NOT bench-tested. Every number below now comes from the
+# ORIGINAL CONTROL CODE + raw trial files, not from the thesis prose:
+#   run_az_PL_experiment.m / run_az_PL_trial.m (2017-02 copies saved in each
+#   Fig-2 data folder, e.g. 20180921_data/processed/20170213000002_combo_fly_2/
+#   20170213171850_11f03x6f_az_PL/), NORAW_cltrial_*.mat (expr.settings,
+#   expr.c_trial.light_vec/player/bdata). Reader-facing write-up with file:line
+#   citations: protocols/drafts/florence_ch2_az_PL_protocol_summary.md;
+#   per-question answers + pattern spec: florence_ch2_fig2-1_2-2_notes.md.
+#
+# ORIGINAL (facts, file:line in the summary):
+#   - Virtual cylinder of 96 positions (3.75 deg each) on a G3 arena whose pattern
+#     space is 96 x 32 px (12 x 4 panels); the thesis says the physical display
+#     covered 180 x 120 deg (half the ring, inferred = 6 panel columns).
+#   - Loop 50 Hz. th(n) = th(n-1) + (-Omega/ticks_per_deg) * rot_gain, rot_gain 0.4:
+#     the cylinder turns 0.4 deg per 1 deg of ball yaw. xpos = round(th/360*96)
+#     clamped to 1..96 -> Panel set_position(xpos). No hysteresis, no filtering.
+#   - Heat = fibre LED on DAQ AO3: light_power 1 V = ON, -4.99 V = OFF. Training
+#     trials: power_vec(36:61) = -4.99 (26 positions), gausswin(15) smoothed,
+#     edges reset, circshift +48 -> a cool zone centred at th ~ 0 deg (+1.9 deg):
+#     fully off over 45 deg, LED voltage <= 0 over 120 deg, 1 V (full heat) over
+#     210 deg. Test/baseline trials: 1 V everywhere. light_vec is looked up by
+#     xpos EVERY frame (verified frame-for-frame in the raw data, 0 mismatches).
+#   - Trial = 5 s DARK (panels all_off, LED ON at 1 V, th held at 0) + 60 s
+#     closed loop. Start th = 90 or 270 (xpos 24/72), a fresh randperm(2) draw
+#     per trial (both for train and test trials).
+#   - Session = 17 trials: 1 = baseline test, 2-16 = training, 17 = test. After
+#     each trial: LED off, panels all_off, pause 3 s, then pause 30 s (behavior
+#     rigs) or wait for an operator key press (is_imaging = 1 -- ALL Fig-2 flies).
+#     After trial 1 the operator is asked "is < .25?" (baseline-PI gate).
+#   - Pattern: SD pattern 2 (std) or 5 (shift) during closed loop; pattern 1 is
+#     set at init and during the (unused, fix_time = 0) fixation phase. ctr
+#     (is_control = 1): a fresh randperm(4)+1 -> rand_pat in {2,3,4,5} per
+#     TRAINING trial (uniform), pattern 2 on test trials. makePatternStructSBD.m
+#     (the generator) is NOT in Dropbox; the layout is reconstructed from
+#     TJ_review/fig2/single_fly_std.m (sbd = [stripes bars diag], 3 x 32 columns).
+#
+# G6 MAPPING (200 frames x 40 rows, 1.8 deg/frame; frame f <-> th = 1.8 f):
+#   - Gain: the original ran rot_gain 0.4 (cylinder-deg per ball-deg). DECISION
+#     (Michael, 2026-09-17): NOT replicated — run world-stable, gain 1.8 deg/frame.
+#     Sign (-1.8) follows the bench-run course P3 protocols (world-stable sign to be
+#     confirmed on this rig; +1.8 if the panorama runs the wrong way). NOTE the
+#     bridge maps ABSOLUTE FicTrac heading -> frame, so gain is a pure scale (a
+#     one ball turn = one cylinder turn); the original integrated the same way at 0.4.
+#   - Cool zone A (Position A / std): the thesis quadrant + online-PI window
+#     (315-45 deg) -> frames 175-199 + 0-24 -> heat on_ranges [[25,174]]. The
+#     Gaussian ramp cannot be expressed by the binary led_activation; hysteresis 0.
+#     Alternatives in the notes (120 deg "V<=0" zone = on_ranges [[34,166]];
+#     45 deg fully-off zone = [[13,187]]).
+#   - Start +/-90 deg: th 90 -> frame 50, th 270 -> frame 150; a random side per
+#     trial = a 15-entry (8 x 50, 7 x 150) trial list with `randomize: true`
+#     (a shuffled balanced list, not independent coin flips). CAVEAT: today's
+#     bridge does not rebase heading at startClosedLoop, so frame_index is NOT
+#     enforced (see notes Q3 for the runner change); the intent is encoded.
+#   - Position B (shift): pattern 5 = pattern 2 rotated 24 positions = 90 deg
+#     (per the analysis reconstruction; direction inferred from the thesis's
+#     "vertical/horizontal seam"). Implemented as the cool zone moved +90 deg
+#     (frames 25-74) on the SAME pattern -- equivalent to rotating the pattern.
+#   - Uncoupled (ctr): cool zone at 0/90/180/270 deg relative to the pattern,
+#     re-drawn every training trial (4 offsets x 2 starts = 8 conditions, a
+#     15-entry shuffled list); test trials use the std alignment (pattern 2).
+#   - Dark pre-epoch: allOff + ledDrive ON + wait 5 s, then the Mode-3 trialParams.
+#     ITI: allOff + ledDrive 0 + wait 33 s (3 s + the 30 s behavior-rig pause; the
+#     imaging flies were operator-paced). No gray screens (none in the original).
+#   - PLACEHOLDER: led_percent 5 (original = 1 V into the LED driver, no
+#     irradiance calibration anywhere in code or thesis).
+#
+# ONE FILE, THREE FLY GROUPS: the sequence runs a POSITION A fly. Position B and
+# uncoupled swap-in blocks are written out as comments below; their conditions are
+# defined + validated (they raise "unused-condition" warnings while not selected).
+# Timing: 17 x 65 s + 16 x 33 s = 1633 s = 27 min 13 s + command overhead.
+# Needs the FicTrac bridge (`pixi run bridge`; `pixi run sim` to dry-run), a BuckPuck
+# LED on Analog Out, fw #33+. Web runner only. Pattern G6_2x10_florence_sbd_v1 does
+# not exist yet (spec in the notes) -> no pattern_ID.
+# ============================================================================
+
+experiment_info:
+  name: "florence_az_PL_visual_place_learning_draft"
+  author: "Reiser Lab (draft from T.J. Florence az_PL code, 2017-02 version)"
+  date_created: 2026-09-17
+
+rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
+
+plugins:
+  - name: "fictrac"
+    type: "class"
+    matlab:
+      class: "FicTracPlugin"
+    config:
+      bridge_url: "ws://localhost:8765"
+      fictrac_port: 60000
+      proto: "udp"
+      gain: -1.8 # heading-deg per frame: 1:1 world-stable (course convention); keep equal to *cl_gain
+      offset: 0
+
+variables:
+  # ── Durations (run_az_PL_experiment.m L36-38: dark_time 5, trial_time 60+5) ───
+  dark_dur: &dark_dur 5 # s — panels off, LED ON, before every trial (train AND test)
+  cl_dur: &cl_dur 60 # s — closed-loop epoch of every trial
+  iti_dur: &iti_dur 33 # s — 3 s (L251) + 30 s (L276) behavior-rig ITI; imaging flies were key-paced
+  # ── Virtual heat (LED on the BuckPuck AO) ─────────────────────────────────────
+  led_percent: &led_percent 5 # % — PLACEHOLDER (original: light_power = 1 V, L32; no calibration)
+  led_hysteresis: &led_hysteresis 0 # original looked light_vec up per frame, no hysteresis (trial L218)
+  # ── Closed loop ───────────────────────────────────────────────────────────────
+  cl_gain: &cl_gain -1.8 # 1:1 world-stable (200 frames = 360 deg); TJ's rot_gain 0.4 deliberately not replicated; sign per course
+  # ── Position A: cool zone centred at th 0 = frames 175..199 + 0..24 ──────────
+  heat_A_ranges: &heat_A_ranges
+    - [ 25, 174 ]
+  start_m90: &start_m90 150 # th 270 deg (start_theta L33 / start_xpos 72 L34)
+  start_p90: &start_p90 50 # th  90 deg (start_xpos 24)
+  # ── Position B ("shift"): cool zone rotated +90 deg -> frames 25..74 ─────────
+  heat_B_ranges: &heat_B_ranges
+    - [ 0, 24 ]
+    - [ 75, 199 ]
+  start_B_m90: &start_B_m90 0 # 50 - 50
+  start_B_p90: &start_B_p90 100 # 50 + 50
+
+experiment:
+  - "baseline_test"
+  - "iti"
+  # 15 training trials; start side drawn per trial (randperm(2), L215-218) ->
+  # a shuffled 8/7 list. Position A = pattern 2, cool zone at th 0.
+  - name: "training_A"
+    trials:
+      - "train_A_start_m90"
+      - "train_A_start_p90"
+      - "train_A_start_m90"
+      - "train_A_start_p90"
+      - "train_A_start_m90"
+      - "train_A_start_p90"
+      - "train_A_start_m90"
+      - "train_A_start_p90"
+      - "train_A_start_m90"
+      - "train_A_start_p90"
+      - "train_A_start_m90"
+      - "train_A_start_p90"
+      - "train_A_start_m90"
+      - "train_A_start_p90"
+      - "train_A_start_m90"
+    repetitions: 1
+    randomize: true
+    intertrial: "iti"
+  - "iti"
+  - "final_test"
+  - "shutdown"
+  # ---- Position B fly ("shift", pattern 5): replace the training_A block with --
+  # - name: "training_B"
+  #   trials:
+  #     - "train_B_start_m90"
+  #     - "train_B_start_p90"
+  #     - "train_B_start_m90"
+  #     - "train_B_start_p90"
+  #     - "train_B_start_m90"
+  #     - "train_B_start_p90"
+  #     - "train_B_start_m90"
+  #     - "train_B_start_p90"
+  #     - "train_B_start_m90"
+  #     - "train_B_start_p90"
+  #     - "train_B_start_m90"
+  #     - "train_B_start_p90"
+  #     - "train_B_start_m90"
+  #     - "train_B_start_p90"
+  #     - "train_B_start_m90"
+  #   repetitions: 1
+  #   randomize: true
+  #   intertrial: "iti"
+  # ---- Uncoupled-control fly (is_control = 1, rand_pat in {2,3,4,5}): ---------
+  # - name: "training_uncoupled"
+  #   trials:
+  #     - "train_unc_o000_m90"
+  #     - "train_unc_o090_p90"
+  #     - "train_unc_o180_m90"
+  #     - "train_unc_o270_p90"
+  #     - "train_unc_o000_p90"
+  #     - "train_unc_o090_m90"
+  #     - "train_unc_o180_p90"
+  #     - "train_unc_o270_m90"
+  #     - "train_unc_o000_m90"
+  #     - "train_unc_o090_p90"
+  #     - "train_unc_o180_m90"
+  #     - "train_unc_o270_p90"
+  #     - "train_unc_o000_p90"
+  #     - "train_unc_o090_m90"
+  #     - "train_unc_o180_p90"
+  #   repetitions: 1
+  #   randomize: true
+  #   intertrial: "iti"
+
+conditions:
+  # ---- test trials: 5 s dark + heat, then 60 s closed loop in UNIFORM heat -----
+  # Original trial 1 / 17: power_vec = 1 V everywhere (L176); dark epoch LED = 1 V
+  # (trial L144, L247); start th random. Baseline is bound to th 270 (frame 150),
+  # final test to th 90 (frame 50) so both sides occur; swap freely.
+  - name: "baseline_test"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1" # generated: scripts/make-florence-sbd-pattern.js; TODO pattern_ID once on the SD
+        duration: *cl_dur
+        mode: 3
+        frame_index: *start_m90
+        frame_rate: 0
+        gain: 0
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: 0
+
+  - name: "final_test"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: *start_p90
+        frame_rate: 0
+        gain: 0
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: 0
+
+  # ---- inter-trial interval: panels off, LED off (L250-252, L276) ---------------
+  - name: "iti"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: 0
+      - type: "wait"
+        duration: *iti_dur
+
+  # ---- training, Position A (pattern 2; cool zone at th 0 = frames 175..24) ----
+  # 5 s dark with LED ON, then Mode-3 closed loop with the LED gated by frame index:
+  # ON outside the cool quadrant (heat), OFF inside. The runner forces the LED off
+  # for the instant between trialParams and the first applied frame (activator
+  # baseline) — the original kept 1 V until the first VR frame.
+  - name: "train_A_start_m90"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: *start_m90
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges: *heat_A_ranges
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "train_A_start_p90"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: *start_p90
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges: *heat_A_ranges
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  # ---- training, Position B ("shift" = pattern 5): cool zone at +90 deg --------
+  - name: "train_B_start_m90"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: *start_B_m90
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges: *heat_B_ranges
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "train_B_start_p90"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: *start_B_p90
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges: *heat_B_ranges
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  # ---- training, UNCOUPLED control (rand_pat in {2,3,4,5}, trial L186-188) -----
+  # Pattern fixed; cool zone (LED-OFF band) at offset o = 0/90/180/270 deg, i.e.
+  # the four rotations of the SBD panorama the original drew from; start +/-90 deg
+  # from the cool-zone centre as always. o000 == Position A geometry.
+  - name: "train_unc_o000_m90" # cool 175..24, start frame 150
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: 150
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges:
+            - [ 25, 174 ]
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "train_unc_o000_p90" # cool 175..24, start frame 50
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: 50
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges:
+            - [ 25, 174 ]
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "train_unc_o090_m90" # cool 25..74, start frame 0
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges:
+            - [ 0, 24 ]
+            - [ 75, 199 ]
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "train_unc_o090_p90" # cool 25..74, start frame 100
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: 100
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges:
+            - [ 0, 24 ]
+            - [ 75, 199 ]
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "train_unc_o180_m90" # cool 75..124, start frame 50
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: 50
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges:
+            - [ 0, 74 ]
+            - [ 125, 199 ]
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "train_unc_o180_p90" # cool 75..124, start frame 150
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: 150
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges:
+            - [ 0, 74 ]
+            - [ 125, 199 ]
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "train_unc_o270_m90" # cool 125..174, start frame 100
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: 100
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges:
+            - [ 0, 124 ]
+            - [ 175, 199 ]
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "train_unc_o270_p90" # cool 125..174, start frame 0
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: *led_percent
+      - type: "wait"
+        duration: *dark_dur
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_florence_sbd_v1"
+        duration: *cl_dur
+        mode: 3
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+        led_activation:
+          level: *led_percent
+          hysteresis: *led_hysteresis
+          on_ranges:
+            - [ 0, 124 ]
+            - [ 175, 199 ]
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          gain: *cl_gain
+      - type: "wait"
+        duration: *cl_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  # ---- shutdown (L459-460: close_tcp, LED off) ---------------------------------
+  # Do NOT disconnect the bridge — the run-log export runs after the sequence.
+  - name: "shutdown"
+    commands:
+      - type: "controller"
+        command_name: "ledDrive"
+        percent: 0
+      - type: "controller"
+        command_name: "stopDisplay"
+      - type: "controller"
+        command_name: "allOff"

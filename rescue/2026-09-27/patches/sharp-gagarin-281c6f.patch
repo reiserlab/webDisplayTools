@@ -1,0 +1,237 @@
+diff --git a/.claude/skills/protocol-yaml/SKILL.md b/.claude/skills/protocol-yaml/SKILL.md
+index f54419d..6d574cc 100644
+--- a/.claude/skills/protocol-yaml/SKILL.md
++++ b/.claude/skills/protocol-yaml/SKILL.md
+@@ -1,6 +1,6 @@
+ ---
+ name: protocol-yaml
+-description: Author or edit v3 protocol YAML files for the G6/G4 LED arenas (experiment protocols with conditions, trialParams, waits, blocks, variables/anchors, plugins). Use whenever writing a new protocol, adding/editing conditions, debugging "condition duration doesn't update" or "timeline looks wrong" complaints, choosing trial modes (2/3/4), sizing .pat patterns, or validating a protocol file. Triggers include "make a protocol", "new experiment YAML", "add a condition", "closed-loop condition", "why is this condition N seconds".
++description: Author or edit v3 protocol YAML files for the G6/G4 LED arenas (experiment protocols with conditions, trialParams, waits, blocks, variables/anchors, plugins). Use whenever writing a new protocol, adding/editing conditions, debugging "condition duration doesn't update" or "timeline looks wrong" complaints, choosing trial modes (2/3/4), adding a plugin command (camera/backlight/temperature/fictrac/log) or a G6 I/O command (ledDrive/setAnalogOut/setDigitalOut), understanding how the rig YAML declares available plugins, sizing .pat patterns, or validating a protocol file. Triggers include "make a protocol", "new experiment YAML", "add a condition", "closed-loop condition", "add a camera/LED command", "which plugins are available", "why is this condition N seconds".
+ ---
+ 
+ # v3 protocol YAML — authoring knowledge
+@@ -119,12 +119,16 @@ streams frames for the wait's duration. Declare a `fictrac` plugin. Shape:
+ ## Other controller commands
+ 
+ `allOn`, `allOff`, `stopDisplay`, `setPositionX` (Mode-3 frame jump), and the **G6-only**
+-`setAnalogOut` / `setDigitalOut`. The I/O commands take these exact fields (units matter):
++I/O trio `setAnalogOut` / `ledDrive` / `setDigitalOut`. The I/O commands take these exact
++fields (units matter):
+ 
+ ```yaml
+     - type: "controller"
+       command_name: "setAnalogOut"
+       mv: 2500              # MILLIVOLTS (0–5000 = 0–5 V); 0 to clear
++    - type: "controller"
++      command_name: "ledDrive"
++      percent: 75           # % brightness (0–100); see LED drive note below
+     - type: "controller"
+       command_name: "setDigitalOut"
+       channel: 1            # 1-based — matches the board BNC silkscreen "Digital IO 1/2"
+@@ -136,6 +140,21 @@ on non-G6 hardware they're rejected by the controller. A common pattern is a
+ `setDigitalOut … state: 1` before a trial and a `state: 0` after (in a trailing `wait`
+ window — that's a legitimate "waits exceed display" case).
+ 
++### `ledDrive` — LED brightness in % (the friendly wrapper over `setAnalogOut`)
++
++`ledDrive` drives an LED through a **BuckPuck constant-current driver** wired to the same
++"Analog Out (0–5V)" BNC (J27 DAC, `SET_AO_VOLTAGE 0xA0`). Instead of asking the author to
++know that the BuckPuck control pin is *inverted* (≈1.65 V = full brightness, ≥4.2 V = off),
++`ledDrive` takes a plain **`percent` 0–100** (% of full light output, `step 0.1`) and the
++**web runner** maps it to the control voltage via a digitized BuckPuck datasheet curve
++before emitting the same `0xA0` frame. `0` → 5000 mV (safely past the shutoff, LED dark),
++`100` → 1650 mV (full). Prefer `ledDrive` for optogenetic/visible-LED intensity so students
++calibrate in %; drop to raw `setAnalogOut mv:` only when you need an exact voltage or a
++non-LED analog device. The curve is approximate (read off the datasheet figure) — for
++photometric work, measure and recalibrate. Like the other two, it's **G6-only** and
++instantaneous. (Background: this is the "LED_AO_drive" capability added 2026-07 for the
++course rigs.)
++
+ ## Full block example
+ 
+ A sequence entry is either a bare condition name or a block (define referenced conditions
+@@ -173,12 +192,180 @@ YAML aliases must appear **after** their anchor textually — put `variables:` a
+ anything a colleague will want to tweak (durations, gains). The Studio's Variables panel
+ edits them with rename-cascade; hand-edits are fine too.
+ 
++### Best practice: name every interval and every repeated value
++
++When a protocol is described in terms of **trials of specific lengths** ("a 4-second
++stimulus, then a 2-second blank, repeated 20 times"), **do not** hard-code those numbers
++into the command fields. Lift each one into a descriptively named variable and bind the
++field(s) to it. This is the single highest-leverage habit for a readable, editable,
++drift-free protocol.
++
++Rules of thumb, in priority order:
++
++1. **Every timing value is a variable.** Trial durations, blank/ITI durations, hold
++   windows, closed-loop durations, pre/post pulse gaps — all of it. Timing is what
++   experimenters tune most, and (per THE WAITS RULE) a duration almost always drives two
++   fields (`trialParams.duration` **and** its companion `wait.duration`). Binding both to
++   one anchor is the only way they can't silently drift.
++2. **Anything that recurs more than once becomes a variable.** If a literal appears in two
++   or more places — a speed/`frame_rate`, a `gain`, an LED `power`, a `pattern_ID`, an
++   analog `mv` level, a repetition count — anchor it. The moment a value is written twice,
++   a future edit will update one copy and miss the other; an anchor makes that impossible.
++3. **Name for meaning, not for the number.** `&stim_dur 4` / `&blank_dur 2` /
++   `&grating_speed_hz 5`, never `&four` or `&d1`. A good name says what the interval *is*
++   and (where useful) its unit — matching the repo's existing style (`trial_dur`,
++   `open_dur`, `cl_dur`, `inter_wait`, `fr_rate`). When the described protocol names the
++   phases ("stimulus", "inter-trial", "adaptation"), reuse those words in the anchor names.
++4. **One concept, one anchor.** If two fields are *conceptually* the same interval, share
++   an anchor (the waits-rule pair). If two fields merely happen to hold the same number
++   today but are independent knobs (e.g. a stimulus duration that coincidentally equals a
++   blank duration), give them **separate** anchors — otherwise tuning one drags the other.
++
++Worked translation — the description *"show a grating for 4 s at 5 Hz, then a 2 s blank,
++20 trials"* becomes:
++
++```yaml
++variables:
++  - &stim_dur 4          # grating on-time (s)
++  - &blank_dur 2         # inter-trial blank (s)
++  - &grating_speed_hz 5  # frame rate, mode 2 (Hz)
++  - &n_trials 20         # block repetitions
++conditions:
++  - name: "grating_stim"
++    commands:
++      - type: "controller"
++        command_name: "trialParams"
++        pattern: "G6_2x10_grating_20px"
++        pattern_ID: 2
++        duration: *stim_dur          # ← both bound to the same interval
++        mode: 2
++        frame_index: 0
++        frame_rate: *grating_speed_hz
++        gain: 0
++      - type: "wait"
++        duration: *stim_dur          # ← waits rule: same anchor, can't drift
++  - name: "blank"
++    commands:
++      - type: "wait"
++        duration: *blank_dur
++experiment:
++  - name: "main_block"
++    trials: ["grating_stim"]
++    repetitions: *n_trials
++    intertrial: "blank"
++```
++
++Every number an experimenter would want to change now lives in one place at the top of the
++file, self-documenting via its name. A reviewer can read the `variables:` block alone and
++know the whole timing structure of the experiment.
++
+ ## Plugins
+ 
+-`plugins:` normally comes from the rig (the Studio pre-fills New protocols from the rig
+-YAML; CSHL course rigs declare none). The **web runner executes only `fictrac` and `log`**
+-— `backlight`/`camera`/`temperature` are declared for MATLAB and skipped on the web.
+-FicTrac closed loop = a `fictrac` plugin + a Mode-3 condition.
++Plugins are named devices/services (a camera, a backlight, the FicTrac bridge) that a
++condition can command alongside the arena. **Source of truth for every plugin and its
++commands is `js/plugin-registry.js`** — the tables below mirror it; if they ever disagree,
++the registry wins.
++
++### How a plugin command looks in YAML
++
++A command in a condition's `commands:` array is one of three `type`s — `controller`,
++`wait`, or **`plugin`**. A plugin command names the plugin and its command and passes that
++command's params inline under `params:`:
++
++```yaml
++      - type: "plugin"
++        plugin_name: "camera"          # must match a declared plugin's name
++        command_name: "startRecording"
++        params:
++          filename: "fly3_trial1"      # only the params that command defines
++```
++
++Plugin commands (and `log`) are **instantaneous** — like the I/O controller commands they
++do NOT advance the clock, so a plugin action that should overlap a trial still needs the
++trial's own `wait`. Command lookup is by the plugin's `matlab.class`, so importing a
++condition is name-agnostic; but **config inheritance from the rig is by NAME**, so keep the
++canonical names below (`backlight`, `camera`, `temperature`, `fictrac`).
++
++### Where the plugin list comes from — the rig YAML
++
++`plugins:` in the protocol is normally pre-filled by the Studio from the **rig YAML** the
++user selects (Settings → Rig). The rig file is the declaration of *what hardware this bench
++physically has*; each plugin it lists with `enabled: true` is offered in the designer, and
++carries the connection config (ports, IPs, bridge URL) so the protocol doesn't have to:
++
++```yaml
++# in the rig YAML (e.g. configs/rigs/cshl_g6_2x10_ball.yaml)
++plugins:
++  fictrac:                 # ← the KEY is the canonical plugin name
++    enabled: true          # ← present-on-this-rig signal; the designer offers it
++    type: "fictrac"
++    bridge_url: "ws://localhost:8765"
++    fictrac_port: 60000
++```
++
++Consequences of this design:
++- A plugin declared on the rig is a **capability signal**: the designer offers it, and it
++  **flags an experiment as unsupported on a rig that lacks it** (e.g. a FicTrac protocol on
++  a rig with no `fictrac`). The diff is name-based (`diffRigVsProtocol`).
++- The protocol plugin's `name` must equal the rig key for the rig's config to carry over —
++  this is why the thermometer is keyed **`temperature`** (not `thermometer`) everywhere.
++- Rig-provided config fields (a camera `ip`/`port`, a serial `port`) are marked `rigDefined`
++  and are **omitted from the exported protocol** — they live in the rig file, not the YAML.
++- **Course/teaching rigs may declare no plugins at all** (the CSHL 2×10 non-ball rig). AO
++  LED drive / digital-out are *controller-native* commands, NOT plugins — they need no
++  `plugins:` entry, only G6 hardware.
++- The four canonical rig-plugin names (`backlight`, `camera`, `temperature`, `fictrac`) are
++  a built-in baseline, recognized even when no rig is loaded.
++
++### What actually runs on the web vs. MATLAB
++
++The **web runner executes only `fictrac` and `log`.** `backlight` / `camera` /
++`temperature` commands are declared for the MATLAB executor and are **parsed and skipped**
++on the web (they're valid to include — they just no-op in the browser). Author them when
++the protocol will also run under MATLAB; don't expect them to fire from the web Studio.
++
++### Command catalog (from `js/plugin-registry.js`)
++
++**`backlight`** — `LEDControllerPlugin` (MATLAB-side; visible/IR LED backlights):
++
++| command | params |
++|---|---|
++| `setIRLEDPower` | `power` 0–100 |
++| `setRedLEDPower` / `setGreenLEDPower` / `setBlueLEDPower` | `power` 0–100; `panel_num` (0=all); `pattern` (e.g. `"1010"`, optional) |
++| `turnOnLED` / `turnOffLED` | — |
++| `setVisibleBacklightsOff` | — (kills RGB, keeps IR on) |
++
++**`camera`** — `BiasPlugin` (MATLAB-side; BIAS video):
++
++| command | params |
++|---|---|
++| `connect` | `ip`, `port`, `config_file` (all optional; use when rig omits them) |
++| `startRecording` | `filename` (optional) |
++| `stopRecording` / `startPreview` / `stopCapture` / `getTimestamp` / `disconnect` | — |
++
++**`temperature`** — `DAQThermometerPlugin` (MATLAB-side; NI-DAQ thermocouples):
++
++| command | params |
++|---|---|
++| `startContinuousLogging` / `stopContinuousLogging` | — (background CSV logging; best for long runs) |
++| `get_temperature` | — (one blocking sample) |
++| `log_temperature` | — (read + log one sample, optional PNG) |
++
++**`fictrac`** — closed-loop fly-on-ball (**web-executed** via the local bridge):
++
++| command | params |
++|---|---|
++| `connect` / `disconnect` | — (idempotent; runner auto-connects at run start) |
++| `startClosedLoop` | `gain` (optional override, deg/index) — requires a preceding Mode-3 `trialParams` |
++| `stopClosedLoop` | — (FicTrac keeps logging) |
++
++**`log`** — built-in, **always available, never declared** in `plugins:` (**web-executed**):
++
++| command | params |
++|---|---|
++| `log` | `message` (required, ≤2000 chars); `level` = DEBUG/INFO/WARNING/ERROR (default INFO) |
++
++FicTrac closed loop = a `fictrac` plugin + a Mode-3 condition (see the Mode-3 section above).
+ 
+ ## Validate before shipping
+ 

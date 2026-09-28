@@ -1,0 +1,20 @@
+diff --git a/.claude/launch.json b/.claude/launch.json
+index 194c9bf..c0d3aa5 100644
+--- a/.claude/launch.json
++++ b/.claude/launch.json
+@@ -7,6 +7,15 @@
+             "runtimeArgs": ["-c", "PORT=${PORT:-8091} python3 .claude/nocache-server.py"],
+             "port": 8091,
+             "autoPort": true
++        },
++        {
++            "name": "v6-montalcini",
++            "runtimeExecutable": "bash",
++            "runtimeArgs": [
++                "-c",
++                "python3 /Users/reiserm/Documents/GitHub/webDisplayTools/.claude/worktrees/competent-montalcini-076abe/.claude/nocache-server.py 8093"
++            ],
++            "port": 8093
+         }
+     ]
+ }
