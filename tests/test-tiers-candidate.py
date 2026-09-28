@@ -224,6 +224,9 @@ with tempfile.TemporaryDirectory() as tmp:
     repo = Path(tmp) / 'repo'
     repo.mkdir()
     g(repo, 'init', '-q')
+    # repo-local, so candidate.py's own git calls see it too (Windows runners default to
+    # core.autocrlf=true, which would make this fixture differ from the helper's view)
+    g(repo, 'config', 'core.autocrlf', 'false')
     write(repo, 'arena_studio.html', STUDIO)
     write(repo, 'flasher/index.html', '<html><head></head><body>flash</body></html>\n')
     write(repo, 'docs/fragment.html', '<p>no head here</p>\n')
@@ -231,6 +234,19 @@ with tempfile.TemporaryDirectory() as tmp:
     g(repo, 'add', '-A')
     g(repo, 'commit', '-qm', 'base')
     main_sha = g(repo, 'rev-parse', 'HEAD')
+
+    print('=== byte-exact I/O (Windows line endings) ===')
+    crlf_page = STUDIO.replace('\n', '\r\n')
+    cp = Path(tmp) / 'crlf.html'
+    T.write_text_exact(cp, crlf_page)
+    T.write_text_exact(cp, T.set_footer(T.read_text_exact(cp), 'studio', 'v0.91', '2026-10-02 14:05 ET'))
+    raw = cp.read_bytes()
+    check('CRLF page keeps every CRLF', (raw.count(b'\r\n'), raw.count(b'\n')),
+          (crlf_page.count('\r\n'), crlf_page.count('\r\n')))
+    lp = Path(tmp) / 'lf.html'
+    T.write_text_exact(lp, STUDIO)
+    T.write_text_exact(lp, T.set_footer(T.read_text_exact(lp), 'studio', 'v0.91', '2026-10-02 14:05 ET'))
+    check('LF page gains no CR', lp.read_bytes().count(b'\r'), 0)
 
     print('=== merge loop ===')
     g(repo, 'checkout', '-qb', 'feat-a')

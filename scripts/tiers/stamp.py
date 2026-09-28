@@ -207,7 +207,7 @@ def write_placeholder(site: Path, next_dir: Path, build: dict, reason: str) -> i
         dst.parent.mkdir(parents=True, exist_ok=True)
         txt = PLACEHOLDER.format(prod=html.escape(prod_href_for(rel), quote=True),
                                  reason=html.escape(f' ({reason})' if reason else ''))
-        dst.write_text(inject_meta(txt, build), encoding='utf-8')
+        T.write_text_exact(dst, inject_meta(txt, build))
         n += 1
     return n
 
@@ -309,9 +309,9 @@ def build_site(out: Path, root_ref: str, next_spec: str, cwd=None, allow_any_nex
         nxt['note'] = note
         n_next = write_placeholder(out, next_dir, nxt, note)
 
-    (next_dir / 'build.json').write_text(json.dumps(nxt, indent=2) + '\n', encoding='utf-8')
+    T.write_text_exact((next_dir / 'build.json'), json.dumps(nxt, indent=2) + '\n')
     n_prod = stamp_tree(out, prod, next_banner=False, skip_top=RESERVED_TOP)
-    (out / 'build.json').write_text(json.dumps(prod, indent=2) + '\n', encoding='utf-8')
+    T.write_text_exact((out / 'build.json'), json.dumps(prod, indent=2) + '\n')
 
     problems = verify_root(out, root_sha, cwd=cwd)
     if problems:

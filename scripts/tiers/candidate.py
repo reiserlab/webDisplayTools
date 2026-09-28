@@ -268,7 +268,7 @@ def adopt_legacy_bumps(wt: Path, versions: dict) -> list:
     THAT version. Returns the tool keys adopted this way."""
     adopted = []
     for key, v in versions.items():
-        merged, _ = T.read_footer((wt / T.TOOLS[key]['html']).read_text(encoding='utf-8'), key)
+        merged, _ = T.read_footer(T.read_text_exact((wt / T.TOOLS[key]['html'])), key)
         if _vtuple(merged) > _vtuple(v['from']) and not v.get('override'):
             v['to'] = merged
             v['legacy_pr_bump'] = True
@@ -287,10 +287,10 @@ def write_release_commit(wt: Path, man: dict, notes_by_pr: dict, headline: str, 
     for key, v in man['versions'].items():
         t = T.TOOLS[key]
         page = wt / t['html']
-        page.write_text(T.set_footer(page.read_text(encoding='utf-8'), key, v['to'], stamp), encoding='utf-8')
+        T.write_text_exact(page, T.set_footer(T.read_text_exact(page), key, v['to'], stamp))
         blocks = [(n, notes['tools'][key]) for n, notes in notes_by_pr.items() if key in notes.get('tools', {})]
         notes_file = wt / t['notes']
-        existing = notes_file.read_text(encoding='utf-8') if notes_file.exists() else None
+        existing = T.read_text_exact(notes_file) if notes_file.exists() else None
         if not t['notes'].endswith('web-tools-release-notes.md') and _newest_notes_version(existing) == v['to']:
             continue  # a legacy PR already wrote this version's entry — keep it, don't duplicate
         shared = t['notes'].endswith('web-tools-release-notes.md')
@@ -299,10 +299,10 @@ def write_release_commit(wt: Path, man: dict, notes_by_pr: dict, headline: str, 
         if not blocks:
             blocks = [(None, ['- Maintenance release (no user-visible notes).'])]
         notes_file.parent.mkdir(parents=True, exist_ok=True)
-        notes_file.write_text(T.fold_notes(existing, title, header, blocks), encoding='utf-8')
+        T.write_text_exact(notes_file, T.fold_notes(existing, title, header, blocks))
     mp = wt / T.manifest_path(man['name'])
     mp.parent.mkdir(parents=True, exist_ok=True)
-    mp.write_text(json.dumps(man, indent=2) + '\n', encoding='utf-8')
+    T.write_text_exact(mp, json.dumps(man, indent=2) + '\n')
     T.git('add', '-A', cwd=wt)
     T.run(['git', 'commit', '-q', '-F', '-'], cwd=wt, input_text=commit_message(man))
 
@@ -334,7 +334,7 @@ def cmd_build(a, root: Path) -> int:
     if a.cont:
         if not st.exists():
             raise T.ToolError('nothing to continue (no candidate build in progress)')
-        state = json.loads(st.read_text(encoding='utf-8'))
+        state = json.loads(T.read_text_exact(st))
         wt = Path(state['worktree'])
         if T.git('diff', '--name-only', '--diff-filter=U', cwd=wt, check=False):
             raise T.ToolError(f'unresolved conflicts remain in {wt} — resolve, `git add`, `git commit`, then --continue')
@@ -382,7 +382,7 @@ def _finish_build(a, root: Path, wt: Path, state: dict, start: int) -> int:
         merge_prs(wt, prs, start=start)
     except Conflict as c:
         state['conflict_index'] = next(i for i, p in enumerate(prs) if p['number'] == c.pr)
-        state_path(root).write_text(json.dumps(state, indent=2), encoding='utf-8')
+        T.write_text_exact(state_path(root), json.dumps(state, indent=2))
         print(f'\nCONFLICT merging #{c.pr} into the candidate: {", ".join(c.files)}\n'
               f'Resolve it in the candidate worktree:\n  cd {wt}\n  (edit the files)\n'
               '  git add <files> && git commit --no-edit\n'

@@ -293,6 +293,21 @@ def docs_only(paths) -> bool:
     return all(DOCS_ONLY.match(p) for p in paths)
 
 
+# ── byte-exact file I/O ──────────────────────────────────────────────────────
+# NEVER Path.read_text/write_text on repo files: text mode on Windows turns every "\n"
+# into "\r\n" on write, so a release commit would rewrite the line endings of a whole
+# 17k-line page (with core.autocrlf=false). Decode/encode bytes instead — whatever line
+# endings the checkout has are preserved exactly (tests/test-tiers-candidate.py pins it).
+
+
+def read_text_exact(path) -> str:
+    return Path(path).read_bytes().decode('utf-8')
+
+
+def write_text_exact(path, text: str) -> None:
+    Path(path).write_bytes(text.encode('utf-8'))
+
+
 # ── subprocess helpers ───────────────────────────────────────────────────────
 class ToolError(RuntimeError):
     pass
