@@ -1760,7 +1760,10 @@
             const place = currentViewerPlacement();
             R.viewer = window.open(
                 url,
-                'arena-studio-replay-viewer',
+                // tier-suffixed: Production and Next share one origin
+                typeof window !== 'undefined' && window.BuildChannel
+                    ? window.BuildChannel.windowName('arena-studio-replay-viewer')
+                    : 'arena-studio-replay-viewer',
                 'popup=yes,resizable=yes,' +
                     (place
                         ? 'width=' +
