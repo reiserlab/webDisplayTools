@@ -1,0 +1,49 @@
+# The full test suite on every PR and every push to main. `test` is the required status
+# check on main (ruleset); release PRs built by `pixi run candidate` must pass it before
+# their candidate is published to /next/. The path-filtered validate-*.yml workflows stay:
+# they run suites that `pixi run test` does not include.
+name: CI
+
+on:
+    pull_request:
+    push:
+        branches: [main]
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ci-${{ github.event.pull_request.number || github.sha }}
+    cancel-in-progress: true
+
+jobs:
+    test:
+        name: test
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+              with:
+                  persist-credentials: false
+            - uses: prefix-dev/setup-pixi@v0.10.2
+              with:
+                  cache: true
+            - name: pixi run test
+              run: pixi run test
+
+    # The release tooling must work wherever a maintainer (or a Claude session) runs it.
+    tiers:
+        name: tiers (${{ matrix.os }})
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, macos-latest, windows-latest]
+        runs-on: ${{ matrix.os }}
+        steps:
+            - uses: actions/checkout@v7
+              with:
+                  persist-credentials: false
+            - uses: prefix-dev/setup-pixi@v0.10.2
+              with:
+                  cache: true
+            - name: pixi run test-tiers
+              run: pixi run test-tiers

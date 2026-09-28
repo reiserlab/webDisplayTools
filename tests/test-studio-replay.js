@@ -665,10 +665,23 @@ checkBool(
     )
 );
 checkBool('Help text for the replay entry point', studioHtml.includes("'#replayOpenBtn':"));
-checkBool(
-    'footer v0.91',
-    /Arena Studio v0\.91 \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET · <a/.test(studioHtml)
-);
+// Versions are bumped at RELEASE time (scripts/tiers/candidate.py), not per feature PR,
+// so this checks the invariant instead of pinning a number: the footer's version is the
+// newest entry in the release notes (the release commit updates both together).
+{
+    const notes = fs.readFileSync(
+        path.join(ROOT, 'docs', 'development', 'arena-studio-release-notes.md'),
+        'utf8'
+    );
+    const footer = studioHtml.match(
+        /Arena Studio (v\d+(?:\.\d+)*) \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET · <a/
+    );
+    const newest = notes.match(/^## (v\d+(?:\.\d+)*)\b/m);
+    checkBool(
+        'footer version = newest release-notes entry',
+        !!footer && !!newest && footer[1] === newest[1]
+    );
+}
 checkBool(
     'replay hides Test buttons',
     studioHtml.includes('body.replay-active .seqrow .play{display:none}')
