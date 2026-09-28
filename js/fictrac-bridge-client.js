@@ -418,13 +418,23 @@
          * hello_ack version string; null when unknown (no hello_ack yet / pre-3.0 bridge).
          */
         supportsCoupling() {
+            return this._bridgeAtLeast(3, 3);
+        }
+        /**
+         * Does the connected bridge honour `start_frame` (≥ 3.4)? An older one ignores it
+         * and opens every closed-loop epoch on frame 0. Same true/false/null contract.
+         */
+        supportsStartFrame() {
+            return this._bridgeAtLeast(3, 4);
+        }
+        _bridgeAtLeast(wantMajor, wantMinor) {
             const v = this._bridgeInfo && this._bridgeInfo.version;
             if (typeof v !== 'string') return null;
             const m = v.match(/^\s*(\d+)\.(\d+)/);
             if (!m) return null;
             const major = Number(m[1]);
             const minor = Number(m[2]);
-            return major > 3 || (major === 3 && minor >= 3);
+            return major > wantMajor || (major === wantMajor && minor >= wantMinor);
         }
         /**
          * Install the closed-loop bias waveform. Emits 'bias' when it changes so a UI can
