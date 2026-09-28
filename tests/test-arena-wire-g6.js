@@ -914,5 +914,21 @@ check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46)
     checkBool('bit 5 io_ext still decoded alongside', d.capabilities.includes('io_ext'));
 }
 
+// LAB-160: 0x8F formats the whole card — one shared, generous timeout (not the old 30 s).
+{
+    checkBytes('purge-memory frame', Wire.encodePurgeMemory(), '01 8f');
+    check('PURGE_MEMORY_TIMEOUT_MS exported (120 s)', Wire.PURGE_MEMORY_TIMEOUT_MS, 120000);
+    const fs = require('fs');
+    const path = require('path');
+    for (const page of ['arena_studio.html', 'arena_console.html']) {
+        const html = fs.readFileSync(path.join(__dirname, '..', page), 'utf8');
+        checkBool(
+            page + ': 0x8F uses the shared timeout',
+            html.includes('Wire.PURGE_MEMORY_TIMEOUT_MS') &&
+                !/encodePurgeMemory\(\)[\s\S]{0,200}timeoutMs: 30000/.test(html)
+        );
+    }
+}
+
 console.log(`\n=== Summary ===\n${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures > 0 ? 1 : 0);
