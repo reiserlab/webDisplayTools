@@ -4,6 +4,18 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.93 (2026-09-28) · Panels and their firmware in every run log
+
+- **The Studio now records which panels are present and what firmware each one runs.** On
+  connect it asks the controller for its panel inventory (controller firmware with the panel
+  inventory feature, Arena-Firmware #59) and shows it in the Run view's Auto-captured box
+  ("20/20 present · fw 0x9BE0D3C7 ×20 …"). Every run log carries it as `panels` next to
+  `firmware`, so a missing panel or one on different firmware is on record for that run.
+- **Console → Panel firmware → Inventory / Rescan.** Inventory lists the panels grouped by
+  firmware fingerprint and names any that differ from the image on the SD card (or from the
+  majority when there is none); Rescan probes the panels again.
+- On older controller firmware the box says "firmware without panel inventory" and nothing is sent.
+
 ## v0.92 (2026-09-28) · Release tiers on the page; SD purge timeout
 
 <!-- #227 -->
