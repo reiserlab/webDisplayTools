@@ -80,6 +80,11 @@
   .topbar{flex:0 0 auto;display:flex;align-items:center;gap:7px;min-height:44px;
           padding:4px 12px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap}
   .sep-v{width:1px;height:20px;background:var(--border);margin:0 1px;flex:0 0 auto}
+  /* Release-tier badge (js/build-channel.js; docs/development/release-process.md) */
+  .wdt-channel{font:600 10px/1.6 var(--head, 'JetBrains Mono', monospace);padding:0 6px;border-radius:9px;margin-left:6px;white-space:nowrap;cursor:help;vertical-align:middle}
+  .wdt-ch-prod{color:var(--dim, #8b949e);border:1px solid var(--border, #2d3640)}
+  .wdt-ch-next{color:#0f1419;background:#ff9100;font-weight:700}
+  .wdt-ch-local{color:var(--dim, #8b949e);border:1px dashed var(--border, #2d3640)}
   .brand{font-family:var(--head);font-weight:700;letter-spacing:.5px;color:var(--accent);font-size:14px;white-space:nowrap}
   .status{display:flex;align-items:center;gap:6px;font-size:12px}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--danger);box-shadow:0 0 6px var(--danger);flex:0 0 auto;cursor:help}
@@ -2169,7 +2174,7 @@
 
 <!-- ===== TOP BAR (the persistent spine) ===== -->
 <div class="topbar">
-  <span class="brand">Arena Studio</span>
+  <span class="brand">Arena Studio</span><span id="tierBadge"></span>
   <a class="ribbon-btn pd-link" id="pdLink" href="pattern_editor.html" rel="opener"
      title="Switch to the Pattern Designer — reuses its tab if one is open (your work there is kept); a first click opens it set to this session's arena + repo, sign-in carried over">Pattern Designer ↗</a>
   <a class="ribbon-btn other-tools" id="otherToolsLink" href="index.html" target="wdt-index"
@@ -3165,6 +3170,16 @@
 <script src="js/bin-classifier.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script> <!-- Pattern Set ZIP export -->
 <!-- (1b) DOM-free studio helpers -->
+<script src="js/build-channel.js"></script> <!-- release tier: Production / Next / local (docs/development/release-process.md) -->
+<script>
+// One-time migration markers are shared by Production and Next (same origin): compare typed +
+// monotonic. Falls back to the old exact match if a stale-cached build-channel.js lacks it.
+function studioMarkerCurrent(stored, current) {
+    return window.BuildChannel && window.BuildChannel.markerCurrent
+        ? window.BuildChannel.markerCurrent(stored, current)
+        : String(stored) === String(current);
+}
+</script>
 <script src="js/studio-meta.js"></script>
 <script src="js/studio-url-state.js?v=20260924-replay"></script>
 <script src="js/studio-runlog-adapter.js"></script>
@@ -3213,7 +3228,10 @@
         // Owned by the module block (setSessionRig); read everywhere.
         currentRig: null,
         activeRunLog: null,
-        TOOL_VERSION: TOOL_VERSION
+        TOOL_VERSION: TOOL_VERSION,
+        // Release tier of THIS page (the deploy's <meta name="wdt-build"> stamp):
+        // 'production' | 'next' | 'local'. Recorded in run_metadata (channel/build).
+        build: window.BuildChannel ? window.BuildChannel.detect() : { channel: 'local', known: false }
     };
     // Safe mode makes Edit VIEW-ONLY: the §6 pushUndo chokepoint reads this, so a
     // false here turns every protocol mutation into a silent no-op (the same lever
@@ -3223,6 +3241,17 @@
     Studio.canMutate = () =>
         !!Studio.advanced && Meta.canMutate({ mode: Studio.mode, importMode: Studio.importMode });
     window.Studio = Studio;
+    // Release tier: badge next to the brand + a stale-page check (the stamp in this HTML vs
+    // the tier's live build.json — a mismatch is the cached-page / ES-module gotcha).
+    if (window.BuildChannel) {
+        window.BuildChannel.renderBadge(document, $('tierBadge'), Studio.build);
+        window.BuildChannel.checkFresh(window.fetch.bind(window), Studio.build, 'build.json').then((r) => {
+            if (r.stale && Studio.showBanner) {
+                Studio.showBanner('This page is older than the live ' + Studio.build.channel +
+                    ' deploy — hard-refresh (Cmd/Ctrl+Shift+R) between sessions.');
+            }
+        });
+    }
 
     // ---- GitHub token + course-repo settings (CSHL pipeline) ------------------
     // Single source of truth, defined HERE (classic) so the run-log auto-commit
@@ -4381,7 +4410,9 @@
             return [0, 1];
         }
         // One-time migration to the behavior-matched sound defaults.
-        if (localStorage.getItem('studio_scope_sound_v') !== '2') {
+        // Typed + monotonic (BuildChannel.markerCurrent): Production and Next share this
+        // origin's localStorage, so `!== '2'` would re-wipe prefs on every tier switch.
+        if (!studioMarkerCurrent(localStorage.getItem('studio_scope_sound_v'), '2')) {
             localStorage.removeItem('studio_scope_sound');
             localStorage.setItem('studio_scope_sound_v', '2');
         }
@@ -4459,7 +4490,7 @@
             // One-time migration to the new universal defaults (turn ±200 / fwd ±20,
             // no ball-diameter override): clear pre-update persisted values so every
             // bench starts from the same axes. Later user edits persist as usual.
-            if (localStorage.getItem('studio_scope_prefs_v') !== '2026-07-08') {
+            if (!studioMarkerCurrent(localStorage.getItem('studio_scope_prefs_v'), '2026-07-08')) {
                 localStorage.removeItem('studio_scope_turn_lim');
                 localStorage.removeItem('studio_scope_fwd_lim');
                 localStorage.removeItem('studio_scope_ball_dia_mm');
@@ -5098,7 +5129,7 @@
         // (marker studio_dock_default_v) that re-applies 'scope' once, keeping only a
         // deliberate 'log' choice.
         let v = localStorage.getItem('studio_dock_view');
-        if (localStorage.getItem('studio_dock_default_v') !== '2') {
+        if (!studioMarkerCurrent(localStorage.getItem('studio_dock_default_v'), '2')) {
             localStorage.setItem('studio_dock_default_v', '2');
             if (v !== 'log') v = 'scope';
         }
@@ -8556,6 +8587,19 @@ function escapeHtml(s) {
 Studio.beginRun = async function (isExperiment) {
     const doc = Studio.currentDoc;
     if (!doc || !Studio.session) return;
+    // Next tier (the release candidate at /next/): confirm once per browser session that this
+    // is a validation run, not a routine experiment. The soak/runOnce path never asks.
+    if (Studio.build && Studio.build.channel === 'next') {
+        let acked = false;
+        try { acked = sessionStorage.getItem('studio_next_ack') === '1'; } catch (_) {}
+        if (!acked) {
+            const label = window.BuildChannel ? window.BuildChannel.badgeModel(Studio.build).text : 'NEXT';
+            if (!confirm('This is the NEXT testing build (' + label + ').\n\n' +
+                    'Use it to validate the release candidate between sessions — not for routine ' +
+                    'experiments. Its run logs are marked channel "next".\n\nRun on Next?')) return;
+            try { sessionStorage.setItem('studio_next_ack', '1'); } catch (_) {}
+        }
+    }
     // Rig-mismatch confirm (#135 follow-up): the bench rig is authoritative and
     // the protocol runs unchanged, but bench ≠ protocol is worth an explicit ack
     // before driving the arena with the whole sequence. Same name predicate as
@@ -9118,7 +9162,8 @@ function startRunLog(isExperiment) {
         doc: { filename: doc.filename, sha256: doc.sha256 },
         session: { firmware: Studio.firmware, controllerId: Studio.controllerId },
         rig: doc.rig,
-        toolVersion: Studio.TOOL_VERSION
+        toolVersion: Studio.TOOL_VERSION,
+        build: Studio.build
     });
     Studio.activeRunLog = RunLog.createRunLog({ intent: isExperiment ? 'experiment' : 'test', meta });
     // Arena Studio Alt may attach the proposal's narrowly scoped runtime
@@ -16756,7 +16801,12 @@ initFromUrl();
   // connection, the Designer keeps unsaved work) and only navigates/opens
   // otherwise. First open hands over the session arena + repo in the URL
   // (token needs no URL — same-origin storage + the tab's sessionStorage copy).
-  window.name = 'arena-studio';
+  // Tier-suffixed (BuildChannel.windowName): Production and Next share one origin, so a
+  // Next link must never focus — or reuse — a Production tab, and vice versa.
+  var tierName = function (n) { return window.BuildChannel ? window.BuildChannel.windowName(n, Studio.build) : n; };
+  var sameTier = function (p) { return window.BuildChannel ? window.BuildChannel.samePageTier(p, Studio.build) : true; };
+  window.name = tierName('arena-studio');
+  var otl = document.getElementById('otherToolsLink'); if (otl) otl.target = tierName('wdt-index');
   function pdUrl(){
     var q=[];
     var arena=window.Studio && Studio.currentRig && Studio.currentRig.arenaConfig;
@@ -16772,13 +16822,13 @@ initFromUrl();
     pdLink.addEventListener('click', function(e){
       e.preventDefault();
       var w=null;
-      try { w = window.open('', 'pattern-designer'); } catch(_) {}
+      try { w = window.open('', tierName('pattern-designer')); } catch(_) {}
       try {
-        if (w && w.location && /pattern_editor/.test(w.location.pathname || '')) { w.focus(); return; }
+        if (w && w.location && /pattern_editor/.test(w.location.pathname || '') && sameTier(w.location.pathname)) { w.focus(); return; }
       } catch(_) { /* treat as fresh */ }
       var url = pdUrl();
       if (w) { try { w.location.href = url; w.focus(); return; } catch(_) {} }
-      window.open(url, 'pattern-designer');
+      window.open(url, tierName('pattern-designer'));
     });
   }
 
