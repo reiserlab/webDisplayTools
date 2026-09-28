@@ -218,6 +218,8 @@ def parse_release_notes(body: str | None) -> dict:
             out['tools'].setdefault('studio', [])
         if current == '__unknown__':
             continue
+        if re.fullmatch(r'\s*[-*]\s*', line):
+            continue  # an empty template bullet
         out['tools'][current].append(line)
     for k in list(out['tools']):
         lines = out['tools'][k]

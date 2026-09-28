@@ -134,6 +134,9 @@ check('missing section', T.parse_release_notes('## Summary\nx')['present'], Fals
 d = T.parse_release_notes('## Release notes\n- bare bullet\n')
 check('bare bullets → studio', (d['tools'], d['default_used']), ({'studio': ['- bare bullet']}, True))
 check('unknown tool heading', T.parse_release_notes('## Release notes\n### Toaster\n- x\n')['unknown'], ['Toaster'])
+tmpl = Path(HERE.parent / '.github' / 'pull_request_template.md')
+if tmpl.exists():
+    check('untouched PR template → no notes', T.parse_release_notes(tmpl.read_text(encoding='utf-8'))['tools'], {})
 check('CRLF bodies', T.parse_release_notes('## Release notes\r\n### Studio\r\n- a\r\n')['tools'], {'studio': ['- a']})
 existing = '# Arena Studio — release notes\n\nIntro.\n\n## v0.90 (2026-09-26) · Old\n\n- old\n'
 folded = T.fold_notes(existing, 'Arena Studio', 'v0.91 (2026-10-02) · New', [(225, ['- new'])])
