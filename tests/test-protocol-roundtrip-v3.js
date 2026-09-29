@@ -3865,15 +3865,22 @@ console.log('\n--- Suite N12io: rig io: block (#135) ---');
             /Digital IO 2/.test(trig.warnings[0]),
         trig.warnings.join(' | ')
     );
-    // The Studio side: the DIO 1 option is disabled with the reason, never re-enabled by
-    // capability gating, and the apply path refuses to send it.
+    // The Studio side: Digital IO 1 offers no in_trigger option at all (the reason is in its
+    // tooltip), capability gating never adds it back, and the apply path refuses to send it.
     const studioHtml = fs.readFileSync(path.join(__dirname, '..', 'arena_studio.html'), 'utf8');
+    const dio1Select = (studioHtml.match(/<select id="cIoRoleDio1"[\s\S]*?<\/select>/) || [''])[0];
+    checkTrue('N12io-c2: Studio DIO 1 select found', dio1Select.length > 0, 'select missing');
     checkTrue(
-        'N12io-c2: Studio DIO 1 in_trigger option disabled with the EINT reason',
-        /<select id="cIoRoleDio1"[\s\S]*?<option value="in_trigger" disabled title="Not available on Digital IO 1[^"]*EINT/.test(
+        'N12io-c2: Studio DIO 1 has no in_trigger option',
+        !/value="in_trigger"/.test(dio1Select),
+        dio1Select
+    );
+    checkTrue(
+        'N12io-c2: Studio DIO 1 tooltip says why (only Digital IO 2 reaches EINT)',
+        /id="cIoRoleDio1" title="[^"]*only Digital IO 2 reaches the panels' trigger input \(EINT\)/.test(
             studioHtml
         ),
-        'option markup changed'
+        'tooltip changed'
     );
     checkTrue(
         'N12io-c2: capability gating never enables DIO 1 in_trigger',
