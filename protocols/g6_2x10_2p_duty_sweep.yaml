@@ -11,7 +11,8 @@ version: 3
 # dark-bar pattern if it is on the card (keep it Gray_16 — see note 3).
 #
 # BEFORE PRESSING RUN (Arena Studio, once per connection — not YAML-able):
-#   1. Controller ▾ → panel display mode = 2 (Triggered).  Wire: 02 1B 02
+#   1. Panel display mode 2 (Triggered) is now ASSERTED by the Studio from the controller:
+#      block below (and by the Bergamo rig default at connect) — no manual step. Wire: 02 1B 02
 #      NOT 3 (Gated): Gated restarts at row 0 on every gate drop and only the
 #      top rows of each panel ever light with a line-clock gate.
 #   2. Digital IO 1 role = out_debug_framescan.            Wire: 03 AC 01 03
@@ -85,7 +86,20 @@ experiment_info:
   author: "mreiser"
   date_created: "2026-09-22"
 
-rig: "./configs/rigs/cshl_g6_2x10.yaml"
+rig: "./configs/rigs/bergamo_g6_2x10_2p.yaml"
+
+# The runner must implement the controller: block below (a runner that does not — MATLAB
+# today — refuses to run this file instead of running it in the wrong panel mode).
+requires: [controller_block]
+
+# Sticky controller settings asserted by Arena Studio before EVERY run and recorded in the
+# run header (docs/development/controller-settings-strategy.md). Replaces the manual
+# "set panel mode 2 by hand" step: the Studio reads the mode, sets it if needed, reads it
+# back, and refuses to run if it cannot.
+controller:
+  panel_mode: triggered            # 2 — LEDs only inside the line-clock LOW gap
+  refresh_policy: line_sync_safe   # cap the 300 Hz re-stream at the rig's limits.max_refresh_hz
+  panel_firmware: "2p"             # SD footer "2p-<sha8>[-d]" = the eintlow_2p line-sync build
 
 plugins: []
 

@@ -33,6 +33,12 @@
       "label": "CSHL G6 — 2×8 of 10 (288°)",
       "path": "./configs/rigs/cshl_g6_2x8.yaml",
       "arena": "G6_2x8of10"
+    },
+    {
+      "name": "bergamo_g6_2x10_2p",
+      "label": "Bergamo G6 — 2×10 two-photon line-sync (strict)",
+      "path": "./configs/rigs/bergamo_g6_2x10_2p.yaml",
+      "arena": "G6_2x10"
     }
   ]
 }

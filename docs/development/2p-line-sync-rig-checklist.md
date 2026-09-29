@@ -53,10 +53,12 @@ path are unchanged.
 
 | Item | Setting | Wire (Debug ▾ → unlock → Send raw hex) |
 |---|---|---|
-| panel display mode | 2 (Triggered) | `02 1B 02` |
-| Digital IO 1 (BNC **J3**) | out_debug_framescan — HIGH during every SPI frame transfer | `03 AC 01 03` (read back: `01 AD`) |
-| Digital IO 2 (BNC **J4**) | in_trigger (boot default) — the line-clock input | leave |
-| refresh rate | 300 Hz (Gray_16 default) | `03 16 2C 01` |
+| **session rig** (top bar) | **Bergamo G6 — 2×10 two-photon line-sync (strict)** | — the protocols' `rig:` must match it or the run is refused |
+| panel display mode | 2 (Triggered) — **asserted automatically** by the rig default at connect and by the protocols' `controller:` block before every run; the log shows `panel mode: persistent → triggered (verified …)` | manual fallback `02 1B 02` |
+| Digital IO 1 (BNC **J3**) | out_debug_framescan — HIGH during every SPI frame transfer (applied from the rig at connect) | read back: `01 AD` |
+| Digital IO 2 (BNC **J4**) | in_trigger — the line-clock input (applied from the rig at connect) | read back: `01 AD` |
+| refresh rate | ≤ 300 Hz — **asserted automatically** (rig `limits.max_refresh_hz` + protocol `refresh_policy: line_sync_safe`) | manual fallback `03 16 2C 01` |
+| panel firmware | footer `2p-…` **checked automatically**; run Settings → Controller → **Verify panels** once per session (~20 s) so the run header carries a fleet verify | — |
 | telemetry ring | on (default) | — |
 | pattern | `frame2_h_ccw_200f`, SD index 4 (built-in g6_2x10 set) — or any **Gray_16** pattern on the card | edit the two anchors at the top of the YAML |
 

@@ -27,6 +27,7 @@ const {
     validateReferences,
     collectBlockingErrors,
     collectExportWarnings,
+    unsupportedRequires,
     V3ParseError,
     docSet,
     docDelete,
@@ -4724,6 +4725,46 @@ console.log('\n--- Suite 37: led_activation sub-fields by path (anchor binding) 
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────
+// ─── Test Suite 39: controller: block (sticky controller settings) ─────────
+console.log('\n--- Suite 39: controller: block ---');
+
+{
+    const exp = parseV3Protocol(readFixture('v3_controller_block.yaml'));
+    check('controller: declared', exp.controller.declared, true);
+    check('controller: panel_mode "triggered" → 2', exp.controller.panel_mode, 2);
+    check('controller: refresh_policy', exp.controller.refresh_policy, 'line_sync_safe');
+    check('controller: refresh_hz absent → null', exp.controller.refresh_hz, null);
+    check('controller: panel_firmware', exp.controller.panel_firmware, '2p');
+    check('controller: no errors', exp.controller.errors.length, 0);
+    check('controller: not an unknown top-level key', Object.keys(exp._unknownTopLevel || {}).includes('controller'), false);
+    check('requires: controller_block is a web-runner capability', unsupportedRequires(exp).length, 0);
+    check('controller: fixture has no blocking errors', collectBlockingErrors(exp).errors.length, 0);
+    checkTrue('controller: fixture has no export warnings', collectExportWarnings(exp).warnings.length === 0);
+    const regen = generateV3Protocol(exp);
+    checkTrue('controller: block survives regen', /controller:\s*\n\s+panel_mode: triggered/.test(regen));
+    const again = parseV3Protocol(regen);
+    check('controller: round-trip stable', again.controller.panel_mode, 2);
+}
+{
+    // absent block → undeclared, no warnings
+    const exp = parseV3Protocol(readFixture('v3_canonical_a.yaml'));
+    check('controller: absent → declared false', exp.controller.declared, false);
+    checkTrue('controller: absent adds no warnings', !collectExportWarnings(exp).warnings.some((w) => /controller/.test(w.kind)));
+}
+{
+    // malformed values block; a block without the capability token warns
+    const bad = readFixture('v3_controller_block.yaml')
+        .replace('panel_mode: triggered', 'panel_mode: warp')
+        .replace('refresh_policy: line_sync_safe', 'refresh_policy: line_sync_safe\n  refresh_hz: 300')
+        .replace('requires: [controller_block]', '');
+    const exp = parseV3Protocol(bad);
+    check('controller: bad mode + hz&policy → 2 errors', exp.controller.errors.length, 2);
+    check('controller: errors are blocking', collectBlockingErrors(exp).errors.filter((e) => e.kind === 'controller-block').length, 2);
+    checkTrue('controller: missing requires token → warning', collectExportWarnings(exp).warnings.some((w) => w.kind === 'controller-block-unrequired'));
+    const listy = parseV3Protocol(readFixture('v3_controller_block.yaml').replace(/controller:\n(  .*\n)+/, 'controller: [2]\n'));
+    check('controller: a list is an error', listy.controller.errors.length, 1);
+}
+
 console.log('\n=== Results: ' + passedTests + '/' + totalTests + ' passed ===');
 if (failedTests.length > 0) {
     console.log('\nFailed tests:');

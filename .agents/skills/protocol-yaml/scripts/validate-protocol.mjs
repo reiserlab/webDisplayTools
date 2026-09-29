@@ -71,6 +71,46 @@ if (Array.isArray(exp.requires) && exp.requires.length) {
     console.log('ℹ requires: [' + exp.requires.join(', ') + ']' +
         (missing.length ? ' — the WEB runner refuses to run this (missing: ' + missing.join(', ') + ')' : ''));
 }
+// ── controller: block (sticky controller settings asserted before the run) ──────
+// docs/development/controller-settings-strategy.md. Malformed values are already in
+// `blocking` (collectBlockingErrors); here: what it declares, the capability token, and a
+// cross-check against the rig file when it is readable from the repo root.
+const cb = exp.controller;
+if (cb && cb.declared) {
+    const parts = [];
+    if (cb.panel_mode != null) parts.push('panel_mode ' + cb.panel_mode + ' (' + ['oneshot', 'persistent', 'triggered', 'gated'][cb.panel_mode] + ')');
+    if (cb.refresh_hz != null) parts.push('refresh_hz ' + cb.refresh_hz);
+    if (cb.refresh_policy) parts.push('refresh_policy ' + cb.refresh_policy);
+    if (cb.panel_firmware) parts.push('panel_firmware "' + cb.panel_firmware + '"');
+    console.log('ℹ controller: ' + (parts.join(', ') || '(empty block)') + ' — asserted by the Studio before every run, recorded in the run header');
+    const rigPath = String(exp.rig_path || '');
+    const rigFile = rigPath.startsWith('./') || rigPath.startsWith('configs/') ? resolve(rigPath) : null;
+    if (rigFile && existsSync(rigFile)) {
+        try {
+            const { createRequire } = await import('node:module');
+            const Registry = createRequire(import.meta.url)(resolve('js/plugin-registry.js'));
+            const rig = Registry.parseRigIo(v3.parseRigYAMLText(readFileSync(rigFile, 'utf8')));
+            const notes = [];
+            if (rig.defaults.panel_mode != null && cb.panel_mode != null && rig.defaults.panel_mode !== cb.panel_mode) {
+                notes.push('protocol panel_mode ' + cb.panel_mode + ' overrides the rig default ' + rig.defaults.panel_mode + ' (allowed; the run asserts the protocol\'s value)');
+            }
+            if (cb.refresh_hz != null && rig.limits.max_refresh_hz != null && cb.refresh_hz > rig.limits.max_refresh_hz) {
+                console.error('✗ BLOCKING: controller.refresh_hz ' + cb.refresh_hz + ' exceeds the rig limit max_refresh_hz ' + rig.limits.max_refresh_hz + ' (' + rigPath + ')');
+                process.exitCode = 1;
+            }
+            if (cb.refresh_policy === 'line_sync_safe' && rig.limits.max_refresh_hz == null) {
+                console.warn('⚠ controller: refresh_policy line_sync_safe but the rig ' + rigPath + ' declares no limits.max_refresh_hz — nothing to cap at');
+            }
+            if (rig.requires.panel_firmware && cb.panel_firmware && rig.requires.panel_firmware !== cb.panel_firmware) {
+                notes.push('protocol requires panel firmware "' + cb.panel_firmware + '", rig requires "' + rig.requires.panel_firmware + '" — both are checked');
+            }
+            for (const w of rig.warnings || []) console.warn('⚠ rig ' + rigPath + ': ' + w);
+            for (const n of notes) console.log('ℹ ' + n);
+            console.log('ℹ rig ' + rigPath + ': defaults.panel_mode ' + rig.defaults.panel_mode + ', limits.max_refresh_hz ' + rig.limits.max_refresh_hz +
+                ', requires.panel_firmware ' + JSON.stringify(rig.requires.panel_firmware) + ', strict ' + rig.strict);
+        } catch (e) { console.warn('⚠ rig ' + rigPath + ' could not be cross-checked: ' + (e && e.message ? e.message : e)); }
+    }
+}
 const rcNames = Object.keys(exp.runtime_controls || {});
 if (rcNames.length) {
     const { createRequire } = await import('node:module');
