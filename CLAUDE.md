@@ -609,8 +609,9 @@ localStorage) — no auth UI of its own. Repo layout: free-standing patterns in 
 - **Multi-color G6 panels (v0.12, LAB-228) — color is a PANEL property, not a generation.**
   `js/panel-color.js` (classic dual-export, also read as `globalThis.PanelColor` by the ES-module
   viewers) is the ONLY place color logic lives: the layouts table (`g6-green` default,
-  `four-color`, `red-ir-v0.4r2`, `red-ir-v0.4r1`), `bankAt(row, col) = 2·(row%2)+(col%2)` in host
-  coordinates (row 0 = bottom) with the single bench-decided `ROW_PARITY_FLIP`, `applyOnColor`
+  `four-color`, `red-ir-v0.4r2`, `red-ir-v0.4r1`), `bankAt(row, col) = 2·((row+1)%2)+(col%2)` in host
+  coordinates (row 0 = bottom; `ROW_PARITY_FLIP = 1`, BENCH-VERIFIED 2026-09-29: host row 0 lights T2/T3
+  because pat-encoder packs rows as 19−row — never "fix" it back to the spec's even/even), `applyOnColor`
   (the one mask call at the end of `handleGenerate` — generators stay monochrome), `paintCell`
   (2×2 cell brush), and `pixelCss`/`pixelHex` (mono = the legacy ramps byte for byte: 2D rounds,
   3D floors). Rules: every pixel color in every view goes through `PanelColor` (never add a new

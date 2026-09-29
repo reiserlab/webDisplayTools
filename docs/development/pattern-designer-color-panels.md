@@ -13,8 +13,8 @@ coordinates** — the ones every `.pat` frame, the grid editor and the viewers u
 col 0 = left:
 
 ```
-bank(row, col) = 2·(row % 2) + (col % 2)
-    T0 even row / even col     T1 even / odd     T2 odd / even     T3 odd / odd
+bank(row, col) = 2·((row + 1) % 2) + (col % 2)          # ROW_PARITY_FLIP = 1, bench-verified 2026-09-29
+    host row 0 (bottom): T2 even col · T3 odd col        host row 1: T0 even col · T1 odd col
 ```
 
 | Layout key (`js/panel-color.js`) | T0 | T1 | T2 | T3 | Boards |
@@ -40,12 +40,14 @@ not know or care. Consequences that everything in the Designer relies on:
 ## The one bench-decided constant: `ROW_PARITY_FLIP`
 
 `js/pat-encoder.js` packs panel rows as `19 − row`. 19 is odd, so host-row parity and wire-row
-parity are opposite. Spec and firmware say host row 0 = bottom = `T0`/`T1` (flip 0), but the
-first bench check with a real color panel is what settles it. Recipe: light only bank-0 host
-pixels (e.g. Generate → `four-color` → ON color "violet" → any pattern) and show it from the
-Studio Console. Violet (or red on red+IR v0.4r2) → correct. The other row parity lights → set
-`ROW_PARITY_FLIP = 1` in `js/panel-color.js` and update the one test vector in
-`tests/test-panel-color.js`. Nothing else changes.
+parity are opposite. **Bench result 2026-09-29** (four-color v0.4 panels as the top row of a 2×10,
+8-frame orientation pattern written by this encoder, stepped in the Studio Console): the T0-only
+frame lit **green**, T1 yellow, T2 violet, T3 blue; even host rows lit green + yellow; even host
+columns lit green + violet (columns right); the per-panel "L" had its corner at the physical
+bottom-left (orientation right); all 400 LEDs lit. So host row 0 (the bottom) is on banks `T2`/`T3`
+and `ROW_PARITY_FLIP = 1`: **in host coordinates `bank = 2·((row + 1) % 2) + (col % 2)`.** The
+g6_02 spec's "T0 = even/even" is true in the panel's *layout* rows; the `.pat` path inverts row
+parity. The test suite pins this; the generator script for the check is on LAB-228.
 
 ## How the Designer uses it (`js/panel-color.js` is the only place color logic lives)
 

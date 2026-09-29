@@ -23,7 +23,21 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // ---- 1. bankAt / layouts table (g6_02-led-mapping.md) ----
 console.log('bankAt + layouts');
 const F = PC.ROW_PARITY_FLIP;
-check('ROW_PARITY_FLIP is 0 or 1', F === 0 || F === 1);
+check(
+    'ROW_PARITY_FLIP is 1 (bench 2026-09-29: host row 0 lights T2/T3 on a four-color panel)',
+    F === 1
+);
+check(
+    'host (0,0) is bank 2 and host (1,0) is bank 0',
+    PC.bankAt(0, 0) === 2 && PC.bankAt(1, 0) === 0
+);
+check(
+    'four-color: host row 0 = green/yellow, host row 1 = violet/blue',
+    PC.channelAt('four-color', 0, 0).id === 'green' &&
+        PC.channelAt('four-color', 0, 1).id === 'yellow' &&
+        PC.channelAt('four-color', 1, 0).id === 'violet' &&
+        PC.channelAt('four-color', 1, 1).id === 'blue'
+);
 for (const [r, c] of [
     [0, 0],
     [0, 1],

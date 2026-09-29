@@ -4,10 +4,10 @@
  * A color G6 panel is the standard 20×20 board with its four LED banks T0–T3 populated
  * with different LEDs. The panel firmware (layout.cpp, NUM_COLOR = 4) lays the banks out
  * as a repeating 2×2 mosaic. In HOST coordinates — the ones the .pat frames, the grid
- * editor and every viewer use; row 0 = bottom, col 0 = left:
+ * editor and every viewer use; row 0 = bottom, col 0 = left — the bench-verified mapping is
  *
- *     bank(row, col) = 2 * (row % 2) + (col % 2)
- *         T0 even row / even col · T1 even / odd · T2 odd / even · T3 odd / odd
+ *     bank(row, col) = 2 * ((row + ROW_PARITY_FLIP) % 2) + (col % 2),  ROW_PARITY_FLIP = 1
+ *         T2 host row 0 / even col · T3 row 0 / odd col · T0 row 1 / even col · T1 row 1 / odd col
  *
  * Spec: Modular-LED-Display docs/development/g6_02-led-mapping.md (color banks section).
  *
@@ -18,9 +18,12 @@
  *   - A pure single-color stimulus therefore lights only 100 of the 400 LEDs per panel
  *     (a 10×10 lattice at 2-px pitch). The renderers show exactly that.
  *   - ROW_PARITY_FLIP is the ONE bench-decided knob. js/pat-encoder.js packs panel rows as
- *     `19 - row`, so host-row parity and wire-row parity are opposite; spec + firmware say
- *     host row 0 = bottom = T0/T1 (flip 0). If a bank-0-only pattern lights the other row
- *     parity on a real color panel, set this to 1 — nothing else changes.
+ *     `19 - row`, so host-row parity and wire-row parity are opposite. BENCH RESULT
+ *     2026-09-29 (four-color v0.4 top row on a 2×10, 8-frame orientation pattern from this
+ *     encoder): host row 0 (bottom) lights banks T2/T3 — green/yellow — and host row 1
+ *     lights T0/T1 — violet/blue; columns and the panel's bottom-left origin were right.
+ *     Hence flip = 1: in HOST coordinates bank = 2·((row+1)%2) + (col%2). The g6_02 spec's
+ *     "T0 = even/even" holds in the panel's LAYOUT rows, which the .pat path inverts.
  *
  * Dual export — browser global (`window.PanelColor`) + Node (CommonJS). Deliberately NO
  * bare top-level ES `export`, so this file is safe as a plain <script src> (the designer)
@@ -29,7 +32,7 @@
 (function () {
     'use strict';
 
-    var ROW_PARITY_FLIP = 0;
+    var ROW_PARITY_FLIP = 1; // bench-verified 2026-09-29, see header
     var DEFAULT_LAYOUT = 'g6-green';
     var OFF_CSS = '#1e2329'; // the grid's "LED off" color (matches the legacy renderers)
 
@@ -263,7 +266,8 @@
                 .map(function (id, i) {
                     return 'T' + i + ' ' + CHANNELS[id].label;
                 })
-                .join(' · ') + ' — 2×2 mosaic: bank = 2·(row%2)+(col%2), row 0 = bottom.'
+                .join(' · ') +
+            ' — 2×2 mosaic: bank = 2·((row+1)%2)+(col%2), host row 0 = bottom (T2/T3 row).'
         );
     }
     /** Short hint for the status bar; '' for mono. */
