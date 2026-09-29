@@ -54,7 +54,7 @@ tick the box. Nothing below has been written to Linear yet.
   - Comment: The telemetry ring is built (0xA8/0xA9) and passed a 28 h lossless soak. It identified the Mode-3 wedge mechanism.
   - Firmware is in fw PR #56 (Frank reviewing); the host drainer is in web #198.
   - fw #54 (telemetry hardening) is the gate before course controllers.
-- [x] **LAB-150** firmware versioning + capability discovery (Backlog, Frank) → **In Progress**. *(Applied 2026-09-29 as a **split**: LAB-150 keeps the firmware work (Frank: panel identity via fw #59, the capability registry). The Studio half became **LAB-220** (V1.0, Michael: one capability-gating rule + a compatibility note + web #233). The panel colour layout became **LAB-221** (Frank, an open question: programmed flag vs hardware ID vs host-declared; no per-colour firmware). Resident pattern identity moved to LAB-147.)*
+- [x] **LAB-150** firmware versioning + capability discovery (Backlog, Frank) → **In Progress**. *(Applied 2026-09-29 as a **split**: LAB-150 keeps the firmware work (Frank: panel identity via fw #59, the capability registry). The Studio half became **LAB-220** (V1.0, Michael: one capability-gating rule + a compatibility note + web #233). The panel color layout became **LAB-221** (Frank, an open question: programmed flag vs hardware ID vs host-declared; no per-color firmware). Resident pattern identity moved to LAB-147.)*
   - Comment: GET_FIRMWARE_VERSION 0xCB with its flag bits is live and used as the gate for telemetry and the SD info commands.
   - Remaining: the Studio disabling unsupported commands; reporting the resident pattern set (from LAB-100); and the panel **color layout** that the color epic needs.
 - [x] **LAB-141** design the primary 12/18 G6 arena (Backlog, High, due 10-01) → **In Progress** (the 10-01 due date stays). *(2026-09-29: this decision was superseded, and the ticket was closed as **Done**. The 12/18 v1.0 was built, but the lab chose the smaller 10-14 (LAB-219) as the primary design. LAB-219 took over the three builds (Jin Yang ephys (it may need a corner cutout or a special top), Hannah 2P, FlyMAX). LAB-27 (already Done on 09-28) keeps its historical LAB-141 link.)*
@@ -82,7 +82,7 @@ tick the box. Nothing below has been written to Linear yet.
 - [x] **LAB-155** G4.1 compatibility (Backlog) → priority **Medium → Low**, comment: "may not happen, G6 has clear advantages". *(Applied 2026-09-29.)*
 - [x] **LAB-217** post-run metadata correction (Backlog) → assigned **Michael**. *(Applied 2026-09-29.)*
 - [x] **LAB-106** panel V1 test suite (Backlog) → **Canceled**: the bench tools have been adequate, and panel telemetry (P-LAB-28) would improve on them. *(Added and applied 2026-09-29.)*
-- [x] **LAB-213** LED intensity/colour calibration → moved to **Web-based V1.0**: the hardware is validated and Isabel's holder exists; the remaining work is the Studio tool. *(Added and applied 2026-09-29.)*
+- [x] **LAB-213** LED intensity/color calibration → moved to **Web-based V1.0**: the hardware is validated and Isabel's holder exists; the remaining work is the Studio tool. *(Added and applied 2026-09-29.)*
 - [x] **LAB-214** Qwiic peripherals → **In Progress**: parts are ordered; light, temperature/humidity, tilt and maybe servos are in the plan. *(Added and applied 2026-09-29.)*
 - [x] **New project P-LAB-28 "G6 Panel Local Storage + Telemetry"**: Backlog, start January 2027. It covers full PSRAM local storage and host↔panel round-trip telemetry with error logging. *(Created 2026-09-29.)*
 - [x] **LAB-86 / LAB-87 / LAB-146** → assigned **Michael** (2026-09-29, at his request). Status decisions follow below.
@@ -98,7 +98,7 @@ tick the box. Nothing below has been written to Linear yet.
 - [ ] **G6 Arena Hardware & Firmware**:
   - Post its **first-ever status update** (draft below).
   - Consider retargeting the project date (06-05) and the four expired milestones. Close or archive the done ones.
-- [x] **G6 Arena Extensions**: make it the home of the color epic (item 3b). *(2026-09-29: the project was **retired** instead, as Canceled. LAB-84 (flat arena, wanted, Backlog) and the red + IR design doc moved to G6 HW & FW. LAB-140 (cylindrical colour arena) was **Canceled**, because the 12/18 arena has higher resolution. The colour epic now goes in **Web-based V1.0**, and the V1.0 "done when" list gained a "Multi-colour panels" line. The HW & FW boundary text was updated.)*
+- [x] **G6 Arena Extensions**: make it the home of the color epic (item 3b). *(2026-09-29: the project was **retired** instead, as Canceled. LAB-84 (flat arena, wanted, Backlog) and the red + IR design doc moved to G6 HW & FW. LAB-140 (cylindrical color arena) was **Canceled**, because the 12/18 arena has higher resolution. The color epic now goes in **Web-based V1.0**, and the V1.0 "done when" list gained a "Multi-color panels" line. The HW & FW boundary text was updated.)*
 
 **Status update draft — Arena Software Control (onTrack):**
 > **September recap:** Studio went from v0.70 to v0.91 in about 40 PRs:
@@ -121,6 +121,10 @@ tick the box. Nothing below has been written to Linear yet.
 > - Analog-in is blocked on the LAB-209 divider rework.
 > - Color: red+IR v0.4r2 board in review (HW PR #1); the four-color board is being bench-tested (panel fw #30).
 > - Dates and milestones below are from June and need a re-plan.
+
+- [x] **Status updates posted (2026-09-29):** Web-based V1.0 (On track) and the **first-ever** G6 HW & FW update (On track). The HW & FW target date moved **2026-06-05 → 2026-12-19**. Milestones are still to set (round C).
+- [x] **Spelling convention (2026-09-29):** American English, "color" not "colour". Every "colour" in Linear was fixed (titles, descriptions, comments, attachment titles, the status update). A "Conventions" line was added to the V1.0, HW & FW and Panel Storage project descriptions, and to `~/.claude/CLAUDE.md` and the `g6-orientation` skill.
+- [x] **Linear-sync rule (2026-09-29):** added to the user-level `~/.claude/CLAUDE.md`, plus a user-level PreToolUse hook (`~/.claude/hooks/linear_sync_reminder.py`) that fires on `gh pr create|merge` and `pixi run candidate|release`. The Linear GitHub integration for `reiserlab` is to be connected by Michael.
 
 ## 3. New tickets
 
