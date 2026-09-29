@@ -1,0 +1,102 @@
+version: 3
+
+# Release-candidate bench check for a G6 2x10 fly-on-ball arena (docs/development/release-process.md,
+# "Bench validation"). Closed-loop trials must OPEN AND HOLD on their trialParams frame_index:
+# epoch A on frame 25, epoch B on frame 75, 8 s each, with a STATIONARY simulated fly:
+#     pixi run bridge -- --log-dir <dir>      (bridge >= 3.4)
+#     pixi run sim -- --noise 0
+# Then check the bridge log:
+#     pixi run bench-check -- <dir>/arena-log-*.jsonl --hold epoch_a_frame25=25 --hold epoch_b_frame75=75
+# Needs the CSHL course pattern bundle on the SD card (pattern_ID 23 = course_bg, 36 =
+# p3_heisenberg_ts). Trimmed from rig7's p3-conditioning-closedloop-short-negative.yaml; first
+# used to bench-check #225 (2026-09-28). About 22 s.
+
+experiment_info:
+  name: "bench_closed_loop_2x10"
+  author: "Reiser Lab"
+  date_created: 2026-09-27
+
+rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
+
+plugins:
+  - name: "fictrac"
+    type: "class"
+    matlab:
+      class: "FicTracPlugin"
+    config:
+      bridge_url: "ws://localhost:8765"
+      fictrac_port: 60000
+      proto: "udp"
+      offset: 0
+
+variables:
+  pattern_name: &pattern_name "p3_heisenberg_ts"
+  pattern_id: &pattern_id 36
+  trial_dur: &trial_dur 8
+  start_bg_dur: &start_bg_dur 3
+  cl_gain: &cl_gain -1
+
+experiment:
+  - "start_bg"
+  - "epoch_a_frame25"
+  - "epoch_b_frame75"
+  - "start_bg"
+
+conditions:
+  - name: "start_bg"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "course_bg"
+        pattern_ID: 23
+        duration: *start_bg_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: 0
+        gain: 0
+      - type: "wait"
+        duration: *start_bg_dur
+
+  - name: "epoch_a_frame25"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *trial_dur
+        mode: 3
+        frame_index: 25
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          coupling: *cl_gain
+      - type: "wait"
+        duration: *trial_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
+
+  - name: "epoch_b_frame75"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pattern_name
+        pattern_ID: *pattern_id
+        duration: *trial_dur
+        mode: 3
+        frame_index: 75
+        frame_rate: 0
+        gain: 0
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "startClosedLoop"
+        params:
+          coupling: *cl_gain
+      - type: "wait"
+        duration: *trial_dur
+      - type: "plugin"
+        plugin_name: "fictrac"
+        command_name: "stopClosedLoop"
