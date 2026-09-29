@@ -88,6 +88,8 @@ const ArenaWireG6 = (function () {
         GET_FIRMWARE_INFO: 0xe3, // [01 E3] reply: 32-byte footer {magic[8], version[16], crc32 LE, size LE}
         G6_PROGRAM_PANEL: 0xc8, // [02 C8 panel_index] reflash one panel from /firmware/panel.bin via SPI ISP
         G6_VERIFY_PANEL: 0xc9, // [02 C9 panel_index] CRC the panel's running app flash vs /firmware/panel.bin footer
+        PANEL_INVENTORY_SCAN: 0xd0, // [02 D0 action] re-probe the fleet: 0 presence (keeps fingerprints), 1 presence + fresh fingerprints; replies with 0xD1 page 0 (feature bit 0)
+        GET_PANEL_INVENTORY: 0xd1, // [01 D1] | [02 D1 first] per-panel presence + firmware fingerprint, 32-panel pages (feature bit 0)
         ALL_ON: 0xff
     };
 
@@ -124,10 +126,41 @@ const ArenaWireG6 = (function () {
         // 0xAD / SET_AO_MODE 0xA3 / GET_ANALOG_IN 0xA4 — hosts detect the
         // DIO-role machinery by this bit, not by firmware-version guessing.
         [5, 'io_ext'],
+        // Per-board analog-input calibration (fw #47): GET_ANALOG_IN_RAW 0xA5 /
+        // SET_ANALOG_CAL 0xA6 / GET_ANALOG_CAL 0xA7 + the 0xA4 flags byte.
+        [6, 'ai_cal'],
         // Controller health counters + reset breadcrumb (GET_HEALTH 0xCA) — the
         // fw #50 soak/post-mortem probe. Hosts grey the health readout without it.
         [7, 'health']
     ];
+
+    // The capability byte is full. New command families are advertised in the
+    // feature bitmap appended to the 0xC2 reply after the MAC: payload[8] = N
+    // bytes follow, bit k (LSB of features[0] = bit 0) = feature k. Presence is
+    // signalled by payload length, like the MAC (g6_03-controller.md § 0xC2).
+    const FEATURE_BITS = [
+        [0, 'panel_inventory'], // PANEL_INVENTORY_SCAN 0xD0 / GET_PANEL_INVENTORY 0xD1
+        [1, 'qwiic_i2c'], // GET_I2C_SCAN 0xB0 / I2C_TRANSFER 0xB1 (arena_12-18 only)
+        [2, 'ai_stream'] // reserved: sampled analog-input block stream
+    ];
+
+    // GET_PANEL_INVENTORY entry status byte (firmware PanelInventory::PanelStatus).
+    const PANEL_STATUS_NAMES = [
+        'unknown', // 0 not scanned
+        'absent', // 1 no COMM_CHECK reply
+        'present', // 2 replied; not fingerprinted (yet)
+        'fw_match', // 3 fingerprint == /firmware/panel.bin
+        'fw_differs', // 4 fingerprint != /firmware/panel.bin
+        'fw_no_reference', // 5 fingerprinted; no SD image to compare against
+        'fw_failed' // 6 replied to COMM_CHECK but not to ISP
+    ];
+    const PANEL_INVENTORY_FLAGS = {
+        PRESENCE_VALID: 0x01,
+        FP_VALID: 0x02,
+        FP_IN_PROGRESS: 0x04,
+        REF_PRESENT: 0x08,
+        FP_PREFIX: 0x10
+    };
 
     // ───────────────────────── validation helpers ─────────────────────────
 
@@ -676,7 +709,98 @@ const ArenaWireG6 = (function () {
                 .map((b) => b.toString(16).padStart(2, '0').toUpperCase())
                 .join(':');
         }
-        return { version, capability, capabilities, mac };
+        // Optional feature bitmap [N, features[N]] after the MAC. Valid only when
+        // the payload holds all N bytes; a truncated bitmap reads as no features.
+        let featureBits = null;
+        let features = [];
+        if (r.payload.length >= 9) {
+            const n = r.payload[8];
+            if (n > 0 && r.payload.length >= 9 + n) {
+                featureBits = 0;
+                for (let i = 0; i < Math.min(n, 4); i++) {
+                    featureBits |= r.payload[9 + i] << (8 * i);
+                }
+                featureBits >>>= 0;
+                features = FEATURE_BITS.filter(([bit]) => featureBits & (1 << bit)).map(
+                    ([, name]) => name
+                );
+            }
+        }
+        return { version, capability, capabilities, mac, featureBits, features };
+    }
+
+    /**
+     * panel-inventory-scan (0xD0): [02 D0 action]. action 0 = presence only
+     * (panels still present keep their fingerprint), 1 = presence + restart the
+     * fingerprint sweep. Needs ALL_OFF (else status 10) and no SD transfer.
+     * Replies with 0xD1 page 0 (echo 0xD0). Gate on feature 'panel_inventory'.
+     */
+    function encodePanelInventoryScan(action) {
+        requireInt(action, 'action');
+        if (action !== 0 && action !== 1) {
+            throw new RangeError('action must be 0 (presence) or 1 (presence + fingerprints)');
+        }
+        return Uint8Array.from([0x02, OPCODES.PANEL_INVENTORY_SCAN, action]);
+    }
+
+    /**
+     * get-panel-inventory (0xD1): [01 D1] or [02 D1 first]. `first` = 0-based
+     * index of the page's first panel (32 per page). Pure read, always allowed.
+     */
+    function encodeGetPanelInventory(first) {
+        if (first === undefined || first === null) {
+            return Uint8Array.from([0x01, OPCODES.GET_PANEL_INVENTORY]);
+        }
+        requireInt(first, 'first');
+        if (first < 0 || first > 255) throw new RangeError('first must be 0..255');
+        return Uint8Array.from([0x02, OPCODES.GET_PANEL_INVENTORY, first]);
+    }
+
+    /**
+     * 0xD1 page (also the 0xD0 reply) -> {version, panelCount, flags, flagNames,
+     * first, n, refCrc32, fpLen, ageMs, scanId, entries[{panel, status, statusName,
+     * crc32}]} or null. Header (18 B, LE): version=1, panel_count, flags, first, n,
+     * ref_crc32 u32, fp_len u32, age_ms u32, scan_id; then n × {status u8, crc32
+     * u32}. `panel` is the 1-based panel number (first + k + 1), the numbering
+     * 0xC8/0xC9 use. `scanId` changes on every presence scan: the pages of one
+     * multi-page read must agree, else re-read (firmware PanelInventory.h).
+     */
+    function decodePanelInventory(resp) {
+        const r = asResponse(resp);
+        if (!r || !r.ok) return null;
+        const p = r.payload;
+        if (p.length < 18 || p[0] !== 1) return null;
+        const n = p[4];
+        if (p.length !== 18 + 5 * n) return null;
+        const u32 = (o) => (p[o] | (p[o + 1] << 8) | (p[o + 2] << 16) | (p[o + 3] << 24)) >>> 0;
+        const flags = p[2];
+        const first = p[3];
+        const entries = [];
+        for (let k = 0; k < n; k++) {
+            const o = 18 + 5 * k;
+            const status = p[o];
+            entries.push({
+                panel: first + k + 1,
+                status,
+                statusName: PANEL_STATUS_NAMES[status] || 'status_' + status,
+                crc32: u32(o + 1)
+            });
+        }
+        return {
+            version: p[0],
+            panelCount: p[1],
+            flags,
+            flagNames: Object.keys(PANEL_INVENTORY_FLAGS).filter(
+                (k) => flags & PANEL_INVENTORY_FLAGS[k]
+            ),
+            first,
+            n,
+            refCrc32: u32(5),
+            fpLen: u32(9),
+            ageMs: u32(13),
+            scanId: p[17],
+            entries
+        };
     }
 
     // set/get-spi-clock (0xC5/0xC6) reply carries the clock as uint16 LE MHz.
@@ -1298,6 +1422,9 @@ const ArenaWireG6 = (function () {
         MODES,
         PANEL_DISPLAY_MODE_NAMES,
         CAPABILITY_BITS,
+        FEATURE_BITS,
+        PANEL_STATUS_NAMES,
+        PANEL_INVENTORY_FLAGS,
         STREAM_FRAME_BYTES,
 
         // Encoders (request frames)
@@ -1344,6 +1471,8 @@ const ArenaWireG6 = (function () {
         encodeGetFirmwareInfo,
         encodeG6ProgramPanel,
         encodeG6VerifyPanel,
+        encodePanelInventoryScan,
+        encodeGetPanelInventory,
         encodeSetAoVoltage,
         encodeGetAoVoltage,
         encodeGetDigitalOut,
@@ -1390,7 +1519,8 @@ const ArenaWireG6 = (function () {
         decodeAnalogIn,
         decodeSetFirmwareFileResponse,
         decodeFirmwareInfo,
-        decodeProgramPanelResponse
+        decodeProgramPanelResponse,
+        decodePanelInventory
     };
 })();
 

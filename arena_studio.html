@@ -2548,6 +2548,7 @@
           <div>sha256: <span class="sha" id="pvSha">—</span></div>
           <div>arena: <b id="pvArena">—</b> · rig: <b id="pvRig">—</b></div>
           <div>firmware: <b id="pvFw">—</b></div>
+          <div>panels: <b id="pvPanels" title="Which panels answered when the arena connected and the firmware fingerprint (CRC-32) each one runs. Recorded in the run log as panels.">—</b></div>
           <div>controller: <b id="pvCtl" title="Physical-setup identity — the controller's Ethernet MAC, derived from the Teensy's burned-in unique ID. Recorded in the run log as controller_id.">—</b></div>
           <div>run_id: <b id="pvRunId">— (assigned at run start)</b></div>
         </div>
@@ -3047,6 +3048,10 @@
             <input id="cFwAddr" type="number" min="1" value="1" style="width:56px" title="panel address (1-based)">
             <button class="pill danger" data-cmd="cfwflash" title="Program one panel from /firmware/panel.bin over SPI ISP (0xC8) — ~20 s, do NOT power off">Flash</button>
             <button class="pill" data-cmd="cfwverify" title="CRC the panel's running app flash vs the SD footer (0xC9)">Verify</button></div>
+          <div class="crow"><span class="lbl">fleet</span>
+            <button class="pill" data-cmd="cinv" title="GET_PANEL_INVENTORY 0xD1 — which panels answered at boot and the firmware fingerprint (CRC-32) each one runs; reads it again now (firmware with feature bit 0 only)">Inventory</button>
+            <button class="pill" data-cmd="cinvscan" title="PANEL_INVENTORY_SCAN 0xD0 action 1 — re-probe every panel and fingerprint them afresh (stops the display first); the result lands a few seconds later">Rescan</button>
+            <span class="dim" id="cInvSum"></span></div>
           <div class="crow" style="border-top:1px dashed var(--border);padding-top:9px;margin-bottom:0"><span class="lbl">batch</span>
             <input id="cIspRange" type="text" value="1-20" style="width:86px" title="Panels to program: a range/list like 1-20 or 1,3,5-8">
             <label title="Verify each panel's CRC (0xC9) right after flashing; the report marks verified vs flashed-only"><input type="checkbox" id="cIspVerify" checked> verify each</label>
@@ -3159,6 +3164,7 @@
 <!-- ============================================================ -->
 <script src="js/arena-wire-g6.js"></script>
 <script src="js/studio-analog-in.js"></script>
+<script src="js/studio-panel-inventory.js"></script>
 <script src="js/arena-link.js"></script>
 <script src="js/arena-runner-g6.js?v=20260926-cl-start"></script> <!-- ?v= forces a fresh load: a cached runner/client silently runs the old closed-loop start -->
 <script src="js/run-log.js"></script>
@@ -4009,6 +4015,61 @@ function studioMarkerCurrent(stored, current) {
         return null;
     };
 
+    // Panel inventory (fw #59, GET_PANEL_INVENTORY 0xD1): which panels answered and
+    // the firmware fingerprint each one runs, read at every link-up → provenance
+    // box + run_metadata.panels. Gated on the 0xC2 feature bit `panel_inventory`
+    // (older firmware answers 0xD1 with CE_UNKNOWN_CMD and an error glyph). The
+    // boot fingerprint sweep may still be running right after a reset, so a read
+    // that says "in progress" schedules one follow-up read.
+    // `Studio.panels` is never left stale: it is cleared before every read, on a
+    // failed read and on disconnect, and `Studio.panelsStatus` says why it is
+    // null ('unsupported' | 'failed' | 'disconnected') or how to read it
+    // ('ok' | 'pending'). runOnce() re-reads it right before startRunLog() so
+    // run_metadata.panels is a run-start snapshot, not connect-time state.
+    Studio.panels = null; // StudioPanelInventory.summarize() result, or null
+    Studio.panelsStatus = 'disconnected';
+    Studio.scheduleInventoryFollowUp = function (ms) {
+        if (Studio._panelsFollowUp) clearTimeout(Studio._panelsFollowUp);
+        Studio._panelsFollowUp = setTimeout(() => {
+            Studio._panelsFollowUp = null;
+            if (Studio.session && Studio.session.connected && !Studio.session.running) Studio.refreshPanelInventory();
+        }, ms);
+    };
+    Studio.refreshPanelInventory = async function (opts) {
+        const quiet = !!(opts && opts.quiet);
+        const PI = window.StudioPanelInventory;
+        const feats = Studio.features || [];
+        const has = feats.includes('panel_inventory');
+        Studio.panels = null;
+        if (!Studio.session || !Studio.session.connected || !PI || !has) {
+            Studio.panelsStatus = !Studio.session || !Studio.session.connected ? 'disconnected' : 'unsupported';
+            if ($('pvPanels')) $('pvPanels').textContent = has ? '—' : '— (firmware without panel inventory)';
+            return null;
+        }
+        try {
+            const inv = PI.summarize(await PI.readAll((b, o) => Studio.session.send(b, o)));
+            Studio.panels = inv;
+            Studio.panelsStatus = inv.presenceValid ? 'ok' : 'pending';
+            const label = PI.describe(inv);
+            const worry = inv.missing.length > 0 || inv.mismatched.length > 0;
+            if ($('pvPanels')) {
+                $('pvPanels').textContent = label;
+                $('pvPanels').title = 'GET_PANEL_INVENTORY 0xD1 · scan ' + inv.scanId + ' · ' + inv.flagNames.join(' ') +
+                    (inv.mismatched.length ? ' · check panels ' + inv.mismatched.join(', ') : '');
+            }
+            if ($('cInvSum')) $('cInvSum').textContent = label;
+            if (!quiet) rawLine('‹ panels: ' + label, worry ? 'warn' : 'info');
+            if (inv.fpInProgress || !inv.presenceValid) Studio.scheduleInventoryFollowUp(4000);
+            return inv;
+        } catch (e) {
+            Studio.panelsStatus = 'failed';
+            if ($('pvPanels')) $('pvPanels').textContent = '— (panel inventory read failed)';
+            if ($('cInvSum')) $('cInvSum').textContent = 'read failed';
+            rawLine('panel inventory: ' + (e && e.message ? e.message : e), 'warn');
+            return null;
+        }
+    };
+
     // ---- connection ----------------------------------------------------------
     async function toggleConnect() {
         if (!Studio.session) {
@@ -4031,15 +4092,18 @@ function studioMarkerCurrent(stored, current) {
                     // Capability names (e.g. 'io_ext') — gates the rig-I/O
                     // role apply-path + Console readouts per connection.
                     Studio.capabilities = info.capabilities || [];
+                    Studio.features = info.features || []; // 0xC2 feature bitmap (panel_inventory, qwiic_i2c, …)
                     // Physical-setup identity (Teensy unique ID → Ethernet MAC);
                     // null until the firmware appends it to the 0xC2 reply.
                     Studio.controllerId = info.mac || null;
                     rawLine('‹ controller info: fw v' + info.version +
                         ' · caps [' + info.capabilities.join(', ') + ']' +
+                        (info.features && info.features.length ? ' · features [' + info.features.join(', ') + ']' : '') +
                         (info.mac ? ' · id ' + info.mac : ''), 'info');
                     const ctl = $('pvCtl');
                     if (ctl) ctl.textContent = Studio.controllerId || '— (needs fw with MAC in 0xC2)';
                     await Studio.refreshFirmwareVersion(); // build identity → run_metadata.firmware
+                    await Studio.refreshPanelInventory(); // which panels + their firmware → run_metadata.panels
                     if (Studio.initTelemetry) await Studio.initTelemetry(); // ring drain (T4) when the fw has it
                     // Un-grey the fw-gated rig-I/O roles now that caps are known
                     // (the role menu may have rendered before this reply landed).
@@ -5252,11 +5316,13 @@ function studioMarkerCurrent(stored, current) {
                     const info = Wire.decodeControllerInfo(await Studio.session.send(Wire.encodeGetControllerInfo(), { timeoutMs: 2000 }));
                     if (info) {
                         Studio.capabilities = info.capabilities || [];
+                        Studio.features = info.features || [];
                         Studio.controllerId = info.mac || Studio.controllerId || null;
                         if (!Studio.firmware) Studio.firmware = 'v' + info.version;
                         if ($('pvCtl')) $('pvCtl').textContent = Studio.controllerId || '—';
                     }
                     await Studio.refreshFirmwareVersion();
+                    await Studio.refreshPanelInventory();
                     if (Studio.initTelemetry) await Studio.initTelemetry();
                     refreshState();
                 } catch (_) { /* best-effort: a wedged controller answers nothing */ }
@@ -5809,18 +5875,43 @@ function studioMarkerCurrent(stored, current) {
             if (info) {
                 Studio.firmware = 'v' + info.version;
                 Studio.capabilities = info.capabilities || [];
+                Studio.features = info.features || [];
                 Studio.controllerId = info.mac || Studio.controllerId || null;
                 if ($('pvCtl')) $('pvCtl').textContent = Studio.controllerId || '— (needs fw with MAC in 0xC2)';
                 Studio.refreshState();
                 if (Studio.updateRigIoGating) Studio.updateRigIoGating(); // refresh fw-gated role options
                 clog('  fw v' + info.version + ' · caps [' + info.capabilities.join(', ') + ']' +
+                    (info.features && info.features.length ? ' · features [' + info.features.join(', ') + ']' : '') +
                     (info.mac ? ' · id ' + info.mac : ' · (no MAC in reply — older fw)'), 'info');
                 const fv = await Studio.refreshFirmwareVersion();
                 if (fv) clog('  build ' + fv.label, 'info');
                 else if ((info.capabilities || []).includes('health')) clog('  build: (no 0xCB reply)', 'warn');
                 else clog('  build: unknown — this firmware predates GET_FIRMWARE_VERSION (0xCB)', 'warn');
+                const inv = await Studio.refreshPanelInventory();
+                if (inv) clog('  panels: ' + window.StudioPanelInventory.describe(inv), inv.mismatched.length || inv.missing.length ? 'warn' : 'info');
             }
         },
+        // panel fleet inventory (fw #59, feature bit 0)
+        cinv: async () => {
+            if (!connected()) return;
+            if (!(Studio.features || []).includes('panel_inventory')) { clog('panel inventory: this firmware has no GET_PANEL_INVENTORY (0xC2 feature bit 0 clear)', 'warn'); return; }
+            const inv = await Studio.refreshPanelInventory();
+            if (!inv) return;
+            clog('  ' + window.StudioPanelInventory.describe(inv), inv.mismatched.length || inv.missing.length ? 'warn' : 'info');
+            if (inv.mismatched.length) clog('  check panels ' + inv.mismatched.join(', ') + (inv.refPresent ? ' (≠ /firmware/panel.bin)' : ' (fingerprint minority / no ISP reply)'), 'warn');
+            for (const f of inv.firmware) clog('  ' + f.hex + ' ×' + f.panels.length + ': panels ' + f.panels.join(', '), 'info');
+        },
+        cinvscan: () => guardDestructive(async () => {
+            // Stops the display (0xD0 needs ALL_OFF) — confirm-and-STOP like the other destructive actions.
+            if (!connected()) return;
+            if (!(Studio.features || []).includes('panel_inventory')) { clog('panel inventory: this firmware has no PANEL_INVENTORY_SCAN (0xC2 feature bit 0 clear)', 'warn'); return; }
+            await quiesceDisplay();
+            const r = await send(Wire.encodePanelInventoryScan(1), 'PANEL_INVENTORY_SCAN 0xD0 · presence + fingerprints', { timeoutMs: 10000, expectedCmd: Wire.OPCODES.PANEL_INVENTORY_SCAN });
+            const page0 = r && Wire.decodePanelInventory(r);
+            if (!page0) return;
+            if ($('cInvSum')) $('cInvSum').textContent = 'rescanning… (scan ' + page0.scanId + ')';
+            Studio.scheduleInventoryFollowUp(3000); // the sweep runs one panel per loop() pass; gated on connected + not running
+        }),
         ip: async () => { const r = await send(Wire.encodeGetIp(), 'GET_ETHERNET_IP 0xC1'); const ip = r && Wire.decodeIp && Wire.decodeIp(r); if (ip) clog('  ip ' + ip, 'info'); },
         frames: async () => { const r = await send(Wire.encodeGetFramesSent(), 'GET_FRAMES_SENT 0x33'); const n = r && Wire.decodeFramesSent(r); if (n != null) clog('  frames sent ' + n, 'info'); },
         resetframes: () => send(Wire.encodeResetFramesSent(), 'RESET_FRAMES_SENT 0x34'),
@@ -6524,6 +6615,10 @@ function studioMarkerCurrent(stored, current) {
             // Forget the controller's capabilities so the NEXT connect re-detects
             // io_ext (avoids stale caps gating the rig-I/O roles for a swapped rig).
             Studio.capabilities = null;
+            Studio.features = null;
+            Studio.panels = null; // never carry one controller's panel inventory into the next connection
+            Studio.panelsStatus = 'disconnected';
+            if (Studio._panelsFollowUp) { clearTimeout(Studio._panelsFollowUp); Studio._panelsFollowUp = null; }
             if (Studio.updateRigIoGating) Studio.updateRigIoGating();
         }
     }
@@ -6919,6 +7014,7 @@ async function ensureCapabilities() {
         );
         if (info) {
             Studio.capabilities = info.capabilities || [];
+            Studio.features = info.features || [];
             if (info.mac && !Studio.controllerId) Studio.controllerId = info.mac;
         }
     } catch (_) { /* older fw / no reply — hasIoExt() stays false */ }
@@ -8636,6 +8732,10 @@ Studio.runOnce = async function (isExperiment) {
     if (refuseUnsupportedRequires(exp)) return null;
     const { steps } = RunnerLib.flattenStructure(exp, { shuffle: shuffleInPlace });
     const conditionsByName = new Map((exp.conditions || []).map((c) => [c.name, c]));
+    // Run-start snapshot of the panel fleet (0xD1 is a pure read, ~10 ms per page):
+    // run_metadata.panels must describe the panels at THIS run's start, not whatever
+    // was cached at connect. Feature-gated inside; a failure records status 'failed'.
+    await Studio.refreshPanelInventory({ quiet: true });
     startRunLog(isExperiment);
     document.body.classList.toggle('testing', !isExperiment);
     // Surface the live scope for BOTH run and test — the whole point of a test is
@@ -9161,7 +9261,11 @@ function startRunLog(isExperiment) {
             notes: $('mNotes').value
         },
         doc: { filename: doc.filename, sha256: doc.sha256 },
-        session: { firmware: Studio.firmware, controllerId: Studio.controllerId },
+        session: {
+            firmware: Studio.firmware,
+            controllerId: Studio.controllerId,
+            panels: window.StudioPanelInventory ? window.StudioPanelInventory.toRunMeta(Studio.panels, Studio.panelsStatus) : null
+        },
         rig: doc.rig,
         toolVersion: Studio.TOOL_VERSION,
         build: Studio.build
@@ -16655,6 +16759,9 @@ initFromUrl();
     '.rail-btn[data-panel="io"]': 'The controller’s analog and digital input/output connectors.',
     '.rail-btn[data-panel="ai"]': 'Watch the two analog inputs live, and check the wiring by looping Analog Out back into an input.',
     '.rail-btn[data-panel="fw"]': 'Update or check the firmware on the LED panels.',
+    '[data-cmd="cinv"]': 'Show which panels the controller found at start-up and which firmware each one runs.',
+    '[data-cmd="cinvscan"]': 'Look for the panels again and re-check their firmware (the display is stopped while this runs).',
+    '#pvPanels': 'How many panels answered when the arena connected, and their firmware. Saved with every run.',
     '[data-cmd="ctelem"]': 'Turn the controller\'s built-in activity recording on or off (it is written into the run log alongside the tracking data).',
     '[data-cmd="chealth"]': 'Ask the controller how it is doing — loop timing, memory-card read times, and what it was doing before its last restart.',
     '#fmSoak': 'Repeat the open protocol unattended (overnight) to catch the rare controller freeze; on a freeze it records diagnostics and, if you chose so, restarts the controller and continues.',
