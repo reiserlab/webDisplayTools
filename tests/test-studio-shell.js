@@ -207,7 +207,7 @@ check(
     ].every((sel) => freeze.includes(sel))
 );
 check(
-    '…but not the whole ⚙ Settings menu',
+    '…but not the whole ⚙ Settings menu, so Display (theme) stays usable during replay',
     !/'#settingsMenu'/.test(freeze) && !/'#uiTheme/.test(freeze)
 );
 check(
@@ -283,6 +283,130 @@ check(
         studio.includes("(root.getAttribute('data-ui-theme') || 'dark')")
 );
 
+console.log('=== visibility themes (⚙ Settings → Display) ===');
+const THEMES = ['dark', 'light', 'contrast', 'night', 'cvd'];
+const themeSelect = between('<select id="uiTheme"', '</select>');
+check('Appearance dropdown lives in ⚙ Settings', settingsMenu.includes('id="uiTheme"'));
+check(
+    'dropdown offers the five themes + Match this computer',
+    THEMES.concat('system').every((t) => themeSelect.includes('<option value="' + t + '"'))
+);
+check(
+    'stored theme is applied in <head> before first paint (own key, skipped on the Alt route)',
+    studio.indexOf("localStorage.getItem('studio_ui_theme')") > -1 &&
+        studio.indexOf("localStorage.getItem('studio_ui_theme')") < studio.indexOf('<body>') &&
+        studio.includes("setAttribute('data-ui-theme', t)")
+);
+
+THEMES.slice(1).forEach((t) => (tokens[t] = block(':root[data-ui-theme="' + t + '"]{')));
+const themeTokenNames = Object.keys(tokens.dark).filter(
+    (k) =>
+        ![
+            '--mono',
+            '--head',
+            '--surface-2',
+            '--text-dim',
+            '--err',
+            '--error',
+            '--caution'
+        ].includes(k)
+);
+THEMES.slice(1).forEach((t) => {
+    const missing = themeTokenNames.filter((k) => !(tokens[t] && k in tokens[t]));
+    check('theme "' + t + '" defines every colour token', missing.length === 0, missing.join(' '));
+});
+// WCAG 2.x contrast of the opaque token pairs. Text ≥ 4.5 (AA); High contrast ≥ 7 (AAA);
+// Focus rings + control edges ≥ 3.
+// Colours are #hex or rgba(); a translucent foreground is composited over its opaque
+// background first. Anything else THROWS, so a token the test can't read fails loudly
+// instead of passing vacuously.
+function rgbOf(c) {
+    const s = String(c).trim();
+    let m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s);
+    if (m) {
+        const h = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1];
+        return { rgb: [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)), a: 1 };
+    }
+    m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(s);
+    if (m) return { rgb: [+m[1], +m[2], +m[3]], a: m[4] == null ? 1 : +m[4] };
+    throw new Error('unparseable colour: ' + s);
+}
+function lumRgb(rgb) {
+    const l = rgb.map((v) => {
+        v /= 255;
+        return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2];
+}
+function lum(c) {
+    return lumRgb(rgbOf(c).rgb);
+}
+function ratio(fg, bg) {
+    const b = rgbOf(bg);
+    if (b.a !== 1) throw new Error('background must be opaque: ' + bg);
+    const f = rgbOf(fg);
+    const rgb = f.rgb.map((v, i) => v * f.a + b.rgb[i] * (1 - f.a));
+    const x = lumRgb(rgb);
+    const y = lumRgb(b.rgb);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+const TEXT_PAIRS = [
+    ['--text', '--bg'],
+    ['--text', '--surface'],
+    ['--dim', '--surface'],
+    ['--accent', '--surface'],
+    ['--on-accent', '--accent'],
+    ['--danger', '--surface'],
+    ['--on-danger', '--danger'],
+    ['--warn', '--surface'],
+    ['--beta', '--surface'],
+    ['--replay', '--surface'],
+    ['--on-replay', '--replay'],
+    ['--seg-on-fg', '--seg-on-bg'],
+    ['--help-fg', '--help'],
+    ['--tip-fg', '--tip-bg'],
+    ['--term-rx', '--term-bg'],
+    ['--term-tx', '--term-bg'],
+    ['--danger-text', '--surface'],
+    ['--led-text', '--surface']
+];
+THEMES.slice(1).forEach((t) => {
+    const T = tokens[t];
+    const low = [];
+    const measure = (fg, bg, need) => {
+        try {
+            const r = ratio(T[fg], T[bg]);
+            if (!(r >= need)) low.push(fg + '/' + bg + ' ' + r.toFixed(2) + '<' + need);
+        } catch (e) {
+            low.push(fg + '/' + bg + ' ' + e.message);
+        }
+    };
+    TEXT_PAIRS.forEach(([fg, bg]) => measure(fg, bg, t === 'contrast' ? 7 : 4.5));
+    [
+        ['--edge', '--surface'],
+        ['--focus', '--bg']
+    ].forEach(([fg, bg]) => measure(fg, bg, 3));
+    check('theme "' + t + '" meets its WCAG contrast targets', low.length === 0, low.join('; '));
+});
+check(
+    'Night is genuinely dim: body text luminance ≤ 0.3 (Dark ≈ 0.84)',
+    lum(tokens.night['--text']) <= 0.3
+);
+check(
+    'Night palette emits no blue: every opaque Night token has B ≤ 0x10',
+    Object.values(tokens.night)
+        .filter((v) => /^#[0-9a-f]{6}$/i.test(v))
+        .every((v) => parseInt(v.slice(5, 7), 16) <= 0x10)
+);
+check(
+    'Night maps pattern previews to red only',
+    studio.includes('<filter id="uiNightRed"') &&
+        studio.includes(
+            ':root[data-ui-theme="night"] :is(.thumb, .pat-preview) :is(img, canvas)'
+        ) &&
+        !/:root\[data-ui-theme="night"\] (img|canvas)\b/.test(studio) &&
+        studio.includes('filter:url(#uiNightRed)')
+);
 console.log('\n=== Summary ===');
 console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures ? 1 : 0);

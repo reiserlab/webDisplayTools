@@ -432,16 +432,30 @@ fix flows to every page automatically; two hand-written HTML pages never will.
 - **Top bar: Protocol ▾ vs ⚙ Settings.** `Protocol ▾` (`#fileMenu`, renamed from File)
   holds protocol ACTIONS only (new/open/replay/save/promote/copy/reset/soak). `⚙ Settings`
   (`#settingsMenu`) holds the Studio/bench settings kept in the browser, not the YAML: the
-  session rig, the GitHub block, Run logging. The rig SELECTOR has no top-bar
+  session rig, the GitHub block, Run logging, Display. The rig SELECTOR has no top-bar
   slot, but a read-only rig tag (`#rigTag`, beside the status; click → ⚙ Settings) keeps the
   bench rig always visible; `syncRigContext()` (called from `updateDeviceLine`) fills it and
   names the rig in Connect's hover + Help text. A NEW app-wide setting goes in ⚙ Settings,
   never back into Protocol ▾; Edit's YAML-backed drawer is labelled "⚙ Protocol settings".
   Replay freezes Protocol ▾ and the rig / GitHub / Run-logging parts of ⚙ Settings
-  (`FREEZE_SELECTORS`) — NOT the whole menu. Because the menu itself
+  (`FREEZE_SELECTORS`) — NOT the whole menu, so Display stays usable. Because the menu itself
   is not frozen, a NEW bench / repo / logging control added to ⚙ Settings must ALSO be added
   to `FREEZE_SELECTORS` (js/studio-replay.js), or it stays live during a replay. User copy says "Protocol ▾ → …" / "⚙ Settings → …" —
   `tests/test-studio-shell.js` fails on any stale "File ▾".
+- **Visibility themes (⚙ Settings → Display).** Dark (default) / Light / High contrast / Night (dim
+  red for darkened rigs — cuts most green/blue; not a measured spectral guarantee) / Color-blind safe (Okabe–Ito) / Match this computer — pure CSS-token
+  swaps on `html[data-ui-theme]`, stored per browser in `studio_ui_theme` and applied by the `<head>`
+  script before first paint (skipped on the Alt route, which keeps its own `data-theme`). THE rule:
+  **no hard-coded colours in stylesheet rules** — every colour is a token defined in `:root` (Dark =
+  the original values) and in each `:root[data-ui-theme="…"]` block; tints are
+  `color-mix(in srgb,var(--tok) N%,transparent)`. Canvases can't read CSS, so they read tokens
+  (`scopePalette()` keyed on the theme attribute; `aiChartColors()`); pattern previews keep a dark
+  surround (`--preview-bg`) and Night maps them to red with the `#uiNightRed` SVG filter, OPT-IN
+  by container (`.thumb` / `.pat-preview` — a new preview surface uses one of those classes; never a
+  blanket img/canvas rule, a live canvas, or a whole-page ancestor: per-frame re-filtering and
+  stacking-context bugs for menus). The Edit view's token island only overrides its own few colours (`--ed-*`).
+  A NEW colour = a token in all five blocks; `tests/test-studio-shell.js` enforces the full token set,
+  WCAG contrast (AA; AAA for High contrast), a blue-free Night palette, and no stray literals.
 - **Console v6 layout (v0.6):** left rail of 9 tool panels (`data-panel` =
   patterns/trial/step/test/io/ai/led/fw/fictrac) + bench strip + always-visible resizable log.
   The rail is a show/hide CHECKLIST (`role="checkbox"`, `setOpen` keeps `aria-checked`);

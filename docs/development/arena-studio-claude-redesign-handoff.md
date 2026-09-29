@@ -14,8 +14,11 @@ replay + the 3D window (Studio v0.88–v0.90, PRs #220–#224), runtime variable
 LAB-158 round: the **Protocol ▾** menu, a **⚙ Settings** menu for the rig/GitHub/
 logging, the Console **Tools** checklist, a two-column Console on wide screens, the
 wider Run view, Scope Full/Clean labels, visible toggle state, and re-pinning the
-replay step on Scope resize. Not carried forward: the rest of the "Do not carry forward"
-list.
+replay step on Scope resize. Also added: first-class visibility themes in ⚙ Settings →
+Display — Dark, Light, High contrast, Night (red, for darkened rigs), Color-blind safe and
+Match this computer — covering the light-mode requirements below (palettes checked for WCAG
+contrast in `tests/test-studio-shell.js`; pattern previews keep a dark surround in every
+theme). Not carried forward: the rest of the "Do not carry forward" list.
 
 ## Decision
 

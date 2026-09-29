@@ -1081,8 +1081,8 @@
             '#connectBtn',
             '#openProtoBtn',
             '#fileMenu',
-            // ⚙ Settings stays usable; freeze the bench rig, the GitHub block and
-            // the Run-logging row inside it. The menu
+            // ⚙ Settings stays usable (its Display theme is cosmetic); freeze the
+            // bench rig, the GitHub block and the Run-logging row inside it. The menu
             // itself is NOT frozen: any NEW bench/repo/logging control added to
             // ⚙ Settings must be listed here too, or it stays live during replay.
             '#settingsMenu .rigsel',

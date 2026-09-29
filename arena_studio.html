@@ -9,6 +9,20 @@
   // implementation. Add the scope class before first paint to avoid a flash of
   // the original layout; the stylesheet is otherwise inert.
   if (location.hash === '#alt') document.documentElement.classList.add('arena-alt');
+  // ⚙ Settings → Display: apply the remembered visibility theme before first paint
+  // (no flash of the wrong theme). A per-browser setting under its own key; the
+  // Alt route keeps its own theme switch, so it is skipped there.
+  (function () {
+    if (document.documentElement.classList.contains('arena-alt')) return;
+    var t = null;
+    try { t = localStorage.getItem('studio_ui_theme'); } catch (_) {}
+    if (!/^(dark|light|contrast|night|cvd|system)$/.test(t || '')) t = 'dark';
+    if (t === 'system') {
+      var mm = function (q) { try { return !!(window.matchMedia && matchMedia(q).matches); } catch (_) { return false; } };
+      t = mm('(prefers-contrast: more)') ? 'contrast' : mm('(prefers-color-scheme: light)') ? 'light' : 'dark';
+    }
+    document.documentElement.setAttribute('data-ui-theme', t);
+  })();
   // Browsers do not reliably execute this page's ES-module imports or relative
   // fetches from file://. The shell can therefore look healthy while GitHub,
   // protocol, config, and pattern actions have no listeners. Fail visibly and
@@ -57,8 +71,9 @@
     --text:#e6edf3; --dim:#8b949e; --accent:#00e676; --hover:#00c853;
     --danger:#ff5252; --warn:#e3a008; --beta:#4aa8ff; --rec:#ff5252; --replay:#b58cff;
     --mode:#00e676; --modec:#062a16;
-    /* Colour tokens: every stylesheet colour is a token (tints via color-mix), and the
-       values below ARE the colours the rules used before tokenising — Dark is unchanged. */
+    /* Theme tokens (⚙ Settings → Display). Dark values below ARE the colours the
+       rules used before tokenising, so Dark renders unchanged; the other themes
+       override them in the :root[data-ui-theme=…] blocks that follow. */
     --on-accent:#06210f; --on-danger:#2a0000; --on-replay:#1a1030; --seg-on-bg:#26405e; --seg-on-fg:#cfe6ff;
     --safe-fg:#9fd4ff; --safe-border:#2b5b86; --help:#2b74a8; --help-fg:#eaf5ff; --tip-bg:#0c2233;
     --tip-fg:#dbeeff; --help-strong:#9fd4ff; --term-bg:#0a0e12; --term-rx:#9fe8c0; --term-tx:#7fd0ff;
@@ -72,12 +87,94 @@
        own LED colours); the whole Console dims to --off-opacity while disconnected. */
     --preview-bg:#141a20; --preview-badge-bg:rgba(0,0,0,.7); --preview-badge-fg:#00e676; --off-opacity:.55;
     --caution:var(--warn); /* Studio amber inside the Edit view, whose own --warn is orange */
+    color-scheme:dark;
     --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
     --head:'JetBrains Mono',var(--mono);
     /* Aliases so the ported console (--surface2/--dim/--err) and designer
        (--surface-2/--text-dim/--error) CSS can paste verbatim in later phases. */
     --surface-2:var(--surface2); --text-dim:var(--dim); --err:var(--danger); --error:var(--danger);
   }
+  /* ===== Visibility themes (html[data-ui-theme]; ⚙ Settings → Display). Palettes are
+     validated for WCAG contrast by tests/test-studio-shell.js. Dark = :root above. ===== */
+  /* Light — designed for a light ground (hues re-picked for 4.5:1 on white, not inverted) */
+  :root[data-ui-theme="light"]{
+    --bg:#f3f5f7; --surface:#ffffff; --surface2:#eaeef2; --border:#b8c0c8; --edge:#7d8791;
+    --text:#1f2328; --dim:#57606a; --accent:#116329; --hover:#0d4a1f; --danger:#b31d28;
+    --warn:#7a4f00; --beta:#0550ae; --replay:#6639ba; --on-accent:#ffffff; --on-danger:#ffffff;
+    --on-replay:#ffffff; --seg-on-bg:#ddf4ff; --seg-on-fg:#0550ae; --safe-fg:#0550ae; --safe-border:#54aeff;
+    --help:#0969da; --help-fg:#ffffff; --tip-bg:#1f2328; --tip-fg:#ffffff; --help-strong:#0550ae;
+    --term-bg:#f6f8fa; --term-rx:#116329; --term-tx:#0550ae; --term-yaml:#1f2328; --amber:#7a4f00;
+    --danger-soft:#b31d28; --danger-text:#a0111c; --led:#bf3989; --led-text:#a8306f; --led-hover-text:#8a2a5d;
+    --accent-off-bg:#e3f2e7; --accent-off-fg:#4f7f5d; --run-bg:#e6f6ea; --test-bg:#e6f1fc; --track:#c7e6d0;
+    --dot-idle:#8c959f; --chart-grid:#d0d7de; --chart-bg:#ffffff; --ed-surface2:#eef1f4; --ed-beta:#0550ae; --ed-warn:#7a4f00;
+    --ed-error:#b31d28; --ed-danger-hover:#b31d28; --wc-c-fg:#0550ae; --wc-c-border:#54aeff; --wc-c-bg:color-mix(in srgb,var(--wc-c-fg) 12%,transparent); --trace-turn:#0969da;
+    --trace-fwd:#cf222e; --trace-head:#1a7f37; --focus:#0969da; --safe-bg:#ddf4ff; --shadow-c:rgba(31,35,40,.45);
+    --overlay-c:rgba(27,31,36,.75); --rec:var(--danger); --mode:var(--accent); --modec:var(--run-bg); --preview-bg:#141a20; --preview-badge-bg:rgba(0,0,0,.7); --preview-badge-fg:#00e676; --off-opacity:.72; color-scheme:light;
+  }
+  /* High contrast — black ground, AAA (≥7:1) text, solid edges, yellow focus ring */
+  :root[data-ui-theme="contrast"]{
+    --bg:#000000; --surface:#0a0a0a; --surface2:#000000; --border:#a6a6a6; --edge:#ffffff;
+    --text:#ffffff; --dim:#d0d0d0; --accent:#3dffa0; --hover:#00e68a; --danger:#ff7070;
+    --warn:#ffd23f; --beta:#7cc7ff; --replay:#d6bcff; --on-accent:#000000; --on-danger:#000000;
+    --on-replay:#000000; --seg-on-bg:#ffffff; --seg-on-fg:#000000; --safe-fg:#7cc7ff; --safe-border:#7cc7ff;
+    --help:#7cc7ff; --help-fg:#000000; --tip-bg:#000000; --tip-fg:#ffffff; --help-strong:#7cc7ff;
+    --term-bg:#000000; --term-rx:#3dffa0; --term-tx:#7cc7ff; --term-yaml:#ffffff; --amber:#ffd23f;
+    --danger-soft:#ff7070; --danger-text:#ff9a9a; --led:#ff6fb5; --led-text:#ff9ccb; --led-hover-text:#ffc2e0;
+    --accent-off-bg:#000000; --accent-off-fg:#a6a6a6; --run-bg:#002a14; --test-bg:#001d33; --track:#1f5c3b;
+    --dot-idle:#a6a6a6; --chart-grid:#6a6a6a; --chart-bg:#000000; --ed-surface2:#141414; --ed-beta:#7cc7ff; --ed-warn:#ffd23f;
+    --ed-error:#ff7070; --ed-danger-hover:#ff7070; --wc-c-fg:#7cc7ff; --wc-c-border:#7cc7ff; --wc-c-bg:color-mix(in srgb,var(--wc-c-fg) 12%,transparent); --trace-turn:#4db8ff;
+    --trace-fwd:#ff7070; --trace-head:#3dffa0; --focus:#ffd23f; --safe-bg:#000000; --shadow-c:#000;
+    --overlay-c:#000; --rec:var(--danger); --mode:var(--accent); --modec:var(--run-bg); --preview-bg:#000000; --preview-badge-bg:rgba(0,0,0,.7); --preview-badge-fg:#3dffa0; --off-opacity:.75; color-scheme:dark;
+  }
+  /* Night (red) — low-luminance, long-wavelength palette for darkened rigs (keeps dark adaptation;
+     cuts most green/blue emission — blue ≈ 0, green capped; colour emoji are not themed) */
+  :root[data-ui-theme="night"]{
+    --bg:#000000; --surface:#0e0100; --surface2:#060000; --border:#5a1408; --edge:#b52c10;
+    --text:#ff3a10; --dim:#f2340e; --accent:#ff5a10; --hover:#e04a0e; --danger:#ff2a0a;
+    --warn:#ff7010; --beta:#ff4e10; --replay:#ff6010; --on-accent:#000000; --on-danger:#000000;
+    --on-replay:#000000; --seg-on-bg:#5a1206; --seg-on-fg:#ff6010; --safe-fg:#ff6010; --safe-border:#7a1c0c;
+    --help:#4a0f06; --help-fg:#ff7010; --tip-bg:#1a0300; --tip-fg:#ff6010; --help-strong:#ff6010;
+    --term-bg:#000000; --term-rx:#ff5a10; --term-tx:#ff7010; --term-yaml:#ff5010; --amber:#ff7010;
+    --danger-soft:#ff2a0a; --danger-text:#ff5010; --led:#ff4410; --led-text:#ff6010; --led-hover-text:#ff7010;
+    --accent-off-bg:#1a0300; --accent-off-fg:#b03410; --run-bg:#1a0300; --test-bg:#140200; --track:#3a0a04;
+    --dot-idle:#5a1206; --chart-grid:#3a0a04; --chart-bg:#000000; --ed-surface2:#140200; --ed-beta:#ff4e10; --ed-warn:#ff7010;
+    --ed-error:#ff2a0a; --ed-danger-hover:#ff2a0a; --wc-c-fg:#ff6010; --wc-c-border:#7a1c0c; --wc-c-bg:color-mix(in srgb,var(--wc-c-fg) 12%,transparent); --trace-turn:#ff6010;
+    --trace-fwd:#ff2a0a; --trace-head:#c83a0c; --focus:#ff7010; --safe-bg:#1a0300; --shadow-c:#000;
+    --overlay-c:#000; --rec:var(--danger); --mode:var(--accent); --modec:var(--run-bg); --preview-bg:#000000; --preview-badge-bg:rgba(0,0,0,.7); --preview-badge-fg:#ff5a10; --off-opacity:.8; color-scheme:dark;
+  }
+  /* Colour-blind safe — Okabe–Ito hues on the dark ground: OK = sky blue, error = vermillion,
+     warning = yellow, Test/info = orange, Replay = white (every critical pair stays ≥ ΔE00 17 under
+     simulated protan/deutan/tritan vision); frame edges a touch stronger than Dark (3:1). */
+  :root[data-ui-theme="cvd"]{
+    --bg:#0f1419; --surface:#1a1f26; --surface2:#141a20; --border:rgba(255,255,255,.18); --edge:rgba(255,255,255,.36);
+    --text:#e6edf3; --dim:#8b949e; --accent:#56b4e9; --hover:#3a9fd9; --danger:#f0764a;
+    --warn:#f0e442; --beta:#e69f00; --replay:#e6edf3; --on-accent:#06121a; --on-danger:#1a0800;
+    --on-replay:#0f1419; --seg-on-bg:#26405e; --seg-on-fg:#cfe6ff; --safe-fg:#9fd4ff; --safe-border:#2b5b86;
+    --help:#2b74a8; --help-fg:#eaf5ff; --tip-bg:#0c2233; --tip-fg:#dbeeff; --help-strong:#9fd4ff;
+    --term-bg:#0a0e12; --term-rx:#9fe8c0; --term-tx:#7fd0ff; --term-yaml:#cfe6ff; --amber:#f0e442;
+    --danger-soft:#f0764a; --danger-text:#f59a7a; --led:#ff408c; --led-text:#ff6fa8; --led-hover-text:#ff8fbd;
+    --accent-off-bg:#0c2230; --accent-off-fg:#3f6f8c; --run-bg:#08202e; --test-bg:#2a1d00; --track:#12405a;
+    --dot-idle:#40484f; --chart-grid:#2d3640; --chart-bg:#0b0f14; --ed-surface2:#232a33; --ed-beta:#e69f00; --ed-warn:#f0e442;
+    --ed-error:#f0764a; --ed-danger-hover:#f0764a; --wc-c-fg:#e69f00; --wc-c-border:#8a5f00; --wc-c-bg:color-mix(in srgb,var(--wc-c-fg) 12%,transparent); --trace-turn:#56b4e9;
+    --trace-fwd:#f0764a; --trace-head:#f0e442; --focus:#56b4e9; --safe-bg:rgba(38,64,94,.35); --shadow-c:#000;
+    --overlay-c:#060a0e; --rec:var(--danger); --mode:var(--accent); --modec:var(--run-bg); --preview-bg:#141a20; --preview-badge-bg:rgba(0,0,0,.7); --preview-badge-fg:#56b4e9; --off-opacity:.55; color-scheme:dark;
+  }
+  /* Per-theme details beyond the palette. Native controls (sliders, checkboxes) take the
+     theme accent everywhere except Dark, which keeps the browser default it always had. */
+  :root[data-ui-theme]:not([data-ui-theme="dark"]){accent-color:var(--accent)}
+  :root[data-ui-theme="contrast"] :focus-visible{outline:3px solid var(--focus) !important;outline-offset:2px}
+  :root[data-ui-theme="contrast"] a{text-decoration:underline}
+  :root[data-ui-theme="night"]{scrollbar-color:var(--edge) var(--bg);font-variant-emoji:text}
+  :root[data-ui-theme="night"] :focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+  :root[data-ui-theme="night"] ::selection{background:var(--seg-on-bg);color:var(--seg-on-fg)}
+  /* Night's text is already dim, so text-at-reduced-opacity would drop below 4.5:1 —
+     use the secondary-text colour at full opacity instead. */
+  :root[data-ui-theme="night"] #ghQuickLinks .ql-repo{opacity:1;color:var(--dim)}
+  /* Pattern previews → red only. OPT-IN by container (.thumb = Console/paste thumbnails,
+     .pat-preview = Console big preview + Edit previews): never a blanket img/canvas rule — a
+     live canvas under a filter is re-filtered every frame. Live canvases (Scope, Analog In)
+     draw in theme colours instead. A new preview surface joins by using one of these classes. */
+  :root[data-ui-theme="night"] :is(.thumb, .pat-preview) :is(img, canvas){filter:url(#uiNightRed)}
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
   body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;
@@ -177,6 +274,7 @@
   /* Old-browser notice (no CSS color-mix()): plain tokens only — color-mix is what's missing. */
   .browser-notice{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:6px 12px;background:var(--amber);color:var(--on-accent);font-size:12px;font-weight:600}
   .browser-notice button{margin-left:auto;background:transparent;border:1px solid currentColor;color:inherit;border-radius:5px;padding:1px 8px;cursor:pointer}
+  .settings-menu .set-hint{padding:0 10px 8px;font-size:10.5px;line-height:1.4;color:var(--dim)}
   .settings-menu .set-log select{flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-family:var(--mono);font-size:11px}
   .gh-block{padding:7px 10px;font-size:11.5px;color:var(--dim)}
   /* GitHub settings are visible in every view (so the bench config is always
@@ -384,8 +482,8 @@
   body.replay-active .seqrow.active .nm,body.replay-active .seqrow.active .idx{color:var(--replay)}
   body.replay-active .seqrow.active::before{background:var(--replay)}
   body.replay-active #modeSeg,body.replay-active #connectBtn,body.replay-active #openProtoBtn,body.replay-active #fileMenu{opacity:.4}
-  /* During replay ⚙ Settings stays open-able; only its bench/repo/logging parts are frozen
-     (js/studio-replay.js FREEZE_SELECTORS). */
+  /* During replay ⚙ Settings stays open-able (Display is cosmetic — Night is useful in a dark room);
+     only its bench/repo/logging parts are frozen (js/studio-replay.js FREEZE_SELECTORS). */
   body.replay-active #settingsMenu .rigsel,body.replay-active #ghBlock,body.replay-active #fmLogRow{opacity:.4}
   .rpd-box{width:min(780px,94vw);max-width:none;max-height:86vh}
   .rpd-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border)}
@@ -2240,6 +2338,9 @@
 <link rel="stylesheet" href="css/arena-studio-alt.css?v=20260713-alt-v067" />
 </head>
 <body>
+<!-- Night theme: maps pattern previews (images / static canvases) to red only
+     (R' = R+G+B, G' = B' = 0) so they add no green or blue light of their own. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><filter id="uiNightRed" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 1 1 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/></filter></svg>
 
 <!-- ===== TOP BAR (the persistent spine) ===== -->
 <div class="topbar">
@@ -2317,10 +2418,10 @@
   <button class="connect" id="connectBtn" title="Pick the arena's serial port and open it (115200 baud)">Connect</button>
 
   <!-- ⚙ Settings — Studio settings for this browser/bench, NOT the protocol: the ONE
-       session rig (#135), GitHub + storage, run logging. Protocol-stored settings stay
+       session rig (#135), GitHub + storage, run logging, display theme. Protocol-stored settings stay
        in Edit → ⚙ Protocol settings. Same nodes/IDs as before, so every handler is unchanged. -->
   <div class="filemenu settings-menu" id="settingsMenu">
-    <button class="ribbon-btn" id="settingsMenuBtn" aria-expanded="false" aria-controls="settingsMenuPanel" title="Studio settings — bench rig, GitHub, run logging (kept in this browser, not in the protocol)">⚙ Settings ▾</button>
+    <button class="ribbon-btn" id="settingsMenuBtn" aria-expanded="false" aria-controls="settingsMenuPanel" title="Studio settings — bench rig, GitHub, run logging, display theme (kept in this browser, not in the protocol)">⚙ Settings ▾</button>
     <div class="menu" id="settingsMenuPanel" role="group" aria-label="Studio settings">
       <div class="menu-head">Bench rig</div>
       <label class="rigsel" title="Session (bench) rig — ONE shared selection consumed by Run, Edit, and Console (stream-frame geometry, ISP progress map, paste validation, FicTrac framing). Follows the loaded protocol's rig unless you explicitly pick one; locked against accidental change (#135).">
@@ -2351,6 +2452,17 @@
           <option value="behavior_v1">behavior_v1 (legacy)</option>
           <option value="full">full 25-column (debug)</option>
         </select></div>
+      <div class="menu-head">Display</div>
+      <div class="gh-row set-log" id="uiThemeRow"><label for="uiTheme">Appearance</label>
+        <select id="uiTheme" title="Visibility theme for this browser — how the Studio looks; it never changes what the Studio does. Remembered on this computer.">
+          <option value="dark">Dark (standard)</option>
+          <option value="light">Light</option>
+          <option value="contrast">High contrast</option>
+          <option value="night">Night — red, for dark rooms</option>
+          <option value="cvd">Color-blind safe</option>
+          <option value="system">Match this computer</option>
+        </select></div>
+      <div class="set-hint" id="uiThemeHint"></div>
     </div>
   </div>
 
@@ -3975,7 +4087,7 @@ function studioMarkerCurrent(stored, current) {
             tag.title = 'Bench rig: ' + label + ' — the arena layout this bench drives. Click to see or change it in ⚙ Settings.';
         }
         const sb = $('settingsMenuBtn');
-        if (sb) sb.title = 'Studio settings — bench rig: ' + label + '; GitHub, run logging (kept in this browser, not in the protocol)';
+        if (sb) sb.title = 'Studio settings — bench rig: ' + label + '; GitHub, run logging, display theme (kept in this browser, not in the protocol)';
     }
 
     // A never-saved doc (New protocol / Reset skeleton) has no on-disk artifact
@@ -5475,6 +5587,55 @@ function studioMarkerCurrent(stored, current) {
         if (!e.target.closest('#fileMenu')) $('fileMenu').classList.remove('open');
         if (!e.target.closest('#settingsMenu')) setSettingsOpen(false);
     });
+    // ---- ⚙ Settings → Display: visibility theme (per browser, localStorage) -------
+    // Themes are pure CSS-token swaps on html[data-ui-theme] (see the :root blocks);
+    // they never change behaviour or which controls exist. The head script applies
+    // the stored choice before first paint; this wires the selector + "Match this
+    // computer" (prefers-contrast / prefers-color-scheme, followed live).
+    const UI_THEMES = {
+        dark: { label: 'Dark', hint: 'The standard bench theme.' },
+        light: { label: 'Light', hint: 'Dark text on a light background — for lit rooms and projectors.' },
+        contrast: { label: 'High contrast', hint: 'Black background, bright text, solid edges and a thick yellow focus ring.' },
+        night: { label: 'Night', hint: 'Dim red display for darkened rigs: keeps your eyes dark-adapted and cuts most of the green and blue light the monitor gives off (colour emoji excepted). Pattern previews show in red. Measure at the arena before relying on it during an experiment.' },
+        cvd: { label: 'Color-blind safe', hint: 'Okabe–Ito colours: OK / connected = blue, errors and STOP = vermillion, warnings = yellow — no red/green pairs.' },
+        system: { label: 'Match this computer', hint: 'Follows this computer’s display settings: high contrast if requested, otherwise light or dark.' }
+    };
+    const UI_THEME_KEY = 'studio_ui_theme';
+    const themeMq = (q) => { try { return window.matchMedia ? window.matchMedia(q) : null; } catch (_) { return null; } };
+    const mqContrast = themeMq('(prefers-contrast: more)');
+    const mqLight = themeMq('(prefers-color-scheme: light)');
+    function systemUiTheme() {
+        if (mqContrast && mqContrast.matches) return 'contrast';
+        return mqLight && mqLight.matches ? 'light' : 'dark';
+    }
+    function storedUiTheme() {
+        let t = null;
+        try { t = localStorage.getItem(UI_THEME_KEY); } catch (_) {}
+        return UI_THEMES[t] ? t : 'dark';
+    }
+    function applyUiTheme(choice, opts) {
+        const c = UI_THEMES[choice] ? choice : 'dark';
+        if (opts && opts.persist) { try { localStorage.setItem(UI_THEME_KEY, c); } catch (_) {} }
+        const eff = c === 'system' ? systemUiTheme() : c;
+        // The Alt route keeps its own theme switch (html[data-theme]).
+        if (!document.documentElement.classList.contains('arena-alt')) {
+            document.documentElement.setAttribute('data-ui-theme', eff);
+        }
+        const sel = $('uiTheme');
+        if (sel && sel.value !== c) sel.value = c;
+        const hint = $('uiThemeHint');
+        if (hint) hint.textContent = UI_THEMES[c].hint + (c === 'system' ? ' Now: ' + UI_THEMES[eff].label + '.' : '');
+        // Canvases that only redraw on new data (Analog In) repaint in the new colours.
+        document.dispatchEvent(new CustomEvent('studio-ui-theme', { detail: { theme: eff } }));
+        return eff;
+    }
+    Studio.applyUiTheme = applyUiTheme;
+    Studio.uiTheme = () => document.documentElement.getAttribute('data-ui-theme') || 'dark';
+    if ($('uiTheme')) $('uiTheme').addEventListener('change', (e) => applyUiTheme(e.target.value, { persist: true }));
+    [mqContrast, mqLight].forEach((mq) => {
+        if (mq && mq.addEventListener) mq.addEventListener('change', () => { if (storedUiTheme() === 'system') applyUiTheme('system'); });
+    });
+    applyUiTheme(storedUiTheme());
     // Old-browser guard: the stylesheet's tints, several borders and shadows use CSS
     // color-mix() (Chrome/Edge ≥ 111), while Web Serial works from 89 — an un-updated
     // rig PC would otherwise lose those styles silently. Say so, persistently.
@@ -5759,8 +5920,8 @@ function studioMarkerCurrent(stored, current) {
         el.style.left = (lo * 100).toFixed(1) + '%';
         el.style.width = (Math.max(0.6, (hi - lo) * 100)).toFixed(1) + '%';
     }
-    // Analog In strip chart colours come from the colour tokens (the canvas can't read
-    // CSS itself); cached per theme attribute.
+    // Analog In strip chart colours follow the ⚙ Settings → Display theme (the
+    // canvas can't read CSS itself); cached per theme.
     let aiChartColorsCache = null, aiChartColorsTheme = null;
     function aiChartColors() {
         const root = document.documentElement;
@@ -5777,6 +5938,10 @@ function studioMarkerCurrent(stored, current) {
         };
         return aiChartColorsCache;
     }
+    document.addEventListener('studio-ui-theme', () => {
+        aiChartColorsCache = null;
+        try { aiRender(); } catch (_) { /* panel not ready yet */ }
+    });
     function aiRender(a) {
         if (!AI || !aiMon) return;
         for (const ch of [1, 2]) {
@@ -16938,7 +17103,7 @@ initFromUrl();
     '.status': 'Connection to the arena. Green dot = connected. Use Connect (top right) to pick the arena’s USB port — works in Chrome and Edge.',
     '.rigsel': 'The rig (arena) this bench drives. Previews and test frames use this arena layout. The 🔒 keeps it from changing by accident.',
     '#rigTag': 'The rig (arena) this bench is set up for. Check it matches your arena before you connect; click it to see or change it in ⚙ Settings.',
-    '#settingsMenuBtn': 'Studio settings for this bench — which rig (arena) it drives, GitHub sign-in and where saves go, and the run-log format. These stay in this browser; they are not part of the protocol.',
+    '#settingsMenuBtn': 'Studio settings for this bench — which rig (arena) it drives, GitHub sign-in and where saves go, the run-log format, and how the Studio looks (Display). These stay in this browser; they are not part of the protocol.',
     '#rigMismatch': 'The bench rig and the protocol’s rig differ. The bench setting wins for Console operations; the protocol still runs with its own rig.',
     '#docName': 'The protocol that is open right now.',
     '#openProtoBtn': 'Open a protocol file (.yaml) from this computer.',
@@ -16980,6 +17145,7 @@ initFromUrl();
     '#runVarsCard': 'Variables the protocol lets you adjust during a run, within the limits its author set. Type a new value and press Apply — it takes effect at the next trial and is written to the run log with your name.',
     '#runVarsApply': 'Stage the changed values. Nothing changes mid-trial; the new values start at the next trial and stay until you Apply again.',
     '#runVarsReason': 'Optional: why you changed it. Saved with the change in the run log.',
+    '#uiTheme': 'How the Studio looks on this computer — Dark, Light, High contrast, Night (dim red, for darkened rigs; cuts most green and blue light) or Color-blind safe. It never changes what the Studio does.',
     '#fmLogLevel': 'How much detail recorded runs keep. Leave it on the default unless an instructor asks otherwise.',
     '#scopeAutoY': 'Fit every trace to its own range automatically (on), or use the fixed ± limits (off).',
     '#scopeLabels': 'How many trial names to write on the trace: full shows every name that fits; clean shows only the current trial. Hover the trace for any trial’s name.',
