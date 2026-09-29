@@ -128,7 +128,7 @@ tick the box. Nothing below has been written to Linear yet.
   - Arena Software Control · In Progress · Michael. Attach #226, #227, #228, #229.
   - Description: the model (one frozen candidate), the rules, `docs/development/release-process.md`.
   - Done when the first release ships and one hotfix/rollback drill has been exercised.
-- [x] **b. Multi-color G6 panels — web support (epic)** → **LAB-223** (V1.0 · Backlog · Michael). ⚠ The sub-issues (LAB-18, LAB-224, LAB-213, LAB-221) are **not attached yet**; Michael reviews them first.
+- [x] **b. Multi-color G6 panels — web support (epic)** → **LAB-223** (V1.0 · Backlog · Michael). Sub-issues **attached 2026-09-29** after Michael's review: LAB-18, LAB-224, LAB-213, LAB-221. The HW Panel repo and decisions doc are linked.
   - ~~G6 Arena Extensions~~ **Web-based V1.0** (decided 2026-09-29) · Backlog. **Sub-issues: LAB-18, LAB-213** (plus c).
   - Description:
     - The panel is a four-color 2×2 mosaic, `ch = 2*(row%2)+(col%2)`, banks T0–T3. There is no firmware fork and no frame-format change.
@@ -144,7 +144,7 @@ tick the box. Nothing below has been written to Linear yet.
 - [x] **c. Build the fly-vision four-color panels (violet / blue / green / orange)** → **LAB-224** (HW & FW · In Progress · Frank). **Corrected from the HW Panel decisions doc:** yellow-orange, not orange; Yongyu 0402 LEDs, 68 Ω ×3 + 110 Ω, not 910/442/442/301 Ω. 15 panels are built and in bench test.
   - G6 Arena Hardware & Firmware · Backlog.
   - Description: resistor banks 910/442/442/301 Ω (T0–T3). Today this exists only in a 07-15 comment on LAB-18. Bench commands are in panel fw PR #30. Calibration priority is 615–625, 420, 475, 525 nm.
-- [ ] **d. Write up the LAB-119 multicolor (UV) LED research findings**
+- [x] **d. Write up the LAB-119 multicolor (UV) LED research findings** *(2026-09-29: no new ticket. The findings are already in `LED-Display_G6_Hardware_Panel/docs/Four-color and Red+IR panel decisions.md`, which is now attached to LAB-119 with a comment. LAB-18 and LAB-224 gained "As ordered" sections confirmed from the BOMs; the IR LED is Inolux IN-S42CTQIR, not the OSRAM SFH 4053B.)*
   - ~~G6 Arena Extensions~~ **G6 Arena Hardware & Firmware** (the Extensions project was retired 2026-09-29) · Todo. LAB-119 is Done but has an empty description and no comments, so its findings aren't recorded anywhere.
 - [x] **e. Mode-3 wedge — firmware root cause + fix (fw #50)** → **LAB-225**, created as **Done** (the fix is in fw #56); Michael (the #56 author); fw #50/#51/#52/#54 attached.
   - G6 Arena Hardware & Firmware · In Progress · Frank. Attach fw #56 and issues #50, #51, #52, #54.
