@@ -2780,10 +2780,9 @@
           </div>
           <div class="cmenu-sep" title="Rig-declared controller I/O roles + power-on defaults (rig YAML io: block, #135). Applied automatically at connect; the role selectors are SESSION-LOCAL overrides — they never edit the rig YAML. Greyed roles need firmware that doesn't exist yet. Names match the board's BNC silkscreen.">Rig I/O — session roles</div>
           <div class="cmenu-row">
-            <label title="The BNC silkscreened 'Digital IO 1 (5V)' on the controller (J3; rig io: port 1 = 0xAA channel 1)">Digital IO 1</label>
-            <select id="cIoRoleDio1" title="'Digital IO 1 (5V)' role — session-local override of the rig's io: declaration">
+            <label title="The BNC silkscreened 'Digital IO 1 (5V)' on the controller (J3; rig io: port 1 = 0xAA channel 1). It can't be the trigger input: only Digital IO 2 (5V) is wired to the panels' trigger (EINT).">Digital IO 1</label>
+            <select id="cIoRoleDio1" title="'Digital IO 1 (5V)' role — session-local override of the rig's io: declaration. No in_trigger here: only Digital IO 2 reaches the panels' trigger input (EINT).">
               <option value="off">off</option>
-              <option value="in_trigger" disabled title="Needs io_ext firmware (0xC2 capability bit 5) — enables automatically when the connected controller advertises it.">in_trigger</option>
               <option value="out_programmable">out_programmable</option>
               <option value="out_debug_framescan" disabled title="Needs io_ext firmware (0xC2 capability bit 5) — enables automatically when the connected controller advertises it.">out_debug_framescan</option>
             </select>
@@ -7034,7 +7033,8 @@ function updateRigIoGating() {
         opt.title = on ? title
             : 'Needs io_ext firmware (0xC2 capability bit 5) — connect a controller running feat/dio-roles-ao-modes or later.';
     };
-    gate('cIoRoleDio1', 'in_trigger', 'Input role — on Digital IO 2 this is the EINT trigger route (J30); pulse-semantics bench validation pending.');
+    // Digital IO 1 has no in_trigger option at all: that BNC has no route to the panels' EINT net
+    // (#168). Only Digital IO 2 can be the trigger input.
     gate('cIoRoleDio2', 'in_trigger', 'Input role — the EINT trigger route to the panels (J30 shunt); pulse-semantics bench validation pending.');
     gate('cIoRoleDio1', 'out_debug_framescan', 'Scope envelope: HIGH exactly while each frame\'s SPI transmission runs (bench-verified).');
     gate('cIoRoleDio2', 'out_debug_framescan', 'Scope envelope: HIGH exactly while each frame\'s SPI transmission runs. NOTE: with the J30 shunt installed this also pulses the panels\' EINT net.');
@@ -7089,6 +7089,11 @@ Studio.applyRigIo = async function (opts) {
         const r = roleOf(d.port === 1 ? 'cIoRoleDio1' : 'cIoRoleDio2', d.role);
         const ch = d.port; // io: port == wire channel == board "Digital IO n (5V)" label
         if (r === 'off') continue; // off = DON'T TOUCH (keeps fw boot roles, e.g. port 2 in_trigger)
+        if (ch === 1 && r === 'in_trigger') {
+            // Digital IO 1 has no EINT route: the trigger would be silently dead (#168).
+            clog('rig io: Digital IO 1 cannot be the trigger input (only Digital IO 2 reaches the panels\' EINT) — not applied', 'warn');
+            continue;
+        }
         if (ext) {
             // Explicit role first (SET_DIO_ROLE 0xAC), then the level for outputs.
             try {
