@@ -115,7 +115,8 @@ Node, Prettier, Python, and `websockets` from conda-forge — **there is no npm,
 
 ```bash
 pixi install          # one-time: provisions Node + Prettier + Python
-pixi run test         # full JS test suite (node)
+pixi run test         # full suite: every tests/test-*.js|py + tests/validate-*.js (scripts/run-tests.py)
+pixi run test -- wire # only files whose name contains "wire"
 pixi run format       # Prettier --write over **/*.js
 pixi run format-check # Prettier --check (matches the old CI check)
 pixi run bridge       # FicTrac closed-loop bridge (see fictrac-bridge/)
@@ -127,7 +128,9 @@ only) at `js/vendor/yaml/browser/` and serves both the browser (via the import
 map in `experiment_designer_v3.html`) and Node — no Node-specific build is
 committed. The v3 modules `import 'yaml'` (a bare specifier); under Node that's
 resolved to the vendored browser build by `tests/vendor-yaml.register.mjs` (a
-`--import` resolve hook), which the `test` task wires in for the v3 suite.
+`--import` resolve hook), which `scripts/run-tests.py` passes to every Node test.
+A new test file only needs the `tests/test-*` (or `tests/validate-*`) name to be run; there is
+no list to edit, so parallel PRs no longer conflict in `pixi.toml`.
 `require()`-ing that ESM build is why `nodejs >= 22.12` is pinned. When bumping
 the vendored `yaml`, replace only `js/vendor/yaml/browser/` (+ `LICENSE`).
 

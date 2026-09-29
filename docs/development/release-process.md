@@ -100,6 +100,14 @@ same on macOS, Linux and Windows (CI runs the tooling tests on all three).
 - **Pre-tier PRs** that already bumped the footer and wrote their own notes entry are adopted, not
   double-bumped (their version and entry are kept; only the timestamp is refreshed).
 
+## Before validation: adversarial review of the candidate
+
+Once a candidate is built, and **before asking anyone for bench time**, get an adversarial review of
+exactly what would ship: the diff `origin/main...origin/release/<name>`. Claude sessions use the
+`codex-diff-review` skill (Codex standard + adversarial passes, reconciled with Claude's own review).
+Fix or drop what it finds, rebuild (rc+1), and only then validate. On 2026-09-29, rc1 and rc2 were
+bench-validated first; the review then held #219 back, so both bench runs had to be repeated on rc3.
+
 ## Validation
 
 - Validate on a rig **between sessions**. Never open `/next/` on a rig PC while an experiment is
@@ -112,6 +120,27 @@ same on macOS, Linux and Windows (CI runs the tooling tests on all three).
   validate again; `status` and `release` detect both.
 - If a candidate touches `fictrac-bridge/`, testers run the bridge from a checkout of the
   candidate's `release/<name>` branch (a pinned commit, not a moving ref).
+
+### Bench validation kit (G6 2×10 fly-on-ball bench, ~5 min)
+
+1. Start the bridge with a log directory, and a stationary simulated fly:
+   `pixi run bridge -- --log-dir <dir>` and `pixi run sim -- --noise 0`.
+2. Open `https://reiserlab.github.io/webDisplayTools/next/arena_studio.html` and load
+   `protocols/validation/bench_closed_loop_2x10.yaml`. It needs the CSHL course pattern bundle on the
+   SD card. Connect the bridge, then Connect the arena.
+3. **Turn the course-repo upload off for the test.** The lab browsers have the course pipeline
+   configured (token + `reiserlab/cshl-2026-course` + direct commit), so a completed
+   **Run experiment** commits its log into the course data as the configured bench id. Use a browser
+   profile without the course token, or switch off "Commit directly" for the session. Never
+   validate with **Test experiment** instead: test runs don't write `run_metadata` to the bridge log.
+4. **Run experiment** (confirm the NEXT dialog). About 22 s.
+5. Check the log:
+   `pixi run bench-check -- <dir>/arena-log-*.jsonl --hold epoch_a_frame25=25 --hold epoch_b_frame75=75 --channel next --build <candidate sha>`.
+   It checks that the run completed, every arena command was ok, there were no error glyphs, the
+   closed loop held frames 25 and 75, and the log names this tier and build. It also prints the
+   controller firmware and the panel inventory. Exit status 0 = pass.
+6. Post the note with `--notes-file`, then free the bench: disconnect, close the tab, stop the
+   bridge and the simulator.
 
 ## Releasing
 
