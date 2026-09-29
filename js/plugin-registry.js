@@ -1253,6 +1253,14 @@ function parseRigIo(rigData) {
         }
         var slot = result.dio[port - 1];
         slot.role = _rigIoRole(entry.role, RIG_IO_ROLES.dio, 'dio port ' + port, result.warnings);
+        // Only "Digital IO 2 (5V)" is wired to the panels' EINT trigger net (U3 + J30 shunt).
+        // Digital IO 1 has no route, so in_trigger there would be a silently dead trigger (#168).
+        if (port === 1 && slot.role === 'in_trigger') {
+            result.warnings.push(
+                'dio port 1 cannot be in_trigger: only "Digital IO 2 (5V)" reaches the panels\' trigger input (EINT); treated as off'
+            );
+            slot.role = 'off';
+        }
         // default is outputs-only; clamp anything truthy-numeric/boolean to 0|1.
         if (entry.default != null)
             slot.default = entry.default === true || Number(entry.default) === 1 ? 1 : 0;

@@ -930,5 +930,148 @@ check('FIRMWARE_VERSION_PAYLOAD_BYTES', Wire.FIRMWARE_VERSION_PAYLOAD_BYTES, 46)
     }
 }
 
+// Panel inventory (fw #59, g6_03 § 0xD_): 0xC2 feature bitmap after the MAC,
+// 0xD0/0xD1 encoders, the 18-byte 0xD1 page header with scan_id at [17].
+console.log('\n=== panel inventory (0xC2 features, 0xD0 / 0xD1) ===');
+{
+    // 0xC2 with MAC + feature bitmap [4, 01 00 00 00] → panel_inventory; cap 0xA3.
+    const ciFeat = Uint8Array.from([
+        0x0f, 0x00, 0xc2, 0x02, 0xa3, 0x04, 0xe9, 0xe5, 0xab, 0xcd, 0x12, 0x04, 0x01, 0x00, 0x00,
+        0x00
+    ]);
+    const fi = Wire.decodeControllerInfo(ciFeat);
+    check('feature bitmap parsed', fi.featureBits, 1);
+    check('feature names', fi.features.join(','), 'panel_inventory');
+    check(
+        'caps with health (0xA3)',
+        fi.capabilities.join(','),
+        'g6_mode,v2_local_storage,io_ext,health'
+    );
+    check('mac still parsed with features', fi.mac, '04:E9:E5:AB:CD:12');
+    // qwiic_i2c = bit 1; ai_cal = capability bit 6 (0xE3 with #47 merged).
+    const fq = Wire.decodeControllerInfo(
+        Uint8Array.from([
+            0x0f, 0x00, 0xc2, 0x02, 0xe3, 1, 2, 3, 4, 5, 6, 0x04, 0x02, 0x00, 0x00, 0x00
+        ])
+    );
+    check('qwiic_i2c feature', fq.features.join(','), 'qwiic_i2c');
+    check(
+        'ai_cal capability (0xE3)',
+        fq.capabilities.join(','),
+        'g6_mode,v2_local_storage,io_ext,ai_cal,health'
+    );
+    // No bitmap (8-byte payload) → featureBits null, features []; truncated bitmap → same.
+    const f8 = Wire.decodeControllerInfo(
+        Uint8Array.from([0x0a, 0x00, 0xc2, 0x02, 0xa3, 1, 2, 3, 4, 5, 6])
+    );
+    checkBool('no bitmap → featureBits null', f8.featureBits === null && f8.features.length === 0);
+    const ft = Wire.decodeControllerInfo(
+        Uint8Array.from([0x0c, 0x00, 0xc2, 0x02, 0xa3, 1, 2, 3, 4, 5, 6, 0x04, 0x01])
+    );
+    checkBool(
+        'truncated bitmap → no features',
+        ft.featureBits === null && ft.features.length === 0
+    );
+    check(
+        'FEATURE_BITS exported',
+        Wire.FEATURE_BITS.map(([, n]) => n).join(','),
+        'panel_inventory,qwiic_i2c,ai_stream'
+    );
+
+    checkBytes('panel-inventory-scan presence', Wire.encodePanelInventoryScan(0), '02 d0 00');
+    checkBytes('panel-inventory-scan fingerprints', Wire.encodePanelInventoryScan(1), '02 d0 01');
+    checkThrows('panel-inventory-scan rejects action 2', () => Wire.encodePanelInventoryScan(2));
+    checkBytes('get-panel-inventory default', Wire.encodeGetPanelInventory(), '01 d1');
+    checkBytes('get-panel-inventory first=32', Wire.encodeGetPanelInventory(32), '02 d1 20');
+    checkThrows('get-panel-inventory rejects 256', () => Wire.encodeGetPanelInventory(256));
+
+    // A 3-panel page (panel_count 3, so one page): flags 0x13 = presence_valid |
+    // fp_valid | fp_prefix, first 0, n 3, ref_crc 0, fp_len 65536, age 1234 ms,
+    // scan_id 7; panels: 5 (no ref) crc 0x9BE0D3C7, absent, 6 (no ISP).
+    const page = Uint8Array.from([
+        0x23,
+        0x00,
+        0xd1, // len 35 (status + echo + 33 payload), status 0, echo
+        0x01,
+        0x03,
+        0x13,
+        0x00,
+        0x03, // version, count, flags, first, n
+        0x00,
+        0x00,
+        0x00,
+        0x00, // ref_crc32
+        0x00,
+        0x00,
+        0x01,
+        0x00, // fp_len 65536
+        0xd2,
+        0x04,
+        0x00,
+        0x00, // age_ms 1234
+        0x07, // scan_id
+        0x05,
+        0xc7,
+        0xd3,
+        0xe0,
+        0x9b, // panel 1: fw_no_reference, crc 0x9BE0D3C7
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x00, // panel 2: absent
+        0x06,
+        0x00,
+        0x00,
+        0x00,
+        0x00 // panel 3: fw_failed
+    ]);
+    const pi = Wire.decodePanelInventory(page);
+    checkBool('decodePanelInventory parses', !!pi);
+    check('inventory panelCount', pi.panelCount, 3);
+    check('inventory flags', pi.flagNames.join(','), 'PRESENCE_VALID,FP_VALID,FP_PREFIX');
+    check('inventory fpLen', pi.fpLen, 65536);
+    check('inventory ageMs', pi.ageMs, 1234);
+    check('inventory scanId', pi.scanId, 7);
+    check(
+        'inventory entry panel numbers (1-based)',
+        pi.entries.map((e) => e.panel).join(','),
+        '1,2,3'
+    );
+    check(
+        'inventory entry statuses',
+        pi.entries.map((e) => e.statusName).join(','),
+        'fw_no_reference,absent,fw_failed'
+    );
+    check('inventory crc32 LE', pi.entries[0].crc32, 0x9be0d3c7);
+    // 0xD0 replies carry the same payload under its own echo byte.
+    const scanReply = Uint8Array.from(page);
+    scanReply[2] = 0xd0;
+    checkBool(
+        'decodePanelInventory accepts the 0xD0 echo',
+        Wire.decodePanelInventory(scanReply).scanId === 7
+    );
+    // Past the end: n = 0, 18-byte header only.
+    const empty = Uint8Array.from([
+        0x14, 0x00, 0xd1, 1, 3, 0x13, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 7
+    ]);
+    check(
+        'inventory past-end page has no entries',
+        Wire.decodePanelInventory(empty).entries.length,
+        0
+    );
+    // Length mismatch (17-byte pre-scan_id header) and error status → null.
+    checkBool(
+        'inventory rejects a short header',
+        Wire.decodePanelInventory(page.slice(0, 20)) === null
+    );
+    checkBool(
+        'inventory rejects status!=0',
+        Wire.decodePanelInventory(Uint8Array.from([0x04, 0x0a, 0xd0, 0x53, 0x74])) === null
+    );
+    check('OPCODES.PANEL_INVENTORY_SCAN', Wire.OPCODES.PANEL_INVENTORY_SCAN, 0xd0);
+    check('OPCODES.GET_PANEL_INVENTORY', Wire.OPCODES.GET_PANEL_INVENTORY, 0xd1);
+}
+
 console.log(`\n=== Summary ===\n${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures > 0 ? 1 : 0);
