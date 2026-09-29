@@ -67,7 +67,7 @@ class ThreeViewer {
 
         this.arenaConfig = null;
         this.panelSpecs = null;
-        // Multi-colour panel layout key (js/panel-color.js). null → legacy green ramp.
+        // Multi-color panel layout key (js/panel-color.js). null → legacy green ramp.
         this.panelLayoutKey = null;
 
         this._animationId = null;
@@ -201,10 +201,10 @@ class ThreeViewer {
     }
 
     /**
-     * Select the panel colour layout (a `js/panel-color.js` layout key such as
-     * 'four-colour'). Each LED is then tinted by the colour of the bank it physically
+     * Select the panel color layout (a `js/panel-color.js` layout key such as
+     * 'four-color'). Each LED is then tinted by the color of the bank it physically
      * sits in; null or the mono layout restores the legacy green ramp. The glow layer
-     * already takes per-LED vertex colours, so no geometry is rebuilt.
+     * already takes per-LED vertex colors, so no geometry is rebuilt.
      * @param {string|null} layoutKey
      */
     setPanelColor(layoutKey) {
@@ -1231,9 +1231,9 @@ class ThreeViewer {
     }
 
     /**
-     * Material colour for one LED. Colour belongs to the PHYSICAL LED (its panel row `py`
+     * Material color for one LED. Color belongs to the PHYSICAL LED (its panel row `py`
      * and panel column, CCW mirror applied) — deliberately without the phase offset, which
-     * slides the pattern under the fixed colour mosaic exactly as the hardware does.
+     * slides the pattern under the fixed color mosaic exactly as the hardware does.
      * Falls back to the legacy ramp when js/panel-color.js is not loaded (e.g. the replay
      * viewer) or the layout is mono.
      */

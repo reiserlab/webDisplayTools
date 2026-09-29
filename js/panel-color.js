@@ -1,7 +1,7 @@
 /**
- * panel-color.js — colour-layout model for multi-colour G6 panels (LAB-223 / LAB-228).
+ * panel-color.js — color-layout model for multi-color G6 panels (LAB-223 / LAB-228).
  *
- * A colour G6 panel is the standard 20×20 board with its four LED banks T0–T3 populated
+ * A color G6 panel is the standard 20×20 board with its four LED banks T0–T3 populated
  * with different LEDs. The panel firmware (layout.cpp, NUM_COLOR = 4) lays the banks out
  * as a repeating 2×2 mosaic. In HOST coordinates — the ones the .pat frames, the grid
  * editor and every viewer use; row 0 = bottom, col 0 = left:
@@ -9,18 +9,18 @@
  *     bank(row, col) = 2 * (row % 2) + (col % 2)
  *         T0 even row / even col · T1 even / odd · T2 odd / even · T3 odd / odd
  *
- * Spec: Modular-LED-Display docs/development/g6_02-led-mapping.md (colour banks section).
+ * Spec: Modular-LED-Display docs/development/g6_02-led-mapping.md (color banks section).
  *
  * Consequences the rest of the tool relies on:
- *   - Colour is a PANEL property, orthogonal to generation and arena config. No new
- *     generation id, no PANEL_SPECS entry, no arena config, no .pat format change: a colour
- *     pattern is an ordinary GS2/GS16 frame whose pixel colour is fixed by its position.
- *   - A pure single-colour stimulus therefore lights only 100 of the 400 LEDs per panel
+ *   - Color is a PANEL property, orthogonal to generation and arena config. No new
+ *     generation id, no PANEL_SPECS entry, no arena config, no .pat format change: a color
+ *     pattern is an ordinary GS2/GS16 frame whose pixel color is fixed by its position.
+ *   - A pure single-color stimulus therefore lights only 100 of the 400 LEDs per panel
  *     (a 10×10 lattice at 2-px pitch). The renderers show exactly that.
  *   - ROW_PARITY_FLIP is the ONE bench-decided knob. js/pat-encoder.js packs panel rows as
  *     `19 - row`, so host-row parity and wire-row parity are opposite; spec + firmware say
  *     host row 0 = bottom = T0/T1 (flip 0). If a bank-0-only pattern lights the other row
- *     parity on a real colour panel, set this to 1 — nothing else changes.
+ *     parity on a real color panel, set this to 1 — nothing else changes.
  *
  * Dual export — browser global (`window.PanelColor`) + Node (CommonJS). Deliberately NO
  * bare top-level ES `export`, so this file is safe as a plain <script src> (the designer)
@@ -31,11 +31,11 @@
 
     var ROW_PARITY_FLIP = 0;
     var DEFAULT_LAYOUT = 'g6-green';
-    var OFF_CSS = '#1e2329'; // the grid's "LED off" colour (matches the legacy renderers)
+    var OFF_CSS = '#1e2329'; // the grid's "LED off" color (matches the legacy renderers)
 
     // LED channels (the spectral types a bank can be populated with). rgb = on-screen
     // primary at full brightness. Green is the legacy phosphor ramp at full (0.6, 1.0, 0.2)
-    // so a green bank in a colour layout looks exactly like today's mono panel.
+    // so a green bank in a color layout looks exactly like today's mono panel.
     var CHANNELS = {
         green: { id: 'green', label: 'green 525 nm', nm: 525, rgb: [153, 255, 51], visible: true },
         violet: {
@@ -54,11 +54,11 @@
             visible: true
         },
         red: { id: 'red', label: 'red 630 nm', nm: 630, rgb: [255, 50, 40], visible: true },
-        // Invisible to us and (mostly) to the fly — drawn as a dim false colour so the
+        // Invisible to us and (mostly) to the fly — drawn as a dim false color so the
         // lattice is still visible on screen. Legend text says so.
         ir: {
             id: 'ir',
-            label: 'IR 850 nm (false colour)',
+            label: 'IR 850 nm (false color)',
             nm: 850,
             rgb: [190, 70, 110],
             visible: false
@@ -71,8 +71,8 @@
     var LAYOUT_DEFS = [
         ['g6-green', 'G6 green (standard)', '', ['green', 'green', 'green', 'green']],
         [
-            'four-colour',
-            'G6 four-colour (violet · blue · green · yellow-orange)',
+            'four-color',
+            'G6 four-color (violet · blue · green · yellow-orange)',
             '_4c',
             ['violet', 'blue', 'green', 'yellow']
         ],
@@ -146,7 +146,7 @@
     }
 
     /**
-     * Per-bank ON-colour weights [w0..w3] ∈ [0,1].
+     * Per-bank ON-color weights [w0..w3] ∈ [0,1].
      *   preset = 'all' | null      → [1,1,1,1]
      *   preset = <channel id>      → 1 on that channel's banks, 0 elsewhere
      *   preset = { id: level0..15} → level/15 per bank (GS16) or level>0 ? 1 : 0 (GS2);
@@ -184,7 +184,7 @@
     }
 
     /**
-     * Mask a frame in place by the ON-colour weights: v → min(maxVal, round(v · w[bank])).
+     * Mask a frame in place by the ON-color weights: v → min(maxVal, round(v · w[bank])).
      * Identity for mono layouts or all-ones weights. Returns the frame.
      */
     function applyOnColor(frame, pixelRows, pixelCols, gsMode, key, weights) {
@@ -222,7 +222,7 @@
         return frame;
     }
 
-    // Legacy green-phosphor ramp (the value the renderers used before colour): r 0.6, g 1, b 0.2.
+    // Legacy green-phosphor ramp (the value the renderers used before color): r 0.6, g 1, b 0.2.
     function legacyRgb(b, fn) {
         return [fn(b * 0.6 * 255), fn(b * 255), fn(b * 0.2 * 255)];
     }
@@ -233,13 +233,13 @@
         return [fn(rgb[0] * b), fn(rgb[1] * b), fn(rgb[2] * b)];
     }
 
-    /** 2D canvas fill colour for the LED at (row, col). Off → OFF_CSS. Math.round like the grid. */
+    /** 2D canvas fill color for the LED at (row, col). Off → OFF_CSS. Math.round like the grid. */
     function pixelCss(key, row, col, brightness) {
         if (!(brightness > 0)) return OFF_CSS;
         var c = pixelRgb(key, row, col, brightness, Math.round);
         return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
     }
-    /** 3D material colour (THREE hex). Math.floor like the legacy ThreeViewer ramp. */
+    /** 3D material color (THREE hex). Math.floor like the legacy ThreeViewer ramp. */
     function pixelHex(key, row, col, brightness) {
         var c = pixelRgb(key, row, col, brightness, Math.floor);
         return (c[0] << 16) | (c[1] << 8) | c[2];
@@ -248,7 +248,7 @@
     function valueCss(brightness) {
         return pixelCss(DEFAULT_LAYOUT, 0, 0, brightness);
     }
-    /** A channel's on-screen colour at full brightness (chip dots, legends). */
+    /** A channel's on-screen color at full brightness (chip dots, legends). */
     function channelCss(id) {
         var ch = getChannel(id) || CHANNELS.green;
         return 'rgb(' + ch.rgb[0] + ',' + ch.rgb[1] + ',' + ch.rgb[2] + ')';
@@ -270,13 +270,13 @@
     function legendText(key) {
         var l = getLayout(key);
         if (!l || l.mono) return '';
-        var s = 'values are per-LED; colour is where the LED sits';
+        var s = 'values are per-LED; color is where the LED sits';
         if (
             l.channels.some(function (c) {
                 return !c.visible;
             })
         )
-            s += ' · IR shown as false colour';
+            s += ' · IR shown as false color';
         return s;
     }
     function filenameTag(key) {

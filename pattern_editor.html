@@ -35,7 +35,7 @@
          Studio loads, so behavior matches across the two tools -->
     <script src="js/build-channel.js"></script> <!-- release tier: Production / Next / local -->
     <script src="js/pattern-set.js"></script>
-    <!-- multi-colour G6 panels: bank mosaic + ON-colour weights (LAB-228); classic dual-export,
+    <!-- multi-color G6 panels: bank mosaic + ON-color weights (LAB-228); classic dual-export,
          also read as globalThis.PanelColor by the ES-module viewers -->
     <script src="js/panel-color.js"></script>
     <script src="js/studio-url-state.js"></script>
@@ -1319,7 +1319,7 @@
             min-width: 30px;
         }
 
-        /* Multi-colour panels: ON-colour chips + custom per-channel levels (LAB-228) */
+        /* Multi-color panels: ON-color chips + custom per-channel levels (LAB-228) */
         .pd-oncolor-chips { display: flex; flex-wrap: wrap; gap: 4px; }
         .pd-oncolor-chip {
             display: inline-flex; align-items: center; gap: 5px;
@@ -1994,11 +1994,11 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Multi-colour panels only (Panel LEDs selector in the status bar): which
+                    <!-- Multi-color panels only (Panel LEDs selector in the status bar): which
                          LED banks an ON pixel lights. Applied as a per-LED mask after generation. -->
                     <div class="control-row" id="onColorRow" style="display: none;">
                         <div class="control-group">
-                            <label title="What ON means on a multi-colour panel: each pixel value is multiplied by its LED bank's weight after generation. A pure colour lights one 10×10 lattice per panel (2-px pitch).">ON colour</label>
+                            <label title="What ON means on a multi-color panel: each pixel value is multiplied by its LED bank's weight after generation. A pure color lights one 10×10 lattice per panel (2-px pitch).">ON color</label>
                             <div class="pd-oncolor-chips" id="onColorChips"></div>
                             <div class="pd-oncolor-custom" id="onColorCustom"></div>
                         </div>
@@ -2292,11 +2292,11 @@
                     <div class="edit-palette" id="editPalette"></div>
                     <span class="current-color-display" id="currentColorDisplay">15</span>
                 </div>
-                <!-- Multi-colour panels only: paint one LED, or a whole 2×2 colour cell with the ON-colour mix -->
+                <!-- Multi-color panels only: paint one LED, or a whole 2×2 color cell with the ON-color mix -->
                 <div class="toolbar-section" id="brushSection" style="display: none;">
                     <span class="toolbar-label">Brush:</span>
-                    <button class="edit-ops-btn active" id="brushLedBtn" title="Paint one LED with the selected value. Its colour is fixed by where it sits in the 2×2 mosaic.">LED</button>
-                    <button class="edit-ops-btn" id="brushCellBtn" title="Paint the 2×2 colour cell under the cursor: each of its four LEDs gets value × ON-colour weight (replaces what was there).">2×2 cell</button>
+                    <button class="edit-ops-btn active" id="brushLedBtn" title="Paint one LED with the selected value. Its color is fixed by where it sits in the 2×2 mosaic.">LED</button>
+                    <button class="edit-ops-btn" id="brushCellBtn" title="Paint the 2×2 color cell under the cursor: each of its four LEDs gets value × ON-color weight (replaces what was there).">2×2 cell</button>
                     <div class="pd-oncolor-chips" id="onColorChipsEdit"></div>
                 </div>
                 <div class="toolbar-section">
@@ -2482,8 +2482,8 @@
             <select id="arenaConfigStatus"></select>
             <button id="arenaLockBtn" class="lock-btn" title="Lock arena config">🔓</button>
             <span style="color: var(--text-dim); margin-left: 8px;">Panel LEDs:</span>
-            <select id="panelLayoutSelect" title="Which LEDs the G6 boards are populated with (standard green, or a 2×2 colour mosaic). Changes rendering and the ON-colour mask only — the .pat format is unchanged."></select>
-            <span id="panelLayoutHint" class="pd-panel-hint" title="A .pat stores one value per LED. Which colour that LED is depends only on its position in the 2×2 mosaic, so changing the layout re-colours the preview without changing any values."></span>
+            <select id="panelLayoutSelect" title="Which LEDs the G6 boards are populated with (standard green, or a 2×2 color mosaic). Changes rendering and the ON-color mask only — the .pat format is unchanged."></select>
+            <span id="panelLayoutHint" class="pd-panel-hint" title="A .pat stores one value per LED. Which color that LED is depends only on its position in the 2×2 mosaic, so changing the layout re-colors the preview without changing any values."></span>
         </div>
     </div>
 
@@ -2587,7 +2587,7 @@
                 showPoleGeometry: false,
                 currentFrame: 0,
                 drawColor: 15,
-                brush: 'led'            // 'led' (one LED) | 'cell' (2×2 colour cell, colour panels only)
+                brush: 'led'            // 'led' (one LED) | 'cell' (2×2 color cell, color panels only)
             },
             playback: {
                 isPlaying: false,
@@ -2599,7 +2599,7 @@
                 config: null,
                 locked: false
             },
-            // Multi-colour panels (LAB-228). A PANEL property, orthogonal to the arena config;
+            // Multi-color panels (LAB-228). A PANEL property, orthogonal to the arena config;
             // never written into the .pat. Default = today's all-green boards.
             panel: { layoutKey: PanelColor.DEFAULT_LAYOUT },
             onColor: { preset: 'all', levels: {} },   // 'all' | <channel id> | 'custom' (levels: channel → 0..15)
@@ -2661,7 +2661,7 @@
                 arenaSelect.appendChild(optgroup);
             }
 
-            // Panel LEDs selector (multi-colour panels) — NOT part of the arena lock
+            // Panel LEDs selector (multi-color panels) — NOT part of the arena lock
             const panelSelect = document.getElementById('panelLayoutSelect');
             PanelColor.layoutKeys().forEach(key => {
                 const layout = PanelColor.getLayout(key);
@@ -4397,8 +4397,8 @@
                     console.warn('Pattern validation warnings:', validation.warnings);
                 }
 
-                // Multi-colour panels: mask every frame by the ON-colour weights. Generators stay
-                // monochrome; a pure colour keeps only that bank's LEDs (identity for G6 green).
+                // Multi-color panels: mask every frame by the ON-color weights. Generators stay
+                // monochrome; a pure color keeps only that bank's LEDs (identity for G6 green).
                 if (!PanelColor.isMono(state.panel.layoutKey)) {
                     const weights = currentOnColorWeights(pattern.gs_val);
                     for (const f of pattern.frames) {
@@ -4590,7 +4590,7 @@
             const scaleY = thumbSize / pixelRows;
             const maxVal = gsMode === 2 ? 1 : 15;
 
-            // Draw pixels (per-bank colour on colour panels; legacy green otherwise)
+            // Draw pixels (per-bank color on color panels; legacy green otherwise)
             for (let row = 0; row < pixelRows; row++) {
                 for (let col = 0; col < pixelCols; col++) {
                     const value = frameData[row * pixelCols + col];
@@ -4634,7 +4634,7 @@
                     showGaps: false,
                     showOutlines: false,
                     frameIndex: 0,
-                    panelLayout: state.panel.layoutKey  // per-bank colour on multi-colour panels
+                    panelLayout: state.panel.layoutKey  // per-bank color on multi-color panels
                 });
             } catch (err) {
                 console.warn('Icon generation failed, using flat thumbnail:', err);
@@ -5332,11 +5332,11 @@
         }
 
         // ============================================
-        // Multi-colour panels: Panel LEDs layout + ON colour (LAB-228)
+        // Multi-color panels: Panel LEDs layout + ON color (LAB-228)
         // ============================================
-        // The layout is a PANEL property (js/panel-color.js): it changes how every view colours
+        // The layout is a PANEL property (js/panel-color.js): it changes how every view colors
         // each LED and what "ON" means at generation time. It is never written into the .pat.
-        function isColourLayout() {
+        function isColorLayout() {
             return !PanelColor.isMono(state.panel.layoutKey);
         }
 
@@ -5344,7 +5344,7 @@
             return parseInt(document.getElementById('gsMode').value, 10);
         }
 
-        // Per-bank weights [T0..T3] from the ON-colour control (identity for mono layouts)
+        // Per-bank weights [T0..T3] from the ON-color control (identity for mono layouts)
         function currentOnColorWeights(gsMode) {
             const preset = state.onColor.preset === 'custom' ? state.onColor.levels : state.onColor.preset;
             return PanelColor.channelWeightsFromPreset(state.panel.layoutKey, preset, gsMode);
@@ -5372,10 +5372,10 @@
                 });
                 container.appendChild(chip);
             };
-            addChip('all', 'All', null, 'ON pixels light every LED bank (all colours) at the pattern level');
+            addChip('all', 'All', null, 'ON pixels light every LED bank (all colors) at the pattern level');
             layout.channels.forEach(ch => addChip(ch.id, compact ? ch.id : ch.label, PanelColor.channelCss(ch.id),
                 `ON pixels light only the ${ch.label} LEDs — one 10×10 lattice per panel; the other banks stay off`));
-            addChip('custom', 'Custom', null, 'One level per colour channel (0–15 in GS16, on/off in GS2). Weights are independent — they need not sum to 100%.');
+            addChip('custom', 'Custom', null, 'One level per color channel (0–15 in GS16, on/off in GS2). Weights are independent — they need not sum to 100%.');
         }
 
         function renderOnColorCustom() {
@@ -5428,10 +5428,10 @@
         }
 
         function updateOnColorControls() {
-            const colour = isColourLayout();
-            document.getElementById('onColorRow').style.display = colour ? '' : 'none';
-            document.getElementById('brushSection').style.display = colour ? '' : 'none';
-            if (!colour) state.editor.brush = 'led';
+            const color = isColorLayout();
+            document.getElementById('onColorRow').style.display = color ? '' : 'none';
+            document.getElementById('brushSection').style.display = color ? '' : 'none';
+            if (!color) state.editor.brush = 'led';
             updateBrushButtons();
             renderOnColorChips(document.getElementById('onColorChips'), false);
             renderOnColorChips(document.getElementById('onColorChipsEdit'), true);
@@ -5446,7 +5446,7 @@
             if (!PanelColor.getLayout(key)) return;
             state.panel.layoutKey = key;
             document.getElementById('panelLayoutSelect').value = key;
-            // Re-render only. A .pat stores one value per LED and the LED's colour is where it
+            // Re-render only. A .pat stores one value per LED and the LED's color is where it
             // sits, so a layout change never rewrites frames (and never dirties the pattern).
             updateOnColorControls();
             updatePanelLayoutHint();
@@ -5472,7 +5472,7 @@
 
                 const brightness = i / 15;
                 swatch.style.background = PanelColor.valueCss(brightness);
-                swatch.title = `Value ${i}: brightness of the LED you paint (its colour is fixed by where it sits)`;
+                swatch.title = `Value ${i}: brightness of the LED you paint (its color is fixed by where it sits)`;
                 swatch.style.color = i < 8 ? '#888' : '#000';
                 swatch.textContent = i;
 
@@ -5496,7 +5496,7 @@
 
                 const brightness = i / maxVal;
                 swatch.style.background = PanelColor.valueCss(brightness);
-                swatch.title = `Value ${i}: brightness of the LED you paint (its colour is fixed by where it sits)`;
+                swatch.title = `Value ${i}: brightness of the LED you paint (its color is fixed by where it sits)`;
 
                 if (gsMode === 2) {
                     swatch.textContent = i === 0 ? 'Off' : 'On';
@@ -5572,8 +5572,8 @@
             renderCurrentViewer();
         }
 
-        // 2×2 cell brush (colour panels): the four LEDs of the cell under (row, col) become
-        // value × ON-colour weight of their bank — replace semantics, like the LED brush.
+        // 2×2 cell brush (color panels): the four LEDs of the cell under (row, col) become
+        // value × ON-color weight of their bank — replace semantics, like the LED brush.
         function setCell(row, col, value) {
             if (!state.pattern) return;
             const { pixelRows, pixelCols, gsMode, frames } = state.pattern;
@@ -6776,7 +6776,7 @@
                 canvas.onmousemove = null;
             }
 
-            // Draw pixels (row 0 = bottom). Colour comes from the LED's bank on colour panels;
+            // Draw pixels (row 0 = bottom). Color comes from the LED's bank on color panels;
             // the mono layout reproduces the legacy green-phosphor ramp exactly.
             const maxVal = gsMode === 2 ? 1 : 15;
             const layoutKey = state.panel.layoutKey;
@@ -6794,7 +6794,7 @@
             }
 
             // Draw grid lines in edit mode for better visibility (2×2 cell edges are
-            // emphasised while the cell brush is active on a colour panel)
+            // emphasised while the cell brush is active on a color panel)
             if (state.editor.editMode && pixelSize >= 4) {
                 const cellBrush = state.editor.brush === 'cell' && !PanelColor.isMono(layoutKey);
                 ctx.lineWidth = 1;

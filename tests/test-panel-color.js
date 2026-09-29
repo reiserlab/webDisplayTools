@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Tests for js/panel-color.js — the multi-colour G6 panel layout model (LAB-228).
+// Tests for js/panel-color.js — the multi-color G6 panel layout model (LAB-228).
 'use strict';
 
 const fs = require('fs');
@@ -46,8 +46,8 @@ check(
         eq(PC.getLayout('g6-green').banks, ['green', 'green', 'green', 'green'])
 );
 check(
-    'four-colour banks T0..T3',
-    eq(PC.getLayout('four-colour').banks, ['violet', 'blue', 'green', 'yellow'])
+    'four-color banks T0..T3',
+    eq(PC.getLayout('four-color').banks, ['violet', 'blue', 'green', 'yellow'])
 );
 check(
     'red+IR v0.4r2 = checkerboard (red T0,T3)',
@@ -58,27 +58,27 @@ check(
     eq(PC.getLayout('red-ir-v0.4r1').banks, ['red', 'ir', 'red', 'ir'])
 );
 check(
-    'channelAt four-colour (0,0) with flip 0 is violet',
-    F !== 0 || PC.channelAt('four-colour', 0, 0).id === 'violet'
+    'channelAt four-color (0,0) with flip 0 is violet',
+    F !== 0 || PC.channelAt('four-color', 0, 0).id === 'violet'
 );
 check(
-    'channelAt four-colour (1,1) with flip 0 is yellow',
-    F !== 0 || PC.channelAt('four-colour', 1, 1).id === 'yellow'
+    'channelAt four-color (1,1) with flip 0 is yellow',
+    F !== 0 || PC.channelAt('four-color', 1, 1).id === 'yellow'
 );
 check(
     'describeLayout mentions all four banks',
-    /T0 .*T1 .*T2 .*T3 /.test(PC.describeLayout('four-colour'))
+    /T0 .*T1 .*T2 .*T3 /.test(PC.describeLayout('four-color'))
 );
 check('legendText empty for mono', PC.legendText('g6-green') === '');
 check(
-    'legendText mentions IR false colour for red+IR',
-    /false colour/.test(PC.legendText('red-ir-v0.4r2'))
+    'legendText mentions IR false color for red+IR',
+    /false color/.test(PC.legendText('red-ir-v0.4r2'))
 );
 check(
-    'legendText no IR clause for four-colour',
-    !/false colour/.test(PC.legendText('four-colour'))
+    'legendText no IR clause for four-color',
+    !/false color/.test(PC.legendText('four-color'))
 );
-check('filenameTag', PC.filenameTag('g6-green') === '' && PC.filenameTag('four-colour') === '_4c');
+check('filenameTag', PC.filenameTag('g6-green') === '' && PC.filenameTag('four-color') === '_4c');
 check('cellOrigin even-aligns', eq(PC.cellOrigin(5, 7), [4, 6]) && eq(PC.cellOrigin(4, 6), [4, 6]));
 
 // ---- 2. Mono identity vs the legacy ramps ----
@@ -107,12 +107,12 @@ for (let v = 0; v <= 15; v++) {
 check('pixelCss mono == legacy Math.round ramp for all 16 levels (also null key)', cssOk);
 check('pixelHex mono == legacy Math.floor ramp for all 16 levels', hexOk);
 check(
-    'green bank in a colour layout == legacy ramp',
-    PC.pixelCss('four-colour', 1, 0, 1) === PC.pixelCss('g6-green', 1, 0, 1) || F === 1
+    'green bank in a color layout == legacy ramp',
+    PC.pixelCss('four-color', 1, 0, 1) === PC.pixelCss('g6-green', 1, 0, 1) || F === 1
 );
-check('off pixel → OFF_CSS in colour layouts', PC.pixelCss('four-colour', 0, 0, 0) === PC.OFF_CSS);
+check('off pixel → OFF_CSS in color layouts', PC.pixelCss('four-color', 0, 0, 0) === PC.OFF_CSS);
 check(
-    'IR false colour differs from red',
+    'IR false color differs from red',
     PC.pixelCss('red-ir-v0.4r2', 0, 1, 1) !== PC.pixelCss('red-ir-v0.4r2', 0, 0, 1)
 );
 check('channelCss is an rgb() string', /^rgb\(\d+,\d+,\d+\)$/.test(PC.channelCss('violet')));
@@ -141,7 +141,7 @@ const full = (v) => new Uint8Array(ROWS * COLS).fill(v);
 }
 {
     const f = full(15);
-    PC.applyOnColor(f, ROWS, COLS, 16, 'four-colour', [1, 0.5, 0.25, 0]);
+    PC.applyOnColor(f, ROWS, COLS, 16, 'four-color', [1, 0.5, 0.25, 0]);
     const byBank = [null, null, null, null];
     for (let r = 0; r < ROWS; r++)
         for (let c = 0; c < COLS; c++) byBank[PC.bankAt(r, c)] = f[r * COLS + c];
@@ -154,11 +154,11 @@ const full = (v) => new Uint8Array(ROWS * COLS).fill(v);
 {
     const a = full(9);
     const b = full(9);
-    PC.applyOnColor(a, ROWS, COLS, 16, 'four-colour', [1, 1, 1, 1]);
+    PC.applyOnColor(a, ROWS, COLS, 16, 'four-color', [1, 1, 1, 1]);
     check('[1,1,1,1] is the identity', eq(Array.from(a), Array.from(b)));
     PC.applyOnColor(a, ROWS, COLS, 16, 'g6-green', [0, 0, 0, 0]);
     check('mono layout ignores weights', eq(Array.from(a), Array.from(b)));
-    PC.applyOnColor(a, ROWS, COLS, 16, 'four-colour', [2, -1, 1, 1]);
+    PC.applyOnColor(a, ROWS, COLS, 16, 'four-color', [2, -1, 1, 1]);
     check(
         'weights are clamped to [0,1]',
         a[0] <= 9 && Array.from(a).every((v) => v >= 0 && v <= 9)
@@ -176,8 +176,8 @@ const full = (v) => new Uint8Array(ROWS * COLS).fill(v);
         rows,
         cols,
         16,
-        'four-colour',
-        PC.channelWeightsFromPreset('four-colour', 'violet', 16)
+        'four-color',
+        PC.channelWeightsFromPreset('four-color', 'violet', 16)
     );
     let lit = 0;
     let wrong = 0;
@@ -198,8 +198,8 @@ const full = (v) => new Uint8Array(ROWS * COLS).fill(v);
 
 // ---- 4. presets ----
 console.log('channelWeightsFromPreset');
-check("'all' → ones", eq(PC.channelWeightsFromPreset('four-colour', 'all', 16), [1, 1, 1, 1]));
-check('null → ones', eq(PC.channelWeightsFromPreset('four-colour', null, 16), [1, 1, 1, 1]));
+check("'all' → ones", eq(PC.channelWeightsFromPreset('four-color', 'all', 16), [1, 1, 1, 1]));
+check('null → ones', eq(PC.channelWeightsFromPreset('four-color', null, 16), [1, 1, 1, 1]));
 check(
     "'red' on r2 → [1,0,0,1]",
     eq(PC.channelWeightsFromPreset('red-ir-v0.4r2', 'red', 16), [1, 0, 0, 1])
@@ -209,12 +209,12 @@ check(
     eq(PC.channelWeightsFromPreset('red-ir-v0.4r1', 'ir', 16), [0, 1, 0, 1])
 );
 check(
-    "'blue' on four-colour → [0,1,0,0]",
-    eq(PC.channelWeightsFromPreset('four-colour', 'blue', 2), [0, 1, 0, 0])
+    "'blue' on four-color → [0,1,0,0]",
+    eq(PC.channelWeightsFromPreset('four-color', 'blue', 2), [0, 1, 0, 0])
 );
 check(
     'unknown channel → ones',
-    eq(PC.channelWeightsFromPreset('four-colour', 'ir', 16), [1, 1, 1, 1])
+    eq(PC.channelWeightsFromPreset('four-color', 'ir', 16), [1, 1, 1, 1])
 );
 check(
     'custom GS16 {red:15, ir:3} → [1,.2,.2,1]',
@@ -230,13 +230,13 @@ check(
 );
 check(
     'custom missing channel → 0',
-    eq(PC.channelWeightsFromPreset('four-colour', { violet: 15 }, 16), [1, 0, 0, 0])
+    eq(PC.channelWeightsFromPreset('four-color', { violet: 15 }, 16), [1, 0, 0, 0])
 );
 check(
     'custom clamps 0..15',
     eq(
         PC.channelWeightsFromPreset(
-            'four-colour',
+            'four-color',
             { violet: 99, blue: -4, green: 15, yellow: 15 },
             16
         ),
@@ -257,11 +257,11 @@ console.log('paintCell');
         ROWS,
         COLS,
         16,
-        'four-colour',
+        'four-color',
         3,
         5,
         15,
-        PC.channelWeightsFromPreset('four-colour', 'blue', 16)
+        PC.channelWeightsFromPreset('four-color', 'blue', 16)
     );
     const lit = [];
     f.forEach((v, i) => {
@@ -278,7 +278,7 @@ console.log('paintCell');
             PC.bankAt(lit[0][0], lit[0][1]) === 1
     );
     const g = new Uint8Array(ROWS * COLS);
-    PC.paintCell(g, ROWS, COLS, 16, 'four-colour', 0, 1, 15, [1, 1, 1, 1]);
+    PC.paintCell(g, ROWS, COLS, 16, 'four-color', 0, 1, 15, [1, 1, 1, 1]);
     check(
         'all-ones cell brush lights the 4 LEDs of the cell',
         eq(
@@ -295,7 +295,7 @@ console.log('paintCell');
         Array.from(h).filter(Boolean).length === 4
     );
     const k = new Uint8Array(3 * 3); // odd size: cell at (2,2) is clipped to one LED
-    PC.paintCell(k, 3, 3, 16, 'four-colour', 2, 2, 15, [1, 1, 1, 1]);
+    PC.paintCell(k, 3, 3, 16, 'four-color', 2, 2, 15, [1, 1, 1, 1]);
     check('out-of-range LEDs are clipped', Array.from(k).filter(Boolean).length === 1);
 }
 

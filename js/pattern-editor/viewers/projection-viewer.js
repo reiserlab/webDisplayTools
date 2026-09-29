@@ -23,7 +23,7 @@ class ProjectionViewer {
 
         this.arenaConfig = null;
         this.panelSpecs = null;
-        // Multi-colour panel layout key (js/panel-color.js). null → legacy green.
+        // Multi-color panel layout key (js/panel-color.js). null → legacy green.
         this.panelLayoutKey = null;
 
         this.state = {
@@ -103,8 +103,8 @@ class ProjectionViewer {
      * @param {number} frameIndex - 0-indexed frame number
      */
     /**
-     * Select the panel colour layout (a `js/panel-color.js` key). Each projected dot is
-     * tinted by the colour of the LED bank at its pattern (row, col); null/mono → legacy green.
+     * Select the panel color layout (a `js/panel-color.js` key). Each projected dot is
+     * tinted by the color of the LED bank at its pattern (row, col); null/mono → legacy green.
      */
     setPanelColor(layoutKey) {
         this.panelLayoutKey = layoutKey || null;
@@ -646,7 +646,7 @@ class ProjectionViewer {
         ctx.clip();
 
         const PC = globalThis.PanelColor;
-        const colourKey =
+        const colorKey =
             PC && this.panelLayoutKey && !PC.isMono(this.panelLayoutKey)
                 ? this.panelLayoutKey
                 : null;
@@ -673,9 +673,9 @@ class ProjectionViewer {
                 brightness = 1.0; // Default full brightness when no pattern
             }
 
-            if (colourKey) {
-                // Multi-colour panel: the dot takes its LED bank's colour.
-                ctx.fillStyle = PC.pixelCss(colourKey, px.row, px.col, brightness);
+            if (colorKey) {
+                // Multi-color panel: the dot takes its LED bank's color.
+                ctx.fillStyle = PC.pixelCss(colorKey, px.row, px.col, brightness);
             } else if (brightness > 0) {
                 // Green phosphor color (matching MATLAB: pure green channel)
                 const g = Math.round(brightness * 255);
