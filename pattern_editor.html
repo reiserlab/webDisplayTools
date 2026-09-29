@@ -35,6 +35,9 @@
          Studio loads, so behavior matches across the two tools -->
     <script src="js/build-channel.js"></script> <!-- release tier: Production / Next / local -->
     <script src="js/pattern-set.js"></script>
+    <!-- multi-colour G6 panels: bank mosaic + ON-colour weights (LAB-228); classic dual-export,
+         also read as globalThis.PanelColor by the ES-module viewers -->
+    <script src="js/panel-color.js"></script>
     <script src="js/studio-url-state.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1316,6 +1319,28 @@
             min-width: 30px;
         }
 
+        /* Multi-colour panels: ON-colour chips + custom per-channel levels (LAB-228) */
+        .pd-oncolor-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+        .pd-oncolor-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 2px 7px; border: 2px solid var(--border); border-radius: 4px;
+            background: var(--bg); color: var(--text);
+            font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; cursor: pointer;
+        }
+        .pd-oncolor-chip:hover { border-color: var(--text-dim); }
+        .pd-oncolor-chip.selected { border-color: var(--accent); box-shadow: 0 0 6px var(--accent); }
+        .pd-oncolor-chip .dot, .pd-oncolor-custom .dot {
+            width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block;
+        }
+        .pd-oncolor-custom {
+            display: none; grid-template-columns: 12px auto 1fr 2.2em; gap: 4px 6px;
+            align-items: center; margin-top: 6px; font-size: 0.65rem; color: var(--text-dim);
+        }
+        .pd-oncolor-custom.visible { display: grid; }
+        .pd-oncolor-custom input[type="range"] { width: 100%; margin: 0; }
+        .pd-panel-hint { color: var(--text-dim); font-size: 0.7rem; }
+        .edit-ops-btn.active { border-color: var(--accent); color: var(--accent); }
+
         /* Edit Operations */
         .edit-ops-btn {
             padding: 0.35rem 0.6rem;
@@ -1969,6 +1994,15 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Multi-colour panels only (Panel LEDs selector in the status bar): which
+                         LED banks an ON pixel lights. Applied as a per-LED mask after generation. -->
+                    <div class="control-row" id="onColorRow" style="display: none;">
+                        <div class="control-group">
+                            <label title="What ON means on a multi-colour panel: each pixel value is multiplied by its LED bank's weight after generation. A pure colour lights one 10×10 lattice per panel (2-px pitch).">ON colour</label>
+                            <div class="pd-oncolor-chips" id="onColorChips"></div>
+                            <div class="pd-oncolor-custom" id="onColorCustom"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Animate Tab -->
@@ -2258,6 +2292,13 @@
                     <div class="edit-palette" id="editPalette"></div>
                     <span class="current-color-display" id="currentColorDisplay">15</span>
                 </div>
+                <!-- Multi-colour panels only: paint one LED, or a whole 2×2 colour cell with the ON-colour mix -->
+                <div class="toolbar-section" id="brushSection" style="display: none;">
+                    <span class="toolbar-label">Brush:</span>
+                    <button class="edit-ops-btn active" id="brushLedBtn" title="Paint one LED with the selected value. Its colour is fixed by where it sits in the 2×2 mosaic.">LED</button>
+                    <button class="edit-ops-btn" id="brushCellBtn" title="Paint the 2×2 colour cell under the cursor: each of its four LEDs gets value × ON-colour weight (replaces what was there).">2×2 cell</button>
+                    <div class="pd-oncolor-chips" id="onColorChipsEdit"></div>
+                </div>
                 <div class="toolbar-section">
                     <span class="toolbar-label">Transform:</span>
                     <button class="edit-ops-btn" id="flipHBtn" title="Flip Horizontal">Flip H</button>
@@ -2440,6 +2481,9 @@
             <span style="color: var(--text-dim);">Arena:</span>
             <select id="arenaConfigStatus"></select>
             <button id="arenaLockBtn" class="lock-btn" title="Lock arena config">🔓</button>
+            <span style="color: var(--text-dim); margin-left: 8px;">Panel LEDs:</span>
+            <select id="panelLayoutSelect" title="Which LEDs the G6 boards are populated with (standard green, or a 2×2 colour mosaic). Changes rendering and the ON-colour mask only — the .pat format is unchanged."></select>
+            <span id="panelLayoutHint" class="pd-panel-hint" title="A .pat stores one value per LED. Which colour that LED is depends only on its position in the 2×2 mosaic, so changing the layout re-colours the preview without changing any values."></span>
         </div>
     </div>
 
@@ -2517,6 +2561,8 @@
         import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
         import { generatePatternIcon } from './js/icon-generator.js';
         import ImageConverter from './js/pattern-editor/tools/image-converter.js';
+        // Classic dual-export module loaded above (also read by the viewers as globalThis.PanelColor)
+        const PanelColor = window.PanelColor;
 
         // ============================================
         // State Management
@@ -2540,7 +2586,8 @@
                 showPanelNumbers: false,
                 showPoleGeometry: false,
                 currentFrame: 0,
-                drawColor: 15
+                drawColor: 15,
+                brush: 'led'            // 'led' (one LED) | 'cell' (2×2 colour cell, colour panels only)
             },
             playback: {
                 isPlaying: false,
@@ -2552,6 +2599,10 @@
                 config: null,
                 locked: false
             },
+            // Multi-colour panels (LAB-228). A PANEL property, orthogonal to the arena config;
+            // never written into the .pat. Default = today's all-green boards.
+            panel: { layoutKey: PanelColor.DEFAULT_LAYOUT },
+            onColor: { preset: 'all', levels: {} },   // 'all' | <channel id> | 'custom' (levels: channel → 0..15)
             frameAnimation: {
                 mode: 'shifting',  // 'shifting' or 'animation'
                 sequence: [],      // Array of frame entries for animation mode
@@ -2609,6 +2660,23 @@
                 });
                 arenaSelect.appendChild(optgroup);
             }
+
+            // Panel LEDs selector (multi-colour panels) — NOT part of the arena lock
+            const panelSelect = document.getElementById('panelLayoutSelect');
+            PanelColor.layoutKeys().forEach(key => {
+                const layout = PanelColor.getLayout(key);
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = layout.label;
+                option.title = PanelColor.describeLayout(key);
+                option.selected = key === state.panel.layoutKey;
+                panelSelect.appendChild(option);
+            });
+            panelSelect.addEventListener('change', (e) => setPanelLayout(e.target.value));
+            document.getElementById('brushLedBtn').addEventListener('click', () => { state.editor.brush = 'led'; updateBrushButtons(); renderCurrentViewer(); });
+            document.getElementById('brushCellBtn').addEventListener('click', () => { state.editor.brush = 'cell'; updateBrushButtons(); renderCurrentViewer(); });
+            updateOnColorControls();
+            updatePanelLayoutHint();
 
             // Load initial config
             state.arena.config = getConfig(state.arena.configName);
@@ -2866,6 +2934,7 @@
             document.getElementById('generateBtn').addEventListener('click', handleGenerate);
             document.getElementById('patternType').addEventListener('change', updatePatternTypeUI);
             document.getElementById('gsMode').addEventListener('change', updateGsLevelBounds);
+            document.getElementById('gsMode').addEventListener('change', renderOnColorCustom); // GS2 → on/off per channel
 
             // Spherical grating controls
             document.getElementById('motionType').addEventListener('change', updateMotionTypeUI);
@@ -3124,6 +3193,7 @@
                 threeViewer = new ThreeViewer(container);
                 try {
                     threeViewer.init(config, specs);
+                    if (threeViewer.setPanelColor) threeViewer.setPanelColor(state.panel.layoutKey); // (guarded: stale-cache viewer)
                     threeViewerArenaConfig = state.arena.configName;
                     console.log('3D Viewer: Initialized with', config.arena.generation,
                         config.arena.num_cols + 'x' + config.arena.num_rows);
@@ -3219,6 +3289,7 @@
                 mercatorViewer = new MercatorViewer(container);
                 try {
                     mercatorViewer.init(config, specs);
+                    if (mercatorViewer.setPanelColor) mercatorViewer.setPanelColor(state.panel.layoutKey);
                     mercatorViewerArenaConfig = state.arena.configName;
                     console.log('Mercator Viewer: Initialized with', config.arena.generation,
                         config.arena.num_cols + 'x' + config.arena.num_rows);
@@ -3277,6 +3348,7 @@
                 mollweideViewer = new MollweideViewer(container);
                 try {
                     mollweideViewer.init(config, specs);
+                    if (mollweideViewer.setPanelColor) mollweideViewer.setPanelColor(state.panel.layoutKey);
                     mollweideViewerArenaConfig = state.arena.configName;
                     console.log('Mollweide Viewer: Initialized with', config.arena.generation,
                         config.arena.num_cols + 'x' + config.arena.num_rows);
@@ -3509,7 +3581,7 @@
             return cs;
         }
 
-        // ---- URL state: ?arena=<config> & ?repo=<owner/name> ----
+        // ---- URL state: ?arena=<config> & ?repo=<owner/name> & ?panel=<layout> ----
         // Read once at startup; written (replaceState, no history spam) when the
         // arena changes — by the user, or by a loaded pattern's auto-detect.
         function applyUrlState() {
@@ -3521,6 +3593,12 @@
                 _urlArenaLock = true; // an explicit handover locks the selector
             } else if (arena) {
                 console.warn('?arena= is not a known config — ignored:', arena);
+            }
+            const panel = params.get('panel');
+            if (panel && PanelColor.getLayout(panel)) {
+                state.panel.layoutKey = panel;
+            } else if (panel) {
+                console.warn('?panel= is not a known panel layout — ignored:', panel);
             }
             const repo = params.get('repo');
             const US = window.StudioUrlState;
@@ -3535,8 +3613,11 @@
                 const params = new URLSearchParams(location.search);
                 params.delete('arena');
                 params.delete('repo');
+                params.delete('panel');
                 if (state.arena.configName) params.set('arena', state.arena.configName);
                 if (sessionRepo) params.set('repo', sessionRepo);
+                // clean-URL rule: the default (green) layout stays out of the URL
+                if (state.panel.layoutKey !== PanelColor.DEFAULT_LAYOUT) params.set('panel', state.panel.layoutKey);
                 const q = params.toString();
                 history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
             } catch (_) { /* URL mirroring is best-effort */ }
@@ -4316,6 +4397,17 @@
                     console.warn('Pattern validation warnings:', validation.warnings);
                 }
 
+                // Multi-colour panels: mask every frame by the ON-colour weights. Generators stay
+                // monochrome; a pure colour keeps only that bank's LEDs (identity for G6 green).
+                if (!PanelColor.isMono(state.panel.layoutKey)) {
+                    const weights = currentOnColorWeights(pattern.gs_val);
+                    for (const f of pattern.frames) {
+                        PanelColor.applyOnColor(f, pattern.pixelRows, pattern.pixelCols, pattern.gs_val, state.panel.layoutKey, weights);
+                    }
+                    const tag = PanelColor.filenameTag(state.panel.layoutKey);
+                    if (tag && filename) filename = filename.replace(/\.pat$/i, '') + tag + '.pat';
+                }
+
                 // Convert to state.pattern format
                 state.pattern = {
                     generation: pattern.generation,
@@ -4498,17 +4590,13 @@
             const scaleY = thumbSize / pixelRows;
             const maxVal = gsMode === 2 ? 1 : 15;
 
-            // Draw pixels
+            // Draw pixels (per-bank colour on colour panels; legacy green otherwise)
             for (let row = 0; row < pixelRows; row++) {
                 for (let col = 0; col < pixelCols; col++) {
                     const value = frameData[row * pixelCols + col];
                     const brightness = value / maxVal;
 
-                    const r = Math.round(brightness * 0.6 * 255);
-                    const g = Math.round(brightness * 255);
-                    const b = Math.round(brightness * 0.2 * 255);
-
-                    ctx.fillStyle = brightness > 0 ? `rgb(${r},${g},${b})` : '#1e2329';
+                    ctx.fillStyle = PanelColor.pixelCss(state.panel.layoutKey, row, col, brightness);
 
                     // Flip Y so row 0 is at bottom
                     const canvasY = (pixelRows - 1 - row) * scaleY;
@@ -4545,7 +4633,8 @@
                     padding: 2,                   // Minimal padding
                     showGaps: false,
                     showOutlines: false,
-                    frameIndex: 0
+                    frameIndex: 0,
+                    panelLayout: state.panel.layoutKey  // per-bank colour on multi-colour panels
                 });
             } catch (err) {
                 console.warn('Icon generation failed, using flat thumbnail:', err);
@@ -5243,6 +5332,132 @@
         }
 
         // ============================================
+        // Multi-colour panels: Panel LEDs layout + ON colour (LAB-228)
+        // ============================================
+        // The layout is a PANEL property (js/panel-color.js): it changes how every view colours
+        // each LED and what "ON" means at generation time. It is never written into the .pat.
+        function isColourLayout() {
+            return !PanelColor.isMono(state.panel.layoutKey);
+        }
+
+        function currentGsMode() {
+            return parseInt(document.getElementById('gsMode').value, 10);
+        }
+
+        // Per-bank weights [T0..T3] from the ON-colour control (identity for mono layouts)
+        function currentOnColorWeights(gsMode) {
+            const preset = state.onColor.preset === 'custom' ? state.onColor.levels : state.onColor.preset;
+            return PanelColor.channelWeightsFromPreset(state.panel.layoutKey, preset, gsMode);
+        }
+
+        function renderOnColorChips(container, compact) {
+            container.innerHTML = '';
+            const layout = PanelColor.getLayout(state.panel.layoutKey);
+            if (!layout || layout.mono) return;
+            const addChip = (id, label, dotCss, title) => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'pd-oncolor-chip' + (state.onColor.preset === id ? ' selected' : '');
+                chip.title = title;
+                if (dotCss) {
+                    const dot = document.createElement('span');
+                    dot.className = 'dot';
+                    dot.style.background = dotCss;
+                    chip.appendChild(dot);
+                }
+                chip.appendChild(document.createTextNode(label));
+                chip.addEventListener('click', () => {
+                    state.onColor.preset = id;
+                    updateOnColorControls();
+                });
+                container.appendChild(chip);
+            };
+            addChip('all', 'All', null, 'ON pixels light every LED bank (all colours) at the pattern level');
+            layout.channels.forEach(ch => addChip(ch.id, compact ? ch.id : ch.label, PanelColor.channelCss(ch.id),
+                `ON pixels light only the ${ch.label} LEDs — one 10×10 lattice per panel; the other banks stay off`));
+            addChip('custom', 'Custom', null, 'One level per colour channel (0–15 in GS16, on/off in GS2). Weights are independent — they need not sum to 100%.');
+        }
+
+        function renderOnColorCustom() {
+            const box = document.getElementById('onColorCustom');
+            box.innerHTML = '';
+            const layout = PanelColor.getLayout(state.panel.layoutKey);
+            const show = layout && !layout.mono && state.onColor.preset === 'custom';
+            box.classList.toggle('visible', !!show);
+            if (!show) return;
+            const gs = currentGsMode();
+            layout.channels.forEach(ch => {
+                if (state.onColor.levels[ch.id] === undefined) state.onColor.levels[ch.id] = 15;
+                const dot = document.createElement('span');
+                dot.className = 'dot';
+                dot.style.background = PanelColor.channelCss(ch.id);
+                const label = document.createElement('span');
+                label.textContent = ch.label;
+                box.appendChild(dot);
+                box.appendChild(label);
+                if (gs === 2) {
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.checked = state.onColor.levels[ch.id] > 0;
+                    cb.title = `${ch.label}: on/off for ON pixels (GS2 has no intermediate levels)`;
+                    cb.addEventListener('change', () => { state.onColor.levels[ch.id] = cb.checked ? 15 : 0; });
+                    box.appendChild(cb);
+                    box.appendChild(document.createElement('span'));
+                } else {
+                    const range = document.createElement('input');
+                    range.type = 'range';
+                    range.min = 0;
+                    range.max = 15;
+                    range.value = state.onColor.levels[ch.id];
+                    range.title = `${ch.label}: level for ON pixels, 0–15`;
+                    const num = document.createElement('span');
+                    num.textContent = range.value;
+                    range.addEventListener('input', () => {
+                        state.onColor.levels[ch.id] = parseInt(range.value, 10);
+                        num.textContent = range.value;
+                    });
+                    box.appendChild(range);
+                    box.appendChild(num);
+                }
+            });
+        }
+
+        function updateBrushButtons() {
+            document.getElementById('brushLedBtn').classList.toggle('active', state.editor.brush === 'led');
+            document.getElementById('brushCellBtn').classList.toggle('active', state.editor.brush === 'cell');
+        }
+
+        function updateOnColorControls() {
+            const colour = isColourLayout();
+            document.getElementById('onColorRow').style.display = colour ? '' : 'none';
+            document.getElementById('brushSection').style.display = colour ? '' : 'none';
+            if (!colour) state.editor.brush = 'led';
+            updateBrushButtons();
+            renderOnColorChips(document.getElementById('onColorChips'), false);
+            renderOnColorChips(document.getElementById('onColorChipsEdit'), true);
+            renderOnColorCustom();
+        }
+
+        function updatePanelLayoutHint() {
+            document.getElementById('panelLayoutHint').textContent = PanelColor.legendText(state.panel.layoutKey);
+        }
+
+        function setPanelLayout(key) {
+            if (!PanelColor.getLayout(key)) return;
+            state.panel.layoutKey = key;
+            document.getElementById('panelLayoutSelect').value = key;
+            // Re-render only. A .pat stores one value per LED and the LED's colour is where it
+            // sits, so a layout change never rewrites frames (and never dirties the pattern).
+            updateOnColorControls();
+            updatePanelLayoutHint();
+            if (threeViewer && threeViewer.setPanelColor) threeViewer.setPanelColor(key);
+            if (mercatorViewer && mercatorViewer.setPanelColor) mercatorViewer.setPanelColor(key);
+            if (mollweideViewer && mollweideViewer.setPanelColor) mollweideViewer.setPanelColor(key);
+            renderCurrentViewer();
+            updateUrlState();
+        }
+
+        // ============================================
         // Edit Mode Functions
         // ============================================
         function initEditPalette() {
@@ -5256,10 +5471,8 @@
                 swatch.dataset.value = i;
 
                 const brightness = i / 15;
-                const r = Math.round(brightness * 0.6 * 255);
-                const g = Math.round(brightness * 255);
-                const b = Math.round(brightness * 0.2 * 255);
-                swatch.style.background = brightness > 0 ? `rgb(${r},${g},${b})` : '#1e2329';
+                swatch.style.background = PanelColor.valueCss(brightness);
+                swatch.title = `Value ${i}: brightness of the LED you paint (its colour is fixed by where it sits)`;
                 swatch.style.color = i < 8 ? '#888' : '#000';
                 swatch.textContent = i;
 
@@ -5282,10 +5495,8 @@
                 swatch.dataset.value = i;
 
                 const brightness = i / maxVal;
-                const r = Math.round(brightness * 0.6 * 255);
-                const g = Math.round(brightness * 255);
-                const b = Math.round(brightness * 0.2 * 255);
-                swatch.style.background = brightness > 0 ? `rgb(${r},${g},${b})` : '#1e2329';
+                swatch.style.background = PanelColor.valueCss(brightness);
+                swatch.title = `Value ${i}: brightness of the LED you paint (its colour is fixed by where it sits)`;
 
                 if (gsMode === 2) {
                     swatch.textContent = i === 0 ? 'Off' : 'On';
@@ -5335,7 +5546,11 @@
             const row = pixelRows - 1 - Math.floor(y / pixelSize);
 
             if (col >= 0 && col < pixelCols && row >= 0 && row < pixelRows) {
-                setPixel(row, col, state.editor.drawColor);
+                if (state.editor.brush === 'cell' && !PanelColor.isMono(state.panel.layoutKey)) {
+                    setCell(row, col, state.editor.drawColor);
+                } else {
+                    setPixel(row, col, state.editor.drawColor);
+                }
             }
         }
 
@@ -5352,6 +5567,18 @@
             const idx = row * pixelCols + col;
 
             frame[idx] = value;
+            state.isDirty = true;
+            updateStatus();
+            renderCurrentViewer();
+        }
+
+        // 2×2 cell brush (colour panels): the four LEDs of the cell under (row, col) become
+        // value × ON-colour weight of their bank — replace semantics, like the LED brush.
+        function setCell(row, col, value) {
+            if (!state.pattern) return;
+            const { pixelRows, pixelCols, gsMode, frames } = state.pattern;
+            const frame = frames[state.editor.currentFrame];
+            PanelColor.paintCell(frame, pixelRows, pixelCols, gsMode, state.panel.layoutKey, row, col, value, currentOnColorWeights(gsMode));
             state.isDirty = true;
             updateStatus();
             renderCurrentViewer();
@@ -6549,19 +6776,16 @@
                 canvas.onmousemove = null;
             }
 
-            // Draw pixels (row 0 = bottom)
+            // Draw pixels (row 0 = bottom). Colour comes from the LED's bank on colour panels;
+            // the mono layout reproduces the legacy green-phosphor ramp exactly.
             const maxVal = gsMode === 2 ? 1 : 15;
+            const layoutKey = state.panel.layoutKey;
             for (let row = 0; row < pixelRows; row++) {
                 for (let col = 0; col < pixelCols; col++) {
                     const value = frame[row * pixelCols + col];
                     const brightness = value / maxVal;
 
-                    // Green phosphor color
-                    const r = Math.round(brightness * 0.6 * 255);
-                    const g = Math.round(brightness * 255);
-                    const b = Math.round(brightness * 0.2 * 255);
-
-                    ctx.fillStyle = brightness > 0 ? `rgb(${r},${g},${b})` : '#1e2329';
+                    ctx.fillStyle = PanelColor.pixelCss(layoutKey, row, col, brightness);
 
                     // Flip Y so row 0 is at bottom
                     const canvasY = (pixelRows - 1 - row) * pixelSize;
@@ -6569,17 +6793,20 @@
                 }
             }
 
-            // Draw grid lines in edit mode for better visibility
+            // Draw grid lines in edit mode for better visibility (2×2 cell edges are
+            // emphasised while the cell brush is active on a colour panel)
             if (state.editor.editMode && pixelSize >= 4) {
-                ctx.strokeStyle = 'rgba(45, 54, 64, 0.5)';
+                const cellBrush = state.editor.brush === 'cell' && !PanelColor.isMono(layoutKey);
                 ctx.lineWidth = 1;
                 for (let row = 0; row <= pixelRows; row++) {
+                    ctx.strokeStyle = cellBrush && row % 2 === 0 ? 'rgba(139, 148, 158, 0.6)' : 'rgba(45, 54, 64, 0.5)';
                     ctx.beginPath();
                     ctx.moveTo(0, row * pixelSize);
                     ctx.lineTo(canvas.width, row * pixelSize);
                     ctx.stroke();
                 }
                 for (let col = 0; col <= pixelCols; col++) {
+                    ctx.strokeStyle = cellBrush && col % 2 === 0 ? 'rgba(139, 148, 158, 0.6)' : 'rgba(45, 54, 64, 0.5)';
                     ctx.beginPath();
                     ctx.moveTo(col * pixelSize, 0);
                     ctx.lineTo(col * pixelSize, canvas.height);

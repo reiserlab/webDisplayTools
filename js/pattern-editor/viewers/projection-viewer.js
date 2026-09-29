@@ -23,6 +23,8 @@ class ProjectionViewer {
 
         this.arenaConfig = null;
         this.panelSpecs = null;
+        // Multi-colour panel layout key (js/panel-color.js). null → legacy green.
+        this.panelLayoutKey = null;
 
         this.state = {
             pattern: null,
@@ -100,6 +102,15 @@ class ProjectionViewer {
      * Set the current frame to display
      * @param {number} frameIndex - 0-indexed frame number
      */
+    /**
+     * Select the panel colour layout (a `js/panel-color.js` key). Each projected dot is
+     * tinted by the colour of the LED bank at its pattern (row, col); null/mono → legacy green.
+     */
+    setPanelColor(layoutKey) {
+        this.panelLayoutKey = layoutKey || null;
+        this._render();
+    }
+
     setFrame(frameIndex) {
         if (!this.state.pattern) return;
         this.state.currentFrame = Math.max(
@@ -634,6 +645,12 @@ class ProjectionViewer {
         ctx.rect(m.left, m.top, plotW, plotH);
         ctx.clip();
 
+        const PC = globalThis.PanelColor;
+        const colourKey =
+            PC && this.panelLayoutKey && !PC.isMono(this.panelLayoutKey)
+                ? this.panelLayoutKey
+                : null;
+
         for (const px of this.pixelData) {
             // Forward project this pixel
             const proj = this._forwardProject(px.lonDeg, px.latDeg);
@@ -656,8 +673,11 @@ class ProjectionViewer {
                 brightness = 1.0; // Default full brightness when no pattern
             }
 
-            // Green phosphor color (matching MATLAB: pure green channel)
-            if (brightness > 0) {
+            if (colourKey) {
+                // Multi-colour panel: the dot takes its LED bank's colour.
+                ctx.fillStyle = PC.pixelCss(colourKey, px.row, px.col, brightness);
+            } else if (brightness > 0) {
+                // Green phosphor color (matching MATLAB: pure green channel)
                 const g = Math.round(brightness * 255);
                 ctx.fillStyle = `rgb(0,${g},0)`;
             } else {

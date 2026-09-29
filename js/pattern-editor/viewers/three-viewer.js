@@ -67,6 +67,8 @@ class ThreeViewer {
 
         this.arenaConfig = null;
         this.panelSpecs = null;
+        // Multi-colour panel layout key (js/panel-color.js). null → legacy green ramp.
+        this.panelLayoutKey = null;
 
         this._animationId = null;
         this._resizeHandler = null;
@@ -196,6 +198,18 @@ class ThreeViewer {
         if (this.ledGlow) {
             this.ledGlow.visible = this._ledGlowEnabled && !!this.ledGlow.userData.anyLit;
         }
+    }
+
+    /**
+     * Select the panel colour layout (a `js/panel-color.js` layout key such as
+     * 'four-colour'). Each LED is then tinted by the colour of the bank it physically
+     * sits in; null or the mono layout restores the legacy green ramp. The glow layer
+     * already takes per-LED vertex colours, so no geometry is rebuilt.
+     * @param {string|null} layoutKey
+     */
+    setPanelColor(layoutKey) {
+        this.panelLayoutKey = layoutKey || null;
+        if (this.ledMeshes && this.ledMeshes.length) this._updateLEDColors();
     }
 
     /**
@@ -1148,7 +1162,7 @@ class ThreeViewer {
         for (let index = 0; index < this.ledMeshes.length; index += 1) {
             const ledRef = this.ledMeshes[index];
             const brightness = this._getLEDBrightness(ledRef);
-            const color = this._brightnessToColor(brightness);
+            const color = this._ledColorHex(ledRef, brightness);
             ledRef.mesh.material.color.setHex(color);
 
             if (glowColors) {
@@ -1214,6 +1228,23 @@ class ThreeViewer {
         const g = Math.floor(brightness * 255);
         const b = Math.floor(brightness * 0.2 * 255);
         return (r << 16) | (g << 8) | b;
+    }
+
+    /**
+     * Material colour for one LED. Colour belongs to the PHYSICAL LED (its panel row `py`
+     * and panel column, CCW mirror applied) — deliberately without the phase offset, which
+     * slides the pattern under the fixed colour mosaic exactly as the hardware does.
+     * Falls back to the legacy ramp when js/panel-color.js is not loaded (e.g. the replay
+     * viewer) or the layout is mono.
+     */
+    _ledColorHex(ledRef, brightness) {
+        const PC = globalThis.PanelColor;
+        if (!PC || !this.panelLayoutKey || PC.isMono(this.panelLayoutKey)) {
+            return this._brightnessToColor(brightness);
+        }
+        const physCol =
+            ledRef.columnOrder === 'ccw' ? ledRef.totalPixelsH - 1 - ledRef.px : ledRef.px;
+        return PC.pixelHex(this.panelLayoutKey, ledRef.py, physCol, brightness);
     }
 
     /**

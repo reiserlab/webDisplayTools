@@ -603,6 +603,19 @@ localStorage) — no auth UI of its own. Repo layout: free-standing patterns in 
   exists-check overwrite confirm.
 - Classic deps added for this: `js/pattern-set.js`, `js/studio-url-state.js` (both
   dual-export; same files the Studio loads).
+- **Multi-colour G6 panels (v0.12, LAB-228) — colour is a PANEL property, not a generation.**
+  `js/panel-color.js` (classic dual-export, also read as `globalThis.PanelColor` by the ES-module
+  viewers) is the ONLY place colour logic lives: the layouts table (`g6-green` default,
+  `four-colour`, `red-ir-v0.4r2`, `red-ir-v0.4r1`), `bankAt(row, col) = 2·(row%2)+(col%2)` in host
+  coordinates (row 0 = bottom) with the single bench-decided `ROW_PARITY_FLIP`, `applyOnColor`
+  (the one mask call at the end of `handleGenerate` — generators stay monochrome), `paintCell`
+  (2×2 cell brush), and `pixelCss`/`pixelHex` (mono = the legacy ramps byte for byte: 2D rounds,
+  3D floors). Rules: every pixel colour in every view goes through `PanelColor` (never add a new
+  inline green ramp); NEVER write colour into the `.pat` (header is full; the tag is LAB-229);
+  never add a colour generation/arena config; a layout change re-renders only (never rewrites
+  frames); 3D colour belongs to the physical LED (`py`, CCW-mirrored `px`, NO phase offset). URL:
+  `?panel=<key>`, omitted for the default. Spec + recipe:
+  `docs/development/pattern-designer-colour-panels.md`.
 
 ## CI/CD Validation
 
