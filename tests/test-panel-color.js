@@ -74,10 +74,7 @@ check(
     'legendText mentions IR false color for red+IR',
     /false color/.test(PC.legendText('red-ir-v0.4r2'))
 );
-check(
-    'legendText no IR clause for four-color',
-    !/false color/.test(PC.legendText('four-color'))
-);
+check('legendText no IR clause for four-color', !/false color/.test(PC.legendText('four-color')));
 check('filenameTag', PC.filenameTag('g6-green') === '' && PC.filenameTag('four-color') === '_4c');
 check('cellOrigin even-aligns', eq(PC.cellOrigin(5, 7), [4, 6]) && eq(PC.cellOrigin(4, 6), [4, 6]));
 
