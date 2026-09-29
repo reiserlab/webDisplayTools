@@ -124,11 +124,11 @@ tick the box. Nothing below has been written to Linear yet.
 
 ## 3. New tickets
 
-- [ ] **a. Two-tier web releases (Production + Next)**
+- [x] **a. Two-tier web releases (Production + Next)** → **LAB-222** (V1.0 · In Progress · Michael; #226/#227/#228/#229 attached; first release shipped 09-28, done after a hotfix/rollback drill)
   - Arena Software Control · In Progress · Michael. Attach #226, #227, #228, #229.
   - Description: the model (one frozen candidate), the rules, `docs/development/release-process.md`.
   - Done when the first release ships and one hotfix/rollback drill has been exercised.
-- [ ] **b. Multi-color G6 panels — web support (epic)**
+- [x] **b. Multi-color G6 panels — web support (epic)** → **LAB-223** (V1.0 · Backlog · Michael). ⚠ The sub-issues (LAB-18, LAB-224, LAB-213, LAB-221) are **not attached yet**; Michael reviews them first.
   - ~~G6 Arena Extensions~~ **Web-based V1.0** (decided 2026-09-29) · Backlog. **Sub-issues: LAB-18, LAB-213** (plus c).
   - Description:
     - The panel is a four-color 2×2 mosaic, `ch = 2*(row%2)+(col%2)`, banks T0–T3. There is no firmware fork and no frame-format change.
@@ -141,17 +141,17 @@ tick the box. Nothing below has been written to Linear yet.
       6. MATLAB + `g6_04` parity
     - Dependencies: panel fw #30, fw #58, HW PR #1, LAB-150, LAB-139/141/159.
     - Development goes on a `batch/color` branch through the Next tier.
-- [ ] **c. Build the fly-vision four-color panels (violet / blue / green / orange)**
+- [x] **c. Build the fly-vision four-color panels (violet / blue / green / orange)** → **LAB-224** (HW & FW · In Progress · Frank). **Corrected from the HW Panel decisions doc:** yellow-orange, not orange; Yongyu 0402 LEDs, 68 Ω ×3 + 110 Ω, not 910/442/442/301 Ω. 15 panels are built and in bench test.
   - G6 Arena Hardware & Firmware · Backlog.
   - Description: resistor banks 910/442/442/301 Ω (T0–T3). Today this exists only in a 07-15 comment on LAB-18. Bench commands are in panel fw PR #30. Calibration priority is 615–625, 420, 475, 525 nm.
 - [ ] **d. Write up the LAB-119 multicolor (UV) LED research findings**
   - ~~G6 Arena Extensions~~ **G6 Arena Hardware & Firmware** (the Extensions project was retired 2026-09-29) · Todo. LAB-119 is Done but has an empty description and no comments, so its findings aren't recorded anywhere.
-- [ ] **e. Mode-3 wedge — firmware root cause + fix (fw #50)**
+- [x] **e. Mode-3 wedge — firmware root cause + fix (fw #50)** → **LAB-225**, created as **Done** (the fix is in fw #56); Michael (the #56 author); fw #50/#51/#52/#54 attached.
   - G6 Arena Hardware & Firmware · In Progress · Frank. Attach fw #56 and issues #50, #51, #52, #54.
   - Links: LAB-149 (ring), LAB-212 (web recovery).
-- [ ] **f. Flashing tooling: cross-platform port detection + Windows notes**
+- [x] **f. Flashing tooling: cross-platform port detection + Windows notes** → **LAB-226**, created as **Done** (fw #57 merged 09-28, #49 closed); Frank.
   - G6 Arena Hardware & Firmware · In Review. Attach fw PRs #57, #49.
-- [ ] **g. Data-repo registry / lab repo picker (web PR #178)**
+- [x] **g. Data-repo registry / lab repo picker (web PR #178)** → **LAB-227** (V1.0 · In Review · Michael; #178 attached; related LAB-147).
   - Arena Software Control · Backlog. Contents: the lab repo picker, the "Bench id" → "Rig id" rename, and no default repo. It is course-facing, so announce it. Planned for candidate 2.
   - Relates to LAB-147.
 
@@ -168,7 +168,7 @@ tick the box. Nothing below has been written to Linear yet.
 - [x] #228 → LAB-160 *(attached 2026-09-29 with the LAB-160 close)*
 - [ ] #219 (controller-settings block) → LAB-156, LAB-212, LAB-150
 - [x] #191 (analog-in calibration UI) → LAB-86, LAB-209 *(attached to LAB-86 with fw #46/#47, 2026-09-29; LAB-209 is linked via relations instead)*
-- [ ] #226, #227, #229 → new ticket 3a
+- [x] #226, #227, #229 → new ticket 3a *(attached on creation of LAB-222, plus #228)*
 - [ ] fw #58 (Qwiic I2C) → LAB-213, LAB-214, LAB-146
 
 ## 5. Going forward (so this doesn't drift again)
