@@ -1,0 +1,4 @@
+interface:
+  display_name: "Protocol YAML"
+  short_description: "Author and validate G6 arena protocols"
+  default_prompt: "Use $protocol-yaml to author and validate a v3 arena protocol for my experiment."

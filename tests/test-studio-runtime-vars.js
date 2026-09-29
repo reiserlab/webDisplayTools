@@ -132,7 +132,7 @@ checkBool(
     'collectExportWarnings flags it (soft: editing stays possible)',
     !!warn && /refuse to run/.test(warn.message)
 );
-check('WEB_RUNNER_CAPABILITIES is exported (controller_block since v0.88)', v3.WEB_RUNNER_CAPABILITIES, ['controller_block']);
+check('WEB_RUNNER_CAPABILITIES is exported (controller_block, #219)', v3.WEB_RUNNER_CAPABILITIES, ['controller_block']);
 checkBool('requires survives regeneration', /requires:/.test(v3.generateV3Protocol(reqExp)));
 
 console.log('\n=== opto protocol end to end through runtime-controls.js ===');
@@ -376,21 +376,34 @@ const plain = v3.parseV3Protocol(
 );
 const host2 = fakeDoc().createElement('div');
 const status2 = fakeDoc().createElement('div');
-RV.createPanel({
+const card2 = fakeDoc().createElement('div');
+card2.hidden = false;
+let proto2 = null;
+const panel2 = RV.createPanel({
     host: host2,
     statusEl: status2,
+    cardEl: card2,
     document: fakeDoc(),
     RuntimeControls,
-    getProtocol: () => plain,
+    getProtocol: () => proto2,
     getSession: () => null,
     isRunning: () => false,
     onApply: () => {}
-}).render(true);
+});
+panel2.render(true);
+check('no protocol → card hidden', card2.hidden, true);
+proto2 = plain;
+panel2.render(true);
 check(
     'no controls → "None declared"',
     host2.children[0].textContent,
     'None declared in this protocol.'
 );
+check('no controls → card hidden (frees Run-view height)', card2.hidden, true);
+proto2 = exp;
+panel2.render(true);
+check('declared controls → card shown', card2.hidden, false);
+checkBool('page passes the card to the panel', studioHtml.includes("cardEl: $('runVarsCard')"));
 
 console.log('\n=== arena_studio.html wiring ===');
 checkBool(
@@ -461,8 +474,8 @@ checkBool(
     studioHtml.includes("'#runVarsCard':") && studioHtml.includes("'#runVarsApply':")
 );
 checkBool(
-    'footer at v0.84 or later',
-    /Arena Studio v0\.(8[4-9]|9\d) \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET/.test(studioHtml)
+    'footer carries a version stamp',
+    /Arena Studio v\d+(?:\.\d+)* \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} ET/.test(studioHtml)
 );
 const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'protocols', 'index.json'), 'utf8'));
 checkBool(

@@ -235,9 +235,24 @@ checkBool(
     restoreBody.includes('access.status === 401 || access.status === 404') &&
         restoreBody.includes('The stored token was kept; retry or sign in again.')
 );
+// Both lazy pattern sources (shared patterns/ + colocated _patterns/) go through
+// repoFileBytes(), which resolves the token at CALL time (v0.88; signed out it
+// reads public repos from raw.githubusercontent.com, outside the API quota).
+const rfbStart = studioHtml.indexOf('async function repoFileBytes(repo, path) {');
+const rfbBody = studioHtml.slice(rfbStart, studioHtml.indexOf('\n}\n', rfbStart));
 checkBool(
     'lazy repo pattern fetches resolve the current token instead of retaining one',
-    (studioHtml.match(/const currentToken = ghToken\(\);/g) || []).length >= 2
+    rfbStart > 0 &&
+        /^\s*const token = ghToken\(\);/m.test(rfbBody) &&
+        (
+            studioHtml.match(
+                /webPreviewBySdName\.set\(f\.name, \(\) => repoFileBytes\(repo, f\.path\)\);/g
+            ) || []
+        ).length >= 2
+);
+checkBool(
+    'anonymous pattern reads prefer raw.githubusercontent.com',
+    rfbBody.includes("if (!token && typeof GH.rawUrl === 'function')")
 );
 
 // ── request builders ─────────────────────────────────────────────────────────
@@ -366,6 +381,49 @@ try {
     threw = true;
 }
 checkBool('raw read rejects disallowed path', threw, 'js/evil.js');
+
+console.log('=== reqListCommits (run-log replay: protocol history) ===');
+req = G.reqListCommits(O, R, 'protocols/rig03-sr/p3 heisenberg.yaml', null, 60);
+check('commits method', req.method, 'GET');
+check(
+    'commits url encodes path segments + per_page',
+    req.url,
+    'https://api.github.com/repos/reiserlab/webDisplayTools/commits?path=protocols/rig03-sr/p3%20heisenberg.yaml&per_page=60'
+);
+check(
+    'anonymous commits read omits auth',
+    Object.prototype.hasOwnProperty.call(req.headers, 'Authorization'),
+    false
+);
+req = G.reqListCommits(O, R, 'protocols/shared/x.yaml', TOKEN, 500);
+checkBool('per_page clamped to 100', /per_page=100$/.test(req.url), req.url);
+check('commits with token authorizes', req.headers.Authorization, 'Bearer ' + TOKEN);
+threw = false;
+try {
+    G.reqListCommits(O, R, '../secrets.yaml', TOKEN);
+} catch (e) {
+    threw = true;
+}
+checkBool('commits rejects disallowed path', threw, '../secrets.yaml');
+
+console.log('=== rawUrl (anonymous raw.githubusercontent.com reads) ===');
+check(
+    'rawUrl HEAD default',
+    G.rawUrl(O, 'cshl-2026-course', null, 'runlogs/rig03-sr/a__b__c__ei1111av.jsonl.gz'),
+    'https://raw.githubusercontent.com/reiserlab/cshl-2026-course/HEAD/runlogs/rig03-sr/a__b__c__ei1111av.jsonl.gz'
+);
+check(
+    'rawUrl pins a commit ref',
+    G.rawUrl(O, R, '0dfd658', 'protocols/rig03-sr/p3.yaml'),
+    'https://raw.githubusercontent.com/reiserlab/webDisplayTools/0dfd658/protocols/rig03-sr/p3.yaml'
+);
+threw = false;
+try {
+    G.rawUrl(O, R, 'HEAD', 'js/evil.js');
+} catch (e) {
+    threw = true;
+}
+checkBool('rawUrl rejects disallowed path', threw, 'js/evil.js');
 
 console.log('=== reqCreatePull ===');
 req = G.reqCreatePull(

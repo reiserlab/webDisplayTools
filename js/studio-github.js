@@ -41,6 +41,7 @@
     'use strict';
 
     const API = 'https://api.github.com';
+    const RAW = 'https://raw.githubusercontent.com';
     const API_VERSION = '2022-11-28';
     // The Contents API rejects files over ~35 MiB (measured: 35 OK, 40 → 422).
     // commitFile() routes anything above this through the Git Database API
@@ -237,6 +238,48 @@
             url: _contentsUrl(o, r, path) + (ref ? '?ref=' + enc(ref) : ''),
             headers: h
         };
+    }
+    /**
+     * Commit history of ONE file, newest first (run-log replay walks it to find the
+     * protocol version whose sha matches the log's run_metadata). Read-allowlisted
+     * like every other read. Execute with run().
+     */
+    function reqListCommits(o, r, path, token, perPage) {
+        if (!isAllowedReadPath(path)) throw new Error('Refusing to read disallowed path: ' + path);
+        const n = Math.max(1, Math.min(100, Math.floor(Number(perPage) || 30)));
+        return {
+            method: 'GET',
+            url:
+                API +
+                '/repos/' +
+                enc(o) +
+                '/' +
+                enc(r) +
+                '/commits?path=' +
+                path.split('/').map(enc).join('/') +
+                '&per_page=' +
+                n,
+            headers: headers(token)
+        };
+    }
+    /**
+     * Anonymous raw-file URL (raw.githubusercontent.com — CORS `*`, and NOT counted
+     * against the 60/hour anonymous API quota). PUBLIC repos only: it takes no token.
+     * `ref` is a branch, tag, commit sha, or 'HEAD'.
+     */
+    function rawUrl(o, r, ref, path) {
+        if (!isAllowedReadPath(path)) throw new Error('Refusing to read disallowed path: ' + path);
+        return (
+            RAW +
+            '/' +
+            enc(o) +
+            '/' +
+            enc(r) +
+            '/' +
+            enc(ref || 'HEAD') +
+            '/' +
+            path.split('/').map(enc).join('/')
+        );
     }
     /**
      * @param {object} a {message, contentText?, contentBytes?, branch, sha?} —
@@ -494,6 +537,7 @@
 
     const StudioGitHub = {
         API,
+        RAW,
         API_VERSION,
         LARGE_FILE_BYTES,
         WRITABLE_PREFIXES,
@@ -513,6 +557,8 @@
         reqCreateRef,
         reqGetContents,
         reqGetContentsRaw,
+        reqListCommits,
+        rawUrl,
         reqPutContents,
         reqCreateBlob,
         reqGetCommit,

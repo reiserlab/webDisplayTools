@@ -1,6 +1,6 @@
 # Controller settings: what lives in the rig config, what lives in the protocol (plan, 2026-09-23)
 
-Status: **Phase 1 implemented** (Studio v0.88, branch claude/controller-settings-block; user doc
+Status: **Phase 1 implemented** (Studio v0.93, PR #219; user doc
 `docs/development/controller-settings.md`). Reviewed adversarially before implementation (Claude proposal → Codex GPT-5.5
 review → reconciled here). Phases 2 (firmware) and 3 (MATLAB) are open. Raw review: `Bergamo_testing/092226_SNR/analysis/codex_review_raw/codex_strategy_review.md`.
 

@@ -1,5 +1,19 @@
 # Claude Code Guidelines for webDisplayTools
 
+## Project Skills
+
+Claude discovers project-skill wrappers under `.claude/skills/`. The maintained, cross-model
+skill bodies live under `.agents/skills/` and are also used directly by Codex:
+
+- `g6-orientation` — repository map and G6 system conventions.
+- `protocol-yaml` — v3 protocol authoring and validation.
+- `g6-pattern-maker` — reproducible G6 pattern generation and comparison.
+- `g6-release` — shipping web-tool changes through the Production and Next tiers.
+
+Follow the wrapper into the canonical skill before working. Do not duplicate substantive skill
+instructions in `CLAUDE.md` or inside the wrappers. See
+`docs/development/project-skills.md` for the cross-model organization and validation contract.
+
 ## Scope of This File
 
 **CLAUDE.md** is for **how to work with the code** — architecture, patterns, gotchas, testing procedures, and coding conventions. It should NOT contain roadmap items, feature wishlists, or project planning.
@@ -17,11 +31,39 @@ Format in footer: `Tool Name vX | YYYY-MM-DD HH:MM ET · GitHub` — ONLY the to
 
 Example: `Arena Editor v2 | 2026-01-16 14:30 ET · GitHub`
 
-**IMPORTANT**: Always include timestamp in Eastern Time (ET) to distinguish multiple updates per day. Update the timestamp whenever the page is modified.
+**Versions and ET timestamps are bumped at RELEASE time, never in a feature PR** (since
+2026-09-28 — see "Release tiers" below). The release commit built by `pixi run candidate`
+bumps each touched tool's footer (`vX` last component + 1) with the ET stamp and folds the
+PRs' release notes in. A feature PR leaves the footer version/timestamp, the top of every
+release-notes file, and the footer tests alone.
 
-**To get current time**: on macOS/Linux run `TZ='America/New_York' date "+%Y-%m-%d %H:%M ET"` in Bash. **On Windows do NOT use that** — Git Bash has no tzdata, so it silently prints UTC labelled "ET" (this stamped #190's footer four hours off). Use PowerShell instead:
-`[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date),'Eastern Standard Time').ToString('yyyy-MM-dd HH:mm') + ' ET'`.
-Never guess or make up timestamps.
+**Timestamps are computed by the tooling** (`scripts/tiers/tierlib.py`, Python `zoneinfo` with a
+built-in US-DST fallback — correct on Windows too). If you ever need one by hand: on macOS/Linux
+`TZ='America/New_York' date "+%Y-%m-%d %H:%M ET"`; **on Windows do NOT use that** — Git Bash has no
+tzdata, so it silently prints UTC labelled "ET" (this stamped #190's footer four hours off). Never
+guess or make up timestamps.
+
+## Release tiers — Production + Next (THE shipping rule)
+
+Authority: **`docs/development/release-process.md`** (+ `.agents/skills/g6-release/SKILL.md`).
+- **Production** = the root URLs = the tree of `main` (rigs run experiments here; tagged "beta").
+  **Next** = `/next/` = ONE frozen release candidate (main + an explicit list of pinned PR heads +
+  a release commit), or a placeholder. One Pages artifact built by `deploy-pages.yml` via
+  `scripts/tiers/stamp.py`, which stamps every page with `<meta name="wdt-build">` + `build.json`.
+- **Ask the tier question at three decision points (AskUserQuestion, never assume):** opening a PR
+  (next candidate / hotfix / docs-only), building a candidate (which ≤ 4 PRs), promoting (go? window?).
+  Routine pushes to a feature branch never prompt.
+- **Code reaches `main` only through a release PR** from `pixi run candidate`, merged with a MERGE
+  COMMIT by `pixi run release` (never squash — constituent PRs close as indirectly merged).
+  Docs/skills-only PRs are the exception. Hotfix (safety/data-loss only, reason required):
+  `pixi run candidate -- --hotfix "why" N`.
+- **Feature PRs never bump versions;** user-facing notes go in the PR body's `## Release notes`
+  (template: `.github/pull_request_template.md`).
+- **Same-origin coexistence:** migration markers compare typed + monotonic (never `!== current`);
+  a storage key's format never changes meaning (new key instead); window names are tier-suffixed;
+  never open `/next/` on a rig PC mid-experiment (the FicTrac bridge takes several clients).
+- **`next/` is a reserved top-level path.** Never use `pull_request_target` for the deploy (blocked
+  by default on public repos from 2026-11-02); `workflow_dispatch` on main publishes candidates.
 
 ## Design System
 
@@ -361,6 +403,16 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   any NEW closed-loop entry point. A short pattern is legitimate — a 20-px grating
   needs 20 frames and the modulus tiles it; the pitch stays 360/azimuth_pixels.
   Full spec: `docs/development/closed-loop-bias.md`.
+- **Closed-loop start position = the trialParams `frame_index` (v0.91) + epoch gate (bridge 3.4):**
+  since the 3.3 tare every epoch would open on `round(offset / pitch)` = frame 0, so the runner records
+  each trialParams' wire `init_pos` (`acc.fictracInitPos`) and pushes it as the bridge config
+  `start_frame` (mod the resolved frame count) with every `startClosedLoop`; the bridge sets
+  `offset = start × pitch` — one-shot in the client, never stored. ONE field in YAML: the protocol
+  `params.start_frame` (v0.89) is deprecated (accepted; wins with a warning when it differs from
+  `frame_index`). Bridge < 3.4 ignores the key → one warning per run (`supportsStartFrame()`). The
+  bridge stamps frames with `epoch` (+1 per tare) and the client withholds pre-tare frames after an
+  epoch request (`stats.stale`). Any NEW closed-loop entry point must send the start frame the same
+  way. Why, evidence, alternatives: `docs/development/closed-loop-start-frame.md`.
 - URL state ([#107](https://github.com/reiserlab/webDisplayTools/issues/107),
   read+write): `js/studio-url-state.js` (`mode` ∈ run|edit|console; a shared
   `p` forces `edit`→Run on fresh loads, never `console`). Write side:
@@ -400,6 +452,52 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   REFUSED to run (a `repeat_until` block would otherwise flatten to a plain block and run wrong).
   When the web runner implements a capability, add its token to `WEB_RUNNER_CAPABILITIES`.
   Tests: `tests/test-studio-runtime-vars.js`, `tests/test-runtime-controls.js`.
+- **Run-log replay (v0.88) — `js/studio-replay.js`** (pure core, dual-export, Node-tested in
+  `tests/test-studio-replay.js`; `install()` is the Run-view controller, called from the classic
+  "(2c) RUN-LOG REPLAY" glue script — classic on purpose, it owns the interlock). Rules:
+  (1) `enterShell` latches `session.setOutputInhibited` + `inert` BEFORE any file is read, and
+  refuses while a run or FicTrac apply is active — never add a replay entry point that skips it;
+  `stop()`/pagehide release it. (2) ONE projection (`applyStatus`/`applyItem`) serves playback AND
+  seek-priming (`primeProjection`) — put replay semantics there, never in the UI loop; the display
+  changes only on display commands (an ITI that only waits HOLDS the previous pattern, as the
+  controller does). (3) Protocol lookup matches `run_metadata.protocol_sha256`, which is the sha of
+  the DESIGNER SERIALIZATION (`exp._doc.toString()`), not the raw bytes — compare both
+  (`Studio.protocolDocSha` = same parser); order: open doc → repo `protocols/<rig_id>|<log
+  bench>|shared|<every dir>/` → site `protocols/index.json` → the file's git history
+  (`GH.reqListCommits`) → HEAD-with-warning → log-only. (4) Signed-out reads of public repos go
+  through `GH.rawUrl` (raw.githubusercontent.com — CORS `*`, outside the 60/h anonymous API quota);
+  directory listings + commit lists still use the API. (5) URL: an active repo-backed replay owns
+  the link — `encodeApp({replayRepo, replayPath})` → `?repo=&replay=` with NO `p`; `initFromUrl`
+  calls `Studio.replay.openFromUrl` un-awaited (its sync prefix records the pending link so the
+  canonical write keeps it) and lands PAUSED (no gesture → the first ▶ Play opens the 3D popup).
+  (6) The 3D popup is sized/placed by the pure `viewerPlacement()` (beside the Studio window →
+  over the greyed-out Run-details column → screen corner; outer metrics sanitized), and the viewer
+  has a compact `@media (max-width: 680px), (max-height: 500px)` layout for that small window.
+  (6a) The ball's orientation is integrated IN THE CORE per FicTrac sample (`ballDelta`/`ballStep`,
+  kinematics.js conventions; +Δh about +Y, −fwd about +Z, +side about +X in the viewer's frame —
+  fly faces −X; `BALL_SIGNS` is the one knob if a rig is mirrored) and sent as `state.ball`
+  (quaternion, validated by `normalizeReplayState`) — seek-priming integrates the same path, so
+  never integrate it in the viewer. The markings are drawn in the ball material's shader
+  (`applyFicTracSpots`: discs + convex polygons from a fixed seed), not a texture.
+  (6c) The fly WALKS (v0.90) from **`js/fly-gait.js`** (pure, dual-export, classic `<script>`
+  loaded before studio-replay.js in the Studio AND before the module in
+  `arena_replay_viewer.html`; both sides tolerate it missing → the fly just stands). The 2-D
+  drive is (forward mm/s, yaw rad/s), a 100 ms sliding average of the SAME `ballDelta` the ball
+  integrates; `stepGait` runs in `applyItem` beside `ballStep` and integrates the tripod phase
+  in LOG time (so seek == walk and 4× plays 4× faster), and `state.gait` = `gaitState()`
+  (validated by `normalizeGait`). The viewer only poses: `footPosition` puts stance feet on the
+  ball moving with ω × r (no slip — per-leg stride = surface velocity × stance time, which
+  yields NeuroMechFly v2's left/right drive regimes), knees by two-bone IK (`poseFlyLegs`).
+  Keep gait semantics in fly-gait.js; tune the cadence law there (`gaitDrive`).
+  (6b) The tick uses rAF, and a timer while `document.hidden` (a minimized Studio would otherwise
+  freeze the 3D window). (7) Alt keeps its own reference replay; `install()` refuses on
+  `html.arena-alt`. **3D viewer** (`js/arena-replay-viewer.js`): the ball, its Ø12 mm holder and
+  the cartoon fly (drawn at `FLY_DISPLAY_SCALE` = 2× life size; `buildFly` solves the legs against
+  the ball radius in model units so the feet stay on the ball at any scale) and the tether
+  (steel pin in the fly model, so it scales with the fly; real-size brass rod leaning back out of
+  the arena's open top) are one depth domain on top of the cutaway — the ball's `onBeforeRender` sets
+  the depth mask then clears depth (three's `clear()` does not force the mask on). The popup's
+  entry `?v=` token must equal the ThreeViewer import token (tests pin it) — bump them together.
 - **? Help mode:** top-bar `?` toggles `body.helpmode`; a managed tooltip shows curated
   `data-help` text (applied from the `HELP` map in the v6 glue classic script — extend the
   map, don't scatter attributes) and suppresses the native engineer `title=` while shown.
@@ -409,8 +507,9 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   repo link (e.g. `Arena Studio v0.9 | 2026-07-07 00:03 ET · GitHub`). NEVER put a
   changelog, release-notes summary, or "what changed" keywords in the footer — this is a
   recurring mistake. The changelog lives ONLY in
-  `docs/development/arena-studio-release-notes.md` — add an entry there for user-visible
-  changes.
+  `docs/development/arena-studio-release-notes.md` — but a feature PR does NOT edit it:
+  write user-visible notes in the PR body's `## Release notes`; the release commit folds them
+  in (and `tests/test-studio-replay.js` checks footer version = newest notes entry).
 - **Run logs are `.jsonl.gz` (v0.72+, `docs/development/runlog-behavior-v2-plan.md`).**
   `commitRunLog` gzips the bridge export (`GH.gzipBytes`) and commits
   `runlogs/<bench>/<name>.jsonl.gz` via `GH.commitFile`, which routes >30 MiB payloads
@@ -437,7 +536,8 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   firmware FAT access (chain-walking seeks + `fatGet` at cluster crossings), proven by the 4-arm causal test on 2026-09-13 and
   removed by the contiguous-seek fast path — never re-introduce per-seek chain walks; see
   `docs/development/mode3-reliability-handoff-2026-09-14.md`.
-- Bump the footer version/timestamp on every edit; never Prettier the HTML.
+- Never bump the footer version/timestamp in a feature PR (the release commit does — see
+  "Release tiers"); never Prettier the HTML.
 - **Nested protocol objects are edited BY PATH, never rewritten wholesale (v0.82).** `docSet` wraps a
   plain object/array in `doc.createNode` before `setIn` (yaml would otherwise store the raw JS object,
   after which `getIn(path, true)` beneath it is undefined and a nested `setIn` throws "Expected YAML

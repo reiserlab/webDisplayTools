@@ -1,10 +1,10 @@
 # Controller settings: rig defaults, the protocol `controller:` block, the run header
 
-*User documentation for Studio v0.88+. Design and history: `controller-settings-strategy.md`.*
+*User documentation for Studio v0.93+. Design and history: `controller-settings-strategy.md`.*
 
 The G6 controller keeps a handful of **sticky** settings across runs: the panel display mode
 (0 oneshot / 1 persistent / 2 triggered / 3 gated), the re-transmit ("refresh") rate, the Digital IO
-roles, the analog-out level, the SPI clock. Before v0.88 they were set by hand in the Controller ▾
+roles, the analog-out level, the SPI clock. Before v0.93 they were set by hand in the Controller ▾
 menu and nothing recorded them with the data. Now:
 
 1. the **rig YAML** declares the bench's wiring and defaults,

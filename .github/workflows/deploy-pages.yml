@@ -1,10 +1,28 @@
-# Deploy to GitHub Pages
+# Deploy BOTH tiers to GitHub Pages as ONE artifact (docs/development/release-process.md):
+#   /        Production — the tree of main (or of `root_ref`, emergency rollback only)
+#   /next/   Next       — the frozen release candidate the `next` branch points at,
+#                         or a placeholder page when no candidate is live
+#
+# Triggers: every push to main (Production changed), and workflow_dispatch — which is how
+# `pixi run candidate` publishes a new candidate (`--ref main -f next=<sha>`) and how
+# `pixi run tiers -- rollback` serves an older release. Never use pull_request_target here:
+# it is blocked by default on public repos from 2026-11-02, and dispatching from main keeps
+# the trusted workflow + the main-only `github-pages` environment rule.
 name: Deploy to GitHub Pages
 
 on:
     push:
         branches: [main]
-    workflow_dispatch: # Allow manual triggering
+    workflow_dispatch:
+        inputs:
+            next:
+                description: 'Next tier: a candidate commit SHA, "auto" (the next branch) or "none" (placeholder)'
+                required: false
+                default: 'auto'
+            root_ref:
+                description: 'EMERGENCY ROLLBACK ONLY: a release-… tag or main commit to serve at the site root'
+                required: false
+                default: ''
 
 # Sets permissions for GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -25,19 +43,37 @@ jobs:
     build:
         runs-on: ubuntu-latest
         steps:
-            - name: Checkout
+            - name: Checkout (full history — the build archives the candidate and tags)
               uses: actions/checkout@v7
+              with:
+                  fetch-depth: 0
 
             - name: Setup Pages
               uses: actions/configure-pages@v6
               with:
                   enablement: true
 
+            # Resolves every input to a commit ONCE, archives root → _site/ and the
+            # candidate → _site/next/, stamps the build identity into each page, and
+            # self-checks that Production is byte-identical to its commit apart from the
+            # stamp. A Next problem never blocks Production (placeholder instead).
+            # Inputs go through env, never interpolated into the script.
+            - name: Assemble Production + Next
+              env:
+                  NEXT_INPUT: ${{ inputs.next || 'auto' }}
+                  ROOT_REF: ${{ inputs.root_ref }}
+              run: |
+                  if [ -n "$ROOT_REF" ]; then
+                      git merge-base --is-ancestor "$ROOT_REF" origin/main \
+                          || { echo "root_ref $ROOT_REF is not on main's history"; exit 1; }
+                  fi
+                  python3 scripts/tiers/stamp.py build --out _site \
+                      --root-ref "${ROOT_REF:-$GITHUB_SHA}" --next "$NEXT_INPUT"
+
             - name: Upload artifact
               uses: actions/upload-pages-artifact@v5
               with:
-                  # Upload entire repository
-                  path: '.'
+                  path: _site
 
     deploy:
         needs: build

@@ -39,7 +39,7 @@ jobs:
         run: |
           echo "## G6 Encoding Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ $? -eq 0 ]; then
+          if [ "${{ job.status }}" = "success" ]; then
             echo "✅ All G6 encoding tests match MATLAB reference" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Some G6 encoding tests differ from MATLAB reference" >> $GITHUB_STEP_SUMMARY

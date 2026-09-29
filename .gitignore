@@ -12,3 +12,10 @@ __pycache__/
 *.pyc
 *.jsonl
 soak-patterns/
+
+# Two-tier release tooling (docs/development/release-process.md)
+_site/
+.tiers/
+
+# Soak / bench captures — multi-GB, keep outside the repo
+soak-logs/

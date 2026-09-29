@@ -171,6 +171,48 @@ equal(
 
 console.log('\n=== replay-state normalization ===');
 equal(
+    'ball quaternion is normalized and kept',
+    Protocol.normalizeReplayState({ ball: [0, 0, 0, 2] }).ball,
+    [0, 0, 0, 1]
+);
+equal(
+    'an invalid ball is dropped (no key)',
+    Object.prototype.hasOwnProperty.call(
+        Protocol.normalizeReplayState({ ball: [1, 2, 'x', 4] }),
+        'ball'
+    ),
+    false
+);
+equal(
+    'the last ball carries over when a state omits it',
+    Protocol.normalizeReplayState({ frame: 1 }, { ball: [0, 1, 0, 0] }).ball,
+    [0, 1, 0, 0]
+);
+const gaitIn = { phase: 1.25, yaw: 3, pitch: -2, freq: 6.5, duty: 0.7, walk: 1 };
+equal(
+    'gait state is kept (phase wrapped to [0, 1))',
+    Protocol.normalizeReplayState({ gait: gaitIn }).gait,
+    { phase: 0.25, yaw: 3, pitch: -2, freq: 6.5, duty: 0.7, walk: 1 }
+);
+equal(
+    'a gait with a non-finite field is dropped (no key)',
+    Object.prototype.hasOwnProperty.call(
+        Protocol.normalizeReplayState({ gait: { ...gaitIn, freq: 'x' } }),
+        'gait'
+    ),
+    false
+);
+equal(
+    'gait values are clamped to sane ranges',
+    Protocol.normalizeReplayState({ gait: { ...gaitIn, yaw: 900, walk: 4, duty: 2 } }).gait,
+    { phase: 0.25, yaw: 50, pitch: -2, freq: 6.5, duty: 0.95, walk: 1 }
+);
+equal(
+    'the last gait carries over when a state omits it',
+    Protocol.normalizeReplayState({ frame: 1 }, { gait: { ...gaitIn, phase: 0.5 } }).gait.phase,
+    0.5
+);
+equal(
     'canonical state stays canonical',
     Protocol.normalizeReplayState({
         elapsedMs: 6250,
@@ -293,6 +335,11 @@ check(
         html.includes('arena-replay-viewer.js?v=0713-solid-ball')
 );
 check(
+    'popup loads the walking model (classic) before the viewer module',
+    html.indexOf('src="js/fly-gait.js?v=') > 0 &&
+        html.indexOf('src="js/fly-gait.js?v=') < html.indexOf('src="js/arena-replay-viewer.js?v=')
+);
+check(
     'apparatus declares the required 9 mm ball',
     viewerModule.includes('const BALL_DIAMETER_MM = 9;')
 );
@@ -310,8 +357,10 @@ const ballStart = viewerModule.indexOf('const ballMaterial = foregroundMaterial(
 const ballEnd = viewerModule.indexOf('group.add(ball);', ballStart);
 const ballBody = viewerModule.slice(ballStart, ballEnd);
 check(
-    '9 mm ball is solid pure white and renders over the red beam',
+    // v0.88 (lab request): white with FicTrac-style black spots, drawn in its shader.
+    '9 mm ball is white with FicTrac spots and renders over the red beam',
     ballBody.includes('color: 0xffffff') &&
+        ballBody.includes('applyFicTracSpots(ballMaterial);') &&
         ballBody.includes('new THREE.SphereGeometry(ballRadius, 40, 24)') &&
         ballBody.includes('44') &&
         viewerModule.includes('beam.renderOrder = 41;')
@@ -347,7 +396,9 @@ check(
 );
 check(
     'viewer capability handshake advertises the corrected camera controls',
-    viewerModule.includes("views: ['reset', 'top', 'rear', 'fly-eye']") &&
+    // v0.88 adds the "fly" close-up preset (the cartoon fly on the ball); Reset is now the
+    // behind-the-fly starting view and the old outside view is "overview".
+    viewerModule.includes("views: ['reset', 'overview', 'top', 'rear', 'fly', 'fly-eye']") &&
         viewerModule.includes('horizontalFovOptions: [60, 90, 120, 135, 150]')
 );
 check(

@@ -129,7 +129,7 @@ WS_MAX_SIZE = 16 * 1024 * 1024
 # leads the startup banner. (An OLD bridge has no --version flag → argparse errors,
 # which is itself the tell.) "behavior_v1" here means frames carry ms/fc/idx/ft/x/y/hd
 # with `ft` normalized ns→ms — i.e. the live scope + dashboard will work.
-BRIDGE_VERSION = "3.3 · behavior_v2 (compact arena echo, log_control ack, controller telemetry rows) + bias waveforms + heading tare + coupling (unwrapped heading)"
+BRIDGE_VERSION = "3.4 · behavior_v2 (compact arena echo, log_control ack, controller telemetry rows) + bias waveforms + heading tare + coupling (unwrapped heading) + start_frame + epoch-stamped frames"
 
 # The `config` message the runner sends at each startClosedLoop. `gain` is the pre-3.3
 # name of `deg_per_frame`; still accepted so an old Console / protocol keeps working.
@@ -879,6 +879,11 @@ class Pipeline:
         self.hd0 = 0.0
         self._tare_pending = False
         self._tare_reason = "epoch"
+        # Epoch counter: +1 every time a tare FIRES. Stamped on every frame message so
+        # the browser can tell a frame computed BEFORE the tare it just requested from
+        # the first post-tare one — the race that flashed a stale index for one frame
+        # at closed-loop start (rig03 bout 6, 2026-09-23). 0 = no tare yet.
+        self.epoch_id = 0
         if bias:
             self.set_bias(bias, log_event=False, tare=False)
 
@@ -902,6 +907,18 @@ class Pipeline:
         or a FicTrac restart detected from its frame counter)."""
         self._tare_pending = True
         self._tare_reason = reason
+
+    def start_frame_to_offset(self, start_frame: int) -> float:
+        """The `offset` (display degrees) that opens a tared epoch on `start_frame`.
+
+        After the tare rel_heading is 0, so idx = round(offset / deg_per_frame) mod
+        n_frames; offset = (start_frame mod n_frames) × deg_per_frame lands exactly on
+        the requested 0-based frame, and the fly's turning then moves away from it with
+        the usual coupling. Used by the config `start_frame` key (per-trial start
+        position, e.g. a place-learning trial opening 90° outside the safe zone).
+        """
+        n = max(1, int(self.n_frames))
+        return (int(start_frame) % n) * float(self.deg_per_frame)
 
     def set_bias(self, spec: dict | None, log_event: bool = True, tare: bool = True) -> dict:
         """Install a bias waveform, RE-ZERO its phase clock, and ARM THE HEADING TARE,
@@ -983,6 +1000,7 @@ class Pipeline:
             self.hd0 = hd_deg
             self.rel_deg = 0.0
             self._prev_hd_deg = hd_deg
+            self.epoch_id += 1
             self.log.write_event(
                 {
                     "type": "heading_tare",
@@ -990,6 +1008,7 @@ class Pipeline:
                     "ms": now - self.t0_ms,
                     "hd0_deg": round(hd_deg, 4),
                     "reason": self._tare_reason,
+                    "epoch": self.epoch_id,
                 }
             )
             return
@@ -1043,7 +1062,7 @@ class Pipeline:
             self.ft0 = fields[21]
         beh = behavior_v1_row(fields, index, now - self.t0_ms, self.ft0)
         # Legacy index/seq/t kept alongside the behavior_v1 fields for back-compat.
-        msg = {"type": "frame", "index": index, "seq": beh["fc"], "t": now}
+        msg = {"type": "frame", "index": index, "seq": beh["fc"], "t": now, "epoch": self.epoch_id}
         msg.update(beh)
         # Live bias angle, for the Studio's read-only readout only. Additive on the
         # WebSocket (unknown fields are ignored by older clients) and deliberately NOT
@@ -1213,6 +1232,15 @@ def make_dispatcher(pipeline: Pipeline, log: LogWriter, inputs: InputManager):
             if obj.get("frames"):
                 pipeline.n_frames = max(1, int(obj["frames"]))
                 applied["frames"] = pipeline.n_frames
+            if obj.get("start_frame") is not None:
+                # Per-trial START POSITION (protocol startClosedLoop params.start_frame):
+                # the epoch tare zeroes rel_heading, so the epoch opens at
+                # round(offset / deg_per_frame). Set offset = start_frame × pitch to open it
+                # on that frame. Applied AFTER deg_per_frame/frames so it uses this
+                # message's values; an explicit "offset" in the same message is overridden.
+                pipeline.offset = pipeline.start_frame_to_offset(int(obj["start_frame"]))
+                applied["start_frame"] = int(obj["start_frame"]) % max(1, pipeline.n_frames)
+                applied["offset"] = pipeline.offset
             if obj.get("fictrac_port"):
                 await inputs.rebind(int(obj["fictrac_port"]))
                 applied["fictrac_port"] = inputs.port

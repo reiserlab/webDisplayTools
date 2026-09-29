@@ -521,6 +521,11 @@ const ArenaWireG6 = (function () {
     // purge-memory (0x8F): format the SD card (wipes everything, not just
     // /patterns: also /firmware/panel.bin and both manifests). Much slower
     // than the per-file delete it replaced; give it a generous timeout.
+    // A full-card SD.format() scales with card capacity — far beyond the old 10–15 s
+    // /patterns delete (LAB-160; Modular-LED-Display g6_03-controller § 0x8F purge-memory).
+    // Every page that sends 0x8F uses THIS value, so it is set in one place.
+    const PURGE_MEMORY_TIMEOUT_MS = 120000;
+
     function encodePurgeMemory() {
         return frame(OPCODES.PURGE_MEMORY); // 01 8F
     }
@@ -1333,6 +1338,7 @@ const ArenaWireG6 = (function () {
         encodeSetPatternFile,
         encodeDeletePatternFile,
         encodePurgeMemory,
+        PURGE_MEMORY_TIMEOUT_MS,
         encodeGetSdArchive,
         encodeSetFirmwareFile,
         encodeGetFirmwareInfo,

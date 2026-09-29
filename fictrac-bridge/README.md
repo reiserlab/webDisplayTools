@@ -107,9 +107,13 @@ touch this parsing path.
 ## WebSocket message schema
 
 ```
-bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>,
+bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>, "epoch":<int>,
                     "ms":<int>, "fc":<int>, "idx":<int>, "ft":<ms|null>,
                     "x":<rad>, "y":<rad>, "hd":<rad>, "bias":<deg>}
+                     `epoch` (bridge ≥ 3.4) counts heading tares (+1 each time one fires,
+                     0 before the first). After the browser requests an epoch it withholds
+                     frames still stamped with the previous id — those were computed before
+                     the tare and would flash a stale index at closed-loop start.
                      (the behavior_v1 fields — ms/fc/idx/ft/x/y/hd — drive the live
                       oscilloscope; index/seq/t stay for back-compatibility)
                      `bias` is present ONLY while a bias waveform is active: the angle
@@ -133,14 +137,18 @@ bridge → browser:  {"type":"frame", "index":<int>, "seq":<int>, "t":<ms>,
 browser → bridge:  {"type":"hello", "client":"arena_console", "v":1}   (on connect)
                    {"type":"config", "fictrac_port":<int>, "coupling":<float>,
                                      "deg_per_frame":<float>, "offset":<float>, "frames":<int>,
-                                     "epoch":true,
+                                     "start_frame":<int>, "epoch":true,
                                      "bias":{"type":"none"|"constant"|"sine"|"square",
                                              "amplitude":<deg/s>, "frequency":<Hz>}}
                                                               (any subset; "epoch":true or a
                                                                message CARRYING "bias" re-tares
                                                                the heading + re-zeros the bias
                                                                phase clock; "gain" = deprecated
-                                                               alias of "deg_per_frame")
+                                                               alias of "deg_per_frame";
+                                                               "start_frame" sets offset =
+                                                               start_frame × deg_per_frame so
+                                                               the tared epoch OPENS on that
+                                                               frame — per-trial start position)
                    {"type":"log_control", "enabled":<bool>,
                                           "level":"behavior_v2"|"behavior_v1"|"full"}
                                                               (open the log file; level

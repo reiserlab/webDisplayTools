@@ -45,6 +45,8 @@
      * @param {object} a.rig     {name, arenaConfig} from the loaded rig YAML (NOT the controller)
      * @param {string} a.toolVersion  e.g. 'Arena Studio v0.1'
      * @param {string} a.runId
+     * @param {object} [a.build]  release tier of the page — BuildChannel.detect():
+     *                            {channel: 'production'|'next'|'local', sha, candidate}
      */
     function buildMeta(a) {
         const o = a || {};
@@ -52,6 +54,8 @@
         const doc = o.doc || {};
         const session = o.session || {};
         const rig = o.rig || {};
+        const build = o.build || {};
+        const cand = build.candidate || null;
         const s = (v) => (v == null ? '' : String(v)).trim();
         return {
             run_id: o.runId || null,
@@ -70,7 +74,15 @@
             // from the Teensy's burned-in unique ID. null until the firmware
             // ships it in the 0xC2 reply (tolerant decode on the web side).
             controller_id: session.controllerId || null,
-            tool_version: o.toolVersion || null
+            tool_version: o.toolVersion || null,
+            // Which release tier ran this (docs/development/release-process.md): a Next
+            // candidate shares its upcoming tool_version with the release, so `channel` +
+            // `build` (the deployed commit) are what tell the two apart.
+            channel: build.channel || null,
+            build: build.sha || null,
+            candidate: cand
+                ? cand.label || (cand.name ? cand.name + (cand.rc ? '-rc' + cand.rc : '') : null)
+                : null
         };
     }
 

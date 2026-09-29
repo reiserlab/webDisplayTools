@@ -4,22 +4,110 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
-## v0.88 (2026-09-24) · Sticky controller settings are asserted before every run and recorded
+## v0.92 (2026-09-28) · Release tiers on the page; SD purge timeout
 
-- **Panel display mode, refresh rate and panel firmware are no longer a menu setting nobody
-  records.** A rig YAML now carries `defaults.panel_mode` (asserted at connect and before every run),
-  `limits.max_refresh_hz`, `requires.panel_firmware` and `strict`; a protocol that depends on a mode
-  declares a top-level `controller:` block (`panel_mode`, `refresh_policy: line_sync_safe` |
-  `refresh_hz`, `panel_firmware`) plus `requires: [controller_block]`. Before each Run/Test the Studio
-  reads the controller, sets what differs, reads it back, and **refuses to run** on a mismatch it
-  cannot fix (wrong rig, unreadable setting, wrong panel firmware, failed fleet verify). The before /
-  after snapshot (mode, refresh, SPI, DIO roles, AO, panel-firmware footer, controller firmware,
-  fleet verify) goes into the run header (`meta.controller`) and one transcript line. The 2P
-  Bergamo protocols use it; course protocols need nothing and inherit `persistent` from their rig,
-  which also puts a bench back into persistent mode if a previous session left it triggered.
-  New rig `bergamo_g6_2x10_2p` (strict). Settings → **Controller** card shows the declaration, the live
-  snapshot, the gate verdict and a **Verify panels** button (fleet CRC check, 0xC9, ~1 s per panel).
-  Docs: `docs/development/controller-settings.md`; design: `controller-settings-strategy.md`.
+<!-- #227 -->
+- **The top bar shows which build you're on.** A grey "beta" badge on the regular site, an orange "NEXT" badge on the testing build at `/next/`. Hover it for the exact build.
+- **Runs on the testing build ask once for confirmation** and are marked as such in the run log, so they're never confused with regular experiment data.
+- **Switching between the regular site and the testing build no longer resets your scope and dock preferences.**
+
+<!-- #228 -->
+- **Formatting the SD card (Console → Patterns → Purge…) no longer gives up after 30 seconds.** A full-card format can take longer on large cards; the Studio now waits up to 2 minutes for the controller to finish.
+
+## v0.91 (2026-09-26) · A closed-loop trial opens where `frame_index` puts it
+
+- **The closed loop now starts from the trial's `frame_index`.** Before, the display showed the
+  `frame_index` frame only until the first FicTrac frame, then jumped to frame 0. Now the closed loop
+  carries on from the frame already on the arena, so one number sets where a trial starts. Protocols
+  that start on frame 0 behave exactly as before. The P3 conditioning protocols that alternate starts
+  on frames 25 and 75 now really start there. They had all been opening on frame 0 since v0.85.
+- **`start_frame` is no longer needed.** A protocol written for v0.89 still runs unchanged. If its
+  `start_frame` differs from the trial's `frame_index`, `start_frame` is used and the run shows a
+  warning, because the display jumps between the two.
+- **An out-of-date bridge is now flagged.** The start position needs FicTrac bridge 3.4 or later; an
+  older bridge silently opens every trial on frame 0. The run now says so once, with the fix (restart
+  the bridge from the current repo).
+## v0.90 (2026-09-26) · The replay fly walks
+
+- **The fly in the replay 3D window now walks with the recorded data.** Its legs step in a
+  tripod gait (front and hind legs on one side move together with the middle leg on the
+  other side, the two groups alternating), driven by the fly's forward speed and turning rate
+  averaged over the last 100 ms. Faster walking means quicker steps. While a leg is on the
+  ball its foot moves with the ball's surface, so the feet stay planted as the ball rolls
+  under them. Turning changes each leg's stroke the way real flies' strokes change: in a
+  gentle turn the outer legs take longer strides, and in a sharp turn on the spot the inner
+  legs step backward. When the fly stops, it stands still. The model follows the Ramdya lab's
+  NeuroMechFly v2 (tripod oscillators steered by left/right drive asymmetry).
+- **The fly is tethered, as on the rigs:** a steel pin glued on the middle of the thorax (a
+  quarter of the way back from its front), held by a brass rod that leans back and leaves the
+  arena through its open top.
+
+## v0.89 (2026-09-24) · Per-trial closed-loop start position; no stale frame at epoch start — bridge 3.4
+
+Why this exists, the bench evidence and the alternatives considered: `docs/development/closed-loop-start-frame.md`.
+
+- **`startClosedLoop` accepts `params: { start_frame: N }`.** Since bridge 3.3 every closed-loop epoch
+  re-tares the heading, so the display always opened on frame 0. `start_frame` becomes the bridge's
+  `offset` (N × pitch) for that epoch, so the trial opens on frame N and the fly's turning moves away from
+  it with the protocol's coupling. This is how a place-learning protocol starts every trial a fixed
+  distance outside the safe zone, alternating sides (the MATLAB p058 rig). Set the trial's `frame_index`
+  to the same N so the display shows it before the first FicTrac frame. A non-integer or negative value
+  fails the step with a message. Needs the matching bridge; an older bridge ignores the key.
+- **No more stale frame at closed-loop start (bridge 3.4).** The runner pushes `epoch: true` and then
+  turns apply on; a frame the bridge had computed just before it processed that config could still
+  arrive afterwards and was applied, flashing a wrong index for one frame period (rig03 bout 6,
+  2026-09-23: frame 0 instead of 108, 1 epoch in 22). The bridge now stamps every frame with an
+  `epoch` counter (+1 per tare) and the client withholds frames still carrying the pre-tare id until
+  the first post-tare frame (or 1 s). Withheld frames show as `stale` in the bridge stats. An older
+  bridge without the stamp is unaffected.
+
+## v0.88 (2026-09-24) · Replay a recorded run — from its log alone, or from a link
+
+- **↺ Replay a run** (Run view, next to Test experiment; also File ▾ → *Replay a recorded
+  run…*) plays a recorded experiment back through the Run view: the sequence highlights the
+  step that was running, the Scope redraws the fly's turning / forward / heading with the
+  trial, closed-loop and LED annotations, and optional **sound** follows the fly. Play /
+  Pause (Space), a seek slider (← / → jump 5 s), 0.5× / 1× / 2× / 4×. **The arena is never
+  driven** — the page's hardware-output interlock is on for the whole replay and every live
+  control is locked; **■ Stop replay** returns to the live Run view.
+- **Only the log is needed.** Pick one of the course repo's **Recent runs** (every bench,
+  newest first, filterable by protocol / person / genotype / rig / date / run id) or open a
+  `.jsonl` / `.jsonl.gz` from this computer. The protocol is **found for you** from the log's
+  metadata: the open protocol if it is the same version, else the course repo (the rig's
+  folder, `shared/`, every other bench), else this site's library — and if the file has been
+  edited since the run, the repo history is searched for the **exact version that ran**
+  (the replay bar says "Protocol ✓ exact version … @ <commit>"). A run whose protocol was
+  never committed still replays from the log alone (steps from the log, patterns matched by
+  their SD number). Advanced ▸ lets you supply the YAML or `.pat` files by hand.
+- **Links.** A replay of a repo run puts itself in the address bar —
+  `arena_studio.html?repo=reiserlab/cshl-2026-course&replay=runlogs/<bench>/<file>.jsonl.gz`
+  (or `&replay=<run id>`) — and **🔗 Copy link** copies it. Opening such a link loads the run
+  paused at its first step; the first ▶ Play also opens the 3D window.
+- **3D arena window** (🧊 3D view): a separate, movable window in step with the replay — the
+  pattern and frame the arena showed, the LED glow, and now a **cartoon fly** (drawn 2× life
+  size — 4.6 mm on the 9 mm ball — so it reads at arena scale) standing on the ball and facing
+  the front of the display, with the
+  ball sitting in a **black Ø 12 mm holder** that rises to just below its equator, as on the
+  rigs. The window **opens behind the fly**, slightly above it, looking past it at the front of
+  the display (most of the display in view, not all); **Reset** returns there and **Overview**
+  shows the whole arena from outside. New **Fly** camera: a close-up from just behind the fly.
+  (The fly hides itself in the Fly eye view, whose camera is where its head is.) The window
+  opens **small and out of the way** — beside the Studio if the screen has room, otherwise over
+  the greyed-out Run-details column — so it never covers the replay bar, sequence or Scope; in a
+  small window its info bar collapses to one slim row.
+- **Run view no longer spills over the Scope.** On a short window (the Scope dock at half the
+  screen plus the SD-pattern warning or the replay bar), the Run column's cards used to paint
+  over the dock; the column now scrolls inside its own area instead. The **Runtime variables**
+  card is hidden when the open protocol declares none (it only said "None declared"), giving
+  that height back to the sequence.
+- **The ball rolls with the fly.** In the 3D window the ball now carries FicTrac-style
+  markings — large black blobs plus a few sharp-edged shapes (triangles, a quad, a pentagon,
+  an L), easy to follow from frame to frame — and it turns exactly as the recorded FicTrac
+  data says: it yaws with the fly's turns and rolls under its forward and sideways steps
+  (the fly stays fixed, facing the display, as on the rig). Seeking lands on the same ball
+  orientation as playing through. Reloading the 3D window keeps it in sync.
+- Repo pattern previews are now read from `raw.githubusercontent.com` when signed out, which
+  does not use the GitHub API's 60-requests/hour anonymous allowance.
 
 ## v0.87 (2026-09-23) · The scope shows a trial whose LED is on from the first frame
 

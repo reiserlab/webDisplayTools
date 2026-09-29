@@ -386,6 +386,71 @@ check(
 );
 check('encodeApp omits soak by default', U.encodeApp({ mode: 'console' }), '?mode=console');
 
+// ── replay param (run-log playback, Studio v0.88) ────────────────────────────
+console.log('\n=== replay param ===');
+const RL =
+    'runlogs/rig03-sr/p3-heisenberg-ts-short-led5-baseprobe3__shubhamtr__2026-09-23T20-18-00__ei1111av.jsonl.gz';
+d = U.decode('?repo=reiserlab/cshl-2026-course&replay=' + RL);
+check('replay path decoded', d.state.replay, RL);
+check('replay keeps repo', d.state.repo, 'reiserlab/cshl-2026-course');
+check('replay lands in Run', d.state.mode, 'run');
+checkBool('valid replay does not warn', d.warnings.length === 0, d.warnings.join('|'));
+d = U.decode('?replay=ei1111av');
+check('bare run id decoded', d.state.replayRun, 'ei1111av');
+check('run id is not a path', d.state.replay, undefined);
+d = U.decode('?replay=' + RL + '&mode=edit');
+check('replay forces Run over mode=edit', d.state.mode, 'run');
+checkBool(
+    'replay + mode=edit warns',
+    d.warnings.some((w) => /Replay link opened in Run/.test(w)),
+    d.warnings.join('|')
+);
+d = U.decode('?replay=1');
+check('Alt-style replay=1 ignored', [d.state.replay, d.state.replayRun], [undefined, undefined]);
+checkBool(
+    'replay=1 warns',
+    d.warnings.some((w) => /replay=1/.test(w))
+);
+d = U.decode('?replay=runlogs/../protocols/x.jsonl');
+check('traversal replay rejected', d.state.replay, undefined);
+d = U.decode('?replay=protocols/rig03-sr/x.yaml');
+check('non-runlog path rejected', d.state.replay, undefined);
+checkBool('isSafeRunlogPath plain jsonl', U.isSafeRunlogPath('runlogs/rig1/a.jsonl'));
+checkBool('isSafeRunlogPath rejects leading slash', !U.isSafeRunlogPath('/runlogs/rig1/a.jsonl'));
+checkBool('isSafeRunId rejects uppercase', !U.isSafeRunId('EI1111AV'));
+check(
+    'encodeApp: an active replay owns the link (no p, no mode)',
+    U.encodeApp({
+        mode: 'run',
+        replayRepo: 'reiserlab/cshl-2026-course',
+        replayPath: RL,
+        repo: 'reiserlab/cshl-2026-course',
+        repoPath: 'protocols/rig03-sr/p3-heisenberg-ts-short-led5-baseprobe3.yaml',
+        protocolKey: 'g6_2x10_smoke'
+    }),
+    '?repo=reiserlab/cshl-2026-course&replay=' + RL
+);
+check(
+    'encodeApp: replay keeps an explicit rig + advanced',
+    U.encodeApp({
+        mode: 'edit',
+        replayRepo: 'reiserlab/cshl-2026-course',
+        replayPath: 'runlogs/rig1/a.jsonl',
+        rigKey: 'cshl_g6_2x10_ball',
+        advanced: true
+    }),
+    '?repo=reiserlab/cshl-2026-course&replay=runlogs/rig1/a.jsonl&rig=cshl_g6_2x10_ball&advanced=1'
+);
+const rtReplay = U.decode(
+    U.encodeApp({ replayRepo: 'reiserlab/cshl-2026-course', replayPath: RL })
+);
+check(
+    'replay link round-trips',
+    [rtReplay.state.repo, rtReplay.state.replay],
+    ['reiserlab/cshl-2026-course', RL]
+);
+check('encode drops a replay without a valid repo', U.encode({ replay: RL, repo: 'bad repo' }), '');
+
 console.log('\n=== Summary ===');
 console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures ? 1 : 0);
