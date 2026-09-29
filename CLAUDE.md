@@ -290,8 +290,8 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   course guest account (`cshl-2026`, an outside collaborator) can only use a CLASSIC
   token — see `docs/development/data-repo-token-runbook.md`.
 - **Session rig (#135, v0.4):** `Studio.currentRig` (`{name, arenaConfig,
-  explicit}`) is THE bench rig for all three views — one top-bar selector,
-  locked by default. Always change it via the module block's
+  explicit}`) is THE bench rig for all three views — one selector (in the top bar's
+  ⚙ Settings menu), locked by default. Always change it via the module block's
   `setSessionRig(name, {explicit})`, never by assigning `Studio.currentRig`:
   it enforces explicit-beats-derived (a protocol load never overrides a
   user/`?rig=` choice — the mismatch chip surfaces disagreement instead),
@@ -322,7 +322,7 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   match, ambiguity refused → MAC verified → post-reset probe). Runner sends go through
   `session.send` (a link facade) so trialParams/STOP are logged. New wire commands used by probes
   MUST be exported + golden-tested (`GET_HEALTH` 0xCA decodes 55 B + optional 11 B slowest-op tail;
-  `GET_FRAME_POSITION` 0x72). **Soak driver** (`Studio.startSoak`, File ▾ → Soak…, `?soak=1`,
+  `GET_FRAME_POSITION` 0x72). **Soak driver** (`Studio.startSoak`, Protocol ▾ → Soak…, `?soak=1`,
   advanced-only) loops `Studio.runOnce(false)` (the no-dialog half of `beginRun`), refuses without
   a `behavior_v2` ack or without bridge frames, halts on the first fault by default, never
   auto-commits. Analyzer: `scripts/wedge-scan.py` (+ `tests/test-wedge-scan.py`, standalone
@@ -429,9 +429,26 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `Studio._urlSuppress`. URL writing is NOT a protocol mutation — never route
   it through `pushUndo`. Any NEW shareable state must flow through
   `encodeApp()` + `Studio.updateUrl` (never hand-build `location.search`).
-- **Console v6 layout (v0.6):** left rail of 7 tool panels (`data-panel` =
-  patterns/trial/step/test/io/fw/fictrac) + bench strip + always-visible resizable log;
-  the SD/library **listing IS the pattern picker** (row click drives the hidden `cPatName`).
+- **Top bar: Protocol ▾ vs ⚙ Settings.** `Protocol ▾` (`#fileMenu`, renamed from File)
+  holds protocol ACTIONS only (new/open/replay/save/promote/copy/reset/soak). `⚙ Settings`
+  (`#settingsMenu`) holds the Studio/bench settings kept in the browser, not the YAML: the
+  session rig, the GitHub block, Run logging. The rig SELECTOR has no top-bar
+  slot, but a read-only rig tag (`#rigTag`, beside the status; click → ⚙ Settings) keeps the
+  bench rig always visible; `syncRigContext()` (called from `updateDeviceLine`) fills it and
+  names the rig in Connect's hover + Help text. A NEW app-wide setting goes in ⚙ Settings,
+  never back into Protocol ▾; Edit's YAML-backed drawer is labelled "⚙ Protocol settings".
+  Replay freezes Protocol ▾ and the rig / GitHub / Run-logging parts of ⚙ Settings
+  (`FREEZE_SELECTORS`) — NOT the whole menu. Because the menu itself
+  is not frozen, a NEW bench / repo / logging control added to ⚙ Settings must ALSO be added
+  to `FREEZE_SELECTORS` (js/studio-replay.js), or it stays live during a replay. User copy says "Protocol ▾ → …" / "⚙ Settings → …" —
+  `tests/test-studio-shell.js` fails on any stale "File ▾".
+- **Console v6 layout (v0.6):** left rail of 9 tool panels (`data-panel` =
+  patterns/trial/step/test/io/ai/led/fw/fictrac) + bench strip + always-visible resizable log.
+  The rail is a show/hide CHECKLIST (`role="checkbox"`, `setOpen` keeps `aria-checked`);
+  at ≥ 1280 px the stage is a 2-column dense grid — compact panels (step/led, io/fw) take
+  one column and are paired by `order`, the rest span both. A NEW compact panel needs
+  `grid-column:auto` + an `order`; Scope toggles show state in text + `aria-pressed`.
+  The SD/library **listing IS the pattern picker** (row click drives the hidden `cPatName`).
   GOTCHA: connected SD rows carry RAW filenames in `data-name` while picker options key
   LOGICAL names — always normalize row↔option comparisons through `Studio.sdLogicalName`
   (offline mirrored rows use option values, so offline tests pass without it).
@@ -522,7 +539,7 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   parsed line so `behavior_v2` `["a",…]` echoes become the v1 `arena_command` object) —
   the dashboard uses an exact vendored copy at `dashboard/data-browser/vendor/`, and
   `tests/test-runlog-format.js` fails when the copies diverge (re-copy after editing). The
-  log level is a runtime setting (File ▾ → Run logging, localStorage `studio_log_level`,
+  log level is a runtime setting (⚙ Settings → Run logging, localStorage `studio_log_level`,
   default `behavior_v2`); the runner asserts it via `log_control` and the bridge ACKS
   the level it will actually write (`bridge.waitForLogLevelAck`) — a pre-3.0 bridge
   never acks, so treat "no ack" as behavior_v1. Never write `log_format` into

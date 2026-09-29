@@ -46,7 +46,7 @@ and completed recorded runs go into `runlogs/<your-bench-id>/`.
 
 - **Saving a protocol** (Edit → Save, instructor/advanced mode) writes to
   `protocols/<your-bench-id>/`. It's *yours* — it won't touch anyone else's.
-- **Promote to shared** (File ▾) copies a protocol into `protocols/shared/` so
+- **Promote to shared** (Protocol ▾) copies a protocol into `protocols/shared/` so
   every bench can open it. It refuses to overwrite a *different* file with the
   same name, so shared protocols are safe.
 - **Running a recorded experiment** auto-commits the FicTrac data to
@@ -60,7 +60,7 @@ every run is self-describing.
 
 ## Shared vs. bench-specific (why you sometimes see two)
 
-When you open a protocol (**File ▾ → Open from Repo…**), the picker shows two
+When you open a protocol (**Protocol ▾ → Open from Repo…**), the picker shows two
 clearly-labeled sections:
 
 - **This bench** — protocols saved on *your* rig.

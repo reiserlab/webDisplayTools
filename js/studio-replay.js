@@ -1081,6 +1081,13 @@
             '#connectBtn',
             '#openProtoBtn',
             '#fileMenu',
+            // ⚙ Settings stays usable; freeze the bench rig, the GitHub block and
+            // the Run-logging row inside it. The menu
+            // itself is NOT frozen: any NEW bench/repo/logging control added to
+            // ⚙ Settings must be listed here too, or it stays live during replay.
+            '#settingsMenu .rigsel',
+            '#ghBlock',
+            '#fmLogRow',
             '#sessionRigLock',
             '.run-log-strip .acts'
         ];
@@ -1970,7 +1977,7 @@
             const repo = repoOverride || dialogRepo();
             if (!repo || !GH) {
                 ui.list.innerHTML =
-                    '<div class="picker-note">No course repo configured (File ▾ → GitHub).</div>';
+                    '<div class="picker-note">No course repo configured (⚙ Settings → GitHub).</div>';
                 return;
             }
             ui.repoLbl.textContent = repo.full + (ghToken() ? ' · signed in' : ' · public read');
@@ -2262,6 +2269,28 @@
                 if (resume) ensureLoop();
             }
         });
+        // The Scope dock is user-resizable: growing it mid-step shrinks the sequence
+        // viewport without another step change, which can push the current step out
+        // of view. Re-pin it (nearest-row rule) on resize — scrolling ONLY the
+        // sequence list: scrollIntoView would also scroll the Run column and push
+        // the replay transport (Play / seek / Stop) off screen mid-drag.
+        const seqViewport = $('seqBody');
+        if (seqViewport && typeof ResizeObserver === 'function') {
+            let pinRaf = null;
+            new ResizeObserver(() => {
+                if (!R.active || R.loading || pinRaf) return;
+                pinRaf = requestAnimationFrame(() => {
+                    pinRaf = null;
+                    const row = seqViewport.querySelector('.seqrow.active');
+                    if (!row) return;
+                    const v = seqViewport.getBoundingClientRect();
+                    const r = row.getBoundingClientRect();
+                    if (r.top < v.top) seqViewport.scrollTop -= v.top - r.top;
+                    else if (r.bottom > v.bottom)
+                        seqViewport.scrollTop += Math.min(r.bottom - v.bottom, r.top - v.top);
+                });
+            }).observe(seqViewport);
+        }
         // Switch rAF ⇄ timer when the tab is hidden/shown mid-playback (a pending rAF
         // in a hidden tab would otherwise never fire and stall the loop).
         document.addEventListener('visibilitychange', () => {

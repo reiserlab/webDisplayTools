@@ -175,7 +175,11 @@ const globalSettingIds = [
 globalSettingIds.forEach((id) =>
     check('global setting retained: #' + id, studio.includes('id="' + id + '"'))
 );
-check('Classic keeps its File menu label', /id="fileMenuBtn"[^>]*>File ▾<\/button>/.test(studio));
+// Classic adopted the Protocol ▾ name (LAB-158); Alt's own rename is now a no-op.
+check(
+    'Classic menu label is Protocol ▾',
+    /id="fileMenuBtn"[^>]*>Protocol ▾<\/button>/.test(studio)
+);
 check(
     'Alt renames the live menu to Protocol',
     alt.includes("protocolMenuBtn.textContent = 'Protocol ▾'")

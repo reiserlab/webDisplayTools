@@ -43,7 +43,7 @@ below.
 ## Running an experiment — the short version
 
 1. **Open your protocol.** Your instructor will give you a bookmark link (see
-   below), or use **File ▾ → Open from Repo…** and pick your protocol.
+   below), or use **Protocol ▾ → Open from Repo…** and pick your protocol.
 2. **Connect to the arena.** Click **Connect** and choose the controller's
    serial port when the browser asks. (Chrome/Edge only — this uses Web Serial.)
 3. **Connect FicTrac** (fly-on-ball rigs) — start the bridge on the rig computer
@@ -84,7 +84,7 @@ format is:
 
 Loading a protocol from the course repo works signed-out now that the repo is
 public; saving to it still needs the bench to be **signed in to GitHub once** on that
-browser (File ▾ → GitHub). After that, the link just works.
+browser (⚙ Settings → GitHub). After that, the link just works.
 
 ## What safe mode blocks
 
@@ -117,7 +117,7 @@ See [Pattern Editor](pattern-editor.md) for the separate pattern-making workflow
 - **The scope says "waiting for FicTrac bridge"** — the bridge isn't running or
   isn't connected. See [FicTrac basics](fictrac.md).
 - **A link says "sign in… then Open from course repo"** — you're not signed in
-  to GitHub on this browser. Do File ▾ → GitHub once.
+  to GitHub on this browser. Do ⚙ Settings → GitHub once.
 - **The arena won't take a command** — if the display is running, press **STOP**
   first; some commands are refused while the display is active.
 

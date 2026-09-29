@@ -79,7 +79,7 @@ cycling and read health/0xC2/0x88 afterwards.** The harness does exactly that (p
 | Link | `js/arena-link.js` | `reconnect()` from granted ports (VID/PID match, ambiguity refused), write-stall deadline |
 | Outcome | `js/run-log.js`, `js/studio-runlog-adapter.js` | `CONTROLLER_FAULT` (auto-commits; `ABORTED_BY_USER` still doesn't) |
 | Post-mortem | `js/studio-postmortem.js` | quiet → confirm → probe window → halt \| reset → reconnect → MAC check → post-reset probe |
-| Soak driver | `arena_studio.html` (File ▾ → Soak…, `?soak=1`) | repeats `runOnce()`; refuses without a `behavior_v2` ack or without frames; halt-first |
+| Soak driver | `arena_studio.html` (Protocol ▾ → Soak…, `?soak=1`) | repeats `runOnce()`; refuses without a `behavior_v2` ack or without frames; halt-first |
 | Health opcode | firmware `feat/controller-health` (0xCA, cap bit 7) | loop timing, SD read stats + error, counters, reset cause, previous-boot breadcrumb + slowest op |
 | Wire | `js/arena-wire-g6.js` | `encodeGetHealth`/`decodeHealth` (55 B + 11 B tail), `GET_FRAME_POSITION` |
 | Analyzer | `scripts/wedge-scan.py` | per-run table (onset, RTTs, timeouts, soft degradation) over v1/v2/gz/`.runlog.json` |
@@ -118,8 +118,8 @@ Studio arm (one controller, one night):
 pixi run sim -- --count 0 --rate 100 --seed 1              # ±1.6-frame walk; --rate 286 for the fast arm
 pixi run sim -- --count 0 --rate 100 --jump-every 50       # wide-seek arm
 pixi run bridge -- --log-dir soak-logs
-# Studio ?advanced=1&soak=1 → File ▾ → Open → protocols/soak_mode3_closed_loop.yaml → connect
-# → File ▾ → Soak…  (iterations=0 hours=12 gap=10 first=halt then=reset max=3)
+# Studio ?advanced=1&soak=1 → Protocol ▾ → Open → protocols/soak_mode3_closed_loop.yaml → connect
+# → Protocol ▾ → Soak…  (iterations=0 hours=12 gap=10 first=halt then=reset max=3)
 ```
 Pyserial arm (the following night — the two drivers cannot share one USB port):
 ```

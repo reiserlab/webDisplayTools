@@ -57,6 +57,21 @@
     --text:#e6edf3; --dim:#8b949e; --accent:#00e676; --hover:#00c853;
     --danger:#ff5252; --warn:#e3a008; --beta:#4aa8ff; --rec:#ff5252; --replay:#b58cff;
     --mode:#00e676; --modec:#062a16;
+    /* Colour tokens: every stylesheet colour is a token (tints via color-mix), and the
+       values below ARE the colours the rules used before tokenising — Dark is unchanged. */
+    --on-accent:#06210f; --on-danger:#2a0000; --on-replay:#1a1030; --seg-on-bg:#26405e; --seg-on-fg:#cfe6ff;
+    --safe-fg:#9fd4ff; --safe-border:#2b5b86; --help:#2b74a8; --help-fg:#eaf5ff; --tip-bg:#0c2233;
+    --tip-fg:#dbeeff; --help-strong:#9fd4ff; --term-bg:#0a0e12; --term-rx:#9fe8c0; --term-tx:#7fd0ff;
+    --term-yaml:#cfe6ff; --amber:#f0b429; --danger-soft:#ff5c5c; --danger-text:#ff8080; --led:#ff408c;
+    --led-text:#ff6fa8; --led-hover-text:#ff8fbd; --accent-off-bg:#0e2a1a; --accent-off-fg:#3f7d5c; --run-bg:#06210f;
+    --test-bg:#0a1a2e; --track:#0a3a20; --dot-idle:#40484f; --chart-bg:#0b0f14; --chart-grid:#2d3640; --ed-surface2:#232a33;
+    --ed-beta:#29b6f6; --ed-warn:#ff9800; --ed-error:#f44336; --ed-danger-hover:#c4514f; --wc-c-fg:#6cb1ff;
+    --wc-c-border:#3b6ea5; --wc-c-bg:rgba(88,166,255,.12); --trace-turn:#1e90ff; --trace-fwd:#ff2e2e; --trace-head:#22e84a; --focus:#00e676;
+    --safe-bg:rgba(38,64,94,.35); --shadow-c:#000; --overlay-c:#060a0e;
+    /* Pattern previews keep a dark neutral surround in every theme (they show the arena's
+       own LED colours); the whole Console dims to --off-opacity while disconnected. */
+    --preview-bg:#141a20; --preview-badge-bg:rgba(0,0,0,.7); --preview-badge-fg:#00e676; --off-opacity:.55;
+    --caution:var(--warn); /* Studio amber inside the Edit view, whose own --warn is orange */
     --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
     --head:'JetBrains Mono',var(--mono);
     /* Aliases so the ported console (--surface2/--dim/--err) and designer
@@ -98,13 +113,15 @@
   .rigsel select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-family:var(--mono);font-size:11px;max-width:220px}
   .rigsel select:disabled{opacity:.75;cursor:not-allowed}
   .rigsel .pill{padding:2px 7px;font-size:11px}
-  .chip.rig-mismatch{color:var(--warn);border-color:var(--warn);background:rgba(227,160,8,.08);cursor:help}
+  .rig-tag{font-size:11px;color:var(--dim);border:1px solid var(--border);border-radius:20px;padding:2px 8px;white-space:nowrap;cursor:pointer;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+  .rig-tag:hover{border-color:var(--accent);color:var(--text)}
+  .chip.rig-mismatch{color:var(--warn);border-color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,transparent);cursor:help}
   .doc-name{font-family:var(--head);font-weight:700;font-size:12.5px;white-space:nowrap}
   .chip{font-family:var(--mono);font-size:11px;font-weight:600;border-radius:20px;padding:2px 8px;border:1px solid;white-space:nowrap}
-  .chip.saved{color:var(--accent);border-color:var(--accent);background:rgba(0,230,118,.08)}
+  .chip.saved{color:var(--accent);border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
   .chip.edited,.chip.untitled-chip{display:none}
-  .chip.edited{color:var(--warn);border-color:var(--warn);background:rgba(227,160,8,.08)}
-  .chip.untitled-chip{color:var(--warn);border-color:var(--warn);background:rgba(227,160,8,.08)}
+  .chip.edited{color:var(--warn);border-color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,transparent)}
+  .chip.untitled-chip{color:var(--warn);border-color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,transparent)}
   body.unsaved:not(.untitled) .chip.saved{display:none}
   body.unsaved:not(.untitled) .chip.edited{display:inline-block}
   body.untitled .chip.saved{display:none}
@@ -121,22 +138,23 @@
   .run-inline{font-size:11px;color:var(--accent);display:none;align-items:center;gap:6px}
   body.running .run-inline{display:flex}
   .run-inline.rec{color:var(--rec);font-weight:700}
-  .run-inline .bar{width:70px;height:5px;border-radius:3px;background:#0a3a20;overflow:hidden}
+  .run-inline .bar{width:70px;height:5px;border-radius:3px;background:var(--track);overflow:hidden}
   .run-inline .bar i{display:block;height:100%;width:0;background:currentColor;transition:width .3s}
   .ribbon-btn{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 11px;font-size:12px;white-space:nowrap}
   .ribbon-btn:hover{border-color:var(--accent)}
-  /* File ▾ is the single open/save affordance in all three views (the bare
-     "Open" button was ambiguous — the menu shows WHAT you can open). Write +
-     GitHub-settings items are Edit-only (.edit-only, hidden outside Edit); the
-     "open" items (import / library / course repo) show everywhere. */
+  /* Protocol ▾ (renamed from File) is the single open/save affordance in all three views
+     (the bare "Open" button was ambiguous — the menu shows WHAT you can open).
+     Write items are Edit-only (.edit-only, hidden outside Edit); the "open" items
+     (import / library / course repo) show everywhere. Bench/app configuration
+     (rig, GitHub, run logging) lives in ⚙ Settings, not here. */
   .open-proto-btn{display:none}
   body:not(.editmode) #fileMenu .edit-only{display:none}
   .filemenu{position:relative}
-  /* Opens LEFT-ALIGNED (extends rightward) — File ▾ sits at the left end of the
+  /* Opens LEFT-ALIGNED (extends rightward) — Protocol ▾ sits at the left end of the
      top bar, so the old right:0 alignment pushed the menu off-screen left. The
      open handler adds .flip-left (right-align) only if it would overflow. */
   .filemenu .menu{position:absolute;top:120%;left:0;background:var(--surface);border:1px solid var(--border);
-        border-radius:7px;min-width:288px;padding:4px;display:none;z-index:60;box-shadow:0 8px 22px rgba(0,0,0,.55)}
+        border-radius:7px;min-width:288px;padding:4px;display:none;z-index:60;box-shadow:0 8px 22px color-mix(in srgb,var(--shadow-c) 55%,transparent)}
   .filemenu.open .menu{display:block}
   .filemenu .menu.flip-left{left:auto;right:0}
   .filemenu .menu button{display:block;width:100%;text-align:left;background:transparent;border:0;color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px}
@@ -145,6 +163,21 @@
   /* Section header inside the File menu — accent colour so it reads as a label,
      not a clickable item. Scopes the Open items ("what am I opening?"). */
   .filemenu .menu .menu-head{color:var(--accent);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:5px 10px 2px;pointer-events:none}
+  /* ⚙ Settings — Studio (browser/bench) settings, NOT stored in the protocol:
+     session rig, GitHub + storage, run logging. Shares the .filemenu menu styling
+     (the GitHub block's rules key off it) but anchors to the right edge. */
+  .settings-menu .menu{left:auto;right:0;min-width:330px;max-width:calc(100vw - 16px);max-height:calc(100vh - 60px);overflow:auto}
+  .settings-menu .menu.flip-right{left:0;right:auto}
+  .settings-menu .menu .menu-head{padding-top:8px}
+  .settings-menu .menu .menu-head:first-child{padding-top:5px}
+  .settings-menu .rigsel{padding:4px 10px 6px;font-size:11.5px}
+  .settings-menu .rigsel select{flex:1;min-width:0;max-width:none}
+  .filemenu .menu .rigsel .pill{display:inline-block;width:auto;flex:0 0 auto;border:1px solid var(--border);padding:2px 7px}
+  .settings-menu .set-log{padding:4px 10px 8px;margin-bottom:0}
+  /* Old-browser notice (no CSS color-mix()): plain tokens only — color-mix is what's missing. */
+  .browser-notice{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:6px 12px;background:var(--amber);color:var(--on-accent);font-size:12px;font-weight:600}
+  .browser-notice button{margin-left:auto;background:transparent;border:1px solid currentColor;color:inherit;border-radius:5px;padding:1px 8px;cursor:pointer}
+  .settings-menu .set-log select{flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-family:var(--mono);font-size:11px}
   .gh-block{padding:7px 10px;font-size:11.5px;color:var(--dim)}
   /* GitHub settings are visible in every view (so the bench config is always
      legible) but LOCKED by default — grayed + inputs disabled — so students
@@ -158,7 +191,7 @@
      full-width so the dark hover spilled past the menu's rounded corner. Keep
      the lock its own size with a contained (soft, in-bounds) hover instead. */
   .filemenu .menu button.gh-lock{width:auto}
-  .filemenu .menu button.gh-lock:hover{background:rgba(255,255,255,.08)}
+  .filemenu .menu button.gh-lock:hover{background:color-mix(in srgb,var(--text) 8%,transparent)}
   .gh-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
   .gh-signin{background:transparent;border:1px solid var(--border);color:var(--beta);border-radius:5px;padding:3px 9px;font-size:11px}
   .gh-block.gh-locked .gh-signin-while-locked{opacity:1;cursor:pointer;border-style:dashed}
@@ -167,6 +200,11 @@
   body.ghauth .gh-signin{display:none}
   body.ghauth .gh-who{display:inline}
   body.ghauth .gh-signout{display:inline}
+  /* The generic ".filemenu .menu button{display:block}" outranks .gh-signout's hide,
+     which showed "Sign out" while signed OUT — restate both states at menu specificity. */
+  .filemenu .menu .gh-signout{display:none;width:auto}
+  body.ghauth .filemenu .menu .gh-signout{display:inline-block}
+  .filemenu .menu .gh-signin{width:auto}
   .gh-check{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text)}
   /* Custom-drawn checkbox: the native disabled checkbox ignores accent-color and
      goes nearly invisible when the kiosk lock disables it — draw it ourselves so
@@ -175,23 +213,23 @@
     border:1.5px solid var(--border);border-radius:4px;background:var(--surface);cursor:pointer;position:relative}
   .gh-check input:checked{background:var(--accent);border-color:var(--accent)}
   .gh-check input:checked::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;
-    justify-content:center;font-size:11px;font-weight:800;line-height:1;color:#0f1419}
+    justify-content:center;font-size:11px;font-weight:800;line-height:1;color:var(--on-accent)}
   .gh-check input:disabled{cursor:not-allowed}
   body:not(.ghauth) .gh-check{opacity:.45;cursor:not-allowed}
   .gh-dest{font-size:10.5px;color:var(--dim);margin-top:5px;padding-left:2px}
   .gh-row label{flex:0 0 62px;color:var(--dim)}
   .gh-row input[type=text]{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:3px 7px;font-size:11px;font-family:inherit}
   /* course-pipeline picker modal (Open from library… / Open from course repo…) */
-  .picker-overlay{position:fixed;inset:0;background:rgba(6,10,14,.65);z-index:900;display:flex;align-items:center;justify-content:center}
-  .picker-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;min-width:380px;max-width:560px;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .picker-overlay{position:fixed;inset:0;background:color-mix(in srgb,var(--overlay-c) 65%,transparent);z-index:900;display:flex;align-items:center;justify-content:center}
+  .picker-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;min-width:380px;max-width:560px;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 12px 40px color-mix(in srgb,var(--shadow-c) 50%,transparent)}
   .picker-title{padding:11px 14px;font-weight:700;font-size:13px;border-bottom:1px solid var(--border)}
   .picker-list{overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:2px}
   .picker-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;background:transparent;border:0;color:var(--text);padding:7px 10px;border-radius:6px;text-align:left;font-size:12.5px;cursor:pointer}
   .picker-item:hover{background:var(--surface2)}
   /* run-log upload modal — greys the screen while exporting/committing so a
      push (auto or manual) is never mysterious; holds the exact error on failure */
-  .rlup-overlay{position:fixed;inset:0;background:rgba(6,10,14,.8);z-index:1000;display:flex;align-items:center;justify-content:center}
-  .rlup-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;min-width:300px;max-width:520px;padding:22px 26px;text-align:center;box-shadow:0 14px 44px rgba(0,0,0,.6)}
+  .rlup-overlay{position:fixed;inset:0;background:color-mix(in srgb,var(--overlay-c) 80%,transparent);z-index:1000;display:flex;align-items:center;justify-content:center}
+  .rlup-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;min-width:300px;max-width:520px;padding:22px 26px;text-align:center;box-shadow:0 14px 44px color-mix(in srgb,var(--shadow-c) 60%,transparent)}
   .rlup-spin{width:30px;height:30px;margin:2px auto 12px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:rlup-rot .8s linear infinite}
   @keyframes rlup-rot{to{transform:rotate(360deg)}}
   .rlup-title{font-family:var(--head);font-weight:700;font-size:15px;color:var(--text)}
@@ -206,7 +244,7 @@
   .picker-note{padding:3px 10px 8px;font-size:11px;color:var(--dim);font-style:italic}
   .picker-foot{padding:8px 12px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;justify-content:flex-end}
   .picker-foot .foot-count{margin-right:auto;color:var(--dim);font-size:11px}
-  .pill.primary{background:var(--accent);color:#06210f;border-color:var(--accent);font-weight:700}
+  .pill.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
   .pill.primary:hover{background:var(--hover)}
   /* multi-select picker rows (choose which patterns of a set to write to SD) */
   .picker-check{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;font-size:12.5px;cursor:pointer;color:var(--text)}
@@ -216,14 +254,14 @@
   .seg{display:flex;align-self:center;height:30px;border:1px solid var(--border);border-radius:6px;overflow:hidden;flex:0 0 auto}
   .seg button{display:flex;align-items:center;background:transparent;border:0;color:var(--dim);padding:0 11px;font-size:12px}
   .seg button + button{border-left:1px solid var(--bg)}
-  .seg button.on{background:#26405e;color:#cfe6ff;font-weight:700}
+  .seg button.on{background:var(--seg-on-bg);color:var(--seg-on-fg);font-weight:700}
   .seg button.console{border-left-width:2px}
-  .seg button.console.on{background:rgba(0,230,118,.12);color:var(--accent)}
-  .connect{background:var(--accent);border:0;color:#06210f;font-weight:700;border-radius:6px;padding:6px 13px;font-size:12px;white-space:nowrap}
+  .seg button.console.on{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
+  .connect{background:var(--accent);border:0;color:var(--on-accent);font-weight:700;border-radius:6px;padding:6px 13px;font-size:12px;white-space:nowrap}
   body.connected .connect{background:transparent;border:1px solid var(--border);color:var(--dim);font-weight:400}
   .gear{position:relative}
   .gear-btn{font-size:16px;color:var(--dim);background:transparent;border:0;padding:2px 6px}
-  .gear .menu{position:absolute;top:120%;right:0;background:var(--surface);border:1px solid var(--border);border-radius:7px;min-width:230px;padding:4px;display:none;z-index:60;box-shadow:0 8px 22px rgba(0,0,0,.55)}
+  .gear .menu{position:absolute;top:120%;right:0;background:var(--surface);border:1px solid var(--border);border-radius:7px;min-width:230px;padding:4px;display:none;z-index:60;box-shadow:0 8px 22px color-mix(in srgb,var(--shadow-c) 55%,transparent)}
   .gear.open .menu{display:block}
   .gear .menu a,.gear .menu button{display:block;width:100%;text-align:left;background:transparent;border:0;color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px;text-decoration:none}
   .gear .menu a:hover,.gear .menu button:hover{background:var(--surface2)}
@@ -240,8 +278,8 @@
      reveal rules outrank the body:not(.hasproto) .chip hide (higher specificity):
      base-hide both, then reveal exactly one per mode. */
   .chip.safemode-ind{cursor:pointer;display:none}
-  .chip.safemode-ind.safe-label{color:#9fd4ff;border-color:#2b5b86;background:rgba(38,64,94,.35)}
-  .chip.safemode-ind.adv-label{color:var(--accent);border-color:var(--accent);background:rgba(0,230,118,.08)}
+  .chip.safemode-ind.safe-label{color:var(--safe-fg);border-color:var(--safe-border);background:var(--safe-bg)}
+  .chip.safemode-ind.adv-label{color:var(--accent);border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
   body.safemode .chip.safemode-ind.safe-label{display:inline-block}
   body:not(.safemode) .chip.safemode-ind.adv-label{display:inline-block}
   /* Destructive Console ops greyed in safe mode: applyConsoleSafeGating toggles
@@ -256,7 +294,7 @@
   body.safemode #ghLock{cursor:not-allowed;opacity:.6}
   /* Session-rig selector stays hard-locked (its unlock padlock is hidden). */
   body.safemode #sessionRigLock{display:none}
-  body.safemode #fmSoak{display:none}
+  body.safemode #fmSoak,body.safemode #fmSoakSep{display:none}
   #fmSoak.soaking{color:var(--accent)}
   /* Pattern WRITES greyed in safe mode: the Add ▾ menu button has no data-cmd
      (its items do, and are in SAFE_BLOCKED_CMDS), so grey the parent so the menu
@@ -280,7 +318,9 @@
   /* Fill the viewport: the single grid row takes all the height (minmax(0,1fr)
      lets it shrink for internal scroll), so the left column can flex its log
      down to the footer. The meta-panel stays top-aligned (align-self:start). */
-  .run-view{display:grid;grid-template-columns:1fr 300px;grid-template-rows:minmax(0,1fr) auto;gap:14px;max-width:1180px;margin:0 auto;padding:12px 20px 20px;align-items:start;height:100%}
+  /* Capped at 1500 px (was 1180): the Scope/Log dock spans the whole Run view, so a
+     wide window buys a longer trace at the same resolution, not just margins. */
+  .run-view{display:grid;grid-template-columns:1fr 300px;grid-template-rows:minmax(0,1fr) auto;gap:14px;max-width:1500px;margin:0 auto;padding:12px 20px 20px;align-items:start;height:100%}
   body.editmode .run-view,body.consolemode .run-view{display:none}
   /* explicit placement: content in row 1 (left+right), dock in row 2 spanning BOTH
      columns so the Scope/Log run edge-to-edge (matches the metadata column's edge). */
@@ -297,38 +337,41 @@
   .card{background:var(--surface);border:1.5px solid var(--edge);border-radius:10px;padding:10px 14px;margin-bottom:10px}
   .launch-card{padding:8px 12px}
   .launch-row{display:flex;gap:10px;align-items:stretch}
-  .btn-run{flex:1;background:var(--accent);color:#06210f;border:0;border-radius:8px;font-family:var(--head);font-weight:700;font-size:15px;padding:9px;letter-spacing:.3px}
+  .btn-run{flex:1;background:var(--accent);color:var(--on-accent);border:0;border-radius:8px;font-family:var(--head);font-weight:700;font-size:15px;padding:9px;letter-spacing:.3px}
   .btn-run:hover{background:var(--hover)}
   .btn-run .hint{display:block;font-size:10px;font-weight:400;margin-top:3px;min-height:0}
-  .btn-run[disabled]{background:#0e2a1a;color:#3f7d5c;cursor:not-allowed}
+  .btn-run[disabled]{background:var(--accent-off-bg);color:var(--accent-off-fg);cursor:not-allowed}
   .btn-testexp{flex:0 0 188px;background:transparent;border:1px solid var(--beta);color:var(--beta);border-radius:8px;font-family:var(--head);font-weight:700;font-size:13px;padding:6px 12px;letter-spacing:.2px}
-  .btn-testexp:hover{background:rgba(74,168,255,.08)}
+  .btn-testexp:hover{background:color-mix(in srgb,var(--beta) 8%,transparent)}
   .btn-testexp .sub{display:block;font-size:9.5px;font-weight:400;color:var(--dim);margin-top:2px}
   .btn-testexp[disabled]{opacity:.4;cursor:not-allowed}
   body.running .launch-row{display:none}
   /* ── Run-log REPLAY (v0.88 · js/studio-replay.js) ────────────────────────────
      Lavender = playback of a RECORDED run (green = live recorded, blue = test). */
   .btn-replay{flex:0 0 158px;background:transparent;border:1px solid var(--replay);color:var(--replay);border-radius:8px;font-family:var(--head);font-weight:700;font-size:13px;padding:6px 12px;letter-spacing:.2px}
-  .btn-replay:hover{background:rgba(181,140,255,.09)}
+  .btn-replay:hover{background:color-mix(in srgb,var(--replay) 9%,transparent)}
   .btn-replay .sub{display:block;font-size:9.5px;font-weight:400;color:var(--dim);margin-top:2px}
   html.arena-alt .btn-replay,html.arena-alt #fmReplay{display:none}
+  /* Alt builds its own Studio Settings panel and scope-label button from the same
+     live nodes; hide Classic's now-empty ⚙ Settings shell and duplicate button there. */
+  html.arena-alt #settingsMenu,html.arena-alt #scopeLabels,html.arena-alt #rigTag{display:none}
   .replay-card{border-color:var(--replay);padding:9px 14px 8px}
   .replay-card[hidden]{display:none}
   .rpl-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .rpl-badge{font-family:var(--head);font-weight:700;font-size:10.5px;letter-spacing:.8px;color:#1a1030;background:var(--replay);border-radius:4px;padding:2px 7px}
+  .rpl-badge{font-family:var(--head);font-weight:700;font-size:10.5px;letter-spacing:.8px;color:var(--on-replay);background:var(--replay);border-radius:4px;padding:2px 7px}
   .rpl-title{font-family:var(--head);font-weight:700;font-size:13.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:48%}
   .rpl-meta{font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 180px;min-width:0}
   .rpl-acts{display:flex;gap:6px;align-items:center;margin-left:auto}
   .rpl-stop{background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:6px;font-family:var(--head);font-weight:700;font-size:12px;padding:5px 12px}
-  .rpl-stop:hover{background:rgba(255,82,82,.10)}
+  .rpl-stop:hover{background:color-mix(in srgb,var(--danger) 10%,transparent)}
   .rpl-transport{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
-  .rpl-play{min-width:96px;background:var(--replay);color:#1a1030;border:1px solid var(--replay);border-radius:6px;font-family:var(--head);font-weight:700;font-size:12.5px;padding:6px 12px}
+  .rpl-play{min-width:96px;background:var(--replay);color:var(--on-replay);border:1px solid var(--replay);border-radius:6px;font-family:var(--head);font-weight:700;font-size:12.5px;padding:6px 12px}
   .rpl-play[aria-pressed="true"]{background:transparent;color:var(--replay)}
   .rpl-play:disabled{opacity:.45;cursor:not-allowed}
   #rplSlider{flex:1 1 260px;min-width:140px;accent-color:var(--replay)}
   .rpl-clock{font-family:var(--head);font-size:12px;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
   .replay-card select.pill{padding:4px 6px}
-  .replay-card .pill.on{border-color:var(--replay);color:var(--replay);background:rgba(181,140,255,.10)}
+  .replay-card .pill.on{border-color:var(--replay);color:var(--replay);background:color-mix(in srgb,var(--replay) 10%,transparent)}
   .rpl-step{margin-top:7px;font-size:12.5px;color:var(--replay);font-weight:600;min-height:16px}
   .rpl-proto{font-size:11px;color:var(--dim);margin-top:2px;min-height:14px}
   .rpl-proto.ok{color:var(--accent)}
@@ -337,10 +380,13 @@
   body.replay-active .launch-card,body.replay-active #runVarsCard{display:none}
   body.replay-active .meta-panel{opacity:.4}
   body.replay-active .seqrow .play{display:none}
-  body.replay-active .seqrow.active{border-color:var(--replay);background:rgba(181,140,255,.10)}
+  body.replay-active .seqrow.active{border-color:var(--replay);background:color-mix(in srgb,var(--replay) 10%,transparent)}
   body.replay-active .seqrow.active .nm,body.replay-active .seqrow.active .idx{color:var(--replay)}
   body.replay-active .seqrow.active::before{background:var(--replay)}
   body.replay-active #modeSeg,body.replay-active #connectBtn,body.replay-active #openProtoBtn,body.replay-active #fileMenu{opacity:.4}
+  /* During replay ⚙ Settings stays open-able; only its bench/repo/logging parts are frozen
+     (js/studio-replay.js FREEZE_SELECTORS). */
+  body.replay-active #settingsMenu .rigsel,body.replay-active #ghBlock,body.replay-active #fmLogRow{opacity:.4}
   .rpd-box{width:min(780px,94vw);max-width:none;max-height:86vh}
   .rpd-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border)}
   .rpd-head .picker-title{border:0;padding:0}
@@ -364,18 +410,18 @@
   /* Run-view FicTrac bridge strip — mirrors the Console's shared bridge; stays
      visible during a run so the closed-loop indicator can light. */
   .run-bridge{display:flex;align-items:center;gap:9px;margin-top:9px;font-size:12px;flex-wrap:wrap}
-  .run-bridge .rb-dot{width:9px;height:9px;border-radius:50%;background:#40484f;flex:0 0 auto;transition:background .2s,box-shadow .2s}
+  .run-bridge .rb-dot{width:9px;height:9px;border-radius:50%;background:var(--dot-idle);flex:0 0 auto;transition:background .2s,box-shadow .2s}
   .run-bridge .rb-dot.on{background:var(--accent);box-shadow:0 0 7px var(--accent)}
   .run-bridge .rb-lbl{font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim)}
   .run-bridge .rb-count{font-size:11px;color:var(--dim)}
   .run-bridge #rbConnBtn{padding:3px 10px}
   /* closed-loop label: very light by default, bright-green pulsing when active */
   .run-bridge .rb-cl{margin-left:auto;font-family:var(--head);font-size:11px;letter-spacing:.4px;color:var(--dim);opacity:.45;transition:color .2s,opacity .2s}
-  .run-bridge .rb-cl.active{color:var(--accent);opacity:1;text-shadow:0 0 8px rgba(0,230,118,.7);animation:pulse 1.1s infinite}
+  .run-bridge .rb-cl.active{color:var(--accent);opacity:1;text-shadow:0 0 8px color-mix(in srgb,var(--accent) 70%,transparent);animation:pulse 1.1s infinite}
   /* closed-loop bias readout — read-only mirror of what the protocol pushed (LAB-185) */
   .run-bridge .rb-bias{font-size:11px;color:var(--dim);white-space:nowrap}
   /* quick safety button: drive the stimulus LED dark (AO 5000 mV) — pink */
-  .pill.led-off{border-color:#ff408c;color:#ff6fa8;font-weight:700;letter-spacing:.3px}
+  .pill.led-off{border-color:var(--led);color:var(--led-text);font-weight:700;letter-spacing:.3px}
   /* Run-view "Runtime variables" panel (v0.84) */
   #runVarsCard[hidden]{display:none}
   .run-vars h3{font-family:var(--head);font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 8px}
@@ -386,42 +432,42 @@
   .run-vars-name{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .run-vars-allowed{font-size:11px}
   .run-vars-active{font-family:var(--head);font-size:12px;color:var(--accent);text-align:right}
-  .run-vars-input{width:100%;min-width:0;background:#0f1419;color:var(--text);border:1px solid var(--edge);border-radius:6px;padding:3px 6px;font:inherit;font-size:12px}
-  .run-vars-input.bad{border-color:#ff5c5c}
+  .run-vars-input{width:100%;min-width:0;background:var(--bg);color:var(--text);border:1px solid var(--edge);border-radius:6px;padding:3px 6px;font:inherit;font-size:12px}
+  .run-vars-input.bad{border-color:var(--danger-soft)}
   .run-vars-chip{font-size:10.5px;font-family:var(--head);letter-spacing:.3px;padding:2px 7px;border-radius:9px;border:1px solid var(--edge);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .run-vars-chip.pending{border-color:#f0b429;color:#f0b429;animation:pulse 1.1s infinite}
+  .run-vars-chip.pending{border-color:var(--amber);color:var(--amber);animation:pulse 1.1s infinite}
   .run-vars-chip.applied{border-color:var(--accent);color:var(--accent)}
-  .run-vars-chip.unapplied{border-color:#ff5c5c;color:#ff8080}
+  .run-vars-chip.unapplied{border-color:var(--danger-soft);color:var(--danger-text)}
   .run-vars-actions{display:flex;gap:8px;align-items:center;margin-top:8px}
-  .run-vars-reason{flex:1;min-width:0;background:#0f1419;color:var(--text);border:1px solid var(--edge);border-radius:6px;padding:3px 8px;font:inherit;font-size:12px}
-  .run-vars-apply{border-color:#f0b429;color:#f0b429;font-weight:700;padding:4px 14px}
+  .run-vars-reason{flex:1;min-width:0;background:var(--bg);color:var(--text);border:1px solid var(--edge);border-radius:6px;padding:3px 8px;font:inherit;font-size:12px}
+  .run-vars-apply{border-color:var(--amber);color:var(--amber);font-weight:700;padding:4px 14px}
   .run-vars-apply:disabled{opacity:.4;cursor:not-allowed}
   .run-vars-status{font-size:11px;color:var(--dim);margin-top:6px;min-height:14px}
-  .run-vars-status.pending{color:#f0b429}
+  .run-vars-status.pending{color:var(--amber)}
   .run-vars-status.ok{color:var(--accent)}
-  .run-vars-status.bad{color:#ff8080}
-  .run-vars-status.warn{color:#f0b429}
-  .run-vars-empty.bad{color:#ff8080;font-size:12px}
-  .pill.led-off:hover{background:rgba(255,64,140,.16);border-color:#ff408c;color:#ff8fbd}
-  .pat-warn{margin-top:7px;font-size:11.5px;color:var(--warn);background:rgba(227,160,8,.08);border:1px solid rgba(227,160,8,.35);border-radius:6px;padding:6px 9px;line-height:1.4}
-  .running-panel{display:none;align-items:center;gap:14px;background:#06210f;border:1px solid var(--accent);border-radius:8px;padding:8px 14px}
+  .run-vars-status.bad{color:var(--danger-text)}
+  .run-vars-status.warn{color:var(--amber)}
+  .run-vars-empty.bad{color:var(--danger-text);font-size:12px}
+  .pill.led-off:hover{background:color-mix(in srgb,var(--led) 16%,transparent);border-color:var(--led);color:var(--led-hover-text)}
+  .pat-warn{margin-top:7px;font-size:11.5px;color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,transparent);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);border-radius:6px;padding:6px 9px;line-height:1.4}
+  .running-panel{display:none;align-items:center;gap:14px;background:var(--run-bg);border:1px solid var(--accent);border-radius:8px;padding:8px 14px}
   body.running .running-panel{display:flex}
-  body.running.testing .running-panel{background:#0a1a2e;border-color:var(--beta)}
+  body.running.testing .running-panel{background:var(--test-bg);border-color:var(--beta)}
   .running-panel .rp-lead{font-family:var(--head);font-weight:700;font-size:16px;color:var(--accent);display:flex;align-items:center;gap:9px}
   body.running.testing .rp-lead{color:var(--beta)}
   .running-panel .rp-lead .blip{width:11px;height:11px;border-radius:50%;background:var(--rec);box-shadow:0 0 8px var(--rec);animation:pulse 1s infinite}
   body.running.testing .rp-lead .blip{background:var(--beta);box-shadow:0 0 8px var(--beta)}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-  .running-panel .rp-prog{flex:1;height:8px;border-radius:5px;background:#0a3a20;overflow:hidden}
+  .running-panel .rp-prog{flex:1;height:8px;border-radius:5px;background:var(--track);overflow:hidden}
   .running-panel .rp-prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
   body.running.testing .rp-prog i{background:var(--beta)}
   /* step count (top) + elapsed/total timer (below), beside the progress bar */
   .running-panel .rp-meta{display:flex;flex-direction:column;gap:2px;font-size:11px;line-height:1.25;min-width:96px}
   .running-panel #rpTimer{font-variant-numeric:tabular-nums;color:var(--accent)}
   body.running.testing .running-panel #rpTimer{color:var(--beta)}
-  .btn-stop{background:var(--danger);border:0;color:#2a0000;font-weight:700;border-radius:8px;padding:8px 20px;font-size:14px;font-family:var(--head)}
+  .btn-stop{background:var(--danger);border:0;color:var(--on-danger);font-weight:700;border-radius:8px;padding:8px 20px;font-size:14px;font-family:var(--head)}
   .btn-stop:hover{filter:brightness(1.1)}
-  .plug-hover{font-size:11px;color:var(--beta);border:1px solid rgba(74,168,255,.4);background:rgba(74,168,255,.06);border-radius:20px;padding:2px 8px;cursor:help;white-space:nowrap}
+  .plug-hover{font-size:11px;color:var(--beta);border:1px solid color-mix(in srgb,var(--beta) 40%,transparent);background:color-mix(in srgb,var(--beta) 6%,transparent);border-radius:20px;padding:2px 8px;cursor:help;white-space:nowrap}
 
   /* The sequence list takes its natural height on a tall window (leaving the
      rest for the log) but shrinks + scrolls internally on a short one, so the
@@ -439,19 +485,19 @@
   .seqrow .nm{font-size:13px;min-width:150px}
   .kchips{display:flex;gap:5px;flex-wrap:wrap;flex:1}
   .kchip{font-size:10px;border-radius:4px;padding:1px 7px;border:1px solid;white-space:nowrap}
-  .kchip.mode{color:var(--mode);border-color:rgba(0,230,118,.5);background:rgba(0,230,118,.07)}
+  .kchip.mode{color:var(--mode);border-color:color-mix(in srgb,var(--accent) 50%,transparent);background:color-mix(in srgb,var(--accent) 7%,transparent)}
   .kchip.dur{color:var(--text);border-color:var(--border);background:var(--surface)}
-  .kchip.io{color:var(--warn);border-color:rgba(227,160,8,.5);background:rgba(227,160,8,.07)}
+  .kchip.io{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent);background:color-mix(in srgb,var(--warn) 7%,transparent)}
   .seqrow .play{background:transparent;border:1px solid var(--beta);color:var(--beta);border-radius:5px;padding:4px 12px;font-size:12px;font-weight:600}
-  .seqrow .play:hover{background:rgba(74,168,255,.08)}
+  .seqrow .play:hover{background:color-mix(in srgb,var(--beta) 8%,transparent)}
   /* per-row single-condition test buttons are hidden while an experiment runs
      (they'd be a distracting mid-run foot-gun; STOP lives in the running panel) */
   body.running .seqrow .play{display:none}
-  .seqrow.active{border-color:var(--accent);background:rgba(0,230,118,.10)}
+  .seqrow.active{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
   .seqrow.active .nm{color:var(--accent);font-weight:600}
   .seqrow.active .idx{color:var(--accent)}
   .seqrow.active::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);animation:pulse 1s infinite}
-  body.testing .seqrow.active{border-color:var(--beta);background:rgba(74,168,255,.10)}
+  body.testing .seqrow.active{border-color:var(--beta);background:color-mix(in srgb,var(--beta) 10%,transparent)}
   body.testing .seqrow.active .nm,body.testing .seqrow.active .idx{color:var(--beta)}
   body.testing .seqrow.active::before{background:var(--beta)}
 
@@ -525,14 +571,14 @@
   .scope-ctrls label{display:flex;align-items:center;gap:4px}
   .scope-ctrls input[type=number]{width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font-size:11px}
   .scope-ctrls select{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font-size:11px}
-  .scope-ctrls .pill.on{background:var(--accent);color:#06210f;border-color:var(--accent)}
+  .scope-ctrls .pill.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
   .scope-status{margin-left:auto;font-style:italic;font-size:9px;line-height:1.05;text-align:right;white-space:nowrap;align-self:center;color:var(--dim)}
   @media (max-width:1100px){ #scopeCtrls .scope-status{display:none} } /* wide screens only */
   .scope-canvas-wrap{flex:1;min-height:60px;position:relative}
   #scopeCanvas{width:100%;height:100%;display:block}
-  .scope-tip{position:absolute;pointer-events:none;background:rgba(15,20,25,0.96);border:1px solid var(--border);color:var(--text);font:11px/1.35 monospace;padding:2px 7px;border-radius:4px;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:6;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+  .scope-tip{position:absolute;pointer-events:none;background:color-mix(in srgb,var(--bg) 96%,transparent);border:1px solid var(--border);color:var(--text);font:11px/1.35 monospace;padding:2px 7px;border-radius:4px;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:6;box-shadow:0 4px 14px color-mix(in srgb,var(--shadow-c) 50%,transparent)}
   /* sonification settings popover (anchored under the ▾ next to ♪ sound) */
-  .scope-sound-menu{position:fixed;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 12px 34px rgba(0,0,0,.55);padding:10px 11px;display:none;font-size:11px;color:var(--text);min-width:236px}
+  .scope-sound-menu{position:fixed;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 12px 34px color-mix(in srgb,var(--shadow-c) 55%,transparent);padding:10px 11px;display:none;font-size:11px;color:var(--text);min-width:236px}
   .scope-sound-menu.open{display:block}
   .scope-sound-menu .ss-hd{font-family:var(--head);text-transform:uppercase;letter-spacing:.5px;color:var(--dim);font-size:10px;margin:0 0 6px}
   .scope-sound-menu .ssr{display:flex;align-items:center;gap:6px;margin:5px 0}
@@ -544,17 +590,17 @@
   .scope-sound-menu .ss-dim{color:var(--dim);flex:0 0 auto}
   .runlog-head{display:flex;align-items:center;gap:9px;margin-bottom:7px;font-size:11px;flex-wrap:wrap}
   .runlog-head .tag{font-weight:700;border-radius:4px;padding:2px 8px;font-size:10px}
-  .runlog-head .tag.exp{background:var(--rec);color:#2a0000}
+  .runlog-head .tag.exp{background:var(--rec);color:var(--on-danger)}
   .runlog-head .tag.test{background:var(--border);color:var(--dim)}
   .runlog-head .ctr{color:var(--dim)}
   .dock-stop{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:3px 12px;font-size:11px;font-weight:700;opacity:.5;pointer-events:none}
-  body.running .dock-stop{background:var(--danger);border-color:var(--danger);color:#2a0000;opacity:1;pointer-events:auto}
-  .logbox{background:#0a0e12;border:1.5px solid var(--edge);border-radius:5px;padding:8px;overflow:auto;font-size:11px;color:#9fe8c0;white-space:pre-wrap;font-family:var(--mono);flex:1;min-height:0}
+  body.running .dock-stop{background:var(--danger);border-color:var(--danger);color:var(--on-danger);opacity:1;pointer-events:auto}
+  .logbox{background:var(--term-bg);border:1.5px solid var(--edge);border-radius:5px;padding:8px;overflow:auto;font-size:11px;color:var(--term-rx);white-space:pre-wrap;font-family:var(--mono);flex:1;min-height:0}
   .logbox .l-err{color:var(--danger)}
   .logbox .l-warn{color:var(--warn)}
   .logbox .l-info{color:var(--dim)}
-  .logbox .l-tx{color:#7fd0ff}
-  .logbox .l-rx{color:#9fe8c0}
+  .logbox .l-tx{color:var(--term-tx)}
+  .logbox .l-rx{color:var(--term-rx)}
   .runlog-saved{margin-top:7px;font-size:11px;color:var(--accent);display:none}
   .runlog-saved.show{display:block}
 
@@ -569,7 +615,7 @@
   /* ===== CONSOLE view (Phase 2) — scoped under .console-view ===== */
   .console-view{padding:10px 16px;gap:8px}
   .console-caption{flex:0 0 auto;display:flex;align-items:center;gap:8px;color:var(--beta);font-size:11.5px;padding:2px 2px 4px}
-  .console-caption .ic{border:1px solid rgba(74,168,255,.5);border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;cursor:help}
+  .console-caption .ic{border:1px solid color-mix(in srgb,var(--beta) 50%,transparent);border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;cursor:help}
   .console-caption .ca-acts{margin-left:auto;display:flex;gap:6px}
   .console-caption .ca-acts .pill{padding:3px 9px;font-size:10.5px}
   /* console menubar (restored Controller ▾ / Debug ▾) */
@@ -577,7 +623,7 @@
   .cmenu{position:relative}
   .cmenu-btn{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;font-size:12px}
   .cmenu-btn:hover,.cmenu.open .cmenu-btn{border-color:var(--accent)}
-  .cmenu-pop{position:absolute;top:118%;left:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;min-width:250px;padding:5px;display:none;z-index:60;box-shadow:0 8px 22px rgba(0,0,0,.55)}
+  .cmenu-pop{position:absolute;top:118%;left:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;min-width:250px;padding:5px;display:none;z-index:60;box-shadow:0 8px 22px color-mix(in srgb,var(--shadow-c) 55%,transparent)}
   .cmenu.open .cmenu-pop{display:block}
   .cmenu-item{display:block;width:100%;text-align:left;background:transparent;border:0;color:var(--text);padding:7px 9px;border-radius:5px;font-size:12px}
   .cmenu-item:hover:not(:disabled){background:var(--surface2)}
@@ -590,7 +636,7 @@
      until the instructor clicks Unlock, so students can't reset them by accident. */
   .dbg-lockrow,.ctl-lockrow{border-bottom:1px solid var(--border);margin-bottom:3px;padding-bottom:6px}
   #dbgMenu:not(.dbg-locked) .dbg-lockrow label,#ctlMenu:not(.ctl-locked) .ctl-lockrow label{color:var(--accent)}
-  .cmenu-btn.danger{border-color:rgba(255,82,82,.5);color:var(--danger)}
+  .cmenu-btn.danger{border-color:color-mix(in srgb,var(--danger) 50%,transparent);color:var(--danger)}
   .cgroup{flex:0 0 auto;border:1.5px solid var(--edge);border-radius:10px;background:var(--surface);padding:9px 12px;margin-bottom:8px}
   .cgroup .gh{font-family:var(--head);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-bottom:7px;display:flex;align-items:center;gap:8px}
   .cgroup .gh .op{text-transform:none;letter-spacing:0;font-weight:400;font-family:var(--mono);color:var(--dim)}
@@ -614,11 +660,11 @@
   .console-view .crow label{color:var(--dim);font-size:11px;display:flex;align-items:center;gap:6px}
   .console-view .crow input[type=number],.console-view .crow input[type=text],.console-view .crow select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:5px 7px;font-family:var(--mono);font-size:11px}
   .console-view .lbl{font-family:var(--head);font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);min-width:58px}
-  .console-view .thumb{width:34px;height:34px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);display:inline-block;flex:0 0 auto;overflow:hidden}
+  .console-view .thumb{width:34px;height:34px;border:1px solid var(--border);border-radius:5px;background:var(--preview-bg);display:inline-block;flex:0 0 auto;overflow:hidden}
   .console-view .thumb img{width:100%;height:100%;object-fit:contain;display:block}
   .console-view .seg2{display:flex;border:1px solid var(--border);border-radius:5px;overflow:hidden}
   .console-view .seg2 button{background:transparent;border:0;color:var(--dim);padding:4px 11px;font-size:11px}
-  .console-view .seg2 button.on{background:var(--accent);color:#06210f;font-weight:700}
+  .console-view .seg2 button.on{background:var(--accent);color:var(--on-accent);font-weight:700}
   .console-view .memb{font-size:11px;color:var(--dim);line-height:1.5}
   .console-view .memb[hidden]{display:none}
   .console-view .sdtable{width:100%;border-collapse:collapse;font-size:11px;max-height:180px;display:block;overflow:auto}
@@ -628,9 +674,9 @@
   .console-view .sd-down,.console-view .sd-del{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:4px;padding:1px 7px;font-size:11px;margin-left:4px}
   .console-view .sd-down:hover{border-color:var(--accent);color:var(--accent)}
   .console-view .sd-del:hover{border-color:var(--danger);color:var(--danger)}
-  .console-view .clog{background:#0a0e12;border:1.5px solid var(--edge);border-radius:5px;padding:8px;overflow:auto;font-size:11px;color:#9fe8c0;white-space:pre-wrap;font-family:var(--mono);height:120px}
-  .console-view .clog .l-tx{color:#7fd0ff}.console-view .clog .l-rx{color:#9fe8c0}.console-view .clog .l-err{color:var(--danger)}.console-view .clog .l-info{color:var(--dim)}
-  .console-view fieldset:disabled{opacity:.55}
+  .console-view .clog{background:var(--term-bg);border:1.5px solid var(--edge);border-radius:5px;padding:8px;overflow:auto;font-size:11px;color:var(--term-rx);white-space:pre-wrap;font-family:var(--mono);height:120px}
+  .console-view .clog .l-tx{color:var(--term-tx)}.console-view .clog .l-rx{color:var(--term-rx)}.console-view .clog .l-err{color:var(--danger)}.console-view .clog .l-info{color:var(--dim)}
+  .console-view fieldset:disabled{opacity:var(--off-opacity)}
   /* batch ISP programmer report (inside the panel-firmware group) */
   .console-view .isp-report-wrap{max-height:200px;overflow-y:auto;margin-top:6px}
   .console-view .isp-report{width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px}
@@ -639,7 +685,7 @@
   .console-view .isp-report td.ir-idx{width:3em;color:var(--dim);text-align:right;padding-right:6px}
   .console-view .isp-report td.ir-detail{color:var(--dim)}
   .console-view .ir-pending{color:var(--dim)}
-  .console-view .ir-active{color:#7fd0ff}
+  .console-view .ir-active{color:var(--term-tx)}
   .console-view .ir-ok{color:var(--accent)}
   .console-view .ir-warn{color:var(--warn)}
   .console-view .ir-fail{color:var(--danger)}
@@ -654,7 +700,7 @@
      height — it fills whatever space is free and scrolls internally. */
   #cLogGroup .clog{flex:1 1 0;height:auto;min-height:110px}
 
-  .pmodal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:200}
+  .pmodal{position:fixed;inset:0;background:color-mix(in srgb,var(--shadow-c) 60%,transparent);display:flex;align-items:center;justify-content:center;z-index:200}
   .pmodal[hidden]{display:none}
   .pmodal-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;width:520px;max-width:92vw;padding:16px 18px}
   .pmodal-h{display:flex;align-items:center;justify-content:space-between;font-family:var(--head);font-size:14px}
@@ -666,15 +712,15 @@
   #ghQuickLinks .ql-title{font-family:var(--head);letter-spacing:.3px;color:var(--dim)}
   #ghQuickLinks .ql-repo{color:var(--text);opacity:.65;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #ghQuickLinks .ql-link{color:var(--accent);text-decoration:none;padding:1px 6px;border:1px solid transparent;border-radius:5px}
-  #ghQuickLinks .ql-link:hover{border-color:var(--accent);background:rgba(0,230,118,.08)}
-  .banner{background:rgba(227,160,8,.12);border:1px solid var(--warn);color:var(--warn);border-radius:8px;padding:8px 12px;margin:10px 20px;font-size:12px;display:none}
+  #ghQuickLinks .ql-link:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+  .banner{background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid var(--warn);color:var(--warn);border-radius:8px;padding:8px 12px;margin:10px 20px;font-size:12px;display:none}
   .banner.show{display:block}
 
   /* ── Edit view: tab bar (Designer | YAML) + YAML pane ───────────── */
   .edit-view .edit-tabs{display:flex;border:1px solid var(--border);border-radius:5px;overflow:hidden;flex:0 0 auto}
   .edit-view .edit-tab{background:transparent;border:0;color:var(--text-dim);padding:0.35rem 0.9rem;font-family:inherit;font-size:0.8rem;cursor:pointer}
   .edit-view .edit-tab + .edit-tab{border-left:1px solid var(--border)}
-  .edit-view .edit-tab.on{background:#26405e;color:#cfe6ff;font-weight:700}
+  .edit-view .edit-tab.on{background:var(--seg-on-bg);color:var(--seg-on-fg);font-weight:700}
   .edit-view .edit-tab:disabled{opacity:0.5;cursor:not-allowed}
   .edit-view.yamltab .view-only-banner,.edit-view.yamltab #exportWarnings,
   .edit-view.yamltab #settingsDrawer,.edit-view.yamltab .three-zone,
@@ -684,7 +730,7 @@
   .edit-view .edit-yaml-bar{display:flex;align-items:center;gap:0.6rem;padding:0.4rem 1rem;background:var(--surface);border-bottom:1px solid var(--border);flex:0 0 auto}
   .edit-view .edit-yaml-status{font-size:0.75rem;color:var(--text-dim)}
   .edit-view .edit-yaml-status.err{color:var(--error)}
-  .edit-view .edit-yaml textarea{flex:1;width:100%;background:#0a0e12;color:#cfe6ff;border:0;outline:0;padding:14px;font-family:var(--mono);font-size:12.5px;resize:none;line-height:1.5}
+  .edit-view .edit-yaml textarea{flex:1;width:100%;background:var(--term-bg);color:var(--term-yaml);border:0;outline:0;padding:14px;font-family:var(--mono);font-size:12.5px;resize:none;line-height:1.5}
 
   /* ═════════ EDIT view — the embedded v3 designer (scoped under .edit-view;
      the overlay families [confirm-modal, ps-modal, anchor-popover, miniToast]
@@ -692,21 +738,18 @@
 
         .edit-view, .edit-view *, .confirm-modal-backdrop, .confirm-modal-backdrop *, .ps-modal-backdrop, .ps-modal-backdrop *, .anchor-popover, .anchor-popover *, #miniToast, #miniToast * { margin: 0; padding: 0; box-sizing: border-box; }
         .edit-view, .confirm-modal-backdrop, .ps-modal-backdrop, .anchor-popover, #miniToast {
-            --bg: #0f1419;
-            --surface: #1a1f26;
-            --surface-2: #232a33;
-            --border: rgba(255,255,255,.18);
-            --edge: rgba(255,255,255,.30);
-            --text: #e6edf3;
-            --text-dim: #8b949e;
-            --accent: #00e676;
-            --hover: #00c853;
-            --beta: #29b6f6;
-            --warn: #ff9800;
-            --error: #f44336;
-            --ref-bg: rgba(0, 230, 118, 0.08);
-            --block-bg: rgba(41, 182, 246, 0.08);
-            --selected: rgba(0, 230, 118, 0.18);
+            /* The designer keeps a few palette entries of its own (a lighter well and its
+               Material-style blue / orange / red); everything else — bg, surface, border,
+               edge, text, accent, hover — inherits the page theme from :root. The values
+               are theme tokens, so every visibility theme reaches the embedded editor. */
+            --surface-2: var(--ed-surface2);
+            --text-dim: var(--dim);
+            --beta: var(--ed-beta);
+            --warn: var(--ed-warn);
+            --error: var(--ed-error);
+            --ref-bg: color-mix(in srgb, var(--accent) 8%, transparent);
+            --block-bg: color-mix(in srgb, var(--ed-beta) 8%, transparent);
+            --selected: color-mix(in srgb, var(--accent) 18%, transparent);
         }
         /* (html,body height rule dropped — studio owns page chrome) */
         .edit-view {
@@ -749,15 +792,15 @@
         }
         .edit-view .header-btn:hover, .ps-modal-backdrop .header-btn:hover { background: var(--border); border-color: var(--accent); color: var(--accent); }
         .edit-view .header-btn:disabled, .ps-modal-backdrop .header-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .edit-view .header-btn.primary, .ps-modal-backdrop .header-btn.primary { background: rgba(0, 230, 118, 0.1); border-color: var(--accent); color: var(--accent); }
-        .edit-view .header-btn.primary:hover, .ps-modal-backdrop .header-btn.primary:hover { background: rgba(0, 230, 118, 0.2); }
+        .edit-view .header-btn.primary, .ps-modal-backdrop .header-btn.primary { background: color-mix(in srgb,var(--accent) 10%,transparent); border-color: var(--accent); color: var(--accent); }
+        .edit-view .header-btn.primary:hover, .ps-modal-backdrop .header-btn.primary:hover { background: color-mix(in srgb,var(--accent) 20%,transparent); }
         .edit-view select.header-btn { max-width: 260px; }
         .edit-view select.header-btn:focus { outline: none; border-color: var(--accent); }
 
         /* ── View-only banner ────────────────────────────────────────── */
         .edit-view .view-only-banner {
             padding: 0.4rem 1rem;
-            background: rgba(41, 182, 246, 0.08);
+            background: color-mix(in srgb,var(--beta) 8%,transparent);
             border-bottom: 1px solid var(--border);
             color: var(--beta);
             font-size: 0.75rem;
@@ -773,7 +816,7 @@
             flex-wrap: wrap;
             gap: 0.75rem;
             padding: 0.45rem 1rem;
-            background: rgba(0, 230, 118, 0.08);
+            background: color-mix(in srgb,var(--accent) 8%,transparent);
             border-bottom: 1px solid var(--accent);
             font-size: 0.75rem;
             color: var(--text);
@@ -815,7 +858,7 @@
             cursor: pointer;
             flex-shrink: 0;
         }
-        .edit-view .lib-row .theirs-add:hover:not(:disabled) { background: rgba(0, 230, 118, 0.15); }
+        .edit-view .lib-row .theirs-add:hover:not(:disabled) { background: color-mix(in srgb,var(--accent) 15%,transparent); }
         .edit-view .lib-row .theirs-add:disabled { color: var(--text-dim); border-color: transparent; cursor: default; }
         .edit-view .staging-subhead {
             margin: 0.6rem 0 0.3rem;
@@ -830,7 +873,7 @@
         .edit-view .collision-badge {
             font-size: 0.6rem;
             color: var(--error);
-            background: rgba(244, 67, 54, 0.12);
+            background: color-mix(in srgb,var(--error) 12%,transparent);
             padding: 0.05rem 0.35rem;
             border-radius: 8px;
             flex-shrink: 0;
@@ -870,7 +913,7 @@
         /* ── Export warnings banner ──────────────────────────────────── */
         .edit-view .export-warnings {
             padding: 0.3rem 1rem;
-            background: rgba(255, 152, 0, 0.08);
+            background: color-mix(in srgb,var(--warn) 8%,transparent);
             border-bottom: 1px solid var(--border);
             color: var(--warn);
             font-size: 0.72rem;
@@ -1002,9 +1045,9 @@
             font-size: 0.7rem;
             padding: 0.15rem 0.4rem;
         }
-        .edit-view .var-del-btn:hover { color: var(--text); border-color: #c4514f; }
+        .edit-view .var-del-btn:hover { color: var(--text); border-color: var(--ed-danger-hover); }
         .edit-view .var-add-btn:hover { color: var(--accent); border-color: var(--accent); }
-        .edit-view .var-add-row { background: rgba(255, 255, 255, 0.02); }
+        .edit-view .var-add-row { background: color-mix(in srgb,var(--text) 2%,transparent); }
         .edit-view .adv-anchor-badge {
             color: var(--text-dim);
             font-style: italic;
@@ -1028,7 +1071,7 @@
             z-index: 1000;
             background: var(--surface);
             border: 1px solid var(--border);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 12px color-mix(in srgb,var(--shadow-c) 50%,transparent);
             min-width: 260px;
             max-width: 360px;
             padding: 0;
@@ -1067,7 +1110,7 @@
             margin-top: 0.3rem;
         }
         .anchor-popover button:hover { border-color: var(--accent); color: var(--accent); }
-        .anchor-popover button.danger:hover { border-color: #c4514f; color: #c4514f; }
+        .anchor-popover button.danger:hover { border-color: var(--ed-danger-hover); color: var(--ed-danger-hover); }
         .anchor-popover .summary {
             color: var(--accent);
             font-family: 'JetBrains Mono', monospace;
@@ -1077,7 +1120,7 @@
         .confirm-modal-backdrop {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.6);
+            background: color-mix(in srgb,var(--shadow-c) 60%,transparent);
             z-index: 2000;
             display: flex;
             align-items: center;
@@ -1159,11 +1202,11 @@
         }
         .confirm-modal .actions button.primary {
             background: var(--accent);
-            color: #0f1419;
+            color: var(--on-accent);
             border-color: var(--accent);
         }
         .confirm-modal .actions button:hover { border-color: var(--accent); }
-        .confirm-modal .actions button.primary:hover { background: #00c853; }
+        .confirm-modal .actions button.primary:hover { background: var(--hover); }
 
         /* ── 3-zone main area ────────────────────────────────────────── */
         .edit-view .three-zone {
@@ -1275,7 +1318,7 @@
         .edit-view .lib-row .lib-row-del:hover {
             background: var(--surface-2);
             color: var(--error);
-            border-color: #c4514f;
+            border-color: var(--ed-danger-hover);
         }
         /* Per-condition "run on arena" button style (currently the live control is
            the inspector's .arena-test-btn; this class is retained for reuse). */
@@ -1303,7 +1346,7 @@
         /* LAB-94 dry-run status bar — a dedicated element with its own state,
            updated only by the run handlers (NOT rebuilt by renderAll()). */
         .edit-view .run-status {
-            background: rgba(0, 230, 118, 0.08);
+            background: color-mix(in srgb,var(--accent) 8%,transparent);
             border-top: 2px solid var(--accent);
             padding: 0.5rem 0.75rem 0.55rem;
             font-size: 0.72rem;
@@ -1340,15 +1383,15 @@
         .edit-view .arena-test {
             display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
             margin: 0 0 0.6rem; padding: 0.5rem 0.6rem;
-            background: rgba(0, 230, 118, 0.06);
+            background: color-mix(in srgb,var(--accent) 6%,transparent);
             border: 1px solid var(--border); border-radius: 4px;
         }
         .edit-view .arena-test-btn {
             font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 700;
             padding: 0.35rem 0.7rem; border-radius: 4px; cursor: pointer;
-            background: var(--accent); color: #06210f; border: none;
+            background: var(--accent); color: var(--on-accent); border: none;
         }
-        .edit-view .arena-test-btn:hover:not(:disabled) { background: #00c853; }
+        .edit-view .arena-test-btn:hover:not(:disabled) { background: var(--hover); }
         .edit-view .arena-test-btn:disabled { opacity: 0.45; cursor: not-allowed; background: var(--border); color: var(--text-dim); }
         .edit-view .arena-test-note { font-size: 0.66rem; color: var(--text-dim); }
         .edit-view .arena-test-note.dim { font-style: italic; }
@@ -1361,8 +1404,8 @@
             margin-left: 0.2rem; padding: 0 0.4rem; border-radius: 9px; line-height: 1.5;
             cursor: default; user-select: none; letter-spacing: 0.03em; white-space: nowrap;
         }
-        .edit-view .wc-w { color: var(--accent); border: 1px solid var(--accent); background: rgba(0, 230, 118, 0.12); }
-        .edit-view .wc-c { color: #6cb1ff; border: 1px solid #3b6ea5; background: rgba(88, 166, 255, 0.12); }
+        .edit-view .wc-w { color: var(--accent); border: 1px solid var(--accent); background: color-mix(in srgb,var(--accent) 12%,transparent); }
+        .edit-view .wc-c { color: var(--wc-c-fg); border: 1px solid var(--wc-c-border); background: var(--wc-c-bg); }
         /* LAB-96: animated pattern preview. It sits on its OWN full-width line BELOW the
            picker controls — the pattern kv-line wraps (.kv-pattern) and the host takes
            flex-basis:100%, so the thumbnail stays inside the inspector column instead of
@@ -1372,7 +1415,7 @@
         .edit-view .pat-preview { position: relative; display: inline-block; line-height: 0; }
         .edit-view .pat-preview img {
             width: 96px; height: 96px; border-radius: 6px;
-            border: 1px solid var(--border); background: var(--surface);
+            border: 1px solid var(--border); background: var(--preview-bg);
         }
         .edit-view .pat-preview-ph {
             display: inline-flex; align-items: center; justify-content: center;
@@ -1382,7 +1425,7 @@
         }
         .edit-view .pat-preview-badge {
             position: absolute; bottom: 3px; right: 3px;
-            background: rgba(0,0,0,0.7); color: var(--accent);
+            background: var(--preview-badge-bg); color: var(--preview-badge-fg);
             font-size: 0.6rem; padding: 0 0.25rem; border-radius: 3px;
             font-family: 'JetBrains Mono', monospace;
         }
@@ -1446,7 +1489,7 @@
             transition: border-color 0.1s, background 0.1s;
         }
         .edit-view .seq-entry:hover { border-color: var(--accent); }
-        .edit-view .seq-entry.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0, 230, 118, 0.15); }
+        .edit-view .seq-entry.selected { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 15%,transparent); }
         .edit-view .seq-entry[draggable="true"] { cursor: grab; }
         .edit-view .seq-entry[draggable="true"]:active { cursor: grabbing; }
         .edit-view .seq-entry.dragging { opacity: 0.5; }
@@ -1482,7 +1525,7 @@
             border-color: var(--border);
         }
         .edit-view .seq-entry .seq-act-btn.danger:hover {
-            background: rgba(244, 67, 54, 0.12);
+            background: color-mix(in srgb,var(--error) 12%,transparent);
             color: var(--error);
             border-color: var(--error);
         }
@@ -1524,7 +1567,7 @@
             border-radius: 3px;
         }
         .edit-view .seq-entry.block .trials-row.drop-target {
-            background: rgba(0, 230, 118, 0.08);
+            background: color-mix(in srgb,var(--accent) 8%,transparent);
             outline: 1px dashed var(--accent);
         }
         .edit-view .trial-chip {
@@ -1573,7 +1616,7 @@
         .edit-view .unknown-keys-pill {
             margin-top: 0.4rem;
             display: inline-block;
-            background: rgba(255, 152, 0, 0.1);
+            background: color-mix(in srgb,var(--warn) 10%,transparent);
             border: 1px solid var(--warn);
             color: var(--warn);
             padding: 0.1rem 0.4rem;
@@ -1613,13 +1656,13 @@
         .edit-view .cmd-card.plugin { border-left: 3px solid var(--beta); }
         .edit-view .cmd-card.raw {
             border-left: 3px solid var(--warn);
-            background: rgba(255, 152, 0, 0.04);
+            background: color-mix(in srgb,var(--warn) 4%,transparent);
         }
         .edit-view .cmd-card.raw .cmd-head .ctype { color: var(--warn); }
         .edit-view .cmd-card .raw-badge {
             display: inline-block;
             padding: 0.05rem 0.4rem;
-            background: rgba(255, 152, 0, 0.12);
+            background: color-mix(in srgb,var(--warn) 12%,transparent);
             color: var(--warn);
             border: 1px solid var(--warn);
             border-radius: 8px;
@@ -1702,7 +1745,7 @@
             line-height: 1;
         }
         .edit-view .cmd-card .kv-line .param-x-btn:hover {
-            background: rgba(244, 67, 54, 0.12);
+            background: color-mix(in srgb,var(--error) 12%,transparent);
             color: var(--error);
             border-color: var(--error);
         }
@@ -1711,7 +1754,7 @@
             align-items: center;
             gap: 0.2rem;
             padding: 0.05rem 0.4rem;
-            background: rgba(41, 182, 246, 0.12);
+            background: color-mix(in srgb,var(--beta) 12%,transparent);
             border: 1px solid var(--beta);
             color: var(--beta);
             border-radius: 8px;
@@ -1725,7 +1768,7 @@
         }
         .edit-view .dirty-badge {
             display: inline-block;
-            background: rgba(255, 152, 0, 0.15);
+            background: color-mix(in srgb,var(--warn) 15%,transparent);
             color: var(--warn);
             border: 1px solid var(--warn);
             padding: 0.05rem 0.4rem;
@@ -1735,7 +1778,7 @@
         }
         .edit-view .shared-badge {
             display: inline-block;
-            background: rgba(41, 182, 246, 0.12);
+            background: color-mix(in srgb,var(--beta) 12%,transparent);
             color: var(--beta);
             border: 1px solid var(--beta);
             padding: 0.05rem 0.4rem;
@@ -1793,7 +1836,7 @@
             border-color: transparent;
         }
         .edit-view .cmd-card .cmd-act-btn.danger:hover {
-            background: rgba(244, 67, 54, 0.12);
+            background: color-mix(in srgb,var(--error) 12%,transparent);
             color: var(--error);
             border-color: var(--error);
         }
@@ -1853,7 +1896,7 @@
         }
         .edit-view .block-prop-row .jump-btn { padding: 0.1rem 0.4rem; font-size: 0.7rem; }
         .edit-view .jump-btn {
-            background: rgba(0, 230, 118, 0.1);
+            background: color-mix(in srgb,var(--accent) 10%,transparent);
             border: 1px solid var(--accent);
             color: var(--accent);
             padding: 0.25rem 0.6rem;
@@ -1862,7 +1905,7 @@
             border-radius: 3px;
             cursor: pointer;
         }
-        .edit-view .jump-btn:hover { background: rgba(0, 230, 118, 0.25); }
+        .edit-view .jump-btn:hover { background: color-mix(in srgb,var(--accent) 25%,transparent); }
 
         /* ── Bottom timeline ─────────────────────────────────────────── */
         .edit-view .timeline-container {
@@ -1928,23 +1971,23 @@
         .edit-view .step:hover { border-color: var(--accent); }
         .edit-view .step.selected {
             border-color: var(--accent);
-            box-shadow: 0 0 0 2px rgba(0, 230, 118, 0.25);
+            box-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent);
         }
         .edit-view .step.ref { background: var(--ref-bg); border-color: var(--accent); }
         .edit-view .step.block-trial { background: var(--block-bg); border-color: var(--beta); }
-        .edit-view .step.iti { background: rgba(139, 148, 158, 0.05); border-color: var(--border); color: var(--text-dim); min-width: 40px; }
+        .edit-view .step.iti { background: color-mix(in srgb,var(--text-dim) 5%,transparent); border-color: var(--border); color: var(--text-dim); min-width: 40px; }
         .edit-view .step .step-label { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .edit-view .step .step-dur { color: var(--text-dim); margin-top: 0.1rem; }
         /* Live run-position highlight — the step currently executing on the arena.
            After the kind rules so it wins the border/background. */
         .edit-view .step.running {
-            border-color: #ff5252;
-            background: rgba(255, 82, 82, 0.18);
+            border-color: var(--danger);
+            background: color-mix(in srgb,var(--danger) 18%,transparent);
             animation: stepRunPulse 1s ease-in-out infinite;
         }
         @keyframes stepRunPulse {
-            0%, 100% { box-shadow: 0 0 0 2px rgba(255, 82, 82, 0.4), 0 0 6px rgba(255, 82, 82, 0.35); }
-            50% { box-shadow: 0 0 0 2px rgba(255, 82, 82, 0.7), 0 0 12px rgba(255, 82, 82, 0.6); }
+            0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb,var(--danger) 40%,transparent), 0 0 6px color-mix(in srgb,var(--danger) 35%,transparent); }
+            50% { box-shadow: 0 0 0 2px color-mix(in srgb,var(--danger) 70%,transparent), 0 0 12px color-mix(in srgb,var(--danger) 60%,transparent); }
         }
         .edit-view .randomize-note {
             font-size: 0.7rem;
@@ -1969,7 +2012,7 @@
         .edit-view .modal-backdrop {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.6);
+            background: color-mix(in srgb,var(--shadow-c) 60%,transparent);
             display: none;
             align-items: center;
             justify-content: center;
@@ -1988,7 +2031,7 @@
             border-radius: 6px;
             padding: 0.5rem 0.9rem;
             font-size: 0.82rem;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 16px color-mix(in srgb,var(--shadow-c) 50%,transparent);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.18s ease, transform 0.18s ease;
@@ -2012,14 +2055,14 @@
         .edit-view .modal-actions { margin-top: 1rem; text-align: right; }
 
         /* ── LAB-92 Pattern Set builder (large two-pane modal) ── */
-        .ps-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 120; }
+        .ps-modal-backdrop { position: fixed; inset: 0; background: color-mix(in srgb,var(--shadow-c) 70%,transparent); display: none; align-items: center; justify-content: center; z-index: 120; }
         .ps-modal-backdrop.open { display: flex; }
         .ps-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; width: 92vw; height: 90vh; max-width: 1400px; display: flex; flex-direction: column; font-size: 0.82rem; }
         .ps-head { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); }
         .ps-head h2 { font-family: 'JetBrains Mono', monospace; color: var(--accent); font-size: 1rem; margin: 0; }
         .ps-arena { font-size: 0.8rem; }
         .ps-arena .locked { color: var(--accent); }
-        .ps-arena .blocked { color: #e3a008; }
+        .ps-arena .blocked { color: var(--caution); }
         .ps-close { margin-left: auto; background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 4px; cursor: pointer; padding: 2px 9px; }
         .ps-close:hover { border-color: var(--accent); color: var(--accent); }
         .ps-srcrow { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
@@ -2039,7 +2082,7 @@
         .ps-row .ps-meta { flex: 0 1 auto; min-width: 0; color: var(--text-dim); font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .ps-badge { flex: 0 0 auto; font-size: 0.7rem; white-space: nowrap; }
         .ps-badge.ok { color: var(--accent); }
-        .ps-badge.bad { color: #e3a008; }
+        .ps-badge.bad { color: var(--caution); }
         .ps-idx { flex: 0 0 auto; color: var(--text-dim); font-size: 0.72rem; min-width: 1.4rem; text-align: right; }
         .ps-sd { flex: 0 0 auto; color: var(--text-dim); font-size: 0.72rem; font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
         .ps-iconbtn { flex: 0 0 auto; }
@@ -2050,7 +2093,7 @@
         .ps-foot { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 1rem; border-top: 1px solid var(--border); }
         .ps-foot .ps-status { color: var(--text-dim); margin-left: auto; }
         .ps-empty { color: var(--text-dim); font-style: italic; padding: 1rem; text-align: center; }
-        .ps-blocked { padding: 2.5rem 1rem; text-align: center; color: #e3a008; line-height: 1.6; }
+        .ps-blocked { padding: 2.5rem 1rem; text-align: center; color: var(--caution); line-height: 1.6; }
   /* ===== v6 SLICE — Console rail + compact panels =====
      Reuses main's tokens + real primitives (.pill/.cmenu/.cgroup/.crow/.seg2/
      .thumb/.sdtable/.clog). Adds only rail/stage/panel/bench-strip/log
@@ -2060,34 +2103,60 @@
   .console-view .bench-strip{flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
   .console-view .bench-strip .cmenubar{margin-bottom:0}
   .console-view .v6-cap{font-size:11px}
-  .console-view .busy-chip{display:none;font-size:11px;font-weight:600;color:var(--warn);border:1px solid rgba(227,160,8,.55);background:rgba(227,160,8,.08);border-radius:20px;padding:2px 10px}
+  .console-view .busy-chip{display:none;font-size:11px;font-weight:600;color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 55%,transparent);background:color-mix(in srgb,var(--warn) 8%,transparent);border-radius:20px;padding:2px 10px}
   .console-view .busy-chip.show{display:inline-block}
   .console-view .btn-benchstop{background:transparent;border:2px solid var(--danger);color:var(--danger);font-weight:700;border-radius:7px;padding:4px 14px;font-size:12px;font-family:var(--head);cursor:pointer}
-  .console-view .btn-benchstop:hover{background:rgba(255,82,82,.1)}
+  .console-view .btn-benchstop:hover{background:color-mix(in srgb,var(--danger) 10%,transparent)}
   /* Panels take natural height; the log fills the space below them (resizable).
      flex:0 0 auto — log CONTENT must never squeeze the panels (only the drag
      divider changes the split); the max-height cap keeps the strip + a usable
      log visible even with every panel open (rail/stage scroll internally). */
   .console-main{flex:0 0 auto;display:flex;min-height:96px;max-height:calc(100% - 160px)}
-  .console-view .rail{flex:0 0 152px;display:flex;flex-direction:column;gap:6px;border-right:1px solid var(--border);padding:8px;overflow:auto}
-  .console-view .rail-h{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);padding:0 3px 2px}
-  .console-view .rail-btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:7px 9px;border:1.5px solid var(--edge);border-radius:7px;background:var(--surface);color:var(--text);font-size:11.5px;text-align:left;font-family:var(--mono);cursor:pointer}
-  .console-view .rail-btn:hover{border-color:var(--accent)}
-  .console-view .rail-btn.sel{border-color:var(--accent);background:rgba(0,230,118,.08)}
-  .console-view .rail-btn .sub{font-size:9px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:126px}
+  .console-view .rail{flex:0 0 160px;display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--border);padding:8px 8px 8px 4px;overflow:auto}
+  .console-view .rail-h{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);padding:0 7px 4px}
+  /* Tools = a show/hide CHECKLIST (any number of panels open at once). Each row is a
+     role=checkbox with a drawn box (same look as the GitHub settings checkboxes), so
+     the state reads from the ✓ + aria-checked, not from a border colour alone. */
+  .console-view .rail-btn{display:grid;grid-template-columns:15px minmax(0,1fr);column-gap:8px;align-items:center;padding:6px 7px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--text);font-size:11.5px;text-align:left;font-family:var(--mono);cursor:pointer;user-select:none}
+  .console-view .rail-btn::before{content:'';grid-row:1 / span 2;width:15px;height:15px;box-sizing:border-box;border:1.5px solid var(--edge);border-radius:4px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;line-height:1;color:var(--on-accent)}
+  .console-view .rail-btn.sel::before{content:'✓';background:var(--accent);border-color:var(--accent)}
+  .console-view .rail-btn:hover{background:var(--surface2);border-color:var(--border)}
+  .console-view .rail-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .console-view .rail-btn .sub{grid-column:2;font-size:9px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* Analog In panel (analog-input-plan § 4 S1): value, ±10 V bar, 30 s strip chart, sweep table */
   .console-view .ai-val{font-family:var(--head);font-size:15px;min-width:92px;text-align:right;color:var(--text)}
   .console-view .ai-bar{position:relative;display:inline-block;width:150px;height:10px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);overflow:hidden;vertical-align:middle}
   .console-view .ai-bar .mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--dim);opacity:.7}
   .console-view .ai-bar .fill{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.85}
   .console-view .ai-range{font-size:10px;color:var(--dim);min-width:130px}
-  .console-view #cAiChart{display:block;width:100%;max-width:460px;height:90px;border:1px solid var(--border);border-radius:4px;background:#0b0f14}
+  .console-view #cAiChart{display:block;width:100%;max-width:460px;height:90px;border:1px solid var(--border);border-radius:4px;background:var(--chart-bg)}
   .console-view .ai-table{font-size:10.5px;border-collapse:collapse}
   .console-view .ai-table td,.console-view .ai-table th{padding:1px 10px 1px 0;text-align:right;color:var(--text);font-family:var(--mono)}
   .console-view .ai-table th{color:var(--dim);font-weight:normal}
-  .console-view .ai-table td.bad{color:#ff8a80}
+  .console-view .ai-table td.bad{color:var(--danger-text)}
   .console-view .pill[aria-pressed="false"]{opacity:.6}
   .console-view .stage{flex:1 1 auto;overflow:auto;padding:2px 2px 2px 10px;display:flex;flex-direction:column;gap:6px}
+  /* Two columns on a wide stage: the compact tools pair up side by side — Step frames
+     + LED, I/O + Panel firmware (similar heights; `order` keeps each pair together,
+     since the rail lists them apart) — and the wide ones (the pattern listing, Arena
+     Trial's field row, Test display, Analog In, FicTrac) span both. `dense` backfills
+     a half-width hole with the next compact panel, so closing one never leaves a gap;
+     align-items:start keeps a short panel its own height beside a taller one. */
+  @media (min-width:1280px){
+    .console-view .stage{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-flow:row dense;align-content:start;align-items:start}
+    .console-view .stage>.panel{grid-column:1 / -1}
+    .console-view .stage>.panel[data-panel="step"],.console-view .stage>.panel[data-panel="led"],
+    .console-view .stage>.panel[data-panel="io"],.console-view .stage>.panel[data-panel="fw"]{grid-column:auto}
+    .console-view .stage>.panel[data-panel="patterns"]{order:1}
+    .console-view .stage>.panel[data-panel="trial"]{order:2}
+    .console-view .stage>.panel[data-panel="step"]{order:3}
+    .console-view .stage>.panel[data-panel="led"]{order:4}
+    .console-view .stage>.panel[data-panel="test"]{order:5}
+    .console-view .stage>.panel[data-panel="io"]{order:6}
+    .console-view .stage>.panel[data-panel="fw"]{order:7}
+    .console-view .stage>.panel[data-panel="ai"]{order:8}
+    .console-view .stage>.panel[data-panel="fictrac"]{order:9}
+  }
   /* Outer panel box: soft near-white 1.5px edge so panels stay distinct on a
      dark monitor in a lit room (grey var(--border) washed out). Internal
      dividers (panel-h border-bottom) stay subtle so it doesn't get loud. */
@@ -2110,13 +2179,13 @@
   .console-view .pat-left{flex:1 1 auto;min-width:0}
   .console-view .pat-left #cSdCount{display:none}
   .console-view .pat-right{flex:0 0 216px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;border-left:1px solid var(--border);padding-left:14px}
-  .console-view .pat-preview{width:190px;height:140px;background:var(--surface2)}
+  .console-view .pat-preview{width:190px;height:140px;background:var(--preview-bg)}
   .console-view .pat-infoline{font-size:11px;color:var(--dim)}
   .console-view .pat-hidden-sel{display:none}
   .console-view .pat-left .sdtable{max-height:150px}
   .console-view #cSdBody tr{cursor:pointer}
   .console-view #cSdBody tr:hover td{background:var(--surface)}
-  .console-view #cSdBody tr.sel td{background:rgba(0,230,118,.12);color:var(--text)}
+  .console-view #cSdBody tr.sel td{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--text)}
   .console-view #cSdBody tr.sel td:first-child{color:var(--accent);font-weight:700}
   .console-view #cSdBody tr.sel td:first-child::after{content:' ▸';color:var(--accent)}
   .console-view .panel-b .sdtable{max-height:150px}
@@ -2141,7 +2210,7 @@
   /* ===== v6 Settings diet: read-only rows, rig chips, Advanced… details ===== */
   .edit-view .set-ro{font-size:0.82rem;color:var(--text);padding:3px 0}
   .edit-view .set-ro.set-ok{color:var(--accent)}
-  .edit-view .set-ro.set-warn{color:#e3a008}
+  .edit-view .set-ro.set-warn{color:var(--caution)}
   .edit-view .set-ro.set-dim{color:var(--text-dim);font-style:italic}
   .edit-view .set-chip{display:inline-block;border:1px solid var(--border);border-radius:20px;
     padding:1px 9px;margin:0 4px 4px 0;font-size:0.74rem;color:var(--text);background:var(--surface)}
@@ -2155,16 +2224,16 @@
   /* ===== ? Help mode — plain-language hover explanations + first-steps cards ===== */
   .help-btn{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:50%;
     width:26px;height:26px;flex:0 0 auto;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--head);line-height:1;padding:0}
-  .help-btn:hover{border-color:#2b74a8;color:var(--text)}
-  body.helpmode .help-btn{background:#2b74a8;border-color:#2b74a8;color:#eaf5ff}
-  #helpTip{position:fixed;z-index:3000;max-width:340px;background:#0c2233;border:1px solid #2b74a8;color:#dbeeff;
+  .help-btn:hover{border-color:var(--help);color:var(--text)}
+  body.helpmode .help-btn{background:var(--help);border-color:var(--help);color:var(--help-fg)}
+  #helpTip{position:fixed;z-index:3000;max-width:340px;background:var(--tip-bg);border:1px solid var(--help);color:var(--tip-fg);
     border-radius:8px;padding:8px 11px;font-size:12px;line-height:1.5;pointer-events:none;display:none;
-    box-shadow:0 6px 18px rgba(0,0,0,.5);font-family:var(--mono)}
-  .help-card{display:none;flex:0 0 auto;border:1px solid #2b74a8;background:rgba(43,116,168,.09);border-radius:10px;
+    box-shadow:0 6px 18px color-mix(in srgb,var(--shadow-c) 50%,transparent);font-family:var(--mono)}
+  .help-card{display:none;flex:0 0 auto;border:1px solid var(--help);background:color-mix(in srgb,var(--help) 9%,transparent);border-radius:10px;
     padding:9px 34px 9px 13px;margin:0 0 8px;font-size:12.5px;line-height:1.6;color:var(--text);position:relative}
   body.helpmode .help-card{display:block}
   body.helpmode .help-card.dismissed{display:none}
-  .help-card b{color:#9fd4ff}
+  .help-card b{color:var(--help-strong)}
   .help-card .help-x{position:absolute;top:6px;right:8px;background:transparent;border:0;color:var(--dim);cursor:pointer;font-size:13px;line-height:1}
   .help-card .help-x:hover{color:var(--text)}
 </style>
@@ -2181,11 +2250,10 @@
      title="All web tools (the index page) — opens in its own reused tab, so the Studio keeps its arena connection">Other tools</a>
   <span class="sep-v"></span>
   <span class="status"><span class="dot" id="statusDot" title="Connection status (green = connected). One ArenaSession broker owns the single Web Serial port."></span><span id="statusTxt">disconnected</span></span>
-  <label class="rigsel" title="Session (bench) rig — ONE shared selection consumed by Run, Edit, and Console (stream-frame geometry, ISP progress map, paste validation, FicTrac framing). Follows the loaded protocol's rig unless you explicitly pick one; locked against accidental change (#135).">rig
-    <select id="sessionRig" disabled></select>
-    <button class="pill" id="sessionRigLock" title="Session rig is locked — click to unlock (changing it alters what geometry gets streamed to the hardware)">🔒</button>
-  </label>
-  <span class="chip rig-mismatch" id="rigMismatch" style="display:none" title="Session (bench) rig differs from the loaded protocol's rig: field — the bench geometry wins for Console/stream operations; the protocol still runs with its own rig. Unlock the rig selector to reconcile, or load a matching protocol.">⚠ bench ≠ protocol</span>
+  <!-- Read-only bench-rig tag: the selector itself lives in ⚙ Settings, but the rig this bench
+       drives stays visible here (clicking opens ⚙ Settings). Text/title set by syncRigContext(). -->
+  <span class="rig-tag" id="rigTag" role="button" tabindex="0" title="Bench rig — click to see or change it in ⚙ Settings">rig —</span>
+  <span class="chip rig-mismatch" id="rigMismatch" style="display:none" title="Session (bench) rig differs from the loaded protocol's rig: field — the bench geometry wins for Console/stream operations; the protocol still runs with its own rig. Unlock the rig selector in ⚙ Settings to reconcile, or load a matching protocol.">⚠ bench ≠ protocol</span>
   <span class="chip rig-mismatch" id="benchMacChip" style="display:none" title="The connected controller's MAC (0xC2) does not match the course roster's entry for this bench id — the wrong bench id would namespace saves/run-logs under another bench. See instructor.">⚠ bench ≠ roster</span>
   <!-- v6 top-bar diet: device line hidden (arena+fw now on the status-dot
        hover); still written by updateDeviceLine so nothing depends on absence. -->
@@ -2209,46 +2277,25 @@
 
   <button class="ribbon-btn open-proto-btn" id="openProtoBtn" title="Open a v3 protocol YAML to run">📂 Open</button>
   <div class="filemenu" id="fileMenu">
-    <button class="ribbon-btn" id="fileMenuBtn">File ▾</button>
-    <div class="menu">
+    <button class="ribbon-btn" id="fileMenuBtn" aria-expanded="false" aria-controls="fileMenuPanel" title="Protocol — create, open, save, share, or reset the protocol (bench, GitHub and logging setup live in ⚙ Settings)">Protocol ▾</button>
+    <div class="menu" id="fileMenuPanel">
       <button id="fmNew" class="edit-only">New protocol</button>
-      <div class="menu-head">Open experimental protocol</div>
+      <div class="menu-head">Open protocol</div>
       <button id="fmOpen" title="Open a protocol .yaml from this computer">Open local file…</button>
       <button id="fmOpenLibrary" title="Pick a committed protocol from this site's own registry (protocols/index.json)">Open from Library…</button>
       <button id="fmOpenCourse" title="List this bench's saves (protocols/&lt;bench-id&gt;/) and promoted shared protocols (protocols/shared/) in the course-data repo">Open from Repo…</button>
       <button id="fmOpenDemo" class="edit-only" title="Load a bundled demo protocol to explore — same list the designer's Load demo ▾ used to hold">Open demo…</button>
       <button id="fmReplay" title="Play back a recorded run from its run log (course repo or this computer) — the matching protocol is found automatically; the arena is not driven">↺ Replay a recorded run…</button>
+      <div class="menu-head edit-only" data-alt-head="fmSave">Save &amp; share</div>
       <button id="fmSave" class="edit-only">Save → local file</button>
       <button id="fmSaveAs" class="edit-only" title="Save under a NEW filename (defaults to the protocol's name). The destination — course repo, Pull Request, or local file — is shown in the label and the prompt; a repo name that already exists asks before overwriting">Save as → local file…</button>
       <button id="fmSaveCopy" class="edit-only" title="Download a regenerated copy (*_roundtrip.yaml) for diffing/MATLAB checks — does NOT mark the protocol saved">Save copy (download)…</button>
       <button id="fmPromote" class="edit-only" title="Copy this bench's saved protocol (+ its _patterns/) to protocols/shared/ in the course repo — blocked if a DIFFERENT file already exists under the same name">Promote to shared (course)…</button>
-      <div class="sep"></div>
+      <div class="menu-head edit-only" data-alt-head="fmCopyConditions">Protocol tools</div>
       <button id="fmCopyConditions" class="edit-only" title="Copy conditions from a second protocol YAML into this one — brings their anchors and plugins along">Copy conditions from another protocol…</button>
       <button id="fmReset" class="edit-only" title="Clear everything to a blank minimum-valid v3 skeleton (reversible with Undo)">Reset protocol…</button>
+      <div class="sep" id="fmSoakSep"></div>
       <button id="fmSoak" title="Advanced: repeat the open protocol unattended (N times / for H hours, with a gap) to reproduce the Mode-3 controller wedge (fw #50). Requires the bridge to confirm behavior_v2 logging and FicTrac/simulator frames to be arriving. On a fault: quiet period → probes → halt (first fault) or SYSTEM_RESET + reconnect + continue. Logs stay on the bridge (not auto-committed).">Soak (repeat protocol)…</button>
-      <div class="sep"></div>
-      <div class="gh-block gh-locked" id="ghBlock">
-        <div class="gh-row">
-          <span>GitHub:</span>
-          <button class="gh-signin" id="ghSignInBtn">Sign in…</button>
-          <span class="gh-who" id="ghWho"></span>
-          <button class="gh-signout" id="ghSignOutBtn" title="Sign out — clear the stored token so a different account/token can be used">Sign out</button>
-          <span class="gh-spacer"></span>
-          <button class="gh-lock" id="ghLock" title="Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / bench id">🔒</button>
-        </div>
-        <div class="gh-row"><label for="ghRepoInput">Repo</label><input type="text" id="ghRepoInput" placeholder="reiserlab/cshl-2026-course" title="Target GitHub repo (owner/name) for saves — defaults to the course-data repo (reiserlab/cshl-2026-course); type another owner/name to override. Stored in this browser's localStorage"></div>
-        <div class="gh-row"><label for="ghBenchId">Bench id</label><input type="text" id="ghBenchId" placeholder="e.g. bench03" title="Instructor-set bench identity — namespaces course-repo protocol saves (protocols/&lt;bench-id&gt;/) and run-log commits (runlogs/&lt;bench-id&gt;/); stored in this browser's localStorage"></div>
-        <label class="gh-check"><input type="checkbox" id="ghPR" title="Save opens a branch + Pull Request on the target repo (review-gated — the default for reiserlab/webDisplayTools)"> Save as Pull Request</label>
-        <label class="gh-check"><input type="checkbox" id="ghDirect" title="Save commits straight to the target repo's default branch — no branch, no PR. Course-repo mode: safe there because bench-id namespacing means no two rigs write the same file"> Commit directly to default branch</label>
-        <label class="gh-check"><input type="checkbox" id="ghArchivePatterns" title="Advanced: after each completed run, snapshot the SD card's patterns to pattern-sets/&lt;hash&gt;/patterns.zip in the repo (content-hash deduped) — redundancy for on-card edits. OFF by default: the SD bulk-download is still under investigation (it can disconnect the arena on large cards)."> Archive SD patterns to repo after each run <span class="dim">(advanced)</span></label>
-        <div class="gh-row"><label for="fmLogLevel">Run logging</label>
-          <select id="fmLogLevel" title="Run-log format for recorded runs (and ad-hoc Console logging). behavior_v2 = compact arena-command echoes + the [ms,fc,idx,ft,x,y,hd] frame row the live scope + analysis dashboard use (default; ~0.4× the size of v1, lossless); behavior_v1 = the pre-2026-09 format (readable by every tool); full = the whole 25-column FicTrac record (debug/archival, ~4× larger). Asserted at run start — overrides the Console log toggle; the bridge acknowledges the level it will actually write and the run banner warns if it is too old for the chosen one.">
-            <option value="behavior_v2">behavior_v2 (compact — default)</option>
-            <option value="behavior_v1">behavior_v1 (legacy)</option>
-            <option value="full">full 25-column (debug)</option>
-          </select></div>
-        <div class="gh-dest" id="ghDest">→ writes a local .yaml file (sign in to GitHub to open a PR instead)</div>
-      </div>
     </div>
   </div>
 
@@ -2268,6 +2315,44 @@
   </div>
 
   <button class="connect" id="connectBtn" title="Pick the arena's serial port and open it (115200 baud)">Connect</button>
+
+  <!-- ⚙ Settings — Studio settings for this browser/bench, NOT the protocol: the ONE
+       session rig (#135), GitHub + storage, run logging. Protocol-stored settings stay
+       in Edit → ⚙ Protocol settings. Same nodes/IDs as before, so every handler is unchanged. -->
+  <div class="filemenu settings-menu" id="settingsMenu">
+    <button class="ribbon-btn" id="settingsMenuBtn" aria-expanded="false" aria-controls="settingsMenuPanel" title="Studio settings — bench rig, GitHub, run logging (kept in this browser, not in the protocol)">⚙ Settings ▾</button>
+    <div class="menu" id="settingsMenuPanel" role="group" aria-label="Studio settings">
+      <div class="menu-head">Bench rig</div>
+      <label class="rigsel" title="Session (bench) rig — ONE shared selection consumed by Run, Edit, and Console (stream-frame geometry, ISP progress map, paste validation, FicTrac framing). Follows the loaded protocol's rig unless you explicitly pick one; locked against accidental change (#135).">
+        <select id="sessionRig" disabled></select>
+        <button class="pill" id="sessionRigLock" title="Session rig is locked — click to unlock (changing it alters what geometry gets streamed to the hardware)">🔒</button>
+      </label>
+      <div class="menu-head">GitHub &amp; storage</div>
+      <div class="gh-block gh-locked" id="ghBlock">
+        <div class="gh-row">
+          <span>GitHub:</span>
+          <button class="gh-signin" id="ghSignInBtn">Sign in…</button>
+          <span class="gh-who" id="ghWho"></span>
+          <button class="gh-signout" id="ghSignOutBtn" title="Sign out — clear the stored token so a different account/token can be used">Sign out</button>
+          <span class="gh-spacer"></span>
+          <button class="gh-lock" id="ghLock" title="Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / bench id">🔒</button>
+        </div>
+        <div class="gh-row"><label for="ghRepoInput">Repo</label><input type="text" id="ghRepoInput" placeholder="reiserlab/cshl-2026-course" title="Target GitHub repo (owner/name) for saves — defaults to the course-data repo (reiserlab/cshl-2026-course); type another owner/name to override. Stored in this browser's localStorage"></div>
+        <div class="gh-row"><label for="ghBenchId">Bench id</label><input type="text" id="ghBenchId" placeholder="e.g. bench03" title="Instructor-set bench identity — namespaces course-repo protocol saves (protocols/&lt;bench-id&gt;/) and run-log commits (runlogs/&lt;bench-id&gt;/); stored in this browser's localStorage"></div>
+        <label class="gh-check"><input type="checkbox" id="ghPR" title="Save opens a branch + Pull Request on the target repo (review-gated — the default for reiserlab/webDisplayTools)"> Save as Pull Request</label>
+        <label class="gh-check"><input type="checkbox" id="ghDirect" title="Save commits straight to the target repo's default branch — no branch, no PR. Course-repo mode: safe there because bench-id namespacing means no two rigs write the same file"> Commit directly to default branch</label>
+        <label class="gh-check"><input type="checkbox" id="ghArchivePatterns" title="Advanced: after each completed run, snapshot the SD card's patterns to pattern-sets/&lt;hash&gt;/patterns.zip in the repo (content-hash deduped) — redundancy for on-card edits. OFF by default: the SD bulk-download is still under investigation (it can disconnect the arena on large cards)."> Archive SD patterns to repo after each run <span class="dim">(advanced)</span></label>
+        <div class="gh-dest" id="ghDest">→ writes a local .yaml file (sign in to GitHub to open a PR instead)</div>
+      </div>
+      <div class="menu-head">Run logging</div>
+      <div class="gh-row set-log" id="fmLogRow"><label for="fmLogLevel">Format</label>
+        <select id="fmLogLevel" title="Run-log format for recorded runs (and ad-hoc Console logging). behavior_v2 = compact arena-command echoes + the [ms,fc,idx,ft,x,y,hd] frame row the live scope + analysis dashboard use (default; ~0.4× the size of v1, lossless); behavior_v1 = the pre-2026-09 format (readable by every tool); full = the whole 25-column FicTrac record (debug/archival, ~4× larger). Asserted at run start — overrides the Console log toggle; the bridge acknowledges the level it will actually write and the run banner warns if it is too old for the chosen one.">
+          <option value="behavior_v2">behavior_v2 (compact — default)</option>
+          <option value="behavior_v1">behavior_v1 (legacy)</option>
+          <option value="full">full 25-column (debug)</option>
+        </select></div>
+    </div>
+  </div>
 
   <button class="help-btn" id="helpBtn" title="Help — turn on, then hover any control for a plain-language explanation">?</button>
 
@@ -2424,7 +2509,7 @@
 
       <div class="card seqlist">
         <h3>Sequence · test any single condition ▶ <span id="docSummary" class="doc-summary"></span></h3>
-        <div id="seqBody"><span class="dim">Open a protocol (File ▾ → Open) to see its sequence.</span></div>
+        <div id="seqBody"><span class="dim">Open a protocol (Protocol ▾ → Open) to see its sequence.</span></div>
       </div>
     </div><!-- /run-main -->
 
@@ -2464,10 +2549,11 @@
             </label>
             <label title="Fix the turning axis to ±this value (°/s). Blank = auto-scale. Overridden while auto-Y is on.">turn ± <input id="scopeTurnLim" type="number" min="0" step="1" value="200"> °/s</label>
             <label title="Fix the forward axis to ±this value (mm/s). Blank = auto-scale. Overridden while auto-Y is on.">fwd ± <input id="scopeFwdLim" type="number" min="0" step="1" value="20"> mm/s</label>
-            <button class="pill" id="scopeAutoY" title="Auto-scale ALL traces (overrides the fixed ± limits while on; heading is always ±180)">auto-Y</button>
+            <button class="pill" id="scopeAutoY" aria-pressed="false" title="Auto-scale ALL traces (overrides the fixed ± limits while on; heading is always ±180)">auto-Y: off</button>
+            <button class="pill" id="scopeLabels" title="Trial labels on the trace — full: every label that fits; clean: only the current trial's label (every boundary line and the hover name stay). Click to switch; remembered in this browser.">labels: full</button>
             <button class="pill" id="scopeClear" title="Clear the scope buffer">clear</button>
-            <button class="pill" id="scopeSound" title="Sonify the fly (Web Audio): turning → pitch, activity = forward speed → volume. Toggle on/off. Use ▾ for settings.">♪ sound</button>
-            <button class="pill" id="scopeSoundCfg" title="Sound settings — channel mapping, ranges, waveform, note scale, volume" style="padding:5px 7px">▾</button>
+            <button class="pill" id="scopeSound" aria-pressed="false" title="Sonify the fly (Web Audio): turning → pitch, activity = forward speed → volume. Toggle on/off; 'sound settings ▾' configures it.">♪ sound: off</button>
+            <button class="pill" id="scopeSoundCfg" title="Sound settings — channel mapping, ranges, waveform, note scale, volume">sound settings ▾</button>
             <span class="scope-status" id="scopeStatus"></span>
           </div>
         </div>
@@ -2572,16 +2658,16 @@
              does NOT shift the right-aligned action buttons (Undo/Redo/Reset).
              Previously it sat among the buttons and pushed them ~83px left on
              the first edit, causing clicks on Reset to miss after editing. -->
-        <span id="dirtyIndicator" class="dirty-badge" style="display: none;" title="Unsaved edits — Save (💾 or File ▾) to mark the protocol saved and unlock recorded experiment runs">● edited</span>
+        <span id="dirtyIndicator" class="dirty-badge" style="display: none;" title="Unsaved edits — Save (💾 or Protocol ▾) to mark the protocol saved and unlock recorded experiment runs">● edited</span>
         <div class="header-spacer"></div>
         <button id="undoBtn" class="header-btn" disabled title="Undo last edit (Ctrl+Z)">↶ Undo</button>
         <button id="redoBtn" class="header-btn" disabled title="Redo (Ctrl+Y)">↷ Redo</button>
         <!-- v6 toolbar diet: everything below the fold is HIDDEN, not removed —
              the wiring, §6 gating, and import-mode locks all key off these ids,
-             and the File ▾ menu items proxy-click them (guarded on .disabled).
-             Toolbar = tabs · ● edited · ↶ ↷ · Settings. Save = File ▾ / Ctrl+S. -->
+             and the Protocol ▾ menu items proxy-click them (guarded on .disabled).
+             Toolbar = tabs · ● edited · ↶ ↷ · Protocol settings. Save = Protocol ▾ / Ctrl+S. -->
         <button id="resetBtn" class="header-btn" disabled hidden title="Clear everything to a blank minimum-valid v3 skeleton (reversible with Undo)">⟲ Reset</button>
-        <button id="settingsToggle" class="header-btn" title="Show/hide experiment settings — name, experimenter, rig, pattern set">⚙ Settings ▾</button>
+        <button id="settingsToggle" class="header-btn" title="Show/hide the settings stored IN this protocol (YAML) — name, experimenter, rig, pattern set. Bench, GitHub and logging setup is in the top bar's ⚙ Settings.">⚙ Protocol settings ▾</button>
         <select id="demoSelect" class="header-btn" hidden title="Load a bundled demo YAML to explore">
             <option value="">Load demo ▾</option>
             <option value="tests/fixtures/v3_g6_2x10_smoke.yaml">g6_2x10_smoke — all 4 patterns + every arena command (run on G6)</option>
@@ -2604,8 +2690,8 @@
         <input type="file" id="importFromInput" accept=".yaml,.yml" style="display: none;">
         <button id="importFromBtn" class="header-btn" disabled hidden title="Copy conditions from a second v3 YAML into this one (brings their anchors + plugins along)">Import from YAML…</button>
         <button id="patternSetBtn" class="header-btn" hidden title="Build an SD-card pattern set (bundle) for this rig's arena — pick patterns, order them, export a ZIP to copy onto the SD card">Pattern Set…</button>
-        <button id="edSaveBtn" class="header-btn primary" disabled hidden title="Save the protocol — writes a local .yaml (or opens a GitHub PR when signed in with the PR box checked), marks it saved, and unlocks recorded experiment runs. Same action as File ▾ → Save.">💾 Save</button>
-        <button id="exportBtn" class="header-btn" disabled hidden title="Download a regenerated copy (*_roundtrip.yaml) for diffing/MATLAB checks — does NOT mark the protocol saved; use File ▾ → Save for that">Export YAML</button>
+        <button id="edSaveBtn" class="header-btn primary" disabled hidden title="Save the protocol — writes a local .yaml (or opens a GitHub PR when signed in with the PR box checked), marks it saved, and unlocks recorded experiment runs. Same action as Protocol ▾ → Save.">💾 Save</button>
+        <button id="exportBtn" class="header-btn" disabled hidden title="Download a regenerated copy (*_roundtrip.yaml) for diffing/MATLAB checks — does NOT mark the protocol saved; use Protocol ▾ → Save for that">Export YAML</button>
         <!-- Quick Start link relocated to the ? Help mode first-steps card -->
     </div>
 
@@ -2613,7 +2699,7 @@
     <div class="view-only-banner">
         <strong>Editing.</strong> Scalar fields, sequence layout, and Variables are all editable. Click the
         <span style="color: var(--beta);">🔗</span> icon next to any value to bind it to an anchor, or open
-        <strong>Settings</strong> to manage the Variables table directly.
+        <strong>⚙ Protocol settings</strong> to manage the Variables table directly.
     </div>
 
     <!-- D4 import-mode banner — global controls for the staging buffer.
@@ -2853,7 +2939,7 @@
       <span class="spacer"></span>
     </div>
       <span class="dim" id="consoleHint">connect to enable</span>
-      <span class="dim v6-cap" title="Bench geometry (stream frames, ISP progress map, paste validation, FicTrac) comes from the SESSION rig — the shared, locked selector in the top bar (#135).">arena ← session rig</span>
+      <span class="dim v6-cap" title="Bench geometry (stream frames, ISP progress map, paste validation, FicTrac) comes from the SESSION rig — the shared, locked selector in ⚙ Settings (#135).">arena ← session rig</span>
       <span class="busy-chip" id="cBusyChip"></span>
       <span class="spacer"></span>
       <button class="pill" data-cmd="callon" title="Turn every LED on (ALL_ON)">All on</button>
@@ -2862,17 +2948,17 @@
     </div>
 
     <div class="console-main">
-      <div class="rail" id="cRail">
-        <div class="rail-h">tools</div>
-        <div class="rail-btn sel" data-panel="patterns" role="button" tabindex="0" title="Patterns on the card — the listing is the picker; add, download, delete">Patterns<span class="sub" id="cSdSum">SD —</span></div>
-        <div class="rail-btn sel" data-panel="trial" role="button" tabindex="0" title="Run the selected pattern on the arena (modes 2/3/4)">Arena Trial<span class="sub">modes 2/3/4</span></div>
-        <div class="rail-btn sel" data-panel="step" role="button" tabindex="0" title="Show single frames of the selected pattern (mode 3)">Step frames<span class="sub">mode 3</span></div>
-        <div class="rail-btn sel" data-panel="test" role="button" tabindex="0" title="Test figures + one-off frames">Test display<span class="sub">GS16</span></div>
-        <div class="rail-btn" data-panel="io" role="button" tabindex="0" title="Analog / digital BNCs on the controller">I/O<span class="sub" id="cIoSum">AO – · DIO –</span></div>
-        <div class="rail-btn" data-panel="ai" role="button" tabindex="0" title="Live readout of both 'Analog In (±10V)' BNCs — preview at up to 10 Hz, min/max, strip chart, and the Analog Out → Analog In loopback self-test">Analog In<span class="sub" id="cAiSum">AI1 – · AI2 –</span></div>
-        <div class="rail-btn sel" data-panel="led" role="button" tabindex="0" title="Stimulus LED — set brightness % or turn off (BuckPuck on Analog Out)">LED<span class="sub">BuckPuck</span></div>
-        <div class="rail-btn" data-panel="fw" role="button" tabindex="0" title="Program the panels’ firmware">Panel firmware<span class="sub" id="cFwSum">flash · verify</span></div>
-        <div class="rail-btn sel" data-panel="fictrac" role="button" tabindex="0" title="Closed loop from the FicTrac bridge">FicTrac<span class="sub" id="cFtSum">ws · idle</span></div>
+      <div class="rail" id="cRail" role="group" aria-labelledby="cRailHead">
+        <div class="rail-h" id="cRailHead">tools</div>
+        <div class="rail-btn sel" data-panel="patterns" role="checkbox" tabindex="0" aria-checked="true" title="Patterns on the card — the listing is the picker; add, download, delete">Patterns<span class="sub" id="cSdSum">SD —</span></div>
+        <div class="rail-btn sel" data-panel="trial" role="checkbox" tabindex="0" aria-checked="true" title="Run the selected pattern on the arena (modes 2/3/4)">Arena Trial<span class="sub">modes 2/3/4</span></div>
+        <div class="rail-btn sel" data-panel="step" role="checkbox" tabindex="0" aria-checked="true" title="Show single frames of the selected pattern (mode 3)">Step frames<span class="sub">mode 3</span></div>
+        <div class="rail-btn sel" data-panel="test" role="checkbox" tabindex="0" aria-checked="true" title="Test figures + one-off frames">Test display<span class="sub">GS16</span></div>
+        <div class="rail-btn" data-panel="io" role="checkbox" tabindex="0" aria-checked="false" title="Analog / digital BNCs on the controller">I/O<span class="sub" id="cIoSum">AO – · DIO –</span></div>
+        <div class="rail-btn" data-panel="ai" role="checkbox" tabindex="0" aria-checked="false" title="Live readout of both 'Analog In (±10V)' BNCs — preview at up to 10 Hz, min/max, strip chart, and the Analog Out → Analog In loopback self-test">Analog In<span class="sub" id="cAiSum">AI1 – · AI2 –</span></div>
+        <div class="rail-btn sel" data-panel="led" role="checkbox" tabindex="0" aria-checked="true" title="Stimulus LED — set brightness % or turn off (BuckPuck on Analog Out)">LED<span class="sub">BuckPuck</span></div>
+        <div class="rail-btn" data-panel="fw" role="checkbox" tabindex="0" aria-checked="false" title="Program the panels’ firmware">Panel firmware<span class="sub" id="cFwSum">flash · verify</span></div>
+        <div class="rail-btn sel" data-panel="fictrac" role="checkbox" tabindex="0" aria-checked="true" title="Closed loop from the FicTrac bridge">FicTrac<span class="sub" id="cFtSum">ws · idle</span></div>
       </div>
       <div class="stage" id="cStage">
 
@@ -3084,8 +3170,8 @@
             <label>coupling <input id="cFtCoupling" type="number" step="0.05" value="1" style="width:64px" title="Closed-loop coupling: 1 = the display follows the ball 1:1, 0.75 / 1.25 = the world moves less / more than the ball, negative = reversed, 0 = ignore the fly (bias only). Range: any finite number"></label>
             <span id="cFtPresets" class="seg2"></span>
             <span class="dim" id="cFtDpf" title="Display pitch pushed to the bridge — degrees per frame index, from the session rig (360° / azimuth pixels). A protocol's startClosedLoop deg_per_frame overrides it.">1.8°/frame</span>
-            <label title="Log FicTrac frames + arena commands to a JSONL file. For ad-hoc sessions (no protocol) — a recorded experiment run logs automatically and overrides this. Verbosity is set in File ▾ → Run logging."><input type="checkbox" id="cFtLog"> log</label>
-            <span class="dim" id="cFtLogLevel" title="Frame-logging level (read-only here — change it in File ▾ → Run logging)">behavior_v1</span></div>
+            <label title="Log FicTrac frames + arena commands to a JSONL file. For ad-hoc sessions (no protocol) — a recorded experiment run logs automatically and overrides this. Verbosity is set in ⚙ Settings → Run logging."><input type="checkbox" id="cFtLog"> log</label>
+            <span class="dim" id="cFtLogLevel" title="Frame-logging level (read-only here — change it in ⚙ Settings → Run logging)">behavior_v1</span></div>
           </div>
         </section>
       </div>
@@ -3131,7 +3217,7 @@
   <div class="pmodal-box">
     <div class="pmodal-h"><span>Paste a frame to stream</span><button class="pill" id="pasteClose">✕</button></div>
     <div class="dim" style="font-size:11px;margin:6px 0">Active arena <b id="pasteDims">40×200</b> · JSON <code>{gs,rows,cols,data}</code> or an integer grid (row 0 = bottom). GS16 values 0–15, GS2 values 0–1.</div>
-    <textarea id="pasteText" spellcheck="false" style="width:100%;height:150px;background:#0a0e12;color:#cfe6ff;border:1px solid var(--border);border-radius:5px;padding:8px;font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
+    <textarea id="pasteText" spellcheck="false" style="width:100%;height:150px;background:var(--term-bg);color:var(--term-yaml);border:1px solid var(--border);border-radius:5px;padding:8px;font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
     <div style="display:flex;align-items:center;gap:9px;margin-top:8px">
       <button class="pill" id="pasteValidate">Validate</button>
       <span class="dim" id="pasteMsg" style="font-size:11px"></span>
@@ -3260,7 +3346,7 @@ function studioMarkerCurrent(stored, current) {
 
     // ---- GitHub token + course-repo settings (CSHL pipeline) ------------------
     // Single source of truth, defined HERE (classic) so the run-log auto-commit
-    // works even if the module block failed to load. The File ▾ gh-block UI
+    // works even if the module block failed to load. The ⚙ Settings gh-block UI
     // (module side) writes these localStorage keys.
     Studio.ghToken = function () {
         return sessionStorage.getItem('studio_gh_pat') || localStorage.getItem('studio_gh_pat') || null;
@@ -3679,10 +3765,10 @@ function studioMarkerCurrent(stored, current) {
         const GH = window.StudioGitHub;
         const session = Studio.session;
         if (!GH || !cs || !cs.repo || !token || !cs.benchId) return null;
-        // OFF by default — opt in via File ▾ → "Archive SD patterns…". The 0x8A bulk
+        // OFF by default — opt in via ⚙ Settings → "Archive SD patterns…". The 0x8A bulk
         // download can abort with a serial break + drop the arena connection on large
         // cards (bench 2026-07-07), so it must never run unless deliberately enabled.
-        if (!cs.archivePatterns) return { skipped: 'archiving off (enable via File ▾ → Archive SD patterns)' };
+        if (!cs.archivePatterns) return { skipped: 'archiving off (enable via ⚙ Settings → Archive SD patterns)' };
         if (!session || !session.connected) return { skipped: 'arena disconnected' };
         if (!Wire || typeof Wire.encodeGetSdArchive !== 'function') return { skipped: 'firmware has no SD-archive command' };
         await Studio.quiesceDisplay(); // 0x8A requires the display stopped
@@ -3719,14 +3805,14 @@ function studioMarkerCurrent(stored, current) {
         const cs = Studio.courseSettings();
         const token = Studio.ghToken();
         if (!GH || !cs.direct || !cs.repo || !token) {
-            if (opts.manual) showBanner('Run log not pushed: course repo not configured (File ▾ → sign in, set repo, tick "Commit directly to default branch").');
+            if (opts.manual) showBanner('Run log not pushed: course repo not configured (⚙ Settings → sign in, set repo, tick "Commit directly to default branch").');
             return; // course pipeline not configured — normal lab use
         }
         // Course pipeline is engaged (token + repo + direct) — from here every
         // outcome is shown in the modal so a push is never silent/mysterious.
         showUploadModal('Uploading run log…', { busy: true, msg: 'preparing…' });
         if (!cs.benchId) {
-            showUploadModal('Run log not committed', { error: true, msg: 'Bench id not set — see instructor (File ▾ → Bench id).' });
+            showUploadModal('Run log not committed', { error: true, msg: 'Bench id not set — see instructor (⚙ Settings → Bench id).' });
             return;
         }
         const bridge = Studio.session && Studio.session.bridge;
@@ -3841,8 +3927,9 @@ function studioMarkerCurrent(stored, current) {
         const dot = $('statusDot');
         if (dot) {
             dot.title = 'Connection status (green = connected). One ArenaSession broker owns the single Web Serial port.' +
-                '\nArena: ' + ((rig && rig.arenaConfig) || '—') + (fw ? ' · firmware ' + fw : '');
+                '\nBench rig: ' + rigLabel() + ' · arena ' + ((rig && rig.arenaConfig) || '—') + (fw ? ' · firmware ' + fw : '');
         }
+        syncRigContext();
         // Mismatch chip: session rig ≠ loaded protocol's rig — surface, never
         // silently reconcile (#135). Both must be known for a mismatch to mean
         // anything (a local rig YAML outside the registry has name=filename).
@@ -3854,9 +3941,41 @@ function studioMarkerCurrent(stored, current) {
             if (mismatch) {
                 chip.title = 'Session (bench) rig "' + rig.name + '" ≠ loaded protocol rig "' + docRig +
                     '". Bench geometry (stream/ISP/paste/FicTrac) follows the session rig; the protocol document is unchanged. ' +
-                    'Unlock the rig selector to reconcile, or load a matching protocol.';
+                    'Unlock the rig selector in ⚙ Settings to reconcile, or load a matching protocol.';
             }
         }
+    }
+    // The session-rig selector lives in ⚙ Settings (no permanent top-bar slot), so
+    // the rig's identity is surfaced where a bench user looks before connecting:
+    // Connect's hover/focus text + its Help tip, the ⚙ Settings hover, and the
+    // status dot. The Help text is set here (not in the static HELP map) because
+    // it names the current rig.
+    function rigLabel() {
+        const sel = $('sessionRig');
+        const opt = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+        const rig = Studio.currentRig;
+        return (opt && opt.textContent.trim()) || (rig && rig.name) || 'no rig selected';
+    }
+    function syncRigContext() {
+        const label = rigLabel();
+        const connected = document.body.classList.contains('connected');
+        const btn = $('connectBtn');
+        if (btn) {
+            btn.title = connected
+                ? 'Close the arena\'s serial port — bench rig: ' + label
+                : 'Pick the arena\'s serial port and open it (115200 baud) — bench rig: ' + label + ' (set in ⚙ Settings)';
+            btn.setAttribute('data-help', connected
+                ? 'Disconnect from the arena. This bench is set up as: ' + label + '.'
+                : 'Pick the arena’s USB port and connect. Nothing on the bench works until connected. Use Chrome or Edge. ' +
+                  'This bench is set up as: ' + label + ' — check it matches your arena (change it in ⚙ Settings).');
+        }
+        const tag = $('rigTag');
+        if (tag) {
+            tag.textContent = label;
+            tag.title = 'Bench rig: ' + label + ' — the arena layout this bench drives. Click to see or change it in ⚙ Settings.';
+        }
+        const sb = $('settingsMenuBtn');
+        if (sb) sb.title = 'Studio settings — bench rig: ' + label + '; GitHub, run logging (kept in this browser, not in the protocol)';
     }
 
     // A never-saved doc (New protocol / Reset skeleton) has no on-disk artifact
@@ -4391,12 +4510,17 @@ function studioMarkerCurrent(stored, current) {
         let lastMs = 0, lastWall = 0; // map browser-clock overlay events → sample ms
         let running = false, rafId = null, subbed = false;
         let replayMode = false, replayClockMs = 0;
-        // The production Studio keeps its established full annotation view.
-        // Only the Alt route opts into the calmer current-trial label default.
+        // Trial-label density on the trace: 'full' (every label that fits — the
+        // production default) or 'clean' (only the current trial's label). The Studio
+        // switches it with the "labels:" pill (#scopeLabels) and remembers it under its
+        // own key; the Alt route keeps its separate key and its calmer 'clean' default.
         const altScope = document.documentElement.classList.contains('arena-alt');
+        const ANNOTATION_KEY = altScope ? 'arena_studio_alt_scope_annotations' : 'studio_scope_labels';
+        let storedAnnotation = null;
+        try { storedAnnotation = localStorage.getItem(ANNOTATION_KEY); } catch (_) {}
         let annotationMode = altScope
-            ? (localStorage.getItem('arena_studio_alt_scope_annotations') === 'full' ? 'full' : 'clean')
-            : 'full';
+            ? (storedAnnotation === 'full' ? 'full' : 'clean')
+            : storedAnnotation === 'clean' ? 'clean' : 'full';
         let paletteCache = null, paletteTheme = null;
         let lastGeom = null, tipEl = null; // last render's x-mapping + hover tooltip
         // ── sonification (optional): map behaviour channels → a Web Audio tone ──────
@@ -4546,8 +4670,22 @@ function studioMarkerCurrent(stored, current) {
                 const v = parseFloat(ball.value);
                 if (isFinite(v) && v > 0) { localStorage.setItem('studio_scope_ball_dia_mm', String(v)); cfg.ballDiaMm = v; }
             });
+            // Toggle state is shown in the label + aria-pressed, not only by the fill.
             const auto = document.getElementById('scopeAutoY');
-            if (auto) auto.addEventListener('click', () => { cfg.autoY = !cfg.autoY; auto.classList.toggle('on', cfg.autoY); });
+            if (auto) auto.addEventListener('click', () => {
+                cfg.autoY = !cfg.autoY;
+                auto.classList.toggle('on', cfg.autoY);
+                auto.setAttribute('aria-pressed', String(cfg.autoY));
+                auto.textContent = cfg.autoY ? 'auto-Y: on' : 'auto-Y: off';
+            });
+            const labels = document.getElementById('scopeLabels');
+            if (labels) {
+                labels.textContent = 'labels: ' + annotationMode;
+                labels.addEventListener('click', () => {
+                    // The visible scope re-renders every frame (loop), so no explicit redraw.
+                    labels.textContent = 'labels: ' + setAnnotationMode(annotationMode === 'full' ? 'clean' : 'full');
+                });
+            }
             // Fixed ±limit inputs for turning / forward (blank = auto). Persisted so
             // they survive a reload; heading is always ±180 and has no input.
             // One-time migration to the new universal defaults (turn ±200 / fwd ±20,
@@ -4602,6 +4740,7 @@ function studioMarkerCurrent(stored, current) {
             if (btn) {
                 btn.classList.toggle('on', snd.on);
                 btn.setAttribute('aria-pressed', String(snd.on));
+                btn.textContent = snd.on ? '♪ sound: on' : '♪ sound: off';
             }
             if (snd.on && actx.state === 'suspended') actx.resume();
             if (!snd.on && audioGain && actx) audioGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
@@ -4798,7 +4937,7 @@ function studioMarkerCurrent(stored, current) {
         }
         function setAnnotationMode(mode) {
             annotationMode = mode === 'full' ? 'full' : 'clean';
-            try { localStorage.setItem('arena_studio_alt_scope_annotations', annotationMode); } catch (_) {}
+            try { localStorage.setItem(ANNOTATION_KEY, annotationMode); } catch (_) {}
             return annotationMode;
         }
         function getAnnotationMode() { return annotationMode; }
@@ -4885,15 +5024,22 @@ function studioMarkerCurrent(stored, current) {
             return a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : v.toFixed(2);
         }
         function scopePalette() {
-            const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+            // Keyed on both theme attributes: Alt's data-theme and the Studio's
+            // ⚙ Settings → Display data-ui-theme (the canvas reads the CSS tokens).
+            const root = document.documentElement;
+            const theme = (root.getAttribute('data-theme') || 'dark') + '|' + (root.getAttribute('data-ui-theme') || 'dark');
             if (paletteCache && paletteTheme === theme) return paletteCache;
             const probe = document.createElement('i');
             probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none';
             document.body.appendChild(probe);
-            const read = (prop, fallback) => {
-                probe.style.color = 'var(' + prop + ', ' + fallback + ')';
-                return getComputedStyle(probe).color || fallback;
+            const readCss = (expr, fallback) => {
+                probe.style.color = '';
+                probe.style.color = expr;
+                return (probe.style.color && getComputedStyle(probe).color) || fallback;
             };
+            const read = (prop, fallback) => readCss('var(' + prop + ', ' + fallback + ')', fallback);
+            const tint = (prop, pct, fallback) =>
+                readCss('color-mix(in srgb, var(' + prop + ') ' + pct + '%, transparent)', fallback);
             paletteCache = {
                 dim: read('--dim', '#8b949e'),
                 text: read('--text', '#e6edf3'),
@@ -4901,7 +5047,15 @@ function studioMarkerCurrent(stored, current) {
                 surface2: read('--surface2', '#141a20'),
                 border: read('--border', '#4d5660'),
                 accent: read('--accent', '#00e676'),
-                pink: read('--alt-pink', '#ff408c')
+                pink: read('--alt-pink', 'var(--led, #ff408c)'),
+                trialSpan: tint('--accent', 4.5, 'rgba(0,230,118,0.045)'),
+                ledSpan: tint('--led', 15, 'rgba(255,64,140,0.15)'),
+                ledLabel: tint('--led-text', 95, 'rgba(255,120,170,0.95)'),
+                traces: {
+                    turning_deg_s: read('--trace-turn', '#1e90ff'),
+                    forward_mm_s: read('--trace-fwd', '#ff2e2e'),
+                    heading_deg: read('--trace-head', '#22e84a')
+                }
             };
             paletteTheme = theme;
             probe.remove();
@@ -4975,7 +5129,7 @@ function studioMarkerCurrent(stored, current) {
                 const e = v.endMs != null ? v.endMs : t1;
                 if (e < t0 || v.startMs > t1) return;
                 const x0 = clipX(v.startMs), x1 = clipX(e);
-                ctx.fillStyle = 'rgba(0,230,118,0.045)';
+                ctx.fillStyle = pal.trialSpan;
                 ctx.fillRect(x0, plotTop, Math.max(1, x1 - x0), plotH);
             });
             // LED (opto stim) interval — a PINK box spanning all three rows, under
@@ -4984,12 +5138,12 @@ function studioMarkerCurrent(stored, current) {
                 const e = l.endMs != null ? l.endMs : t1;
                 if (e < t0 || l.startMs > t1) return;
                 const x0 = clipX(l.startMs), x1 = clipX(e);
-                ctx.fillStyle = 'rgba(255,64,140,0.15)';
+                ctx.fillStyle = pal.ledSpan;
                 ctx.fillRect(x0, plotTop, Math.max(1, x1 - x0), plotH);
                 // LED power/level label at the top of the box (e.g. "50%") — the
                 // pink box already says it's the LED, so just the level reads cleaner.
                 if (l.label) {
-                    ctx.fillStyle = 'rgba(255,120,170,0.95)';
+                    ctx.fillStyle = pal.ledLabel;
                     ctx.font = 'bold 11px monospace';
                     ctx.textAlign = 'left';
                     ctx.fillText(l.label, x0 + 3, plotTop + 11);
@@ -5114,7 +5268,7 @@ function studioMarkerCurrent(stored, current) {
                 // its own row instead of bleeding into the neighbours.
                 ctx.save();
                 ctx.beginPath(); ctx.rect(padL, top, plotW, h); ctx.clip();
-                ctx.strokeStyle = row.color; ctx.lineWidth = 1.4; ctx.beginPath();
+                ctx.strokeStyle = (pal.traces && pal.traces[row.key]) || row.color; ctx.lineWidth = 1.4; ctx.beginPath();
                 let pen = false, prev = null;
                 pts.forEach((p) => {
                     if (!p || !isFinite(p.v)) { pen = false; prev = null; return; }
@@ -5133,7 +5287,7 @@ function studioMarkerCurrent(stored, current) {
             lastVals[row.key] = cur; // stash for sonification
             // Live value at the BOTTOM of the row — keeps the top of row 0 clear for
             // the stim/LED overlay labels (they used to collide with "turning …").
-            ctx.fillStyle = row.color; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'left';
+            ctx.fillStyle = (pal.traces && pal.traces[row.key]) || row.color; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'left';
             ctx.fillText(row.label + (cur != null ? '  ' + fmt(cur) + ' ' + row.unit : '  ' + row.unit), padL + 4, bottom - 4);
         }
         function loop() {
@@ -5202,7 +5356,7 @@ function studioMarkerCurrent(stored, current) {
         setDockView(v);
     })();
 
-    // ---- Run logging level (runtime setting; File ▾ → Run logging) ------------
+    // ---- Run logging level (runtime setting; ⚙ Settings → Run logging) ------------
     // Run-log format for recorded runs AND ad-hoc Console logging. A SESSION
     // setting (localStorage), NOT per-protocol: `behavior_v2` (compact arena
     // echoes, default since v0.72), `behavior_v1` (the pre-2026-09 format — an
@@ -5224,7 +5378,7 @@ function studioMarkerCurrent(stored, current) {
         if (b && b.setLogLevel) b.setLogLevel(lvl); // so ad-hoc Console logging uses it too
         const sel = $('fmLogLevel'); if (sel && sel.value !== lvl) sel.value = lvl;
         const disp = $('cFtLogLevel');
-        if (disp) { disp.textContent = lvl; disp.title = 'Requested log format (read-only here — change it in File ▾ → Run logging); the bridge confirms it when logging starts'; }
+        if (disp) { disp.textContent = lvl; disp.title = 'Requested log format (read-only here — change it in ⚙ Settings → Run logging); the bridge confirms it when logging starts'; }
     }
     Studio.applyLogLevel = applyLogLevel;
     (function initLogLevel() {
@@ -5260,6 +5414,7 @@ function studioMarkerCurrent(stored, current) {
         e.stopPropagation();
         const fm = $('fileMenu');
         fm.classList.toggle('open');
+        setSettingsOpen(false); // the two top-bar menus are mutually exclusive
         // Smart alignment: default opens rightward (left-aligned to the button);
         // flip to right-aligned only if that would run past the viewport edge.
         if (fm.classList.contains('open')) {
@@ -5271,11 +5426,82 @@ function studioMarkerCurrent(stored, current) {
             }
         }
     });
+    // ⚙ Settings — Studio settings (session rig, GitHub + storage, run logging),
+    // kept apart from the protocol's own settings. Same open/close model as
+    // Protocol ▾; the nodes inside are the original ones, so their handlers are
+    // unchanged.
+    function setSettingsOpen(open) {
+        const m = $('settingsMenu');
+        if (!m) return;
+        m.classList.toggle('open', !!open);
+        const b = $('settingsMenuBtn');
+        if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false');
+        // Opens right-aligned (the button normally sits at the right end); when a
+        // narrow window wraps the top bar and the button lands at the left, flip it
+        // to left-aligned so the menu stays on screen.
+        if (open) {
+            const menu = m.querySelector('.menu');
+            menu.classList.remove('flip-right');
+            if (menu.getBoundingClientRect().left < 8) menu.classList.add('flip-right');
+        }
+    }
+    Studio.setSettingsOpen = setSettingsOpen;
+    // Protocol ▾ is closed from many call sites (every action closes it) — mirror its
+    // open state into aria-expanded in ONE place instead of at each of them.
+    new MutationObserver(() => {
+        $('fileMenuBtn').setAttribute('aria-expanded', $('fileMenu').classList.contains('open') ? 'true' : 'false');
+    }).observe($('fileMenu'), { attributes: true, attributeFilter: ['class'] });
+    $('settingsMenuBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        $('fileMenu').classList.remove('open');
+        setSettingsOpen(!$('settingsMenu').classList.contains('open'));
+    });
+    // The top-bar rig tag opens ⚙ Settings at the rig selector.
+    function openSettingsAtRig(e) {
+        e.stopPropagation();
+        $('fileMenu').classList.remove('open');
+        setSettingsOpen(true);
+        const rig = $('sessionRig');
+        (rig && !rig.disabled ? rig : $('settingsMenuBtn')).focus();
+    }
+    $('rigTag').addEventListener('click', openSettingsAtRig);
+    $('rigTag').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSettingsAtRig(e); }
+    });
     document.addEventListener('click', (e) => {
-        // Close only on a click OUTSIDE the menu — clicks on its own controls (the
+        // Close only on a click OUTSIDE a menu — clicks on its own controls (the
         // Run-logging <select>, checkboxes, inputs) must NOT close it. Explicit
         // actions (Open/Save/…) close it themselves.
         if (!e.target.closest('#fileMenu')) $('fileMenu').classList.remove('open');
+        if (!e.target.closest('#settingsMenu')) setSettingsOpen(false);
+    });
+    // Old-browser guard: the stylesheet's tints, several borders and shadows use CSS
+    // color-mix() (Chrome/Edge ≥ 111), while Web Serial works from 89 — an un-updated
+    // rig PC would otherwise lose those styles silently. Say so, persistently.
+    // Its own element (not the shared #banner, which later messages replace/auto-hide).
+    if (window.CSS && CSS.supports && !CSS.supports('color', 'color-mix(in srgb, red, blue)')) {
+        const n = document.createElement('div');
+        n.id = 'browserNotice';
+        n.className = 'browser-notice';
+        n.setAttribute('role', 'alert');
+        n.textContent = 'This browser is too old for some of Arena Studio’s display styles (colour tints and some borders will be missing). Update Chrome or Edge to version 111 or newer.';
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.textContent = '✕';
+        x.title = 'Hide this notice (it comes back on the next load until the browser is updated)';
+        x.addEventListener('click', () => n.remove());
+        n.appendChild(x);
+        document.body.insertBefore(n, document.body.firstChild);
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if ($('settingsMenu').classList.contains('open')) {
+            setSettingsOpen(false);
+            $('settingsMenuBtn').focus();
+        } else if ($('fileMenu').classList.contains('open')) {
+            $('fileMenu').classList.remove('open');
+            $('fileMenuBtn').focus();
+        }
     });
     document.querySelectorAll('#modeSeg button').forEach((b) =>
         // Every view is reachable in safe mode now (Edit read-only, Console gated),
@@ -5342,7 +5568,7 @@ function studioMarkerCurrent(stored, current) {
                 if (!disp || !info) return;
                 if (info.ok) {
                     disp.textContent = info.level || info.requested;
-                    disp.title = 'Log format confirmed by the bridge' + (info.levels ? ' (it offers: ' + info.levels.join(', ') + ')' : '') + ' — change it in File ▾ → Run logging';
+                    disp.title = 'Log format confirmed by the bridge' + (info.levels ? ' (it offers: ' + info.levels.join(', ') + ')' : '') + ' — change it in ⚙ Settings → Run logging';
                 } else {
                     disp.textContent = (info.level || '?') + ' ⚠';
                     disp.title = 'Bridge too old for ' + info.requested + ' — it logs ' + (info.level || 'behavior_v1') + '. Restart `pixi run bridge` from the current checkout.';
@@ -5533,6 +5759,24 @@ function studioMarkerCurrent(stored, current) {
         el.style.left = (lo * 100).toFixed(1) + '%';
         el.style.width = (Math.max(0.6, (hi - lo) * 100)).toFixed(1) + '%';
     }
+    // Analog In strip chart colours come from the colour tokens (the canvas can't read
+    // CSS itself); cached per theme attribute.
+    let aiChartColorsCache = null, aiChartColorsTheme = null;
+    function aiChartColors() {
+        const root = document.documentElement;
+        const theme = (root.getAttribute('data-ui-theme') || 'dark') + '|' + (root.getAttribute('data-theme') || '');
+        if (aiChartColorsCache && aiChartColorsTheme === theme) return aiChartColorsCache;
+        const cs = getComputedStyle(document.documentElement);
+        const tok = (n, f) => (cs.getPropertyValue(n) || '').trim() || f;
+        aiChartColorsTheme = theme;
+        aiChartColorsCache = {
+            a1: tok('--accent', '#00e676'),
+            a2: tok('--beta', '#4fa8ff'),
+            grid: tok('--chart-grid', '#2d3640'),
+            zero: tok('--dim', '#8b949e')
+        };
+        return aiChartColorsCache;
+    }
     function aiRender(a) {
         if (!AI || !aiMon) return;
         for (const ch of [1, 2]) {
@@ -5554,7 +5798,7 @@ function studioMarkerCurrent(stored, current) {
         const hz = aiMon.rateHz();
         const stat = $('cAiStatus');
         if (stat && aiPoller && aiPoller.state === 'polling') stat.textContent = 'live' + (Number.isFinite(hz) ? ' · ' + hz.toFixed(1) + ' Hz' : '');
-        AI.drawStripChart($('cAiChart'), aiMon.samples(), { windowMs: aiMon.windowMs });
+        AI.drawStripChart($('cAiChart'), aiMon.samples(), { windowMs: aiMon.windowMs, colors: aiChartColors() });
     }
     const aiPoller = AI ? AI.createPoller({
         read: aiRead,
@@ -6881,7 +7125,7 @@ function rigInfoForPath(rigPath) {
     return hit ? { name: hit.name, arenaConfig: hit.arena } : { name: base.replace(/\.ya?ml$/i, ''), arenaConfig: null };
 }
 // Session (bench) rig selector — THE shared rig across Run/Edit/Console (#135),
-// rendered once in the top bar. Locked by default; explicit selections
+// rendered once, in ⚙ Settings. Locked by default; explicit selections
 // (unlock + pick, or an incoming ?rig=) are mirrored to the URL and never
 // silently overridden by a protocol load — the mismatch chip surfaces instead.
 async function populateSessionRig() {
@@ -7997,7 +8241,7 @@ Studio.setStreamDuty = (d) => { streamDuty = d; };
 async function streamGrid(grid, gs, label) {
     const clog = Studio.clog || Studio.rawLog;
     if (!Studio.session || !Studio.session.connected) { clog('connect first', 'err'); return false; }
-    if (!streamable()) { clog('stream: needs a 20-panel arena (e.g. G6_2x10) — unlock the session rig selector in the top bar', 'err'); return false; }
+    if (!streamable()) { clog('stream: needs a 20-panel arena (e.g. G6_2x10) — unlock the session rig selector in ⚙ Settings', 'err'); return false; }
     let built;
     try { built = buildStreamFrame(grid, gs); } catch (e) { clog('stream build failed: ' + (e.message || e), 'err'); return false; }
     renderStreamThumb(built.patArrayBuffer);
@@ -8613,7 +8857,7 @@ function condChips(cond) {
 Studio.rerenderSequence = function () {
     const exp = Studio.currentDoc && Studio.currentDoc.experiment;
     if (exp) renderSequence(exp);
-    else $('seqBody').innerHTML = '<span class="dim">Open a protocol (File ▾ → Open) to see its sequence.</span>';
+    else $('seqBody').innerHTML = '<span class="dim">Open a protocol (Protocol ▾ → Open) to see its sequence.</span>';
 };
 
 function renderSequence(exp) {
@@ -8801,7 +9045,7 @@ Studio.openSoakDialog = async function () {
         if (confirm('A soak is running (iteration ' + Studio.soak.iteration + '). Stop it after the current run?')) Studio.stopSoak('operator');
         return;
     }
-    if (!Studio.currentDoc) { Studio.showBanner('Open the soak protocol first (File ▾ → Open… → protocols/soak_mode3_closed_loop.yaml).'); return; }
+    if (!Studio.currentDoc) { Studio.showBanner('Open the soak protocol first (Protocol ▾ → Open… → protocols/soak_mode3_closed_loop.yaml).'); return; }
     const spec = prompt(
         'Soak the open protocol. Edit and OK:\n' +
         '  iterations=N (0 = until hours elapse)   hours=H   gap=S (seconds between runs)\n' +
@@ -8904,7 +9148,7 @@ Studio.startSoak = async function (cfg) {
         ', gap ' + s.gapS + ' s, first fault: ' + s.firstFault + ', then: ' + s.policy + ' (max ' + s.maxResets + ' resets)';
     logSoak({ phase: 'start', protocol: doc.filename, sha256: doc.sha256, config: { iterations: s.iterations, hours: s.hours, gap_s: s.gapS, first_fault: s.firstFault, policy: s.policy, max_resets: s.maxResets }, sim_rate_hz: rate, closed_loop: closedLoop });
     Studio.rawLog('soak started — ' + desc, 'info');
-    Studio.showBanner('Soak running — ' + desc + '. File ▾ → Soak… to stop.');
+    Studio.showBanner('Soak running — ' + desc + '. Protocol ▾ → Soak… to stop.');
     (async () => {
         let reason = 'done';
         try {
@@ -9322,7 +9566,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             if (Number.isFinite(dpf) && dpf > 0) cfg.deg_per_frame = dpf;
             if (Object.keys(cfg).length) bridge.setConfig(cfg);
         }
-        // Frame-logging level is a runtime/session setting (File ▾ → Run logging),
+        // Frame-logging level is a runtime/session setting (⚙ Settings → Run logging),
         // NOT per-protocol. Assert it here so a recorded run logs deterministically
         // at the chosen level — this OVERRIDES any ad-hoc Console log toggle state.
         // A soak ALWAYS logs behavior_v2 (its preflight negotiated it; a remembered
@@ -9545,7 +9789,7 @@ $('fmNew').addEventListener('click', () => {
     Studio.setMode('edit');
     Studio.editor.newProtocol(); // designer New: dirty-confirm + blank skeleton
 });
-// ---- File ▾ relocations (Edit-toolbar diet, wireframe v6) --------------------
+// ---- Protocol ▾ relocations (Edit-toolbar diet, wireframe v6) --------------------
 // Guarded proxies to the designer's now-HIDDEN toolbar controls: the originals
 // keep ALL the gating (§6 canMutate, import-mode locks, needs-a-doc disabled
 // state), so a disabled target means "not now" — banner instead of silent no-op.
@@ -9601,7 +9845,7 @@ let ghAuthGeneration = 0;
 function ghToken() {
     return Studio.ghToken(); // single source (classic shell) — see courseSettings
 }
-// The save TARGET repo: the File ▾ setting when present, else the site repo.
+// The save TARGET repo: the ⚙ Settings value when present, else the site repo.
 function ghTargetRepo() {
     const cs = Studio.courseSettings();
     return cs.repo || { owner: GH_OWNER, name: GH_REPO, full: GH_OWNER + '/' + GH_REPO };
@@ -9759,9 +10003,9 @@ async function saveViaDirectCommit() {
     const token = ghToken();
     const cs = Studio.courseSettings();
     if (!token) { Studio.showBanner('Sign in to GitHub first.'); return; }
-    if (!cs.repo) { Studio.showBanner('Set the target repo (owner/name) in File ▾ first.'); return; }
+    if (!cs.repo) { Studio.showBanner('Set the target repo (owner/name) in ⚙ Settings first.'); return; }
     if (!cs.benchId) {
-        Studio.showBanner('Course-repo save blocked: bench id not set — see instructor (File ▾ → Bench id).');
+        Studio.showBanner('Course-repo save blocked: bench id not set — see instructor (⚙ Settings → Bench id).');
         return;
     }
     if (!ensureSaveFilename(doc)) return;
@@ -9800,9 +10044,9 @@ async function saveViaDirectCommit() {
     }
 }
 
-// The ONE save path — File ▾ → Save AND the Edit toolbar's 💾 Save. Writes a
+// The ONE save path — Protocol ▾ → Save AND the Edit toolbar's 💾 Save. Writes a
 // local .yaml, opens a GitHub PR, or direct-commits to the course repo
-// (signed in + the matching File ▾ box checked) and marks the doc saved
+// (signed in + the matching ⚙ Settings box checked) and marks the doc saved
 // (markSaved → dirty clears → the recorded-run gate opens). Distinct from the
 // Edit toolbar's "Export YAML", which downloads a REGENERATED roundtrip copy
 // and marks nothing saved.
@@ -10126,7 +10370,7 @@ if (ghToken()) {
                 localStorage.removeItem('studio_gh_pat');
                 document.body.classList.remove('ghauth');
                 Studio.showBanner(
-                    'The stored GitHub token is no longer valid. Sign in again from File ▾.'
+                    'The stored GitHub token is no longer valid. Sign in again from ⚙ Settings.'
                 );
                 updateSaveLabel();
                 return null;
@@ -10362,7 +10606,7 @@ $('fmOpenCourse').addEventListener('click', async () => {
     $('fileMenu').classList.remove('open');
     const cs = Studio.courseSettings();
     const token = ghToken();
-    if (!cs.repo) { Studio.showBanner('Set the course repo (owner/name) in File ▾ first.'); return; }
+    if (!cs.repo) { Studio.showBanner('Set the course repo (owner/name) in ⚙ Settings first.'); return; }
     // Public course repos are readable without a token. Authentication is only
     // required for private repos, writes, or a higher API rate limit.
     try {
@@ -10596,7 +10840,7 @@ async function registerRepoPatternPreviews(repo, protoPath, token) {
 async function listProtocolsForUpload(source, token) {
     if (source === 'repo') {
         const cs = Studio.courseSettings();
-        if (!cs.repo) { Studio.showBanner('Set the course repo (owner/name) in File ▾ first.'); return null; }
+        if (!cs.repo) { Studio.showBanner('Set the course repo (owner/name) in ⚙ Settings first.'); return null; }
         const owner = cs.repo.owner, repo = cs.repo.name;
         const dirs = [];
         if (cs.benchId) dirs.push('protocols/' + cs.benchId);
@@ -10898,7 +11142,7 @@ async function initFromUrl() {
         // connecting needs a click — it just tells the operator where the switch is.
         if (state.soak === true) {
             Studio.soakRequested = true;
-            setTimeout(() => Studio.showBanner('Soak armed — open protocols/soak_mode3_closed_loop.yaml, connect, then File ▾ → Soak…'), 800);
+            setTimeout(() => Studio.showBanner('Soak armed — open protocols/soak_mode3_closed_loop.yaml, connect, then Protocol ▾ → Soak…'), 800);
         }
         if (state.advanced === true) {
             Studio.advancedUrlRequested = true;
@@ -10992,7 +11236,7 @@ async function initFromUrl() {
             return cfg && cfg.arena ? cfg.arena.generation : null;
         }
 
-        // Built-in rigs offered in the Settings → Rig dropdown, from configs/rigs/index.json
+        // Built-in rigs offered in the Protocol settings → Rig dropdown, from configs/rigs/index.json
         // (relative fetch → works on GitHub Pages + local server). Loaded once, lazily.
         let builtinRigs = null; // null = not yet fetched; [] = none / failed
         let builtinRigsLoading = false;
@@ -11360,7 +11604,7 @@ async function initFromUrl() {
         // Empty `commands: []` would violate the spec (commands required) —
         // ship a wait:1 placeholder so the user has a valid starting point
         // that imports cleanly through validateReferences. Starts with
-        // `plugins: []`; plugins are added from Settings → Plugins.
+        // `plugins: []`; plugins are added from Protocol settings → Plugins.
         const BLANK_TEMPLATE = [
             'version: 3',
             'experiment_info:',
@@ -11486,7 +11730,7 @@ async function initFromUrl() {
         });
 
         // 💾 Save — delegates to the Studio's single save path (same as
-        // File ▾ → Save). Lives in the Edit toolbar because "● edited" users
+        // Protocol ▾ → Save). Lives in the Edit toolbar because "● edited" users
         // reached for Export YAML here, which does NOT mark the doc saved.
         $('edSaveBtn').addEventListener('click', () => {
             if (!experiment || importMode) return;
@@ -11808,13 +12052,13 @@ async function initFromUrl() {
                 let ro;
                 if (entry && sessionRig && entry.name === sessionRig.name) {
                     ro = el('div', { class: 'set-ro set-ok' }, 'uses bench rig: ' + (entry.label || entry.name));
-                    ro.setAttribute('data-help', 'This protocol uses the bench (session) rig shown in the top bar. Change the rig there, or set an explicit path under Advanced….');
+                    ro.setAttribute('data-help', 'This protocol uses the bench (session) rig set in ⚙ Settings. Change the rig there, or set an explicit path under Advanced….');
                 } else if (rigPath) {
                     const mismatch = !!(entry && sessionRig && entry.name !== sessionRig.name);
                     ro = el('div', { class: 'set-ro' + (mismatch ? ' set-warn' : '') },
                         (entry ? (entry.label || entry.name) : rigPath) + (mismatch ? '  ·  ≠ bench rig' : ''));
                     ro.setAttribute('data-help', mismatch
-                        ? 'The rig this protocol declares differs from the bench rig in the top bar. The protocol keeps its own rig; the bench setting drives Console geometry. Edit under Advanced….'
+                        ? 'The rig this protocol declares differs from the bench rig set in ⚙ Settings. The protocol keeps its own rig; the bench setting drives Console geometry. Edit under Advanced….'
                         : 'The rig this protocol declares. Edit the path under Advanced….');
                 } else {
                     ro = el('div', { class: 'set-ro set-dim' }, 'no rig set — pick one under Advanced…');
@@ -11838,7 +12082,7 @@ async function initFromUrl() {
                     }, lbl + '  ·  ' + loadedRig.arenaConfig));
                 } else if (rigIsCurrent() && loadedRig.arenaRaw) {
                     arenaRow.appendChild(el('div', {
-                        style: 'color: #e3a008; font-size: 0.82rem; padding: 3px 0;',
+                        style: 'color: var(--caution); font-size: 0.82rem; padding: 3px 0;',
                         title: 'The rig’s arena is not a known web config, so the Pattern Set builder is unavailable.'
                     }, '“' + loadedRig.arenaRaw + '” is not a known web arena config'));
                 } else {
@@ -12072,7 +12316,7 @@ async function initFromUrl() {
                     if (diff.unsupported.length || diff.unused.length) {
                         const warnBox = el('div', {
                             style: 'margin: 0.4rem 0 0.2rem; padding: 0.4rem 0.55rem; ' +
-                                'background: rgba(255,152,0,0.08); border: 1px solid var(--warn); ' +
+                                'background: color-mix(in srgb, var(--warn) 8%, transparent); border: 1px solid var(--warn); ' +
                                 'border-radius: 4px; color: var(--warn); font-size: 0.72rem; line-height: 1.5;'
                         });
                         warnBox.appendChild(el('div', { style: 'font-weight: 600; margin-bottom: 0.2rem;' },
@@ -14764,7 +15008,7 @@ async function initFromUrl() {
         function renderLedActivation(cmd, cmdPath) {
             const la = cmd.led_activation || {};
             const laPath = [...cmdPath, 'led_activation'];
-            const box = el('div', { class: 'led-act-box', style: 'border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin:4px 0;background:rgba(0,230,118,0.04)' });
+            const box = el('div', { class: 'led-act-box', style: 'border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin:4px 0;background:color-mix(in srgb,var(--accent) 4%,transparent)' });
             const head = el('div', { class: 'kv-line', style: 'display:flex;align-items:center;gap:6px' },
                 el('span', { class: 'k', style: 'color:var(--accent)' }, 'LED activation'));
             head.appendChild(el('button', {
@@ -16012,7 +16256,7 @@ async function initFromUrl() {
                 e.blocked.textContent = '';
                 e.blocked.appendChild(el('div', {}, '⚠ No arena resolved from the rig.'));
                 e.blocked.appendChild(el('div', { style: 'margin-top:0.5rem;color:var(--text-dim);' },
-                    'The Pattern Set builder targets the arena defined by your rig. Open Settings → Rig and pick a built-in rig (or Browse… a local one) whose arena is a known web config — e.g. CSHL G6 2×10 → G6_2x10.'));
+                    'The Pattern Set builder targets the arena defined by your rig. Open ⚙ Protocol settings → Rig and pick a built-in rig (or Browse… a local one) whose arena is a known web config — e.g. CSHL G6 2×10 → G6_2x10.'));
                 e.arenaSpan.innerHTML = '';
                 e.arenaSpan.appendChild(el('span', { class: 'blocked' }, 'No rig arena'));
                 e.backdrop.classList.add('open');
@@ -16103,7 +16347,7 @@ async function initFromUrl() {
             psState.available = [];
             if (!cs.repo || !token) {
                 psEl.availList.appendChild(el('div', { class: 'ps-empty' },
-                    'Sign in to GitHub and set the course repo (File ▾) to browse it.'));
+                    'Sign in to GitHub and set the course repo (⚙ Settings) to browse it.'));
                 return;
             }
             psEl.availList.appendChild(el('div', { class: 'ps-empty' }, 'Listing ' + cs.repo.full + ' …'));
@@ -16347,7 +16591,7 @@ async function initFromUrl() {
         async function psCommitToRepo() {
             const cs = window.Studio.courseSettings();
             const token = ghToken();
-            if (!token || !cs.repo) { showError('Not signed in', 'Sign in to GitHub and set the course repo (File ▾) first.'); return; }
+            if (!token || !cs.repo) { showError('Not signed in', 'Sign in to GitHub and set the course repo (⚙ Settings) first.'); return; }
             const dir = psProtoDir();
             if (!dir) { showError('No destination', 'Save the protocol to the course repo first — the set commits next to its YAML (needs a bench id).'); return; }
             let bundle;
@@ -16584,9 +16828,12 @@ initFromUrl();
 (function ConsoleV6Slice(){
   function P(t){return document.querySelector('.panel[data-panel="'+t+'"]');}
   function R(t){return document.querySelector('.rail-btn[data-panel="'+t+'"]');}
-  function setOpen(t,o){var p=P(t),r=R(t); if(!p)return; p.classList.toggle('open',o); if(r)r.classList.toggle('sel',o);}
+  // The rail is a show/hide checklist: each row is role=checkbox (aria-checked
+  // mirrors the panel's open state); Space/Enter toggle it like a click.
+  function setOpen(t,o){var p=P(t),r=R(t); if(!p)return; p.classList.toggle('open',o); if(r){r.classList.toggle('sel',o); r.setAttribute('aria-checked',o?'true':'false');}}
   document.querySelectorAll('#cRail .rail-btn').forEach(function(b){
     b.addEventListener('click',function(){var t=b.dataset.panel; if(!t)return; setOpen(t,!P(t).classList.contains('open'));});
+    b.addEventListener('keydown',function(e){ if(e.key===' '||e.key==='Enter'){ e.preventDefault(); b.click(); } });
   });
   document.querySelectorAll('.panel-x[data-close]').forEach(function(x){
     x.addEventListener('click',function(e){e.stopPropagation(); setOpen(x.dataset.close,false);});
@@ -16690,22 +16937,24 @@ initFromUrl();
     '#helpBtn': 'Help is ON — hover any control to see what it does. Click ? again to turn Help off.',
     '.status': 'Connection to the arena. Green dot = connected. Use Connect (top right) to pick the arena’s USB port — works in Chrome and Edge.',
     '.rigsel': 'The rig (arena) this bench drives. Previews and test frames use this arena layout. The 🔒 keeps it from changing by accident.',
+    '#rigTag': 'The rig (arena) this bench is set up for. Check it matches your arena before you connect; click it to see or change it in ⚙ Settings.',
+    '#settingsMenuBtn': 'Studio settings for this bench — which rig (arena) it drives, GitHub sign-in and where saves go, and the run-log format. These stay in this browser; they are not part of the protocol.',
     '#rigMismatch': 'The bench rig and the protocol’s rig differ. The bench setting wins for Console operations; the protocol still runs with its own rig.',
     '#docName': 'The protocol that is open right now.',
     '#openProtoBtn': 'Open a protocol file (.yaml) from this computer.',
-    '#fileMenuBtn': 'Open and save protocols — from this computer, the shared library, or your course repo. GitHub settings live here too.',
+    '#fileMenuBtn': 'Open and save protocols — from this computer, the shared library, or your course repo — and replay recorded runs. Bench, GitHub and logging setup are in ⚙ Settings.',
     '#modeSeg [data-mode="run"]': 'Run view — open a protocol and run the whole experiment. ▶ Run experiment records a log; ▶ Test experiment does not.',
     '#modeSeg [data-mode="edit"]': 'Edit view — inspect or change the open protocol: its conditions, sequence and settings, or the YAML text itself.',
     '#modeSeg [data-mode="console"]': 'Console — hands-on arena control: pick a pattern, play trials, step frames, test the display.',
-    '#connectBtn': 'Pick the arena’s USB port and connect. Nothing on the bench works until connected. Use Chrome or Edge.',
+    /* #connectBtn: its help names the current bench rig, so syncRigContext() sets it. */
     '#otherToolsLink': 'All the other web tools (the index page). Opens in its own tab, so the Studio keeps its arena connection.',
     '#pdLink': 'Switch to the Pattern Designer to make or edit patterns. Reuses its tab if one is open (your work there is kept); a first click opens it set to this session’s arena and repo, with your GitHub sign-in carried over.',
-    /* File ▾ */
+    /* Protocol ▾ */
     '#fmNew': 'Start a new, empty protocol (Edit view).',
     '#fmOpen': 'Open a protocol file (.yaml) from this computer. It opens in the Editor so you can look it over first.',
     '#fmOpenLibrary': 'Open one of the example protocols published with these tools.',
     '#fmOpenCourse': 'Open a protocol this bench saved (or one shared with the course) from the course repo.',
-    '#fmSave': 'Save the protocol. Where it goes depends on the GitHub settings below — a local file, a Pull Request, or straight to the course repo.',
+    '#fmSave': 'Save the protocol. Where it goes depends on the GitHub settings in ⚙ Settings — a local file, a Pull Request, or straight to the course repo.',
     '#fmPromote': 'Copy this bench’s saved protocol (and its patterns) to the course’s shared folder so other benches can use it.',
     '#ghSignInBtn': 'Sign in with a GitHub token so the Studio can read and write the course repo. Tokens expire — if the Studio says the stored token is no longer valid, make a new one and sign in again.',
     '#ghLock': 'Instructor lock — the repo and bench settings stay fixed during a course.',
@@ -16731,8 +16980,13 @@ initFromUrl();
     '#runVarsCard': 'Variables the protocol lets you adjust during a run, within the limits its author set. Type a new value and press Apply — it takes effect at the next trial and is written to the run log with your name.',
     '#runVarsApply': 'Stage the changed values. Nothing changes mid-trial; the new values start at the next trial and stay until you Apply again.',
     '#runVarsReason': 'Optional: why you changed it. Saved with the change in the run log.',
+    '#fmLogLevel': 'How much detail recorded runs keep. Leave it on the default unless an instructor asks otherwise.',
+    '#scopeAutoY': 'Fit every trace to its own range automatically (on), or use the fixed ± limits (off).',
+    '#scopeLabels': 'How many trial names to write on the trace: full shows every name that fits; clean shows only the current trial. Hover the trace for any trial’s name.',
+    '#scopeSound': 'Hear the fly: turning sets the pitch, walking speed sets the volume.',
+    '#scopeSoundCfg': 'Choose what the sound follows, its ranges, waveform, note scale and volume.',
     '#rbBias': 'The bias (disturbance) the running protocol added to the closed loop, and the angle it is adding right now. A bias keeps the display moving even when the fly holds still. Set it per condition in Edit → the condition’s Start closed-loop command.',
-    /* File ▾ — relocated Edit actions */
+    /* Protocol ▾ — relocated Edit actions */
     '#fmOpenDemo': 'Open one of the bundled demo protocols to explore how experiments are built.',
     '#fmSaveCopy': 'Download a regenerated copy of the protocol for diffing or MATLAB checks — this does NOT count as saving.',
     '#fmCopyConditions': 'Copy conditions from another protocol file into this one — their variables and plugins come along.',
@@ -16742,8 +16996,8 @@ initFromUrl();
     '#edTabYaml': 'The protocol as YAML text. Edit here, then Apply to use your changes.',
     '#undoBtn': 'Undo the last change (Ctrl+Z).',
     '#redoBtn': 'Redo (Ctrl+Y).',
-    '#dirtyIndicator': 'You have unsaved changes — Ctrl+S (or File ▾ → Save) saves and unlocks recorded experiment runs.',
-    '#settingsToggle': 'Experiment settings — name, experimenter, date, rig, and the pattern-set builder. The plumbing lives under Advanced….',
+    '#dirtyIndicator': 'You have unsaved changes — Ctrl+S (or Protocol ▾ → Save) saves and unlocks recorded experiment runs.',
+    '#settingsToggle': 'Settings stored in this protocol — name, experimenter, date, rig, and the pattern-set builder. The plumbing lives under Advanced…. (Bench, GitHub and logging setup are in the top bar’s ⚙ Settings.)',
     '#libZoneTitle': 'The condition library — every stimulus condition this protocol defines. Click one to edit it in the Inspector.',
     '#seqZoneTitle': 'The experiment sequence — the order conditions actually run in, including blocks and repetitions.',
     '#inspectorZoneTitle': 'Details of whatever is selected — click a condition or sequence entry to edit its fields here.',
@@ -16756,7 +17010,8 @@ initFromUrl();
     '#libraryZone': 'The condition library. Click a condition to edit it in the Inspector; the W/C badge says whether this Studio can display its pattern; dup copies it.',
     '#sequenceZone': 'The run order — what actually plays, top to bottom. Blocks repeat their trials; drag conditions in from the library.',
     '#inspectorZone': 'Edit the selected item here — durations, mode, pattern, gain. The 🔗 icon binds a field to a shared variable.',
-    /* Console rail */
+    /* Console rail — a checklist: tick a tool to show its panel, untick to hide it */
+    '#cRail .rail-h': 'Tick the tools you want to see; untick to hide them. Several can be open at once.',
     '.rail-btn[data-panel="patterns"]': 'The patterns on the arena’s memory card. Open it and click a row to pick a pattern — Arena Trial and Step frames use your pick.',
     '.rail-btn[data-panel="trial"]': 'Play the selected pattern on the arena (Modes 2, 3, or 4).',
     '.rail-btn[data-panel="step"]': 'Show the selected pattern one frame at a time.',
@@ -16888,14 +17143,14 @@ initFromUrl();
     v.insertBefore(c, v.firstChild);
   }
   helpCard('#runView .run-main',
-    '<b>Run an experiment:</b> ① Open a protocol — File ▾ (this computer, the library, or your course repo). ' +
-    '② Check the rig shown in the top bar matches your bench. ③ <b>Connect</b> (top right) and pick the arena’s USB port. ' +
+    '<b>Run an experiment:</b> ① Open a protocol — Protocol ▾ (this computer, the library, or your course repo). ' +
+    '② Check the bench rig shown next to the connection status matches your arena (click it to change it in ⚙ Settings). ③ <b>Connect</b> (top right) and pick the arena’s USB port. ' +
     '④ Fill in <b>Experimenter</b> and <b>Genotype</b> on the right, then <b>▶ Run experiment</b> — recorded runs save a log automatically. ' +
     '<b>■ STOP</b> always stops the arena. <b>↺ Replay a run</b> plays back any recorded run from its log. ' +
     '<a href="https://github.com/reiserlab/webDisplayTools/blob/main/docs/protocol-pattern-workflow.md" target="_blank" rel="noopener" title="Making a protocol + patterns from scratch — the full GitHub workflow, step by step">Full workflow guide ↗</a>');
   helpCard('#editView',
     '<b>Edit the protocol:</b> conditions are listed on the left; the middle column is the run sequence; click a condition to see and change its details on the right. ' +
-    'Every change can be undone (↶, Ctrl+Z). The <b>YAML</b> tab shows the protocol file itself. Save with <b>Ctrl+S</b> or File ▾ → Save. ' +
+    'Every change can be undone (↶, Ctrl+Z). The <b>YAML</b> tab shows the protocol file itself. Save with <b>Ctrl+S</b> or Protocol ▾ → Save. ' +
     '<a href="https://github.com/reiserlab/webDisplayTools/blob/main/docs/protocol-pattern-workflow.md" target="_blank" rel="noopener" title="Making a protocol + patterns from scratch — the full GitHub workflow, step by step">Full workflow guide ↗</a> · ' +
     '<a href="experiment_designer_v3_quickstart.html" target="_blank" rel="noopener" title="Step-by-step guide to the editor, in a new tab">Quick Start ↗</a>');
   helpCard('#consoleView',
