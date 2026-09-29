@@ -90,14 +90,22 @@ tick the box. Nothing below has been written to Linear yet.
 
 ## 2. Project hygiene
 
-- [ ] **Arena Software Control** *(renamed by Michael 2026-09-29 to "Arena Software Control - towards Web-based V1.0". Applied 2026-09-29: the summary and description were rewritten around a V1.0 end state with "done when" criteria, and the **target date moved 2026-06-27 → 2026-12-19**. The milestone and status update are deferred until the survey is done.)*:
+- [x] **Arena Software Control** *(renamed by Michael 2026-09-29 to "Arena Software Control - towards Web-based V1.0". Applied 2026-09-29: the summary and description were rewritten around a V1.0 end state with "done when" criteria, and the **target date moved 2026-06-27 → 2026-12-19**. The milestone and status update are deferred until the survey is done.)*:
   - Add a milestone, **"Studio v0.9x — release tiers + backlog"** (target 2026-10-31).
   - Put the new tiers ticket and LAB-212/160/159/158 in it.
   - Retarget the project date from 2026-06-27 to 2026-12-19.
   - Post a **status update** (draft below).
-- [ ] **G6 Arena Hardware & Firmware**:
+  - **Done 2026-09-29 (round C):** instead of the single "v0.9x" milestone, the project got **four milestones** ending at the 12-19 target:
+    - **M1 · Land in-flight work, one Studio** (2026-10-17): LAB-158, LAB-227, LAB-228, LAB-222, plus the new **LAB-230** (#219 controller settings) and **LAB-233** (housecleaning: retire the legacy standalones, Arena Studio Alt and the unlinked pages; blocked by LAB-158). LAB-232 was an accidental duplicate of LAB-233 (a Linear 502 on create) and is marked Duplicate.
+    - **M2 · Hardware coverage + provenance** (2026-11-14): LAB-159, LAB-220, LAB-156, LAB-147.
+    - **M3 · Experiments + color prototype** (2026-12-05): LAB-218, LAB-212, LAB-223 (color epic, to prototype stage), LAB-213, LAB-229.
+    - **M4 · V1.0 release** (2026-12-19): the new **LAB-231** (license, install and getting-started docs, reference rig, tagged release).
+    - Unscheduled: LAB-148 and LAB-217. Not in V1.0: LAB-155 (G4.1). Light mode ships in M1 with #238, not in M4.
+- [x] **G6 Arena Hardware & Firmware**:
   - Post its **first-ever status update** (draft below).
   - Consider retargeting the project date (06-05) and the four expired milestones. Close or archive the done ones.
+  - *(2026-09-29: the status update was posted and the target moved to 2026-12-19; see below.)*
+  - [ ] **Still open:** re-plan the four expired June milestones (retarget, or close the done ones).
 - [x] **G6 Arena Extensions**: make it the home of the color epic (item 3b). *(2026-09-29: the project was **retired** instead, as Canceled. LAB-84 (flat arena, wanted, Backlog) and the red + IR design doc moved to G6 HW & FW. LAB-140 (cylindrical color arena) was **Canceled**, because the 12/18 arena has higher resolution. The color epic now goes in **Web-based V1.0**, and the V1.0 "done when" list gained a "Multi-color panels" line. The HW & FW boundary text was updated.)*
 
 **Status update draft — Arena Software Control (onTrack):**
@@ -123,7 +131,7 @@ tick the box. Nothing below has been written to Linear yet.
 > - Dates and milestones below are from June and need a re-plan.
 
 - [x] **Status updates posted (2026-09-29):** Web-based V1.0 (On track) and the **first-ever** G6 HW & FW update (On track). The HW & FW target date moved **2026-06-05 → 2026-12-19**. Milestones are still to set (round C).
-- [x] **Spelling convention (2026-09-29):** American English, "color" not "colour". Every "colour" in Linear was fixed (titles, descriptions, comments, attachment titles, the status update). A "Conventions" line was added to the V1.0, HW & FW and Panel Storage project descriptions, and to `~/.claude/CLAUDE.md` and the `g6-orientation` skill.
+- [x] **Spelling convention (2026-09-29):** American English, "color" not "colour". Every "colour" in Linear was fixed (titles, descriptions, comments, attachment titles, the status update; LAB-228/229, created later that evening, too). The Pattern Designer color work renamed its layout key `four-colour` → `four-color` and its doc to `pattern-designer-color-panels.md` before shipping ([#240](https://github.com/reiserlab/webDisplayTools/pull/240)). A "Conventions" line was added to the V1.0, HW & FW and Panel Storage project descriptions, and to `~/.claude/CLAUDE.md` and the `g6-orientation` skill.
 - [x] **Linear-sync rule (2026-09-29):** added to the user-level `~/.claude/CLAUDE.md`, plus a user-level PreToolUse hook (`~/.claude/hooks/linear_sync_reminder.py`) that fires on `gh pr create|merge` and `pixi run candidate|release`. The Linear GitHub integration for `reiserlab` is to be connected by Michael.
 
 ## 3. New tickets
@@ -170,10 +178,10 @@ tick the box. Nothing below has been written to Linear yet.
 ## 4. GitHub ↔ Linear links (attachments)
 
 - [x] #228 → LAB-160 *(attached 2026-09-29 with the LAB-160 close)*
-- [ ] #219 (controller-settings block) → LAB-156, LAB-212, LAB-150
+- [x] #219 (controller-settings block) → LAB-156, LAB-212, LAB-150 *(attached to LAB-156 and LAB-212; LAB-150 dropped, it's firmware-only. #219 also got its own ticket, LAB-230, in M1.)*
 - [x] #191 (analog-in calibration UI) → LAB-86, LAB-209 *(attached to LAB-86 with fw #46/#47, 2026-09-29; LAB-209 is linked via relations instead)*
 - [x] #226, #227, #229 → new ticket 3a *(attached on creation of LAB-222, plus #228)*
-- [ ] fw #58 (Qwiic I2C) → LAB-213, LAB-214, LAB-146
+- [x] fw #58 (Qwiic I2C) → LAB-213, LAB-214, LAB-146 *(attached to LAB-213 and LAB-214; LAB-146 dropped, it's the 10-10 board rescope, not the I²C bridge)*
 
 ## 5. Going forward (so this doesn't drift again)
 
