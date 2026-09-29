@@ -4,6 +4,16 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.93 (2026-09-29) · Panel inventory in every run log; Digital IO 1 trigger fix
+
+<!-- #233 -->
+- **The Studio now records which panels are present and what firmware each one runs.** On connect it asks the controller for its panel inventory (controller firmware with the panel-inventory feature) and shows it in the Run view's Auto-captured box ("20/20 present · fw 0x9BE0D3C7 ×20 …"). It reads it again at the start of every run, so the run log's `panels` record (next to `firmware`) describes the panels at that run's start: a missing panel or one on different firmware is on record for that run.
+- **Console → Panel firmware → Inventory / Rescan.** Inventory lists the panels grouped by firmware fingerprint and names any that differ from the image on the SD card (or from the majority when there is none); Rescan probes the panels again.
+- **The record always says what it is** — `status` ok / pending / failed / unsupported — so an absent inventory is never mistaken for "no panels". On older controller firmware the box says "firmware without panel inventory" and nothing is sent.
+
+<!-- #234 -->
+- **Digital IO 1 can no longer be set as the trigger input.** Only Digital IO 2 is wired to the panels' trigger. A rig file that declares it on Digital IO 1 gets a warning at connect instead of a trigger that silently does nothing.
+
 ## v0.92 (2026-09-28) · Release tiers on the page; SD purge timeout
 
 <!-- #227 -->

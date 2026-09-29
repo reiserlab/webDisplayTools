@@ -41,7 +41,9 @@
      * @param {object} a
      * @param {object} a.panel   {experimenter, genotype, age, sex, fly_number, notes} from the side panel
      * @param {object} a.doc     {filename, sha256}  loaded/edited protocol
-     * @param {object} a.session {firmware, controllerId} from GET_CONTROLLER_INFO 0xC2 only
+     * @param {object} a.session {firmware, controllerId, panels} — firmware/controllerId from
+     *                           GET_CONTROLLER_INFO 0xC2 / 0xCB, panels = StudioPanelInventory
+     *                           .toRunMeta() of the 0xD1 inventory (null on firmware without it)
      * @param {object} a.rig     {name, arenaConfig} from the loaded rig YAML (NOT the controller)
      * @param {string} a.toolVersion  e.g. 'Arena Studio v0.1'
      * @param {string} a.runId
@@ -74,6 +76,13 @@
             // from the Teensy's burned-in unique ID. null until the firmware
             // ships it in the 0xC2 reply (tolerant decode on the web side).
             controller_id: session.controllerId || null,
+            // Which panels answered at RUN START and the firmware fingerprint each
+            // runs (GET_PANEL_INVENTORY 0xD1, fw #59), StudioPanelInventory.toRunMeta():
+            // {schema: 1, status: 'ok'|'pending'|'failed'|'unsupported'|'disconnected',
+            // count, present, missing, panel_status[], firmware[{crc32, panels}],
+            // mismatched, ref_crc32, fp_len, presence_valid, fp_valid, fp_in_progress,
+            // scan_id, age_ms}. Only null when the Studio asset itself is missing.
+            panels: session.panels || null,
             tool_version: o.toolVersion || null,
             // Which release tier ran this (docs/development/release-process.md): a Next
             // candidate shares its upcoming tool_version with the release, so `channel` +
