@@ -9,8 +9,11 @@ history lives here. Newest first. (Per-session engineering detail stays in
 - **The Studio now records which panels are present and what firmware each one runs.** On
   connect it asks the controller for its panel inventory (controller firmware with the panel
   inventory feature, Arena-Firmware #59) and shows it in the Run view's Auto-captured box
-  ("20/20 present · fw 0x9BE0D3C7 ×20 …"). Every run log carries it as `panels` next to
-  `firmware`, so a missing panel or one on different firmware is on record for that run.
+  ("20/20 present · fw 0x9BE0D3C7 ×20 …"). It reads it again at the start of every run, so
+  the run log's `panels` record (next to `firmware`) describes the panels at that run's start:
+  a missing panel or one on different firmware is on record for that run. The record always
+  says what it is — `status` ok / pending / failed / unsupported — so an absent inventory is
+  never mistaken for "no panels".
 - **Console → Panel firmware → Inventory / Rescan.** Inventory lists the panels grouped by
   firmware fingerprint and names any that differ from the image on the SD card (or from the
   majority when there is none); Rescan probes the panels again.

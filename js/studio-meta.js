@@ -76,10 +76,12 @@
             // from the Teensy's burned-in unique ID. null until the firmware
             // ships it in the 0xC2 reply (tolerant decode on the web side).
             controller_id: session.controllerId || null,
-            // Which panels answered at link-up and the firmware fingerprint each
-            // runs (GET_PANEL_INVENTORY 0xD1, fw #59): {count, present, missing,
-            // status[], firmware[{crc32, panels}], mismatched, ref_crc32, fp_len,
-            // fp_valid, scan_id, age_ms}. null on firmware without the feature.
+            // Which panels answered at RUN START and the firmware fingerprint each
+            // runs (GET_PANEL_INVENTORY 0xD1, fw #59), StudioPanelInventory.toRunMeta():
+            // {schema: 1, status: 'ok'|'pending'|'failed'|'unsupported'|'disconnected',
+            // count, present, missing, panel_status[], firmware[{crc32, panels}],
+            // mismatched, ref_crc32, fp_len, presence_valid, fp_valid, fp_in_progress,
+            // scan_id, age_ms}. Only null when the Studio asset itself is missing.
             panels: session.panels || null,
             tool_version: o.toolVersion || null,
             // Which release tier ran this (docs/development/release-process.md): a Next

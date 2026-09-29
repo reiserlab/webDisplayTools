@@ -65,6 +65,11 @@
                     lastErr = new Error('scan_id changed between pages');
                     break;
                 }
+                if (next.first !== entries.length || next.panelCount !== page0.panelCount) {
+                    consistent = false;
+                    lastErr = new Error('incoherent GET_PANEL_INVENTORY pages');
+                    break;
+                }
                 pages.push(next);
                 entries = entries.concat(next.entries);
             }
@@ -155,19 +160,29 @@
         return s;
     }
 
-    /** Compact, JSON-friendly record for run_metadata.panels. */
-    function toRunMeta(inv) {
-        if (!inv) return null;
+    /**
+     * Compact, JSON-friendly record for run_metadata.panels. Always an object, so
+     * a log never has to guess what a missing inventory meant: `status` is 'ok'
+     * (presence scan valid), 'pending' (the controller's boot scan had not
+     * finished), 'failed' (the 0xD1 read failed), 'unsupported' (firmware without
+     * the feature) or 'disconnected'. `schema` guards the shape for later readers.
+     */
+    function toRunMeta(inv, status) {
+        if (!inv) return { schema: 1, status: status || 'unsupported' };
         return {
+            schema: 1,
+            status: status || (inv.presenceValid ? 'ok' : 'pending'),
             count: inv.panelCount,
             present: inv.present.length,
             missing: inv.missing,
-            status: inv.statuses,
+            panel_status: inv.statuses,
             firmware: inv.firmware.map((f) => ({ crc32: f.hex, panels: f.panels })),
             mismatched: inv.mismatched,
             ref_crc32: inv.refPresent ? hex32(inv.refCrc32) : null,
             fp_len: inv.fpLen,
+            presence_valid: inv.presenceValid,
             fp_valid: inv.fpValid,
+            fp_in_progress: inv.fpInProgress,
             scan_id: inv.scanId,
             age_ms: inv.ageMs
         };

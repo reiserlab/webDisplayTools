@@ -4021,19 +4021,35 @@ function studioMarkerCurrent(stored, current) {
     // (older firmware answers 0xD1 with CE_UNKNOWN_CMD and an error glyph). The
     // boot fingerprint sweep may still be running right after a reset, so a read
     // that says "in progress" schedules one follow-up read.
+    // `Studio.panels` is never left stale: it is cleared before every read, on a
+    // failed read and on disconnect, and `Studio.panelsStatus` says why it is
+    // null ('unsupported' | 'failed' | 'disconnected') or how to read it
+    // ('ok' | 'pending'). runOnce() re-reads it right before startRunLog() so
+    // run_metadata.panels is a run-start snapshot, not connect-time state.
     Studio.panels = null; // StudioPanelInventory.summarize() result, or null
-    Studio.refreshPanelInventory = async function () {
+    Studio.panelsStatus = 'disconnected';
+    Studio.scheduleInventoryFollowUp = function (ms) {
+        if (Studio._panelsFollowUp) clearTimeout(Studio._panelsFollowUp);
+        Studio._panelsFollowUp = setTimeout(() => {
+            Studio._panelsFollowUp = null;
+            if (Studio.session && Studio.session.connected && !Studio.session.running) Studio.refreshPanelInventory();
+        }, ms);
+    };
+    Studio.refreshPanelInventory = async function (opts) {
+        const quiet = !!(opts && opts.quiet);
         const PI = window.StudioPanelInventory;
         const feats = Studio.features || [];
         const has = feats.includes('panel_inventory');
+        Studio.panels = null;
         if (!Studio.session || !Studio.session.connected || !PI || !has) {
-            Studio.panels = null;
+            Studio.panelsStatus = !Studio.session || !Studio.session.connected ? 'disconnected' : 'unsupported';
             if ($('pvPanels')) $('pvPanels').textContent = has ? '—' : '— (firmware without panel inventory)';
             return null;
         }
         try {
             const inv = PI.summarize(await PI.readAll((b, o) => Studio.session.send(b, o)));
             Studio.panels = inv;
+            Studio.panelsStatus = inv.presenceValid ? 'ok' : 'pending';
             const label = PI.describe(inv);
             const worry = inv.missing.length > 0 || inv.mismatched.length > 0;
             if ($('pvPanels')) {
@@ -4042,15 +4058,13 @@ function studioMarkerCurrent(stored, current) {
                     (inv.mismatched.length ? ' · check panels ' + inv.mismatched.join(', ') : '');
             }
             if ($('cInvSum')) $('cInvSum').textContent = label;
-            rawLine('‹ panels: ' + label, worry ? 'warn' : 'info');
-            if (inv.fpInProgress && !Studio._panelsFollowUp) {
-                Studio._panelsFollowUp = setTimeout(() => {
-                    Studio._panelsFollowUp = null;
-                    if (Studio.session && Studio.session.connected && !Studio.session.running) Studio.refreshPanelInventory();
-                }, 4000);
-            }
+            if (!quiet) rawLine('‹ panels: ' + label, worry ? 'warn' : 'info');
+            if (inv.fpInProgress || !inv.presenceValid) Studio.scheduleInventoryFollowUp(4000);
             return inv;
         } catch (e) {
+            Studio.panelsStatus = 'failed';
+            if ($('pvPanels')) $('pvPanels').textContent = '— (panel inventory read failed)';
+            if ($('cInvSum')) $('cInvSum').textContent = 'read failed';
             rawLine('panel inventory: ' + (e && e.message ? e.message : e), 'warn');
             return null;
         }
@@ -5887,16 +5901,17 @@ function studioMarkerCurrent(stored, current) {
             if (inv.mismatched.length) clog('  check panels ' + inv.mismatched.join(', ') + (inv.refPresent ? ' (≠ /firmware/panel.bin)' : ' (fingerprint minority / no ISP reply)'), 'warn');
             for (const f of inv.firmware) clog('  ' + f.hex + ' ×' + f.panels.length + ': panels ' + f.panels.join(', '), 'info');
         },
-        cinvscan: async () => {
+        cinvscan: () => guardDestructive(async () => {
+            // Stops the display (0xD0 needs ALL_OFF) — confirm-and-STOP like the other destructive actions.
             if (!connected()) return;
             if (!(Studio.features || []).includes('panel_inventory')) { clog('panel inventory: this firmware has no PANEL_INVENTORY_SCAN (0xC2 feature bit 0 clear)', 'warn'); return; }
-            await quiesceDisplay(); // 0xD0 requires ALL_OFF
+            await quiesceDisplay();
             const r = await send(Wire.encodePanelInventoryScan(1), 'PANEL_INVENTORY_SCAN 0xD0 · presence + fingerprints', { timeoutMs: 10000, expectedCmd: Wire.OPCODES.PANEL_INVENTORY_SCAN });
             const page0 = r && Wire.decodePanelInventory(r);
             if (!page0) return;
             if ($('cInvSum')) $('cInvSum').textContent = 'rescanning… (scan ' + page0.scanId + ')';
-            setTimeout(() => Studio.refreshPanelInventory(), 3000); // the sweep runs one panel per loop() pass
-        },
+            Studio.scheduleInventoryFollowUp(3000); // the sweep runs one panel per loop() pass; gated on connected + not running
+        }),
         ip: async () => { const r = await send(Wire.encodeGetIp(), 'GET_ETHERNET_IP 0xC1'); const ip = r && Wire.decodeIp && Wire.decodeIp(r); if (ip) clog('  ip ' + ip, 'info'); },
         frames: async () => { const r = await send(Wire.encodeGetFramesSent(), 'GET_FRAMES_SENT 0x33'); const n = r && Wire.decodeFramesSent(r); if (n != null) clog('  frames sent ' + n, 'info'); },
         resetframes: () => send(Wire.encodeResetFramesSent(), 'RESET_FRAMES_SENT 0x34'),
@@ -6600,6 +6615,10 @@ function studioMarkerCurrent(stored, current) {
             // Forget the controller's capabilities so the NEXT connect re-detects
             // io_ext (avoids stale caps gating the rig-I/O roles for a swapped rig).
             Studio.capabilities = null;
+            Studio.features = null;
+            Studio.panels = null; // never carry one controller's panel inventory into the next connection
+            Studio.panelsStatus = 'disconnected';
+            if (Studio._panelsFollowUp) { clearTimeout(Studio._panelsFollowUp); Studio._panelsFollowUp = null; }
             if (Studio.updateRigIoGating) Studio.updateRigIoGating();
         }
     }
@@ -8713,6 +8732,10 @@ Studio.runOnce = async function (isExperiment) {
     if (refuseUnsupportedRequires(exp)) return null;
     const { steps } = RunnerLib.flattenStructure(exp, { shuffle: shuffleInPlace });
     const conditionsByName = new Map((exp.conditions || []).map((c) => [c.name, c]));
+    // Run-start snapshot of the panel fleet (0xD1 is a pure read, ~10 ms per page):
+    // run_metadata.panels must describe the panels at THIS run's start, not whatever
+    // was cached at connect. Feature-gated inside; a failure records status 'failed'.
+    await Studio.refreshPanelInventory({ quiet: true });
     startRunLog(isExperiment);
     document.body.classList.toggle('testing', !isExperiment);
     // Surface the live scope for BOTH run and test — the whole point of a test is
@@ -9241,7 +9264,7 @@ function startRunLog(isExperiment) {
         session: {
             firmware: Studio.firmware,
             controllerId: Studio.controllerId,
-            panels: Studio.panels && window.StudioPanelInventory ? window.StudioPanelInventory.toRunMeta(Studio.panels) : null
+            panels: window.StudioPanelInventory ? window.StudioPanelInventory.toRunMeta(Studio.panels, Studio.panelsStatus) : null
         },
         rig: doc.rig,
         toolVersion: Studio.TOOL_VERSION,
