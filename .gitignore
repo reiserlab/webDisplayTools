@@ -19,3 +19,6 @@ _site/
 
 # Soak / bench captures — multi-GB, keep outside the repo
 soak-logs/
+
+# scripts/studio-smoke --compare serves a temporary copy of the ref page from the repo root
+_smoke_ref_*.html

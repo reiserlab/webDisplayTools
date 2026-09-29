@@ -456,6 +456,12 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   stacking-context bugs for menus). The Edit view's token island only overrides its own few colours (`--ed-*`).
   A NEW colour = a token in all five blocks; `tests/test-studio-shell.js` enforces the full token set,
   WCAG contrast (AA; AAA for High contrast), a blue-free Night palette, and no stray literals.
+- **Browser smoke (`pixi run studio-smoke`, `scripts/studio-smoke/`).** Headless Chrome/Edge via
+  CDP (pixi's `websockets`; no npm): layout at 5 widths (overflow, off-screen, overlapping/clipped
+  Console panels, menus on screen), console errors, every theme applied + axe-core contrast, the
+  replay interlock, the old-browser notice; `--compare origin/main` diffs Dark computed colours.
+  Run it after any change to `arena_studio.html` layout, menus or colours — it needs a local
+  browser, so it is NOT in `pixi run test` / CI.
 - **Console v6 layout (v0.6):** left rail of 9 tool panels (`data-panel` =
   patterns/trial/step/test/io/ai/led/fw/fictrac) + bench strip + always-visible resizable log.
   The rail is a show/hide CHECKLIST (`role="checkbox"`, `setOpen` keeps `aria-checked`);
