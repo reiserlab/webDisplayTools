@@ -1,0 +1,4 @@
+interface:
+  display_name: "G6 Release"
+  short_description: "Ship webDisplayTools through the Production and Next tiers"
+  default_prompt: "Use $g6-release to decide the tier and ship this webDisplayTools change through a Next candidate or a release."

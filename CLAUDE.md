@@ -1,5 +1,19 @@
 # Claude Code Guidelines for webDisplayTools
 
+## Project Skills
+
+Claude discovers project-skill wrappers under `.claude/skills/`. The maintained, cross-model
+skill bodies live under `.agents/skills/` and are also used directly by Codex:
+
+- `g6-orientation` — repository map and G6 system conventions.
+- `protocol-yaml` — v3 protocol authoring and validation.
+- `g6-pattern-maker` — reproducible G6 pattern generation and comparison.
+- `g6-release` — shipping web-tool changes through the Production and Next tiers.
+
+Follow the wrapper into the canonical skill before working. Do not duplicate substantive skill
+instructions in `CLAUDE.md` or inside the wrappers. See
+`docs/development/project-skills.md` for the cross-model organization and validation contract.
+
 ## Scope of This File
 
 **CLAUDE.md** is for **how to work with the code** — architecture, patterns, gotchas, testing procedures, and coding conventions. It should NOT contain roadmap items, feature wishlists, or project planning.
@@ -31,7 +45,7 @@ guess or make up timestamps.
 
 ## Release tiers — Production + Next (THE shipping rule)
 
-Authority: **`docs/development/release-process.md`** (+ `.claude/skills/g6-release/SKILL.md`).
+Authority: **`docs/development/release-process.md`** (+ `.agents/skills/g6-release/SKILL.md`).
 - **Production** = the root URLs = the tree of `main` (rigs run experiments here; tagged "beta").
   **Next** = `/next/` = ONE frozen release candidate (main + an explicit list of pinned PR heads +
   a release commit), or a placeholder. One Pages artifact built by `deploy-pages.yml` via
