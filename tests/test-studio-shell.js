@@ -161,7 +161,7 @@ check(
         studio.includes("if(e.key===' '||e.key==='Enter'){ e.preventDefault(); b.click(); }")
 );
 check(
-    'checked state is drawn with a ✓, not a border colour alone',
+    'checked state is drawn with a ✓, not a border color alone',
     studio.includes(".console-view .rail-btn.sel::before{content:'✓'")
 );
 
@@ -183,7 +183,7 @@ check(
         studio.includes('id="scopeSound" aria-pressed="false"') &&
         studio.includes("btn.textContent = snd.on ? '♪ sound: on' : '♪ sound: off'")
 );
-check('sound settings is labelled, not a bare ▾', />sound settings ▾<\/button>/.test(studio));
+check('sound settings is labeled, not a bare ▾', />sound settings ▾<\/button>/.test(studio));
 check(
     'labels: full/clean pill, remembered under the Studio key (default full)',
     studio.includes('id="scopeLabels"') &&
@@ -226,7 +226,7 @@ check(
         )
 );
 
-console.log('=== colour tokens (every stylesheet colour is a token) ===');
+console.log('=== color tokens (every stylesheet color is a token) ===');
 // Parse the token blocks: :root (Dark) and, when present, :root[data-ui-theme="…"].
 const styleStart = studio.indexOf('<style>\n  :root{');
 const styleEnd = studio.indexOf('</style>', styleStart);
@@ -249,8 +249,8 @@ check(
     undefinedVars.join(' ')
 );
 
-// No stray colour literals in the stylesheet rules — only :root/theme token blocks,
-// var() fallbacks and the release-tier badge may spell a colour.
+// No stray color literals in the stylesheet rules — only :root/theme token blocks,
+// var() fallbacks and the release-tier badge may spell a color.
 const tokenBlockSpans = [];
 for (const m of css.matchAll(/:root(\[data-ui-theme="\w+"\])?\{/g)) {
     tokenBlockSpans.push([m.index, css.indexOf('\n  }', m.index)]);
@@ -268,7 +268,7 @@ css.split('\n').forEach((line, i, arr) => {
     if (m) stray.push(i + ': ' + line.trim().slice(0, 60));
 });
 check(
-    'no hard-coded colours left in stylesheet rules',
+    'no hard-coded colors left in stylesheet rules',
     stray.length === 0,
     stray.slice(0, 5).join(' | ')
 );
@@ -277,7 +277,7 @@ check(
     islandStart > 0 && /--surface-2: var\(--ed-surface2\);/.test(css) && !/--bg: #0f1419;/.test(css)
 );
 check(
-    'Scope canvas + Analog In chart read their colours from the theme',
+    'Scope canvas + Analog In chart read their colors from the theme',
     studio.includes("turning_deg_s: read('--trace-turn'") &&
         studio.includes('colors: aiChartColors()') &&
         studio.includes("(root.getAttribute('data-ui-theme') || 'dark')")
@@ -313,11 +313,11 @@ const themeTokenNames = Object.keys(tokens.dark).filter(
 );
 THEMES.slice(1).forEach((t) => {
     const missing = themeTokenNames.filter((k) => !(tokens[t] && k in tokens[t]));
-    check('theme "' + t + '" defines every colour token', missing.length === 0, missing.join(' '));
+    check('theme "' + t + '" defines every color token', missing.length === 0, missing.join(' '));
 });
 // WCAG 2.x contrast of the opaque token pairs. Text ≥ 4.5 (AA); High contrast ≥ 7 (AAA);
 // Focus rings + control edges ≥ 3.
-// Colours are #hex or rgba(); a translucent foreground is composited over its opaque
+// Colors are #hex or rgba(); a translucent foreground is composited over its opaque
 // background first. Anything else THROWS, so a token the test can't read fails loudly
 // instead of passing vacuously.
 function rgbOf(c) {
@@ -329,7 +329,7 @@ function rgbOf(c) {
     }
     m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(s);
     if (m) return { rgb: [+m[1], +m[2], +m[3]], a: m[4] == null ? 1 : +m[4] };
-    throw new Error('unparseable colour: ' + s);
+    throw new Error('unparseable color: ' + s);
 }
 function lumRgb(rgb) {
     const l = rgb.map((v) => {

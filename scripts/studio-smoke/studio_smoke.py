@@ -2,7 +2,7 @@
 """Arena Studio browser smoke test — layout, themes, contrast, console errors.
 
     pixi run studio-smoke                      # all checks, screenshots to a temp dir
-    pixi run studio-smoke --compare origin/main   # + Dark computed-colour diff vs a git ref
+    pixi run studio-smoke --compare origin/main   # + Dark computed-color diff vs a git ref
     pixi run studio-smoke --no-axe --widths 1024,1440
 
 Serves the repo on a free localhost port, drives a throwaway headless Chrome/Edge profile
@@ -10,12 +10,12 @@ Serves the repo on a free localhost port, drives a throwaway headless Chrome/Edg
   * layout — horizontal page overflow, top-bar items off-screen, overlapping or clipped
     Console panels, a Protocol ▾ / ⚙ Settings menu not fully on screen (per width);
   * console errors (network 404s from course-repo protocol lookups are ignored);
-  * a theme that doesn't apply, or axe-core colour-contrast violations beyond the known
+  * a theme that doesn't apply, or axe-core color-contrast violations beyond the known
     deliberately-faint closed-loop label (axe is fetched from cdnjs; skipped offline);
   * the replay interlock freezing the wrong ⚙ Settings parts; the old-browser notice.
 Needs a local Chrome or Edge, so it is NOT part of `pixi run test` / CI. Screenshots are kept
 (path printed at the end); the throwaway Chrome profile and local server are always cleaned up. Use it after any
-change to arena_studio.html's layout, menus or colours (CLAUDE.md → Arena Studio).
+change to arena_studio.html's layout, menus or colors (CLAUDE.md → Arena Studio).
 """
 import argparse
 import asyncio
@@ -165,7 +165,7 @@ async def run(args):
                     args.no_axe = True
                     continue
                 extra = [n for n in nodes if n['t'] not in AXE_ALLOW]
-                rep.check(not extra, f'{t} {view}: no colour-contrast violations (axe)', extra[:5])
+                rep.check(not extra, f'{t} {view}: no color-contrast violations (axe)', extra[:5])
             rep.check(not errors_of(p), f'{t}: no console errors', errors_of(p))
 
         print('== replay interlock + old-browser notice ==')
@@ -186,7 +186,7 @@ async def run(args):
         await p.send('Page.removeScriptToEvaluateOnNewDocument', {'identifier': sid})
 
         if args.compare:
-            print(f'== Dark computed colours vs {args.compare} (informational) ==')
+            print(f'== Dark computed colors vs {args.compare} (informational) ==')
             src = subprocess.run(['git', 'show', f'{args.compare}:arena_studio.html'], cwd=REPO,
                                  capture_output=True, text=True, check=True).stdout
             ref_page = f'_smoke_ref_{os.getpid()}.html'
@@ -225,7 +225,7 @@ def main():
     ap.add_argument('--widths', default='760,1024,1280,1440,1920')
     ap.add_argument('--themes', default=','.join(THEMES))
     ap.add_argument('--no-axe', action='store_true', help='skip the axe-core contrast pass (offline)')
-    ap.add_argument('--compare', metavar='REF', help='also diff Dark computed colours against this git ref')
+    ap.add_argument('--compare', metavar='REF', help='also diff Dark computed colors against this git ref')
     ap.add_argument('--out', help='screenshot directory (default: a new temp dir)')
     ap.add_argument('--chrome', help='Chrome/Edge executable (default: auto-detect or $CHROME)')
     sys.exit(asyncio.run(run(ap.parse_args())))

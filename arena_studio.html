@@ -71,8 +71,8 @@
     --text:#e6edf3; --dim:#8b949e; --accent:#00e676; --hover:#00c853;
     --danger:#ff5252; --warn:#e3a008; --beta:#4aa8ff; --rec:#ff5252; --replay:#b58cff;
     --mode:#00e676; --modec:#062a16;
-    /* Theme tokens (⚙ Settings → Display). Dark values below ARE the colours the
-       rules used before tokenising, so Dark renders unchanged; the other themes
+    /* Theme tokens (⚙ Settings → Display). Dark values below ARE the colors the
+       rules used before tokenizing, so Dark renders unchanged; the other themes
        override them in the :root[data-ui-theme=…] blocks that follow. */
     --on-accent:#06210f; --on-danger:#2a0000; --on-replay:#1a1030; --seg-on-bg:#26405e; --seg-on-fg:#cfe6ff;
     --safe-fg:#9fd4ff; --safe-border:#2b5b86; --help:#2b74a8; --help-fg:#eaf5ff; --tip-bg:#0c2233;
@@ -84,7 +84,7 @@
     --wc-c-border:#3b6ea5; --wc-c-bg:rgba(88,166,255,.12); --trace-turn:#1e90ff; --trace-fwd:#ff2e2e; --trace-head:#22e84a; --focus:#00e676;
     --safe-bg:rgba(38,64,94,.35); --shadow-c:#000; --overlay-c:#060a0e;
     /* Pattern previews keep a dark neutral surround in every theme (they show the arena's
-       own LED colours); the whole Console dims to --off-opacity while disconnected. */
+       own LED colors); the whole Console dims to --off-opacity while disconnected. */
     --preview-bg:#141a20; --preview-badge-bg:rgba(0,0,0,.7); --preview-badge-fg:#00e676; --off-opacity:.55;
     --caution:var(--warn); /* Studio amber inside the Edit view, whose own --warn is orange */
     color-scheme:dark;
@@ -127,7 +127,7 @@
     --overlay-c:#000; --rec:var(--danger); --mode:var(--accent); --modec:var(--run-bg); --preview-bg:#000000; --preview-badge-bg:rgba(0,0,0,.7); --preview-badge-fg:#3dffa0; --off-opacity:.75; color-scheme:dark;
   }
   /* Night (red) — low-luminance, long-wavelength palette for darkened rigs (keeps dark adaptation;
-     cuts most green/blue emission — blue ≈ 0, green capped; colour emoji are not themed) */
+     cuts most green/blue emission — blue ≈ 0, green capped; color emoji are not themed) */
   :root[data-ui-theme="night"]{
     --bg:#000000; --surface:#0e0100; --surface2:#060000; --border:#5a1408; --edge:#b52c10;
     --text:#ff3a10; --dim:#f2340e; --accent:#ff5a10; --hover:#e04a0e; --danger:#ff2a0a;
@@ -142,7 +142,7 @@
     --trace-fwd:#ff2a0a; --trace-head:#c83a0c; --focus:#ff7010; --safe-bg:#1a0300; --shadow-c:#000;
     --overlay-c:#000; --rec:var(--danger); --mode:var(--accent); --modec:var(--run-bg); --preview-bg:#000000; --preview-badge-bg:rgba(0,0,0,.7); --preview-badge-fg:#ff5a10; --off-opacity:.8; color-scheme:dark;
   }
-  /* Colour-blind safe — Okabe–Ito hues on the dark ground: OK = sky blue, error = vermillion,
+  /* Color-blind safe — Okabe–Ito hues on the dark ground: OK = sky blue, error = vermillion,
      warning = yellow, Test/info = orange, Replay = white (every critical pair stays ≥ ΔE00 17 under
      simulated protan/deutan/tritan vision); frame edges a touch stronger than Dark (3:1). */
   :root[data-ui-theme="cvd"]{
@@ -168,12 +168,12 @@
   :root[data-ui-theme="night"] :focus-visible{outline:2px solid var(--focus);outline-offset:1px}
   :root[data-ui-theme="night"] ::selection{background:var(--seg-on-bg);color:var(--seg-on-fg)}
   /* Night's text is already dim, so text-at-reduced-opacity would drop below 4.5:1 —
-     use the secondary-text colour at full opacity instead. */
+     use the secondary-text color at full opacity instead. */
   :root[data-ui-theme="night"] #ghQuickLinks .ql-repo{opacity:1;color:var(--dim)}
   /* Pattern previews → red only. OPT-IN by container (.thumb = Console/paste thumbnails,
      .pat-preview = Console big preview + Edit previews): never a blanket img/canvas rule — a
      live canvas under a filter is re-filtered every frame. Live canvases (Scope, Analog In)
-     draw in theme colours instead. A new preview surface joins by using one of these classes. */
+     draw in theme colors instead. A new preview surface joins by using one of these classes. */
   :root[data-ui-theme="night"] :is(.thumb, .pat-preview) :is(img, canvas){filter:url(#uiNightRed)}
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
@@ -2214,7 +2214,7 @@
   .console-view .rail-h{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);padding:0 7px 4px}
   /* Tools = a show/hide CHECKLIST (any number of panels open at once). Each row is a
      role=checkbox with a drawn box (same look as the GitHub settings checkboxes), so
-     the state reads from the ✓ + aria-checked, not from a border colour alone. */
+     the state reads from the ✓ + aria-checked, not from a border color alone. */
   .console-view .rail-btn{display:grid;grid-template-columns:15px minmax(0,1fr);column-gap:8px;align-items:center;padding:6px 7px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--text);font-size:11.5px;text-align:left;font-family:var(--mono);cursor:pointer;user-select:none}
   .console-view .rail-btn::before{content:'';grid-row:1 / span 2;width:15px;height:15px;box-sizing:border-box;border:1.5px solid var(--edge);border-radius:4px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;line-height:1;color:var(--on-accent)}
   .console-view .rail-btn.sel::before{content:'✓';background:var(--accent);border-color:var(--accent)}
@@ -5589,15 +5589,15 @@ function studioMarkerCurrent(stored, current) {
     });
     // ---- ⚙ Settings → Display: visibility theme (per browser, localStorage) -------
     // Themes are pure CSS-token swaps on html[data-ui-theme] (see the :root blocks);
-    // they never change behaviour or which controls exist. The head script applies
+    // they never change behavior or which controls exist. The head script applies
     // the stored choice before first paint; this wires the selector + "Match this
     // computer" (prefers-contrast / prefers-color-scheme, followed live).
     const UI_THEMES = {
         dark: { label: 'Dark', hint: 'The standard bench theme.' },
         light: { label: 'Light', hint: 'Dark text on a light background — for lit rooms and projectors.' },
         contrast: { label: 'High contrast', hint: 'Black background, bright text, solid edges and a thick yellow focus ring.' },
-        night: { label: 'Night', hint: 'Dim red display for darkened rigs: keeps your eyes dark-adapted and cuts most of the green and blue light the monitor gives off (colour emoji excepted). Pattern previews show in red. Measure at the arena before relying on it during an experiment.' },
-        cvd: { label: 'Color-blind safe', hint: 'Okabe–Ito colours: OK / connected = blue, errors and STOP = vermillion, warnings = yellow — no red/green pairs.' },
+        night: { label: 'Night', hint: 'Dim red display for darkened rigs: keeps your eyes dark-adapted and cuts most of the green and blue light the monitor gives off (color emoji excepted). Pattern previews show in red. Measure at the arena before relying on it during an experiment.' },
+        cvd: { label: 'Color-blind safe', hint: 'Okabe–Ito colors: OK / connected = blue, errors and STOP = vermillion, warnings = yellow — no red/green pairs.' },
         system: { label: 'Match this computer', hint: 'Follows this computer’s display settings: high contrast if requested, otherwise light or dark.' }
     };
     const UI_THEME_KEY = 'studio_ui_theme';
@@ -5625,7 +5625,7 @@ function studioMarkerCurrent(stored, current) {
         if (sel && sel.value !== c) sel.value = c;
         const hint = $('uiThemeHint');
         if (hint) hint.textContent = UI_THEMES[c].hint + (c === 'system' ? ' Now: ' + UI_THEMES[eff].label + '.' : '');
-        // Canvases that only redraw on new data (Analog In) repaint in the new colours.
+        // Canvases that only redraw on new data (Analog In) repaint in the new colors.
         document.dispatchEvent(new CustomEvent('studio-ui-theme', { detail: { theme: eff } }));
         return eff;
     }
@@ -5645,7 +5645,7 @@ function studioMarkerCurrent(stored, current) {
         n.id = 'browserNotice';
         n.className = 'browser-notice';
         n.setAttribute('role', 'alert');
-        n.textContent = 'This browser is too old for some of Arena Studio’s display styles (colour tints and some borders will be missing). Update Chrome or Edge to version 111 or newer.';
+        n.textContent = 'This browser is too old for some of Arena Studio’s display styles (color tints and some borders will be missing). Update Chrome or Edge to version 111 or newer.';
         const x = document.createElement('button');
         x.type = 'button';
         x.textContent = '✕';
@@ -5920,7 +5920,7 @@ function studioMarkerCurrent(stored, current) {
         el.style.left = (lo * 100).toFixed(1) + '%';
         el.style.width = (Math.max(0.6, (hi - lo) * 100)).toFixed(1) + '%';
     }
-    // Analog In strip chart colours follow the ⚙ Settings → Display theme (the
+    // Analog In strip chart colors follow the ⚙ Settings → Display theme (the
     // canvas can't read CSS itself); cached per theme.
     let aiChartColorsCache = null, aiChartColorsTheme = null;
     function aiChartColors() {
