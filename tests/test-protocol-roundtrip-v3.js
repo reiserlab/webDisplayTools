@@ -3846,6 +3846,46 @@ console.log('\n--- Suite N12io: rig io: block (#135) ---');
         bad.warnings.join(' | ')
     );
 
+    // (c2) #168: Digital IO 1 has no route to the panels' EINT trigger net — in_trigger on
+    // port 1 degrades to off with a warning naming Digital IO 2; port 2 keeps it.
+    const trig = parseRigIo({
+        io: {
+            dio: [
+                { port: 1, role: 'in_trigger' },
+                { port: 2, role: 'in_trigger' }
+            ]
+        }
+    });
+    check('N12io-c2: port 1 in_trigger → off (no EINT route)', trig.dio[0].role, 'off');
+    check('N12io-c2: port 2 in_trigger kept (the EINT route)', trig.dio[1].role, 'in_trigger');
+    checkTrue(
+        'N12io-c2: one warning, naming Digital IO 2',
+        trig.warnings.length === 1 &&
+            /port 1 cannot be in_trigger/.test(trig.warnings[0]) &&
+            /Digital IO 2/.test(trig.warnings[0]),
+        trig.warnings.join(' | ')
+    );
+    // The Studio side: the DIO 1 option is disabled with the reason, never re-enabled by
+    // capability gating, and the apply path refuses to send it.
+    const studioHtml = fs.readFileSync(path.join(__dirname, '..', 'arena_studio.html'), 'utf8');
+    checkTrue(
+        'N12io-c2: Studio DIO 1 in_trigger option disabled with the EINT reason',
+        /<select id="cIoRoleDio1"[\s\S]*?<option value="in_trigger" disabled title="Not available on Digital IO 1[^"]*EINT/.test(
+            studioHtml
+        ),
+        'option markup changed'
+    );
+    checkTrue(
+        'N12io-c2: capability gating never enables DIO 1 in_trigger',
+        !/gate\('cIoRoleDio1',\s*'in_trigger'/.test(studioHtml),
+        'found a gate() call for cIoRoleDio1 in_trigger'
+    );
+    checkTrue(
+        'N12io-c2: apply path skips in_trigger on channel 1',
+        /if \(ch === 1 && r === 'in_trigger'\)/.test(studioHtml),
+        'apply guard missing'
+    );
+
     // (d) value clamping.
     const clamp = parseRigIo({
         io: {
