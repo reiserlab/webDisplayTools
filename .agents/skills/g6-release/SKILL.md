@@ -38,7 +38,7 @@ Routine pushes to a feature branch need no question.
 | Conflict | resolve in `.tiers/candidate`, `git add`, `git commit --no-edit`, then `pixi run candidate -- --continue` (or `--abort`) | two PRs that keep colliding belong in one `batch/<name>` branch |
 | Dry run | `pixi run candidate -- 219 --no-push` then `pixi run next-preview -- --next release/<date>` and `python -m http.server -d _site 8080` | nothing leaves the machine |
 | What's live | `pixi run tiers -- status` | head drift / main drift → rebuild (rc+1, validation resets) |
-| Validation note | `pixi run tiers -- validate --rig rig5 --by Isabel --notes "…"` | names the exact candidate SHA; test **between sessions** |
+| Validation note | `pixi run tiers -- validate --rig rig5 --by Isabel --notes "…"`, or `--notes-file /abs/path.md` for anything multi-line or with `` ` `` (pixi re-parses `--notes`) | names the exact candidate SHA; test **between sessions** |
 | Promote | `pixi run release` | re-checks everything, prints the Slack draft, asks for the release name, merge commit + tag |
 | Hotfix | `pixi run candidate -- --hotfix "why" 230` → `pixi run release -- --pr N` | never moves /next/ |
 | Roll back | `pixi run tiers -- rollback --to release-<prev> --revert release-<bad>` | the next push to main undoes the emergency deploy — land the revert first |

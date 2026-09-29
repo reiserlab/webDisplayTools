@@ -39,7 +39,7 @@ jobs:
         run: |
           echo "## Arena Calculation Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ $? -eq 0 ]; then
+          if [ "${{ job.status }}" = "success" ]; then
             echo "✅ All calculations match MATLAB reference" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Some calculations differ from MATLAB reference" >> $GITHUB_STEP_SUMMARY

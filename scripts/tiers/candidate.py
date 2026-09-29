@@ -6,6 +6,7 @@
     pixi run candidate -- --continue | --abort          (after resolving a merge conflict)
     pixi run tiers -- status
     pixi run tiers -- validate --rig rig5 --by Isabel --notes "P3 epochs open on 25/75"
+    pixi run tiers -- validate --rig rig5 --by Isabel --notes-file notes.md   (multi-line / `code`)
     pixi run release [-- --yes]
     pixi run tiers -- rollback --to release-2026-10-02 [--revert release-2026-10-09]
 
@@ -547,12 +548,25 @@ def cmd_status(a, root: Path) -> int:
     return 0
 
 
+def validation_body(sha: str, man: dict, rig: str, by: str, notes: str = '') -> str:
+    """The validation-note comment. `validation_ok` recognizes it by "Validated" + the short SHA."""
+    return (f"✅ **Validated** `{sha[:7]}` — candidate {man['name']} rc{man['rc']} — on **{rig}** by **{by}**"
+            + (f'\n\n{notes}' if notes else ''))
+
+
+def read_notes(a) -> str:
+    """--notes TEXT or --notes-file PATH. A file is the safe route for multi-line or
+    backticked notes: pixi's task shell re-parses `pixi run tiers -- … --notes "…"`."""
+    if getattr(a, 'notes_file', None):
+        return T.read_text_exact(a.notes_file).strip()
+    return a.notes or ''
+
+
 def cmd_validate(a, root: Path) -> int:
     rp = _pick_release_pr(root, a.pr)
     sha = rp['headRefOid']
     man = _manifest_for(root, sha)
-    body = (f"✅ **Validated** `{sha[:7]}` — candidate {man['name']} rc{man['rc']} — on **{a.rig}** by **{a.by}**"
-            + (f'\n\n{a.notes}' if a.notes else ''))
+    body = validation_body(sha, man, a.rig, a.by, read_notes(a))
     T.run(['gh', 'pr', 'comment', str(rp['number']), '--body-file', '-'], cwd=root, input_text=body)
     print(f"Validation note posted on #{rp['number']} for {sha[:10]}.")
     return 0
@@ -689,7 +703,9 @@ def main(argv=None) -> int:
     v = sub.add_parser('validate', help='post a validation note for the exact candidate SHA')
     v.add_argument('--rig', required=True)
     v.add_argument('--by', required=True)
-    v.add_argument('--notes', default='')
+    vn = v.add_mutually_exclusive_group()
+    vn.add_argument('--notes', default='', help='short one-line note')
+    vn.add_argument('--notes-file', help='read the note from a file (multi-line, `code`, links)')
     v.add_argument('--pr', type=int)
     r = sub.add_parser('release', help='promote the validated candidate to Production')
     r.add_argument('--pr', type=int)

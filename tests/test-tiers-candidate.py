@@ -12,6 +12,7 @@ the reserved next/ path, and the production-tree self-check.
 
 Run: python tests/test-tiers-candidate.py
 """
+import argparse
 import datetime as dt
 import importlib.util
 import json
@@ -175,6 +176,19 @@ sha = 'abc1234def5678' + '0' * 26
 check('validation: matching sha', len(C.validation_ok([{'body': '✅ **Validated** `abc1234` on rig5'}], sha)), 1)
 check('validation: other sha', len(C.validation_ok([{'body': 'Validated `fff1234`'}], sha)), 0)
 check('validation: sha without the word', len(C.validation_ok([{'body': 'looked at abc1234'}], sha)), 0)
+
+# --notes-file: the note survives byte-for-byte (backticks, newlines), and the posted body
+# is still recognized as a validation of this SHA.
+_man = {'name': '2026-09-28', 'rc': 1}
+_notes_path = Path(tempfile.mkdtemp()) / 'notes.md'
+_notes_text = 'Closed loop on `pr225.yaml`:\n\n- epoch A 400/400 at idx 25\n- `run_metadata.channel: next`\n'
+T.write_text_exact(_notes_path, _notes_text)
+_args = argparse.Namespace(notes='', notes_file=str(_notes_path))
+check('notes-file: read verbatim (trailing newline stripped)', C.read_notes(_args), _notes_text.strip())
+check('notes: plain --notes still works', C.read_notes(argparse.Namespace(notes='short', notes_file=None)), 'short')
+_body = C.validation_body(sha, _man, 'bench', 'MR', C.read_notes(_args))
+check('validation body: carries the note', '`pr225.yaml`' in _body and 'epoch A 400/400' in _body, True)
+check('validation body: recognized for its sha', len(C.validation_ok([{'body': _body}], sha)), 1)
 check('name: plain', C.release_name('2026-10-02', set(), False), '2026-10-02')
 check('name: second same day', C.release_name('2026-10-02', {'release-2026-10-02'}, False), '2026-10-02.2')
 check('name: hotfix', C.release_name('2026-10-02', set(), True), '2026-10-02-hotfix')
