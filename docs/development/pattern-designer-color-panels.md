@@ -62,12 +62,18 @@ parity. The test suite pins this; the generator script for the check is on LAB-2
   In the 3D viewer color belongs to the **physical LED** (panel row `py`, panel column with the
   CCW mirror, *without* the phase offset): the pattern slides under the fixed mosaic exactly as
   the hardware does. IR is drawn in a dim false color and the hint says so.
-- **ON color** (Generate → Output, shown only for color layouts): chips *All* / one per channel /
-  *Custom* (a 0–15 level per channel in GS16, on/off in GS2). Generators stay monochrome; one
-  call at the end of `handleGenerate` masks every frame:
-  `v ← min(maxVal, round(v · w[bank(row, col)]))` (`PanelColor.applyOnColor`). Weights are
-  independent (they need not sum to 100 %); `lowLevel` is masked too. Image-converter and
-  combiner outputs are **not** masked in V1.
+- **ON color and OFF color** (Generate → Output, shown only for color layouts): two chip rows.
+  ON = what an ON pixel lights (*All* / one channel / *Custom* per-channel 0–15 levels, on/off in
+  GS2). OFF = what an OFF pixel lights (*Dark* by default, or the same choices). Generators stay
+  monochrome; one call at the end of `handleGenerate` recolors every frame
+  (`PanelColor.applyOnOffColor(frame, …, onW, offW, high, low)`): with OFF = Dark it is the plain
+  mask `v ← round(v · onW[bank])`; otherwise each LED blends from the OFF mix to the ON mix as the
+  pixel goes from `low` to `high`, both driven at the `high` level —
+  `out = round(high · (offW[b] + (onW[b] − offW[b]) · (v − low)/(high − low)))`. A square
+  grating in blue-on-green lights blue LEDs in the ON stripes and green LEDs in the OFF stripes; a
+  sine grating becomes a smooth spectral modulation; ON == OFF gives a uniform field. Weights are
+  independent (they need not sum to 100 %). Image-converter and combiner outputs are **not**
+  recolored in V1 (use the brushes).
 - **Edit brushes** (color layouts only): every paint tool paints *with the ON color*, replace
   semantics like Generate — *LED* sets one LED to `value · w[bank]` (so a "violet" brush leaves a
   green LED at 0), the row/column header fills do the same along the row/column, and *2×2 cell*
@@ -79,9 +85,10 @@ parity. The test suite pins this; the generator script for the check is on LAB-2
 
 ## Deferred (see LAB-223 "Deferred")
 
-Background/OFF color (a second weight vector), layers (Combine tool), per-color calibration
-LUT (LAB-213), authoring at the reduced 10×10 grid, Studio Console thumbnails (`js/pat-preview.js`
-needs the same Panel LEDs setting in the Studio), the pattern-file color tag (LAB-229).
+Layers (Combine tool), per-color calibration LUT (LAB-213), authoring at the reduced 10×10
+grid, Studio Console thumbnails (`js/pat-preview.js` needs the same Panel LEDs setting in the
+Studio), the pattern-file color tag (LAB-229). Background/OFF color shipped in V1 after all
+(2026-09-29).
 
 ## Projection viewers and the row convention
 

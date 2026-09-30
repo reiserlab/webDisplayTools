@@ -3,7 +3,7 @@
  *
  * Provides operations to combine two patterns:
  * - Sequential: Concatenate frames from A and B
- * - Mask/Blend: Spatial combination using threshold or 50% blend
+ * - Mask/Blend/Add: Spatial combination using threshold, 50% blend, or add-and-saturate
  * - Split: Left/Right or top/bottom spatial division
  */
 
@@ -42,11 +42,15 @@ export function combineSequential(patternA, patternB) {
  * Combine two patterns using mask/blend
  * @param {Object} patternA - First pattern (background)
  * @param {Object} patternB - Second pattern (foreground)
- * @param {Object} options - { mode: 'threshold'|'blend', threshold: number (0-15 for GS16, 0-1 for GS2) }
+ * @param {Object} options - { mode: 'threshold'|'blend'|'add', threshold: number (0-15 for GS16, 0-1 for GS2) }
+ *   'add' sums A and B per pixel and saturates at the grayscale maximum — the natural way to
+ *   stack two color-panel patterns, whose lit LEDs never overlap (each color lives on its own
+ *   lattice), so nothing is halved the way 'blend' halves it.
  * @returns {Object} Combined pattern
  */
 export function combineMask(patternA, patternB, options = {}) {
     const { mode = 'blend', threshold = 7 } = options;
+    const maxVal = patternA.gsMode === 2 ? 1 : 15;
 
     // Validate patterns have compatible dimensions
     if (patternA.pixelRows !== patternB.pixelRows || patternA.pixelCols !== patternB.pixelCols) {
@@ -81,6 +85,9 @@ export function combineMask(patternA, patternB, options = {}) {
             if (mode === 'threshold') {
                 // Use B where A exceeds threshold, otherwise use A
                 newFrame[i] = valA > threshold ? valB : valA;
+            } else if (mode === 'add') {
+                // Add and saturate
+                newFrame[i] = Math.min(maxVal, valA + valB);
             } else {
                 // Blend: average of A and B
                 newFrame[i] = Math.round((valA + valB) / 2);
@@ -167,7 +174,7 @@ export function combineSplit(patternA, patternB, options = {}) {
  * Main combine function that dispatches to appropriate method
  * @param {Object} patternA - First pattern
  * @param {Object} patternB - Second pattern
- * @param {string} mode - 'sequential', 'mask', 'blend', or 'split'
+ * @param {string} mode - 'sequential', 'mask', 'blend', 'add', or 'split'
  * @param {Object} options - Mode-specific options
  * @returns {Object} Combined pattern
  */
@@ -185,6 +192,9 @@ export function combinePatterns(patternA, patternB, mode, options = {}) {
 
         case 'blend':
             return combineMask(patternA, patternB, { ...options, mode: 'blend' });
+
+        case 'add':
+            return combineMask(patternA, patternB, { ...options, mode: 'add' });
 
         case 'split':
             return combineSplit(patternA, patternB, options);

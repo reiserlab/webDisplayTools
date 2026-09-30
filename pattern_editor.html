@@ -2003,6 +2003,13 @@
                             <div class="pd-oncolor-custom" id="onColorCustom"></div>
                         </div>
                     </div>
+                    <div class="control-row" id="offColorRow" style="display: none;">
+                        <div class="control-group">
+                            <label title="What OFF (background) pixels show on a multi-color panel. Dark = today's behaviour. Pick a color and the pattern blends from the OFF mix at Low to the ON mix at High — blue stripes on a green field, or a smooth blue↔green sine.">OFF color</label>
+                            <div class="pd-oncolor-chips" id="offColorChips"></div>
+                            <div class="pd-oncolor-custom" id="offColorCustom"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Animate Tab -->
@@ -2113,6 +2120,7 @@
                             <option value="sequential">Sequential (concatenate)</option>
                             <option value="mask">Mask (threshold)</option>
                             <option value="blend">Blend (50%)</option>
+                            <option value="add">Add (saturate)</option>
                             <option value="split-h">Horizontal Split (left/right)</option>
                             <option value="split-v">Vertical Split (top/bottom)</option>
                         </select>
@@ -2301,8 +2309,8 @@
                 </div>
                 <div class="toolbar-section">
                     <span class="toolbar-label">Transform:</span>
-                    <button class="edit-ops-btn" id="flipHBtn" title="Flip Horizontal">Flip H</button>
-                    <button class="edit-ops-btn" id="flipVBtn" title="Flip Vertical">Flip V</button>
+                    <button class="edit-ops-btn" id="flipHBtn" title="Flip horizontally. On color panels the 2×2 color cells are mirrored so every LED keeps its color.">Flip H</button>
+                    <button class="edit-ops-btn" id="flipVBtn" title="Flip vertically. On color panels the 2×2 color cells are mirrored so every LED keeps its color.">Flip V</button>
                     <button class="edit-ops-btn" id="invertBtn" title="Invert Brightness">Invert</button>
                     <button class="edit-ops-btn" id="findReplaceBtn" title="Find and Replace">Find/Replace</button>
                 </div>
@@ -2603,6 +2611,7 @@
             // never written into the .pat. Default = today's all-green boards.
             panel: { layoutKey: PanelColor.DEFAULT_LAYOUT },
             onColor: { preset: 'all', levels: {} },   // 'all' | <channel id> | 'custom' (levels: channel → 0..15)
+            offColor: { preset: 'dark', levels: {} }, // what OFF pixels show: 'dark' (default) | 'all' | <channel id> | 'custom'
             frameAnimation: {
                 mode: 'shifting',  // 'shifting' or 'animation'
                 sequence: [],      // Array of frame entries for animation mode
@@ -4406,12 +4415,16 @@
                     console.warn('Pattern validation warnings:', validation.warnings);
                 }
 
-                // Multi-color panels: mask every frame by the ON-color weights. Generators stay
-                // monochrome; a pure color keeps only that bank's LEDs (identity for G6 green).
+                // Multi-color panels: recolor every frame after generation. Generators stay
+                // monochrome; ON pixels take the ON mix, OFF pixels the OFF mix (Dark = today's
+                // mask: a pure color keeps only that bank's LEDs). Identity for G6 green.
                 if (!PanelColor.isMono(state.panel.layoutKey)) {
-                    const weights = currentOnColorWeights(pattern.gs_val);
+                    const onW = currentSlotWeights('on', pattern.gs_val);
+                    const offW = currentSlotWeights('off', pattern.gs_val);
+                    const hi = pattern.gs_val === 2 ? 1 : highLevel;
+                    const lo = pattern.gs_val === 2 ? 0 : lowLevel;
                     for (const f of pattern.frames) {
-                        PanelColor.applyOnColor(f, pattern.pixelRows, pattern.pixelCols, pattern.gs_val, state.panel.layoutKey, weights);
+                        PanelColor.applyOnOffColor(f, pattern.pixelRows, pattern.pixelCols, pattern.gs_val, state.panel.layoutKey, onW, offW, hi, lo);
                     }
                     filename = withColorTag(filename);
                 }
@@ -5352,20 +5365,34 @@
             return parseInt(document.getElementById('gsMode').value, 10);
         }
 
-        // Per-bank weights [T0..T3] from the ON-color control (identity for mono layouts)
-        function currentOnColorWeights(gsMode) {
-            const preset = state.onColor.preset === 'custom' ? state.onColor.levels : state.onColor.preset;
+        // Two color "slots": ON (foreground — what an ON pixel lights; also the paint brush) and
+        // OFF (background — what an OFF pixel lights; 'dark' = nothing, today's behaviour).
+        const COLOR_SLOTS = {
+            on: { state: () => state.onColor, chips: 'onColorChips', custom: 'onColorCustom', word: 'ON', dark: false },
+            off: { state: () => state.offColor, chips: 'offColorChips', custom: 'offColorCustom', word: 'OFF', dark: true }
+        };
+
+        // Per-bank weights [T0..T3] for a slot (identity for mono layouts; null for OFF = dark)
+        function currentSlotWeights(slot, gsMode) {
+            const st = COLOR_SLOTS[slot].state();
+            if (st.preset === 'dark') return null;
+            const preset = st.preset === 'custom' ? st.levels : st.preset;
             return PanelColor.channelWeightsFromPreset(state.panel.layoutKey, preset, gsMode);
         }
+        function currentOnColorWeights(gsMode) {
+            return currentSlotWeights('on', gsMode);
+        }
 
-        function renderOnColorChips(container, compact) {
+        function renderColorChips(slot, container, compact) {
             container.innerHTML = '';
             const layout = PanelColor.getLayout(state.panel.layoutKey);
             if (!layout || layout.mono) return;
+            const cfg = COLOR_SLOTS[slot];
+            const st = cfg.state();
             const addChip = (id, label, dotCss, title) => {
                 const chip = document.createElement('button');
                 chip.type = 'button';
-                chip.className = 'pd-oncolor-chip' + (state.onColor.preset === id ? ' selected' : '');
+                chip.className = 'pd-oncolor-chip' + (st.preset === id ? ' selected' : '');
                 chip.title = title;
                 if (dotCss) {
                     const dot = document.createElement('span');
@@ -5375,27 +5402,30 @@
                 }
                 chip.appendChild(document.createTextNode(label));
                 chip.addEventListener('click', () => {
-                    state.onColor.preset = id;
+                    st.preset = id;
                     updateOnColorControls();
                 });
                 container.appendChild(chip);
             };
-            addChip('all', 'All', null, 'ON pixels light every LED bank (all colors) at the pattern level');
+            if (cfg.dark) addChip('dark', 'Dark', null, 'OFF pixels stay dark (the Low level, same color mix as ON) — today\'s behaviour');
+            addChip('all', 'All', null, `${cfg.word} pixels light every LED bank (all colors) at the pattern level`);
             layout.channels.forEach(ch => addChip(ch.id, compact ? ch.id : ch.label, PanelColor.channelCss(ch.id),
-                `ON pixels light only the ${ch.label} LEDs — one 10×10 lattice per panel; the other banks stay off`));
-            addChip('custom', 'Custom', null, 'One level per color channel (0–15 in GS16, on/off in GS2). Weights are independent — they need not sum to 100%.');
+                `${cfg.word} pixels light only the ${ch.label} LEDs — one 10×10 lattice per panel; the other banks stay off`));
+            addChip('custom', 'Custom', null, `One ${cfg.word} level per color channel (0–15 in GS16, on/off in GS2). Weights are independent — they need not sum to 100%.`);
         }
 
-        function renderOnColorCustom() {
-            const box = document.getElementById('onColorCustom');
+        function renderColorCustom(slot) {
+            const cfg = COLOR_SLOTS[slot];
+            const st = cfg.state();
+            const box = document.getElementById(cfg.custom);
             box.innerHTML = '';
             const layout = PanelColor.getLayout(state.panel.layoutKey);
-            const show = layout && !layout.mono && state.onColor.preset === 'custom';
+            const show = layout && !layout.mono && st.preset === 'custom';
             box.classList.toggle('visible', !!show);
             if (!show) return;
             const gs = currentGsMode();
             layout.channels.forEach(ch => {
-                if (state.onColor.levels[ch.id] === undefined) state.onColor.levels[ch.id] = 15;
+                if (st.levels[ch.id] === undefined) st.levels[ch.id] = 15;
                 const dot = document.createElement('span');
                 dot.className = 'dot';
                 dot.style.background = PanelColor.channelCss(ch.id);
@@ -5406,9 +5436,9 @@
                 if (gs === 2) {
                     const cb = document.createElement('input');
                     cb.type = 'checkbox';
-                    cb.checked = state.onColor.levels[ch.id] > 0;
-                    cb.title = `${ch.label}: on/off for ON pixels (GS2 has no intermediate levels)`;
-                    cb.addEventListener('change', () => { state.onColor.levels[ch.id] = cb.checked ? 15 : 0; });
+                    cb.checked = st.levels[ch.id] > 0;
+                    cb.title = `${ch.label}: on/off for ${cfg.word} pixels (GS2 has no intermediate levels)`;
+                    cb.addEventListener('change', () => { st.levels[ch.id] = cb.checked ? 15 : 0; });
                     box.appendChild(cb);
                     box.appendChild(document.createElement('span'));
                 } else {
@@ -5416,18 +5446,22 @@
                     range.type = 'range';
                     range.min = 0;
                     range.max = 15;
-                    range.value = state.onColor.levels[ch.id];
-                    range.title = `${ch.label}: level for ON pixels, 0–15`;
+                    range.value = st.levels[ch.id];
+                    range.title = `${ch.label}: level for ${cfg.word} pixels, 0–15`;
                     const num = document.createElement('span');
                     num.textContent = range.value;
                     range.addEventListener('input', () => {
-                        state.onColor.levels[ch.id] = parseInt(range.value, 10);
+                        st.levels[ch.id] = parseInt(range.value, 10);
                         num.textContent = range.value;
                     });
                     box.appendChild(range);
                     box.appendChild(num);
                 }
             });
+        }
+        function renderOnColorCustom() { // #gsMode change listener: GS2 → on/off per channel
+            renderColorCustom('on');
+            renderColorCustom('off');
         }
 
         function updateBrushButtons() {
@@ -5438,11 +5472,13 @@
         function updateOnColorControls() {
             const color = isColorLayout();
             document.getElementById('onColorRow').style.display = color ? '' : 'none';
+            document.getElementById('offColorRow').style.display = color ? '' : 'none';
             document.getElementById('brushSection').style.display = color ? '' : 'none';
             if (!color) state.editor.brush = 'led';
             updateBrushButtons();
-            renderOnColorChips(document.getElementById('onColorChips'), false);
-            renderOnColorChips(document.getElementById('onColorChipsEdit'), true);
+            renderColorChips('on', document.getElementById('onColorChips'), false);
+            renderColorChips('on', document.getElementById('onColorChipsEdit'), true);   // the brush paints ON
+            renderColorChips('off', document.getElementById('offColorChips'), false);
             renderOnColorCustom();
         }
 
@@ -5652,13 +5688,15 @@
             const { pixelRows, pixelCols, frames } = state.pattern;
             const frame = frames[state.editor.currentFrame];
 
+            // On a color layout mirror the 2×2 cells, not single LEDs: a plain mirror of an
+            // even-width grid swaps even and odd columns and so swaps LED colors. Mapping
+            // c → (C−1−c) ^ 1 mirrors the cell grid while every LED keeps its column parity
+            // (and therefore its color); it is a true mirror offset by one LED.
+            const mirror = isColorLayout() ? (c) => (pixelCols - 1 - c) ^ 1 : (c) => pixelCols - 1 - c;
+            const src = frame.slice();
             for (let row = 0; row < pixelRows; row++) {
-                for (let col = 0; col < Math.floor(pixelCols / 2); col++) {
-                    const leftIdx = row * pixelCols + col;
-                    const rightIdx = row * pixelCols + (pixelCols - 1 - col);
-                    const temp = frame[leftIdx];
-                    frame[leftIdx] = frame[rightIdx];
-                    frame[rightIdx] = temp;
+                for (let col = 0; col < pixelCols; col++) {
+                    frame[row * pixelCols + mirror(col)] = src[row * pixelCols + col];
                 }
             }
 
@@ -5673,13 +5711,12 @@
             const { pixelRows, pixelCols, frames } = state.pattern;
             const frame = frames[state.editor.currentFrame];
 
-            for (let row = 0; row < Math.floor(pixelRows / 2); row++) {
+            // Cell-preserving on color layouts (see flipHorizontal): rows keep their parity.
+            const mirror = isColorLayout() ? (r) => (pixelRows - 1 - r) ^ 1 : (r) => pixelRows - 1 - r;
+            const src = frame.slice();
+            for (let row = 0; row < pixelRows; row++) {
                 for (let col = 0; col < pixelCols; col++) {
-                    const topIdx = row * pixelCols + col;
-                    const bottomIdx = (pixelRows - 1 - row) * pixelCols + col;
-                    const temp = frame[topIdx];
-                    frame[topIdx] = frame[bottomIdx];
-                    frame[bottomIdx] = temp;
+                    frame[mirror(row) * pixelCols + col] = src[row * pixelCols + col];
                 }
             }
 
@@ -5876,6 +5913,11 @@
                 } else if (mode === 'blend') {
                     options.mode = 'blend';
                     combineMode = 'blend';
+                } else if (mode === 'add') {
+                    // Sum per pixel, saturate at the grayscale max. Stacks color-panel patterns
+                    // (their lit LEDs never overlap) at full intensity, unlike Blend which halves.
+                    options.mode = 'add';
+                    combineMode = 'add';
                 } else if (mode === 'split-h') {
                     options.direction = 'horizontal';
                     options.splitPosition = parseInt(document.getElementById('splitPosition').value) / 100;
@@ -5918,6 +5960,7 @@
                 switch (combineMode) {
                     case 'sequential': modeSuffix = 'seq'; break;
                     case 'blend': modeSuffix = 'blend'; break;
+                    case 'add': modeSuffix = 'add'; break;
                     case 'mask': modeSuffix = 'mask'; break;
                     case 'split-h': modeSuffix = `splitH${options.splitPosition || 50}`; break;
                     case 'split-v': modeSuffix = `splitV${options.splitPosition || 50}`; break;

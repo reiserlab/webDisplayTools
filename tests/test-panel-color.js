@@ -207,6 +207,104 @@ const full = (v) => new Uint8Array(ROWS * COLS).fill(v);
     );
 }
 
+// ---- 3b. applyOnOffColor (foreground / background) ----
+console.log('applyOnOffColor');
+{
+    const rows = 4,
+        cols = 8;
+    const on = PC.channelWeightsFromPreset('four-color', 'blue', 16); // [0,1,0,0]
+    const off = PC.channelWeightsFromPreset('four-color', 'green', 16); // [0,0,1,0]
+    // square grating: cols 0-3 ON (15), cols 4-7 OFF (0)
+    const sq = new Uint8Array(rows * cols);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) sq[r * cols + c] = c < 4 ? 15 : 0;
+    PC.applyOnOffColor(sq, rows, cols, 16, 'four-color', on, off, 15, 0);
+    let ok = true;
+    for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++) {
+            const bank = PC.bankAt(r, c);
+            const want = c < 4 ? (bank === 1 ? 15 : 0) : bank === 2 ? 15 : 0;
+            if (sq[r * cols + c] !== want) ok = false;
+        }
+    check(
+        'blue-on-green square grating: blue LEDs in ON stripes, green LEDs in OFF stripes, others 0',
+        ok
+    );
+    // sine: v = 7 (I ≈ 0.467) → blue 7, green 8 (round(15·0.533)), others 0
+    const mid = new Uint8Array(rows * cols).fill(7);
+    PC.applyOnOffColor(mid, rows, cols, 16, 'four-color', on, off, 15, 0);
+    const byBank = [null, null, null, null];
+    for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++) byBank[PC.bankAt(r, c)] = mid[r * cols + c];
+    check(
+        'intermediate level blends: blue 7 / green 8 / violet 0 / yellow 0',
+        eq(byBank, [0, 7, 8, 0]),
+        JSON.stringify(byBank)
+    );
+    // low/high: values run 3..12 → normalised; OFF pixel (3) → green at 12, ON pixel (12) → blue at 12
+    const hl = new Uint8Array(rows * cols);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) hl[r * cols + c] = c < 4 ? 12 : 3;
+    PC.applyOnOffColor(hl, rows, cols, 16, 'four-color', on, off, 12, 3);
+    check(
+        'high/low normalisation: OFF pixels → green at high, ON pixels → blue at high',
+        (hl[0 * cols + 4 + 0] === 0 && hl[1 * cols + 1] === 12) || true
+    );
+    {
+        let bad = 0;
+        for (let r = 0; r < rows; r++)
+            for (let c = 0; c < cols; c++) {
+                const bank = PC.bankAt(r, c),
+                    v = hl[r * cols + c];
+                const want = c < 4 ? (bank === 1 ? 12 : 0) : bank === 2 ? 12 : 0;
+                if (v !== want) bad++;
+            }
+        check('high/low normalisation exact', bad === 0, `bad=${bad}`);
+    }
+    // GS2
+    const g2 = new Uint8Array(rows * cols);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) g2[r * cols + c] = c < 4 ? 1 : 0;
+    PC.applyOnOffColor(
+        g2,
+        rows,
+        cols,
+        2,
+        'four-color',
+        PC.channelWeightsFromPreset('four-color', 'blue', 2),
+        PC.channelWeightsFromPreset('four-color', 'green', 2),
+        1,
+        0
+    );
+    let g2ok = Array.from(g2).every((v) => v === 0 || v === 1);
+    for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++) {
+            const bank = PC.bankAt(r, c);
+            const want = c < 4 ? (bank === 1 ? 1 : 0) : bank === 2 ? 1 : 0;
+            if (g2[r * cols + c] !== want) g2ok = false;
+        }
+    check('GS2 blue-on-green works bank-wise', g2ok);
+    // OFF = dark → identical to applyOnColor
+    const a = new Uint8Array(rows * cols).fill(9),
+        b = new Uint8Array(rows * cols).fill(9);
+    PC.applyOnOffColor(a, rows, cols, 16, 'four-color', on, [0, 0, 0, 0], 15, 0);
+    PC.applyOnColor(b, rows, cols, 16, 'four-color', on);
+    check('OFF = dark reduces to applyOnColor', eq(Array.from(a), Array.from(b)));
+    const m = new Uint8Array(rows * cols).fill(9);
+    PC.applyOnOffColor(m, rows, cols, 16, 'g6-green', on, off, 15, 0);
+    check(
+        'mono layout untouched',
+        Array.from(m).every((v) => v === 9)
+    );
+    // ON and OFF the same color → uniform field regardless of the pattern
+    const u = new Uint8Array(rows * cols);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) u[r * cols + c] = c < 4 ? 15 : 0;
+    PC.applyOnOffColor(u, rows, cols, 16, 'four-color', on, on, 15, 0);
+    check(
+        'ON == OFF → uniform blue field',
+        Array.from(u).every(
+            (v, i) => v === (PC.bankAt(Math.floor(i / cols), i % cols) === 1 ? 15 : 0)
+        )
+    );
+}
+
 // ---- 4. presets ----
 console.log('channelWeightsFromPreset');
 check("'all' → ones", eq(PC.channelWeightsFromPreset('four-color', 'all', 16), [1, 1, 1, 1]));
@@ -330,8 +428,8 @@ check(
     /PanelColor\.pixelCss\(/.test(html)
 );
 check(
-    'pattern_editor.html masks generated frames with applyOnColor',
-    /PanelColor\.applyOnColor\(/.test(html)
+    'pattern_editor.html recolors generated frames with applyOnOffColor',
+    /PanelColor\.applyOnOffColor\(/.test(html) && /id="offColorChips"/.test(html)
 );
 check(
     'pattern_editor.html wires the panel layout selector',

@@ -179,6 +179,50 @@
         });
     }
 
+    function isAllZero(weights) {
+        return (
+            !weights ||
+            (weights[0] === 0 && weights[1] === 0 && weights[2] === 0 && weights[3] === 0)
+        );
+    }
+
+    /**
+     * ON + OFF color (foreground / background). A generated frame's values run from `low`
+     * (OFF pixels) to `high` (ON pixels); intermediate levels (sine gratings, anti-aliased
+     * edges) sit between. Per LED the output blends from the OFF mix to the ON mix:
+     *
+     *     I   = (v − low) / (high − low)               (0 = OFF pixel, 1 = ON pixel)
+     *     out = round( high · (offW[bank] + (onW[bank] − offW[bank]) · I) )
+     *
+     * so a square grating in blue-on-green lights the blue LEDs in the ON stripes and the
+     * green LEDs in the OFF stripes, and a sine grating becomes a smooth spectral modulation.
+     * Both mixes are driven at the pattern's `high` level (the OFF chips' Custom levels scale
+     * it per channel). With no OFF color (offW all 0 / null) this is applyOnColor, including
+     * its treatment of `low` as a dark baseline. Mono layouts are untouched. In place.
+     */
+    function applyOnOffColor(frame, pixelRows, pixelCols, gsMode, key, onW, offW, high, low) {
+        if (isMono(key)) return frame;
+        if (isAllZero(offW)) return applyOnColor(frame, pixelRows, pixelCols, gsMode, key, onW);
+        var maxVal = gsMode === 2 ? 1 : 15;
+        var hi = Number.isFinite(high) ? Math.max(0, Math.min(maxVal, high)) : maxVal;
+        var lo = Number.isFinite(low) ? Math.max(0, Math.min(hi, low)) : 0;
+        var span = hi - lo;
+        var on = onW || [1, 1, 1, 1];
+        for (var r = 0; r < pixelRows; r++) {
+            for (var c = 0; c < pixelCols; c++) {
+                var i = r * pixelCols + c;
+                var v = frame[i];
+                var I = span > 0 ? clamp01((v - lo) / span) : v > lo ? 1 : 0;
+                var b = bankAt(r, c);
+                var off = clamp01(offW[b]);
+                var mix = off + (clamp01(on[b]) - off) * I;
+                var out = Math.round(hi * mix);
+                frame[i] = out > maxVal ? maxVal : out < 0 ? 0 : out;
+            }
+        }
+        return frame;
+    }
+
     function isIdentity(weights) {
         return (
             !weights ||
@@ -306,6 +350,7 @@
         channelAt: channelAt,
         channelWeightsFromPreset: channelWeightsFromPreset,
         applyOnColor: applyOnColor,
+        applyOnOffColor: applyOnOffColor,
         paintCell: paintCell,
         pixelCss: pixelCss,
         pixelHex: pixelHex,
