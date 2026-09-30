@@ -197,17 +197,20 @@
   <div id="app">
     <div class="card">
       <h2><span class="step-n">1</span> Choose the firmware build</h2>
-      <select id="build-select" disabled>
+      <select id="build-select" disabled autocomplete="off">
         <option>resolving catalog…</option>
       </select>
       <p id="build-meta">resolving latest…</p>
       <p id="build-note" class="note warn" hidden></p>
-      <p class="fine">Pick the build that matches your panel’s revision — v0.2.1 and v0.3.1 use different binaries.
-        Flashed a mismatch? No harm — just re-flash the matching build.</p>
+      <p id="build-fp" class="fine"></p>
+      <p class="fine">The pre-selected <strong>Production</strong> build is the one every current (v0.3.1) panel should run.
+        A <strong>Legacy</strong> entry is only for a replacement panel joining an arena that has not been reflashed yet —
+        an arena should run one image on all its panels (Arena Studio → Console → Panel firmware → Inventory shows
+        each panel’s fingerprint). Flashed the wrong one? No harm — re-flash.</p>
       <details>
         <summary>Which revision do I have?</summary>
-        <p>Read the rev on the PCB silkscreen / label (<code>v0.2.1</code> vs <code>v0.3.1</code>). A panel
-        already running firmware reports its rev; this tool verifies it after flashing.</p>
+        <p>All panels in service are <code>v0.3.1</code> hardware (v0.2.1 boards are retired). A panel already running
+        firmware reports its rev; this tool verifies it after flashing.</p>
       </details>
     </div>
 
@@ -234,7 +237,7 @@
       <p class="fine">Programmed a panel? Open the
         <a href="../panel_monitor.html">Panel Serial Monitor</a> to confirm it boots clean (production
         firmware is log-only — no LED test over USB). For a visual LED test, flash a
-        <strong>Panel self-test</strong> build above, then re-flash production.</p>
+        <strong>Panel self-test</strong> build if the catalog offers one, then re-flash production.</p>
     </div>
   </div>
 
