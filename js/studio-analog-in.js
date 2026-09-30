@@ -270,6 +270,85 @@
         };
     }
 
+    // ── calibration record helpers (firmware F2, decodeAnalogCal shape) ─────────
+    /** Nominal ±10 V scale for a raw count at the given ADC width (no calibration). */
+    function nominalMv(raw, bits) {
+        const full = Math.pow(2, isNum(bits) ? bits : 12) - 1;
+        if (!isNum(raw)) return NaN;
+        return (raw / full - 0.5) * 2 * FULL_SCALE_MV;
+    }
+    /** {a, b} of mV = a·raw + b for a decoded channel record, or null when not valid. */
+    function calLine(chRec) {
+        if (!chRec || !chRec.valid) return null;
+        const span = chRec.rawOpen - chRec.rawGnd;
+        if (!(span > 0)) return null;
+        const a = FULL_SCALE_MV / span;
+        return { a, b: -a * chRec.rawGnd };
+    }
+    /** Calibrated mV for a raw count (falls back to the nominal scale). */
+    function calMv(chRec, raw, bits) {
+        const line = calLine(chRec);
+        if (!line || !isNum(raw)) return nominalMv(raw, bits);
+        return line.a * raw + line.b;
+    }
+    /** 'both points ✓' / '+10 V point ✓ · 0 V point —' / 'no points' for the UI. */
+    function calStepsText(chRec) {
+        if (!chRec) return '—';
+        const open = chRec.rawOpen > 0;
+        const gnd = chRec.rawGnd > 0 || (chRec.valid && chRec.rawGnd === 0);
+        if (chRec.valid) return 'calibrated (both points)';
+        if (!open && !gnd) return 'no points';
+        return (
+            (open ? '+10 V point ✓' : '+10 V point —') +
+            ' · ' +
+            (gnd ? '0 V point ✓' : '0 V point —')
+        );
+    }
+    function describeCalSource(rec) {
+        if (!rec) return '—';
+        const src =
+            rec.source === 'eeprom'
+                ? 'stored in EEPROM'
+                : rec.source === 'none'
+                  ? 'no record (nominal scale)'
+                  : rec.source;
+        return (
+            src +
+            (rec.source === 'eeprom'
+                ? rec.sdMirrorOk
+                    ? ' · SD mirror ok'
+                    : ' · SD mirror not written'
+                : '') +
+            ' · ' +
+            rec.adcBits +
+            '-bit'
+        );
+    }
+    /**
+     * Rows for the calibration table: one per channel, with the live raw count
+     * (from 0xA7, may be null) evaluated on both scales so the user sees what the
+     * calibration changes.
+     */
+    function calTableRows(rec, raws) {
+        if (!rec) return [];
+        return rec.channels.map((c, i) => {
+            const raw = raws ? (i === 0 ? raws.raw1 : raws.raw2) : null;
+            const line = calLine(c);
+            return {
+                ch: c.ch,
+                valid: c.valid,
+                rawOpen: c.rawOpen,
+                rawGnd: c.rawGnd,
+                a: line ? line.a : null,
+                b: line ? line.b : null,
+                deadbandMv: c.deadbandMv,
+                rawNow: isNum(raw) ? raw : null,
+                mvCal: isNum(raw) && line ? line.a * raw + line.b : null,
+                mvNominal: isNum(raw) ? nominalMv(raw, rec.adcBits) : null
+            };
+        });
+    }
+
     // ── loopback sweep ─────────────────────────────────────────────────────────
     /** Inclusive AO levels from..to by step, clamped to 0..5000 mV, integers. */
     function sweepPlan(fromMv, toMv, stepMv) {
@@ -446,7 +525,13 @@
         fitLinear,
         summarizeSweep,
         sweepCsv,
-        drawStripChart
+        drawStripChart,
+        nominalMv,
+        calLine,
+        calMv,
+        calStepsText,
+        describeCalSource,
+        calTableRows
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = StudioAnalogIn;
