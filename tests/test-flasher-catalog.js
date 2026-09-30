@@ -118,13 +118,19 @@ checkBool(
         /cache: 'no-store'/.test(flasherJs)
 );
 checkBool(
+    'flash refuses on a catalog fingerprint mismatch (fail closed, like the Studio picker)',
+    /Refusing to flash: catalog fingerprint mismatch/.test(flasherJs) &&
+        /const got = hex32\(fingerprintOfBlocks\(blocks\)\)/.test(flasherJs)
+);
+checkBool(
     'dropdown locked while flashing',
     /\$\('build-select'\)\.disabled = true/.test(flasherJs)
 );
 checkBool(
     'fingerprint computed from the bytes to be flashed + catalog cross-check',
     /fingerprintOfBlocks\(parseUF2\(buf\)\)/.test(flasherJs) &&
-        /the image and its listing disagree/.test(flasherJs)
+        /the image and its listing disagree, so this build cannot be flashed/.test(flasherJs) &&
+        /if \(mismatch\) \$\('flash-btn'\)\.disabled = true/.test(flasherJs)
 );
 checkBool('no stale -isp.uf2 references', !/-isp\.uf2/.test(flasherJs));
 checkBool(

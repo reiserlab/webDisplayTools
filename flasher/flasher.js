@@ -499,8 +499,11 @@ async function showFingerprint(b) {
     el.textContent =
         `fingerprint ${shown} — the Studio\u2019s panel inventory reports this value for panels running this image` +
         (mismatch
-            ? ` — WARNING: the catalog lists ${b.fingerprint}; the image and its listing disagree`
+            ? ` — the catalog lists ${b.fingerprint}; the image and its listing disagree, so this build cannot be flashed`
             : '');
+    // Defense in depth: a broken catalog entry is unselectable for flashing here, and the
+    // flash path re-checks the same fingerprint on the bytes it is about to write.
+    if (mismatch) $('flash-btn').disabled = true;
 }
 
 // Sync state + UI to the selected build: enable Flash and caution on non-production builds.
@@ -626,6 +629,20 @@ async function onFlashClick() {
         const uf2 = await fetchBuildBytes(b); // verified: status, sha256; same bytes as the fingerprint
         const blocks = parseUF2(uf2);
         log(`UF2: ${blocks.length} blocks (${((blocks.length * 256) / 1024).toFixed(0)} KiB).`);
+        if (b.fingerprint) {
+            // Fail closed, like the Studio's ISP picker: a catalog whose fingerprint disagrees
+            // with the image is a broken catalog, not something to put on a panel.
+            const got = hex32(fingerprintOfBlocks(blocks));
+            if (got.toLowerCase() !== String(b.fingerprint).toLowerCase()) {
+                setStatus('Refusing to flash: catalog fingerprint mismatch.', 'status-err');
+                log(
+                    `${b.file}: the image's fingerprint is ${got} but the catalog lists ${b.fingerprint}. ` +
+                        'Not flashing — fix the catalog entry (or pick another build).',
+                    'status-err'
+                );
+                return;
+            }
+        }
 
         pb = new Picoboot(device);
         await pb.open();
