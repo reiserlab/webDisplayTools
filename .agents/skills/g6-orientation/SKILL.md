@@ -85,6 +85,9 @@ interface.
   feature PR — see *Release tiers* below.
 - **Design system** — dark theme (`--bg #0f1419`, surface `#1a1f26`, border `#2d3640`, accent
   `#00e676`); JetBrains Mono headings, IBM Plex Mono body.
+- **Spelling** — American English everywhere: code, docs, Linear tickets, commit/PR text, Slack
+  posts. **color** (never "colour"), center, -ize. Identifiers already use it (`panel-color.js`,
+  "Four-color" docs); keep prose consistent with them.
 - **Dev env = pixi only** — `pixi install` provisions Node + Prettier + Python + websockets
   (conda-forge). **No npm / package.json / node_modules.** `pixi run test | format | bridge | sim`.
 - **Two gotchas** — Prettier is scoped to `**/*.js`; **never run it on the HTML tools** (it
