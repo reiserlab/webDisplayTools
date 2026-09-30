@@ -4,6 +4,23 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.94 (2026-09-30) · LAB-158 ports (Protocol ▾, ⚙ Settings, two-column Console) + visibility themes · Multi-color G6 panels V1 — Panel LEDs layout, ON color, per-bank preview (LAB-228) · Flasher + Studio picker: one production build from the published catalog; legacy images hashed, never default (panel-fw-v1.3.1)
+
+<!-- #238 -->
+- **File ▾ is now Protocol ▾.** It holds everything you do with a protocol (open, save, share, reset, replay, soak), grouped under headings.
+- **Bench setup moved to ⚙ Settings (top right).** The bench rig, GitHub sign-in, repo, bench id and run-log format live there. The bench rig stays visible next to the connection status; click it to change it. Connect's hover names it too.
+- **Choose how the Studio looks.** ⚙ Settings → Display offers Dark (standard), Light, High contrast, Night (dim red, for darkened rigs), Color-blind safe, or Match this computer. The choice is remembered on this computer and never changes what the Studio does.
+- **Console tools are a checklist, and use two columns on wide screens.** Tick the tools you want to see; on a wide window Step frames sits beside LED, and I/O beside Panel firmware.
+- **The Run view uses more of a wide screen** (up to 1500 px), so the Scope shows a longer stretch of the trace.
+- **Clearer Scope controls.** auto-Y and sound show "on"/"off", a new "labels: full / clean" switch controls trial names on the trace, and the sound options are labeled "sound settings ▾".
+- **Replay keeps your place.** The current step stays in view when you resize the Scope, and Display stays usable during a replay.
+- **Edit's settings button now reads "⚙ Protocol settings"**, to separate the protocol's own settings from the Studio's.
+- **A notice asks you to update the browser** (Chrome or Edge 111+) if it's too old for the Studio's display styles.
+- **Fixed:** "Sign out" no longer appears while you are signed out.
+
+<!-- #242 -->
+- **Console → Panel firmware → Choose… lists the published production build and the legacy image, each with its fingerprint**, and refuses to upload an image whose bytes don't match the catalog.
+
 ## v0.93 (2026-09-29) · Panel inventory in every run log; Digital IO 1 trigger fix
 
 <!-- #233 -->

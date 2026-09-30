@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "name": "2026-09-29.2",
+  "kind": "candidate",
+  "rc": 6,
+  "created_at": "2026-09-30T11:22:39Z",
+  "created_at_et": "2026-09-30 07:22 ET",
+  "main_sha": "9eeb25c56520686261cb2f4c5e6d923fa297182e",
+  "headline": "",
+  "prs": [
+    {
+      "number": 238,
+      "title": "Studio: LAB-158 ports (Protocol \u25be, \u2699 Settings, two-column Console) + visibility themes",
+      "head_sha": "01d6e8440b19cf6f58c2380c99e2922ce9f1d677",
+      "head_ref": "claude/intelligent-albattani-1c8c7f",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/238"
+    },
+    {
+      "number": 240,
+      "title": "feat(pattern-designer): multi-color G6 panels V1 \u2014 Panel LEDs layout, ON color, per-bank preview (LAB-228)",
+      "head_sha": "a3be5e47edb06ef514d2d19b23a93bd9bd2e67d8",
+      "head_ref": "claude/color-panel-pattern-editor-7d583a",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/240"
+    },
+    {
+      "number": 242,
+      "title": "flasher + Studio picker: one production build from the published catalog; legacy images hashed, never default (panel-fw-v1.3.1)",
+      "head_sha": "512a4d15d626f359c89f4a3f49676394c02f650d",
+      "head_ref": "claude/panel-fw-catalog-cleanup",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/242"
+    }
+  ],
+  "versions": {
+    "flasher": {
+      "from": "v0.3",
+      "to": "v0.4"
+    },
+    "pattern-designer": {
+      "from": "v0.11",
+      "to": "v0.12"
+    },
+    "studio": {
+      "from": "v0.93",
+      "to": "v0.94"
+    }
+  },
+  "hotfix_reason": null,
+  "bridge_changed": true
+}
