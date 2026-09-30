@@ -3529,7 +3529,7 @@
                 arena_id: configName ? getArenaId(gen, configName) : 0,
                 observer_id: 0
             };
-            const filename = addArenaPrefix(state.filename || 'pattern.pat');
+            const filename = withColorTag(addArenaPrefix(state.filename || 'pattern.pat'));
             return { patternData, filename };
         }
 
@@ -3847,17 +3847,26 @@
             // Remove .pat extension for processing
             const baseName = filename.replace(/\.pat$/i, '');
 
-            // Check if filename already starts with a config prefix (e.g., G6_2x10_)
-            // Config names look like: G6_2x10, G4_3x12, G41_2x12_cw, etc.
-            const configPattern = /^(G\d+_?\d*_\d+x\d+[a-z]*_?[a-z]*)_/i;
-            if (configPattern.test(baseName)) {
-                // Already has a prefix, replace it with current config
-                const newBase = baseName.replace(configPattern, configName + '_');
-                return newBase + '.pat';
+            // Already carries a KNOWN config prefix (e.g. G6_2x10_)? Replace it with the current
+            // config. Matched against the registry by exact name (longest first) — the old loose
+            // regex `G\d+_\d+x\d+[a-z]*_?[a-z]*_` also swallowed the next word of the name, so a
+            // second save turned "G6_2x10_combo_test" into "G6_2x10_test".
+            const existing = findArenaPrefix(baseName);
+            if (existing) {
+                return configName + '_' + baseName.slice(existing.length + 1) + '.pat';
             }
 
             // No prefix, add one
             return configName + '_' + baseName + '.pat';
+        }
+
+        // The registry config name (e.g. "G6_2x10", "G41_2x12_cw") that `baseName` starts with
+        // (followed by "_"), or null. Case-insensitive, longest name first so "G6_2x8of10" beats
+        // no shorter sibling by accident.
+        function findArenaPrefix(baseName) {
+            const lower = baseName.toLowerCase();
+            const names = Object.keys(STANDARD_CONFIGS).sort((a, b) => b.length - a.length);
+            return names.find(n => lower.startsWith(n.toLowerCase() + '_')) || null;
         }
 
         /**
@@ -3865,8 +3874,8 @@
          */
         function removeArenaPrefix(filename) {
             const baseName = filename.replace(/\.pat$/i, '');
-            const configPattern = /^(G\d+_?\d*_\d+x\d+[a-z]*_?[a-z]*)_/i;
-            const stripped = baseName.replace(configPattern, '');
+            const existing = findArenaPrefix(baseName);
+            const stripped = existing ? baseName.slice(existing.length + 1) : baseName;
             return stripped + '.pat';
         }
 
@@ -4404,8 +4413,7 @@
                     for (const f of pattern.frames) {
                         PanelColor.applyOnColor(f, pattern.pixelRows, pattern.pixelCols, pattern.gs_val, state.panel.layoutKey, weights);
                     }
-                    const tag = PanelColor.filenameTag(state.panel.layoutKey);
-                    if (tag && filename) filename = filename.replace(/\.pat$/i, '') + tag + '.pat';
+                    filename = withColorTag(filename);
                 }
 
                 // Convert to state.pattern format
@@ -5436,6 +5444,16 @@
             renderOnColorChips(document.getElementById('onColorChips'), false);
             renderOnColorChips(document.getElementById('onColorChipsEdit'), true);
             renderOnColorCustom();
+        }
+
+        // Filename tag for color layouts (`_4c`, `_rir`), inserted before `.pat`. Applied at SAVE
+        // time in buildPatternDataForSave so every path — generate, combine, tray reload, image
+        // import — carries it; idempotent, and a no-op for the green layout.
+        function withColorTag(filename) {
+            const tag = PanelColor.filenameTag(state.panel.layoutKey);
+            if (!tag || !filename) return filename;
+            const base = filename.replace(/\.pat$/i, '');
+            return base.endsWith(tag) ? base + '.pat' : base + tag + '.pat';
         }
 
         function updatePanelLayoutHint() {
