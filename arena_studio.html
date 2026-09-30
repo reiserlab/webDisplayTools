@@ -6193,17 +6193,20 @@ function studioMarkerCurrent(stored, current) {
     });
     // firmware upload (0xE0)
     // ---- panel-firmware chooser: official catalogs + local .bin -------------
-    // "Official" ISP images come from TWO schema-identical manifests (see
-    // docs/development/arena-studio-isp-firmware-push-handoff.md):
-    //   1. The firmware repo's PUBLISHED Pages manifest.json — refreshed every
-    //      time the modal opens; entries carry a nested bin: {file, sha256}
-    //      once a panel-fw-v* release is tagged (fetch from Pages, NEVER from
-    //      Release assets — those send no CORS headers).
-    //   2. flasher/firmware/manifest-dev.json on THIS site (same-origin,
-    //      offline-safe) — dev/pre-release footered images committed alongside
-    //      (incl. the ISP-progress builds that draw a bar + smiley on-panel).
+    // "Official" ISP images come from the firmware repo's PUBLISHED Pages
+    // manifest.json — refreshed every time the modal opens; entries carry a
+    // nested bin: {file, sha256} once a panel-fw-v* release is tagged (fetch
+    // from Pages, NEVER from Release assets — those send no CORS headers).
+    // Since panel-fw-v1.3.0 the catalog holds ONE production build. The legacy
+    // manifest on THIS site lists images kept only so a replacement panel can
+    // match an arena not yet reflashed to the current production build — never
+    // a default; drop an entry once no arena runs it. (The former dev manifest
+    // and its pre-release images are gone: one of them, flashed by default from
+    // the flasher page, put the PE03 frame-drop bug on ten new panels.)
     const FW_PAGES_BASE = 'https://reiserlab.github.io/LED-Display_G6_Firmware_Panel';
-    const FW_DEV_MANIFEST = 'flasher/firmware/manifest-dev.json';
+    // flasher/firmware/legacy-manifest.json — same schema, `default` always false,
+    // sha256 + fingerprint per artifact; shared with the flasher page.
+    const FW_LEGACY_MANIFEST = 'flasher/firmware/legacy-manifest.json';
     // 32-byte ISP footer: {magic "G6PANFW\0", version[16] ASCII, crc32 LE, size LE}.
     function parseIspFooter(data) {
         if (!data || data.length < 32) return null;
@@ -6280,15 +6283,22 @@ function studioMarkerCurrent(stored, current) {
         use.addEventListener('click', async () => {
             fwModalStatus('fetching ' + entry.label + '…');
             try {
-                const res = await fetch(entry.file, { cache: 'no-store' });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = new Uint8Array(await res.arrayBuffer());
+                const data = await fwEntryBytes(entry);
                 // Published entries carry bin.sha256 — refuse a corrupt/truncated
                 // fetch outright (a bad image bricks nothing, but wastes a flash).
                 if (entry.sha256) {
                     const got = await sha256HexOf(data);
                     if (got !== String(entry.sha256).toLowerCase()) {
                         fwModalStatus('sha256 MISMATCH for ' + entry.label + ' — not uploading (fetch corrupt/stale?)');
+                        return;
+                    }
+                }
+                // The catalog's fingerprint is metadata, not proof: recompute it from the
+                // bytes we are about to upload and refuse if the listing disagrees.
+                if (entry.fingerprint) {
+                    const fp = '0x' + crc32(data.subarray(0, 65536)).toString(16).toUpperCase().padStart(8, '0');
+                    if (fp.toLowerCase() !== String(entry.fingerprint).toLowerCase()) {
+                        fwModalStatus('fingerprint MISMATCH for ' + entry.label + ': image ' + fp + ' vs catalog ' + entry.fingerprint + ' — not uploading');
                         return;
                     }
                 }
@@ -6303,22 +6313,52 @@ function studioMarkerCurrent(stored, current) {
         note.style.fontSize = '11px';
         note.textContent = entry.note || '';
         row.appendChild(use); row.appendChild(label); row.appendChild(note);
+        // Fingerprint = CRC-32 of the image's first 64 KiB, the same number the
+        // panel inventory (0xD1) reports per panel — so the operator can match
+        // "what I would upload" against "what the arena runs" before flashing.
+        note.title = 'fingerprint = CRC-32 of the first 64 KiB — Console → Panel firmware → Inventory shows this per panel';
+        if (entry.fingerprint) {
+            // From the manifest: no download needed to render the row. Use re-verifies
+            // the sha256 before uploading, so a listing/image mismatch cannot reach the SD.
+            note.textContent = (entry.note ? entry.note + ' · ' : '') + 'fingerprint ' + entry.fingerprint;
+        } else {
+            fwEntryBytes(entry).then((data) => {
+                const fp = crc32(data.subarray(0, 65536));
+                note.textContent = (entry.note ? entry.note + ' · ' : '') + 'fingerprint 0x' + fp.toString(16).toUpperCase().padStart(8, '0');
+            }).catch(() => { note.textContent = (entry.note ? entry.note + ' · ' : '') + 'fingerprint unavailable'; });
+        }
         return row;
+    }
+    // One fetch per image per modal session (the row's fingerprint and its Use
+    // button share it).
+    const fwBytesCache = new Map();
+    function fwEntryBytes(entry) {
+        if (!fwBytesCache.has(entry.file)) {
+            const p = fetch(entry.file, { cache: 'no-store' }).then(async (res) => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return new Uint8Array(await res.arrayBuffer());
+            });
+            p.catch(() => fwBytesCache.delete(entry.file)); // a transient failure must be retryable from Use
+            fwBytesCache.set(entry.file, p);
+        }
+        return fwBytesCache.get(entry.file);
     }
     // Map one manifest's artifacts into chooser rows. Both manifests share the
     // release schema: entries with a nested "bin": {file, sha256} carry the
     // footered ISP image (<slug>.bin next to the manifest; the footer's
     // version field is the release tag). A bin-only entry (no "uf2") is
     // fine — it just means no UF2 was staged for that build.
-    function manifestEntries(man, base, sourceNote) {
+    function manifestEntries(man, base, sourceNote, opts) {
+        const legacy = !!(opts && opts.legacy);
         return ((man && man.artifacts) || [])
             .filter((a) => a.bin)
             .map((a) => ({
                 label: a.label || a.bin.file,
                 file: base + '/' + a.bin.file,
                 sha256: a.bin.sha256,
-                isDefault: !!a.default,
-                note: sourceNote + (a.rev ? ' · ' + a.rev : '')
+                isDefault: legacy ? false : !!a.default, // legacy entries are never defaults
+                fingerprint: a.fingerprint || null,
+                note: sourceNote + (a.rev ? ' · ' + a.rev : '') + (legacy && a.note ? ' · ' + a.note : '')
             }));
     }
     async function fetchManifest(url) {
@@ -6329,6 +6369,7 @@ function studioMarkerCurrent(stored, current) {
     async function openFwModal() {
         const list = $('fwModalList');
         list.innerHTML = '';
+        fwBytesCache.clear();
         fwModalStatus('fetching catalogs…');
         $('fwModal').hidden = false;
         const notes = [];
@@ -6343,14 +6384,14 @@ function studioMarkerCurrent(stored, current) {
         } catch (e) {
             notes.push('published catalog unreachable');
         }
-        // … then this site's committed dev images (offline-safe fallback).
+        // … then the legacy images committed on this site (same-origin, offline-safe).
         try {
-            const man = await fetchManifest(FW_DEV_MANIFEST);
-            const entries = manifestEntries(man, 'flasher/firmware', 'dev · this site');
+            const man = await fetchManifest(FW_LEGACY_MANIFEST);
+            const entries = manifestEntries(man, 'flasher/firmware', 'legacy · this site', { legacy: true });
             entries.forEach((e) => list.appendChild(fwRow(e)));
-            notes.push(entries.length + ' dev');
+            if (entries.length) notes.push(entries.length + ' legacy');
         } catch (e) {
-            notes.push('dev manifest unavailable');
+            notes.push('legacy manifest unavailable');
         }
         if (!list.children.length) {
             const d = document.createElement('div');

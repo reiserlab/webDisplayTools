@@ -257,102 +257,50 @@ async function flashBlocks(pb, blocks, onProgress) {
 }
 
 // --- Firmware catalog -----------------------------------------------------------
-// Builds come from two sources, merged in this order:
-//   1. LOCAL_BUILDS below — UF2s committed under flasher/firmware/ and served
-//      from THIS site (same-origin, no CORS, no network). These appear first.
-//   2. The firmware repo's GitHub Pages manifest.json (FW_BASE) — the published
-//      build CATALOG: artifacts[] = { rev, variant, label, usb_product, default,
-//      uf2: {file, sha256}, bin: {file, sha256} } — uf2/bin are each optional
-//      (a bin-only entry has no uf2). We only ever look at `uf2` here.
-// The dropdown is populated straight from the merged list, so new published
-// builds still appear automatically.
+// Two manifests, identical schema (artifacts[] = { rev, variant, label, usb_product,
+// default, fingerprint?, note?, legacy?, uf2: {file, sha256}, bin: {file, sha256} }):
+//   1. FW_BASE/manifest.json — the firmware repo's PUBLISHED catalog. Its
+//      `default: true` artifact is the one pre-selected. Since panel-fw-v1.3.0
+//      it holds ONE production build (v0.3.1 hardware only; the 2P line-sync
+//      behaviour is part of it).
+//   2. firmware/legacy-manifest.json on THIS site — images kept only so a
+//      replacement panel can match an arena that has not been reflashed yet.
+//      Never a default: with the published catalog unreachable the dropdown
+//      shows a placeholder and Flash stays disabled until the operator picks a
+//      legacy build on purpose. The stale dev images that used to be listed
+//      here (the 2026-06-30 "ISP Production" builds with the PE03 frame-drop
+//      bug) are gone; one of them, flashed by default, is why this is strict.
+// We only ever look at `uf2` here (a bin-only entry is for the arena's over-SPI
+// reflashing). `fingerprint` (CRC-32 of the first 64 KiB) is what the controller's
+// panel inventory (0xD1) reports per panel; we recompute it from the bytes we
+// would actually flash and flag a mismatch against the manifest's value.
+const LEGACY_MANIFEST = 'firmware/legacy-manifest.json';
+const LEGACY_SECTION = 'Legacy builds (this site — only to match an arena not yet reflashed)';
 let firmware = { version: null, commit: '', built: '', builds: [], byFile: {} };
 let chosenFile = null;
 
-// Locally-built firmware shipped with the flasher. The Pages catalog has no ISP
-// build, so the production-with-ISP/OTA images (built from the firmware repo's
-// `panel-isp` branch via `pixi run build31` / `build21`) are committed here and
-// flashed straight from this origin. `local: true` makes onFlashClick() fetch
-// `file` relative to this page instead of from FW_BASE; `section` pins them to
-// their own optgroup at the top of the dropdown.
-const LOCAL_BUILDS = [
-    {
-        rev: 'v0.3.1',
-        variant: 'production',
-        section: 'Local builds (Production + ISP)',
-        label: 'v0.3.1 ISP Production',
-        file: 'firmware/g6-panel-v0.3.1-isp.uf2',
-        usb_product: 'G6 Panel v0.3',
-        local: true,
-        default: true
-    },
-    {
-        rev: 'v0.2.1',
-        variant: 'production',
-        section: 'Local builds (Production + ISP)',
-        label: 'v0.2.1 ISP Production',
-        file: 'firmware/g6-panel-v0.2.1-isp.uf2',
-        usb_product: 'G6 Panel v0.2',
-        local: true,
-        default: false
-    },
-    // Active-low EINT trigger test builds (firmware commit 9014b5b: PR #29 active-low switch + PRs #26/#27/#28 ISP indicator):
-    // identical to production (full SPI ingest, deployable) except the
-    // external-trigger polarity is inverted — Triggered advances a row per
-    // HIGH->LOW edge, Gated lights while EINT is LOW, pull-up on EINT. For
-    // the imaging-system sync line, which asserts LOW. `variant:
-    // 'production'` on purpose: the non-production caution note ("no SPI
-    // ingest") would be wrong for these; the section + label carry the flag.
-    {
-        rev: 'v0.3.1',
-        variant: 'production',
-        section: 'Test builds (active-low EINT trigger)',
-        label: 'v0.3.1 Active-low EINT trigger (9014b5b)',
-        file: 'firmware/g6-panel-v0.3.1-eintlow-9014b5b.uf2',
-        usb_product: 'G6 Panel v0.3',
-        local: true,
-        default: false
-    },
-    {
-        rev: 'v0.2.1',
-        variant: 'production',
-        section: 'Test builds (active-low EINT trigger)',
-        label: 'v0.2.1 Active-low EINT trigger (9014b5b)',
-        file: 'firmware/g6-panel-v0.2.1-eintlow-9014b5b.uf2',
-        usb_product: 'G6 Panel v0.2',
-        local: true,
-        default: false
-    },
-    // BETA 2P line-sync build (panel repo branch claude/display-timing-sync-protocol
-    // on 9014b5b, env pico_v031_eintlow_2p, ISP footer "2p-9014b5bb-d"). Same
-    // SPI ingest as production, so `variant: 'production'`; the `caution` text
-    // below replaces the generic "no SPI ingest" note. Bench-UNTESTED as of
-    // 2026-09-23 — for resonant-scanning imaging rigs only.
-    {
-        rev: 'v0.3.1',
-        variant: 'production',
-        beta: true,
-        section: 'BETA builds (2P line-sync — bench-untested)',
-        label: 'v0.3.1 BETA 2P line-sync: active-low EINT + 1 µs BCM base + free-running Triggered (9014b5b+)',
-        file: 'firmware/g6-panel-v0.3.1-BETA-eintlow-2p-9014b5b.uf2',
-        usb_product: 'G6 Panel v0.3',
-        local: true,
-        default: false,
-        caution:
-            'BETA — not bench-tested. For two-photon imaging rigs feeding the ScanImage line clock to ' +
-            'the arena BNC J4 (active-low). Differences from production: (1) brightness at a given duty ' +
-            'is ⅓ (BCM base 1 µs, so a full-duty row is ~15 µs and fits an ~18 µs turnaround gap); ' +
-            '(2) panel display mode 2 (Triggered) free-runs — one row per line-clock edge forever — so ' +
-            '<em>stopDisplay does not blank; use allOff</em>; (3) panels are dark whenever the line clock is ' +
-            'absent; (4) use Gray_16 patterns (300 Hz refresh), never Gray_2 at 1000 Hz. Roll back with ' +
-            '“Active-low EINT trigger (9014b5b)”. Do not flash behaviour-rig panels with this build.'
-    }
-];
+function buildsFromManifest(m, { local }) {
+    return (m.artifacts || [])
+        .filter((a) => a.uf2)
+        .map((a) => ({
+            rev: a.rev,
+            variant: a.variant,
+            label: a.label,
+            usb_product: a.usb_product,
+            // legacy entries are never defaults, whatever the file says
+            default: local ? false : !!a.default,
+            file: local ? `firmware/${a.uf2.file}` : a.uf2.file,
+            sha256: a.uf2.sha256 || null,
+            fingerprint: a.fingerprint || null,
+            local,
+            section: local ? LEGACY_SECTION : undefined,
+            caution: local ? a.note || '' : a.caution || ''
+        }));
+}
 
 async function resolveFirmware() {
-    // The local builds always appear (and lead), independent of the network. The
-    // remote catalog is best-effort: if Pages is unreachable we still flash local.
     let remote = [];
+    let legacy = [];
     let meta = { version: null, commit: '', built: '' };
     try {
         // no-store: always pick up the newest catalog the firmware repo published.
@@ -360,44 +308,52 @@ async function resolveFirmware() {
         if (!res.ok) throw new Error(`manifest.json HTTP ${res.status}`);
         const m = await res.json();
         meta = { version: m.version || '(unknown)', commit: m.commit || '', built: m.built || '' };
-        // Only entries with a "uf2" build are WebUSB-flashable — a "bin"-only
-        // entry is an ISP-footer image for the arena controller's over-SPI
-        // reflashing (parseUF2 would reject a raw .bin), so it's excluded.
-        // Flatten uf2.{file,sha256} to the top level to match the rest of
-        // this file's build-object shape (and LOCAL_BUILDS below).
-        remote = (m.artifacts || [])
-            .filter((a) => a.uf2)
-            .map((a) => ({
-                rev: a.rev,
-                variant: a.variant,
-                label: a.label,
-                usb_product: a.usb_product,
-                default: a.default,
-                file: a.uf2.file,
-                sha256: a.uf2.sha256
-            }));
+        remote = buildsFromManifest(m, { local: false });
     } catch (e) {
-        log(`Remote catalog unavailable (${e.message}); showing local builds only.`, 'status-err');
+        log(
+            `Published catalog unavailable (${e.message}) — pick a legacy build only if you mean to.`,
+            'status-err'
+        );
+    }
+    try {
+        const res = await fetch(LEGACY_MANIFEST, { cache: 'no-store' });
+        if (res.ok) legacy = buildsFromManifest(await res.json(), { local: true });
+    } catch (e) {
+        log(`Legacy manifest unavailable (${e.message}).`, 'status-err');
     }
 
-    // Exactly one option may be the selected default (a <select> keeps the LAST
-    // selected). When a local build is the default, clear the remote defaults so
-    // the local one wins.
-    if (LOCAL_BUILDS.some((b) => b.default)) {
-        remote = remote.map((b) => (b.default ? { ...b, default: false } : b));
+    // Sanity on the published catalog: more than one default is a catalog bug —
+    // trust none (placeholder) rather than whichever the <select> keeps last.
+    // Duplicate file names would collide in byFile; keep the first.
+    const defaults = remote.filter((b) => b.default);
+    if (defaults.length > 1) {
+        log(
+            `Published catalog lists ${defaults.length} default builds — refusing to pick one; choose explicitly.`,
+            'status-err'
+        );
+        remote = remote.map((b) => ({ ...b, default: false }));
     }
+    const seen = new Set();
+    const all = [...remote, ...legacy].filter((b) => {
+        if (seen.has(b.file)) {
+            log(`Duplicate catalog entry for ${b.file} ignored.`, 'status-err');
+            return false;
+        }
+        seen.add(b.file);
+        return true;
+    });
 
     firmware.version = meta.version;
     firmware.commit = meta.commit;
     firmware.built = meta.built;
-    firmware.builds = [...LOCAL_BUILDS, ...remote];
+    firmware.builds = all; // published first, legacy last
     firmware.byFile = Object.fromEntries(firmware.builds.map((b) => [b.file, b]));
 
     populateBuilds();
     const id = [firmware.version, firmware.commit, firmware.built].filter(Boolean).join('  ·  ');
-    $('build-meta').textContent = id || '(local builds only)';
+    $('build-meta').textContent = id || '(published catalog unreachable — legacy builds only)';
     log(
-        `Firmware ${id || '(local only)'} — ${firmware.builds.length} build(s): ` +
+        `Firmware ${id || '(published catalog unreachable)'} — ${firmware.builds.length} build(s): ` +
             firmware.builds.map((b) => b.label || `${b.rev}/${b.variant}`).join(', ')
     );
 }
@@ -415,7 +371,18 @@ const sectionOf = (b) => b.section || SECTION[b.variant] || 'Other builds';
 function populateBuilds() {
     const sel = $('build-select');
     sel.innerHTML = '';
-    const groups = new Map(); // insertion order: local builds first, then catalog order
+    // With no default (published catalog unreachable, or a manifest without one) a
+    // <select> would silently pick its first option — here the legacy build. Put a
+    // disabled placeholder first instead, so Flash stays off until a real choice.
+    if (!firmware.builds.some((b) => b.default)) {
+        const ph = document.createElement('option');
+        ph.value = '';
+        ph.disabled = true;
+        ph.selected = true;
+        ph.textContent = firmware.builds.length ? '— choose a build —' : '— no builds available —';
+        sel.appendChild(ph);
+    }
+    const groups = new Map(); // insertion order: published catalog first, legacy last
     for (const b of firmware.builds) {
         const s = sectionOf(b);
         if (!groups.has(s)) groups.set(s, []);
@@ -435,6 +402,105 @@ function populateBuilds() {
     }
     sel.disabled = firmware.builds.length === 0;
     onBuildChange();
+}
+
+// --- Image fingerprint -----------------------------------------------------------
+// The arena controller's panel inventory (GET_PANEL_INVENTORY 0xD1, Arena-Firmware
+// #59) reports each panel's firmware as the CRC-32 of the first 64 KiB of its app
+// flash. Showing the same number for the selected image lets an operator match
+// "what this page will flash" against "what the inventory says the arena runs".
+const CRC32_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        t[n] = c >>> 0;
+    }
+    return t;
+})();
+function crc32(bytes) {
+    let c = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) c = CRC32_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+}
+const FINGERPRINT_BYTES = 65536;
+// First 64 KiB of the flattened UF2 payload (blocks are 256 B at ascending flash
+// addresses; gaps, if any, read as erased flash 0xFF).
+function fingerprintOfBlocks(blocks) {
+    if (!blocks.length) return null;
+    const base = blocks[0].addr;
+    const out = new Uint8Array(FINGERPRINT_BYTES).fill(0xff);
+    for (const b of blocks) {
+        const off = b.addr - base;
+        if (off >= FINGERPRINT_BYTES) break;
+        out.set(b.data.subarray(0, Math.min(b.data.length, FINGERPRINT_BYTES - off)), off);
+    }
+    return crc32(out);
+}
+// One verified fetch per build per page load, shared by the fingerprint display
+// and the flash itself, so the number shown is computed from the bytes flashed.
+// cache: 'no-store' (always the published bytes), HTTP status checked, and the
+// manifest's sha256 verified when it carries one.
+const bytesCache = new Map(); // file → Promise<ArrayBuffer>
+async function sha256Hex(buf) {
+    const d = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+function fetchBuildBytes(b) {
+    if (!bytesCache.has(b.file)) {
+        const url = b.local ? b.file : `${FW_BASE}/${b.file}`;
+        const p = (async () => {
+            const res = await fetch(url, { cache: 'no-store' });
+            if (!res.ok) throw new Error(`${b.file}: HTTP ${res.status}`);
+            const buf = await res.arrayBuffer();
+            if (b.sha256) {
+                const got = await sha256Hex(buf);
+                if (got !== String(b.sha256).toLowerCase()) {
+                    throw new Error(
+                        `${b.file}: sha256 mismatch (got ${got.slice(0, 12)}…, catalog ${String(b.sha256).slice(0, 12)}…)`
+                    );
+                }
+            }
+            return buf;
+        })();
+        p.catch(() => bytesCache.delete(b.file)); // let a transient failure be retried
+        bytesCache.set(b.file, p);
+    }
+    return bytesCache.get(b.file);
+}
+function fingerprintOf(b) {
+    return fetchBuildBytes(b).then((buf) => fingerprintOfBlocks(parseUF2(buf)));
+}
+const hex32 = (v) => '0x' + (v >>> 0).toString(16).toUpperCase().padStart(8, '0');
+async function showFingerprint(b) {
+    const el = $('build-fp');
+    if (!el) return;
+    if (!b) {
+        el.textContent = '';
+        return;
+    }
+    el.textContent = b.fingerprint
+        ? `fingerprint ${b.fingerprint} (catalog) — verifying against the image…`
+        : 'fingerprint: computing from the image…';
+    let fp = null;
+    let err = null;
+    try {
+        fp = await fingerprintOf(b);
+    } catch (e) {
+        err = e;
+    }
+    if (chosenFile !== b.file) return; // selection moved on while we fetched
+    if (fp === null) {
+        el.textContent = `fingerprint unavailable — ${err ? err.message : 'image not fetched'}`;
+        return;
+    }
+    const shown = hex32(fp);
+    const mismatch = b.fingerprint && b.fingerprint.toLowerCase() !== shown.toLowerCase();
+    el.textContent =
+        `fingerprint ${shown} — the Studio\u2019s panel inventory reports this value for panels running this image` +
+        (mismatch
+            ? ` — WARNING: the catalog lists ${b.fingerprint}; the image and its listing disagree`
+            : '');
 }
 
 // Sync state + UI to the selected build: enable Flash and caution on non-production builds.
@@ -457,6 +523,7 @@ function onBuildChange() {
     } else {
         note.hidden = true;
     }
+    showFingerprint(b);
     setStatus('');
 }
 
@@ -538,11 +605,10 @@ async function onFlashClick() {
     if (!b) return;
     // Local builds are served from this origin (file is relative to this page);
     // remote builds come from the firmware repo's Pages catalog.
-    const url = b.local ? b.file : `${FW_BASE}/${b.file}`;
-
     let device, pb;
     try {
         $('flash-btn').disabled = true;
+        $('build-select').disabled = true; // the build captured above is the one flashed
         setStatus('Requesting panel…');
         device = await navigator.usb.requestDevice({ filters: [{ vendorId: RP_VID }] });
 
@@ -557,7 +623,7 @@ async function onFlashClick() {
         }
 
         log(`Downloading ${b.label || b.file}…`);
-        const uf2 = await (await fetch(url)).arrayBuffer();
+        const uf2 = await fetchBuildBytes(b); // verified: status, sha256; same bytes as the fingerprint
         const blocks = parseUF2(uf2);
         log(`UF2: ${blocks.length} blocks (${((blocks.length * 256) / 1024).toFixed(0)} KiB).`);
 
@@ -589,6 +655,7 @@ async function onFlashClick() {
         $('progress').hidden = true;
         // Re-arm for the next panel — re-flashing the SAME build is the common batch
         // case, so don't make the operator toggle the dropdown to re-enable the button.
+        $('build-select').disabled = firmware.builds.length === 0;
         $('flash-btn').disabled = !chosenFile;
     }
 }

@@ -16,9 +16,8 @@ reference code, and same-origin dev artifacts committed alongside.
 - **Fetch from Pages, never from Release assets** — release-asset downloads send no CORS headers;
   Pages shares the `reiserlab.github.io` origin with this site, so `fetch()` is same-origin. (Same
   pattern as `flasher/flasher.js` `FW_BASE`.)
-- The ISP-image publishing was added in firmware-repo **PR #17** (`release-isp-images` branch).
-  Until it merges *and* a tag is cut, the live Pages catalog has **no** `bin` entries — use the
-  dev artifacts in §3.
+- ISP-image publishing (firmware-repo PR #17) is live: every `panel-fw-v*` tag publishes the footered
+  `.bin` next to the UF2. Since `panel-fw-v1.3.0` the catalog holds one production build (v0.3.1).
 
 ## 2. Catalog schema (manifest.json)
 
@@ -40,18 +39,16 @@ separate list entries:
 crc32 (zlib, u32 LE), size (u32 LE)}`. The arena controller validates this footer before flashing
 ("bad footer magic" = wrong/unfootered file). Verify `bin.sha256` after fetch before pushing.
 
-## 3. Dev artifacts (committed here, same-origin — develop against these today)
+## 3. Images served by this site
 
-`flasher/firmware/` + **`flasher/firmware/manifest-dev.json`** (schema-identical to the official
-manifest, 4 entries):
-
-- `g6-panel-v0.{3,2}.1-isp-progress-23d66af.bin` (+ matching UF2s) — **dev build with the visual
-  programming indicator**: panels draw a progress bar (central 10 rows) while being ISP-flashed and
-  a smiley on the new image's first boot. Firmware-repo branch `isp-progress-display` (23d66af).
-- `g6-panel-v0.{3,2}.1-isp-fleet-dd7d3f9.bin` — the build the whole arena runs today (PR #15).
-
-Point your dev fetch at `flasher/firmware/manifest-dev.json`; flip to the Pages URL when PR #17 +
-a release tag land. Entries with no `uf2` key are ISP-only (no UF2 staged).
+`flasher/firmware/` holds **legacy** images only — the footered ISP `.bin` (and the UF2) of the image
+an arena ran before the current production build, kept until that arena is reflashed as a whole.
+Both pages read them from **`flasher/firmware/legacy-manifest.json`** (`FW_LEGACY_MANIFEST` in
+`arena_studio.html`, `LEGACY_MANIFEST` in `flasher/flasher.js`), never as the default; remove an entry
+once no arena runs it. There is no dev manifest any more: the
+official source is the firmware repo's Pages `manifest.json`, which since `panel-fw-v1.3.0` carries
+one production build (v0.3.1 hardware only). Both pickers show each image's fingerprint (CRC-32 of
+its first 64 KiB), the number the controller's panel inventory (`0xD1`) reports per panel.
 
 ## 4. The push flow (wire level — all encoders/decoders exist in `js/arena-wire-g6.js`)
 
@@ -107,8 +104,8 @@ timeout, always verify after program.
 | piece | state |
 |---|---|
 | Footer format + `make_isp_image.py` | shipped, hardware-validated (fleet runs its output) |
-| Release pipeline publishes ISP bins | firmware repo **PR #17** (open) |
+| Release pipeline publishes ISP bins | shipped (firmware repo PR #17; every `panel-fw-v*` tag) |
 | Merged production firmware (two-PIO+ISP) | firmware repo **PR #15** (open; fleet already runs it) |
 | Progress-bar/smiley firmware | branch `isp-progress-display` (23d66af; USB-validated, arena ISP demo pending) |
 | Dev artifacts + this doc | merged (webDisplayTools PR #134) |
-| Arena Studio fetch/push UI | ✅ **shipped 2026-07-02** — `arena_studio.html` Console → panel-firmware tile → Choose… modal: consumes BOTH manifests (published Pages + `manifest-dev.json`, refreshed per open), verifies `bin.sha256` post-fetch, validates the G6PANFW footer, checks the 0xE0 stored-CRC against a local crc32 before any flash, 240 s program timeouts, on-SD footer version shown at connect. Single + batch (retry-once, per-panel report, blink progress map) included. |
+| Arena Studio fetch/push UI | ✅ shipped 2026-07-02; since the catalog cleanup it consumes the published Pages manifest plus `flasher/firmware/legacy-manifest.json` (hashed, never default), shows each image's fingerprint, and sha256-verifies before the 0xE0 upload |

@@ -1,0 +1,27 @@
+{
+  "version": "legacy",
+  "commit": "9014b5b",
+  "built": "2026-07-24",
+  "_comment": "Images served from THIS site for panels that must match an arena not yet reflashed to the current production build. Same schema as the firmware repo's published manifest.json; `default` is always false here (the published catalog's default wins), `legacy: true` puts the entry in the Legacy section with its note as a caution, `fingerprint` is the CRC-32 of the first 64 KiB (what the controller's panel inventory 0xD1 reports). Remove an entry once no arena runs it.",
+  "artifacts": [
+    {
+      "rev": "v0.3.1",
+      "variant": "production",
+      "legacy": true,
+      "env": "pico_v031_eintlow",
+      "label": "v0.3.1 — Legacy: fleet image before panel-fw-v1.3.0 (9014b5b, active-low EINT)",
+      "usb_product": "G6 Panel v0.3",
+      "default": false,
+      "fingerprint": "0x9BE0D3C7",
+      "note": "The image the course arenas ran before panel-fw-v1.3.0. Use it only to make a replacement panel match an arena that has not been reflashed yet; otherwise flash the Production build.",
+      "uf2": {
+        "file": "g6-panel-v0.3.1-eintlow-9014b5b.uf2",
+        "sha256": "d76b8fde3adcbeb34adcfc4e88e25ef8980e29c2031231ef14968f5bef02773f"
+      },
+      "bin": {
+        "file": "g6-panel-v0.3.1-isp-eintlow-9014b5b.bin",
+        "sha256": "4c6d2770c9c459ba8551e2de89e3a4cea8710bd74385649de679d895f7250462"
+      }
+    }
+  ]
+}

@@ -1,5 +1,11 @@
 # Rig checklist — BETA 2P line-sync panel firmware on the Bergamo (2026-09-23)
 
+> **Superseded (2026-09-29).** The 2P line-sync behaviour is part of the single production panel build from
+> `panel-fw-v1.3.0` on (Triggered: falling edge, free-running, 1 µs BCM base; every other mode unchanged). The
+> BETA image and its catalog/flasher entries this checklist refers to were removed from webDisplayTools; the
+> panel-firmware release notes and `g6_01` spec carry the current procedure. Kept for the rig-run history below.
+
+
 For whoever runs the test at the rig PC. **Nothing needs to be cloned, pulled, or downloaded**: the
 firmware and the protocol are both in the published Arena Studio's own catalogs (merged 2026-09-23).
 No bench test was run on this firmware; the rig's own line clock is the test. Roll-back is one ISP push of
