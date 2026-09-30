@@ -43,6 +43,7 @@ function generatePatternIcon(patternData, arenaConfig, options = {}) {
         showGaps: true, // render missing panels as gaps
         showOutlines: true, // show arena outlines for depth
         padding: 2, // minimal padding - ring fills ~95% of canvas
+        panelLayout: null, // js/panel-color.js layout key for multi-color panels (null = green)
         ...options
     };
 
@@ -187,6 +188,11 @@ function computeWeightedAverage(frames, frameIndices, weights, rows, cols) {
  * @returns {HTMLCanvasElement} Canvas with rendered icon
  */
 function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts) {
+    // Multi-color panels: tint each pixel by its LED bank (js/panel-color.js, loaded as a
+    // classic script by the Pattern Designer). Absent module / null / mono → legacy green.
+    const PC = globalThis.PanelColor;
+    const colorKey =
+        PC && opts.panelLayout && !PC.isMono(opts.panelLayout) ? opts.panelLayout : null;
     const canvas = document.createElement('canvas');
     // Supersample the backing store so thumbnails stay crisp on HiDPI/Retina
     // screens (the CSS display size is opts.width/height; without this the browser
@@ -307,8 +313,15 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
                     const pixelIdx = patternRow * patternColPixels + patternCol;
                     const brightness = frameData[pixelIdx] || 0;
 
-                    // Convert to color
-                    const color = brightnessToRGB(brightness, patternData.grayscaleMode);
+                    // Convert to color (per-bank color on multi-color panels)
+                    const color = colorKey
+                        ? PC.pixelCss(
+                              colorKey,
+                              patternRow,
+                              patternCol,
+                              brightness / (patternData.grayscaleMode === 'GS16' ? 15 : 1)
+                          )
+                        : brightnessToRGB(brightness, patternData.grayscaleMode);
 
                     // Calculate angular position for this pixel
                     const pixelAngle =
