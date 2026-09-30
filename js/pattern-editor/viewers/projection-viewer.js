@@ -23,6 +23,8 @@ class ProjectionViewer {
 
         this.arenaConfig = null;
         this.panelSpecs = null;
+        // Multi-color panel layout key (js/panel-color.js). null → legacy green.
+        this.panelLayoutKey = null;
 
         this.state = {
             pattern: null,
@@ -100,6 +102,15 @@ class ProjectionViewer {
      * Set the current frame to display
      * @param {number} frameIndex - 0-indexed frame number
      */
+    /**
+     * Select the panel color layout (a `js/panel-color.js` key). Each projected dot is
+     * tinted by the color of the LED bank at its pattern (row, col); null/mono → legacy green.
+     */
+    setPanelColor(layoutKey) {
+        this.panelLayoutKey = layoutKey || null;
+        this._render();
+    }
+
     setFrame(frameIndex) {
         if (!this.state.pattern) return;
         this.state.currentFrame = Math.max(
@@ -373,8 +384,13 @@ class ProjectionViewer {
         for (let r = 0; r < this.totalPixelRows; r++) {
             for (let c = 0; c < this.totalPixelCols; c++) {
                 const phi = spherical.phi[r][c]; // azimuth [-PI, PI]
-                const theta = spherical.theta[r][c]; // polar from north [0, PI]
-                const latDeg = ((Math.PI / 2 - theta) * 180) / Math.PI;
+                const theta = spherical.theta[r][c]; // polar angle [0, PI], measured from -z
+                // arenaCoordinates puts pattern row 0 at the most NEGATIVE z (the bottom of the
+                // arena — the same row-0-is-bottom convention as the grid, the 3D viewer and the
+                // .pat encoder, bench-verified 2026-09-29), and cart2sphere measures theta from
+                // -z, so row 0 has theta ≈ 0. Elevation is therefore theta − 90°, not 90° − theta:
+                // the previous sign drew the top row of the arena at the bottom of the map.
+                const latDeg = ((theta - Math.PI / 2) * 180) / Math.PI;
                 const lonDeg = (phi * 180) / Math.PI;
 
                 this.pixelData.push({
@@ -634,6 +650,12 @@ class ProjectionViewer {
         ctx.rect(m.left, m.top, plotW, plotH);
         ctx.clip();
 
+        const PC = globalThis.PanelColor;
+        const colorKey =
+            PC && this.panelLayoutKey && !PC.isMono(this.panelLayoutKey)
+                ? this.panelLayoutKey
+                : null;
+
         for (const px of this.pixelData) {
             // Forward project this pixel
             const proj = this._forwardProject(px.lonDeg, px.latDeg);
@@ -656,8 +678,11 @@ class ProjectionViewer {
                 brightness = 1.0; // Default full brightness when no pattern
             }
 
-            // Green phosphor color (matching MATLAB: pure green channel)
-            if (brightness > 0) {
+            if (colorKey) {
+                // Multi-color panel: the dot takes its LED bank's color.
+                ctx.fillStyle = PC.pixelCss(colorKey, px.row, px.col, brightness);
+            } else if (brightness > 0) {
+                // Green phosphor color (matching MATLAB: pure green channel)
                 const g = Math.round(brightness * 255);
                 ctx.fillStyle = `rgb(0,${g},0)`;
             } else {

@@ -290,8 +290,8 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   course guest account (`cshl-2026`, an outside collaborator) can only use a CLASSIC
   token — see `docs/development/data-repo-token-runbook.md`.
 - **Session rig (#135, v0.4):** `Studio.currentRig` (`{name, arenaConfig,
-  explicit}`) is THE bench rig for all three views — one top-bar selector,
-  locked by default. Always change it via the module block's
+  explicit}`) is THE bench rig for all three views — one selector (in the top bar's
+  ⚙ Settings menu), locked by default. Always change it via the module block's
   `setSessionRig(name, {explicit})`, never by assigning `Studio.currentRig`:
   it enforces explicit-beats-derived (a protocol load never overrides a
   user/`?rig=` choice — the mismatch chip surfaces disagreement instead),
@@ -322,7 +322,7 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   match, ambiguity refused → MAC verified → post-reset probe). Runner sends go through
   `session.send` (a link facade) so trialParams/STOP are logged. New wire commands used by probes
   MUST be exported + golden-tested (`GET_HEALTH` 0xCA decodes 55 B + optional 11 B slowest-op tail;
-  `GET_FRAME_POSITION` 0x72). **Soak driver** (`Studio.startSoak`, File ▾ → Soak…, `?soak=1`,
+  `GET_FRAME_POSITION` 0x72). **Soak driver** (`Studio.startSoak`, Protocol ▾ → Soak…, `?soak=1`,
   advanced-only) loops `Studio.runOnce(false)` (the no-dialog half of `beginRun`), refuses without
   a `behavior_v2` ack or without bridge frames, halts on the first fault by default, never
   auto-commits. Analyzer: `scripts/wedge-scan.py` (+ `tests/test-wedge-scan.py`, standalone
@@ -429,9 +429,46 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `Studio._urlSuppress`. URL writing is NOT a protocol mutation — never route
   it through `pushUndo`. Any NEW shareable state must flow through
   `encodeApp()` + `Studio.updateUrl` (never hand-build `location.search`).
-- **Console v6 layout (v0.6):** left rail of 7 tool panels (`data-panel` =
-  patterns/trial/step/test/io/fw/fictrac) + bench strip + always-visible resizable log;
-  the SD/library **listing IS the pattern picker** (row click drives the hidden `cPatName`).
+- **Top bar: Protocol ▾ vs ⚙ Settings.** `Protocol ▾` (`#fileMenu`, renamed from File)
+  holds protocol ACTIONS only (new/open/replay/save/promote/copy/reset/soak). `⚙ Settings`
+  (`#settingsMenu`) holds the Studio/bench settings kept in the browser, not the YAML: the
+  session rig, the GitHub block, Run logging, Display. The rig SELECTOR has no top-bar
+  slot, but a read-only rig tag (`#rigTag`, beside the status; click → ⚙ Settings) keeps the
+  bench rig always visible; `syncRigContext()` (called from `updateDeviceLine`) fills it and
+  names the rig in Connect's hover + Help text. A NEW app-wide setting goes in ⚙ Settings,
+  never back into Protocol ▾; Edit's YAML-backed drawer is labeled "⚙ Protocol settings".
+  Replay freezes Protocol ▾ and the rig / GitHub / Run-logging parts of ⚙ Settings
+  (`FREEZE_SELECTORS`) — NOT the whole menu, so Display stays usable. Because the menu itself
+  is not frozen, a NEW bench / repo / logging control added to ⚙ Settings must ALSO be added
+  to `FREEZE_SELECTORS` (js/studio-replay.js), or it stays live during a replay. User copy says "Protocol ▾ → …" / "⚙ Settings → …" —
+  `tests/test-studio-shell.js` fails on any stale "File ▾".
+- **Visibility themes (⚙ Settings → Display).** Dark (default) / Light / High contrast / Night (dim
+  red for darkened rigs — cuts most green/blue; not a measured spectral guarantee) / Color-blind safe (Okabe–Ito) / Match this computer — pure CSS-token
+  swaps on `html[data-ui-theme]`, stored per browser in `studio_ui_theme` and applied by the `<head>`
+  script before first paint (skipped on the Alt route, which keeps its own `data-theme`). THE rule:
+  **no hard-coded colors in stylesheet rules** — every color is a token defined in `:root` (Dark =
+  the original values) and in each `:root[data-ui-theme="…"]` block; tints are
+  `color-mix(in srgb,var(--tok) N%,transparent)`. Canvases can't read CSS, so they read tokens
+  (`scopePalette()` keyed on the theme attribute; `aiChartColors()`); pattern previews keep a dark
+  surround (`--preview-bg`) and Night maps them to red with the `#uiNightRed` SVG filter, OPT-IN
+  by container (`.thumb` / `.pat-preview` — a new preview surface uses one of those classes; never a
+  blanket img/canvas rule, a live canvas, or a whole-page ancestor: per-frame re-filtering and
+  stacking-context bugs for menus). The Edit view's token island only overrides its own few colors (`--ed-*`).
+  A NEW color = a token in all five blocks; `tests/test-studio-shell.js` enforces the full token set,
+  WCAG contrast (AA; AAA for High contrast), a blue-free Night palette, and no stray literals.
+- **Browser smoke (`pixi run studio-smoke`, `scripts/studio-smoke/`).** Headless Chrome/Edge via
+  CDP (pixi's `websockets`; no npm): layout at 5 widths (overflow, off-screen, overlapping/clipped
+  Console panels, menus on screen), console errors, every theme applied + axe-core contrast, the
+  replay interlock, the old-browser notice; `--compare origin/main` diffs Dark computed colors.
+  Run it after any change to `arena_studio.html` layout, menus or colors — it needs a local
+  browser, so it is NOT in `pixi run test` / CI.
+- **Console v6 layout (v0.6):** left rail of 9 tool panels (`data-panel` =
+  patterns/trial/step/test/io/ai/led/fw/fictrac) + bench strip + always-visible resizable log.
+  The rail is a show/hide CHECKLIST (`role="checkbox"`, `setOpen` keeps `aria-checked`);
+  at ≥ 1280 px the stage is a 2-column dense grid — compact panels (step/led, io/fw) take
+  one column and are paired by `order`, the rest span both. A NEW compact panel needs
+  `grid-column:auto` + an `order`; Scope toggles show state in text + `aria-pressed`.
+  The SD/library **listing IS the pattern picker** (row click drives the hidden `cPatName`).
   GOTCHA: connected SD rows carry RAW filenames in `data-name` while picker options key
   LOGICAL names — always normalize row↔option comparisons through `Studio.sdLogicalName`
   (offline mirrored rows use option values, so offline tests pass without it).
@@ -522,7 +559,7 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   parsed line so `behavior_v2` `["a",…]` echoes become the v1 `arena_command` object) —
   the dashboard uses an exact vendored copy at `dashboard/data-browser/vendor/`, and
   `tests/test-runlog-format.js` fails when the copies diverge (re-copy after editing). The
-  log level is a runtime setting (File ▾ → Run logging, localStorage `studio_log_level`,
+  log level is a runtime setting (⚙ Settings → Run logging, localStorage `studio_log_level`,
   default `behavior_v2`); the runner asserts it via `log_control` and the bridge ACKS
   the level it will actually write (`bridge.waitForLogLevelAck`) — a pre-3.0 bridge
   never acks, so treat "no ack" as behavior_v1. Never write `log_format` into
@@ -606,6 +643,21 @@ localStorage) — no auth UI of its own. Repo layout: free-standing patterns in 
   exists-check overwrite confirm.
 - Classic deps added for this: `js/pattern-set.js`, `js/studio-url-state.js` (both
   dual-export; same files the Studio loads).
+- **Multi-color G6 panels (v0.12, LAB-228) — color is a PANEL property, not a generation.**
+  `js/panel-color.js` (classic dual-export, also read as `globalThis.PanelColor` by the ES-module
+  viewers) is the ONLY place color logic lives: the layouts table (`g6-green` default,
+  `four-color`, `red-ir-v0.4r2`, `red-ir-v0.4r1`), `bankAt(row, col) = 2·((row+1)%2)+(col%2)` in host
+  coordinates (row 0 = bottom; `ROW_PARITY_FLIP = 1`, BENCH-VERIFIED 2026-09-29: host row 0 lights T2/T3
+  because pat-encoder packs rows as 19−row — never "fix" it back to the spec's even/even), `applyOnOffColor`
+  (the ONE recolor call at the end of `handleGenerate` — ON mix for ON pixels, OFF mix for OFF pixels,
+  blend in between; generators stay monochrome; `applyOnColor` is the OFF=Dark special case), `paintCell`
+  (2×2 cell brush), and `pixelCss`/`pixelHex` (mono = the legacy ramps byte for byte: 2D rounds,
+  3D floors). Rules: every pixel color in every view goes through `PanelColor` (never add a new
+  inline green ramp); NEVER write color into the `.pat` (header is full; the tag is LAB-229);
+  never add a color generation/arena config; a layout change re-renders only (never rewrites
+  frames); 3D color belongs to the physical LED (`py`, CCW-mirrored `px`, NO phase offset). URL:
+  `?panel=<key>`, omitted for the default. Spec + recipe:
+  `docs/development/pattern-designer-color-panels.md`.
 
 ## CI/CD Validation
 

@@ -37,6 +37,9 @@ next-preview = "python scripts/tiers/stamp.py preview"
 # pixi run bench-check -- LOG [--hold COND=FRAME …] [--channel next] [--build SHA]   check a bench-validation run
 bench-check = "python scripts/bench-check.py"
 test-tiers = "python tests/test-tiers-candidate.py"
+# Headless-Chrome smoke of arena_studio.html (layout, themes, contrast, console errors).
+# Needs a local Chrome/Edge, so it is NOT part of `test` / CI. Args pass through (--compare origin/main).
+studio-smoke = "python scripts/studio-smoke/studio_smoke.py"
 format = "prettier --write \"**/*.js\""
 format-check = "prettier --check \"**/*.js\""
 

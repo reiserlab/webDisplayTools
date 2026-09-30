@@ -86,7 +86,7 @@ https://reiserlab.github.io/webDisplayTools/arena_studio.html?repo=reiserlab/csh
 ```
 
 - Use `protocols/<bench-id>/…` for a **bench-specific** protocol, or
-  `protocols/shared/…` for a **shared** one — exactly the paths shown in File ▾ →
+  `protocols/shared/…` for a **shared** one — exactly the paths shown in Protocol ▾ →
   Open protocol.
 - Add `&rig=<rigname>` if you want the bench rig set too.
 
@@ -97,10 +97,10 @@ https://reiserlab.github.io/webDisplayTools/arena_studio.html?repo=reiserlab/csh
 ```
 
 **Requirement (private repo):** the course repo is private, so the browser must be
-**signed in to GitHub once** (File ▾ → GitHub — the token is then remembered in
+**signed in to GitHub once** (⚙ Settings → GitHub — the token is then remembered in
 `localStorage`). After that, the link loads the protocol directly. If the browser
 is *not* signed in, the link is safe about it: it stays in safe/Run and shows a
-banner telling you to sign in and use File ▾ → "Open from course repo…". (A signed-in
+banner telling you to sign in and use Protocol ▾ → "Open from course repo…". (A signed-in
 token is per-browser, so you sign in once per machine.)
 
 ### Form B — a site-library protocol (public, no sign-in)
@@ -114,10 +114,10 @@ no GitHub sign-in — handy for demos and smoke tests.
 
 ### How to build the link from your current settings
 
-1. **Repo** = your File ▾ → GitHub "repo" value (`owner/name`).
-2. **Bench id** = your File ▾ → GitHub "bench id" → path prefix `protocols/<bench-id>/`
+1. **Repo** = your ⚙ Settings → GitHub "repo" value (`owner/name`).
+2. **Bench id** = your ⚙ Settings → GitHub "bench id" → path prefix `protocols/<bench-id>/`
    (or `protocols/shared/` for a shared protocol).
-3. **Protocol filename** = the `.yaml` you saved (the slugged name shown in File ▾ →
+3. **Protocol filename** = the `.yaml` you saved (the slugged name shown in Protocol ▾ →
    Open). Append it to the prefix.
 4. Optionally add `&rig=` with one of the rig names from `configs/rigs/index.json`
    (e.g. `cshl_g6_2x10`, `cshl_g6_2x10_ball`, `cshl_g6_2x8`).

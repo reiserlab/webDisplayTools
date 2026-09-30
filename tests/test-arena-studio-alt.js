@@ -175,7 +175,11 @@ const globalSettingIds = [
 globalSettingIds.forEach((id) =>
     check('global setting retained: #' + id, studio.includes('id="' + id + '"'))
 );
-check('Classic keeps its File menu label', /id="fileMenuBtn"[^>]*>File ▾<\/button>/.test(studio));
+// Classic adopted the Protocol ▾ name (LAB-158); Alt's own rename is now a no-op.
+check(
+    'Classic menu label is Protocol ▾',
+    /id="fileMenuBtn"[^>]*>Protocol ▾<\/button>/.test(studio)
+);
 check(
     'Alt renames the live menu to Protocol',
     alt.includes("protocolMenuBtn.textContent = 'Protocol ▾'")
@@ -664,7 +668,9 @@ check(
         css.includes('min-width:230px')
 );
 check('Scope dock is bounded', css.includes('height:252px'));
-check('index exposes Arena Studio Alt', index.includes('href="arena_studio_alt.html"'));
+// Alt is being retired (LAB-158): the index no longer advertises it, but the page stays
+// reachable by URL until the full retirement lands.
+check('index no longer advertises Arena Studio Alt', !index.includes('arena_studio_alt.html'));
 
 console.log('\n=== Summary ===');
 console.log(total + ' checks, ' + failures + ' failures');
