@@ -68,9 +68,12 @@ parity. The test suite pins this; the generator script for the check is on LAB-2
   `v ← min(maxVal, round(v · w[bank(row, col)]))` (`PanelColor.applyOnColor`). Weights are
   independent (they need not sum to 100 %); `lowLevel` is masked too. Image-converter and
   combiner outputs are **not** masked in V1.
-- **Edit brushes** (color layouts only): *LED* = today's single-LED brush, value only; *2×2 cell*
-  sets the four LEDs of the cell under the cursor to `value · w[bank]` (`PanelColor.paintCell`,
-  replace semantics). Palette swatches show value, not color (a swatch has no position).
+- **Edit brushes** (color layouts only): every paint tool paints *with the ON color*, replace
+  semantics like Generate — *LED* sets one LED to `value · w[bank]` (so a "violet" brush leaves a
+  green LED at 0), the row/column header fills do the same along the row/column, and *2×2 cell*
+  sets the four LEDs of the cell under the cursor (`PanelColor.paintCell`). With ON color "All"
+  everything behaves exactly as on green panels. Palette swatches show value, not color (a swatch
+  has no position).
 - The ES-module viewers read `globalThis.PanelColor` with a fallback, so `arena_replay_viewer.html`
   (which shares `three-viewer.js`) is unchanged.
 
@@ -79,3 +82,12 @@ parity. The test suite pins this; the generator script for the check is on LAB-2
 Background/OFF color (a second weight vector), layers (Combine tool), per-color calibration
 LUT (LAB-213), authoring at the reduced 10×10 grid, Studio Console thumbnails (`js/pat-preview.js`
 needs the same Panel LEDs setting in the Studio), the pattern-file color tag (LAB-229).
+
+## Projection viewers and the row convention
+
+`ArenaGeometry.arenaCoordinates` puts pattern row 0 at the most negative z (the bottom of the
+arena, matching the grid, the 3D viewer, the `.pat` encoder and the bench), and `cart2sphere`
+measures theta from −z. Elevation for the Mercator/Mollweide views is therefore `theta − 90°`.
+Until 2026-09-29 the viewers used `90° − theta`, which drew the top row of the arena at the
+bottom of the map (invisible for the usual full-height gratings; obvious with a top-row-only
+color pattern). The generators use the same geometry consistently and were never affected.

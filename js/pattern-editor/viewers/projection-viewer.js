@@ -384,8 +384,13 @@ class ProjectionViewer {
         for (let r = 0; r < this.totalPixelRows; r++) {
             for (let c = 0; c < this.totalPixelCols; c++) {
                 const phi = spherical.phi[r][c]; // azimuth [-PI, PI]
-                const theta = spherical.theta[r][c]; // polar from north [0, PI]
-                const latDeg = ((Math.PI / 2 - theta) * 180) / Math.PI;
+                const theta = spherical.theta[r][c]; // polar angle [0, PI], measured from -z
+                // arenaCoordinates puts pattern row 0 at the most NEGATIVE z (the bottom of the
+                // arena — the same row-0-is-bottom convention as the grid, the 3D viewer and the
+                // .pat encoder, bench-verified 2026-09-29), and cart2sphere measures theta from
+                // -z, so row 0 has theta ≈ 0. Elevation is therefore theta − 90°, not 90° − theta:
+                // the previous sign drew the top row of the arena at the bottom of the map.
+                const latDeg = ((theta - Math.PI / 2) * 180) / Math.PI;
                 const lonDeg = (phi * 180) / Math.PI;
 
                 this.pixelData.push({

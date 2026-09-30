@@ -2295,7 +2295,7 @@
                 <!-- Multi-color panels only: paint one LED, or a whole 2×2 color cell with the ON-color mix -->
                 <div class="toolbar-section" id="brushSection" style="display: none;">
                     <span class="toolbar-label">Brush:</span>
-                    <button class="edit-ops-btn active" id="brushLedBtn" title="Paint one LED with the selected value. Its color is fixed by where it sits in the 2×2 mosaic.">LED</button>
+                    <button class="edit-ops-btn active" id="brushLedBtn" title="Paint one LED: value × its bank's ON-color weight (a single-color brush leaves other banks' LEDs at 0). Row/column header clicks fill the same way.">LED</button>
                     <button class="edit-ops-btn" id="brushCellBtn" title="Paint the 2×2 color cell under the cursor: each of its four LEDs gets value × ON-color weight (replaces what was there).">2×2 cell</button>
                     <div class="pd-oncolor-chips" id="onColorChipsEdit"></div>
                 </div>
@@ -5577,14 +5577,26 @@
             handleCanvasClick(e);
         }
 
+        // What one LED gets when painted with `value`: on a color layout the ON-color mix
+        // applies (value × its bank's weight, so a "violet" brush leaves non-violet LEDs at 0 —
+        // replace semantics, the same as Generate and the 2×2 cell brush); mono → value as is.
+        function paintValue(row, col, value, gsMode, weights) {
+            if (!weights) return value;
+            const maxVal = gsMode === 2 ? 1 : 15;
+            return Math.min(maxVal, Math.round(value * weights[PanelColor.bankAt(row, col)]));
+        }
+        function currentPaintWeights(gsMode) {
+            return isColorLayout() ? currentOnColorWeights(gsMode) : null;
+        }
+
         function setPixel(row, col, value) {
             if (!state.pattern) return;
 
-            const { pixelCols, frames } = state.pattern;
+            const { pixelCols, gsMode, frames } = state.pattern;
             const frame = frames[state.editor.currentFrame];
             const idx = row * pixelCols + col;
 
-            frame[idx] = value;
+            frame[idx] = paintValue(row, col, value, gsMode, currentPaintWeights(gsMode));
             state.isDirty = true;
             updateStatus();
             renderCurrentViewer();
@@ -5605,11 +5617,12 @@
         function fillRow(row) {
             if (!state.pattern || !state.editor.editMode) return;
 
-            const { pixelCols, frames } = state.pattern;
+            const { pixelCols, gsMode, frames } = state.pattern;
             const frame = frames[state.editor.currentFrame];
+            const weights = currentPaintWeights(gsMode);
 
             for (let col = 0; col < pixelCols; col++) {
-                frame[row * pixelCols + col] = state.editor.drawColor;
+                frame[row * pixelCols + col] = paintValue(row, col, state.editor.drawColor, gsMode, weights);
             }
 
             state.isDirty = true;
@@ -5620,11 +5633,12 @@
         function fillColumn(col) {
             if (!state.pattern || !state.editor.editMode) return;
 
-            const { pixelRows, pixelCols, frames } = state.pattern;
+            const { pixelRows, pixelCols, gsMode, frames } = state.pattern;
             const frame = frames[state.editor.currentFrame];
+            const weights = currentPaintWeights(gsMode);
 
             for (let row = 0; row < pixelRows; row++) {
-                frame[row * pixelCols + col] = state.editor.drawColor;
+                frame[row * pixelCols + col] = paintValue(row, col, state.editor.drawColor, gsMode, weights);
             }
 
             state.isDirty = true;
