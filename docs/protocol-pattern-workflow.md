@@ -47,13 +47,13 @@ both. Start in the library; colocate when a protocol stabilizes (see Flow A).
 
 ## One-time bench setup (instructor)
 
-1. Open **Arena Studio** → **File ▾**.
+1. Open **Arena Studio** → **⚙ Settings** (top right).
 2. Click the 🔒 to unlock the GitHub settings, then **Sign in…** with the course
    token.
 3. **Repo** is pre-filled with the course repo (`reiserlab/cshl-2026-course`);
    set the **Bench id** (e.g. `bench03`).
 4. Tick **Commit directly to default branch** and re-lock 🔒.
-5. Check the **rig** selector in the top bar matches this bench's arena.
+5. Under **Bench rig** in the same ⚙ Settings menu, check the rig matches this bench's arena.
 
 Everything below works on any bench set up this way. The Pattern Designer reuses
 these settings automatically — no separate sign-in.
@@ -104,7 +104,7 @@ YAML to join them. Everything else below is identical.
 
 ### Step 2 — build the protocol (Arena Studio → Edit)
 
-1. Back in the Studio: **File ▾ → New protocol**. The new document is pre-filled
+1. Back in the Studio: **Protocol ▾ → New protocol**. The new document is pre-filled
    with this bench's rig, the rig's plugins, and today's date.
 2. Open **Settings ▾** and set the **name** to `looming_v1` and yourself as
    **experimenter** (roster names are suggested).
@@ -116,7 +116,7 @@ YAML to join them. Everything else below is identical.
      **C** = it can't (typo, or the pattern runs from the MATLAB computer).
    - Turn on **?** (top bar) any time — every control explains itself on hover.
 4. Arrange the **Experiment Sequence** (blocks, repetitions, intertrial).
-5. **Ctrl+S** (or File ▾ → Save). With the bench signed in, this commits
+5. **Ctrl+S** (or Protocol ▾ → Save). With the bench signed in, this commits
    `protocols/<bench-id>/looming_v1.yaml` (in Flow B, right next to its
    `_patterns/` folder — a portable pair).
 
@@ -136,7 +136,7 @@ the card once:
 
 ### Step 4 — verify and run (Arena Studio → Run)
 
-1. **File ▾ → Open from Repo…** → `looming_v1.yaml`. It opens in the **Editor**
+1. **Protocol ▾ → Open from Repo…** → `looming_v1.yaml`. It opens in the **Editor**
    — glance over it, then click **▶ Run**.
 2. The run gate checks everything for you and says what's missing: connection,
    saved protocol, experimenter + genotype, bridge, and **that every pattern in
@@ -148,7 +148,7 @@ the card once:
 
 ### Step 5 (optional) — share it
 
-**File ▾ → Promote to shared (course)…** copies the saved protocol **and its
+**Protocol ▾ → Promote to shared (course)…** copies the saved protocol **and its
 `_patterns/` folder** to `protocols/shared/`, where every bench can open it.
 
 ---
@@ -182,4 +182,4 @@ re-open the protocol — the chips flip to **W**.
 | Warning: *falls back to numeric pattern_ID* | The name isn't on the card but an index number would play *something* — almost always the wrong something. Upload the named pattern. |
 | Rotation looks reversed | Almost certainly a legacy pattern with a baked-in direction. Regenerate it fresh in the Designer. |
 | A `_patterns/` folder doesn't appear in the Console's repo picker | The Console lists protocols by their **YAML**; save the protocol (Step 2) and it appears. (The Designer's own repo picker shows the folder either way.) |
-| "Repo not configured" in the Pattern Designer | Open it via the Studio's **Patterns ↗** link, or set up the bench in the Studio's File ▾ first. |
+| "Repo not configured" in the Pattern Designer | Open it via the Studio's **Patterns ↗** link, or set up the bench in the Studio's ⚙ Settings first. |

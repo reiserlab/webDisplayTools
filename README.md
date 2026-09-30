@@ -101,7 +101,7 @@ From the repository root:
 pixi run serve
 ```
 
-Then open [http://127.0.0.1:8000/arena_studio_alt.html](http://127.0.0.1:8000/arena_studio_alt.html).
+Then open [http://127.0.0.1:8000/arena_studio.html](http://127.0.0.1:8000/arena_studio.html).
 
 The same Pixi environment provides tests and formatting:
 

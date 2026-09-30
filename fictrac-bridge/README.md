@@ -180,7 +180,7 @@ records:
   every derived channel (turning/forward/side/speed/dir) from this via
   `js/kinematics.js`. The frame array is identical in `behavior_v1` and `behavior_v2`.
   The **browser picks the level** per run via `log_control`'s `level` (Arena
-  Studio's runner asserts the level chosen in File ▾ → Run logging, overriding
+  Studio's runner asserts the level chosen in ⚙ Settings → Run logging, overriding
   `--log-level`); the bridge answers with `log_control_ack` naming the level it
   will actually write. `full` logs the whole 25-column record
   (`{"type":"fictrac_frame", ..., "fictrac":[…25…]}`) for debug/archival, with no

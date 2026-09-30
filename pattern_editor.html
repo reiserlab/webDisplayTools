@@ -2200,7 +2200,7 @@
             <div class="file-operations">
                 <div class="file-buttons">
                     <button class="btn" id="saveBtn" title="Encode the current pattern as a .pat file and download it to this computer">💾 SAVE LOCAL FILE</button>
-                    <button class="btn" id="pushRepoBtn" title="Commit the current pattern to the repo — either the shared pattern library (patterns/) or a protocol's _patterns/ folder. Uses the GitHub token + repo configured in Arena Studio (File ▾) on this browser, or the ?repo= this tab was opened with">⇪ SAVE TO REPO…</button>
+                    <button class="btn" id="pushRepoBtn" title="Commit the current pattern to the repo — either the shared pattern library (patterns/) or a protocol's _patterns/ folder. Uses the GitHub token + repo configured in Arena Studio (⚙ Settings) on this browser, or the ?repo= this tab was opened with">⇪ SAVE TO REPO…</button>
                 </div>
             </div>
         </div>
@@ -3476,7 +3476,7 @@
         // ============================================================
         // Repo integration (shared settings with Arena Studio) + URL state
         //
-        // Reuses the SAME same-origin storage Arena Studio's File ▾ block
+        // Reuses the SAME same-origin storage Arena Studio's ⚙ Settings block
         // writes (token in sessionStorage/localStorage `studio_gh_pat`, repo
         // + bench id in localStorage) — so a tab opened from the Studio's
         // "Patterns ↗" link is already signed in. `?repo=owner/name` overrides
@@ -3502,7 +3502,7 @@
             const cs = repoSettings();
             if (!window.StudioGitHub || !cs.token || !cs.owner) {
                 alert('Repo not configured on this browser.\n' +
-                    'Open Arena Studio → File ▾ → sign in to GitHub and set the repo (owner/name) — ' +
+                    'Open Arena Studio → ⚙ Settings → sign in to GitHub and set the repo (owner/name) — ' +
                     'or open this page from the Studio’s "Patterns ↗" link.');
                 return null;
             }
@@ -3691,7 +3691,7 @@
             protoRadio.disabled = !cs.benchId;
             protoRadio.closest('.dest-row').title = cs.benchId
                 ? 'Commits next to a protocol so they travel together'
-                : 'Needs a bench id (set in Arena Studio → File ▾) — course benches only';
+                : 'Needs a bench id (set in Arena Studio → ⚙ Settings) — course benches only';
             if (!cs.benchId) document.getElementById('destLibrary').checked = true;
             protoInput.disabled = !protoRadio.checked;
             updateRepoSavePath();

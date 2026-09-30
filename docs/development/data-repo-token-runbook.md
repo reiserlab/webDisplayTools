@@ -3,7 +3,7 @@
 Arena Studio, the Pattern Designer and the data-browser dashboard write protocols,
 patterns and run logs to a GitHub **data repo** (the CSHL course repo today; the lab's
 `reiserlab/arena-experiments` next) using a personal access token pasted once per
-browser (File ▾ → GitHub → **Sign in…**). The token is stored in that browser only
+browser (⚙ Settings → GitHub → **Sign in…**). The token is stored in that browser only
 (`studio_gh_pat`, sessionStorage or localStorage) and sent only as an
 `Authorization` header. This page is the operational how-to; design background is in
 `studio-github-save-proposal.md`, the course-week checklist in
@@ -18,7 +18,7 @@ browser (File ▾ → GitHub → **Sign in…**). The token is stored in that br
 | Any other non-member collaborator on a **private** data repo | Classic PAT, scope `repo` | Same reason; `public_repo` cannot see private repos |
 
 What an expired or revoked token looks like: on the next page load the Studio shows
-**"The stored GitHub token is no longer valid. Sign in again from File ▾."** and drops
+**"The stored GitHub token is no longer valid. Sign in again from ⚙ Settings."** and drops
 the stored token; a save or run-log commit made with a dead token falls back to
 "saved locally". Nothing else breaks — reads of a public repo keep working signed-out.
 
@@ -37,7 +37,7 @@ the stored token; a save or run-log commit made with a dead token falls back to
    you put in the calendar (≤ 1 year), scopes = **`public_repo` only**. Copy the
    `ghp_…` value once; store it in the lab password manager.
 4. On each bench browser (served from `http://127.0.0.1:8000/`, not `file://`):
-   File ▾ → **Sign in…** → paste → **YES** to "Remember this token" → 🛡 advanced
+   ⚙ Settings → **Sign in…** → paste → **YES** to "Remember this token" → 🛡 advanced
    (instructor password) → 🔓 in the GitHub block → **Repo** `reiserlab/cshl-2026-course`,
    **Bench id** `bench01`…`bench07` (must match `roster.yaml`), tick **Commit
    directly to default branch** → 🔒. Connect the arena; the roster pre-fills the
@@ -60,14 +60,14 @@ the stored token; a save or run-log commit made with a dead token falls back to
 5. Generate. If the org policy requires approval, the token is pending until an org
    owner approves it (Organization settings → Personal access tokens → Pending
    requests). Copy the `github_pat_…` value once.
-6. In the Studio: File ▾ → **Sign in…** → paste. Answer **YES** to "Remember" only on a
+6. In the Studio: ⚙ Settings → **Sign in…** → paste. Answer **YES** to "Remember" only on a
    rig computer you control or your own laptop; answer **NO** (session-only) on a
    shared or borrowed machine. **Sign out** clears the token everywhere.
 7. Set **Repo** and your **Rig id** once (🔓 needed); saves go to `protocols/<rig-id>/`,
    run logs to `runlogs/<rig-id>/`, and your commits carry your GitHub identity.
 
 Sharing across the lab needs no extra permission: everyone with a token sees every
-rig's folder, **File ▾ → Promote to shared…** copies a protocol and its patterns into
+rig's folder, **Protocol ▾ → Promote to shared…** copies a protocol and its patterns into
 `protocols/shared/`, and the Pattern Designer's **Save to Repo → library** writes the
 root `patterns/` library.
 

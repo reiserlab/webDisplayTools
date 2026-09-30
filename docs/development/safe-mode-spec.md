@@ -67,7 +67,7 @@ not add new run/edit capability. It is fully **browser-verifiable** (no arena ne
   segment) opens a password prompt. On match: reveal Edit/Console, enable the gated controls,
   set advanced for the session, and remember it (localStorage). A "Lock" control re-enters safe.
 - In safe mode: the **Edit** and **Console** mode buttons are hidden/disabled; the mode is
-  locked to **Run**. The rig selector shows the rig but is disabled. File ▾ shows Open (to
+  locked to **Run**. The rig selector (⚙ Settings) shows the rig but is disabled. Protocol ▾ shows Open (to
   run) but not Save/Settings/Build. The Console tool rail is not reachable.
 
 ## 3. Implementation map (levers that already exist — reuse them)
@@ -93,7 +93,7 @@ make it hard-disabled + not unlockable unless advanced).
   the Console `data-cmd` handler — the whole Console view is unreachable in safe mode, so
   gating `setMode('console')` covers them, but belt-and-suspenders: also early-return in the
   dispatcher if `!advanced`.
-- GitHub: `Studio.saveCurrent` / File ▾ Save/Save-as/Promote (`.edit-only`), GitHub sign-in
+- GitHub: `Studio.saveCurrent` / Protocol ▾ Save/Save-as/Promote (`.edit-only`), GitHub sign-in
   + course settings. Disable/hide in safe mode.
 - Build pattern set…, Reset protocol…, Copy conditions… (Edit/File surfaces).
 
