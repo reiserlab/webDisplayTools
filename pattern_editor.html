@@ -26,7 +26,9 @@
     </script>
     <script src="js/pat-encoder.js"></script>
     <script src="js/arena-geometry.js"></script>
-    <script src="js/pattern-editor/tools/generator.js"></script>
+    <!-- ?v= busts a cached copy: initializeApp() calls PatternGenerator.getDegreesPerPixel
+         (added 2026-10-06), so a stale generator.js would abort the editor's init -->
+    <script src="js/pattern-editor/tools/generator.js?v=1006-partial-cols"></script>
     <!-- course pipeline: GitHub request builders for "push to course repo"
          (classic dual-export module — same file Arena Studio uses) -->
     <script src="js/studio-github.js"></script>
@@ -4016,12 +4018,10 @@
          */
         function getDegreesPerPixel() {
             if (!state.arena.config) return 1.8;  // Default for G6 2x10
-            const config = state.arena.config.arena;
-            const specs = PANEL_SPECS[config.generation];
-            // Use columns_installed for partial arenas, fallback to num_cols for full arenas
-            const installedCols = config.columns_installed?.length || config.num_cols;
-            const pixelCols = installedCols * specs.pixels_per_panel;
-            return 360 / pixelCols;
+            // Full circumference (num_cols), never the installed columns: a partial arena keeps
+            // the full arena's pitch (G4 3x12of18 = 360 / (18 x 16) = 1.25 deg/px), the same
+            // pitch the generator uses. Shared helper so the two can't drift apart.
+            return PatternGenerator.getDegreesPerPixel(state.arena.config.arena);
         }
 
         /**
@@ -6239,9 +6239,13 @@
             let defaultFrames;
             let hint;
             if (direction.startsWith('h-')) {
-                // Horizontal motion: full 360° loop
+                // Horizontal motion: one full wrap of the pattern width (360° on a full
+                // arena; a partial arena's installed span, e.g. 240° on G4 3x12of18)
                 defaultFrames = pixelCols;
-                hint = `(360° = ${pixelCols} px)`;
+                const degrees = state.arena.config
+                    ? Math.round(pixelCols * getDegreesPerPixel())
+                    : 360;
+                hint = `(${degrees}° = ${pixelCols} px)`;
             } else {
                 // Vertical motion: full vertical traverse
                 defaultFrames = pixelRows;
