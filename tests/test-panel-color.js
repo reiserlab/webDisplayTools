@@ -450,5 +450,92 @@ check(
     /panelLayout/.test(icon) && /globalThis\.PanelColor/.test(icon)
 );
 
+console.log('\n=== filename color code (ON/OFF choice) + tag normalization ===');
+{
+    const code = (key, on, off) => PC.filenameColorCode(key, on, off);
+    const ALL = { preset: 'all' };
+    const DARK = { preset: 'dark' };
+    check('mono layout → no code', code('g6-green', { preset: 'blue' }, ALL) === '');
+    check(
+        'default ON all / OFF dark → no code (names unchanged)',
+        code('four-color', ALL, DARK) === ''
+    );
+    check('ON blue → -B', code('four-color', { preset: 'blue' }, DARK) === '-B');
+    check(
+        'ON blue, OFF green → -B-G',
+        code('four-color', { preset: 'blue' }, { preset: 'green' }) === '-B-G'
+    );
+    check('ON all, OFF yellow → -A-Y', code('four-color', ALL, { preset: 'yellow' }) === '-A-Y');
+    check(
+        'custom full/zero levels → channel letters (-VB)',
+        code(
+            'four-color',
+            { preset: 'custom', levels: { violet: 15, blue: 15, green: 0, yellow: 0 } },
+            DARK
+        ) === '-VB'
+    );
+    check(
+        'custom with intermediate levels → one hex digit per channel (-F80A)',
+        code(
+            'four-color',
+            { preset: 'custom', levels: { violet: 15, blue: 8, green: 0, yellow: 10 } },
+            DARK
+        ) === '-F80A'
+    );
+    check(
+        'custom all full → A; untouched levels default to 15',
+        code('four-color', { preset: 'custom', levels: {} }, DARK) === ''
+    );
+    check(
+        'custom all zero → 0',
+        code(
+            'four-color',
+            { preset: 'custom', levels: { violet: 0, blue: 0, green: 0, yellow: 0 } },
+            DARK
+        ) === '-0'
+    );
+    check(
+        'red-IR: ON IR, OFF red → -I-R',
+        code('red-ir-v0.4r2', { preset: 'ir' }, { preset: 'red' }) === '-I-R'
+    );
+    const worst =
+        PC.filenameTag('four-color') +
+        code(
+            'four-color',
+            { preset: 'custom', levels: { violet: 15, blue: 8, green: 0, yellow: 10 } },
+            { preset: 'custom', levels: { violet: 0, blue: 4, green: 0, yellow: 4 } }
+        );
+    check(
+        'worst-case tag + code is 13 characters',
+        worst === '_4c-F80A-0404' && worst.length === 13,
+        worst
+    );
+    for (const key of PC.layoutKeys()) {
+        const letters = PC.getLayout(key).channels.map((c) => PC.channelLetter(c.id));
+        check(
+            `${key}: channel letters are unique (${letters.join('')})`,
+            new Set(letters).size === letters.length
+        );
+    }
+    const strip = PC.stripColorTag;
+    check(
+        'strip: stacked tags (_4c_rir) all removed',
+        strip('G6_2x10_grat_rot_20px_50pct_4c_rir') === 'G6_2x10_grat_rot_20px_50pct'
+    );
+    check(
+        'strip: tag + two-part code',
+        strip('x_4c-B-G') === 'x' && strip('x_4c-F80A-0404') === 'x'
+    );
+    check('strip: _rir1 is not left as "1"', strip('x_rir1-R') === 'x');
+    check(
+        'strip: a word that merely starts like a tag stays (grat_4cats)',
+        strip('grat_4cats') === 'grat_4cats'
+    );
+    check(
+        'strip: untagged name unchanged',
+        strip('G6_2x10_grat_rot_20px_50pct') === 'G6_2x10_grat_rot_20px_50pct'
+    );
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -424,6 +424,73 @@
         return out;
     }
 
+    // ---- SD-card filenames (controller limits) -------------------------------------
+    // The controller keeps pattern names in a 64-byte buffer (incl. NUL): at most 63 chars,
+    // and SET_PATTERN_FILENAME 0x83 refuses longer. A same-name re-upload is stored as
+    // X001_<name> (5 more chars, truncated to 63) — past 58 that cuts off '.pat' and the file
+    // drops out of the listing. Names travel as one byte per char, so only plain ASCII
+    // filename characters are safe. Firmware: SdManager.cpp renamePattern / scan.
+    var SD_NAME_MAX = 63;
+    var SD_NAME_SAFE = 58;
+    var SD_NAME_CHARS = /^[A-Za-z0-9._-]+$/;
+
+    /**
+     * Check a pattern filename (with .pat) against the controller's SD rules.
+     * @returns {{ok:boolean, level:'ok'|'warn'|'error', problems:string[]}}
+     *   error = the controller cannot store it; warn = fine once, breaks on a re-upload.
+     */
+    function checkSdFilename(name) {
+        var n = String(name == null ? '' : name);
+        var errors = [];
+        var warnings = [];
+        if (!/\.pat$/i.test(n)) errors.push('must end in .pat');
+        if (!SD_NAME_CHARS.test(n)) errors.push('use only letters, digits, "_", "-" and "."');
+        if (n.charAt(0) === '.') errors.push('must not start with "."');
+        if (n.length > SD_NAME_MAX) {
+            errors.push(n.length + ' characters; the controller allows ' + SD_NAME_MAX);
+        } else if (n.length > SD_NAME_SAFE) {
+            warnings.push(
+                n.length +
+                    ' characters; keep it to ' +
+                    SD_NAME_SAFE +
+                    ' so a re-upload (stored as X001_…) keeps its .pat'
+            );
+        }
+        var problems = errors.concat(warnings);
+        return {
+            ok: problems.length === 0,
+            level: errors.length ? 'error' : warnings.length ? 'warn' : 'ok',
+            problems: problems
+        };
+    }
+
+    /** Replace characters the SD path can't carry with '_' (keeps the .pat extension). */
+    function sanitizeSdFilename(name) {
+        var base = String(name == null ? '' : name).replace(/\.pat$/i, '');
+        base = base
+            .replace(/[^A-Za-z0-9._-]+/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^[._]+|_+$/g, '');
+        return (base || 'pattern') + '.pat';
+    }
+
+    /**
+     * Build a safe SD filename from prefix + middle + suffix (+ '.pat'), shortening only the
+     * descriptive middle so the arena prefix and the color tag always survive. Characters
+     * are sanitized first. Result length <= SD_NAME_SAFE whenever prefix + suffix allow it.
+     */
+    function fitSdFilename(prefix, middle, suffix) {
+        var clean = function (x) {
+            return String(x == null ? '' : x).replace(/[^A-Za-z0-9._-]+/g, '_');
+        };
+        var p = clean(prefix);
+        var m = clean(middle).replace(/_+/g, '_');
+        var sfx = clean(suffix);
+        var room = SD_NAME_SAFE - '.pat'.length - p.length - sfx.length;
+        if (m.length > room) m = m.slice(0, Math.max(0, room)).replace(/[._-]+$/, '');
+        return sanitizeSdFilename(p + m + sfx);
+    }
+
     var PatternSet = {
         TOOL: TOOL,
         MANIFEST_VERSION: MANIFEST_VERSION,
@@ -438,6 +505,11 @@
         assignIndices: assignIndices,
         // helpers
         sanitizeName: sanitizeName,
+        SD_NAME_MAX: SD_NAME_MAX,
+        SD_NAME_SAFE: SD_NAME_SAFE,
+        checkSdFilename: checkSdFilename,
+        sanitizeSdFilename: sanitizeSdFilename,
+        fitSdFilename: fitSdFilename,
         summarizePattern: summarizePattern,
         validateGeometry: validateGeometry,
         reencodeForDuty: reencodeForDuty,

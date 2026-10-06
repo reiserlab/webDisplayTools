@@ -2877,6 +2877,12 @@
                         }
                     }
 
+                    const fitted = fitPatternFilename(finalName);
+                    if (fitted.problems.length) {
+                        alert('Adjusted for the arena SD card (' + fitted.problems.join('; ') + '):\n\n' + fitted.name);
+                        finalName = fitted.name;
+                    }
+
                     state.filename = finalName;
                     state.isDirty = true;
                     updateStatus();
@@ -3543,7 +3549,11 @@
                 arena_id: configName ? getArenaId(gen, configName) : 0,
                 observer_id: 0
             };
-            const filename = withColorTag(addArenaPrefix(state.filename || 'pattern.pat'));
+            const fitted = fitPatternFilename(withColorTag(addArenaPrefix(state.filename || 'pattern.pat')));
+            if (fitted.problems.length) {
+                console.info('Pattern filename adjusted for the arena SD card (' + fitted.problems.join('; ') + '): ' + fitted.name);
+            }
+            const filename = fitted.name;
             return { patternData, filename };
         }
 
@@ -4297,7 +4307,7 @@
 
                         // Generate filename
                         const freqStr = spatialFreqUnit === 'px' ? `${spatialFreqValue}px` : `${spatialFreqValue}deg`;
-                        filename = `grating_${motionType}_${freqStr}_${params.dutyCycle}pct.pat`;
+                        filename = `grat_${motionAbbrev(motionType)}_${freqStr}_${params.dutyCycle}pct.pat`;
                         break;
                     }
 
@@ -4328,7 +4338,7 @@
 
                         // Generate filename
                         const freqStr = spatialFreqUnit === 'px' ? `${spatialFreqValue}px` : `${spatialFreqValue}deg`;
-                        filename = `sine_${motionType}_${freqStr}.pat`;
+                        filename = `sine_${motionAbbrev(motionType)}_${freqStr}.pat`;
                         break;
                     }
 
@@ -4360,7 +4370,7 @@
                         params.poleCoord = [poleAzimuthStar * Math.PI / 180, poleElevationStar * Math.PI / 180];
 
                         pattern = PatternGenerator.generateStarfield(params, arena);
-                        filename = `starfield_${motionTypeStar}_${params.dotCount}dots_${params.numFrames}f.pat`;
+                        filename = `star_${motionAbbrev(motionTypeStar)}_${params.dotCount}dot_${params.numFrames}f.pat`;
                         break;
                     }
 
@@ -4393,13 +4403,13 @@
 
                         pattern = PatternGenerator.generateEdge(params, arena);
                         const freqStrEdge = spatialFreqUnitEdge === 'px' ? `${spatialFreqValueEdge}px` : `${spatialFreqValueEdge}deg`;
-                        filename = `edge_${motionTypeEdge}_${freqStrEdge}_${params.numFrames}f.pat`;
+                        filename = `edge_${motionAbbrev(motionTypeEdge)}_${freqStrEdge}_${params.numFrames}f.pat`;
                         break;
                     }
 
                     case 'off-on':
                         pattern = PatternGenerator.generateOffOn(params, arena);
-                        filename = `off_on_${highLevel}.pat`;
+                        filename = `offon_${highLevel}.pat`;
                         break;
 
                     default:
@@ -4429,7 +4439,12 @@
                     for (const f of pattern.frames) {
                         PanelColor.applyOnOffColor(f, pattern.pixelRows, pattern.pixelCols, pattern.gs_val, state.panel.layoutKey, onW, offW, hi, lo);
                     }
-                    filename = withColorTag(filename);
+                    // Name the ON/OFF choice used for THIS generation (_4c-B-G …); later chip
+                    // changes don't apply to these frames, so the code is stamped here, not at save.
+                    const colorCode = PanelColor.filenameColorCode
+                        ? PanelColor.filenameColorCode(state.panel.layoutKey, state.onColor, state.offColor)
+                        : '';
+                    filename = withColorTag(filename, colorCode);
                 }
 
                 // Convert to state.pattern format
@@ -5485,14 +5500,48 @@
             renderOnColorCustom();
         }
 
-        // Filename tag for color layouts (`_4c`, `_rir`), inserted before `.pat`. Applied at SAVE
-        // time in buildPatternDataForSave so every path — generate, combine, tray reload, image
-        // import — carries it; idempotent, and a no-op for the green layout.
-        function withColorTag(filename) {
+        // Filename tag for color layouts (`_4c`, `_rir`) + the generation's ON/OFF color code
+        // (`_4c-B-G`, PanelColor.filenameColorCode), inserted before `.pat`. Generation passes
+        // the code; SAVE (buildPatternDataForSave) passes none, so every path — combine, tray
+        // reload, image import — carries the layout tag and keeps a code already there. Any
+        // other layout's tag is replaced, never stacked (`_4c_rir`). No-op for green.
+        function withColorTag(filename, code) {
             const tag = PanelColor.filenameTag(state.panel.layoutKey);
             if (!tag || !filename) return filename;
             const base = filename.replace(/\.pat$/i, '');
-            return base.endsWith(tag) ? base + '.pat' : base + tag + '.pat';
+            const own = base.match(new RegExp(tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '((?:-[0-9A-Z]+){0,2})$'));
+            const keep = code !== undefined ? code : own ? own[1] : '';
+            const stripped = PanelColor.stripColorTag
+                ? PanelColor.stripColorTag(base)
+                : own ? base.slice(0, base.length - own[0].length) : base;
+            return stripped + tag + keep + '.pat';
+        }
+
+        // Motion types in generated filenames (names stay short: the controller keeps 63
+        // characters and 58 survive a re-upload — PatternSet.checkSdFilename).
+        const MOTION_ABBREV = { rotation: 'rot', expansion: 'exp', translation: 'trans' };
+        function motionAbbrev(motion) {
+            return MOTION_ABBREV[motion] || motion;
+        }
+
+        /**
+         * Make a filename safe for the arena's SD card: plain ASCII, <= 58 characters. Only the
+         * descriptive middle is shortened; the arena prefix and the color tag are kept.
+         * Returns {name, problems} (problems = what the original name broke, for the UI).
+         */
+        function fitPatternFilename(filename) {
+            if (!window.PatternSet || !PatternSet.checkSdFilename || !PatternSet.fitSdFilename) {
+                return { name: filename, problems: [] };
+            }
+            const chk = PatternSet.checkSdFilename(filename);
+            if (chk.ok) return { name: filename, problems: [] };
+            let base = filename.replace(/\.pat$/i, '');
+            const arena = findArenaPrefix(base);
+            const prefix = arena ? base.slice(0, arena.length + 1) : '';
+            base = base.slice(prefix.length);
+            const core = PanelColor.stripColorTag ? PanelColor.stripColorTag(base) : base;
+            const suffix = base.slice(core.length);
+            return { name: PatternSet.fitSdFilename(prefix, core, suffix), problems: chk.problems };
         }
 
         function updatePanelLayoutHint() {
@@ -5967,7 +6016,7 @@
                     case 'mask': modeSuffix = 'mask'; break;
                     case 'split-h': modeSuffix = `splitH${options.splitPosition || 50}`; break;
                     case 'split-v': modeSuffix = `splitV${options.splitPosition || 50}`; break;
-                    default: modeSuffix = 'combined';
+                    default: modeSuffix = 'comb';
                 }
                 state.filename = `${nameA}_${nameB}_${modeSuffix}.pat`;
 
@@ -6021,7 +6070,7 @@
                 // Generate suggested filename
                 const imageInfo = ImageConverter.getImageInfo();
                 const baseName = imageInfo?.name?.replace(/\.[^.]+$/, '') || 'image';
-                state.filename = `${baseName}_frame.pat`;
+                state.filename = `${baseName}_img.pat`;
 
                 // Lock arena config after generating pattern
                 lockArenaConfig();
@@ -6324,7 +6373,7 @@
             };
 
             // Generate filename based on motion type
-            const dirLabel = direction.replace('-', '_');
+            const dirLabel = direction.replace('-', ''); // hcw · hccw · vup · vdown
             state.filename = `${baseEntry.name}_${dirLabel}_${totalFrames}f.pat`;
             state.isDirty = true;
             state.editor.currentFrame = 0;
@@ -6643,7 +6692,7 @@
                 stretchValues: new Array(frames.length).fill(getStretchByte(generation))
             };
 
-            state.filename = `animation_${frames.length}f.pat`;
+            state.filename = `anim_${frames.length}f.pat`;
             state.isDirty = true;
             state.editor.currentFrame = 0;
 
