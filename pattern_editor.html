@@ -36,10 +36,10 @@
          (?repo= / ?arena= URL state) — same classic dual-export modules the
          Studio loads, so behavior matches across the two tools -->
     <script src="js/build-channel.js"></script> <!-- release tier: Production / Next / local -->
-    <script src="js/pattern-set.js"></script>
+    <script src="js/pattern-set.js?v=1006-partial-cols"></script>
     <!-- multi-color G6 panels: bank mosaic + ON-color weights (LAB-228); classic dual-export,
          also read as globalThis.PanelColor by the ES-module viewers -->
-    <script src="js/panel-color.js"></script>
+    <script src="js/panel-color.js?v=1006-partial-cols"></script>
     <script src="js/studio-url-state.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2569,7 +2569,7 @@
         import MercatorViewer from './js/pattern-editor/viewers/mercator-viewer.js?v=0218';
         import MollweideViewer from './js/pattern-editor/viewers/mollweide-viewer.js?v=0218';
         import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
-        import { generatePatternIcon } from './js/icon-generator.js';
+        import { generatePatternIcon } from './js/icon-generator.js?v=1006-partial-cols';
         import ImageConverter from './js/pattern-editor/tools/image-converter.js';
         // Classic dual-export module loaded above (also read by the viewers as globalThis.PanelColor)
         const PanelColor = window.PanelColor;
@@ -3549,6 +3549,7 @@
                 arena_id: configName ? getArenaId(gen, configName) : 0,
                 observer_id: 0
             };
+            warnPartialG6Once();
             const fitted = fitPatternFilename(withColorTag(addArenaPrefix(state.filename || 'pattern.pat')));
             if (fitted.problems.length) {
                 console.info('Pattern filename adjusted for the arena SD card (' + fitted.problems.join('; ') + '): ' + fitted.name);
@@ -5517,6 +5518,22 @@
             return stripped + tag + keep + '.pat';
         }
 
+        // Partial-arena G6 patterns preview correctly but current firmware can't play them
+        // (it ignores the panel mask) — say so once per session when one is saved. Warn only.
+        let partialG6Warned = false;
+        function warnPartialG6Once() {
+            const arena = state.arena.config && state.arena.config.arena;
+            const partial = window.PatternSet && PatternSet.isPartialG6Arena
+                ? PatternSet.isPartialG6Arena(arena)
+                : !!(arena && arena.generation === 'G6' && arena.columns_installed);
+            if (!partial || partialG6Warned) return;
+            partialG6Warned = true;
+            const note = (window.PatternSet && PatternSet.PARTIAL_G6_NOTE) ||
+                "current arena firmware can't play partial-arena G6 patterns yet.";
+            alert('Heads-up: ' + state.arena.configName + ' is a partial arena. ' +
+                note.charAt(0).toUpperCase() + note.slice(1));
+        }
+
         // Motion types in generated filenames (names stay short: the controller keeps 63
         // characters and 58 survive a re-upload — PatternSet.checkSdFilename).
         const MOTION_ABBREV = { rotation: 'rot', expansion: 'exp', translation: 'trans' };
@@ -5525,23 +5542,26 @@
         }
 
         /**
-         * Make a filename safe for the arena's SD card: plain ASCII, <= 58 characters. Only the
-         * descriptive middle is shortened; the arena prefix and the color tag are kept.
-         * Returns {name, problems} (problems = what the original name broke, for the UI).
+         * Make a filename safe for the arena's SD card (<= 58 characters, PatternSet rules) and
+         * tidy ([A-Za-z0-9._-]: the Designer's naming style, though the card also takes spaces).
+         * Only the descriptive middle is shortened; the arena prefix and the color tag are kept.
+         * Returns {name, problems} (problems = what was changed and why, for the UI).
          */
         function fitPatternFilename(filename) {
             if (!window.PatternSet || !PatternSet.checkSdFilename || !PatternSet.fitSdFilename) {
                 return { name: filename, problems: [] };
             }
             const chk = PatternSet.checkSdFilename(filename);
-            if (chk.ok) return { name: filename, problems: [] };
+            const tidy = !PatternSet.SD_TIDY_CHARS || PatternSet.SD_TIDY_CHARS.test(filename);
+            if (chk.ok && tidy) return { name: filename, problems: [] };
             let base = filename.replace(/\.pat$/i, '');
             const arena = findArenaPrefix(base);
             const prefix = arena ? base.slice(0, arena.length + 1) : '';
             base = base.slice(prefix.length);
             const core = PanelColor.stripColorTag ? PanelColor.stripColorTag(base) : base;
             const suffix = base.slice(core.length);
-            return { name: PatternSet.fitSdFilename(prefix, core, suffix), problems: chk.problems };
+            const problems = tidy ? chk.problems : ['spaces and symbols become "_"'].concat(chk.problems);
+            return { name: PatternSet.fitSdFilename(prefix, core, suffix), problems };
         }
 
         function updatePanelLayoutHint() {
@@ -7020,7 +7040,7 @@
             const installed = arena.columns_installed
                 ? [...new Set(arena.columns_installed.map((p) => p % arena.num_cols))]
                 : null;
-            const col = installed ? installed[block] : block;
+            const col = installed && installed[block] !== undefined ? installed[block] : block;
             return arena.generation === 'G6'
                 ? row * arena.num_cols + col + 1
                 : col * arena.num_rows + row + 1;

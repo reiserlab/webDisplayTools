@@ -1577,7 +1577,7 @@
              (window.PatternSet / window.PatPreview); the import-only modules
              (pat-parser, arena-configs, icon-generator) load in the deferred module
              block at the end of <body>. -->
-        <script src="js/pattern-set.js"></script>
+        <script src="js/pattern-set.js?v=1006-partial-cols"></script>
         <script src="js/pat-preview.js"></script>
         <script>
             'use strict';
@@ -3602,7 +3602,7 @@
         <script type="module">
             import PatParser from './js/pat-parser.js';
             import { getConfig } from './js/arena-configs.js'; // also sets window.PANEL_SPECS
-            import { generatePatternIcon } from './js/icon-generator.js';
+            import { generatePatternIcon } from './js/icon-generator.js?v=1006-partial-cols';
 
             const PS = window.PatternSet;
             const PP = window.PatPreview;

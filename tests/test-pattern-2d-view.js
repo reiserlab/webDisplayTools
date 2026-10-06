@@ -105,6 +105,10 @@ check(
     );
     const g4 = STANDARD_CONFIGS.G4_3x12of18.arena;
     check(
+        'a block past the installed list labels its own number, never NaN',
+        ed.physicalPanelNumber(a, 9, 0) === 10
+    );
+    check(
         'G4_3x12of18 (column-major): first column = panels 1, 2, 3',
         [0, 1, 2].every((r) => ed.physicalPanelNumber(g4, 0, r) === r + 1)
     );

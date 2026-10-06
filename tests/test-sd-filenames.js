@@ -60,7 +60,16 @@ console.log('\n=== shared rule: js/pattern-set.js ===');
     check('63 characters warns', lvl('a'.repeat(59) + '.pat') === 'warn');
     check('64 characters is an error', lvl('a'.repeat(60) + '.pat') === 'error');
     check('non-ASCII (°) is an error', lvl('grat_30°.pat') === 'error');
-    check('a space is an error', lvl('my grating.pat') === 'error');
+    check('a space is fine on the card (FAT long names)', lvl('my grating.pat') === 'ok');
+    check(
+        'a browser duplicate "… (1).pat" is fine',
+        lvl('G6_2x10_grating_rotation_200px_94pct (1).pat') === 'ok'
+    );
+    check(
+        'FAT-forbidden characters are errors',
+        ['a:b.pat', 'x?.pat', 'a/b.pat', 'q"t.pat', 'p|q.pat'].every((n) => lvl(n) === 'error')
+    );
+    check('control characters are errors', lvl('tab\there.pat') === 'error');
     check('missing .pat is an error', lvl('foo.bin') === 'error');
     check('a leading dot is an error (the firmware hides it)', lvl('.hidden.pat') === 'error');
     check('decimals are fine', lvl('G6_2x10_grat_rot_22.5deg_50pct.pat') === 'ok');
@@ -187,6 +196,12 @@ function designerFor(layoutKey, configName) {
             long.problems.length > 0,
         long.name
     );
+    const spaced = ed.fitPatternFilename('G6_2x10_Frame 1_h_cw_200f.pat');
+    check(
+        'fitPatternFilename: the Designer still tidies spaces (style, though the card accepts them)',
+        spaced.name === 'G6_2x10_Frame_1_h_cw_200f.pat' && spaced.problems.length === 1,
+        JSON.stringify(spaced)
+    );
     const bad = ed.fitPatternFilename('G6_3x16_full_my grating 30°.pat');
     check(
         'fitPatternFilename: cleans characters',
@@ -203,6 +218,92 @@ function designerFor(layoutKey, configName) {
         /fitPatternFilename\(withColorTag\(addArenaPrefix\(/.test(
             extract(designer, 'buildPatternDataForSave', 'pattern_editor.html')
         )
+    );
+}
+
+console.log('\n=== G6 playback warning (partial arenas / grid mismatch) ===');
+{
+    global.PANEL_SPECS = require('../js/arena-configs.js').PANEL_SPECS;
+    const PatEncoder = require('../js/pat-encoder.js');
+    const pat = (rows, cols) => {
+        const W = cols * 20;
+        const H = rows * 20;
+        return new Uint8Array(
+            PatEncoder.encode({
+                generation: 'G6',
+                gs_val: 2,
+                numFrames: 1,
+                rowCount: rows,
+                colCount: cols,
+                pixelRows: H,
+                pixelCols: W,
+                frames: [new Uint8Array(W * H)],
+                stretchValues: [128]
+            })
+        );
+    };
+    const full = STANDARD_CONFIGS.G6_2x10.arena;
+    const partial = STANDARD_CONFIGS.G6_2x8of10.arena;
+    const g = PS.g6HeaderGrid(pat(2, 10));
+    check(
+        'header grid: 2×10, 20 panels in the mask',
+        g && g.rows === 2 && g.cols === 10 && g.maskPanels === 20,
+        JSON.stringify(g)
+    );
+    check('a non-G6 buffer is not read', PS.g6HeaderGrid(new Uint8Array(32)) === null);
+    check(
+        '2×10 pattern on a 2×10 rig: no warning',
+        PS.g6PlaybackWarning(pat(2, 10), full) === null
+    );
+    check(
+        'web-encoded 2×8 (partial) pattern on a 2×10 rig: warned (the controller rejects it)',
+        /2×8 panels, but the session rig is 2×10/.test(PS.g6PlaybackWarning(pat(2, 8), full) || '')
+    );
+    const masked = pat(2, 10);
+    masked[11] &= 0xfe; // clear panel 0 (the MATLAB writer's partial-arena mask)
+    check(
+        'a masked (MATLAB-style partial) pattern: warned',
+        /partial-arena pattern/.test(PS.g6PlaybackWarning(masked, null) || '')
+    );
+    check(
+        'partial rig detection',
+        PS.isPartialG6Arena(partial) && !PS.isPartialG6Arena(full) && !PS.isPartialG6Arena(null)
+    );
+    check(
+        'no rig known: only the file itself is judged',
+        PS.g6PlaybackWarning(pat(2, 8), null) === null
+    );
+}
+
+console.log('\n=== cache tokens on the changed shared modules ===');
+{
+    const pages = {
+        'pattern_editor.html': designer,
+        'arena_studio.html': studio,
+        'arena_console.html': fs.readFileSync(path.join(ROOT, 'arena_console.html'), 'utf8'),
+        'experiment_designer_v3.html': fs.readFileSync(
+            path.join(ROOT, 'experiment_designer_v3.html'),
+            'utf8'
+        ),
+        'icon_generator.html': fs.readFileSync(path.join(ROOT, 'icon_generator.html'), 'utf8')
+    };
+    for (const [page, src] of Object.entries(pages)) {
+        const icon = src.match(/from '\.\/js\/icon-generator\.js(\?v=[^']+)?'/);
+        check(
+            `${page}: icon-generator.js import is cache-busted`,
+            !!(icon && icon[1]),
+            icon ? icon[0] : 'no import'
+        );
+        if (page !== 'icon_generator.html') {
+            check(
+                `${page}: pattern-set.js is cache-busted`,
+                /<script src="js\/pattern-set\.js\?v=[^"]+"><\/script>/.test(src)
+            );
+        }
+    }
+    check(
+        'pattern_editor.html: panel-color.js is cache-busted',
+        /<script src="js\/panel-color\.js\?v=[^"]+"><\/script>/.test(designer)
     );
 }
 
@@ -237,6 +338,18 @@ console.log('\n=== Studio: upload order + X001_ duplicates ===');
     check(
         'upload warns when the name is already on the card',
         /is already on the SD card/.test(studio)
+    );
+    check(
+        'upload warns when the controller would reject a G6 pattern (partial rig / grid mismatch)',
+        /PS\.g6PlaybackWarning\(f\.bytes, rigArena\)/.test(studio) &&
+            /Studio\.rigArena = function/.test(studio)
+    );
+    check(
+        'the Designer warns once when saving a partial-G6 pattern',
+        /function warnPartialG6Once\(/.test(designer) &&
+            /warnPartialG6Once\(\);/.test(
+                extract(designer, 'buildPatternDataForSave', 'pattern_editor.html')
+            )
     );
     check(
         'the upload opcode is labelled 0x85 (no stale 0x8D)',

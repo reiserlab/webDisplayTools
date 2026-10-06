@@ -421,7 +421,7 @@ const src = fs.readFileSync(path.join(ROOT, 'js/panel-color.js'), 'utf8');
 check('panel-color.js has no bare ES export (classic-script safe)', !/^export /m.test(src));
 check(
     'pattern_editor.html loads js/panel-color.js as a classic script',
-    /<script src="js\/panel-color\.js">/.test(html)
+    /<script src="js\/panel-color\.js(\?v=[^"]+)?">/.test(html)
 );
 check(
     'pattern_editor.html renders pixels through PanelColor.pixelCss',

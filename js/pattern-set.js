@@ -428,11 +428,16 @@
     // The controller keeps pattern names in a 64-byte buffer (incl. NUL): at most 63 chars,
     // and SET_PATTERN_FILENAME 0x83 refuses longer. A same-name re-upload is stored as
     // X001_<name> (5 more chars, truncated to 63) — past 58 that cuts off '.pat' and the file
-    // drops out of the listing. Names travel as one byte per char, so only plain ASCII
-    // filename characters are safe. Firmware: SdManager.cpp renamePattern / scan.
+    // drops out of the listing. Names travel as one byte per char, so the name must be
+    // printable ASCII; FAT long names also forbid \ / : * ? " < > |. Spaces and parentheses
+    // are legal (and common: a browser's "… (1).pat" download). The Designer still writes
+    // tidy names ([A-Za-z0-9._-], SD_TIDY_CHARS) — that is style, not a controller rule.
+    // Firmware: SdManager.cpp renamePattern / scan.
     var SD_NAME_MAX = 63;
     var SD_NAME_SAFE = 58;
-    var SD_NAME_CHARS = /^[A-Za-z0-9._-]+$/;
+    var SD_NAME_CHARS = /^[\x20-\x7e]+$/;
+    var SD_NAME_FORBIDDEN = /[\\/:*?"<>|]/;
+    var SD_TIDY_CHARS = /^[A-Za-z0-9._-]+$/;
 
     /**
      * Check a pattern filename (with .pat) against the controller's SD rules.
@@ -444,7 +449,8 @@
         var errors = [];
         var warnings = [];
         if (!/\.pat$/i.test(n)) errors.push('must end in .pat');
-        if (!SD_NAME_CHARS.test(n)) errors.push('use only letters, digits, "_", "-" and "."');
+        if (!SD_NAME_CHARS.test(n)) errors.push('use plain ASCII characters only');
+        if (SD_NAME_FORBIDDEN.test(n)) errors.push('must not contain \\ / : * ? " < > |');
         if (n.charAt(0) === '.') errors.push('must not start with "."');
         if (n.length > SD_NAME_MAX) {
             errors.push(n.length + ' characters; the controller allows ' + SD_NAME_MAX);
@@ -491,6 +497,72 @@
         return sanitizeSdFilename(p + m + sfx);
     }
 
+    // ---- G6 playback on the session rig ----------------------------------------------
+    // Current arena firmware compiles in one dense panel grid and ignores the G6 panel mask,
+    // so a partial-arena pattern (or any grid that differs from the controller's) is rejected
+    // at load (CE_ARENA_MISMATCH, "TRIAL_PARAMS: load failed"). Warn — never block.
+    var PARTIAL_G6_NOTE =
+        "current arena firmware can't play partial-arena G6 patterns yet; the controller " +
+        'rejects them when loading. Until it can, use a full-grid pattern with the missing ' +
+        'columns left blank.';
+
+    /** {rows, cols, maskPanels} from a G6 .pat header, or null when it isn't one. */
+    function g6HeaderGrid(bytes) {
+        var u8;
+        try {
+            u8 = new Uint8Array(toArrayBuffer(bytes));
+        } catch (_) {
+            return null;
+        }
+        // 'G6PT'
+        if (
+            u8.length < 18 ||
+            u8[0] !== 0x47 ||
+            u8[1] !== 0x36 ||
+            u8[2] !== 0x50 ||
+            u8[3] !== 0x54
+        ) {
+            return null;
+        }
+        var mask = 0;
+        for (var i = 11; i <= 16; i++) {
+            for (var v = u8[i]; v; v >>= 1) mask += v & 1;
+        }
+        return { rows: u8[8], cols: u8[9], maskPanels: mask };
+    }
+
+    /** True for a G6 arena config with missing columns (G6_2x8of10, G6_3x12of18 …). */
+    function isPartialG6Arena(arena) {
+        return !!(arena && arena.generation === 'G6' && arena.columns_installed);
+    }
+
+    /**
+     * Why a G6 .pat won't play, judged from its own header and (when it is a FULL G6 arena)
+     * the session rig's config.arena; null when nothing is wrong or it isn't a G6 pattern.
+     * A partial session rig is reported once per batch by the caller (isPartialG6Arena).
+     */
+    function g6PlaybackWarning(bytes, arena) {
+        var g = g6HeaderGrid(bytes);
+        if (!g) return null;
+        if (g.maskPanels < g.rows * g.cols)
+            return 'partial-arena pattern (panel mask): ' + PARTIAL_G6_NOTE;
+        if (arena && arena.generation === 'G6' && !arena.columns_installed) {
+            if (g.rows !== arena.num_rows || g.cols !== arena.num_cols) {
+                return (
+                    g.rows +
+                    '×' +
+                    g.cols +
+                    ' panels, but the session rig is ' +
+                    arena.num_rows +
+                    '×' +
+                    arena.num_cols +
+                    ' — the controller will reject it when loading'
+                );
+            }
+        }
+        return null;
+    }
+
     var PatternSet = {
         TOOL: TOOL,
         MANIFEST_VERSION: MANIFEST_VERSION,
@@ -510,6 +582,11 @@
         checkSdFilename: checkSdFilename,
         sanitizeSdFilename: sanitizeSdFilename,
         fitSdFilename: fitSdFilename,
+        SD_TIDY_CHARS: SD_TIDY_CHARS,
+        PARTIAL_G6_NOTE: PARTIAL_G6_NOTE,
+        g6HeaderGrid: g6HeaderGrid,
+        isPartialG6Arena: isPartialG6Arena,
+        g6PlaybackWarning: g6PlaybackWarning,
         summarizePattern: summarizePattern,
         validateGeometry: validateGeometry,
         reencodeForDuty: reencodeForDuty,
