@@ -259,9 +259,13 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
     const patternRowPixels = patternData.rows;
     const installedColumnCount = columnsInstalled.length;
 
-    // Base offset: -90° to start at south (-PI/2)
-    // In canvas: 0° = right (East), -90° = down (South), angles go counter-clockwise
-    const BASE_OFFSET_RAD = -Math.PI / 2;
+    // Angles below are MATH angles (0 = east, +90° = north, counter-clockwise positive), the
+    // same top-down convention as the 3D viewer and MATLAB design_arena: south (behind the fly)
+    // at the bottom, columns running clockwise from c0. The canvas y axis points DOWN, so a
+    // canvas angle is the negated math angle (toCanvas); drawing math angles directly mirrored
+    // the icon top-to-bottom (gap at the top, columns counter-clockwise).
+    const BASE_OFFSET_RAD = -Math.PI / 2; // south
+    const toCanvas = (mathAngle) => -mathAngle;
     const alpha = (2 * Math.PI) / numCols; // angle per column (full arena)
 
     // Arena-specific angular offset (e.g., for aligning gap position)
@@ -272,11 +276,10 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
         const colIdx = columnsInstalled[installedIdx]; // Physical column position
 
         // Calculate angular position for this column based on column_order
-        // CW: c0 spans from South boundary leftward (counter-clockwise), columns continue CCW
-        // CCW: c0 spans from South boundary rightward (clockwise), columns continue CW
+        // CW: c0 starts at the south boundary and columns continue clockwise seen from above
+        // (behind → fly's left → front → right). CCW: the mirror image.
         let colStartAngle, colEndAngle;
         if (columnOrder === 'cw') {
-            // Column 0 left edge at South, right edge at South - alpha
             colStartAngle = BASE_OFFSET_RAD - colIdx * alpha + angleOffsetRad;
             colEndAngle = BASE_OFFSET_RAD - (colIdx + 1) * alpha + angleOffsetRad;
         } else {
@@ -292,12 +295,12 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
         for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
             // Render each pixel in this panel
             for (let py = 0; py < pixelsPerPanel; py++) {
-                // Calculate vertical pixel index (0 = top row, top pixel)
+                // Pattern row index (row 0 = bottom of the arena, the .pat convention)
                 const verticalPixelIdx = rowIdx * pixelsPerPanel + py;
 
-                // Map vertical position to radius:
-                // Row 0 (top of arena) → inner edge of ring (center)
-                // Row N (bottom of arena) → outer edge of ring
+                // Map vertical position to radius, as in a perspective view from above:
+                // row 0 (bottom, farther from the viewer) → inner edge of the ring,
+                // top row (nearer the viewer) → outer edge
                 const verticalFraction = verticalPixelIdx / totalVerticalPixels;
                 const pixelInnerRadius = innerRadius + verticalFraction * radiusRange;
                 const pixelOuterRadius =
@@ -323,13 +326,15 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
                           )
                         : brightnessToRGB(brightness, patternData.grayscaleMode);
 
-                    // Calculate angular position for this pixel
-                    const pixelAngle =
-                        colStartAngle + (px / pixelsPerPanel) * (colEndAngle - colStartAngle);
+                    // Calculate angular position for this pixel (canvas angles)
+                    const pixelAngle = toCanvas(
+                        colStartAngle + (px / pixelsPerPanel) * (colEndAngle - colStartAngle)
+                    );
 
                     // Calculate next pixel angle for width
-                    const nextPixelAngle =
-                        colStartAngle + ((px + 1) / pixelsPerPanel) * (colEndAngle - colStartAngle);
+                    const nextPixelAngle = toCanvas(
+                        colStartAngle + ((px + 1) / pixelsPerPanel) * (colEndAngle - colStartAngle)
+                    );
 
                     // Ensure we always draw the shorter arc by using min/max
                     const minAngle = Math.min(pixelAngle, nextPixelAngle);
@@ -371,9 +376,9 @@ function renderCylindricalIconToCanvas(frameData, patternData, arenaConfig, opts
             if (isCurrentInstalled !== isNextInstalled) {
                 let angle;
                 if (columnOrder === 'cw') {
-                    angle = BASE_OFFSET_RAD - (colIdx + 1) * alpha + angleOffsetRad;
+                    angle = toCanvas(BASE_OFFSET_RAD - (colIdx + 1) * alpha + angleOffsetRad);
                 } else {
-                    angle = BASE_OFFSET_RAD + (colIdx + 1) * alpha + angleOffsetRad;
+                    angle = toCanvas(BASE_OFFSET_RAD + (colIdx + 1) * alpha + angleOffsetRad);
                 }
 
                 // Draw radial line at boundary
