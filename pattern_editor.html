@@ -2577,6 +2577,9 @@
         // ============================================
         // State Management
         // ============================================
+        // Height (CSS px) of the 2D view's azimuth axis strip (drawAzimuthAxis)
+        const AZIMUTH_AXIS_HEIGHT = 20;
+
         const state = {
             pattern: null,          // Current loaded/generated pattern
             combinePatternA: null,  // Pattern A for combining (saved separately)
@@ -6785,8 +6788,9 @@
 
             // Calculate pixel size to fit in viewer
             const headerSize = state.editor.editMode ? 24 : 0;
+            const axisSize = state.arena.config ? AZIMUTH_AXIS_HEIGHT : 0;
             const maxWidth = container.clientWidth - 40 - headerSize;
-            const maxHeight = container.clientHeight - 40 - headerSize;
+            const maxHeight = container.clientHeight - 40 - headerSize - axisSize;
             const pixelSize = Math.max(1, Math.min(
                 Math.floor(maxWidth / pixelCols),
                 Math.floor(maxHeight / pixelRows)
@@ -6920,9 +6924,11 @@
 
             // Draw panel numbers
             if (state.editor.showPanelNumbers && state.arena.config) {
-                const pixelsPerPanel = PANEL_SPECS[state.arena.config.arena.generation].pixels_per_panel;
-                const panelCols = state.arena.config.arena.num_cols;
-                const panelRows = state.arena.config.arena.num_rows;
+                const arena = state.arena.config.arena;
+                const pixelsPerPanel = PANEL_SPECS[arena.generation].pixels_per_panel;
+                // The pattern's own panel blocks (installed columns only on a partial arena)
+                const panelCols = Math.round(pixelCols / pixelsPerPanel);
+                const panelRows = Math.round(pixelRows / pixelsPerPanel);
 
                 // Calculate font size based on panel size in pixels
                 const panelPixelWidth = pixelsPerPanel * pixelSize;
@@ -6933,19 +6939,104 @@
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
 
-                // G6: match the arena's own panel map — ROW-major, 1-based
-                // (firmware panel_index = row * numCols + col; row 0 = bottom,
-                // so 1..numCols run along the BOTTOM row). Bench-verified
-                // 2026-07-05. Other generations keep column-major numbering.
-                const g6RowMajor = state.arena.config.arena.generation === 'G6';
+                // Physical panel numbers, matching the arena's own panel map and the 3D
+                // overlay (physicalPanelNumber: G6 row-major, partial arenas offset by
+                // columns_installed)
                 for (let pc = 0; pc < panelCols; pc++) {
                     for (let pr = 0; pr < panelRows; pr++) {
                         const centerX = (pc + 0.5) * pixelsPerPanel * pixelSize;
                         const centerY = (panelRows - pr - 0.5) * pixelsPerPanel * pixelSize;
-                        const n = g6RowMajor ? pr * panelCols + pc + 1 : pc * panelRows + pr + 1;
+                        const n = physicalPanelNumber(arena, pc, pr);
                         ctx.fillText(n.toString(), centerX, centerY);
                     }
                 }
+            }
+
+            drawAzimuthAxis(canvas, pixelCols, pixelSize);
+        }
+
+        // ============================================
+        // 2D view: physical panel numbers + azimuth axis
+        // ============================================
+
+        /**
+         * Physical panel number (1-based) of pattern panel block `block` in panel row `row`
+         * (0 = bottom). A partial PAT stores only the installed columns, in columns_installed
+         * order, so block k sits on physical column columns_installed[k] (G6_2x8of10: block 0
+         * is column 1 = panels 2 / 12), the same map the 3D viewer uses. G6 numbers panels
+         * row-major (firmware panel_index = row * num_cols + col, row 0 = bottom,
+         * bench-verified 2026-07-05); older generations column-major.
+         */
+        function physicalPanelNumber(arena, block, row) {
+            const installed = arena.columns_installed
+                ? [...new Set(arena.columns_installed.map((p) => p % arena.num_cols))]
+                : null;
+            const col = installed ? installed[block] : block;
+            return arena.generation === 'G6'
+                ? row * arena.num_cols + col + 1
+                : col * arena.num_rows + row + 1;
+        }
+
+        /**
+         * Azimuth ticks for the 2D view in pattern coordinates (the generator's and the
+         * Mollweide view's): 0 deg = straight ahead at the middle of the pattern, negative to
+         * the fly's left. The step is the smallest of 15/30/45/60/90 deg that keeps ticks at
+         * least minSpacingPx pattern pixels apart. Returns [{deg, x}], x in pattern pixels
+         * from the left edge.
+         */
+        function azimuthTicks(pixelCols, degPerPx, minSpacingPx) {
+            const half = (pixelCols * degPerPx) / 2;
+            const step = [15, 30, 45, 60, 90].find((s) => s / degPerPx >= minSpacingPx) || 90;
+            const ticks = [];
+            for (let d = -Math.floor(half / step + 1e-9) * step; d <= half + 1e-9; d += step) {
+                ticks.push({ deg: d, x: d / degPerPx + pixelCols / 2 });
+            }
+            return ticks;
+        }
+
+        /** Degree ticks under the 2D grid (its own canvas, so edit-mode clicks are unaffected). */
+        function drawAzimuthAxis(gridCanvas, pixelCols, pixelSize) {
+            let axis = document.getElementById('gridAzimuthAxis');
+            if (!state.arena.config) {
+                if (axis) axis.remove();
+                return;
+            }
+            if (!axis) {
+                axis = document.createElement('canvas');
+                axis.id = 'gridAzimuthAxis';
+                axis.style.display = 'block';
+                axis.style.marginLeft = '1px'; // the grid canvas has a 1 px border
+                axis.title = "Azimuth from straight ahead (0°): negative = fly's left, positive = right. Same coordinates as the Mollweide view and the pattern generator.";
+                gridCanvas.after(axis);
+            }
+            axis.width = gridCanvas.width;
+            axis.height = AZIMUTH_AXIS_HEIGHT;
+            const actx = axis.getContext('2d');
+            const css = getComputedStyle(document.documentElement);
+            const dim = css.getPropertyValue('--text-dim').trim() || '#8b949e';
+            const accent = css.getPropertyValue('--accent').trim() || '#00e676';
+            actx.clearRect(0, 0, axis.width, axis.height);
+            actx.font = '10px "IBM Plex Mono", monospace';
+            actx.textAlign = 'center';
+            actx.textBaseline = 'top';
+            actx.lineWidth = 1;
+            let lastLabelRight = -Infinity;
+            for (const t of azimuthTicks(pixelCols, getDegreesPerPixel(), 60 / pixelSize)) {
+                const x = Math.round(t.x * pixelSize) + 0.5;
+                const color = t.deg === 0 ? accent : dim;
+                actx.strokeStyle = color;
+                actx.fillStyle = color;
+                actx.beginPath();
+                actx.moveTo(x, 0);
+                actx.lineTo(x, 5);
+                actx.stroke();
+                const label = (t.deg > 0 ? '+' : t.deg < 0 ? '−' : '') + Math.abs(t.deg) + '°';
+                const w = actx.measureText(label).width;
+                // edge labels are pulled inside the canvas; skip any that would overlap
+                const lx = Math.min(Math.max(x, w / 2 + 1), axis.width - w / 2 - 1);
+                if (lx - w / 2 < lastLabelRight + 4) continue;
+                actx.fillText(label, lx, 7);
+                lastLabelRight = lx + w / 2;
             }
         }
 

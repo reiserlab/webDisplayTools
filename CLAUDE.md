@@ -643,6 +643,15 @@ localStorage) — no auth UI of its own. Repo layout: free-standing patterns in 
   exists-check overwrite confirm.
 - Classic deps added for this: `js/pattern-set.js`, `js/studio-url-state.js` (both
   dual-export; same files the Studio loads).
+- **Partial arenas (LAB-295) — three rules every view and helper follows.** (1) Angular pitch is
+  the FULL circle: `PatternGenerator.getDegreesPerPixel(arena)` = 360 / (num_cols × px/panel)
+  (G4_3x12of18 = 1.25°/px), never the installed width; the generators read the same
+  `getArenaDimensions().circleCols`. (2) A partial PAT stores only the installed columns, in
+  order: pattern block k = physical column `columns_installed[k]` (G6_2x8of10: block 0 = column 1
+  = panels 2/12) — ThreeViewer `_getPatternColumnMap()`, the 2D `physicalPanelNumber()`, the icon.
+  (3) 0° = straight ahead = the middle of the pattern (MATLAB `arena_coordinates`, Mollweide, the 2D
+  azimuth axis). The icon draws math angles negated on the canvas (`toCanvas`; y points down).
+  Hardware does NOT play partial G6 patterns yet (firmware ignores the panel mask) — LAB-296.
 - **Multi-color G6 panels (v0.12, LAB-228) — color is a PANEL property, not a generation.**
   `js/panel-color.js` (classic dual-export, also read as `globalThis.PanelColor` by the ES-module
   viewers) is the ONLY place color logic lives: the layouts table (`g6-green` default,
