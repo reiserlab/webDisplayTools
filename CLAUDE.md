@@ -252,7 +252,7 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   rig, source), the top-bar chips, and the Run-view sequence. `dirty` means
   "text ≠ last load/save" (`savedText` baseline), NOT a snapshot-captured flag.
 - **Display quiesce:** firmware refuses SD-write + ISP commands
-  (0x8D/0xE0/0x8A/0xC8/0xC9) unless the display is stopped (`CE_DISPLAY_ACTIVE`,
+  (0x85/0xE0/0x8A/0xC8/0xC9) unless the display is stopped (`CE_DISPLAY_ACTIVE`,
   status 10). Any new handler for a guarded op must `await quiesceDisplay()`
   first. STOP also blanks panels (they latch frames) — a persistent on-arena
   display during ISP is impossible on current firmware; progress maps blink.
@@ -643,6 +643,13 @@ localStorage) — no auth UI of its own. Repo layout: free-standing patterns in 
   exists-check overwrite confirm.
 - Classic deps added for this: `js/pattern-set.js`, `js/studio-url-state.js` (both
   dual-export; same files the Studio loads).
+- **Pattern filenames must fit the controller's SD rules** (`PatternSet.checkSdFilename`, js/pattern-set.js):
+  plain ASCII `[A-Za-z0-9._-]`, ends `.pat`, ≤ 63 characters (firmware 64-byte buffer), and keep
+  ≤ 58 — a same-name re-upload is stored as `X001_<name>` and past 58 that cuts off `.pat`. The
+  Designer keeps generated names short (`grat`/`star`/`edge`/`sine`/`offon`/`anim`, `rot`/`exp`/
+  `trans`) and fits every saved/renamed name (`fitPatternFilename`: shortens the middle, keeps the
+  arena prefix + color tag); the Studio refuses a bad name BEFORE sending bytes (`sdUploadOne`)
+  and `sdLogicalName` strips `X001_`, so a re-upload shows as a duplicate. Upload opcode = 0x85.
 - **Partial arenas (LAB-295) — three rules every view and helper follows.** (1) Angular pitch is
   the FULL circle: `PatternGenerator.getDegreesPerPixel(arena)` = 360 / (num_cols × px/panel)
   (G4_3x12of18 = 1.25°/px), never the installed width; the generators read the same

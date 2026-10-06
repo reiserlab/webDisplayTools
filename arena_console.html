@@ -2867,7 +2867,7 @@
             let ispReportText = ''; // last run's plain-text report (Copy report)
             const ispSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-            // The firmware refuses ISP + SD-write commands (0xC8/0xC9/0xE0/0x8D/0x8A)
+            // The firmware refuses ISP + SD-write commands (0xC8/0xC9/0xE0/0x85/0x8A)
             // unless the display is stopped (state ALL_OFF → CE_DISPLAY_ACTIVE with
             // "Stop display before flashing a panel" otherwise). STOP_DISPLAY also
             // BLANKS the panels — they hold their last frame, so the firmware pushes
