@@ -71,15 +71,14 @@
 
 ## Arena Orientation Notes
 
-Current column mapping (column_order='cw'):
-- Column 0 starts at south (-90°)
-- Columns increase counter-clockwise (angles decrease)
-- For partial arena test: columns 0 and 9 are missing
-
-Expected orientation for partial arenas:
-- Gap should appear at bottom (south) for R/L symmetry
-- Currently gap appears bottom-right
-- May need further adjustment to column_order or angle_offset
+The icon is the same top-down picture as the 3D viewer's "Top Down" view and MATLAB
+`design_arena` (fixed 2026-10-06, LAB-295; before that the icon was mirrored top-to-bottom):
+- South (behind the fly) is at the bottom, the front at the top.
+- Column 0 starts at the south boundary; with column_order='cw' the columns run clockwise
+  seen from above (behind → fly's left → front → right).
+- On a partial arena the gap sits at the bottom, centered (e.g. G6_2x8of10: columns 0 and 9
+  missing, pattern column 1 lights physical column 1 at the lower-left of the gap).
+- `tests/test-icon-orientation.js` checks this against the 3D viewer for every standard config.
 
 ## Validation Summary
 

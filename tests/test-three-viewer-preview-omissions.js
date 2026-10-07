@@ -116,9 +116,21 @@ check(
         /totalLEDs\s*=\s*totalPanels/.test(stats)
 );
 const brightness = methodSlice('_getLEDBrightness', '_brightnessToColor');
+const patternColumnMap = methodSlice('_getPatternColumnMap', '_getVisibleColumnsSet');
 check(
-    'PAT lookup keeps original configured colIndex positions',
-    /colIndex\s*\*\s*pixelsPerPanel\s*\+\s*effectivePx/.test(brightness)
+    'PAT lookup indexes by the pattern column block of each physical column',
+    /patternCol\s*\*\s*pixelsPerPanel\s*\+\s*effectivePx/.test(brightness) &&
+        /patternColumns\.get\(col\)/.test(buildArena)
+);
+check(
+    'pattern column blocks come from the configured columns, not the preview-visible set',
+    /this\._getInstalledColumnsSet\(\)/.test(patternColumnMap) &&
+        !/_getVisibleColumnsSet/.test(patternColumnMap)
+);
+check(
+    'PAT lookup wraps inside the pattern width (no spill into the next row)',
+    /patternWidth\s*=\s*pattern\.pixelCols/.test(brightness) &&
+        !/totalAzimuthPixels/.test(brightness)
 );
 check(
     'the G6_2x10 registry remains a full logical arena',
@@ -140,7 +152,7 @@ const replayToken = cacheToken(replayModule, /three-viewer\.js\?v=([^'"]+)['"]/i
 const replayEntryToken = cacheToken(replayHtml, /arena-replay-viewer\.js\?v=([^'"]+)['"]/i);
 check(
     'Pattern Designer and replay import the same preview-gap revision',
-    patternToken === '0713-solid-ball' && replayToken === patternToken,
+    patternToken === '1006-partial-cols' && replayToken === patternToken,
     `${patternToken} / ${replayToken}`
 );
 check(

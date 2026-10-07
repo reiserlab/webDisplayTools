@@ -331,8 +331,8 @@ check(
 );
 check(
     'popup cache-busts the camera projection helper with its entry module',
-    html.includes('arena-replay-viewer-protocol.js?v=0713-solid-ball') &&
-        html.includes('arena-replay-viewer.js?v=0713-solid-ball')
+    html.includes('arena-replay-viewer-protocol.js?v=1006-partial-cols') &&
+        html.includes('arena-replay-viewer.js?v=1006-partial-cols')
 );
 check(
     'popup loads the walking model (classic) before the viewer module',

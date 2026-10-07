@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js';
 import PatParser from './pat-parser.js';
-import ThreeViewer from './pattern-editor/viewers/three-viewer.js?v=0713-solid-ball';
+import ThreeViewer from './pattern-editor/viewers/three-viewer.js?v=1006-partial-cols';
 import { PANEL_SPECS, STANDARD_CONFIGS, getArenaName, getConfig } from './arena-configs.js';
 
 const Protocol = window.ArenaReplayViewerProtocol;

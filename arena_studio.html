@@ -3075,7 +3075,7 @@
       <div class="stage" id="cStage">
 
         <section class="panel open" data-panel="patterns">
-          <div class="panel-h"><span class="panel-title" title="GET_FILE_COUNT 0x80 · names 0x82 · read 0x84 · delete 0x86 · write 0x8D · rename 0x83 · ZIP 0x8A · purge 0x8F">Patterns</span><span class="spacer"></span><span class="panel-x" data-close="patterns" role="button" title="Collapse to the rail">✕</span></div>
+          <div class="panel-h"><span class="panel-title" title="GET_FILE_COUNT 0x80 · names 0x82 · read 0x84 · delete 0x86 · write 0x85 · rename 0x83 · ZIP 0x8A · purge 0x8F">Patterns</span><span class="spacer"></span><span class="panel-x" data-close="patterns" role="button" title="Collapse to the rail">✕</span></div>
           <div class="panel-b">
             <div class="pat2col">
               <div class="pat-left">
@@ -3090,7 +3090,7 @@
               <button class="pill" data-cmd="csdlist" title="GET_FILE_COUNT 0x80 + names">Refresh</button>
               <button class="pill" data-cmd="cpatinfo" title="Re-query pattern info (GET_PATTERN_INFO 0x88) for the selected pattern">↻ info</button>
               <div class="cmenu" data-cmenu id="sdUploadMenu">
-                <button class="cmenu-btn" title="Upload pattern(s) to the SD card — a single .pat or a whole pattern set, from a local file/folder, this site's library, or the course repo (SET_PATTERN_FILE 0x8D + rename 0x83)">Add ▾</button>
+                <button class="cmenu-btn" title="Upload pattern(s) to the SD card — a single .pat or a whole pattern set, from a local file/folder, this site's library, or the course repo (SET_PATTERN_FILE 0x85 + rename 0x83)">Add ▾</button>
                 <div class="cmenu-pop">
                   <div class="cmenu-sep">Single pattern (.pat)</div>
                   <button class="cmenu-item" data-cmd="csdup_local_file" title="Pick one .pat file from this computer and upload it">From local file…</button>
@@ -3368,7 +3368,7 @@
 <script src="js/fictrac-bridge-client.js?v=20260926-cl-start"></script>
 <script src="js/arena-session.js"></script>
 <script src="js/pat-encoder.js"></script>
-<script src="js/pattern-set.js"></script>
+<script src="js/pattern-set.js?v=1006-partial-cols"></script>
 <script src="js/pat-preview.js"></script>
 <script src="js/bin-classifier.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script> <!-- Pattern Set ZIP export -->
@@ -4376,7 +4376,7 @@ function studioMarkerCurrent(stored, current) {
     const SAFE_BLOCKED_CMDS = new Set([
         // add / delete patterns (SD + on-arena writes)
         'csdpurge', 'csdarchive', 'cloadfile', 'crawsend', 'cispcopy',
-        // upload patterns to the SD card (all six Add ▾ sources → SET_PATTERN_FILE 0x8D)
+        // upload patterns to the SD card (all six Add ▾ sources → SET_PATTERN_FILE 0x85)
         'csdup_local_file', 'csdup_local_folder', 'csdup_lib_file',
         'csdup_lib_folder', 'csdup_repo_file', 'csdup_repo_folder',
         // program panels / firmware
@@ -5851,7 +5851,7 @@ function studioMarkerCurrent(stored, current) {
     }
     Studio.clearConsoleAutoStop = clearAutoStop; // Run-path pre-emption (module block)
 
-    // The firmware refuses SD-write + ISP commands (0x8D/0xE0/0x8A/0x8F/0xC8/0xC9)
+    // The firmware refuses SD-write + ISP commands (0x85/0xE0/0x8A/0x8F/0xC8/0xC9)
     // unless the display is stopped (state ALL_OFF — CE_DISPLAY_ACTIVE with
     // "Stop display before …" otherwise). STOP_DISPLAY also BLANKS the panels
     // (they latch their last frame, so the controller pushes a dark frame).
@@ -6519,12 +6519,17 @@ function studioMarkerCurrent(stored, current) {
             finally { e.target.disabled = false; }
         }
     });
-    // One SD .pat write: SET_PATTERN_FILE 0x8D upload + SET_PATTERN_FILENAME
+    // One SD .pat write: SET_PATTERN_FILE 0x85 upload + SET_PATTERN_FILENAME
     // 0x83 rename (both must succeed). Quiet path (session.send) — the batch
-    // wrapper owns the status line + per-file error log.
+    // wrapper owns the status line + per-file error log. The name is checked
+    // FIRST (PatternSet.checkSdFilename: ASCII, <= 63 chars), so a name the
+    // controller can't store fails in a moment instead of after the whole upload
+    // (which left it on the card as pattern.temp).
     async function sdUploadOne(name, bytes) {
+        const chk = window.PatternSet && PatternSet.checkSdFilename ? PatternSet.checkSdFilename(name) : null;
+        if (chk && chk.level === 'error') return { ok: false, retry: false, error: 'bad name — ' + chk.problems.join('; ') };
         const up = await session.send(Wire.encodeSetPatternFile(0, bytes), { timeoutMs: 120000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILE });
-        if (!((Wire.decodeResponse(up) || {}).ok)) return { ok: false, error: 'write rejected (0x8D)' };
+        if (!((Wire.decodeResponse(up) || {}).ok)) return { ok: false, error: 'write rejected (0x85)' };
         const rn = await session.send(Wire.encodeSetPatternFilename(0, name), { timeoutMs: 10000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILENAME });
         if (Wire.decodeSetPatternFilenameResponse(rn) == null) return { ok: false, error: 'rename failed (0x83)' };
         return { ok: true };
@@ -6538,7 +6543,7 @@ function studioMarkerCurrent(stored, current) {
         const tag = srcLabel ? ' (' + srcLabel + ')' : '';
         if (!files.length) { $('cSdUpStatus').textContent = 'nothing to upload' + tag; return { done: 0, failed: 0 }; }
         if (!connected()) { clog('SD upload: connect first', 'err'); return { done: 0, failed: 0 }; }
-        await quiesceDisplay(); // 0x8D requires the display stopped
+        await quiesceDisplay(); // 0x85 requires the display stopped
         // Breathing room between writes: the controller commits each .pat to the
         // SD (FAT + long-filename entry) before it's ready for the next; back-to-
         // back writes of a LARGE file could be dropped while it's still busy
@@ -6549,16 +6554,32 @@ function studioMarkerCurrent(stored, current) {
         let done = 0, failed = 0;
         const uploaded = [];
         clog('SD upload: ' + files.length + ' file(s)' + tag + '…', 'info');
+        // G6 playback: warn (never block) when the controller would reject a pattern at load
+        // — the rig is a partial arena, or the file's grid differs from the rig's.
+        const PS = window.PatternSet;
+        const rigArena = Studio.rigArena ? Studio.rigArena() : null;
+        if (PS && PS.isPartialG6Arena && PS.isPartialG6Arena(rigArena)) {
+            clog('⚠ the session rig (' + Studio.currentRig.arenaConfig + ') is a partial arena: ' + PS.PARTIAL_G6_NOTE, 'warn');
+        }
         for (let i = 0; i < files.length; i++) {
             const f = files[i];
             const pos = (i + 1) + '/' + files.length;
             const kb = (f.bytes.length / 1024).toFixed(1) + ' KB';
             $('cSdUpStatus').textContent = 'uploading ' + pos + tag + ' — ' + f.name + '…';
+            // An upload never overwrites: a name already on the card is stored as
+            // X001_<name>, and protocols can't tell the copies apart. Say so up front.
+            const onCard = Studio.patternSet && Studio.patternSet.patterns && Studio.sdLogicalName
+                ? Studio.patternSet.patterns[Studio.sdLogicalName(f.name)] : null;
+            if (onCard) clog('⚠ "' + f.name + '" is already on the SD card — this copy will be stored as X001_… next to it; delete the old one to replace it', 'warn');
+            const nameChk = window.PatternSet && PatternSet.checkSdFilename ? PatternSet.checkSdFilename(f.name) : null;
+            if (nameChk && nameChk.level === 'warn') clog('⚠ ' + f.name + ': ' + nameChk.problems.join('; '), 'warn');
+            const playWarn = PS && PS.g6PlaybackWarning ? PS.g6PlaybackWarning(f.bytes, rigArena) : null;
+            if (playWarn) clog('⚠ ' + f.name + ': ' + playWarn, 'warn');
             let r = null;
             try {
                 r = await sdUploadOne(f.name, f.bytes);
             } catch (e) { r = { ok: false, error: (e && e.message ? e.message : String(e)) }; }
-            if (!r.ok) {
+            if (!r.ok && r.retry !== false) {
                 // One retry after a longer settle — rescues a large file dropped
                 // while the controller was still committing the previous one.
                 clog('SD … ' + pos + '  ' + f.name + ' — ' + r.error + '; retrying in ' + (RETRY_GAP_MS / 1000) + 's…', 'warn');
@@ -7291,7 +7312,7 @@ import {
 } from './js/v3-import.js';
 import { getConfig } from './js/arena-configs.js'; // side effect: sets window.PANEL_SPECS
 import PatParser from './js/pat-parser.js';
-import { generatePatternIcon } from './js/icon-generator.js';
+import { generatePatternIcon } from './js/icon-generator.js?v=1006-partial-cols';
 import * as YAML from 'yaml'; // vendored build has NAMED exports only (no default)
 
 const Studio = window.Studio;
@@ -7986,14 +8007,19 @@ function arenaForConfig(cfg) {
 }
 // The card stores pattern files as `NNN_<name>.pat` — the zero-padded index
 // pins the firmware's SD-scan order (== pattern_ID) and the >8.3 name forces a
-// FAT long-filename entry (js/pattern-set.js:242). Protocols, though, reference
+// FAT long-filename entry (js/pattern-set.js assignIndices). Protocols, though, reference
 // the LOGICAL name (`all_on`). Normalize a raw SD filename to that logical
 // name for name↔SD reconciliation: drop a leading index prefix and the .pat
 // extension. Robust to one card holding several protocols' sets (each set's
 // 1-based prefixes collide globally, but the names stay unique + resolvable).
+// The logical pattern name of an SD filename: no .pat, no NNN_ index prefix, and no
+// X001_ prefix — the controller's rename for a same-name re-upload (SdManager.cpp
+// renamePattern, X%03u_), so a re-upload shows up as a DUPLICATE of the original
+// (onSdListing warns; protocols refuse to guess) instead of a separate pattern.
 function sdLogicalName(fn) {
     return String(fn == null ? '' : fn)
         .replace(/\.pat$/i, '')
+        .replace(/^X\d{3}_/, '')
         .replace(/^\d+[_-]/, '');
 }
 Studio.sdLogicalName = sdLogicalName;
@@ -9646,6 +9672,13 @@ Studio.runCondition = async function (name) {
 // arena's azimuth pixels (num_cols × pixels_per_panel — 200 on a 10-column G6 ⇒ 1.8). A
 // PATTERN property really (1 px per frame), which every shipped closed-loop pattern has; a
 // startClosedLoop `deg_per_frame` overrides it for exotic patterns. NOT 360 / frame_count.
+// The session rig's config.arena ({generation, num_rows, num_cols, columns_installed, …}) or
+// null — for classic-shell code that has no getConfig (the SD upload's G6 playback warning).
+Studio.rigArena = function () {
+    const name = Studio.currentRig && Studio.currentRig.arenaConfig;
+    const cfg = name ? getConfig(name) : null;
+    return (cfg && cfg.arena) || null;
+};
 Studio.rigDegPerFrame = function () {
     const name = Studio.currentRig && Studio.currentRig.arenaConfig;
     const cfg = name ? getConfig(name) : null;
@@ -11039,7 +11072,7 @@ async function registerRepoPatternPreviews(repo, protoPath, token) {
 // ---- Upload ▾: library / course-repo pattern-set sources --------------------
 // The Console SD "Upload ▾" menu's library/repo items land here. Both browse a
 // PROTOCOL, resolve its colocated _patterns/ set via the GitHub Contents API,
-// then hand {name, bytes} files to Studio.sdUploadFiles (classic shell → 0x8D/
+// then hand {name, bytes} files to Studio.sdUploadFiles (classic shell → 0x85/
 // 0x83). source ∈ 'library' | 'repo'; mode ∈ 'file' (pick one) | 'folder' (all).
 // Library origin = the canonical public tools repo (GH_OWNER/GH_REPO); repo
 // origin = the signed-in course repo. Both need a token — headers() has no anon
