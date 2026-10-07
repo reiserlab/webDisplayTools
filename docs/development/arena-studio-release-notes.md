@@ -4,6 +4,25 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.95 (2026-10-07) · ISP time estimate ~5 s/panel, not ~20 s (#244) · Pattern Designer + Studio: partial-arena °/px and 3D/2D mapping, unmirrored icons, short SD-safe filenames, upload name checks (LAB-295) · First command after Connect no longer waits ~60 s behind the thumbnail download (LAB-298)
+
+<!-- #245 -->
+- The panel firmware **Program set** dialog now estimates the time correctly (about 2 minutes for a full 20-panel arena, not 8).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+<!-- #246 -->
+- **A pattern name the arena can't store is refused before the upload starts,** with the reason, instead of failing after the file has been sent. Names with spaces or parentheses still upload.
+- **The upload warns when the arena would reject a pattern:** the session rig is a partial arena, or the pattern's panel grid doesn't match the rig.
+- **Re-uploading a pattern that's already on the card is flagged.** The arena keeps both copies (the new one as `X001_…`); the Studio now shows them as duplicates instead of quietly playing the old one.
+- **Pattern thumbnails are no longer mirrored.** The gap behind the fly is now at the bottom, as in the 3D view. This is the same fix as in the Pattern Designer and also covers the Console's thumbnails.
+- **The run-log replay's 3D view maps G6 2×8of10 patterns to the right columns.** This is the same fix as the Pattern Designer's 3D view.
+
+<!-- #248 -->
+- **Commands respond right after Connect.** The first command after connecting no longer waits up to a minute behind the pattern picker's thumbnail download; background reads at connect now step aside for anything you send.
+- **Pattern downloads from the SD card arrive complete.** Studio opens the arena's serial port with a larger read buffer, so downloads no longer come up short or drop the connection, and a download that stalls gives up after 5 s instead of 60 s.
+- **Thumbnails for patterns that are only on the SD card.** Studio downloads one for a thumbnail only if it is 1 MB or smaller; while a pattern is displaying, the tooltip explains that the controller can't send files until you stop it.
+
 ## v0.94 (2026-09-30) · LAB-158 ports (Protocol ▾, ⚙ Settings, two-column Console) + visibility themes · Multi-color G6 panels V1 — Panel LEDs layout, ON color, per-bank preview (LAB-228) · Flasher + Studio picker: one production build from the published catalog; legacy images hashed, never default (panel-fw-v1.3.1)
 
 <!-- #238 -->

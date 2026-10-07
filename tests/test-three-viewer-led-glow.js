@@ -139,6 +139,8 @@ check(
 );
 
 console.log('\n=== shared consumer cache boundaries ===');
+// Revisions at or after the glow layer (0713-solid-ball; 1006-partial-cols builds on it).
+const GLOW_REVISION = /glow|0713|1006-partial-cols/i;
 const patternImport = patternEditor.match(
     /from\s+['"]\.\/js\/pattern-editor\/viewers\/three-viewer\.js\?([^'"]+)['"]/
 );
@@ -150,15 +152,15 @@ const replayEntry = replayHtml.match(
 );
 check(
     'Pattern Editor cache-busts the shared ThreeViewer revision',
-    Boolean(patternImport && /glow|0713/i.test(patternImport[1]))
+    Boolean(patternImport && GLOW_REVISION.test(patternImport[1]))
 );
 check(
     'Replay imports the same cache-busted shared ThreeViewer',
-    Boolean(replayImport && /glow|0713/i.test(replayImport[1]))
+    Boolean(replayImport && GLOW_REVISION.test(replayImport[1]))
 );
 check(
     'Replay HTML cache-busts its module import edge',
-    Boolean(replayEntry && /glow|0713/i.test(replayEntry[1]))
+    Boolean(replayEntry && GLOW_REVISION.test(replayEntry[1]))
 );
 
 console.log(`\n${checks - failures} / ${checks} checks passed`);

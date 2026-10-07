@@ -26,7 +26,9 @@
     </script>
     <script src="js/pat-encoder.js"></script>
     <script src="js/arena-geometry.js"></script>
-    <script src="js/pattern-editor/tools/generator.js"></script>
+    <!-- ?v= busts a cached copy: initializeApp() calls PatternGenerator.getDegreesPerPixel
+         (added 2026-10-06), so a stale generator.js would abort the editor's init -->
+    <script src="js/pattern-editor/tools/generator.js?v=1006-partial-cols"></script>
     <!-- course pipeline: GitHub request builders for "push to course repo"
          (classic dual-export module — same file Arena Studio uses) -->
     <script src="js/studio-github.js"></script>
@@ -34,10 +36,10 @@
          (?repo= / ?arena= URL state) — same classic dual-export modules the
          Studio loads, so behavior matches across the two tools -->
     <script src="js/build-channel.js"></script> <!-- release tier: Production / Next / local -->
-    <script src="js/pattern-set.js"></script>
+    <script src="js/pattern-set.js?v=1006-partial-cols"></script>
     <!-- multi-color G6 panels: bank mosaic + ON-color weights (LAB-228); classic dual-export,
          also read as globalThis.PanelColor by the ES-module viewers -->
-    <script src="js/panel-color.js"></script>
+    <script src="js/panel-color.js?v=1006-partial-cols"></script>
     <script src="js/studio-url-state.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2495,7 +2497,7 @@
         </div>
     </div>
 
-    <footer class="pd-footer">Pattern Designer v0.12 | 2026-09-30 07:22 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/)">GitHub</a></footer>
+    <footer class="pd-footer">Pattern Designer v0.13 | 2026-10-07 12:32 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub — source, issues, and release notes (docs/development/)">GitHub</a></footer>
 
     <!-- Hidden file input -->
     <input type="file" id="fileInput" accept=".pat" style="display: none;">
@@ -2563,11 +2565,11 @@
 
     <script type="module">
         import PatParser from './js/pat-parser.js';
-        import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js?v=0713-solid-ball';
+        import ThreeViewer from './js/pattern-editor/viewers/three-viewer.js?v=1006-partial-cols';
         import MercatorViewer from './js/pattern-editor/viewers/mercator-viewer.js?v=0218';
         import MollweideViewer from './js/pattern-editor/viewers/mollweide-viewer.js?v=0218';
         import { combinePatterns } from './js/pattern-editor/tools/combiner.js';
-        import { generatePatternIcon } from './js/icon-generator.js';
+        import { generatePatternIcon } from './js/icon-generator.js?v=1006-partial-cols';
         import ImageConverter from './js/pattern-editor/tools/image-converter.js';
         // Classic dual-export module loaded above (also read by the viewers as globalThis.PanelColor)
         const PanelColor = window.PanelColor;
@@ -2575,6 +2577,9 @@
         // ============================================
         // State Management
         // ============================================
+        // Height (CSS px) of the 2D view's azimuth axis strip (drawAzimuthAxis)
+        const AZIMUTH_AXIS_HEIGHT = 20;
+
         const state = {
             pattern: null,          // Current loaded/generated pattern
             combinePatternA: null,  // Pattern A for combining (saved separately)
@@ -2870,6 +2875,12 @@
                         if (keepPrefix) {
                             finalName = addArenaPrefix(finalName);
                         }
+                    }
+
+                    const fitted = fitPatternFilename(finalName);
+                    if (fitted.problems.length) {
+                        alert('Adjusted for the arena SD card (' + fitted.problems.join('; ') + '):\n\n' + fitted.name);
+                        finalName = fitted.name;
                     }
 
                     state.filename = finalName;
@@ -3538,7 +3549,12 @@
                 arena_id: configName ? getArenaId(gen, configName) : 0,
                 observer_id: 0
             };
-            const filename = withColorTag(addArenaPrefix(state.filename || 'pattern.pat'));
+            warnPartialG6Once();
+            const fitted = fitPatternFilename(withColorTag(addArenaPrefix(state.filename || 'pattern.pat')));
+            if (fitted.problems.length) {
+                console.info('Pattern filename adjusted for the arena SD card (' + fitted.problems.join('; ') + '): ' + fitted.name);
+            }
+            const filename = fitted.name;
             return { patternData, filename };
         }
 
@@ -4016,12 +4032,10 @@
          */
         function getDegreesPerPixel() {
             if (!state.arena.config) return 1.8;  // Default for G6 2x10
-            const config = state.arena.config.arena;
-            const specs = PANEL_SPECS[config.generation];
-            // Use columns_installed for partial arenas, fallback to num_cols for full arenas
-            const installedCols = config.columns_installed?.length || config.num_cols;
-            const pixelCols = installedCols * specs.pixels_per_panel;
-            return 360 / pixelCols;
+            // Full circumference (num_cols), never the installed columns: a partial arena keeps
+            // the full arena's pitch (G4 3x12of18 = 360 / (18 x 16) = 1.25 deg/px), the same
+            // pitch the generator uses. Shared helper so the two can't drift apart.
+            return PatternGenerator.getDegreesPerPixel(state.arena.config.arena);
         }
 
         /**
@@ -4294,7 +4308,7 @@
 
                         // Generate filename
                         const freqStr = spatialFreqUnit === 'px' ? `${spatialFreqValue}px` : `${spatialFreqValue}deg`;
-                        filename = `grating_${motionType}_${freqStr}_${params.dutyCycle}pct.pat`;
+                        filename = `grat_${motionAbbrev(motionType)}_${freqStr}_${params.dutyCycle}pct.pat`;
                         break;
                     }
 
@@ -4325,7 +4339,7 @@
 
                         // Generate filename
                         const freqStr = spatialFreqUnit === 'px' ? `${spatialFreqValue}px` : `${spatialFreqValue}deg`;
-                        filename = `sine_${motionType}_${freqStr}.pat`;
+                        filename = `sine_${motionAbbrev(motionType)}_${freqStr}.pat`;
                         break;
                     }
 
@@ -4357,7 +4371,7 @@
                         params.poleCoord = [poleAzimuthStar * Math.PI / 180, poleElevationStar * Math.PI / 180];
 
                         pattern = PatternGenerator.generateStarfield(params, arena);
-                        filename = `starfield_${motionTypeStar}_${params.dotCount}dots_${params.numFrames}f.pat`;
+                        filename = `star_${motionAbbrev(motionTypeStar)}_${params.dotCount}dot_${params.numFrames}f.pat`;
                         break;
                     }
 
@@ -4390,13 +4404,13 @@
 
                         pattern = PatternGenerator.generateEdge(params, arena);
                         const freqStrEdge = spatialFreqUnitEdge === 'px' ? `${spatialFreqValueEdge}px` : `${spatialFreqValueEdge}deg`;
-                        filename = `edge_${motionTypeEdge}_${freqStrEdge}_${params.numFrames}f.pat`;
+                        filename = `edge_${motionAbbrev(motionTypeEdge)}_${freqStrEdge}_${params.numFrames}f.pat`;
                         break;
                     }
 
                     case 'off-on':
                         pattern = PatternGenerator.generateOffOn(params, arena);
-                        filename = `off_on_${highLevel}.pat`;
+                        filename = `offon_${highLevel}.pat`;
                         break;
 
                     default:
@@ -4426,7 +4440,12 @@
                     for (const f of pattern.frames) {
                         PanelColor.applyOnOffColor(f, pattern.pixelRows, pattern.pixelCols, pattern.gs_val, state.panel.layoutKey, onW, offW, hi, lo);
                     }
-                    filename = withColorTag(filename);
+                    // Name the ON/OFF choice used for THIS generation (_4c-B-G …); later chip
+                    // changes don't apply to these frames, so the code is stamped here, not at save.
+                    const colorCode = PanelColor.filenameColorCode
+                        ? PanelColor.filenameColorCode(state.panel.layoutKey, state.onColor, state.offColor)
+                        : '';
+                    filename = withColorTag(filename, colorCode);
                 }
 
                 // Convert to state.pattern format
@@ -5482,14 +5501,67 @@
             renderOnColorCustom();
         }
 
-        // Filename tag for color layouts (`_4c`, `_rir`), inserted before `.pat`. Applied at SAVE
-        // time in buildPatternDataForSave so every path — generate, combine, tray reload, image
-        // import — carries it; idempotent, and a no-op for the green layout.
-        function withColorTag(filename) {
+        // Filename tag for color layouts (`_4c`, `_rir`) + the generation's ON/OFF color code
+        // (`_4c-B-G`, PanelColor.filenameColorCode), inserted before `.pat`. Generation passes
+        // the code; SAVE (buildPatternDataForSave) passes none, so every path — combine, tray
+        // reload, image import — carries the layout tag and keeps a code already there. Any
+        // other layout's tag is replaced, never stacked (`_4c_rir`). No-op for green.
+        function withColorTag(filename, code) {
             const tag = PanelColor.filenameTag(state.panel.layoutKey);
             if (!tag || !filename) return filename;
             const base = filename.replace(/\.pat$/i, '');
-            return base.endsWith(tag) ? base + '.pat' : base + tag + '.pat';
+            const own = base.match(new RegExp(tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '((?:-[0-9A-Z]+){0,2})$'));
+            const keep = code !== undefined ? code : own ? own[1] : '';
+            const stripped = PanelColor.stripColorTag
+                ? PanelColor.stripColorTag(base)
+                : own ? base.slice(0, base.length - own[0].length) : base;
+            return stripped + tag + keep + '.pat';
+        }
+
+        // Partial-arena G6 patterns preview correctly but current firmware can't play them
+        // (it ignores the panel mask) — say so once per session when one is saved. Warn only.
+        let partialG6Warned = false;
+        function warnPartialG6Once() {
+            const arena = state.arena.config && state.arena.config.arena;
+            const partial = window.PatternSet && PatternSet.isPartialG6Arena
+                ? PatternSet.isPartialG6Arena(arena)
+                : !!(arena && arena.generation === 'G6' && arena.columns_installed);
+            if (!partial || partialG6Warned) return;
+            partialG6Warned = true;
+            const note = (window.PatternSet && PatternSet.PARTIAL_G6_NOTE) ||
+                "current arena firmware can't play partial-arena G6 patterns yet.";
+            alert('Heads-up: ' + state.arena.configName + ' is a partial arena. ' +
+                note.charAt(0).toUpperCase() + note.slice(1));
+        }
+
+        // Motion types in generated filenames (names stay short: the controller keeps 63
+        // characters and 58 survive a re-upload — PatternSet.checkSdFilename).
+        const MOTION_ABBREV = { rotation: 'rot', expansion: 'exp', translation: 'trans' };
+        function motionAbbrev(motion) {
+            return MOTION_ABBREV[motion] || motion;
+        }
+
+        /**
+         * Make a filename safe for the arena's SD card (<= 58 characters, PatternSet rules) and
+         * tidy ([A-Za-z0-9._-]: the Designer's naming style, though the card also takes spaces).
+         * Only the descriptive middle is shortened; the arena prefix and the color tag are kept.
+         * Returns {name, problems} (problems = what was changed and why, for the UI).
+         */
+        function fitPatternFilename(filename) {
+            if (!window.PatternSet || !PatternSet.checkSdFilename || !PatternSet.fitSdFilename) {
+                return { name: filename, problems: [] };
+            }
+            const chk = PatternSet.checkSdFilename(filename);
+            const tidy = !PatternSet.SD_TIDY_CHARS || PatternSet.SD_TIDY_CHARS.test(filename);
+            if (chk.ok && tidy) return { name: filename, problems: [] };
+            let base = filename.replace(/\.pat$/i, '');
+            const arena = findArenaPrefix(base);
+            const prefix = arena ? base.slice(0, arena.length + 1) : '';
+            base = base.slice(prefix.length);
+            const core = PanelColor.stripColorTag ? PanelColor.stripColorTag(base) : base;
+            const suffix = base.slice(core.length);
+            const problems = tidy ? chk.problems : ['spaces and symbols become "_"'].concat(chk.problems);
+            return { name: PatternSet.fitSdFilename(prefix, core, suffix), problems };
         }
 
         function updatePanelLayoutHint() {
@@ -5964,7 +6036,7 @@
                     case 'mask': modeSuffix = 'mask'; break;
                     case 'split-h': modeSuffix = `splitH${options.splitPosition || 50}`; break;
                     case 'split-v': modeSuffix = `splitV${options.splitPosition || 50}`; break;
-                    default: modeSuffix = 'combined';
+                    default: modeSuffix = 'comb';
                 }
                 state.filename = `${nameA}_${nameB}_${modeSuffix}.pat`;
 
@@ -6018,7 +6090,7 @@
                 // Generate suggested filename
                 const imageInfo = ImageConverter.getImageInfo();
                 const baseName = imageInfo?.name?.replace(/\.[^.]+$/, '') || 'image';
-                state.filename = `${baseName}_frame.pat`;
+                state.filename = `${baseName}_img.pat`;
 
                 // Lock arena config after generating pattern
                 lockArenaConfig();
@@ -6239,9 +6311,13 @@
             let defaultFrames;
             let hint;
             if (direction.startsWith('h-')) {
-                // Horizontal motion: full 360° loop
+                // Horizontal motion: one full wrap of the pattern width (360° on a full
+                // arena; a partial arena's installed span, e.g. 240° on G4 3x12of18)
                 defaultFrames = pixelCols;
-                hint = `(360° = ${pixelCols} px)`;
+                const degrees = state.arena.config
+                    ? Math.round(pixelCols * getDegreesPerPixel())
+                    : 360;
+                hint = `(${degrees}° = ${pixelCols} px)`;
             } else {
                 // Vertical motion: full vertical traverse
                 defaultFrames = pixelRows;
@@ -6317,7 +6393,7 @@
             };
 
             // Generate filename based on motion type
-            const dirLabel = direction.replace('-', '_');
+            const dirLabel = direction.replace('-', ''); // hcw · hccw · vup · vdown
             state.filename = `${baseEntry.name}_${dirLabel}_${totalFrames}f.pat`;
             state.isDirty = true;
             state.editor.currentFrame = 0;
@@ -6636,7 +6712,7 @@
                 stretchValues: new Array(frames.length).fill(getStretchByte(generation))
             };
 
-            state.filename = `animation_${frames.length}f.pat`;
+            state.filename = `anim_${frames.length}f.pat`;
             state.isDirty = true;
             state.editor.currentFrame = 0;
 
@@ -6781,8 +6857,9 @@
 
             // Calculate pixel size to fit in viewer
             const headerSize = state.editor.editMode ? 24 : 0;
+            const axisSize = state.arena.config ? AZIMUTH_AXIS_HEIGHT : 0;
             const maxWidth = container.clientWidth - 40 - headerSize;
-            const maxHeight = container.clientHeight - 40 - headerSize;
+            const maxHeight = container.clientHeight - 40 - headerSize - axisSize;
             const pixelSize = Math.max(1, Math.min(
                 Math.floor(maxWidth / pixelCols),
                 Math.floor(maxHeight / pixelRows)
@@ -6916,9 +6993,11 @@
 
             // Draw panel numbers
             if (state.editor.showPanelNumbers && state.arena.config) {
-                const pixelsPerPanel = PANEL_SPECS[state.arena.config.arena.generation].pixels_per_panel;
-                const panelCols = state.arena.config.arena.num_cols;
-                const panelRows = state.arena.config.arena.num_rows;
+                const arena = state.arena.config.arena;
+                const pixelsPerPanel = PANEL_SPECS[arena.generation].pixels_per_panel;
+                // The pattern's own panel blocks (installed columns only on a partial arena)
+                const panelCols = Math.round(pixelCols / pixelsPerPanel);
+                const panelRows = Math.round(pixelRows / pixelsPerPanel);
 
                 // Calculate font size based on panel size in pixels
                 const panelPixelWidth = pixelsPerPanel * pixelSize;
@@ -6929,19 +7008,104 @@
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
 
-                // G6: match the arena's own panel map — ROW-major, 1-based
-                // (firmware panel_index = row * numCols + col; row 0 = bottom,
-                // so 1..numCols run along the BOTTOM row). Bench-verified
-                // 2026-07-05. Other generations keep column-major numbering.
-                const g6RowMajor = state.arena.config.arena.generation === 'G6';
+                // Physical panel numbers, matching the arena's own panel map and the 3D
+                // overlay (physicalPanelNumber: G6 row-major, partial arenas offset by
+                // columns_installed)
                 for (let pc = 0; pc < panelCols; pc++) {
                     for (let pr = 0; pr < panelRows; pr++) {
                         const centerX = (pc + 0.5) * pixelsPerPanel * pixelSize;
                         const centerY = (panelRows - pr - 0.5) * pixelsPerPanel * pixelSize;
-                        const n = g6RowMajor ? pr * panelCols + pc + 1 : pc * panelRows + pr + 1;
+                        const n = physicalPanelNumber(arena, pc, pr);
                         ctx.fillText(n.toString(), centerX, centerY);
                     }
                 }
+            }
+
+            drawAzimuthAxis(canvas, pixelCols, pixelSize);
+        }
+
+        // ============================================
+        // 2D view: physical panel numbers + azimuth axis
+        // ============================================
+
+        /**
+         * Physical panel number (1-based) of pattern panel block `block` in panel row `row`
+         * (0 = bottom). A partial PAT stores only the installed columns, in columns_installed
+         * order, so block k sits on physical column columns_installed[k] (G6_2x8of10: block 0
+         * is column 1 = panels 2 / 12), the same map the 3D viewer uses. G6 numbers panels
+         * row-major (firmware panel_index = row * num_cols + col, row 0 = bottom,
+         * bench-verified 2026-07-05); older generations column-major.
+         */
+        function physicalPanelNumber(arena, block, row) {
+            const installed = arena.columns_installed
+                ? [...new Set(arena.columns_installed.map((p) => p % arena.num_cols))]
+                : null;
+            const col = installed && installed[block] !== undefined ? installed[block] : block;
+            return arena.generation === 'G6'
+                ? row * arena.num_cols + col + 1
+                : col * arena.num_rows + row + 1;
+        }
+
+        /**
+         * Azimuth ticks for the 2D view in pattern coordinates (the generator's and the
+         * Mollweide view's): 0 deg = straight ahead at the middle of the pattern, negative to
+         * the fly's left. The step is the smallest of 15/30/45/60/90 deg that keeps ticks at
+         * least minSpacingPx pattern pixels apart. Returns [{deg, x}], x in pattern pixels
+         * from the left edge.
+         */
+        function azimuthTicks(pixelCols, degPerPx, minSpacingPx) {
+            const half = (pixelCols * degPerPx) / 2;
+            const step = [15, 30, 45, 60, 90].find((s) => s / degPerPx >= minSpacingPx) || 90;
+            const ticks = [];
+            for (let d = -Math.floor(half / step + 1e-9) * step; d <= half + 1e-9; d += step) {
+                ticks.push({ deg: d, x: d / degPerPx + pixelCols / 2 });
+            }
+            return ticks;
+        }
+
+        /** Degree ticks under the 2D grid (its own canvas, so edit-mode clicks are unaffected). */
+        function drawAzimuthAxis(gridCanvas, pixelCols, pixelSize) {
+            let axis = document.getElementById('gridAzimuthAxis');
+            if (!state.arena.config) {
+                if (axis) axis.remove();
+                return;
+            }
+            if (!axis) {
+                axis = document.createElement('canvas');
+                axis.id = 'gridAzimuthAxis';
+                axis.style.display = 'block';
+                axis.style.marginLeft = '1px'; // the grid canvas has a 1 px border
+                axis.title = "Azimuth from straight ahead (0°): negative = fly's left, positive = right. Same coordinates as the Mollweide view and the pattern generator.";
+                gridCanvas.after(axis);
+            }
+            axis.width = gridCanvas.width;
+            axis.height = AZIMUTH_AXIS_HEIGHT;
+            const actx = axis.getContext('2d');
+            const css = getComputedStyle(document.documentElement);
+            const dim = css.getPropertyValue('--text-dim').trim() || '#8b949e';
+            const accent = css.getPropertyValue('--accent').trim() || '#00e676';
+            actx.clearRect(0, 0, axis.width, axis.height);
+            actx.font = '10px "IBM Plex Mono", monospace';
+            actx.textAlign = 'center';
+            actx.textBaseline = 'top';
+            actx.lineWidth = 1;
+            let lastLabelRight = -Infinity;
+            for (const t of azimuthTicks(pixelCols, getDegreesPerPixel(), 60 / pixelSize)) {
+                const x = Math.round(t.x * pixelSize) + 0.5;
+                const color = t.deg === 0 ? accent : dim;
+                actx.strokeStyle = color;
+                actx.fillStyle = color;
+                actx.beginPath();
+                actx.moveTo(x, 0);
+                actx.lineTo(x, 5);
+                actx.stroke();
+                const label = (t.deg > 0 ? '+' : t.deg < 0 ? '−' : '') + Math.abs(t.deg) + '°';
+                const w = actx.measureText(label).width;
+                // edge labels are pulled inside the canvas; skip any that would overlap
+                const lx = Math.min(Math.max(x, w / 2 + 1), axis.width - w / 2 - 1);
+                if (lx - w / 2 < lastLabelRight + 4) continue;
+                actx.fillText(label, lx, 7);
+                lastLabelRight = lx + w / 2;
             }
         }
 

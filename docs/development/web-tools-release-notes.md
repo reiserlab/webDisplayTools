@@ -3,6 +3,15 @@
 Newest first. Each entry is one Production release (see `releases/` for the exact
 candidate manifest: main commit + the PRs and their head SHAs).
 
+## Pattern Icon Generator v1.5 (2026-10-07) · ISP time estimate ~5 s/panel, not ~20 s (#244) · Pattern Designer + Studio: partial-arena °/px and 3D/2D mapping, unmirrored icons, short SD-safe filenames, upload name checks (LAB-295) · First command after Connect no longer waits ~60 s behind the thumbnail download (LAB-298)
+
+- Maintenance release (no user-visible notes).
+
+## Arena Console v11 (2026-10-07) · ISP time estimate ~5 s/panel, not ~20 s (#244) · Pattern Designer + Studio: partial-arena °/px and 3D/2D mapping, unmirrored icons, short SD-safe filenames, upload name checks (LAB-295) · First command after Connect no longer waits ~60 s behind the thumbnail download (LAB-298)
+
+<!-- #248 -->
+- **Pattern downloads from the SD card arrive complete.** The same larger serial read buffer and 5 s stall limit as in Studio.
+
 ## G6 Panel Flash Programmer v0.4 (2026-09-30) · LAB-158 ports (Protocol ▾, ⚙ Settings, two-column Console) + visibility themes · Multi-color G6 panels V1 — Panel LEDs layout, ON color, per-bank preview (LAB-228) · Flasher + Studio picker: one production build from the published catalog; legacy images hashed, never default (panel-fw-v1.3.1)
 
 <!-- #242 -->
