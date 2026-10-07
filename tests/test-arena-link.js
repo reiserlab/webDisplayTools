@@ -117,8 +117,9 @@ class FakePort {
         this.opened = false;
         this.closed = false;
     }
-    async open() {
+    async open(opts) {
         this.opened = true;
+        this.openOpts = opts;
     }
     async close() {
         this.closed = true;
@@ -174,6 +175,19 @@ const REQ_INFO = '01 c2';
 const REQ_SPI = '01 c6';
 const RESP_INFO = Uint8Array.from([0x04, 0x00, 0xc2, 0x02, 0x11]); // echo 0xC2
 const RESP_SPI = Uint8Array.from([0x04, 0x00, 0xc6, 0x14, 0x00]); // echo 0xC6
+
+// GET_PATTERN_FILE (0x84) header frame [10, status 0, 0x84, size u64 LE] + a body.
+function fileHeader(size) {
+    const h = new Uint8Array(11);
+    h[0] = 10;
+    h[2] = 0x84;
+    h[3] = size & 0xff;
+    h[4] = (size >> 8) & 0xff;
+    h[5] = (size >> 16) & 0xff;
+    h[6] = (size >>> 24) & 0xff;
+    return h;
+}
+const fileBody = (n) => Uint8Array.from({ length: n }, (_, i) => i & 0xff);
 
 async function main() {
     console.log('=== feature detection ===');
@@ -357,6 +371,160 @@ async function main() {
         );
         checkBool('rejected promptly (not hung)', Date.now() - t0 < 1000);
         checkBool('no request left in flight', link._inflight === null);
+        reader.cancel();
+        await link.close();
+    }
+
+    console.log(
+        '\n=== open(): 1 MiB Web Serial read buffer (Chrome default 255 B loses bulk bytes) ==='
+    );
+    {
+        const { link, reader, port } = setup();
+        await link.connect();
+        checkBool(
+            'default bufferSize is 1 MiB',
+            port.openOpts && port.openOpts.bufferSize === 1 << 20,
+            JSON.stringify(port.openOpts)
+        );
+        checkBool('baudRate still passed', port.openOpts && port.openOpts.baudRate === 115200);
+        reader.cancel();
+        await link.close();
+    }
+    {
+        const { link, reader, port } = setup();
+        await link.connect({ bufferSize: 4096 });
+        checkBool('bufferSize override honored', port.openOpts.bufferSize === 4096);
+        reader.cancel();
+        await link.close();
+    }
+
+    console.log('\n=== bulk read (0x84): body across chunks, stall detection ===');
+    {
+        const { link, reader } = setup();
+        await link.connect();
+        const p = link.sendBulkRead(Wire.encodeGetPatternFile(1), { timeoutMs: 2000 });
+        await flush();
+        const body = fileBody(600);
+        const first = new Uint8Array(11 + 100);
+        first.set(fileHeader(600), 0);
+        first.set(body.subarray(0, 100), 11);
+        reader.push(first); // header + the first body bytes in one chunk
+        reader.push(body.subarray(100, 400));
+        reader.push(body.subarray(400));
+        const data = await p;
+        checkBool('bulk body reassembled', data.length === 600 && data[599] === body[599]);
+        reader.cancel();
+        await link.close();
+    }
+    {
+        // Bench 2026-10-07: the body arrived ~1 KB short and the read waited out its
+        // full timeout while every later command queued behind it.
+        const { link, reader } = setup();
+        await link.connect();
+        const t0 = Date.now();
+        const p = link.sendBulkRead(Wire.encodeGetPatternFile(1), {
+            timeoutMs: 5000,
+            idleTimeoutMs: 40
+        });
+        await flush();
+        reader.push(fileHeader(1000));
+        reader.push(fileBody(700)); // 300 bytes never come
+        await checkRejects('short body rejects as stalled', p, /stalled: got 700\/1000 bytes/);
+        checkBool('rejected at the idle limit, not the 5 s timeout', Date.now() - t0 < 1000);
+        // The queue is free again: the next command goes out and resolves.
+        const q = link.send(Wire.encodeGetControllerInfo());
+        await flush();
+        reader.push(RESP_INFO);
+        checkBytes('next command works after a stalled bulk read', await q, '04 00 c2 02 11');
+        reader.cancel();
+        await link.close();
+    }
+    {
+        // A slow but steady stream that outlasts the idle limit still completes.
+        const { link, reader } = setup();
+        await link.connect();
+        const p = link.sendBulkRead(Wire.encodeGetPatternFile(1), {
+            timeoutMs: 5000,
+            idleTimeoutMs: 40
+        });
+        await flush();
+        reader.push(fileHeader(500));
+        for (let i = 0; i < 5; i++) {
+            await flush(25); // 5 × 25 ms > the 40 ms idle limit in total
+            reader.push(fileBody(100));
+        }
+        const data = await p.catch((e) => e);
+        checkBool('steady slow body completes', data instanceof Uint8Array && data.length === 500);
+        reader.cancel();
+        await link.close();
+    }
+
+    console.log('\n=== background lane: user commands go first ===');
+    {
+        const { link, reader, writer } = setup();
+        await link.connect();
+        const order = [];
+        const b1 = link.send(Wire.encodeGetPatternInfo(1), { background: true });
+        const b2 = link.send(Wire.encodeGetPatternInfo(2), { background: true });
+        const b3 = link.send(Wire.encodeGetPatternInfo(3), { background: true });
+        await flush();
+        checkBool('background request goes out when idle', writer.writes.length === 1);
+        checkBool(
+            'two background requests wait',
+            link.pending.background === 2 && link.pending.inFlight,
+            JSON.stringify(link.pending)
+        );
+        const fg = link.send(Wire.encodeGetSpiClock()); // the user's command
+        const reply88 = (i) => [0x0e, 0x00, 0x88, i, 0, 2, 2, 10, 0, 0, 0, 0, 0, 0, 0];
+        reader.push(reply88(1)); // finishes the in-flight background request
+        await b1;
+        await flush();
+        checkBytes('the user command jumps the background queue', writer.writes[1], REQ_SPI);
+        reader.push(RESP_SPI);
+        await fg;
+        await flush();
+        reader.push(reply88(2));
+        await b2;
+        await flush();
+        reader.push(reply88(3));
+        await b3;
+        writer.writes.forEach((w) => order.push(w[1].toString(16) + (w[2] ? ':' + w[2] : '')));
+        checkBool(
+            'then the background lane resumes in order',
+            order.join(' ') === '88:1 c6 88:2 88:3',
+            order.join(' ')
+        );
+        reader.cancel();
+        await link.close();
+    }
+    {
+        // A failed background request does not stall the queue.
+        const { link, reader } = setup();
+        await link.connect();
+        const b = link.send(Wire.encodeGetPatternInfo(1), { background: true, timeoutMs: 20 });
+        const f = link.send(Wire.encodeGetControllerInfo());
+        await checkRejects('background request times out', b, /timeout/);
+        await flush();
+        reader.push(RESP_INFO);
+        checkBytes('queued foreground request still runs', await f, '04 00 c2 02 11');
+        reader.cancel();
+        await link.close();
+    }
+    {
+        // Callers see their reply before the next queued request is written.
+        const { link, reader, writer } = setup();
+        await link.connect();
+        let writesAtResolve = -1;
+        const p1 = link.send(Wire.encodeGetControllerInfo()).then(() => {
+            writesAtResolve = writer.writes.length;
+        });
+        const p2 = link.send(Wire.encodeGetSpiClock()).catch(() => {}); // close() rejects it
+        await flush();
+        reader.push(RESP_INFO);
+        await p1;
+        checkBool('next request not yet written when the caller resumes', writesAtResolve === 1);
+        reader.push(RESP_SPI);
+        await p2;
         reader.cancel();
         await link.close();
     }
