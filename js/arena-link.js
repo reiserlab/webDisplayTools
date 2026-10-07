@@ -29,6 +29,11 @@
  *   oldest pending await regardless of echo (fine for its one-shot button UI,
  *   too loose for the shared substrate the runner will build on).
  *
+ * Two lanes: a send with `{ background: true }` (connect-time sweeps, thumbnail
+ *   fetches) waits while any foreground send is queued, so a user command never
+ *   queues behind a sweep. FIFO within each lane. Nothing on the wire is
+ *   preempted: a request already in flight (a bulk read included) finishes first.
+ *
  * Gotchas (from the reference README — all still apply):
  *   - Web Serial is Chromium-only (Chrome / Edge / Opera / Brave / Arc) on a
  *     desktop OS. Firefox and Safari do NOT implement navigator.serial — gate
@@ -40,6 +45,11 @@
  *     115200 is a conventional placeholder.
  *   - Only one process can hold the port. Close pio device monitor / dwfpy /
  *     other terminals before connecting.
+ *   - open() asks for a 1 MiB read buffer (`bufferSize`). Chrome's default is
+ *     255 bytes, and with it a fast bulk stream (0x84 file / 0x8A archive) loses
+ *     bytes or ends in "Break received" on macOS: bench 2026-10-07, an 81 KB
+ *     pattern arrived 901 bytes short and the read waited out its timeout.
+ *     With 1 MiB the same file arrives complete in ~9 ms.
  *   - DEBUG_SERIAL firmware builds interleave diagnostic text on the same pipe;
  *     a stray byte is treated as a frame length and can stall the parser behind
  *     a bogus length. The single-flight timeout (which flushes the rx buffer) is
@@ -58,6 +68,8 @@ const ArenaLink = (function () {
 
     const DEFAULT_BAUD_RATE = 115200; // ignored by USB CDC; conventional placeholder
     const DEFAULT_TIMEOUT_MS = 500; // controller replies in well under 1 ms
+    const DEFAULT_BUFFER_SIZE = 1 << 20; // Web Serial read buffer (Chrome default 255 B loses bulk bytes)
+    const DEFAULT_BULK_IDLE_MS = 5000; // a bulk body that stops arriving for this long has lost bytes
     const HEX_LOG_LIMIT = 32; // truncate longer payloads in the trace log
 
     const hex = (bytes) =>
@@ -127,10 +139,12 @@ const ArenaLink = (function () {
             this._inflight = null;
             // Active bulk-read state (set while receiving raw bytes for 0x84). When
             // non-null, _consumeIncoming routes bytes here instead of frame-parsing.
-            // Shape: { remaining, chunks, resolve, reject, timer }
+            // Shape: { remaining, total, chunks, resolve, reject, timer, deadline, idleMs }
             this._bulkRead = null;
-            // Serializes concurrent send() callers into one-at-a-time requests.
-            this._sendQueue = Promise.resolve();
+            // Serializes concurrent send() callers into one-at-a-time requests:
+            // two FIFO lanes, the foreground one always served first (see _pump).
+            this._lanes = { fg: [], bg: [] };
+            this._busy = false;
 
             // Bind so add/removeEventListener share one reference.
             this._handleSerialDisconnect = this._handleSerialDisconnect.bind(this);
@@ -177,6 +191,7 @@ const ArenaLink = (function () {
          * Open the selected port and start the background reader.
          * @param {object} [opts]
          * @param {number} [opts.baudRate=115200]
+         * @param {number} [opts.bufferSize=1048576] Web Serial read buffer, bytes
          */
         async open(opts) {
             this._assertSupported();
@@ -186,7 +201,8 @@ const ArenaLink = (function () {
             if (this._connected) return;
 
             const baudRate = (opts && opts.baudRate) || DEFAULT_BAUD_RATE;
-            await this._port.open({ baudRate });
+            const bufferSize = (opts && opts.bufferSize) || DEFAULT_BUFFER_SIZE;
+            await this._port.open({ baudRate, bufferSize });
             // Remember the USB identity (VID/PID — all Web Serial exposes) so
             // reconnect() can find this device among the granted ports after a
             // firmware reset re-enumerates it.
@@ -316,19 +332,66 @@ const ArenaLink = (function () {
          * @param {number} [opts.expectedCmd] response echo_cmd to correlate on;
          *   defaults to bytes[1]. A stream frame ([0x32, len_lo, len_hi, ...])
          *   carries its opcode at byte 0 (byte 1 is a length), so pass 0x32.
+         * @param {boolean} [opts.background=false] queue in the background lane:
+         *   sent only when no foreground send is waiting (sweeps, prefetches).
          * @returns {Promise<Uint8Array>}
          */
         send(bytes, opts) {
-            // Chain onto the queue so only one request is in flight at a time.
-            // `run` fires whether the previous send resolved or rejected.
-            const run = () => this._sendOne(bytes, opts);
-            const result = this._sendQueue.then(run, run);
-            // Keep the queue tail from rejecting so the next send still chains.
-            this._sendQueue = result.then(
-                () => {},
-                () => {}
+            return this._enqueue(() => this._sendOne(bytes, opts), opts);
+        }
+
+        /**
+         * Requests not yet settled: { foreground, background } still queued and
+         * whether one is on the wire (`inFlight`). For diagnostics and tests.
+         */
+        get pending() {
+            return {
+                foreground: this._lanes.fg.length,
+                background: this._lanes.bg.length,
+                inFlight: this._busy
+            };
+        }
+
+        // Queue `run` (a () => Promise) in its lane; resolves/rejects with it.
+        _enqueue(run, opts) {
+            const lane = opts && opts.background ? this._lanes.bg : this._lanes.fg;
+            return new Promise((resolve, reject) => {
+                lane.push({ run, resolve, reject });
+                this._pump();
+            });
+        }
+
+        // Start the next queued request when none is in flight: foreground lane
+        // first, so a user command waits for at most the one request on the wire.
+        _pump() {
+            if (this._busy) return;
+            const job = this._lanes.fg.shift() || this._lanes.bg.shift();
+            if (!job) return;
+            this._busy = true;
+            // Settle the caller first and start the next request a microtask later,
+            // so a caller sees its reply before anything else goes on the wire (the
+            // order the old single promise chain gave).
+            const next = () =>
+                Promise.resolve().then(() => {
+                    this._busy = false;
+                    this._pump();
+                });
+            let p;
+            try {
+                p = Promise.resolve(job.run());
+            } catch (err) {
+                p = Promise.reject(err);
+            }
+            p.then(
+                (v) => {
+                    job.resolve(v);
+                    next();
+                },
+                (err) => {
+                    job.reject(err);
+                    next();
+                }
             );
-            return result;
         }
 
         /**
@@ -342,21 +405,19 @@ const ArenaLink = (function () {
          * @param {Uint8Array|number[]} bytes request frame
          * @param {object} [opts]
          * @param {number} [opts.timeoutMs=30000] applies to both header and data phases
+         * @param {number} [opts.idleTimeoutMs=5000] data phase: reject when no byte
+         *   arrives for this long (the stream lost bytes) instead of waiting out timeoutMs
+         * @param {boolean} [opts.background=false] queue in the background lane (see send)
          * @returns {Promise<Uint8Array>}
          */
         sendBulkRead(bytes, opts) {
-            const run = () => this._sendOneBulkRead(bytes, opts);
-            const result = this._sendQueue.then(run, run);
-            this._sendQueue = result.then(
-                () => {},
-                () => {}
-            );
-            return result;
+            return this._enqueue(() => this._sendOneBulkRead(bytes, opts), opts);
         }
 
         async _sendOneBulkRead(bytes, opts) {
             if (!this._writer) throw new Error('ArenaLink.sendBulkRead: not connected');
             const timeoutMs = (opts && opts.timeoutMs) || 30000;
+            const idleMs = (opts && opts.idleTimeoutMs) || DEFAULT_BULK_IDLE_MS;
             const payload = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
             const expectedCmd = opts && opts.expectedCmd != null ? opts.expectedCmd : payload[1];
 
@@ -376,7 +437,7 @@ const ArenaLink = (function () {
                     resolve,
                     reject,
                     timer: null,
-                    bulkInit: { timeoutMs, dataResolve, dataReject }
+                    bulkInit: { timeoutMs, idleMs, dataResolve, dataReject }
                 };
                 entry.timer = setTimeout(() => {
                     if (this._inflight !== entry) return;
@@ -417,6 +478,7 @@ const ArenaLink = (function () {
             const take = Math.min(chunk.length, br.remaining);
             if (take > 0) br.chunks.push(chunk.slice(0, take));
             br.remaining -= take;
+            if (br.remaining > 0 && take > 0) this._armBulkTimer(br); // still arriving
             if (br.remaining <= 0) {
                 clearTimeout(br.timer);
                 this._bulkRead = null;
@@ -431,6 +493,37 @@ const ArenaLink = (function () {
                 br.resolve(out);
             }
             return take;
+        }
+
+        // (Re)start the bulk body's timer: fire after `idleMs` without a byte
+        // (bytes were lost — fail fast, the queue behind it is waiting) or at the
+        // overall deadline, whichever comes first. Called on every chunk.
+        _armBulkTimer(br) {
+            clearTimeout(br.timer);
+            const left = Math.max(0, br.deadline - Date.now());
+            const stalled = left > br.idleMs;
+            br.timer = setTimeout(
+                () => {
+                    if (this._bulkRead !== br) return;
+                    this._bulkRead = null;
+                    this._rxBuf = new Uint8Array(0); // a partial body must not be read as frames
+                    const got = br.total - br.remaining;
+                    br.reject(
+                        new Error(
+                            stalled
+                                ? 'bulk-read data stalled: got ' +
+                                      got +
+                                      '/' +
+                                      br.total +
+                                      ' bytes, none for ' +
+                                      br.idleMs +
+                                      ' ms'
+                                : 'bulk-read data timeout: got ' + got + '/' + br.total + ' bytes'
+                        )
+                    );
+                },
+                stalled ? br.idleMs : left
+            );
         }
 
         async _sendOne(bytes, opts) {
@@ -651,27 +744,20 @@ const ArenaLink = (function () {
                         entry.resolve(frame);
                         continue;
                     }
-                    // Set up bulk drain.
+                    // Set up bulk drain: overall deadline timeoutMs from now, and
+                    // an idle limit re-armed on every chunk (_armBulkTimer).
                     const bi = entry.bulkInit;
-                    const bulkTimer = setTimeout(() => {
-                        if (this._bulkRead) {
-                            const got = sz - this._bulkRead.remaining;
-                            this._bulkRead = null;
-                            bi.dataReject(
-                                new Error(
-                                    'bulk-read data timeout: got ' + got + '/' + sz + ' bytes'
-                                )
-                            );
-                        }
-                    }, bi.timeoutMs);
                     this._bulkRead = {
                         remaining: sz,
                         total: sz,
                         chunks: [],
                         resolve: bi.dataResolve,
                         reject: bi.dataReject,
-                        timer: bulkTimer
+                        timer: null,
+                        deadline: Date.now() + bi.timeoutMs,
+                        idleMs: bi.idleMs || DEFAULT_BULK_IDLE_MS
                     };
+                    this._armBulkTimer(this._bulkRead);
                     // Drain any file bytes that already arrived with the header frame.
                     const leftover = this._rxBuf;
                     this._rxBuf = new Uint8Array(0);

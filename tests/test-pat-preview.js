@@ -129,6 +129,35 @@ checkBool(
     PP.renderFlatFrame(new Uint8Array(10), 2, 5, 2, 64) === null
 );
 
+// ── 5. liveFetchVerdict: when a thumbnail may download a card-only pattern ────────
+// The controller sends only whole files (0x84) and nothing else can use the link
+// meanwhile, so: size must be known and ≤ 1 MiB, connected, no run active.
+console.log('\n=== liveFetchVerdict ===');
+const idle = { connected: true, running: false };
+check('LIVE_FETCH_MAX_BYTES is 1 MiB', PP.LIVE_FETCH_MAX_BYTES, 1 << 20);
+check(
+    '81 KB color grating (bench pattern 1) → ok',
+    PP.liveFetchVerdict({ fileSize: 81338 }, idle),
+    {
+        ok: true,
+        reason: null
+    }
+);
+check('exactly the cap → ok', PP.liveFetchVerdict({ fileSize: 1 << 20 }, idle).ok, true);
+check('8 MB pattern → too-large', PP.liveFetchVerdict({ fileSize: 8e6 }, idle).reason, 'too-large');
+check('size unknown → refused', PP.liveFetchVerdict(null, idle).reason, 'unknown-size');
+check('size 0 → refused', PP.liveFetchVerdict({ fileSize: 0 }, idle).reason, 'unknown-size');
+check(
+    'run active → refused (a run owns the link)',
+    PP.liveFetchVerdict({ fileSize: 1000 }, { connected: true, running: true }).reason,
+    'running'
+);
+check(
+    'not connected → offline',
+    PP.liveFetchVerdict({ fileSize: 1000 }, { connected: false }).reason,
+    'offline'
+);
+
 console.log('\n=== Summary ===');
 console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures === 0 ? 0 : 1);
