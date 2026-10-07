@@ -3,6 +3,18 @@
 Newest first. Each entry is one Production release (see `releases/` for the exact
 candidate manifest: main commit + the PRs and their head SHAs).
 
+## v0.13 (2026-10-07) · ISP time estimate ~5 s/panel, not ~20 s (#244) · Pattern Designer + Studio: partial-arena °/px and 3D/2D mapping, unmirrored icons, short SD-safe filenames, upload name checks (LAB-295) · First command after Connect no longer waits ~60 s behind the thumbnail download (LAB-298)
+
+<!-- #246 -->
+- **Degrees and pixels now convert correctly on partial arenas.** On arenas with missing columns (G4 3×12of18, G6 3×12of18, G6 2×8of10), the px↔° labels, a spatial period typed in pixels, and a step size typed in degrees used the installed width instead of the full circle. For example, 24 px on the G4 3×12of18 arena made a 45° grating instead of 30°. Regenerate any such patterns made with a pixel period or a degree step.
+- **The 3D view shows each panel of a G6 2×8of10 pattern on the right column.** Before, it showed the whole pattern one panel to the side.
+- **Animate → Frame Shifting's hint shows the real span on partial arenas** (e.g. "240° = 192 px", not "360°").
+- **The 2D view has an azimuth scale.** Degrees from straight ahead (0°) appear under the grid, negative to the fly's left, in the same coordinates as the Mollweide view.
+- **2D panel numbers name the physical panels on partial arenas.** On G6 2×8of10 the first pattern panel now reads 2/12, the same as the 3D view.
+- **Pattern thumbnails are no longer mirrored.** They now match the 3D top-down view: the gap behind the fly is at the bottom and the columns run clockwise.
+- **Saving a pattern for a partial G6 arena shows a one-time heads-up.** The arena's current firmware can't play partial-arena patterns yet.
+- **Generated names say which colors they use, and stay short.** For example `grat_rot_20px_50pct_4c-B-G.pat` means ON blue, OFF green on four-color panels, so color variants no longer overwrite each other. Saved and renamed names are kept within what the arena's SD card can store (plain letters/digits/`_-.`, ≤ 58 characters), and the rename prompt says when it adjusted a name.
+
 ## v0.12 (2026-09-30) · LAB-158 ports (Protocol ▾, ⚙ Settings, two-column Console) + visibility themes · Multi-color G6 panels V1 — Panel LEDs layout, ON color, per-bank preview (LAB-228) · Flasher + Studio picker: one production build from the published catalog; legacy images hashed, never default (panel-fw-v1.3.1)
 
 <!-- #238 -->

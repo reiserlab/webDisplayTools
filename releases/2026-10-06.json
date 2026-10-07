@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "name": "2026-10-06",
+  "kind": "candidate",
+  "rc": 3,
+  "created_at": "2026-10-07T16:32:49Z",
+  "created_at_et": "2026-10-07 12:32 ET",
+  "main_sha": "7c68dfcee8706f2028775a5f3decf8cbf5f06540",
+  "headline": "",
+  "prs": [
+    {
+      "number": 245,
+      "title": "fix(studio): ISP time estimate ~5 s/panel, not ~20 s (#244)",
+      "head_sha": "5b0b30dcce3927f9ea2f39918a313a055acde142",
+      "head_ref": "fix/244-isp-estimate",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/245"
+    },
+    {
+      "number": 246,
+      "title": "Pattern Designer + Studio: partial-arena \u00b0/px and 3D/2D mapping, unmirrored icons, short SD-safe filenames, upload name checks (LAB-295)",
+      "head_sha": "84daa996a134e35566a4e903a01c2a8ad6381836",
+      "head_ref": "claude/keen-bassi-5bc125",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/246"
+    },
+    {
+      "number": 248,
+      "title": "Studio: first command after Connect no longer waits ~60 s behind the thumbnail download (LAB-298)",
+      "head_sha": "546d9c625678ab48858f2c6eba8da44450b2f997",
+      "head_ref": "claude/studio-connect-latency",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/248"
+    }
+  ],
+  "versions": {
+    "console": {
+      "from": "v10",
+      "to": "v11"
+    },
+    "icon-generator": {
+      "from": "v1.4",
+      "to": "v1.5"
+    },
+    "pattern-designer": {
+      "from": "v0.12",
+      "to": "v0.13"
+    },
+    "studio": {
+      "from": "v0.94",
+      "to": "v0.95"
+    }
+  },
+  "hotfix_reason": null,
+  "bridge_changed": false
+}
