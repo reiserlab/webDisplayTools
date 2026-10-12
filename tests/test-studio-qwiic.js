@@ -553,11 +553,6 @@ const item = (addr, kind, extra) =>
                 /\n\s+qwiic: 'Sensors on the Qwiic connector/.test(html)
         );
         ok('panel order rule', html.includes('.panel[data-panel="qwiic"]{order:10}'));
-        ok(
-            'footer bumped past v0.94',
-            !/Arena Studio v0\.94 \|/.test(html) &&
-                /Arena Studio v0\.\d+ \| \d{4}-\d\d-\d\d \d\d:\d\d ET/.test(html)
-        );
     }
 
     console.log('\n=== bench rigs + arena configs ===');

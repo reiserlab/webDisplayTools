@@ -4,18 +4,6 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
-## v0.96 (2026-10-12) · Qwiic sensors in the Console (LAB-214)
-
-<!-- LAB-214 PR 1 -->
-- **Console → Qwiic: find and try the sensors on the arena's Qwiic / STEMMA QT connector.** Scan lists every device on the bus, identifies the supported parts (SHT4x temperature/humidity, LSM6DSOX tilt + bump, TSL2591 / VEML7700 / AS7343 light, PCA9685 servo driver) and compares them with the rig file. Pick one device to see its readings in real units, once or live; the motion sensor has a bump check, and the servo board a position slider with Center and Release. This panel is for testing — nothing in it is written to run logs.
-- **Rig files can list their Qwiic peripherals (`peripherals:`).** On connect the Studio scans once and shows a Qwiic chip in the top bar: green when every listed device is there, red when one is missing (no retry), amber when something is plugged in that the rig file doesn't list. **Copy as rig YAML** gives you the lines to add.
-- Controllers without a Qwiic connector are unaffected: the Studio never sends them I2C commands, and the chip stays hidden.
-- **Console → Qwiic: clicking a device shows its reading straight away, and Live keeps running as you switch devices.** The servo follows its slider as you drag.
-- **Console sliders act as you move them.** Test display level and duty re-send the last test figure, and LED power sets the LED, while you drag (never during a run).
-- **Test display works on more arenas.** Figures are sent at the controller's own frame size, so the 1×12 bench arena (and other non-2×10 rigs on matching firmware) can show full-field, panel map, orientation and checker.
-- **Test display → color: light one LED bank at a time (A–D).** For color panels: each button lights only that bank — one LED in four per panel — at the chosen level.
-- **Two new rigs in ⚙ Settings:** the arena_12-18 bench (one panel high, 12 of 18 columns, its six Qwiic boards listed) and the 10-of-14 ring (three panels high). Both show their installed panels centered at the front in the Pattern Designer's views.
-
 ## v0.94 (2026-09-30) · LAB-158 ports (Protocol ▾, ⚙ Settings, two-column Console) + visibility themes · Multi-color G6 panels V1 — Panel LEDs layout, ON color, per-bank preview (LAB-228) · Flasher + Studio picker: one production build from the published catalog; legacy images hashed, never default (panel-fw-v1.3.1)
 
 <!-- #238 -->
