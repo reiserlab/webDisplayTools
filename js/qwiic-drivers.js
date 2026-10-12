@@ -938,6 +938,7 @@
 
     // ── KINDS registry ──────────────────────────────────────────────────────
     // One entry per supported part — the ONLY place to add or drop one.
+    //   category: the short label the Console shows (Servo / PWM, Temp / humidity, …)
     //   role:     env | tilt | light | actuator (consumers pick by role, never by part)
     //   identify: (driver) → {ok, detail, info}            caller holds the bus
     //   setup:    (driver, config, {forRun}) → applied cfg  caller holds the bus
@@ -952,6 +953,7 @@
     const KINDS = {
         sht4x: {
             kind: 'sht4x',
+            category: 'Temp / humidity',
             label: 'SHT4x',
             title: 'SHT4x temperature / humidity',
             role: 'env',
@@ -980,6 +982,7 @@
         },
         lsm6dsox: {
             kind: 'lsm6dsox',
+            category: 'Accel / tilt / bump',
             label: 'LSM6DSOX',
             title: 'LSM6DSOX IMU — tilt + bump latch',
             role: 'tilt',
@@ -1023,6 +1026,7 @@
         },
         tsl2591: {
             kind: 'tsl2591',
+            category: 'Light (broadband)',
             label: 'TSL2591',
             title: 'TSL2591 broadband light',
             role: 'light',
@@ -1060,6 +1064,7 @@
         },
         veml7700: {
             kind: 'veml7700',
+            category: 'Light (lux)',
             label: 'VEML7700',
             title: 'VEML7700 ambient light',
             role: 'light',
@@ -1094,6 +1099,7 @@
         },
         as7343: {
             kind: 'as7343',
+            category: 'Light (spectral)',
             label: 'AS7343',
             title: 'AS7343 14-channel spectral',
             role: 'light',
@@ -1134,6 +1140,7 @@
         },
         pca9685: {
             kind: 'pca9685',
+            category: 'Servo / PWM',
             label: 'PCA9685',
             title: 'PCA9685 servo / PWM driver',
             role: 'actuator',

@@ -332,7 +332,10 @@
         const devices = (discovery && discovery.devices) || [];
         const used = new Set();
         const whereOf = (decl) =>
-            decl.mux ? 'mux ' + hex2(decl.mux.address) + ' ch' + decl.mux.channel : 'root';
+            connectionText({
+                mux: decl.mux ? decl.mux.address : null,
+                channel: decl.mux ? decl.mux.channel : null
+            });
         // Pass 1: exact location matches claim their devices first, so a same-address
         // device elsewhere is only offered to entries that found nothing.
         const exact = list.map((decl) => {
@@ -387,7 +390,7 @@
                         ' declared @ ' +
                         where +
                         ' but found @ ' +
-                        elsewhere.where
+                        connectionText(elsewhere.dev)
                 };
             }
             const hint =
@@ -575,14 +578,33 @@
         return field.unit ? text + ' ' + field.unit : text;
     }
 
-    /** One device's dropdown label: "SHT4x · 0x44 · root (env)". */
+    /**
+     * How the device is reached, for people: "direct" (on the controller's own
+     * Qwiic chain — the drivers call it "root") or "mux 0x70 · ch 2" (behind a
+     * PCA9548 channel, only needed for two identical fixed-address parts).
+     */
+    function connectionText(dev) {
+        return dev.mux == null ? 'direct' : 'mux ' + hex2(dev.mux) + ' · ch ' + dev.channel;
+    }
+
+    /** Short category label: "Temp / humidity", "Servo / PWM", "I2C mux", … */
+    function categoryOf(item) {
+        if (item.kind) return Q.KINDS[item.kind].category;
+        if (item.shadow) return '(PCA9685 all-call)';
+        if (item.mux) return 'I2C mux';
+        return 'unknown';
+    }
+
+    /** One device's label: "Temp / humidity · SHT4x · 0x44 · direct (env)". */
     function deviceLabel(item, declaredName) {
         const base =
+            categoryOf(item) +
+            ' · ' +
             (item.kind ? Q.KINDS[item.kind].label : item.label) +
             ' · ' +
             hex2(item.dev.addr) +
             ' · ' +
-            item.where;
+            connectionText(item.dev);
         return declaredName ? base + ' (' + declaredName + ')' : base;
     }
 
@@ -595,6 +617,8 @@
         toRigYaml,
         formatField,
         deviceLabel,
+        connectionText,
+        categoryOf,
         locKey,
         parseAddress,
         BOARD_BUDGET,

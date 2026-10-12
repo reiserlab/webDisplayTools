@@ -2237,7 +2237,13 @@
   .console-view #cAiChart{display:block;width:100%;max-width:460px;height:90px;border:1px solid var(--border);border-radius:4px;background:var(--chart-bg)}
   .console-view .ai-table{font-size:10.5px;border-collapse:collapse}
   /* Qwiic panel (LAB-214): scan table, one-device readout grid, AS7343 spectrum bars */
-  .console-view .qw-table td,.console-view .qw-table th{padding:2px 8px 2px 0;text-align:left;vertical-align:top}
+  .console-view table.qw-table td,.console-view table.qw-table th{padding:2px 10px 2px 0;text-align:left;vertical-align:top}
+  .console-view .qw-table tr.qw-pick{cursor:pointer}
+  .console-view .qw-table tr.qw-pick:hover td{background:var(--surface2)}
+  .console-view .qw-table tr.qw-selrow td{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+  .console-view .qw-table input[type=radio]{margin:0 2px 0 0;accent-color:var(--accent);cursor:pointer}
+  .console-view .qw-table .qw-cat{color:var(--text);font-weight:600;white-space:nowrap}
+  .console-view .qw-sel{font-family:var(--head);font-size:11.5px;color:var(--text);min-width:180px}
   .console-view .qw-flags{font-size:11px;line-height:1.5}
   .console-view .qw-out{display:block}
   .console-view .qw-title{font-family:var(--head);font-size:12px;margin-bottom:4px}
@@ -3254,10 +3260,10 @@
             <span class="dim" id="cQwScanSum" title="Addresses that ACKed the last scan"></span></div>
           <div class="crow qw-flags" id="cQwFlags" style="display:none"></div>
           <div class="crow" id="cQwTableRow" style="display:none"><table class="ai-table qw-table" id="cQwTable"></table></div>
-          <div class="crow"><span class="lbl" title="One device at a time">device</span>
-            <select id="cQwDev" disabled title="Devices found and identified by the last scan — pick one to see its readings"><option value="">— scan first —</option></select>
-            <button class="pill" data-cmd="cqwread" title="Read the selected device once (configures it first if needed)">Read</button>
-            <button class="pill" id="cQwLive" data-cmd="cqwlive" aria-pressed="false" title="Start / stop a live readout of the selected device at the chosen rate; pauses by itself during a run">Live</button>
+          <div class="crow"><span class="lbl" title="One device at a time — pick it with the radio button in the table above">selected</span>
+            <span class="qw-sel" id="cQwSel" title="The device the readout below shows — pick another with the radio buttons in the scan table">— scan first —</span>
+            <button class="pill" data-cmd="cqwread" disabled title="Read the selected device once (configures it first if needed)">Read</button>
+            <button class="pill" id="cQwLive" data-cmd="cqwlive" disabled aria-pressed="false" title="Start / stop a live readout of the selected device at the chosen rate; pauses by itself during a run">Live</button>
             <label title="Live readout rate (Console preview only)">rate <select id="cQwRate"><option value="1">1 Hz</option><option value="2">2 Hz</option><option value="0.5">0.5 Hz</option></select></label>
             <button class="pill" id="cQwCsv" data-cmd="cqwcsv" disabled title="Download the readings collected in this session for the selected device as CSV (a Console scratch file — not a run log)">Download CSV</button></div>
           <div class="crow" id="cQwOpts" style="display:none"></div>
@@ -3410,7 +3416,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.96 | 2026-10-12 16:08 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.96 | 2026-10-12 16:50 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -6141,7 +6147,10 @@ function studioMarkerCurrent(stored, current) {
         }
         const statusByKey = {};
         (qw.check ? qw.check.entries : []).forEach((e) => { if (e.item) statusByKey[e.item.key] = e; });
-        let html = '<tr><th title="7-bit I2C address">addr</th><th>part</th><th title="root bus, or the PCA9548 mux channel it sits behind">where</th><th>identify</th><th title="Compared with the session rig YAML peripherals: list">rig YAML</th></tr>';
+        const head = (t, tip) => '<th' + (tip ? ' title="' + qwEsc(tip) + '"' : '') + '>' + t + '</th>';
+        let html = '<tr>' + head('', 'Pick one device to show its readings below') + head('device') + head('part') + head('addr', '7-bit I2C address') +
+            head('connection', 'direct = on the controller\'s own Qwiic chain · mux 0x70 · ch N = behind a PCA9548 I2C multiplexer channel (only needed for two identical fixed-address parts)') +
+            head('identify', 'The part\'s ID register / serial number check') + head('rig YAML', 'Compared with the session rig YAML peripherals: list') + '</tr>';
         for (const it of d.devices) {
             const e = statusByKey[it.key];
             let yaml = '';
@@ -6149,11 +6158,16 @@ function studioMarkerCurrent(stored, current) {
             else if (e) yaml = e.status === 'ok' ? '<span class="qw-ok-t">declared: ' + qwEsc(e.decl.name) + '</span>' : '<span class="qw-err-t">' + qwEsc(e.status.replace('_', ' ')) + '</span>';
             else if (qwIsUndeclared(it)) yaml = '<span class="qw-warn-t" title="Attached but not in the rig YAML — Copy as rig YAML to declare it">⚠ undeclared</span>';
             const id = it.ident ? (it.ident.ok ? '<span class="qw-ok-t">OK</span> ' : '<span class="qw-err-t">FAIL</span> ') + qwEsc(it.ident.detail) : it.wiringError ? '<span class="qw-err-t">wiring error</span>' : '<span class="dim">no driver</span>';
-            html += '<tr><td>' + qwHex(it.dev.addr) + '</td><td>' + qwEsc(it.label) + '</td><td>' + qwEsc(it.where) + '</td><td>' + id + '</td><td>' + yaml + '</td></tr>';
+            const pickable = qwSelectable(it);
+            const radio = pickable ? '<input type="radio" name="cQwPick" value="' + qwEsc(it.key) + '"' + (it.key === qw.selKey ? ' checked' : '') + ' title="Show this device\'s readings">' : '';
+            const part = it.shadow ? 'PCA9685 all-call address — not a mux' : it.kind ? QD.KINDS[it.kind].label : it.label;
+            html += '<tr class="' + (pickable ? 'qw-pick' : '') + (it.key === qw.selKey ? ' qw-selrow' : '') + '" data-qw-key="' + qwEsc(it.key) + '"><td>' + radio + '</td><td class="qw-cat">' + qwEsc(SQ.categoryOf(it)) + '</td><td>' + qwEsc(part) + '</td><td>' + qwHex(it.dev.addr) + '</td><td>' + qwEsc(SQ.connectionText(it.dev)) + '</td><td>' + id + '</td><td>' + yaml + '</td></tr>';
         }
         for (const e of qw.check ? qw.check.entries : []) {
             if (e.item) continue;
-            html += '<tr><td>' + qwHex(e.decl.address) + '</td><td>' + qwEsc(QD.KINDS[e.decl.kind].label) + '</td><td>' + (e.decl.mux ? 'mux ' + qwHex(e.decl.mux.address) + ' ch' + e.decl.mux.channel : 'root') + '</td><td class="dim">—</td><td><span class="qw-err-t">✕ missing: ' + qwEsc(e.decl.name) + '</span></td></tr>';
+            const K = QD.KINDS[e.decl.kind];
+            const conn = SQ.connectionText({ mux: e.decl.mux ? e.decl.mux.address : null, channel: e.decl.mux ? e.decl.mux.channel : null });
+            html += '<tr><td></td><td class="qw-cat">' + qwEsc(K.category) + '</td><td>' + qwEsc(K.label) + '</td><td>' + qwHex(e.decl.address) + '</td><td>' + qwEsc(conn) + '</td><td class="dim">—</td><td><span class="qw-err-t">✕ missing: ' + qwEsc(e.decl.name) + '</span></td></tr>';
         }
         tbl.innerHTML = html;
         row.style.display = '';
@@ -6167,29 +6181,25 @@ function studioMarkerCurrent(stored, current) {
             flags.style.display = msgs.length ? '' : 'none';
         }
     }
-    function qwRenderDropdown() {
-        const sel = $('cQwDev');
-        if (!sel) return;
-        const items = qw.discovery && !qw.discovery.error ? qw.discovery.devices.filter((it) => it.kind && it.ident && it.ident.ok) : [];
-        sel.innerHTML = '';
-        if (!items.length) {
-            sel.innerHTML = '<option value="">' + (qw.discovery ? '— no supported device found —' : '— scan first —') + '</option>';
-            sel.disabled = true;
-            qw.selKey = null;
-            qwRenderDevice();
-            return;
+    // Devices you can pick: found AND identified by a supported driver.
+    const qwSelectable = (it) => !!(it.kind && it.ident && it.ident.ok);
+    function qwRenderSelection() {
+        const items = qw.discovery && !qw.discovery.error ? qw.discovery.devices.filter(qwSelectable) : [];
+        if (!items.some((it) => it.key === qw.selKey)) qw.selKey = items.length ? items[0].key : null;
+        qwRenderTable();
+        const lbl = $('cQwSel');
+        const item = qw.selKey && qwItem(qw.selKey);
+        if (lbl) {
+            const decl = item && qwDeclFor(item);
+            lbl.textContent = item ? SQ.deviceLabel(item, decl && decl.name) + (qwIsUndeclared(item) ? '  ⚠ undeclared' : '') : qw.discovery ? '— no supported device found —' : '— scan first —';
         }
-        for (const it of items) {
-            const decl = qwDeclFor(it);
-            const o = document.createElement('option');
-            o.value = it.key;
-            o.textContent = SQ.deviceLabel(it, decl && decl.name) + (qwIsUndeclared(it) ? '  ⚠ undeclared' : '');
-            sel.appendChild(o);
-        }
-        sel.disabled = false;
-        if (!items.some((it) => it.key === qw.selKey)) qw.selKey = items[0].key;
-        sel.value = qw.selKey;
         qwRenderDevice();
+    }
+    function qwSelect(key) {
+        if (key === qw.selKey) return;
+        qwStopLive('device changed');
+        qw.selKey = key;
+        qwRenderSelection();
     }
     // fromDom=false: the defaults (rig config, else the KINDS default) — used while the
     // option selects still belong to the PREVIOUS device.
@@ -6306,6 +6316,7 @@ function studioMarkerCurrent(stored, current) {
         if (qw.liveTimer) { clearInterval(qw.liveTimer); qw.liveTimer = null; }
         const was = qw.live;
         qw.live = false;
+        if (was) qwSetStatus(qw.idleStatus || 'idle'); // never leave "live · N Hz" behind
         const b = $('cQwLive');
         if (b) { b.setAttribute('aria-pressed', 'false'); b.textContent = 'Live'; }
         if (was && reason) clog('qwiic: live readout stopped — ' + reason, reason.startsWith('error') ? 'err' : 'info');
@@ -6320,6 +6331,7 @@ function studioMarkerCurrent(stored, current) {
         clog('qwiic: live readout at ' + hz + ' Hz', 'info');
         const tick = async () => {
             if (qw.inFlight) return; // single-flight
+            if (!qw.live) return;
             const g = qwGate('read');
             if (!g.ok) { qwSetStatus(g.reason); return; }
             if (!$('cQwGrid')) return;
@@ -6327,7 +6339,7 @@ function studioMarkerCurrent(stored, current) {
             try {
                 await qwReadOnce({ quiet: true });
                 qw.errStreak = 0;
-                qwSetStatus('live · ' + hz + ' Hz');
+                if (qw.live) qwSetStatus('live · ' + hz + ' Hz'); // a tick in flight at Stop must not re-say "live"
             } catch (e) {
                 qw.errStreak++;
                 qwSetStatus('error: ' + e.message);
@@ -6369,18 +6381,18 @@ function studioMarkerCurrent(stored, current) {
             qw.check = SQ.checkAgainstScan(qw.declared.list, d);
             Studio.qwiic = { available: true, declared: qw.declared.list, discovery: d, check: qw.check, at: d.at };
             const n = qw.check.counts;
-            qwSetStatus(n.devices + ' device' + (n.devices === 1 ? '' : 's') + (n.declared ? ' · ' + n.ok + '/' + n.declared + ' declared present' : ''));
+            qw.idleStatus = n.devices + ' device' + (n.devices === 1 ? '' : 's') + (n.declared ? ' · ' + n.ok + '/' + n.declared + ' declared present' : '');
+            qwSetStatus(qw.idleStatus);
             const sum = $('cQwScanSum');
             if (sum) sum.textContent = 'scan: ' + (d.scan.length ? d.scan.map(qwHex).join(' ') : 'nothing ACKed — check the cable, the boards\' power LEDs and the jack');
             clog('qwiic: ' + (setup ? 'setup ' : '') + 'scan — ' + (d.scan.length ? d.scan.map(qwHex).join(' ') : 'no devices') + (d.shadow ? ' (0x70 = the PCA9685 all-call address, not a mux)' : ''), 'info');
             qw.declared.warnings.forEach((w) => clog('qwiic: rig YAML: ' + w, 'warn'));
             qw.check.entries.filter((e) => e.status !== 'ok').forEach((e) => clog('qwiic: ' + e.detail, 'err'));
-            qw.check.undeclared.filter((u) => !u.mux).forEach((u) => clog('qwiic: ' + u.label + ' ' + qwHex(u.dev.addr) + ' @ ' + u.where + ' is attached but not in the rig YAML — Console → Qwiic → Copy as rig YAML', 'warn'));
+            qw.check.undeclared.filter((u) => !u.mux).forEach((u) => clog('qwiic: ' + u.label + ' ' + qwHex(u.dev.addr) + ' (' + SQ.connectionText(u.dev) + ') is attached but not in the rig YAML — Console → Qwiic → Copy as rig YAML', 'warn'));
             d.devices.filter((it) => it.wiringError).forEach((it) => clog('qwiic: ' + it.label, 'err'));
             const yamlBtn = $('cQwYaml');
             if (yamlBtn) yamlBtn.disabled = !d.devices.some((it) => it.kind);
-            qwRenderTable();
-            qwRenderDropdown();
+            qwRenderSelection();
             return qw.check;
         } catch (e) {
             qwSetStatus('error: ' + e.message);
@@ -6436,8 +6448,7 @@ function studioMarkerCurrent(stored, current) {
         try { qw.declared = Studio.fetchRigPeripherals ? await Studio.fetchRigPeripherals() : { list: [], warnings: [] }; } catch (_) { return; }
         qw.check = SQ.checkAgainstScan(qw.declared.list, qw.discovery);
         Studio.qwiic = Object.assign({}, Studio.qwiic, { declared: qw.declared.list, check: qw.check });
-        qwRenderTable();
-        qwRenderDropdown();
+        qwRenderSelection();
         qwRenderChip();
     };
     Studio.qwiicReset = function () {
@@ -6446,12 +6457,12 @@ function studioMarkerCurrent(stored, current) {
         qw.check = null;
         qw.configured = {};
         qw.selKey = null;
+        qw.idleStatus = '';
         Studio.qwiic = null;
         qwSetStatus('connect to scan');
         const sum = $('cQwScanSum');
         if (sum) sum.textContent = '';
-        qwRenderTable();
-        qwRenderDropdown();
+        qwRenderSelection();
         qwRenderChip();
     };
     // Bump check + servo are disabled while a run owns the link / the bump latch.
@@ -6581,8 +6592,11 @@ function studioMarkerCurrent(stored, current) {
         clog('qwiic: ' + rows.length + ' reading(s) saved as CSV (Console only — not a run log)', 'info');
     }
     (function qwWire() {
-        const sel = $('cQwDev');
-        if (sel) sel.addEventListener('change', () => { qwStopLive('device changed'); qw.selKey = sel.value || null; qwRenderDevice(); });
+        const tbl = $('cQwTable');
+        if (tbl) tbl.addEventListener('click', (e) => {
+            const tr = e.target.closest('tr.qw-pick');
+            if (tr && tr.dataset.qwKey) qwSelect(tr.dataset.qwKey);
+        });
         const rate = $('cQwRate');
         if (rate) rate.addEventListener('change', () => { if (qw.live) qwStartLive(); });
         const flags = $('cQwFlags');
@@ -17889,7 +17903,7 @@ initFromUrl();
     '.rail-btn[data-panel="qwiic"]': 'Find and try out the small sensors plugged into the arena’s Qwiic connector: scan, pick one, watch its readings. Nothing here is saved to run logs.',
     '[data-cmd="cqwscan"]': 'Look for every device on the Qwiic connector and check each one against this rig’s list. Not available while a run is going.',
     '#cQwYaml': 'Copy ready-made rig-file lines for the devices the scan found, so they can be recorded with each run.',
-    '#cQwDev': 'Pick one device to look at. Devices marked “undeclared” are plugged in but not listed in this rig’s file.',
+    '#cQwTable': 'Everything the scan found. Click a row (or its round button) to show that device’s readings below. “Direct” means plugged into the arena’s own Qwiic chain; “undeclared” means plugged in but not listed in this rig’s file.',
     '[data-cmd="cqwread"]': 'Take one reading from the selected device.',
     '#cQwLive': 'Keep reading the selected device about once a second. Pauses by itself during a run.',
     '[data-cmd="cqwbumpcheck"]': 'Was the motion sensor bumped since the last check? Checking resets the answer.',

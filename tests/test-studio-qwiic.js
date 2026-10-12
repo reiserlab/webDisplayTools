@@ -402,8 +402,20 @@ const item = (addr, kind, extra) =>
             )
         );
         ok(
-            'deviceLabel',
-            SQ.deviceLabel(item(0x44, 'sht4x'), 'env') === 'SHT4x · 0x44 · root (env)'
+            'deviceLabel: category · part · addr · connection (name)',
+            SQ.deviceLabel(item(0x44, 'sht4x'), 'env') ===
+                'Temp / humidity · SHT4x · 0x44 · direct (env)'
+        );
+        ok(
+            'connectionText: direct / mux · ch',
+            SQ.connectionText(Q.located(0x44)) === 'direct' &&
+                SQ.connectionText(Q.located(0x44, 0x70, 2)) === 'mux 0x70 · ch 2'
+        );
+        ok(
+            'categoryOf: every kind has a category; mux + shadow labelled',
+            Object.keys(Q.KINDS).every((k) => SQ.categoryOf({ kind: k }).length > 2) &&
+                SQ.categoryOf({ mux: true }) === 'I2C mux' &&
+                /all-call/.test(SQ.categoryOf({ shadow: true }))
         );
     }
 
@@ -425,7 +437,7 @@ const item = (addr, kind, extra) =>
         );
         for (const id of [
             'cQwStatus',
-            'cQwDev',
+            'cQwSel',
             'cQwOut',
             'cQwFlags',
             'cQwTable',
@@ -495,7 +507,16 @@ const item = (addr, kind, extra) =>
                 /Studio\.fetchRigPeripherals = async function/.test(html)
         );
         ok(
-            'undeclared devices flagged in table + dropdown',
+            'one device at a time: radio rows in the scan table, no dropdown',
+            /name="cQwPick"/.test(html) && !/id="cQwDev"/.test(html) && /tr\.qw-pick/.test(html)
+        );
+        ok(
+            'Live stop restores the idle status (no sticky "live · N Hz")',
+            /if \(was\) qwSetStatus\(qw\.idleStatus/.test(html) &&
+                /if \(qw\.live\) qwSetStatus\('live · '/.test(html)
+        );
+        ok(
+            'undeclared devices flagged in table + selection',
             /⚠ undeclared/.test(html) && /not in the rig YAML/.test(html)
         );
         ok(
