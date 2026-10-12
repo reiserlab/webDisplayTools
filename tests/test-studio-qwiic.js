@@ -533,6 +533,79 @@ const item = (addr, kind, extra) =>
         );
     }
 
+    console.log('\n=== bench rigs + arena configs ===');
+    {
+        const YAML = require('../js/vendor/yaml/browser/dist/index.js');
+        const AC = require('../js/arena-configs.js');
+        const root = path.join(__dirname, '..');
+        const index = JSON.parse(
+            fs.readFileSync(path.join(root, 'configs/rigs/index.json'), 'utf8')
+        );
+        const cases = [
+            {
+                rig: 'g6_1x12of18_bench',
+                arena: 'G6_1x12of18',
+                rows: 1,
+                cols: 18,
+                installed: 12,
+                id: 7,
+                offset: -60,
+                peripherals: 6
+            },
+            {
+                rig: 'g6_3x10of14',
+                arena: 'G6_3x10of14',
+                rows: 3,
+                cols: 14,
+                installed: 10,
+                id: 8,
+                offset: -51.4286,
+                peripherals: 0
+            }
+        ];
+        for (const c of cases) {
+            const cfg = AC.getConfig(c.arena);
+            ok(
+                c.arena + ': registered with geometry',
+                !!cfg &&
+                    cfg.arena.num_rows === c.rows &&
+                    cfg.arena.num_cols === c.cols &&
+                    cfg.arena.columns_installed.length === c.installed
+            );
+            ok(
+                c.arena + ': arena ID ' + c.id,
+                AC.getArenaId('G6', c.arena) === c.id && AC.getArenaName('G6', c.id) === c.arena
+            );
+            // Installed panels centered at the front: the gap's middle sits at the back (south).
+            const alpha = 360 / c.cols;
+            const gapMid = (c.installed + (c.cols - c.installed) / 2) * alpha; // degrees from column 0's edge
+            ok(
+                c.arena + ': offset centers the gap at the back',
+                Math.abs(((((-gapMid + cfg.arena.angle_offset_deg) % 360) + 360) % 360) - 0) <
+                    0.01 ||
+                    Math.abs(((((-gapMid + cfg.arena.angle_offset_deg) % 360) + 360) % 360) - 360) <
+                        0.01
+            );
+            const entry = index.rigs.find((r) => r.name === c.rig);
+            ok(
+                c.rig + ': index entry → arena + path',
+                entry &&
+                    entry.arena === c.arena &&
+                    entry.path === './configs/rigs/' + c.rig + '.yaml'
+            );
+            const rig = YAML.parse(
+                fs.readFileSync(path.join(root, 'configs/rigs', c.rig + '.yaml'), 'utf8')
+            );
+            ok(c.rig + ': rig arena', rig.arena === c.arena);
+            const per = SQ.parseRigPeripherals(rig);
+            ok(
+                c.rig + ': peripherals parse clean (' + c.peripherals + ')',
+                per.warnings.length === 0 && per.list.length === c.peripherals,
+                per.warnings.join('; ')
+            );
+        }
+    }
+
     console.log(`\n=== Summary ===\n${total - failures} / ${total} checks passed`);
     process.exit(failures > 0 ? 1 : 0);
 })().catch((e) => {
