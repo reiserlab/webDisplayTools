@@ -1073,5 +1073,88 @@ console.log('\n=== panel inventory (0xC2 features, 0xD0 / 0xD1) ===');
     check('OPCODES.GET_PANEL_INVENTORY', Wire.OPCODES.GET_PANEL_INVENTORY, 0xd1);
 }
 
+console.log('\n=== Qwiic I2C bridge (0xB0 / 0xB1) — LAB-214 ===');
+{
+    // Byte vectors identical to the firmware repo's tests/qwiic_sensors.py i2c_xfer framing:
+    // params = [addr, wlen, *w, rlen] → frame [len(params)+1, 0xB1, *params].
+    checkBytes('encodeGetI2cScan', Wire.encodeGetI2cScan(), '01 b0');
+    checkBytes('I2C probe (ACK only)', Wire.encodeI2cTransfer(0x44, [], 0), '04 b1 44 00 00');
+    checkBytes(
+        'SHT4x measure-high write leg',
+        Wire.encodeI2cTransfer(0x44, [0xfd], 0),
+        '05 b1 44 01 fd 00'
+    );
+    checkBytes(
+        'SHT4x read leg (plain 6-byte read)',
+        Wire.encodeI2cTransfer(0x44, [], 6),
+        '04 b1 44 00 06'
+    );
+    checkBytes(
+        'TSL2591 ID read (CMD|0x12)',
+        Wire.encodeI2cTransfer(0x29, [0xb2], 1),
+        '05 b1 29 01 b2 01'
+    );
+    checkBytes(
+        'PCA9685 LED0 write (4 bytes)',
+        Wire.encodeI2cTransfer(0x40, [0x06, 0, 0, 0x33, 0x01], 0),
+        '09 b1 40 05 06 00 00 33 01 00'
+    );
+    checkBytes('rlen default 0', Wire.encodeI2cTransfer(0x10, [0x07]), '05 b1 10 01 07 00');
+    checkThrows('addr 0x80 rejected', () => Wire.encodeI2cTransfer(0x80, [], 0));
+    checkThrows('rlen 65 rejected', () => Wire.encodeI2cTransfer(0x10, [], 65));
+    checkThrows('write byte 256 rejected', () => Wire.encodeI2cTransfer(0x10, [256], 0));
+    checkThrows('write > 64 bytes rejected', () =>
+        Wire.encodeI2cTransfer(0x10, new Array(65).fill(0), 0)
+    );
+
+    const scan = Wire.decodeI2cScan(Uint8Array.from([7, 0, 0xb0, 4, 0x10, 0x29, 0x39, 0x44]));
+    checkBool('decodeI2cScan ok', scan && scan.ok && scan.addresses.join(',') === '16,41,57,68');
+    const empty = Wire.decodeI2cScan(Uint8Array.from([3, 0, 0xb0, 0]));
+    checkBool('decodeI2cScan empty bus', empty && empty.ok && empty.addresses.length === 0);
+    check(
+        'decodeI2cScan count/payload mismatch → null',
+        Wire.decodeI2cScan(Uint8Array.from([4, 0, 0xb0, 3, 0x10])),
+        null
+    );
+    const noJackMsg = 'No Qwiic jack on this hardware variant';
+    const noJack = Wire.decodeI2cScan(
+        Uint8Array.from([2 + noJackMsg.length, 1, 0xb0, ...Buffer.from(noJackMsg)])
+    );
+    checkBool(
+        'decodeI2cScan no-jack variant',
+        noJack && !noJack.ok && noJack.noJack && noJack.message === noJackMsg
+    );
+    const busErr = Wire.decodeI2cScan(Uint8Array.from([4, 4, 0xb0, 0x45, 0x52]));
+    checkBool(
+        'decodeI2cScan status 4 → bus error text',
+        busErr && busErr.statusText === 'bus error/timeout' && !busErr.noJack
+    );
+
+    const xfer = Wire.decodeI2cTransfer(Uint8Array.from([3, 0, 0xb1, 0x50]));
+    checkBool(
+        'decodeI2cTransfer data',
+        xfer && xfer.ok && xfer.data.length === 1 && xfer.data[0] === 0x50
+    );
+    const nack = Wire.decodeI2cTransfer(
+        Uint8Array.from([2 + 16, 2, 0xb1, ...Buffer.from('I2C address NACK')])
+    );
+    checkBool(
+        'decodeI2cTransfer address NACK',
+        nack &&
+            !nack.ok &&
+            nack.status === 2 &&
+            nack.statusText === 'address NACK' &&
+            nack.data.length === 0
+    );
+    check(
+        'decodeI2cTransfer short frame → null',
+        Wire.decodeI2cTransfer(Uint8Array.from([5, 0, 0xb1])),
+        null
+    );
+    check('OPCODES.GET_I2C_SCAN', Wire.OPCODES.GET_I2C_SCAN, 0xb0);
+    check('OPCODES.I2C_TRANSFER', Wire.OPCODES.I2C_TRANSFER, 0xb1);
+    check('I2C_READ_MAX', Wire.I2C_READ_MAX, 64);
+}
+
 console.log(`\n=== Summary ===\n${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures > 0 ? 1 : 0);

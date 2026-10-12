@@ -4,6 +4,13 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.96 (2026-10-12) · Qwiic sensors in the Console (LAB-214)
+
+<!-- LAB-214 PR 1 -->
+- **Console → Qwiic: find and try the sensors on the arena's Qwiic / STEMMA QT connector.** Scan lists every device on the bus, identifies the supported parts (SHT4x temperature/humidity, LSM6DSOX tilt + bump, TSL2591 / VEML7700 / AS7343 light, PCA9685 servo driver) and compares them with the rig file. Pick one device to see its readings in real units, once or live; the motion sensor has a bump check, and the servo board a position slider with Center and Release. This panel is for testing — nothing in it is written to run logs.
+- **Rig files can list their Qwiic peripherals (`peripherals:`).** On connect the Studio scans once and shows a Qwiic chip in the top bar: green when every listed device is there, red when one is missing (no retry), amber when something is plugged in that the rig file doesn't list. **Copy as rig YAML** gives you the lines to add.
+- Controllers without a Qwiic connector are unaffected: the Studio never sends them I2C commands, and the chip stays hidden.
+
 ## v0.94 (2026-09-30) · LAB-158 ports (Protocol ▾, ⚙ Settings, two-column Console) + visibility themes · Multi-color G6 panels V1 — Panel LEDs layout, ON color, per-bank preview (LAB-228) · Flasher + Studio picker: one production build from the published catalog; legacy images hashed, never default (panel-fw-v1.3.1)
 
 <!-- #238 -->
