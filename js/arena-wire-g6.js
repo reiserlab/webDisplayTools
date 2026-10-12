@@ -331,18 +331,37 @@ const ArenaWireG6 = (function () {
      * @param {Uint8Array|number[]} payload per-frame body (1064 GS2 / 4064 GS16)
      * @returns {Uint8Array} on-wire stream frame [0x32, len_lo, len_hi, ...payload]
      */
-    function encodeStreamFrame(payload) {
+    // Stream-frame payload size for a firmware build that drives `panels` panels:
+    // 4-byte prefix + one block per panel (GS2 53 B, GS16 203 B). The firmware
+    // accepts exactly its compiled panel count (constants.h panel_count_per_frame):
+    // 20 on the 2x10 build (1064 / 4064 = STREAM_FRAME_BYTES), 48 on 4x12, etc.
+    const STREAM_BLOCK_BYTES = { GS2: 53, GS16: 203 };
+    function streamFrameBytes(panels, gs) {
+        requireInt(panels, 'panels');
+        if (panels < 1) throw new RangeError('panels must be >= 1, got ' + panels);
+        return 4 + panels * (gs === 2 ? STREAM_BLOCK_BYTES.GS2 : STREAM_BLOCK_BYTES.GS16);
+    }
+
+    // opts.panels: the connected firmware's panel count (default 20 — the 2x10 sizes).
+    function encodeStreamFrame(payload, opts) {
         const body = payload instanceof Uint8Array ? payload : Uint8Array.from(payload);
-        if (body.length !== STREAM_FRAME_BYTES.GS2 && body.length !== STREAM_FRAME_BYTES.GS16) {
+        const panels = opts && opts.panels !== undefined ? opts.panels : 20;
+        const gs2 = streamFrameBytes(panels, 2);
+        const gs16 = streamFrameBytes(panels, 16);
+        if (body.length !== gs2 && body.length !== gs16) {
             throw new RangeError(
-                'stream-frame payload must be ' +
-                    STREAM_FRAME_BYTES.GS2 +
+                'stream-frame payload for ' +
+                    panels +
+                    ' panels must be ' +
+                    gs2 +
                     ' (GS2) or ' +
-                    STREAM_FRAME_BYTES.GS16 +
+                    gs16 +
                     ' (GS16) bytes, got ' +
                     body.length
             );
         }
+        if (body.length > 0xffff)
+            throw new RangeError('stream-frame payload exceeds the u16 length field');
         const out = new Uint8Array(3 + body.length);
         out[0] = OPCODES.STREAM_FRAME; // 0x32
         out[1] = body.length & 0xff; // payload length lo
@@ -1514,6 +1533,8 @@ const ArenaWireG6 = (function () {
         PANEL_STATUS_NAMES,
         PANEL_INVENTORY_FLAGS,
         STREAM_FRAME_BYTES,
+        STREAM_BLOCK_BYTES,
+        streamFrameBytes,
 
         // Encoders (request frames)
         encodeAllOn,

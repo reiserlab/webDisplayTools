@@ -516,6 +516,33 @@ const item = (addr, kind, extra) =>
                 /if \(qw\.live\) qwSetStatus\('live · '/.test(html)
         );
         ok(
+            'clicking a device reads it; Live keeps running across selections',
+            /function qwSelect\(key\) \{[\s\S]{0,200}qwReadSelected\(\);/.test(html) &&
+                !/qwStopLive\('device changed'\)/.test(html)
+        );
+        ok(
+            'servo follows the slider while dragging (single-flight)',
+            /const svLive = liveSender\(\(\) => qwServo\('go', \{ quiet: true \}\)\)/.test(html)
+        );
+        ok(
+            'live level / duty / LED sliders go through liveSender',
+            /const restreamLive = liveSender\(/.test(html) &&
+                /const ledLive = liveSender\(/.test(html)
+        );
+        ok(
+            'stream frames are sized to the firmware geometry (0xCB), not just 20 panels',
+            /function streamTarget\(\)/.test(html) &&
+                /Wire\.encodeStreamFrame\(payload, \{ panels \}\)/.test(html)
+        );
+        ok(
+            'Test display color banks A–D via PanelColor.bankAt',
+            ['cbank0', 'cbank1', 'cbank2', 'cbank3'].every((c) =>
+                html.includes('data-cmd="' + c + '"')
+            ) &&
+                /function genBank\(k, level\)/.test(html) &&
+                html.includes('<script src="js/panel-color.js"')
+        );
+        ok(
             'undeclared devices flagged in table + selection',
             /⚠ undeclared/.test(html) && /not in the rig YAML/.test(html)
         );

@@ -293,6 +293,22 @@ checkBool(
 // Only the two firmware-accepted sizes are valid (mode inferred from size).
 checkThrows('stream wrong size 100 throws', () => Wire.encodeStreamFrame(new Uint8Array(100)));
 checkThrows('stream wrong size 4063 throws', () => Wire.encodeStreamFrame(new Uint8Array(4063)));
+// Firmware-sized frames: the controller accepts exactly its compiled panel count.
+check('streamFrameBytes(20, GS2) = STREAM_FRAME_BYTES.GS2', Wire.streamFrameBytes(20, 2), 1064);
+check('streamFrameBytes(20, GS16) = STREAM_FRAME_BYTES.GS16', Wire.streamFrameBytes(20, 16), 4064);
+check('streamFrameBytes(48, GS2) — 4x12 build (arena_12-18)', Wire.streamFrameBytes(48, 2), 2548);
+check('streamFrameBytes(48, GS16) — 4x12 build', Wire.streamFrameBytes(48, 16), 9748);
+check(
+    'streamFrameBytes(40, GS16) — 4x10 build (fw constants.h 8124)',
+    Wire.streamFrameBytes(40, 16),
+    8124
+);
+const sf48 = Wire.encodeStreamFrame(new Uint8Array(9748), { panels: 48 });
+checkBytes('48-panel GS16 header: 32 + u16 LE 9748', sf48.slice(0, 3), '32 14 26');
+checkThrows('a 20-panel payload is refused for a 48-panel build', () =>
+    Wire.encodeStreamFrame(new Uint8Array(4064), { panels: 48 })
+);
+checkThrows('panels 0 rejected', () => Wire.streamFrameBytes(0, 16));
 
 console.log('\n=== decodeResponse framing ===');
 // get-controller-info reply: [len=4, status=0, echo=0xC2, version=2, cap=0x11].

@@ -3206,6 +3206,9 @@
             <input id="cFileInput" type="file" accept=".bin,.pat" style="display:none">
             <span class="thumb" id="cStreamThumb" title="Streamed-frame preview"></span>
           </div>
+          <div class="crow"><span class="lbl" title="Color panels: each 20×20 panel has four LED banks laid out as a 2×2 mosaic. Light one bank at a time to check each color.">color</span>
+            <span class="seg2" id="cBankSeg"><button data-cmd="cbank0" title="Light only bank A (T0) — one LED in four per panel, at the level above">A</button><button data-cmd="cbank1" title="Light only bank B (T1) — one LED in four per panel, at the level above">B</button><button data-cmd="cbank2" title="Light only bank C (T2) — one LED in four per panel, at the level above">C</button><button data-cmd="cbank3" title="Light only bank D (T3) — one LED in four per panel, at the level above">D</button></span>
+            <span class="dim" title="A–D = the panel firmware's banks T0–T3 (host coords: T2/T3 on row 0, T0/T1 on row 1 — bench-verified 2026-09-29)">one LED bank at a time (A–D = T0–T3)</span></div>
           </div>
         </section>
 
@@ -3276,7 +3279,7 @@
           <div id="cQwServo" style="display:none">
             <div class="crow"><span class="lbl" title="PCA9685 servo driver (e.g. SparkFun Servo pHAT)">servo</span>
               <select id="cQwSvCh" title="PWM channel 0–15 (named channels come from the rig YAML channels:)"></select>
-              <input id="cQwSvUs" type="range" min="1000" max="2000" step="10" value="1500" style="width:140px" title="Pulse width in µs — releasing the slider moves the servo">
+              <input id="cQwSvUs" type="range" min="1000" max="2000" step="10" value="1500" style="width:140px" title="Pulse width in µs — the servo follows the slider as you drag">
               <input id="cQwSvNum" type="number" min="1000" max="2000" step="10" value="1500" style="width:64px" title="Pulse width in µs (clamped to the channel's limits)"><span class="dim">µs</span>
               <span class="dim" id="cQwSvLim" title="Allowed pulse range for this channel">1000–2000 µs</span>
               <label title="Widen the range to 500–2500 µs (asks first — many servos stall at their end stops)"><input type="checkbox" id="cQwSvWide"> wide</label></div>
@@ -3416,7 +3419,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.96 | 2026-10-12 16:50 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.96 | 2026-10-12 17:19 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3436,6 +3439,7 @@
 <script src="js/studio-panel-inventory.js"></script>
 <script src="js/qwiic-drivers.js"></script>
 <script src="js/studio-qwiic.js"></script>
+<script src="js/panel-color.js"></script> <!-- color-bank test figure (PanelColor.bankAt) -->
 <script src="js/arena-link.js"></script>
 <script src="js/arena-runner-g6.js?v=20260926-cl-start"></script> <!-- ?v= forces a fresh load: a cached runner/client silently runs the old closed-loop start -->
 <script src="js/run-log.js"></script>
@@ -6195,11 +6199,22 @@ function studioMarkerCurrent(stored, current) {
         }
         qwRenderDevice();
     }
+    // Picking a device shows a reading at once; a running Live readout just moves to
+    // the new device (each tick reads whatever is selected).
     function qwSelect(key) {
         if (key === qw.selKey) return;
-        qwStopLive('device changed');
         qw.selKey = key;
         qwRenderSelection();
+        qwReadSelected();
+    }
+    function qwReadSelected() {
+        const item = qw.selKey && qwItem(qw.selKey);
+        if (!item || QD.KINDS[item.kind].role === 'actuator') return; // actuators refresh in qwRenderDevice
+        if (!qwGate('read').ok || qw.inFlight) return;
+        qw.inFlight = true;
+        qwReadOnce({ quiet: true })
+            .catch((e) => { qwSetStatus('error: ' + e.message); clog('qwiic: ' + e.message, 'err'); })
+            .finally(() => { qw.inFlight = false; });
     }
     // fromDom=false: the defaults (rig config, else the KINDS default) — used while the
     // option selects still belong to the PREVIOUS device.
@@ -6393,6 +6408,7 @@ function studioMarkerCurrent(stored, current) {
             const yamlBtn = $('cQwYaml');
             if (yamlBtn) yamlBtn.disabled = !d.devices.some((it) => it.kind);
             qwRenderSelection();
+            if (!setup) setTimeout(qwReadSelected, 0); // a fresh Scan shows the first device's reading
             return qw.check;
         } catch (e) {
             qwSetStatus('error: ' + e.message);
@@ -6535,7 +6551,8 @@ function studioMarkerCurrent(stored, current) {
         const lim = $('cQwSvLim');
         if (lim) lim.textContent = s.min + '–' + s.max + ' µs';
     }
-    async function qwServo(action) {
+    async function qwServo(action, opts) {
+        const quiet = !!(opts && opts.quiet);
         const g = qwGate('read');
         const s = qwServoSpec();
         if (!g.ok || !s.item || s.item.kind !== 'pca9685') { clog('qwiic: ' + (g.ok ? 'select the PCA9685 first' : g.reason), 'err'); return; }
@@ -6562,11 +6579,13 @@ function studioMarkerCurrent(stored, current) {
             if (rb[1] !== o) throw new Error('read-back OFF ' + rb[1] + ' ≠ ' + o);
             return o;
         });
-        $('cQwSvUs').value = us;
-        $('cQwSvNum').value = us;
-        qwReadOnce({ quiet: true }).catch(() => {}); // refresh the PWM / oscillator readout
+        if (!quiet) {
+            $('cQwSvUs').value = us;
+            $('cQwSvNum').value = us;
+            qwReadOnce({ quiet: true }).catch(() => {}); // refresh the PWM / oscillator readout
+        }
         if (out) out.textContent = 'ch' + s.ch + ' → ' + us + ' µs (OFF count ' + off + ' @ ' + drv.freqHz.toFixed(2) + ' Hz, read back ✓)';
-        clog('qwiic: servo ch' + s.ch + ' → ' + us + ' µs (count ' + off + ')', 'info');
+        if (!quiet) clog('qwiic: servo ch' + s.ch + ' → ' + us + ' µs (count ' + off + ')', 'info');
     }
     async function qwCopyYaml(which) {
         if (!qw.discovery || qw.discovery.error) { clog('qwiic: scan first', 'err'); return; }
@@ -6611,7 +6630,9 @@ function studioMarkerCurrent(stored, current) {
         const sl = $('cQwSvUs');
         const nb = $('cQwSvNum');
         if (sl && nb) {
-            sl.addEventListener('input', () => { nb.value = sl.value; });
+            // The servo follows the slider while dragging (single-flight, latest wins); release logs.
+            const svLive = liveSender(() => qwServo('go', { quiet: true }));
+            sl.addEventListener('input', () => { nb.value = sl.value; svLive(); });
             sl.addEventListener('change', () => { qwServo('go').catch((e) => clog('qwiic: servo — ' + e.message, 'err')); });
             nb.addEventListener('change', () => { sl.value = nb.value; });
         }
@@ -7019,13 +7040,17 @@ function studioMarkerCurrent(stored, current) {
         crawclear: () => { logEl().innerHTML = ''; },
         crawcopy: async () => { try { await navigator.clipboard.writeText(logEl().innerText); } catch (e) {} },
         // depth toggles (also set the module-block stream depth)
-        cgs16: (e) => { segPick(e, 'cGs16', 'cGs2'); if (Studio.setStreamGs) Studio.setStreamGs(16); if ($('cLevel')) $('cLevel').parentElement.style.opacity = '1'; },
-        cgs2: (e) => { segPick(e, 'cGs2', 'cGs16'); if (Studio.setStreamGs) Studio.setStreamGs(2); },
+        cgs16: (e) => { segPick(e, 'cGs16', 'cGs2'); if (Studio.setStreamGs) Studio.setStreamGs(16); if ($('cLevel')) $('cLevel').parentElement.style.opacity = '1';  if (Studio.restreamLast) Studio.restreamLast(); },
+        cgs2: (e) => { segPick(e, 'cGs2', 'cGs16'); if (Studio.setStreamGs) Studio.setStreamGs(2);  if (Studio.restreamLast) Studio.restreamLast(); },
         // stream test figures (builders live in the module block)
         cstreamff: () => Studio.doStream && Studio.doStream('fullfield'),
         cstreampm: () => Studio.doStream && Studio.doStream('panelmap'),
         cstreamor: () => Studio.doStream && Studio.doStream('orientation'),
         cstreamck: () => Studio.doStream && Studio.doStream('checker'),
+        cbank0: () => Studio.doStream && Studio.doStream('bank', 0),
+        cbank1: () => Studio.doStream && Studio.doStream('bank', 1),
+        cbank2: () => Studio.doStream && Studio.doStream('bank', 2),
+        cbank3: () => Studio.doStream && Studio.doStream('bank', 3),
         cpaste: () => Studio.openPasteModal && Studio.openPasteModal(),
         cloadfile: () => { if (Studio.filePlaying && Studio.filePlaying()) Studio.stopFilePlay('user'); else $('cFileInput').click(); }
     };
@@ -7493,7 +7518,28 @@ function studioMarkerCurrent(stored, current) {
     Studio.clog = clog;
     // level slider readout + duty → module-block stream state. The duty slider
     // and its number box stay in lockstep; typed values clamp to 0–255.
-    $('cLevel').addEventListener('input', () => { $('cLevelVal').textContent = $('cLevel').value + '/15'; });
+    // Live sliders: act while dragging. liveSender() is single-flight, latest value wins
+    // (a fast drag never queues a backlog of commands); nothing is sent while a run owns
+    // the link. Drags are quiet; the release ('change') logs one line.
+    function liveSender(fn) {
+        let busy = false, pending = null, has = false;
+        return function (v) {
+            pending = v; has = true;
+            if (busy) return;
+            busy = true;
+            (async () => {
+                try {
+                    while (has) { has = false; await fn(pending); }
+                } catch (e) { clog('live update failed: ' + (e.message || e), 'err'); } finally { busy = false; }
+            })();
+        };
+    }
+    const liveOk = () => !!(session && session.connected && !session.running);
+    Studio.liveSender = liveSender;
+    // Test display: level / duty re-send the last test figure (no-op until one was sent).
+    const restreamLive = liveSender(() => (liveOk() && Studio.restreamLast ? Studio.restreamLast() : null));
+    $('cLevel').addEventListener('input', () => { $('cLevelVal').textContent = $('cLevel').value + '/15'; restreamLive(); });
+    $('cLevel').addEventListener('change', () => { if (liveOk()) clog('test display: level ' + $('cLevel').value + '/15 (re-sent the last figure)', 'info'); });
     // LED tool: slider + number box in lockstep (like duty), 0.0–100.0 in 0.1 steps,
     // with a readout of the resolved BuckPuck control voltage.
     function applyLed(v) {
@@ -7508,8 +7554,15 @@ function studioMarkerCurrent(stored, current) {
         if (el) el.textContent = conv ? conv(n) + ' mV' : '';
     }
     Studio.applyLed = applyLed;
-    if ($('cLedPct')) $('cLedPct').addEventListener('input', () => applyLed($('cLedPct').value));
-    if ($('cLedNum')) $('cLedNum').addEventListener('change', () => applyLed($('cLedNum').value));
+    // LED power follows the slider (quiet SET_AO_VOLTAGE while dragging; one log line on release).
+    const ledMvFor = (p) => { const conv = window.ArenaRunnerG6 && window.ArenaRunnerG6.ledPercentToMv; return conv ? conv(p) : 5000; };
+    const ledLive = liveSender(async (p) => { if (liveOk()) await session.send(Wire.encodeSetAoVoltage(ledMvFor(p)), { timeoutMs: 1000 }); });
+    const ledCommitLog = () => { if (liveOk()) { const p = num('cLedPct'); clog('LED ' + p + '% → SET_AO_VOLTAGE 0xA0 ' + ledMvFor(p) + ' mV', 'tx'); } };
+    if ($('cLedPct')) {
+        $('cLedPct').addEventListener('input', () => { applyLed($('cLedPct').value); ledLive(num('cLedPct')); });
+        $('cLedPct').addEventListener('change', ledCommitLog);
+    }
+    if ($('cLedNum')) $('cLedNum').addEventListener('change', () => { applyLed($('cLedNum').value); ledLive(num('cLedPct')); ledCommitLog(); });
     if ($('cLedPct')) applyLed($('cLedPct').value);
     function applyDuty(v) {
         // A number input holding garbage reports '' (and Number('') === 0), so
@@ -7522,8 +7575,9 @@ function studioMarkerCurrent(stored, current) {
         $('cDutyNum').value = n;
         if (Studio.setStreamDuty) Studio.setStreamDuty(n);
     }
-    $('cDuty').addEventListener('input', () => applyDuty($('cDuty').value));
-    $('cDutyNum').addEventListener('change', () => applyDuty($('cDutyNum').value));
+    $('cDuty').addEventListener('input', () => { applyDuty($('cDuty').value); restreamLive(); });
+    $('cDuty').addEventListener('change', () => { if (liveOk()) clog('test display: duty ' + $('cDuty').value + ' (re-sent the last figure)', 'info'); });
+    $('cDutyNum').addEventListener('change', () => { applyDuty($('cDutyNum').value); restreamLive(); });
 
     // console dropdown menus (Controller ▾ / Debug ▾) — open/close + click-away
     document.querySelectorAll('.cmenu[data-cmenu] > .cmenu-btn').forEach((btn) => {
@@ -9042,7 +9096,8 @@ function activeArenaGeom() {
     const cfg = Studio.currentRig && Studio.currentRig.arenaConfig;
     const arena = cfg ? arenaForConfig(cfg) : null;
     const rc = (arena && arena.num_rows) || 2;
-    const cc = (arena && arena.num_cols) || 10;
+    // Partial arenas stream their INSTALLED columns (a 1x12of18 figure is 12 panels wide).
+    const cc = (arena && (arena.columns_installed ? arena.columns_installed.length : arena.num_cols)) || 10;
     return { rowCount: rc, colCount: cc, pixelRows: rc * 20, pixelCols: cc * 20 };
 }
 function newGrid() { const a = activeArenaGeom(); return new Uint8Array(a.pixelRows * a.pixelCols); }
@@ -9078,25 +9133,70 @@ function genOrient() {
     drawGlyph(grid, a, 'R', a.pixelCols - cw - 1, midRow, val, s);
     return grid;
 }
+// Color banks (LAB-223/228 color panels): light ONLY bank k (0..3 = A..D = T0..T3) —
+// one LED in four per panel (a 10×10 lattice at 2-px pitch) — via the shared
+// bench-verified PanelColor.bankAt (host coords, row 0 = bottom; panels are 20 px,
+// so arena-global parity equals panel-local parity).
+const BANK_NAMES = ['A', 'B', 'C', 'D'];
+function genBank(k, level) {
+    const a = activeArenaGeom(); const grid = newGrid(); const val = streamGs === 2 ? 1 : level;
+    const PC = window.PanelColor;
+    const bankAt = PC ? PC.bankAt : (r, c) => 2 * ((r + 1) & 1) + (c & 1);
+    for (let r = 0; r < a.pixelRows; r++) for (let c = 0; c < a.pixelCols; c++) if (bankAt(r, c) === k) grid[r * a.pixelCols + c] = val;
+    return grid;
+}
 function genChecker() {
     const a = activeArenaGeom(); const grid = newGrid(); const val = streamGs === 2 ? 1 : 15;
     for (let pr = 0; pr < a.rowCount; pr++) for (let pc = 0; pc < a.colCount; pc++) if ((pr + pc) % 2 === 0)
         for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) setPx(grid, a, pr * 20 + y, pc * 20 + x, val);
     return grid;
 }
-function buildStreamFrame(grid, gs) {
-    const a = activeArenaGeom();
-    const patData = {
-        generation: 'G6', gs_val: gs, numFrames: 1, rowCount: a.rowCount, colCount: a.colCount,
-        pixelRows: a.pixelRows, pixelCols: a.pixelCols, frames: [grid], stretchValues: [streamDuty]
-    };
-    const patArrayBuffer = window.PatEncoder.encode(patData);
-    const buf = new Uint8Array(patArrayBuffer);
-    const len = Wire.STREAM_FRAME_BYTES[gs === 2 ? 'GS2' : 'GS16'];
-    const payload = buf.subarray(window.PatEncoder.G6_HEADER_SIZE, window.PatEncoder.G6_HEADER_SIZE + len);
-    return { bytes: Wire.encodeStreamFrame(payload), patArrayBuffer };
+// The controller accepts stream frames of exactly ITS compiled geometry (0xCB rows ×
+// cols; fw constants.h panel_count_per_frame): 2x10 on the CSHL boards, 4x12 on the
+// arena_12-18 build. The rig's figure is placed into that frame: installed columns
+// from the left, the rig's rows repeated up the frame (so a one-row bench install
+// lights whichever row connector its panels are on). Firmware without 0xCB: the
+// legacy 20-panel rule.
+function streamTarget() {
+    const rig = activeArenaGeom();
+    const fv = Studio.firmwareVersion;
+    if (fv && fv.rows > 0 && fv.cols > 0) {
+        if (rig.rowCount > fv.rows || rig.colCount > fv.cols) {
+            return { ok: false, rig, reason: 'the rig is ' + rig.rowCount + '×' + rig.colCount + ' panels but this firmware build streams ' + fv.rows + '×' + fv.cols };
+        }
+        return { ok: true, rig, rows: fv.rows, cols: fv.cols };
+    }
+    if (rig.rowCount * rig.colCount === 20) return { ok: true, rig, rows: rig.rowCount, cols: rig.colCount };
+    return { ok: false, rig, reason: 'this firmware does not report its panel geometry (0xCB), so only 20-panel arenas can be streamed' };
 }
-function streamable() { const a = activeArenaGeom(); return a.rowCount * a.colCount === 20; } // FW accepts 20-panel frames only
+function toFirmwareGrid(grid, t) {
+    const rp = t.rig.pixelRows, cp = t.rig.pixelCols;
+    const R = t.rows * 20, C = t.cols * 20;
+    if (R === rp && C === cp) return grid;
+    const out = new Uint8Array(R * C);
+    for (let r = 0; r < R; r++) out.set(grid.subarray((r % rp) * cp, (r % rp) * cp + cp), r * C);
+    return out;
+}
+function encodeStreamPat(grid, gs, rows, cols) {
+    return window.PatEncoder.encode({
+        generation: 'G6', gs_val: gs, numFrames: 1, rowCount: rows, colCount: cols,
+        pixelRows: rows * 20, pixelCols: cols * 20, frames: [grid], stretchValues: [streamDuty]
+    });
+}
+function buildStreamFrame(grid, gs) {
+    const t = streamTarget();
+    if (!t.ok) throw new Error(t.reason);
+    const panels = t.rows * t.cols;
+    const fwPat = encodeStreamPat(toFirmwareGrid(grid, t), gs, t.rows, t.cols);
+    const buf = new Uint8Array(fwPat);
+    const len = Wire.streamFrameBytes(panels, gs);
+    const payload = buf.subarray(window.PatEncoder.G6_HEADER_SIZE, window.PatEncoder.G6_HEADER_SIZE + len);
+    // The thumbnail shows the RIG's figure (the preview draws the rig's arena).
+    const samePat = t.rows === t.rig.rowCount && t.cols === t.rig.colCount;
+    const patArrayBuffer = samePat ? fwPat : encodeStreamPat(grid, gs, t.rig.rowCount, t.rig.colCount);
+    return { bytes: Wire.encodeStreamFrame(payload, { panels }), patArrayBuffer, target: t };
+}
+function streamable() { return streamTarget().ok; }
 function renderStreamThumb(patArrayBuffer, hostId) {
     const host = $(hostId || 'cStreamThumb');
     if (!host || !PP) return;
@@ -9118,29 +9218,42 @@ function renderStreamThumb(patArrayBuffer, hostId) {
 Studio.setStreamGs = (gs) => { streamGs = gs; };
 Studio.setStreamDuty = (d) => { streamDuty = d; };
 // Stream one already-built pixel grid (shared by the figures + paste-frame).
-async function streamGrid(grid, gs, label) {
+async function streamGrid(grid, gs, label, opts) {
     const clog = Studio.clog || Studio.rawLog;
     if (!Studio.session || !Studio.session.connected) { clog('connect first', 'err'); return false; }
-    if (!streamable()) { clog('stream: needs a 20-panel arena (e.g. G6_2x10) — unlock the session rig selector in ⚙ Settings', 'err'); return false; }
+    const tgt = streamTarget();
+    if (!tgt.ok) { clog('stream: ' + tgt.reason + ' — check the session rig in ⚙ Settings', 'err'); return false; }
     let built;
     try { built = buildStreamFrame(grid, gs); } catch (e) { clog('stream build failed: ' + (e.message || e), 'err'); return false; }
     renderStreamThumb(built.patArrayBuffer);
     try {
         await Studio.session.send(built.bytes, { expectedCmd: Wire.OPCODES.STREAM_FRAME, timeoutMs: 1500 });
-        clog('› STREAM_FRAME 0x32 · ' + label + ' (' + (gs === 2 ? 'GS2' : 'GS16') + ')', 'tx');
+        const t = built.target;
+        const mapped = t.rows !== t.rig.rowCount || t.cols !== t.rig.colCount ? ' · ' + t.rig.rowCount + '×' + t.rig.colCount + ' rig in a ' + t.rows + '×' + t.cols + ' firmware frame' : '';
+        if (!opts || !opts.quiet) clog('› STREAM_FRAME 0x32 · ' + label + ' (' + (gs === 2 ? 'GS2' : 'GS16') + ')' + mapped, 'tx');
         return true;
     } catch (e) { clog('stream send failed: ' + (e.message || e), 'err'); return false; }
 }
 Studio.streamGrid = streamGrid;
-Studio.doStream = async function (kind) {
+// Remember the last test figure so the level / duty sliders can re-send it live.
+let lastStreamFigure = null;
+Studio.doStream = async function (kind, arg, opts) {
     const level = Number(($('cLevel') || {}).value || 15);
     let grid;
+    let label = kind;
     if (kind === 'fullfield') grid = genUniform(level);
     else if (kind === 'panelmap') grid = genPanelMap();
     else if (kind === 'orientation') grid = genOrient();
     else if (kind === 'checker') grid = genChecker();
-    else return;
-    await streamGrid(grid, streamGs, kind);
+    else if (kind === 'bank') { grid = genBank(arg, level); label = 'color bank ' + BANK_NAMES[arg] + ' (T' + arg + ')'; }
+    else return false;
+    lastStreamFigure = { kind, arg };
+    return streamGrid(grid, streamGs, label, opts);
+};
+// Re-send the last figure (level / duty / depth changed). No-op before the first figure.
+Studio.restreamLast = async function () {
+    if (!lastStreamFigure || !Studio.session || !Studio.session.connected || Studio.session.running) return false;
+    return Studio.doStream(lastStreamFigure.kind, lastStreamFigure.arg, { quiet: true });
 };
 
 // ---- batch panel programming (ISP) — the panel-firmware tile's batch row ----
@@ -9526,7 +9639,8 @@ Studio.loadStreamFile = async function (file) {
     const clog = Studio.clog || Studio.rawLog;
     Studio.stopFilePlay('silent');
     if (!Studio.session || !Studio.session.connected) { clog('connect first', 'err'); return; }
-    if (!streamable()) { clog('stream: needs a 20-panel arena (e.g. G6_2x10)', 'err'); return; }
+    const ft = streamTarget();
+    if (!ft.ok || ft.rows * ft.cols !== 20) { clog('stream: file streaming (.bin/.pat) needs a 20-panel controller frame (e.g. G6_2x10)' + (ft.ok ? ' — this firmware streams ' + ft.rows + '×' + ft.cols : ''), 'err'); return; }
     if (!Bin) { clog('bin-classifier unavailable', 'err'); return; }
     let buf;
     try { buf = new Uint8Array(await file.arrayBuffer()); } catch (e) { clog('file read failed: ' + (e.message || e), 'err'); return; }
@@ -17907,7 +18021,7 @@ initFromUrl();
     '[data-cmd="cqwread"]': 'Take one reading from the selected device.',
     '#cQwLive': 'Keep reading the selected device about once a second. Pauses by itself during a run.',
     '[data-cmd="cqwbumpcheck"]': 'Was the motion sensor bumped since the last check? Checking resets the answer.',
-    '#cQwSvUs': 'Servo position. Let go of the slider to move the servo.',
+    '#cQwSvUs': 'Servo position. The servo follows the slider as you move it.',
     '[data-cmd="cqwsvrelease"]': 'Let the servo go limp (it stops holding its position).',
     '#qwiicChip': 'The sensors on the Qwiic connector compared with this rig’s list. Red = a listed sensor is missing; amber = something is plugged in that isn’t listed. Click to open them in the Console.',
     '.rail-btn[data-panel="fw"]': 'Update or check the firmware on the LED panels.',
