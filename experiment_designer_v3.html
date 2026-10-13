@@ -1621,7 +1621,7 @@
          arena-configs.js, and icon-generator.js have bare exports, so the module
          below imports those. JSZip (CDN, pinned) powers the bundle ZIP export. -->
     <script src="js/pat-encoder.js"></script>
-    <script src="js/pattern-set.js"></script>
+    <script src="js/pattern-set.js?v=1006-partial-cols"></script>
     <script src="js/pat-preview.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
@@ -1705,7 +1705,7 @@
         // LAB-96 — animated pattern preview: one cylindrical icon per sampled frame.
         // arena-configs (imported above) sets window.PANEL_SPECS, which icon-generator
         // reads at call time.
-        import { generatePatternIcon } from './js/icon-generator.js';
+        import { generatePatternIcon } from './js/icon-generator.js?v=1006-partial-cols';
 
         // ═══════════════════════════════════════════════════════════════
         // State

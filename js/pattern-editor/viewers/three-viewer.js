@@ -632,6 +632,18 @@ class ThreeViewer {
     }
 
     /**
+     * Map each installed physical column to its panel block in the PAT. A partial arena's
+     * pattern stores only the installed columns, in columns_installed order, so block k is
+     * physical column columns_installed[k] (G6_2x8of10: column 1 is block 0). Full arenas
+     * map identically. Built from the CONFIGURED columns, never the preview-visible set, so
+     * the CSHL rear-panel omission does not shift the PAT address map.
+     * @returns {Map<number, number>} physical column index -> pattern panel block
+     */
+    _getPatternColumnMap() {
+        return new Map([...this._getInstalledColumnsSet()].map((col, block) => [col, block]));
+    }
+
+    /**
      * Return columns rendered by the preview. Panels 8 and 18 are a physical
      * CSHL omission that is deliberately absent from the rig/config registry.
      * Pattern indexing still uses the configured 10-column coordinate system.
@@ -721,6 +733,7 @@ class ThreeViewer {
         // Note: Three.js uses right-handed coords but top-down view has +Z toward viewer,
         // so we negate Z to match MATLAB's top-down appearance
         const visibleColumns = this._getVisibleColumnsSet();
+        const patternColumns = this._getPatternColumnMap();
 
         for (let col = 0; col < numCols; col++) {
             // Skip config-level omissions and the visual-only CSHL panels 8/18 rear gap.
@@ -747,7 +760,8 @@ class ThreeViewer {
                 numRows,
                 col,
                 numCols,
-                columnOrder
+                columnOrder,
+                patternColumns.get(col)
             );
             columnGroup.position.set(x, 0, z);
             columnGroup.userData.columnIndex = col;
@@ -885,7 +899,18 @@ class ThreeViewer {
         this.controls.update();
     }
 
-    _createColumn(specs, width, height, depth, angle, numRows, colIndex, numCols, columnOrder) {
+    _createColumn(
+        specs,
+        width,
+        height,
+        depth,
+        angle,
+        numRows,
+        colIndex,
+        numCols,
+        columnOrder,
+        patternCol = colIndex
+    ) {
         const group = new THREE.Group();
 
         // Apply rotation to face center (matches standalone viewer exactly)
@@ -1023,6 +1048,7 @@ class ThreeViewer {
                     this.ledMeshes.push({
                         mesh: rect,
                         colIndex: colIndex,
+                        patternCol: patternCol,
                         px: px,
                         py: py,
                         totalPixelsH: totalPixelsH,
@@ -1078,6 +1104,7 @@ class ThreeViewer {
                     this.ledMeshes.push({
                         mesh: led,
                         colIndex: colIndex,
+                        patternCol: patternCol,
                         px: px,
                         py: py,
                         totalPixelsH: totalPixelsH,
@@ -1185,7 +1212,10 @@ class ThreeViewer {
     }
 
     _getLEDBrightness(ledRef) {
-        const { px, py, colIndex, totalPixelsH, numCols, columnOrder } = ledRef;
+        const { px, py, colIndex, totalPixelsH, columnOrder } = ledRef;
+        // The LED's panel block in the PAT (see _getPatternColumnMap); refs built without
+        // one fall back to the physical column, which is the same on full arenas.
+        const patternCol = ledRef.patternCol ?? colIndex;
         const pattern = this.state.pattern;
 
         if (!pattern || !pattern.frames || pattern.frames.length === 0) {
@@ -1196,7 +1226,9 @@ class ThreeViewer {
         if (!frame) return 0.0;
 
         const pixelsPerPanel = totalPixelsH;
-        const totalAzimuthPixels = numCols * totalPixelsH;
+        // Wrap within the pattern's own width: a partial arena's PAT holds only the
+        // installed columns, so wrapping at the full circle would spill into the next row.
+        const patternWidth = pattern.pixelCols;
 
         // For CCW mode, mirror the pixel index within each panel
         // to ensure grating tiles correctly when columns are placed clockwise
@@ -1205,8 +1237,9 @@ class ThreeViewer {
         // Calculate global X with phase offset support
         const phaseOffset = this.state.phaseOffset || 0;
         const globalX =
-            (colIndex * pixelsPerPanel + effectivePx + phaseOffset + totalAzimuthPixels) %
-            totalAzimuthPixels;
+            (((patternCol * pixelsPerPanel + effectivePx + phaseOffset) % patternWidth) +
+                patternWidth) %
+            patternWidth;
         const globalY = py;
 
         // Row-major index: row * numCols + col
