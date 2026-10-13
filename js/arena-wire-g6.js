@@ -90,6 +90,10 @@ const ArenaWireG6 = (function () {
         G6_VERIFY_PANEL: 0xc9, // [02 C9 panel_index] CRC the panel's running app flash vs /firmware/panel.bin footer
         PANEL_INVENTORY_SCAN: 0xd0, // [02 D0 action] re-probe the fleet: 0 presence (keeps fingerprints), 1 presence + fresh fingerprints; replies with 0xD1 page 0 (feature bit 0)
         GET_PANEL_INVENTORY: 0xd1, // [01 D1] | [02 D1 first] per-panel presence + firmware fingerprint, 32-panel pages (feature bit 0)
+        // Qwiic / STEMMA QT I2C bridge (feature bit 1, arena_12-18 jack J2 = Wire1). Sensor-agnostic:
+        // every register map lives host-side (js/qwiic-drivers.js). 0xB2–0xBF stay reserved.
+        GET_I2C_SCAN: 0xb0, // [01 B0] returns [count, addr...] — every 7-bit address that ACKs (setup only: ~10 ms loop stall)
+        I2C_TRANSFER: 0xb1, // [len B1 addr wlen w... rlen] write then repeated-start read; returns rlen bytes
         ALL_ON: 0xff
     };
 
@@ -327,18 +331,37 @@ const ArenaWireG6 = (function () {
      * @param {Uint8Array|number[]} payload per-frame body (1064 GS2 / 4064 GS16)
      * @returns {Uint8Array} on-wire stream frame [0x32, len_lo, len_hi, ...payload]
      */
-    function encodeStreamFrame(payload) {
+    // Stream-frame payload size for a firmware build that drives `panels` panels:
+    // 4-byte prefix + one block per panel (GS2 53 B, GS16 203 B). The firmware
+    // accepts exactly its compiled panel count (constants.h panel_count_per_frame):
+    // 20 on the 2x10 build (1064 / 4064 = STREAM_FRAME_BYTES), 48 on 4x12, etc.
+    const STREAM_BLOCK_BYTES = { GS2: 53, GS16: 203 };
+    function streamFrameBytes(panels, gs) {
+        requireInt(panels, 'panels');
+        if (panels < 1) throw new RangeError('panels must be >= 1, got ' + panels);
+        return 4 + panels * (gs === 2 ? STREAM_BLOCK_BYTES.GS2 : STREAM_BLOCK_BYTES.GS16);
+    }
+
+    // opts.panels: the connected firmware's panel count (default 20 — the 2x10 sizes).
+    function encodeStreamFrame(payload, opts) {
         const body = payload instanceof Uint8Array ? payload : Uint8Array.from(payload);
-        if (body.length !== STREAM_FRAME_BYTES.GS2 && body.length !== STREAM_FRAME_BYTES.GS16) {
+        const panels = opts && opts.panels !== undefined ? opts.panels : 20;
+        const gs2 = streamFrameBytes(panels, 2);
+        const gs16 = streamFrameBytes(panels, 16);
+        if (body.length !== gs2 && body.length !== gs16) {
             throw new RangeError(
-                'stream-frame payload must be ' +
-                    STREAM_FRAME_BYTES.GS2 +
+                'stream-frame payload for ' +
+                    panels +
+                    ' panels must be ' +
+                    gs2 +
                     ' (GS2) or ' +
-                    STREAM_FRAME_BYTES.GS16 +
+                    gs16 +
                     ' (GS16) bytes, got ' +
                     body.length
             );
         }
+        if (body.length > 0xffff)
+            throw new RangeError('stream-frame payload exceeds the u16 length field');
         const out = new Uint8Array(3 + body.length);
         out[0] = OPCODES.STREAM_FRAME; // 0x32
         out[1] = body.length & 0xff; // payload length lo
@@ -1405,6 +1428,88 @@ const ArenaWireG6 = (function () {
 
     // g6-program-panel (0xC8) reply: status byte + ASCII detail. `ok` === flash
     // succeeded; `message` carries the controller's diagnostic / failure step.
+    // ── Qwiic I2C bridge (0xB0 / 0xB1) ──
+    // Status codes the firmware returns for both commands (I2C_TRANSFER also uses 2/3/5).
+    const I2C_STATUS_TEXT = {
+        1: 'bad framing',
+        2: 'address NACK',
+        3: 'data NACK',
+        4: 'bus error/timeout',
+        5: 'short read'
+    };
+    const I2C_READ_MAX = 64; // firmware qwiic_i2c_read_byte_count_max
+    const I2C_WRITE_MAX = 64; // host-side cap; register writes are a few bytes
+
+    function encodeGetI2cScan() {
+        return frame(OPCODES.GET_I2C_SCAN); // 01 B0
+    }
+
+    // [4+wlen, B1, addr, wlen, w..., rlen]. wlen = 0 → plain read; rlen = 0 → plain
+    // write; both 0 → ACK probe of the address.
+    function encodeI2cTransfer(addr, wbytes, rlen) {
+        requireInt(addr, 'addr');
+        if (addr < 0 || addr > 0x7f) {
+            throw new RangeError('addr must be a 7-bit address 0..127, got ' + addr);
+        }
+        const w = Array.from(wbytes || []);
+        if (w.length > I2C_WRITE_MAX) {
+            throw new RangeError('I2C write is ' + w.length + ' bytes, max ' + I2C_WRITE_MAX);
+        }
+        w.forEach((b, i) => u8(b, 'wbytes[' + i + ']'));
+        const n = rlen === undefined ? 0 : rlen;
+        requireInt(n, 'rlen');
+        if (n < 0 || n > I2C_READ_MAX) {
+            throw new RangeError('rlen must be 0..' + I2C_READ_MAX + ', got ' + n);
+        }
+        return frame(OPCODES.I2C_TRANSFER, [addr, w.length, ...w, n]);
+    }
+
+    function _asciiPayload(payload) {
+        let message = '';
+        for (let i = 0; i < payload.length; i++) {
+            const b = payload[i];
+            if (b >= 0x20 && b < 0x7f) message += String.fromCharCode(b);
+        }
+        return message;
+    }
+
+    // Shared shape for both I2C replies: a non-ok status carries an ASCII reason;
+    // "No Qwiic jack…" marks a firmware variant without the jack (arena_10-10 / 2x10).
+    function _i2cResult(r) {
+        const message = r.ok ? '' : _asciiPayload(r.payload);
+        return {
+            ok: r.ok,
+            status: r.status,
+            statusText: r.ok ? 'ok' : I2C_STATUS_TEXT[r.status] || 'status ' + r.status,
+            message,
+            noJack: !r.ok && /no qwiic jack/i.test(message)
+        };
+    }
+
+    // GET_I2C_SCAN → { ok, status, statusText, message, noJack, addresses: [7-bit…] }.
+    // null for a short/unparseable frame or a count that disagrees with the payload.
+    function decodeI2cScan(resp) {
+        const r = asResponse(resp);
+        if (!r) return null;
+        const out = _i2cResult(r);
+        out.addresses = [];
+        if (!r.ok) return out;
+        if (r.payload.length < 1) return null;
+        const count = r.payload[0];
+        if (r.payload.length !== 1 + count) return null;
+        out.addresses = Array.from(r.payload.slice(1, 1 + count));
+        return out;
+    }
+
+    // I2C_TRANSFER → { ok, status, statusText, message, noJack, data: Uint8Array }.
+    function decodeI2cTransfer(resp) {
+        const r = asResponse(resp);
+        if (!r) return null;
+        const out = _i2cResult(r);
+        out.data = r.ok ? Uint8Array.from(r.payload) : new Uint8Array(0);
+        return out;
+    }
+
     function decodeProgramPanelResponse(resp) {
         const r = asResponse(resp);
         if (!r) return null;
@@ -1423,9 +1528,13 @@ const ArenaWireG6 = (function () {
         PANEL_DISPLAY_MODE_NAMES,
         CAPABILITY_BITS,
         FEATURE_BITS,
+        I2C_STATUS_TEXT,
+        I2C_READ_MAX,
         PANEL_STATUS_NAMES,
         PANEL_INVENTORY_FLAGS,
         STREAM_FRAME_BYTES,
+        STREAM_BLOCK_BYTES,
+        streamFrameBytes,
 
         // Encoders (request frames)
         encodeAllOn,
@@ -1483,6 +1592,8 @@ const ArenaWireG6 = (function () {
         encodeGetDioRole,
         encodeSetAoMode,
         encodeGetAnalogIn,
+        encodeGetI2cScan,
+        encodeI2cTransfer,
 
         // Decoders
         decodeResponse,
@@ -1520,6 +1631,8 @@ const ArenaWireG6 = (function () {
         decodeSetFirmwareFileResponse,
         decodeFirmwareInfo,
         decodeProgramPanelResponse,
+        decodeI2cScan,
+        decodeI2cTransfer,
         decodePanelInventory
     };
 })();

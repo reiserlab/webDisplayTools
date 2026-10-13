@@ -146,7 +146,7 @@ console.log('=== Console Tools checklist ===');
 const railRows = Array.from(
     studio.matchAll(/<div class="rail-btn( sel)?" data-panel="([a-z]+)"([^>]*)>/g)
 );
-check('nine rail rows', railRows.length === 9, String(railRows.length));
+check('ten rail rows', railRows.length === 10, String(railRows.length));
 railRows.forEach((m) => {
     const sel = !!m[1];
     const attrs = m[3];
