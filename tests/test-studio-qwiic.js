@@ -486,8 +486,33 @@ const item = (addr, kind, extra) =>
             )
         );
         ok(
-            'connect-time setup scan from initFromController',
-            /initFromController[\s\S]{0,900}Studio\.qwiicSetup\(\)/.test(html)
+            'connect-time setup runs AFTER the controller reads and is not awaited (never delays the SD listing)',
+            /init from controller: [\s\S]{0,700}if \(Studio\.qwiicSetup\) Studio\.qwiicSetup\(\)\.catch\(/.test(
+                html
+            ) && !/await Studio\.qwiicSetup\(\)/.test(html)
+        );
+        ok(
+            'live sends + Qwiic pause during an ISP batch and a post-mortem',
+            /const liveOk = \(\) =>[\s\S]{0,200}ispBatchRunning[\s\S]{0,80}_activePostmortem/.test(
+                html
+            ) &&
+                /paused — panel firmware batch running/.test(html) &&
+                /Studio\.restreamLast = async function \(\) \{[\s\S]{0,400}ispBatchRunning/.test(
+                    html
+                )
+        );
+        ok(
+            'servo boards released on an intentional disconnect',
+            /Studio\.qwiicReleaseServos = async function/.test(html) &&
+                /await Studio\.qwiicReleaseServos\(\);[\s\S]{0,120}Studio\.session\.disconnect\(\)/.test(
+                    html
+                )
+        );
+        ok(
+            'stream geometry delegates to js/studio-stream-geometry.js (full grid, never installed-only)',
+            html.includes('<script src="js/studio-stream-geometry.js"') &&
+                /return window\.StudioStreamGeometry\.rigGeometry\(arena\);/.test(html) &&
+                !/columns_installed\.length : arena\.num_cols/.test(html)
         );
         ok(
             'setup does not arm the bump latch (one owner: the run)',

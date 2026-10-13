@@ -622,7 +622,7 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   like 0xA8 on the 0xCB telemetry flag; `Studio.readCrashReport()` logs a `crash_report` event.
   Breadcrumb ops 6–9 are the SET_FRAME_POSITION sub-steps (disarm timer / preload / arm / respond).
 
-- **Qwiic peripherals (LAB-214, v0.96):** the controller exposes only a sensor-agnostic I2C bridge
+- **Qwiic peripherals (LAB-214):** the controller exposes only a sensor-agnostic I2C bridge
   (`GET_I2C_SCAN` 0xB0, `I2C_TRANSFER` 0xB1; 0xB2–0xBF stay reserved), advertised by the 0xC2
   feature bit `qwiic_i2c` — **gate EVERY I2C send on it** (jack-less 10-10 / 2x10 builds answer
   CE_UNKNOWN_CMD + an error glyph). All register maps are host-side in `js/qwiic-drivers.js`
@@ -639,6 +639,13 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   connect-time setup never arms it. (4) Bench quirks are load-bearing (SHT4x two-leg read; LIR +
   INT_CLR_ON_READ + INT1 routing; PCA9685 ALLCALL shadow at 0x70 decided from MODE1, cleared by
   configure). The rig fetch (`fetchRigSections`) parses `io:` and `peripherals:` from one read.
+- **Test display streams at the CONTROLLER's frame geometry** (0xCB rows × cols = fw
+  `panel_count_per_frame`), not a fixed 20 panels. The mapping lives in `js/studio-stream-geometry.js`
+  (Node-tested): figures are drawn on the rig's FULL arena grid (`activeArenaGeom()` = num_rows ×
+  num_cols — NEVER installed-columns-only: G6_2x8of10's panels are physical columns 1–8), grid column
+  c → firmware column c (only installed columns must fit), rig rows repeated up the frame; no 0xCB →
+  the legacy 20-panel rule. Live Console sliders go through `liveSender()` (single-flight, latest
+  wins) and pause during runs, ISP batches and post-mortems.
 
 ## Pattern Designer (`pattern_editor.html`)
 

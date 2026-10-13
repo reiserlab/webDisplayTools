@@ -3439,6 +3439,7 @@
 <script src="js/studio-panel-inventory.js"></script>
 <script src="js/qwiic-drivers.js"></script>
 <script src="js/studio-qwiic.js"></script>
+<script src="js/studio-stream-geometry.js"></script>
 <script src="js/panel-color.js"></script> <!-- color-bank test figure (PanelColor.bankAt) -->
 <script src="js/arena-link.js"></script>
 <script src="js/arena-runner-g6.js?v=20260926-cl-start"></script> <!-- ?v= forces a fresh load: a cached runner/client silently runs the old closed-loop start -->
@@ -4385,6 +4386,7 @@ function studioMarkerCurrent(stored, current) {
             return;
         }
         if (Studio.session.connected) {
+            if (Studio.qwiicReleaseServos) { try { await Studio.qwiicReleaseServos(); } catch (_) { /* best-effort */ } }
             try { await Studio.session.disconnect(); } catch (e) { /* ignore */ }
             return;
         }
@@ -6107,6 +6109,7 @@ function studioMarkerCurrent(stored, current) {
         if (!qwHas()) return { ok: false, reason: 'no Qwiic I2C bridge on this controller (0xC2 feature bit 1 clear — arena_12-18 boards only)' };
         if (session.running) return { ok: false, reason: what === 'scan' ? 'refused — a run is active (the scan stalls the controller ~10 ms)' : 'paused — run active' };
         if (Studio._activePostmortem) return { ok: false, reason: 'paused — post-mortem owns the link' };
+        if (Studio.ispBatchRunning && Studio.ispBatchRunning()) return { ok: false, reason: 'paused — panel firmware batch running' };
         return { ok: true };
     }
     function qwSetStatus(t) {
@@ -6491,6 +6494,17 @@ function studioMarkerCurrent(stored, current) {
         if (note) note.textContent = running ? 'a run owns the bump latch — checks are off until it ends' : '';
     }
     Studio.qwiicUpdateRunGates = qwUpdateRunGates;
+    // Intentional disconnect: release every PCA9685 this session configured (servos go
+    // limp rather than holding their last position unattended). Best-effort, time-boxed.
+    Studio.qwiicReleaseServos = async function () {
+        if (!qw.discovery || qw.discovery.error || !qwHas() || !(session && session.connected)) return;
+        const pcas = qw.discovery.devices.filter((it) => it.kind === 'pca9685' && qw.configured[it.key] && it.driver);
+        if (!pcas.length) return;
+        qwStopLive();
+        const work = Promise.all(pcas.map((it) => QD.withDevice(qwBus(), it.dev, () => it.driver.allOff()).catch(() => {})));
+        await Promise.race([work, new Promise((r) => setTimeout(r, 800))]);
+        clog('qwiic: released ' + pcas.length + ' servo board' + (pcas.length === 1 ? '' : 's') + ' before disconnect', 'info');
+    };
     if (session) session.on('runstatus', () => qwUpdateRunGates());
     async function qwBumpArm() {
         const g = qwGate('read');
@@ -7106,9 +7120,6 @@ function studioMarkerCurrent(stored, current) {
         // Optional-guarded: if the module block failed to load (stale-cache
         // gotcha), connect/bench ops must still work — defaults just don't apply.
         if (Studio.applyRigIo) { try { await Studio.applyRigIo(); } catch (_) { /* logged inside */ } }
-        // Qwiic setup scan (LAB-214): once per connection, never retried; guarded
-        // so a failure never blocks connect.
-        if (Studio.qwiicSetup) { try { await Studio.qwiicSetup(); } catch (e) { clog('qwiic: setup failed — ' + e.message, 'err'); } }
         const q = async (bytes) => { try { return await session.send(bytes, { timeoutMs: 2000 }); } catch (_) { return null; } };
         const got = [];
         const rr = Wire.decodeRefreshRate(await q(Wire.encodeGetRefreshRate()));
@@ -7124,6 +7135,11 @@ function studioMarkerCurrent(stored, current) {
         const fi = Wire.decodeFirmwareInfo(await q(Wire.encodeGetFirmwareInfo()));
         if (fi && fi.version) { $('cFwName').textContent = 'on SD: ' + fi.version; got.push('SD fw «' + fi.version + '»'); }
         if (got.length) clog('init from controller: ' + got.join(' · '), 'info');
+        // Qwiic setup scan (LAB-214): once per connection, never retried. Started
+        // AFTER the controller reads and NOT awaited, so its sensor configure waits
+        // (~0.5 s on a full chain) never hold up the SD listing; a failure never
+        // blocks connect. Gated inside on the 0xC2 qwiic_i2c feature bit.
+        if (Studio.qwiicSetup) Studio.qwiicSetup().catch((e) => clog('qwiic: setup failed — ' + e.message, 'err'));
     }
     function downloadBlob(bytes, name, mime) {
         const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
@@ -7534,7 +7550,12 @@ function studioMarkerCurrent(stored, current) {
             })();
         };
     }
-    const liveOk = () => !!(session && session.connected && !session.running);
+    // Live sends pause during a run, an ISP batch (a stream would re-activate the display and
+    // the firmware refuses 0xC8/0xC9 then) and a post-mortem (it owns the link).
+    const liveOk = () =>
+        !!(session && session.connected && !session.running) &&
+        !(Studio.ispBatchRunning && Studio.ispBatchRunning()) &&
+        !Studio._activePostmortem;
     Studio.liveSender = liveSender;
     // Test display: level / duty re-send the last test figure (no-op until one was sent).
     const restreamLive = liveSender(() => (liveOk() && Studio.restreamLast ? Studio.restreamLast() : null));
@@ -9092,13 +9113,12 @@ const FONT = {
     5: [7, 4, 7, 1, 7], 6: [7, 4, 7, 5, 7], 7: [7, 1, 2, 2, 2], 8: [7, 5, 7, 5, 7], 9: [7, 5, 7, 1, 7],
     R: [6, 5, 6, 5, 5], L: [4, 4, 4, 4, 7], U: [5, 5, 5, 5, 7], D: [6, 5, 5, 5, 6]
 };
+// The rig's FULL arena grid (num_rows × num_cols; an uninstalled column is still a
+// grid column, so grid column c = physical column c) — js/studio-stream-geometry.js.
 function activeArenaGeom() {
     const cfg = Studio.currentRig && Studio.currentRig.arenaConfig;
     const arena = cfg ? arenaForConfig(cfg) : null;
-    const rc = (arena && arena.num_rows) || 2;
-    // Partial arenas stream their INSTALLED columns (a 1x12of18 figure is 12 panels wide).
-    const cc = (arena && (arena.columns_installed ? arena.columns_installed.length : arena.num_cols)) || 10;
-    return { rowCount: rc, colCount: cc, pixelRows: rc * 20, pixelCols: cc * 20 };
+    return window.StudioStreamGeometry.rigGeometry(arena);
 }
 function newGrid() { const a = activeArenaGeom(); return new Uint8Array(a.pixelRows * a.pixelCols); }
 function setPx(grid, a, row, col, val) { if (row < 0 || row >= a.pixelRows || col < 0 || col >= a.pixelCols) return; grid[row * a.pixelCols + col] = val; }
@@ -9126,11 +9146,13 @@ function genPanelMap() {
 function genOrient() {
     const a = activeArenaGeom(); const grid = newGrid(); const val = streamGs === 2 ? 1 : 15; const s = 2;
     const cw = 3 * s, gh = 5 * s;
-    const midCol = Math.floor(a.pixelCols / 2 - cw / 2), midRow = Math.floor(a.pixelRows / 2 - gh / 2);
+    // Glyphs sit inside the INSTALLED span (a 1×12of18 has no panels in grid columns 12–17).
+    const span = window.StudioStreamGeometry.installedSpan(a);
+    const midCol = Math.floor((span.lo + span.hi) / 2 - cw / 2), midRow = Math.floor(a.pixelRows / 2 - gh / 2);
     drawGlyph(grid, a, 'U', midCol, a.pixelRows - gh - 1, val, s);
     drawGlyph(grid, a, 'D', midCol, 1, val, s);
-    drawGlyph(grid, a, 'L', 1, midRow, val, s);
-    drawGlyph(grid, a, 'R', a.pixelCols - cw - 1, midRow, val, s);
+    drawGlyph(grid, a, 'L', span.lo + 1, midRow, val, s);
+    drawGlyph(grid, a, 'R', span.hi - cw - 1, midRow, val, s);
     return grid;
 }
 // Color banks (LAB-223/228 color panels): light ONLY bank k (0..3 = A..D = T0..T3) —
@@ -9151,31 +9173,13 @@ function genChecker() {
         for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) setPx(grid, a, pr * 20 + y, pc * 20 + x, val);
     return grid;
 }
-// The controller accepts stream frames of exactly ITS compiled geometry (0xCB rows ×
-// cols; fw constants.h panel_count_per_frame): 2x10 on the CSHL boards, 4x12 on the
-// arena_12-18 build. The rig's figure is placed into that frame: installed columns
-// from the left, the rig's rows repeated up the frame (so a one-row bench install
-// lights whichever row connector its panels are on). Firmware without 0xCB: the
-// legacy 20-panel rule.
+// Stream frames are sized to the CONTROLLER's compiled geometry (0xCB rows × cols);
+// the mapping rules live in js/studio-stream-geometry.js (Node-tested).
 function streamTarget() {
-    const rig = activeArenaGeom();
-    const fv = Studio.firmwareVersion;
-    if (fv && fv.rows > 0 && fv.cols > 0) {
-        if (rig.rowCount > fv.rows || rig.colCount > fv.cols) {
-            return { ok: false, rig, reason: 'the rig is ' + rig.rowCount + '×' + rig.colCount + ' panels but this firmware build streams ' + fv.rows + '×' + fv.cols };
-        }
-        return { ok: true, rig, rows: fv.rows, cols: fv.cols };
-    }
-    if (rig.rowCount * rig.colCount === 20) return { ok: true, rig, rows: rig.rowCount, cols: rig.colCount };
-    return { ok: false, rig, reason: 'this firmware does not report its panel geometry (0xCB), so only 20-panel arenas can be streamed' };
+    return window.StudioStreamGeometry.streamTarget(activeArenaGeom(), Studio.firmwareVersion);
 }
 function toFirmwareGrid(grid, t) {
-    const rp = t.rig.pixelRows, cp = t.rig.pixelCols;
-    const R = t.rows * 20, C = t.cols * 20;
-    if (R === rp && C === cp) return grid;
-    const out = new Uint8Array(R * C);
-    for (let r = 0; r < R; r++) out.set(grid.subarray((r % rp) * cp, (r % rp) * cp + cp), r * C);
-    return out;
+    return window.StudioStreamGeometry.toFirmwareGrid(grid, t);
 }
 function encodeStreamPat(grid, gs, rows, cols) {
     return window.PatEncoder.encode({
@@ -9192,7 +9196,7 @@ function buildStreamFrame(grid, gs) {
     const len = Wire.streamFrameBytes(panels, gs);
     const payload = buf.subarray(window.PatEncoder.G6_HEADER_SIZE, window.PatEncoder.G6_HEADER_SIZE + len);
     // The thumbnail shows the RIG's figure (the preview draws the rig's arena).
-    const samePat = t.rows === t.rig.rowCount && t.cols === t.rig.colCount;
+    const samePat = !window.StudioStreamGeometry.isMapped(t);
     const patArrayBuffer = samePat ? fwPat : encodeStreamPat(grid, gs, t.rig.rowCount, t.rig.colCount);
     return { bytes: Wire.encodeStreamFrame(payload, { panels }), patArrayBuffer, target: t };
 }
@@ -9229,7 +9233,7 @@ async function streamGrid(grid, gs, label, opts) {
     try {
         await Studio.session.send(built.bytes, { expectedCmd: Wire.OPCODES.STREAM_FRAME, timeoutMs: 1500 });
         const t = built.target;
-        const mapped = t.rows !== t.rig.rowCount || t.cols !== t.rig.colCount ? ' · ' + t.rig.rowCount + '×' + t.rig.colCount + ' rig in a ' + t.rows + '×' + t.cols + ' firmware frame' : '';
+        const mapped = window.StudioStreamGeometry.isMapped(t) ? ' · ' + t.rig.rowCount + '×' + t.rig.colCount + ' rig in a ' + t.rows + '×' + t.cols + ' firmware frame (rig rows repeated up the frame)' : '';
         if (!opts || !opts.quiet) clog('› STREAM_FRAME 0x32 · ' + label + ' (' + (gs === 2 ? 'GS2' : 'GS16') + ')' + mapped, 'tx');
         return true;
     } catch (e) { clog('stream send failed: ' + (e.message || e), 'err'); return false; }
@@ -9253,6 +9257,8 @@ Studio.doStream = async function (kind, arg, opts) {
 // Re-send the last figure (level / duty / depth changed). No-op before the first figure.
 Studio.restreamLast = async function () {
     if (!lastStreamFigure || !Studio.session || !Studio.session.connected || Studio.session.running) return false;
+    // A stream re-activates the display: never during an ISP batch (0xC8/0xC9 need it stopped) or a post-mortem.
+    if ((Studio.ispBatchRunning && Studio.ispBatchRunning()) || Studio._activePostmortem) return false;
     return Studio.doStream(lastStreamFigure.kind, lastStreamFigure.arg, { quiet: true });
 };
 
