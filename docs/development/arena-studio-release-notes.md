@@ -4,6 +4,14 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.95 (2026-10-14) · BIAS camera commands run from the browser (LAB-303 connectors)
+
+<!-- bias-connector-command -->
+- **A protocol's `camera` plugin (BiasPlugin) now records for real in a web run.** connect, startRecording, stopRecording, startPreview, stopCapture, getTimestamp and disconnect are sent to the bridge, which drives BIAS over its HTTP command port and answers; the Run log shows each command with its outcome, round-trip time and, for startRecording, the video it produced. The run log keeps every command/reply pair, so a recording can be aligned to the trials.
+- **Needs a bridge with connectors** (the ROS 2 bridge node from the LAB-303 proof of concept). With bridge 3.4 the commands are skipped as before, and the log now says why ("advertises no connectors").
+- **A command that fails or gets no answer fails that step, not the run**, and an unanswered command is reported as "unknown" (the camera may have acted) rather than as a failure.
+- Edit view: the "N plugin cmds skipped" note no longer counts plugins the web runner drives (log, FicTrac, BIAS).
+
 ## v0.94 (2026-09-30) · LAB-158 ports (Protocol ▾, ⚙ Settings, two-column Console) + visibility themes · Multi-color G6 panels V1 — Panel LEDs layout, ON color, per-bank preview (LAB-228) · Flasher + Studio picker: one production build from the published catalog; legacy images hashed, never default (panel-fw-v1.3.1)
 
 <!-- #238 -->

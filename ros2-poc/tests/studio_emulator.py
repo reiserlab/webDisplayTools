@@ -65,6 +65,8 @@ def arena_echo_set_frame_position(index: int, dt_ms: int = 3) -> dict:
 
 class Emulator:
     def __init__(self, args: argparse.Namespace) -> None:
+        self.cmd_seq = 0
+        self.last_epoch = None
         self.a = args
         self.ws = None
         self.inbox: asyncio.Queue = asyncio.Queue()
@@ -163,6 +165,26 @@ class Emulator:
             self.check(f"epoch {i}: opened on start_frame {a.start_frame}", min(d, a.frames - d) <= 1, f"first index {first_idx}")
         return new_epoch
 
+    async def connector(self, command: str, params: dict | None = None, timeout: float = 10.0) -> dict | None:
+        """The runner's connectorCommand: one connector_command, wait for ITS reply by id."""
+        self.cmd_seq += 1
+        cid = f"emu{self.cmd_seq}"
+        await self.send({"type": "connector_command", "id": cid, "connector": "bias", "plugin": "camera",
+                         "command": command, "params": params or {}})
+        t_end = time.monotonic() + timeout
+        while time.monotonic() < t_end:
+            try:
+                m = await asyncio.wait_for(self.inbox.get(), max(0.01, t_end - time.monotonic()))
+            except asyncio.TimeoutError:
+                break
+            if m.get("type") == "connector_reply" and m.get("id") == cid:
+                self.report.setdefault("connector_replies", []).append(m)
+                return m
+            if m.get("type") == "frame":
+                self.frames += 1
+                self.last_epoch = m.get("epoch", self.last_epoch)
+        return None
+
     async def main(self) -> int:
         a = self.a
         async with connect(a.url, max_size=16 * 1024 * 1024) as ws:
@@ -183,6 +205,9 @@ class Emulator:
                     at_least_34 = False
                 self.check("bridge version parses as ≥ 3.4 (supportsStartFrame)", at_least_34, v)
                 self.check("behavior_v2 advertised", "behavior_v2" in (ack.get("levels") or []), str(ack.get("levels")))
+                self.report["connectors"] = ack.get("connectors")
+                if a.connector_cmds:
+                    self.check("hello_ack advertises the bias connector", "bias" in (ack.get("connectors") or []), str(ack.get("connectors")))
             await self.send({"type": "log_control", "enabled": True, "level": "behavior_v2"})
             lack = await self.wait_for("log_control_ack")
             self.check("log_control_ack: behavior_v2 in force", bool(lack) and lack.get("enabled") is True and lack.get("level") == "behavior_v2", str(lack))
@@ -198,6 +223,26 @@ class Emulator:
                 if m.get("type") == "frame":
                     self.frames += 1
                     since = m.get("epoch", since)
+            if a.connector_cmds:
+                # The runner's path for a `camera` plugin, through the bridge (connector_command),
+                # not bias_cmd.py: connect → startRecording → getTimestamp → stopRecording, plus an
+                # unknown command. Done BEFORE the epochs so it cannot interleave with the
+                # harness's own bias_cmd sequence mid-run (one BIAS, one capture at a time).
+                r = await self.connector("connect")
+                self.check("connector_command connect → reply ok", bool(r) and r.get("ok") is True, str(r)[:200])
+                r = await self.connector("startRecording", {"filename": a.connector_video})
+                self.check("connector_command startRecording → reply ok", bool(r) and r.get("ok") is True, str(r)[:200])
+                self.check("startRecording reply carries the video artifact", bool(r) and isinstance(r.get("artifact"), dict) and bool(r["artifact"].get("path")), str((r or {}).get("artifact")))
+                await asyncio.sleep(0.5)
+                r = await self.connector("getTimestamp")
+                self.check("connector_command getTimestamp → reply ok with a number", bool(r) and r.get("ok") is True and isinstance(r.get("value"), (int, float)), str(r)[:200])
+                r = await self.connector("stopRecording")
+                self.check("connector_command stopRecording → reply ok", bool(r) and r.get("ok") is True, str(r)[:200])
+                r = await self.connector("bogusCommand")
+                self.check("unknown command → reply error (not a hang)", bool(r) and r.get("ok") is False and r.get("outcome") == "error", str(r)[:200])
+                # Frames kept flowing meanwhile; re-sync the epoch gate's "since" id.
+                if self.last_epoch is not None:
+                    since = self.last_epoch
             for i in range(a.epochs):
                 since = await self.run_epoch(i, since)
                 if a.iti_s > 0:
@@ -247,6 +292,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--bias-frequency", type=float, default=0.0)
     p.add_argument("--min-frames", type=int, default=50, help="assert at least this many applied frames per epoch")
     p.add_argument("--rig-id", default="ros2-poc")
+    p.add_argument("--connector-cmds", action="store_true", help="also drive the bias connector (startRecording/getTimestamp/stopRecording) through connector_command, as the Studio runner does")
+    p.add_argument("--connector-video", default="poc_studio.avi", help="startRecording filename for --connector-cmds")
     p.add_argument("--out", default="studio-export.jsonl", help="where to write the exported log")
     p.add_argument("--report", default=None, help="JSON report path")
     args = p.parse_args(argv)

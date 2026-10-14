@@ -3344,7 +3344,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.94 | 2026-09-30 07:22 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.95 | 2026-10-14 18:18 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3622,6 +3622,13 @@ function studioMarkerCurrent(stored, current) {
             (ev.step && ev.step.conditionName ? ' · ' + ev.step.conditionName : '') +
             (ev.op ? ' ' + ev.op : '') +
             (ev.plugin_name ? ' ' + ev.plugin_name + (ev.command_name ? '.' + ev.command_name : '') : '') +
+            // Connector replies (BIAS etc.): outcome, round trip, and the artifact it produced.
+            (ev.op === 'connectorCommand' && ev.value
+                ? ' → ' + (ev.value.outcome || '?') +
+                  (ev.value.rtt_ms != null ? ' · ' + Math.round(ev.value.rtt_ms) + ' ms' : '') +
+                  (ev.value.value != null && typeof ev.value.value !== 'object' ? ' · ' + ev.value.value : '') +
+                  (ev.value.artifact && ev.value.artifact.path ? ' · ' + ev.value.artifact.kind + ' ' + ev.value.artifact.path : '')
+                : '') +
             (ev.reason ? ' (' + ev.reason + ')' : '');
         enqueueLogNode(div);
     }
@@ -8900,6 +8907,18 @@ function fictracPluginNames(exp) {
         .filter((p) => p && ((p.matlab && p.matlab.class === 'FicTracPlugin') || p.name === 'fictrac'))
         .map((p) => p.name);
 }
+// Device plugins the BRIDGE drives for the runner (LAB-303 connectors): plugin instance
+// name → connector id. Today one connector, 'bias' (BiasPlugin → the bridge's BIAS node);
+// the runner sends each command as connector_command and waits for the reply, so a
+// camera plugin in a protocol records for real instead of being skipped.
+function connectorPluginNames(exp) {
+    const m = new Map();
+    if (!exp || !Array.isArray(exp.plugins)) return m;
+    for (const p of exp.plugins) {
+        if (p && ((p.matlab && p.matlab.class === 'BiasPlugin') || p.name === 'camera')) m.set(p.name, 'bias');
+    }
+    return m;
+}
 
 // ---- load / render a protocol ----
 // The embedded designer (Studio.editor) is the single source of truth for the
@@ -9872,6 +9891,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
                 ? Studio.resolveRuntimeCondition
                 : undefined,
             fictracPluginNames: new Set(ftNames),
+            connectorPluginNames: connectorPluginNames(exp),
             degPerFrame: Studio.rigDegPerFrame(),
             defaultCoupling: Studio._legacyDefaultCoupling == null ? 1 : Studio._legacyDefaultCoupling
         });
@@ -14045,7 +14065,14 @@ async function initFromUrl() {
                     title: 'Stop the running pattern (STOP_DISPLAY 0x30) — best-effort queued via the shared session',
                     onClick: () => { if (window.Studio.session) { window.Studio._userStopRequested = true; window.Studio.session.stop(); } }
                 }, '■ Stop'));
-                const plugins = RunnerLib.listSkippedPlugins(cond);
+                // Plugins the runner drives are not "skipped": the built-in log, FicTrac,
+                // and connector devices (BiasPlugin through the bridge, LAB-303).
+                const driveable = new Set(['log']);
+                for (const p of experiment.plugins || []) {
+                    if (p && p.matlab && (p.matlab.class === 'FicTracPlugin' || p.matlab.class === 'BiasPlugin')) driveable.add(p.name);
+                    if (p && (p.name === 'fictrac' || p.name === 'camera')) driveable.add(p.name);
+                }
+                const plugins = RunnerLib.listSkippedPlugins(cond, driveable);
                 wrap.appendChild(el('span', { class: 'arena-test-note' },
                     plugins.length
                         ? 'unrecorded test · ' + plugins.length + ' plugin cmd' +

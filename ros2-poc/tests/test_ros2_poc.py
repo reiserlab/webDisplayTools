@@ -149,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
         fictrac = start("fictrac-adapter", [PY, str(NODES / "fictrac_udp_adapter.py"), "--status-every", "0"])
         start("kinefly-adapter", [PY, str(NODES / "kinefly_udp_adapter.py"), "--status-every", "0"])
         start("bias-sim", [PY, str(NODES / "bias_sim.py"), "--video-dir", str(videos)])
-        start("bias-node", [PY, str(NODES / "bias_node.py"), "--status-every", "1"])
+        start("bias-node", [PY, str(NODES / "bias_node.py"), "--status-every", "1", "--video-dir", str(videos)])
         bridge = start("bridge-node", [PY, str(NODES / "bridge_node.py"), "--log-dir", str(runlogs), "--source-timeout", "1.5"])
         check("bridge node serving ws://127.0.0.1:8765", wait_port("127.0.0.1", 8765, 20.0))
         time.sleep(1.5)  # discovery
@@ -216,7 +216,8 @@ def main(argv: list[str] | None = None) -> int:
         # ── the Studio's conversation ────────────────────────────────────────────────
         em = run_capture(
             [PY, str(HERE / "studio_emulator.py"), "--epochs", str(a.epochs), "--epoch-s", str(a.epoch_s), "--iti-s", "1",
-             "--bias-amplitude", "90", "--min-frames", "40", "--out", str(export), "--report", str(report)],
+             "--bias-amplitude", "90", "--min-frames", "40", "--out", str(export), "--report", str(report),
+             "--connector-cmds", "--connector-video", "poc_studio.avi"],
             timeout=60 + a.epochs * (a.epoch_s + 2),
         )
         (logdir / "emulator.log").write_text(em.stderr, encoding="utf-8")
@@ -257,8 +258,15 @@ def main(argv: list[str] | None = None) -> int:
         art = [e for e in bias_rep if isinstance(e.get("artifact"), dict)]
         check("BIAS command/reply pairs in the run log", len(bias_rep) >= 3, f"{len(bias_rep)} replies: {[r.get('command') for r in bias_rep]}")
         check("BIAS status lines in the run log", len(bias_st) >= 3, str(len(bias_st)))
-        check("BIAS video artifact identity in the run log", bool(art) and str(art[0]["artifact"].get("path", "")).endswith("poc_trial.avi"), json.dumps(art[:1]))
+        check("BIAS video artifact identity in the run log", any(str(e["artifact"].get("path", "")).endswith("poc_trial.avi") for e in art), json.dumps([e["artifact"] for e in art]))
         check("BIAS video file exists after stopRecording", (videos / "poc_trial.avi").exists(), str(list(videos.glob('*')) if videos.exists() else []))
+        # The Studio runner's path (LAB-303 connectors): connector_command over the WebSocket →
+        # /bias/cmd → /bias/reply → connector_reply to the asking client; both halves logged.
+        ws_cmd = [e for e in bias_ev if e.get("kind") == "command"]
+        ws_rep = [e for e in bias_rep if e.get("via") == "ws"]
+        check("Studio-path connector commands logged (browser→bridge)", [e.get("command") for e in ws_cmd] == ["connect", "startRecording", "getTimestamp", "stopRecording", "bogusCommand"], str([e.get("command") for e in ws_cmd]))
+        check("Studio-path replies logged with via=ws and the plugin name", len(ws_rep) >= 3 and all(e.get("plugin") == "camera" for e in ws_rep), f"{len(ws_rep)} via=ws replies")
+        check("Studio-path startRecording video exists", (videos / "poc_studio.avi").exists(), str(list(videos.glob('*')) if videos.exists() else []))
 
         cs = [e for e in events if e.get("type") == "connector_status" and e.get("src") == "fictrac"]
         p99 = cs[-1]["lat_ms"]["p99"] if cs else None

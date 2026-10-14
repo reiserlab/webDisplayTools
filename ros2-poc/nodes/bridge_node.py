@@ -76,9 +76,10 @@ def load_bridge_module(path: Path = BRIDGE_PY):
 
 B = load_bridge_module()
 
-NODE_VERSION = f"{B.BRIDGE_VERSION} · ros2-poc (rmw_zenoh, /fictrac/raw)"
+NODE_VERSION = f"{B.BRIDGE_VERSION} · ros2-poc (rmw_zenoh, /fictrac/raw, connectors)"
 FICTRAC_TOPIC = "/fictrac/raw"
 KINEFLY_TOPIC = "/kinefly/raw"
+BIAS_CMD_TOPIC = "/bias/cmd"
 BIAS_REPLY_TOPIC = "/bias/reply"
 BIAS_STATUS_TOPIC = "/bias/status"
 FRAME_TOPIC = "/arena/frame"
@@ -235,6 +236,8 @@ class BridgeNode(Node):
         self._on_bias = on_bias
         self.stats = {"fictrac": SourceStats("fictrac"), "kinefly": SourceStats("kinefly"), "bias": SourceStats("bias")}
         self.frame_pub = self.create_publisher(String, FRAME_TOPIC, FRAME_QOS)
+        # Studio → bridge connector_command relayed to the BIAS node (LAB-303 connectors).
+        self.bias_cmd_pub = self.create_publisher(String, BIAS_CMD_TOPIC, RAW_QOS)
         self.create_subscription(String, FICTRAC_TOPIC, self._fictrac, RAW_QOS)
         self.create_subscription(String, KINEFLY_TOPIC, self._kinefly, RAW_QOS)
         self.create_subscription(String, BIAS_REPLY_TOPIC, lambda m: self._bias("reply", m), RAW_QOS)
@@ -305,15 +308,82 @@ async def run(args: argparse.Namespace) -> None:
         seq = pkt.get("sequence") if isinstance(pkt.get("sequence"), int) else kf_seq["n"]
         log.write_rows([kf_row(rel_ms(), pkt, seq)])
 
+    # ── connectors: the Studio's connector_command → /bias/cmd, /bias/reply → connector_reply ──
+    # One connector today ('bias'); the Studio maps BiasPlugin instances onto it. A command
+    # is logged on arrival (dir browser→bridge) and its reply is logged when the node answers
+    # (via "ws" marks replies the Studio asked for, as opposed to bias_cmd.py's). The reply
+    # goes back to the ASKING websocket only (the hub's broadcast coalesces frames).
+    CONNECTORS = {"bias": BIAS_CMD_TOPIC}
+    pending: dict[str, dict] = {}  # command id → {"ws", "plugin", "connector", "t"}
+
+    async def ws_reply(websocket, msg: dict) -> None:
+        if websocket is None:
+            return
+        try:
+            await websocket.send(json.dumps(msg))
+        except Exception:  # ConnectionClosed: the asker left — nothing to deliver to
+            pass
+
     def on_bias(kind: str, env: dict) -> None:
         ev = {"type": "connector", "src": "bias", "kind": kind, "dir": "bridge", "ms": rel_ms()}
         for k, v in env.items():
             if k not in ("src",):
                 ev[k] = v
+        p = pending.pop(str(env.get("id")), None) if kind == "reply" and env.get("id") is not None else None
+        if p is not None:
+            ev["via"] = "ws"
+            ev["plugin"] = p["plugin"]
         log.write_event(ev)
+        if p is not None:
+            rep = {"type": "connector_reply", "connector": p["connector"], "plugin": p["plugin"]}
+            for k, v in env.items():
+                if k not in ("type", "src"):
+                    rep[k] = v
+            loop.create_task(ws_reply(p["ws"], rep))
+
+    async def on_connector_command(obj: dict, websocket) -> None:
+        cid = obj.get("id")
+        connector = str(obj.get("connector") or "bias")
+        command = str(obj.get("command") or "")
+        params = obj.get("params") if isinstance(obj.get("params"), dict) else {}
+        plugin = obj.get("plugin")
+        log.write_event({"type": "connector", "src": connector, "kind": "command", "dir": "browser→bridge", "ms": rel_ms(),
+                         "id": cid, "plugin": plugin, "command": command, "params": params})
+        if connector not in CONNECTORS:
+            err = f"no connector {connector!r} on this bridge (have {sorted(CONNECTORS)})"
+            log.write_event({"type": "connector", "src": connector, "kind": "reply", "dir": "bridge", "ms": rel_ms(), "via": "ws",
+                             "id": cid, "plugin": plugin, "command": command, "ok": False, "outcome": "error", "error": err})
+            await ws_reply(websocket, {"type": "connector_reply", "id": cid, "connector": connector, "plugin": plugin,
+                                       "command": command, "ok": False, "outcome": "error", "error": err})
+            return
+        pending[str(cid)] = {"ws": websocket, "plugin": plugin, "connector": connector, "t": time.monotonic()}
+        m = String()
+        m.data = json.dumps({"id": cid, "command": command, "params": params}, separators=(",", ":"))
+        node.bias_cmd_pub.publish(m)
 
     inputs = RosInput(args.fictrac_port, warn)
-    dispatch = B.make_dispatcher(pipeline, log, inputs)  # unmodified bridge.py dispatcher
+    dispatch_34 = B.make_dispatcher(pipeline, log, inputs)  # unmodified bridge.py dispatcher
+
+    async def dispatch(raw, websocket=None) -> None:
+        """bridge.py's dispatcher + two message kinds: `hello` gains the `connectors` list
+        (so the Studio's bridge client knows what it may drive; a ≤ 3.4 bridge never sends
+        it) and `connector_command` is relayed to the device node. Everything else is 3.4."""
+        text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+        obj = None
+        try:
+            obj = json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            obj = None
+        kind = obj.get("type") if isinstance(obj, dict) else None
+        if kind == "hello":
+            log.write_inbound(text)
+            await ws_reply(websocket, {"type": "hello_ack", "bridge": B.BRIDGE_VERSION, "levels": list(B.LOG_LEVELS),
+                                       "level": log.level, "logging": log.active, "connectors": sorted(CONNECTORS)})
+            return
+        if kind == "connector_command":
+            await on_connector_command(obj, websocket)
+            return
+        await dispatch_34(raw, websocket)
 
     node = BridgeNode(loop, queue, on_kinefly, on_bias)
 
@@ -355,6 +425,9 @@ async def run(args: argparse.Namespace) -> None:
     async def watchdog() -> None:
         while True:
             await asyncio.sleep(0.5)
+            for cid, p in list(pending.items()):
+                if time.monotonic() - p["t"] > 120.0:  # the Studio gave up long ago (default 10 s)
+                    pending.pop(cid, None)
             if not log.active:
                 continue
             now = time.monotonic()

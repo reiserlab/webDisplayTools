@@ -490,6 +490,7 @@
                 resolvePatternFrames: args.resolvePatternFrames,
                 resolveCondition: args.resolveCondition,
                 fictracPluginNames: args.fictracPluginNames,
+                connectorPluginNames: args.connectorPluginNames, // LAB-303 device connectors (BiasPlugin → bridge)
                 timing: args.timing,
                 sleep: args.sleep,
                 onProgress: (s) => this._onRunStatus(s, args.onProgress)
