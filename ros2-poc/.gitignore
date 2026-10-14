@@ -1,0 +1,9 @@
+# pixi environment for this workspace (pixi.toml + pixi.lock are tracked)
+.pixi/*
+!.pixi/config.toml
+__pycache__/
+*.pyc
+# bridge-node run logs land here by default
+runlogs/
+*.jsonl
+*.jsonl.gz

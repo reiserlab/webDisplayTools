@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""rig.py — the one command a rig runs: Zenoh router + adapters + bridge node, supervised.
+
+    pixi run rig                       # router, fictrac adapter, bridge node
+    pixi run rig -- --kinefly --bias   # + Kinefly adapter + BIAS node
+    pixi run rig -- --sim              # + the FicTrac simulator (demo without a camera)
+    pixi run rig -- --bias --bias-sim  # + a simulated BIAS program (no camera software)
+
+Order: the router first (nodes retry until it answers on 127.0.0.1:7447), then every
+adapter/node. Each child's stderr is prefixed with its name. Ctrl-C stops everything in
+reverse order; a child that dies on its own is reported (and the whole rig exits if it was
+the bridge node — the Studio's WebSocket is gone, nothing else matters). Options after a
+child's name are passed through, e.g. `--bridge-args "--frames 60"`.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shlex
+import signal
+import socket
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+NODES = HERE
+SIM = HERE.parents[1] / "fictrac-bridge" / "fictrac_sim.py"
+
+
+def wait_port(host: str, port: int, timeout_s: float) -> bool:
+    end = time.monotonic() + timeout_s
+    while time.monotonic() < end:
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                return True
+        except OSError:
+            time.sleep(0.2)
+    return False
+
+
+class Child:
+    def __init__(self, name: str, argv: list[str]) -> None:
+        self.name = name
+        self.argv = argv
+        self.proc: subprocess.Popen | None = None
+
+    def start(self) -> None:
+        # Own process group per child, so a stop signal reaches wrappers AND what they
+        # spawn (`ros2 run … rmw_zenohd` does not forward SIGINT to the router binary).
+        self.proc = subprocess.Popen(
+            self.argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=os.environ.copy(),
+            start_new_session=(os.name != "nt"),
+        )
+        threading.Thread(target=self._pump, name=f"pump-{self.name}", daemon=True).start()
+
+    def _signal(self, sig: int) -> None:
+        assert self.proc
+        if os.name != "nt":
+            try:
+                os.killpg(self.proc.pid, sig)
+                return
+            except (ProcessLookupError, PermissionError):
+                pass
+        self.proc.send_signal(sig)
+
+    def _pump(self) -> None:
+        assert self.proc and self.proc.stdout
+        for line in self.proc.stdout:
+            sys.stderr.write(f"[{self.name:8}] {line}")
+        sys.stderr.flush()
+
+    def alive(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def stop(self, grace_s: float = 3.0) -> None:
+        if not self.alive():
+            return
+        assert self.proc
+        try:
+            self._signal(signal.SIGINT)
+            self.proc.wait(grace_s)
+        except subprocess.TimeoutExpired:
+            self._signal(signal.SIGTERM)
+            try:
+                self.proc.wait(2.0)
+            except subprocess.TimeoutExpired:
+                self._signal(signal.SIGKILL)
+        except (ProcessLookupError, OSError):
+            pass
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--kinefly", action="store_true", help="also run the Kinefly KF/1 adapter")
+    p.add_argument("--bias", action="store_true", help="also run the BIAS camera node")
+    p.add_argument("--bias-sim", action="store_true", help="also run bias_sim.py (a fake BIAS program)")
+    p.add_argument("--sim", action="store_true", help="also run the FicTrac simulator (random walk, 50 Hz)")
+    p.add_argument("--no-router", action="store_true", help="a Zenoh router is already running on this host")
+    p.add_argument("--bridge-args", default="", help="extra args for bridge_node.py")
+    p.add_argument("--fictrac-args", default="", help="extra args for fictrac_udp_adapter.py")
+    p.add_argument("--kinefly-args", default="", help="extra args for kinefly_udp_adapter.py")
+    p.add_argument("--bias-args", default="", help="extra args for bias_node.py")
+    p.add_argument("--sim-args", default="--proto udp --rate 50", help="args for fictrac_sim.py")
+    args = p.parse_args(argv)
+
+    py = sys.executable
+    children: list[Child] = []
+    if not args.no_router:
+        children.append(Child("router", ["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"]))
+    nodes: list[Child] = [
+        Child("fictrac", [py, str(NODES / "fictrac_udp_adapter.py"), *shlex.split(args.fictrac_args)]),
+    ]
+    if args.kinefly:
+        nodes.append(Child("kinefly", [py, str(NODES / "kinefly_udp_adapter.py"), *shlex.split(args.kinefly_args)]))
+    if args.bias_sim:
+        nodes.append(Child("bias-sim", [py, str(NODES / "bias_sim.py")]))
+    if args.bias:
+        nodes.append(Child("bias", [py, str(NODES / "bias_node.py"), *shlex.split(args.bias_args)]))
+    bridge = Child("bridge", [py, str(NODES / "bridge_node.py"), *shlex.split(args.bridge_args)])
+    nodes.append(bridge)
+    if args.sim:
+        nodes.append(Child("sim", [py, str(SIM), *shlex.split(args.sim_args)]))
+
+    stop = threading.Event()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda *_: stop.set())
+
+    print(f"[rig] RMW_IMPLEMENTATION={os.environ.get('RMW_IMPLEMENTATION')}  router config {os.environ.get('ZENOH_ROUTER_CONFIG_URI')}", file=sys.stderr)
+    rc = 0
+    try:
+        for c in children:
+            c.start()
+        if children:
+            if wait_port("127.0.0.1", 7447, 15.0):
+                print("[rig] zenoh router listening on 127.0.0.1:7447", file=sys.stderr)
+            else:
+                print("[rig] router did not come up on 127.0.0.1:7447 within 15 s", file=sys.stderr)
+                rc = 1
+                return rc
+        for c in nodes:
+            c.start()
+            children.append(c)
+            time.sleep(0.3)
+        print(f"[rig] up: {', '.join(c.name for c in children)}  —  Studio → ws://localhost:8765   (Ctrl-C to stop)", file=sys.stderr)
+        while not stop.is_set():
+            time.sleep(0.5)
+            for c in children:
+                if not c.alive():
+                    code = c.proc.returncode if c.proc else None
+                    print(f"[rig] {c.name} exited (code {code})", file=sys.stderr)
+                    children.remove(c)
+                    if c is bridge:
+                        print("[rig] the bridge node is gone — stopping the rig", file=sys.stderr)
+                        rc = 1
+                        stop.set()
+                    break
+    finally:
+        for c in reversed(children):
+            c.stop()
+        print("[rig] stopped", file=sys.stderr)
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
