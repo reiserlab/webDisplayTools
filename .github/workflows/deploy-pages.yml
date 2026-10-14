@@ -23,6 +23,10 @@ on:
                 description: 'EMERGENCY ROLLBACK ONLY: a release-… tag or main commit to serve at the site root'
                 required: false
                 default: ''
+            ros:
+                description: 'ROS Studio side tier at /ros/ (LAB-303 Plan B spike): "none" or the spike branch commit SHA'
+                required: false
+                default: 'none'
 
 # Sets permissions for GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -58,17 +62,20 @@ jobs:
             # self-checks that Production is byte-identical to its commit apart from the
             # stamp. A Next problem never blocks Production (placeholder instead).
             # Inputs go through env, never interpolated into the script.
-            - name: Assemble Production + Next
+            # The optional /ros/ side tier (ROS Studio, LAB-303) comes from a dispatched SHA; a
+            # problem there is skipped, never a failed deploy. Off ("none") on every push.
+            - name: Assemble Production + Next (+ ROS Studio when dispatched)
               env:
                   NEXT_INPUT: ${{ inputs.next || 'auto' }}
                   ROOT_REF: ${{ inputs.root_ref }}
+                  ROS_INPUT: ${{ inputs.ros || 'none' }}
               run: |
                   if [ -n "$ROOT_REF" ]; then
                       git merge-base --is-ancestor "$ROOT_REF" origin/main \
                           || { echo "root_ref $ROOT_REF is not on main's history"; exit 1; }
                   fi
                   python3 scripts/tiers/stamp.py build --out _site \
-                      --root-ref "${ROOT_REF:-$GITHUB_SHA}" --next "$NEXT_INPUT"
+                      --root-ref "${ROOT_REF:-$GITHUB_SHA}" --next "$NEXT_INPUT" --ros "$ROS_INPUT"
 
             - name: Upload artifact
               uses: actions/upload-pages-artifact@v5

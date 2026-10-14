@@ -7,3 +7,8 @@ __pycache__/
 runlogs/
 *.jsonl
 *.jsonl.gz
+# colcon alternative build of interfaces/arena_interfaces (pixi-build is the primary route)
+interfaces/build/
+interfaces/install/
+interfaces/build.log
+interfaces/build-result.json

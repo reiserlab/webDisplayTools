@@ -17,6 +17,10 @@ name = "arena-ros2-poc"
 version = "0.1.0"
 channels = ["conda-forge", "robostack-jazzy"]
 platforms = ["osx-arm64", "win-64", "linux-64"]
+# pixi-build (preview): `pixi install` builds interfaces/arena_interfaces (our .msg types) as a
+# conda package with the RoboStack pixi-build-ros backend. On Windows that build needs MSVC 2022
+# on the machine (the cost LAB-303 Plan B records); everything else is downloaded as before.
+preview = ["pixi-build"]
 
 [activation.env]
 # Every ROS 2 process in this workspace uses the Zenoh middleware. rmw_zenoh needs
@@ -41,6 +45,30 @@ ros-jazzy-demo-nodes-py = "*"
 python = "*"
 websockets = ">=12"
 pyzmq = "*"
+# ── Plan B spike (LAB-303): MCAP as the record of truth ─────────────────────
+# rosbag2's Python API + the MCAP storage plugin record every topic per run
+# (nodes/recorder.py); the pure-Python `mcap` reader converts a bag — or a
+# crash-truncated one — back to the behavior_v2 NDJSON (nodes/mcap_convert.py)
+# without needing a ROS process.
+ros-jazzy-rosbag2-py = "*"
+ros-jazzy-rosbag2-storage-mcap = "*"
+mcap = ">=1.2"
+# Typed messages (FicTracFrame, ArenaFrame, ConnectorReply): built from source by pixi itself,
+# see interfaces/arena_interfaces/pixi.toml. `pixi run build-interfaces` is the colcon
+# alternative (same package, same toolchain below) for a machine where the preview misbehaves.
+arena_interfaces = { path = "interfaces/arena_interfaces" }
+# ── typed messages (interfaces/arena_interfaces): the ament_cmake toolchain ──
+# rosidl generates C typesupport + a Python C extension, so an interfaces
+# package needs a C/C++ compiler on EVERY machine that builds it (MSVC on
+# Windows). `pixi run build-interfaces` measures exactly that cost.
+ros-jazzy-ament-cmake = "*"
+ros-jazzy-rosidl-default-generators = "*"
+ros-jazzy-rosidl-default-runtime = "*"
+ros-jazzy-ros-environment = "*"
+colcon-common-extensions = "*"
+cmake = "*"
+ninja = "*"
+cxx-compiler = "*"
 
 [tasks]
 # ── hour one: middleware bring-up ───────────────────────────────────────────
@@ -63,3 +91,10 @@ rig = "python nodes/rig.py"
 # ── acceptance test (LAB-303 PoC criteria): whole graph + Studio emulator + model fly ──
 test = "python tests/test_ros2_poc.py"
 studio-emulator = "python tests/studio_emulator.py"
+# ── Plan B spike: MCAP record + converter + typed interfaces ──────────────────
+# bag → behavior_v2 NDJSON (also `-- --level behavior_v1|full`, `-- --order time`);
+# reads a crash-truncated bag too (`-- --recover`).
+convert = "python nodes/mcap_convert.py"
+# Build interfaces/arena_interfaces (FicTracFrame, ArenaFrame, ConnectorReply) with
+# colcon inside this env; timed and recorded in README.md → "Plan B spike".
+build-interfaces = "python nodes/build_interfaces.py"

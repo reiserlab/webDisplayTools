@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Assemble the two-tier GitHub Pages site: Production at /, Next at /next/.
 
-    python scripts/tiers/stamp.py build   --out _site [--root-ref REF] [--next auto|none|REF]
-    python scripts/tiers/stamp.py preview [--next auto|none|REF]     (local; then serve _site)
+    python scripts/tiers/stamp.py build   --out _site [--root-ref REF] [--next auto|none|REF] [--ros none|REF]
+    python scripts/tiers/stamp.py preview [--next auto|none|REF] [--ros REF]   (local; then serve _site)
     python scripts/tiers/stamp.py verify  --site _site --root-ref REF
+
+An optional THIRD path, /ros/ ("ROS Studio", LAB-303 Plan B spike): `--ros REF` archives that
+branch's tree under <out>/ros/ with channel "ros" and a magenta banner. It is a side tier for
+lab validation of the ROS 2 bridge graph: never Production, never a release candidate, off by
+default (`none`), and a failure there never blocks the other two. `ros/` is reserved like `next/`.
 
 `build` is what .github/workflows/deploy-pages.yml runs. It:
   1. resolves every input to a commit SHA ONCE (never archives a moving ref twice);
@@ -45,6 +50,7 @@ BANNER_START = '<!-- wdt-next-banner -->'
 BANNER_END = '<!-- /wdt-next-banner -->'
 BANNER_RE = re.compile(r'\n' + re.escape(BANNER_START) + r'.*?' + re.escape(BANNER_END), re.DOTALL)
 RESERVED_TOP = 'next'
+ROS_TOP = 'ros'  # the ROS Studio side tier (LAB-303 Plan B spike); reserved like next/
 
 
 # ── ref resolution ───────────────────────────────────────────────────────────
@@ -122,21 +128,35 @@ def inject_meta(text: str, build: dict):
 
 
 def banner_html(build: dict, prod_href: str) -> str:
-    cand = build.get('candidate') or {}
-    label = cand.get('label') or 'testing build'
-    prs = ' '.join(f"#{p['number']}" for p in cand.get('prs', []))
-    title = f'NEXT — {label}' + (f' · {prs}' if prs else '') + ' · not for routine experiments'
+    if build.get('channel') == 'ros':
+        label = build.get('label') or 'ROS Studio'
+        title = f'{label} — the ROS 2 bridge spike (LAB-303) · for lab validation only, not for routine experiments'
+        color, text = '#d500f9', f'ROS STUDIO · {short_ref(build)}'
+    else:
+        cand = build.get('candidate') or {}
+        label = cand.get('label') or 'testing build'
+        prs = ' '.join(f"#{p['number']}" for p in cand.get('prs', []))
+        title = f'NEXT — {label}' + (f' · {prs}' if prs else '') + ' · not for routine experiments'
+        color, text = '#ff9100', f'NEXT · {label}'
     return (
         '\n' + BANNER_START
         + '<div id="wdt-next-banner" role="status" title="' + html.escape(title, quote=True) + '" '
         'style="position:fixed;left:50%;top:0;transform:translateX(-50%);z-index:2147483000;'
-        'background:#ff9100;color:#0f1419;font:600 11px/1.7 \'JetBrains Mono\',ui-monospace,monospace;'
+        f'background:{color};color:#0f1419;font:600 11px/1.7 \'JetBrains Mono\',ui-monospace,monospace;'
         'padding:0 10px;border-radius:0 0 6px 6px;box-shadow:0 1px 4px rgba(0,0,0,.45);white-space:nowrap">'
-        + html.escape(f'NEXT · {label}')
+        + html.escape(text)
         + ' · <a href="' + html.escape(prod_href, quote=True) + '" '
         'style="color:#0f1419;text-decoration:underline" title="Open this page on Production">'
         'Production ↗</a></div>' + BANNER_END
     )
+
+
+def short_ref(build: dict) -> str:
+    """A branch name when the ref is one; the short SHA when it is HEAD or a SHA."""
+    ref = build.get('ref') or ''
+    if ref and ref != 'HEAD' and not re.fullmatch(r'[0-9a-f]{7,40}', ref):
+        return ref[:40]
+    return (build.get('sha') or '')[:7]
 
 
 def inject_banner(text: str, build: dict, prod_href: str) -> str:
@@ -235,6 +255,7 @@ def verify_root(site: Path, root_sha: str, cwd=None) -> list:
         archive_to(root_sha, ref, cwd=cwd)
         want = _tree_files(ref)
         have = _tree_files(site, skip_top=RESERVED_TOP)
+        have = {k: v for k, v in have.items() if not k.startswith(ROS_TOP + '/')}
         have.pop('build.json', None)
         for k in sorted(set(want) - set(have)):
             problems.append(f'missing from site: {k}')
@@ -255,17 +276,36 @@ def verify_root(site: Path, root_sha: str, cwd=None) -> list:
 
 
 # ── build ────────────────────────────────────────────────────────────────────
+def build_ros_tier(out: Path, ros_spec: str, common: dict, cwd=None) -> dict:
+    """The /ros/ side tier: ROS Studio = this branch's Studio tree, stamped channel "ros".
+    Any problem → no /ros/ at all (the other tiers never depend on it)."""
+    ros_dir = out / ROS_TOP
+    info = {'channel': 'ros', 'sha': None, 'ref': ros_spec, 'label': 'ROS Studio', **common}
+    try:
+        sha = resolve_commit(ros_spec, cwd)
+        info['sha'] = sha
+        archive_to(sha, ros_dir, cwd=cwd)
+        n = stamp_tree(ros_dir, info, next_banner=True)
+        T.write_text_exact(ros_dir / 'build.json', json.dumps(info, indent=2) + '\n')
+        return {'sha': sha, 'pages': n, 'note': f'{ros_spec} ({sha[:10]})'}
+    except T.ToolError as e:
+        print(f'WARNING: ROS tier skipped ({e})', file=sys.stderr)
+        shutil.rmtree(ros_dir, ignore_errors=True)
+        return {'sha': None, 'pages': 0, 'note': f'skipped: {e}'}
+
+
 def build_site(out: Path, root_ref: str, next_spec: str, cwd=None, allow_any_next=False,
-               run_url: str | None = None) -> dict:
+               run_url: str | None = None, ros_spec: str = 'none') -> dict:
     root_sha = resolve_commit(root_ref, cwd)
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
     archive_to(root_sha, out, cwd=cwd)
-    if (out / RESERVED_TOP).exists():
-        raise T.ToolError(
-            f'the root commit has a top-level "{RESERVED_TOP}/" — that path is reserved for the Next tier'
-        )
+    for reserved in (RESERVED_TOP, ROS_TOP):
+        if (out / reserved).exists():
+            raise T.ToolError(
+                f'the root commit has a top-level "{reserved}/" — that path is reserved for a tier'
+            )
 
     built_utc = T.now_utc()
     common = {'built_at': T.iso_utc(built_utc), 'built_at_et': T.et_stamp(built_utc)}
@@ -310,14 +350,30 @@ def build_site(out: Path, root_ref: str, next_spec: str, cwd=None, allow_any_nex
         n_next = write_placeholder(out, next_dir, nxt, note)
 
     T.write_text_exact((next_dir / 'build.json'), json.dumps(nxt, indent=2) + '\n')
-    n_prod = stamp_tree(out, prod, next_banner=False, skip_top=RESERVED_TOP)
+    ros = {'sha': None, 'pages': 0, 'note': 'not requested'}
+    if ros_spec and ros_spec != 'none':
+        ros = build_ros_tier(out, ros_spec, common, cwd=cwd)
+    skip = {RESERVED_TOP, ROS_TOP}
+    n_prod = 0
+    for p, rel in html_files(out):
+        if rel.parts and rel.parts[0] in skip:
+            continue
+        try:
+            text = p.read_bytes().decode('utf-8')
+        except UnicodeDecodeError:
+            continue
+        o = inject_meta(text, prod)
+        if o is None:
+            continue
+        p.write_bytes(o.encode('utf-8'))
+        n_prod += 1
     T.write_text_exact((out / 'build.json'), json.dumps(prod, indent=2) + '\n')
 
     problems = verify_root(out, root_sha, cwd=cwd)
     if problems:
         raise T.ToolError('production tree check failed:\n  ' + '\n  '.join(problems[:20]))
     return {'root_sha': root_sha, 'next_sha': next_sha, 'next_note': note,
-            'prod_pages': n_prod, 'next_pages': n_next, 'next': nxt}
+            'prod_pages': n_prod, 'next_pages': n_next, 'next': nxt, 'ros': ros}
 
 
 def _summary(res: dict) -> str:
@@ -330,6 +386,11 @@ def _summary(res: dict) -> str:
         lines.append(f"- **Next** `/next/` ← `{res['next_sha'][:10]}` · {c.get('label', 'no manifest')} · {prs}")
     else:
         lines.append(f"- **Next** `/next/` ← placeholder ({res['next_note']})")
+    ros = res.get('ros') or {}
+    if ros.get('sha'):
+        lines.append(f"- **ROS Studio** `/ros/` ← `{ros['sha'][:10]}` ({ros['pages']} pages; LAB-303 spike, validation only)")
+    elif ros.get('note') and ros['note'] != 'not requested':
+        lines.append(f"- **ROS Studio** `/ros/` ← none ({ros['note']})")
     return '\n'.join(lines) + '\n'
 
 
@@ -341,10 +402,12 @@ def main(argv=None) -> int:
     b.add_argument('--root-ref', default='HEAD')
     b.add_argument('--next', default='auto', help="'auto' (the next branch), 'none', or a commit-ish")
     b.add_argument('--allow-any-next', action='store_true', help='skip the next/release-branch check')
+    b.add_argument('--ros', default='none', help="ROS Studio side tier at /ros/: 'none' (default) or a commit-ish of the LAB-303 spike branch")
     p = sub.add_parser('preview', help='build _site locally from your refs (then serve it)')
     p.add_argument('--out', default='_site')
     p.add_argument('--root-ref', default='origin/main')
     p.add_argument('--next', default='auto')
+    p.add_argument('--ros', default='none', help="also assemble /ros/ from this ref (e.g. HEAD on the spike branch)")
     v = sub.add_parser('verify', help='check a built site against its root commit')
     v.add_argument('--site', default='_site')
     v.add_argument('--root-ref', required=True)
@@ -360,7 +423,7 @@ def main(argv=None) -> int:
                       f"{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
         res = build_site(Path(a.out), a.root_ref, a.next,
                          allow_any_next=getattr(a, 'allow_any_next', False) or a.cmd == 'preview',
-                         run_url=run_url)
+                         run_url=run_url, ros_spec=getattr(a, 'ros', 'none'))
         summ = _summary(res)
         print(summ)
         if os.environ.get('GITHUB_STEP_SUMMARY'):
@@ -368,7 +431,8 @@ def main(argv=None) -> int:
                 f.write(summ)
         if a.cmd == 'preview':
             print(f'Serve it:  python -m http.server -d {a.out} 8080   then open '
-                  'http://localhost:8080/arena_studio.html and http://localhost:8080/next/arena_studio.html')
+                  'http://localhost:8080/arena_studio.html and http://localhost:8080/next/arena_studio.html'
+                  + (' and http://localhost:8080/ros/arena_studio.html' if (res.get('ros') or {}).get('sha') else ''))
         return 0
     except T.ToolError as e:
         print(f'ERROR: {e}', file=sys.stderr)

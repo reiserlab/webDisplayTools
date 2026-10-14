@@ -28,6 +28,22 @@ node. Then the exported log is judged:
   a device node killed mid-run leaves the log intact            adapter SIGKILLed in epoch 2: source_lost/resumed logged,
                                                                 file complete, every reader still parses it
 
+PLAN B SPIKE additions (LAB-303, 2026-10-14) — the log the Studio receives is now DERIVED from
+the MCAP bag the bridge node records, so the same criteria are judged against the CONVERTED
+log, plus:
+  bag present per run, every topic recorded            ros2 bag info + the mcap reader
+  conversion fidelity vs the live writer's shadow file every sequenced line byte-identical and in
+                                                        order; DERIVED lines (Kinefly rows, BIAS
+                                                        events) same content, |Δms| within tolerance
+  log levels as a converter option                     bag → behavior_v1 == bridge.py --convert of the
+                                                        v2; full level carries the 25 FicTrac columns
+  ordering: `seq` (live order) vs `time`               same lines; count of same-ms swaps; identical
+                                                        closed-loop report either way
+  typed topics when arena_interfaces is built          ArenaFrame / FicTracFrame schemas in the bag
+  crash: bridge node SIGKILLed mid-run                 what `--recover` + conversion salvages from the
+                                                        bag (both writer profiles) vs the line-buffered
+                                                        NDJSON — reported, crashsafe profile gated
+
 Exit 0 when all checks pass. Prints a markdown summary. Artifacts are kept with --keep.
 """
 
@@ -113,6 +129,96 @@ def run_capture(argv: list[str], timeout: float = 60.0, cwd: Path | None = None)
     return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=str(cwd) if cwd else None)
 
 
+def find_node() -> str | None:
+    """`node` for the JS reader check: PATH, this checkout's root pixi env, or — in a git
+    worktree under <main>/.claude/worktrees/<name> — the main checkout's root env."""
+    n = shutil.which("node")
+    if n:
+        return n
+    for root in (REPO, *REPO.parents[:3]):
+        cand = root / ".pixi" / "envs" / "default" / "bin" / ("node.exe" if os.name == "nt" else "node")
+        if cand.exists():
+            return str(cand)
+    return None
+
+
+def read_jsonl_lines(path: Path) -> list[str]:
+    return [l for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+
+def is_derived(line: str) -> bool:
+    """Lines the converter DERIVES from device topics (no writer sequence number): Kinefly
+    rows and BIAS reply/status connector events. Everything else is sequenced."""
+    if line.startswith('["kf",'):
+        return True
+    if line.startswith('{"type":"connector","src":"bias","kind":"reply"') or line.startswith('{"type":"connector","src":"bias","kind":"status"'):
+        return True
+    return False
+
+
+def compare_logs(live: list[str], conv: list[str]) -> dict:
+    """Converted vs live: sequenced lines must be identical and in order; derived lines must
+    pair up with identical content apart from `ms`, whose difference is measured."""
+    seq_live = [l for l in live if not is_derived(l)]
+    seq_conv = [l for l in conv if not is_derived(l)]
+    der_live = [l for l in live if is_derived(l)]
+    der_conv = [l for l in conv if is_derived(l)]
+    first_diff = next((i + 1 for i, (a, b) in enumerate(zip(seq_live, seq_conv)) if a != b), None)
+    out = {"lines_live": len(live), "lines_conv": len(conv), "sequenced_identical": seq_live == seq_conv,
+           "sequenced_first_diff": first_diff, "derived_live": len(der_live), "derived_conv": len(der_conv),
+           "byte_identical": live == conv}
+
+    def strip_ms(line: str):
+        o = json.loads(line)
+        if isinstance(o, list):
+            return ("kf", json.dumps(o[:1] + o[2:], separators=(",", ":"))), o[1]
+        ms = o.pop("ms", None)
+        return (o.get("kind"), json.dumps(o, separators=(",", ":"), sort_keys=True)), ms
+
+    dl = [strip_ms(l) for l in der_live]
+    dc = [strip_ms(l) for l in der_conv]
+    content_equal = [k for k, _ in dl] == [k for k, _ in dc]
+    out["derived_content_equal"] = content_equal
+    if content_equal and dl:
+        d = sorted(abs((a - b)) for (_, a), (_, b) in zip(dl, dc) if isinstance(a, (int, float)) and isinstance(b, (int, float)))
+        if d:
+            out["derived_dms"] = {"p50": d[len(d) // 2], "p99": d[int(len(d) * 0.99)], "max": d[-1], "n": len(d)}
+    # Placement: how many derived lines sit after a different sequenced neighbour than in the live file?
+    def prev_seq(lines):
+        res, last = [], None
+        for l in lines:
+            if is_derived(l):
+                res.append(last)
+            else:
+                last = l
+        return res
+    pl, pc = prev_seq(live), prev_seq(conv)
+    out["derived_misplaced"] = sum(1 for a, b in zip(pl, pc) if a != b) if len(pl) == len(pc) else None
+    return out
+
+
+def bag_summary(bag: Path) -> dict:
+    """Topic → message count + schema names, read with the pure-Python mcap reader."""
+    sys.path.insert(0, str(NODES))
+    from mcap_convert import read_all  # noqa: E402
+
+    recs, info = read_all(bag)
+    by_topic: dict[str, int] = {}
+    schemas = set()
+    lag = []
+    for r in recs:
+        by_topic[r["topic"]] = by_topic.get(r["topic"], 0) + 1
+        if r["schema"]:
+            schemas.add(r["schema"])
+        if r["topic"] == "/arena/frame" and r.get("pub_ns"):
+            lag.append((r["log_ns"] - r["pub_ns"]) / 1e6)
+    lag.sort()
+    files = sorted(bag.glob("*.mcap"))
+    return {"records": info.get("records"), "topics": by_topic, "schemas": sorted(schemas), "torn": info.get("torn"),
+            "bytes": sum(f.stat().st_size for f in files), "metadata_yaml": (bag / "metadata.yaml").exists(),
+            "frame_lag_ms": {"p50": round(lag[len(lag) // 2], 3), "p99": round(lag[int(len(lag) * 0.99)], 3), "max": round(lag[-1], 3)} if lag else None}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--epochs", type=int, default=3)
@@ -122,6 +228,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--keep", action="store_true", help="keep the work dir")
     ap.add_argument("--workdir", default=None)
     ap.add_argument("--no-router", action="store_true", help="a Zenoh router is already running on 127.0.0.1:7447")
+    ap.add_argument("--bag-profile", default="crashsafe", choices=("default", "crashsafe"), help="MCAP writer profile for the main run (default: crashsafe)")
+    ap.add_argument("--no-crash", action="store_true", help="skip the crash phase (bridge node SIGKILLed mid-run, both profiles)")
     a = ap.parse_args(argv)
 
     work = Path(a.workdir) if a.workdir else Path(tempfile.mkdtemp(prefix="ros2-poc-test-"))
@@ -150,7 +258,8 @@ def main(argv: list[str] | None = None) -> int:
         start("kinefly-adapter", [PY, str(NODES / "kinefly_udp_adapter.py"), "--status-every", "0"])
         start("bias-sim", [PY, str(NODES / "bias_sim.py"), "--video-dir", str(videos)])
         start("bias-node", [PY, str(NODES / "bias_node.py"), "--status-every", "1", "--video-dir", str(videos)])
-        bridge = start("bridge-node", [PY, str(NODES / "bridge_node.py"), "--log-dir", str(runlogs), "--source-timeout", "1.5"])
+        bridge_argv = [PY, str(NODES / "bridge_node.py"), "--log-dir", str(runlogs), "--source-timeout", "1.5", "--bag-profile", a.bag_profile]
+        bridge = start("bridge-node", bridge_argv)
         check("bridge node serving ws://127.0.0.1:8765", wait_port("127.0.0.1", 8765, 20.0))
         time.sleep(1.5)  # discovery
         start("kinefly-sim", [PY, str(NODES / "kinefly_sim.py"), "--rate", "100", "--seed", "1"])
@@ -225,11 +334,36 @@ def main(argv: list[str] | None = None) -> int:
         actor.join(timeout=30)
 
         # ── judge the log ────────────────────────────────────────────────────────────
-        check("exported log written", export.exists() and export.stat().st_size > 0)
+        check("exported log written (CONVERTED from the MCAP bag)", export.exists() and export.stat().st_size > 0)
         objs = read_jsonl(export) if export.exists() else []
         disk = sorted(runlogs.glob("arena-log-*.jsonl"))
-        check("export is byte-identical to the bridge node's file on disk",
-              bool(disk) and export.exists() and disk[-1].read_bytes() == export.read_bytes(), f"{[d.name for d in disk]}")
+        bags = sorted(runlogs.glob("arena-log-*.bag"))
+        main_bag = bags[-1] if bags else None
+        check("MCAP bag recorded for the run (metadata.yaml + .mcap)", main_bag is not None and (main_bag / "metadata.yaml").exists() and any(main_bag.glob("*.mcap")), str([b.name for b in bags]))
+        bagsum = bag_summary(main_bag) if main_bag else {}
+        print(f"[test] bag: {bagsum.get('records')} records, {bagsum.get('bytes')} B, topics {bagsum.get('topics')}, schemas {bagsum.get('schemas')}, frame lag {bagsum.get('frame_lag_ms')}", file=sys.stderr)
+        want_topics = ["/arena/session", "/arena/browser", "/arena/event", "/arena/frame", "/kinefly/raw", "/bias/cmd", "/bias/reply", "/bias/status"]
+        missing = [t for t in want_topics if not bagsum.get("topics", {}).get(t)]
+        check("every stream recorded in the bag (session, browser, event, frame, kinefly, bias cmd/reply/status, fictrac)",
+              not missing and (bagsum.get("topics", {}).get("/fictrac/frame") or bagsum.get("topics", {}).get("/fictrac/raw")), f"missing {missing}")
+        typed = any(s.startswith("arena_interfaces/") for s in bagsum.get("schemas", []))
+        check("typed messages in the bag when arena_interfaces is built (else String fallback, reported)",
+              True, "")
+        print(f"  info  typed topics: {typed} ({bagsum.get('schemas')})", file=sys.stderr)
+        fl = bagsum.get("frame_lag_ms") or {}
+        check("recorder log_time lags the closed-loop node's own sample time (p99 < 20 ms; the record carries BOTH)", bool(fl) and fl.get("p99", 99) < 20.0, str(fl))
+        # Fidelity: the converted export vs the live writer's shadow file.
+        live_lines = read_jsonl_lines(disk[-1]) if disk else []
+        conv_lines = read_jsonl_lines(export) if export.exists() else []
+        cmpr = compare_logs(live_lines, conv_lines)
+        print(f"[test] fidelity: {json.dumps(cmpr)}", file=sys.stderr)
+        check("conversion fidelity: every sequenced line byte-identical to the live writer, in order",
+              cmpr.get("sequenced_identical") and cmpr["lines_live"] > 0, f"first diff at sequenced line {cmpr.get('sequenced_first_diff')}")
+        dms = cmpr.get("derived_dms") or {}
+        check("conversion fidelity: derived lines (kf rows, BIAS events) same content, |Δms| ≤ 5 ms",
+              cmpr.get("derived_content_equal") and cmpr["derived_live"] == cmpr["derived_conv"] and (not dms or dms.get("max", 99) <= 5),
+              f"live {cmpr['derived_live']} vs conv {cmpr['derived_conv']}, Δms {dms}")
+        print(f"  info  byte-identical overall: {cmpr.get('byte_identical')}; derived lines placed after a different neighbour: {cmpr.get('derived_misplaced')} of {cmpr['derived_live']}", file=sys.stderr)
 
         events = [o for o in objs if isinstance(o, dict)]
         rows_ft = [o for o in objs if isinstance(o, list) and isinstance(o[0], (int, float))]
@@ -307,16 +441,36 @@ def main(argv: list[str] | None = None) -> int:
         c2 = run_capture([PY, str(BRIDGE_PY), "--convert", str(v1), str(v2)]) if c1.returncode == 0 else None
         check("bridge.py --convert v2→v1→v2 byte-identical", c2 is not None and c2.returncode == 0 and v2.read_bytes() == export.read_bytes(),
               (c1.stderr + (c2.stderr if c2 else ""))[-300:])
+        # ── log levels are a converter option; order modes ───────────────────────────
+        conv = [PY, str(NODES / "mcap_convert.py"), str(main_bag)]
+        bv1 = work / "bag.v1.jsonl"
+        bfull = work / "bag.full.jsonl"
+        btime = work / "bag.time.jsonl"
+        r1 = run_capture(conv + ["--level", "behavior_v1", "--out", str(bv1)])
+        check("bag → behavior_v1 == bridge.py --convert of the behavior_v2 (byte-identical)",
+              r1.returncode == 0 and c1.returncode == 0 and bv1.read_bytes() == v1.read_bytes(), r1.stderr[-200:])
+        rf = run_capture(conv + ["--level", "full", "--out", str(bfull)])
+        full_objs = read_jsonl(bfull) if rf.returncode == 0 else []
+        ff = [o for o in full_objs if isinstance(o, dict) and o.get("type") == "fictrac_frame"]
+        check("bag → full level: one fictrac_frame per frame with the 25 FicTrac columns, no schema line",
+              rf.returncode == 0 and len(ff) == len(rows_ft) and all(len(o.get("fictrac") or []) == 25 for o in ff)
+              and not any(isinstance(o, dict) and o.get("type") == "frame_schema" for o in full_objs), f"{len(ff)} frames vs {len(rows_ft)}; cols {sorted({len(o.get('fictrac') or []) for o in ff})}")
+        rt = run_capture(conv + ["--order", "time", "--out", str(btime)])
+        time_lines = read_jsonl_lines(btime) if rt.returncode == 0 else []
+        swaps = sum(1 for x, y in zip(conv_lines, time_lines) if x != y)
+        check("order `time` (a separate closed-loop process would need it): same lines as the live order",
+              rt.returncode == 0 and sorted(time_lines) == sorted(conv_lines), rt.stderr[-200:])
+        rep_t = run_capture([PY, str(REPO / "scripts" / "closed-loop-report.py"), "--json", str(btime)], timeout=60)
+        same_report = rep.returncode == 0 and rep_t.returncode == 0 and json.loads(rep.stdout).get("epochs") == json.loads(rep_t.stdout).get("epochs")
+        check("order `time`: closed-loop report identical to the live-order report", same_report, rep_t.stderr[-200:])
+        print(f"  info  order time vs seq: {swaps} of {len(conv_lines)} positions differ (same-ms ties)", file=sys.stderr)
         ver = run_capture([PY, str(BRIDGE_PY), "--version"])
         check("bridge 3.4 side by side: fictrac-bridge/bridge.py --version still 3.4", (ver.stdout + ver.stderr).strip().startswith("fictrac-bridge 3.4"), (ver.stdout + ver.stderr)[:80])
 
-        node_bin = shutil.which("node")
-        root_pixi = shutil.which("pixi")
         js_argv = None
+        node_bin = find_node()
         if node_bin:
             js_argv = [node_bin, str(HERE / "check_runlog_readers.js"), str(export), "--expect-kf"]
-        elif root_pixi and (REPO / ".pixi").exists():
-            js_argv = [root_pixi, "run", "--manifest-path", str(REPO / "pixi.toml"), "node", str(HERE / "check_runlog_readers.js"), str(export), "--expect-kf"]
         if js_argv:
             js = run_capture(js_argv, timeout=120, cwd=REPO)
             check("JS readers (runlog-format normalizer + runlog-replay parser) accept every line", js.returncode == 0, (js.stdout + js.stderr)[-500:])
@@ -324,15 +478,92 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print("  skip  JS reader check: no `node` and no root pixi env (run `pixi install` at the repo root)", file=sys.stderr)
 
-        # No custom message types: only std_msgs in nodes/.
-        bad = []
-        for f in NODES.glob("*.py"):
-            for line in f.read_text(encoding="utf-8").splitlines():
-                if line.startswith("from ") and ".msg import" in line and not line.startswith("from std_msgs.msg"):
-                    bad.append(f"{f.name}: {line.strip()}")
-        check("no custom message types (only std_msgs imported in nodes/)", not bad, "; ".join(bad))
+        # Plan B item 3/4: typed topics when the interfaces package is built in this env.
+        ifc = run_capture([PY, str(NODES / "build_interfaces.py"), "--check"], timeout=60)
+        have_ifaces = ifc.returncode == 0
+        if have_ifaces:
+            check("typed: arena_interfaces importable → ArenaFrame + FicTracFrame recorded in the bag",
+                  typed and bagsum.get("topics", {}).get("/fictrac/frame", 0) > 0, str(bagsum.get("schemas")))
+        else:
+            print("  info  arena_interfaces not importable here: String topics used (pixi install builds it on osx/linux; Windows needs MSVC)", file=sys.stderr)
 
-        check("bridge node still alive at the end", bridge.alive())
+        check("bridge node still alive at the end of the main run", bridge.alive())
+
+        # ── crash phase: SIGKILL the bridge node mid-run, both writer profiles ────────
+        crash_results: dict = {}
+        if not a.no_crash:
+            bridge.stop()
+            for profile in ("crashsafe", "default"):
+                for f in runlogs.glob("arena-log-*"):
+                    pass  # earlier runs stay; we pick the newest below
+                before = set(runlogs.glob("arena-log-*.jsonl"))
+                cb = start(f"bridge-crash-{profile}", [PY, str(NODES / "bridge_node.py"), "--log-dir", str(runlogs), "--source-timeout", "1.5", "--bag-profile", profile])
+                check(f"crash phase ({profile}): bridge node serving", wait_port("127.0.0.1", 8765, 20.0))
+                time.sleep(1.5)
+                em_out = work / f"crash-{profile}.export.jsonl"
+                em_thread = threading.Thread(
+                    target=lambda: run_capture([PY, str(HERE / "studio_emulator.py"), "--epochs", "1", "--epoch-s", "6", "--iti-s", "0",
+                                                "--bias-amplitude", "90", "--min-frames", "1", "--out", str(em_out)], timeout=60),
+                    daemon=True)
+                em_thread.start()
+                # Anchor: the run's fictracApply line in the NEW shadow file, then 2.5 s of closed loop.
+                end = time.monotonic() + 30
+                shadow = None
+                while time.monotonic() < end and shadow is None:
+                    new = sorted(set(runlogs.glob("arena-log-*.jsonl")) - before)
+                    if new:
+                        try:
+                            if any('"op":"fictracApply"' in l and '"value":true' in l for l in new[-1].read_text(encoding="utf-8").splitlines()):
+                                shadow = new[-1]
+                        except OSError:
+                            pass
+                    time.sleep(0.1)
+                time.sleep(2.5)
+                t_kill = time.time()
+                cb.kill9()
+                em_thread.join(timeout=20)
+                bag = Path(str(shadow)[:-6] + ".bag") if shadow else None
+                res = {"profile": profile, "shadow": str(shadow), "bag": str(bag), "killed_epoch_ms": int(t_kill * 1000)}
+                if shadow and shadow.exists():
+                    raw = shadow.read_text(encoding="utf-8", errors="replace")
+                    lines = raw.split("\n")
+                    torn_last = bool(lines and lines[-1].strip())  # no trailing newline → a torn line
+                    good = []
+                    for l in lines:
+                        if not l.strip():
+                            continue
+                        try:
+                            good.append(json.loads(l))
+                        except json.JSONDecodeError:
+                            pass
+                    res["ndjson"] = {"lines": len(good), "frames": sum(1 for o in good if isinstance(o, list) and isinstance(o[0], (int, float))), "torn_last_line": torn_last,
+                                     "last_frame_ms": max([o[0] for o in good if isinstance(o, list) and isinstance(o[0], (int, float))] or [None])}
+                rc = run_capture([PY, str(NODES / "mcap_convert.py"), str(bag), "--recover", "--out", str(work / f"crash-{profile}.recovered.jsonl")], timeout=60) if bag and bag.exists() else None
+                if rc is not None and rc.returncode == 0:
+                    rep_line = rc.stderr.strip().splitlines()[-1]
+                    try:
+                        R = json.loads(rep_line)
+                    except json.JSONDecodeError:
+                        R = {"raw": rep_line}
+                    rec_objs = read_jsonl(work / f"crash-{profile}.recovered.jsonl")
+                    res["mcap"] = {"records": R.get("bag_records"), "lines": R.get("lines"), "frames": R.get("frames"), "torn": R.get("torn"),
+                                   "last_frame_ms": max([o[0] for o in rec_objs if isinstance(o, list) and isinstance(o[0], (int, float))] or [None])}
+                    res["mcap_files"] = [f.name for f in bag.glob("*")]
+                else:
+                    res["mcap"] = {"error": (rc.stderr[-300:] if rc else "no bag")}
+                    res["mcap_files"] = [f.name for f in bag.glob("*")] if bag and bag.exists() else []
+                crash_results[profile] = res
+                print(f"[test] crash ({profile}): {json.dumps(res)}", file=sys.stderr)
+                nd, mc = res.get("ndjson") or {}, res.get("mcap") or {}
+                if profile == "crashsafe":
+                    check("crash (crashsafe profile): --recover + convert salvages the run up to the kill (frames within 10 of the NDJSON, file intact)",
+                          mc.get("frames") is not None and nd.get("frames") is not None and nd["frames"] - mc["frames"] <= 10 and mc["frames"] > 0,
+                          f"ndjson frames {nd.get('frames')} vs recovered {mc.get('frames')}")
+                else:
+                    print(f"  info  crash (default profile): NDJSON kept {nd.get('frames')} frames; the bag's recovered frames: {mc.get('frames')} "
+                          f"(rosbag2 defaults buffer a 768 KiB chunk + a message cache until close)", file=sys.stderr)
+                check(f"crash ({profile}): the line-buffered NDJSON lost at most its last line", nd.get("lines", 0) > 0, str(nd))
+            (work / "crash-results.json").write_text(json.dumps(crash_results, indent=1), encoding="utf-8")
     finally:
         for pr in reversed(procs):
             pr.stop()

@@ -168,3 +168,75 @@ loopback config was used throughout).
   `/bias/status`, `/arena/frame` — plain JSON strings.
 * Not exercised: rosbag recording, rosbridge, Frank's FicTrac ROS 2 node pair. The log stayed
   the bridge's NDJSON on purpose (the readers are the expensive part to replace).
+
+## Plan B spike (2026-10-14 evening, LAB-303) — Frank's graph with MCAP as the record of truth
+
+Built on the graph above so the architecture decision can be made on measured data. Hard cutover
+and MATLAB-on-the-graph are out of scope; bridge 3.4 stays installed side by side. The browser
+protocol is unchanged, so the Studio on this branch (v0.95, with the BIAS connector path) works
+without further changes; **"ROS Studio" = that Studio served from the `/ros/` Pages path** (below).
+
+```
+ FicTrac / fictrac_sim ──UDP :60000──▶ fictrac_udp_adapter ──/fictrac/frame (FicTracFrame)──▶┐
+ Kinefly (KF/1)        ──UDP :60001──▶ kinefly_udp_adapter ──/kinefly/raw──────────────────▶│ bridge_node ──ws :8765──▶ Studio
+ BIAS (HTTP :5010)     ◀── bias_node ◀─/bias/cmd   /bias/reply,status──────────────────────▶│   │ /arena/frame (ArenaFrame), /arena/browser, /arena/event, /arena/session
+                                                                                            └───┴──▶ runlogs/<run>.bag/  (MCAP, rosbag2_py)  ──mcap_convert.py──▶ <run>.jsonl (behavior_v2 | v1 | full)
+```
+
+### What was built
+
+| item | where | what |
+|---|---|---|
+| MCAP record | `nodes/recorder.py`, `bridge_node.py` | one bag per run (opened with the run's log, closed at `log_control off` / `log_export` / shutdown) holding every device topic as received (raw CDR bytes), `/arena/frame` (the closed-loop evaluation with the node's **own sample time** `t_ms`/`ms` as fields, and as MCAP `publish_time`), `/arena/browser` (**every** browser message, verbatim, with the receive stamp), `/arena/event` (bias_config, heading_tare, connector_status, source_lost/resumed, warn), `/arena/session`. Bridge-side records carry the writer's emission sequence number `seq`. Two writer profiles: `crashsafe` (no chunking, no cache; the default) and rosbag2's `default`. |
+| converter | `nodes/mcap_convert.py` (`pixi run convert`) | bag → NDJSON, pure Python (`mcap` + a 60-line CDR decoder driven by the schema text rosbag2 embeds): no ROS process needed, reads a torn bag with `--recover`. Reuses bridge.py's own pure encoders (`compact_arena_command`, schema line). Levels are a converter option (`--level behavior_v2|behavior_v1|full`); the run's acked level is the default. `--order seq` reproduces the live writer's order; `--order time` is what a separate closed-loop process would have to do. ONE ms base per run (the pipeline's t0 is set from the log's open stamp — bridge 3.4 takes two samples there, comparison.md appendix 4). `log_export` returns the converted log; the live NDJSON stays as a shadow file during the spike and `converted == live` is checked and printed at every export. |
+| typed messages | `interfaces/arena_interfaces/` (`FicTracFrame`, `ArenaFrame`, `ConnectorReply`) | built **by `pixi install`** (pixi-build preview + the RoboStack `pixi-build-ros` backend; the workspace depends on the package by path). `pixi run build-interfaces` is the colcon alternative. `ArenaFrame` and `FicTracFrame` are in use; `ConnectorReply` is defined and built but the BIAS reply stays JSON-in-String (its shape is BIAS's, not ours — typing it would make the derived connector event a rebuild instead of a copy). |
+| FicTrac as a typed topic | `fictrac_udp_adapter.py --typed`, `bridge_node.py --typed` | the adapter publishes `/fictrac/frame` (parsed columns + FT tag + receive stamps + the verbatim line) beside `/fictrac/raw`; the bridge subscribes to the typed topic when the package imports (`auto`). The mapping math still parses the verbatim line, so it stays byte-for-byte bridge 3.4's. |
+| harness | `tests/test_ros2_poc.py` | the 32 PoC checks now judged against the **converted** log, plus bag presence per topic, fidelity vs the shadow, levels, ordering, typed schemas, and a crash phase (bridge node SIGKILLed mid-run, both profiles): **46 / 46 in 46 s** on the Mac. |
+| Pages path | `scripts/tiers/stamp.py --ros REF`, `deploy-pages.yml` input `ros`, `pixi run ros-preview`, `js/build-channel.js` channel `ros` | a third, optional path `/ros/` beside Production and Next: this branch's tree, stamped `channel: "ros"`, magenta badge/banner "ROS STUDIO", tier-suffixed window names, `run_metadata.channel = "ros"`. Off by default; a problem there never blocks the other tiers; the production tree check skips it. Production and Next are untouched (tiers test 109 / 109). **Enabling it on the live site needs this tooling commit on `main`** (the deploy workflow runs from `main`): a tooling-only PR, then `gh workflow run deploy-pages.yml -f ros=<spike sha>`. Until then: `pixi run ros-preview` + `python -m http.server -d _site`. |
+
+### Measured on the Mac (MacBook Pro osx-arm64, macOS 27.0.1, pixi 0.69)
+
+| measurement | result |
+|---|---|
+| `pixi install` with `ros-jazzy-rosbag2-py` + `ros-jazzy-rosbag2-storage-mcap` + `mcap` + the ament/rosidl toolchain (`cmake`, `ninja`, `cxx-compiler`, `colcon`) | 10 s wall with a warm package cache (the sibling PoC env had most packages); env **1.0 GB → 1.7 GB**; lock +1442 lines |
+| typed messages, route 1: **pixi-build-ros** (scratch workspace, first attempt) | **37 s** wall for `pixi install` incl. an 18 s build of the package (`arena_interfaces-0.1.0-h60d57d3_0.conda`, 1.1 MiB, 149 files incl. Rust bindings); imported and serialized on the first try. One deprecation warning (`[package.build] channels` → `backend.channels`, fixed). |
+| typed messages, route 1 integrated in `ros2-poc/pixi.toml` | `pixi install` **25 s** (17 s build); lock +3305 lines (a `conda_source` record per platform). Windows: the build needs MSVC 2022 on the PC (pixi cannot install it) — untested. |
+| typed messages, route 2: **colcon** in the env (`pixi run build-interfaces -- --clean`) | build 23 s (first) / 12 s (second clean build), all 8 typesupport libraries. **First attempt failed at import**: `UnsupportedTypeSupport: Could not import 'rosidl_typesupport_c' for package 'arena_interfaces'` — RoboStack's toolchain sets the extension's install rpath to the env's `lib` only, and macOS SIP strips `DYLD_LIBRARY_PATH` on the way through pixi's shell. Fixed with `-DCMAKE_INSTALL_RPATH=<install>/lib;<env>/lib`: imports and serializes. |
+| bag open (per run start, blocks the asyncio loop) | **158 ms** with rosbag2's defaults (100 MiB message cache) vs **8 ms** crashsafe; records arriving meanwhile are buffered, so nothing is lost either way |
+| recording overhead on the closed loop (adapter → bridge, `connector_status`) | FicTrac p50 0.87 / p99 1.65 ms, Kinefly p50 0.82 / p99 1.51 ms — the same as the PoC without recording (0.89 / 1.43) |
+| recorder receive time vs the closed-loop node's own sample time (`/arena/frame` `log_time − publish_time`) | p50 0.53 ms, p99 1.07 ms, max 1.2 ms (the sample time is a whole ms). The record carries both, so `idx` reconstruction uses the node's clock, never the recorder's. |
+| conversion | 962 lines in 50 ms (smoke run); 3949 lines (harness run, 197 kB NDJSON) from a 4.1 MB bag of 4889 records. The bag is ~20× the NDJSON: it holds the raw inputs (every FicTrac line twice — typed fields + verbatim — every Kinefly envelope) and the outputs, uncompressed (zstd is a profile knob; compression and crash-safety pull in opposite directions). |
+| **fidelity, sequenced lines** (frames, browser lines, bridge events, session/schema): converted vs the live writer | **byte-identical and in the same order** in every run (smoke, harness, both levels); `bag → behavior_v1` equals `bridge.py --convert` of the live v2 byte for byte; `full` carries the 25 FicTrac columns for every frame |
+| fidelity, DERIVED lines (2204 Kinefly rows + 31 BIAS reply/status events): content | identical apart from `ms`; `\|Δms\|` **p50 0 / p99 1 / max 2 ms** (recorder receive vs the live writer's processing time) |
+| fidelity, derived lines: placement | 113 of 2235 (5 %) land after a different neighbouring line than in the live file (within the same 1–2 ms). The file as a whole is therefore **not** byte-identical when Kinefly/BIAS are present; it is when they are absent. |
+| `--order time` vs `--order seq` | same multiset of lines; **17 of 3949** positions differ (12 of 962 in the smoke run), all same-millisecond ties (`log_control` vs the first frame, runner `fictracApply` vs `bias_config`, `config` vs `heading_tare`); `closed-loop-report.py` output identical for both orders |
+| **crash: bridge node SIGKILLed 2.5 s into a closed-loop epoch, `crashsafe` profile** | NDJSON (line-buffered): 624 lines / 160 frames, no torn line. Bag: `metadata.yaml` never written (as predicted), `--recover` + convert: 621 lines / **159 frames** — one frame (≈ 14 ms) and the two session lines lost; every reader parses the result. |
+| crash, rosbag2 `default` profile | NDJSON: 625 lines / 159 frames. Bag: **nothing recoverable** — a short run sits in one unflushed 768 KiB chunk (plus the message cache) until close; `ros2 bag info` of a completed default-profile run shows exactly one chunk. Offline truncation of a completed default bag confirms it: nothing until 99 %, then everything. |
+| what the readers needed | nothing: the converted log passes `js/runlog-format` + `js/runlog-replay` (JS), `closed-loop-report.py`, `bridge.py --convert` round trip, and (bench run below) `runlog-check.py` |
+
+### What broke, in order
+
+1. `rosbag2_py`'s four-argument `write()` is `(topic, data, recv_timestamp, send_timestamp)` — the opposite of what the docstring order suggests; the first bags had the node's sample time in `log_time`. Found by reading a bag back.
+2. The MCAP storage plugin's YAML rejects `compression: ""`; it wants `"None"`. The first crashsafe bag failed to open and the exception propagated into the WebSocket handler. Now a recorder failure is a warning line and the run keeps its shadow file.
+3. Records arriving during the 158 ms bag open were dropped (8 frames at 50 Hz): the recorder now buffers while opening.
+4. The `mcap` Python reader's `iter_messages()` defaults to log-time order, which reads the whole file before yielding — a torn file yielded nothing. File order (`log_time_order=False`) in both modes.
+5. The colcon-built extension's rpath (above).
+
+### Plain comparison with the live-NDJSON PoC (same graph, 2026-10-14 afternoon)
+
+| | live NDJSON PoC | Plan B spike (MCAP record of truth) |
+|---|---|---|
+| install size (osx-arm64 env) | 1.0 GB | 1.7 GB (+ rosbag2, MCAP plugin, C/C++ toolchain, colcon); bridge 3.4's root env is 0.28 GB |
+| install time (warm cache) | 25 s | 25 s incl. building the interfaces package; the build needs a compiler on every installing machine (MSVC on Windows: untested) |
+| processes per rig | router + FicTrac adapter + bridge node (+ Kinefly adapter, + BIAS node) = 3–5 | the same; the recorder runs inside the bridge node |
+| latency (adapter → bridge, p50 / p99) | 0.89 / 1.43 ms | 0.87 / 1.65 ms |
+| record of truth | the live `.jsonl`, written in processing order | the bag; the `.jsonl` is derived at export (50 ms per 1000 lines) or offline |
+| crash loss (SIGKILL mid-run) | at most the line in progress | crashsafe profile: ≈ 1 frame + the session close, and `--recover` is required (no `metadata.yaml`); rosbag2 defaults: the whole short run |
+| reader changes needed | none | none — sequenced lines byte-identical; Kinefly/BIAS lines ±2 ms and ~5 % placed one neighbour apart |
+| log levels | writer option, acked | converter option; `log_control_ack` still acks the level (recorded with the run, the converter's default) |
+| typed messages | none (String JSON) | FicTracFrame + ArenaFrame in the loop and the bag; ConnectorReply defined only |
+| ordering across processes | not a question (one process) | solved here by the bridge-side `seq`; a separate closed-loop process would fall back to `--order time` (17 same-ms swaps per 4000 lines, readers unaffected) |
+
+### Still not verified
+
+Windows (now also: whether `pixi install` builds the interfaces package there — `WINDOWS-TEST.md` has the steps); the closed-loop math in a **separate** process (it stays in the bridge node here, so the `seq` ordering is available; the `--order time` numbers are the proxy); rosbag2's own reader on a torn bag (the spike's converter uses the `mcap` library instead); a multi-hour recording for bag growth; `ros2 bag play` of a recorded run against the Studio.

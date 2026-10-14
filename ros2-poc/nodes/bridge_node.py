@@ -35,8 +35,26 @@ What is NEW (small, and all of it is visible in the log):
 Not supported here (by design of the PoC): the `fictrac_port` config key cannot re-bind
 the socket — the adapter owns it. The request is acknowledged with a warning.
 
-    pixi run bridge-node                      # ws://127.0.0.1:8765, logs on demand to runlogs/
-    pixi run bridge-node -- --frames 60 --log-dir /path
+PLAN B SPIKE (LAB-303, 2026-10-14) — MCAP as the record of truth:
+  * While a run's log is open, EVERYTHING is recorded into `<log-dir>/<run>.bag/` with
+    rosbag2_py + the MCAP storage plugin (nodes/recorder.py): the device topics as received
+    (`/fictrac/raw` or the typed `/fictrac/frame`, `/kinefly/raw`, `/bias/cmd|reply|status`),
+    `/arena/frame` (the closed-loop evaluation with ITS OWN sample time `t`/`ms`), and two
+    bridge-side streams — `/arena/browser` (every browser message, verbatim, with the receive
+    stamp) and `/arena/event` (bias_config, heading_tare, connector_status, source_lost, warn)
+    — each stamped with the writer's emission sequence number `seq`, plus `/arena/session`.
+  * `log_export` answers with the NDJSON DERIVED from the bag (nodes/mcap_convert.py); the
+    acked log level is the converter's default level. The live NDJSON writer is KEPT as a
+    shadow file during the spike: it is the fidelity reference (`converted == live` is checked
+    at every export and printed) and the crash-loss baseline. `--export live` returns it instead.
+  * ONE ms base per run: the pipeline's t0 is set from the log's open stamp (bridge 3.4 takes
+    two now_ms() samples there — comparison.md appendix 4).
+  * Typed messages when `arena_interfaces` is built (`pixi install` builds it; see
+    interfaces/): `/fictrac/frame` is consumed and `/arena/frame` published/recorded as
+    arena_interfaces/ArenaFrame (`--typed auto|on|off`); otherwise std_msgs/String JSON.
+
+    pixi run bridge-node                      # ws://127.0.0.1:8765, logs + bags on demand in runlogs/
+    pixi run bridge-node -- --frames 60 --log-dir /path --bag-profile crashsafe
 """
 
 from __future__ import annotations
@@ -57,11 +75,25 @@ import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
+from rclpy.serialization import deserialize_message, serialize_message
 from std_msgs.msg import String
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 BRIDGE_PY = REPO / "fictrac-bridge" / "bridge.py"
+sys.path.insert(0, str(HERE))
+from _common import setup_interfaces  # noqa: E402
+from mcap_convert import convert_bag  # noqa: E402
+from recorder import PROFILES, STRING_TYPE, Recorder  # noqa: E402
+
+setup_interfaces()  # a colcon-built interfaces/install, if any (pixi-build installs into the env)
+try:
+    from arena_interfaces.msg import ArenaFrame, FicTracFrame  # noqa: E402
+
+    HAVE_IFACES = True
+except Exception:  # not built on this machine → String JSON everywhere
+    ArenaFrame = FicTracFrame = None  # type: ignore[assignment]
+    HAVE_IFACES = False
 
 
 def load_bridge_module(path: Path = BRIDGE_PY):
@@ -76,8 +108,14 @@ def load_bridge_module(path: Path = BRIDGE_PY):
 
 B = load_bridge_module()
 
-NODE_VERSION = f"{B.BRIDGE_VERSION} · ros2-poc (rmw_zenoh, /fictrac/raw, connectors)"
+NODE_VERSION = f"{B.BRIDGE_VERSION} · ros2-poc plan-b (rmw_zenoh, mcap record, connectors)"
 FICTRAC_TOPIC = "/fictrac/raw"
+FICTRAC_FRAME_TOPIC = "/fictrac/frame"  # typed arena_interfaces/FicTracFrame
+BROWSER_TOPIC = "/arena/browser"
+EVENT_TOPIC = "/arena/event"
+SESSION_TOPIC = "/arena/session"
+ARENA_FRAME_TYPE = "arena_interfaces/msg/ArenaFrame"
+FICTRAC_FRAME_TYPE = "arena_interfaces/msg/FicTracFrame"
 KINEFLY_TOPIC = "/kinefly/raw"
 BIAS_CMD_TOPIC = "/bias/cmd"
 BIAS_REPLY_TOPIC = "/bias/reply"
@@ -189,85 +227,287 @@ class SourceStats:
         }
 
 
-class RosLogWriter(B.LogWriter):
-    """bridge.py's LogWriter + two hooks: `on_open()` after a file opens (writes the
-    'where do frames come from' line, resets the source watchdog) and `on_close()` just
-    before it closes (writes the per-source connector_status lines). Hooking the writer
-    itself covers every close path — log_control off, log_export, shutdown — without
-    re-parsing browser messages."""
+class RecordingLogWriter(B.LogWriter):
+    """bridge.py's LogWriter (kept as the SHADOW NDJSON during the spike) + the MCAP record.
+
+    Every emission the live writer makes is also recorded, with a per-run sequence number
+    `seq` assigned at the moment the live writer would write the line — so the converter can
+    reproduce the live order exactly (`--order seq`) or test the time-ordered alternative.
+      * `_open`      → the bag opens FIRST, then the shadow file; `/arena/session` open record
+      * write_inbound → `/arena/browser` {seq, rx_ms, raw, line:true}  (hello/config/log/…)
+      * record_browser → `/arena/browser` {…, line:false} for rows / log_export / connector_command
+      * write_event  → `/arena/event` {seq, …}   (record=False for events the converter DERIVES
+                        from device topics: BIAS replies/status and connector commands)
+      * frames       → recorded by RosHub.publish (the emission point), `/arena/frame`
+      * close        → `/arena/session` logging_stopped, then the bag closes
+    `export_current` returns the CONVERTED log (or the shadow with --export live) and
+    prints whether the two are byte-identical — the per-run fidelity self-check.
+    Hooks `on_open()` / `on_close()` as before (connector_status lines, watchdog scope)."""
 
     on_open = None
     on_close = None
 
+    def __init__(self, path, level, log_dir, *, profile: str, typed: bool, export: str, connectors: list[str]) -> None:
+        self.seq = 0
+        self.rec: Recorder | None = None
+        self.bag_name: str | None = None
+        self.last_bag: dict = {}
+        self.last_convert: dict = {}
+        self._profile = profile
+        self._typed = typed
+        self._export = export
+        self._connectors = list(connectors)
+        self._hub = None  # set by run() once the hub exists
+        super().__init__(path, level, log_dir)
+
+    # ── sequence + record helpers ────────────────────────────────────────────────────
+    def next_seq(self) -> int:
+        self.seq += 1
+        return self.seq
+
+    def _record(self, topic: str, obj: dict) -> None:
+        if self.rec is not None:
+            self.rec.write_json(topic, obj)
+
+    def topics(self) -> dict[str, str]:
+        """Topic → type for the bag (all of them, so a run documents what it could hold)."""
+        t = {
+            SESSION_TOPIC: STRING_TYPE, BROWSER_TOPIC: STRING_TYPE, EVENT_TOPIC: STRING_TYPE,
+            KINEFLY_TOPIC: STRING_TYPE, BIAS_CMD_TOPIC: STRING_TYPE, BIAS_REPLY_TOPIC: STRING_TYPE, BIAS_STATUS_TOPIC: STRING_TYPE,
+        }
+        if self._typed:
+            t[FRAME_TOPIC] = ARENA_FRAME_TYPE
+            t[FICTRAC_FRAME_TOPIC] = FICTRAC_FRAME_TYPE
+        else:
+            t[FRAME_TOPIC] = STRING_TYPE
+            t[FICTRAC_TOPIC] = STRING_TYPE
+        return t
+
+    # ── the LogWriter surface ────────────────────────────────────────────────────────
     def _open(self, name: str, event: str) -> None:
-        super()._open(name, event)
+        bag = (name[:-6] if name.endswith(".jsonl") else name) + ".bag"
+        rec = Recorder(bag, self.topics(), self._profile)
+        t_open = time.monotonic()
+        self.rec = rec  # visible to the ROS thread first: records during open() are buffered
+        open_error = None
+        try:
+            rec.open()
+        except Exception as exc:  # a recorder problem must never take the run (or the WebSocket) down
+            open_error = f"{type(exc).__name__}: {exc}"
+            self.rec = None
+            bag = None
+        self.bag_name = bag
+        self.seq = 0
+        super()._open(name, event)  # shadow file: session + schema lines; sets self._t0
+        if open_error:
+            print(f"[record] FAILED to open the bag ({open_error}); this run has the live file only", file=sys.stderr)
+            self.write_event({"type": "log", "event": "warn", "dir": "bridge", "level": "WARN", "ms": 0,
+                              "message": f"mcap record unavailable for this run: {open_error}"}, record=False)
+        else:
+            self._record(SESSION_TOPIC, {"seq": self.next_seq(), "event": event, "file": name, "ms": self._t0, "level": self.level,
+                                         "bag": bag, "connectors": sorted(self._connectors), "node": NODE_VERSION, "typed": self._typed,
+                                         "profile": self._profile})
+            print(f"[record] {bag} ({self._profile}, typed={self._typed}; opened in {1000 * (time.monotonic() - t_open):.0f} ms)", file=sys.stderr)
         if self.on_open is not None:
             self.on_open()
 
+    def start_new_log(self) -> None:
+        if self._explicit and self._fh:  # explicit --log path: a marker inside the open file
+            ms = B.now_ms()
+            self._emit({"type": "session", "event": "logging_started", "ms": ms})
+            self._record(SESSION_TOPIC, {"seq": self.next_seq(), "event": "logging_started", "ms": ms})
+            return
+        super().start_new_log()
+
+    def write_inbound(self, raw) -> None:
+        if not self._fh:
+            return
+        text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+        rx = B.now_ms()
+        self._record(BROWSER_TOPIC, {"seq": self.next_seq(), "rx_ms": rx, "raw": text, "line": True})
+        # LogWriter.write_inbound, with the SAME rx stamp as the record (the base would take
+        # its own now_ms() a few µs later).
+        try:
+            obj = json.loads(text)
+        except json.JSONDecodeError:
+            obj = {"type": "log", "event": "unparsed", "raw": text}
+        obj.setdefault("dir", B.ARENA_DIR)
+        obj.setdefault("rx_ms", rx)
+        if self.level == "behavior_v2" and obj.get("event") == "arena_command":
+            arr = B.compact_arena_command(obj, self._t0)
+            if arr is not None:
+                self._emit(arr)
+                return
+            self._verbatim_warned += 1
+            if self._verbatim_warned <= 3:
+                print(f"[log] arena_command kept verbatim: {B.arena_compact_reason(obj, self._t0)}", file=sys.stderr)
+        self._emit(obj)
+
+    def record_browser(self, text: str) -> int | None:
+        """A browser message the live writer does not write as a line (rows / log_export /
+        connector_command). Returns the seq it got, or None when no run is open."""
+        if not self._fh:
+            return None
+        seq = self.next_seq()
+        self._record(BROWSER_TOPIC, {"seq": seq, "rx_ms": B.now_ms(), "raw": text, "line": False})
+        return seq
+
+    def write_event(self, obj: dict, record: bool = True) -> None:
+        if not self._fh:
+            return
+        if record:
+            self._record(EVENT_TOPIC, {"seq": self.next_seq(), **obj})
+        super().write_event(obj)
+
+    def record_frame(self, msg: dict) -> None:
+        """Called by RosHub.publish — the frame's emission point (write_frame follows at once)."""
+        if not self._fh or self.rec is None:
+            return
+        seq = self.next_seq()
+        pub_ns = int(msg["t"]) * 1_000_000
+        if self._typed:
+            m = ArenaFrame(t_ms=int(msg["t"]), ms=int(msg["ms"]), fc=int(msg["fc"]), idx=int(msg["idx"]),
+                           has_ft=msg.get("ft") is not None, ft=float(msg["ft"]) if msg.get("ft") is not None else float("nan"),
+                           x=float(msg["x"]), y=float(msg["y"]), hd=float(msg["hd"]), epoch=int(msg.get("epoch", 0)),
+                           bias_deg=float(msg.get("bias", 0.0)), seq=seq)
+            self.rec.write_msg(FRAME_TOPIC, m, pub_ns=pub_ns)
+        else:
+            self.rec.write_json(FRAME_TOPIC, {"wseq": seq, **msg}, pub_ns=pub_ns)
+
     def close(self) -> None:
-        if self._fh is not None and self.on_close is not None:
+        if not self._fh:
+            return
+        if self.on_close is not None:
             self.on_close()
-        super().close()
+        ms = B.now_ms()
+        self._record(SESSION_TOPIC, {"seq": self.next_seq(), "event": "logging_stopped", "ms": ms})
+        self._emit({"type": "session", "event": "logging_stopped", "ms": ms})
+        self._fh.close()
+        self._fh = None
+        if self.rec is not None:
+            self.last_bag = self.rec.close()
+            self.rec = None
+            print(f"[record] closed {self.last_bag.get('bag')}: {self.last_bag.get('records')} records, "
+                  f"{self.last_bag.get('bytes_on_disk')} B on disk", file=sys.stderr)
+
+    def export_current(self):
+        if self._fh:
+            self.close()
+        name, live = super().export_current()
+        if name is None or self._export == "live" or not self.bag_name:
+            return name, live
+        t0 = time.monotonic()
+        try:
+            text, report = convert_bag(self.bag_name, level=None, order="seq")
+        except Exception as exc:
+            print(f"[convert] FAILED ({exc!r}) — exporting the shadow file instead", file=sys.stderr)
+            self.last_convert = {"error": repr(exc)}
+            return name, live
+        report["convert_ms"] = round(1000 * (time.monotonic() - t0), 1)
+        report["identical_to_live"] = text == live
+        if not report["identical_to_live"]:
+            a, b = text.splitlines(), (live or "").splitlines()
+            report["first_diff_line"] = next((i + 1 for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)) + 1)
+            report["lines_live"] = len(b)
+        self.last_convert = report
+        print(f"[convert] {self.bag_name} → {report['lines']} lines in {report['convert_ms']} ms; "
+              f"identical to the live file: {report['identical_to_live']}", file=sys.stderr)
+        return name, text
 
 
 class RosHub(B.Hub):
-    """bridge.py's Hub + a ROS mirror of every frame on /arena/frame."""
+    """bridge.py's Hub + a ROS mirror of every frame on /arena/frame (String JSON, or a typed
+    ArenaFrame when the interfaces are built) + the frame's MCAP record."""
 
-    def __init__(self, on_message, ros_pub) -> None:
+    def __init__(self, on_message, ros_pub, log: RecordingLogWriter, typed: bool) -> None:
         super().__init__(on_message)
         self._ros_pub = ros_pub
+        self._log = log
+        self._typed = typed
 
     async def publish(self, msg: dict) -> None:
         await super().publish(msg)
+        self._log.record_frame(msg)
         if self._ros_pub is not None:
-            m = String()
-            m.data = json.dumps(msg, separators=(",", ":"))
+            if self._typed:
+                m = ArenaFrame(t_ms=int(msg["t"]), ms=int(msg["ms"]), fc=int(msg["fc"]), idx=int(msg["idx"]),
+                               has_ft=msg.get("ft") is not None, ft=float(msg["ft"]) if msg.get("ft") is not None else float("nan"),
+                               x=float(msg["x"]), y=float(msg["y"]), hd=float(msg["hd"]), epoch=int(msg.get("epoch", 0)),
+                               bias_deg=float(msg.get("bias", 0.0)), seq=self._log.seq)
+            else:
+                m = String()
+                m.data = json.dumps(msg, separators=(",", ":"))
             self._ros_pub.publish(m)
 
 
 class BridgeNode(Node):
-    """ROS side: subscriptions hand data to the asyncio side thread-safely."""
+    """ROS side: subscriptions hand data to the asyncio side thread-safely. Every device
+    topic is subscribed RAW (serialized bytes) so the same bytes go to the bag unchanged."""
 
-    def __init__(self, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, on_kinefly, on_bias) -> None:
+    def __init__(self, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, on_kinefly, on_bias, log: RecordingLogWriter, typed: bool) -> None:
         super().__init__("arena_bridge")
         self._loop = loop
         self._queue = queue
         self._on_kinefly = on_kinefly
         self._on_bias = on_bias
+        self._log = log
+        self.typed = typed
         self.stats = {"fictrac": SourceStats("fictrac"), "kinefly": SourceStats("kinefly"), "bias": SourceStats("bias")}
-        self.frame_pub = self.create_publisher(String, FRAME_TOPIC, FRAME_QOS)
+        self.frame_pub = self.create_publisher(ArenaFrame if typed else String, FRAME_TOPIC, FRAME_QOS)
         # Studio → bridge connector_command relayed to the BIAS node (LAB-303 connectors).
         self.bias_cmd_pub = self.create_publisher(String, BIAS_CMD_TOPIC, RAW_QOS)
-        self.create_subscription(String, FICTRAC_TOPIC, self._fictrac, RAW_QOS)
-        self.create_subscription(String, KINEFLY_TOPIC, self._kinefly, RAW_QOS)
-        self.create_subscription(String, BIAS_REPLY_TOPIC, lambda m: self._bias("reply", m), RAW_QOS)
-        self.create_subscription(String, BIAS_STATUS_TOPIC, lambda m: self._bias("status", m), RAW_QOS)
+        if typed:
+            self.create_subscription(FicTracFrame, FICTRAC_FRAME_TOPIC, self._fictrac_typed, RAW_QOS, raw=True)
+        else:
+            self.create_subscription(String, FICTRAC_TOPIC, self._fictrac, RAW_QOS, raw=True)
+        self.create_subscription(String, KINEFLY_TOPIC, self._kinefly, RAW_QOS, raw=True)
+        self.create_subscription(String, BIAS_REPLY_TOPIC, lambda b: self._bias("reply", BIAS_REPLY_TOPIC, b), RAW_QOS, raw=True)
+        self.create_subscription(String, BIAS_STATUS_TOPIC, lambda b: self._bias("status", BIAS_STATUS_TOPIC, b), RAW_QOS, raw=True)
+
+    def _record(self, topic: str, data: bytes) -> None:
+        rec = self._log.rec
+        if rec is not None:
+            rec.write_raw(topic, data)
 
     @staticmethod
-    def _envelope(msg: String) -> dict | None:
+    def _envelope(data: bytes) -> dict | None:
         try:
-            env = json.loads(msg.data)
-        except json.JSONDecodeError:
+            env = json.loads(deserialize_message(data, String).data)
+        except (json.JSONDecodeError, Exception):
             return None
         return env if isinstance(env, dict) else None
 
-    def _fictrac(self, msg: String) -> None:
-        env = self._envelope(msg)
+    def _fictrac(self, data: bytes) -> None:
+        self._record(FICTRAC_TOPIC, data)
+        env = self._envelope(data)
         if env is None or not isinstance(env.get("raw"), str):
             return
         self.stats["fictrac"].seen(env.get("rx_epoch_ms"))
         # Same hand-off bridge.py's UDP protocol does (queue.put_nowait), from the ROS thread.
         self._loop.call_soon_threadsafe(self._queue.put_nowait, env["raw"])
 
-    def _kinefly(self, msg: String) -> None:
-        env = self._envelope(msg)
+    def _fictrac_typed(self, data: bytes) -> None:
+        self._record(FICTRAC_FRAME_TOPIC, data)
+        try:
+            m = deserialize_message(data, FicTracFrame)
+        except Exception:
+            return
+        self.stats["fictrac"].seen(int(m.rx_epoch_ms) if m.rx_epoch_ms else None)
+        # The closed-loop math stays bridge 3.4's byte for byte: it parses the verbatim line
+        # the typed message carries. The typed fields are for ROS-native consumers + the bag.
+        self._loop.call_soon_threadsafe(self._queue.put_nowait, m.raw)
+
+    def _kinefly(self, data: bytes) -> None:
+        self._record(KINEFLY_TOPIC, data)
+        env = self._envelope(data)
         if env is None or not isinstance(env.get("raw"), str):
             return
         self.stats["kinefly"].seen(env.get("rx_epoch_ms"))
         self._loop.call_soon_threadsafe(self._on_kinefly, env)
 
-    def _bias(self, kind: str, msg: String) -> None:
-        env = self._envelope(msg)
+    def _bias(self, kind: str, topic: str, data: bytes) -> None:
+        self._record(topic, data)
+        env = self._envelope(data)
         if env is None:
             return
         self.stats["bias"].seen(env.get("rx_epoch_ms"))
@@ -278,7 +518,12 @@ async def run(args: argparse.Namespace) -> None:
     if B.serve is None:
         raise SystemExit("the `websockets` package is required (pixi install)")
     loop = asyncio.get_running_loop()
-    log = RosLogWriter(args.log, args.log_level, args.log_dir)
+    typed = HAVE_IFACES if args.typed == "auto" else (args.typed == "on")
+    if typed and not HAVE_IFACES:
+        raise SystemExit("--typed on, but arena_interfaces is not importable (pixi install builds it; or pixi run build-interfaces)")
+    CONNECTORS = {"bias": BIAS_CMD_TOPIC}
+    log = RecordingLogWriter(args.log, args.log_level, args.log_dir, profile=args.bag_profile, typed=typed,
+                             export=args.export, connectors=list(CONNECTORS))
     queue: asyncio.Queue[str] = asyncio.Queue()
     pipeline = B.Pipeline(
         None,
@@ -313,7 +558,6 @@ async def run(args: argparse.Namespace) -> None:
     # is logged on arrival (dir browser→bridge) and its reply is logged when the node answers
     # (via "ws" marks replies the Studio asked for, as opposed to bias_cmd.py's). The reply
     # goes back to the ASKING websocket only (the hub's broadcast coalesces frames).
-    CONNECTORS = {"bias": BIAS_CMD_TOPIC}
     pending: dict[str, dict] = {}  # command id → {"ws", "plugin", "connector", "t"}
 
     async def ws_reply(websocket, msg: dict) -> None:
@@ -333,7 +577,7 @@ async def run(args: argparse.Namespace) -> None:
         if p is not None:
             ev["via"] = "ws"
             ev["plugin"] = p["plugin"]
-        log.write_event(ev)
+        log.write_event(ev, record=False)  # derived by the converter from /bias/reply|status
         if p is not None:
             rep = {"type": "connector_reply", "connector": p["connector"], "plugin": p["plugin"]}
             for k, v in env.items():
@@ -341,24 +585,29 @@ async def run(args: argparse.Namespace) -> None:
                     rep[k] = v
             loop.create_task(ws_reply(p["ws"], rep))
 
-    async def on_connector_command(obj: dict, websocket) -> None:
+    async def on_connector_command(obj: dict, websocket, raw_text: str | None = None) -> None:
         cid = obj.get("id")
         connector = str(obj.get("connector") or "bias")
         command = str(obj.get("command") or "")
         params = obj.get("params") if isinstance(obj.get("params"), dict) else {}
         plugin = obj.get("plugin")
+        # Recorded as the browser message itself (the converter derives this event + the
+        # unknown-connector error reply from it); the shadow file gets the lines as before.
+        log.record_browser(json.dumps(obj, separators=(",", ":")) if raw_text is None else raw_text)
         log.write_event({"type": "connector", "src": connector, "kind": "command", "dir": "browser→bridge", "ms": rel_ms(),
-                         "id": cid, "plugin": plugin, "command": command, "params": params})
+                         "id": cid, "plugin": plugin, "command": command, "params": params}, record=False)
         if connector not in CONNECTORS:
             err = f"no connector {connector!r} on this bridge (have {sorted(CONNECTORS)})"
             log.write_event({"type": "connector", "src": connector, "kind": "reply", "dir": "bridge", "ms": rel_ms(), "via": "ws",
-                             "id": cid, "plugin": plugin, "command": command, "ok": False, "outcome": "error", "error": err})
+                             "id": cid, "plugin": plugin, "command": command, "ok": False, "outcome": "error", "error": err}, record=False)
             await ws_reply(websocket, {"type": "connector_reply", "id": cid, "connector": connector, "plugin": plugin,
                                        "command": command, "ok": False, "outcome": "error", "error": err})
             return
         pending[str(cid)] = {"ws": websocket, "plugin": plugin, "connector": connector, "t": time.monotonic()}
         m = String()
         m.data = json.dumps({"id": cid, "command": command, "params": params}, separators=(",", ":"))
+        if log.rec is not None:
+            log.rec.write_msg(BIAS_CMD_TOPIC, m)
         node.bias_cmd_pub.publish(m)
 
     inputs = RosInput(args.fictrac_port, warn)
@@ -378,18 +627,29 @@ async def run(args: argparse.Namespace) -> None:
         if kind == "hello":
             log.write_inbound(text)
             await ws_reply(websocket, {"type": "hello_ack", "bridge": B.BRIDGE_VERSION, "levels": list(B.LOG_LEVELS),
-                                       "level": log.level, "logging": log.active, "connectors": sorted(CONNECTORS)})
+                                       "level": log.level, "logging": log.active, "connectors": sorted(CONNECTORS),
+                                       "record": "mcap", "typed": typed})
             return
         if kind == "connector_command":
-            await on_connector_command(obj, websocket)
+            await on_connector_command(obj, websocket, text)
             return
+        if kind == "rows":
+            # The live writer writes the rows (write_rows); the bag gets the message itself.
+            log.record_browser(text)
+            log.write_rows(obj.get("rows"))
+            return
+        if kind == "log_export":
+            log.record_browser(text)  # the last record of the run (the export closes the bag)
         await dispatch_34(raw, websocket)
 
-    node = BridgeNode(loop, queue, on_kinefly, on_bias)
+    node = BridgeNode(loop, queue, on_kinefly, on_bias, log, typed)
 
     def on_log_open() -> None:
-        """A new file: note where its frames come from, and scope the source watchdog to it
-        (a source lost/resumed between runs must not leak a half pair into this file)."""
+        """A new file: ONE ms base (the pipeline's t0 = the log's open stamp; bridge 3.4 took
+        two now_ms() samples a few µs apart), note where its frames come from, and scope the
+        source watchdog to it (a source lost/resumed between runs must not leak a half pair)."""
+        if log._t0 is not None:
+            pipeline.t0_ms = log._t0
         for s in node.stats.values():
             s.lost = False
             s.last_rx_mono = None
@@ -401,7 +661,10 @@ async def run(args: argparse.Namespace) -> None:
                 "src": "bridge",
                 "node": NODE_VERSION,
                 "rmw": os.environ.get("RMW_IMPLEMENTATION"),
-                "topics": {"fictrac": FICTRAC_TOPIC, "kinefly": KINEFLY_TOPIC, "bias": [BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC], "frame": FRAME_TOPIC},
+                "record": {"bag": log.bag_name, "profile": log._profile, "typed": typed},
+                "topics": {"fictrac": FICTRAC_FRAME_TOPIC if typed else FICTRAC_TOPIC, "kinefly": KINEFLY_TOPIC,
+                           "bias": [BIAS_CMD_TOPIC, BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC], "frame": FRAME_TOPIC,
+                           "browser": BROWSER_TOPIC, "event": EVENT_TOPIC, "session": SESSION_TOPIC},
             }
         )
 
@@ -416,8 +679,9 @@ async def run(args: argparse.Namespace) -> None:
     if log.active:  # a fixed --log path opened before the hooks existed
         on_log_open()
 
-    hub = RosHub(dispatch, node.frame_pub)
+    hub = RosHub(dispatch, node.frame_pub, log, typed)
     pipeline.hub = hub
+    log._hub = hub
 
     # hello_ack must say 3.4 first so the unmodified Studio's _bridgeAtLeast(3,4) passes.
     B.BRIDGE_VERSION = NODE_VERSION
@@ -462,7 +726,8 @@ async def run(args: argparse.Namespace) -> None:
     async with B.serve(hub.serve_client, args.ws_host, args.ws_port, max_size=B.WS_MAX_SIZE):
         print(
             f"[ws] serving ws://{args.ws_host}:{args.ws_port}  (bridge-node {NODE_VERSION}; "
-            f"rmw={os.environ.get('RMW_IMPLEMENTATION')}, in={FICTRAC_TOPIC}, frames={args.frames}, "
+            f"rmw={os.environ.get('RMW_IMPLEMENTATION')}, in={FICTRAC_FRAME_TOPIC if typed else FICTRAC_TOPIC}, typed={typed}, "
+            f"record=mcap/{args.bag_profile}, export={args.export}, frames={args.frames}, "
             f"coupling={args.coupling:g}, deg_per_frame={args.deg_per_frame:g}, log={args.log or 'on-demand'}, level={log.level})",
             file=sys.stderr,
         )
@@ -498,6 +763,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--log", default=None, help="fixed log path (else on demand per log_control)")
     p.add_argument("--log-dir", default=str(HERE.parent / "runlogs"), help="directory for on-demand arena-log-*.jsonl (default: ros2-poc/runlogs)")
     p.add_argument("--log-level", choices=B.LOG_LEVELS, default=B.DEFAULT_LOG_LEVEL)
+    p.add_argument("--typed", choices=("auto", "on", "off"), default="auto",
+                   help="consume /fictrac/frame + publish /arena/frame as arena_interfaces types (auto: when the package imports; default)")
+    p.add_argument("--bag-profile", choices=sorted(PROFILES), default="crashsafe",
+                   help="MCAP writer profile: crashsafe (no chunking, no cache; default — rosbag2's defaults hold a whole short run in an unflushed 768 KiB chunk) or default (rosbag2 defaults)")
+    p.add_argument("--export", choices=("converted", "live"), default="converted",
+                   help="what log_export returns: the NDJSON converted from the bag (default) or the live shadow file")
     args, ros_args = p.parse_known_args(argv)
     if args.frames <= 0:
         p.error("--frames must be > 0")

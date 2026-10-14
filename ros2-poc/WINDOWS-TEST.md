@@ -163,3 +163,29 @@ adapter log. Skip if short on time; the Mac covered the real fork.
 - Step 5: the `--json` replies, the `get-status` body, what BIAS wrote on disk, the unknown-path behavior.
 - Step 7: pass/fail per line.
 - Any error text, verbatim, with the step number. Small fixes can go straight onto the PR branch.
+
+## Plan B additions (2026-10-14 evening) — what changed for this test
+
+`pixi install` now also **builds `interfaces/arena_interfaces`** (three `.msg` types) through
+pixi's preview build feature with the RoboStack `pixi-build-ros` backend. On Windows that build
+needs **Visual Studio 2022 Build Tools (C++ workload)** on the PC; pixi cannot install them.
+Record, verbatim: (a) whether `pixi install --locked` succeeds without them, how long it took, and
+the first error if not; (b) with them installed, the same. If the build cannot be made to work in
+30 minutes, run the graph with the String fallback instead:
+
+```powershell
+# in ros2-poc\pixi.toml, comment out the line   arena_interfaces = { path = "interfaces/arena_interfaces" }
+pixi install
+pixi run rig -- --bridge-args "--typed off" --fictrac-args "--typed off"
+```
+
+The bridge node now records every run into `runlogs\<run>.bag\` (MCAP) and `log_export` returns the
+log **converted from the bag**; the live NDJSON stays beside it as a shadow. After a Studio run:
+
+```powershell
+pixi run convert -- runlogs\<run>.bag --out converted.jsonl        # must equal the shadow .jsonl apart from kf/BIAS line timing
+pixi run test                                                       # 46 checks incl. the SIGKILL crash phase
+```
+
+Record `pixi run test`'s summary table, the `[test] crash (...)` lines, and the bag size vs the
+`.jsonl` size.

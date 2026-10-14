@@ -52,6 +52,11 @@
       "key": "g6_2x10_2p_diagnostics",
       "label": "2P line-sync diagnostics — full-field brightness ramp/steps, 1 Hz flash, 10 % sparse, 6 s all-off (~52 s; upload its _patterns folder first)",
       "path": "./protocols/g6_2x10_2p_diagnostics.yaml"
+    },
+    {
+      "key": "bias_camera_closed_loop_poc",
+      "label": "BIAS camera + FicTrac closed loop through the ROS 2 bridge (LAB-303 spike, ~40 s)",
+      "path": "./protocols/bias_camera_closed_loop_poc.yaml"
     }
   ]
 }
