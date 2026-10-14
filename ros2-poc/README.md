@@ -237,6 +237,30 @@ without further changes; **"ROS Studio" = that Studio served from the `/ros/` Pa
 | typed messages | none (String JSON) | FicTracFrame + ArenaFrame in the loop and the bag; ConnectorReply defined only |
 | ordering across processes | not a question (one process) | solved here by the bridge-side `seq`; a separate closed-loop process would fall back to `--order time` (17 same-ms swaps per 4000 lines, readers unaffected) |
 
+### Mac bench end-to-end (2026-10-14 19:44 ET, same bench as the afternoon runs)
+
+Studio v0.95 served from `localhost:8092` (this branch), `pixi run rig -- --sim --bias` (model
+fly at 50 Hz, typed FicTrac topic, real BIAS Mac port on :5010, bridge node recording with the
+`crashsafe` profile), the G6 2×10 bench controller over Web Serial (Michael clicked the port
+picker), protocol `protocols/bias_camera_closed_loop_poc.yaml` (6 steps: camera start → 15 s
+closed loop → camera sync → 15 s closed loop + 90 °/s bias → camera stop → shutdown).
+
+| | result |
+|---|---|
+| run | 6 / 6 steps, 1500 frames applied, 0 errors, 0 skips; every BIAS command `ok` via the WebSocket path (connect 0.7 ms, startRecording 192 ms, getTimestamp 0.9 / 0.7 / 0.9 ms, stopRecording 110 ms); recording `poc_studio_run_cam_0_…_v001/movie.mjpg` 167 MB, 763 stamped frames; BIAS clock 0.0 → 15.667 → 31.667 s at the three sync points |
+| bag | 20 272 records, 6.8 MB, 181 s open (`/arena/frame` 9056 typed, `/fictrac/frame` 9055 typed, `/arena/browser` 1955, `/bias/status` 181, `/bias/reply` 6, `/bias/cmd` 6, `/arena/event` 11, `/arena/session` 2) |
+| `log_export` | the Studio's auto-commit returns before asking for the export when the course token is not stored on the origin (normal lab use), so the export was requested with the same `log_export` message from a small client: the bag closed, converted in **315 ms** to 13 151 lines / 954 kB (level `behavior_v1`, this origin's Run-logging setting) |
+| fidelity vs the live shadow file | **all 12 964 sequenced lines byte-identical**; the 187 derived BIAS lines identical in content, `\|Δms\|` p50 0 / max 1 ms, one placed one neighbour apart |
+| `closed-loop-report.py` on the converted log | 2 epochs from `fictracApply`; idx mismatch **0.13 % / 0.00 %** (the known single boundary row); rejection +0.56 on the bias epoch (model fly vs the card's 20-frame grating, as in the afternoon runs) |
+| `runlog-check.py` on the converted log | **OK** — firmware `c15d840a 2x10 2026-09-29`, SD identity, trial verdicts 2 pass / 0 fail, `cc_0x70_ok` 1500, `fictrac_per_cmd` 6.04 |
+| level switch from the same bag | `--level behavior_v2` → 720 kB; `runlog-check` OK with `a_ok` 1500 (the compact echoes), same two epochs |
+
+One behaviour worth a decision: with the bridge logging on by default and the Studio only
+exporting when it commits, the bag of a lab-use run stays **open** until the next run or a
+manual export — a torn-bag read (`--recover`) is then the normal offline path, exactly as the
+shadow `.jsonl` is today. A Plan B bridge should close the bag at `log_control off` (the Studio
+sends it at run end only on the commit path today) or on a run-end event.
+
 ### Still not verified
 
-Windows (now also: whether `pixi install` builds the interfaces package there — `WINDOWS-TEST.md` has the steps); the closed-loop math in a **separate** process (it stays in the bridge node here, so the `seq` ordering is available; the `--order time` numbers are the proxy); rosbag2's own reader on a torn bag (the spike's converter uses the `mcap` library instead); a multi-hour recording for bag growth; `ros2 bag play` of a recorded run against the Studio.
+Windows (now also: whether `pixi install` builds the interfaces package there — `WINDOWS-TEST.md` has the steps); the closed-loop math in a **separate** process (it stays in the bridge node here, so the `seq` ordering is available; the `--order time` numbers are the proxy); rosbag2's own reader on a torn bag (the spike's converter uses the `mcap` library instead); a multi-hour recording for bag growth; `ros2 bag play` of a recorded run against the Studio; a real FicTrac (the bench used the model-fly simulator).
