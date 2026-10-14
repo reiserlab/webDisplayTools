@@ -136,8 +136,9 @@ The items the container could not cover, run on the lab Mac with the 2×10 bench
 
 One detour worth knowing: the stock `fictrac_bias_test.yaml` names `frame2_h_ccw_200f` at `pattern_ID 4`; this card's slot 4 is a 1-frame color test pattern, the runner read `frames: 1` from the card (correctly) and the display sat on frame 0. The protocol was re-pointed at the card's 20-frame grating — a card-content mismatch the Studio already warns about, not a bridge issue.
 
-**Still not verified:** Windows execution (`win-64` only resolves and locks), and the macOS router
-with the stock IPv6 config (the loopback config was used throughout).
+**Still not verified:** Windows execution (`win-64` only resolves and locks; the rig-PC session is
+scripted step by step in `WINDOWS-TEST.md`), and the macOS router with the stock IPv6 config (the
+loopback config was used throughout).
 
 ## Observations for the decision
 

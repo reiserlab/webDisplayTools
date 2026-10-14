@@ -53,7 +53,7 @@ SIM = REPO / "fictrac-bridge" / "fictrac_sim.py"
 BRIDGE_PY = REPO / "fictrac-bridge" / "bridge.py"
 PY = sys.executable
 sys.path.insert(0, str(NODES))
-from _common import popen_group, signal_group, wait_port  # noqa: E402
+from _common import SIGKILL, popen_group, signal_group, wait_port  # noqa: E402
 
 results: list[tuple[str, bool, str]] = []
 
@@ -85,7 +85,7 @@ class Proc:
 
     def kill9(self) -> None:
         if self.alive():
-            self._signal(signal.SIGKILL)
+            self._signal(SIGKILL)
             self.p.wait(5)
 
     def stop(self) -> None:
@@ -99,7 +99,7 @@ class Proc:
             try:
                 self.p.wait(3)
             except subprocess.TimeoutExpired:
-                self._signal(signal.SIGKILL)
+                self._signal(SIGKILL)
         except (ProcessLookupError, OSError, ValueError):
             pass
         self.log.flush()

@@ -32,7 +32,7 @@ SIM = HERE.parents[1] / "fictrac-bridge" / "fictrac_sim.py"
 
 
 sys.path.insert(0, str(HERE))
-from _common import popen_group, signal_group, wait_port  # noqa: E402
+from _common import SIGKILL, popen_group, signal_group, wait_port  # noqa: E402
 
 
 def port_in_use(proto: str, port: int, host: str = "127.0.0.1") -> bool:
@@ -95,7 +95,7 @@ class Child:
             try:
                 self.proc.wait(2.0)
             except subprocess.TimeoutExpired:
-                self._signal(signal.SIGKILL)
+                self._signal(SIGKILL)
         except (ProcessLookupError, OSError, ValueError):
             pass
 
