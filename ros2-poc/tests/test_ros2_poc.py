@@ -182,14 +182,32 @@ def main(argv: list[str] | None = None) -> int:
 
         bias_replies: dict = {}
 
+        def wait_for_log_line(predicate, timeout_s: float) -> bool:
+            """Tail the bridge node's on-disk run log until a line satisfies `predicate`."""
+            end = time.monotonic() + timeout_s
+            while time.monotonic() < end:
+                files = sorted(runlogs.glob("arena-log-*.jsonl"))
+                if files:
+                    try:
+                        for line in files[-1].read_text(encoding="utf-8").splitlines():
+                            if predicate(line):
+                                return True
+                    except OSError:
+                        pass
+                time.sleep(0.1)
+            return False
+
         def side_actor() -> None:
             t_run0 = time.monotonic()
             bias_replies["connect"] = bias_cmd("connect")
             bias_replies["startRecording"] = bias_cmd("startRecording", "--filename", "poc_trial.avi")
-            # Kill the FicTrac adapter `kill_at` s into epoch index 1 (emulator: 0.5 s pre-run + epochs + ITIs).
-            t_kill = t_run0 + 0.5 + (a.epoch_s + 1.0) * 1 + a.kill_at
-            while time.monotonic() < t_kill:
-                time.sleep(0.05)
+            # Kill the FicTrac adapter `kill_at` s after epoch index 1 OPENS — anchored on the
+            # runner's own fictracApply line in the log, not on a wall-clock estimate.
+            kill_report["anchored"] = wait_for_log_line(
+                lambda l: '"op":"fictracApply"' in l and '"value":true' in l and '"condition":"cl_constant_1"' in l,
+                timeout_s=30 + a.epoch_s * 2,
+            )
+            time.sleep(a.kill_at)
             kill_report["killed_at_ms"] = int((time.monotonic() - t_run0) * 1000)
             fictrac.kill9()
             kill_report["adapter_rc"] = fictrac.p.returncode if fictrac.p else None
@@ -198,10 +216,13 @@ def main(argv: list[str] | None = None) -> int:
             kill_report["restarted_at_ms"] = int((time.monotonic() - t_run0) * 1000)
             time.sleep(1.0)
             bias_replies["getTimestamp"] = bias_cmd("getTimestamp")
-            # stopRecording near the end of the run (after the last epoch starts).
-            t_stop = t_run0 + 0.5 + (a.epoch_s + 1.0) * (a.epochs - 1) + 1.0
-            while time.monotonic() < t_stop:
-                time.sleep(0.05)
+            # stopRecording once the LAST epoch has opened (same anchor, so it lands inside the run).
+            last = f"cl_constant_{a.epochs - 1}"
+            wait_for_log_line(
+                lambda l: '"op":"fictracApply"' in l and '"value":true' in l and f'"condition":"{last}"' in l,
+                timeout_s=30 + a.epoch_s * a.epochs,
+            )
+            time.sleep(1.0)
             bias_replies["stopRecording"] = bias_cmd("stopRecording")
 
         actor = threading.Thread(target=side_actor, name="side-actor", daemon=True)
@@ -222,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         objs = read_jsonl(export) if export.exists() else []
         disk = sorted(runlogs.glob("arena-log-*.jsonl"))
         check("export is byte-identical to the bridge node's file on disk",
-              bool(disk) and disk[-1].read_bytes() == export.read_bytes(), f"{[d.name for d in disk]}")
+              bool(disk) and export.exists() and disk[-1].read_bytes() == export.read_bytes(), f"{[d.name for d in disk]}")
 
         events = [o for o in objs if isinstance(o, dict)]
         rows_ft = [o for o in objs if isinstance(o, list) and isinstance(o[0], (int, float))]

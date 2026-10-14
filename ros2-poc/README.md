@@ -47,7 +47,9 @@ Environment set by the workspace (`[activation.env]`): `RMW_IMPLEMENTATION=rmw_z
 `ZENOH_SESSION_CONFIG_URI` → the two files under `config/` (stock rmw_zenoh configs with the
 endpoint changed from `tcp/[::]:7447` / `tcp/localhost:7447` to `tcp/127.0.0.1:7447`: the
 stock router fails on a host without IPv6, and a rig's graph should not be reachable from the
-lab network anyway).
+lab network anyway). The two config paths use `$PIXI_PROJECT_ROOT`; `rig.py` sets them
+explicitly for its children, so `pixi run rig` does not depend on the shell expanding it
+(Windows: to verify; the individual `router` / `*-adapter` tasks do).
 
 ## What was built in the first day
 
@@ -107,6 +109,16 @@ millisecond, and a FicTrac row computed under the previous mapping can carry tha
 millisecond (it is even written before the config line). The report then reconstructs that
 one row with the new epoch's bias and tare. The bar is therefore "≤ 1 boundary row", which is
 what bridge 3.4 produces as well; the mapping itself is exact.
+
+## Further automated checks (2026-10-14, same container)
+
+| check | result |
+|---|---|
+| **Soak**: `pixi run rig -- --sim --kinefly --bias --bias-sim` with the emulator looping 2 × 20 s epochs per run | 12 consecutive runs (≈ 10 min steady state) all passed; bridge node RSS 66.5 → 68.5 MB then flat, adapters flat at 61 MB, router 15 MB; latency p50 1.1 ms / p99 3.4–3.9 ms on every run |
+| **Zero loss under load**: sim at 200 Hz × 4000 frames + Kinefly at 500 Hz × 10 000 | 4000 / 4000 FicTrac rows (frame counters 1..4000, no gap); every KF/1 frame sent while the log was open logged, no sequence gap; p99 3.3 ms (FicTrac) / 4.7 ms (Kinefly) |
+| **Router killed and restarted mid-run** (6 s outage) | no data gap at all (rmw_zenoh peers keep their direct links; the router is discovery), emulator run completed, log intact |
+| **Student mistakes**: a second `pixi run rig`; `pixi run rig` while bridge 3.4 holds ws :8765 / udp :60000 | `rig.py` pre-flights its ports and names the culprit in one line instead of a Rust panic or a Python traceback |
+| **Code review** of the diff (nine findings) | fixed: BIAS worker exception guard + status-poll coalescing, watchdog scoped per log file (`RosLogWriter` hooks instead of re-parsing messages), router death stops the rig, kill timing in the harness anchored on the log, config paths set explicitly by `rig.py`, shared `_common.py` |
 
 ## Not verified here (needs the Mac / a rig)
 

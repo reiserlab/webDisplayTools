@@ -188,6 +188,27 @@ class SourceStats:
         }
 
 
+class RosLogWriter(B.LogWriter):
+    """bridge.py's LogWriter + two hooks: `on_open()` after a file opens (writes the
+    'where do frames come from' line, resets the source watchdog) and `on_close()` just
+    before it closes (writes the per-source connector_status lines). Hooking the writer
+    itself covers every close path — log_control off, log_export, shutdown — without
+    re-parsing browser messages."""
+
+    on_open = None
+    on_close = None
+
+    def _open(self, name: str, event: str) -> None:
+        super()._open(name, event)
+        if self.on_open is not None:
+            self.on_open()
+
+    def close(self) -> None:
+        if self._fh is not None and self.on_close is not None:
+            self.on_close()
+        super().close()
+
+
 class RosHub(B.Hub):
     """bridge.py's Hub + a ROS mirror of every frame on /arena/frame."""
 
@@ -254,7 +275,7 @@ async def run(args: argparse.Namespace) -> None:
     if B.serve is None:
         raise SystemExit("the `websockets` package is required (pixi install)")
     loop = asyncio.get_running_loop()
-    log = B.LogWriter(args.log, args.log_level, args.log_dir)
+    log = RosLogWriter(args.log, args.log_level, args.log_dir)
     queue: asyncio.Queue[str] = asyncio.Queue()
     pipeline = B.Pipeline(
         None,
@@ -292,40 +313,38 @@ async def run(args: argparse.Namespace) -> None:
         log.write_event(ev)
 
     inputs = RosInput(args.fictrac_port, warn)
-    inner = B.make_dispatcher(pipeline, log, inputs)
+    dispatch = B.make_dispatcher(pipeline, log, inputs)  # unmodified bridge.py dispatcher
 
     node = BridgeNode(loop, queue, on_kinefly, on_bias)
 
-    def write_status() -> None:
-        """One connector_status line per source that produced anything (log must be open)."""
+    def on_log_open() -> None:
+        """A new file: note where its frames come from, and scope the source watchdog to it
+        (a source lost/resumed between runs must not leak a half pair into this file)."""
+        for s in node.stats.values():
+            s.lost = False
+            s.last_rx_mono = None
+        log.write_event(
+            {
+                "type": "connector_status",
+                "dir": "bridge",
+                "ms": rel_ms(),
+                "src": "bridge",
+                "node": NODE_VERSION,
+                "rmw": os.environ.get("RMW_IMPLEMENTATION"),
+                "topics": {"fictrac": FICTRAC_TOPIC, "kinefly": KINEFLY_TOPIC, "bias": [BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC], "frame": FRAME_TOPIC},
+            }
+        )
+
+    def on_log_close() -> None:
+        """One connector_status line per source that produced anything, before the file closes."""
         for s in node.stats.values():
             if s.count:
                 log.write_event({"type": "connector_status", "dir": "bridge", "ms": rel_ms(), **s.summary()})
 
-    async def dispatch(raw, websocket=None) -> None:
-        # Add the connector_status lines BEFORE the file closes (log_control off / export).
-        try:
-            obj = json.loads(raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace"))
-        except (json.JSONDecodeError, AttributeError):
-            obj = None
-        if isinstance(obj, dict):
-            kind = obj.get("type")
-            if (kind == "log_control" and not obj.get("enabled")) or kind == "log_export":
-                write_status()
-        await inner(raw, websocket)
-        if isinstance(obj, dict) and obj.get("type") == "log_control" and obj.get("enabled"):
-            # A new file was opened: note where its frames come from.
-            log.write_event(
-                {
-                    "type": "connector_status",
-                    "dir": "bridge",
-                    "ms": rel_ms(),
-                    "src": "bridge",
-                    "node": NODE_VERSION,
-                    "rmw": os.environ.get("RMW_IMPLEMENTATION"),
-                    "topics": {"fictrac": FICTRAC_TOPIC, "kinefly": KINEFLY_TOPIC, "bias": [BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC], "frame": FRAME_TOPIC},
-                }
-            )
+    log.on_open = on_log_open
+    log.on_close = on_log_close
+    if log.active:  # a fixed --log path opened before the hooks existed
+        on_log_open()
 
     hub = RosHub(dispatch, node.frame_pub)
     pipeline.hub = hub
@@ -383,9 +402,12 @@ async def run(args: argparse.Namespace) -> None:
     consumer.cancel()
     wd.cancel()
     await asyncio.gather(consumer, wd, return_exceptions=True)
-    write_status()
-    log.close()
-    executor.shutdown(timeout_sec=1.0)
+    log.close()  # on_close writes the connector_status lines first
+    # Stop the ROS side in order: end the spin, WAIT for its thread, then destroy the node.
+    # Destroying while the executor thread is still inside spin() races the Zenoh session
+    # teardown and ends the process with "terminate called without an active exception".
+    executor.shutdown(timeout_sec=2.0)
+    ros_thread.join(timeout=3.0)
     node.destroy_node()
 
 

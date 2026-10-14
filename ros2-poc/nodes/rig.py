@@ -18,8 +18,8 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
-import signal
 import socket
+import signal
 import subprocess
 import sys
 import threading
@@ -31,15 +31,24 @@ NODES = HERE
 SIM = HERE.parents[1] / "fictrac-bridge" / "fictrac_sim.py"
 
 
-def wait_port(host: str, port: int, timeout_s: float) -> bool:
-    end = time.monotonic() + timeout_s
-    while time.monotonic() < end:
-        try:
-            with socket.create_connection((host, port), timeout=0.5):
-                return True
-        except OSError:
-            time.sleep(0.2)
-    return False
+sys.path.insert(0, str(HERE))
+from _common import wait_port  # noqa: E402
+
+
+def port_in_use(proto: str, port: int, host: str = "127.0.0.1") -> bool:
+    """True when binding host:port fails (something else holds it)."""
+    kind = socket.SOCK_STREAM if proto == "tcp" else socket.SOCK_DGRAM
+    s = socket.socket(socket.AF_INET, kind)
+    try:
+        if proto == "tcp":
+            # Ignore TIME_WAIT leftovers from a just-stopped rig; a LIVE listener still fails.
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((host, port))
+        return False
+    except OSError:
+        return True
+    finally:
+        s.close()
 
 
 class Child:
@@ -113,6 +122,30 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     py = sys.executable
+    # Pre-flight: the ports this rig will bind. A clear line beats the router's Rust
+    # panic text or a Python OSError traceback when a second `pixi run rig`, a stray
+    # router, or the shipping bridge 3.4 (also ws :8765 + udp :60000) is still running.
+    taken = []
+    for proto, port, who in (
+        ("tcp", 7447, "a Zenoh router (another `pixi run rig` / `pixi run router`)") if not args.no_router else (None, 0, ""),
+        ("tcp", 8765, "a bridge on the Studio WebSocket port — bridge 3.4 (`pixi run bridge` at the repo root) or another rig"),
+        ("udp", 60000, "a FicTrac receiver — bridge 3.4 or another fictrac adapter"),
+        ("udp", 60001, "another Kinefly adapter") if args.kinefly else (None, 0, ""),
+        ("tcp", 5010, "a BIAS program or bias_sim") if args.bias_sim else (None, 0, ""),
+    ):
+        if proto and port_in_use(proto, port):
+            taken.append(f"  {proto} 127.0.0.1:{port} is in use — probably {who}")
+    if taken:
+        print("[rig] cannot start, ports already bound:\n" + "\n".join(taken) + "\n[rig] stop that process first (or pass --no-router if the router is meant to be shared)", file=sys.stderr)
+        return 2
+    # The Zenoh config paths: pixi's activation.env sets them via $PIXI_PROJECT_ROOT, which a
+    # Windows shell would leave literal — set them explicitly here so `pixi run rig` is the
+    # same command on every platform.
+    cfg_dir = HERE.parent / "config"
+    os.environ["ZENOH_ROUTER_CONFIG_URI"] = str(cfg_dir / "zenoh-router.json5")
+    os.environ["ZENOH_SESSION_CONFIG_URI"] = str(cfg_dir / "zenoh-session.json5")
+    os.environ.setdefault("RMW_IMPLEMENTATION", "rmw_zenoh_cpp")
+    os.environ.setdefault("ZENOH_ROUTER_CHECK_ATTEMPTS", "0")
     children: list[Child] = []
     if not args.no_router:
         children.append(Child("router", ["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"]))
@@ -158,8 +191,10 @@ def main(argv: list[str] | None = None) -> int:
                     code = c.proc.returncode if c.proc else None
                     print(f"[rig] {c.name} exited (code {code})", file=sys.stderr)
                     children.remove(c)
-                    if c is bridge:
-                        print("[rig] the bridge node is gone — stopping the rig", file=sys.stderr)
+                    if c is bridge or c.name == "router":
+                        # Without the router every node retries forever while the Studio still
+                        # sees a live WebSocket with no frames — fail loudly instead.
+                        print(f"[rig] the {c.name} is gone — stopping the rig", file=sys.stderr)
                         rc = 1
                         stop.set()
                     break
