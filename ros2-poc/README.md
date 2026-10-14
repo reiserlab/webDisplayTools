@@ -134,6 +134,22 @@ The items the container could not cover, run on the lab Mac with the 2×10 bench
 | Real BIAS Mac port (`bias/build/test_gui.app`, C922 webcam as cam 0, HTTP :5010) via `pixi run bias-node` + `bias-cmd` | `connect` / `startRecording` / `getTimestamp` / `stopRecording` all `ok`, during the second Studio run as well (60 status + 3 reply connector events in that committed log). Reply shape identical to `bias_sim.py` (`[{"command","message","success","value"}]`); `get-status` value keys identical except the sim's extra `videoFile`. `start-capture` 180–280 ms, every other command ≈ 1 ms; server listens dual-stack (`*:5010`), 127.0.0.1 works. Two real-port facts the sim does not have: (1) a **relative `filename` resolves against BIAS's own cwd** (`/` when launched with `open`); `start-capture` then returns success while nothing captures (`capturing:false`, frame count stays 0, the preview never goes live) — `bias_node.py` now warns on a relative filename; (2) `get-video-file` answers `<stem>.jpg`, but the Mac port writes `<stem>_cam_0_date_…_v001/movie.mjpg` + `index.txt` and a `stamp_log_cam0.txt` beside it, so the logged `artifact.path` is the stem the operator asked for, not the file on disk |
 | Real Kinefly fork (`mbreiser/Kinefly-MacOS`, OpenCV 4.13, headless, synthetic 160 fps sample) `--udp 127.0.0.1:60001` → `pixi run kinefly-adapter` | 160 / 160, then 9600 / 9600 datagrams sent with `send_errors 0`; adapter **0 rejected**; **9487 `["kf",…]` rows** with left / right / head / abdomen angles in the committed run log (the remainder fell outside the log window); adapter→bridge p50 0.73 / p99 1.29 ms at 160 Hz |
 
+**BIAS from the protocol (Studio v0.95, branch `claude/bias-connector-command`, 2026-10-14 evening).**
+The web runner now drives a protocol's `camera` plugin (BiasPlugin) through the bridge
+(`connector_command` → `/bias/cmd`, `/bias/reply` → `connector_reply`; `hello_ack` advertises
+`connectors: ["bias"]`, so bridge 3.4 yields a visible skip instead). End to end on this bench,
+Studio served from localhost, real BIAS app, `fictrac_sim --model fly`: a 6-step protocol
+(`cam_start`: connect → startRecording → getTimestamp · two 15 s Mode-3 trials · `cam_sync`:
+getTimestamp · `cam_stop`: getTimestamp → stopRecording) completed with **0 errors, 0 skips**;
+all six command/reply pairs are in the run log (`via: "ws"`), the recording
+(`poc_studio_run_cam_0_…_v001/movie.mjpg`, 764 frames ≈ 24 fps × 32 s) exists, closed-loop
+report idx mismatch 0.00 %, `runlog-check` OK. **Sync:** the bridge-clock interval between the
+two later getTimestamps matched BIAS's own timestamps to −62 ms (one to two frames at 24 fps);
+the first getTimestamp, sent 1 ms after `start-capture` returned, read 0.0 because BIAS's clock
+starts at its first frame, ≈ 300 ms later — take the alignment stamp ≥ 0.5 s after
+startRecording, or anchor on the first frame. The harness (`pixi run test`) exercises the same
+path through the emulator: 32 / 32.
+
 One detour worth knowing: the stock `fictrac_bias_test.yaml` names `frame2_h_ccw_200f` at `pattern_ID 4`; this card's slot 4 is a 1-frame color test pattern, the runner read `frames: 1` from the card (correctly) and the display sat on frame 0. The protocol was re-pointed at the card's 20-frame grating — a card-content mismatch the Studio already warns about, not a bridge issue.
 
 **Still not verified:** Windows execution (`win-64` only resolves and locks; the rig-PC session is
