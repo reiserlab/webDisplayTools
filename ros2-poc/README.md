@@ -114,7 +114,7 @@ what bridge 3.4 produces as well; the mapping itself is exact.
 
 | check | result |
 |---|---|
-| **Soak**: `pixi run rig -- --sim --kinefly --bias --bias-sim` with the emulator looping 2 × 20 s epochs per run | 12 consecutive runs (≈ 10 min steady state) all passed; bridge node RSS 66.5 → 68.5 MB then flat, adapters flat at 61 MB, router 15 MB; latency p50 1.1 ms / p99 3.4–3.9 ms on every run |
+| **Soak**: `pixi run rig -- --sim --kinefly --bias --bias-sim` with the emulator looping 2 × 20 s epochs per run + one BIAS command per run, 60 min | 78 / 78 runs passed, 78 / 78 BIAS replies ok, no launcher errors; latency flat (p50 1.6–1.8 ms, p99 3.2–4.6 ms). **Watch item:** RSS creeps — bridge node 67.4 → 71.8 MB (+58 kB/run), adapters +30–36 kB/run, BIAS node +28 kB/run, router +12 kB/run. Harmless for a rig session, but a slope, not noise; a multi-hour soak should precede calling it benign |
 | **Zero loss under load**: sim at 200 Hz × 4000 frames + Kinefly at 500 Hz × 10 000 | 4000 / 4000 FicTrac rows (frame counters 1..4000, no gap); every KF/1 frame sent while the log was open logged, no sequence gap; p99 3.3 ms (FicTrac) / 4.7 ms (Kinefly) |
 | **Router killed and restarted mid-run** (6 s outage) | no data gap at all (rmw_zenoh peers keep their direct links; the router is discovery), emulator run completed, log intact |
 | **Student mistakes**: a second `pixi run rig`; `pixi run rig` while bridge 3.4 holds ws :8765 / udp :60000 | `rig.py` pre-flights its ports and names the culprit in one line instead of a Rust panic or a Python traceback |
