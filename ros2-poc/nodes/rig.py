@@ -32,7 +32,7 @@ SIM = HERE.parents[1] / "fictrac-bridge" / "fictrac_sim.py"
 
 
 sys.path.insert(0, str(HERE))
-from _common import wait_port  # noqa: E402
+from _common import popen_group, signal_group, wait_port  # noqa: E402
 
 
 def port_in_use(proto: str, port: int, host: str = "127.0.0.1") -> bool:
@@ -58,28 +58,21 @@ class Child:
         self.proc: subprocess.Popen | None = None
 
     def start(self) -> None:
-        # Own process group per child, so a stop signal reaches wrappers AND what they
-        # spawn (`ros2 run … rmw_zenohd` does not forward SIGINT to the router binary).
-        self.proc = subprocess.Popen(
+        # Own process group per child (popen_group), so a stop signal reaches wrappers AND
+        # what they spawn (`ros2 run … rmw_zenohd` does not forward SIGINT to the router).
+        self.proc = popen_group(
             self.argv,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
             env=os.environ.copy(),
-            start_new_session=(os.name != "nt"),
         )
         threading.Thread(target=self._pump, name=f"pump-{self.name}", daemon=True).start()
 
     def _signal(self, sig: int) -> None:
         assert self.proc
-        if os.name != "nt":
-            try:
-                os.killpg(self.proc.pid, sig)
-                return
-            except (ProcessLookupError, PermissionError):
-                pass
-        self.proc.send_signal(sig)
+        signal_group(self.proc, sig)
 
     def _pump(self) -> None:
         assert self.proc and self.proc.stdout
@@ -103,7 +96,7 @@ class Child:
                 self.proc.wait(2.0)
             except subprocess.TimeoutExpired:
                 self._signal(signal.SIGKILL)
-        except (ProcessLookupError, OSError):
+        except (ProcessLookupError, OSError, ValueError):
             pass
 
 

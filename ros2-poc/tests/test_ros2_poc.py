@@ -38,7 +38,6 @@ import json
 import os
 import shutil
 import signal
-import socket
 import subprocess
 import sys
 import tempfile
@@ -53,6 +52,8 @@ NODES = POC / "nodes"
 SIM = REPO / "fictrac-bridge" / "fictrac_sim.py"
 BRIDGE_PY = REPO / "fictrac-bridge" / "bridge.py"
 PY = sys.executable
+sys.path.insert(0, str(NODES))
+from _common import popen_group, signal_group, wait_port  # noqa: E402
 
 results: list[tuple[str, bool, str]] = []
 
@@ -63,16 +64,6 @@ def check(name: str, ok: bool, info: str = "") -> bool:
     return bool(ok)
 
 
-def wait_port(host: str, port: int, timeout_s: float) -> bool:
-    end = time.monotonic() + timeout_s
-    while time.monotonic() < end:
-        try:
-            with socket.create_connection((host, port), timeout=0.5):
-                return True
-        except OSError:
-            time.sleep(0.2)
-    return False
-
 
 class Proc:
     def __init__(self, name: str, argv: list[str], logdir: Path) -> None:
@@ -82,21 +73,15 @@ class Proc:
         self.p: subprocess.Popen | None = None
 
     def start(self) -> "Proc":
-        # Own process group, so stop() reaches `ros2 run`'s child (the router binary) too.
-        self.p = subprocess.Popen(self.argv, stdout=self.log, stderr=subprocess.STDOUT, text=True, start_new_session=(os.name != "nt"))
+        # Own process group (nodes/_common.popen_group), so stop() reaches `ros2 run`'s child too.
+        self.p = popen_group(self.argv, stdout=self.log, stderr=subprocess.STDOUT, text=True)
         return self
 
     def alive(self) -> bool:
         return self.p is not None and self.p.poll() is None
 
     def _signal(self, sig: int) -> None:
-        if os.name != "nt":
-            try:
-                os.killpg(self.p.pid, sig)
-                return
-            except (ProcessLookupError, PermissionError):
-                pass
-        self.p.send_signal(sig)
+        signal_group(self.p, sig)
 
     def kill9(self) -> None:
         if self.alive():
@@ -115,7 +100,7 @@ class Proc:
                 self.p.wait(3)
             except subprocess.TimeoutExpired:
                 self._signal(signal.SIGKILL)
-        except (ProcessLookupError, OSError):
+        except (ProcessLookupError, OSError, ValueError):
             pass
         self.log.flush()
 
