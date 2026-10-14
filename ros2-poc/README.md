@@ -120,18 +120,24 @@ what bridge 3.4 produces as well; the mapping itself is exact.
 | **Student mistakes**: a second `pixi run rig`; `pixi run rig` while bridge 3.4 holds ws :8765 / udp :60000 | `rig.py` pre-flights its ports and names the culprit in one line instead of a Rust panic or a Python traceback |
 | **Code review** of the diff (nine findings) | fixed: BIAS worker exception guard + status-poll coalescing, watchdog scoped per log file (`RosLogWriter` hooks instead of re-parsing messages), router death stops the rig, kill timing in the harness anchored on the log, config paths set explicitly by `rig.py`, shared `_common.py` |
 
-## Not verified here (needs the Mac / a rig)
+## Mac results (2026-10-14, MacBook Pro osx-arm64, macOS 27.0.1, Chrome 155)
 
-* A real browser: Web Serial and the Studio UI were replaced by the emulator. Run the Studio
-  against `pixi run rig -- --sim` on the Mac and commit a run log through the normal path.
-* The real BIAS Mac port: command names and the JSON-array reply shape follow BIAS's
-  documented external interface; the `value` payloads are logged verbatim and untested.
-* The real Kinefly fork sending `--udp 127.0.0.1:60001` (only `kinefly_sim.py`, which follows
-  `kinefly/core/udp.py` byte for byte, was used).
-* Windows (`win-64` resolves and locks; nothing was executed there) and the macOS router with
-  IPv6 present (the loopback config sidesteps it).
-* `scripts/runlog-check.py` fails on these logs for want of `run_metadata.firmware`,
-  `stream_schema` and `trial_quality`, which only a Studio run with a controller produces.
+The items the container could not cover, run on the lab Mac with the 2×10 bench arena
+(controller fw `c15d840a 2x10 2026-09-29`), the real BIAS Mac port and the real Kinefly fork.
+
+| step | result |
+|---|---|
+| `pixi install` | **25 s** wall for a fresh download (the package cache had none of these packages), 1.0 GB env, no manual step; `ros-jazzy-rmw-zenoh-cpp` 0.2.10 from the lock |
+| `pixi run talker` / `listener` under `rmw_zenoh_cpp` | router listening 2.9 s after start; every message heard ≈ 1.5 ms after it was published. The only noise is the stock demo nodes' `rcl_shutdown already called` traceback on Ctrl-C (an upstream `demo_nodes_py` quirk, not the middleware) |
+| `pixi run test -- --keep` | **29 / 29** in 27 s; adapter→bridge latency p50 0.89 ms / p99 1.43 ms (1.7 / 3.8 in the container) |
+| **Unmodified Arena Studio** (the GitHub Pages copy, v0.94) → `pixi run rig -- --sim --sim-args "--model fly --kp 2 --seed 1"`, G6 controller over Web Serial | Connected to the bridge node first try; **no Chrome local-network-access prompt** appeared for `reiserlab.github.io` → `ws://localhost:8765`. Two Mode-3 constant-bias runs (`cl_bias_none` / `cl_bias_constant` +90°/s / `cl_bias_constant_rev` −90°/s, 20 s each) **auto-committed through the normal path** to `reiserlab/cshl-2026-course` `runlogs/bench00/` (`…T21-02-13__lhc9k8i6.jsonl.gz`, `…T21-09-58__lrbhnsf5.jsonl.gz`); each gunzips byte-identical to the bridge node's own file. `scripts/closed-loop-report.py`: 3 epochs from `fictracApply`, idx mismatch **0.00 %** in all six epochs; rejection +0.39 / −0.46 and +0.48 / −0.50 (the card's only rotating pattern is a 20-frame grating, so the model fly's "feature" wraps every 36°; the mapping check is the point here). `scripts/runlog-check.py`: **OK** on both files — `run_metadata.firmware` and SD identity present, trial verdicts 3 pass / 0 fail, `cc_0x70_ok` 3000, `fictrac_per_cmd` 1.0 (the container's logs lacked these only because the emulator has no controller) |
+| Real BIAS Mac port (`bias/build/test_gui.app`, C922 webcam as cam 0, HTTP :5010) via `pixi run bias-node` + `bias-cmd` | `connect` / `startRecording` / `getTimestamp` / `stopRecording` all `ok`, during the second Studio run as well (60 status + 3 reply connector events in that committed log). Reply shape identical to `bias_sim.py` (`[{"command","message","success","value"}]`); `get-status` value keys identical except the sim's extra `videoFile`. `start-capture` 180–280 ms, every other command ≈ 1 ms; server listens dual-stack (`*:5010`), 127.0.0.1 works. Two real-port facts the sim does not have: (1) a **relative `filename` resolves against BIAS's own cwd** (`/` when launched with `open`); `start-capture` then returns success while nothing captures (`capturing:false`, frame count stays 0, the preview never goes live) — `bias_node.py` now warns on a relative filename; (2) `get-video-file` answers `<stem>.jpg`, but the Mac port writes `<stem>_cam_0_date_…_v001/movie.mjpg` + `index.txt` and a `stamp_log_cam0.txt` beside it, so the logged `artifact.path` is the stem the operator asked for, not the file on disk |
+| Real Kinefly fork (`mbreiser/Kinefly-MacOS`, OpenCV 4.13, headless, synthetic 160 fps sample) `--udp 127.0.0.1:60001` → `pixi run kinefly-adapter` | 160 / 160, then 9600 / 9600 datagrams sent with `send_errors 0`; adapter **0 rejected**; **9487 `["kf",…]` rows** with left / right / head / abdomen angles in the committed run log (the remainder fell outside the log window); adapter→bridge p50 0.73 / p99 1.29 ms at 160 Hz |
+
+One detour worth knowing: the stock `fictrac_bias_test.yaml` names `frame2_h_ccw_200f` at `pattern_ID 4`; this card's slot 4 is a 1-frame color test pattern, the runner read `frames: 1` from the card (correctly) and the display sat on frame 0. The protocol was re-pointed at the card's 20-frame grating — a card-content mismatch the Studio already warns about, not a bridge issue.
+
+**Still not verified:** Windows execution (`win-64` only resolves and locks), and the macOS router
+with the stock IPv6 config (the loopback config was used throughout).
 
 ## Observations for the decision
 
