@@ -59,6 +59,16 @@
       "path": "./protocols/bias_camera_closed_loop_poc.yaml"
     },
     {
+      "key": "bias_camera_closed_loop_poc_ww18",
+      "label": "BIAS camera + FicTrac closed loop, ROS 2 bridge — ww18 variant (site 2x10 grating_sq, slot 2)",
+      "path": "./protocols/bias_camera_closed_loop_poc_ww18.yaml"
+    },
+    {
+      "key": "bias_camera_closed_loop_poc_ww18_soak10",
+      "label": "BIAS + FicTrac closed loop, ROS 2 bridge - ww18 10-min soak (2 x 300 s, grating_sq slot 2)",
+      "path": "./protocols/bias_camera_closed_loop_poc_ww18_soak10.yaml"
+    },
+    {
       "key": "g6_color_optomotor_test",
       "label": "Color optomotor test — one LED color at a time, top row, 25/50/100 % duty (G6 four-color, BIAS, ~18 min)",
       "path": "./protocols/g6_color_optomotor_test.yaml"
