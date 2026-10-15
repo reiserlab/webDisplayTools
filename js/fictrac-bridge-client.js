@@ -58,6 +58,16 @@
  *                                            ok=false ⇒ the bridge cannot write the
  *                                            requested level (too old) and `level`
  *                                            is what it logs instead.
+ *   'fault'   (fault:object)               — the closed-loop apply loop latched a
+ *                                            controller fault (fw #50)
+ *   'lost'    (info:object)                — an OPEN bridge socket closed without
+ *                                            disconnect() asking for it (bridge killed
+ *                                            or crashed). Fail closed BEFORE this fires:
+ *                                            apply is already OFF and every pending
+ *                                            request already settled. info = {url, code,
+ *                                            reason, wasClean, apply (was it on), logging,
+ *                                            logFile, recv, t}. ArenaSession routes it to
+ *                                            the runner (ArenaRunner.onBridgeLost).
  */
 (function (global) {
     'use strict';
@@ -73,7 +83,8 @@
         'bias',
         'log',
         'loglevel',
-        'fault'
+        'fault',
+        'lost'
     ];
     // Log levels this client knows how to request, most-preferred first. The
     // bridge advertises ITS list in hello_ack; a level missing there is one the
@@ -169,7 +180,9 @@
             this._stale = 0;
             this._bridgeInfo = null; // from hello_ack: {version, levels, level} (null = old bridge / not yet)
             this._ackedLevel = null; // from log_control_ack while logging is enabled
+            this._logFile = null; // basename of the log file the bridge opened (log_control_ack)
             this._ackWaiters = []; // waitForLogLevelAck() resolvers
+            this._lastLoss = null; // the most recent 'lost' info (null = never lost)
         }
 
         // ---- events ----------------------------------------------------------
@@ -298,8 +311,10 @@
             this._recv = 0;
             this._applied = 0;
             this._pending = null;
+            let opened = false; // a socket that never opened was a failed connect, not a loss
             this._emit('status', 'connecting…', 'dim');
             ws.onopen = () => {
+                opened = true;
                 this._emit('status', 'connected', 'accent');
                 this._emit('log', 'bridge: connected to ' + this._url, 'info');
                 this._send({ type: 'hello', client: 'webDisplayTools', v: 1 });
@@ -326,29 +341,90 @@
                 else if (msg && msg.type === 'log_control_ack') this._handleLogControlAck(msg);
             };
             ws.onerror = () => this._emit('status', 'error', 'err');
-            ws.onclose = () => {
+            ws.onclose = (ev) => {
+                // A superseded socket closing after a reconnect must not tear down the
+                // new one's state.
+                if (this._ws !== ws && this._ws !== null) return;
+                // disconnect() clears _ws BEFORE closing, so a close that finds this
+                // socket still current was not asked for: the bridge went away.
+                const lost = opened && this._ws === ws;
+                const wasApply = this._apply;
                 this._stopRateTimer();
                 this._ws = null;
+                if (lost) {
+                    // Fail closed first: nothing may keep "driving" from a dead feed.
+                    this._pending = null;
+                    if (this._apply) {
+                        this._apply = false;
+                        this._emit('apply', false);
+                    }
+                }
+                const logFile = this._logFile;
                 this._bridgeInfo = null;
                 this._ackedLevel = null;
-                this._settleAckWaiters(null);
-                this._settleExport('reject', new Error('bridge disconnected during log export'));
-                this._emit('status', 'disconnected', 'dim');
+                this._logFile = null;
+                this._failPending(lost ? 'bridge lost' : 'bridge disconnected');
+                this._emit('status', lost ? 'disconnected (bridge lost)' : 'disconnected', 'dim');
                 this._emit('stats', this.stats);
+                if (lost) {
+                    this._lastLoss = {
+                        url: this._url || null,
+                        code: ev && Number.isFinite(ev.code) ? ev.code : null,
+                        reason: (ev && ev.reason) || '',
+                        wasClean: !!(ev && ev.wasClean),
+                        apply: wasApply,
+                        logging: this._logging,
+                        logFile,
+                        recv: this._recv,
+                        t: this._now()
+                    };
+                    this._emit(
+                        'log',
+                        'bridge lost (' +
+                            (this._lastLoss.code != null
+                                ? 'code ' + this._lastLoss.code
+                                : 'socket closed') +
+                            (wasApply ? ', closed loop was running' : '') +
+                            ')',
+                        'err'
+                    );
+                    this._emit('lost', Object.assign({}, this._lastLoss));
+                }
             };
         }
 
-        /** Close the bridge WebSocket (idempotent). */
+        /** Close the bridge WebSocket (idempotent). A close asked for here is never 'lost'. */
         disconnect() {
-            if (this._ws) {
+            const ws = this._ws;
+            this._ws = null; // first: onclose may run synchronously, and must see a requested close
+            if (ws) {
                 try {
-                    this._ws.close();
+                    ws.close();
                 } catch (_) {
                     /* closing socket can throw — ignore */
                 }
             }
-            this._ws = null;
             this._stopRateTimer();
+        }
+
+        /** The most recent unexpected loss ('lost' info), or null if the bridge never dropped. */
+        get lastLoss() {
+            return this._lastLoss ? Object.assign({}, this._lastLoss) : null;
+        }
+
+        // Settle every request still waiting on the bridge, NOW — a dead socket will
+        // never answer, and a caller must not sit out its timeout (log export 15 s).
+        // The one place a new request/reply pair registers its fail-fast path.
+        _failPending(reason) {
+            this._settleAckWaiters(null);
+            this._settleExport(
+                'reject',
+                new Error(
+                    reason === 'bridge lost'
+                        ? 'bridge lost — the connection dropped during log export'
+                        : 'bridge disconnected during log export'
+                )
+            );
         }
 
         // ---- config / logging ------------------------------------------------
@@ -558,6 +634,15 @@
         get ackedLogLevel() {
             return this._ackedLevel;
         }
+        /**
+         * Basename of the log file the bridge opened for the current logging session
+         * (log_control_ack `file`), or null: not acked yet, logging off, disconnected,
+         * or a bridge too old to name it. A run stashes it so a later push can check
+         * that log_export serves THIS run's file, not one a restarted bridge opened.
+         */
+        get logFile() {
+            return this._logFile;
+        }
         /** hello_ack facts {version, levels, level} — null until a ≥3.0 bridge answers. */
         get bridgeInfo() {
             return this._bridgeInfo;
@@ -632,6 +717,7 @@
             const level = msg.level || null;
             const enabled = !!msg.enabled;
             this._ackedLevel = enabled ? level : null;
+            this._logFile = enabled && typeof msg.file === 'string' ? msg.file : null;
             const ok = !enabled || level === requested;
             if (!ok) {
                 this._emit(
@@ -660,6 +746,7 @@
         setLogging(on) {
             this._logging = !!on;
             this._ackedLevel = null; // pending until the bridge acks this request
+            this._logFile = null; // the ack names the file this request opens
             const msg = { type: 'log_control', enabled: this._logging };
             if (this._logging) msg.level = this._config.logLevel;
             this._send(msg);

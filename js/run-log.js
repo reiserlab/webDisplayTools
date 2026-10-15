@@ -50,6 +50,7 @@
         if (override) return override;
         if (!summary) return 'UNKNOWN';
         if (summary.fault) return 'CONTROLLER_FAULT'; // controller stopped answering (fw #50)
+        if (summary.bridgeLost) return 'BRIDGE_LOST'; // the bridge dropped; the run stopped for it
         if (summary.aborted) return 'ABORTED_BY_USER';
         if (summary.errors > 0) return 'ERRORED';
         if (summary.completed) return 'COMPLETED';
@@ -155,6 +156,18 @@
                     (ev.reason || 'controller_unresponsive') +
                     (ev.detail && ev.detail.lastError ? ' — ' + ev.detail.lastError : '')
                 );
+            case 'bridge-lost': {
+                const d = ev.detail || {};
+                return (
+                    stamp +
+                    '⚠ BRIDGE LOST' +
+                    (d.code != null ? ' (code ' + d.code + ')' : '') +
+                    (d.apply ? ' — closed loop was running' : '') +
+                    (ev.action === 'continued'
+                        ? ' — test run continues, no longer logged by the bridge'
+                        : ' — run stopped')
+                );
+            }
             case 'step-done':
                 return stamp + '   ' + where + 'done';
             case 'sequence-complete':

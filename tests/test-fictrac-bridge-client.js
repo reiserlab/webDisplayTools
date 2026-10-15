@@ -368,13 +368,138 @@ async function main() {
         await p4.catch((e) => (err4 = e.message));
         checkBool('timeout rejects', /timed out/.test(err4), err4);
 
-        // disconnect-while-pending path
+        // the socket drops while pending (the bridge went away) → "bridge lost"
         const p5 = client.exportLog(5000);
         ws.close();
         let err5 = null;
         await p5.catch((e) => (err5 = e.message));
-        checkBool('disconnect rejects pending export', /disconnected/.test(err5), err5);
+        checkBool('a dropped socket rejects pending export', /bridge lost/.test(err5), err5);
+        // the operator disconnects while pending → "disconnected"
+        client.connect('ws://localhost:8765');
+        FakeWS.last.open();
+        const p6 = client.exportLog(5000);
         client.disconnect();
+        let err6 = null;
+        await p6.catch((e) => (err6 = e.message));
+        checkBool('disconnect() rejects pending export', /disconnected/.test(err6), err6);
+    }
+
+    // ── LAB-303 S1 (ww18, 2026-10-15): the bridge was hard-killed mid closed loop and
+    // the Studio only showed "bridge disconnected" — no event the runner could act on.
+    console.log('\n=== bridge LOST: unexpected close → fail closed, fail pending, then "lost" ===');
+    {
+        const applied = [];
+        const client = new FicTracBridgeClient({
+            WebSocketImpl: FakeWS,
+            applyFrame: (i) => {
+                applied.push(i);
+                return Promise.resolve();
+            },
+            clampFrame: (i) => i
+        });
+        const lost = [];
+        const applyEvents = [];
+        const logs = [];
+        let applyAtLost = null;
+        let exportSettledAtLost = false;
+        client.on('apply', (on) => applyEvents.push(on));
+        client.on('log', (m, k) => logs.push([k, m]));
+        client.connect('ws://localhost:8765');
+        const ws = FakeWS.last;
+        ws.open();
+        client.setLogging(true);
+        ws.message({
+            type: 'log_control_ack',
+            enabled: true,
+            level: 'behavior_v2',
+            requested: 'behavior_v2',
+            file: 'arena-log-20261015-153548-287.jsonl'
+        });
+        check('logFile from the ack', client.logFile, 'arena-log-20261015-153548-287.jsonl');
+        client.setApply(true);
+        client.handleFrame(4, { type: 'frame', index: 4 });
+        await tick();
+        check('closed loop applying before the loss', applied, [4]);
+        // A pending export (15 s default timeout) and a pending level ack.
+        const t0 = Date.now();
+        let exportErr = null;
+        const exp = client.exportLog(15000).catch((e) => (exportErr = e.message));
+        client.setLogging(true); // re-request → the ack is pending again
+        const ack = client.waitForLogLevelAck(15000);
+        client.on('lost', (info) => {
+            lost.push(info);
+            applyAtLost = client.apply;
+            exportSettledAtLost = exportErr !== null || client._exportPending === null;
+        });
+        // The bridge process dies: the socket closes without disconnect() asking.
+        ws.readyState = 3;
+        ws.onclose({ code: 1006, reason: '', wasClean: false });
+        await exp;
+        check('one "lost" event', lost.length, 1);
+        check(
+            'lost info names the close + that a closed loop was running',
+            [lost[0].code, lost[0].wasClean, lost[0].apply, lost[0].url],
+            [1006, false, true, 'ws://localhost:8765']
+        );
+        check('apply was already OFF when "lost" fired (fail closed first)', applyAtLost, false);
+        check('…and an apply:false event went out', applyEvents[applyEvents.length - 1], false);
+        checkBool('pending export already settled when "lost" fired', exportSettledAtLost);
+        checkBool(
+            'pending export rejected at once with "bridge lost" (not after its 15 s timeout)',
+            /bridge lost/.test(exportErr) && Date.now() - t0 < 1000,
+            exportErr + ' after ' + (Date.now() - t0) + ' ms'
+        );
+        check('pending level-ack waiter resolved null at once', await ack, null);
+        check('connected false', client.connected, false);
+        check('logFile cleared', client.logFile, null);
+        check('lastLoss kept for the page', client.lastLoss && client.lastLoss.code, 1006);
+        checkBool(
+            'an err log line says the bridge was lost',
+            logs.some(([k, m]) => k === 'err' && /bridge lost/.test(m)),
+            JSON.stringify(logs)
+        );
+        // A frame arriving after the loss (it cannot, but a stray one must not drive).
+        client.handleFrame(9, { type: 'frame', index: 9 });
+        await tick();
+        check('nothing applied after the loss', applied, [4]);
+    }
+
+    console.log('\n=== bridge LOST is only an UNEXPECTED close of an OPEN socket ===');
+    {
+        const client = new FicTracBridgeClient({ WebSocketImpl: FakeWS });
+        let lost = 0;
+        client.on('lost', () => lost++);
+        // (a) the operator disconnects: FakeWS fires onclose synchronously inside close()
+        client.connect('ws://localhost:8765');
+        FakeWS.last.open();
+        client.disconnect();
+        check('disconnect() → no "lost"', lost, 0);
+        check('disconnect() → lastLoss stays null', client.lastLoss, null);
+        // (b) a connect attempt that never opened (bridge not running) is not a loss
+        client.connect('ws://localhost:8765');
+        const never = FakeWS.last;
+        never.readyState = 3;
+        never.onclose({ code: 1006 });
+        check('failed connect → no "lost"', lost, 0);
+        // (c) a superseded socket closing after a reconnect leaves the new one alone
+        client.connect('ws://localhost:8765');
+        const oldWs = FakeWS.last;
+        oldWs.open();
+        oldWs.close = function () {
+            this.readyState = 2; // a real browser fires onclose later, asynchronously
+        };
+        client.disconnect();
+        client.connect('ws://localhost:8765');
+        const newWs = FakeWS.last;
+        newWs.open();
+        oldWs.readyState = 3;
+        oldWs.onclose({ code: 1000 });
+        checkBool('stale close leaves the new socket connected', client.connected === true);
+        check('stale close → no "lost"', lost, 0);
+        newWs.readyState = 3;
+        newWs.onclose({ code: 1006 });
+        check('the live socket dropping IS a loss', lost, 1);
+        check('apply was off → info.apply false', client.lastLoss.apply, false);
     }
 
     console.log('\n=== log level (behavior_v2 default / v1 + full selectable) ===');

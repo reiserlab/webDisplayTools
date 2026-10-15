@@ -342,6 +342,19 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `write_rows`, verbatim `["cc"|"cf"|"cs", …]`). The record schema lives in ONE place — the header
   comment of `js/arena-telemetry.js` — mirror any firmware change there + in `wedge-scan.py`
   (`CTL_TAGS`/`CTL_STATE_KINDS`). Never drain while the post-mortem owns the link (its `canPoll`).
+- **Bridge-loss lifecycle (LAB-303 S1, ww18 2026-10-15) — the other fail-closed rule:** an OPEN
+  bridge socket that closes without `disconnect()` asking is a LOSS (`disconnect()` clears `_ws`
+  BEFORE `close()` — that is the discriminator; keep it). `FicTracBridgeClient` then forces apply
+  OFF, calls `_failPending('bridge lost')` (THE one place every request/reply waiter settles —
+  register any NEW request type there, e.g. #254's connector_command waiters) and only then emits
+  `'lost'`. `ArenaSession` → `runner.onBridgeLost(info)`: it STOPS the run when apply was on, when
+  `sequenceUsesBridge` finds a bridge-routed plugin command (today `fictracPluginNames`; add any new
+  bridge-routed plugin set there), or with `runSequence({bridgeRequired})` (the Studio passes it for
+  recorded runs) — via the ordinary `stop()` (serial link is fine → real STOP), never a controller
+  fault (no post-mortem). Otherwise a test run continues with a `bridge-lost` event. Outcome
+  `BRIDGE_LOST` (`summary.bridgeLost`; `run-log.js` + adapter) is NOT auto-committed, and a push
+  refuses a `log_export` whose name ≠ the run's `log.bridgeFile` (a restarted bridge serves another
+  file). Studio: persistent `#runAlert` (`Studio.showRunAlert`), not the auto-hiding `#banner`.
 - **Wire module exports:** `js/arena-wire-g6.js` defines more than it exports —
   when adding encoders/decoders, add them to the export list AND a test; audit
   with `Object.keys(require('./js/arena-wire-g6.js'))` vs the page's `Wire.*`

@@ -17,6 +17,7 @@
 
 const Runner = require('../js/arena-runner-g6.js');
 const Wire = require('../js/arena-wire-g6.js');
+const RunLog = require('../js/run-log.js');
 
 let totalChecks = 0;
 let failures = 0;
@@ -2936,6 +2937,209 @@ async function main() {
         });
         check('clean run → fault null', s4.fault, null);
         check('clean run → stopAcked true', s4.stopAcked, true);
+    }
+
+    // ── LAB-303 S1 (ww18, 2026-10-15): bridge hard-killed 10 s into a closed-loop
+    // epoch; the run carried on with no frames. Now the runner stops it (BRIDGE_LOST).
+    {
+        const lostBridge = () => ({
+            logging: true,
+            apply: false,
+            bias: null,
+            configs: [],
+            applyStates: [],
+            connect() {},
+            disconnect() {},
+            setApply(on) {
+                this.apply = !!on;
+                this.applyStates.push(!!on);
+            },
+            setConfig(cfg) {
+                this.configs.push(cfg);
+            },
+            log() {}
+        });
+        const clCond = {
+            name: 'cl',
+            commands: [
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    mode: 3,
+                    frame_rate: 0,
+                    gain: 0,
+                    frame_index: 0,
+                    duration: 30,
+                    pattern: 'p'
+                },
+                { type: 'plugin', plugin_name: 'fictrac', command_name: 'startClosedLoop' },
+                { type: 'wait', duration: 30 },
+                { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' }
+            ]
+        };
+        const openCond = { name: 'open', commands: [trialCmd, { type: 'wait', duration: 30 }] };
+        const step = (name, i) => ({ kind: 'ref', conditionName: name, label: name, seqIdx: i });
+        const conds = new Map([
+            ['cl', clCond],
+            ['open', openCond]
+        ]);
+
+        console.log('\n=== sequenceUsesBridge: which runs depend on the bridge ===');
+        const ft = new Set(['fictrac']);
+        check(
+            'closed-loop condition → true',
+            Runner.sequenceUsesBridge([step('cl', 0)], conds, ft),
+            true
+        );
+        check(
+            'open-loop only → false',
+            Runner.sequenceUsesBridge([step('open', 0)], conds, ft),
+            false
+        );
+        check(
+            'a LATER closed-loop condition counts (it would run blind)',
+            Runner.sequenceUsesBridge([step('open', 0), step('cl', 1)], conds, ft),
+            true
+        );
+        check(
+            'no fictrac plugin declared → false',
+            Runner.sequenceUsesBridge([step('cl', 0)], conds, null),
+            false
+        );
+
+        console.log(
+            '\n=== bridge lost mid closed-loop epoch → run STOPPED, outcome BRIDGE_LOST ==='
+        );
+        {
+            const link = makeFakeLink();
+            const bridge = lostBridge();
+            const runner = new Runner.ArenaRunner(link, Wire, bridge);
+            const phases = [];
+            const t0 = Date.now();
+            // Default abort-aware sleep: a 30 s epoch the loss must cut short.
+            const p = runner.runSequence({
+                steps: [step('cl', 0)],
+                conditionsByName: conds,
+                resolvePatternId: () => 1,
+                resolvePatternFrames: (cmd) => (cmd.command_name === 'trialParams' ? 20 : null),
+                fictracPluginNames: ft,
+                onProgress: (s) => phases.push(s)
+            });
+            await delay(30);
+            check('closed loop applying before the loss', bridge.apply, true);
+            const stopsBefore = link.sent.filter((b) => b[1] === 0x30).length;
+            // FicTracBridgeClient forces apply off before 'lost'; mirror that.
+            bridge.apply = false;
+            const action = runner.onBridgeLost({ code: 1006, apply: true, logFile: 'f.jsonl' });
+            check('onBridgeLost → aborted', action, 'aborted');
+            const summary = await p;
+            checkBool('the run ended promptly', Date.now() - t0 < 2000, Date.now() - t0 + ' ms');
+            check('summary.aborted', summary.aborted, true);
+            check('summary.fault stays null (not a controller fault)', summary.fault, null);
+            checkDeep(
+                'summary.bridgeLost carries the loss',
+                [summary.bridgeLost.kind, summary.bridgeLost.code, summary.bridgeLost.apply],
+                ['bridge_lost', 1006, true]
+            );
+            const stops = link.sent.filter((b) => b[1] === 0x30).length - stopsBefore;
+            checkBool('the display got a real STOP (the serial link is fine)', stops >= 1);
+            check('stopAcked', summary.stopAcked, true);
+            const iLost = phases.findIndex((s) => s.phase === 'bridge-lost');
+            const iEnd = phases.findIndex((s) => s.phase === 'aborted');
+            checkBool(
+                "a 'bridge-lost' event precedes the terminal 'aborted'",
+                iLost >= 0 && iLost < iEnd
+            );
+            check('bridge-lost event says stopped', phases[iLost].action, 'stopped');
+            check('the terminal event carries bridgeLost', !!phases[iEnd].summary.bridgeLost, true);
+            checkBool(
+                'no step after the loss ran (no stopClosedLoop → no step-done for later steps)',
+                !phases.some((s, i) => i > iLost && s.phase === 'trial-running')
+            );
+            check('apply is OFF after the run', bridge.apply, false);
+            check('run log outcome is BRIDGE_LOST', RunLog.deriveOutcome(summary), 'BRIDGE_LOST');
+            check('bridgeLostInfo getter', runner.bridgeLostInfo.code, 1006);
+            check('idle runner → onBridgeLost "idle"', runner.onBridgeLost({}), 'idle');
+
+            // The next run starts clean.
+            const s2 = await runner.runSequence({
+                steps: [step('open', 0)],
+                conditionsByName: conds,
+                resolvePatternId: () => 1,
+                sleep: () => Promise.resolve()
+            });
+            check('next run: no stale bridgeLost', s2.bridgeLost, undefined);
+            check('next run completes', RunLog.deriveOutcome(s2), 'COMPLETED');
+        }
+
+        console.log(
+            '\n=== bridge lost in an open-loop step BEFORE a closed-loop one → stopped ==='
+        );
+        {
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, lostBridge());
+            const phases = [];
+            const p = runner.runSequence({
+                steps: [step('open', 0), step('cl', 1)],
+                conditionsByName: conds,
+                resolvePatternId: () => 1,
+                resolvePatternFrames: () => 20,
+                fictracPluginNames: ft,
+                onProgress: (s) => phases.push(s)
+            });
+            await delay(30);
+            check('apply is off (open-loop step)', runner._bridge.apply, false);
+            check(
+                'onBridgeLost → aborted',
+                runner.onBridgeLost({ code: 1006, apply: false }),
+                'aborted'
+            );
+            const summary = await p;
+            check('outcome BRIDGE_LOST', RunLog.deriveOutcome(summary), 'BRIDGE_LOST');
+            checkBool(
+                'the closed-loop condition never started',
+                !phases.some((s) => s.phase === 'step-start' && s.index === 1)
+            );
+        }
+
+        console.log('\n=== recorded open-loop run (bridgeRequired) → stopped ===');
+        {
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, lostBridge());
+            const p = runner.runSequence({
+                steps: [step('open', 0)],
+                conditionsByName: conds,
+                resolvePatternId: () => 1,
+                bridgeRequired: true
+            });
+            await delay(30);
+            check('onBridgeLost → aborted', runner.onBridgeLost({ code: 1006 }), 'aborted');
+            check('outcome BRIDGE_LOST', RunLog.deriveOutcome(await p), 'BRIDGE_LOST');
+        }
+
+        console.log(
+            '\n=== test run that needs nothing from the bridge → continues, event recorded ==='
+        );
+        {
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, lostBridge());
+            const phases = [];
+            let release;
+            const gate = new Promise((r) => (release = r));
+            const p = runner.runSequence({
+                steps: [step('open', 0)],
+                conditionsByName: conds,
+                resolvePatternId: () => 1,
+                fictracPluginNames: ft,
+                onProgress: (s) => phases.push(s),
+                sleep: () => gate
+            });
+            await delay(10);
+            check('onBridgeLost → continued', runner.onBridgeLost({ code: 1006 }), 'continued');
+            release();
+            const summary = await p;
+            check('run completed', RunLog.deriveOutcome(summary), 'COMPLETED');
+            check('no bridgeLost on a continued run', summary.bridgeLost, undefined);
+            const ev = phases.find((s) => s.phase === 'bridge-lost');
+            check('a bridge-lost event says continued', ev && ev.action, 'continued');
+        }
     }
 
     console.log('\n=== Summary ===');
