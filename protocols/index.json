@@ -62,6 +62,11 @@
       "key": "g6_color_optomotor_test",
       "label": "Color optomotor test — one LED color at a time, top row, 25/50/100 % duty (G6 four-color, BIAS, ~18 min)",
       "path": "./protocols/g6_color_optomotor_test.yaml"
+    },
+    {
+      "key": "g6_color_optomotor_smoke",
+      "label": "Color optomotor SMOKE — 10 s per pattern, duty 100 %, BIAS check (~2 min)",
+      "path": "./protocols/g6_color_optomotor_smoke.yaml"
     }
   ]
 }
