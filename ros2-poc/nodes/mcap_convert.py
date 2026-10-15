@@ -484,6 +484,17 @@ def convert(records: list[dict], level: str | None = None, order: str = "seq", c
                 out.append(ln)
             out.extend(obj for _, obj in inserts[j:])
             lines = out
+    # The live writer writes nothing after logging_stopped. A device message the recorder got in
+    # the same ms as the stop (the live writer's callback ran after close; ww18 2026-10-15: one kf
+    # row) would otherwise sort after it on the tie — drop derived lines placed after the stop.
+    stop_at = next((i for i in range(len(lines) - 1, -1, -1) if isinstance(lines[i], dict)
+                    and lines[i].get("type") == "session" and lines[i].get("event") == "logging_stopped"), None)
+    if stop_at is not None and derived:
+        derived_ids = {id(x[3]) for x in derived}
+        tail = lines[stop_at + 1:]
+        kept = [ln for ln in tail if id(ln) not in derived_ids]
+        stats["dropped_after_stop"] = len(tail) - len(kept)
+        lines = lines[:stop_at + 1] + kept
     # The frame_schema / session-open lines were given seq = the open record's seq and rank 0,
     # so they stay first; a logging_stopped line from a crash-truncated bag may be missing.
     report = {"t0": t0, "level": level, "order": order, "lines": len(lines), **stats,
