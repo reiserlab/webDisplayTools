@@ -118,6 +118,9 @@ convert = "python nodes/mcap_convert.py"
 # the run's bag + file and writes the converted NDJSON. For rigs without a course token
 # (the Studio only exports when it commits to the course repo).
 export = "python nodes/export_log.py"
+# Rewrite a finished bag indexed + zstd-compressed (the bridge does this itself when a run
+# closes cleanly; use it on a bag recorded before that, or after `--recover`).
+reindex = "python nodes/mcap_index.py"
 # Build interfaces/arena_interfaces with colcon inside the `typed` env (the alternative to
 # the pixi-build route); timed and recorded in README.md → "Plan B spike".
 build-interfaces = "python nodes/build_interfaces.py"

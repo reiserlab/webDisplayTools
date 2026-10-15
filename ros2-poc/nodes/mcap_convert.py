@@ -174,7 +174,7 @@ def decode_cdr(schema_name: str | None, schema_text: str | None, data: bytes):
 def bag_files(path: str | os.PathLike) -> list[Path]:
     p = Path(path)
     if p.is_dir():
-        return sorted(p.glob("*.mcap"))
+        return sorted(f for f in p.glob("*.mcap") if not f.name.endswith((".unindexed.mcap", ".indexed.tmp")))
     return [p]
 
 
