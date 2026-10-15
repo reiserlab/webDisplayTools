@@ -85,8 +85,17 @@ several files. It needs a server that lets the browser see `Accept-Ranges`:
 
 - `raw.githubusercontent.com` doesn't, so Foxglove reports that range requests aren't supported.
 - jsDelivr does: `https://cdn.jsdelivr.net/gh/reiserlab/webDisplayTools@<commit>/mcap/<file>`. Use a
-  commit hash rather than the branch name, because jsDelivr caches branch names for hours.
-- jsDelivr serves files up to 20 MB only. That rules out the soak's `.foxglove.mcap`, so download that one.
+  commit hash rather than the branch name, because jsDelivr caches branch names for hours. But it
+  sends browsers brotli-compressed bytes, so Foxglove sees the wrong file size and can't jump to the
+  index. It falls back to reading the whole file in order ("This file is unindexed"). That works,
+  just more slowly.
+- jsDelivr serves files up to 20 MB only. That rules out the soak's `.foxglove.mcap`.
+
+Downloading the files and opening them locally avoids both problems. The files are fully indexed:
+chunk indexes, message indexes and summary offsets.
+
+Each array field has an item type. An array that was always empty gets string items, because
+Foxglove fails on an array schema without `items`.
 
 **What the layouts show on this data.** `tools/check_layouts.py` resolves every panel's message
 paths against a run's two files. On the four FicTrac runs every data panel resolves and has data.

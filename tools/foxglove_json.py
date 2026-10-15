@@ -156,6 +156,10 @@ def finish_schema(s: dict) -> dict | None:
             del s["properties"][k]
     if "items" in s and finish_schema(s["items"]) is None:
         del s["items"]
+    if s["type"] == "array" and "items" not in s:
+        # an array that was always empty (e.g. /arena/browser msg.flagged_trials): Foxglove needs
+        # an item type ("Cannot read properties of undefined (reading 'type')" without one)
+        s["items"] = {"type": "string"}
     return s
 
 
