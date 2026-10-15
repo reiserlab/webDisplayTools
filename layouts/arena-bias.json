@@ -1,0 +1,192 @@
+{
+  "configById": {
+    "3D!arena": {
+      "cameraState": {
+        "perspective": true,
+        "distance": 9,
+        "phi": 58,
+        "thetaOffset": 35,
+        "targetOffset": [0, 0, 1.2],
+        "target": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1],
+        "fovy": 45,
+        "near": 0.1,
+        "far": 1000
+      },
+      "followMode": "follow-pose",
+      "followTf": "arena",
+      "scene": {
+        "backgroundColor": "#0f1419",
+        "enableStats": false,
+        "transforms": { "showLabel": false, "axisScale": 0 }
+      },
+      "transforms": {},
+      "topics": {
+        "/viz/markers": { "visible": true }
+      },
+      "layers": {},
+      "publish": {
+        "type": "point",
+        "poseTopic": "/move_base_simple/goal",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26
+      },
+      "imageMode": {}
+    },
+    "Indicator!reachable": {
+      "path": "/viz/bias/reachable.data",
+      "style": "bulb",
+      "fallbackColor": "#8b949e",
+      "fallbackLabel": "BIAS: no status yet",
+      "rules": [
+        { "operator": "=", "rawValue": "true", "color": "#00e676", "label": "BIAS reachable" },
+        { "operator": "=", "rawValue": "false", "color": "#ff5252", "label": "BIAS unreachable" }
+      ]
+    },
+    "Indicator!capturing": {
+      "path": "/viz/bias/capturing.data",
+      "style": "bulb",
+      "fallbackColor": "#8b949e",
+      "fallbackLabel": "capture: unknown",
+      "rules": [
+        { "operator": "=", "rawValue": "true", "color": "#00e676", "label": "capturing" },
+        { "operator": "=", "rawValue": "false", "color": "#8b949e", "label": "not capturing" }
+      ]
+    },
+    "Indicator!logging": {
+      "path": "/viz/bias/logging.data",
+      "style": "bulb",
+      "fallbackColor": "#8b949e",
+      "fallbackLabel": "video: unknown",
+      "rules": [
+        { "operator": "=", "rawValue": "true", "color": "#ffd740", "label": "writing video" },
+        { "operator": "=", "rawValue": "false", "color": "#8b949e", "label": "no video" }
+      ]
+    },
+    "Gauge!fps": {
+      "path": "/viz/bias/fps.data",
+      "minValue": 0,
+      "maxValue": 200,
+      "colorMap": "red-yellow-green",
+      "colorMode": "colormap",
+      "gradient": ["#0000ff", "#ff00ff"],
+      "reverse": false
+    },
+    "StateTransitions!biasstate": {
+      "paths": [
+        { "value": "/viz/bias/state.data", "timestampMethod": "receiveTime", "label": "BIAS" }
+      ],
+      "isSynced": true
+    },
+    "Plot!frames": {
+      "title": "BIAS frame count vs displayed index",
+      "paths": [
+        { "value": "/viz/bias/frame_count.data", "enabled": true, "timestampMethod": "receiveTime", "label": "camera frames" },
+        { "value": "/viz/arena/index.data", "enabled": true, "timestampMethod": "receiveTime", "label": "arena frame index" }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "followingViewWidth": 60
+    },
+    "RawMessages!reply": {
+      "topicPath": "/bias/reply",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "expansion": "all"
+    },
+    "DiagnosticSummary!health": {
+      "minLevel": 0,
+      "pinnedIds": [],
+      "hardwareIdFilter": "",
+      "topicToRender": "/diagnostics",
+      "sortByLevel": true
+    },
+    "DiagnosticStatusPanel!detail": {
+      "topicToRender": "/diagnostics",
+      "collapsedSections": []
+    },
+    "RawMessages!lasterror": {
+      "topicPath": "/viz/last_error",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "expansion": "all"
+    },
+    "RosOut!log": {
+      "searchTerms": [],
+      "minLogLevel": 2,
+      "nameFilter": {}
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": { "speed": 1 },
+  "layout": {
+    "direction": "row",
+    "splitPercentage": 62,
+    "first": {
+      "direction": "column",
+      "splitPercentage": 48,
+      "first": "3D!arena",
+      "second": {
+        "direction": "column",
+        "splitPercentage": 30,
+        "first": "StateTransitions!biasstate",
+        "second": {
+          "direction": "row",
+          "splitPercentage": 55,
+          "first": "Plot!frames",
+          "second": "RawMessages!reply"
+        }
+      }
+    },
+    "second": {
+      "direction": "column",
+      "splitPercentage": 28,
+      "first": {
+        "direction": "row",
+        "splitPercentage": 66,
+        "first": {
+          "direction": "row",
+          "splitPercentage": 50,
+          "first": "Indicator!reachable",
+          "second": {
+            "direction": "column",
+            "splitPercentage": 50,
+            "first": "Indicator!capturing",
+            "second": "Indicator!logging"
+          }
+        },
+        "second": "Gauge!fps"
+      },
+      "second": {
+        "direction": "column",
+        "splitPercentage": 40,
+        "first": "DiagnosticSummary!health",
+        "second": {
+          "direction": "column",
+          "splitPercentage": 55,
+          "first": "DiagnosticStatusPanel!detail",
+          "second": {
+            "direction": "column",
+            "splitPercentage": 40,
+            "first": "RawMessages!lasterror",
+            "second": "RosOut!log"
+          }
+        }
+      }
+    }
+  }
+}

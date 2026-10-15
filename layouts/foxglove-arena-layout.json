@@ -1,0 +1,64 @@
+{
+  "configById": {
+    "Plot!idx": {
+      "title": "Displayed frame index — /arena/frame.idx (0…frames−1, wraps every 360°/frames of turn)",
+      "paths": [{ "value": "/arena/frame.idx", "enabled": true, "timestampMethod": "receiveTime", "label": "idx" }],
+      "minYValue": 0, "maxYValue": 20,
+      "showXAxisLabels": true, "showYAxisLabels": true, "showLegend": true, "legendDisplay": "floating",
+      "showPlotValuesInLegend": true, "isSynced": true, "xAxisVal": "timestamp", "sidebarDimension": 240
+    },
+    "Plot!heading": {
+      "title": "FicTrac heading — /arena/frame.hd (radians, 0…2π, wraps once per ball revolution)",
+      "paths": [{ "value": "/arena/frame.hd", "enabled": true, "timestampMethod": "receiveTime", "label": "hd (rad)" }],
+      "minYValue": 0, "maxYValue": 6.3,
+      "showXAxisLabels": true, "showYAxisLabels": true, "showLegend": true, "legendDisplay": "floating",
+      "showPlotValuesInLegend": true, "isSynced": true, "xAxisVal": "timestamp", "sidebarDimension": 240
+    },
+    "Plot!kinematics": {
+      "title": "Fly kinematics — /arena/frame.turning_dps (deg/s) and .forward_mms (mm/s), derived in the bridge node like the Studio scope",
+      "paths": [
+        { "value": "/arena/frame.turning_dps", "enabled": true, "timestampMethod": "receiveTime", "label": "turning (deg/s)" },
+        { "value": "/arena/frame.forward_mms", "enabled": true, "timestampMethod": "receiveTime", "label": "forward (mm/s)" }
+      ],
+      "showXAxisLabels": true, "showYAxisLabels": true, "showLegend": true, "legendDisplay": "floating",
+      "showPlotValuesInLegend": true, "isSynced": true, "xAxisVal": "timestamp", "sidebarDimension": 240
+    },
+    "Plot!bias": {
+      "title": "Bias angle — /arena/frame.bias_deg (degrees since the epoch opened; 0 when the bias is none)",
+      "paths": [{ "value": "/arena/frame.bias_deg", "enabled": true, "timestampMethod": "receiveTime", "label": "bias (deg)" }],
+      "showXAxisLabels": true, "showYAxisLabels": true, "showLegend": true, "legendDisplay": "floating",
+      "showPlotValuesInLegend": true, "isSynced": true, "xAxisVal": "timestamp", "sidebarDimension": 240
+    },
+    "StateTransitions!epoch": {
+      "paths": [{ "value": "/arena/frame.epoch", "timestampMethod": "receiveTime", "label": "epoch (one band per heading tare: a trial's start, and the bias reset at its stop)" }],
+      "isSynced": true
+    },
+    "RawMessages!browser": { "topicPath": "/arena/browser", "diffTopicPath": "", "diffMethod": "custom", "diffEnabled": false, "showFullMessageForDiff": false, "expansion": "all" },
+    "RawMessages!event": { "topicPath": "/arena/event", "diffTopicPath": "", "diffMethod": "custom", "diffEnabled": false, "showFullMessageForDiff": false, "expansion": "all" },
+    "RawMessages!bias": { "topicPath": "/bias/reply", "diffTopicPath": "", "diffMethod": "custom", "diffEnabled": false, "showFullMessageForDiff": false, "expansion": "all" }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": { "speed": 1 },
+  "layout": {
+    "direction": "row",
+    "first": {
+      "direction": "column",
+      "first": { "direction": "column", "first": "Plot!idx", "second": "Plot!heading", "splitPercentage": 50 },
+      "second": {
+        "direction": "column",
+        "first": "Plot!kinematics",
+        "second": { "direction": "column", "first": "Plot!bias", "second": "StateTransitions!epoch", "splitPercentage": 65 },
+        "splitPercentage": 45
+      },
+      "splitPercentage": 42
+    },
+    "second": {
+      "direction": "column",
+      "first": "RawMessages!browser",
+      "second": { "direction": "column", "first": "RawMessages!event", "second": "RawMessages!bias", "splitPercentage": 50 },
+      "splitPercentage": 40
+    },
+    "splitPercentage": 64
+  }
+}
