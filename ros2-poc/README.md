@@ -140,6 +140,83 @@ One detour worth knowing: the stock `fictrac_bias_test.yaml` names `frame2_h_ccw
 scripted step by step in `WINDOWS-TEST.md`), and the macOS router with the stock IPv6 config (the
 loopback config was used throughout).
 
+## Foxglove dashboards (2026-10-15)
+
+Two layouts under `foxglove/`, fed by a small typed republisher so nothing needs a custom
+message type: `nodes/viz_node.py` turns the JSON envelopes into `std_msgs/Float64` signals
+(`/viz/fictrac/*`, `/viz/arena/*`, `/viz/kinefly/*`, `/viz/bias/*`), `std_msgs/Bool` and
+`String` states, a `diagnostic_msgs/DiagnosticArray` on `/diagnostics` (one row per source:
+OK while data flows, STALE after `--stale-s`, WARN never seen, ERROR for BIAS unreachable or a
+failed command, with rate / last sequence / latency / last error + time), and a
+`visualization_msgs/MarkerArray` on `/viz/markers`: the ball rotated by FicTrac's lab-frame
+orientation with markings so the rotation is visible, the fly fixed on top facing +X, the arena
+as a translucent cylinder, the pattern feature as a bar on the wall at
+`wrap180(frame_dir·idx·deg_per_frame + az0)` (the same mapping `fictrac_sim.py --model fly`
+uses), and a text readout. The stock `foxglove_bridge` serves it on **ws://localhost:8766**
+(8765 is the Studio bridge).
+
+```bash
+pixi run rig -- --sim --sim-args "--model fly --kp 2 --seed 1" --foxglove          # Arena + FicTrac
+pixi run rig -- --sim --bias --bias-sim --foxglove                                 # Arena + BIAS (sim)
+pixi run rig -- --sim --bias --foxglove                                            # Arena + real BIAS on :5010
+# Foxglove (desktop or app.foxglove.dev) → Open connection → Foxglove WebSocket → ws://localhost:8766
+# Layout → Import from file… → ros2-poc/foxglove/arena-fictrac.json  or  arena-bias.json
+```
+
+`arena-fictrac.json`: 3D scene, closed-loop plot (fly turn vs feature azimuth vs bias angle),
+kinematics plot, frame-index plot, FicTrac light + rate gauge, diagnostics summary/detail, last
+error, log. `arena-bias.json`: 3D scene, BIAS state timeline (unreachable / idle / preview /
+recording), frame count vs arena index, latest BIAS reply (shows the `artifact` path), reachable /
+capturing / writing-video lights, fps gauge, diagnostics, last error, log. Both work live and on a
+replayed MCAP once the log moves to MCAP. Verified here only as topics and advertised channels
+(no GUI in the container); the layouts are hand-written Foxglove JSON, so a panel whose schema
+drifted shows up empty and is one click to re-point.
+
+## Log format: MCAP sizing and the two-channel plan (2026-10-15)
+
+If ROS 2 + Foxglove is chosen, the run log moves from gzipped NDJSON to **MCAP written by the
+bridge node** (one writer, every source), JSON-schema channels (no code generation, `mcap cat
+--json` stays readable), the protocol YAML and run metadata as attachments. Measured on this
+session's run logs with `pixi run size-study -- <log>` (`sizing/compare.py`):
+
+| layout | bytes per record | vs today's gzip-9 NDJSON |
+|---|---|---|
+| NDJSON gzip-9 (bridge 3.4) | 14–15 | 1.00 |
+| MCAP, one message per record, rosbag2 / Foxglove SDK defaults (zstd-3, per-message index) | 42 | 2.75–3.0 |
+| … per-message index off (seek by chunk) | 25–26 | 1.7–1.8 |
+| … + arena echoes batched 1 s per message + **zstd-19** | 15–16 | **1.00–1.11** |
+
+The per-message cost is fixed overhead that does not compress (31-byte record header with two
+nanosecond stamps + a 16-byte uncompressed index entry) against ~45-byte payloads; typed binary
+payloads buy almost nothing once compressed. The three knobs that matter: `noMessageIndex`,
+batching streams nobody plots per sample, and the zstd level (the Python writer hard-codes 3;
+rosbag2's MCAP plugin exposes `compressionLevel: Slowest` and `noMessageIndex: true`).
+
+**Per hour** (the unit that matters; experiments run for hours): behaviour streams ≈ 5–6 MB with
+FicTrac at 50 Hz, ≈ 10 MB with Kinefly at 100 Hz too; at untuned defaults 15–28 MB.
+
+**Controller frame records at 300 Hz** (`["cf", …]`, one hour synthesized in `sizing/frames300.py`):
+
+| layout | every frame | changes only (idx steps, ≈ 50 Hz in Mode 3) |
+|---|---|---|
+| NDJSON gzip-9 | 15 MB | 2.7 MB |
+| MCAP per record, defaults | 45 MB | 7.9 MB |
+| MCAP per record, tuned | 21 MB | 3.7 MB |
+| MCAP batched 1 s, zstd-19 | **11 MB** | **2.1 MB** |
+
+**The two-channel plan:** (1) `controller/frames` — every frame, batched one second per message
+(≈ 11 MB/h): the stimulus-quality verdicts and display-gap detection need the per-frame SD/SPI
+timings, and nobody plots a 300 Hz record individually; (2) `controller/index` — one message per
+displayed-index change (≈ 3.7 MB/h): what the 3D arena view, the replay and Foxglove plot per
+sample. Total ≈ 20–25 MB/h for a FicTrac + Kinefly rig with full frame records, so a 3 h run is
+60–75 MB → **roll files at 25 MiB** (`<run>.0001.mcap`, …; Foxglove opens the set, `mcap merge`
+rejoins; under GitHub's 50 MB warning and the Contents-API ~30 MiB detour). Lean fallback if
+needed: per-second SD/SPI statistics + a full record only for frames over the 10 ms threshold
+(< 1 MB/h), at the cost of re-deriving a different threshold later. Camera frames never enter the
+log. `publish_time` can carry the source clock (FicTrac camera stamp) for ≈ 4 %; Foxglove plots by
+`log_time`, so the source time also stays in the payload. Synthetic timing fields are uniformly
+random, so real files should come in somewhat under these numbers.
+
 ## Observations for the decision
 
 * Install friction was low: a ~1.3 GB environment, one lock file, no system packages. The

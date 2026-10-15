@@ -106,6 +106,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--bias", action="store_true", help="also run the BIAS camera node")
     p.add_argument("--bias-sim", action="store_true", help="also run bias_sim.py (a fake BIAS program)")
     p.add_argument("--sim", action="store_true", help="also run the FicTrac simulator (random walk, 50 Hz)")
+    p.add_argument("--foxglove", action="store_true", help="also run the typed republisher (viz_node) + foxglove_bridge on ws://127.0.0.1:8766")
+    p.add_argument("--viz-args", default="", help="extra args for viz_node.py (--deg-per-frame, --frame-dir, --feature-az0)")
     p.add_argument("--no-router", action="store_true", help="a Zenoh router is already running on this host")
     p.add_argument("--bridge-args", default="", help="extra args for bridge_node.py")
     p.add_argument("--fictrac-args", default="", help="extra args for fictrac_udp_adapter.py")
@@ -125,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
         ("udp", 60000, "a FicTrac receiver — bridge 3.4 or another fictrac adapter"),
         ("udp", 60001, "another Kinefly adapter") if args.kinefly else (None, 0, ""),
         ("tcp", 5010, "a BIAS program or bias_sim") if args.bias_sim else (None, 0, ""),
+        ("tcp", 8766, "a foxglove_bridge (another rig with --foxglove, or `pixi run foxglove`)") if args.foxglove else (None, 0, ""),
     ):
         if proto and port_in_use(proto, port):
             taken.append(f"  {proto} 127.0.0.1:{port} is in use — probably {who}")
@@ -153,6 +156,9 @@ def main(argv: list[str] | None = None) -> int:
         nodes.append(Child("bias", [py, str(NODES / "bias_node.py"), *shlex.split(args.bias_args)]))
     bridge = Child("bridge", [py, str(NODES / "bridge_node.py"), *shlex.split(args.bridge_args)])
     nodes.append(bridge)
+    if args.foxglove:
+        nodes.append(Child("viz", [py, str(NODES / "viz_node.py"), *shlex.split(args.viz_args)]))
+        nodes.append(Child("foxglove", ["ros2", "run", "foxglove_bridge", "foxglove_bridge", "--ros-args", "-p", "port:=8766", "-p", "address:=127.0.0.1"]))
     if args.sim:
         nodes.append(Child("sim", [py, str(SIM), *shlex.split(args.sim_args)]))
 
@@ -176,7 +182,9 @@ def main(argv: list[str] | None = None) -> int:
             c.start()
             children.append(c)
             time.sleep(0.3)
-        print(f"[rig] up: {', '.join(c.name for c in children)}  —  Studio → ws://localhost:8765   (Ctrl-C to stop)", file=sys.stderr)
+        print(f"[rig] up: {', '.join(c.name for c in children)}  —  Studio → ws://localhost:8765"
+              + ("   Foxglove → ws://localhost:8766 (layouts: ros2-poc/foxglove/)" if args.foxglove else "")
+              + "   (Ctrl-C to stop)", file=sys.stderr)
         while not stop.is_set():
             time.sleep(0.5)
             for c in children:

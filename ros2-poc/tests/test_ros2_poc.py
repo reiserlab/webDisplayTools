@@ -316,13 +316,14 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print("  skip  JS reader check: no `node` and no root pixi env (run `pixi install` at the repo root)", file=sys.stderr)
 
-        # No custom message types: only std_msgs in nodes/.
+        # No custom message types: only ros-base interface packages in nodes/.
+        STANDARD = ("std_msgs", "diagnostic_msgs", "visualization_msgs", "geometry_msgs")
         bad = []
         for f in NODES.glob("*.py"):
             for line in f.read_text(encoding="utf-8").splitlines():
-                if line.startswith("from ") and ".msg import" in line and not line.startswith("from std_msgs.msg"):
+                if line.startswith("from ") and ".msg import" in line and not any(line.startswith(f"from {p}.msg") for p in STANDARD):
                     bad.append(f"{f.name}: {line.strip()}")
-        check("no custom message types (only std_msgs imported in nodes/)", not bad, "; ".join(bad))
+        check("no custom message types (only ros-base interface packages imported in nodes/)", not bad, "; ".join(bad))
 
         check("bridge node still alive at the end", bridge.alive())
     finally:

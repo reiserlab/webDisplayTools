@@ -38,9 +38,16 @@ ros-jazzy-ros-base = "*"
 ros-jazzy-rmw-zenoh-cpp = "*"
 # The canonical talker/listener smoke test (`ros2 run demo_nodes_py …`); not part of ros-base.
 ros-jazzy-demo-nodes-py = "*"
+# Foxglove: the stock bridge serves ROS topics to the Foxglove app over its own WebSocket
+# (`pixi run foxglove`, port 8766 — 8765 is the Studio bridge). Layouts: foxglove/*.json.
+ros-jazzy-foxglove-bridge = "*"
 python = "*"
 websockets = ">=12"
 pyzmq = "*"
+# Log-format sizing study (sizing/*.py): MCAP writer + the two chunk compressors it supports.
+mcap = "*"
+zstandard = "*"
+lz4 = "*"
 
 [tasks]
 # ── hour one: middleware bring-up ───────────────────────────────────────────
@@ -58,6 +65,13 @@ bridge-node = "python nodes/bridge_node.py"
 sim = "python ../fictrac-bridge/fictrac_sim.py"
 kinefly-sim = "python nodes/kinefly_sim.py"
 bias-sim = "python nodes/bias_sim.py"
+# ── Foxglove dashboard (optional): typed republisher + the stock foxglove_bridge ─
+# Foxglove → Open connection → Foxglove WebSocket → ws://localhost:8766, then import a
+# layout from foxglove/. `pixi run rig -- --foxglove` starts both with the rig.
+viz = "python nodes/viz_node.py"
+foxglove = "ros2 run foxglove_bridge foxglove_bridge --ros-args -p port:=8766 -p address:=127.0.0.1"
+# ── log-format sizing (MCAP vs NDJSON; README "Log format") ────────────────
+size-study = "python sizing/compare.py"
 # ── the one command a rig runs ──────────────────────────────────────────────
 rig = "python nodes/rig.py"
 # ── acceptance test (LAB-303 PoC criteria): whole graph + Studio emulator + model fly ──
