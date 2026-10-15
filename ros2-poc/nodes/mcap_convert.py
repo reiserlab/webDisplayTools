@@ -431,7 +431,7 @@ def convert(records: list[dict], level: str | None = None, order: str = "seq", c
                 pkt = json.loads(env["raw"])
             except json.JSONDecodeError:
                 continue
-            rel = int(r["log_ns"] // 1_000_000) - t0
+            rel = max(0, int(r["log_ns"] // 1_000_000) - t0)  # received just before the open: line at 0
             kseq = pkt.get("sequence") if isinstance(pkt.get("sequence"), int) else int(env.get("seq") or 0)
             derived.append((rel, RANK["derived"], r["log_ns"], kf_row(rel, pkt, kseq)))
             stats["kf"] += 1
@@ -441,7 +441,7 @@ def convert(records: list[dict], level: str | None = None, order: str = "seq", c
                 stats["skipped"] += 1
                 continue
             kind = "reply" if t == TOPIC_BIAS_REPLY else "status"
-            rel = int(r["log_ns"] // 1_000_000) - t0
+            rel = max(0, int(r["log_ns"] // 1_000_000) - t0)
             ev = {"type": "connector", "src": "bias", "kind": kind, "dir": "bridge", "ms": rel}
             for k, v in env.items():
                 if k != "src":
@@ -484,17 +484,18 @@ def convert(records: list[dict], level: str | None = None, order: str = "seq", c
                 out.append(ln)
             out.extend(obj for _, obj in inserts[j:])
             lines = out
-    # The live writer writes nothing after logging_stopped. A device message the recorder got in
-    # the same ms as the stop (the live writer's callback ran after close; ww18 2026-10-15: one kf
-    # row) would otherwise sort after it on the tie — drop derived lines placed after the stop.
+    # The live writer writes nothing after logging_stopped, and the bridge records a device
+    # message only together with its shadow line (bridge_node record_device), so every derived
+    # record precedes the stop. One received in the same ms as the stop would still sort after it
+    # on the tie (ww18 2026-10-15: one kf row): put derived lines found after the stop before it.
     stop_at = next((i for i in range(len(lines) - 1, -1, -1) if isinstance(lines[i], dict)
                     and lines[i].get("type") == "session" and lines[i].get("event") == "logging_stopped"), None)
     if stop_at is not None and derived:
         derived_ids = {id(x[3]) for x in derived}
         tail = lines[stop_at + 1:]
-        kept = [ln for ln in tail if id(ln) not in derived_ids]
-        stats["dropped_after_stop"] = len(tail) - len(kept)
-        lines = lines[:stop_at + 1] + kept
+        moved = [ln for ln in tail if id(ln) in derived_ids]
+        stats["moved_before_stop"] = len(moved)
+        lines = lines[:stop_at] + moved + [lines[stop_at]] + [ln for ln in tail if id(ln) not in derived_ids]
     # The frame_schema / session-open lines were given seq = the open record's seq and rank 0,
     # so they stay first; a logging_stopped line from a crash-truncated bag may be missing.
     report = {"t0": t0, "level": level, "order": order, "lines": len(lines), **stats,

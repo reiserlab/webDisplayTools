@@ -240,6 +240,8 @@ class RecordingLogWriter(B.LogWriter):
       * record_browser → `/arena/browser` {…, line:false} for rows / log_export / connector_command
       * write_event  → `/arena/event` {seq, …}   (record=False for events the converter DERIVES
                         from device topics: BIAS replies/status and connector commands)
+      * record_device → the device message itself (`/kinefly/raw`, `/bias/reply|status`), on
+                        the loop next to its shadow line, stamped with the ROS receive time
       * frames       → recorded by RosHub.publish (the emission point), `/arena/frame`
       * close        → `/arena/session` logging_stopped, then the bag closes
     `export_current` returns the CONVERTED log (or the shadow with --export live) and
@@ -362,6 +364,16 @@ class RecordingLogWriter(B.LogWriter):
         if record:
             self._record(EVENT_TOPIC, {"seq": self.next_seq(), **obj})
         super().write_event(obj)
+
+    def record_device(self, topic: str, data: bytes, t_ns: int) -> None:
+        """A device message whose shadow line the caller writes next (Kinefly row, BIAS
+        reply/status event). Recorded HERE, on the loop and under the same open gate as that
+        line, not on the ROS thread on arrival: there a message could reach the bag but not
+        the shadow file (arrived just before close) or the shadow file but not the bag
+        (arrived just before open) — ww18 2026-10-15, harness `live 2237 vs conv 2236`.
+        `t_ns` = the ROS-thread receive time, kept as the MCAP log_time."""
+        if self._fh and self.rec is not None:
+            self.rec.write_raw(topic, data, t_ns)
 
     def record_frame(self, msg: dict, derived: tuple[float, float] = NO_DERIVED) -> None:
         """Called by RosHub.publish — the frame's emission point (write_frame follows at once).
@@ -541,41 +553,52 @@ class BridgeNode(Node):
             return None
         return env if isinstance(env, dict) else None
 
+    # FicTrac too: the raw message is recorded by the loop's consumer (consume_recording) just
+    # before the pipeline turns it into a frame, so a frame in the run always has its raw record
+    # (`--level full` takes the 25 fields from it) — ww18: a line that arrived just before the
+    # open had a recorded frame but no raw record (`cols [0, 25]`).
     def _fictrac(self, data: bytes) -> None:
-        self._record(FICTRAC_TOPIC, data)
+        t_ns = time.time_ns()
         env = self._envelope(data)
         if env is None or not isinstance(env.get("raw"), str):
+            self._record(FICTRAC_TOPIC, data)
             return
         self.stats["fictrac"].seen(env.get("rx_epoch_ms"))
         # Same hand-off bridge.py's UDP protocol does (queue.put_nowait), from the ROS thread.
-        self._loop.call_soon_threadsafe(self._queue.put_nowait, env["raw"])
+        self._loop.call_soon_threadsafe(self._queue.put_nowait, (env["raw"], FICTRAC_TOPIC, data, t_ns))
 
     def _fictrac_typed(self, data: bytes) -> None:
-        self._record(FICTRAC_FRAME_TOPIC, data)
+        t_ns = time.time_ns()
         try:
             m = deserialize_message(data, FicTracFrame)
         except Exception:
+            self._record(FICTRAC_FRAME_TOPIC, data)
             return
         self.stats["fictrac"].seen(int(m.rx_epoch_ms) if m.rx_epoch_ms else None)
         # The closed-loop math stays bridge 3.4's byte for byte: it parses the verbatim line
         # the typed message carries. The typed fields are for ROS-native consumers + the bag.
-        self._loop.call_soon_threadsafe(self._queue.put_nowait, m.raw)
+        self._loop.call_soon_threadsafe(self._queue.put_nowait, (m.raw, FICTRAC_FRAME_TOPIC, data, t_ns))
 
+    # Kinefly + BIAS become shadow-file lines the converter DERIVES from the bag, so their
+    # record is made on the loop together with the line (RecordingLogWriter.record_device);
+    # only a message that can never become a line is recorded here on arrival.
     def _kinefly(self, data: bytes) -> None:
-        self._record(KINEFLY_TOPIC, data)
+        t_ns = time.time_ns()
         env = self._envelope(data)
         if env is None or not isinstance(env.get("raw"), str):
+            self._record(KINEFLY_TOPIC, data)
             return
         self.stats["kinefly"].seen(env.get("rx_epoch_ms"))
-        self._loop.call_soon_threadsafe(self._on_kinefly, env)
+        self._loop.call_soon_threadsafe(self._on_kinefly, env, data, t_ns)
 
     def _bias(self, kind: str, topic: str, data: bytes) -> None:
-        self._record(topic, data)
+        t_ns = time.time_ns()
         env = self._envelope(data)
         if env is None:
+            self._record(topic, data)
             return
         self.stats["bias"].seen(env.get("rx_epoch_ms"))
-        self._loop.call_soon_threadsafe(self._on_bias, kind, env)
+        self._loop.call_soon_threadsafe(self._on_bias, kind, env, topic, data, t_ns)
 
 
 async def run(args: argparse.Namespace) -> None:
@@ -588,7 +611,7 @@ async def run(args: argparse.Namespace) -> None:
     CONNECTORS = {"bias": BIAS_CMD_TOPIC}
     log = RecordingLogWriter(args.log, args.log_level, args.log_dir, profile=args.bag_profile, typed=typed,
                              export=args.export, connectors=list(CONNECTORS))
-    queue: asyncio.Queue[str] = asyncio.Queue()
+    queue: asyncio.Queue[tuple[str, str, bytes, int]] = asyncio.Queue()  # (line, topic, raw bytes, receive ns)
     pipeline = B.Pipeline(
         None,
         log,
@@ -608,7 +631,8 @@ async def run(args: argparse.Namespace) -> None:
 
     kf_seq = {"n": 0}
 
-    def on_kinefly(env: dict) -> None:
+    def on_kinefly(env: dict, data: bytes, t_ns: int) -> None:
+        log.record_device(KINEFLY_TOPIC, data, t_ns)
         try:
             pkt = json.loads(env["raw"])
         except (json.JSONDecodeError, KeyError, TypeError):
@@ -632,7 +656,8 @@ async def run(args: argparse.Namespace) -> None:
         except Exception:  # ConnectionClosed: the asker left — nothing to deliver to
             pass
 
-    def on_bias(kind: str, env: dict) -> None:
+    def on_bias(kind: str, env: dict, topic: str, data: bytes, t_ns: int) -> None:
+        log.record_device(topic, data, t_ns)
         ev = {"type": "connector", "src": "bias", "kind": kind, "dir": "bridge", "ms": rel_ms()}
         for k, v in env.items():
             if k not in ("src",):
@@ -792,7 +817,17 @@ async def run(args: argparse.Namespace) -> None:
     ros_thread = threading.Thread(target=executor.spin, name="rclpy-spin", daemon=True)
     ros_thread.start()
 
-    consumer = asyncio.create_task(B.consume(queue, pipeline))
+    async def consume_recording() -> None:
+        """bridge.py's consume() (line → pipeline.handle_line), then the FicTrac message is
+        recorded under the run's open gate (RecordingLogWriter.record_device) — after the
+        frame went out, so the bag write is not on the closed-loop path; handle_line never
+        opens or closes the log, so the gate is the frame's."""
+        while True:
+            line, topic, data, t_ns = await queue.get()
+            await pipeline.handle_line(line)
+            log.record_device(topic, data, t_ns)
+
+    consumer = asyncio.create_task(consume_recording())
     wd = asyncio.create_task(watchdog())
 
     async with B.serve(hub.serve_client, args.ws_host, args.ws_port, max_size=B.WS_MAX_SIZE):
