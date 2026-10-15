@@ -173,8 +173,44 @@ FT_TS_NS_PER_MS = 1_000_000.0
 BIAS_TYPES = ("none", "constant", "sine", "square")
 
 
+# Wall clock for every run-log `ms` / `rx_ms` / t0. On Windows with Python <= 3.12, time.time()
+# is GetSystemTimeAsFileTime, which advances once per system timer tick: 15.625 ms unless some
+# other process (often a browser) has raised the timer rate. Measured on reiserlab-ww18
+# 2026-10-15 with nothing raising it: ~15.6 ms steps, ~2.3 ms behind true time.
+# GetSystemTimePreciseAsFileTime is the same wall clock interpolated with the performance
+# counter (~1 us, ~0.4 us per call), which is what Python 3.13 made time.time(). Everywhere
+# else (macOS, Linux, Windows on 3.13+) now_ms() is time.time() unchanged.
+_FILETIME_UNIX_EPOCH = 116444736000000000  # 100 ns ticks from 1601-01-01 to 1970-01-01
+
+
+def _windows_precise_now_ms():
+    """A ms wall clock on GetSystemTimePreciseAsFileTime, or None where there is none
+    (not Windows, or Windows older than 8)."""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        fn = ctypes.WinDLL("kernel32").GetSystemTimePreciseAsFileTime
+    except (AttributeError, OSError):
+        return None
+    fn.argtypes = [ctypes.POINTER(ctypes.c_ulonglong)]
+    fn.restype = None
+
+    def precise_now_ms() -> int:
+        ft = ctypes.c_ulonglong()
+        fn(ctypes.byref(ft))
+        return (ft.value - _FILETIME_UNIX_EPOCH) // 10_000
+
+    return precise_now_ms
+
+
 def now_ms() -> int:
     return int(time.time() * 1000)
+
+
+if sys.version_info < (3, 13):
+    now_ms = _windows_precise_now_ms() or now_ms  # noqa: F811
 
 
 def behavior_v1_row(fields: list[float], index: int, rel_ms: int, ft0: float | None) -> dict:
