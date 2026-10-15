@@ -7899,24 +7899,32 @@ const BUILTIN_BASE = './patterns/g6_2x10/';
 Studio.patternSet = null;
 const webPreviewBySdName = new Map(); // filename → () => Promise<ArrayBuffer>
 const repoSharedPreviewKeys = new Set(); // sources currently wired from course-repo patterns/
-// In-memory sources first (logical-name tolerant via webBytesForName). `idx`
-// (1-based SD index) is the fallback path: a pattern already on the card
-// from a prior session has no cached source above, so fetch it live via 0x84
-// — the controller's GET_PATTERN_FILE handler is chunked/non-blocking with a
-// bounded stall recovery (issue #16), so this is safe on fixed firmware (an
-// older controller can still wedge the link here). Same call the SD table's
-// Download button already makes.
-function patByteSource(sd, idx) {
-    const f = Studio.webBytesForName(sd);
+// In-memory sources first (logical-name tolerant via webBytesForName). The
+// fallback for a pattern already on the card from a prior session is a live
+// 0x84 fetch of the WHOLE file (the controller has no ranged read), gated by
+// PatPreview.liveFetchVerdict: size known from GET_PATTERN_INFO and ≤ 1 MiB, no
+// run active. It goes in the link's BACKGROUND lane, so a user command never
+// queues behind it (bench 2026-10-07: the connect-time auto-pick's fetch of
+// pattern 1 lost bytes and held the link for its 60 s timeout; TRIAL_PARAMS
+// waited 57 s). Resolves the ArrayBuffer, or null when no source is allowed;
+// `refusal` (optional out-param) gets the verdict reason.
+async function patByteSource(p, refusal) {
+    const f = Studio.webBytesForName(p.sd_name);
     if (f) return f();
-    if (!Studio.session || !Studio.session.connected || idx == null) {
-        return Promise.reject(new Error('no local copy of ' + sd));
+    const s = Studio.session;
+    const card = s && s.connected && p.index != null ? await cardPatternInfo(p).catch(() => null) : null;
+    const v = PP && typeof PP.liveFetchVerdict === 'function' // a stale cached pat-preview.js lacks it
+        ? PP.liveFetchVerdict(card, { connected: !!(s && s.connected) && p.index != null, running: !!(s && s.running) })
+        : { ok: false, reason: 'unknown-size' };
+    if (!v.ok) {
+        if (refusal) Object.assign(refusal, v, { fileSize: card && card.fileSize });
+        return null;
     }
-    return Studio.session
-        .sendBulkRead(Wire.encodeGetPatternFile(idx), { timeoutMs: 60000 })
-        .then((u8) => u8.buffer);
+    const u8 = await s.sendBulkRead(Wire.encodeGetPatternFile(p.index), { timeoutMs: 10000, background: true });
+    return u8.buffer;
 }
 let patPreviewCache = {};
+let patThumbSeq = 0; // renderPatThumb: only the newest pick draws (its fetch may finish late)
 
 // Autoplay a multi-frame pattern preview as a lightweight looping GIF: cycle the
 // sampled frames on an interval that SELF-CLEARS once the img leaves the DOM (a
@@ -8182,11 +8190,22 @@ async function renderPatThumb(name) {
     host.title = src || canFetchLive
         ? 'Pattern preview (multi-frame patterns animate automatically)'
         : 'No preview — connect to the controller for a live thumbnail, or upload the set / open its course-repo protocol';
+    const seq = ++patThumbSeq;
     try {
         let sampled = patPreviewCache[name];
         if (!sampled) {
             if (!src && !canFetchLive) return;
-            const ab = await patByteSource(p.sd_name, p.index);
+            const refusal = {};
+            const ab = await patByteSource(p, refusal);
+            if (seq !== patThumbSeq) return; // a newer pick owns the thumbnail
+            if (!ab) {
+                host.title = refusal.reason === 'too-large'
+                    ? 'No preview — ' + (refusal.fileSize / 1048576).toFixed(1) + ' MB on the card is too large to fetch over USB for a thumbnail; upload the set or open its course-repo protocol to preview it'
+                    : refusal.reason === 'running'
+                        ? 'No preview while a run is active'
+                        : 'No preview — the controller did not report this pattern’s size';
+                return;
+            }
             const parsed = PatParser.parsePatFile(ab);
             sampled = PP.samplePreviewFrames(parsed, arenaForConfig(m.arenaConfig), {
                 renderIcon: generatePatternIcon,
@@ -8198,13 +8217,20 @@ async function renderPatThumb(name) {
             // count — the closed-loop resolver reads this (patternFramesByName).
             p.preview = { frames: parsed.numFrames };
         }
+        if (seq !== patThumbSeq) return;
         if (!sampled.frames || !sampled.frames.length) return;
         const img = document.createElement('img');
         img.src = sampled.frames[sampled.staticIndex || 0];
         img.alt = name;
         host.appendChild(img);
         if (sampled.frames.length > 1) Studio.startPatAutoplay(img, sampled.frames, sampled.staticIndex || 0);
-    } catch (e) { /* preview is best-effort */ }
+    } catch (e) {
+        // Best-effort. The controller refuses 0x84 while a pattern is displaying
+        // (status 10, CE_DISPLAY_ACTIVE); nothing is cached, so the next pick after STOP retries.
+        if (seq === patThumbSeq && /status=10\b/.test((e && e.message) || '')) {
+            host.title = 'No preview while the display is running — stop it, then pick the pattern again to load its thumbnail';
+        }
+    }
 }
 // Register just-uploaded pattern bytes as picker preview sources, keyed by the
 // on-card filename (== the name we rename to via 0x83). Called by the classic
@@ -8319,12 +8345,32 @@ Studio.onSdListing = function (names) {
     Studio.updateRunGate(); // the missing-pattern preflight tracks the SD listing
     fillPatternFramesFromCard(m); // frame counts via GET_PATTERN_INFO (the closed-loop index modulus)
 };
-// Frame counts for every card pattern from GET_PATTERN_INFO 0x88 (a header read, ~ms each),
-// filled right after the listing so `patternFramesByName` — which the closed-loop resolver
-// pushes to the bridge as the heading→index modulus — is correct for patterns whose preview
-// was never rendered (an 8 MB pattern is never fetched for a thumbnail; the bridge then used
-// its default of 200 and wrapped the index — bench 2026-09-13, #201). Sequential, single-flight,
-// abandons on a new listing, a disconnect or a run (a run owns the link).
+// GET_PATTERN_INFO 0x88 for one card pattern (a header read, ~2 ms), cached on the listing
+// entry as p.card = { frames, fileSize }; also fills p.preview.frames, the closed-loop modulus.
+// Background lane: it never delays a user command. Null when unknown (old fw, read failed).
+function cardPatternInfo(p) {
+    if (p.card) return Promise.resolve(p.card);
+    if (p.cardReq) return p.cardReq; // the thumbnail and the sweep can ask at once
+    const W = window.ArenaWireG6;
+    const s = Studio.session;
+    if (!W || !W.encodeGetPatternInfo || !s || !s.connected || p.index == null) return Promise.resolve(null);
+    p.cardReq = s.send(W.encodeGetPatternInfo(p.index), { timeoutMs: 1500, silent: true, background: true })
+        .then((resp) => {
+            const info = W.decodePatternInfo(resp);
+            if (!info || !(info.frameCount > 0)) return null;
+            p.card = { frames: info.frameCount, fileSize: info.fileSize };
+            p.preview = Object.assign(p.preview || {}, { frames: info.frameCount });
+            return p.card;
+        })
+        .finally(() => { p.cardReq = null; });
+    return p.cardReq;
+}
+// Frame counts for every card pattern from GET_PATTERN_INFO 0x88, filled right after the
+// listing so `patternFramesByName` — which the closed-loop resolver pushes to the bridge as
+// the heading→index modulus — is correct for patterns whose preview was never rendered (a
+// large pattern is never fetched for a thumbnail; the bridge then used its default of 200
+// and wrapped the index — bench 2026-09-13, #201). Sequential in the link's background lane
+// (a user command goes first), abandons on a new listing, a disconnect or a run.
 let patFramesGen = 0;
 async function fillPatternFramesFromCard(m) {
     const gen = ++patFramesGen;
@@ -8335,8 +8381,7 @@ async function fillPatternFramesFromCard(m) {
     for (const p of todo) {
         if (gen !== patFramesGen || !Studio.session.connected || Studio.session.running) return;
         try {
-            const info = W.decodePatternInfo(await Studio.session.send(W.encodeGetPatternInfo(p.index), { timeoutMs: 1500, silent: true }));
-            if (info && info.frameCount > 0) { p.preview = Object.assign(p.preview || {}, { frames: info.frameCount }); n++; }
+            if (await cardPatternInfo(p)) n++;
         } catch (_) { /* best effort: the preview path can still fill it later */ }
     }
     if (n && gen === patFramesGen) (Studio.clog || Studio.rawLog || function () {})('pattern frame counts read from the card for ' + n + ' pattern' + (n === 1 ? '' : 's') + ' (GET_PATTERN_INFO)', 'dim');
