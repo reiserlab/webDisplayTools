@@ -11,6 +11,31 @@ trying anything to fix it.
 
 Nothing here touches bridge 3.4 or Production. `ros2-poc/` is its own pixi workspace.
 
+## Kickoff prompt for the Windows session (paste into Claude Code on the rig PC)
+
+There is no remote path into the rig PCs from the Mac, so the Windows session is started on the PC
+itself: open Claude Code in a checkout of `reiserlab/webDisplayTools` and paste this as the first
+message. Everything it needs is in this file.
+
+```
+Windows rig test of the LAB-303 ROS 2 Plan B spike (draft PR #254, branch
+claude/ros-studio-plan-b-c44942). Fetch and switch to that branch, then follow
+ros2-poc/WINDOWS-TEST.md step by step, in order, and keep a results log as you go
+(ros2-poc/windows-results-<hostname>-<date>.md: one row per step, pass/fail, timings,
+sizes, and every error verbatim). Rules: stop bridge 3.4 first; capture an error's full
+text before trying to fix it; small fixes may be committed to the branch with a message
+that names the step; never touch Production or Next; ask me (Michael) before anything that
+needs a click on hardware, the serial-port picker, or the BIAS GUI. Steps 1–3 need no
+hardware and can run unattended; tell me when you reach step 4 (BIAS) and step 5 (the
+Studio + controller run). At the end, commit the results file, push, and add a short
+"Windows results" row to the test-plan table in the PR #254 description.
+```
+
+Prerequisites on the PC (check before pasting): `git`, `pixi` 0.69+, Chrome, the BIAS
+Windows build with its FLIR camera, the G6 controller on USB, optionally FicTrac; and know whether
+Visual Studio 2022 Build Tools (Desktop C++) is installed — step 1b measures the typed-message
+build with and without it.
+
 ## 0. Before starting
 
 - Repo: `reiserlab/webDisplayTools`, branch `claude/ros-studio-plan-b-c44942` (draft PR
