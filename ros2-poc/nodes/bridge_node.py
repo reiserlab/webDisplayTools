@@ -82,18 +82,15 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 BRIDGE_PY = REPO / "fictrac-bridge" / "bridge.py"
 sys.path.insert(0, str(HERE))
-from _common import setup_interfaces  # noqa: E402
+from _common import probe_interfaces  # noqa: E402
 from mcap_convert import convert_bag  # noqa: E402
 from recorder import PROFILES, STRING_TYPE, Recorder  # noqa: E402
 
-setup_interfaces()  # a colcon-built interfaces/install, if any (pixi-build installs into the env)
-try:
-    from arena_interfaces.msg import ArenaFrame, FicTracFrame  # noqa: E402
-
-    HAVE_IFACES = True
-except Exception:  # not built on this machine → String JSON everywhere
-    ArenaFrame = FicTracFrame = None  # type: ignore[assignment]
-    HAVE_IFACES = False
+# Typed messages only when the package imports AND serializes (pixi's `typed` env, or a
+# colcon install whose libraries load); otherwise String JSON everywhere.
+_IFACES = probe_interfaces()
+HAVE_IFACES = _IFACES is not None
+ArenaFrame, FicTracFrame = _IFACES if _IFACES else (None, None)  # type: ignore[assignment]
 
 
 def load_bridge_module(path: Path = BRIDGE_PY):
@@ -343,13 +340,15 @@ class RecordingLogWriter(B.LogWriter):
                 print(f"[log] arena_command kept verbatim: {B.arena_compact_reason(obj, self._t0)}", file=sys.stderr)
         self._emit(obj)
 
-    def record_browser(self, text: str) -> int | None:
+    def record_browser(self, text: str, rx_ms: int | None = None) -> int | None:
         """A browser message the live writer does not write as a line (rows / log_export /
-        connector_command). Returns the seq it got, or None when no run is open."""
+        connector_command). `rx_ms` lets the caller share ONE clock sample between the record
+        and whatever it derives from it (the connector command event's `ms`). Returns the seq
+        it got, or None when no run is open."""
         if not self._fh:
             return None
         seq = self.next_seq()
-        self._record(BROWSER_TOPIC, {"seq": seq, "rx_ms": B.now_ms(), "raw": text, "line": False})
+        self._record(BROWSER_TOPIC, {"seq": seq, "rx_ms": B.now_ms() if rx_ms is None else rx_ms, "raw": text, "line": False})
         return seq
 
     def write_event(self, obj: dict, record: bool = True) -> None:
@@ -593,12 +592,15 @@ async def run(args: argparse.Namespace) -> None:
         plugin = obj.get("plugin")
         # Recorded as the browser message itself (the converter derives this event + the
         # unknown-connector error reply from it); the shadow file gets the lines as before.
-        log.record_browser(json.dumps(obj, separators=(",", ":")) if raw_text is None else raw_text)
-        log.write_event({"type": "connector", "src": connector, "kind": "command", "dir": "browser→bridge", "ms": rel_ms(),
+        # ONE clock sample for the record and the event, so the derived `ms` is exact.
+        rx = B.now_ms()
+        ms = rx - pipeline.t0_ms
+        log.record_browser(json.dumps(obj, separators=(",", ":")) if raw_text is None else raw_text, rx_ms=rx)
+        log.write_event({"type": "connector", "src": connector, "kind": "command", "dir": "browser→bridge", "ms": ms,
                          "id": cid, "plugin": plugin, "command": command, "params": params}, record=False)
         if connector not in CONNECTORS:
             err = f"no connector {connector!r} on this bridge (have {sorted(CONNECTORS)})"
-            log.write_event({"type": "connector", "src": connector, "kind": "reply", "dir": "bridge", "ms": rel_ms(), "via": "ws",
+            log.write_event({"type": "connector", "src": connector, "kind": "reply", "dir": "bridge", "ms": ms, "via": "ws",
                              "id": cid, "plugin": plugin, "command": command, "ok": False, "outcome": "error", "error": err}, record=False)
             await ws_reply(websocket, {"type": "connector_reply", "id": cid, "connector": connector, "plugin": plugin,
                                        "command": command, "ok": False, "outcome": "error", "error": err})

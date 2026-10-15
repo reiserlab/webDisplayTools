@@ -1,32 +1,43 @@
-# ROS 2 PoC: Windows rig test (LAB-303)
+# ROS 2 Plan B spike: Windows rig test (LAB-303)
 
-The one acceptance item still open after the Mac run (see `README.md` → "Mac results") is
-**Windows**, where most rig PCs live. This is a step-by-step for one session on a rig PC with a
-G6 controller, BIAS (the Windows `bias_gui.exe` with a FLIR camera) and, if present, FicTrac.
-Budget: about an hour. **A failure with its verbatim error text is as valuable as a pass**: copy
-the text before trying anything to fix it.
+The one item still open after the Mac runs is **Windows**, where most rig PCs live. This is a
+step-by-step for one session on a rig PC with a G6 controller, BIAS (the Windows `bias_gui.exe`
+with a FLIR camera) and, if present, FicTrac. It tests what the Mac proved on 2026-10-14
+(`README.md` → "Plan B spike" and "Mac bench end-to-end"): **the Studio on this branch drives
+the camera and the closed loop through the ROS 2 graph, every run is recorded as an MCAP bag,
+and the run log every reader accepts is derived from the bag.** Budget: about 90 minutes.
+**A failure with its verbatim error text is as valuable as a pass**: copy the text before
+trying anything to fix it.
 
-Nothing here touches bridge 3.4 or the Studio. `ros2-poc/` is its own pixi workspace.
+Nothing here touches bridge 3.4 or Production. `ros2-poc/` is its own pixi workspace.
 
 ## 0. Before starting
 
-- Repo: `reiserlab/webDisplayTools`, branch `claude/ecstatic-noether-art3qx` (draft PR #252).
-  `git fetch && git switch claude/ecstatic-noether-art3qx`.
-- Stop bridge 3.4 if it is running (the terminal with `pixi run bridge`): the PoC binds the same
+- Repo: `reiserlab/webDisplayTools`, branch `claude/ros-studio-plan-b-c44942` (draft PR
+  [#254](https://github.com/reiserlab/webDisplayTools/pull/254)):
+  `git fetch && git switch claude/ros-studio-plan-b-c44942`.
+- Stop bridge 3.4 if it is running (the terminal with `pixi run bridge`): the graph binds the same
   ports. FicTrac itself may keep running; it only *sends* to UDP 60000.
-- `pixi --version` (anything recent). PowerShell, not Git Bash, for the `Measure-Command` timing.
-- Chrome version (Settings → About). Note it; LAB-304's local-network-access prompt is Chrome-version dependent.
-- Ports must be free: `netstat -ano | findstr ":7447 :8765 :60000 :60001 :5010"` prints nothing except BIAS on 5010.
+- `pixi --version` (0.69 or newer: the `typed` environment uses pixi's preview build feature).
+  PowerShell, not Git Bash, for the `Measure-Command` timing.
+- Chrome version (Settings → About). Note it.
+- Ports free: `netstat -ano | findstr ":7447 :8765 :8092 :60000 :60001 :5010"` prints nothing except
+  BIAS on 5010 (once it is running).
+- Is **Visual Studio 2022 Build Tools (Desktop C++)** installed on this PC? Note yes/no; step 1b
+  measures what it costs when it is not.
 
-## 1. Install (timed)
+## 1. Install (timed) — two environments
+
+**1a. The default environment** (String topics; this must always work):
 
 ```powershell
 cd ros2-poc
 Measure-Command { pixi install --locked | Out-Default }
 ```
 
-Record the wall time and whether anything had to be done by hand. Then the one Windows-only
-check the README flags: does pixi expand `$PIXI_PROJECT_ROOT` in `[activation.env]`?
+Record the wall time, the environment size (`(Get-ChildItem .pixi\envs\default -Recurse | Measure-Object Length -Sum).Sum / 1GB`)
+and whether anything had to be done by hand. Then the Windows-only check: does pixi expand
+`$PIXI_PROJECT_ROOT` in `[activation.env]`?
 
 ```powershell
 pixi run python -c "import os; print(os.environ['ZENOH_ROUTER_CONFIG_URI'])"
@@ -37,6 +48,20 @@ Expected: a real path ending in `ros2-poc\config\zenoh-router.json5`. If it prin
 config (or fail); `pixi run rig` is unaffected because `rig.py` sets both paths itself.
 **Write down which of the two you saw.**
 
+**1b. The `typed` environment** (builds our three `.msg` types from source through pixi-build-ros;
+needs MSVC — this is the LAB-303 cost measurement, and it is allowed to fail):
+
+```powershell
+Measure-Command { pixi install --locked -e typed | Out-Default }
+pixi run -e typed python nodes\build_interfaces.py --check
+```
+
+Record: wall time; success or the **first error verbatim** (the expected failure without Build
+Tools is a compiler-not-found message from the backend); with Build Tools present, whether
+`--check` prints `"importable": true, "serializes": true`. **Spend at most 20 minutes here**, then
+continue with the default environment regardless. Everything below says `pixi run …`; if 1b
+succeeded, run the same commands once more at the end as `pixi run -e typed …` (step 7).
+
 ## 2. Middleware (three terminals)
 
 ```powershell
@@ -46,146 +71,168 @@ pixi run talker       # terminal 3
 ```
 
 Pass: every `Publishing: "Hello World: N"` has a matching `I heard` within a few ms. Ctrl-C all
-three (Ctrl-C in the talker/listener prints an `rcl_shutdown already called` traceback on macOS
-too; that is the stock demo nodes, not a failure). Note whether the router keeps running after
-Ctrl-C (`tasklist | findstr rmw_zenohd`); on POSIX `ros2 run` does not forward the signal and
-`rig.py` works around it with process groups.
+three (an `rcl_shutdown already called` traceback is the stock demo nodes, not a failure). Note
+whether the router keeps running after Ctrl-C (`tasklist | findstr rmw_zenohd`).
 
-## 3. Acceptance harness
+## 3. Acceptance harness (no hardware)
 
 ```powershell
 pixi run test -- --keep
 ```
 
-Expected: `29 / 29 checks passed` in about 30 s and a line `artifacts kept in …`. Keep that
-directory (it has `summary.md`, the exported log and `proc-logs\`). Windows-specific things it
-exercises for the first time: child processes in their own group (`CREATE_NEW_PROCESS_GROUP`),
-`CTRL_BREAK_EVENT` as the stop signal, `TerminateProcess` for the mid-run adapter kill, and
-console encoding (`PYTHONUTF8=1` from the workspace). If it fails, send `summary.md` plus the
-whole `proc-logs\` folder.
+Expected: `46 / 46 checks passed` in about a minute and a line `artifacts kept in …`. Keep that
+directory (`summary.md`, `crash-results.json`, the converted export, `runlogs\*.bag`, `proc-logs\`).
+Windows-specific things it exercises for the first time: child processes in their own group,
+`CTRL_BREAK_EVENT` as the stop signal, `TerminateProcess` for the mid-run kills (the FicTrac adapter
+AND, in the crash phase, the bridge node itself), file reads while another process writes, console
+encoding (`PYTHONUTF8=1`), and rosbag2's MCAP plugin writing under a Windows path. Record the
+`[test] crash (...)` lines (frames kept by the NDJSON vs recovered from the bag, both profiles) and
+the `info  typed topics:` line (`False` in the default env is expected). If it fails, send
+`summary.md` plus the whole `proc-logs\` folder.
 
-## 4. The rig with the unmodified Studio and the controller
+## 4. BIAS on Windows, through the node
 
-```powershell
-pixi run rig -- --sim --sim-args "--model fly --kp 2 --seed 1"
-```
-
-Expected: `[rig] up: router, fictrac, bridge, sim — Studio → ws://localhost:8765`. Then in Chrome:
-<https://reiserlab.github.io/webDisplayTools/arena_studio.html>
-
-1. Run view → **Bridge: Connect**. Expect `connected · rx N`, the scope scrolling, and note whether
-   Chrome shows a **local-network-access prompt** (none appeared on the Mac, Chrome 155).
-2. **Connect** (top right) → pick the controller in the serial-port picker.
-3. Open a Mode-3 closed-loop protocol with a constant bias (`fictrac_bias_test.yaml` from the
-   site library). **Check the pattern first:** Console → SD listing must show the protocol's
-   pattern *by name* with more than one frame. On the Mac bench card slot 4 held a 1-frame test
-   pattern, so the display sat on frame 0 until the protocol was re-pointed at a 20-frame
-   grating. If the card differs, edit the pattern name / `pattern_ID` in Edit view to a rotating
-   pattern that is on the card (any frame count > 1 works; the report checks the mapping, not
-   the pattern).
-4. Fill experimenter / genotype / age / sex / fly #, **Run experiment**, let it finish, let it
-   auto-commit (bench id and token must be set as for any course run).
-5. Fetch the committed `.jsonl.gz` from `runlogs/<bench>/` in the course repo and run both
-   readers from `ros2-poc` (the scripts are stdlib Python, the workspace Python is fine):
-
-```powershell
-pixi run python ..\scripts\closed-loop-report.py <file>.jsonl.gz
-pixi run python ..\scripts\runlog-check.py <file>.jsonl.gz
-```
-
-Pass: three epochs, idx mismatch 0.00 % (≤ 1 boundary row), `runlog-check` prints `OK` with the
-firmware line. Also compare with the bridge node's own file in `ros2-poc\runlogs\` (gunzip the
-committed one; they were byte-identical on the Mac).
-
-If the rig has **real FicTrac**: repeat step 4 once without `--sim` with FicTrac running and a
-ball; the adapter log should show its line rate.
-
-## 5. Real BIAS on Windows
-
-BIAS must have its external-control HTTP server on. In the camera window: the server menu
-(port shows as `Port (5010)...` for camera 0); enable it. Check from PowerShell:
+BIAS must have its external-control HTTP server on (camera window → server menu → `Port (5010)…`,
+enable). Check from PowerShell:
 
 ```powershell
 curl.exe "http://127.0.0.1:5010/?get-status"
 ```
 
 Expected: `[ { "command" : "get-status", "success" : true, "value" : { "capturing" : …, "connected" : …, "frameCount" : …, "framesPerSec" : …, "logging" : …, "timeStamp" : … } } ]`
-(the Mac port's shape; note any extra or missing key). Then, with the rig from step 4 still up,
-in a new terminal:
+(the Mac port's shape; note any extra or missing key). Decide the **video directory** now, an
+absolute path the rig uses for videos, e.g. `C:\Users\<rig>\Videos\ros2-poc`; create it. Then,
+with a router running (`pixi run router`), in two terminals:
 
 ```powershell
-pixi run bias-node -- --host 127.0.0.1 --port 5010
-```
-
-and in another, **using an absolute path** for the video (on the Mac a relative name resolved
-against BIAS's own working directory and capture silently never started; the node now warns):
-
-```powershell
+pixi run bias-node -- --host 127.0.0.1 --port 5010 --video-dir C:\Users\<rig>\Videos\ros2-poc
 pixi run bias-cmd -- connect --json
-pixi run bias-cmd -- startRecording --filename C:\Users\<rig>\Videos\poc.avi --json
-curl.exe "http://127.0.0.1:5010/?get-status"        # capturing true, frameCount rising
+pixi run bias-cmd -- startRecording --filename poc.avi --json      # relative → resolved against --video-dir
+curl.exe "http://127.0.0.1:5010/?get-status"                       # capturing true, frameCount rising
 pixi run bias-cmd -- getTimestamp --json
 pixi run bias-cmd -- stopRecording --json
-dir C:\Users\<rig>\Videos\
+dir C:\Users\<rig>\Videos\ros2-poc
 ```
 
-Record: every reply (`--json` prints it), the `value` of `get-video-file` versus the file(s)
-actually written (the Mac port wrote `<stem>_cam_0_date_…_v001\movie.mjpg` and a
-`stamp_log_cam0.txt`; the Windows BIAS with Spinnaker may write the `.avi` it was asked for),
-`start-capture` round-trip in ms, and whether the camera preview went live.
+Record every reply (`--json` prints it), the `value` of `get-video-file` versus the file(s)
+actually written (the Mac port wrote `<stem>_cam_0_date_…_v001\movie.mjpg` + `stamp_log_cam0.txt`;
+the Windows BIAS with Spinnaker may write the `.avi` it was asked for), `start-capture` round-trip
+ms, and whether the camera preview went live. Stop the node and the router.
 
-**Unknown-outcome path** (the LAB-303 semantics): start a recording, then close BIAS while the
-node polls. Expect `/bias/status` lines with `reachable:false`, and a `bias-cmd -- getTimestamp`
-to come back `outcome: "unknown"` or `error` (exit code 3 or 1), never a hang. Restart BIAS:
-status must flip back to `reachable:true` without restarting the node.
+**Unknown-outcome path** (the LAB-303 semantics): start a recording, then close BIAS while the node
+polls. Expect `/bias/status` lines with `reachable:false`, and a `bias-cmd -- getTimestamp` to come
+back `outcome: "unknown"` or `error` (exit code 3 or 1), never a hang. Restart BIAS: status must
+flip back to `reachable:true` without restarting the node.
 
-If a Studio run is in progress while you do this, the status and reply lines land in that run's
-committed log as `{"type":"connector","src":"bias",…}` events (60 status + 3 replies on the Mac).
+## 5. The rig: Studio + BIAS + closed loop, recorded as a bag — THE test
 
-## 6. Kinefly
+Terminal A — the graph (model fly unless the rig has FicTrac, see below), BIAS node included:
 
-No Windows build of the fork exists; `pixi run kinefly-sim` exercises the adapter path
-(`pixi run rig -- --kinefly` first). Expected: `N KF/1 frames published, 0 rejected` in the
-adapter log. Skip if short on time; the Mac covered the real fork.
+```powershell
+pixi run rig -- --sim --sim-args "--proto udp --model fly --kp 2 --seed 1 --rate 50" --bias --bias-args "--video-dir C:\Users\<rig>\Videos\ros2-poc"
+```
 
-## 7. Shutdown and student mistakes
+Expected: `[rig] up: router, fictrac, bias, bridge, sim — Studio → ws://localhost:8765`, and in the
+bridge lines `record=mcap/crashsafe` and `typed=False` (default env) or `typed=True`.
 
-- Ctrl-C the rig terminal. Expected: children stop in reverse order, `[rig] stopped`, **no
-  Python traceback, no orphan `rmw_zenohd.exe`** (`tasklist | findstr rmw_zenohd`).
-- Start `pixi run rig` twice: the second must exit with code 2 and name the ports in one line.
-- Start `pixi run rig` while bridge 3.4 holds :8765 / :60000: same one-line refusal naming 3.4.
+Terminal B — this branch's Studio, served from the checkout (there is no Pages copy of this branch
+yet; `/ros/` needs the tooling on `main` first):
+
+```powershell
+cd ..                                   # repo root
+python .claude\nocache-server.py 8092
+```
+
+Chrome: `http://localhost:8092/arena_studio.html?p=bias_camera_closed_loop_poc&rig=<rig key>&mode=run`
+with the rig key from `configs\rigs\index.json` that matches this arena (`cshl_g6_2x10_ball` for a
+2×10 ball rig). Then:
+
+1. Run view → **Bridge: Connect**. Expect `connected · rx N` and the scope scrolling. Note whether
+   Chrome shows a local-network-access prompt (none on the Mac, Chrome 155; both ends are localhost).
+2. **Connect** (top bar) → pick the controller in the serial-port picker.
+3. **Check the pattern first:** Console → SD listing must show the protocol's pattern *by name* with
+   more than one frame. The protocol names `G6_2x10_grat_rot_20px_50pct_4c-B-Y` at `pattern_ID 1`;
+   if this card differs, edit the name / `pattern_ID` in Edit view to a rotating pattern that is on
+   the card (any frame count > 1; the report checks the mapping, not the pattern).
+4. Fill experimenter and genotype (required; the site lists work offline), **Run experiment**. The
+   protocol is 6 steps / ~35 s: camera `connect → startRecording → getTimestamp`, 15 s Mode-3 closed
+   loop, `getTimestamp`, 15 s closed loop with a +90 °/s bias, `getTimestamp → stopRecording`,
+   shutdown. Watch the step strip: every camera step must complete, none skipped. Note the BIAS
+   preview and whether the display turns with the model fly.
+5. **Collect the run.** If the Studio has the course token on this origin it auto-commits (the
+   bridge log then shows `[convert] … identical to the live file: …` and `[log] export →`). If not
+   (normal for a fresh localhost origin), export it yourself — the same message the Studio sends:
+
+```powershell
+pixi run export                          # → ros2-poc\runlogs\exports\arena-log-….jsonl (converted from the bag)
+```
+
+   Terminal A shows `[record] closed … records`, `[convert] … → N lines in M ms; identical to the
+   live file: True|False`, and the bag directory `runlogs\arena-log-….bag\` now has `metadata.yaml`.
+
+6. **Judge it** (stdlib scripts; the workspace Python is fine):
+
+```powershell
+pixi run python ..\scripts\closed-loop-report.py runlogs\exports\<file>.jsonl
+pixi run python ..\scripts\runlog-check.py runlogs\exports\<file>.jsonl
+pixi run convert -- runlogs\<run>.bag --level behavior_v2 --out v2.jsonl      # level switch from the same bag
+pixi run convert -- runlogs\<run>.bag --order time --out time.jsonl
+pixi run ros2 bag info runlogs\<run>.bag
+fc.exe /b runlogs\exports\<file>.jsonl runlogs\<run>.jsonl                      # vs the live shadow file
+```
+
+Pass: two epochs from `fictracApply`, idx mismatch ≤ 0.2 % (one boundary row) in each;
+`runlog-check` prints `OK` with the firmware line and `cc_0x70_ok` ≈ 1500; six `connector` replies
+with `"outcome":"ok"` and `"via":"ws"` and the `startRecording` one carrying `artifact.path`; the
+video exists in the video directory; `ros2 bag info` lists `/arena/frame`, `/fictrac/raw` (or
+`/fictrac/frame` in the typed env), `/arena/browser`, `/bias/cmd`, `/bias/reply`, `/bias/status`.
+On the Mac the exported file matched the shadow file on every line except the BIAS status/reply
+lines, which differ by ≤ 1 ms in their `ms` — `fc` will report those; anything else differing is a
+finding. Record the bag size vs the `.jsonl` size and the `[convert]` time.
+
+7. **Crash on the real rig** (optional, 3 minutes): start a second run; ~10 s into the first closed
+   loop, kill the bridge node from another terminal (`taskkill /F /PID <bridge pid>` — `rig.py`
+   prints `[rig] bridge exited` and stops the rig). Then:
+
+```powershell
+pixi run convert -- runlogs\<run>.bag --recover --out recovered.jsonl
+```
+
+   Record the recovered line and frame counts against the shadow `.jsonl` (the Mac lost one frame
+   with the `crashsafe` profile), and whether the Studio reported the lost bridge cleanly.
+
+If the rig has **real FicTrac**: repeat step 5 once without `--sim` with FicTrac running and a ball
+(FicTrac sending to `127.0.0.1:60000` as for bridge 3.4). The adapter log shows its line rate; the
+closed-loop report then has no `rejection` to check — the idx mismatch is the test.
+
+## 5b. Look at the graph while the rig is up (2 minutes)
+
+```powershell
+pixi run graph -- --text          # nodes, topics, publishers/subscribers, rates
+pixi run graph -- --out graph.md  # the Mermaid diagram (paste into the report)
+```
+
+Optional, if time: `pixi install -e viz` (Qt + foxglove_bridge, ~0.3 GB more) then
+`pixi run -e viz rqt-graph` for the live graph window; and open the run's
+`runlogs\<run>.bag\<run>_0.mcap` in Foxglove Studio on any machine to plot `/arena/frame`.
+
+## 6. Student mistakes (2 minutes)
+
+- A second `pixi run rig` while the first runs → one clear `[rig] cannot start, ports already bound`
+  line (no traceback).
+- `pixi run rig` while bridge 3.4 holds :8765 → the same line naming bridge 3.4.
+- Stop the rig with Ctrl-C in terminal A: every child exits, and the LAST run's bag gets its
+  `metadata.yaml` (the bridge closes the bag on shutdown). Record if any process lingers
+  (`tasklist | findstr /i "rmw_zenohd python"`).
+
+## 7. If the `typed` environment installed (step 1b)
+
+Repeat step 3 and step 5 with `-e typed` (`pixi run -e typed test -- --keep`, `pixi run -e typed rig …`).
+Expected differences: `typed=True` in the bridge banner, `/fictrac/frame` + `/arena/frame` as
+`arena_interfaces/msg/…` in `ros2 bag info`, the harness line `info  typed topics: True`.
 
 ## What to send back
 
-- Step 1 wall time, the `$PIXI_PROJECT_ROOT` result, `pixi info` output.
-- Step 3: `summary.md` (and `proc-logs\` on any failure).
-- Step 4: the committed run file name, both reader outputs, whether the Chrome prompt appeared.
-- Step 5: the `--json` replies, the `get-status` body, what BIAS wrote on disk, the unknown-path behavior.
-- Step 7: pass/fail per line.
-- Any error text, verbatim, with the step number. Small fixes can go straight onto the PR branch.
-
-## Plan B additions (2026-10-14 evening) — what changed for this test
-
-`pixi install` now also **builds `interfaces/arena_interfaces`** (three `.msg` types) through
-pixi's preview build feature with the RoboStack `pixi-build-ros` backend. On Windows that build
-needs **Visual Studio 2022 Build Tools (C++ workload)** on the PC; pixi cannot install them.
-Record, verbatim: (a) whether `pixi install --locked` succeeds without them, how long it took, and
-the first error if not; (b) with them installed, the same. If the build cannot be made to work in
-30 minutes, run the graph with the String fallback instead:
-
-```powershell
-# in ros2-poc\pixi.toml, comment out the line   arena_interfaces = { path = "interfaces/arena_interfaces" }
-pixi install
-pixi run rig -- --bridge-args "--typed off" --fictrac-args "--typed off"
-```
-
-The bridge node now records every run into `runlogs\<run>.bag\` (MCAP) and `log_export` returns the
-log **converted from the bag**; the live NDJSON stays beside it as a shadow. After a Studio run:
-
-```powershell
-pixi run convert -- runlogs\<run>.bag --out converted.jsonl        # must equal the shadow .jsonl apart from kf/BIAS line timing
-pixi run test                                                       # 46 checks incl. the SIGKILL crash phase
-```
-
-Record `pixi run test`'s summary table, the `[test] crash (...)` lines, and the bag size vs the
-`.jsonl` size.
+The timings and sizes from step 1, the `$PIXI_PROJECT_ROOT` answer, the harness artifact folder,
+the exported `.jsonl` + the bag directory + the shadow `.jsonl` of the Studio run, the video file
+name(s), the Chrome version and prompt note, and every verbatim error.
