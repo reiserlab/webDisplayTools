@@ -37,6 +37,14 @@ ZENOH_SESSION_CONFIG_URI = "$PIXI_PROJECT_ROOT/config/zenoh-session.json5"
 # Python on Windows would pick cp1252 when stdio is a pipe.
 PYTHONUTF8 = "1"
 
+# Windows: pixi builds the activation as a cmd.exe script, so `$PIXI_PROJECT_ROOT` above stays
+# literal there (rmw_zenohd: `Failed to read config from $PIXI_PROJECT_ROOT/config/…`, ww18
+# 2026-10-15) while `%PIXI_PROJECT_ROOT%` expands under `pixi run`. These keys override the two
+# above on win-64 only.
+[target.win-64.activation.env]
+ZENOH_ROUTER_CONFIG_URI = '%PIXI_PROJECT_ROOT%\config\zenoh-router.json5'
+ZENOH_SESSION_CONFIG_URI = '%PIXI_PROJECT_ROOT%\config\zenoh-session.json5'
+
 [dependencies]
 ros-jazzy-ros-base = "*"
 ros-jazzy-rmw-zenoh-cpp = "*"
