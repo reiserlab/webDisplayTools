@@ -41,7 +41,8 @@ from _common import SIGKILL, popen_group, signal_group, wait_port  # noqa: E402
 
 
 def port_in_use(proto: str, port: int, host: str = "127.0.0.1") -> bool:
-    """True when binding host:port fails (something else holds it)."""
+    """True when binding host:port fails (something else holds it) — or, on Windows, when a
+    TCP connect to it succeeds."""
     kind = socket.SOCK_STREAM if proto == "tcp" else socket.SOCK_DGRAM
     s = socket.socket(socket.AF_INET, kind)
     try:
@@ -52,11 +53,19 @@ def port_in_use(proto: str, port: int, host: str = "127.0.0.1") -> bool:
             # a plain bind.
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind((host, port))
-        return False
     except OSError:
         return True
     finally:
         s.close()
+    if proto == "tcp" and os.name == "nt":
+        # Windows: a listener that shares its address blocks NO bind, wildcard or specific — the
+        # real BIAS (Qt, 0.0.0.0:5010) on ww18 2026-10-15. Only a connect sees it.
+        try:
+            with socket.create_connection((host, port), timeout=0.3):
+                return True
+        except OSError:
+            pass
+    return False
 
 
 class Child:

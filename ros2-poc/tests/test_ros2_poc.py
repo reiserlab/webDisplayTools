@@ -55,6 +55,7 @@ import math
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -143,6 +144,12 @@ def find_node() -> str | None:
             if cand.exists():
                 return str(cand)
     return None
+
+
+def free_tcp_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 def read_jsonl_lines(path: Path) -> list[str]:
@@ -289,8 +296,10 @@ def main(argv: list[str] | None = None) -> int:
             check("zenoh router listening on 127.0.0.1:7447", wait_port("127.0.0.1", 7447, 20.0))
         fictrac = start("fictrac-adapter", [PY, str(NODES / "fictrac_udp_adapter.py"), "--status-every", "0"])
         start("kinefly-adapter", [PY, str(NODES / "kinefly_udp_adapter.py"), "--status-every", "0"])
-        start("bias-sim", [PY, str(NODES / "bias_sim.py"), "--video-dir", str(videos)])
-        start("bias-node", [PY, str(NODES / "bias_node.py"), "--status-every", "1", "--video-dir", str(videos)])
+        # The sim on a free port, not BIAS's 5010: a rig PC often has the real BIAS open.
+        bias_port = free_tcp_port()
+        start("bias-sim", [PY, str(NODES / "bias_sim.py"), "--port", str(bias_port), "--video-dir", str(videos)])
+        start("bias-node", [PY, str(NODES / "bias_node.py"), "--port", str(bias_port), "--status-every", "1", "--video-dir", str(videos)])
         bridge_argv = [PY, str(NODES / "bridge_node.py"), "--log-dir", str(runlogs), "--source-timeout", "1.5", "--bag-profile", a.bag_profile]
         bridge = start("bridge-node", bridge_argv)
         check("bridge node serving ws://127.0.0.1:8765", wait_port("127.0.0.1", 8765, 20.0))
