@@ -21,7 +21,7 @@
       "showPlotValuesInLegend": true, "isSynced": true, "xAxisVal": "timestamp", "sidebarDimension": 240
     },
     "StateTransitions!epoch": {
-      "paths": [{ "value": "/arena/frame.epoch", "timestampMethod": "receiveTime", "label": "epoch (one band per heading tare = per closed-loop trial)" }],
+      "paths": [{ "value": "/arena/frame.epoch", "timestampMethod": "receiveTime", "label": "epoch (one band per heading tare: a trial's start, and the bias reset at its stop)" }],
       "isSynced": true
     },
     "RawMessages!browser": { "topicPath": "/arena/browser", "diffTopicPath": "", "diffMethod": "custom", "diffEnabled": false, "showFullMessageForDiff": false, "expansion": "all" },
