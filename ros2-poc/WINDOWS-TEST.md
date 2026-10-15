@@ -221,6 +221,9 @@ for the live plots (without the viz environment the rig prints one note and runs
 
 ## 5c. The color optomotor protocol (the experiment-shaped test, ~18 minutes)
 
+Start with the 2-minute **smoke variant** `?p=g6_color_optomotor_smoke` (10 s per pattern, duty 100 %
+only, same camera bracket) — it passed on the Mac bench on 2026-10-14 — then the full protocol.
+
 `protocols/g6_color_optomotor_test.yaml` is the G6 version of the lab's Protocol 11/13: open-loop
 rotating gratings, clockwise then counterclockwise, 20 s trials, a camera timestamp at every trial
 start and one video for the run — with ONE LED color at a time on the TOP panel row (four-color G6

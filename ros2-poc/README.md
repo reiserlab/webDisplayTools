@@ -292,6 +292,18 @@ sends it at run end only on the commit path today) or on a run-end event.
 | the live run in Foxglove | `pixi run rig -- --foxglove` (adds foxglove_bridge from the `viz` environment to the supervised rig; a note and no bridge when `pixi install -e viz` has not been run) → Foxglove *Open connection* `ws://localhost:8766`; or by hand beside a running rig: `pixi run -e viz foxglove-bridge` | the same panels on the running graph, including the derived `turning_dps` / `forward_mms` plot |
 | the plain CLI | `pixi run ros2 node list`, `ros2 topic list -t`, `ros2 topic hz /arena/frame`, `ros2 topic echo /bias/status`, `ros2 bag info runlogs/<run>.bag` | what every ROS user reaches for first; every topic here is readable JSON or a flat typed message |
 
+**Color optomotor smoke run (22:00 ET, same bench, after merging Next into the branch).** The
+experiment-shaped protocol for tomorrow (`protocols/g6_color_optomotor_test.yaml`; smoke variant
+`…_smoke.yaml`: four one-color top-row gratings, clockwise and counterclockwise, 10 s each, duty 100 %,
+camera bracket) ran through the graph with the real BIAS app: **17 / 17 steps, 0 errors, 0 skips**;
+13 camera replies all ok with `getTimestamp` 12 s apart as designed; every `trialParams` carried
+`duty: 255` and resolved its pattern by name to the card slot; 17 TRIAL_PARAMS (0x08) with status 0 in
+the controller telemetry; `runlog-check` OK (17 trial verdicts pass); bag 156 kB after the close-time
+re-index. The Mac BIAS port wrote MJPEG (516 MB for 100 s) whatever the `.ufmf` filename — the Windows
+build's own format setting decides. Found on the way: the pre-Next Studio's uploader hit
+`rename failed (0x03)` retries (the bug Next fixes), and on the Next build the Console panel's bridge
+*Connect* button did not open a socket while the client's `connect()` did — to check tomorrow.
+
 ### Still not verified
 
 Windows (now also: whether `pixi install` builds the interfaces package there — `WINDOWS-TEST.md` has the steps); the closed-loop math in a **separate** process (it stays in the bridge node here, so the `seq` ordering is available; the `--order time` numbers are the proxy); rosbag2's own reader on a torn bag (the spike's converter uses the `mcap` library instead); a multi-hour recording for bag growth; `ros2 bag play` of a recorded run against the Studio; a real FicTrac (the bench used the model-fly simulator).
