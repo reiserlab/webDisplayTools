@@ -217,6 +217,37 @@ Optional, if time: `pixi install -e viz` (Qt + foxglove_bridge, ~0.3 GB more) th
 `runlogs\<run>.bag\<run>_0.mcap` in Foxglove on any machine (free account sign-in; Layout → Import →
 `docs\foxglove-arena-layout.json`) to plot `/arena/frame`.
 
+## 5c. The color optomotor protocol (the experiment-shaped test, ~18 minutes)
+
+`protocols/g6_color_optomotor_test.yaml` is the G6 version of the lab's Protocol 11/13: open-loop
+rotating gratings, clockwise then counterclockwise, 20 s trials, a camera timestamp at every trial
+start and one video for the run — with ONE LED color at a time on the TOP panel row (four-color G6
+panels; patterns in `protocols\g6_color_optomotor_test_patterns\`, one per color bank) and the
+brightness swept with the per-trial `duty` override (25 / 50 / 100 %). 3 duties × 4 colors × 2
+directions × 2 repetitions = 48 trials × 20 s + 3 s dark ITIs ≈ 18 min; set `repetitions: 1` on the
+three blocks for ≈ 9 min.
+
+1. **Patterns onto the card:** Console → Patterns → Add ▾ → the folder above (four files, 21 kB each).
+   The SD listing must then show the four `G6_2x10_toprow_grat20_*` names with 20 frames. Note the
+   slot numbers; the YAML's `pattern_ID` 1–4 is only the fallback when the listing is unavailable.
+2. **Direction check (once):** Console → Test one trial of `green_cw_d100`. Decide whether the
+   grating turns clockwise seen from above; if not, swap the `fps_cw` / `fps_ccw` values in
+   `variables:` (Edit view) — record which.
+3. **BIAS:** external-control server on; logging format set to **ufmf** in BIAS's own settings
+   (the protocol asks for `color_optomotor.ufmf`; BIAS writes the configured format whatever the
+   extension); the bias node started with `--video-dir <absolute path>` as in step 5.
+4. **Run** from the Run view with the graph up (step 5, terminal A). Watch the first block: every
+   trial should start with a `getTimestamp` reply (BIAS clock advancing ~23 s per trial), the top
+   row only lit, one color per trial, the bottom row dark; the ITIs dark.
+5. **Collect** with `pixi run export`, then `runlog-check.py` (48 trials, `cc_0x70_ok` 0 — these
+   are mode-2 trials, no host frames) and look at the bag in Foxglove: `/bias/reply` should hold
+   50 `getTimestamp` replies plus connect/start/stopRecording; `/arena/browser` carries the 48
+   `trialParams` with their `duty` bytes. Record the video's frame count vs 48 × 20 s × fps.
+
+Known gaps to record: whether the panels honor `duty` per trial visibly (25 % vs 100 % brightness
+step), whether ufmf frame timestamps line up with the `getTimestamp` replies, and the direction
+result from step 2.
+
 ## 6. Student mistakes (2 minutes)
 
 - A second `pixi run rig` while the first runs → one clear `[rig] cannot start, ports already bound`

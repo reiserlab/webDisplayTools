@@ -57,6 +57,11 @@
       "key": "bias_camera_closed_loop_poc",
       "label": "BIAS camera + FicTrac closed loop through the ROS 2 bridge (LAB-303 spike, ~40 s)",
       "path": "./protocols/bias_camera_closed_loop_poc.yaml"
+    },
+    {
+      "key": "g6_color_optomotor_test",
+      "label": "Color optomotor test — one LED color at a time, top row, 25/50/100 % duty (G6 four-color, BIAS, ~18 min)",
+      "path": "./protocols/g6_color_optomotor_test.yaml"
     }
   ]
 }
