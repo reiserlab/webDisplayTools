@@ -32,7 +32,11 @@ HERE = Path(__file__).resolve().parent
 NODES = HERE
 ROOT = HERE.parent  # ros2-poc/ (the pixi workspace)
 SIM = HERE.parents[1] / "fictrac-bridge" / "fictrac_sim.py"
-VIZ_ENV = ROOT / ".pixi" / "envs" / "viz"  # `pixi install -e viz` puts foxglove_bridge here
+# `pixi install -e viz` puts foxglove_bridge in a sibling of the env this runs in: under
+# .pixi/envs, or under the `detached-environments` directory when one is configured (the
+# Windows short-path setup for the typed build, WINDOWS-TEST.md).
+_ENVS = Path(os.environ["CONDA_PREFIX"]).parent if os.environ.get("CONDA_PREFIX") else ROOT / ".pixi" / "envs"
+VIZ_ENV = _ENVS / "viz"
 FOXGLOVE_PORT = 8766
 
 

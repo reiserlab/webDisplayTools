@@ -18,8 +18,9 @@ version = "0.1.0"
 channels = ["conda-forge", "robostack-jazzy"]
 platforms = ["osx-arm64", "win-64", "linux-64"]
 # pixi-build (preview): `pixi install` builds interfaces/arena_interfaces (our .msg types) as a
-# conda package with the RoboStack pixi-build-ros backend. On Windows that build needs MSVC 2022
-# on the machine (the cost LAB-303 Plan B records); everything else is downloaded as before.
+# conda package with the RoboStack pixi-build-ros backend. On Windows that build needs the MSVC
+# v143 toolset and a short build path (docs/typed-windows.md — the cost LAB-303 Plan B records);
+# everything else is downloaded as before.
 preview = ["pixi-build"]
 
 [activation.env]
@@ -66,8 +67,10 @@ mcap = ">=1.2"
 # `pixi install -e typed` builds interfaces/arena_interfaces (FicTracFrame, ArenaFrame,
 # ConnectorReply) from source with the RoboStack pixi-build-ros backend and brings the
 # ament/rosidl toolchain. rosidl generates C typesupport + a Python C extension, so this
-# needs a C/C++ compiler on the installing machine (MSVC 2022 on Windows, which pixi cannot
-# install) — kept OUT of the default environment so a rig PC can always `pixi install` and
+# needs a C/C++ compiler on the installing machine (Windows: the MSVC v143 toolset, which pixi
+# cannot install, plus `pixi config set --local detached-environments C:\px` for MAX_PATH;
+# docs/typed-windows.md also tests the no-compiler alternative, a CI-built channel) — kept OUT of
+# the default environment so a rig PC can always `pixi install` and
 # run the graph with String topics (the nodes fall back on their own, `--typed auto`).
 # The build cost is the LAB-303 data point: `pixi run -e typed test` and README.md.
 [feature.typed.dependencies]

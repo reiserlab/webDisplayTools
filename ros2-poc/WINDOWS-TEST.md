@@ -72,13 +72,15 @@ build with and without it.
 
 **Windows notes from the first run (ww18, 2026-10-15 — `windows-results-ww18-2026-10-15.md`):**
 
-- **Clone to a short path** (under ~45 characters before `\ros2-poc`, e.g. `C:\Lab\GitHub\webDisplayTools`):
-  under `C:\Users\<name>\Documents\GitHub\…` the typed build hits Windows' 260-character path limit (`C1083`).
+- **Short build path for the typed build**: under `C:\Users\<name>\Documents\GitHub\…` it hits Windows'
+  260-character path limit (`C1083`). Either clone to under ~45 characters before `\ros2-poc`, or, from any
+  checkout, run `pixi config set --local detached-environments C:\px` in `ros2-poc` once (≤ 12 characters;
+  it moves envs and build dirs there). See `docs/typed-windows.md` §3.
 - **MSVC**: VS Build Tools **2026** alone is not found by conda-forge's VS 2022 activation; add the component
   group "MSVC v143 - VS 2022 C++ x64/x86 build tools (v14.44)"
-  (`Microsoft.VisualStudio.ComponentGroup.VC.Tools.143.x86.x64`, UAC, < 5 min). Even then `pixi install -e typed`
-  fails while packaging (`paths in archives must not have '..'`, a pixi-build-ros bug) — skip 1b / 7 on
-  Windows until that is fixed.
+  (`Microsoft.VisualStudio.ComponentGroup.VC.Tools.143.x86.x64`, UAC, < 5 min). The packaging failure that
+  followed (`paths in archives must not have '..'`, a pixi-build-ros bug) is worked around in the package
+  since 538cc85: 1b / 7 install on ww18 (35 s, harness 48 / 48).
 - **Check the controller's SD card first**: an empty SD listing / "pattern missing" can mean no card is mounted
   at all (ww18's old card). The site library's 2×10 set (`patterns/g6_2x10/patterns/`) plus
   `protocols/bias_camera_closed_loop_poc_ww18*.yaml` (slot 2 `grating_sq`) work on any 2×10 card loaded that way.
