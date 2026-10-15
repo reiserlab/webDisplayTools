@@ -1,9 +1,9 @@
 # LAB-303 Plan B — Windows results, reiserlab-ww18, 2026-10-15
 
 First Windows run of `ros2-poc/WINDOWS-TEST.md`. **Status: steps 0–3, 6 and 5b done unattended,
-plus the pre-step-4 BIAS HTTP probe. Steps 4 (BIAS through the node), 5 (Studio + controller),
-5c and 7 are still to do with someone at the keyboard. Step 1b (typed build) is blocked on an
-admin install (below).**
+plus the pre-step-4 BIAS HTTP probe; harness 45 / 45 five runs in a row after the fixes below.
+Steps 4 (BIAS through the node), 5 (Studio + controller), 5c and 7 are still to do with someone
+at the keyboard. Step 1b (typed build) is blocked on an admin install (below).**
 
 ## Machine
 
@@ -27,15 +27,34 @@ admin install (below).**
 | W5 | 3 | JS reader check skipped: `find_node()` looked for `.pixi\envs\default\bin\node.exe`; conda's Windows layout has `node.exe` at the env root (and a fresh clone needs the root `pixi install`, 5.3 s / 0.30 GB). | **fixed** aeccdce |
 | W6 | 6 | **Ctrl-C on `pixi run rig` killed the bridge node instead of stopping it**: no `shutting down` line, shadow file ended on a FicTrac row (no `logging_stopped`), the open run's bag got **no `metadata.yaml`** (649 KB unindexed). `CTRL_BREAK_EVENT` (rig.py / harness stop signal) ends a Python process at once by default, and `loop.add_signal_handler` is not implemented on Windows. | **fixed** 4935732 (SIGBREAK handler) — after: `[bridge-node] shutting down`, `[record] closed … 973 records, 95255 B`, `metadata.yaml` written, nothing lingers |
 | W7 | 6 | Second `pixi run rig`: the refusal listed 8765 + 60000 but **not 7447** with a router listening. `port_in_use()` sets `SO_REUSEADDR`, which on Windows lets the probe bind over a live listener (zenohd; asyncio's socket is exclusive, so 8765 was caught). | **fixed** 4935732 (plain bind on Windows; TIME_WAIT does not block it — checked) |
-| W8 | 4 | **Two programs can hold port 5010 at once**: real BIAS on `0.0.0.0:5010` + `[::]:5010`, and a harness `bias_sim` on `127.0.0.1:5010`; loopback clients get the more specific socket, i.e. the SIM. Seen by accident (a probe answered by the sim). A stale `bias-sim` would silently shadow the real camera program. rig.py's `--bias-sim` pre-flight probes 127.0.0.1 only and cannot see BIAS's wildcard bind. | open (suggest: bias_sim binds with `SO_EXCLUSIVEADDRUSE`, and the rig/bias-node check `get-camera-guid` or the `[arena]` keys to tell sim from BIAS) |
-| W9 | all | `time.monotonic()` = `GetTickCount64`, resolution **15.625 ms** (Python 3.12.15); every `rtt_ms` the BIAS node reports is quantized (0 / 15 / 16 / 31 ms seen). `time.time()` (all run-log `ms`, bridge 3.4 too) reports the same nominal resolution; today's logs were fine (FicTrac row deltas 19/20/21 ms) because something on the PC raised the timer rate — a rig where nothing does would log 15.6 ms steps. | open (use `perf_counter` for RTTs; `time_ns`/`GetSystemTimePreciseAsFileTime` is Python 3.13+) |
-| X1 | 3 | (cross-platform) converter put a device row recorded in the same ms as `logging_stopped` AFTER it (`live 2238 vs conv 2239`). | **fixed** 6250cdb (drop derived lines after the stop; `dropped_after_stop` in the report) |
-| X2 | 3 | (cross-platform) the mirror race at run START: the ROS thread records device messages on arrival (`_kinefly` → `rec.write_raw`, dropped while `self.rec` is None) while the live line is written later on the asyncio loop, which is busy in `_open` — so the shadow file can hold one device row the bag never saw (`live 2237 vs conv 2236`, `["kf",2,162,…]`). Harness run 3 of 4 hit it. | **open** — design choice: record device messages on the loop thread (same gate as the live writer), or let the fidelity check allow one boundary row per derived stream |
+| W8 | 4 | **Two programs can hold port 5010 at once**: real BIAS on `0.0.0.0:5010` + `[::]:5010`, and a harness `bias_sim` on `127.0.0.1:5010`; loopback clients get the more specific socket, i.e. the SIM. Seen by accident (a probe answered by the sim). On Windows Qt's listener shares its address, so NO bind probe sees it — plain, wildcard and `SO_EXCLUSIVEADDRUSE` binds of 5010 all succeeded next to BIAS; only a connect does. | **fixed** cbd0d31 — bias_sim refuses when its port answers, binds exclusively on Windows, reports `"sim": true`; rig.py confirms a "free" TCP port with a connect on Windows; the harness uses a free port for its sim |
+| W9 | all | `time.monotonic()` = `GetTickCount64`, resolution **15.625 ms** (Python 3.12.15); every `rtt_ms` the BIAS node reports is quantized (0 / 15 / 16 / 31 ms seen). `time.time()` (all run-log `ms`, bridge 3.4 too) reports the same nominal resolution; today's logs were fine (FicTrac row deltas 19/20/21 ms) because something on the PC raised the timer rate — a rig where nothing does would log 15.6 ms steps. | **fixed** cc603f6 for durations (`perf_counter`: BIAS RTTs, bag open / convert / reindex times); `time.time()` stamps open (`GetSystemTimePreciseAsFileTime` is Python 3.13+) |
+| X1 | 3 | (cross-platform) converter put a device row recorded in the same ms as `logging_stopped` AFTER it (`live 2238 vs conv 2239`). | **fixed** 6250cdb, revised in 667e538: such a line is moved before the stop (`moved_before_stop`), since after X2 every derived record precedes it |
+| X2 | 3 | (cross-platform) the mirror race at run START: the ROS thread recorded device messages on arrival (`_kinefly` → `rec.write_raw`, dropped while `self.rec` is None) while the live line is written later on the asyncio loop, which is busy in `_open` — so the shadow file could hold a device row the bag never saw (`live 2237 vs conv 2236`, `["kf",2,162,…]`; 1 run in 4). Same mechanism for FicTrac: `FAIL bag → full level: one fictrac_frame per frame with the 25 FicTrac columns … — 922 frames vs 922; cols [0, 25]` (the run's first frame recorded, its `/fictrac/raw` message not; 1 run in 5). | **fixed** 667e538 — Kinefly, BIAS reply/status and FicTrac messages are recorded on the loop next to their line, under the shadow writer's open gate (`record_device`), with the ROS receive time kept as the MCAP log_time; FicTrac after `handle_line`, off the closed-loop path. **5 runs in a row 45 / 45**, derived counts equal every run |
 | B1 | 4 probe | This BIAS's `set-video-file` uses `baseName()` and the logging format's extension: `poc.avi` → `poc.ufmf`; `my trial.v2.avi` → `my trial.ufmf` (silently truncated at the first dot). | info for bias_node / protocol authors |
 | B2 | 4 probe | `get-video-file` = `getVideoFileFullPath()` with an EMPTY auto-naming string (source, `ext_ctl_http_server.cpp`), while the writer adds `_cam_0_<date>` + version — so the node's `artifact.path` likely names a file that is never written. To confirm in step 4 with a real recording. | to verify |
 
 Harmless on every process: two zenohc WARNs (`` `routing.router.peers_failover_brokering` is deprecated `` and
 `` routing.peer.mode` and `routing.peer.linkstate` are deprecated ``) — our config files carry stock keys this zenohc ignores.
+
+Info, not a check: the harness's `derived_misplaced` (a derived line after a different neighbour than in the
+live file) ranged 4–861 of ~2240. It tracks how many Kinefly rows share a millisecond with a FicTrac row, which is
+the converter's unbreakable tie: 40 % in the 861 run, 0–2 % in the others. On Windows the 10 ms and 20 ms senders
+can wake on the same timer tick.
+
+### Why the Mac runs did not show these
+
+- **Windows-only by construction** (W1–W7, W9): pixi activates through cmd.exe (no `$VAR`); MSVC must be on the
+  machine, where the Mac gets clang from conda-forge; text mode writes CRLF; conda's Windows env puts `node.exe` at
+  the root; Windows cannot send SIGINT to another process, CTRL_BREAK kills Python by default and asyncio has no
+  signal handlers there; `SO_REUSEADDR` means "bind over a live listener"; `monotonic` ticks at 15.6 ms. The
+  harness could not catch W6 on either platform: it closes runs with `log_export` before stopping anything.
+- **Races on both platforms, likelier here** (X1, X2): one message has to land in the few ms the loop spends opening
+  or closing a run. Here the bag open alone takes ~15 ms (new files in `%TEMP%`, NTFS + Defender), and the
+  tick-driven senders deliver in bunches. On the Mac the same race could have hit rarely without being seen.
+- **A different BIAS** (B1, B2): the Mac used the Mac BIAS port (`movie.mjpg`); ww18 runs the atlas-bench Atlas10
+  fork (uFMF, server on by default, extra status keys). W8 also needs the real BIAS open while the harness runs,
+  which the Mac bench never combined (whether macOS would let the sim bind next to BIAS was not checked).
 
 ## Step log (times ET)
 
@@ -56,6 +75,8 @@ Harmless on every process: two zenohc WARNs (`` `routing.router.peers_failover_b
 | 3.2 | 11:11 | run 2, after aeccdce + 6250cdb | **PASS 45 / 45** | 58.4 s | JS readers PASS; derived Δms p50 0 / p99 1 / max 7 (n 2241); frame lag p50 0.569 / p99 0.951 / max 1.806 ms; bag 4858 records / 339 241 B. (Mac 46 = + the typed-import check) |
 | 3.3 | 11:13 | run 3 | **FAIL 44 / 45** | 58.1 s | `live 2237 vs conv 2236` — start race (X2); the stop tie also recurred and was dropped (`dropped_after_stop: 1`) |
 | 3.4 | 11:21 | run 4, after 4935732 | **PASS 45 / 45** | 58.9 s | derived 2243 == 2243, Δms p99 1 / max 7 |
+| 3.5x | 11:50 | 5 runs after the first X2 fix (Kinefly + BIAS on the loop) | 4 × 45/45, 1 × 44/45 | 53–58 s each | derived counts equal in all 5; run 5: `bag → full level … cols [0, 25]` → the same race on `/fictrac/raw` (X2) |
+| 3.6x | 11:56 | **5 runs in a row, final X2 + W8 + W9** | **5 × PASS 45 / 45** | 53.3–58.1 s each | derived 2243/2240/2248/2242/2246, equal live vs conv every run; Δms p99 1 / max 2–8; frame lag p99 1.00 / 1.67 / 1.55 / 1.89 / 1.51 ms; harness sim on a free port (BIAS open on 5010 throughout); no permission errors |
 | 3.5 | — | crash phase (run 2) | PASS | — | crashsafe: NDJSON 616 lines / 157 frames (last 3117 ms) vs bag `--recover` 611 lines / 156 frames (last 3097 ms), torn: true → **1 frame lost** (Mac: 1). default: NDJSON 157 frames; bag `.mcap` 0 B, `[convert] ValueError: no session-open record on /arena/session (not a bridge-node bag, or the open record was lost)`. `info typed topics: False`. Process groups, CTRL_BREAK, TerminateProcess, concurrent file reads, PYTHONUTF8, MCAP under a Windows path: all fine |
 | 6.1 | 11:17 | second `pixi run rig` | PASS* | — | one clear `[rig] cannot start, ports already bound:` + `tcp 127.0.0.1:8765 …` + `udp 127.0.0.1:60000 …`, no traceback; *7447 missing (W7). After the fix, all three listed |
 | 6.2 | 11:18 | Ctrl-C the rig with a run open | **FAIL** → fixed | — | every child exited, nothing lingered, but no `metadata.yaml`, shadow file without `logging_stopped` (W6). After 4935732: PASS (`metadata.yaml` 2639 B, bag reindexed 649 → 95 KB) |
@@ -118,5 +139,6 @@ flowchart LR
 
 ## Artifacts on ww18 (not committed)
 
-`%TEMP%\ros2-poc-test-id0n3u9y` (run 1, 41/44), `-12brtne7` (run 2), `-wzz38rvp` (run 3, X2), `-mm7i3ha1` (run 4);
+`%TEMP%\ros2-poc-test-id0n3u9y` (run 1, 41/44), `-12brtne7` (run 2), `-wzz38rvp` (run 3, X2), `-mm7i3ha1` (run 4),
+`-yooxcvjy` (the FicTrac `cols [0, 25]` run), `-f8g23mlb` `-pxq2m1xb` `-qpd_gp_2` `-7n08p78f` `-03b6r1gt` (final 5);
 `ros2-poc\runlogs\arena-log-20261015-111739-702.*` (W6 before the fix) and `…-111942-495.*` (after).
