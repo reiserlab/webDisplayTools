@@ -1,0 +1,32 @@
+{
+  "configById": {
+    "Plot!idx": {
+      "title": "Displayed frame index (/arena/frame.idx)",
+      "paths": [{ "value": "/arena/frame.idx", "enabled": true, "timestampMethod": "receiveTime", "label": "idx" }],
+      "showXAxisLabels": true, "showYAxisLabels": true, "showLegend": true, "legendDisplay": "floating",
+      "showPlotValuesInLegend": true, "isSynced": true, "xAxisVal": "timestamp", "sidebarDimension": 240
+    },
+    "Plot!heading": {
+      "title": "Fly heading (rad) and bias angle (deg)",
+      "paths": [
+        { "value": "/arena/frame.hd", "enabled": true, "timestampMethod": "receiveTime", "label": "hd (rad)" },
+        { "value": "/arena/frame.bias_deg", "enabled": true, "timestampMethod": "receiveTime", "label": "bias (deg)" },
+        { "value": "/arena/frame.epoch", "enabled": true, "timestampMethod": "receiveTime", "label": "epoch" }
+      ],
+      "showXAxisLabels": true, "showYAxisLabels": true, "showLegend": true, "legendDisplay": "floating",
+      "showPlotValuesInLegend": true, "isSynced": true, "xAxisVal": "timestamp", "sidebarDimension": 240
+    },
+    "RawMessages!browser": { "topicPath": "/arena/browser", "diffTopicPath": "", "diffMethod": "custom", "diffEnabled": false, "showFullMessageForDiff": false, "expansion": "all" },
+    "RawMessages!bias": { "topicPath": "/bias/reply", "diffTopicPath": "", "diffMethod": "custom", "diffEnabled": false, "showFullMessageForDiff": false, "expansion": "all" },
+    "RawMessages!event": { "topicPath": "/arena/event", "diffTopicPath": "", "diffMethod": "custom", "diffEnabled": false, "showFullMessageForDiff": false, "expansion": "all" }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": { "speed": 1 },
+  "layout": {
+    "direction": "row",
+    "first": { "direction": "column", "first": "Plot!idx", "second": "Plot!heading", "splitPercentage": 50 },
+    "second": { "direction": "column", "first": "RawMessages!browser", "second": { "direction": "column", "first": "RawMessages!event", "second": "RawMessages!bias", "splitPercentage": 50 }, "splitPercentage": 40 },
+    "splitPercentage": 62
+  }
+}

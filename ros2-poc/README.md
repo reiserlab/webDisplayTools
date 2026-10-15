@@ -278,7 +278,7 @@ sends it at run end only on the commit path today) or on a run-end event.
 |---|---|---|
 | live graph as a diagram | `pixi run graph` (while `pixi run rig` is up; any environment) | a Mermaid flowchart of the nodes and topics the middleware reports, with each topic's type and 1 s message rate; `-- --dot` for Graphviz, `-- --text` for a table, `-- --out docs/graph.md` to save |
 | live graph, interactive | `pixi install -e viz`, then `pixi run -e viz rqt-graph` | the standard ROS node/topic graph window (Qt); `pixi run -e viz rqt-topic` shows rates and payloads |
-| the recorded run | Foxglove Studio (free desktop app) → *Open local file* → `runlogs/<run>.bag/<run>_0.mcap` | every topic of the run on a timeline: plot `/arena/frame` `idx`, `hd`, `bias_deg`, step through `/arena/browser` messages, read the schemas rosbag2 embedded — no ROS needed on that machine |
+| the recorded run | Foxglove (free desktop app) → *Open local file* → `runlogs/<run>.bag/<run>_0.mcap`; Layout → *Import from file* → `docs/foxglove-arena-layout.json` | every topic of the run on a timeline: plots of `/arena/frame` `idx`, `hd`, `bias_deg`, `epoch` (typed runs; String runs show the JSON text), the browser messages, events and BIAS replies as raw views, the schemas rosbag2 embedded — no ROS needed on that machine |
 | the live run in Foxglove | `pixi run -e viz foxglove-bridge` → Foxglove *Open connection* `ws://localhost:8766` | the same panels on the running graph |
 | the plain CLI | `pixi run ros2 node list`, `ros2 topic list -t`, `ros2 topic hz /arena/frame`, `ros2 topic echo /bias/status`, `ros2 bag info runlogs/<run>.bag` | what every ROS user reaches for first; every topic here is readable JSON or a flat typed message |
 

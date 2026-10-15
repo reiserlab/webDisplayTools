@@ -214,7 +214,8 @@ pixi run graph -- --out graph.md  # the Mermaid diagram (paste into the report)
 
 Optional, if time: `pixi install -e viz` (Qt + foxglove_bridge, ~0.3 GB more) then
 `pixi run -e viz rqt-graph` for the live graph window; and open the run's
-`runlogs\<run>.bag\<run>_0.mcap` in Foxglove Studio on any machine to plot `/arena/frame`.
+`runlogs\<run>.bag\<run>_0.mcap` in Foxglove on any machine (free account sign-in; Layout → Import →
+`docs\foxglove-arena-layout.json`) to plot `/arena/frame`.
 
 ## 6. Student mistakes (2 minutes)
 

@@ -157,7 +157,7 @@ pixi run test                      # the 46-check harness, no hardware</code></p
   <tr><th>View</th><th>Command</th></tr>
   <tr><td>Live graph as a diagram or table</td><td><code>pixi run graph</code> (Mermaid), <code>pixi run graph -- --text</code></td></tr>
   <tr><td>Live graph window</td><td><code>pixi install -e viz</code>, then <code>pixi run -e viz rqt-graph</code></td></tr>
-  <tr><td>A recorded run, anywhere</td><td>Foxglove Studio, open <code>runlogs/&lt;run&gt;.bag/&lt;run&gt;_0.mcap</code></td></tr>
+  <tr><td>A recorded run, anywhere</td><td>Foxglove (free account), open <code>runlogs/&lt;run&gt;.bag/&lt;run&gt;_0.mcap</code>, then Layout → Import → <code>docs/foxglove-arena-layout.json</code>: plots of idx, heading, bias and epoch from the typed frames, raw views of the browser messages, events and BIAS replies</td></tr>
   <tr><td>The live run in Foxglove</td><td><code>pixi run -e viz foxglove-bridge</code>, connect to ws://localhost:8766</td></tr>
   <tr><td>Plain ROS CLI</td><td><code>ros2 topic hz /arena/frame</code>, <code>ros2 bag info runlogs/&lt;run&gt;.bag</code></td></tr>
 </table></div>
