@@ -1,9 +1,12 @@
 # LAB-303 Plan B — Windows results, reiserlab-ww18, 2026-10-15
 
-First Windows run of `ros2-poc/WINDOWS-TEST.md`. **Status: steps 0–3, 6 and 5b done unattended,
-plus the pre-step-4 BIAS HTTP probe; harness 45 / 45 five runs in a row after the fixes below.
-Steps 4 (BIAS through the node), 5 (Studio + controller), 5c and 7 are still to do with someone
-at the keyboard. Step 1b (typed build) is blocked on an admin install (below).**
+First Windows run of `ros2-poc/WINDOWS-TEST.md`. **Status: every step except the typed build passed on
+ww18** — 0–3, 6 and 5b unattended (harness 45/45, now 47/47, after the fixes below), then with Michael at
+the rig: **4** (BIAS through the node on the Atlas10 camera, incl. the unknown-outcome path), **5** (Studio +
+G6 2×10 controller + real FicTrac at 96 Hz + BIAS, idx mismatch 0.00 % in both epochs), **5.7** (bridge
+hard-killed mid-loop: every frame recovered from the bag), a **10-min soak** (0.00 % / 0.00 %, BIAS lost 0 of
+81 567 frames) and **5c** smoke on the four-color arena (8/8 trials pass, CW then CCW confirmed). **Step 1b /
+7 (typed messages) is blocked** by a pixi-build-ros packaging bug after two Windows hurdles were cleared (W2).
 
 ## Machine
 
@@ -21,7 +24,7 @@ at the keyboard. Step 1b (typed build) is blocked on an admin install (below).**
 | # | Step | Finding | Status |
 |---|---|---|---|
 | W1 | 1a / 2 | `$PIXI_PROJECT_ROOT` stays literal in `[activation.env]` on Windows; `pixi run router` then exits: `zenohc::config: Failed to read config from $PIXI_PROJECT_ROOT/config/zenoh-router.json5: The system cannot find the path specified. (os error 3)` (no fallback to the stock config). `%PIXI_PROJECT_ROOT%` does expand under `pixi run`. | **fixed** bd2e349 (`[target.win-64.activation.env]`) |
-| W2 | 1b | The typed build fails with **VS Build Tools 2026 only**: `Could not find the compiler specified in the environment variable CC: cl.exe.` conda-forge `vs2022_win-64` (19.44.35207) looks for VS `[17,18)`, then the v143/14.44 components, then hard-coded `…\2022\…` paths, then `vswhere -latest` **without `-products *`**, which never lists a Build-Tools-only install. | **open**: needs VS 2022 Build Tools, or the "MSVC v143 (14.44)" component added to the 2026 install — admin/UAC |
+| W2 | 1b | The typed build fails with **VS Build Tools 2026 only**: `Could not find the compiler specified in the environment variable CC: cl.exe.` conda-forge `vs2022_win-64` (19.44.35207) looks for VS `[17,18)`, then the v143/14.44 components, then hard-coded `…\2022\…` paths, then `vswhere -latest` **without `-products *`**, which never lists a Build-Tools-only install. Then, with the v143 group added (below): (2) **MAX_PATH** — `fatal error C1083: Cannot open compiler generated file: '': Invalid argument` on a 265-char object path under `C:\Users\reiserm\Documents\GitHub\webDisplayTools\ros2-poc\.pixi\bld\arena_interfaces\…\work\build\CMakeFiles\…\_arena_interfaces_s.ep.rosidl_typesupport_fastrtps_c.c.obj` (`LongPathsEnabled` 0); the build adds ~215 chars, so the checkout path must stay under ~45; (3) at `C:\w` it compiles and links (156 files, 16 s), then packaging fails: `× paths in archives must not have '..' when setting path for Library` — the package lists `Library/../Lib/site-packages/arena_interfaces/…` (RoboStack's Windows `PYTHON_INSTALL_DIR=../Lib/site-packages`). | (1) fixed on the PC: `Microsoft.VisualStudio.ComponentGroup.VC.Tools.143.x86.x64` added to VS 2026 Build Tools (UAC, < 5 min; the script's 3rd vswhere query finds it); (2) short checkout path; (3) **open** — pixi-build-ros / rattler-build bug, needs an upstream fix or a prebuilt package |
 | W3 | 3 | Text-mode writes are CRLF on Windows: `mcap_convert --out`, `export_log`, the emulator's export copy → 2 byte-identity FAILs against bridge 3.4's binary `--convert`. | **fixed** aeccdce (`newline="\n"`) |
 | W4 | 3 / 5.6 | bridge 3.4's own live file is CRLF on Windows (`fictrac-bridge/bridge.py:711`, text-mode `open(…, "a")`); its export re-reads in text mode and gzips binary, so committed logs are LF. The PoC's shadow file inherits this, so step 5.6's `fc.exe /b export shadow` will differ on **every line** here; compare with `splitlines`, not bytes. | not fixed (bridge 3.4 untouched) |
 | W5 | 3 | JS reader check skipped: `find_node()` looked for `.pixi\envs\default\bin\node.exe`; conda's Windows layout has `node.exe` at the env root (and a fresh clone needs the root `pixi install`, 5.3 s / 0.30 GB). | **fixed** aeccdce |
@@ -32,7 +35,14 @@ at the keyboard. Step 1b (typed build) is blocked on an admin install (below).**
 | X1 | 3 | (cross-platform) converter put a device row recorded in the same ms as `logging_stopped` AFTER it (`live 2238 vs conv 2239`). | **fixed** 6250cdb, revised in 667e538: such a line is moved before the stop (`moved_before_stop`), since after X2 every derived record precedes it |
 | X2 | 3 | (cross-platform) the mirror race at run START: the ROS thread recorded device messages on arrival (`_kinefly` → `rec.write_raw`, dropped while `self.rec` is None) while the live line is written later on the asyncio loop, which is busy in `_open` — so the shadow file could hold a device row the bag never saw (`live 2237 vs conv 2236`, `["kf",2,162,…]`; 1 run in 4). Same mechanism for FicTrac: `FAIL bag → full level: one fictrac_frame per frame with the 25 FicTrac columns … — 922 frames vs 922; cols [0, 25]` (the run's first frame recorded, its `/fictrac/raw` message not; 1 run in 5). | **fixed** 667e538 — Kinefly, BIAS reply/status and FicTrac messages are recorded on the loop next to their line, under the shadow writer's open gate (`record_device`), with the ROS receive time kept as the MCAP log_time; FicTrac after `handle_line`, off the closed-loop path. **5 runs in a row 45 / 45**, derived counts equal every run |
 | B1 | 4 probe | This BIAS's `set-video-file` uses `baseName()` and the logging format's extension: `poc.avi` → `poc.ufmf`; `my trial.v2.avi` → `my trial.ufmf` (silently truncated at the first dot). | info for bias_node / protocol authors |
-| B2 | 4 probe | `get-video-file` = `getVideoFileFullPath()` with an EMPTY auto-naming string (source, `ext_ctl_http_server.cpp`), while the writer adds `_cam_0_<date>` + version — so the node's `artifact.path` likely names a file that is never written. To confirm in step 4 with a real recording. | to verify |
+| B2 | 4 | **Confirmed**: artifact `D:/rec/reiserm/ros2-poc/poc.ufmf`, file written `poc_cam_0_date_2026_10_15_time_13_43_10_v001.ufmf`; and the per-frame timestamps live only in `stamp_log_cam0.txt`, which BIAS **overwrites on every recording**. | **fixed** 2584e03 — stopRecording resolves the file BIAS wrote (`resolved`, `bytes`), reads the stamp log and publishes every frame's timestamp on `/bias/frames` (recorded in the bag); status poll 1 → 5 Hz. Real BIAS: 1 087 frames = 1 087 lines on disk = 1 087 timestamps in the bag |
+| B3 | 4 | Atlas10 `connect` takes **2.18 s**, past the node's 2 s per-call timeout: a successful connect came back `outcome: "unknown"` (exit 3). `stop-capture` takes 0.26 s on 30 s recordings but **~3.2 s on 8 s ones** (BIAS's first uFMF background update; up to ~6.5 s possible). A/B: 5 Hz polling has no effect. | **fixed** 5b0fcfb — `--slow-timeout-s` 15 for connect/disconnect/load-configuration/start-/stop-capture/close |
+| B4 | 4 | Windows: a connect to a **closed** localhost port is refused only after **~2.05 s** (`WinError 10061` after 2048 ms; macOS refuses at once). With BIAS gone, every command waits its timeout and reads `unknown` (4.0 s for getTimestamp), never a hang. | info (could cap the connect step separately) |
+| W10 | 5 | `rig.py --bias-args "--video-dir D:\rec\reiserm\ros2-poc"` (WINDOWS-TEST's own form): POSIX `shlex` ate the backslashes → `"filename":"D:recreisermros2-poc\\poc_studio_run.avi"`, video in `D:\recreisermros2-poc\`. | **fixed** a0634f1 (`split_args`, all `--x-args`) |
+| W11 | 5 | `fictrac.exe` run directly exits `0xC0000135` (STATUS_DLL_NOT_FOUND, no output, no log): this FicTrac is pixi-built; `build\Release\fictrac.bat` puts its env + Spinnaker on PATH. | info for WINDOWS-TEST.md |
+| H1 | 5 | The soak controller's SD card was **not mounted** (GET_SD_INFO status 1, 0 sectors, 0 files) — the Studio only said the pattern was missing. A new 64 GB SanDisk card (**exFAT**, 128 KiB clusters) mounted at once; 8 patterns uploaded in ~0.5 s each (up to 14 MB/s). In the 10-min soak one burst of **8 slow reads (20–41 ms) in ~80 ms** flagged a trial (`display_gap` sd_slow + frame_age); trial 2's 23 217 reads max 0.5 ms. | open: characterize exFAT/64 GB with `sd_stall_test.py`; ≤ 32 GB FAT32 until then |
+| S1 | 5.7 | Bridge hard-killed mid closed loop: the Studio showed only "bridge disconnected" — **no banner, the run carried on**, and BIAS was never stopped (stopRecording goes through the bridge). The rig stopped all its children as designed. | open (Studio/runner: bridge loss in a closed-loop or connector step should banner and end the run — LAB-303 `critical`/`on_loss`) |
+| S2 | 5 | A Studio tab opened at `?p=bias_camera_closed_loop_poc_ww18_soak10` did not load the protocol until it was refreshed (server, index entry, file and parse all verified fine). | open (to reproduce) |
 
 Harmless on every process: two zenohc WARNs (`` `routing.router.peers_failover_brokering` is deprecated `` and
 `` routing.peer.mode` and `routing.peer.linkstate` are deprecated ``) — our config files carry stock keys this zenohc ignores.
@@ -167,15 +177,41 @@ flowchart LR
     kinefly_raw --> arena_bridge
 ```
 
-## Still to do (needs someone at the rig)
+## Hardware steps (afternoon, Michael at the rig; times ET)
 
-- **1b** after an admin install (W2), then **7** (`-e typed` repeat of 3 and 5).
-- **4** BIAS through the node: `connect` (Atlas10), `startRecording`, `getTimestamp`, `stopRecording`, files
-  written vs `artifact.path` (B2), `start-capture` RTT, preview; the unknown-outcome path (close BIAS mid-poll).
-- **5** Studio + controller over Web Serial (+ 5.7 crash on the real rig), **5c** color optomotor.
+Rig: CSHL G6 2×10 ball arena, controller COM4 (fw `12bba7e9` 2x10 2026-09-30), real FicTrac
+(`cshl\rig05_vfov28_2026-09-22\config.txt` via `fictrac.bat`, 96–97 fps), BIAS Atlas10 (ATX081S-M,
+2840×2840 Mono8, 135.6 fps, uFMF). Studio = this branch served from the checkout (`localhost:8092`), Chrome 155
+(no local-network-access prompt).
+
+| # | Time | Step | Result | Numbers / notes |
+|---|---|---|---|---|
+| 1b′ | 13:40 | MSVC v143 group into VS 2026 Build Tools | done | installer launched 13:40:29, installed < 5 min; `VC\Tools\MSVC\14.44.35207` next to 14.51 |
+| 1b″ | 13:44 | `pixi install -e typed` (Documents path) | FAIL | MSVC found now; `C1083` MAX_PATH (W2-2) |
+| 1b‴ | 14:26 | same at short path `C:\w` (detached worktree) | FAIL | compiles + links in 16 s; packaging `..` error (W2-3). Time-box reached |
+| 4.1 | 13:41 | `bias-cmd connect` (2 s timeout) | unknown → B3 | `timeout after 2.0s`, `outcome: "unknown"`, exit 3 — while `get-status` said `connected: true` |
+| 4.2 | 13:43 | connect / startRecording `poc.avi` / getTimestamp / stopRecording (15 s slow timeout) | **PASS** | 2178 / 140 (set-video-file 11, enable-logging 2, start-capture 116, get-video-file 11) / 11 / 263 ms; 2075 frames in 15.3 s, 0 gaps, 0 camera/writer/logger skips, 50.8 °C; file `poc_cam_0_…_v001.ufmf` (B2) |
+| 4.3 | 13:44 | unknown-outcome path (BIAS closed mid-recording) | **PASS** | `/bias/status` `reachable:false` (`<urlopen error timed out>`), `getTimestamp` `outcome:"unknown"` exit 3 in 4.0 s, no hang; BIAS restarted → `reachable:true` without restarting the node. The open uFMF has no index (BIAS limit) |
+| 5.1 | 15:06 | Studio run, Mac-bench protocol | partial | camera bracket ok (connect 2196 ms), `trialParams` status 1 → runner refused the loop (`unknown frame count for pattern idx 1`) — no pattern on the card (H1); video misplaced (W10); fidelity exact over 10 868 lines; 0 epochs |
+| 5.2 | 15:25 | Studio run, `bias_camera_closed_loop_poc_ww18` (`grating_sq`, slot 2) | **PASS** | 2 epochs, idx mismatch **0.00 % / 0.00 %**, frames 20 (from the card); `cc_0x70_ok` 2893; fidelity: 18 476 lines, 109 derived ±1 ms; 6 camera replies ok via ws; bag 3.1 MiB / 23 828 msgs, all topics; video `poc_studio_run_…_15_25_01_v001.ufmf` 16.3 MB in `D:\rec\reiserm\ros2-poc`; 1 trial "unknown" = pre-run Console test (`coverage: controller_reboot`) |
+| 5.7 | 15:35 | crash: `taskkill /F` the bridge 10.4 s into the first loop | **PASS** (+ S1) | rig stopped all children; bag without metadata.yaml (1.31 MB); `--recover`: **1162 frames, last 12 046 ms — identical to the shadow NDJSON** (only the final arena echo line missing; the Mac lost 1 frame); recover 5.4 s |
+| soak | 15:44 | `…_ww18_soak10` (2 × 300 s closed loop) | **PASS** (+ H1) | idx mismatch **0.00 % / 0.00 %**; 221 926 lines, fidelity exact (618 derived, ±6 ms max); 58 918 FicTrac rows (Δ 9–12 ms, no 15.6 ms steps); `cc_0x70_ok` 57 811; adapter→bridge p50 0.55 / p99 1.26 ms; BIAS 81 567 frames at 135.59 fps, 0 gaps / skips / incomplete / timeouts, buffers ≥ 123/128, 0 TCP retransmits; **uFMF 14.2 GB / 10 min ≈ 24 MB/s** (the fork's figure; ~85 GB/h); trial 3 flagged by one SD-stall burst (H1) |
+| 5c | 15:56 | `g6_color_optomotor_smoke` on the four-color arena (COM7: fw `c15d840a` restack/panel-boot 2026-09-29, 8 GB FAT32, patterns already on the card) | **PASS** | `runlog-check` OK, **8/8 trials pass**; violet, blue, green, yellow each CW then CCW — direction confirmed by eye, no `fps_cw`/`fps_ccw` swap; 12 camera replies ok, BIAS clock +12.03 s per trial |
+
+## Still open
+
+- **1b / 7** typed messages: pixi-build-ros packaging bug on Windows (W2-3) — or build `arena_interfaces` in
+  CI and publish it to a channel, so a rig never compiles.
+- **S1** bridge loss should banner and end the run; **S2** `?p=` needed a refresh; **H1** characterize the 64 GB
+  exFAT card; **5c full** (18 min) and real-fly runs; **hardware sync** (camera strobe → controller Digital IO)
+  for µs frame timing on the controller's clock.
 
 ## Artifacts on ww18 (not committed)
 
 `%TEMP%\ros2-poc-test-id0n3u9y` (run 1, 41/44), `-12brtne7` (run 2), `-wzz38rvp` (run 3, X2), `-mm7i3ha1` (run 4),
 `-yooxcvjy` (the FicTrac `cols [0, 25]` run), `-f8g23mlb` `-pxq2m1xb` `-qpd_gp_2` `-7n08p78f` `-03b6r1gt` (final 5);
-`ros2-poc\runlogs\arena-log-20261015-111739-702.*` (W6 before the fix) and `…-111942-495.*` (after).
+`ros2-poc\runlogs\arena-log-20261015-111739-702.*` (W6 before the fix) and `…-111942-495.*` (after);
+hardware runs `ros2-poc\runlogs\arena-log-20261015-150605-299.*` (5.1), `-152501-050.*` (5.2), `-153548-287.*`
+(5.7 crash), `-154452-578.*` (soak), `-155617-614.*` (5c), `-160327-867.*` (B2 check), with exports in
+`runlogs\exports\`; videos + stamp log in `D:\rec\reiserm\ros2-poc\` (the A/B `ab_*` and `b2test` recordings
+are test files); controller probes in the session scratchpad.

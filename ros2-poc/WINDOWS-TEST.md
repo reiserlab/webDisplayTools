@@ -70,6 +70,26 @@ Windows build with its FLIR camera, the G6 controller on USB, optionally FicTrac
 Visual Studio 2022 Build Tools (Desktop C++) is installed — step 1b measures the typed-message
 build with and without it.
 
+**Windows notes from the first run (ww18, 2026-10-15 — `windows-results-ww18-2026-10-15.md`):**
+
+- **Clone to a short path** (under ~45 characters before `\ros2-poc`, e.g. `C:\Lab\GitHub\webDisplayTools`):
+  under `C:\Users\<name>\Documents\GitHub\…` the typed build hits Windows' 260-character path limit (`C1083`).
+- **MSVC**: VS Build Tools **2026** alone is not found by conda-forge's VS 2022 activation; add the component
+  group "MSVC v143 - VS 2022 C++ x64/x86 build tools (v14.44)"
+  (`Microsoft.VisualStudio.ComponentGroup.VC.Tools.143.x86.x64`, UAC, < 5 min). Even then `pixi install -e typed`
+  fails while packaging (`paths in archives must not have '..'`, a pixi-build-ros bug) — skip 1b / 7 on
+  Windows until that is fixed.
+- **Check the controller's SD card first**: an empty SD listing / "pattern missing" can mean no card is mounted
+  at all (ww18's old card). The site library's 2×10 set (`patterns/g6_2x10/patterns/`) plus
+  `protocols/bias_camera_closed_loop_poc_ww18*.yaml` (slot 2 `grating_sq`) work on any 2×10 card loaded that way.
+- **FicTrac** (pixi-built): start it with `build\Release\fictrac.bat <config>` from the config folder —
+  `fictrac.exe` alone exits silently with `0xC0000135` (DLL not found).
+- **BIAS Atlas10 build** (atlas-bench): HTTP server on by default at 5010; uFMF by default, so `.avi` names
+  become `.ufmf`; `connect` ≈ 2.2 s and `stop-capture` up to several seconds on short recordings (the node's
+  15 s slow timeout covers both); uFMF ≈ 24 MB/s at 8 MP × 135 fps.
+- **Studio**: open protocols with Protocol ▾ → **Open from Library…** (this server's registry, no sign-in);
+  if a `?p=` link does not load, refresh the tab.
+
 ## 0. Before starting
 
 - Repo: `reiserlab/webDisplayTools`, branch `claude/ros-studio-plan-b-c44942` (draft PR
