@@ -122,6 +122,7 @@ KINEFLY_TOPIC = "/kinefly/raw"
 BIAS_CMD_TOPIC = "/bias/cmd"
 BIAS_REPLY_TOPIC = "/bias/reply"
 BIAS_STATUS_TOPIC = "/bias/status"
+BIAS_FRAMES_TOPIC = "/bias/frames"  # every frame's BIAS timestamp, published by the BIAS node at stopRecording (bag only, no run-log line)
 FRAME_TOPIC = "/arena/frame"
 RAW_QOS = QoSProfile(
     reliability=QoSReliabilityPolicy.RELIABLE,
@@ -291,7 +292,7 @@ class RecordingLogWriter(B.LogWriter):
         """Topic → type for the bag (all of them, so a run documents what it could hold)."""
         t = {
             SESSION_TOPIC: STRING_TYPE, BROWSER_TOPIC: STRING_TYPE, EVENT_TOPIC: STRING_TYPE,
-            KINEFLY_TOPIC: STRING_TYPE, BIAS_CMD_TOPIC: STRING_TYPE, BIAS_REPLY_TOPIC: STRING_TYPE, BIAS_STATUS_TOPIC: STRING_TYPE,
+            KINEFLY_TOPIC: STRING_TYPE, BIAS_CMD_TOPIC: STRING_TYPE, BIAS_REPLY_TOPIC: STRING_TYPE, BIAS_STATUS_TOPIC: STRING_TYPE, BIAS_FRAMES_TOPIC: STRING_TYPE,
         }
         if self._typed:
             t[FRAME_TOPIC] = ARENA_FRAME_TYPE
@@ -553,6 +554,9 @@ class BridgeNode(Node):
         self.create_subscription(String, KINEFLY_TOPIC, self._kinefly, RAW_QOS, raw=True)
         self.create_subscription(String, BIAS_REPLY_TOPIC, lambda b: self._bias("reply", BIAS_REPLY_TOPIC, b), RAW_QOS, raw=True)
         self.create_subscription(String, BIAS_STATUS_TOPIC, lambda b: self._bias("status", BIAS_STATUS_TOPIC, b), RAW_QOS, raw=True)
+        # Recorded on arrival, like /fictrac/raw: it never becomes a run-log line (the stopRecording reply
+        # carries its summary), so there is no shadow line to stay in step with.
+        self.create_subscription(String, BIAS_FRAMES_TOPIC, lambda b: self._record(BIAS_FRAMES_TOPIC, b), RAW_QOS, raw=True)
 
     def _record(self, topic: str, data: bytes) -> None:
         rec = self._log.rec
@@ -769,7 +773,7 @@ async def run(args: argparse.Namespace) -> None:
                 "rmw": os.environ.get("RMW_IMPLEMENTATION"),
                 "record": {"bag": log.bag_name, "profile": log._profile, "typed": typed},
                 "topics": {"fictrac": FICTRAC_FRAME_TOPIC if typed else FICTRAC_TOPIC, "kinefly": KINEFLY_TOPIC,
-                           "bias": [BIAS_CMD_TOPIC, BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC], "frame": FRAME_TOPIC,
+                           "bias": [BIAS_CMD_TOPIC, BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC, BIAS_FRAMES_TOPIC], "frame": FRAME_TOPIC,
                            "browser": BROWSER_TOPIC, "event": EVENT_TOPIC, "session": SESSION_TOPIC},
             }
         )

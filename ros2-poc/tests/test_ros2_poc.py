@@ -210,21 +210,27 @@ def compare_logs(live: list[str], conv: list[str]) -> dict:
 def bag_summary(bag: Path) -> dict:
     """Topic → message count + schema names, read with the pure-Python mcap reader."""
     sys.path.insert(0, str(NODES))
-    from mcap_convert import read_all  # noqa: E402
+    from mcap_convert import _json_of, read_all  # noqa: E402
 
     recs, info = read_all(bag)
     by_topic: dict[str, int] = {}
     schemas = set()
     lag = []
+    bias_frames_t = 0  # BIAS frame timestamps carried by /bias/frames (all chunks, all recordings)
     for r in recs:
         by_topic[r["topic"]] = by_topic.get(r["topic"], 0) + 1
         if r["schema"]:
             schemas.add(r["schema"])
         if r["topic"] == "/arena/frame" and r.get("pub_ns"):
             lag.append((r["log_ns"] - r["pub_ns"]) / 1e6)
+        if r["topic"] == "/bias/frames":
+            o = _json_of(r)
+            if isinstance(o, dict) and isinstance(o.get("t"), list):
+                bias_frames_t += len(o["t"])
     lag.sort()
     files = sorted(bag.glob("*.mcap"))
     return {"records": info.get("records"), "topics": by_topic, "schemas": sorted(schemas), "torn": info.get("torn"),
+            "bias_frames_t": bias_frames_t,
             "bytes": sum(f.stat().st_size for f in files), "metadata_yaml": (bag / "metadata.yaml").exists(),
             "frame_lag_ms": {"p50": round(lag[len(lag) // 2], 3), "p99": round(lag[int(len(lag) * 0.99)], 3), "max": round(lag[-1], 3)} if lag else None}
 
@@ -447,6 +453,16 @@ def main(argv: list[str] | None = None) -> int:
         check("Studio-path connector commands logged (browser→bridge)", [e.get("command") for e in ws_cmd] == ["connect", "startRecording", "getTimestamp", "stopRecording", "bogusCommand"], str([e.get("command") for e in ws_cmd]))
         check("Studio-path replies logged with via=ws and the plugin name", len(ws_rep) >= 3 and all(e.get("plugin") == "camera" for e in ws_rep), f"{len(ws_rep)} via=ws replies")
         check("Studio-path startRecording video exists", (videos / "poc_studio.avi").exists(), str(list(videos.glob('*')) if videos.exists() else []))
+        # Windows ww18 2026-10-15: the artifact named a file BIAS never wrote (its writer adds an
+        # auto-naming suffix) and the per-frame timestamps stayed in a stamp log BIAS overwrites.
+        stop_art = [e["artifact"] for e in bias_rep if e.get("command") == "stopRecording" and isinstance(e.get("artifact"), dict)]
+        logs = [a.get("stamp_log") or {} for a in stop_art]
+        check("stopRecording reports the video BIAS wrote + its frame-timestamp log (resolved, bytes, stamp_log.frames)",
+              bool(stop_art) and all(a.get("resolved") and (a.get("bytes") or 0) > 0 and (s.get("frames") or 0) > 0 for a, s in zip(stop_art, logs)),
+              json.dumps(stop_art)[:400])
+        check("every frame timestamp of those stamp logs is in the bag (/bias/frames)",
+              bool(logs) and bagsum.get("bias_frames_t") == sum(s.get("frames") or 0 for s in logs),
+              f"bag {bagsum.get('bias_frames_t')} vs stamp logs {[s.get('frames') for s in logs]}")
 
         cs = [e for e in events if e.get("type") == "connector_status" and e.get("src") == "fictrac"]
         p99 = cs[-1]["lat_ms"]["p99"] if cs else None
