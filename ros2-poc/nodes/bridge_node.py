@@ -291,7 +291,7 @@ class RecordingLogWriter(B.LogWriter):
     def _open(self, name: str, event: str) -> None:
         bag = (name[:-6] if name.endswith(".jsonl") else name) + ".bag"
         rec = Recorder(bag, self.topics(), self._profile)
-        t_open = time.monotonic()
+        t_open = time.perf_counter()
         self.rec = rec  # visible to the ROS thread first: records during open() are buffered
         open_error = None
         try:
@@ -311,7 +311,7 @@ class RecordingLogWriter(B.LogWriter):
             self._record(SESSION_TOPIC, {"seq": self.next_seq(), "event": event, "file": name, "ms": self._t0, "level": self.level,
                                          "bag": bag, "connectors": sorted(self._connectors), "node": NODE_VERSION, "typed": self._typed,
                                          "profile": self._profile})
-            print(f"[record] {bag} ({self._profile}, typed={self._typed}; opened in {1000 * (time.monotonic() - t_open):.0f} ms)", file=sys.stderr)
+            print(f"[record] {bag} ({self._profile}, typed={self._typed}; opened in {1000 * (time.perf_counter() - t_open):.0f} ms)", file=sys.stderr)
         if self.on_open is not None:
             self.on_open()
 
@@ -409,14 +409,14 @@ class RecordingLogWriter(B.LogWriter):
         name, live = super().export_current()
         if name is None or self._export == "live" or not self.bag_name:
             return name, live
-        t0 = time.monotonic()
+        t0 = time.perf_counter()
         try:
             text, report = convert_bag(self.bag_name, level=None, order="seq")
         except Exception as exc:
             print(f"[convert] FAILED ({exc!r}) — exporting the shadow file instead", file=sys.stderr)
             self.last_convert = {"error": repr(exc)}
             return name, live
-        report["convert_ms"] = round(1000 * (time.monotonic() - t0), 1)
+        report["convert_ms"] = round(1000 * (time.perf_counter() - t0), 1)
         report["identical_to_live"] = text == live
         if not report["identical_to_live"]:
             a, b = text.splitlines(), (live or "").splitlines()
