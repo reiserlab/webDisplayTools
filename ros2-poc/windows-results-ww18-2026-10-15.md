@@ -28,7 +28,7 @@ at the keyboard. Step 1b (typed build) is blocked on an admin install (below).**
 | W6 | 6 | **Ctrl-C on `pixi run rig` killed the bridge node instead of stopping it**: no `shutting down` line, shadow file ended on a FicTrac row (no `logging_stopped`), the open run's bag got **no `metadata.yaml`** (649 KB unindexed). `CTRL_BREAK_EVENT` (rig.py / harness stop signal) ends a Python process at once by default, and `loop.add_signal_handler` is not implemented on Windows. | **fixed** 4935732 (SIGBREAK handler) — after: `[bridge-node] shutting down`, `[record] closed … 973 records, 95255 B`, `metadata.yaml` written, nothing lingers |
 | W7 | 6 | Second `pixi run rig`: the refusal listed 8765 + 60000 but **not 7447** with a router listening. `port_in_use()` sets `SO_REUSEADDR`, which on Windows lets the probe bind over a live listener (zenohd; asyncio's socket is exclusive, so 8765 was caught). | **fixed** 4935732 (plain bind on Windows; TIME_WAIT does not block it — checked) |
 | W8 | 4 | **Two programs can hold port 5010 at once**: real BIAS on `0.0.0.0:5010` + `[::]:5010`, and a harness `bias_sim` on `127.0.0.1:5010`; loopback clients get the more specific socket, i.e. the SIM. Seen by accident (a probe answered by the sim). On Windows Qt's listener shares its address, so NO bind probe sees it — plain, wildcard and `SO_EXCLUSIVEADDRUSE` binds of 5010 all succeeded next to BIAS; only a connect does. | **fixed** cbd0d31 — bias_sim refuses when its port answers, binds exclusively on Windows, reports `"sim": true`; rig.py confirms a "free" TCP port with a connect on Windows; the harness uses a free port for its sim |
-| W9 | all | `time.monotonic()` = `GetTickCount64`, resolution **15.625 ms** (Python 3.12.15); every `rtt_ms` the BIAS node reports is quantized (0 / 15 / 16 / 31 ms seen). `time.time()` (all run-log `ms`, bridge 3.4 too) reports the same nominal resolution; today's logs were fine (FicTrac row deltas 19/20/21 ms) because something on the PC raised the timer rate — a rig where nothing does would log 15.6 ms steps. | **fixed** cc603f6 for durations (`perf_counter`: BIAS RTTs, bag open / convert / reindex times); `time.time()` stamps open (`GetSystemTimePreciseAsFileTime` is Python 3.13+) |
+| W9 | all | `time.monotonic()` = `GetTickCount64`, resolution **15.625 ms** (Python 3.12.15); every `rtt_ms` the BIAS node reports is quantized (0 / 15 / 16 / 31 ms seen). `time.time()` (all run-log `ms`, bridge 3.4 too) reports the same nominal resolution; today's logs were fine (FicTrac row deltas 19/20/21 ms) because something on the PC raised the timer rate — a rig where nothing does would log 15.6 ms steps. | **fixed** cc603f6 for durations (`perf_counter`: BIAS RTTs, bag open / convert / reindex times), and for stamps by the "Windows clocks" commit (precise wall clock, perf-counter latency, 1 ms timer — trade-offs below) |
 | X1 | 3 | (cross-platform) converter put a device row recorded in the same ms as `logging_stopped` AFTER it (`live 2238 vs conv 2239`). | **fixed** 6250cdb, revised in 667e538: such a line is moved before the stop (`moved_before_stop`), since after X2 every derived record precedes it |
 | X2 | 3 | (cross-platform) the mirror race at run START: the ROS thread recorded device messages on arrival (`_kinefly` → `rec.write_raw`, dropped while `self.rec` is None) while the live line is written later on the asyncio loop, which is busy in `_open` — so the shadow file could hold a device row the bag never saw (`live 2237 vs conv 2236`, `["kf",2,162,…]`; 1 run in 4). Same mechanism for FicTrac: `FAIL bag → full level: one fictrac_frame per frame with the 25 FicTrac columns … — 922 frames vs 922; cols [0, 25]` (the run's first frame recorded, its `/fictrac/raw` message not; 1 run in 5). | **fixed** 667e538 — Kinefly, BIAS reply/status and FicTrac messages are recorded on the loop next to their line, under the shadow writer's open gate (`record_device`), with the ROS receive time kept as the MCAP log_time; FicTrac after `handle_line`, off the closed-loop path. **5 runs in a row 45 / 45**, derived counts equal every run |
 | B1 | 4 probe | This BIAS's `set-video-file` uses `baseName()` and the logging format's extension: `poc.avi` → `poc.ufmf`; `my trial.v2.avi` → `my trial.ufmf` (silently truncated at the first dot). | info for bias_node / protocol authors |
@@ -41,6 +41,41 @@ Info, not a check: the harness's `derived_misplaced` (a derived line after a dif
 live file) ranged 4–861 of ~2240. It tracks how many Kinefly rows share a millisecond with a FicTrac row, which is
 the converter's unbreakable tie: 40 % in the 861 run, 0–2 % in the others. On Windows the 10 ms and 20 ms senders
 can wake on the same timer tick.
+
+### Windows clocks — what changed and the trade-offs (for review)
+
+Measured on ww18 with nothing raising the timer (`NtQueryTimerResolution` current = 15.625 ms):
+
+| clock | step as found | after `timeBeginPeriod(1)` |
+|---|---|---|
+| `time.time()` (bridge 3.4's `now_ms()`, every run-log `ms`) | ~15.6 ms, 2.3 ms behind true time | 1 ms |
+| `GetSystemTimePreciseAsFileTime` | **1 µs** | 1 µs |
+| `time.monotonic()` | 15–16 ms | 15–16 ms (unaffected) |
+| `time.perf_counter()` | < 1 µs | < 1 µs |
+
+The PoC now uses, on Windows only (`_common.py`; macOS/Linux unchanged):
+
+1. **Precise wall clock for every stamp** (`wall_ns` / `wall_ms` = `GetSystemTimePreciseAsFileTime`, what
+   Python 3.13 made `time.time()`; RoboStack Jazzy pins 3.12): the bridge node rebinds bridge 3.4's module
+   `now_ms` in its own process (the file is unchanged), plus the recorder's `log_time`, the adapters'
+   `rx_epoch_ms` and the BIAS node's stamps. Cost 0.42 µs per call (ctypes) at a few hundred stamps/s — nothing.
+   Trade-off: none found. It is still wall-clock time, so a clock correction (NTP/w32time) moves it exactly as before.
+2. **The perf counter for cross-process latency** (`mono_ns` = `perf_counter_ns`, adapter `rx_mono_ns` vs the
+   bridge's): one system-wide counter (4 processes agreed within 3.3 µs). `connector_status` FicTrac latency is
+   now exact — p50 0.27–0.30 ms, p99 0.55–0.65 ms — instead of carrying the 0–1 ms floor of whole-ms stamps.
+   Trade-off: only valid with adapter and bridge on ONE host (always true for this loopback-only graph) and the
+   same code; out-of-range values fall back to the wall-clock difference. BIAS envelopes have no counter stamp yet.
+3. **A 1 ms system timer** (`timeBeginPeriod(1)` in the bridge node, both adapters and the BIAS node, plus the
+   Windows 11 opt-out so a minimized console keeps it). Trade-offs: (a) the timer interrupt runs at 1 kHz while
+   any of these processes is up, which costs power — irrelevant on a mains-powered rig PC, a battery cost on a
+   laptop; (b) it does NOT sharpen the closed loop, which is event-driven (UDP → ROS → loop wake-ups) — it sharpens
+   waits and timeouts (asyncio, socket, rcl) and incidentally `time.time()` in every process on the PC (so
+   bridge 3.4 too while the graph runs). Harness frame lag p99 1.02–1.05 ms over 5 runs (1.0–1.9 ms before) —
+   possibly this, possibly noise. **Easy to drop** if you prefer: one call per process.
+
+Not covered: **bridge 3.4 itself** (Production) still stamps with `time.time()`, so on an idle Windows rig PC its
+run logs are 15.6 ms-quantized unless something else (often Chrome) holds a fast timer. Same two-line fix, but it
+ships through a release PR.
 
 ### Why the Mac runs did not show these
 
@@ -76,6 +111,8 @@ can wake on the same timer tick.
 | 3.3 | 11:13 | run 3 | **FAIL 44 / 45** | 58.1 s | `live 2237 vs conv 2236` — start race (X2); the stop tie also recurred and was dropped (`dropped_after_stop: 1`) |
 | 3.4 | 11:21 | run 4, after 4935732 | **PASS 45 / 45** | 58.9 s | derived 2243 == 2243, Δms p99 1 / max 7 |
 | 3.5x | 11:50 | 5 runs after the first X2 fix (Kinefly + BIAS on the loop) | 4 × 45/45, 1 × 44/45 | 53–58 s each | derived counts equal in all 5; run 5: `bag → full level … cols [0, 25]` → the same race on `/fictrac/raw` (X2) |
+| 3.7x | 13:26 | 5 runs, precise clocks + 1 ms timer | **5 × PASS 45 / 45** | 52.4–58.2 s | frame lag p99 1.044 / 1.052 / 1.052 / 1.024 / 1.051 ms; bridge log `Windows clocks: precise wall clock for every stamp; 1 ms system timer granted` |
+| 3.8x | 13:35 | 3 runs, + perf-counter latency | **3 × PASS 45 / 45** | 53.2–58.8 s | `connector_status` fictrac lat p50 0.27 / 0.30 / 0.27, p99 0.55 / 6.92 / 0.65 ms (6.92: the run with the adapter-kill window); kinefly p50 0.29–0.33 |
 | 3.6x | 11:56 | **5 runs in a row, final X2 + W8 + W9** | **5 × PASS 45 / 45** | 53.3–58.1 s each | derived 2243/2240/2248/2242/2246, equal live vs conv every run; Δms p99 1 / max 2–8; frame lag p99 1.00 / 1.67 / 1.55 / 1.89 / 1.51 ms; harness sim on a free port (BIAS open on 5010 throughout); no permission errors |
 | 3.5 | — | crash phase (run 2) | PASS | — | crashsafe: NDJSON 616 lines / 157 frames (last 3117 ms) vs bag `--recover` 611 lines / 156 frames (last 3097 ms), torn: true → **1 frame lost** (Mac: 1). default: NDJSON 157 frames; bag `.mcap` 0 B, `[convert] ValueError: no session-open record on /arena/session (not a bridge-node bag, or the open record was lost)`. `info typed topics: False`. Process groups, CTRL_BREAK, TerminateProcess, concurrent file reads, PYTHONUTF8, MCAP under a Windows path: all fine |
 | 6.1 | 11:17 | second `pixi run rig` | PASS* | — | one clear `[rig] cannot start, ports already bound:` + `tcp 127.0.0.1:8765 …` + `udp 127.0.0.1:60000 …`, no traceback; *7447 missing (W7). After the fix, all three listed |
