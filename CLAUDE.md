@@ -355,6 +355,12 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `BRIDGE_LOST` (`summary.bridgeLost`; `run-log.js` + adapter) is NOT auto-committed, and a push
   refuses a `log_export` whose name ≠ the run's `log.bridgeFile` (a restarted bridge serves another
   file). Studio: persistent `#runAlert` (`Studio.showRunAlert`), not the auto-hiding `#banner`.
+- **Never await a remote call before the `?p=` load (LAB-303 S2).** `initFromUrl` awaited the course
+  repo's GitHub `patterns/` listing first, so a stalled api.github.com request left `?p=` links
+  empty until a refresh. Best-effort listings are now fire-and-forget; that is safe because
+  pattern-preview byte sources are LAYERED (`js/studio-preview-sources.js`: builtin < shared <
+  colocated < uploaded — every write names its layer, arrival order never decides). The awaits
+  before the load are allowlisted in `tests/test-studio-preview-sources.js`.
 - **Wire module exports:** `js/arena-wire-g6.js` defines more than it exports —
   when adding encoders/decoders, add them to the export list AND a test; audit
   with `Object.keys(require('./js/arena-wire-g6.js'))` vs the page's `Wire.*`
