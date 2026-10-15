@@ -68,6 +68,16 @@ def port_in_use(proto: str, port: int, host: str = "127.0.0.1") -> bool:
     return False
 
 
+def split_args(s: str) -> list[str]:
+    """`--x-args "…"` → argv. POSIX shlex treats `\\` as an escape, so on Windows
+    `--video-dir D:\\rec\\reiserm\\ros2-poc` became the drive-relative `D:recreisermros2-poc`
+    and BIAS wrote the run's video there (ww18 2026-10-15). Windows: split without escapes,
+    then drop the quotes around a token ("C:\\My Videos\\x")."""
+    if os.name != "nt":
+        return shlex.split(s)
+    return [t[1:-1] if len(t) >= 2 and t[0] == t[-1] and t[0] in "\"'" else t for t in shlex.split(s, posix=False)]
+
+
 class Child:
     def __init__(self, name: str, argv: list[str]) -> None:
         self.name = name
@@ -174,15 +184,15 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_router:
         children.append(Child("router", ["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"]))
     nodes: list[Child] = [
-        Child("fictrac", [py, str(NODES / "fictrac_udp_adapter.py"), *shlex.split(args.fictrac_args)]),
+        Child("fictrac", [py, str(NODES / "fictrac_udp_adapter.py"), *split_args(args.fictrac_args)]),
     ]
     if args.kinefly:
-        nodes.append(Child("kinefly", [py, str(NODES / "kinefly_udp_adapter.py"), *shlex.split(args.kinefly_args)]))
+        nodes.append(Child("kinefly", [py, str(NODES / "kinefly_udp_adapter.py"), *split_args(args.kinefly_args)]))
     if args.bias_sim:
         nodes.append(Child("bias-sim", [py, str(NODES / "bias_sim.py")]))
     if args.bias:
-        nodes.append(Child("bias", [py, str(NODES / "bias_node.py"), *shlex.split(args.bias_args)]))
-    bridge = Child("bridge", [py, str(NODES / "bridge_node.py"), *shlex.split(args.bridge_args)])
+        nodes.append(Child("bias", [py, str(NODES / "bias_node.py"), *split_args(args.bias_args)]))
+    bridge = Child("bridge", [py, str(NODES / "bridge_node.py"), *split_args(args.bridge_args)])
     nodes.append(bridge)
     if foxglove:
         # The pixi task from the `viz` environment (`ros2 run foxglove_bridge foxglove_bridge
@@ -190,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         # packages; RMW_IMPLEMENTATION + the Zenoh configs pass through the environment.
         nodes.append(Child("foxglove", [pixi, "run", "--manifest-path", str(ROOT / "pixi.toml"), "-e", "viz", "foxglove-bridge"]))
     if args.sim:
-        nodes.append(Child("sim", [py, str(SIM), *shlex.split(args.sim_args)]))
+        nodes.append(Child("sim", [py, str(SIM), *split_args(args.sim_args)]))
 
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
