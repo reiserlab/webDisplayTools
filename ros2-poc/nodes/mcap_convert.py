@@ -519,7 +519,7 @@ def main(argv=None) -> int:
     else:
         p = Path(a.bag)
         out = Path(a.out) if a.out else (p.parent / (p.name[:-4] if p.name.endswith(".bag") else p.stem)).with_suffix(".jsonl")
-        out.write_text(text, encoding="utf-8")
+        out.write_text(text, encoding="utf-8", newline="\n")  # LF on Windows too, like bridge 3.4's export
         report["out"] = str(out)
     print(json.dumps(report), file=sys.stderr)
     return 0

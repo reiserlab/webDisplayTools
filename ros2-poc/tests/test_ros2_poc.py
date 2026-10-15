@@ -137,9 +137,11 @@ def find_node() -> str | None:
     if n:
         return n
     for root in (REPO, *REPO.parents[:3]):
-        cand = root / ".pixi" / "envs" / "default" / "bin" / ("node.exe" if os.name == "nt" else "node")
-        if cand.exists():
-            return str(cand)
+        env = root / ".pixi" / "envs" / "default"
+        # conda's Windows layout puts node.exe at the env root, not in bin/
+        for cand in ((env / "node.exe", env / "bin" / "node.exe") if os.name == "nt" else (env / "bin" / "node",)):
+            if cand.exists():
+                return str(cand)
     return None
 
 

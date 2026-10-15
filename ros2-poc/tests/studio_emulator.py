@@ -264,7 +264,7 @@ class Emulator:
             exp = await self.wait_for("log_export_result", timeout=15.0)
             self.check("log_export_result with content", bool(exp) and isinstance(exp.get("content"), str) and len(exp["content"]) > 0, str(exp)[:200] if exp else "none")
             if exp and exp.get("content"):
-                with open(a.out, "w", encoding="utf-8") as fh:
+                with open(a.out, "w", encoding="utf-8", newline="\n") as fh:  # keep the received bytes (LF) on Windows
                     fh.write(exp["content"])
                 self.report["export_name"] = exp.get("name")
                 self.report["export_bytes"] = len(exp["content"])

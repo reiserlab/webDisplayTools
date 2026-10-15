@@ -62,7 +62,7 @@ def main(argv=None) -> int:
         return 0
     out = Path(a.out) if a.out else HERE.parent / "runlogs" / "exports" / name
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(content, encoding="utf-8")
+    out.write_text(content, encoding="utf-8", newline="\n")  # the bytes the bridge sent: LF, also on Windows
     lines = content.count("\n")
     print(f"[export] {name}: {lines} lines, {len(content.encode('utf-8'))} bytes → {out}", file=sys.stderr)
     return 0
