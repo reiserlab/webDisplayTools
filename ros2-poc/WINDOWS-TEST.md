@@ -57,6 +57,14 @@ pass/fail, timings, sizes and every error verbatim.
    the branch (message names the step); never touch Production or Next.
 ```
 
+**Custom BIAS build on the PC** (ww18 runs one tweaked for fast cameras): the node needs only
+BIAS's external-control HTTP interface (connect, disconnect, set-video-file, enable/disable-logging,
+start/stop-capture, get-status, get-time-stamp, get-video-file), which lives in the GUI core, so it
+should work unchanged. Before step 4, probe it and record the answers: is the server enabled, on
+which port (5010 = camera 0; 5020, 5030 for more cameras), what shape `?get-status` returns, and
+what `?get-video-file` reports after `set-video-file` (ufmf / avi / something else). Those four
+answers decide whether `bias_node.py` needs any change at all.
+
 Prerequisites on the PC (check before pasting): `git`, `pixi` 0.69+, Chrome, the BIAS
 Windows build with its FLIR camera, the G6 controller on USB, optionally FicTrac; and know whether
 Visual Studio 2022 Build Tools (Desktop C++) is installed — step 1b measures the typed-message
