@@ -14,6 +14,15 @@
       "showXAxisLabels": true, "showYAxisLabels": true, "showLegend": true, "legendDisplay": "floating",
       "showPlotValuesInLegend": true, "isSynced": true, "xAxisVal": "timestamp", "sidebarDimension": 240
     },
+    "Plot!kinematics": {
+      "title": "Fly kinematics — /arena/frame.turning_dps (deg/s) and .forward_mms (mm/s), derived in the bridge node like the Studio scope",
+      "paths": [
+        { "value": "/arena/frame.turning_dps", "enabled": true, "timestampMethod": "receiveTime", "label": "turning (deg/s)" },
+        { "value": "/arena/frame.forward_mms", "enabled": true, "timestampMethod": "receiveTime", "label": "forward (mm/s)" }
+      ],
+      "showXAxisLabels": true, "showYAxisLabels": true, "showLegend": true, "legendDisplay": "floating",
+      "showPlotValuesInLegend": true, "isSynced": true, "xAxisVal": "timestamp", "sidebarDimension": 240
+    },
     "Plot!bias": {
       "title": "Bias angle — /arena/frame.bias_deg (degrees since the epoch opened; 0 when the bias is none)",
       "paths": [{ "value": "/arena/frame.bias_deg", "enabled": true, "timestampMethod": "receiveTime", "label": "bias (deg)" }],
@@ -36,8 +45,13 @@
     "first": {
       "direction": "column",
       "first": { "direction": "column", "first": "Plot!idx", "second": "Plot!heading", "splitPercentage": 50 },
-      "second": { "direction": "column", "first": "Plot!bias", "second": "StateTransitions!epoch", "splitPercentage": 70 },
-      "splitPercentage": 55
+      "second": {
+        "direction": "column",
+        "first": "Plot!kinematics",
+        "second": { "direction": "column", "first": "Plot!bias", "second": "StateTransitions!epoch", "splitPercentage": 65 },
+        "splitPercentage": 45
+      },
+      "splitPercentage": 42
     },
     "second": {
       "direction": "column",

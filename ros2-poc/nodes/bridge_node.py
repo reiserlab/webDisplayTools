@@ -224,6 +224,11 @@ class SourceStats:
         }
 
 
+NAN = float("nan")
+NO_DERIVED = (NAN, NAN)
+DEFAULT_BALL_MM = 9.0  # fly-on-ball diameter, as js/kinematics.js ballRadiusMm() assumes
+
+
 class RecordingLogWriter(B.LogWriter):
     """bridge.py's LogWriter (kept as the SHADOW NDJSON during the spike) + the MCAP record.
 
@@ -358,18 +363,15 @@ class RecordingLogWriter(B.LogWriter):
             self._record(EVENT_TOPIC, {"seq": self.next_seq(), **obj})
         super().write_event(obj)
 
-    def record_frame(self, msg: dict) -> None:
-        """Called by RosHub.publish — the frame's emission point (write_frame follows at once)."""
+    def record_frame(self, msg: dict, derived: tuple[float, float] = NO_DERIVED) -> None:
+        """Called by RosHub.publish — the frame's emission point (write_frame follows at once).
+        `derived` = (turning_dps, forward_mms) from the hub's FrameDeriver; typed record only."""
         if not self._fh or self.rec is None:
             return
         seq = self.next_seq()
         pub_ns = int(msg["t"]) * 1_000_000
         if self._typed:
-            m = ArenaFrame(t_ms=int(msg["t"]), ms=int(msg["ms"]), fc=int(msg["fc"]), idx=int(msg["idx"]),
-                           has_ft=msg.get("ft") is not None, ft=float(msg["ft"]) if msg.get("ft") is not None else float("nan"),
-                           x=float(msg["x"]), y=float(msg["y"]), hd=float(msg["hd"]), epoch=int(msg.get("epoch", 0)),
-                           bias_deg=float(msg.get("bias", 0.0)), seq=seq)
-            self.rec.write_msg(FRAME_TOPIC, m, pub_ns=pub_ns)
+            self.rec.write_msg(FRAME_TOPIC, arena_frame_msg(msg, seq, derived), pub_ns=pub_ns)
         else:
             self.rec.write_json(FRAME_TOPIC, {"wseq": seq, **msg}, pub_ns=pub_ns)
 
@@ -414,25 +416,88 @@ class RecordingLogWriter(B.LogWriter):
         return name, text
 
 
+def wrap_to_pi(r: float) -> float:
+    """Radians to (-π, π] — js/kinematics.js wrapToPi, so a turning step never spikes at ±π."""
+    x = math.fmod(r, 2 * math.pi)
+    if x <= -math.pi:
+        x += 2 * math.pi
+    elif x > math.pi:
+        x -= 2 * math.pi
+    return x
+
+
+class FrameDeriver:
+    """turning_dps / forward_mms for the TYPED ArenaFrame, from consecutive hub frames.
+
+    The math is js/kinematics.js's (the Studio scope + the course dashboard), reduced to the
+    two-point difference a live stream allows: dt from the FicTrac camera clock `ft` (ms,
+    col 22 — robust to a dropped frame because it is a timestamp, not an inter-frame dt),
+    falling back to the bridge clock `t` when ft is absent; turning = the shortest signed
+    heading step / dt in deg/s; forward = (dx·cos h + dy·sin h) / dt × ball radius with h the
+    heading at the middle of the step (kinematics.js projects on the center sample).
+    NaN on the first frame, when the clock does not advance (also a new run's ft restarting
+    at 0), when the clock SOURCE changes between frames, or when fc goes backwards (FicTrac
+    restarted). The hub message and the behavior_v1 columns never carry these — the
+    derivation lives in one place in the browser (kinematics.js) and in one place here."""
+
+    def __init__(self, ball_mm: float = DEFAULT_BALL_MM) -> None:
+        self.radius_mm = (ball_mm if ball_mm > 0 else DEFAULT_BALL_MM) / 2.0
+        self._prev: tuple | None = None  # (fc, clock_src, clock_ms, x, y, hd)
+
+    def reset(self) -> None:
+        self._prev = None
+
+    def step(self, msg: dict) -> tuple[float, float]:
+        try:
+            src, clock = ("ft", float(msg["ft"])) if msg.get("ft") is not None else ("t", float(msg["t"]))
+            cur = (int(msg["fc"]), src, clock, float(msg["x"]), float(msg["y"]), float(msg["hd"]))
+        except (KeyError, TypeError, ValueError):
+            self._prev = None
+            return NO_DERIVED
+        prev, self._prev = self._prev, cur
+        if prev is None or prev[1] != src or cur[0] < prev[0]:
+            return NO_DERIVED
+        dt_s = (clock - prev[2]) / 1000.0
+        if not dt_s > 0:
+            return NO_DERIVED
+        d_hd = wrap_to_pi(cur[5] - prev[5])
+        h_mid = prev[5] + d_hd / 2.0
+        dx, dy = cur[3] - prev[3], cur[4] - prev[4]
+        turning_dps = math.degrees(d_hd) / dt_s
+        forward_mms = (dx * math.cos(h_mid) + dy * math.sin(h_mid)) / dt_s * self.radius_mm
+        return (turning_dps, forward_mms)
+
+
+def arena_frame_msg(msg: dict, seq: int, derived: tuple[float, float] = NO_DERIVED):
+    """The hub frame → arena_interfaces/ArenaFrame. ONE builder for the published message and
+    the recorded one, so the bag and the live topic can never disagree on a field."""
+    return ArenaFrame(t_ms=int(msg["t"]), ms=int(msg["ms"]), fc=int(msg["fc"]), idx=int(msg["idx"]),
+                      has_ft=msg.get("ft") is not None, ft=float(msg["ft"]) if msg.get("ft") is not None else NAN,
+                      x=float(msg["x"]), y=float(msg["y"]), hd=float(msg["hd"]), epoch=int(msg.get("epoch", 0)),
+                      bias_deg=float(msg.get("bias", 0.0)), seq=seq,
+                      turning_dps=float(derived[0]), forward_mms=float(derived[1]))
+
+
 class RosHub(B.Hub):
     """bridge.py's Hub + a ROS mirror of every frame on /arena/frame (String JSON, or a typed
-    ArenaFrame when the interfaces are built) + the frame's MCAP record."""
+    ArenaFrame when the interfaces are built) + the frame's MCAP record. The typed frame also
+    carries the derived turning_dps / forward_mms (FrameDeriver); the String mirror is the hub
+    message verbatim, like the WebSocket."""
 
-    def __init__(self, on_message, ros_pub, log: RecordingLogWriter, typed: bool) -> None:
+    def __init__(self, on_message, ros_pub, log: RecordingLogWriter, typed: bool, ball_mm: float = DEFAULT_BALL_MM) -> None:
         super().__init__(on_message)
         self._ros_pub = ros_pub
         self._log = log
         self._typed = typed
+        self.deriver = FrameDeriver(ball_mm)
 
     async def publish(self, msg: dict) -> None:
         await super().publish(msg)
-        self._log.record_frame(msg)
+        derived = self.deriver.step(msg) if self._typed else NO_DERIVED
+        self._log.record_frame(msg, derived)
         if self._ros_pub is not None:
             if self._typed:
-                m = ArenaFrame(t_ms=int(msg["t"]), ms=int(msg["ms"]), fc=int(msg["fc"]), idx=int(msg["idx"]),
-                               has_ft=msg.get("ft") is not None, ft=float(msg["ft"]) if msg.get("ft") is not None else float("nan"),
-                               x=float(msg["x"]), y=float(msg["y"]), hd=float(msg["hd"]), epoch=int(msg.get("epoch", 0)),
-                               bias_deg=float(msg.get("bias", 0.0)), seq=self._log.seq)
+                m = arena_frame_msg(msg, self._log.seq, derived)
             else:
                 m = String()
                 m.data = json.dumps(msg, separators=(",", ":"))
@@ -681,7 +746,7 @@ async def run(args: argparse.Namespace) -> None:
     if log.active:  # a fixed --log path opened before the hooks existed
         on_log_open()
 
-    hub = RosHub(dispatch, node.frame_pub, log, typed)
+    hub = RosHub(dispatch, node.frame_pub, log, typed, ball_mm=args.ball_mm)
     pipeline.hub = hub
     log._hub = hub
 
@@ -765,6 +830,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--log", default=None, help="fixed log path (else on demand per log_control)")
     p.add_argument("--log-dir", default=str(HERE.parent / "runlogs"), help="directory for on-demand arena-log-*.jsonl (default: ros2-poc/runlogs)")
     p.add_argument("--log-level", choices=B.LOG_LEVELS, default=B.DEFAULT_LOG_LEVEL)
+    p.add_argument("--ball-mm", type=float, default=DEFAULT_BALL_MM,
+                   help=f"ball diameter in mm for the typed frame's forward_mms (default: {DEFAULT_BALL_MM:g}, as the Studio scope assumes)")
     p.add_argument("--typed", choices=("auto", "on", "off"), default="auto",
                    help="consume /fictrac/frame + publish /arena/frame as arena_interfaces types (auto: when the package imports; default)")
     p.add_argument("--bag-profile", choices=sorted(PROFILES), default="crashsafe",
@@ -776,6 +843,8 @@ def main(argv: list[str] | None = None) -> int:
         p.error("--frames must be > 0")
     if not math.isfinite(args.coupling):
         p.error("--coupling must be finite")
+    if not (math.isfinite(args.ball_mm) and args.ball_mm > 0):
+        p.error("--ball-mm must be > 0")
     rclpy.init(args=ros_args)
     try:
         asyncio.run(run(args))
