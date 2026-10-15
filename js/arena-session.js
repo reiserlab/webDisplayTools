@@ -345,9 +345,11 @@
          * ArenaWireG6.decodeResponse; do NOT slice). Queues FIFO behind any
          * in-flight send.
          * @param {Uint8Array|number[]} bytes
-         * @param {object} [opts] {expectedCmd?, timeoutMs?, silent?} — pass expectedCmd:0x32 for
-         *        STREAM_FRAME; `silent: true` skips the bridge command log (for meta traffic
-         *        such as the telemetry drain's 0xA9 requests, whose payload IS the log).
+         * @param {object} [opts] {expectedCmd?, timeoutMs?, silent?, background?} — pass
+         *        expectedCmd:0x32 for STREAM_FRAME; `silent: true` skips the bridge command
+         *        log (for meta traffic such as the telemetry drain's 0xA9 requests, whose
+         *        payload IS the log); `background: true` queues behind every foreground
+         *        send (connect-time sweeps, prefetches — see ArenaLink "Two lanes").
          * @returns {Promise<Uint8Array>}
          */
         send(bytes, opts) {
@@ -419,7 +421,7 @@
          * Bulk-read variant: send a request, then stream response chunks until
          * the controller signals EOF. See ArenaLink.sendBulkRead for details.
          * @param {Uint8Array|number[]} bytes
-         * @param {object} [opts] {timeoutMs?}
+         * @param {object} [opts] {timeoutMs?, idleTimeoutMs?, background?}
          * @returns {Promise<Uint8Array>}
          */
         sendBulkRead(bytes, opts) {

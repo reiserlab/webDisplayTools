@@ -98,7 +98,8 @@ const PatternGenerator = {
     /**
      * Calculate arena dimensions
      * @param {Object} arena - Arena configuration
-     * @returns {Object} Dimensions {rows, cols, pixelRows, pixelCols, panelSize}
+     * @returns {Object} Dimensions {rows, cols, installedCols, circleCols, pixelRows,
+     *   pixelCols, azimuthPixels, panelSize}
      */
     getArenaDimensions(arena) {
         const generation = arena.generation || arena.arena?.generation;
@@ -107,6 +108,9 @@ const PatternGenerator = {
         // For partial arenas, use columns_installed length instead of num_cols
         const columnsInstalled = arena.columns_installed || arena.arena?.columns_installed;
         const installedCols = columnsInstalled?.length || numCols;
+        // Panels in the full 360° circle (Pcircle): sets the angular pitch, which a
+        // partial arena shares with the full one
+        const circleCols = arena.numCircle || arena.num_cols_full || arena.Pcircle || numCols;
 
         const specs = this.getPanelSpecs(generation);
         const panelSize = specs.pixels_per_panel;
@@ -116,10 +120,23 @@ const PatternGenerator = {
             rows: numRows,
             cols: numCols, // Total arena slots (for geometry calculations)
             installedCols, // Actual installed columns (for pattern dimensions)
+            circleCols,
             pixelRows: numRows * panelSize,
             pixelCols: installedCols * panelSize, // Use installed columns for pattern width
+            azimuthPixels: circleCols * panelSize, // Pixels around the full circle
             panelSize
         };
+    },
+
+    /**
+     * Azimuthal pitch in degrees per pixel: 360° over the FULL circle's pixels, never the
+     * installed ones. G4 3×12of18 = 360 / (18 × 16) = 1.25°/px. The spherical generators
+     * use the same pitch (arenaCoordinates numCircle), so px↔° conversions must use this.
+     * @param {Object} arena - Arena configuration (generator, config.arena or config form)
+     * @returns {number} Degrees per pixel
+     */
+    getDegreesPerPixel(arena) {
+        return 360 / this.getArenaDimensions(arena).azimuthPixels;
     },
 
     /**
@@ -359,7 +376,7 @@ const PatternGenerator = {
         // Determine number of columns for full circle (Pcircle)
         // For partial arenas, numCircle is the FULL arena size (for correct angular spacing)
         // but numCols should be the installed columns (for pattern dimensions)
-        const numCircle = arena.numCircle || arena.num_cols_full || arena.Pcircle || cols;
+        const numCircle = dims.circleCols;
 
         // Generate arena coordinates
         // numCols = installed columns (pattern dimension)
@@ -578,7 +595,7 @@ const PatternGenerator = {
         const { pixelRows, pixelCols, generation, rows, cols, installedCols, panelSize } = dims;
 
         // Determine number of columns for full circle (Pcircle)
-        const numCircle = arena.numCircle || arena.num_cols_full || arena.Pcircle || cols;
+        const numCircle = dims.circleCols;
 
         // Generate arena coordinates for projection
         const arenaConfig = {
@@ -862,7 +879,7 @@ const PatternGenerator = {
         const { pixelRows, pixelCols, generation, rows, cols, installedCols, panelSize } = dims;
 
         // Determine number of columns for full circle (Pcircle)
-        const numCircle = arena.numCircle || arena.num_cols_full || arena.Pcircle || cols;
+        const numCircle = dims.circleCols;
 
         // Generate arena coordinates
         const arenaConfig = {

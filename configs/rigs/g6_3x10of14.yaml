@@ -1,0 +1,34 @@
+# G6 rig configuration — 10-of-14 ring, 3 panels high
+#
+# The 10-of-14 ring arena (10 columns installed on a 14-column circle, gap at
+# the back). Its controller has a Qwiic / STEMMA QT jack; list the boards in
+# peripherals: once the chain is known (Console → Qwiic → "Copy as rig YAML").
+
+format_version: "1.0"
+name: "G6 3x10of14"
+description: "G6 10-of-14 ring, 3 rows (~257°), controller over USB/serial, no external plugins"
+
+arena: "G6_3x10of14"
+
+controller:
+  host: "0.0.0.0" # not used for serial/USB
+  port: 62222
+
+plugins: {}
+
+io:
+  dio:
+    - port: 1
+      role: out_debug_framescan # HIGH during each frame's SPI transmission
+      default: 0
+    - port: 2
+      role: off
+      default: 0
+  ai:
+    role: off
+  ao:
+    role: programmable
+    default: 5.0 # volts — this hardware idles at 5 V
+
+# Qwiic peripherals (LAB-214): none listed yet.
+peripherals: []

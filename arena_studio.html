@@ -214,6 +214,13 @@
   .rig-tag{font-size:11px;color:var(--dim);border:1px solid var(--border);border-radius:20px;padding:2px 8px;white-space:nowrap;cursor:pointer;max-width:220px;overflow:hidden;text-overflow:ellipsis}
   .rig-tag:hover{border-color:var(--accent);color:var(--text)}
   .chip.rig-mismatch{color:var(--warn);border-color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,transparent);cursor:help}
+  /* Qwiic chip (LAB-214): shown only on controllers with the I2C bridge; click → Console → Qwiic */
+  .chip.qwiic-chip{cursor:pointer}
+  body:not(.hasproto) .chip.qwiic-chip{display:inline-block} /* bench state, not protocol state: shown with no protocol loaded (inline display:none still hides it) */
+  .chip.qw-ok{color:var(--accent);border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+  .chip.qw-warn{color:var(--warn);border-color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,transparent)}
+  .chip.qw-err{color:var(--danger);border-color:var(--danger);background:color-mix(in srgb,var(--danger) 8%,transparent)}
+  .chip.qw-off{color:var(--dim);border-color:var(--border)}
   .doc-name{font-family:var(--head);font-weight:700;font-size:12.5px;white-space:nowrap}
   .chip{font-family:var(--mono);font-size:11px;font-weight:600;border-radius:20px;padding:2px 8px;border:1px solid;white-space:nowrap}
   .chip.saved{color:var(--accent);border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
@@ -2230,6 +2237,27 @@
   .console-view .ai-range{font-size:10px;color:var(--dim);min-width:130px}
   .console-view #cAiChart{display:block;width:100%;max-width:460px;height:90px;border:1px solid var(--border);border-radius:4px;background:var(--chart-bg)}
   .console-view .ai-table{font-size:10.5px;border-collapse:collapse}
+  /* Qwiic panel (LAB-214): scan table, one-device readout grid, AS7343 spectrum bars */
+  .console-view table.qw-table td,.console-view table.qw-table th{padding:2px 10px 2px 0;text-align:left;vertical-align:top}
+  .console-view .qw-table tr.qw-pick{cursor:pointer}
+  .console-view .qw-table tr.qw-pick:hover td{background:var(--surface2)}
+  .console-view .qw-table tr.qw-selrow td{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+  .console-view .qw-table input[type=radio]{margin:0 2px 0 0;accent-color:var(--accent);cursor:pointer}
+  .console-view .qw-table .qw-cat{color:var(--text);font-weight:600;white-space:nowrap}
+  .console-view .qw-sel{font-family:var(--head);font-size:11.5px;color:var(--text);min-width:180px}
+  .console-view .qw-flags{font-size:11px;line-height:1.5}
+  .console-view .qw-out{display:block}
+  .console-view .qw-title{font-family:var(--head);font-size:12px;margin-bottom:4px}
+  .console-view .qw-grid{display:grid;grid-template-columns:max-content max-content;gap:2px 14px;align-items:baseline}
+  .console-view .qw-l{color:var(--dim);font-size:11px}
+  .console-view .qw-v{font-family:var(--head);font-size:15px;color:var(--text)}
+  .console-view .qw-bars{grid-column:1 / -1;display:flex;gap:3px;align-items:flex-end;height:74px;margin-top:4px}
+  .console-view .qw-bar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;width:26px}
+  .console-view .qw-bar i{display:block;width:16px;background:var(--accent);opacity:.85;border-radius:2px 2px 0 0}
+  .console-view .qw-bar span{font-size:9px;color:var(--dim);margin-top:2px}
+  .qw-ok-t{color:var(--accent)}
+  .qw-warn-t{color:var(--warn)}
+  .qw-err-t{color:var(--danger)}
   .console-view .ai-table td,.console-view .ai-table th{padding:1px 10px 1px 0;text-align:right;color:var(--text);font-family:var(--mono)}
   .console-view .ai-table th{color:var(--dim);font-weight:normal}
   .console-view .ai-table td.bad{color:var(--danger-text)}
@@ -2255,6 +2283,7 @@
     .console-view .stage>.panel[data-panel="fw"]{order:7}
     .console-view .stage>.panel[data-panel="ai"]{order:8}
     .console-view .stage>.panel[data-panel="fictrac"]{order:9}
+    .console-view .stage>.panel[data-panel="qwiic"]{order:10}
   }
   /* Outer panel box: soft near-white 1.5px edge so panels stay distinct on a
      dark monitor in a lit room (grey var(--border) washed out). Internal
@@ -2357,6 +2386,7 @@
   <span class="rig-tag" id="rigTag" role="button" tabindex="0" title="Bench rig — click to see or change it in ⚙ Settings">rig —</span>
   <span class="chip rig-mismatch" id="rigMismatch" style="display:none" title="Session (bench) rig differs from the loaded protocol's rig: field — the bench geometry wins for Console/stream operations; the protocol still runs with its own rig. Unlock the rig selector in ⚙ Settings to reconcile, or load a matching protocol.">⚠ bench ≠ protocol</span>
   <span class="chip rig-mismatch" id="benchMacChip" style="display:none" title="The connected controller's MAC (0xC2) does not match the course roster's entry for this bench id — the wrong bench id would namespace saves/run-logs under another bench. See instructor.">⚠ bench ≠ roster</span>
+  <span class="chip qwiic-chip qw-off" id="qwiicChip" style="display:none" role="button" tabindex="0" title="Qwiic peripherals: the connect-time scan compared with the rig YAML. Click: open Console → Qwiic">Qwiic</span>
   <!-- v6 top-bar diet: device line hidden (arena+fw now on the status-dot
        hover); still written by updateDeviceLine so nothing depends on absence. -->
   <span class="arena" id="deviceLine" hidden><b>—</b></span>
@@ -3069,6 +3099,7 @@
         <div class="rail-btn sel" data-panel="test" role="checkbox" tabindex="0" aria-checked="true" title="Test figures + one-off frames">Test display<span class="sub">GS16</span></div>
         <div class="rail-btn" data-panel="io" role="checkbox" tabindex="0" aria-checked="false" title="Analog / digital BNCs on the controller">I/O<span class="sub" id="cIoSum">AO – · DIO –</span></div>
         <div class="rail-btn" data-panel="ai" role="checkbox" tabindex="0" aria-checked="false" title="Live readout of both 'Analog In (±10V)' BNCs — preview at up to 10 Hz, min/max, strip chart, and the Analog Out → Analog In loopback self-test">Analog In<span class="sub" id="cAiSum">AI1 – · AI2 –</span></div>
+        <div class="rail-btn" data-panel="qwiic" role="checkbox" tabindex="0" aria-checked="false" title="Qwiic / STEMMA QT jack — scan the I2C bus, pick one device, see its readings; servo go-to-position. Test only (nothing logged).">Qwiic<span class="sub" id="cQwSum">—</span></div>
         <div class="rail-btn sel" data-panel="led" role="checkbox" tabindex="0" aria-checked="true" title="Stimulus LED — set brightness % or turn off (BuckPuck on Analog Out)">LED<span class="sub">BuckPuck</span></div>
         <div class="rail-btn" data-panel="fw" role="checkbox" tabindex="0" aria-checked="false" title="Program the panels’ firmware">Panel firmware<span class="sub" id="cFwSum">flash · verify</span></div>
         <div class="rail-btn sel" data-panel="fictrac" role="checkbox" tabindex="0" aria-checked="true" title="Closed loop from the FicTrac bridge">FicTrac<span class="sub" id="cFtSum">ws · idle</span></div>
@@ -3076,7 +3107,7 @@
       <div class="stage" id="cStage">
 
         <section class="panel open" data-panel="patterns">
-          <div class="panel-h"><span class="panel-title" title="GET_FILE_COUNT 0x80 · names 0x82 · read 0x84 · delete 0x86 · write 0x8D · rename 0x83 · ZIP 0x8A · purge 0x8F">Patterns</span><span class="spacer"></span><span class="panel-x" data-close="patterns" role="button" title="Collapse to the rail">✕</span></div>
+          <div class="panel-h"><span class="panel-title" title="GET_FILE_COUNT 0x80 · names 0x82 · read 0x84 · delete 0x86 · write 0x85 · rename 0x83 · ZIP 0x8A · purge 0x8F">Patterns</span><span class="spacer"></span><span class="panel-x" data-close="patterns" role="button" title="Collapse to the rail">✕</span></div>
           <div class="panel-b">
             <div class="pat2col">
               <div class="pat-left">
@@ -3091,7 +3122,7 @@
               <button class="pill" data-cmd="csdlist" title="GET_FILE_COUNT 0x80 + names">Refresh</button>
               <button class="pill" data-cmd="cpatinfo" title="Re-query pattern info (GET_PATTERN_INFO 0x88) for the selected pattern">↻ info</button>
               <div class="cmenu" data-cmenu id="sdUploadMenu">
-                <button class="cmenu-btn" title="Upload pattern(s) to the SD card — a single .pat or a whole pattern set, from a local file/folder, this site's library, or the course repo (SET_PATTERN_FILE 0x8D + rename 0x83)">Add ▾</button>
+                <button class="cmenu-btn" title="Upload pattern(s) to the SD card — a single .pat or a whole pattern set, from a local file/folder, this site's library, or the course repo (SET_PATTERN_FILE 0x85 + rename 0x83)">Add ▾</button>
                 <div class="cmenu-pop">
                   <div class="cmenu-sep">Single pattern (.pat)</div>
                   <button class="cmenu-item" data-cmd="csdup_local_file" title="Pick one .pat file from this computer and upload it">From local file…</button>
@@ -3176,6 +3207,9 @@
             <input id="cFileInput" type="file" accept=".bin,.pat" style="display:none">
             <span class="thumb" id="cStreamThumb" title="Streamed-frame preview"></span>
           </div>
+          <div class="crow"><span class="lbl" title="Color panels: each 20×20 panel has four LED banks laid out as a 2×2 mosaic. Light one bank at a time to check each color.">color</span>
+            <span class="seg2" id="cBankSeg"><button data-cmd="cbank0" title="Light only bank A (T0) — one LED in four per panel, at the level above">A</button><button data-cmd="cbank1" title="Light only bank B (T1) — one LED in four per panel, at the level above">B</button><button data-cmd="cbank2" title="Light only bank C (T2) — one LED in four per panel, at the level above">C</button><button data-cmd="cbank3" title="Light only bank D (T3) — one LED in four per panel, at the level above">D</button></span>
+            <span class="dim" title="A–D = the panel firmware's banks T0–T3 (host coords: T2/T3 on row 0, T0/T1 on row 1 — bench-verified 2026-09-29)">one LED bank at a time (A–D = T0–T3)</span></div>
           </div>
         </section>
 
@@ -3221,6 +3255,47 @@
           </div>
         </section>
 
+        <section class="panel" data-panel="qwiic">
+          <div class="panel-h"><span class="panel-title" title="GET_I2C_SCAN 0xB0 · I2C_TRANSFER 0xB1 — the Qwiic / STEMMA QT jack (arena_12-18 J2, 0xC2 feature bit 1). All sensor logic is host-side (js/qwiic-drivers.js). Explore/test only: nothing in this panel is written to run logs.">Qwiic</span><span class="spacer"></span><span class="dim" id="cQwStatus" title="Panel state — reads pause by themselves while a run is active or the link is down">connect to scan</span><span class="panel-x" data-close="qwiic" role="button" title="Collapse to the rail (live readout keeps its state)">✕</span></div>
+          <div class="panel-b">
+          <div class="crow"><span class="lbl" title="The I2C bus behind the Qwiic jack">bus</span>
+            <button class="pill" data-cmd="cqwscan" title="Scan the Qwiic bus (GET_I2C_SCAN 0xB0), map any PCA9548 mux, identify every supported part and compare with the session rig's peripherals: list. Refused during a run — the scan stalls the controller ~10 ms.">Scan</button>
+            <button class="pill" id="cQwYaml" data-cmd="cqwyaml" disabled title="Copy a rig YAML peripherals: snippet for what the scan found (only the undeclared devices when the rig already declares some) — paste it into configs/rigs/&lt;rig&gt;.yaml">Copy as rig YAML</button>
+            <span class="dim" id="cQwScanSum" title="Addresses that ACKed the last scan"></span></div>
+          <div class="crow qw-flags" id="cQwFlags" style="display:none"></div>
+          <div class="crow" id="cQwTableRow" style="display:none"><table class="ai-table qw-table" id="cQwTable"></table></div>
+          <div class="crow"><span class="lbl" title="One device at a time — pick it with the radio button in the table above">selected</span>
+            <span class="qw-sel" id="cQwSel" title="The device the readout below shows — pick another with the radio buttons in the scan table">— scan first —</span>
+            <button class="pill" data-cmd="cqwread" disabled title="Read the selected device once (configures it first if needed)">Read</button>
+            <button class="pill" id="cQwLive" data-cmd="cqwlive" disabled aria-pressed="false" title="Start / stop a live readout of the selected device at the chosen rate; pauses by itself during a run">Live</button>
+            <label title="Live readout rate (Console preview only)">rate <select id="cQwRate"><option value="1">1 Hz</option><option value="2">2 Hz</option><option value="0.5">0.5 Hz</option></select></label>
+            <button class="pill" id="cQwCsv" data-cmd="cqwcsv" disabled title="Download the readings collected in this session for the selected device as CSV (a Console scratch file — not a run log)">Download CSV</button></div>
+          <div class="crow" id="cQwOpts" style="display:none"></div>
+          <div class="crow qw-out" id="cQwOut"><span class="dim">Scan to list the devices on the Qwiic jack</span></div>
+          <div class="crow" id="cQwBump" style="display:none"><span class="lbl" title="LSM6DSOX wake-up detector as a latched 'bumped since last check' flag">bump</span>
+            <label title="Wake-up threshold in g: 0.05–2 (resolution 31 mg at ±2 g)">threshold <input id="cQwBumpG" type="number" min="0.05" max="2" step="0.05" value="0.25" style="width:58px"> g</label>
+            <button class="pill" data-cmd="cqwbumparm" title="Arm the latched bump flag (LIR + INT_CLR_ON_READ + INT1 routing) at this threshold">Arm</button>
+            <button class="pill" data-cmd="cqwbumpcheck" title="Read the bump flag — this CLEARS the latch (it is read-to-clear). Disabled during runs: the run's trial logger owns it.">Check (clears)</button>
+            <span class="dim" id="cQwBumpOut"></span> <span class="dim" id="cQwBumpNote"></span></div>
+          <div id="cQwServo" style="display:none">
+            <div class="crow"><span class="lbl" title="PCA9685 servo driver (e.g. SparkFun Servo pHAT)">servo</span>
+              <select id="cQwSvCh" title="PWM channel 0–15 (named channels come from the rig YAML channels:)"></select>
+              <input id="cQwSvUs" type="range" min="1000" max="2000" step="10" value="1500" style="width:140px" title="Pulse width in µs — the servo follows the slider as you drag">
+              <input id="cQwSvNum" type="number" min="1000" max="2000" step="10" value="1500" style="width:64px" title="Pulse width in µs (clamped to the channel's limits)"><span class="dim">µs</span>
+              <span class="dim" id="cQwSvLim" title="Allowed pulse range for this channel">1000–2000 µs</span>
+              <label title="Widen the range to 500–2500 µs (asks first — many servos stall at their end stops)"><input type="checkbox" id="cQwSvWide"> wide</label></div>
+            <div class="crow"><span class="lbl"></span>
+              <button class="pill" data-cmd="cqwsvgo" title="Move the selected channel to the pulse width above (configures 50 Hz PWM on first use) and read the count back">Go</button>
+              <button class="pill" data-cmd="cqwsvcenter" title="Move to the middle of the channel's range (1500 µs by default)">Center</button>
+              <button class="pill" data-cmd="cqwsvrelease" title="Release the selected channel (full OFF — the servo goes limp, no holding torque)">Release</button>
+              <button class="pill" data-cmd="cqwsvalloff" title="Release all 16 channels">All off</button>
+              <span class="dim" id="cQwSvOut"></span></div>
+            <div class="crow"><span class="dim" style="font-size:10.5px">Power: the servo rail and the PCA9685 logic come from the board's own supply (the Servo pHAT's USB-C), never the Qwiic 3.3 V. Unpowered, the board is simply absent from the scan.</span></div>
+          </div>
+          <div class="crow" style="margin-bottom:0"><span class="dim" style="font-size:10.5px">Test only — readings here are not written to run logs. Declare devices in the rig YAML (peripherals:) for run logging; Copy as rig YAML gives you the entries.</span></div>
+          </div>
+        </section>
+
         <section class="panel open" data-panel="led">
           <div class="panel-h"><span class="panel-title" title="Stimulus LED via the BuckPuck driver on the 'Analog Out (0-5V)' BNC (0xA0). Power % maps to control voltage (mV); OFF = 5000 mV dark.">LED</span><span class="spacer"></span><span class="panel-x" data-close="led" role="button" title="Collapse to the rail">✕</span></div>
           <div class="panel-b">
@@ -3244,7 +3319,7 @@
             <button class="pill" data-cmd="cfwinfo" title="GET_FIRMWARE_INFO 0xE3 — version footer of the image on the SD">Info</button></div>
           <div class="crow"><span class="lbl">single</span>
             <input id="cFwAddr" type="number" min="1" value="1" style="width:56px" title="panel address (1-based)">
-            <button class="pill danger" data-cmd="cfwflash" title="Program one panel from /firmware/panel.bin over SPI ISP (0xC8) — ~20 s, do NOT power off">Flash</button>
+            <button class="pill danger" data-cmd="cfwflash" title="Program one panel from /firmware/panel.bin over SPI ISP (0xC8) — ~5 s, do NOT power off">Flash</button>
             <button class="pill" data-cmd="cfwverify" title="CRC the panel's running app flash vs the SD footer (0xC9)">Verify</button></div>
           <div class="crow"><span class="lbl">fleet</span>
             <button class="pill" data-cmd="cinv" title="GET_PANEL_INVENTORY 0xD1 — which panels answered at boot and the firmware fingerprint (CRC-32) each one runs; reads it again now (firmware with feature bit 0 only)">Inventory</button>
@@ -3254,7 +3329,7 @@
             <input id="cIspRange" type="text" value="1-20" style="width:86px" title="Panels to program: a range/list like 1-20 or 1,3,5-8">
             <label title="Verify each panel's CRC (0xC9) right after flashing; the report marks verified vs flashed-only"><input type="checkbox" id="cIspVerify" checked> verify each</label>
             <label id="cIspShowWrap" title="Blink a progress map on the arena between panels (done bright · pending dim · failed checker); the final map stays lit. The display must be stopped DURING each flash (firmware), so it blinks rather than persists. 20-panel arenas only."><input type="checkbox" id="cIspShow" checked> show on arena</label>
-            <button class="pill danger" data-cmd="cispbatch" id="cIspBtn" title="Flash /firmware/panel.bin to every panel in the set over SPI ISP (0xC8), retrying once on failure. ~20 s/panel — do NOT power off.">⚡ Program set</button>
+            <button class="pill danger" data-cmd="cispbatch" id="cIspBtn" title="Flash /firmware/panel.bin to every panel in the set over SPI ISP (0xC8), retrying once on failure. ~5 s/panel — do NOT power off.">⚡ Program set</button>
             <button class="pill" data-cmd="cispstop" id="cIspStopBtn" disabled title="Stop the batch after the current panel finishes">Stop</button>
             <button class="pill" data-cmd="cispcopy" id="cIspCopyBtn" style="display:none" title="Copy the batch report as plain text">Copy report</button>
             <span class="dim" id="cIspStatus"></span></div>
@@ -3345,7 +3420,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.95 | 2026-10-14 18:18 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.95 | 2026-10-13 11:51 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3360,16 +3435,20 @@
 <!-- ============================================================ -->
 <!-- (1) CLASSIC SUBSTRATE — window globals, dodges ES-import gotcha -->
 <!-- ============================================================ -->
-<script src="js/arena-wire-g6.js"></script>
+<script src="js/arena-wire-g6.js?v=20261012-qwiic"></script> <!-- ?v=: the Qwiic panel needs the 0xB0/0xB1 encoders -->
 <script src="js/studio-analog-in.js"></script>
 <script src="js/studio-panel-inventory.js"></script>
+<script src="js/qwiic-drivers.js"></script>
+<script src="js/studio-qwiic.js"></script>
+<script src="js/studio-stream-geometry.js"></script>
+<script src="js/panel-color.js"></script> <!-- color-bank test figure (PanelColor.bankAt) -->
 <script src="js/arena-link.js"></script>
 <script src="js/arena-runner-g6.js?v=20260926-cl-start"></script> <!-- ?v= forces a fresh load: a cached runner/client silently runs the old closed-loop start -->
 <script src="js/run-log.js"></script>
 <script src="js/fictrac-bridge-client.js?v=20260926-cl-start"></script>
 <script src="js/arena-session.js"></script>
 <script src="js/pat-encoder.js"></script>
-<script src="js/pattern-set.js"></script>
+<script src="js/pattern-set.js?v=1006-partial-cols"></script>
 <script src="js/pat-preview.js"></script>
 <script src="js/bin-classifier.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script> <!-- Pattern Set ZIP export -->
@@ -4315,6 +4394,7 @@ function studioMarkerCurrent(stored, current) {
             return;
         }
         if (Studio.session.connected) {
+            if (Studio.qwiicReleaseServos) { try { await Studio.qwiicReleaseServos(); } catch (_) { /* best-effort */ } }
             try { await Studio.session.disconnect(); } catch (e) { /* ignore */ }
             return;
         }
@@ -4384,7 +4464,7 @@ function studioMarkerCurrent(stored, current) {
     const SAFE_BLOCKED_CMDS = new Set([
         // add / delete patterns (SD + on-arena writes)
         'csdpurge', 'csdarchive', 'cloadfile', 'crawsend', 'cispcopy',
-        // upload patterns to the SD card (all six Add ▾ sources → SET_PATTERN_FILE 0x8D)
+        // upload patterns to the SD card (all six Add ▾ sources → SET_PATTERN_FILE 0x85)
         'csdup_local_file', 'csdup_local_folder', 'csdup_lib_file',
         'csdup_lib_folder', 'csdup_repo_file', 'csdup_repo_folder',
         // program panels / firmware
@@ -5859,7 +5939,7 @@ function studioMarkerCurrent(stored, current) {
     }
     Studio.clearConsoleAutoStop = clearAutoStop; // Run-path pre-emption (module block)
 
-    // The firmware refuses SD-write + ISP commands (0x8D/0xE0/0x8A/0x8F/0xC8/0xC9)
+    // The firmware refuses SD-write + ISP commands (0x85/0xE0/0x8A/0x8F/0xC8/0xC9)
     // unless the display is stopped (state ALL_OFF — CE_DISPLAY_ACTIVE with
     // "Stop display before …" otherwise). STOP_DISPLAY also BLANKS the panels
     // (they latch their last frame, so the controller pushes a dark frame).
@@ -5996,6 +6076,601 @@ function studioMarkerCurrent(stored, current) {
         const rateSel = $('cAiRate');
         if (rateSel) rateSel.addEventListener('change', aiStartTicker);
     }
+    // ---- Qwiic panel: discover + test the STEMMA QT / Qwiic peripherals (LAB-214) ----
+    // ONE window: Scan → device dropdown → one device's readout at a time. Explore
+    // only: nothing here is written to run logs (declare devices in the rig YAML for
+    // that). Every transfer goes through the ONE page-wide QwiicDrivers bus
+    // (Studio.qwiicBus) so its mutex orders whole sequences against every other I2C
+    // user; session.send directly with silent:true (no per-transfer Console/bridge
+    // logging — state changes and errors are logged). Scan only at setup (connect,
+    // this button): GET_I2C_SCAN stalls the controller ~10 ms, so it is refused
+    // while a run is active.
+    const QD = window.QwiicDrivers;
+    const SQ = window.StudioQwiic;
+    const qw = {
+        bus: null,
+        discovery: null,
+        check: null,
+        declared: { list: [], warnings: [] },
+        configured: {}, // locKey → options applied by this panel / setup
+        selKey: null,
+        live: false,
+        liveTimer: null,
+        inFlight: false,
+        errStreak: 0,
+        rows: {}, // locKey → [{t, values}] for Download CSV
+        busy: false
+    };
+    function qwBus() {
+        if (!QD) return null;
+        if (!qw.bus) qw.bus = QD.createBus((b, o) => session.send(b, o), { sendOpts: { silent: true } });
+        return qw.bus;
+    }
+    Studio.qwiicBus = qwBus;
+    const qwHas = () => Array.isArray(Studio.features) && Studio.features.includes('qwiic_i2c');
+    const qwHex = (a) => '0x' + a.toString(16).toUpperCase().padStart(2, '0');
+    const qwEsc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    function qwGate(what) {
+        if (!QD || !SQ) return { ok: false, reason: 'Qwiic modules failed to load (hard refresh)' };
+        if (!session || !session.connected) return { ok: false, reason: 'connect to scan' };
+        if (!Array.isArray(Studio.features)) return { ok: false, reason: 'controller features not known yet' };
+        if (!qwHas()) return { ok: false, reason: 'no Qwiic I2C bridge on this controller (0xC2 feature bit 1 clear — arena_12-18 boards only)' };
+        if (session.running) return { ok: false, reason: what === 'scan' ? 'refused — a run is active (the scan stalls the controller ~10 ms)' : 'paused — run active' };
+        if (Studio._activePostmortem) return { ok: false, reason: 'paused — post-mortem owns the link' };
+        if (Studio.ispBatchRunning && Studio.ispBatchRunning()) return { ok: false, reason: 'paused — panel firmware batch running' };
+        return { ok: true };
+    }
+    function qwSetStatus(t) {
+        const el = $('cQwStatus');
+        if (el) el.textContent = t;
+    }
+    function qwItem(key) {
+        return qw.discovery && qw.discovery.devices.find((d) => d.key === key);
+    }
+    function qwDeclFor(item) {
+        const e = qw.check && qw.check.entries.find((x) => x.item && x.item.key === item.key);
+        return e ? e.decl : null;
+    }
+    function qwIsUndeclared(item) {
+        return !!(qw.check && qw.check.undeclared.some((u) => u.key === item.key));
+    }
+    function qwRenderChip() {
+        const st = Studio.qwiic || { available: false };
+        const chip = SQ ? SQ.chipState(st) : { text: 'Qwiic —', level: 'off', title: '' };
+        const el = $('qwiicChip');
+        if (el) {
+            const show = !!(session && session.connected && st.available) || (st.declared && st.declared.length && session && session.connected);
+            el.style.display = show ? '' : 'none';
+            el.textContent = chip.text;
+            el.title = chip.title + '\nClick: open Console → Qwiic';
+            el.className = 'chip qwiic-chip qw-' + chip.level;
+        }
+        const sum = $('cQwSum');
+        if (sum) sum.textContent = st.available ? chip.text.replace(/^Qwiic:? ?/, '') || '—' : '—';
+        if (sum) sum.className = 'sub' + (chip.level === 'err' ? ' qw-err-t' : chip.level === 'warn' ? ' qw-warn-t' : '');
+    }
+    function qwRenderTable() {
+        const row = $('cQwTableRow');
+        const tbl = $('cQwTable');
+        const flags = $('cQwFlags');
+        const d = qw.discovery;
+        if (!row || !tbl) return;
+        if (!d || d.error) {
+            row.style.display = 'none';
+            if (flags) flags.style.display = 'none';
+            return;
+        }
+        const statusByKey = {};
+        (qw.check ? qw.check.entries : []).forEach((e) => { if (e.item) statusByKey[e.item.key] = e; });
+        const head = (t, tip) => '<th' + (tip ? ' title="' + qwEsc(tip) + '"' : '') + '>' + t + '</th>';
+        let html = '<tr>' + head('', 'Pick one device to show its readings below') + head('device') + head('part') + head('addr', '7-bit I2C address') +
+            head('connection', 'direct = on the controller\'s own Qwiic chain · mux 0x70 · ch N = behind a PCA9548 I2C multiplexer channel (only needed for two identical fixed-address parts)') +
+            head('identify', 'The part\'s ID register / serial number check') + head('rig YAML', 'Compared with the session rig YAML peripherals: list') + '</tr>';
+        for (const it of d.devices) {
+            const e = statusByKey[it.key];
+            let yaml = '';
+            if (it.shadow) yaml = '<span class="dim">— (not a device)</span>';
+            else if (e) yaml = e.status === 'ok' ? '<span class="qw-ok-t">declared: ' + qwEsc(e.decl.name) + '</span>' : '<span class="qw-err-t">' + qwEsc(e.status.replace('_', ' ')) + '</span>';
+            else if (qwIsUndeclared(it)) yaml = '<span class="qw-warn-t" title="Attached but not in the rig YAML — Copy as rig YAML to declare it">⚠ undeclared</span>';
+            const id = it.ident ? (it.ident.ok ? '<span class="qw-ok-t">OK</span> ' : '<span class="qw-err-t">FAIL</span> ') + qwEsc(it.ident.detail) : it.wiringError ? '<span class="qw-err-t">wiring error</span>' : '<span class="dim">no driver</span>';
+            const pickable = qwSelectable(it);
+            const radio = pickable ? '<input type="radio" name="cQwPick" value="' + qwEsc(it.key) + '"' + (it.key === qw.selKey ? ' checked' : '') + ' title="Show this device\'s readings">' : '';
+            const part = it.shadow ? 'PCA9685 all-call address — not a mux' : it.kind ? QD.KINDS[it.kind].label : it.label;
+            html += '<tr class="' + (pickable ? 'qw-pick' : '') + (it.key === qw.selKey ? ' qw-selrow' : '') + '" data-qw-key="' + qwEsc(it.key) + '"><td>' + radio + '</td><td class="qw-cat">' + qwEsc(SQ.categoryOf(it)) + '</td><td>' + qwEsc(part) + '</td><td>' + qwHex(it.dev.addr) + '</td><td>' + qwEsc(SQ.connectionText(it.dev)) + '</td><td>' + id + '</td><td>' + yaml + '</td></tr>';
+        }
+        for (const e of qw.check ? qw.check.entries : []) {
+            if (e.item) continue;
+            const K = QD.KINDS[e.decl.kind];
+            const conn = SQ.connectionText({ mux: e.decl.mux ? e.decl.mux.address : null, channel: e.decl.mux ? e.decl.mux.channel : null });
+            html += '<tr><td></td><td class="qw-cat">' + qwEsc(K.category) + '</td><td>' + qwEsc(K.label) + '</td><td>' + qwHex(e.decl.address) + '</td><td>' + qwEsc(conn) + '</td><td class="dim">—</td><td><span class="qw-err-t">✕ missing: ' + qwEsc(e.decl.name) + '</span></td></tr>';
+        }
+        tbl.innerHTML = html;
+        row.style.display = '';
+        if (flags) {
+            const msgs = [];
+            for (const e of qw.check ? qw.check.entries : []) if (e.status !== 'ok') msgs.push('<span class="qw-err-t">✕ ' + qwEsc(e.detail) + '</span>');
+            const und = qw.check ? qw.check.undeclared.filter((u) => !u.mux) : [];
+            if (und.length) msgs.push('<span class="qw-warn-t">⚠ ' + und.length + ' attached device' + (und.length === 1 ? ' is' : 's are') + ' not in the rig YAML (' + und.map((u) => qwEsc(u.label) + ' ' + qwHex(u.dev.addr)).join(', ') + ') — <a href="#" data-qw-yaml="undeclared">copy their rig YAML</a></span>');
+            (qw.declared.warnings || []).forEach((w) => msgs.push('<span class="qw-warn-t">rig YAML: ' + qwEsc(w) + '</span>'));
+            flags.innerHTML = msgs.join('<br>');
+            flags.style.display = msgs.length ? '' : 'none';
+        }
+    }
+    // Devices you can pick: found AND identified by a supported driver.
+    const qwSelectable = (it) => !!(it.kind && it.ident && it.ident.ok);
+    function qwRenderSelection() {
+        const items = qw.discovery && !qw.discovery.error ? qw.discovery.devices.filter(qwSelectable) : [];
+        if (!items.some((it) => it.key === qw.selKey)) qw.selKey = items.length ? items[0].key : null;
+        qwRenderTable();
+        const lbl = $('cQwSel');
+        const item = qw.selKey && qwItem(qw.selKey);
+        if (lbl) {
+            const decl = item && qwDeclFor(item);
+            lbl.textContent = item ? SQ.deviceLabel(item, decl && decl.name) + (qwIsUndeclared(item) ? '  ⚠ undeclared' : '') : qw.discovery ? '— no supported device found —' : '— scan first —';
+        }
+        qwRenderDevice();
+    }
+    // Picking a device shows a reading at once; a running Live readout just moves to
+    // the new device (each tick reads whatever is selected).
+    function qwSelect(key) {
+        if (key === qw.selKey) return;
+        qw.selKey = key;
+        qwRenderSelection();
+        qwReadSelected();
+    }
+    function qwReadSelected() {
+        const item = qw.selKey && qwItem(qw.selKey);
+        if (!item || QD.KINDS[item.kind].role === 'actuator') return; // actuators refresh in qwRenderDevice
+        if (!qwGate('read').ok || qw.inFlight) return;
+        qw.inFlight = true;
+        qwReadOnce({ quiet: true })
+            .catch((e) => { qwSetStatus('error: ' + e.message); clog('qwiic: ' + e.message, 'err'); })
+            .finally(() => { qw.inFlight = false; });
+    }
+    // fromDom=false: the defaults (rig config, else the KINDS default) — used while the
+    // option selects still belong to the PREVIOUS device.
+    function qwOptionValues(item, fromDom) {
+        const K = QD.KINDS[item.kind];
+        const decl = qwDeclFor(item);
+        const out = {};
+        for (const [k, spec] of Object.entries(K.options || {})) {
+            const el = fromDom === false ? null : document.querySelector('#cQwOpts [data-qw-opt="' + k + '"]');
+            const raw = el ? el.value : decl && decl.config[k] !== undefined ? decl.config[k] : spec.default;
+            out[k] = typeof spec.default === 'number' ? Number(raw) : raw;
+        }
+        if (decl && item.kind === 'pca9685' && decl.config.freq_hz) out.freq_hz = decl.config.freq_hz;
+        return out;
+    }
+    // Readout area for the selected device, laid out from its KINDS display fields.
+    function qwRenderDevice() {
+        const out = $('cQwOut');
+        const opts = $('cQwOpts');
+        const bump = $('cQwBump');
+        const servo = $('cQwServo');
+        const item = qw.selKey && qwItem(qw.selKey);
+        const kindOf = item && QD.KINDS[item.kind];
+        ['cqwread', 'cqwlive'].forEach((c) => {
+            const b = document.querySelector('[data-cmd=' + JSON.stringify(c) + ']');
+            if (b) b.disabled = !kindOf || kindOf.role === 'actuator';
+        });
+        const csv = $('cQwCsv');
+        if (csv) csv.disabled = !item || !(qw.rows[item.key] || []).length;
+        if (!out) return;
+        if (!kindOf) {
+            out.innerHTML = '<span class="dim">' + (qw.discovery ? 'pick a device' : 'Scan to list the devices on the Qwiic jack') + '</span>';
+            if (opts) opts.innerHTML = '';
+            if (bump) bump.style.display = 'none';
+            if (servo) servo.style.display = 'none';
+            return;
+        }
+        const decl = qwDeclFor(item);
+        if (opts) {
+            const cur = qw.configured[item.key] || qwOptionValues(item, false);
+            opts.innerHTML = Object.entries(kindOf.options || {}).map(([k, spec]) =>
+                '<label title="' + qwEsc(kindOf.label + ' ' + spec.label + ' — applied on the next read (re-configures the part)') + '">' + qwEsc(spec.label) + ' <select data-qw-opt="' + k + '">' +
+                spec.values.map((v) => '<option value="' + v + '"' + (String(v) === String(cur[k]) ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></label>'
+            ).join(' ');
+            if (opts.innerHTML) opts.insertAdjacentHTML('afterbegin', '<span class="lbl" title="Sensor settings (from the rig YAML config: when declared)">settings</span>');
+            opts.style.display = opts.innerHTML ? '' : 'none';
+        }
+        out.innerHTML = '<div class="qw-title">' + qwEsc(kindOf.title) + (decl ? ' <span class="dim">· rig: ' + qwEsc(decl.name) + '</span>' : qwIsUndeclared(item) ? ' <span class="qw-warn-t">· ⚠ not in the rig YAML</span>' : '') + '</div>' +
+            '<div class="qw-grid" id="cQwGrid">' + kindOf.display.map((f) =>
+                f.fmt === 'bars' ? '<div class="qw-bars" data-qw-key="' + f.key + '" title="Raw counts per channel (no vendor calibration)"></div>'
+                    : '<span class="qw-l">' + qwEsc(f.label) + '</span><span class="qw-v" data-qw-key="' + f.key + '">—</span>'
+            ).join('') + '</div>';
+        if (bump) bump.style.display = kindOf.hasBump ? '' : 'none';
+        if (servo) {
+            servo.style.display = item.kind === 'pca9685' ? '' : 'none';
+            if (item.kind === 'pca9685') qwRenderServoChannels(decl);
+        }
+        qwUpdateRunGates();
+        // Actuators have no Read button: show their state (PCA9685 MODE1/prescale) on select.
+        if (kindOf.role === 'actuator') qwReadOnce({ quiet: true }).catch(() => {});
+    }
+    function qwRenderReading(item, r) {
+        const K = QD.KINDS[item.kind];
+        for (const f of K.display) {
+            const el = document.querySelector('#cQwGrid [data-qw-key="' + f.key + '"]');
+            if (!el) continue;
+            if (f.fmt === 'bars') {
+                const vals = r[f.key] || {};
+                const max = Math.max(1, ...Object.values(vals));
+                el.innerHTML = Object.entries(vals).map(([ch, v]) =>
+                    '<div class="qw-bar" title="' + qwEsc(ch + ': ' + v + ' counts') + '"><i style="height:' + Math.max(2, (100 * v) / max).toFixed(0) + '%"></i><span>' + qwEsc(ch.split('_')[1] || ch) + '</span></div>'
+                ).join('');
+                continue;
+            }
+            el.textContent = SQ.formatField(f, r);
+            el.classList.toggle('qw-err-t', (f.fmt === 'flag' && !!r[f.key]) || (f.fmt === 'okfail' && !r[f.key]));
+        }
+    }
+    async function qwEnsureConfigured(item) {
+        const K = QD.KINDS[item.kind];
+        const want = qwOptionValues(item);
+        const have = qw.configured[item.key];
+        if (have && JSON.stringify(have) === JSON.stringify(want)) return;
+        const decl = qwDeclFor(item);
+        const cfg = Object.assign({}, decl ? decl.config : {}, want);
+        await QD.withDevice(qwBus(), item.dev, () => K.setup(item.driver, cfg, { armBump: false }));
+        qw.configured[item.key] = want;
+        clog('qwiic: ' + K.label + ' ' + qwHex(item.dev.addr) + ' configured' + (Object.keys(want).length ? ' (' + Object.entries(want).map(([k, v]) => k + ' ' + v).join(', ') + ')' : ''), 'info');
+    }
+    async function qwReadOnce(opts) {
+        const quiet = opts && opts.quiet;
+        const g = qwGate('read');
+        const item = qw.selKey && qwItem(qw.selKey);
+        if (!g.ok || !item) {
+            if (!quiet) clog('qwiic: ' + (g.ok ? 'pick a device first' : g.reason), 'err');
+            return null;
+        }
+        const K = QD.KINDS[item.kind];
+        // Actuators are only configured by an explicit servo action (configure wakes the PWM).
+        if (K.role !== 'actuator') await qwEnsureConfigured(item);
+        const r = await K.read(qwBus(), item.dev, item.driver);
+        if (qw.selKey !== item.key) return r; // selection changed while reading
+        qwRenderReading(item, r);
+        if (!K.columns.length) return r; // actuator state: shown, not collected
+        const rows = (qw.rows[item.key] = qw.rows[item.key] || []);
+        rows.push({ t: new Date().toISOString(), values: K.values(r) });
+        if (rows.length > 36000) rows.shift(); // 10 h at 1 Hz
+        const csv = $('cQwCsv');
+        if (csv) csv.disabled = false;
+        if (!quiet) clog('qwiic: ' + K.label + ' ' + K.display.filter((f) => !f.fmt).map((f) => f.label + ' ' + SQ.formatField(f, r)).join(' · '), 'rx');
+        return r;
+    }
+    function qwStopLive(reason) {
+        if (qw.liveTimer) { clearInterval(qw.liveTimer); qw.liveTimer = null; }
+        const was = qw.live;
+        qw.live = false;
+        if (was) qwSetStatus(qw.idleStatus || 'idle'); // never leave "live · N Hz" behind
+        const b = $('cQwLive');
+        if (b) { b.setAttribute('aria-pressed', 'false'); b.textContent = 'Live'; }
+        if (was && reason) clog('qwiic: live readout stopped — ' + reason, reason.startsWith('error') ? 'err' : 'info');
+    }
+    function qwStartLive() {
+        const hz = Number(($('cQwRate') || {}).value) || 1;
+        qwStopLive();
+        qw.live = true;
+        qw.errStreak = 0;
+        const b = $('cQwLive');
+        if (b) { b.setAttribute('aria-pressed', 'true'); b.textContent = 'Live ●'; }
+        clog('qwiic: live readout at ' + hz + ' Hz', 'info');
+        const tick = async () => {
+            if (qw.inFlight) return; // single-flight
+            if (!qw.live) return;
+            const g = qwGate('read');
+            if (!g.ok) { qwSetStatus(g.reason); return; }
+            if (!$('cQwGrid')) return;
+            qw.inFlight = true;
+            try {
+                await qwReadOnce({ quiet: true });
+                qw.errStreak = 0;
+                if (qw.live) qwSetStatus('live · ' + hz + ' Hz'); // a tick in flight at Stop must not re-say "live"
+            } catch (e) {
+                qw.errStreak++;
+                qwSetStatus('error: ' + e.message);
+                if (qw.errStreak >= 3) qwStopLive('error: ' + e.message);
+            } finally {
+                qw.inFlight = false;
+            }
+        };
+        qw.liveTimer = setInterval(tick, Math.round(1000 / hz));
+        tick();
+    }
+    // Scan (setup only) → identify → compare with the rig YAML in BOTH directions.
+    async function qwScan(opts) {
+        const setup = !!(opts && opts.setup);
+        const g = qwGate('scan');
+        if (!g.ok) {
+            qwSetStatus(g.reason);
+            if (!setup) clog('qwiic: ' + g.reason, 'err');
+            return null;
+        }
+        if (qw.busy) return null;
+        qw.busy = true;
+        qwStopLive();
+        qwSetStatus('scanning…');
+        try {
+            const decl = Studio.fetchRigPeripherals ? await Studio.fetchRigPeripherals() : { list: [], warnings: [] };
+            qw.declared = decl || { list: [], warnings: [] };
+            const d = await SQ.discover(qwBus());
+            qw.discovery = d;
+            qw.configured = {};
+            if (d.error) {
+                qw.check = null;
+                Studio.qwiic = { available: true, declared: qw.declared.list, discovery: d, check: null, at: d.at };
+                const msg = d.error.name === 'NoQwiicJack' ? 'this firmware variant has no Qwiic jack' : d.error.message;
+                qwSetStatus('scan failed: ' + msg);
+                clog('qwiic: scan failed — ' + msg, 'err');
+                return null;
+            }
+            qw.check = SQ.checkAgainstScan(qw.declared.list, d);
+            Studio.qwiic = { available: true, declared: qw.declared.list, discovery: d, check: qw.check, at: d.at };
+            const n = qw.check.counts;
+            qw.idleStatus = n.devices + ' device' + (n.devices === 1 ? '' : 's') + (n.declared ? ' · ' + n.ok + '/' + n.declared + ' declared present' : '');
+            qwSetStatus(qw.idleStatus);
+            const sum = $('cQwScanSum');
+            if (sum) sum.textContent = 'scan: ' + (d.scan.length ? d.scan.map(qwHex).join(' ') : 'nothing ACKed — check the cable, the boards\' power LEDs and the jack');
+            clog('qwiic: ' + (setup ? 'setup ' : '') + 'scan — ' + (d.scan.length ? d.scan.map(qwHex).join(' ') : 'no devices') + (d.shadow ? ' (0x70 = the PCA9685 all-call address, not a mux)' : ''), 'info');
+            qw.declared.warnings.forEach((w) => clog('qwiic: rig YAML: ' + w, 'warn'));
+            qw.check.entries.filter((e) => e.status !== 'ok').forEach((e) => clog('qwiic: ' + e.detail, 'err'));
+            qw.check.undeclared.filter((u) => !u.mux).forEach((u) => clog('qwiic: ' + u.label + ' ' + qwHex(u.dev.addr) + ' (' + SQ.connectionText(u.dev) + ') is attached but not in the rig YAML — Console → Qwiic → Copy as rig YAML', 'warn'));
+            d.devices.filter((it) => it.wiringError).forEach((it) => clog('qwiic: ' + it.label, 'err'));
+            const yamlBtn = $('cQwYaml');
+            if (yamlBtn) yamlBtn.disabled = !d.devices.some((it) => it.kind);
+            qwRenderSelection();
+            if (!setup) setTimeout(qwReadSelected, 0); // a fresh Scan shows the first device's reading
+            return qw.check;
+        } catch (e) {
+            qwSetStatus('error: ' + e.message);
+            clog('qwiic: scan error — ' + e.message, 'err');
+            return null;
+        } finally {
+            qw.busy = false;
+            qwRenderChip();
+        }
+    }
+    // Connect-time setup (initFromController): scan whenever the bridge exists —
+    // even with nothing declared, so an attached-but-undeclared device is flagged —
+    // then configure the declared parts that are present. Never retried.
+    Studio.qwiicSetup = async function () {
+        if (Studio.ensureCapabilities) { try { await Studio.ensureCapabilities(); } catch (_) { /* gate below */ } }
+        let decl = { list: [], warnings: [] };
+        try { if (Studio.fetchRigPeripherals) decl = await Studio.fetchRigPeripherals(); } catch (_) { /* no rig */ }
+        if (!qwHas()) {
+            Studio.qwiic = { available: false, reason: 'no Qwiic I2C bridge on this controller', declared: decl.list };
+            if (decl.list.length) clog('qwiic: the rig YAML declares ' + decl.list.length + ' Qwiic peripheral(s) but this controller has no Qwiic I2C bridge (0xC2 feature bit 1 clear) — they will not be read', 'warn');
+            qwSetStatus('no Qwiic I2C bridge on this controller');
+            qwRenderChip();
+            qwUpdateRunGates();
+            return Studio.qwiic;
+        }
+        const check = await qwScan({ setup: true });
+        if (check && check.entries.some((e) => e.status === 'ok')) {
+            const res = await SQ.applySetup(qwBus(), check, { armBump: false });
+            for (const e of check.entries) {
+                if (res.applied[e.decl.name] && e.item) qw.configured[e.item.key] = qwOptionValuesFor(e);
+            }
+            Studio.qwiic.applied = res.applied;
+            const names = Object.keys(res.applied);
+            if (names.length) clog('qwiic: configured ' + names.map((nm) => nm + ' (' + check.entries.find((e) => e.decl.name === nm).decl.kind + ')').join(', '), 'info');
+            res.errors.forEach((er) => clog('qwiic: setup of ' + er.name + ' failed — ' + er.message, 'err'));
+        }
+        return Studio.qwiic;
+    };
+    // Options the setup applied, in the shape qwOptionValues() compares against.
+    function qwOptionValuesFor(entry) {
+        const K = QD.KINDS[entry.decl.kind];
+        const out = {};
+        for (const [k, spec] of Object.entries(K.options || {})) {
+            const v = entry.decl.config[k] !== undefined ? entry.decl.config[k] : spec.default;
+            out[k] = typeof spec.default === 'number' ? Number(v) : v;
+        }
+        if (entry.decl.kind === 'pca9685' && entry.decl.config.freq_hz) out.freq_hz = entry.decl.config.freq_hz;
+        return out;
+    }
+    // Rig changed: re-compare the last scan with the new YAML (no rescan — setup only).
+    Studio.qwiicRecheck = async function () {
+        if (!qw.discovery || qw.discovery.error || !SQ) return;
+        try { qw.declared = Studio.fetchRigPeripherals ? await Studio.fetchRigPeripherals() : { list: [], warnings: [] }; } catch (_) { return; }
+        qw.check = SQ.checkAgainstScan(qw.declared.list, qw.discovery);
+        Studio.qwiic = Object.assign({}, Studio.qwiic, { declared: qw.declared.list, check: qw.check });
+        qwRenderSelection();
+        qwRenderChip();
+    };
+    Studio.qwiicReset = function () {
+        qwStopLive();
+        qw.discovery = null;
+        qw.check = null;
+        qw.configured = {};
+        qw.selKey = null;
+        qw.idleStatus = '';
+        Studio.qwiic = null;
+        qwSetStatus('connect to scan');
+        const sum = $('cQwScanSum');
+        if (sum) sum.textContent = '';
+        qwRenderSelection();
+        qwRenderChip();
+    };
+    // Bump check + servo are disabled while a run owns the link / the bump latch.
+    function qwUpdateRunGates() {
+        const running = !!(session && session.running);
+        document.querySelectorAll('#cQwBump button, #cQwServo button, #cQwServo input, [data-cmd="cqwscan"]').forEach((el) => {
+            el.disabled = running || !(session && session.connected) || !qwHas();
+        });
+        const note = $('cQwBumpNote');
+        if (note) note.textContent = running ? 'a run owns the bump latch — checks are off until it ends' : '';
+    }
+    Studio.qwiicUpdateRunGates = qwUpdateRunGates;
+    // Intentional disconnect: release every PCA9685 this session configured (servos go
+    // limp rather than holding their last position unattended). Best-effort, time-boxed.
+    Studio.qwiicReleaseServos = async function () {
+        if (!qw.discovery || qw.discovery.error || !qwHas() || !(session && session.connected)) return;
+        const pcas = qw.discovery.devices.filter((it) => it.kind === 'pca9685' && qw.configured[it.key] && it.driver);
+        if (!pcas.length) return;
+        qwStopLive();
+        const work = Promise.all(pcas.map((it) => QD.withDevice(qwBus(), it.dev, () => it.driver.allOff()).catch(() => {})));
+        await Promise.race([work, new Promise((r) => setTimeout(r, 800))]);
+        clog('qwiic: released ' + pcas.length + ' servo board' + (pcas.length === 1 ? '' : 's') + ' before disconnect', 'info');
+    };
+    if (session) session.on('runstatus', () => qwUpdateRunGates());
+    async function qwBumpArm() {
+        const g = qwGate('read');
+        const item = qw.selKey && qwItem(qw.selKey);
+        if (!g.ok || !item || item.kind !== 'lsm6dsox') { clog('qwiic: ' + (g.ok ? 'select the LSM6DSOX first' : g.reason), 'err'); return; }
+        const th = Math.max(0.05, Math.min(2, Number(($('cQwBumpG') || {}).value) || 0.25));
+        await qwEnsureConfigured(item);
+        const ths = await QD.withDevice(qwBus(), item.dev, () => item.driver.armBump(th));
+        $('cQwBumpOut').textContent = 'armed at ' + th + ' g (' + ths + ' LSB)';
+        clog('qwiic: LSM6DSOX bump latch armed at ' + th + ' g — "Check" reads AND clears it', 'info');
+    }
+    async function qwBumpCheck() {
+        const g = qwGate('read');
+        const item = qw.selKey && qwItem(qw.selKey);
+        if (!g.ok || !item || item.kind !== 'lsm6dsox') { clog('qwiic: ' + (g.ok ? 'select the LSM6DSOX first' : g.reason), 'err'); return; }
+        const b = await QD.withDevice(qwBus(), item.dev, () => item.driver.bumpFlag());
+        const out = $('cQwBumpOut');
+        if (out) { out.textContent = b.bumped ? 'BUMPED [' + b.axes + '] — latch cleared' : 'no bump since the last check'; out.classList.toggle('qw-err-t', b.bumped); }
+        clog('qwiic: bump check — ' + (b.bumped ? 'BUMPED [' + b.axes + '] (latch cleared)' : 'no bump'), b.bumped ? 'warn' : 'info');
+    }
+    // ---- servo (PCA9685): minimal go-to-position ----
+    function qwServoSpec() {
+        const item = qw.selKey && qwItem(qw.selKey);
+        const decl = item && qwDeclFor(item);
+        const ch = Number(($('cQwSvCh') || {}).value) || 0;
+        const named = decl && Object.values(decl.channels || {}).find((c) => c.channel === ch);
+        const wide = !!($('cQwSvWide') || {}).checked;
+        const lim = wide ? SQ.SERVO_US_LIMITS : named || SQ.SERVO_US_DEFAULT;
+        return { item, ch, min: lim.min_us, max: lim.max_us };
+    }
+    function qwRenderServoChannels(decl) {
+        const sel = $('cQwSvCh');
+        if (!sel) return;
+        const names = {};
+        Object.entries((decl && decl.channels) || {}).forEach(([nm, c]) => (names[c.channel] = nm));
+        const keep = sel.value;
+        sel.innerHTML = '';
+        for (let c = 0; c < 16; c++) {
+            const o = document.createElement('option');
+            o.value = String(c);
+            o.textContent = 'ch' + c + (names[c] ? ' · ' + names[c] : '');
+            sel.appendChild(o);
+        }
+        const firstNamed = Object.keys(names)[0];
+        sel.value = keep && Number(keep) < 16 ? keep : firstNamed !== undefined ? firstNamed : '0';
+        qwServoLimits();
+    }
+    function qwServoLimits() {
+        const s = qwServoSpec();
+        const sl = $('cQwSvUs');
+        const nb = $('cQwSvNum');
+        [sl, nb].forEach((el) => {
+            if (!el) return;
+            el.min = s.min;
+            el.max = s.max;
+            if (Number(el.value) < s.min || Number(el.value) > s.max) el.value = Math.round((s.min + s.max) / 2);
+        });
+        const lim = $('cQwSvLim');
+        if (lim) lim.textContent = s.min + '–' + s.max + ' µs';
+    }
+    async function qwServo(action, opts) {
+        const quiet = !!(opts && opts.quiet);
+        const g = qwGate('read');
+        const s = qwServoSpec();
+        if (!g.ok || !s.item || s.item.kind !== 'pca9685') { clog('qwiic: ' + (g.ok ? 'select the PCA9685 first' : g.reason), 'err'); return; }
+        const drv = s.item.driver;
+        await qwEnsureConfigured(s.item);
+        const out = $('cQwSvOut');
+        if (action === 'release') {
+            await QD.withDevice(qwBus(), s.item.dev, () => drv.setOff(s.ch));
+            if (out) out.textContent = 'ch' + s.ch + ' released (full OFF — no holding torque)';
+            clog('qwiic: servo ch' + s.ch + ' released', 'info');
+            return;
+        }
+        if (action === 'alloff') {
+            await QD.withDevice(qwBus(), s.item.dev, () => drv.allOff());
+            if (out) out.textContent = 'all 16 channels released';
+            clog('qwiic: servo — all channels released', 'info');
+            return;
+        }
+        let us = action === 'center' ? Math.round((s.min + s.max) / 2) : Number(($('cQwSvNum') || {}).value);
+        us = Math.max(s.min, Math.min(s.max, us || 1500));
+        const off = await QD.withDevice(qwBus(), s.item.dev, async () => {
+            const o = await drv.setPulseUs(s.ch, us);
+            const rb = await drv.readCounts(s.ch);
+            if (rb[1] !== o) throw new Error('read-back OFF ' + rb[1] + ' ≠ ' + o);
+            return o;
+        });
+        if (!quiet) {
+            $('cQwSvUs').value = us;
+            $('cQwSvNum').value = us;
+            qwReadOnce({ quiet: true }).catch(() => {}); // refresh the PWM / oscillator readout
+        }
+        if (out) out.textContent = 'ch' + s.ch + ' → ' + us + ' µs (OFF count ' + off + ' @ ' + drv.freqHz.toFixed(2) + ' Hz, read back ✓)';
+        if (!quiet) clog('qwiic: servo ch' + s.ch + ' → ' + us + ' µs (count ' + off + ')', 'info');
+    }
+    async function qwCopyYaml(which) {
+        if (!qw.discovery || qw.discovery.error) { clog('qwiic: scan first', 'err'); return; }
+        const only = which === 'undeclared' || (qw.declared.list.length && qw.check && qw.check.undeclared.length) ? qw.check.undeclared : null;
+        const text = SQ.toRigYaml(qw.discovery, only ? { only } : {});
+        const body = only ? text.replace(/^peripherals:\n/, '') : text;
+        try {
+            await navigator.clipboard.writeText(body);
+            clog('qwiic: rig YAML ' + (only ? 'entries for the ' + only.length + ' undeclared device(s)' : 'peripherals: block') + ' copied — paste it into the rig file (configs/rigs/<rig>.yaml)', 'info');
+        } catch (_) {
+            window.prompt('Copy this rig YAML:', body);
+        }
+    }
+    function qwDownloadCsv() {
+        const item = qw.selKey && qwItem(qw.selKey);
+        const rows = item && qw.rows[item.key];
+        if (!rows || !rows.length) { clog('qwiic: nothing read yet for this device', 'err'); return; }
+        const K = QD.KINDS[item.kind];
+        const lines = ['time,' + K.columns.join(',')];
+        rows.forEach((r) => lines.push(r.t + ',' + K.columns.map((c) => (r.values[c] == null ? '' : r.values[c])).join(',')));
+        const stamp = new Date().toISOString().replace(/[:]/g, '-').slice(0, 19);
+        downloadBlob(new TextEncoder().encode(lines.join('\n') + '\n'), 'qwiic_' + item.kind + '_' + item.dev.addr.toString(16) + '_' + stamp + '.csv', 'text/csv');
+        clog('qwiic: ' + rows.length + ' reading(s) saved as CSV (Console only — not a run log)', 'info');
+    }
+    (function qwWire() {
+        const tbl = $('cQwTable');
+        if (tbl) tbl.addEventListener('click', (e) => {
+            const tr = e.target.closest('tr.qw-pick');
+            if (tr && tr.dataset.qwKey) qwSelect(tr.dataset.qwKey);
+        });
+        const rate = $('cQwRate');
+        if (rate) rate.addEventListener('change', () => { if (qw.live) qwStartLive(); });
+        const flags = $('cQwFlags');
+        if (flags) flags.addEventListener('click', (e) => { const a = e.target.closest('[data-qw-yaml]'); if (a) { e.preventDefault(); qwCopyYaml(a.dataset.qwYaml); } });
+        const ch = $('cQwSvCh');
+        if (ch) ch.addEventListener('change', qwServoLimits);
+        const wide = $('cQwSvWide');
+        if (wide) wide.addEventListener('change', () => {
+            if (wide.checked && !window.confirm('Allow 500–2500 µs? Many hobby servos hit their end stops (and stall, drawing current) outside ~1000–2000 µs.')) wide.checked = false;
+            qwServoLimits();
+        });
+        const sl = $('cQwSvUs');
+        const nb = $('cQwSvNum');
+        if (sl && nb) {
+            // The servo follows the slider while dragging (single-flight, latest wins); release logs.
+            const svLive = liveSender(() => qwServo('go', { quiet: true }));
+            sl.addEventListener('input', () => { nb.value = sl.value; svLive(); });
+            sl.addEventListener('change', () => { qwServo('go').catch((e) => clog('qwiic: servo — ' + e.message, 'err')); });
+            nb.addEventListener('change', () => { sl.value = nb.value; });
+        }
+        const chip = $('qwiicChip');
+        const openPanel = () => {
+            if (Studio.setMode) Studio.setMode('console');
+            if (Studio.openConsolePanel) Studio.openConsolePanel('qwiic');
+        };
+        if (chip) {
+            chip.addEventListener('click', openPanel);
+            chip.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPanel(); } });
+        }
+        qwRenderDevice();
+    })();
+    const qwRun = (fn) => () => fn().catch((e) => { clog('qwiic: ' + e.message, 'err'); qwSetStatus('error: ' + e.message); });
+
     function aiRenderSweepTable(rep) {
         const row = $('cAiSweepRow');
         const tbl = $('cAiSweepTable');
@@ -6248,6 +6923,18 @@ function studioMarkerCurrent(stored, current) {
             const a = resp && Wire.decodeAnalogIn(resp);
             if (a) $('cAiRead').textContent = 'AI1 ' + a.ain1Mv + ' mV · AI2 ' + a.ain2Mv + ' mV' + (a.flags != null ? ' · ' + window.StudioAnalogIn.describeFlags(a.flags).text : '');
         },
+        // Qwiic panel (LAB-214) — explore/test only, nothing logged to run logs
+        cqwscan: qwRun(() => qwScan()),
+        cqwread: qwRun(() => qwReadOnce()),
+        cqwlive: () => { if (qw.live) qwStopLive('stopped by user'); else qwStartLive(); },
+        cqwcsv: () => qwDownloadCsv(),
+        cqwyaml: qwRun(() => qwCopyYaml('auto')),
+        cqwbumparm: qwRun(qwBumpArm),
+        cqwbumpcheck: qwRun(qwBumpCheck),
+        cqwsvgo: qwRun(() => qwServo('go')),
+        cqwsvcenter: qwRun(() => qwServo('center')),
+        cqwsvrelease: qwRun(() => qwServo('release')),
+        cqwsvalloff: qwRun(() => qwServo('alloff')),
         // Analog In panel (analog-input-plan § 4 S1)
         caipoll: () => {
             aiUser.enabled = !aiUser.enabled;
@@ -6375,13 +7062,17 @@ function studioMarkerCurrent(stored, current) {
         crawclear: () => { logEl().innerHTML = ''; },
         crawcopy: async () => { try { await navigator.clipboard.writeText(logEl().innerText); } catch (e) {} },
         // depth toggles (also set the module-block stream depth)
-        cgs16: (e) => { segPick(e, 'cGs16', 'cGs2'); if (Studio.setStreamGs) Studio.setStreamGs(16); if ($('cLevel')) $('cLevel').parentElement.style.opacity = '1'; },
-        cgs2: (e) => { segPick(e, 'cGs2', 'cGs16'); if (Studio.setStreamGs) Studio.setStreamGs(2); },
+        cgs16: (e) => { segPick(e, 'cGs16', 'cGs2'); if (Studio.setStreamGs) Studio.setStreamGs(16); if ($('cLevel')) $('cLevel').parentElement.style.opacity = '1';  if (Studio.restreamLast) Studio.restreamLast(); },
+        cgs2: (e) => { segPick(e, 'cGs2', 'cGs16'); if (Studio.setStreamGs) Studio.setStreamGs(2);  if (Studio.restreamLast) Studio.restreamLast(); },
         // stream test figures (builders live in the module block)
         cstreamff: () => Studio.doStream && Studio.doStream('fullfield'),
         cstreampm: () => Studio.doStream && Studio.doStream('panelmap'),
         cstreamor: () => Studio.doStream && Studio.doStream('orientation'),
         cstreamck: () => Studio.doStream && Studio.doStream('checker'),
+        cbank0: () => Studio.doStream && Studio.doStream('bank', 0),
+        cbank1: () => Studio.doStream && Studio.doStream('bank', 1),
+        cbank2: () => Studio.doStream && Studio.doStream('bank', 2),
+        cbank3: () => Studio.doStream && Studio.doStream('bank', 3),
         cpaste: () => Studio.openPasteModal && Studio.openPasteModal(),
         cloadfile: () => { if (Studio.filePlaying && Studio.filePlaying()) Studio.stopFilePlay('user'); else $('cFileInput').click(); }
     };
@@ -6452,6 +7143,11 @@ function studioMarkerCurrent(stored, current) {
         const fi = Wire.decodeFirmwareInfo(await q(Wire.encodeGetFirmwareInfo()));
         if (fi && fi.version) { $('cFwName').textContent = 'on SD: ' + fi.version; got.push('SD fw «' + fi.version + '»'); }
         if (got.length) clog('init from controller: ' + got.join(' · '), 'info');
+        // Qwiic setup scan (LAB-214): once per connection, never retried. Started
+        // AFTER the controller reads and NOT awaited, so its sensor configure waits
+        // (~0.5 s on a full chain) never hold up the SD listing; a failure never
+        // blocks connect. Gated inside on the 0xC2 qwiic_i2c feature bit.
+        if (Studio.qwiicSetup) Studio.qwiicSetup().catch((e) => clog('qwiic: setup failed — ' + e.message, 'err'));
     }
     function downloadBlob(bytes, name, mime) {
         const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
@@ -6527,12 +7223,17 @@ function studioMarkerCurrent(stored, current) {
             finally { e.target.disabled = false; }
         }
     });
-    // One SD .pat write: SET_PATTERN_FILE 0x8D upload + SET_PATTERN_FILENAME
+    // One SD .pat write: SET_PATTERN_FILE 0x85 upload + SET_PATTERN_FILENAME
     // 0x83 rename (both must succeed). Quiet path (session.send) — the batch
-    // wrapper owns the status line + per-file error log.
+    // wrapper owns the status line + per-file error log. The name is checked
+    // FIRST (PatternSet.checkSdFilename: ASCII, <= 63 chars), so a name the
+    // controller can't store fails in a moment instead of after the whole upload
+    // (which left it on the card as pattern.temp).
     async function sdUploadOne(name, bytes) {
+        const chk = window.PatternSet && PatternSet.checkSdFilename ? PatternSet.checkSdFilename(name) : null;
+        if (chk && chk.level === 'error') return { ok: false, retry: false, error: 'bad name — ' + chk.problems.join('; ') };
         const up = await session.send(Wire.encodeSetPatternFile(0, bytes), { timeoutMs: 120000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILE });
-        if (!((Wire.decodeResponse(up) || {}).ok)) return { ok: false, error: 'write rejected (0x8D)' };
+        if (!((Wire.decodeResponse(up) || {}).ok)) return { ok: false, error: 'write rejected (0x85)' };
         const rn = await session.send(Wire.encodeSetPatternFilename(0, name), { timeoutMs: 10000, expectedCmd: Wire.OPCODES.SET_PATTERN_FILENAME });
         if (Wire.decodeSetPatternFilenameResponse(rn) == null) return { ok: false, error: 'rename failed (0x83)' };
         return { ok: true };
@@ -6546,7 +7247,7 @@ function studioMarkerCurrent(stored, current) {
         const tag = srcLabel ? ' (' + srcLabel + ')' : '';
         if (!files.length) { $('cSdUpStatus').textContent = 'nothing to upload' + tag; return { done: 0, failed: 0 }; }
         if (!connected()) { clog('SD upload: connect first', 'err'); return { done: 0, failed: 0 }; }
-        await quiesceDisplay(); // 0x8D requires the display stopped
+        await quiesceDisplay(); // 0x85 requires the display stopped
         // Breathing room between writes: the controller commits each .pat to the
         // SD (FAT + long-filename entry) before it's ready for the next; back-to-
         // back writes of a LARGE file could be dropped while it's still busy
@@ -6557,16 +7258,32 @@ function studioMarkerCurrent(stored, current) {
         let done = 0, failed = 0;
         const uploaded = [];
         clog('SD upload: ' + files.length + ' file(s)' + tag + '…', 'info');
+        // G6 playback: warn (never block) when the controller would reject a pattern at load
+        // — the rig is a partial arena, or the file's grid differs from the rig's.
+        const PS = window.PatternSet;
+        const rigArena = Studio.rigArena ? Studio.rigArena() : null;
+        if (PS && PS.isPartialG6Arena && PS.isPartialG6Arena(rigArena)) {
+            clog('⚠ the session rig (' + Studio.currentRig.arenaConfig + ') is a partial arena: ' + PS.PARTIAL_G6_NOTE, 'warn');
+        }
         for (let i = 0; i < files.length; i++) {
             const f = files[i];
             const pos = (i + 1) + '/' + files.length;
             const kb = (f.bytes.length / 1024).toFixed(1) + ' KB';
             $('cSdUpStatus').textContent = 'uploading ' + pos + tag + ' — ' + f.name + '…';
+            // An upload never overwrites: a name already on the card is stored as
+            // X001_<name>, and protocols can't tell the copies apart. Say so up front.
+            const onCard = Studio.patternSet && Studio.patternSet.patterns && Studio.sdLogicalName
+                ? Studio.patternSet.patterns[Studio.sdLogicalName(f.name)] : null;
+            if (onCard) clog('⚠ "' + f.name + '" is already on the SD card — this copy will be stored as X001_… next to it; delete the old one to replace it', 'warn');
+            const nameChk = window.PatternSet && PatternSet.checkSdFilename ? PatternSet.checkSdFilename(f.name) : null;
+            if (nameChk && nameChk.level === 'warn') clog('⚠ ' + f.name + ': ' + nameChk.problems.join('; '), 'warn');
+            const playWarn = PS && PS.g6PlaybackWarning ? PS.g6PlaybackWarning(f.bytes, rigArena) : null;
+            if (playWarn) clog('⚠ ' + f.name + ': ' + playWarn, 'warn');
             let r = null;
             try {
                 r = await sdUploadOne(f.name, f.bytes);
             } catch (e) { r = { ok: false, error: (e && e.message ? e.message : String(e)) }; }
-            if (!r.ok) {
+            if (!r.ok && r.retry !== false) {
                 // One retry after a longer settle — rescues a large file dropped
                 // while the controller was still committing the previous one.
                 clog('SD … ' + pos + '  ' + f.name + ' — ' + r.error + '; retrying in ' + (RETRY_GAP_MS / 1000) + 's…', 'warn');
@@ -6846,7 +7563,33 @@ function studioMarkerCurrent(stored, current) {
     Studio.clog = clog;
     // level slider readout + duty → module-block stream state. The duty slider
     // and its number box stay in lockstep; typed values clamp to 0–255.
-    $('cLevel').addEventListener('input', () => { $('cLevelVal').textContent = $('cLevel').value + '/15'; });
+    // Live sliders: act while dragging. liveSender() is single-flight, latest value wins
+    // (a fast drag never queues a backlog of commands); nothing is sent while a run owns
+    // the link. Drags are quiet; the release ('change') logs one line.
+    function liveSender(fn) {
+        let busy = false, pending = null, has = false;
+        return function (v) {
+            pending = v; has = true;
+            if (busy) return;
+            busy = true;
+            (async () => {
+                try {
+                    while (has) { has = false; await fn(pending); }
+                } catch (e) { clog('live update failed: ' + (e.message || e), 'err'); } finally { busy = false; }
+            })();
+        };
+    }
+    // Live sends pause during a run, an ISP batch (a stream would re-activate the display and
+    // the firmware refuses 0xC8/0xC9 then) and a post-mortem (it owns the link).
+    const liveOk = () =>
+        !!(session && session.connected && !session.running) &&
+        !(Studio.ispBatchRunning && Studio.ispBatchRunning()) &&
+        !Studio._activePostmortem;
+    Studio.liveSender = liveSender;
+    // Test display: level / duty re-send the last test figure (no-op until one was sent).
+    const restreamLive = liveSender(() => (liveOk() && Studio.restreamLast ? Studio.restreamLast() : null));
+    $('cLevel').addEventListener('input', () => { $('cLevelVal').textContent = $('cLevel').value + '/15'; restreamLive(); });
+    $('cLevel').addEventListener('change', () => { if (liveOk()) clog('test display: level ' + $('cLevel').value + '/15 (re-sent the last figure)', 'info'); });
     // LED tool: slider + number box in lockstep (like duty), 0.0–100.0 in 0.1 steps,
     // with a readout of the resolved BuckPuck control voltage.
     function applyLed(v) {
@@ -6861,8 +7604,15 @@ function studioMarkerCurrent(stored, current) {
         if (el) el.textContent = conv ? conv(n) + ' mV' : '';
     }
     Studio.applyLed = applyLed;
-    if ($('cLedPct')) $('cLedPct').addEventListener('input', () => applyLed($('cLedPct').value));
-    if ($('cLedNum')) $('cLedNum').addEventListener('change', () => applyLed($('cLedNum').value));
+    // LED power follows the slider (quiet SET_AO_VOLTAGE while dragging; one log line on release).
+    const ledMvFor = (p) => { const conv = window.ArenaRunnerG6 && window.ArenaRunnerG6.ledPercentToMv; return conv ? conv(p) : 5000; };
+    const ledLive = liveSender(async (p) => { if (liveOk()) await session.send(Wire.encodeSetAoVoltage(ledMvFor(p)), { timeoutMs: 1000 }); });
+    const ledCommitLog = () => { if (liveOk()) { const p = num('cLedPct'); clog('LED ' + p + '% → SET_AO_VOLTAGE 0xA0 ' + ledMvFor(p) + ' mV', 'tx'); } };
+    if ($('cLedPct')) {
+        $('cLedPct').addEventListener('input', () => { applyLed($('cLedPct').value); ledLive(num('cLedPct')); });
+        $('cLedPct').addEventListener('change', ledCommitLog);
+    }
+    if ($('cLedNum')) $('cLedNum').addEventListener('change', () => { applyLed($('cLedNum').value); ledLive(num('cLedPct')); ledCommitLog(); });
     if ($('cLedPct')) applyLed($('cLedPct').value);
     function applyDuty(v) {
         // A number input holding garbage reports '' (and Number('') === 0), so
@@ -6875,8 +7625,9 @@ function studioMarkerCurrent(stored, current) {
         $('cDutyNum').value = n;
         if (Studio.setStreamDuty) Studio.setStreamDuty(n);
     }
-    $('cDuty').addEventListener('input', () => applyDuty($('cDuty').value));
-    $('cDutyNum').addEventListener('change', () => applyDuty($('cDutyNum').value));
+    $('cDuty').addEventListener('input', () => { applyDuty($('cDuty').value); restreamLive(); });
+    $('cDuty').addEventListener('change', () => { if (liveOk()) clog('test display: duty ' + $('cDuty').value + ' (re-sent the last figure)', 'info'); });
+    $('cDutyNum').addEventListener('change', () => { applyDuty($('cDutyNum').value); restreamLive(); });
 
     // console dropdown menus (Controller ▾ / Debug ▾) — open/close + click-away
     document.querySelectorAll('.cmenu[data-cmenu] > .cmenu-btn').forEach((btn) => {
@@ -7077,7 +7828,9 @@ function studioMarkerCurrent(stored, current) {
             Studio.panelsStatus = 'disconnected';
             if (Studio._panelsFollowUp) { clearTimeout(Studio._panelsFollowUp); Studio._panelsFollowUp = null; }
             if (Studio.updateRigIoGating) Studio.updateRigIoGating();
+            if (Studio.qwiicReset) Studio.qwiicReset(); // never carry one controller's Qwiic scan into the next
         }
+        if (Studio.qwiicUpdateRunGates) Studio.qwiicUpdateRunGates();
     }
     if (session) session.on('state', syncEnabled);
     syncEnabled();
@@ -7299,7 +8052,7 @@ import {
 } from './js/v3-import.js';
 import { getConfig } from './js/arena-configs.js'; // side effect: sets window.PANEL_SPECS
 import PatParser from './js/pat-parser.js';
-import { generatePatternIcon } from './js/icon-generator.js';
+import { generatePatternIcon } from './js/icon-generator.js?v=1006-partial-cols';
 import * as YAML from 'yaml'; // vendored build has NAMED exports only (no default)
 
 const Studio = window.Studio;
@@ -7417,6 +8170,7 @@ function setSessionRig(rigName, opts) {
     };
     invalidateRigIo();
     renderRigIoMenu();
+    if (Studio.qwiicRecheck) Studio.qwiicRecheck(); // re-compare the last Qwiic scan with the new rig's peripherals:
     updateIspShowUI(); // the batch progress map needs a 20-panel layout
     if (window.Scope && window.Scope.applyRigBallDiameter) window.Scope.applyRigBallDiameter(); // scope forward-velocity calibration
     Studio.refreshState(); // device line + mismatch chip
@@ -7428,11 +8182,13 @@ function setSessionRig(rigName, opts) {
 // The io: block lives in the rig YAML (index.json only carries name/arena), so
 // it's fetched lazily per session rig and cached. parseRigIo is tolerant: a
 // rig without an io: block parses to all-off and applyRigIo is a no-op.
+// The same fetch also parses the rig's `peripherals:` (Qwiic, LAB-214) — one
+// rig read, two tolerant parsers.
 let rigIo = { name: null, promise: null };
 function invalidateRigIo() {
     rigIo = { name: null, promise: null };
 }
-function fetchRigIo() {
+function fetchRigSections() {
     const name = Studio.currentRig && Studio.currentRig.name;
     if (!name) return Promise.resolve(null);
     if (rigIo.name === name && rigIo.promise) return rigIo.promise;
@@ -7442,14 +8198,27 @@ function fetchRigIo() {
         try {
             const res = await fetch(entry.path, { cache: 'no-store' });
             if (!res.ok) return null;
-            return parseRigIo(parseRigYAMLText(await res.text()));
+            const data = parseRigYAMLText(await res.text());
+            const SQ = window.StudioQwiic;
+            return {
+                io: parseRigIo(data),
+                peripherals: SQ ? SQ.parseRigPeripherals(data) : { list: [], warnings: ['js/studio-qwiic.js not loaded'] }
+            };
         } catch (_) {
-            return null; // malformed rig YAML → treat as no io: block
+            return null; // malformed rig YAML → treat as no io: / peripherals: block
         }
     })();
     rigIo = { name: name, promise: p };
     return p;
 }
+function fetchRigIo() {
+    return fetchRigSections().then((r) => (r ? r.io : null));
+}
+// Rig `peripherals:` for the Qwiic glue (classic ConsoleView) → {list, warnings}.
+Studio.fetchRigPeripherals = async function () {
+    const r = await fetchRigSections();
+    return r ? r.peripherals : { list: [], warnings: [] };
+};
 // io_ext capability (0xC2 bit 5): the connected firmware supports
 // SET_DIO_ROLE/GET_DIO_ROLE/SET_AO_MODE/GET_ANALOG_IN. Set at connect.
 function hasIoExt() {
@@ -7477,6 +8246,7 @@ async function ensureCapabilities() {
     } catch (_) { /* older fw / no reply — hasIoExt() stays false */ }
 }
 Studio.updateRigIoGating = function () { updateRigIoGating(); }; // classic shell re-gates on caps change
+Studio.ensureCapabilities = ensureCapabilities; // Qwiic setup gates on the 0xC2 feature bits
 // Enable/disable the capability-gated role options to match the CONNECTED
 // firmware (never version-guessing). AI 'in' stays disabled regardless —
 // the ±10V front-end calibration is TBD (bench).
@@ -7907,24 +8677,32 @@ const BUILTIN_BASE = './patterns/g6_2x10/';
 Studio.patternSet = null;
 const webPreviewBySdName = new Map(); // filename → () => Promise<ArrayBuffer>
 const repoSharedPreviewKeys = new Set(); // sources currently wired from course-repo patterns/
-// In-memory sources first (logical-name tolerant via webBytesForName). `idx`
-// (1-based SD index) is the fallback path: a pattern already on the card
-// from a prior session has no cached source above, so fetch it live via 0x84
-// — the controller's GET_PATTERN_FILE handler is chunked/non-blocking with a
-// bounded stall recovery (issue #16), so this is safe on fixed firmware (an
-// older controller can still wedge the link here). Same call the SD table's
-// Download button already makes.
-function patByteSource(sd, idx) {
-    const f = Studio.webBytesForName(sd);
+// In-memory sources first (logical-name tolerant via webBytesForName). The
+// fallback for a pattern already on the card from a prior session is a live
+// 0x84 fetch of the WHOLE file (the controller has no ranged read), gated by
+// PatPreview.liveFetchVerdict: size known from GET_PATTERN_INFO and ≤ 1 MiB, no
+// run active. It goes in the link's BACKGROUND lane, so a user command never
+// queues behind it (bench 2026-10-07: the connect-time auto-pick's fetch of
+// pattern 1 lost bytes and held the link for its 60 s timeout; TRIAL_PARAMS
+// waited 57 s). Resolves the ArrayBuffer, or null when no source is allowed;
+// `refusal` (optional out-param) gets the verdict reason.
+async function patByteSource(p, refusal) {
+    const f = Studio.webBytesForName(p.sd_name);
     if (f) return f();
-    if (!Studio.session || !Studio.session.connected || idx == null) {
-        return Promise.reject(new Error('no local copy of ' + sd));
+    const s = Studio.session;
+    const card = s && s.connected && p.index != null ? await cardPatternInfo(p).catch(() => null) : null;
+    const v = PP && typeof PP.liveFetchVerdict === 'function' // a stale cached pat-preview.js lacks it
+        ? PP.liveFetchVerdict(card, { connected: !!(s && s.connected) && p.index != null, running: !!(s && s.running) })
+        : { ok: false, reason: 'unknown-size' };
+    if (!v.ok) {
+        if (refusal) Object.assign(refusal, v, { fileSize: card && card.fileSize });
+        return null;
     }
-    return Studio.session
-        .sendBulkRead(Wire.encodeGetPatternFile(idx), { timeoutMs: 60000 })
-        .then((u8) => u8.buffer);
+    const u8 = await s.sendBulkRead(Wire.encodeGetPatternFile(p.index), { timeoutMs: 10000, background: true });
+    return u8.buffer;
 }
 let patPreviewCache = {};
+let patThumbSeq = 0; // renderPatThumb: only the newest pick draws (its fetch may finish late)
 
 // Autoplay a multi-frame pattern preview as a lightweight looping GIF: cycle the
 // sampled frames on an interval that SELF-CLEARS once the img leaves the DOM (a
@@ -7994,14 +8772,19 @@ function arenaForConfig(cfg) {
 }
 // The card stores pattern files as `NNN_<name>.pat` — the zero-padded index
 // pins the firmware's SD-scan order (== pattern_ID) and the >8.3 name forces a
-// FAT long-filename entry (js/pattern-set.js:242). Protocols, though, reference
+// FAT long-filename entry (js/pattern-set.js assignIndices). Protocols, though, reference
 // the LOGICAL name (`all_on`). Normalize a raw SD filename to that logical
 // name for name↔SD reconciliation: drop a leading index prefix and the .pat
 // extension. Robust to one card holding several protocols' sets (each set's
 // 1-based prefixes collide globally, but the names stay unique + resolvable).
+// The logical pattern name of an SD filename: no .pat, no NNN_ index prefix, and no
+// X001_ prefix — the controller's rename for a same-name re-upload (SdManager.cpp
+// renamePattern, X%03u_), so a re-upload shows up as a DUPLICATE of the original
+// (onSdListing warns; protocols refuse to guess) instead of a separate pattern.
 function sdLogicalName(fn) {
     return String(fn == null ? '' : fn)
         .replace(/\.pat$/i, '')
+        .replace(/^X\d{3}_/, '')
         .replace(/^\d+[_-]/, '');
 }
 Studio.sdLogicalName = sdLogicalName;
@@ -8190,11 +8973,22 @@ async function renderPatThumb(name) {
     host.title = src || canFetchLive
         ? 'Pattern preview (multi-frame patterns animate automatically)'
         : 'No preview — connect to the controller for a live thumbnail, or upload the set / open its course-repo protocol';
+    const seq = ++patThumbSeq;
     try {
         let sampled = patPreviewCache[name];
         if (!sampled) {
             if (!src && !canFetchLive) return;
-            const ab = await patByteSource(p.sd_name, p.index);
+            const refusal = {};
+            const ab = await patByteSource(p, refusal);
+            if (seq !== patThumbSeq) return; // a newer pick owns the thumbnail
+            if (!ab) {
+                host.title = refusal.reason === 'too-large'
+                    ? 'No preview — ' + (refusal.fileSize / 1048576).toFixed(1) + ' MB on the card is too large to fetch over USB for a thumbnail; upload the set or open its course-repo protocol to preview it'
+                    : refusal.reason === 'running'
+                        ? 'No preview while a run is active'
+                        : 'No preview — the controller did not report this pattern’s size';
+                return;
+            }
             const parsed = PatParser.parsePatFile(ab);
             sampled = PP.samplePreviewFrames(parsed, arenaForConfig(m.arenaConfig), {
                 renderIcon: generatePatternIcon,
@@ -8206,13 +9000,20 @@ async function renderPatThumb(name) {
             // count — the closed-loop resolver reads this (patternFramesByName).
             p.preview = { frames: parsed.numFrames };
         }
+        if (seq !== patThumbSeq) return;
         if (!sampled.frames || !sampled.frames.length) return;
         const img = document.createElement('img');
         img.src = sampled.frames[sampled.staticIndex || 0];
         img.alt = name;
         host.appendChild(img);
         if (sampled.frames.length > 1) Studio.startPatAutoplay(img, sampled.frames, sampled.staticIndex || 0);
-    } catch (e) { /* preview is best-effort */ }
+    } catch (e) {
+        // Best-effort. The controller refuses 0x84 while a pattern is displaying
+        // (status 10, CE_DISPLAY_ACTIVE); nothing is cached, so the next pick after STOP retries.
+        if (seq === patThumbSeq && /status=10\b/.test((e && e.message) || '')) {
+            host.title = 'No preview while the display is running — stop it, then pick the pattern again to load its thumbnail';
+        }
+    }
 }
 // Register just-uploaded pattern bytes as picker preview sources, keyed by the
 // on-card filename (== the name we rename to via 0x83). Called by the classic
@@ -8327,12 +9128,32 @@ Studio.onSdListing = function (names) {
     Studio.updateRunGate(); // the missing-pattern preflight tracks the SD listing
     fillPatternFramesFromCard(m); // frame counts via GET_PATTERN_INFO (the closed-loop index modulus)
 };
-// Frame counts for every card pattern from GET_PATTERN_INFO 0x88 (a header read, ~ms each),
-// filled right after the listing so `patternFramesByName` — which the closed-loop resolver
-// pushes to the bridge as the heading→index modulus — is correct for patterns whose preview
-// was never rendered (an 8 MB pattern is never fetched for a thumbnail; the bridge then used
-// its default of 200 and wrapped the index — bench 2026-09-13, #201). Sequential, single-flight,
-// abandons on a new listing, a disconnect or a run (a run owns the link).
+// GET_PATTERN_INFO 0x88 for one card pattern (a header read, ~2 ms), cached on the listing
+// entry as p.card = { frames, fileSize }; also fills p.preview.frames, the closed-loop modulus.
+// Background lane: it never delays a user command. Null when unknown (old fw, read failed).
+function cardPatternInfo(p) {
+    if (p.card) return Promise.resolve(p.card);
+    if (p.cardReq) return p.cardReq; // the thumbnail and the sweep can ask at once
+    const W = window.ArenaWireG6;
+    const s = Studio.session;
+    if (!W || !W.encodeGetPatternInfo || !s || !s.connected || p.index == null) return Promise.resolve(null);
+    p.cardReq = s.send(W.encodeGetPatternInfo(p.index), { timeoutMs: 1500, silent: true, background: true })
+        .then((resp) => {
+            const info = W.decodePatternInfo(resp);
+            if (!info || !(info.frameCount > 0)) return null;
+            p.card = { frames: info.frameCount, fileSize: info.fileSize };
+            p.preview = Object.assign(p.preview || {}, { frames: info.frameCount });
+            return p.card;
+        })
+        .finally(() => { p.cardReq = null; });
+    return p.cardReq;
+}
+// Frame counts for every card pattern from GET_PATTERN_INFO 0x88, filled right after the
+// listing so `patternFramesByName` — which the closed-loop resolver pushes to the bridge as
+// the heading→index modulus — is correct for patterns whose preview was never rendered (a
+// large pattern is never fetched for a thumbnail; the bridge then used its default of 200
+// and wrapped the index — bench 2026-09-13, #201). Sequential in the link's background lane
+// (a user command goes first), abandons on a new listing, a disconnect or a run.
 let patFramesGen = 0;
 async function fillPatternFramesFromCard(m) {
     const gen = ++patFramesGen;
@@ -8343,8 +9164,7 @@ async function fillPatternFramesFromCard(m) {
     for (const p of todo) {
         if (gen !== patFramesGen || !Studio.session.connected || Studio.session.running) return;
         try {
-            const info = W.decodePatternInfo(await Studio.session.send(W.encodeGetPatternInfo(p.index), { timeoutMs: 1500, silent: true }));
-            if (info && info.frameCount > 0) { p.preview = Object.assign(p.preview || {}, { frames: info.frameCount }); n++; }
+            if (await cardPatternInfo(p)) n++;
         } catch (_) { /* best effort: the preview path can still fill it later */ }
     }
     if (n && gen === patFramesGen) (Studio.clog || Studio.rawLog || function () {})('pattern frame counts read from the card for ' + n + ' pattern' + (n === 1 ? '' : 's') + ' (GET_PATTERN_INFO)', 'dim');
@@ -8372,12 +9192,12 @@ const FONT = {
     5: [7, 4, 7, 1, 7], 6: [7, 4, 7, 5, 7], 7: [7, 1, 2, 2, 2], 8: [7, 5, 7, 5, 7], 9: [7, 5, 7, 1, 7],
     R: [6, 5, 6, 5, 5], L: [4, 4, 4, 4, 7], U: [5, 5, 5, 5, 7], D: [6, 5, 5, 5, 6]
 };
+// The rig's FULL arena grid (num_rows × num_cols; an uninstalled column is still a
+// grid column, so grid column c = physical column c) — js/studio-stream-geometry.js.
 function activeArenaGeom() {
     const cfg = Studio.currentRig && Studio.currentRig.arenaConfig;
     const arena = cfg ? arenaForConfig(cfg) : null;
-    const rc = (arena && arena.num_rows) || 2;
-    const cc = (arena && arena.num_cols) || 10;
-    return { rowCount: rc, colCount: cc, pixelRows: rc * 20, pixelCols: cc * 20 };
+    return window.StudioStreamGeometry.rigGeometry(arena);
 }
 function newGrid() { const a = activeArenaGeom(); return new Uint8Array(a.pixelRows * a.pixelCols); }
 function setPx(grid, a, row, col, val) { if (row < 0 || row >= a.pixelRows || col < 0 || col >= a.pixelCols) return; grid[row * a.pixelCols + col] = val; }
@@ -8405,11 +9225,25 @@ function genPanelMap() {
 function genOrient() {
     const a = activeArenaGeom(); const grid = newGrid(); const val = streamGs === 2 ? 1 : 15; const s = 2;
     const cw = 3 * s, gh = 5 * s;
-    const midCol = Math.floor(a.pixelCols / 2 - cw / 2), midRow = Math.floor(a.pixelRows / 2 - gh / 2);
+    // Glyphs sit inside the INSTALLED span (a 1×12of18 has no panels in grid columns 12–17).
+    const span = window.StudioStreamGeometry.installedSpan(a);
+    const midCol = Math.floor((span.lo + span.hi) / 2 - cw / 2), midRow = Math.floor(a.pixelRows / 2 - gh / 2);
     drawGlyph(grid, a, 'U', midCol, a.pixelRows - gh - 1, val, s);
     drawGlyph(grid, a, 'D', midCol, 1, val, s);
-    drawGlyph(grid, a, 'L', 1, midRow, val, s);
-    drawGlyph(grid, a, 'R', a.pixelCols - cw - 1, midRow, val, s);
+    drawGlyph(grid, a, 'L', span.lo + 1, midRow, val, s);
+    drawGlyph(grid, a, 'R', span.hi - cw - 1, midRow, val, s);
+    return grid;
+}
+// Color banks (LAB-223/228 color panels): light ONLY bank k (0..3 = A..D = T0..T3) —
+// one LED in four per panel (a 10×10 lattice at 2-px pitch) — via the shared
+// bench-verified PanelColor.bankAt (host coords, row 0 = bottom; panels are 20 px,
+// so arena-global parity equals panel-local parity).
+const BANK_NAMES = ['A', 'B', 'C', 'D'];
+function genBank(k, level) {
+    const a = activeArenaGeom(); const grid = newGrid(); const val = streamGs === 2 ? 1 : level;
+    const PC = window.PanelColor;
+    const bankAt = PC ? PC.bankAt : (r, c) => 2 * ((r + 1) & 1) + (c & 1);
+    for (let r = 0; r < a.pixelRows; r++) for (let c = 0; c < a.pixelCols; c++) if (bankAt(r, c) === k) grid[r * a.pixelCols + c] = val;
     return grid;
 }
 function genChecker() {
@@ -8418,19 +9252,34 @@ function genChecker() {
         for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) setPx(grid, a, pr * 20 + y, pc * 20 + x, val);
     return grid;
 }
-function buildStreamFrame(grid, gs) {
-    const a = activeArenaGeom();
-    const patData = {
-        generation: 'G6', gs_val: gs, numFrames: 1, rowCount: a.rowCount, colCount: a.colCount,
-        pixelRows: a.pixelRows, pixelCols: a.pixelCols, frames: [grid], stretchValues: [streamDuty]
-    };
-    const patArrayBuffer = window.PatEncoder.encode(patData);
-    const buf = new Uint8Array(patArrayBuffer);
-    const len = Wire.STREAM_FRAME_BYTES[gs === 2 ? 'GS2' : 'GS16'];
-    const payload = buf.subarray(window.PatEncoder.G6_HEADER_SIZE, window.PatEncoder.G6_HEADER_SIZE + len);
-    return { bytes: Wire.encodeStreamFrame(payload), patArrayBuffer };
+// Stream frames are sized to the CONTROLLER's compiled geometry (0xCB rows × cols);
+// the mapping rules live in js/studio-stream-geometry.js (Node-tested).
+function streamTarget() {
+    return window.StudioStreamGeometry.streamTarget(activeArenaGeom(), Studio.firmwareVersion);
 }
-function streamable() { const a = activeArenaGeom(); return a.rowCount * a.colCount === 20; } // FW accepts 20-panel frames only
+function toFirmwareGrid(grid, t) {
+    return window.StudioStreamGeometry.toFirmwareGrid(grid, t);
+}
+function encodeStreamPat(grid, gs, rows, cols) {
+    return window.PatEncoder.encode({
+        generation: 'G6', gs_val: gs, numFrames: 1, rowCount: rows, colCount: cols,
+        pixelRows: rows * 20, pixelCols: cols * 20, frames: [grid], stretchValues: [streamDuty]
+    });
+}
+function buildStreamFrame(grid, gs) {
+    const t = streamTarget();
+    if (!t.ok) throw new Error(t.reason);
+    const panels = t.rows * t.cols;
+    const fwPat = encodeStreamPat(toFirmwareGrid(grid, t), gs, t.rows, t.cols);
+    const buf = new Uint8Array(fwPat);
+    const len = Wire.streamFrameBytes(panels, gs);
+    const payload = buf.subarray(window.PatEncoder.G6_HEADER_SIZE, window.PatEncoder.G6_HEADER_SIZE + len);
+    // The thumbnail shows the RIG's figure (the preview draws the rig's arena).
+    const samePat = !window.StudioStreamGeometry.isMapped(t);
+    const patArrayBuffer = samePat ? fwPat : encodeStreamPat(grid, gs, t.rig.rowCount, t.rig.colCount);
+    return { bytes: Wire.encodeStreamFrame(payload, { panels }), patArrayBuffer, target: t };
+}
+function streamable() { return streamTarget().ok; }
 function renderStreamThumb(patArrayBuffer, hostId) {
     const host = $(hostId || 'cStreamThumb');
     if (!host || !PP) return;
@@ -8452,29 +9301,44 @@ function renderStreamThumb(patArrayBuffer, hostId) {
 Studio.setStreamGs = (gs) => { streamGs = gs; };
 Studio.setStreamDuty = (d) => { streamDuty = d; };
 // Stream one already-built pixel grid (shared by the figures + paste-frame).
-async function streamGrid(grid, gs, label) {
+async function streamGrid(grid, gs, label, opts) {
     const clog = Studio.clog || Studio.rawLog;
     if (!Studio.session || !Studio.session.connected) { clog('connect first', 'err'); return false; }
-    if (!streamable()) { clog('stream: needs a 20-panel arena (e.g. G6_2x10) — unlock the session rig selector in ⚙ Settings', 'err'); return false; }
+    const tgt = streamTarget();
+    if (!tgt.ok) { clog('stream: ' + tgt.reason + ' — check the session rig in ⚙ Settings', 'err'); return false; }
     let built;
     try { built = buildStreamFrame(grid, gs); } catch (e) { clog('stream build failed: ' + (e.message || e), 'err'); return false; }
     renderStreamThumb(built.patArrayBuffer);
     try {
         await Studio.session.send(built.bytes, { expectedCmd: Wire.OPCODES.STREAM_FRAME, timeoutMs: 1500 });
-        clog('› STREAM_FRAME 0x32 · ' + label + ' (' + (gs === 2 ? 'GS2' : 'GS16') + ')', 'tx');
+        const t = built.target;
+        const mapped = window.StudioStreamGeometry.isMapped(t) ? ' · ' + t.rig.rowCount + '×' + t.rig.colCount + ' rig in a ' + t.rows + '×' + t.cols + ' firmware frame (rig rows repeated up the frame)' : '';
+        if (!opts || !opts.quiet) clog('› STREAM_FRAME 0x32 · ' + label + ' (' + (gs === 2 ? 'GS2' : 'GS16') + ')' + mapped, 'tx');
         return true;
     } catch (e) { clog('stream send failed: ' + (e.message || e), 'err'); return false; }
 }
 Studio.streamGrid = streamGrid;
-Studio.doStream = async function (kind) {
+// Remember the last test figure so the level / duty sliders can re-send it live.
+let lastStreamFigure = null;
+Studio.doStream = async function (kind, arg, opts) {
     const level = Number(($('cLevel') || {}).value || 15);
     let grid;
+    let label = kind;
     if (kind === 'fullfield') grid = genUniform(level);
     else if (kind === 'panelmap') grid = genPanelMap();
     else if (kind === 'orientation') grid = genOrient();
     else if (kind === 'checker') grid = genChecker();
-    else return;
-    await streamGrid(grid, streamGs, kind);
+    else if (kind === 'bank') { grid = genBank(arg, level); label = 'color bank ' + BANK_NAMES[arg] + ' (T' + arg + ')'; }
+    else return false;
+    lastStreamFigure = { kind, arg };
+    return streamGrid(grid, streamGs, label, opts);
+};
+// Re-send the last figure (level / duty / depth changed). No-op before the first figure.
+Studio.restreamLast = async function () {
+    if (!lastStreamFigure || !Studio.session || !Studio.session.connected || Studio.session.running) return false;
+    // A stream re-activates the display: never during an ISP batch (0xC8/0xC9 need it stopped) or a post-mortem.
+    if ((Studio.ispBatchRunning && Studio.ispBatchRunning()) || Studio._activePostmortem) return false;
+    return Studio.doStream(lastStreamFigure.kind, lastStreamFigure.arg, { quiet: true });
 };
 
 // ---- batch panel programming (ISP) — the panel-firmware tile's batch row ----
@@ -8667,9 +9531,10 @@ Studio.ispBatchRun = async function () {
             'Upload a .bin first (Choose…), or click OK to try anyway.')) return;
     }
     const verify = $('cIspVerify').checked;
-    const est = Math.ceil((panels.length * (20 + (verify ? 2 : 0))) / 60);
+    // Bench 2026-09-30 (#244): ~4.4 s program + reboot, ~1 s verify + STOP per panel.
+    const est = Math.ceil((panels.length * (5 + (verify ? 1 : 0))) / 60);
     if (!confirm('Program ' + panels.length + ' panel(s) [' + fmtRange(panels) + '] from /firmware/panel.bin?\n' +
-        'Each panel is reflashed over SPI and reboots (~20 s). Do NOT power off mid-flash.\n' +
+        'Each panel is reflashed over SPI and reboots (~5 s). Do NOT power off mid-flash.\n' +
         'Estimated time ~' + est + ' min.')) return;
 
     isp.running = true;
@@ -8860,7 +9725,8 @@ Studio.loadStreamFile = async function (file) {
     const clog = Studio.clog || Studio.rawLog;
     Studio.stopFilePlay('silent');
     if (!Studio.session || !Studio.session.connected) { clog('connect first', 'err'); return; }
-    if (!streamable()) { clog('stream: needs a 20-panel arena (e.g. G6_2x10)', 'err'); return; }
+    const ft = streamTarget();
+    if (!ft.ok || ft.rows * ft.cols !== 20) { clog('stream: file streaming (.bin/.pat) needs a 20-panel controller frame (e.g. G6_2x10)' + (ft.ok ? ' — this firmware streams ' + ft.rows + '×' + ft.cols : ''), 'err'); return; }
     if (!Bin) { clog('bin-classifier unavailable', 'err'); return; }
     let buf;
     try { buf = new Uint8Array(await file.arrayBuffer()); } catch (e) { clog('file read failed: ' + (e.message || e), 'err'); return; }
@@ -9665,6 +10531,13 @@ Studio.runCondition = async function (name) {
 // arena's azimuth pixels (num_cols × pixels_per_panel — 200 on a 10-column G6 ⇒ 1.8). A
 // PATTERN property really (1 px per frame), which every shipped closed-loop pattern has; a
 // startClosedLoop `deg_per_frame` overrides it for exotic patterns. NOT 360 / frame_count.
+// The session rig's config.arena ({generation, num_rows, num_cols, columns_installed, …}) or
+// null — for classic-shell code that has no getConfig (the SD upload's G6 playback warning).
+Studio.rigArena = function () {
+    const name = Studio.currentRig && Studio.currentRig.arenaConfig;
+    const cfg = name ? getConfig(name) : null;
+    return (cfg && cfg.arena) || null;
+};
 Studio.rigDegPerFrame = function () {
     const name = Studio.currentRig && Studio.currentRig.arenaConfig;
     const cfg = name ? getConfig(name) : null;
@@ -11059,7 +11932,7 @@ async function registerRepoPatternPreviews(repo, protoPath, token) {
 // ---- Upload ▾: library / course-repo pattern-set sources --------------------
 // The Console SD "Upload ▾" menu's library/repo items land here. Both browse a
 // PROTOCOL, resolve its colocated _patterns/ set via the GitHub Contents API,
-// then hand {name, bytes} files to Studio.sdUploadFiles (classic shell → 0x8D/
+// then hand {name, bytes} files to Studio.sdUploadFiles (classic shell → 0x85/
 // 0x83). source ∈ 'library' | 'repo'; mode ∈ 'file' (pick one) | 'folder' (all).
 // Library origin = the canonical public tools repo (GH_OWNER/GH_REPO); repo
 // origin = the signed-in course repo. Both need a token — headers() has no anon
@@ -17065,6 +17938,7 @@ initFromUrl();
   // The rail is a show/hide checklist: each row is role=checkbox (aria-checked
   // mirrors the panel's open state); Space/Enter toggle it like a click.
   function setOpen(t,o){var p=P(t),r=R(t); if(!p)return; p.classList.toggle('open',o); if(r){r.classList.toggle('sel',o); r.setAttribute('aria-checked',o?'true':'false');}}
+  if (window.Studio) window.Studio.openConsolePanel = function(t){ setOpen(t,true); var p=P(t); if(p&&p.scrollIntoView) p.scrollIntoView({block:'nearest'}); };
   document.querySelectorAll('#cRail .rail-btn').forEach(function(b){
     b.addEventListener('click',function(){var t=b.dataset.panel; if(!t)return; setOpen(t,!P(t).classList.contains('open'));});
     b.addEventListener('keydown',function(e){ if(e.key===' '||e.key==='Enter'){ e.preventDefault(); b.click(); } });
@@ -17253,6 +18127,16 @@ initFromUrl();
     '.rail-btn[data-panel="test"]': 'Test figures the browser draws and streams to the display — no memory card needed.',
     '.rail-btn[data-panel="io"]': 'The controller’s analog and digital input/output connectors.',
     '.rail-btn[data-panel="ai"]': 'Watch the two analog inputs live, and check the wiring by looping Analog Out back into an input.',
+    '.rail-btn[data-panel="qwiic"]': 'Find and try out the small sensors plugged into the arena’s Qwiic connector: scan, pick one, watch its readings. Nothing here is saved to run logs.',
+    '[data-cmd="cqwscan"]': 'Look for every device on the Qwiic connector and check each one against this rig’s list. Not available while a run is going.',
+    '#cQwYaml': 'Copy ready-made rig-file lines for the devices the scan found, so they can be recorded with each run.',
+    '#cQwTable': 'Everything the scan found. Click a row (or its round button) to show that device’s readings below. “Direct” means plugged into the arena’s own Qwiic chain; “undeclared” means plugged in but not listed in this rig’s file.',
+    '[data-cmd="cqwread"]': 'Take one reading from the selected device.',
+    '#cQwLive': 'Keep reading the selected device about once a second. Pauses by itself during a run.',
+    '[data-cmd="cqwbumpcheck"]': 'Was the motion sensor bumped since the last check? Checking resets the answer.',
+    '#cQwSvUs': 'Servo position. The servo follows the slider as you move it.',
+    '[data-cmd="cqwsvrelease"]': 'Let the servo go limp (it stops holding its position).',
+    '#qwiicChip': 'The sensors on the Qwiic connector compared with this rig’s list. Red = a listed sensor is missing; amber = something is plugged in that isn’t listed. Click to open them in the Console.',
     '.rail-btn[data-panel="fw"]': 'Update or check the firmware on the LED panels.',
     '[data-cmd="cinv"]': 'Show which panels the controller found at start-up and which firmware each one runs.',
     '[data-cmd="cinvscan"]': 'Look for the panels again and re-check their firmware (the display is stopped while this runs).',
@@ -17335,7 +18219,8 @@ initFromUrl();
     io: 'Read the analog input, set the analog output, and drive the two digital connectors.',
     ai: 'Both analog inputs, live. Cable Analog Out to an input and run the loopback sweep to check the wiring end to end; polling pauses by itself during a run.',
     fw: 'Check what firmware the panels run, and program new firmware into every panel from here.',
-    fictrac: 'Closed loop: connect the bridge, load a pattern in Step frames, set the gain, then Activate — the fly steers the pattern.'
+    fictrac: 'Closed loop: connect the bridge, load a pattern in Step frames, set the gain, then Activate — the fly steers the pattern.',
+    qwiic: 'Sensors on the Qwiic connector. Scan, pick one device, and watch its readings in real units; the motion sensor has a bump check and the servo board a position slider. For testing only — nothing is saved to run logs.'
   };
   Object.keys(PANEL_HELP).forEach(function(k){
     var t=document.querySelector('.panel[data-panel="'+k+'"] .panel-title');
