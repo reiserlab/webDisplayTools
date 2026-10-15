@@ -82,7 +82,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 BRIDGE_PY = REPO / "fictrac-bridge" / "bridge.py"
 sys.path.insert(0, str(HERE))
-from _common import probe_interfaces  # noqa: E402
+from _common import mono_ns, probe_interfaces, raise_timer_resolution, wall_ms, wall_ns  # noqa: E402
 from mcap_convert import convert_bag  # noqa: E402
 from recorder import PROFILES, STRING_TYPE, Recorder  # noqa: E402
 
@@ -104,6 +104,11 @@ def load_bridge_module(path: Path = BRIDGE_PY):
 
 
 B = load_bridge_module()
+if os.name == "nt":
+    # bridge.py stamps every run-log `ms` / `rx_ms` / t0 through its module-level now_ms() =
+    # int(time.time() * 1000): 15.6 ms steps on Windows + Python 3.12 (_common "clocks"). Rebind
+    # it in THIS process to the precise wall clock; bridge.py itself (bridge 3.4) is unchanged.
+    B.now_ms = wall_ms
 
 NODE_VERSION = f"{B.BRIDGE_VERSION} · ros2-poc plan-b (rmw_zenoh, mcap record, connectors)"
 FICTRAC_TOPIC = "/fictrac/raw"
@@ -204,11 +209,20 @@ class SourceStats:
         self.lat_ms: list[float] = []
         self.lost = False
 
-    def seen(self, rx_epoch_ms: int | None) -> None:
+    def seen(self, rx_epoch_ms: int | None, rx_mono_ns: int | None = None) -> None:
         self.count += 1
         self.last_rx_mono = time.monotonic()
-        if rx_epoch_ms is not None:
-            self.lat_ms.append(time.time() * 1000.0 - rx_epoch_ms)
+        lat = None
+        if isinstance(rx_mono_ns, int) and rx_mono_ns > 0:
+            # The adapter's mono_ns() and ours are the same system-wide counter on one host
+            # (QueryPerformanceCounter on Windows, CLOCK_MONOTONIC / mach time elsewhere): exact,
+            # where the whole-ms rx_epoch_ms adds a 0–1 ms floor. Sane range only, else fall back.
+            d = (mono_ns() - rx_mono_ns) / 1e6
+            lat = d if 0.0 <= d < 10_000.0 else None
+        if lat is None and rx_epoch_ms is not None:
+            lat = wall_ns() / 1e6 - rx_epoch_ms
+        if lat is not None:
+            self.lat_ms.append(lat)
             if len(self.lat_ms) > 5000:
                 del self.lat_ms[: len(self.lat_ms) - 5000]
 
@@ -558,23 +572,23 @@ class BridgeNode(Node):
     # (`--level full` takes the 25 fields from it) — ww18: a line that arrived just before the
     # open had a recorded frame but no raw record (`cols [0, 25]`).
     def _fictrac(self, data: bytes) -> None:
-        t_ns = time.time_ns()
+        t_ns = wall_ns()
         env = self._envelope(data)
         if env is None or not isinstance(env.get("raw"), str):
             self._record(FICTRAC_TOPIC, data)
             return
-        self.stats["fictrac"].seen(env.get("rx_epoch_ms"))
+        self.stats["fictrac"].seen(env.get("rx_epoch_ms"), env.get("rx_mono_ns"))
         # Same hand-off bridge.py's UDP protocol does (queue.put_nowait), from the ROS thread.
         self._loop.call_soon_threadsafe(self._queue.put_nowait, (env["raw"], FICTRAC_TOPIC, data, t_ns))
 
     def _fictrac_typed(self, data: bytes) -> None:
-        t_ns = time.time_ns()
+        t_ns = wall_ns()
         try:
             m = deserialize_message(data, FicTracFrame)
         except Exception:
             self._record(FICTRAC_FRAME_TOPIC, data)
             return
-        self.stats["fictrac"].seen(int(m.rx_epoch_ms) if m.rx_epoch_ms else None)
+        self.stats["fictrac"].seen(int(m.rx_epoch_ms) if m.rx_epoch_ms else None, int(m.rx_mono_ns) if m.rx_mono_ns else None)
         # The closed-loop math stays bridge 3.4's byte for byte: it parses the verbatim line
         # the typed message carries. The typed fields are for ROS-native consumers + the bag.
         self._loop.call_soon_threadsafe(self._queue.put_nowait, (m.raw, FICTRAC_FRAME_TOPIC, data, t_ns))
@@ -583,16 +597,16 @@ class BridgeNode(Node):
     # record is made on the loop together with the line (RecordingLogWriter.record_device);
     # only a message that can never become a line is recorded here on arrival.
     def _kinefly(self, data: bytes) -> None:
-        t_ns = time.time_ns()
+        t_ns = wall_ns()
         env = self._envelope(data)
         if env is None or not isinstance(env.get("raw"), str):
             self._record(KINEFLY_TOPIC, data)
             return
-        self.stats["kinefly"].seen(env.get("rx_epoch_ms"))
+        self.stats["kinefly"].seen(env.get("rx_epoch_ms"), env.get("rx_mono_ns"))
         self._loop.call_soon_threadsafe(self._on_kinefly, env, data, t_ns)
 
     def _bias(self, kind: str, topic: str, data: bytes) -> None:
-        t_ns = time.time_ns()
+        t_ns = wall_ns()
         env = self._envelope(data)
         if env is None:
             self._record(topic, data)
@@ -885,6 +899,9 @@ def main(argv: list[str] | None = None) -> int:
         p.error("--coupling must be finite")
     if not (math.isfinite(args.ball_mm) and args.ball_mm > 0):
         p.error("--ball-mm must be > 0")
+    if os.name == "nt":
+        print(f"[bridge-node] Windows clocks: precise wall clock for every stamp; 1 ms system timer "
+              f"{'granted' if raise_timer_resolution() else 'NOT granted'}", file=sys.stderr)
     rclpy.init(args=ros_args)
     try:
         asyncio.run(run(args))
