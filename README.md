@@ -42,6 +42,9 @@ plot directly. It also adds a few fields:
 - `/arena/browser` gets `msg`, the parsed browser message, in place of the raw text.
 
 Checked against each source bag: same message count per topic, same times, every recorded field equal.
+Each schema field has exactly one `type`, because Foxglove rejects type unions. A field seen with
+several types gets the widest one (string over number over boolean), and a field that was always
+null is left out of the schema. The messages themselves are unchanged.
 
 **`<run>.viz.mcap`: what PR #252's `viz_node` shows for that run.** This file holds the `/viz/*`
 topics (std_msgs), `/diagnostics` and `/viz/markers` (the 3D scene) that the two new dashboards
@@ -75,6 +78,15 @@ every output was moved back onto the run's own timeline:
 | `layouts/foxglove-arena-layout.json` | PR #254 | `.foxglove.mcap` only: index, heading, turning and forward motion, bias, epochs, raw browser, event and BIAS views |
 
 The layout files are byte-identical copies of the ones on their branches.
+
+**Opening by URL instead of downloading.** Foxglove's web app can open a file straight from a URL:
+`https://app.foxglove.dev/<workspace>/view?ds=remote-file&ds.url=<url>`. Repeat `ds.url` to open
+several files. It needs a server that lets the browser see `Accept-Ranges`:
+
+- `raw.githubusercontent.com` doesn't, so Foxglove reports that range requests aren't supported.
+- jsDelivr does: `https://cdn.jsdelivr.net/gh/reiserlab/webDisplayTools@<commit>/mcap/<file>`. Use a
+  commit hash rather than the branch name, because jsDelivr caches branch names for hours.
+- jsDelivr serves files up to 20 MB only. That rules out the soak's `.foxglove.mcap`, so download that one.
 
 **What the layouts show on this data.** `tools/check_layouts.py` resolves every panel's message
 paths against a run's two files. On the four FicTrac runs every data panel resolves and has data.

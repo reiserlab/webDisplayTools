@@ -134,13 +134,28 @@ def merge_schema(s: dict, v, depth: int = 0) -> dict:
     return s
 
 
-def finish_schema(s: dict) -> dict:
-    if isinstance(s.get("type"), list) and len(s["type"]) == 1:
-        s["type"] = s["type"][0]
-    for x in s.get("properties", {}).values():
-        finish_schema(x)
-    if "items" in s:
-        finish_schema(s["items"])
+TYPE_PRIORITY = ("object", "array", "string", "number", "boolean")
+
+
+def finish_schema(s: dict) -> dict | None:
+    """One `type` per node. Foxglove rejects type unions ("Unsupported type ["boolean","number"]",
+    seen on /arena/browser msg.value and /bias/reply steps.value), so a field seen with several
+    types gets the widest one (object > array > string > number > boolean; null dropped). A field
+    that was only ever null is left out of the schema (nothing to plot; raw views still show it)."""
+    t = s.get("type")
+    types = [x for x in (t if isinstance(t, list) else [t]) if x and x != "null"]
+    if not types:
+        return None
+    s["type"] = next(p for p in TYPE_PRIORITY if p in types)
+    if s["type"] != "object":
+        s.pop("properties", None)
+    if s["type"] != "array":
+        s.pop("items", None)
+    for k in list(s.get("properties", {})):
+        if finish_schema(s["properties"][k]) is None:
+            del s["properties"][k]
+    if "items" in s and finish_schema(s["items"]) is None:
+        del s["items"]
     return s
 
 
@@ -216,7 +231,7 @@ def convert(src: Path, dst: Path, ball_mm: float, keep_raw: bool = False) -> dic
         w.start(profile="", library="ros2-poc foxglove_json.py")
         chan = {}
         for topic in sorted(schemas):
-            sc = finish_schema(schemas[topic])
+            sc = finish_schema(schemas[topic]) or {"type": "object"}
             sc = {"$schema": "https://json-schema.org/draft/2020-12/schema", "title": topic, **sc}
             sid = w.register_schema(name=topic.strip("/").replace("/", "_"), encoding="jsonschema",
                                     data=json.dumps(sc).encode())
