@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shutil
 import signal
@@ -217,6 +218,36 @@ def bag_summary(bag: Path) -> dict:
     return {"records": info.get("records"), "topics": by_topic, "schemas": sorted(schemas), "torn": info.get("torn"),
             "bytes": sum(f.stat().st_size for f in files), "metadata_yaml": (bag / "metadata.yaml").exists(),
             "frame_lag_ms": {"p50": round(lag[len(lag) // 2], 3), "p99": round(lag[int(len(lag) * 0.99)], 3), "max": round(lag[-1], 3)} if lag else None}
+
+
+def typed_frame_values(bag: Path) -> dict:
+    """The recorded /arena/frame ArenaFrame messages, decoded with the converter's pure-Python
+    CDR decoder from the schema text IN THE BAG, judged by VALUE — a schema name alone said
+    nothing when two builds of the interfaces met in one process (2026-10-14: the bridge wrote
+    108-byte frames whose derived fields were garbage and the bag's schema text was the old
+    .msg, while every schema-name check passed). Returns counts for the check + its info."""
+    sys.path.insert(0, str(NODES))
+    from mcap_convert import read_all  # noqa: E402
+
+    recs, _ = read_all(bag)
+    frames = [r["msg"] for r in recs if r["topic"] == "/arena/frame" and r.get("msg") and "has_ft" in r["msg"]]
+    frames.sort(key=lambda m: m["seq"])
+    out = {"n": len(frames), "decode_errors": sum(1 for r in recs if r["topic"] == "/arena/frame" and r.get("decode_error")),
+           "has_derived": bool(frames) and all(k in frames[0] for k in ("turning_dps", "forward_mms"))}
+    if not frames or not out["has_derived"]:
+        return out
+    fin = lambda v: isinstance(v, float) and math.isfinite(v)  # noqa: E731
+    out["core_finite"] = all(fin(m["x"]) and fin(m["y"]) and fin(m["hd"]) and (fin(m["ft"]) or not m["has_ft"]) for m in frames)
+    out["fc_monotonic"] = all(b["fc"] > a["fc"] for a, b in zip(frames, frames[1:]))
+    out["first_nan"] = math.isnan(frames[0]["turning_dps"]) and math.isnan(frames[0]["forward_mms"])
+    rest = frames[1:]
+    good = [m for m in rest if fin(m["turning_dps"]) and fin(m["forward_mms"])]
+    out["finite_frac"] = round(len(good) / len(rest), 3) if rest else None
+    out["turning_max"] = round(max((abs(m["turning_dps"]) for m in good), default=0.0), 1)
+    out["forward_max"] = round(max((abs(m["forward_mms"]) for m in good), default=0.0), 2)
+    out["in_range"] = out["turning_max"] < 5000 and out["forward_max"] < 200  # the model fly, not a real one
+    out["ok"] = out["core_finite"] and out["fc_monotonic"] and out["first_nan"] and (out["finite_frac"] or 0) >= 0.95 and out["in_range"]
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -488,6 +519,12 @@ def main(argv: list[str] | None = None) -> int:
         if have_ifaces:
             check("typed: arena_interfaces importable → ArenaFrame + FicTracFrame recorded in the bag",
                   typed and bagsum.get("topics", {}).get("/fictrac/frame", 0) > 0, str(bagsum.get("schemas")))
+            tv = typed_frame_values(main_bag) if main_bag else {}
+            check("typed: ArenaFrame VALUES decode from the bag's own schema — core fields finite, fc monotonic, "
+                  "turning_dps/forward_mms NaN on the first frame and finite (model-fly range) on ≥ 95 % of the rest",
+                  tv.get("ok", False), json.dumps(tv))
+            print(f"  info  typed frames: {tv.get('n')}, derived finite on {tv.get('finite_frac')} of frames 2+, "
+                  f"|turning| ≤ {tv.get('turning_max')} deg/s, |forward| ≤ {tv.get('forward_max')} mm/s", file=sys.stderr)
         else:
             print("  info  arena_interfaces not importable here: String topics used (pixi install builds it on osx/linux; Windows needs MSVC)", file=sys.stderr)
 
