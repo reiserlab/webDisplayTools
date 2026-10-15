@@ -45,8 +45,11 @@ def port_in_use(proto: str, port: int, host: str = "127.0.0.1") -> bool:
     kind = socket.SOCK_STREAM if proto == "tcp" else socket.SOCK_DGRAM
     s = socket.socket(socket.AF_INET, kind)
     try:
-        if proto == "tcp":
+        if proto == "tcp" and os.name != "nt":
             # Ignore TIME_WAIT leftovers from a just-stopped rig; a LIVE listener still fails.
+            # Not on Windows: there SO_REUSEADDR lets this probe bind OVER a live listener (ww18
+            # 2026-10-15: a running router on 7447 went unreported), and TIME_WAIT does not block
+            # a plain bind.
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind((host, port))
         return False

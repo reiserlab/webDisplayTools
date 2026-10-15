@@ -781,6 +781,11 @@ async def run(args: argparse.Namespace) -> None:
             loop.add_signal_handler(sig, stop.set)
         except NotImplementedError:
             pass
+    if hasattr(signal, "SIGBREAK"):
+        # Windows: no add_signal_handler, and rig.py / the harness stop children with
+        # CTRL_BREAK_EVENT, whose default action ends the process on the spot — the bag then
+        # never gets metadata.yaml and the shadow file no logging_stopped (ww18 2026-10-15).
+        signal.signal(signal.SIGBREAK, lambda *_: loop.call_soon_threadsafe(stop.set))
 
     executor = SingleThreadedExecutor()
     executor.add_node(node)
