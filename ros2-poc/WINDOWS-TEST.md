@@ -31,6 +31,32 @@ Studio + controller run). At the end, commit the results file, push, and add a s
 "Windows results" row to the test-plan table in the PR #254 description.
 ```
 
+**Bare machine (no git / pixi / build tools yet, e.g. reiserlab-ww18):** paste this one instead;
+it bootstraps first. The Claude Code CLI on Windows needs Git for Windows installed beforehand (it
+runs through its bash); the desktop app does not.
+
+```
+You are on a Windows rig PC (reiserlab-ww18). Set it up for the LAB-303 ROS 2 Plan B Windows
+test, then run the test. Keep a results log from the first command: one row per step with
+pass/fail, timings, sizes and every error verbatim.
+1. Tooling check: git --version; pixi --version (need 0.69+); Chrome; whether Visual Studio
+   2022 Build Tools with the Desktop C++ workload is installed (vswhere or Settings → Apps).
+   Install what is missing: Git.Git via winget; pixi via
+   `irm -useb https://pixi.sh/install.ps1 | iex` (open a new shell afterwards);
+   `winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive
+   --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"` for the typed-message
+   build. Ask me before any admin/UAC step and before any download over 1 GB; record how
+   long each install took.
+2. Clone reiserlab/webDisplayTools under Documents\GitHub (gh auth login, or HTTPS), then
+   `git switch claude/ros-studio-plan-b-c44942`.
+3. Follow ros2-poc/WINDOWS-TEST.md in order. Steps 1–3 need no hardware and can run
+   unattended; stop and ask me to be at the keyboard before step 4 (BIAS) and step 5 (Studio +
+   controller over Web Serial). Stop bridge 3.4 first if it is running.
+4. Results: ros2-poc/windows-results-ww18-<date>.md committed to the branch and pushed; add a
+   "Windows results" row to the test-plan table in PR #254's description. Small fixes may go on
+   the branch (message names the step); never touch Production or Next.
+```
+
 Prerequisites on the PC (check before pasting): `git`, `pixi` 0.69+, Chrome, the BIAS
 Windows build with its FLIR camera, the G6 controller on USB, optionally FicTrac; and know whether
 Visual Studio 2022 Build Tools (Desktop C++) is installed — step 1b measures the typed-message
