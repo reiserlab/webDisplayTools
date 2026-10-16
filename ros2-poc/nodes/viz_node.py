@@ -8,10 +8,15 @@ envelopes into typed messages from packages already in ros-base (no custom messa
     /viz/fictrac/heading_deg   FicTrac col 17 heading, degrees 0–360
     /viz/fictrac/turn_deg      unwrapped turn since the node started (Σ wrap180(Δheading))
     /viz/fictrac/speed_dps     col 19 (rad/frame) × measured frame rate, degrees per second
-    /viz/fictrac/fwd_rad, /viz/fictrac/side_rad   cols 20 / 21
+    /viz/fictrac/fwd_rad, /viz/fictrac/side_rad   cols 20 / 21 (integrated since FicTrac started)
+    /viz/fictrac/fwd_dps, /viz/fictrac/side_dps   rates of cols 20 / 21, degrees per second —
+                               the same units as speed_dps, so the three share one plot
     /viz/fictrac/rate_hz       measured FicTrac frame rate (1 Hz update)
     /viz/arena/index           displayed frame index (from the bridge's /arena/frame)
     /viz/arena/azimuth_deg     feature azimuth in the fly's view = wrap180(frame_dir·idx·deg_per_frame + az0)
+    /viz/arena/display_deg     the display's UNWRAPPED rotation: Σ wrapped index steps × frame_dir ×
+                               deg_per_frame (DisplayAngle). A periodic pattern (a 20-frame grating)
+                               keeps azimuth_deg inside one period; this follows the fly's turn
     /viz/arena/bias_deg        live bias angle when a waveform runs (else 0)
     /viz/kinefly/left_deg, right_deg, lmr_deg, wbf_hz
     /viz/bias/frame_count, /viz/bias/fps
@@ -25,12 +30,14 @@ envelopes into typed messages from packages already in ros-base (no custom messa
   visualization_msgs/MarkerArray   /viz/markers (--markers-hz, default 20): the ball (sphere +
                     markings rotated by FicTrac's lab-frame orientation, cols 12–14), the fly
                     (arrow, fixed, facing +X), the arena (translucent cylinder) and the pattern
-                    feature (bar on the wall at the current azimuth), a text readout.
+                    feature (bar on the wall at wrap180(display_deg), which is the azimuth for a
+                    pattern spanning the arena and the pattern's rotation for a grating), a
+                    text readout.
 
 Pure presentation: nothing here is logged or fed back. Foxglove connects through the stock
 foxglove_bridge (`pixi run foxglove`, ws://localhost:8766); layouts in foxglove/*.json.
 
-    pixi run viz -- --deg-per-frame 1.8 --frame-dir 1 --feature-az0 0
+    pixi run viz -- --deg-per-frame 1.8 --frame-dir 1 --feature-az0 0 [--frames 20]
 """
 
 from __future__ import annotations
@@ -57,6 +64,57 @@ ARENA_H = 1.6
 
 def wrap180(deg: float) -> float:
     return ((deg + 180.0) % 360.0) - 180.0
+
+
+class DisplayAngle:
+    """The display's unwrapped rotation, from the WRAPPED frame index the bridge reports.
+
+    The bridge sends idx mod n_frames, so a periodic pattern (a 20-frame grating at 1.8°/frame)
+    only ever reports 0…19 and its azimuth spans one 36° period while the fly turns through
+    thousands of degrees. Summing the index steps, each taken the short way round the modulus,
+    recovers the rotation: Σ step × frame_dir × deg_per_frame. It starts at the first frame's
+    azimuth (frame_dir·idx·deg_per_frame + az0), so for a pattern that spans the arena
+    (n·deg_per_frame = 360) wrap180(deg) equals the feature azimuth.
+
+    The modulus is `frames` when given; otherwise it is learned within each epoch (the bridge's
+    `epoch` counts heading tares, i.e. trial starts, where the pattern may change) as the
+    largest index seen + 1. That is enough because a wrap always passes through the largest
+    index (19→0 or 0→19), which is then already counted. A jump at an epoch start (the tare
+    moving the display to its start frame) is kept as the step it is.
+    """
+
+    def __init__(self, deg_per_frame: float, frame_dir: int = 1, az0: float = 0.0, frames: int = 0) -> None:
+        self.dpf, self.dir, self.az0 = deg_per_frame, frame_dir, az0
+        self.fixed = frames if frames and frames > 1 else 0
+        self.n = self.fixed
+        self.deg: float | None = None
+        self._prev: int | None = None
+        self._epoch = None
+
+    def step(self, idx: int, epoch=None) -> float:
+        if not self.fixed:
+            if epoch != self._epoch:
+                self.n = 0
+            self.n = max(self.n, idx + 1)
+        self._epoch = epoch
+        if self._prev is None:
+            self.deg = self.dir * idx * self.dpf + self.az0
+        else:
+            d = idx - self._prev
+            if self.n > 1:
+                d = (d + self.n // 2) % self.n - self.n // 2
+            self.deg += self.dir * d * self.dpf
+        self._prev = idx
+        return self.deg
+
+
+def per_frame_rate_dps(prev: tuple | None, fc: int, value: float, frame_rate_hz: float):
+    """deg/s of an integrated FicTrac quantity (cols 20/21, rad) between consecutive samples:
+    Δvalue / Δframe-counter × frame rate, so a dropped frame does not double the rate. None on
+    the first sample or when the counter does not advance (a FicTrac restart)."""
+    if prev is None or fc <= prev[0] or frame_rate_hz <= 0:
+        return None
+    return math.degrees(value - prev[1]) / (fc - prev[0]) * frame_rate_hz
 
 
 def rotvec_to_quat(rx: float, ry: float, rz: float):
@@ -138,9 +196,12 @@ class VizNode(Node):
             "speed": f64("/viz/fictrac/speed_dps"),
             "fwd": f64("/viz/fictrac/fwd_rad"),
             "side": f64("/viz/fictrac/side_rad"),
+            "fwd_dps": f64("/viz/fictrac/fwd_dps"),
+            "side_dps": f64("/viz/fictrac/side_dps"),
             "ft_rate": f64("/viz/fictrac/rate_hz"),
             "index": f64("/viz/arena/index"),
             "az": f64("/viz/arena/azimuth_deg"),
+            "display": f64("/viz/arena/display_deg"),
             "bias": f64("/viz/arena/bias_deg"),
             "left": f64("/viz/kinefly/left_deg"),
             "right": f64("/viz/kinefly/right_deg"),
@@ -163,15 +224,20 @@ class VizNode(Node):
         self.create_subscription(String, "/kinefly/raw", self._kinefly, RELIABLE_QOS)
         self.create_subscription(String, "/bias/status", self._bias_status, RELIABLE_QOS)
         self.create_subscription(String, "/bias/reply", self._bias_reply, RELIABLE_QOS)
-        self.create_subscription(String, "/arena/frame", self._arena, 10)
+        # RELIABLE_QOS (depth 200) like the others: with depth 10 this subscription dropped 15 of
+        # 9,969 frames when a ww18 bag was replayed at 1x (2026-10-16).
+        self.create_subscription(String, "/arena/frame", self._arena, RELIABLE_QOS)
 
         # State for the markers
         self.quat = (0.0, 0.0, 0.0, 1.0)
         self.heading_deg = 0.0
         self.turn_deg = 0.0
         self._prev_hd = None
+        self._prev_motion = None  # (frame counter, col 20, col 21) of the previous FicTrac frame
         self.idx = 0
         self.az_deg = 0.0
+        self.display = DisplayAngle(a.deg_per_frame, a.frame_dir, a.feature_az0, a.frames)
+        self.display_deg = None
         self.bias_deg = 0.0
         self.bias_active = False
         self.bias_state = "unreachable"
@@ -233,9 +299,18 @@ class VizNode(Node):
         self.quat = rotvec_to_quat(f[11], f[12], f[13])
         self._pub("heading", hd)
         self._pub("turn", self.turn_deg)
-        self._pub("speed", math.degrees(f[18]) * (s.rate_hz or self.a.assume_rate))
+        rate = s.rate_hz or self.a.assume_rate
+        self._pub("speed", math.degrees(f[18]) * rate)
         self._pub("fwd", f[19])
         self._pub("side", f[20])
+        fc = int(f[0])
+        prev = self._prev_motion
+        fwd = per_frame_rate_dps(prev and (prev[0], prev[1]), fc, f[19], rate)
+        side = per_frame_rate_dps(prev and (prev[0], prev[2]), fc, f[20], rate)
+        if fwd is not None and side is not None:
+            self._pub("fwd_dps", fwd)
+            self._pub("side_dps", side)
+        self._prev_motion = (fc, f[19], f[20])
 
     def _kinefly(self, msg: String) -> None:
         env = self._env(msg)
@@ -307,6 +382,8 @@ class VizNode(Node):
             self._pub("index", idx)
             self.az_deg = wrap180(self.a.frame_dir * idx * self.a.deg_per_frame + self.a.feature_az0)
             self._pub("az", self.az_deg)
+            self.display_deg = self.display.step(idx, fr.get("epoch"))
+            self._pub("display", self.display_deg)
         b = fr.get("bias")
         self.bias_active = isinstance(b, (int, float))
         self.bias_deg = float(b) if self.bias_active else 0.0
@@ -384,8 +461,10 @@ class VizNode(Node):
         cyl.scale.z = ARENA_H
         cyl.color = color(0.2, 0.6, 1.0, 0.12)
         arr.markers.append(cyl)
-        # 4: the pattern feature on the wall at the current azimuth (right-positive → −Y)
-        az = math.radians(self.az_deg)
+        # 4: the pattern feature on the wall (right-positive → −Y), at the display's rotation: the
+        #    feature azimuth for a pattern that spans the arena, and for a periodic pattern (a
+        #    grating) a point of the pattern turning with it rather than its phase in one period
+        az = math.radians(wrap180(self.display_deg) if self.display_deg is not None else self.az_deg)
         feat = self._marker(4, Marker.CUBE)
         feat.pose.position.x = (ARENA_R - 0.08) * math.cos(az)
         feat.pose.position.y = -(ARENA_R - 0.08) * math.sin(az)
@@ -401,8 +480,9 @@ class VizNode(Node):
         txt.pose.position.z = BALL_R + ARENA_H + 0.6
         txt.scale.z = 0.3
         txt.color = color(0.9, 0.93, 0.95, 1.0)
-        txt.text = (f"idx {self.idx}   az {self.az_deg:+.1f}°   heading {self.heading_deg:.1f}°"
-                    + (f"   bias {self.bias_deg:+.1f}°" if self.bias_active else ""))
+        txt.text = (f"idx {self.idx}   display {self.display_deg or 0.0:+.0f}°   turn {self.turn_deg:+.0f}°"
+                    f"   heading {self.heading_deg:.0f}°"
+                    + (f"   bias {self.bias_deg:+.0f}°" if self.bias_active else ""))
         arr.markers.append(txt)
         self.p_markers.publish(arr)
 
@@ -412,6 +492,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--deg-per-frame", type=float, default=1.8, help="pattern pitch, display degrees per frame index (default: 1.8)")
     p.add_argument("--frame-dir", type=int, default=1, choices=(1, -1), help="+1: an index increase moves the feature RIGHT (default)")
     p.add_argument("--feature-az0", type=float, default=0.0, help="feature azimuth at index 0, degrees, right-positive (default: 0)")
+    p.add_argument("--frames", type=int, default=0,
+                   help="pattern frame count (the index modulus) for display_deg; 0 = learn it per epoch from the indices (default)")
     p.add_argument("--assume-rate", type=float, default=50.0, help="FicTrac frame rate used for speed before the first measured second (default: 50)")
     p.add_argument("--markers-hz", type=float, default=20.0, help="3D marker update rate (default: 20)")
     p.add_argument("--stale-s", type=float, default=2.0, help="seconds of silence before a source reads STALE (default: 2)")
