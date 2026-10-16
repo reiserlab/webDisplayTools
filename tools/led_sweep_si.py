@@ -119,6 +119,12 @@ def log(results: list, **row) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # A Windows console is cp1252 by default: the plan/cue lines use → and ×, which would crash print().
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=5555)
