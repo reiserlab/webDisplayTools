@@ -365,7 +365,9 @@ pixi run -e typed-prebuilt test
 
 Expected: install ~5 s on ww18 with a warm package cache (a fresh PC first downloads the ROS
 packages, as in step 1a), no
-`failed to build` and no compiler message; `--check` prints `"importable": true` and
+`failed to build` and no compiler message. In a fresh checkout pixi also starts the ROS build backend
+once (a ~15 MB download from prefix.dev) to read the `typed` environment's package metadata
+from the lock. That is not a build; nothing compiles. `--check` prints `"importable": true` and
 `"serializes": true`; the harness passes every check (49 / 49 on ww18, 2026-10-16) with `info  typed topics: True`.
 If step 5's hardware is attached, `pixi run -e typed-prebuilt rig …` runs the rig with typed topics.
 Record: the PC's Windows version, "no Visual Studio" confirmed (`winget list Microsoft.VisualStudio`
