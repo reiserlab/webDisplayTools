@@ -102,9 +102,11 @@ variables:
   - &step_dur 3             # s per duty level
   - &grab_settle 1          # s between the grab reply and the first stimulus
   - &blank_dur 3            # s dark before the first and after the last color
-  - &frames_per_grab 640    # ScanImage framesPerSlice: ≥ (grab_settle + 6·step_dur) × scan frame rate
-                            #   Bergamo 2026-10-16: 29.1 Hz at 256×256 unidirectional → 19 s × 29.1 = 553 + ~3 s margin
-                            #   (at 512×512 it is 15.0 Hz → use 330)
+  - &frames_per_grab 800    # ScanImage framesPerSlice: ≥ (grab_settle + 6·step_dur) × scan frame rate
+                            #   Bergamo 2026-10-16: 29.1 Hz at 256×256 unidirectional. Host-timed steps ran
+                            #   ~3.6 s (not 3) for colors 2–4, so the stimulus spans ~24.4 s from the grab
+                            #   reply; 640 frames (22 s) cut the end of duty 255 → 800 (27.5 s, ~3 s margin).
+                            #   (at 512×512 it is 15.0 Hz → ~410)
   - &wait_idle_s 45         # waitIdle timeout: frames_per_grab / frame rate + margin
   # ── intensity = panel duty (0–255) ────────────────────────────────────────
   - &duty_a 7
