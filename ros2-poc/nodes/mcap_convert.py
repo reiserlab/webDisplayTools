@@ -361,6 +361,12 @@ def convert(records: list[dict], level: str | None = None, order: str = "seq", c
                 add(o["seq"], int(o["ms"]) - t0, "session", {"type": "session", "event": "logging_started", "ms": int(o["ms"])})
             elif ev == "logging_stopped":
                 add(o["seq"], int(o["ms"]) - t0, "session", {"type": "session", "event": "logging_stopped", "ms": int(o["ms"])})
+            elif ev == "recovered":
+                # Appended by mcap_index.recover_bag to a bag whose writer was killed: the run has
+                # no logging_stopped, and this line says what was salvaged (sorts last by seq).
+                stats["recovered"] = True
+                add(o["seq"], int(o["ms"]) - t0, "session", {"type": "session", "event": "recovered", "ms": int(o["ms"]), "recovered": True,
+                                                              **{k: o[k] for k in ("salvaged_records", "torn", "torn_error", "file") if k in o}})
         elif t == TOPIC_BROWSER:
             o = _json_of(r)
             if not isinstance(o, dict) or "raw" not in o:
@@ -507,6 +513,7 @@ def convert(records: list[dict], level: str | None = None, order: str = "seq", c
         lines = lines[:stop_at] + moved + [lines[stop_at]] + [ln for ln in tail if id(ln) not in derived_ids]
     # The frame_schema / session-open lines were given seq = the open record's seq and rank 0,
     # so they stay first; a logging_stopped line from a crash-truncated bag may be missing.
+    stats.setdefault("recovered", False)
     report = {"t0": t0, "level": level, "order": order, "lines": len(lines), **stats,
               "closed": any(isinstance(l, dict) and l.get("type") == "session" and l.get("event") == "logging_stopped" for l in lines)}
     return lines, report

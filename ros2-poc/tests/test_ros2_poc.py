@@ -42,7 +42,9 @@ log, plus:
   typed topics when arena_interfaces is built          ArenaFrame / FicTracFrame schemas in the bag
   crash: bridge node SIGKILLed mid-run                 what `--recover` + conversion salvages from the
                                                         bag (both writer profiles) vs the line-buffered
-                                                        NDJSON — reported, crashsafe profile gated
+                                                        NDJSON — reported, crashsafe profile gated;
+                                                        then a RESTARTED node's log_export recovers the
+                                                        bag on its own (recovered:true, whole bag left)
 
 Exit 0 when all checks pass. Prints a markdown summary. Artifacts are kept with --keep.
 """
@@ -646,6 +648,48 @@ def main(argv: list[str] | None = None) -> int:
                     check("crash (crashsafe profile): --recover + convert salvages the run up to the kill (frames within 10 of the NDJSON, file intact)",
                           mc.get("frames") is not None and nd.get("frames") is not None and nd["frames"] - mc["frames"] <= 10 and mc["frames"] > 0,
                           f"ndjson frames {nd.get('frames')} vs recovered {mc.get('frames')}")
+                    # ── auto-recovery on export (LAB-303 adoption week): the rig restarts the bridge
+                    # node after a crash; the Studio's (or `pixi run export`'s) next log_export must get
+                    # the salvaged run WITHOUT anyone running --recover by hand, flagged `recovered:true`,
+                    # and leave a whole bag behind (metadata.yaml + index) for every later reader.
+                    cb2 = start("bridge-restart", [PY, str(NODES / "bridge_node.py"), "--log-dir", str(runlogs), "--source-timeout", "1.5", "--bag-profile", profile])
+                    restart_ok = wait_port("127.0.0.1", 8765, 20.0)
+                    rx_out = work / "crash-crashsafe.restart-export.jsonl"
+                    rx = run_capture([PY, str(NODES / "export_log.py"), "--json", "--out", str(rx_out)], timeout=60) if restart_ok else None
+                    meta: dict = {}
+                    if rx is not None and rx.returncode == 0:
+                        try:
+                            meta = json.loads(rx.stdout.strip().splitlines()[-1])
+                        except (json.JSONDecodeError, IndexError):
+                            meta = {"raw": rx.stdout[-200:]}
+                    rx_objs = read_jsonl(rx_out) if rx_out.exists() else []
+                    rx_frames = sum(1 for o in rx_objs if isinstance(o, list) and isinstance(o[0], (int, float)))
+                    marker = next((o for o in rx_objs if isinstance(o, dict) and o.get("type") == "session" and o.get("event") == "recovered"), None)
+                    rec = meta.get("recovery") or {}
+                    res["restart_export"] = {"rc": rx.returncode if rx else None, "recovered": meta.get("recovered"), "whole": rec.get("whole"),
+                                             "salvaged_records": rec.get("salvaged_records"), "frames": rx_frames, "marker": bool(marker),
+                                             "reason": rec.get("reason")}
+                    check("crash (crashsafe): a restarted bridge node recovers the unclosed bag on log_export itself (recovered:true, frames == --recover, `recovered` session marker)",
+                          restart_ok and meta.get("recovered") is True and rec.get("whole") is True and rx_frames == mc.get("frames") and marker is not None,
+                          json.dumps(res["restart_export"]))
+                    plain = run_capture([PY, str(NODES / "mcap_convert.py"), str(bag), "--out", str(work / "crash-crashsafe.plain.jsonl")], timeout=60)
+                    plain_frames = sum(1 for o in read_jsonl(work / "crash-crashsafe.plain.jsonl") if isinstance(o, list) and isinstance(o[0], (int, float))) if plain.returncode == 0 else None
+                    indexed = False
+                    try:
+                        from mcap.reader import make_reader
+
+                        for f in bag.glob("*.mcap"):
+                            with open(f, "rb") as fh:
+                                summ = make_reader(fh).get_summary()
+                                indexed = summ is not None and bool(summ.chunk_indexes)
+                    except Exception as exc:
+                        res["restart_export"]["index_error"] = repr(exc)
+                    bak = [f.name for f in bag.glob("*.torn.bak")]
+                    res["restart_export"].update({"metadata_yaml": (bag / "metadata.yaml").exists(), "indexed": indexed, "plain_frames": plain_frames, "torn_bak": bak})
+                    check("crash (crashsafe): the recovered bag is whole — metadata.yaml, chunk index, converts WITHOUT --recover to the same frames, torn original kept as .torn.bak",
+                          (bag / "metadata.yaml").exists() and indexed and plain.returncode == 0 and plain_frames == rx_frames and len(bak) == 1,
+                          json.dumps({k: res["restart_export"][k] for k in ("metadata_yaml", "indexed", "plain_frames", "torn_bak")}))
+                    cb2.stop()
                 else:
                     print(f"  info  crash (default profile): NDJSON kept {nd.get('frames')} frames; the bag's recovered frames: {mc.get('frames')} "
                           f"(rosbag2 defaults buffer a 768 KiB chunk + a message cache until close)", file=sys.stderr)

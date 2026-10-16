@@ -47,6 +47,12 @@ PLAN B SPIKE (LAB-303, 2026-10-14) — MCAP as the record of truth:
     acked log level is the converter's default level. The live NDJSON writer is KEPT as a
     shadow file during the spike: it is the fidelity reference (`converted == live` is checked
     at every export and printed) and the crash-loss baseline. `--export live` returns it instead.
+    A bag the writer never closed (this node was killed mid-run; no metadata.yaml / torn tail)
+    is RECOVERED on export — salvaged, indexed, metadata.yaml written by rosbag2's Reindexer,
+    `{"event":"recovered"}` appended to its /arena/session (nodes/mcap_index.recover_bag) —
+    and the reply carries `recovered: true`; a freshly started node adopts the newest such bag
+    in --log-dir for its first export, so the Studio's export after a bridge restart gets the
+    salvaged run. A bag with nothing salvageable falls back to the run's shadow NDJSON.
   * ONE ms base per run: the pipeline's t0 is set from the log's open stamp (bridge 3.4 takes
     two now_ms() samples there — comparison.md appendix 4).
   * Typed messages when `arena_interfaces` is built (`pixi install` builds it; see
@@ -84,6 +90,7 @@ BRIDGE_PY = REPO / "fictrac-bridge" / "bridge.py"
 sys.path.insert(0, str(HERE))
 from _common import mono_ns, probe_interfaces, raise_timer_resolution, wall_ms, wall_ns  # noqa: E402
 from mcap_convert import convert_bag  # noqa: E402
+from mcap_index import needs_recovery, recover_bag  # noqa: E402
 from recorder import PROFILES, STRING_TYPE, Recorder  # noqa: E402
 
 # Typed messages only when the package imports AND serializes (pixi's `typed` env, or a
@@ -429,20 +436,64 @@ class RecordingLogWriter(B.LogWriter):
             print(f"[record] closed {self.last_bag.get('bag')}: {self.last_bag.get('records')} records, "
                   f"{self.last_bag.get('bytes_on_disk')} B on disk", file=sys.stderr)
 
+    # ── crash recovery on export ─────────────────────────────────────────────────────
+    def torn_bags(self) -> list[str]:
+        """Bags in the log dir that a killed writer left behind (no metadata.yaml / torn
+        tail), newest first — what a restarted node can still export."""
+        d = Path(self._dir or ".")
+        try:
+            bags = sorted((b for b in d.glob("arena-log-*.bag") if b.is_dir()), reverse=True)
+        except OSError:
+            return []
+        return [str(b) for b in bags if needs_recovery(b)]
+
+    def _adopt_torn_bag(self) -> bool:
+        """Nothing open and nothing exported yet in THIS process (a restart after a crash):
+        the newest torn bag becomes the export target, with its shadow file as the fallback."""
+        torn = self.torn_bags()
+        if not torn:
+            return False
+        self.bag_name = torn[0]
+        shadow = torn[0][:-4] + ".jsonl"
+        self._name = shadow  # the base class exports the shadow when conversion fails
+        print(f"[record] adopting the unclosed bag of a previous run for export: {torn[0]}", file=sys.stderr)
+        return True
+
     def export_current(self):
         if self._fh:
             self.close()
+        recovery = None
+        if not self._name and not self.bag_name:
+            self._adopt_torn_bag()
         name, live = super().export_current()
+        if self.bag_name and needs_recovery(self.bag_name):
+            # The writer never closed this bag (a crash, LAB-303 ww18 5.7): salvage + index +
+            # metadata.yaml FIRST, so the conversion below reads a whole bag and every later
+            # reader (Foxglove, ros2 bag info) opens it without --recover.
+            recovery = recover_bag(self.bag_name)
+            print(f"[recover] {self.bag_name}: {recovery.get('reason')} → salvaged {recovery.get('salvaged_records')} records, "
+                  f"metadata.yaml {'written' if (recovery.get('metadata_yaml') or {}).get('written') else 'NOT written'} "
+                  f"in {recovery.get('seconds')} s", file=sys.stderr)
+            if name is None and self._name and Path(self._name).exists():
+                name, live = super().export_current()
+        if name is None and self.bag_name:
+            name = Path(self.bag_name).name[:-4] + ".jsonl"  # a bag whose shadow file is gone: still exportable
         if name is None or self._export == "live" or not self.bag_name:
+            if recovery:
+                self.last_convert = {"recovered": True, "recovery": recovery}
             return name, live
         t0 = time.perf_counter()
         try:
             text, report = convert_bag(self.bag_name, level=None, order="seq")
         except Exception as exc:
             print(f"[convert] FAILED ({exc!r}) — exporting the shadow file instead", file=sys.stderr)
-            self.last_convert = {"error": repr(exc)}
+            self.last_convert = {"error": repr(exc), "recovered": bool(recovery), "recovery": recovery,
+                                 "fallback": "shadow" if live is not None else None}
             return name, live
         report["convert_ms"] = round(1000 * (time.perf_counter() - t0), 1)
+        if recovery:
+            report["recovered"] = True
+            report["recovery"] = recovery
         report["identical_to_live"] = text == live
         if not report["identical_to_live"]:
             a, b = text.splitlines(), (live or "").splitlines()
@@ -762,6 +813,27 @@ async def run(args: argparse.Namespace) -> None:
             return
         if kind == "log_export":
             log.record_browser(text)  # the last record of the run (the export closes the bag)
+            # bridge.py's reply, plus what the converter/recovery reports: `recovered: true`
+            # when the bag had to be salvaged first (a restart after a crash), and the
+            # conversion report so the asker can see lines/level/fidelity without the log.
+            name, content = log.export_current()
+            conv = log.last_convert or {}
+            if name is not None:
+                reply_msg = {"type": "log_export_result", "name": name, "content": content,
+                             "recovered": bool(conv.get("recovered")), "record": "mcap"}
+                if conv.get("recovered"):
+                    reply_msg["recovery"] = conv.get("recovery")
+                if conv.get("fallback"):
+                    reply_msg["fallback"] = conv["fallback"]
+                for k in ("lines", "level", "identical_to_live", "convert_ms", "closed"):
+                    if k in conv:
+                        reply_msg[k] = conv[k]
+            else:
+                reply_msg = {"type": "log_export_result", "error": "no log file has been written"}
+            await ws_reply(websocket, reply_msg)
+            print(f"[log] export → {name or 'nothing'}" + (f" ({len(content)} chars" + (", recovered" if conv.get("recovered") else "") + ")" if content else ""),
+                  file=sys.stderr)
+            return
         await dispatch_34(raw, websocket)
 
     node = BridgeNode(loop, queue, on_kinefly, on_connector, log, typed)
@@ -861,6 +933,11 @@ async def run(args: argparse.Namespace) -> None:
     consumer = asyncio.create_task(consume_recording())
     wd = asyncio.create_task(watchdog())
 
+    torn = log.torn_bags()
+    if torn:
+        print(f"[record] {len(torn)} unclosed bag(s) from a previous run in {args.log_dir}: {', '.join(Path(b).name for b in torn[:3])}"
+              f"{', …' if len(torn) > 3 else ''} — the next log_export (`pixi run export`) recovers the newest; "
+              f"`pixi run reindex -- <bag> --recover` for the others", file=sys.stderr)
     async with B.serve(hub.serve_client, args.ws_host, args.ws_port, max_size=B.WS_MAX_SIZE):
         print(
             f"[ws] serving ws://{args.ws_host}:{args.ws_port}  (bridge-node {NODE_VERSION}; "

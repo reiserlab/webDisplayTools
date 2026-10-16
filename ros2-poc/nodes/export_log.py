@@ -14,6 +14,10 @@ Why it exists: the Studio asks the bridge to export only when it commits the run
 course repo (a token stored on that origin). A rig without one keeps the bridge logging until
 the next run, so the last run's bag stays open; this is the one-command way to close and
 collect it. Pure Python (`websockets`), no ROS.
+
+After a bridge crash: restart the node (`pixi run rig` does) and run this once — the node
+recovers the unclosed bag first (salvage + index + metadata.yaml) and the reply says
+`recovered: true`; `--json` prints the reply's fields (everything but the content) to stdout.
 """
 
 from __future__ import annotations
@@ -47,6 +51,7 @@ def main(argv=None) -> int:
     ap.add_argument("--url", default="ws://127.0.0.1:8765")
     ap.add_argument("--out", default=None, help="output path (default: runlogs/exports/<bridge's file name>; '-' = stdout)")
     ap.add_argument("--timeout", type=float, default=60.0, help="seconds to wait for the reply (a long run converts in well under 1 s per 10 000 lines)")
+    ap.add_argument("--json", action="store_true", help="print the reply's metadata (name, lines, recovered, recovery, …) as JSON to stdout")
     a = ap.parse_args(argv)
     try:
         msg = asyncio.run(export(a.url, a.timeout))
@@ -57,6 +62,18 @@ def main(argv=None) -> int:
         print(f"[export] bridge answered: {msg.get('error') or msg}", file=sys.stderr)
         return 1
     content, name = msg["content"], msg.get("name") or "arena-log-export.jsonl"
+    meta = {k: v for k, v in msg.items() if k not in ("content", "type")}
+    meta["bytes"] = len(content.encode("utf-8"))
+    if msg.get("recovered"):
+        rec = msg.get("recovery")
+        if rec:  # salvaged by THIS export
+            print(f"[export] RECOVERED from an unclosed bag ({rec.get('reason')}): {rec.get('salvaged_records')} records salvaged, "
+                  f"metadata.yaml {'written' if (rec.get('metadata_yaml') or {}).get('written') else 'not written'}"
+                  + (f"; content is the shadow file ({msg['fallback']})" if msg.get("fallback") else ""), file=sys.stderr)
+        else:  # a bag recovered by an earlier export: the log still ends in its `recovered` marker
+            print("[export] content comes from a bag that was recovered after a crash (no logging_stopped; see its final session line)", file=sys.stderr)
+    if a.json:
+        print(json.dumps(meta))
     if a.out == "-":
         sys.stdout.write(content)
         return 0
