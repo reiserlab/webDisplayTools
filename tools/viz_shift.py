@@ -62,8 +62,8 @@ def main() -> int:
     # Exact times where possible: viz_node publishes ONE message per input message on these
     # topics (from that input's callback), in order, so when the counts agree the k-th output
     # gets the ORIGINAL receive time of the k-th input. Values were checked to line up.
-    by_input = {"/fictrac/raw": ["heading_deg", "turn_deg", "speed_dps", "fwd_rad", "side_rad"],
-                "/arena/frame": ["index", "azimuth_deg", "bias_deg"],
+    by_input = {"/fictrac/raw": ["heading_deg", "turn_deg", "speed_dps", "fwd_rad", "side_rad", "fwd_dps", "side_dps"],
+                "/arena/frame": ["index", "azimuth_deg", "display_deg", "bias_deg"],
                 "/bias/status": ["frame_count", "fps", "reachable", "capturing", "logging", "state"],
                 "/kinefly/raw": ["left_deg", "right_deg", "lmr_deg", "wbf_hz"]}
     prefix = {"/fictrac/raw": "/viz/fictrac/", "/arena/frame": "/viz/arena/", "/bias/status": "/viz/bias/",
@@ -81,6 +81,8 @@ def main() -> int:
             t = prefix[inp] + n
             if t in viz_counts and viz_counts[t] == len(in_times.get(inp, [])):
                 exact[t] = in_times[inp]
+            elif t in viz_counts and viz_counts[t] == len(in_times.get(inp, [])) - 1:
+                exact[t] = in_times[inp][1:]  # rates: published from the second input on
     # Where viz_node MISSED inputs during playback (its /arena/frame subscription keeps 10), the
     # counts differ: align by sequence instead. Walk the played-back frames (captured here, each
     # mapped to its original time) in order and give each /viz/arena/index message the first
@@ -146,7 +148,7 @@ def main() -> int:
             counts[ch.topic] = counts.get(ch.topic, 0) + 1
         w.add_metadata("viz_replay", {
             "run": orig_dir.name.removesuffix(".bag"),
-            "viz_node": "reiserlab/webDisplayTools PR #252 ros2-poc/nodes/viz_node.py @ 2783662, default args",
+            "viz_node": "reiserlab/webDisplayTools PR #258 (branch claude/viz-dashboard-fixes) ros2-poc/nodes/viz_node.py @ 15d95ae, default args",
             "replay": "ros2 bag play at 1x of the original bag's /fictrac/raw /arena/frame /bias/status /bias/reply",
             "median_offset_ns": str(off), "alignment_matches": str(len(use)),
             "replay_jitter_ms_p5_p95": f"{spread_ms[0]:.2f},{spread_ms[1]:.2f}",

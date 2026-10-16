@@ -46,23 +46,28 @@ Each schema field has exactly one `type`, because Foxglove rejects type unions. 
 several types gets the widest one (string over number over boolean), and a field that was always
 null is left out of the schema. The messages themselves are unchanged.
 
-**`<run>.viz.mcap`: what PR #252's `viz_node` shows for that run.** This file holds the `/viz/*`
-topics (std_msgs), `/diagnostics` and `/viz/markers` (the 3D scene) that the two new dashboards
-read. `viz_node` is `ros2-poc/nodes/viz_node.py` at commit `2783662`, run with default arguments:
-1.8° per frame, frame direction +1, feature azimuth 0 at index 0.
+**`<run>.viz.mcap`: what `viz_node` shows for that run.** This file holds the `/viz/*` topics
+(std_msgs), `/diagnostics` and `/viz/markers` (the 3D scene) that the two dashboards read.
+`viz_node` is the fixed one from PR #258 (branch `claude/viz-dashboard-fixes`, commit `15d95ae`),
+run with default arguments: 1.8° per frame, frame direction +1, feature azimuth 0 at index 0, and
+the frame count learned per epoch. Compared with PR #252's first version (`2783662`) it adds:
+
+- `/viz/arena/display_deg`: the display's unwrapped rotation;
+- `/viz/fictrac/fwd_dps` and `side_dps`: forward and side rates in °/s;
+- no dropped frames.
+
+Files made with the first version are in this branch's history at `659c234`.
 
 To make it, each bag was played back at 1× into `viz_node` and its outputs were recorded. Then
 every output was moved back onto the run's own timeline:
 
-- Each message that one input produces (FicTrac, arena index/azimuth/bias, BIAS state/frame count)
-  carries the original receive time of that input. Checked: the index and heading values and times
-  match the run exactly, with |Δt| = 0.
+- Each message that one input produces carries the original receive time of that input. That
+  covers FicTrac, the arena index / azimuth / display / bias, and the BIAS state and frame count.
+  Checked: in every run, every frame's index and heading match the run exactly, with |Δt| = 0.
 - The 3D markers (20 Hz), diagnostics and FicTrac rate are timer-driven. They carry the nearest
   frame's offset, which is within the playback's ±7 ms jitter.
-- During playback `viz_node` missed a few frames, because its `/arena/frame` subscription keeps
-  only 10: 15 of 9,969 in run 5.2, 17 of 58,918 in the soak and 8 of 12,226 in run 5c. The index
-  points it did draw are matched to their frames by order and value. 3, 3 and 4 of them couldn't be
-  matched and sit on a neighbouring frame.
+- Checked on the closed-loop runs: display − turn − bias stays constant to within ±0.9° (half a
+  frame, p1–p99) in every epoch, so the display rotation follows the fly as it should.
 - `turn_deg` starts at 0 at the start of each run.
 
 ## Opening a run in Foxglove
@@ -73,11 +78,12 @@ every output was moved back onto the run's own timeline:
 
 | layout | from | reads |
 |---|---|---|
-| `layouts/arena-fictrac.json` | PR #252 | `.viz.mcap`: 3D arena (ball, fly, feature bar), "Closed loop: fly vs display", FicTrac kinematics, displayed index, diagnostics |
-| `layouts/arena-bias.json` | PR #252 | `.viz.mcap` for the BIAS state and the frame count vs index; `.foxglove.mcap` for the BIAS replies (`/bias/reply`) |
+| `layouts/arena-fictrac.json` | PR #258 (`15d95ae`) | `.viz.mcap`: 3D arena (ball, fly, feature bar), fly turn vs display rotation, bias angle, kinematics in °/s, displayed index, diagnostics |
+| `layouts/arena-bias.json` | PR #258 (`15d95ae`) | `.viz.mcap` for the BIAS state, camera frame count and displayed index (separate plots); `.foxglove.mcap` for the BIAS replies (`/bias/reply`) |
 | `layouts/foxglove-arena-layout.json` | PR #254 | `.foxglove.mcap` only: index, heading, turning and forward motion, bias, epochs, raw browser, event and BIAS views |
 
-The layout files are byte-identical copies of the ones on their branches.
+The layout files are byte-identical copies of the ones on their branches. PR #252's first
+versions of the two dashboards are in this branch's history at `659c234`.
 
 **Opening by URL instead of downloading.** Foxglove's web app can open a file straight from a URL:
 `https://app.foxglove.dev/<workspace>/view?ds=remote-file&ds.url=<url>`. Repeat `ds.url` to open
@@ -89,7 +95,7 @@ several files. It needs a server that lets the browser see `Accept-Ranges`:
   sends browsers brotli-compressed bytes, so Foxglove sees the wrong file size and can't jump to the
   index. It falls back to reading the whole file in order ("This file is unindexed"). That works,
   just more slowly.
-- jsDelivr serves files up to 20 MB only. That rules out the soak's `.foxglove.mcap`.
+- jsDelivr serves files up to 20 MB only. That rules out both of the soak's files.
 
 Downloading the files and opening them locally avoids both problems. The files are fully indexed:
 chunk indexes, message indexes and summary offsets.
@@ -105,7 +111,8 @@ These stay empty:
 - **Log** (`RosOut`, `/rosout`): the rig's bags never recorded `/rosout`, so this panel only works live.
 - **The B2 run**: it is a camera-only check with no FicTrac, so only the BIAS panels have data.
 
-**Checked in Foxglove itself** (web app 3.4, 2026-10-16, runs 5.2 and the soak opened as local files):
+**PR #252's first versions, checked in Foxglove itself** (web app 3.4, 2026-10-16, runs 5.2 and
+the soak opened as local files). These findings led to PR #258:
 
 - `arena-fictrac` draws everything:
   - the 3D arena: ball, fly, feature bar, and a readout of index, azimuth, heading and bias;
@@ -118,7 +125,8 @@ These stay empty:
 - The only warning is "Different profiles detected in data sources". The `.viz.mcap` has the
   `ros2` profile and the `.foxglove.mcap` has none. No panel was affected.
 
-**Suggestions for PR #252's dashboards, from this data:**
+**Suggestions for PR #252's dashboards, from this data.** PR #258 addresses all seven: 1, 2, 3
+and 7 in `viz_node`; 4 and 5 in the layouts; 6 by titling the log panels "live only".
 
 1. **`viz_node` drops frames.** Its `/arena/frame` subscription keeps only 10 messages, and it lost
    15, 17 and 8 frames during playback. Its other subscriptions keep 200 (`RELIABLE_QOS`); this one should too.
@@ -148,7 +156,7 @@ These stay empty:
 | file | 5.2 | 5.7 | soak | 5c | B2 | total |
 |---|---|---|---|---|---|---|
 | `.foxglove.mcap` | 3.6 MB | 0.5 MB | 24.6 MB | 4.3 MB | 0.02 MB | 33.1 MB |
-| `.viz.mcap` | 2.9 MB | 0.4 MB | 17.3 MB | 3.6 MB | 0.09 MB | 24.3 MB |
+| `.viz.mcap` | 3.8 MB | 0.5 MB | 22.3 MB | 4.6 MB | 0.08 MB | 31.3 MB |
 
 ## Provenance
 
@@ -170,7 +178,7 @@ environment of PR #254.
 |---|---|
 | `foxglove_json.py` | bag → `.foxglove.mcap` |
 | `verify_fox.py` | checks a `.foxglove.mcap` against its bag |
-| `replay.ps1` | ww18 paths; plays bags back at 1× into `viz_node` and records with `viz_capture.py`. Put `viz_node.py` and `_common.py` from PR #252 (`2783662`) beside it |
+| `replay.ps1` | ww18 paths; plays bags back at 1× into `viz_node` and records with `viz_capture.py`. Put `viz_node.py` and `_common.py` from PR #258 (`15d95ae`) beside it |
 | `viz_capture.py` | the recorder `replay.ps1` uses |
 | `viz_shift.py` | moves a capture onto the run's timeline → `.viz.mcap` |
 | `verify_viz.py` | checks a `.viz.mcap` against its bag |

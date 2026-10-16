@@ -21,7 +21,8 @@ from std_msgs.msg import Bool, Float64, String
 from visualization_msgs.msg import MarkerArray
 
 F64 = ["/viz/fictrac/heading_deg", "/viz/fictrac/turn_deg", "/viz/fictrac/speed_dps", "/viz/fictrac/fwd_rad",
-       "/viz/fictrac/side_rad", "/viz/fictrac/rate_hz", "/viz/arena/index", "/viz/arena/azimuth_deg",
+       "/viz/fictrac/side_rad", "/viz/fictrac/fwd_dps", "/viz/fictrac/side_dps", "/viz/fictrac/rate_hz",
+       "/viz/arena/index", "/viz/arena/azimuth_deg", "/viz/arena/display_deg",
        "/viz/arena/bias_deg", "/viz/kinefly/left_deg", "/viz/kinefly/right_deg", "/viz/kinefly/lmr_deg",
        "/viz/kinefly/wbf_hz", "/viz/bias/frame_count", "/viz/bias/fps"]
 TOPICS = ([(t, Float64, "std_msgs/msg/Float64") for t in F64]

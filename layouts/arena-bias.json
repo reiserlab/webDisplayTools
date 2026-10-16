@@ -37,36 +37,40 @@
       "imageMode": {}
     },
     "Indicator!reachable": {
+      "foxglovePanelTitle": "BIAS",
       "path": "/viz/bias/reachable.data",
       "style": "bulb",
       "fallbackColor": "#8b949e",
-      "fallbackLabel": "BIAS: no status yet",
+      "fallbackLabel": "no status",
       "rules": [
-        { "operator": "=", "rawValue": "true", "color": "#00e676", "label": "BIAS reachable" },
-        { "operator": "=", "rawValue": "false", "color": "#ff5252", "label": "BIAS unreachable" }
+        { "operator": "=", "rawValue": "true", "color": "#00e676", "label": "reachable" },
+        { "operator": "=", "rawValue": "false", "color": "#ff5252", "label": "unreachable" }
       ]
     },
     "Indicator!capturing": {
+      "foxglovePanelTitle": "Camera",
       "path": "/viz/bias/capturing.data",
       "style": "bulb",
       "fallbackColor": "#8b949e",
-      "fallbackLabel": "capture: unknown",
+      "fallbackLabel": "unknown",
       "rules": [
         { "operator": "=", "rawValue": "true", "color": "#00e676", "label": "capturing" },
-        { "operator": "=", "rawValue": "false", "color": "#8b949e", "label": "not capturing" }
+        { "operator": "=", "rawValue": "false", "color": "#8b949e", "label": "idle" }
       ]
     },
     "Indicator!logging": {
+      "foxglovePanelTitle": "Video",
       "path": "/viz/bias/logging.data",
       "style": "bulb",
       "fallbackColor": "#8b949e",
-      "fallbackLabel": "video: unknown",
+      "fallbackLabel": "unknown",
       "rules": [
-        { "operator": "=", "rawValue": "true", "color": "#ffd740", "label": "writing video" },
-        { "operator": "=", "rawValue": "false", "color": "#8b949e", "label": "no video" }
+        { "operator": "=", "rawValue": "true", "color": "#ffd740", "label": "writing" },
+        { "operator": "=", "rawValue": "false", "color": "#8b949e", "label": "off" }
       ]
     },
     "Gauge!fps": {
+      "foxglovePanelTitle": "Camera fps",
       "path": "/viz/bias/fps.data",
       "minValue": 0,
       "maxValue": 200,
@@ -82,10 +86,24 @@
       "isSynced": true
     },
     "Plot!frames": {
-      "title": "BIAS frame count vs displayed index",
+      "title": "BIAS camera frames",
       "paths": [
-        { "value": "/viz/bias/frame_count.data", "enabled": true, "timestampMethod": "receiveTime", "label": "camera frames" },
-        { "value": "/viz/arena/index.data", "enabled": true, "timestampMethod": "receiveTime", "label": "arena frame index" }
+        { "value": "/viz/bias/frame_count.data", "enabled": true, "timestampMethod": "receiveTime", "label": "camera frames" }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "followingViewWidth": 60
+    },
+    "Plot!arenaindex": {
+      "title": "Displayed frame index",
+      "paths": [
+        { "value": "/viz/arena/index.data", "enabled": true, "timestampMethod": "receiveTime", "label": "frame index" }
       ],
       "showXAxisLabels": true,
       "showYAxisLabels": true,
@@ -125,6 +143,7 @@
       "expansion": "all"
     },
     "RosOut!log": {
+      "foxglovePanelTitle": "ROS log (live only: bags do not record /rosout)",
       "searchTerms": [],
       "minLogLevel": 2,
       "nameFilter": {}
@@ -147,7 +166,12 @@
         "second": {
           "direction": "row",
           "splitPercentage": 55,
-          "first": "Plot!frames",
+          "first": {
+            "direction": "column",
+            "splitPercentage": 55,
+            "first": "Plot!frames",
+            "second": "Plot!arenaindex"
+          },
           "second": "RawMessages!reply"
         }
       }

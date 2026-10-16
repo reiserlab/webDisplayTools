@@ -37,11 +37,25 @@
       "imageMode": {}
     },
     "Plot!closedloop": {
-      "title": "Closed loop: fly vs display",
+      "title": "Closed loop: fly turn vs display rotation (deg, unwrapped)",
       "paths": [
-        { "value": "/viz/fictrac/turn_deg.data", "enabled": true, "timestampMethod": "receiveTime", "label": "fly turn (deg, unwrapped)" },
-        { "value": "/viz/arena/azimuth_deg.data", "enabled": true, "timestampMethod": "receiveTime", "label": "feature azimuth (deg, right +)" },
-        { "value": "/viz/arena/bias_deg.data", "enabled": true, "timestampMethod": "receiveTime", "label": "bias angle (deg)" }
+        { "value": "/viz/fictrac/turn_deg.data", "enabled": true, "timestampMethod": "receiveTime", "label": "fly turn" },
+        { "value": "/viz/arena/display_deg.data", "enabled": true, "timestampMethod": "receiveTime", "label": "display rotation" }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "followingViewWidth": 30
+    },
+    "Plot!bias": {
+      "title": "Bias angle (deg)",
+      "paths": [
+        { "value": "/viz/arena/bias_deg.data", "enabled": true, "timestampMethod": "receiveTime", "label": "bias" }
       ],
       "showXAxisLabels": true,
       "showYAxisLabels": true,
@@ -54,11 +68,11 @@
       "followingViewWidth": 30
     },
     "Plot!kinematics": {
-      "title": "FicTrac kinematics",
+      "title": "FicTrac kinematics (deg/s of ball rotation)",
       "paths": [
-        { "value": "/viz/fictrac/speed_dps.data", "enabled": true, "timestampMethod": "receiveTime", "label": "speed (deg/s)" },
-        { "value": "/viz/fictrac/fwd_rad.data", "enabled": true, "timestampMethod": "receiveTime", "label": "forward (rad, integrated)" },
-        { "value": "/viz/fictrac/side_rad.data", "enabled": true, "timestampMethod": "receiveTime", "label": "side (rad, integrated)" }
+        { "value": "/viz/fictrac/speed_dps.data", "enabled": true, "timestampMethod": "receiveTime", "label": "speed" },
+        { "value": "/viz/fictrac/fwd_dps.data", "enabled": true, "timestampMethod": "receiveTime", "label": "forward" },
+        { "value": "/viz/fictrac/side_dps.data", "enabled": true, "timestampMethod": "receiveTime", "label": "side" }
       ],
       "showXAxisLabels": true,
       "showYAxisLabels": true,
@@ -94,6 +108,7 @@
       "collapsedSections": []
     },
     "Gauge!ftrate": {
+      "foxglovePanelTitle": "FicTrac rate (Hz)",
       "path": "/viz/fictrac/rate_hz.data",
       "minValue": 0,
       "maxValue": 120,
@@ -103,13 +118,14 @@
       "reverse": false
     },
     "Indicator!fictrac": {
+      "foxglovePanelTitle": "FicTrac",
       "path": "/viz/fictrac/rate_hz.data",
       "style": "bulb",
       "fallbackColor": "#8b949e",
-      "fallbackLabel": "FicTrac: no data",
+      "fallbackLabel": "no data",
       "rules": [
-        { "operator": ">", "rawValue": "5", "color": "#00e676", "label": "FicTrac flowing" },
-        { "operator": "<=", "rawValue": "5", "color": "#ff5252", "label": "FicTrac stalled" }
+        { "operator": ">", "rawValue": "5", "color": "#00e676", "label": "flowing" },
+        { "operator": "<=", "rawValue": "5", "color": "#ff5252", "label": "stalled" }
       ]
     },
     "RawMessages!lasterror": {
@@ -121,6 +137,7 @@
       "expansion": "all"
     },
     "RosOut!log": {
+      "foxglovePanelTitle": "ROS log (live only: bags do not record /rosout)",
       "searchTerms": [],
       "minLogLevel": 2,
       "nameFilter": {}
@@ -139,7 +156,12 @@
       "second": {
         "direction": "column",
         "splitPercentage": 55,
-        "first": "Plot!closedloop",
+        "first": {
+          "direction": "row",
+          "splitPercentage": 68,
+          "first": "Plot!closedloop",
+          "second": "Plot!bias"
+        },
         "second": {
           "direction": "row",
           "splitPercentage": 60,
