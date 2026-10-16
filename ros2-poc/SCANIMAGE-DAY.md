@@ -16,6 +16,29 @@ disturbance; si_zmp's polling timer disturbed frames), one grab per color, no an
 (alignment = Digital IO 1 frame-transfer pulse into ScanImage), GS16 patterns (no refresh-rate
 confound vs the 22 Sept runs), unidirectional scan, both channels, server local to the Bergamo PC.
 
+## The two-hour version (2026-10-16: 2 h of rig time in total — run THIS, not the long plan)
+
+Block Z is **not today** (Hannah's ZeroMQ frame-stream test, 60 min dark, conflicts with our
+acquisitions; it runs whenever the rig is next free). Steps below are the long plan's §1–§5 with
+the optional parts removed and the install overlapped with the hardware setup.
+
+| When | Who | What | Pass |
+|---|---|---|---|
+| 0:00 | Claude on the PC | `git switch` + `pixi install --locked` in `ros2-poc` (cold install can take minutes: start it FIRST). Skip `pixi run test` unless the install finished early | env installs |
+| 0:00 | Michael | Arena on the microscope; Studio from the checkout (`python .claude/nocache-server.py 8092`), Connect | Inventory: 20 present |
+| 0:10 | Michael | Controller ▾: mode 2, Digital IO 1 = framescan, refresh reads 300. Upload `protocols/g6_2p_color_led_sweep_patterns/` (4 files), note the slots | slots noted; IDs in the YAML fixed if not 5–8 |
+| 0:15 | Michael | MATLAB (R2025b, ScanImage idle): `hJ = most.network.json.Server(5555);` logging on, `logFilePath` on F:, unidirectional, channels 1+2 | — |
+| 0:20 | Claude | `pixi run rig -- --scanimage` then `pixi run scanimage-cmd -- ping` and `-- status --json` | ping ok, status shows logging on + F: path |
+| 0:25 | both, dark | New-arena trigger check: FOCUS → Test full-field ≤ 128 lights every panel; stop FOCUS → all dark; DO1 pulses + line clock on ScanImage's inputs | all three seen |
+| 0:35 | Claude, dark | One grab through the connector: `set framesPerSlice 60`, `setFileStem connector_check`, `grab`, `waitIdle` | one TIFF on F:, counter +1, idle again |
+| 0:40 | both, dark | Dry run of the whole protocol from the Studio (≈ 2.5 min + overhead) | 4 TIFF series, DO1 in each, bag closed at run end, log converts with 4 grab replies |
+| 0:55 | Michael | Prep in, lasers on, SiPMs recording | — |
+| 1:05 → 1:50 | both | The experiment: the protocol once per repeat (≈ 3 min each incl. the operator check between runs); 3 to 5 repeats | per run: TIFFs, bag, converted log |
+| 1:50 | both | `clear hJ`, arena `allOff`, copy TIFFs + logs; results log filled in | — |
+
+If the connector ping (0:20) or the single grab (0:35) fails and is not fixed in ten minutes:
+switch to §6 (fallback script) at once and keep the schedule.
+
 ## Where things are
 
 | What | Where |
@@ -27,7 +50,7 @@ confound vs the 22 Sept runs), unidirectional scan, both channels, server local 
 | **Patterns (GS16)**: the four one-color top-row gratings re-encoded as Gray_16 (lit = 15), names `G6_2x10_toprow_grat20_<color>_gs16`, **to be uploaded onto the card** (Console → Patterns → Add ▾ → folder); expected slots 5–8 after the GS2 set in 1–4 — verify in the SD listing (the Studio resolves by NAME; IDs are the fallback) | `protocols/g6_2p_color_led_sweep_patterns/` (`node scripts/make-color-optomotor-patterns.js --gs16`) |
 | **Fallback driver** (no ROS, stdlib Python): same condition table and TIFF layout | `tools/led_sweep_si.py` (`--dry-run`, `--ping`) |
 | **Panel firmware facts (side session 2026-10-16, note `panel-firmware-lineage-2026-10-16.md`)**: all 20 panels carry the 2P timing (falling-edge free-running Triggered, 1 µs base in Triggered, EINT pull-down); bottom row v1.3.1 (`0xB8796BAF`), top row bank-window diag builds (`0x362644DD` / `0x1A74DD1D` / `0x9E03D589`); **20 panels, not 18**; clean bank-window builds hung at boot before → run Inventory after every power cycle; never mode 3 (Gated) on the Bergamo; the 5 A supply resets on all-on at duty 255 → test displays ≤ 128; Triggered gives ⅓ of mode-1 light and the top row's bank windows cut ~5× more | `docs/development/2p-line-sync-rig-checklist.md` (§1 flash is NOT needed today; §2 check applies), `2p-scanimage-signal-logging.md` |
-| **Today's other rig block**: Hannah's Block Z (ZeroMQ frame stream, ~60 min, runs DARK, changes channelSave/framesPerSlice/acqsPerLoop/logging and restores them; no acquisitions from another block while its subscriber runs) | `reiserlab/scanimage-2026-bergamo` `procedures/rig-session-2026-10-16.md` + `-zmq-frames.md`. **Order: Block Z first (dark), then ours (lasers on).** Ports do not collide (Z: ZMQ PUB 65179; ours: JSON 5555) |
+| Hannah's Block Z (ZeroMQ frame stream, ~60 min, runs DARK, changes channelSave/framesPerSlice/acqsPerLoop/logging and restores them; no acquisitions from another block while its subscriber runs) | `reiserlab/scanimage-2026-bergamo` `procedures/rig-session-2026-10-16.md` + `-zmq-frames.md`. **Not today** (2 h of rig time); it runs whenever the rig is next free. Ports would not collide (Z: ZMQ PUB 65179; ours: JSON 5555) |
 | Rig-PC environment notes (git not on PATH → GitHub Desktop's git; MATLAB `matlab` is R2026a, ScanImage needs **R2025b**; Python from the operator's terminal; F: for data; `logFilePath` was empty) | same repo, `procedures/rig-session-2026-10-16.md` → "Environment notes" |
 
 ## Settled decisions (2026-10-16, Michael)
