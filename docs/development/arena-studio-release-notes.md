@@ -4,6 +4,12 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.96 (2026-10-16) · ScanImage as a protocol plugin (two-photon rigs, ROS bridge node) · Run file and MCAP bag close when the run ends (LAB-303)
+
+<!-- #254 -->
+- **A protocol can drive ScanImage.** Declare a `scanimage` plugin (class `ScanImagePlugin`) and use its commands in conditions: **Set file stem** (the TIFF name for the next grab), **Grab**, **Wait until idle**, **Abort**, and **Set property** for a few allowlisted settings (frames per grab, logging on/off, file path/stem/counter). The commands go through the bridge's ScanImage node to the microscope's own JSON server; every command and reply is in the run log, and the Grab reply names the TIFF stem and counter. Web runner only (MATLAB has no such plugin). First protocol: `g6_2p_color_led_sweep`.
+- **The bridge's run file closes when the run ends,** not when the next run starts. On the ROS bridge node this also closes the MCAP bag, so a run without a course commit (no token, a Test run, an aborted run) no longer leaves its bag open indefinitely. "⇪ Push log" still exports the most recent file. The FicTrac panel's Log checkbox now reads off between runs; turn it on by hand to log Console work outside a run.
+
 ## v0.95 (2026-10-13) · ISP time estimate ~5 s/panel, not ~20 s (#244) · Pattern Designer + Studio: partial-arena °/px and 3D/2D mapping, unmirrored icons, short SD-safe filenames, upload name checks (LAB-295) · First command after Connect no longer waits ~60 s behind the thumbnail download (LAB-298) · Console → Qwiic peripherals, rig peripherals:, live Console sliders, firmware-sized test display + color banks (LAB-214)
 
 <!-- #245 -->

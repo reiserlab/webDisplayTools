@@ -3420,7 +3420,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.95 | 2026-10-13 11:51 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.96 | 2026-10-16 11:39 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3899,6 +3899,11 @@ function studioMarkerCurrent(stored, current) {
         const finalizeThenCommit = async () => {
             try { if (Studio.finalizeTrialQuality) await Studio.finalizeTrialQuality(log.meta && log.meta.run_id); } catch (_) { /* best effort */ }
             await maybeCommitRunLog(log, summary);
+            // The run is over: close the bridge's run file (and, on the ROS bridge node, the
+            // MCAP bag) now, not at the next run's start. A run that was not committed (no
+            // course token, Test run, aborted) used to leave the file open indefinitely.
+            // "⇪ Push log" still works: the bridge exports its most recent file.
+            try { if (bridge && bridge.connected && bridge.logging) bridge.setLogging(false); } catch (_) { /* best effort */ }
         };
         if (summary && summary.outcome === 'CONTROLLER_FAULT' && Studio.handleControllerFault) {
             Studio._pendingCommit = finalizeThenCommit;
@@ -9775,14 +9780,18 @@ function fictracPluginNames(exp) {
         .map((p) => p.name);
 }
 // Device plugins the BRIDGE drives for the runner (LAB-303 connectors): plugin instance
-// name → connector id. Today one connector, 'bias' (BiasPlugin → the bridge's BIAS node);
-// the runner sends each command as connector_command and waits for the reply, so a
-// camera plugin in a protocol records for real instead of being skipped.
+// name → connector id. 'bias' (BiasPlugin → the bridge's BIAS node) and 'scanimage'
+// (ScanImagePlugin → the bridge's ScanImage node, the microscope's JSON server); the
+// runner sends each command as connector_command and waits for the reply, so a camera or
+// microscope plugin in a protocol acts for real instead of being skipped.
 function connectorPluginNames(exp) {
     const m = new Map();
     if (!exp || !Array.isArray(exp.plugins)) return m;
     for (const p of exp.plugins) {
-        if (p && ((p.matlab && p.matlab.class === 'BiasPlugin') || p.name === 'camera')) m.set(p.name, 'bias');
+        if (!p) continue;
+        const cls = p.matlab && p.matlab.class;
+        if (cls === 'BiasPlugin' || p.name === 'camera') m.set(p.name, 'bias');
+        else if (cls === 'ScanImagePlugin' || p.name === 'scanimage') m.set(p.name, 'scanimage');
     }
     return m;
 }

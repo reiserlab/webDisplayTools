@@ -2,7 +2,7 @@
  * plugin-registry.js — Plugin definitions and command schemas
  *
  * Provides:
- *   - BUILTIN_PLUGINS: definitions for LEDControllerPlugin, BiasPlugin
+ *   - BUILTIN_PLUGINS: definitions for LEDControllerPlugin, BiasPlugin, …, ScanImagePlugin
  *   - CONTROLLER_COMMANDS: controller command definitions
  *   - G6_ONLY_COMMANDS / isG6OnlyCommand(name): controller commands valid only
  *     on the G6 controller board (setAnalogOut, setDigitalOut)
@@ -654,6 +654,98 @@ var BUILTIN_PLUGINS = {
         }
     },
 
+    // ScanImage (two-photon microscope; LAB-303 / LAB-306). WEB-ONLY: driven by the web
+    // runner through the bridge's `scanimage` connector (ros2-poc/nodes/scanimage_node.py →
+    // ScanImage's built-in JSON server on the microscope PC). matlab.class is
+    // forward-looking — MATLAB has no ScanImagePlugin, so a protocol with this plugin runs
+    // on the web runner only. The command set is deliberately small: scan geometry,
+    // channels, zoom and laser power stay in ScanImage's own UI; `set` is limited to the
+    // node's allowlist (hStackManager.framesPerSlice, hChannels.loggingEnable,
+    // hScan2D.logFilePath / logFileStem / logFileCounter) and anything else is refused
+    // before it is sent. Alignment to the arena is by hardware (Digital IO 1 framescan
+    // pulse into ScanImage), not by these commands.
+    scanimage: {
+        name: 'scanimage',
+        label: 'ScanImage (2P)',
+        type: 'class',
+        matlab: { class: 'ScanImagePlugin' },
+        color: '#b197fc', // violet for UI
+        configFields: {
+            host: {
+                type: 'string',
+                label: 'JSON server host',
+                default: '',
+                placeholder: 'Set on the bridge node (127.0.0.1)',
+                rigDefined: true
+            },
+            port: {
+                type: 'number',
+                label: 'JSON server port',
+                default: '',
+                placeholder: 'Set on the bridge node (5555)',
+                rigDefined: true
+            }
+        },
+        commands: {
+            setFileStem: {
+                label: 'Set file stem',
+                description: 'Set the TIFF file stem for the next grab (hScan2D.logFileStem)',
+                params: {
+                    stem: {
+                        type: 'string',
+                        required: true,
+                        default: '',
+                        label: 'File stem',
+                        placeholder: 'violet_sweep'
+                    }
+                }
+            },
+            set: {
+                label: 'Set property',
+                description:
+                    'Set one allowlisted scalar property: hStackManager.framesPerSlice, hChannels.loggingEnable, hScan2D.logFilePath / logFileStem / logFileCounter',
+                params: {
+                    property: {
+                        type: 'string',
+                        required: true,
+                        default: '',
+                        label: 'Property',
+                        placeholder: 'hStackManager.framesPerSlice'
+                    },
+                    value: {
+                        type: 'number',
+                        required: true,
+                        default: '',
+                        label: 'Value',
+                        placeholder: '640'
+                    }
+                }
+            },
+            grab: {
+                label: 'Grab',
+                description:
+                    'Start a GRAB (hSI.startGrab) and confirm acqState = grab; the reply carries the TIFF stem, path and counter'
+            },
+            waitIdle: {
+                label: 'Wait until idle',
+                description: 'Wait until the acquisition has finished (acqState = idle)',
+                params: {
+                    timeout_s: {
+                        type: 'number',
+                        required: false,
+                        default: 30,
+                        label: 'Timeout (s)',
+                        placeholder: '30'
+                    }
+                }
+            },
+            abort: {
+                label: 'Abort',
+                description: 'Abort the acquisition (hSI.abort) and confirm acqState = idle'
+            }
+        }
+    },
+
     // FicTrac closed-loop (fly-on-ball). WEB-FIRST: executed by the web runner via
     // the local Python bridge (fictrac-bridge/bridge.py) + Mode-3 host-stepping.
     // matlab.class is forward-looking — MATLAB has no FicTracPlugin yet (its only
@@ -1065,7 +1157,8 @@ var RIG_PLUGIN_KEY_MAP = {
     camera: 'camera',
     temperature: 'temperature',
     thermometer: 'temperature',
-    fictrac: 'fictrac'
+    fictrac: 'fictrac',
+    scanimage: 'scanimage'
 };
 
 // Normalized `type` string → built-in registry key (fallback when the rig key
@@ -1077,7 +1170,8 @@ var RIG_PLUGIN_TYPE_MAP = {
     thermometer: 'temperature',
     temperature: 'temperature',
     fictrac: 'fictrac',
-    balltracker: 'fictrac'
+    balltracker: 'fictrac',
+    scanimage: 'scanimage'
 };
 
 function _normalizeRigType(rigType) {
