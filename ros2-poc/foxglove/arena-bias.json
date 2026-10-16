@@ -43,8 +43,8 @@
       "fallbackColor": "#8b949e",
       "fallbackLabel": "no status",
       "rules": [
-        { "operator": "=", "rawValue": "true", "color": "#00e676", "label": "reachable" },
-        { "operator": "=", "rawValue": "false", "color": "#ff5252", "label": "unreachable" }
+        { "operator": "=", "rawValue": "true", "color": "#00e676", "label": "online" },
+        { "operator": "=", "rawValue": "false", "color": "#ff5252", "label": "offline" }
       ]
     },
     "Indicator!capturing": {
@@ -178,13 +178,13 @@
     },
     "second": {
       "direction": "column",
-      "splitPercentage": 28,
+      "splitPercentage": 34,
       "first": {
         "direction": "row",
-        "splitPercentage": 66,
+        "splitPercentage": 60,
         "first": {
-          "direction": "row",
-          "splitPercentage": 50,
+          "direction": "column",
+          "splitPercentage": 33,
           "first": "Indicator!reachable",
           "second": {
             "direction": "column",
