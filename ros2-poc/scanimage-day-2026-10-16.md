@@ -76,5 +76,14 @@ Each TIFF: 1600 pages = 800 frames × 2 channels; frames start 1.8–2.4 s befor
   fluctuates frame to frame — possibly LED drive vs frame-rate beating; compare with the flicker Michael
   saw at 0:25.
 - Yellow d127 has 76 frames, not ~105: its step was 3.0 s (the one unthrottled step).
+- **MATLAB messages during the session (no timestamps, reported by Michael after the runs):**
+  "Client disconnected because of error / Client connected" ×4 — most likely the scanimage node being killed
+  at each graph stop/restart (13:04, 13:43, end), not a protocol failure (every connector reply in both runs
+  was `ok`). "**PLL got unlocked** … Check that the laser clock is consistent" ×14 — the vDAQ's sample-clock
+  PLL on the laser sync (`CLK_IN`); most likely while the laser was being switched on / settling
+  (13:30–13:40, the 0-frame grabs). Frame check (`runlogs/frame_check.py`): runs 1 and 2, all 8 TIFFs —
+  frame numbers consecutive, **0 gaps**, frame interval 34.339–34.341 ms (29.12 Hz). Rules out dropped
+  frames, not a pixel-clock glitch within a frame. Next time: "Apply Clock Settings" must not be light red
+  before a grab.
 - Next (later session): per-pixel / ROI maps, the 22 Sept method (`Bergamo_testing/092226_SNR/analysis/`,
   not on this PC), the DO1 aux-trigger record per frame, run 1 for comparison.
