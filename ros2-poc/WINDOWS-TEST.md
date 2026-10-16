@@ -349,6 +349,28 @@ Repeat step 3 and step 5 with `-e typed` (`pixi run -e typed test -- --keep`, `p
 Expected differences: `typed=True` in the bridge banner, `/fictrac/frame` + `/arena/frame` as
 `arena_interfaces/msg/…` in `ros2 bag info`, the harness line `info  typed topics: True`.
 
+## 7b. Typed messages on a PC WITHOUT Visual Studio (`typed-prebuilt`, ~10 minutes)
+
+The no-compiler route (`docs/typed-windows.md` §5): the `typed-prebuilt` environment downloads an
+`arena_interfaces` built once on ww18 (`channel/`, read from raw.githubusercontent.com) instead of
+building it. Run it on a PC with **no** Visual Studio / Build Tools; that is the point. Any checkout
+path works (nothing is compiled). PowerShell, in `ros2-poc`:
+
+```powershell
+git fetch; git switch claude/ros-studio-plan-b-c44942; git pull
+Measure-Command { pixi install --locked -e typed-prebuilt | Out-Default }
+pixi run -e typed-prebuilt python nodes\build_interfaces.py --check
+pixi run -e typed-prebuilt test
+```
+
+Expected: install ~5 s on ww18 with a warm package cache (a fresh PC first downloads the ROS
+packages, as in step 1a), no
+`failed to build` and no compiler message; `--check` prints `"importable": true` and
+`"serializes": true`; the harness passes every check (49 / 49 on ww18, 2026-10-16) with `info  typed topics: True`.
+If step 5's hardware is attached, `pixi run -e typed-prebuilt rig …` runs the rig with typed topics.
+Record: the PC's Windows version, "no Visual Studio" confirmed (`winget list Microsoft.VisualStudio`
+prints nothing), the install time, and the first error verbatim if anything fails.
+
 ## What to send back
 
 The timings and sizes from step 1, the `$PIXI_PROJECT_ROOT` answer, the harness artifact folder,

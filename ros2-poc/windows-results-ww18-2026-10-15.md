@@ -209,7 +209,9 @@ Rig: CSHL G6 2×10 ball arena, controller COM4 (fw `12bba7e9` 2x10 2026-09-30), 
 - **1b / 7** typed messages: installable now (W2-3′, W2-5). The decision is between building on each PC
   (MSVC v143 + `detached-environments`) and a CI-built channel (no compiler; workflow sketch in
   `docs/typed-windows.md` §5). Step 5 hardware runs were not repeated with `-e typed`. Upstream: filed 2026-10-16,
-  prefix-dev/rattler-build#2875 + a confirming comment on prefix-dev/pixi#7226 (§4).
+  prefix-dev/rattler-build#2875 + a confirming comment on prefix-dev/pixi#7226 (§4). **Next: run
+  WINDOWS-TEST.md 7b on a PC without Visual Studio.** The `typed-prebuilt` env (2026-10-16, a ww18-built
+  package committed in `channel/`) installs `--locked` in 5 s on ww18, harness 49 / 49.
 - **S1** bridge loss should banner and end the run; **S2** `?p=` needed a refresh; **H1** characterize the 64 GB
   exFAT card; **5c full** (18 min) and real-fly runs; **hardware sync** (camera strobe → controller Digital IO)
   for µs frame timing on the controller's clock.
