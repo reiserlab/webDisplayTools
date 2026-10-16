@@ -47,3 +47,34 @@ Branch `claude/ros-studio-plan-b-c44942` @ `cff5835`. Times are ET.
 | 14:58 | 5 | fix | protocol | `frames_per_grab` 640 → **800** (27.5 s); run ≈ 130 s. Follow up: why host-timed steps run 3.6 s for colors 2–4 |
 | 15:02–15:04 | 5 | **Experiment run 2** (800 frames) | **PASS** | TIFFs `*_sweep_00003.tif`, 203.7 MB each. 13/13 connector commands ok; bag closed (753 records), converts clean. Margins idle − stimulus end: violet +4.11, blue +3.97, green +3.24, yellow +4.38 s; 'grab' status seen after every stimulus end; stimulus starts ≥ 1.1 s after the grab reply. Steps ~3.6–3.8 s for all four colors this time (stimulus ≈ 23 s) |
 | 15:10 | 5 | step timing (`runlogs/step_timing.py`, trialParams intervals) | **cause found** | dry run: every step 3.01–3.02 s. Run 1: violet 3.0, then blue/green/yellow mostly **4.00**; run 2: all **4.00** (last 3.01). Exactly +1.00 s, never in between → **Chrome timer throttling**: `ArenaRunner._sleep` is a plain `setTimeout`, which Chrome aligns to 1 s while the tab is hidden or the window occluded (operator working in ScanImage). Dry run: Studio visible. Workaround: keep the Studio window visible during runs. Code fix later: a throttle-proof timer for host-timed steps (Worker-based timer, or keep-alive), plus a warning when `document.hidden` during a run |
+| 15:20 | 5 | Michael: **no more repeats — run 2 is the dataset** (run 1 kept, end of duty 255 cut for blue/green/yellow) | — | — |
+
+## Quick look at run 2 (`tools/led_sweep_quicklook.py`, 15:25)
+
+`python tools/led_sweep_quicklook.py ros2-poc/runlogs/arena-log-20261016-150214-328.jsonl F:\ImagingData\2026-10-16\led_sweep 3`
+— stdlib+numpy TIFF reader; frame time = header `epoch` (PC local, EDT) + `frameTimestamps_sec`, aligned to
+the trialParams times in the run log (same PC clock); whole-field mean per page; step window = step start
++ 0.3 s → next step − 0.1 s; baseline = frames before the first step. **Whole field, no ROI, no motion
+correction — a sanity check, not the analysis.**
+
+Each TIFF: 1600 pages = 800 frames × 2 channels; frames start 1.8–2.4 s before the first step and end
+1.0–2.2 s after the last (4.0 s steps — the throttled timer). Mean increase over baseline (a.u.), d7 → d255:
+
+| color | ch1 baseline | ch1: d7 / d15 / d31 / d63 / d127 / d255 | ch2 baseline | ch2: d7 / d15 / d31 / d63 / d127 / d255 |
+|---|---|---|---|---|
+| violet | 113.3 | +15 / +23 / +58 / +132 / +265 / **+374** | 29.8 | +3.5 / +8.8 / +23 / +61 / +127 / **+185** |
+| blue | 92.4 | −0.1 / −0.3 / +7.7 / +6.5 / +2.6 / +20 | 34.5 | −1.5 / −1.4 / +0.1 / +1.0 / +2.7 / +5.4 |
+| green | 116.8 | +19 / +28 / +45 / +72 / +115 / **+165** | 44.2 | +0.5 / +1.2 / +1.7 / +5.8 / +13 / +19 |
+| yellow | 48.0 | +1.7 / +1.3 / −0.5 / +6.2 / +16 / +17 | 32.3 | +3.7 / +7.0 / +12 / +21 / +40 / **+62** |
+
+- The duty steps are visible in the images and line up with the logged step times — the connector →
+  TIFF → run-log alignment works end to end.
+- Panel light reaches the detectors for every color; it rises with duty, near-monotonically for violet,
+  green (ch1) and yellow (ch2). Violet is by far the largest in both channels; green mostly ch1, yellow
+  mostly ch2; blue the smallest (only d255 clearly above noise).
+- The per-frame SD within a step grows with duty (violet ch1: 5 → 135), i.e. the stimulus light
+  fluctuates frame to frame — possibly LED drive vs frame-rate beating; compare with the flicker Michael
+  saw at 0:25.
+- Yellow d127 has 76 frames, not ~105: its step was 3.0 s (the one unthrottled step).
+- Next (later session): per-pixel / ROI maps, the 22 Sept method (`Bergamo_testing/092226_SNR/analysis/`,
+  not on this PC), the DO1 aux-trigger record per frame, run 1 for comparison.
