@@ -90,13 +90,13 @@ variables:
   # ── patterns (GS16 set; IDs = expected slots after uploading the folder onto a
   #    card that already holds the GS2 set in 1–4 — verify in the SD listing) ──
   - &pat_violet "G6_2x10_toprow_grat20_violet_gs16"
-  - &id_violet 5
+  - &id_violet 7            # Bergamo card 2026-10-16: slots as resolved by name in the dry run
   - &pat_blue "G6_2x10_toprow_grat20_blue_gs16"
-  - &id_blue 6
+  - &id_blue 3
   - &pat_green "G6_2x10_toprow_grat20_green_gs16"
-  - &id_green 7
+  - &id_green 5
   - &pat_yellow "G6_2x10_toprow_grat20_yellow_gs16"
-  - &id_yellow 8
+  - &id_yellow 9
   # ── timing ────────────────────────────────────────────────────────────────
   - &fps 20                 # frames/s; 20-frame grating → one period per second
   - &step_dur 3             # s per duty level
