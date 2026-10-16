@@ -15,10 +15,17 @@ version: 3
 # CHANGE THE EXPERIMENT ONLY IN `variables:` below — colors (pattern + SD slot),
 # duty levels, step length, speed, frames per grab, timeouts.
 #
-# PATTERNS: the same four one-color top-row gratings as g6_color_optomotor_test
-# (protocols/g6_color_optomotor_test_patterns/, GS2, 20 frames), already on the
-# arena's SD card in slots 1–4. The runner addresses patterns by card index:
-# check the slots in the Console's SD listing before Run.
+# PATTERNS: protocols/g6_2p_color_led_sweep_patterns/ — the four one-color
+# top-row gratings of g6_color_optomotor_test re-encoded as GS16 (lit pixels 15,
+# 20 frames; `node scripts/make-color-optomotor-patterns.js --gs16`). GS16 so the
+# controller re-streams at its 300 Hz default, as in the 22 Sept 2026 duty-sweep
+# runs — the GS2 set on the card (slots 1–4) would default to 1000 Hz, a refresh
+# confound the imaging comparison does not need. UPLOAD THE FOLDER ONCE before
+# Run (Console → Patterns → Add ▾ → the folder). The Studio resolves patterns by
+# NAME from the SD listing; the pattern_IDs below are only the fallback — check
+# the slots in the Console's SD listing after the upload and fix them if needed.
+# To fall back to the GS2 set, change the four pattern names/IDs in `variables:`
+# and set the refresh rate to 300 Hz by hand (step 3 below).
 #
 # BEFORE PRESSING RUN (Arena Studio Console, once per connection — not YAML-able):
 #   1. Controller ▾ → panel display mode = 2 (Triggered).  Wire: 02 1B 02
@@ -28,19 +35,25 @@ version: 3
 #      DO1 (BNC J3) is HIGH for every SPI frame transfer — THE alignment signal
 #      today (no analog marker yet): record it in ScanImage as an aux/AI channel.
 #      Digital IO 2 (J4) stays in_trigger — the line-clock → EINT route.
-#   3. Refresh rate (Debug ▾, unlock): 300 Hz. The gratings are GS2 and GS2
-#      defaults to 1000 Hz, where every re-streamed frame costs the panel 1–2
-#      line edges on the 2P firmware. Do not run GS2 at 1000 Hz.
+#   3. Refresh rate (Debug ▾, unlock): 300 Hz is the GS16 default — check it
+#      reads 300. Only the GS2 set needs it set by hand (GS2 defaults to 1000 Hz,
+#      where every re-streamed frame costs the panel line edges).
 #   4. Telemetry ring: on (default).
-#   NEW ARENA CHECK (this arena has not been on the microscope before): with the
-#   line clock running and display mode 2, Console → Test → full-field must light
-#   every panel; with the line clock stopped the panels must go dark; DO1 must
-#   show one pulse per controller refresh tick on the scope / ScanImage AI.
+#   NEW ARENA CHECK (this arena has not been on the microscope before; 20 panels,
+#   top row on the bank-window firmware, bottom row v1.3.1 — all with the 2P
+#   timing): Console → Panel firmware → Inventory must show 20 present (repeat
+#   after every power cycle; the top-row builds have hung at boot before). With
+#   the line clock running and display mode 2, Console → Test → full-field at
+#   level ≤ 128 (the 5 A supply resets at all-on 255) must light every panel at
+#   about ⅓ of mode-1 brightness; with the line clock stopped every panel must
+#   go dark; DO1 must show one pulse per controller refresh tick on the scope /
+#   ScanImage AI, and the line clock must be seen on the loop-back channel.
 #
 # SCANIMAGE SETUP (operator, in the GUI; the protocol does not touch these):
 #   unidirectional scanning, both channels saved (channelSave = [1 2]),
+#   lasers ON (this is a data run, not a dark test),
 #   logging ON, logFilePath on the F: data disk (F:\ImagingData\<date>\…),
-#   lasers on, detectors on. The protocol sets framesPerSlice (frames per grab)
+#   detectors on. The protocol sets framesPerSlice (frames per grab)
 #   to `frames_per_grab` in pre_blank and the file stem per color; nothing else.
 #   ScanImage must record: DO1 (frame-transfer envelope) and the line clock
 #   loop-back on aux inputs or spare AI channels — see
@@ -74,15 +87,16 @@ plugins:
       class: "ScanImagePlugin"   # web runner only — MATLAB has no ScanImagePlugin
 
 variables:
-  # ── patterns (SD slots as uploaded for g6_color_optomotor_test) ───────────
-  - &pat_violet "G6_2x10_toprow_grat20_violet"
-  - &id_violet 1
-  - &pat_blue "G6_2x10_toprow_grat20_blue"
-  - &id_blue 2
-  - &pat_green "G6_2x10_toprow_grat20_green"
-  - &id_green 3
-  - &pat_yellow "G6_2x10_toprow_grat20_yellow"
-  - &id_yellow 4
+  # ── patterns (GS16 set; IDs = expected slots after uploading the folder onto a
+  #    card that already holds the GS2 set in 1–4 — verify in the SD listing) ──
+  - &pat_violet "G6_2x10_toprow_grat20_violet_gs16"
+  - &id_violet 5
+  - &pat_blue "G6_2x10_toprow_grat20_blue_gs16"
+  - &id_blue 6
+  - &pat_green "G6_2x10_toprow_grat20_green_gs16"
+  - &id_green 7
+  - &pat_yellow "G6_2x10_toprow_grat20_yellow_gs16"
+  - &id_yellow 8
   # ── timing ────────────────────────────────────────────────────────────────
   - &fps 20                 # frames/s; 20-frame grating → one period per second
   - &step_dur 3             # s per duty level
