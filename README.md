@@ -105,6 +105,46 @@ These stay empty:
 - **Log** (`RosOut`, `/rosout`): the rig's bags never recorded `/rosout`, so this panel only works live.
 - **The B2 run**: it is a camera-only check with no FicTrac, so only the BIAS panels have data.
 
+**Checked in Foxglove itself** (web app 3.4, 2026-10-16, runs 5.2 and the soak opened as local files):
+
+- `arena-fictrac` draws everything:
+  - the 3D arena: ball, fly, feature bar, and a readout of index, azimuth, heading and bias;
+  - FicTrac "flowing" and a rate gauge at about 96 Hz;
+  - the diagnostics: Kinefly never seen, arena and FicTrac at 96–97 Hz, BIAS idle or recording;
+  - the closed-loop, kinematics and index plots.
+- `arena-bias` draws the BIAS state band (recording, then idle), the frame-count plot, the
+  reachable / capturing / logging indicators, the fps gauge and the `/bias/reply` view.
+- `foxglove-arena-layout` draws the index, heading / bias / epoch, and the raw browser, event and BIAS views.
+- The only warning is "Different profiles detected in data sources". The `.viz.mcap` has the
+  `ros2` profile and the `.foxglove.mcap` has none. No panel was affected.
+
+**Suggestions for PR #252's dashboards, from this data:**
+
+1. **`viz_node` drops frames.** Its `/arena/frame` subscription keeps only 10 messages, and it lost
+   15, 17 and 8 frames during playback. Its other subscriptions keep 200 (`RELIABLE_QOS`); this one should too.
+2. **"Closed loop: fly vs display" can't show the display following the fly.** These runs used a
+   grating that repeats every 20 frames, so `azimuth_deg` only covers 0–36°. Meanwhile the fly's
+   turn reaches thousands of degrees, and the constant bias reaches 27,000° in the soak.
+   - Publish an unwrapped display angle: the sum of the wrapped index steps × degrees per frame,
+     with the frame count taken from the run's config.
+   - Plot it against the turn, or give the bias its own panel.
+3. **The kinematics plot has the wrong scales.** Speed (°/s) shares one axis with FicTrac's running
+   forward and side totals (2,500–6,400 rad since FicTrac started), so the speed line is flattened.
+   Plot forward and side as rates, or reset them each trial, in their own panel.
+4. **The BIAS frame-count plot hides the index.** The frame count (thousands) shares an axis with
+   the display index (0–20), so the index looks flat. Give each its own plot, or plot fps.
+5. **The indicator labels are clipped** at a window about 1,370 px wide ("AS reach", "ot captu").
+   Shorter labels or wider panels would fix it.
+6. **The log panel stays empty offline**, because the bags don't record `/rosout`. Record it, or
+   leave the panel out of replay layouts.
+7. **The 3D feature bar can mislead with a grating.** It shows the phase within one period, not
+   where a single feature is. It's right for a single-stripe pattern.
+
+**For anyone writing JSON-schema MCAP for Foxglove** (both were bugs here, now fixed):
+
+- Give every schema field exactly one `type`.
+- Give every array an item type.
+
 | file | 5.2 | 5.7 | soak | 5c | B2 | total |
 |---|---|---|---|---|---|---|
 | `.foxglove.mcap` | 3.6 MB | 0.5 MB | 24.6 MB | 4.3 MB | 0.02 MB | 33.1 MB |
