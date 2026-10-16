@@ -4,6 +4,12 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.97 (2026-10-16) · A lost bridge ends the run (BRIDGE_LOST) · Shared `?p=` links load without waiting on GitHub (LAB-303 S1/S2)
+
+<!-- #254 -->
+- **Losing the FicTrac bridge mid-run now ends the run** instead of carrying on in silence. When the bridge's connection drops during a run that depends on it (a closed loop is armed, the protocol drives a camera or another connector, or the bridge is recording the run), the Studio shows a banner, stops the display, and records the run with the outcome **BRIDGE_LOST** (distinct from a controller fault, so no controller post-mortem runs). Restart the bridge, reconnect, and **⇪ Push log** to collect its record of the run. A user Disconnect, or a bridge the run never used, does not end the run.
+- **A `?p=` link loads its protocol first.** Opening a shared protocol link no longer waits for the course repo's pattern listing from GitHub; on a slow or walled network that wait could leave the Run view empty until a refresh. A protocol key that is not in this site's index now says so in a banner.
+
 ## v0.96 (2026-10-16) · ScanImage as a protocol plugin (two-photon rigs, ROS bridge node) · Run file and MCAP bag close when the run ends (LAB-303)
 
 <!-- #254 -->

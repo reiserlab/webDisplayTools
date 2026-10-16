@@ -1133,10 +1133,26 @@ var ArenaRunnerG6 = (function () {
             this._emit = null; // current run's status emit (for async LED events)
             this._faultReason = null; // set by fault() / a timed-out wire command
             this._faultDetail = null;
+            this._closedLoopArmed = false; // this run turned the bridge's apply on (startClosedLoop)
+            this._connectorsInRun = false; // this run declares connector plugins (BIAS, ScanImage…)
         }
 
         get active() {
             return this._active;
+        }
+
+        /**
+         * True while the ACTIVE run depends on the FicTrac bridge: a closed loop is armed,
+         * the protocol declares connector plugins the bridge drives, or the bridge is
+         * recording the run. ArenaSession consults this when the bridge WebSocket closes
+         * involuntarily — such a run is faulted ('bridge_lost' → BRIDGE_LOST) instead of
+         * carrying on with a dead loop and unreachable devices (LAB-303 S1, ww18 5.7). An
+         * open-loop run that merely has the bridge connected is left alone.
+         */
+        get bridgeInUse() {
+            if (!this._active) return false;
+            const b = this._bridge;
+            return !!(this._closedLoopArmed || this._connectorsInRun || (b && b.logging));
         }
         get conditionName() {
             return this._conditionName;
@@ -1244,7 +1260,9 @@ var ArenaRunnerG6 = (function () {
 
         /**
          * External FAULT (firmware #50): the closed-loop bridge client saw repeated
-         * 0x70 timeouts, or some other watcher decided the controller is gone.
+         * 0x70 timeouts, or some other watcher decided the controller is gone — or
+         * ('bridge_lost', LAB-303 S1) the bridge WebSocket closed under a run that
+         * depended on it; the run-log then derives BRIDGE_LOST instead of CONTROLLER_FAULT.
          * Records the reason, emits a `fault` status event into the current run,
          * then unwinds like abort() (wakes the host-side wait, disarms closed loop,
          * NO STOP send here — the sequence's finally still tries a best-effort
@@ -1289,6 +1307,7 @@ var ArenaRunnerG6 = (function () {
             this._conditionName = null;
             this._clearLedActivator(); // guarded: no-op send when the link is gone
             this._disarmClosedLoop(); // bridge-side, so it still works with no link
+            this._connectorsInRun = false;
             this._emit = null;
         }
 
@@ -1311,6 +1330,7 @@ var ArenaRunnerG6 = (function () {
          * silently stomped by it.
          */
         _disarmClosedLoop() {
+            this._closedLoopArmed = false;
             const b = this._bridge;
             if (!b) return;
             try {
@@ -1624,6 +1644,7 @@ var ArenaRunnerG6 = (function () {
             this._frameCountCache = new Map();
             this._faultReason = null;
             this._faultDetail = null;
+            this._connectorsInRun = !!(connectorPluginNames && connectorPluginNames.size);
             this._oldBridgeStartWarned = false; // one "bridge ignores the start frame" warning per run
             // A stale closed-loop apply (left on by Console use or an aborted run)
             // would push FicTrac frames into the opening Mode-2 step — the firmware
@@ -1865,6 +1886,7 @@ var ArenaRunnerG6 = (function () {
                 // Best-effort STOP at the end / on abort, then reset run-state.
                 this._active = false;
                 this._conditionName = null;
+                this._connectorsInRun = false;
                 this._resolveSleep();
                 this._clearLedActivator(); // LED off + stop gating on completion/abort
                 // Idempotent after a stopClosedLoop; THE fix when a mid-trial STOP
@@ -2127,6 +2149,7 @@ var ArenaRunnerG6 = (function () {
                         if (ir.bias) cfg.bias = ir.bias;
                         if (Object.keys(cfg).length) this._bridge.setConfig(cfg);
                         this._bridge.setApply(!!ir.on);
+                        this._closedLoopArmed = !!ir.on;
                     }
                     for (const w of warnings) {
                         // A warning is NOT a skip — the step ran. Its own phase keeps

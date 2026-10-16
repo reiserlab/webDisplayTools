@@ -30,6 +30,11 @@
  *   'disconnect' ({ involuntary:boolean })      — port closed (cable-pull = true, user Disconnect = false)
  *   'state'      ()                             — connection/run state changed; re-evaluate UI gating
  *   'runstatus'  (s:object)                     — runner status/progress phase (single-trial AND sequence)
+ *   'fault'      (f:object)                     — the run was faulted from outside the runner: the
+ *                                                 bridge client's latched controller_unresponsive
+ *                                                 (fw #50; f.kind), or {kind:'bridge_lost', url} when the
+ *                                                 bridge WebSocket closed under a run that depended on it
+ *                                                 (LAB-303 S1) — the run ends with outcome BRIDGE_LOST
  *
  * SEND / STOP SEMANTICS: ArenaLink.send is single-flight + echo-correlated +
  * FIFO-queued (arena-link.js). STOP therefore QUEUES behind any in-flight send
@@ -156,6 +161,28 @@
                 this._bridge.on('fault', (f) => {
                     const kind = (f && f.kind) || 'controller_unresponsive';
                     if (typeof this._runner.fault === 'function') this._runner.fault(kind, f);
+                    else this._abortRunner();
+                    this._emit('fault', f);
+                    this._emit('state');
+                });
+                // Bridge LOST under a run that depends on it (closed loop armed, connector
+                // plugins declared, or the bridge recording the run): end the run with its
+                // own reason — 'bridge_lost' → BRIDGE_LOST — so the display is stopped by
+                // the runner's finally (the serial link is fine), nothing pretends the loop
+                // or the camera is still driven, and the Studio banners it. ww18 5.7
+                // (2026-10-15): the bridge was hard-killed mid closed loop, the Studio
+                // showed only "bridge disconnected", the run carried on and BIAS kept
+                // recording. A user Disconnect, or a bridge the run never used, is not a fault.
+                this._bridge.on('disconnect', (info) => {
+                    if (!info || !info.involuntary) return;
+                    if (!this._runner.active || !this._runner.bridgeInUse) return;
+                    const f = {
+                        kind: 'bridge_lost',
+                        url: info.url || null,
+                        note: 'bridge WebSocket closed mid-run'
+                    };
+                    if (typeof this._runner.fault === 'function')
+                        this._runner.fault('bridge_lost', f);
                     else this._abortRunner();
                     this._emit('fault', f);
                     this._emit('state');

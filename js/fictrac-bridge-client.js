@@ -41,6 +41,10 @@
  *
  * EVENTS (subscribe with .on(event, fn) — returns an unsubscribe fn):
  *   'status'  (text:string, kind:string)   — connection status changed
+ *   'disconnect' ({involuntary:bool, url})  — the WebSocket closed; involuntary = not our
+ *                                            disconnect() (bridge killed / crashed / network).
+ *                                            ArenaSession ends a run that depends on the
+ *                                            bridge with the BRIDGE_LOST outcome (LAB-303 S1).
  *   'stats'   (stats:object)               — {recv, applied, drop, rateHz} updated
  *   'frame'   (index:int)                  — a frame index arrived (pre-apply)
  *   'sample'  (sample:object)              — behavior_v1 kinematic sample for the
@@ -73,7 +77,8 @@
         'bias',
         'log',
         'loglevel',
-        'fault'
+        'fault',
+        'disconnect'
     ];
     // Log levels this client knows how to request, most-preferred first. The
     // bridge advertises ITS list in hello_ack; a level missing there is one the
@@ -108,6 +113,7 @@
             EVENTS.forEach((e) => (this._handlers[e] = new Set()));
 
             this._ws = null;
+            this._closing = false; // disconnect() in progress → the next onclose is voluntary
             this._apply = false;
             this._logging = false;
             this._pending = null; // newest index awaiting send (coalesced)
@@ -334,6 +340,14 @@
                 this._ws = null;
                 this._bridgeInfo = null;
                 this._ackedLevel = null;
+                // Who closed it: our disconnect() (voluntary) or the far end / the network.
+                // Emitted FIRST so a run that depends on the bridge is faulted (BRIDGE_LOST)
+                // before its pending connector command is rejected below — the runner then
+                // records the loss as the reason, not a generic send failure (ww18 S1: the
+                // bridge was hard-killed mid closed loop and the run carried on in silence).
+                const involuntary = !this._closing;
+                this._closing = false;
+                this._emit('disconnect', { involuntary: involuntary, url: this._url });
                 this._settleAckWaiters(null);
                 this._settleCmdWaiters('bridge disconnected');
                 this._settleExport('reject', new Error('bridge disconnected during log export'));
@@ -345,6 +359,7 @@
         /** Close the bridge WebSocket (idempotent). */
         disconnect() {
             if (this._ws) {
+                this._closing = true;
                 try {
                     this._ws.close();
                 } catch (_) {

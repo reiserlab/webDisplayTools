@@ -212,6 +212,40 @@ console.log('\n=== controller fault outcome ===');
         'CONTROLLER_FAULT'
     );
     checkBool('transcript names the fault', /FAULT controller_unresponsive/.test(log2.toText()));
+    // The bridge going away under a run that depended on it (LAB-303 S1) is its own outcome.
+    const logB = RunLog.createRunLog({
+        meta: { protocol: 'p', run_id: 'rB', bench_id: 'b' },
+        intent: 'experiment',
+        now: fixedClock()
+    });
+    A.feedRunStatus(logB, { phase: 'sequence-start', total: 1 });
+    A.feedRunStatus(logB, {
+        phase: 'fault',
+        reason: 'bridge_lost',
+        detail: { kind: 'bridge_lost', note: 'bridge WebSocket closed mid-run' }
+    });
+    const rB = A.feedRunStatus(logB, {
+        phase: 'aborted',
+        summary: {
+            completed: false,
+            aborted: true,
+            steps: 1,
+            errors: 0,
+            skipped: 0,
+            fault: 'bridge_lost',
+            stopAcked: true
+        }
+    });
+    check('aborted-with-bridge_lost is terminal', rB.terminal, true);
+    check(
+        'outcome BRIDGE_LOST (not CONTROLLER_FAULT / ABORTED_BY_USER)',
+        logB.summary.outcome,
+        'BRIDGE_LOST'
+    );
+    checkBool(
+        'transcript names the bridge loss',
+        /FAULT bridge_lost — bridge WebSocket closed mid-run/.test(logB.toText())
+    );
     // A plain user abort is unchanged.
     const log3 = RunLog.createRunLog({
         meta: { protocol: 'p', run_id: 'r3', bench_id: 'b' },

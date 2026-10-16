@@ -2808,6 +2808,7 @@ async function main() {
             ]
         ]);
         let applyDuringWait = null;
+        let inUseDuringWait = null;
         const summary = await runner.runSequence({
             steps,
             conditionsByName,
@@ -2819,11 +2820,14 @@ async function main() {
             sleep: () => {
                 // Mid-closed-loop the apply must be ON; then the link drops.
                 applyDuringWait = bridge.apply;
+                inUseDuringWait = runner.bridgeInUse; // LAB-303 S1: an armed loop depends on the bridge
                 runner.abort();
                 return Promise.resolve();
             }
         });
         check('apply was ON during the closed-loop wait', applyDuringWait, true);
+        check('bridgeInUse was true during the closed-loop wait', inUseDuringWait, true);
+        check('bridgeInUse is false after the abort', runner.bridgeInUse, false);
         check('run reported aborted', summary.aborted, true);
         check('apply is OFF after the abort', bridge.apply, false);
         check('last apply state recorded is false', bridge.states[bridge.states.length - 1], false);
@@ -2936,6 +2940,38 @@ async function main() {
         });
         check('clean run → fault null', s4.fault, null);
         check('clean run → stopAcked true', s4.stopAcked, true);
+    }
+
+    console.log(
+        '\n=== bridgeInUse (LAB-303 S1): closed loop armed / connectors declared / bridge logging ==='
+    );
+    {
+        const bridge = {
+            logging: false,
+            on() {
+                return () => {};
+            },
+            setApply(on) {
+                bridge.apply = on;
+            },
+            setConfig() {},
+            log() {}
+        };
+        const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, bridge);
+        checkBool('idle runner → false', runner.bridgeInUse === false);
+        runner._active = true;
+        checkBool('active, bridge connected but unused → false', runner.bridgeInUse === false);
+        runner._closedLoopArmed = true;
+        checkBool('closed loop armed → true', runner.bridgeInUse === true);
+        runner._disarmClosedLoop();
+        checkBool('disarm clears it', runner.bridgeInUse === false);
+        bridge.logging = true;
+        checkBool('bridge recording the run → true', runner.bridgeInUse === true);
+        bridge.logging = false;
+        runner._connectorsInRun = true;
+        checkBool('connector plugins declared → true', runner.bridgeInUse === true);
+        runner._active = false;
+        checkBool('run over → false even with the flags set', runner.bridgeInUse === false);
     }
 
     console.log('\n=== connector plugins (LAB-303): BiasPlugin via the bridge ===');

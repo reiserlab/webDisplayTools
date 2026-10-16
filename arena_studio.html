@@ -3420,7 +3420,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.96 | 2026-10-16 11:39 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.97 | 2026-10-16 12:58 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -5836,6 +5836,16 @@ function studioMarkerCurrent(stored, current) {
         Studio.session.on('fault', (f) => {
             Studio._pendingFault = f || { kind: 'controller_unresponsive' };
             const d = f || {};
+            if (d.kind === 'bridge_lost') {
+                // LAB-303 S1: the bridge WebSocket closed under a run that depended on it
+                // (closed loop / connector plugins / recording). The runner has ended the run
+                // (outcome BRIDGE_LOST) and its STOP blanks the display; the controller is
+                // fine, so no post-mortem. The bridge's own record of the run is recovered
+                // at the next export once the bridge is back (bag auto-recovery).
+                rawLine('⚠ bridge connection lost mid-run (' + (d.url || 'ws') + ') — run ended (BRIDGE_LOST)', 'err');
+                showBanner('⚠ Bridge connection lost — run ended. Display stopped; camera/connector steps were not sent. Restart the bridge (pixi run rig), reconnect, then ⇪ Push log to recover its record.');
+                return;
+            }
             rawLine('⚠ controller fault: ' + (d.kind || 'controller_unresponsive') +
                 (d.failures != null ? ' — ' + d.failures + ' of the last ' + d.window + ' frame commands failed' : '') +
                 (d.lastError ? ' (' + d.lastError + ')' : ''), 'err');
@@ -10792,7 +10802,12 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             summary.faultDetail = { kind: 'link_dropped', note: 'controller re-enumerated mid-run (watchdog self-reset?)' };
             Studio.rawLog('run ended by a link drop, not a STOP — treating as a controller event', 'warn');
         }
-        if (summary && summary.fault) {
+        if (summary && summary.fault === 'bridge_lost') {
+            // LAB-303 S1: the controller is healthy — no post-mortem probes; the run is over
+            // and the run log carries the outcome. The bridge's own file/bag closes when the
+            // bridge restarts and recovers it on its first export.
+            Studio.rawLog('run ended: the FicTrac bridge went away mid-run (outcome BRIDGE_LOST)', 'warn');
+        } else if (summary && summary.fault) {
             Studio._lastPostmortem = await Studio.handleControllerFault(summary);
         }
         // Stimulus quality: normally already finalized by onRunFinished (before the export);
@@ -12180,13 +12195,27 @@ async function initFromUrl() {
     // bogus/stale params, stamping the {studio, mode} own-refresh marker, and
     // never clobbering a mode the user clicked during the awaits below.
     Studio._urlSuppress = true;
+    // S2 (ww18 2026-10-15, LAB-303): a tab opened at ?p=… showed no protocol until it was
+    // refreshed. The ?p= load used to wait behind the course repo's shared-pattern listing
+    // (a GitHub API call with no timeout) — on a slow or walled network that await held the
+    // whole init, and a refresh merely got a warm connection. Rules now: (1) nothing that
+    // leaves this origin is awaited before the protocol load; the repo listing starts first
+    // and gets at most REPO_PREVIEW_GRACE_MS to finish before the load goes ahead (on a normal
+    // network it is back well within that, so colocated previews still register after the
+    // shared ones); (2) every pre-step is guarded — a failure in rig/vocab population logs a
+    // warning instead of silently skipping the protocol load.
+    const REPO_PREVIEW_GRACE_MS = 1500;
+    const guarded = async (name, fn) => {
+        try { await fn(); } catch (e) { Studio.rawLog('init: ' + name + ' failed — ' + (e && e.message ? e.message : e), 'warn'); }
+    };
+    const sharedPreviews = guarded('course repo pattern previews', refreshRepoSharedPatternPreviews); // shared patterns/ previews do not depend on a protocol
     try {
-        await populateMetaDatalists();
-        await populateSessionRig();
+        await guarded('metadata vocabularies', populateMetaDatalists);
+        await guarded('session rig', populateSessionRig);
         wirePatPicker();
         loadBuiltinPatternSet();
-        await refreshRepoSharedPatternPreviews(); // shared patterns/ previews do not depend on a protocol
-        rewireRepoPatternPreviews(); // restore last-opened course protocol's colocated thumbs
+        await Promise.race([sharedPreviews, new Promise((r) => setTimeout(r, REPO_PREVIEW_GRACE_MS))]);
+        sharedPreviews.then(() => rewireRepoPatternPreviews()); // restore last-opened course protocol's colocated thumbs (after the shared set, whenever it lands)
         let allowedKeys = [];
         let protoIndex = [];
         try {
@@ -12232,6 +12261,10 @@ async function initFromUrl() {
                 } catch (e) {
                     Studio.showBanner('Protocol fetch failed: ' + e.message);
                 }
+            } else {
+                // decode() dropped an unknown key with a rawLog warning only; say it where a
+                // student looks (S2 follow-up: a silent empty Run view is what "did not load" means).
+                Studio.showBanner('Protocol "' + state.p + '" is not in this site\'s protocol index (protocols/index.json).');
             }
         }
         // ?rig= (#135): the per-setup bookmark. Applied AFTER the ?p= load so

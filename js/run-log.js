@@ -49,6 +49,7 @@
     function deriveOutcome(summary, override) {
         if (override) return override;
         if (!summary) return 'UNKNOWN';
+        if (summary.fault === 'bridge_lost') return 'BRIDGE_LOST'; // the FicTrac bridge went away mid-run (LAB-303 S1)
         if (summary.fault) return 'CONTROLLER_FAULT'; // controller stopped answering (fw #50)
         if (summary.aborted) return 'ABORTED_BY_USER';
         if (summary.errors > 0) return 'ERRORED';
@@ -153,7 +154,8 @@
                     stamp +
                     '⚠ FAULT ' +
                     (ev.reason || 'controller_unresponsive') +
-                    (ev.detail && ev.detail.lastError ? ' — ' + ev.detail.lastError : '')
+                    (ev.detail && ev.detail.lastError ? ' — ' + ev.detail.lastError : '') +
+                    (ev.detail && ev.detail.note ? ' — ' + ev.detail.note : '')
                 );
             case 'step-done':
                 return stamp + '   ' + where + 'done';
