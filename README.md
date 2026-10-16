@@ -79,11 +79,17 @@ every output was moved back onto the run's own timeline:
 | layout | from | reads |
 |---|---|---|
 | `layouts/arena-fictrac.json` | PR #258 (`15d95ae`) | `.viz.mcap`: 3D arena (ball, fly, feature bar), fly turn vs display rotation, bias angle, kinematics in °/s, displayed index, diagnostics |
-| `layouts/arena-bias.json` | PR #258 (`15d95ae`) | `.viz.mcap` for the BIAS state, camera frame count and displayed index (separate plots); `.foxglove.mcap` for the BIAS replies (`/bias/reply`) |
+| `layouts/arena-bias.json` | PR #258 (`96b6dc5`) | `.viz.mcap` for the BIAS state, camera frame count and displayed index (separate plots); `.foxglove.mcap` for the BIAS replies (`/bias/reply`) |
 | `layouts/foxglove-arena-layout.json` | PR #254 | `.foxglove.mcap` only: index, heading, turning and forward motion, bias, epochs, raw browser, event and BIAS views |
 
 The layout files are byte-identical copies of the ones on their branches. PR #252's first
 versions of the two dashboards are in this branch's history at `659c234`.
+
+PR #258's two layouts were checked in Foxglove (web 3.4, 2026-10-16) on run 5.2:
+
+- The display rotation follows the fly's turn curve for curve.
+- The bias angle, kinematics in °/s, camera frames and index each read on their own axis.
+- No label or panel title is clipped.
 
 **Opening by URL instead of downloading.** Foxglove's web app can open a file straight from a URL:
 `https://app.foxglove.dev/<workspace>/view?ds=remote-file&ds.url=<url>`. Repeat `ds.url` to open
