@@ -76,4 +76,5 @@ size-study = "python sizing/compare.py"
 rig = "python nodes/rig.py"
 # ── acceptance test (LAB-303 PoC criteria): whole graph + Studio emulator + model fly ──
 test = "python tests/test_ros2_poc.py"
+test-viz = "python tests/test_viz_node.py"
 studio-emulator = "python tests/studio_emulator.py"

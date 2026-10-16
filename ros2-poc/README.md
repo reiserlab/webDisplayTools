@@ -150,10 +150,22 @@ OK while data flows, STALE after `--stale-s`, WARN never seen, ERROR for BIAS un
 failed command, with rate / last sequence / latency / last error + time), and a
 `visualization_msgs/MarkerArray` on `/viz/markers`: the ball rotated by FicTrac's lab-frame
 orientation with markings so the rotation is visible, the fly fixed on top facing +X, the arena
-as a translucent cylinder, the pattern feature as a bar on the wall at
-`wrap180(frame_dir·idx·deg_per_frame + az0)` (the same mapping `fictrac_sim.py --model fly`
-uses), and a text readout. The stock `foxglove_bridge` serves it on **ws://localhost:8766**
+as a translucent cylinder, the pattern feature as a bar on the wall at `wrap180(display_deg)`
+(below), and a text readout. The stock `foxglove_bridge` serves it on **ws://localhost:8766**
 (8765 is the Studio bridge).
+
+**The display's rotation, not just its index.** The bridge reports the frame index mod the
+pattern's frame count, so with a periodic pattern (a 20-frame grating) `azimuth_deg =
+wrap180(frame_dir·idx·deg_per_frame + az0)` stays inside one 36° period while the fly turns
+through thousands of degrees. `/viz/arena/display_deg` sums the index steps, each taken the short
+way round the modulus. That is the display's unwrapped rotation, which the closed-loop plot sets
+against the fly's turn. The modulus comes from `--frames N` when given; otherwise it is learned
+within each epoch as the largest index seen + 1, which is enough because a wrap passes through
+the largest index. For a pattern that spans the arena (n·deg_per_frame = 360), `wrap180(display_deg)`
+equals the feature azimuth, so the 3D bar is unchanged there, and for a grating it now turns
+with the pattern. `/viz/fictrac/fwd_dps` and `side_dps` are the rates of FicTrac's integrated
+forward/side motion (cols 20/21) in °/s, the units of `speed_dps`, so the kinematics plot reads
+on one axis. `pixi run test-viz` checks this math.
 
 ```bash
 pixi run rig -- --sim --sim-args "--model fly --kp 2 --seed 1" --foxglove          # Arena + FicTrac
@@ -163,14 +175,15 @@ pixi run rig -- --sim --bias --foxglove                                         
 # Layout → Import from file… → ros2-poc/foxglove/arena-fictrac.json  or  arena-bias.json
 ```
 
-`arena-fictrac.json`: 3D scene, closed-loop plot (fly turn vs feature azimuth vs bias angle),
-kinematics plot, frame-index plot, FicTrac light + rate gauge, diagnostics summary/detail, last
-error, log. `arena-bias.json`: 3D scene, BIAS state timeline (unreachable / idle / preview /
-recording), frame count vs arena index, latest BIAS reply (shows the `artifact` path), reachable /
-capturing / writing-video lights, fps gauge, diagnostics, last error, log. Both work live and on a
-replayed MCAP once the log moves to MCAP. Verified here only as topics and advertised channels
-(no GUI in the container); the layouts are hand-written Foxglove JSON, so a panel whose schema
-drifted shows up empty and is one click to re-point.
+`arena-fictrac.json`: 3D scene, closed-loop plot (fly turn vs display rotation), bias angle,
+kinematics plot (speed, forward, side in °/s), frame-index plot, FicTrac light + rate gauge,
+diagnostics summary/detail, last error, log. `arena-bias.json`: 3D scene, BIAS state timeline
+(unreachable / idle / preview / recording), camera frame count and the displayed index on separate
+plots, latest BIAS reply (shows the `artifact` path), BIAS / camera / video lights, fps gauge,
+diagnostics, last error, log. The ROS log panel is live only: the bags do not record `/rosout`.
+Both layouts were checked in Foxglove (web 3.4, 2026-10-16) on ww18 hardware runs: each bag was
+played back at 1× through this node and its outputs recorded. The files and the checker
+(`tools/check_layouts.py`) are on branch `data/ros2-poc-ww18-2026-10-15`.
 
 ## Log format: MCAP sizing and the two-channel plan (2026-10-15)
 
