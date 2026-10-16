@@ -146,7 +146,7 @@ console.log('=== Console Tools checklist ===');
 const railRows = Array.from(
     studio.matchAll(/<div class="rail-btn( sel)?" data-panel="([a-z]+)"([^>]*)>/g)
 );
-check('nine rail rows', railRows.length === 9, String(railRows.length));
+check('ten rail rows', railRows.length === 10, String(railRows.length));
 railRows.forEach((m) => {
     const sel = !!m[1];
     const attrs = m[3];
@@ -262,7 +262,7 @@ const stray = [];
 css.split('\n').forEach((line, i, arr) => {
     const offset = arr.slice(0, i).join('\n').length;
     if (tokenBlockSpans.some(([a, b]) => offset >= a && offset <= b)) return;
-    if (/wdt-ch-next/.test(line)) return;
+    if (/wdt-ch-next|wdt-ch-ros/.test(line)) return; // tier badges: fixed signal colors in every theme
     const code = line.split('/*')[0].replace(/var\(--[\w-]+,\s*#[0-9a-fA-F]{3,6}\)/g, '');
     const m = code.match(/#[0-9a-fA-F]{6}\b|rgba?\(\s*\d/);
     if (m) stray.push(i + ': ' + line.trim().slice(0, 60));

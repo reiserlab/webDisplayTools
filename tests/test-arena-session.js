@@ -553,6 +553,88 @@ function newSession(m) {
         delete m.RunnerLib.ArenaRunner.prototype.fault;
     }
 
+    console.log(
+        '\n=== bridge LOST mid-run (LAB-303 S1): runner.fault(bridge_lost) only when the run depends on it ==='
+    );
+    {
+        const m = makeMocks();
+        class MockBridge {
+            constructor(o) {
+                this.o = o;
+                this._h = {};
+                this.logging = false;
+                this.apply = false;
+            }
+            on(ev, fn) {
+                (this._h[ev] = this._h[ev] || []).push(fn);
+                return () => {};
+            }
+            emit(ev, ...a) {
+                (this._h[ev] || []).forEach((fn) => fn(...a));
+            }
+            setApply() {}
+            log() {}
+        }
+        let inUse = false;
+        m.RunnerLib.ArenaRunner.prototype.fault = function (reason, detail) {
+            m.calls.push('runner.fault');
+            this.lastFault = { reason, detail };
+        };
+        Object.defineProperty(m.RunnerLib.ArenaRunner.prototype, 'bridgeInUse', {
+            get() {
+                return inUse;
+            },
+            configurable: true
+        });
+        const s = new ArenaSession({
+            wire: { mark: 1 },
+            LinkClass: m.MockLink,
+            RunnerLib: m.RunnerLib,
+            BridgeClientLib: MockBridge
+        });
+        const faults = [];
+        s.on('fault', (f) => faults.push(f));
+        s._runner._active = true;
+        inUse = true;
+        s.bridge.emit('disconnect', { involuntary: false, url: 'ws://x' });
+        checkBool(
+            'a user Disconnect of the bridge never faults the run',
+            !m.calls.includes('runner.fault')
+        );
+        inUse = false;
+        s.bridge.emit('disconnect', { involuntary: true, url: 'ws://x' });
+        checkBool(
+            'bridge lost under a run that never used it → no fault',
+            !m.calls.includes('runner.fault')
+        );
+        inUse = true;
+        s.bridge.emit('disconnect', { involuntary: true, url: 'ws://x' });
+        checkBool(
+            'bridge lost under a dependent run → runner.fault',
+            m.calls.includes('runner.fault')
+        );
+        check(
+            'reason bridge_lost + detail kind/url',
+            [
+                s._runner.lastFault.reason,
+                s._runner.lastFault.detail.kind,
+                s._runner.lastFault.detail.url
+            ],
+            ['bridge_lost', 'bridge_lost', 'ws://x']
+        );
+        check(
+            "session re-emits 'fault' with kind bridge_lost",
+            faults.map((f) => f.kind),
+            ['bridge_lost']
+        );
+        m.calls.length = 0;
+        s._runner._active = false;
+        s.bridge.emit('disconnect', { involuntary: true, url: 'ws://x' });
+        checkBool('no run active → nothing', !m.calls.includes('runner.fault'));
+        delete m.RunnerLib.ArenaRunner.prototype.fault;
+        delete m.RunnerLib.ArenaRunner.prototype.bridgeInUse;
+    }
+
     console.log('\n=== bridge applyFrame: a controller REJECT counts as an apply failure ===');
     {
         const m = makeMocks();

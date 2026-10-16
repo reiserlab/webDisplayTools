@@ -277,7 +277,7 @@ async function main() {
     checkBool(
         'loads js/studio-analog-in.js as a classic script after the wire module',
         studioHtml.indexOf('<script src="js/studio-analog-in.js"') >
-            studioHtml.indexOf('<script src="js/arena-wire-g6.js"') &&
+            studioHtml.indexOf('<script src="js/arena-wire-g6.js') &&
             studioHtml.indexOf('<script src="js/studio-analog-in.js"') > 0,
         'script tag'
     );

@@ -2808,6 +2808,7 @@ async function main() {
             ]
         ]);
         let applyDuringWait = null;
+        let inUseDuringWait = null;
         const summary = await runner.runSequence({
             steps,
             conditionsByName,
@@ -2819,11 +2820,14 @@ async function main() {
             sleep: () => {
                 // Mid-closed-loop the apply must be ON; then the link drops.
                 applyDuringWait = bridge.apply;
+                inUseDuringWait = runner.bridgeInUse; // LAB-303 S1: an armed loop depends on the bridge
                 runner.abort();
                 return Promise.resolve();
             }
         });
         check('apply was ON during the closed-loop wait', applyDuringWait, true);
+        check('bridgeInUse was true during the closed-loop wait', inUseDuringWait, true);
+        check('bridgeInUse is false after the abort', runner.bridgeInUse, false);
         check('run reported aborted', summary.aborted, true);
         check('apply is OFF after the abort', bridge.apply, false);
         check('last apply state recorded is false', bridge.states[bridge.states.length - 1], false);
@@ -2936,6 +2940,263 @@ async function main() {
         });
         check('clean run → fault null', s4.fault, null);
         check('clean run → stopAcked true', s4.stopAcked, true);
+    }
+
+    console.log(
+        '\n=== bridgeInUse (LAB-303 S1): closed loop armed / connectors declared / bridge logging ==='
+    );
+    {
+        const bridge = {
+            logging: false,
+            on() {
+                return () => {};
+            },
+            setApply(on) {
+                bridge.apply = on;
+            },
+            setConfig() {},
+            log() {}
+        };
+        const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, bridge);
+        checkBool('idle runner → false', runner.bridgeInUse === false);
+        runner._active = true;
+        checkBool('active, bridge connected but unused → false', runner.bridgeInUse === false);
+        runner._closedLoopArmed = true;
+        checkBool('closed loop armed → true', runner.bridgeInUse === true);
+        runner._disarmClosedLoop();
+        checkBool('disarm clears it', runner.bridgeInUse === false);
+        bridge.logging = true;
+        checkBool('bridge recording the run → true', runner.bridgeInUse === true);
+        bridge.logging = false;
+        runner._connectorsInRun = true;
+        checkBool('connector plugins declared → true', runner.bridgeInUse === true);
+        runner._active = false;
+        checkBool('run over → false even with the flags set', runner.bridgeInUse === false);
+    }
+
+    console.log('\n=== connector plugins (LAB-303): BiasPlugin via the bridge ===');
+    {
+        const conn = new Map([['camera', 'bias']]);
+        // translateCommand: a plugin named in connectorPluginNames becomes connectorCommand,
+        // with params passed through and an optional timeout_s lifted out.
+        const ir = Runner.translateCommand(
+            {
+                type: 'plugin',
+                plugin_name: 'camera',
+                command_name: 'startRecording',
+                params: { filename: 't1.avi', timeout_s: 4 }
+            },
+            { connectorPluginNames: conn }
+        );
+        checkDeep(
+            'translate → connectorCommand',
+            [ir.op, ir.connector, ir.plugin_name, ir.command_name, ir.params.filename, ir.timeoutS],
+            ['connectorCommand', 'bias', 'camera', 'startRecording', 't1.avi', 4]
+        );
+        const irNo = Runner.translateCommand(
+            { type: 'plugin', plugin_name: 'camera', command_name: 'startRecording' },
+            { fictracPluginNames: new Set(['fictrac']) }
+        );
+        check('without connectorPluginNames the same command still skips', irNo.op, 'skip');
+        // listSkippedPlugins with the driveable set counts only what the runner will skip.
+        const cond = {
+            commands: [
+                { type: 'plugin', plugin_name: 'camera', command_name: 'startRecording' },
+                { type: 'plugin', plugin_name: 'log', command_name: 'message' },
+                { type: 'plugin', plugin_name: 'backlight', command_name: 'setRedLEDPower' },
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    pattern: 'p',
+                    duration: 1,
+                    mode: 2,
+                    frame_rate: 10,
+                    gain: 0
+                }
+            ]
+        };
+        check(
+            'listSkippedPlugins legacy (no set) lists every plugin cmd',
+            Runner.listSkippedPlugins(cond).length,
+            3
+        );
+        checkDeep(
+            'listSkippedPlugins with driveable set → only backlight',
+            Runner.listSkippedPlugins(cond, new Set(['camera', 'log'])).map((x) => x.plugin_name),
+            ['backlight']
+        );
+
+        // runSequence: ok reply → command event with the reply; error reply → step error,
+        // run continues; no connectors advertised → visible skip naming the bridge.
+        const makeConnBridge = (connectors, replies) => ({
+            connected: true,
+            bridgeInfo: {
+                version: connectors ? '3.4 · ros2-poc' : '3.4',
+                levels: ['behavior_v2'],
+                connectors
+            },
+            configs: [],
+            logs: [],
+            calls: [],
+            connect() {},
+            disconnect() {},
+            setApply() {},
+            setConfig(c) {
+                this.configs.push(c);
+            },
+            log(o) {
+                this.logs.push(o);
+            },
+            supportsConnector(name) {
+                return Array.isArray(this.bridgeInfo.connectors)
+                    ? this.bridgeInfo.connectors.includes(name)
+                    : null;
+            },
+            connectorCommand(req) {
+                this.calls.push(req);
+                const r = replies[req.command] || { ok: true, outcome: 'ok' };
+                return Promise.resolve(
+                    Object.assign(
+                        { connector: req.connector, plugin: req.plugin, command: req.command },
+                        r
+                    )
+                );
+            }
+        });
+        const steps = [{ conditionName: 'c1', index: 0, total: 1 }];
+        const conditions = new Map([
+            [
+                'c1',
+                {
+                    name: 'c1',
+                    commands: [
+                        {
+                            type: 'plugin',
+                            plugin_name: 'camera',
+                            command_name: 'startRecording',
+                            params: { filename: 't1.avi' }
+                        },
+                        {
+                            type: 'controller',
+                            command_name: 'trialParams',
+                            pattern: 'p',
+                            pattern_ID: 1,
+                            duration: 0,
+                            mode: 2,
+                            frame_index: 0,
+                            frame_rate: 10,
+                            gain: 0
+                        },
+                        { type: 'plugin', plugin_name: 'camera', command_name: 'getTimestamp' },
+                        { type: 'plugin', plugin_name: 'camera', command_name: 'stopRecording' }
+                    ]
+                }
+            ]
+        ]);
+        const runOnce = async (bridge) => {
+            const events = [];
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, bridge);
+            const summary = await runner.runSequence({
+                steps,
+                conditionsByName: conditions,
+                resolvePatternId: () => 1,
+                connectorPluginNames: conn,
+                onProgress: (e) => events.push(e),
+                timing: async () => {},
+                sleep: () => Promise.resolve()
+            });
+            return { events, summary };
+        };
+        {
+            const bridge = makeConnBridge(['bias'], {
+                startRecording: {
+                    ok: true,
+                    outcome: 'ok',
+                    value: '/v/t1.avi',
+                    rtt_ms: 180,
+                    artifact: { kind: 'video', path: '/v/t1.avi' }
+                },
+                getTimestamp: { ok: true, outcome: 'ok', value: 12.5, rtt_ms: 1 },
+                stopRecording: {
+                    ok: false,
+                    outcome: 'unknown',
+                    error: 'no connector_reply within 10000 ms'
+                }
+            });
+            const { events, summary } = await runOnce(bridge);
+            checkDeep(
+                'bridge saw the three commands in order',
+                bridge.calls.map((c) => c.command),
+                ['startRecording', 'getTimestamp', 'stopRecording']
+            );
+            checkDeep('params pass through to the bridge', bridge.calls[0].params, {
+                filename: 't1.avi'
+            });
+            const cmds = events.filter((e) => e.phase === 'command' && e.op === 'connectorCommand');
+            checkDeep(
+                'one command event per connector command',
+                cmds.map((e) => e.command_name),
+                ['startRecording', 'getTimestamp', 'stopRecording']
+            );
+            checkDeep(
+                'command event carries the reply (outcome, value, artifact)',
+                [
+                    cmds[0].value.outcome,
+                    cmds[0].value.value,
+                    cmds[0].value.artifact.path,
+                    cmds[1].value.value
+                ],
+                ['ok', '/v/t1.avi', '/v/t1.avi', 12.5]
+            );
+            const errs = events.filter((e) => e.phase === 'error');
+            checkDeep(
+                'unknown outcome → one step error naming plugin.command → unknown',
+                [
+                    errs.length,
+                    errs[0] && errs[0].reason.startsWith('camera.stopRecording → unknown')
+                ],
+                [1, true]
+            );
+            checkDeep(
+                'run completes despite the failed step (proceed-and-skip)',
+                [summary.completed, summary.errors, summary.skipped],
+                [true, 1, 0]
+            );
+        }
+        {
+            // A 3.4 bridge (hello_ack without connectors): every connector command is a
+            // visible skip, nothing is sent to the bridge, the run is otherwise unchanged.
+            const bridge = makeConnBridge(null, {});
+            const { events, summary } = await runOnce(bridge);
+            check('3.4 bridge → nothing sent', bridge.calls.length, 0);
+            const skips = events.filter((e) => e.phase === 'skip');
+            checkDeep(
+                '3.4 bridge → three visible skips',
+                skips.map((e) => e.command_name),
+                ['startRecording', 'getTimestamp', 'stopRecording']
+            );
+            checkBool(
+                'skip reason names the bridge version and the fix',
+                /advertises no connectors/.test(skips[0].reason) && /3\.4/.test(skips[0].reason),
+                skips[0].reason
+            );
+            checkDeep(
+                'summary counts them as skipped, not errors',
+                [summary.skipped, summary.errors],
+                [3, 0]
+            );
+        }
+        {
+            // A bridge WITH connectors but not this one.
+            const bridge = makeConnBridge(['daq'], {});
+            const { events } = await runOnce(bridge);
+            const skips = events.filter((e) => e.phase === 'skip');
+            checkBool(
+                'missing connector → skip names it',
+                skips.length === 3 && /no "bias" connector/.test(skips[0].reason),
+                skips[0] && skips[0].reason
+            );
+        }
     }
 
     console.log('\n=== Summary ===');

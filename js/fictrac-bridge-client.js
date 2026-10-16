@@ -41,6 +41,10 @@
  *
  * EVENTS (subscribe with .on(event, fn) — returns an unsubscribe fn):
  *   'status'  (text:string, kind:string)   — connection status changed
+ *   'disconnect' ({involuntary:bool, url})  — the WebSocket closed; involuntary = not our
+ *                                            disconnect() (bridge killed / crashed / network).
+ *                                            ArenaSession ends a run that depends on the
+ *                                            bridge with the BRIDGE_LOST outcome (LAB-303 S1).
  *   'stats'   (stats:object)               — {recv, applied, drop, rateHz} updated
  *   'frame'   (index:int)                  — a frame index arrived (pre-apply)
  *   'sample'  (sample:object)              — behavior_v1 kinematic sample for the
@@ -73,7 +77,8 @@
         'bias',
         'log',
         'loglevel',
-        'fault'
+        'fault',
+        'disconnect'
     ];
     // Log levels this client knows how to request, most-preferred first. The
     // bridge advertises ITS list in hello_ack; a level missing there is one the
@@ -108,6 +113,7 @@
             EVENTS.forEach((e) => (this._handlers[e] = new Set()));
 
             this._ws = null;
+            this._closing = false; // disconnect() in progress → the next onclose is voluntary
             this._apply = false;
             this._logging = false;
             this._pending = null; // newest index awaiting send (coalesced)
@@ -170,6 +176,8 @@
             this._bridgeInfo = null; // from hello_ack: {version, levels, level} (null = old bridge / not yet)
             this._ackedLevel = null; // from log_control_ack while logging is enabled
             this._ackWaiters = []; // waitForLogLevelAck() resolvers
+            this._cmdWaiters = new Map(); // connectorCommand() id → {resolve, timer, base}
+            this._cmdSeq = 0;
         }
 
         // ---- events ----------------------------------------------------------
@@ -324,6 +332,7 @@
                 else if (msg && msg.type === 'log_export_result') this._handleExportResult(msg);
                 else if (msg && msg.type === 'hello_ack') this._handleHelloAck(msg);
                 else if (msg && msg.type === 'log_control_ack') this._handleLogControlAck(msg);
+                else if (msg && msg.type === 'connector_reply') this._handleConnectorReply(msg);
             };
             ws.onerror = () => this._emit('status', 'error', 'err');
             ws.onclose = () => {
@@ -331,7 +340,16 @@
                 this._ws = null;
                 this._bridgeInfo = null;
                 this._ackedLevel = null;
+                // Who closed it: our disconnect() (voluntary) or the far end / the network.
+                // Emitted FIRST so a run that depends on the bridge is faulted (BRIDGE_LOST)
+                // before its pending connector command is rejected below — the runner then
+                // records the loss as the reason, not a generic send failure (ww18 S1: the
+                // bridge was hard-killed mid closed loop and the run carried on in silence).
+                const involuntary = !this._closing;
+                this._closing = false;
+                this._emit('disconnect', { involuntary: involuntary, url: this._url });
                 this._settleAckWaiters(null);
+                this._settleCmdWaiters('bridge disconnected');
                 this._settleExport('reject', new Error('bridge disconnected during log export'));
                 this._emit('status', 'disconnected', 'dim');
                 this._emit('stats', this.stats);
@@ -341,6 +359,7 @@
         /** Close the bridge WebSocket (idempotent). */
         disconnect() {
             if (this._ws) {
+                this._closing = true;
                 try {
                     this._ws.close();
                 } catch (_) {
@@ -572,6 +591,101 @@
             return this._bridgeInfo.levels.includes(lv);
         }
         /**
+         * Can the connected bridge drive device connector `name` ('bias', …)? true/false
+         * from hello_ack's `connectors` list; null when unknown — no hello_ack yet, or a
+         * bridge that predates connectors (every ≤ 3.4 bridge). The runner treats null
+         * as "not driveable" and skips the command visibly.
+         */
+        supportsConnector(name) {
+            if (!this._bridgeInfo || !Array.isArray(this._bridgeInfo.connectors)) return null;
+            return this._bridgeInfo.connectors.includes(name);
+        }
+        /**
+         * Send one device-plugin command through the bridge (connector_command →
+         * connector_reply, LAB-303). Resolves with the reply object
+         * {connector, plugin, command, ok, outcome:'ok'|'error'|'unknown', value, error,
+         * steps, rtt_ms, artifact?}. It NEVER rejects: not connected → outcome 'error';
+         * no connector_reply within `timeoutMs` (default 10 s) → outcome 'unknown' (the
+         * command may or may not have taken effect — the LAB-303 semantics); a disconnect
+         * while in flight → 'unknown' as well. One id per call; late replies are dropped.
+         * @param {object} req {connector:'bias', plugin:'camera', command:'startRecording',
+         *                      params:{…}, timeoutS?, timeoutMs?}
+         * @returns {Promise<object>}
+         */
+        connectorCommand(req) {
+            req = req || {};
+            const base = {
+                connector: req.connector || null,
+                plugin: req.plugin || null,
+                command: req.command || null
+            };
+            if (!this.connected) {
+                return Promise.resolve(
+                    Object.assign(base, {
+                        ok: false,
+                        outcome: 'error',
+                        error: 'bridge not connected'
+                    })
+                );
+            }
+            const id = 'c' + ++this._cmdSeq + '-' + Date.now().toString(36);
+            const msg = {
+                type: 'connector_command',
+                id,
+                connector: base.connector,
+                plugin: base.plugin,
+                command: base.command,
+                params: req.params && typeof req.params === 'object' ? req.params : {}
+            };
+            if (Number.isFinite(Number(req.timeoutS)) && Number(req.timeoutS) > 0)
+                msg.timeout_s = Number(req.timeoutS);
+            if (!this._send(msg)) {
+                return Promise.resolve(
+                    Object.assign(base, {
+                        ok: false,
+                        outcome: 'error',
+                        error: 'send failed (socket closing)'
+                    })
+                );
+            }
+            const timeoutMs = Number(req.timeoutMs) > 0 ? Number(req.timeoutMs) : 10000;
+            return new Promise((resolve) => {
+                const w = { resolve, timer: null, base };
+                w.timer = setTimeout(() => {
+                    this._cmdWaiters.delete(id);
+                    resolve(
+                        Object.assign({}, base, {
+                            ok: false,
+                            outcome: 'unknown',
+                            error: 'no connector_reply within ' + timeoutMs + ' ms'
+                        })
+                    );
+                }, timeoutMs);
+                this._cmdWaiters.set(id, w);
+            });
+        }
+        _handleConnectorReply(msg) {
+            const w = msg && msg.id != null ? this._cmdWaiters.get(msg.id) : null;
+            if (!w) return; // a late reply after our timeout, or another client's
+            this._cmdWaiters.delete(msg.id);
+            if (w.timer && typeof clearTimeout !== 'undefined') clearTimeout(w.timer);
+            const rep = Object.assign({}, w.base, msg);
+            delete rep.type;
+            if (typeof rep.ok !== 'boolean') rep.ok = rep.outcome === 'ok';
+            if (!rep.outcome) rep.outcome = rep.ok ? 'ok' : 'error';
+            w.resolve(rep);
+        }
+        _settleCmdWaiters(reason) {
+            const ws = Array.from(this._cmdWaiters.values());
+            this._cmdWaiters.clear();
+            for (const w of ws) {
+                if (w.timer && typeof clearTimeout !== 'undefined') clearTimeout(w.timer);
+                w.resolve(
+                    Object.assign({}, w.base, { ok: false, outcome: 'unknown', error: reason })
+                );
+            }
+        }
+        /**
          * Resolve with the acked level once the bridge answers the pending
          * log_control (or immediately if it already has); null after `timeoutMs`
          * (default 1000) — i.e. an old bridge, or not connected.
@@ -600,7 +714,10 @@
             this._bridgeInfo = {
                 version: msg.bridge || null,
                 levels: Array.isArray(msg.levels) ? msg.levels.slice() : [],
-                level: msg.level || null
+                level: msg.level || null,
+                // Device connectors the bridge drives for the runner (LAB-303); null = a
+                // bridge that predates connectors (every ≤ 3.4 bridge).
+                connectors: Array.isArray(msg.connectors) ? msg.connectors.slice() : null
             };
             const requested = this._config.logLevel;
             const ok = this._bridgeInfo.levels.includes(requested);

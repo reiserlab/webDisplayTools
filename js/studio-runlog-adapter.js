@@ -59,14 +59,12 @@
         const ev = log.event(phase, s);
         if (isTerminal(phase)) {
             // An `aborted` whose summary carries a fault reason is the CONTROLLER
-            // giving up, not the operator — label it so (it also auto-commits).
+            // giving up (or the bridge going away: 'bridge_lost' → BRIDGE_LOST,
+            // LAB-303 S1), not the operator — label it so (it also auto-commits).
             const faulted = phase === 'aborted' && s.summary && s.summary.fault;
+            // (no override: run-log.js deriveOutcome reads the fault kind off the summary)
             const override =
-                phase === 'aborted'
-                    ? faulted
-                        ? 'CONTROLLER_FAULT'
-                        : 'ABORTED_BY_USER'
-                    : undefined;
+                phase === 'aborted' ? (faulted ? undefined : 'ABORTED_BY_USER') : undefined;
             const summary = log.finish(s.summary || null, override);
             return { event: ev, terminal: true, summary: summary };
         }
