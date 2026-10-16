@@ -25,6 +25,7 @@ What the bag holds and how it becomes lines (nodes/bridge_node.py writes these):
                    connector_status, source_lost/resumed, warn       → verbatim
   /kinefly/raw     the adapter envelope (DERIVED stream)             → ["kf", ms, seq, t_src, L, R, head, abd]
   /bias/reply, /bias/status  the BIAS node's JSON (DERIVED)          → {"type":"connector","src":"bias",…}
+  /scanimage/reply, /scanimage/status  the ScanImage node's JSON (DERIVED) → {"type":"connector","src":"scanimage",…}
   /fictrac/raw | /fictrac/frame  the adapter's FicTrac records       → used only for level `full`
 
 Clock and order rules (comparison.md §4, B1/B2):
@@ -70,6 +71,14 @@ TOPIC_KINEFLY = "/kinefly/raw"
 TOPIC_BIAS_CMD = "/bias/cmd"
 TOPIC_BIAS_REPLY = "/bias/reply"
 TOPIC_BIAS_STATUS = "/bias/status"
+TOPIC_SCANIMAGE_REPLY = "/scanimage/reply"
+TOPIC_SCANIMAGE_STATUS = "/scanimage/status"
+# Connector device topics → (connector id, event kind): their JSON becomes a DERIVED
+# {"type":"connector","src":<id>,"kind":…} line (mirror of bridge_node.CONNECTOR_TOPICS).
+CONNECTOR_TOPIC_SRC = {
+    TOPIC_BIAS_REPLY: ("bias", "reply"), TOPIC_BIAS_STATUS: ("bias", "status"),
+    TOPIC_SCANIMAGE_REPLY: ("scanimage", "reply"), TOPIC_SCANIMAGE_STATUS: ("scanimage", "status"),
+}
 KF_TAG = "kf"
 
 
@@ -302,7 +311,7 @@ def kf_row(rel_ms: int, pkt: dict, seq: int) -> list:
 
 def convert(records: list[dict], level: str | None = None, order: str = "seq", connectors=None) -> tuple[list, dict]:
     """→ (lines as JSON values, report). `level` None = the level the run was opened with."""
-    stats = {"frames": 0, "browser_lines": 0, "rows": 0, "events": 0, "kf": 0, "bias": 0,
+    stats = {"frames": 0, "browser_lines": 0, "rows": 0, "events": 0, "kf": 0, "bias": 0, "scanimage": 0,
              "connector_cmds": 0, "skipped": 0, "unordered_inserts": 0}
     opens = [r for r in records if r["topic"] == TOPIC_SESSION]
     session_open = None
@@ -435,14 +444,14 @@ def convert(records: list[dict], level: str | None = None, order: str = "seq", c
             kseq = pkt.get("sequence") if isinstance(pkt.get("sequence"), int) else int(env.get("seq") or 0)
             derived.append((rel, RANK["derived"], r["log_ns"], kf_row(rel, pkt, kseq)))
             stats["kf"] += 1
-        elif t in (TOPIC_BIAS_REPLY, TOPIC_BIAS_STATUS):
+        elif t in CONNECTOR_TOPIC_SRC:
             env = _json_of(r)
             if not isinstance(env, dict):
                 stats["skipped"] += 1
                 continue
-            kind = "reply" if t == TOPIC_BIAS_REPLY else "status"
+            src, kind = CONNECTOR_TOPIC_SRC[t]
             rel = max(0, int(r["log_ns"] // 1_000_000) - t0)
-            ev = {"type": "connector", "src": "bias", "kind": kind, "dir": "bridge", "ms": rel}
+            ev = {"type": "connector", "src": src, "kind": kind, "dir": "bridge", "ms": rel}
             for k, v in env.items():
                 if k != "src":
                     ev[k] = v
@@ -452,8 +461,8 @@ def convert(records: list[dict], level: str | None = None, order: str = "seq", c
                     ev["via"] = "ws"
                     ev["plugin"] = p["plugin"]
             derived.append((rel, RANK["derived"], r["log_ns"], ev))
-            stats["bias"] += 1
-        # /bias/cmd, /fictrac/*: recorded for the record; no line of their own.
+            stats[src] = stats.get(src, 0) + 1
+        # /bias/cmd, /scanimage/cmd, /fictrac/*: recorded for the record; no line of their own.
 
     if order == "time":
         allrows = [(ms, rk, sq, obj) for (sq, ms, rk, obj) in seq_lines] + [(ms, rk, 10**18 + ns, obj) for (ms, rk, ns, obj) in derived]

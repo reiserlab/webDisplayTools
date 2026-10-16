@@ -165,11 +165,11 @@ class Emulator:
             self.check(f"epoch {i}: opened on start_frame {a.start_frame}", min(d, a.frames - d) <= 1, f"first index {first_idx}")
         return new_epoch
 
-    async def connector(self, command: str, params: dict | None = None, timeout: float = 10.0) -> dict | None:
+    async def connector(self, command: str, params: dict | None = None, timeout: float = 10.0, connector: str = "bias", plugin: str = "camera") -> dict | None:
         """The runner's connectorCommand: one connector_command, wait for ITS reply by id."""
         self.cmd_seq += 1
         cid = f"emu{self.cmd_seq}"
-        await self.send({"type": "connector_command", "id": cid, "connector": "bias", "plugin": "camera",
+        await self.send({"type": "connector_command", "id": cid, "connector": connector, "plugin": plugin,
                          "command": command, "params": params or {}})
         t_end = time.monotonic() + timeout
         while time.monotonic() < t_end:
@@ -208,6 +208,8 @@ class Emulator:
                 self.report["connectors"] = ack.get("connectors")
                 if a.connector_cmds:
                     self.check("hello_ack advertises the bias connector", "bias" in (ack.get("connectors") or []), str(ack.get("connectors")))
+                if a.scanimage_cmds:
+                    self.check("hello_ack advertises the scanimage connector", "scanimage" in (ack.get("connectors") or []), str(ack.get("connectors")))
             await self.send({"type": "log_control", "enabled": True, "level": "behavior_v2"})
             lack = await self.wait_for("log_control_ack")
             self.check("log_control_ack: behavior_v2 in force", bool(lack) and lack.get("enabled") is True and lack.get("level") == "behavior_v2", str(lack))
@@ -241,6 +243,35 @@ class Emulator:
                 r = await self.connector("bogusCommand")
                 self.check("unknown command → reply error (not a hang)", bool(r) and r.get("ok") is False and r.get("outcome") == "error", str(r)[:200])
                 # Frames kept flowing meanwhile; re-sync the epoch gate's "since" id.
+                if self.last_epoch is not None:
+                    since = self.last_epoch
+            if a.scanimage_cmds:
+                # The runner's path for a `scanimage` plugin (ScanImage's JSON server behind
+                # scanimage_node.py): the 2P protocol's per-color sequence, plus the refusals and
+                # the UNKNOWN path (a get the mock never answers → timeout → reconnect → reconcile).
+                async def si(command: str, params: dict | None = None, timeout: float = 20.0) -> dict | None:
+                    return await self.connector(command, params, timeout, connector="scanimage", plugin="scanimage")
+                r = await si("ping")
+                self.check("scanimage ping → ok, acqState idle", bool(r) and r.get("ok") is True and (r.get("value") or {}).get("acqState") == "idle", str(r)[:200])
+                r = await si("setFileStem", {"stem": "emu_violet_d7"})
+                self.check("scanimage setFileStem → ok, stem echoed", bool(r) and r.get("ok") is True and (r.get("value") or {}).get("logFileStem") == "emu_violet_d7", str(r)[:200])
+                r = await si("set", {"property": "hStackManager.framesPerSlice", "value": 30})
+                self.check("scanimage set framesPerSlice (allowlisted) → ok", bool(r) and r.get("ok") is True and r.get("value") == 30, str(r)[:200])
+                r = await si("set", {"property": "hScan2D.bidirectional", "value": True})
+                self.check("scanimage set of a non-allowlisted property → refused by the node (error, never sent)", bool(r) and r.get("ok") is False and r.get("outcome") == "error" and not r.get("steps"), str(r)[:200])
+                r = await si("grab")
+                self.check("scanimage grab → ok, acqState grab, TIFF artifact with stem + counter", bool(r) and r.get("ok") is True and (r.get("value") or {}).get("acqState") == "grab"
+                           and isinstance(r.get("artifact"), dict) and r["artifact"].get("kind") == "tiff" and r["artifact"].get("stem") == "emu_violet_d7" and r["artifact"].get("counter") is not None, str(r)[:300])
+                r = await si("waitIdle", {"timeout_s": 10})
+                self.check("scanimage waitIdle → ok once the grab finished (acqState idle)", bool(r) and r.get("ok") is True and (r.get("value") or {}).get("acqState") == "idle", str(r)[:200])
+                r = await si("abort")
+                self.check("scanimage abort → ok (idle)", bool(r) and r.get("ok") is True and (r.get("value") or {}).get("acqState") == "idle", str(r)[:200])
+                r = await si("get", {"property": "hRoiManager.scanZoomFactor"})
+                self.check("scanimage get the mock never answers → outcome unknown + reconciled status (B2-style silence)", bool(r) and r.get("outcome") == "unknown" and isinstance(r.get("reconciled"), dict) and r["reconciled"].get("acqState") == "idle", str(r)[:300])
+                r = await si("ping")
+                self.check("scanimage ping after the timeout → ok (connection rebuilt)", bool(r) and r.get("ok") is True, str(r)[:200])
+                r = await si("bogusCommand")
+                self.check("scanimage unknown command → reply error (not a hang)", bool(r) and r.get("ok") is False and r.get("outcome") == "error", str(r)[:200])
                 if self.last_epoch is not None:
                     since = self.last_epoch
             for i in range(a.epochs):
@@ -294,6 +325,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rig-id", default="ros2-poc")
     p.add_argument("--connector-cmds", action="store_true", help="also drive the bias connector (startRecording/getTimestamp/stopRecording) through connector_command, as the Studio runner does")
     p.add_argument("--connector-video", default="poc_studio.avi", help="startRecording filename for --connector-cmds")
+    p.add_argument("--scanimage-cmds", action="store_true", help="also drive the scanimage connector (ping/setFileStem/set/grab/waitIdle/abort/get/bogus) through connector_command")
     p.add_argument("--out", default="studio-export.jsonl", help="where to write the exported log")
     p.add_argument("--report", default=None, help="JSON report path")
     args = p.parse_args(argv)

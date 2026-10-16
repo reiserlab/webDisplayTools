@@ -5,6 +5,7 @@
     pixi run rig -- --kinefly --bias   # + Kinefly adapter + BIAS node
     pixi run rig -- --sim              # + the FicTrac simulator (demo without a camera)
     pixi run rig -- --bias --bias-sim  # + a simulated BIAS program (no camera software)
+    pixi run rig -- --scanimage        # + the ScanImage node (JSON server on this PC); --si-mock for a stand-in
     pixi run rig -- --foxglove         # + foxglove_bridge (:8766) from the `viz` environment
 
 Order: the router first (nodes retry until it answers on 127.0.0.1:7447), then every
@@ -136,6 +137,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--kinefly", action="store_true", help="also run the Kinefly KF/1 adapter")
     p.add_argument("--bias", action="store_true", help="also run the BIAS camera node")
     p.add_argument("--bias-sim", action="store_true", help="also run bias_sim.py (a fake BIAS program)")
+    p.add_argument("--scanimage", action="store_true", help="also run the ScanImage node (talks to ScanImage's JSON server, default 127.0.0.1:5555)")
+    p.add_argument("--si-mock", action="store_true", help="also run tests/si_json_mock.py (a stand-in for ScanImage's JSON server, port 5555)")
     p.add_argument("--sim", action="store_true", help="also run the FicTrac simulator (random walk, 50 Hz)")
     p.add_argument("--foxglove", action="store_true",
                    help=f"also run foxglove_bridge on ws://127.0.0.1:{FOXGLOVE_PORT} (the `viz` environment; skipped with a note when it is not installed)")
@@ -144,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--fictrac-args", default="", help="extra args for fictrac_udp_adapter.py")
     p.add_argument("--kinefly-args", default="", help="extra args for kinefly_udp_adapter.py")
     p.add_argument("--bias-args", default="", help="extra args for bias_node.py")
+    p.add_argument("--scanimage-args", default="", help="extra args for scanimage_node.py (e.g. --port 5555 --status-every 1)")
     p.add_argument("--sim-args", default="--proto udp --rate 50", help="args for fictrac_sim.py")
     args = p.parse_args(argv)
 
@@ -169,6 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         ("udp", 60000, "a FicTrac receiver — bridge 3.4 or another fictrac adapter"),
         ("udp", 60001, "another Kinefly adapter") if args.kinefly else (None, 0, ""),
         ("tcp", 5010, "a BIAS program or bias_sim") if args.bias_sim else (None, 0, ""),
+        ("tcp", 5555, "ScanImage's JSON server or si_json_mock") if args.si_mock else (None, 0, ""),
         ("tcp", FOXGLOVE_PORT, "another foxglove_bridge (`pixi run -e viz foxglove-bridge` or another rig --foxglove)") if foxglove else (None, 0, ""),
     ):
         if proto and port_in_use(proto, port):
@@ -196,6 +201,10 @@ def main(argv: list[str] | None = None) -> int:
         nodes.append(Child("bias-sim", [py, str(NODES / "bias_sim.py")]))
     if args.bias:
         nodes.append(Child("bias", [py, str(NODES / "bias_node.py"), *split_args(args.bias_args)]))
+    if args.si_mock:
+        nodes.append(Child("si-mock", [py, str(HERE.parent / "tests" / "si_json_mock.py")]))
+    if args.scanimage:
+        nodes.append(Child("scanimage", [py, str(NODES / "scanimage_node.py"), *split_args(args.scanimage_args)]))
     bridge = Child("bridge", [py, str(NODES / "bridge_node.py"), *split_args(args.bridge_args)])
     nodes.append(bridge)
     if foxglove:

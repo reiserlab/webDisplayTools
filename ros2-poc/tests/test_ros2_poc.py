@@ -161,8 +161,8 @@ def is_derived(line: str) -> bool:
     rows and BIAS reply/status connector events. Everything else is sequenced."""
     if line.startswith('["kf",'):
         return True
-    if line.startswith('{"type":"connector","src":"bias","kind":"reply"') or line.startswith('{"type":"connector","src":"bias","kind":"status"'):
-        return True
+    if line.startswith('{"type":"connector","src":"') and ('","kind":"reply"' in line[:64] or '","kind":"status"' in line[:64]):
+        return True  # any connector (bias, scanimage, …)
     return False
 
 
@@ -306,6 +306,11 @@ def main(argv: list[str] | None = None) -> int:
         bias_port = free_tcp_port()
         start("bias-sim", [PY, str(NODES / "bias_sim.py"), "--port", str(bias_port), "--video-dir", str(videos)])
         start("bias-node", [PY, str(NODES / "bias_node.py"), "--port", str(bias_port), "--status-every", "1", "--video-dir", str(videos)])
+        # ScanImage stand-in on a free port (a rig PC may have the real JSON server on 5555): short
+        # grabs, a short start delay, and one allowlisted property it never answers (the UNKNOWN path).
+        si_port = free_tcp_port()
+        start("si-mock", [PY, str(HERE / "si_json_mock.py"), "--port", str(si_port), "--grab-s", "1.0", "--start-delay-s", "0.2", "--stall-on", "hSI.hRoiManager.scanZoomFactor"])
+        start("scanimage-node", [PY, str(NODES / "scanimage_node.py"), "--port", str(si_port), "--status-every", "1", "--timeout-s", "1.5"])
         bridge_argv = [PY, str(NODES / "bridge_node.py"), "--log-dir", str(runlogs), "--source-timeout", "1.5", "--bag-profile", a.bag_profile]
         bridge = start("bridge-node", bridge_argv)
         check("bridge node serving ws://127.0.0.1:8765", wait_port("127.0.0.1", 8765, 20.0))
@@ -374,8 +379,8 @@ def main(argv: list[str] | None = None) -> int:
         em = run_capture(
             [PY, str(HERE / "studio_emulator.py"), "--epochs", str(a.epochs), "--epoch-s", str(a.epoch_s), "--iti-s", "1",
              "--bias-amplitude", "90", "--min-frames", "40", "--out", str(export), "--report", str(report),
-             "--connector-cmds", "--connector-video", "poc_studio.avi"],
-            timeout=60 + a.epochs * (a.epoch_s + 2),
+             "--connector-cmds", "--connector-video", "poc_studio.avi", "--scanimage-cmds"],
+            timeout=75 + a.epochs * (a.epoch_s + 2),
         )
         (logdir / "emulator.log").write_text(em.stderr, encoding="utf-8")
         check("studio emulator: every protocol assertion held", em.returncode == 0, em.stderr[-600:])
@@ -390,9 +395,10 @@ def main(argv: list[str] | None = None) -> int:
         check("MCAP bag recorded for the run (metadata.yaml + .mcap)", main_bag is not None and (main_bag / "metadata.yaml").exists() and any(main_bag.glob("*.mcap")), str([b.name for b in bags]))
         bagsum = bag_summary(main_bag) if main_bag else {}
         print(f"[test] bag: {bagsum.get('records')} records, {bagsum.get('bytes')} B, topics {bagsum.get('topics')}, schemas {bagsum.get('schemas')}, frame lag {bagsum.get('frame_lag_ms')}", file=sys.stderr)
-        want_topics = ["/arena/session", "/arena/browser", "/arena/event", "/arena/frame", "/kinefly/raw", "/bias/cmd", "/bias/reply", "/bias/status"]
+        want_topics = ["/arena/session", "/arena/browser", "/arena/event", "/arena/frame", "/kinefly/raw", "/bias/cmd", "/bias/reply", "/bias/status",
+                       "/scanimage/cmd", "/scanimage/reply", "/scanimage/status"]
         missing = [t for t in want_topics if not bagsum.get("topics", {}).get(t)]
-        check("every stream recorded in the bag (session, browser, event, frame, kinefly, bias cmd/reply/status, fictrac)",
+        check("every stream recorded in the bag (session, browser, event, frame, kinefly, bias + scanimage cmd/reply/status, fictrac)",
               not missing and (bagsum.get("topics", {}).get("/fictrac/frame") or bagsum.get("topics", {}).get("/fictrac/raw")), f"missing {missing}")
         typed = any(s.startswith("arena_interfaces/") for s in bagsum.get("schemas", []))
         check("typed messages in the bag when arena_interfaces is built (else String fallback, reported)",
@@ -464,6 +470,19 @@ def main(argv: list[str] | None = None) -> int:
               bool(logs) and bagsum.get("bias_frames_t") == sum(s.get("frames") or 0 for s in logs),
               f"bag {bagsum.get('bias_frames_t')} vs stamp logs {[s.get('frames') for s in logs]}")
 
+        # The ScanImage connector (JSON server stand-in): the Studio-path sequence the 2P protocol uses.
+        si_ev = [e for e in events if e.get("type") == "connector" and e.get("src") == "scanimage"]
+        si_rep = [e for e in si_ev if e.get("kind") == "reply"]
+        si_st = [e for e in si_ev if e.get("kind") == "status"]
+        si_cmd = [e.get("command") for e in si_ev if e.get("kind") == "command"]
+        check("ScanImage command/reply pairs in the run log (via=ws, plugin scanimage)", len(si_rep) >= 8 and all(e.get("via") == "ws" and e.get("plugin") == "scanimage" for e in si_rep), f"{len(si_rep)} replies: {[r.get('command') for r in si_rep]}")
+        check("ScanImage status lines in the run log carry acqState", len(si_st) >= 2 and all("acqState" in e for e in si_st if e.get("reachable")), str(len(si_st)))
+        check("Studio-path ScanImage commands logged in order", si_cmd == ["ping", "setFileStem", "set", "set", "grab", "waitIdle", "abort", "get", "ping", "bogusCommand"], str(si_cmd))
+        grab = [e for e in si_rep if e.get("command") == "grab"]
+        check("grab reply in the run log carries the TIFF artifact (stem, counter, path)", bool(grab) and grab[0].get("ok") and isinstance(grab[0].get("artifact"), dict)
+              and grab[0]["artifact"].get("kind") == "tiff" and grab[0]["artifact"].get("stem") == "emu_violet_d7" and grab[0]["artifact"].get("counter") is not None, json.dumps([g.get("artifact") for g in grab]))
+        unk = [e for e in si_rep if e.get("command") == "get"]
+        check("ScanImage UNKNOWN outcome logged with the reconciled status", bool(unk) and unk[0].get("outcome") == "unknown" and isinstance(unk[0].get("reconciled"), dict), json.dumps(unk)[:300])
         cs = [e for e in events if e.get("type") == "connector_status" and e.get("src") == "fictrac"]
         p99 = cs[-1]["lat_ms"]["p99"] if cs else None
         check("connector_status: adapter→bridge latency p99 < 50 ms", p99 is not None and p99 < 50.0, str(cs[-1] if cs else None))

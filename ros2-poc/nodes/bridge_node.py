@@ -24,7 +24,7 @@ What is NEW (small, and all of it is visible in the log):
     `ros2 topic echo/hz` introspect the closed loop and ROS-native nodes can subscribe.
   * other device topics are LOGGED, not applied: `/kinefly/raw` (KF/1) → compact tagged
     rows `["kf", ms, seq, src_t_s, left_rad, right_rad, head_rad, abdomen_rad]`;
-    `/bias/reply` and `/bias/status` → `{"type":"connector","src":"bias",…}` events.
+    `/bias/reply`, `/bias/status`, `/scanimage/reply`, `/scanimage/status` → `{"type":"connector","src":<id>,…}` events.
     Readers already pass unknown string-tagged arrays and unknown event objects through.
   * a source watchdog: when a logged source goes silent for --source-timeout s during a
     log, a `source_lost` event is written (and `source_resumed` when it returns). A device
@@ -123,6 +123,16 @@ BIAS_CMD_TOPIC = "/bias/cmd"
 BIAS_REPLY_TOPIC = "/bias/reply"
 BIAS_STATUS_TOPIC = "/bias/status"
 BIAS_FRAMES_TOPIC = "/bias/frames"  # every frame's BIAS timestamp, published by the BIAS node at stopRecording (bag only, no run-log line)
+SCANIMAGE_CMD_TOPIC = "/scanimage/cmd"
+SCANIMAGE_REPLY_TOPIC = "/scanimage/reply"
+SCANIMAGE_STATUS_TOPIC = "/scanimage/status"
+# Device connectors the Studio may drive (LAB-303): connector_command → the node's cmd topic; its
+# reply/status topics become {"type":"connector","src":<id>,…} run-log events (derived by the
+# converter). Adding a connector = one entry here, a flag in rig.py, a topic pair in mcap_convert.py.
+CONNECTOR_TOPICS = {
+    "bias": {"cmd": BIAS_CMD_TOPIC, "reply": BIAS_REPLY_TOPIC, "status": BIAS_STATUS_TOPIC},
+    "scanimage": {"cmd": SCANIMAGE_CMD_TOPIC, "reply": SCANIMAGE_REPLY_TOPIC, "status": SCANIMAGE_STATUS_TOPIC},
+}
 FRAME_TOPIC = "/arena/frame"
 RAW_QOS = QoSProfile(
     reliability=QoSReliabilityPolicy.RELIABLE,
@@ -293,6 +303,7 @@ class RecordingLogWriter(B.LogWriter):
         t = {
             SESSION_TOPIC: STRING_TYPE, BROWSER_TOPIC: STRING_TYPE, EVENT_TOPIC: STRING_TYPE,
             KINEFLY_TOPIC: STRING_TYPE, BIAS_CMD_TOPIC: STRING_TYPE, BIAS_REPLY_TOPIC: STRING_TYPE, BIAS_STATUS_TOPIC: STRING_TYPE, BIAS_FRAMES_TOPIC: STRING_TYPE,
+            SCANIMAGE_CMD_TOPIC: STRING_TYPE, SCANIMAGE_REPLY_TOPIC: STRING_TYPE, SCANIMAGE_STATUS_TOPIC: STRING_TYPE,
         }
         if self._typed:
             t[FRAME_TOPIC] = ARENA_FRAME_TYPE
@@ -535,25 +546,26 @@ class BridgeNode(Node):
     """ROS side: subscriptions hand data to the asyncio side thread-safely. Every device
     topic is subscribed RAW (serialized bytes) so the same bytes go to the bag unchanged."""
 
-    def __init__(self, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, on_kinefly, on_bias, log: RecordingLogWriter, typed: bool) -> None:
+    def __init__(self, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, on_kinefly, on_connector, log: RecordingLogWriter, typed: bool) -> None:
         super().__init__("arena_bridge")
         self._loop = loop
         self._queue = queue
         self._on_kinefly = on_kinefly
-        self._on_bias = on_bias
+        self._on_connector = on_connector
         self._log = log
         self.typed = typed
-        self.stats = {"fictrac": SourceStats("fictrac"), "kinefly": SourceStats("kinefly"), "bias": SourceStats("bias")}
+        self.stats = {"fictrac": SourceStats("fictrac"), "kinefly": SourceStats("kinefly"), **{c: SourceStats(c) for c in CONNECTOR_TOPICS}}
         self.frame_pub = self.create_publisher(ArenaFrame if typed else String, FRAME_TOPIC, FRAME_QOS)
-        # Studio → bridge connector_command relayed to the BIAS node (LAB-303 connectors).
-        self.bias_cmd_pub = self.create_publisher(String, BIAS_CMD_TOPIC, RAW_QOS)
+        # Studio → bridge connector_command relayed to the device node (LAB-303 connectors).
+        self.cmd_pubs = {c: self.create_publisher(String, t["cmd"], RAW_QOS) for c, t in CONNECTOR_TOPICS.items()}
         if typed:
             self.create_subscription(FicTracFrame, FICTRAC_FRAME_TOPIC, self._fictrac_typed, RAW_QOS, raw=True)
         else:
             self.create_subscription(String, FICTRAC_TOPIC, self._fictrac, RAW_QOS, raw=True)
         self.create_subscription(String, KINEFLY_TOPIC, self._kinefly, RAW_QOS, raw=True)
-        self.create_subscription(String, BIAS_REPLY_TOPIC, lambda b: self._bias("reply", BIAS_REPLY_TOPIC, b), RAW_QOS, raw=True)
-        self.create_subscription(String, BIAS_STATUS_TOPIC, lambda b: self._bias("status", BIAS_STATUS_TOPIC, b), RAW_QOS, raw=True)
+        for c, t in CONNECTOR_TOPICS.items():
+            for kind in ("reply", "status"):
+                self.create_subscription(String, t[kind], lambda b, c=c, kind=kind, topic=t[kind]: self._connector(c, kind, topic, b), RAW_QOS, raw=True)
         # Recorded on arrival, like /fictrac/raw: it never becomes a run-log line (the stopRecording reply
         # carries its summary), so there is no shadow line to stay in step with.
         self.create_subscription(String, BIAS_FRAMES_TOPIC, lambda b: self._record(BIAS_FRAMES_TOPIC, b), RAW_QOS, raw=True)
@@ -609,14 +621,14 @@ class BridgeNode(Node):
         self.stats["kinefly"].seen(env.get("rx_epoch_ms"), env.get("rx_mono_ns"))
         self._loop.call_soon_threadsafe(self._on_kinefly, env, data, t_ns)
 
-    def _bias(self, kind: str, topic: str, data: bytes) -> None:
+    def _connector(self, src: str, kind: str, topic: str, data: bytes) -> None:
         t_ns = wall_ns()
         env = self._envelope(data)
         if env is None:
             self._record(topic, data)
             return
-        self.stats["bias"].seen(env.get("rx_epoch_ms"))
-        self._loop.call_soon_threadsafe(self._on_bias, kind, env, topic, data, t_ns)
+        self.stats[src].seen(env.get("rx_epoch_ms"))
+        self._loop.call_soon_threadsafe(self._on_connector, src, kind, env, topic, data, t_ns)
 
 
 async def run(args: argparse.Namespace) -> None:
@@ -626,7 +638,7 @@ async def run(args: argparse.Namespace) -> None:
     typed = HAVE_IFACES if args.typed == "auto" else (args.typed == "on")
     if typed and not HAVE_IFACES:
         raise SystemExit("--typed on, but arena_interfaces is not importable (pixi install builds it; or pixi run build-interfaces)")
-    CONNECTORS = {"bias": BIAS_CMD_TOPIC}
+    CONNECTORS = {c: t["cmd"] for c, t in CONNECTOR_TOPICS.items()}
     log = RecordingLogWriter(args.log, args.log_level, args.log_dir, profile=args.bag_profile, typed=typed,
                              export=args.export, connectors=list(CONNECTORS))
     queue: asyncio.Queue[tuple[str, str, bytes, int]] = asyncio.Queue()  # (line, topic, raw bytes, receive ns)
@@ -659,8 +671,8 @@ async def run(args: argparse.Namespace) -> None:
         seq = pkt.get("sequence") if isinstance(pkt.get("sequence"), int) else kf_seq["n"]
         log.write_rows([kf_row(rel_ms(), pkt, seq)])
 
-    # ── connectors: the Studio's connector_command → /bias/cmd, /bias/reply → connector_reply ──
-    # One connector today ('bias'); the Studio maps BiasPlugin instances onto it. A command
+    # ── connectors: the Studio's connector_command → /<src>/cmd, /<src>/reply → connector_reply ──
+    # CONNECTOR_TOPICS lists them (bias, scanimage); the Studio maps plugin instances onto them. A command
     # is logged on arrival (dir browser→bridge) and its reply is logged when the node answers
     # (via "ws" marks replies the Studio asked for, as opposed to bias_cmd.py's). The reply
     # goes back to the ASKING websocket only (the hub's broadcast coalesces frames).
@@ -674,9 +686,9 @@ async def run(args: argparse.Namespace) -> None:
         except Exception:  # ConnectionClosed: the asker left — nothing to deliver to
             pass
 
-    def on_bias(kind: str, env: dict, topic: str, data: bytes, t_ns: int) -> None:
+    def on_connector(src: str, kind: str, env: dict, topic: str, data: bytes, t_ns: int) -> None:
         log.record_device(topic, data, t_ns)
-        ev = {"type": "connector", "src": "bias", "kind": kind, "dir": "bridge", "ms": rel_ms()}
+        ev = {"type": "connector", "src": src, "kind": kind, "dir": "bridge", "ms": rel_ms()}
         for k, v in env.items():
             if k not in ("src",):
                 ev[k] = v
@@ -684,7 +696,7 @@ async def run(args: argparse.Namespace) -> None:
         if p is not None:
             ev["via"] = "ws"
             ev["plugin"] = p["plugin"]
-        log.write_event(ev, record=False)  # derived by the converter from /bias/reply|status
+        log.write_event(ev, record=False)  # derived by the converter from /<src>/reply|status
         if p is not None:
             rep = {"type": "connector_reply", "connector": p["connector"], "plugin": p["plugin"]}
             for k, v in env.items():
@@ -717,8 +729,8 @@ async def run(args: argparse.Namespace) -> None:
         m = String()
         m.data = json.dumps({"id": cid, "command": command, "params": params}, separators=(",", ":"))
         if log.rec is not None:
-            log.rec.write_msg(BIAS_CMD_TOPIC, m)
-        node.bias_cmd_pub.publish(m)
+            log.rec.write_msg(CONNECTORS[connector], m)
+        node.cmd_pubs[connector].publish(m)
 
     inputs = RosInput(args.fictrac_port, warn)
     dispatch_34 = B.make_dispatcher(pipeline, log, inputs)  # unmodified bridge.py dispatcher
@@ -752,7 +764,7 @@ async def run(args: argparse.Namespace) -> None:
             log.record_browser(text)  # the last record of the run (the export closes the bag)
         await dispatch_34(raw, websocket)
 
-    node = BridgeNode(loop, queue, on_kinefly, on_bias, log, typed)
+    node = BridgeNode(loop, queue, on_kinefly, on_connector, log, typed)
 
     def on_log_open() -> None:
         """A new file: ONE ms base (the pipeline's t0 = the log's open stamp; bridge 3.4 took
@@ -773,7 +785,8 @@ async def run(args: argparse.Namespace) -> None:
                 "rmw": os.environ.get("RMW_IMPLEMENTATION"),
                 "record": {"bag": log.bag_name, "profile": log._profile, "typed": typed},
                 "topics": {"fictrac": FICTRAC_FRAME_TOPIC if typed else FICTRAC_TOPIC, "kinefly": KINEFLY_TOPIC,
-                           "bias": [BIAS_CMD_TOPIC, BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC, BIAS_FRAMES_TOPIC], "frame": FRAME_TOPIC,
+                           "bias": [BIAS_CMD_TOPIC, BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC, BIAS_FRAMES_TOPIC],
+                           "scanimage": [SCANIMAGE_CMD_TOPIC, SCANIMAGE_REPLY_TOPIC, SCANIMAGE_STATUS_TOPIC], "frame": FRAME_TOPIC,
                            "browser": BROWSER_TOPIC, "event": EVENT_TOPIC, "session": SESSION_TOPIC},
             }
         )
@@ -806,7 +819,7 @@ async def run(args: argparse.Namespace) -> None:
                 continue
             now = time.monotonic()
             for s in node.stats.values():
-                if s.name == "bias" or s.last_rx_mono is None:
+                if s.name in CONNECTOR_TOPICS or s.last_rx_mono is None:  # connectors are polled, not streams
                     continue
                 silent = now - s.last_rx_mono
                 if not s.lost and silent > args.source_timeout:
