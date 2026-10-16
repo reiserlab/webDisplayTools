@@ -126,12 +126,17 @@ fictrac-adapter = "python nodes/fictrac_udp_adapter.py"
 kinefly-adapter = "python nodes/kinefly_udp_adapter.py"
 bias-node = "python nodes/bias_node.py"
 bias-cmd = "python nodes/bias_cmd.py"
+# ScanImage (built-in JSON server on the ScanImage PC, LAB-303/LAB-306): node + one-shot command.
+scanimage-node = "python nodes/scanimage_node.py"
+scanimage-cmd = "python nodes/scanimage_cmd.py"
 # ── the bridge node: bridge.py's hub + log writer + dispatcher on ROS input ──
 bridge-node = "python nodes/bridge_node.py"
 # ── simulators (the root workspace's fictrac_sim.py, unmodified) ────────────
 sim = "python ../fictrac-bridge/fictrac_sim.py"
 kinefly-sim = "python nodes/kinefly_sim.py"
 bias-sim = "python nodes/bias_sim.py"
+# A stand-in for ScanImage's JSON server (stock behaviors incl. bug B2) for off-rig tests.
+si-mock = "python tests/si_json_mock.py"
 # ── the one command a rig runs ──────────────────────────────────────────────
 rig = "python nodes/rig.py"
 # ── acceptance test (LAB-303 PoC criteria): whole graph + Studio emulator + model fly ──
