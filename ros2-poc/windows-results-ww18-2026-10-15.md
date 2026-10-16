@@ -212,6 +212,8 @@ Rig: CSHL G6 2×10 ball arena, controller COM4 (fw `12bba7e9` 2x10 2026-09-30), 
   prefix-dev/rattler-build#2875 + a confirming comment on prefix-dev/pixi#7226 (§4). **Next: run
   WINDOWS-TEST.md 7b on a PC without Visual Studio.** The `typed-prebuilt` env (2026-10-16, a ww18-built
   package committed in `channel/`) installs `--locked` in 5 s on ww18, harness 49 / 49.
+  **Decided 2026-10-16 (`docs/typed-distribution-decision.md`): CI-built channel; workflow
+  `.github/workflows/arena-interfaces.yml` added (build on PR, channel artifact, tag → hosted upload when configured).**
 - **S1** bridge loss should banner and end the run; **S2** `?p=` needed a refresh; **H1** characterize the 64 GB
   exFAT card; **5c full** (18 min) and real-fly runs; **hardware sync** (camera strobe → controller Digital IO)
   for µs frame timing on the controller's clock.
