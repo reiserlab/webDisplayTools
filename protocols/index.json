@@ -77,6 +77,11 @@
       "key": "g6_color_optomotor_smoke",
       "label": "Color optomotor SMOKE — 10 s per pattern, duty 100 %, BIAS check (~2 min)",
       "path": "./protocols/g6_color_optomotor_smoke.yaml"
+    },
+    {
+      "key": "g6_2p_color_led_sweep",
+      "label": "2P color LED-intensity sweep — one ScanImage grab per color, 6 duty levels × 3 s at 20 fps (G6 four-color, ScanImage JSON connector, ~2.5 min)",
+      "path": "./protocols/g6_2p_color_led_sweep.yaml"
     }
   ]
 }
