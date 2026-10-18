@@ -21,6 +21,27 @@
 
     var DEFAULT_MAX = 10;
     var DEFAULT_SIZE = 72;
+    // Largest card-only pattern a thumbnail may download over USB. The controller can
+    // only send the WHOLE file (GET_PATTERN_FILE 0x84, no ranged read), and nothing else
+    // can use the link while it streams (~10 MB/s), so a bigger file gets no thumbnail.
+    var LIVE_FETCH_MAX_BYTES = 1 << 20;
+
+    /**
+     * May a thumbnail download a card-only pattern over USB right now?
+     * @param info  GET_PATTERN_INFO decode for it ({ fileSize, … }) or null when unknown.
+     * @param state { connected, running } — a run owns the link.
+     * @returns { ok, reason } — reason ∈ 'offline' | 'running' | 'unknown-size' | 'too-large'.
+     */
+    function liveFetchVerdict(info, state) {
+        if (!state || !state.connected) return { ok: false, reason: 'offline' };
+        if (state.running) return { ok: false, reason: 'running' };
+        var size = info && info.fileSize;
+        if (typeof size !== 'number' || !isFinite(size) || size <= 0) {
+            return { ok: false, reason: 'unknown-size' };
+        }
+        if (size > LIVE_FETCH_MAX_BYTES) return { ok: false, reason: 'too-large' };
+        return { ok: true, reason: null };
+    }
 
     /**
      * Pick up to `max` evenly-spaced frame indices from a [0, numFrames) range.
@@ -139,6 +160,8 @@
     var PatPreview = {
         DEFAULT_MAX: DEFAULT_MAX,
         DEFAULT_SIZE: DEFAULT_SIZE,
+        LIVE_FETCH_MAX_BYTES: LIVE_FETCH_MAX_BYTES,
+        liveFetchVerdict: liveFetchVerdict,
         pickFrameIndices: pickFrameIndices,
         renderFlatFrame: renderFlatFrame,
         samplePreviewFrames: samplePreviewFrames
