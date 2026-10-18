@@ -6,6 +6,32 @@
  */
 
 const STANDARD_CONFIGS = {
+  "G6_1x12of18": {
+    "label": "G6 (1×18) - 240°",
+    "description": "G6 arena, 1 row, 12 of 18 columns installed (240 degree coverage)",
+    "arena": {
+      "generation": "G6",
+      "num_rows": 1,
+      "num_cols": 18,
+      "columns_installed": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "orientation": "normal",
+      "column_order": "cw",
+      "angle_offset_deg": -60
+    }
+  },
   "G6_2x10": {
     "label": "G6 (2×10) - 360°",
     "description": "Full G6 arena, 2 rows x 10 columns, 360 degree coverage",
@@ -52,6 +78,30 @@ const STANDARD_CONFIGS = {
       "orientation": "normal",
       "column_order": "cw",
       "angle_offset_deg": 0
+    }
+  },
+  "G6_3x10of14": {
+    "label": "G6 (3×14) - 257°",
+    "description": "G6 arena, 3 rows, 10 of 14 columns installed (257 degree coverage)",
+    "arena": {
+      "generation": "G6",
+      "num_rows": 3,
+      "num_cols": 14,
+      "columns_installed": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "orientation": "normal",
+      "column_order": "cw",
+      "angle_offset_deg": -51.4286
     }
   },
   "G6_3x12of18": {
@@ -213,7 +263,7 @@ const GENERATIONS = {
 const ARENA_REGISTRY = {
     'G4': { 1: 'G4_4x12', 2: 'G4_3x12of18' },
     'G4.1': { 1: 'G41_2x12_cw' },
-    'G6': { 1: 'G6_2x10', 2: 'G6_2x8of10', 3: 'G6_3x12of18', 4: 'G6_3x16_full', 5: 'G6_3x10', 6: 'G6_4x10' }
+    'G6': { 1: 'G6_2x10', 2: 'G6_2x8of10', 3: 'G6_3x12of18', 4: 'G6_3x16_full', 5: 'G6_3x10', 6: 'G6_4x10', 7: 'G6_1x12of18', 8: 'G6_3x10of14' }
 };
 
 /**
