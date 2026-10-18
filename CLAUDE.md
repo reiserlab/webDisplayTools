@@ -163,6 +163,7 @@ Some JavaScript modules are shared between multiple tools and must support diffe
 **Arena Session — the single connection broker** (`js/arena-session.js`, Stage A of the Arena Studio unification):
 - Owns ONE `ArenaLink` + ONE `ArenaRunner` per page and multicasts the link callbacks (`log`/`error`/`disconnect`) to subscribers via `on(event, fn)`. Run mechanism: `runTrial` / `runSequence` / `stop` / `running`; lifecycle: `connect` / `disconnect` / `connected` / `send`. Page-wide singleton via `ArenaSession.shared()`.
 - **Must stay a classic `<script src>` module** (window-global + CommonJS dual-export, **no bare ES `export`**), loaded AFTER `arena-wire-g6.js` / `arena-link.js` / `arena-runner-g6.js` and BEFORE any `<script type="module">` that reads `window.ArenaSession`. This keeps Connect/STOP/run-state alive even if a stale ES-module import fails (the catastrophic-cache gotcha) — never move connection ownership into the module block.
+- **Link lanes + read buffer (`js/arena-link.js`, 2026-10-07):** the port opens with a 1 MiB `bufferSize` (Chrome's 255-byte default loses bulk bytes or ends in "Break received" on macOS), and sends have two FIFO lanes: `{ background: true }` waits while any foreground send is queued. Connect-time sweeps and prefetches (GET_PATTERN_INFO frame counts, picker thumbnails) MUST use the background lane. Nothing on the wire is preempted, so a background bulk read must stay small (thumbnails: `PatPreview.liveFetchVerdict`, ≤ 1 MiB). A bulk body fails after `idleTimeoutMs` (5 s) without a byte instead of waiting out `timeoutMs`. Tests: `tests/test-arena-link.js`, `tests/test-studio-link-priority.js`.
 - Both `arena_console.html` and `experiment_designer_v3.html` use `window.ArenaSession.shared()` instead of constructing their own `ArenaLink` (the console uses only connect/send/events; the designer uses the run mechanism). On involuntary disconnect the broker calls `runner.abort()` (public, added to `arena-runner-g6.js`) — falling back to the legacy private `_clear()` to tolerate a stale-cache runner. Tests: `tests/test-arena-session.js` (`pixi run test` runs the full suite; run a single file with `pixi run node tests/test-arena-session.js`).
 
 **Pat-Parser Dual Export Pattern** (`js/pat-parser.js`):
@@ -252,7 +253,7 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   rig, source), the top-bar chips, and the Run-view sequence. `dirty` means
   "text ≠ last load/save" (`savedText` baseline), NOT a snapshot-captured flag.
 - **Display quiesce:** firmware refuses SD-write + ISP commands
-  (0x8D/0xE0/0x8A/0xC8/0xC9) unless the display is stopped (`CE_DISPLAY_ACTIVE`,
+  (0x85/0xE0/0x8A/0xC8/0xC9) unless the display is stopped (`CE_DISPLAY_ACTIVE`,
   status 10). Any new handler for a guarded op must `await quiesceDisplay()`
   first. STOP also blanks panels (they latch frames) — a persistent on-arena
   display during ISP is impossible on current firmware; progress maps blink.
@@ -641,6 +642,31 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   like 0xA8 on the 0xCB telemetry flag; `Studio.readCrashReport()` logs a `crash_report` event.
   Breadcrumb ops 6–9 are the SET_FRAME_POSITION sub-steps (disarm timer / preload / arm / respond).
 
+- **Qwiic peripherals (LAB-214):** the controller exposes only a sensor-agnostic I2C bridge
+  (`GET_I2C_SCAN` 0xB0, `I2C_TRANSFER` 0xB1; 0xB2–0xBF stay reserved), advertised by the 0xC2
+  feature bit `qwiic_i2c` — **gate EVERY I2C send on it** (jack-less 10-10 / 2x10 builds answer
+  CE_UNKNOWN_CMD + an error glyph). All register maps are host-side in `js/qwiic-drivers.js`
+  (port of the firmware repo's `tests/qwiic_sensors.py` + `qwiic_peripherals.py`); the `KINDS`
+  registry there is THE one place to add/drop a part (category, role env|tilt|light|actuator,
+  display fields, log columns) — consumers pick by role, never by part. `js/studio-qwiic.js` holds
+  the rig `peripherals:` parser (tolerant, parseRigIo contract), the scan-vs-YAML check in BOTH
+  directions (declared-but-missing = error, never retried; attached-but-undeclared = amber flag,
+  never logged), setup, chip and "Copy as rig YAML". Rules: (1) ONE page-wide bus
+  (`Studio.qwiicBus()`) — its `exclusive()` mutex orders whole sequences (mux select + reads,
+  SHT4x's two legs); never nest `exclusive()`. (2) Scan only at SETUP (connect, the Scan button,
+  run start): ~10 ms controller loop stall; refused during runs. (3) The LSM6DSOX bump flag is
+  read-to-clear: one owner (the trial logger during runs; Console "Check" is disabled then);
+  connect-time setup never arms it. (4) Bench quirks are load-bearing (SHT4x two-leg read; LIR +
+  INT_CLR_ON_READ + INT1 routing; PCA9685 ALLCALL shadow at 0x70 decided from MODE1, cleared by
+  configure). The rig fetch (`fetchRigSections`) parses `io:` and `peripherals:` from one read.
+- **Test display streams at the CONTROLLER's frame geometry** (0xCB rows × cols = fw
+  `panel_count_per_frame`), not a fixed 20 panels. The mapping lives in `js/studio-stream-geometry.js`
+  (Node-tested): figures are drawn on the rig's FULL arena grid (`activeArenaGeom()` = num_rows ×
+  num_cols — NEVER installed-columns-only: G6_2x8of10's panels are physical columns 1–8), grid column
+  c → firmware column c (only installed columns must fit), rig rows repeated up the frame; no 0xCB →
+  the legacy 20-panel rule. Live Console sliders go through `liveSender()` (single-flight, latest
+  wins) and pause during runs, ISP batches and post-mortems.
+
 ## Pattern Designer (`pattern_editor.html`)
 
 Renamed from "Pattern Editor" (v0.10, 2026-07-04); the FILENAME stays `pattern_editor.html`
@@ -662,6 +688,22 @@ localStorage) — no auth UI of its own. Repo layout: free-standing patterns in 
   exists-check overwrite confirm.
 - Classic deps added for this: `js/pattern-set.js`, `js/studio-url-state.js` (both
   dual-export; same files the Studio loads).
+- **Pattern filenames must fit the controller's SD rules** (`PatternSet.checkSdFilename`, js/pattern-set.js):
+  plain ASCII `[A-Za-z0-9._-]`, ends `.pat`, ≤ 63 characters (firmware 64-byte buffer), and keep
+  ≤ 58 — a same-name re-upload is stored as `X001_<name>` and past 58 that cuts off `.pat`. The
+  Designer keeps generated names short (`grat`/`star`/`edge`/`sine`/`offon`/`anim`, `rot`/`exp`/
+  `trans`) and fits every saved/renamed name (`fitPatternFilename`: shortens the middle, keeps the
+  arena prefix + color tag); the Studio refuses a bad name BEFORE sending bytes (`sdUploadOne`)
+  and `sdLogicalName` strips `X001_`, so a re-upload shows as a duplicate. Upload opcode = 0x85.
+- **Partial arenas (LAB-295) — three rules every view and helper follows.** (1) Angular pitch is
+  the FULL circle: `PatternGenerator.getDegreesPerPixel(arena)` = 360 / (num_cols × px/panel)
+  (G4_3x12of18 = 1.25°/px), never the installed width; the generators read the same
+  `getArenaDimensions().circleCols`. (2) A partial PAT stores only the installed columns, in
+  order: pattern block k = physical column `columns_installed[k]` (G6_2x8of10: block 0 = column 1
+  = panels 2/12) — ThreeViewer `_getPatternColumnMap()`, the 2D `physicalPanelNumber()`, the icon.
+  (3) 0° = straight ahead = the middle of the pattern (MATLAB `arena_coordinates`, Mollweide, the 2D
+  azimuth axis). The icon draws math angles negated on the canvas (`toCanvas`; y points down).
+  Hardware does NOT play partial G6 patterns yet (firmware ignores the panel mask) — LAB-296.
 - **Multi-color G6 panels (v0.12, LAB-228) — color is a PANEL property, not a generation.**
   `js/panel-color.js` (classic dual-export, also read as `globalThis.PanelColor` by the ES-module
   viewers) is the ONLY place color logic lives: the layouts table (`g6-green` default,

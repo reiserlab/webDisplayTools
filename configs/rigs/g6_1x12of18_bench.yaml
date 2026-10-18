@@ -1,0 +1,67 @@
+# G6 rig configuration — arena_12-18 bench build, 1 panel high (12 of 18 columns)
+#
+# The bench arena_12-18 v1.0 controller with one row of panels, used to test
+# patterns and the Qwiic / STEMMA QT peripherals (LAB-214). The controller's
+# firmware build reports 4x12 in GET_FIRMWARE_VERSION, so this rig is never
+# auto-derived: pick it in ⚙ Settings or open the Studio with ?rig=g6_1x12of18_bench.
+
+format_version: "1.0"
+name: "G6 1x12of18 bench (arena_12-18)"
+description: "Bench arena_12-18 controller, one panel high, with the six-board Qwiic test chain"
+
+arena: "G6_1x12of18"
+
+controller:
+  host: "0.0.0.0" # not used for serial/USB
+  port: 62222
+
+plugins: {}
+
+io:
+  dio:
+    - port: 1
+      role: out_debug_framescan # HIGH during each frame's SPI transmission
+      default: 0
+    - port: 2
+      role: off
+      default: 0
+  ai:
+    role: off
+  ao:
+    role: programmable
+    default: 5.0 # volts — this hardware idles at 5 V
+
+# Qwiic / STEMMA QT peripherals on jack J2 (LAB-214). The Studio scans once at
+# connect and compares: a listed device that is missing is an error (never
+# retried), an attached device that is not listed is flagged. Console → Qwiic →
+# "Copy as rig YAML" produces entries for anything new.
+#   poll: trial_start | {interval: <s>} | on_demand  (run logging: LAB-214 PR 2)
+peripherals:
+  - name: env
+    kind: sht4x # Adafruit SHT41 — temperature / humidity
+    address: 0x44
+    poll: [trial_start, {interval: 1.0}]
+  - name: tilt
+    kind: lsm6dsox # Adafruit 4438 — tilt + latched "bumped" flag
+    address: 0x6A
+    poll: trial_start
+    config: {bump_g: 0.25}
+  - name: photometer
+    kind: tsl2591 # broadband light — LED calibration (on demand)
+    address: 0x29
+    poll: on_demand
+    config: {gain: med, atime_ms: 100}
+  - name: lux
+    kind: veml7700
+    address: 0x10
+    poll: on_demand
+  - name: spectral
+    kind: as7343 # 14-channel spectral
+    address: 0x39
+    poll: on_demand
+    config: {gain: 64}
+  - name: servo
+    kind: pca9685 # SparkFun Servo pHAT — needs its own USB-C power, else absent from the scan
+    address: 0x40
+    config: {freq_hz: 50}
+    channels: {servo0: {channel: 0, min_us: 1000, max_us: 2000}}

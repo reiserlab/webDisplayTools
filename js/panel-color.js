@@ -332,6 +332,80 @@
         return l ? l.tag : '';
     }
 
+    // One letter per channel for filename codes (V B G Y R I — unique by construction).
+    function channelLetter(id) {
+        return String(id).charAt(0).toUpperCase();
+    }
+
+    // Compact code for one ON/OFF color choice ({preset, levels}) on a layout:
+    //   'all' → 'A'; one channel → its letter; 'dark' → '' (OFF only);
+    //   'custom' → the letters of the channels at full level when every level is 0 or 15
+    //   ('A' if all are full, '0' if none), else one hex digit per channel in layout order.
+    function choiceCode(layout, choice) {
+        var preset = choice && choice.preset;
+        if (!preset || preset === 'dark') return '';
+        if (preset === 'all') return 'A';
+        if (preset !== 'custom') return CHANNELS[preset] ? channelLetter(preset) : '';
+        var levels = layout.channels.map(function (ch) {
+            var v = choice.levels && choice.levels[ch.id];
+            v = v === undefined ? 15 : Math.round(Number(v)); // the custom editor's default
+            return Math.max(0, Math.min(15, Number.isFinite(v) ? v : 0));
+        });
+        var binary = levels.every(function (v) {
+            return v === 0 || v === 15;
+        });
+        if (!binary) {
+            return levels
+                .map(function (v) {
+                    return v.toString(16).toUpperCase();
+                })
+                .join('');
+        }
+        var on = layout.channels.filter(function (ch, i) {
+            return levels[i] === 15;
+        });
+        if (on.length === layout.channels.length) return 'A';
+        if (on.length === 0) return '0';
+        return on
+            .map(function (ch) {
+                return channelLetter(ch.id);
+            })
+            .join('');
+    }
+
+    // Filename code for the ON/OFF choice used to GENERATE a pattern, appended after the
+    // layout tag: '' for mono layouts and for the default (ON all, OFF dark), else
+    // '-<ON>' or '-<ON>-<OFF>'. Four-color: ON blue → '-B'; ON blue, OFF green → '-B-G';
+    // custom V15 B8 G0 Y10 → '-F80A'. At most 13 characters with the tag ('_4c-F80A-0404').
+    function filenameColorCode(key, onChoice, offChoice) {
+        var l = getLayout(key);
+        if (!l || l.mono) return '';
+        var on = choiceCode(l, onChoice) || 'A';
+        var off = choiceCode(l, offChoice);
+        if (on === 'A' && !off) return '';
+        return '-' + on + (off ? '-' + off : '');
+    }
+
+    // Remove every trailing layout tag (+ its color code) from a base name (no '.pat'), so a
+    // re-save or a layout change replaces the tag instead of stacking '_4c_rir'.
+    var TAG_RE = new RegExp(
+        '(?:' +
+            LAYOUT_DEFS.map(function (d) {
+                return d[2];
+            })
+                .filter(Boolean)
+                .sort(function (a, b) {
+                    return b.length - a.length;
+                })
+                .join('|') +
+            ')(?:-[0-9A-Z]+){0,2}$'
+    );
+    function stripColorTag(base) {
+        var s = String(base == null ? '' : base);
+        while (TAG_RE.test(s)) s = s.replace(TAG_RE, '');
+        return s;
+    }
+
     var PanelColor = {
         ROW_PARITY_FLIP: ROW_PARITY_FLIP,
         DEFAULT_LAYOUT: DEFAULT_LAYOUT,
@@ -345,6 +419,9 @@
         describeLayout: describeLayout,
         legendText: legendText,
         filenameTag: filenameTag,
+        filenameColorCode: filenameColorCode,
+        stripColorTag: stripColorTag,
+        channelLetter: channelLetter,
         bankAt: bankAt,
         cellOrigin: cellOrigin,
         channelAt: channelAt,
