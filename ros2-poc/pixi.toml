@@ -129,6 +129,8 @@ bias-cmd = "python nodes/bias_cmd.py"
 # ScanImage (built-in JSON server on the ScanImage PC, LAB-303/LAB-306): node + one-shot command.
 scanimage-node = "python nodes/scanimage_node.py"
 scanimage-cmd = "python nodes/scanimage_cmd.py"
+# ScanImage's ZeroMQ frame stream (LAB-303 Block R): SUB → /scanimage/frame_meta, frame_stats, preview/ch<id>.
+scanimage-frames = "python nodes/scanimage_frames_node.py"
 # ── the bridge node: bridge.py's hub + log writer + dispatcher on ROS input ──
 bridge-node = "python nodes/bridge_node.py"
 # ── simulators (the root workspace's fictrac_sim.py, unmodified) ────────────
@@ -140,7 +142,11 @@ si-mock = "python tests/si_json_mock.py"
 # ── the one command a rig runs ──────────────────────────────────────────────
 rig = "python nodes/rig.py"
 # ── acceptance test (LAB-303 PoC criteria): whole graph + Studio emulator + model fly ──
-test = "python tests/test_ros2_poc.py"
+# `test` = the frame-stream harness (mock ZMQ publisher, ≈ 40 s) THEN the acceptance run; `-- args` reach the latter.
+test = { cmd = "python tests/test_ros2_poc.py", depends-on = ["test-frames"] }
+test-frames = "python tests/test_scanimage_frames.py"
+# latency / gaps / queue-depth report from a bag or the node's --dump JSONL (+ the matching TIFF)
+zmq-latency = "python tools/zmq_latency_report.py"
 studio-emulator = "python tests/studio_emulator.py"
 # ── Plan B spike: MCAP record + converter + typed interfaces ──────────────────
 # bag → behavior_v2 NDJSON (also `-- --level behavior_v1|full`, `-- --order time`);

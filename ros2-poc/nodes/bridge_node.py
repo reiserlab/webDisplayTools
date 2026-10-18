@@ -38,7 +38,8 @@ the socket — the adapter owns it. The request is acknowledged with a warning.
 PLAN B SPIKE (LAB-303, 2026-10-14) — MCAP as the record of truth:
   * While a run's log is open, EVERYTHING is recorded into `<log-dir>/<run>.bag/` with
     rosbag2_py + the MCAP storage plugin (nodes/recorder.py): the device topics as received
-    (`/fictrac/raw` or the typed `/fictrac/frame`, `/kinefly/raw`, `/bias/cmd|reply|status`),
+    (`/fictrac/raw` or the typed `/fictrac/frame`, `/kinefly/raw`, `/bias/cmd|reply|status`, the
+    ScanImage frame-stream topics `/scanimage/frame_meta|frame_stats|preview/*` — streams, bag only),
     `/arena/frame` (the closed-loop evaluation with ITS OWN sample time `t`/`ms`), and two
     bridge-side streams — `/arena/browser` (every browser message, verbatim, with the receive
     stamp) and `/arena/event` (bias_config, heading_tare, connector_status, source_lost, warn)
@@ -82,6 +83,7 @@ from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from rclpy.serialization import deserialize_message, serialize_message
+from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
 
 HERE = Path(__file__).resolve().parent
@@ -134,6 +136,19 @@ BIAS_FRAMES_TOPIC = "/bias/frames"  # every frame's BIAS timestamp, published by
 SCANIMAGE_CMD_TOPIC = "/scanimage/cmd"
 SCANIMAGE_REPLY_TOPIC = "/scanimage/reply"
 SCANIMAGE_STATUS_TOPIC = "/scanimage/status"
+# ScanImage's ZeroMQ frame stream as topics (nodes/scanimage_frames_node.py, LAB-303 Block R). STREAMS:
+# recorded into the bag as received, like /bias/frames, and never derived into a run-log line (the
+# telemetry rule: a string-tagged stream is not a behavior sample). The preview images are bounded at
+# the source (--preview-hz, 0 = off); ch1..ch4 cover ScanImage's four channels.
+SCANIMAGE_FRAME_META_TOPIC = "/scanimage/frame_meta"
+SCANIMAGE_FRAME_STATS_TOPIC = "/scanimage/frame_stats"
+SCANIMAGE_PREVIEW_META_TOPIC = "/scanimage/preview/meta"
+SCANIMAGE_PREVIEW_TOPICS = tuple(f"/scanimage/preview/ch{i}" for i in (1, 2, 3, 4))
+COMPRESSED_IMAGE_TYPE = "sensor_msgs/msg/CompressedImage"
+STREAM_TOPICS = {
+    SCANIMAGE_FRAME_META_TOPIC: STRING_TYPE, SCANIMAGE_FRAME_STATS_TOPIC: STRING_TYPE, SCANIMAGE_PREVIEW_META_TOPIC: STRING_TYPE,
+    **{t: COMPRESSED_IMAGE_TYPE for t in SCANIMAGE_PREVIEW_TOPICS},
+}
 # Device connectors the Studio may drive (LAB-303): connector_command → the node's cmd topic; its
 # reply/status topics become {"type":"connector","src":<id>,…} run-log events (derived by the
 # converter). Adding a connector = one entry here, a flag in rig.py, a topic pair in mcap_convert.py.
@@ -290,6 +305,7 @@ class RecordingLogWriter(B.LogWriter):
             SESSION_TOPIC: STRING_TYPE, BROWSER_TOPIC: STRING_TYPE, EVENT_TOPIC: STRING_TYPE,
             KINEFLY_TOPIC: STRING_TYPE, BIAS_CMD_TOPIC: STRING_TYPE, BIAS_REPLY_TOPIC: STRING_TYPE, BIAS_STATUS_TOPIC: STRING_TYPE, BIAS_FRAMES_TOPIC: STRING_TYPE,
             SCANIMAGE_CMD_TOPIC: STRING_TYPE, SCANIMAGE_REPLY_TOPIC: STRING_TYPE, SCANIMAGE_STATUS_TOPIC: STRING_TYPE,
+            **STREAM_TOPICS,
         }
         if self._typed:
             t[FRAME_TOPIC] = ARENA_FRAME_TYPE
@@ -599,6 +615,11 @@ class BridgeNode(Node):
         # Recorded on arrival, like /fictrac/raw: it never becomes a run-log line (the stopRecording reply
         # carries its summary), so there is no shadow line to stay in step with.
         self.create_subscription(String, BIAS_FRAMES_TOPIC, lambda b: self._record(BIAS_FRAMES_TOPIC, b), RAW_QOS, raw=True)
+        # The ScanImage frame stream (meta, stats, preview meta, preview images): the same arrival-time
+        # record, raw bytes, no run-log line — the bag is the only place they go.
+        for topic, typ in STREAM_TOPICS.items():
+            self.create_subscription(CompressedImage if typ == COMPRESSED_IMAGE_TYPE else String, topic,
+                                     lambda b, topic=topic: self._record(topic, b), RAW_QOS, raw=True)
 
     def _record(self, topic: str, data: bytes) -> None:
         rec = self._log.rec

@@ -305,6 +305,31 @@ build's own format setting decides. Found on the way: the pre-Next Studio's uplo
 `rename failed (0x03)` retries (the bug Next fixes), and on the Next build the Console panel's bridge
 *Connect* button did not open a socket while the client's `connect()` did — to check tomorrow.
 
+## ScanImage's ZeroMQ frame stream as ROS 2 topics (LAB-303 Block R, built off-rig 2026-10-18)
+
+ScanImage 2026 Premium publishes every acquired frame on a ZeroMQ PUB socket (`hSI.hScan2D.hAcq.ZMQAddress`,
+`tcp://127.0.0.1:65179` on the Bergamo PC, bound only while an acquisition runs): a 40-byte header of five
+doubles `[pixelsPerLine, linesPerFrame, nChannels, frameTimestamp_s, totalAcquiredFrames]` and the int16 planes.
+`nodes/scanimage_frames_node.py` subscribes and says exactly what it saw and lost; the pixels stay in the TIFF.
+Everything below was built and tested against the publisher stand-in (`tests/zmq_frames_mock.py`, the format and
+CLI of `scanimage-2026-bergamo/tests/zmq-frames/mock_zmq_publisher.py`), never yet against ScanImage — the lab day
+(Block Z+R, `procedures/rig-session-zmq-ros2-wrapper.md` in the scanimage repo) only measures.
+
+| piece | what |
+|---|---|
+| `pixi run scanimage-frames` / `pixi run rig -- --scanimage-frames` | the node: a receive thread owns the SUB socket (+ its monitor, so a publisher that goes away and comes back is logged and the next frame opens a new acquisition segment) and drains into a bounded queue; the ROS side publishes from it |
+| `/scanimage/frame_meta` | every frame: `frameNumber`, `frameTimestamp_s`, `dims`, `nchan`, `rx_epoch_ms` / `rx_mono_ns` (precise clocks on Windows too), `pub_mono_ns`, `queue_depth`, `gap_before`, `segment` |
+| `/scanimage/frame_stats` (1 Hz) | `frames`, `published`, `dropped_by_queue`, `bad_frames`, `gaps` / `gap_frames` / `gap_list` (by header frame number: what the publisher sent and this process never received), `segments` + per segment `first_frame` and `missed_before_first` (the slow-joiner loss), `connects` / `disconnects`, queue depth, in-node hop p50/p99; `received == published + dropped_by_queue + queue_depth` always |
+| `/scanimage/preview/ch<id>` + `/scanimage/preview/meta` | `sensor_msgs/CompressedImage` PNG, 128², ≤ 5 Hz per channel (`--preview-hz 0` = off; `--preview-range lo:hi` or auto = 1–99.5 percentile of the segment's first preview frame, held); the meta line records the mapping per image. Bounded on purpose — live imaging is not v1 |
+| the bag | the bridge node records all of the above as received (`STREAM_TOPICS`); the converter derives NO run-log line from them (streams, not behavior samples) |
+| `pixi run zmq-latency -- --bag <run>.bag [--tiff <acq>.tif]` | per segment: stream delay relative to the fastest frame (p50/p99/max; the acquisition and host clocks share no origin), clock drift, in-node hop, node → bridge hop (MCAP log_time), queue-depth histogram, gaps + slow-joiner loss, preview encode and frame → record latency; with the TIFF, the ZMQ-vs-TIFF timestamp difference per frame (the "same origin?" question) and the ABSOLUTE acquisition → topic latency from the TIFF `epoch`; pass bars from the procedure (meta p99 < one frame period, preview < 250 ms, 0 gaps, 0 queue drops) |
+| `pixi run test-frames` (first half of `pixi run test`) | router + node + in-process subscriber + the stand-in at 29.08 Hz × 512 × 512 × 2 ch: every frame counted and shaped right; `--drop-every 10` → 9 gaps in a new segment (a dropped LAST frame is invisible to any subscriber); publisher restart with no start delay → the slow-joiner loss recorded; the node SIGSTOPped 1.5 s with the publisher's HWM at libzmq's default 1000 (nothing lost, the publisher buffers — ScanImage's memory rise) and at 20 (the publisher drops, the node names every missing frame), publisher timing unaffected both times; clean SIGINT exit; a tiny queue + a stalled publisher thread → `dropped_by_queue` exact; the report on the dump and on a bag written with `nodes/recorder.py`, with a synthetic ScanImage-style TIFF for the clock alignment; the bridge's topic map |
+
+What the stand-in cannot tell us, so the lab day must: the absolute latency and its p99 against ScanImage's own
+`frameTimestamps_sec` (R2/R3), whether the ZMQ header timestamp and the TIFF's share an origin, how much MATLAB
+memory a paused subscriber costs (the PUB high-water mark, ~1 GB at 512 × 512 × 2 ch if it is libzmq's 1000), and
+that a subscriber being killed / paused / late never changes the acquisition's timing (`hMon`, `lostFrames`).
+
 ### Still not verified
 
 (2026-10-16: rosbag2's own reader on a torn bag is now verified — its `Reindexer` reads the crashsafe file in file order and writes `metadata.yaml`; the recovery path uses it.) Windows (now also: whether `pixi install` builds the interfaces package there — `WINDOWS-TEST.md` has the steps); the closed-loop math in a **separate** process (it stays in the bridge node here, so the `seq` ordering is available; the `--order time` numbers are the proxy); a multi-hour recording for bag growth; `ros2 bag play` of a recorded run against the Studio; a real FicTrac (the bench used the model-fly simulator).
