@@ -1065,6 +1065,154 @@ var ArenaRunnerG6 = (function () {
         await sleep((Number(remainderSec) || 0) * 1000);
     }
 
+    // ---- throttle-proof host-side wait timer ------------------------------
+    //
+    // A page setTimeout is throttled once the tab is hidden or the window is
+    // occluded: Chrome aligns it to 1 s ticks (1 min after 5 min hidden). On the
+    // Bergamo 2P rig (2026-10-16) every host-timed 3 s step ran 4.00 s while the
+    // operator worked in ScanImage over the Studio window. Dedicated Workers are
+    // not throttled, so the wait is armed in a Worker built from an inline blob
+    // URL (no extra file — this module must stay a classic <script src>). A page
+    // setTimeout is armed beside it as a backstop and whichever fires first wins,
+    // so the Worker path is never worse than the old behavior. Where Worker /
+    // Blob / URL are missing (Node tests, old engines) or the Worker fails, the
+    // setTimeout alone runs, exactly as before.
+    const SLEEP_WORKER_SRC =
+        'var t={};' +
+        'self.onmessage=function(e){var d=e.data;' +
+        "if(d.op==='set'){t[d.id]=setTimeout(function(){delete t[d.id];self.postMessage(d.id)},d.ms)}" +
+        "else if(d.op==='clear'){clearTimeout(t[d.id]);delete t[d.id]}};";
+
+    /** A wait that overshoots its request by more than this is reported as a 'warn' event. */
+    const SLEEP_LATE_WARN_MS = 250;
+
+    /**
+     * Build a wait timer: set(ms, cb) → handle, clear(handle). `kind` says which
+     * mechanism is live ('worker' | 'timeout'); `lastError` why the Worker was
+     * dropped, if it was. `deps` lets tests inject a fake Worker / Blob / URL /
+     * setTimeout; by default the globals are used.
+     * @param {{Worker?:function, Blob?:function, URL?:object, setTimeout?:function, clearTimeout?:function}} [deps]
+     */
+    function createSleepTimer(deps) {
+        deps = deps || {};
+        const g = typeof globalThis !== 'undefined' ? globalThis : {};
+        const WorkerCtor = deps.Worker !== undefined ? deps.Worker : g.Worker;
+        const BlobCtor = deps.Blob !== undefined ? deps.Blob : g.Blob;
+        const URLObj = deps.URL !== undefined ? deps.URL : g.URL;
+        const setT = deps.setTimeout || setTimeout;
+        const clearT = deps.clearTimeout || clearTimeout;
+        let worker = null;
+        let workerState = 'unset'; // 'unset' | 'ready' | 'unavailable'
+        let lastError = null;
+        let nextId = 1;
+        const pending = new Map(); // id → { cb, backstop, inWorker }
+
+        function dropWorker(reason) {
+            // The backstop timeouts already cover every pending wait — nothing is lost.
+            if (worker) {
+                try {
+                    worker.terminate();
+                } catch (_) {
+                    /* ignore */
+                }
+            }
+            worker = null;
+            workerState = 'unavailable';
+            lastError = reason ? String(reason.message || reason) : 'worker failed';
+        }
+        function fire(id) {
+            const p = pending.get(id);
+            if (!p) return; // the other arm fired first, or clear() won
+            pending.delete(id);
+            if (p.backstop !== null) clearT(p.backstop);
+            if (p.inWorker && worker) {
+                try {
+                    worker.postMessage({ op: 'clear', id });
+                } catch (_) {
+                    /* ignore */
+                }
+            }
+            p.cb();
+        }
+        function ensureWorker() {
+            if (workerState !== 'unset') return;
+            const ok =
+                typeof WorkerCtor === 'function' &&
+                typeof BlobCtor === 'function' &&
+                URLObj &&
+                typeof URLObj.createObjectURL === 'function';
+            if (!ok) {
+                workerState = 'unavailable';
+                lastError = 'Worker/Blob/URL unavailable';
+                return;
+            }
+            try {
+                const url = URLObj.createObjectURL(
+                    new BlobCtor([SLEEP_WORKER_SRC], { type: 'text/javascript' })
+                );
+                const w = new WorkerCtor(url);
+                w.onmessage = (e) => fire(e && e.data);
+                w.onerror = (e) => dropWorker(e || 'worker error');
+                worker = w;
+                workerState = 'ready';
+            } catch (e) {
+                dropWorker(e);
+            }
+        }
+        return {
+            set(ms, cb) {
+                ensureWorker();
+                const id = nextId++;
+                const p = { cb, backstop: null, inWorker: false };
+                pending.set(id, p);
+                p.backstop = setT(() => fire(id), ms);
+                if (worker) {
+                    try {
+                        worker.postMessage({ op: 'set', id, ms });
+                        p.inWorker = true;
+                    } catch (e) {
+                        dropWorker(e);
+                    }
+                }
+                return id;
+            },
+            clear(id) {
+                const p = pending.get(id);
+                if (!p) return;
+                pending.delete(id);
+                if (p.backstop !== null) clearT(p.backstop);
+                if (p.inWorker && worker) {
+                    try {
+                        worker.postMessage({ op: 'clear', id });
+                    } catch (_) {
+                        /* ignore */
+                    }
+                }
+            },
+            get kind() {
+                ensureWorker();
+                return worker ? 'worker' : 'timeout';
+            },
+            get lastError() {
+                return lastError;
+            },
+            get pendingCount() {
+                return pending.size;
+            },
+            /** Tests only: tear the Worker down (pending waits keep their backstop). */
+            dispose() {
+                if (worker) dropWorker('disposed');
+            }
+        };
+    }
+
+    let _sharedSleepTimer = null;
+    /** The page-wide wait timer (one Worker per page, created on first use). */
+    function sleepTimer() {
+        if (!_sharedSleepTimer) _sharedSleepTimer = createSleepTimer();
+        return _sharedSleepTimer;
+    }
+
     // ---- run-state machine ----------------------------------------------
 
     /**
@@ -1097,8 +1245,9 @@ var ArenaRunnerG6 = (function () {
             this._conditionName = null;
             this._lastResponse = null;
             this._abort = false; // sequence abort flag (set by stop()/_clear())
-            this._sleepTimer = null; // in-progress host-side wait timer
+            this._sleepTimer = null; // in-progress host-side wait (a sleepTimer() handle)
             this._sleepResolve = null; // resolver for the in-progress wait
+            this._timerImpl = null; // tests: a createSleepTimer() to use instead of the shared one
             this._ledActivator = null; // active conditional-LED evaluator (Mode 3)
             this._ledUnsub = null; // bridge 'applied' unsubscribe for the above
             this._emit = null; // current run's status emit (for async LED events)
@@ -1471,7 +1620,7 @@ var ArenaRunnerG6 = (function () {
         /** Resolve + clear any in-progress host-side wait (makes STOP prompt). */
         _resolveSleep() {
             if (this._sleepTimer) {
-                clearTimeout(this._sleepTimer);
+                (this._timerImpl || sleepTimer()).clear(this._sleepTimer);
                 this._sleepTimer = null;
             }
             if (this._sleepResolve) {
@@ -1484,7 +1633,11 @@ var ArenaRunnerG6 = (function () {
         /**
          * Abort-aware sleep: resolves after `ms`, OR immediately if already aborted
          * or stop() fires mid-wait. Only one wait is outstanding at a time (the
-         * sequence loop awaits each in turn).
+         * sequence loop awaits each in turn). The wait runs on the throttle-proof
+         * sleepTimer() (Worker + backstop setTimeout); a wait that still overshoots
+         * by more than SLEEP_LATE_WARN_MS is reported as a 'warn' event, so a
+         * throttled or starved page shows up in the run log instead of only in the
+         * data.
          */
         _sleep(ms) {
             return new Promise((resolve) => {
@@ -1492,12 +1645,31 @@ var ArenaRunnerG6 = (function () {
                     resolve();
                     return;
                 }
+                const t0 = Date.now();
                 this._sleepResolve = resolve;
-                this._sleepTimer = setTimeout(() => {
+                this._sleepTimer = (this._timerImpl || sleepTimer()).set(ms, () => {
                     this._sleepTimer = null;
                     this._sleepResolve = null;
+                    const late = Date.now() - t0 - ms;
+                    if (late > SLEEP_LATE_WARN_MS && typeof this._emit === 'function') {
+                        try {
+                            this._emit({
+                                phase: 'warn',
+                                reason:
+                                    'host-timed wait ran ' +
+                                    ((ms + late) / 1000).toFixed(2) +
+                                    ' s instead of ' +
+                                    (ms / 1000).toFixed(2) +
+                                    ' s (browser timer throttling? keep the Studio window visible)',
+                                requested_ms: ms,
+                                actual_ms: ms + late
+                            });
+                        } catch (_) {
+                            /* a logging failure must not break the run */
+                        }
+                    }
                     resolve();
-                }, ms);
+                });
             });
         }
 
@@ -2145,6 +2317,9 @@ var ArenaRunnerG6 = (function () {
         LED_MIN_STEP_MV, // smallest AO change the activator bothers to send (mV)
         normalizeBias, // validate/normalize startClosedLoop bias params → {bias, warning} (throws on bad)
         makeLedActivator, // pure stateful index→{level, mv, changed} evaluator over the zone vector
+        createSleepTimer, // throttle-proof wait timer factory (Worker + backstop setTimeout)
+        sleepTimer, // the page-wide instance the runner's host-side waits use
+        SLEEP_LATE_WARN_MS, // overshoot (ms) above which a host-timed wait logs a 'warn'
         ArenaRunner
     };
 })();
