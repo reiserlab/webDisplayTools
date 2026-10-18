@@ -488,10 +488,21 @@ async function main() {
         oldWs.close = function () {
             this.readyState = 2; // a real browser fires onclose later, asynchronously
         };
+        // A request still waiting on the old socket must fail fast at disconnect(): the
+        // old socket's late onclose is ignored as stale and the new one never answers it.
+        const staleExport = client.exportLog(5000).then(
+            () => 'resolved',
+            (e) => e.message
+        );
         client.disconnect();
         client.connect('ws://localhost:8765');
         const newWs = FakeWS.last;
         newWs.open();
+        check(
+            'export pending on the superseded socket fails fast',
+            await staleExport,
+            'bridge disconnected during log export'
+        );
         oldWs.readyState = 3;
         oldWs.onclose({ code: 1000 });
         checkBool('stale close leaves the new socket connected', client.connected === true);
@@ -500,6 +511,28 @@ async function main() {
         newWs.onclose({ code: 1006 });
         check('the live socket dropping IS a loss', lost, 1);
         check('apply was off → info.apply false', client.lastLoss.apply, false);
+        // (d) reconnecting OVER a socket that is still closing (no disconnect() call)
+        // settles the requests waiting on it; its late onclose is then ignored as stale.
+        client.connect('ws://localhost:8765');
+        const closing = FakeWS.last;
+        closing.open();
+        const exp2 = client.exportLog(5000).then(
+            () => 'resolved',
+            (e) => e.message
+        );
+        closing.readyState = 2; // CLOSING: connected === false, so connect() proceeds
+        client.connect('ws://localhost:8765');
+        const fresh = FakeWS.last;
+        fresh.open();
+        check(
+            'export pending on a closing socket fails on reconnect',
+            await exp2,
+            'bridge disconnected during log export'
+        );
+        closing.readyState = 3;
+        closing.onclose({ code: 1000 });
+        checkBool('the stale close leaves the fresh socket connected', client.connected === true);
+        check('stale close after a reconnect → still one loss', lost, 1);
     }
 
     console.log('\n=== log level (behavior_v2 default / v1 + full selectable) ===');
