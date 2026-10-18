@@ -1232,7 +1232,11 @@ function _rigPanelMode(raw, warnings) {
     var s = String(raw).trim().toLowerCase();
     if (Object.prototype.hasOwnProperty.call(RIG_PANEL_MODES, s)) return RIG_PANEL_MODES[s];
     if (/^[0-3]$/.test(s)) return Number(s);
-    warnings.push('unknown defaults.panel_mode "' + raw + '" — ignored (0–3 or oneshot/persistent/triggered/gated)');
+    warnings.push(
+        'unknown defaults.panel_mode "' +
+            raw +
+            '" — ignored (0–3 or oneshot/persistent/triggered/gated)'
+    );
     return null;
 }
 
@@ -1249,7 +1253,12 @@ function _parseRigSettings(rigData, result) {
         if (l.max_refresh_hz != null) {
             var hz = Number(l.max_refresh_hz);
             if (Number.isInteger(hz) && hz >= 1 && hz <= 2000) result.limits.max_refresh_hz = hz;
-            else result.warnings.push('limits.max_refresh_hz "' + l.max_refresh_hz + '" must be an integer 1–2000 — ignored');
+            else
+                result.warnings.push(
+                    'limits.max_refresh_hz "' +
+                        l.max_refresh_hz +
+                        '" must be an integer 1–2000 — ignored'
+                );
         }
     } else if (l != null) {
         result.warnings.push('limits: must be a mapping — ignored');
@@ -1257,13 +1266,18 @@ function _parseRigSettings(rigData, result) {
     var r = rigData.requires;
     if (r && typeof r === 'object' && !Array.isArray(r)) {
         if (r.panel_firmware != null) {
-            if (typeof r.panel_firmware === 'string' && r.panel_firmware.trim()) result.requires.panel_firmware = r.panel_firmware.trim();
-            else result.warnings.push('requires.panel_firmware must be a non-empty string — ignored');
+            if (typeof r.panel_firmware === 'string' && r.panel_firmware.trim())
+                result.requires.panel_firmware = r.panel_firmware.trim();
+            else
+                result.warnings.push(
+                    'requires.panel_firmware must be a non-empty string — ignored'
+                );
         }
     } else if (r != null) {
         result.warnings.push('requires: must be a mapping — ignored');
     }
-    if (rigData.strict != null) result.strict = rigData.strict === true || String(rigData.strict).toLowerCase() === 'true';
+    if (rigData.strict != null)
+        result.strict = rigData.strict === true || String(rigData.strict).toLowerCase() === 'true';
 }
 
 function parseRigIo(rigData) {

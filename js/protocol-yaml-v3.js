@@ -310,7 +310,13 @@ function unsupportedRequires(experiment) {
  * Mirrors js/controller-settings.js normalizeControllerBlock (that module is the runtime
  * side and cannot be imported from this ESM module without a bundler).
  */
-const CONTROLLER_PANEL_MODES = Object.freeze({ oneshot: 0, persist: 1, persistent: 1, triggered: 2, gated: 3 });
+const CONTROLLER_PANEL_MODES = Object.freeze({
+    oneshot: 0,
+    persist: 1,
+    persistent: 1,
+    triggered: 2,
+    gated: 3
+});
 const CONTROLLER_REFRESH_POLICIES = Object.freeze(['line_sync_safe']);
 function extractControllerBlock(raw) {
     const out = {
@@ -326,38 +332,70 @@ function extractControllerBlock(raw) {
     if (raw === undefined || raw === null) return out;
     out.declared = true;
     if (typeof raw !== 'object' || Array.isArray(raw)) {
-        out.errors.push('controller: must be a mapping (panel_mode / refresh_hz / refresh_policy / panel_firmware)');
+        out.errors.push(
+            'controller: must be a mapping (panel_mode / refresh_hz / refresh_policy / panel_firmware)'
+        );
         return out;
     }
     out.raw = JSON.parse(JSON.stringify(raw));
     const known = ['panel_mode', 'refresh_hz', 'refresh_policy', 'panel_firmware'];
     for (const k of Object.keys(raw)) {
-        if (!known.includes(k)) out.warnings.push('controller: unknown key "' + k + '" is ignored (known: ' + known.join(', ') + ')');
+        if (!known.includes(k))
+            out.warnings.push(
+                'controller: unknown key "' + k + '" is ignored (known: ' + known.join(', ') + ')'
+            );
     }
     if (raw.panel_mode !== undefined && raw.panel_mode !== null) {
         let m = null;
-        if (typeof raw.panel_mode === 'number' && Number.isInteger(raw.panel_mode) && raw.panel_mode >= 0 && raw.panel_mode <= 3) m = raw.panel_mode;
+        if (
+            typeof raw.panel_mode === 'number' &&
+            Number.isInteger(raw.panel_mode) &&
+            raw.panel_mode >= 0 &&
+            raw.panel_mode <= 3
+        )
+            m = raw.panel_mode;
         else if (typeof raw.panel_mode === 'string') {
             const k = raw.panel_mode.trim().toLowerCase();
-            if (Object.prototype.hasOwnProperty.call(CONTROLLER_PANEL_MODES, k)) m = CONTROLLER_PANEL_MODES[k];
+            if (Object.prototype.hasOwnProperty.call(CONTROLLER_PANEL_MODES, k))
+                m = CONTROLLER_PANEL_MODES[k];
             else if (/^[0-3]$/.test(k)) m = Number(k);
         }
-        if (m === null) out.errors.push('controller.panel_mode ' + JSON.stringify(raw.panel_mode) + ' is not 0–3 or one of oneshot/persistent/triggered/gated');
+        if (m === null)
+            out.errors.push(
+                'controller.panel_mode ' +
+                    JSON.stringify(raw.panel_mode) +
+                    ' is not 0–3 or one of oneshot/persistent/triggered/gated'
+            );
         else out.panel_mode = m;
     }
     if (raw.refresh_hz !== undefined && raw.refresh_hz !== null) {
         const hz = Number(raw.refresh_hz);
-        if (!Number.isInteger(hz) || hz < 1 || hz > 2000) out.errors.push('controller.refresh_hz ' + JSON.stringify(raw.refresh_hz) + ' must be an integer 1–2000');
+        if (!Number.isInteger(hz) || hz < 1 || hz > 2000)
+            out.errors.push(
+                'controller.refresh_hz ' +
+                    JSON.stringify(raw.refresh_hz) +
+                    ' must be an integer 1–2000'
+            );
         else out.refresh_hz = hz;
     }
     if (raw.refresh_policy !== undefined && raw.refresh_policy !== null) {
         const pol = String(raw.refresh_policy).trim();
-        if (!CONTROLLER_REFRESH_POLICIES.includes(pol)) out.errors.push('controller.refresh_policy ' + JSON.stringify(raw.refresh_policy) + ' must be one of ' + CONTROLLER_REFRESH_POLICIES.join('/'));
+        if (!CONTROLLER_REFRESH_POLICIES.includes(pol))
+            out.errors.push(
+                'controller.refresh_policy ' +
+                    JSON.stringify(raw.refresh_policy) +
+                    ' must be one of ' +
+                    CONTROLLER_REFRESH_POLICIES.join('/')
+            );
         else out.refresh_policy = pol;
     }
-    if (out.refresh_hz !== null && out.refresh_policy !== null) out.errors.push('controller: declare refresh_hz OR refresh_policy, not both');
+    if (out.refresh_hz !== null && out.refresh_policy !== null)
+        out.errors.push('controller: declare refresh_hz OR refresh_policy, not both');
     if (raw.panel_firmware !== undefined && raw.panel_firmware !== null) {
-        if (typeof raw.panel_firmware !== 'string' || !raw.panel_firmware.trim()) out.errors.push('controller.panel_firmware must be a non-empty string (a footer version or its prefix, e.g. "2p")');
+        if (typeof raw.panel_firmware !== 'string' || !raw.panel_firmware.trim())
+            out.errors.push(
+                'controller.panel_firmware must be a non-empty string (a footer version or its prefix, e.g. "2p")'
+            );
         else out.panel_firmware = raw.panel_firmware.trim();
     }
     return out;
@@ -629,7 +667,8 @@ function collectBlockingErrors(experiment) {
 
     // controller: block — a malformed declaration blocks (a wrong panel mode ruins data silently).
     if (experiment && experiment.controller && Array.isArray(experiment.controller.errors)) {
-        for (const msg of experiment.controller.errors) errors.push({ kind: 'controller-block', message: msg });
+        for (const msg of experiment.controller.errors)
+            errors.push({ kind: 'controller-block', message: msg });
     }
 
     // The two anchor checks need the CST; skip gracefully when it's absent.

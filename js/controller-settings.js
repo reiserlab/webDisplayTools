@@ -32,7 +32,8 @@
         if (v === undefined || v === null || v === '') return null;
         if (typeof v === 'string') {
             const s = v.trim().toLowerCase();
-            if (Object.prototype.hasOwnProperty.call(PANEL_MODE_ALIASES, s)) return PANEL_MODE_ALIASES[s];
+            if (Object.prototype.hasOwnProperty.call(PANEL_MODE_ALIASES, s))
+                return PANEL_MODE_ALIASES[s];
             if (/^[0-3]$/.test(s)) return Number(s);
             return null;
         }
@@ -79,17 +80,31 @@
         if (raw === undefined || raw === null) return out;
         out.declared = true;
         if (typeof raw !== 'object' || Array.isArray(raw)) {
-            out.errors.push('controller: must be a mapping (panel_mode / refresh_hz / refresh_policy / panel_firmware)');
+            out.errors.push(
+                'controller: must be a mapping (panel_mode / refresh_hz / refresh_policy / panel_firmware)'
+            );
             return out;
         }
         const known = ['panel_mode', 'refresh_hz', 'refresh_policy', 'panel_firmware'];
         for (const k of Object.keys(raw)) {
-            if (!known.includes(k)) out.warnings.push('controller: unknown key "' + k + '" is ignored (known: ' + known.join(', ') + ')');
+            if (!known.includes(k))
+                out.warnings.push(
+                    'controller: unknown key "' +
+                        k +
+                        '" is ignored (known: ' +
+                        known.join(', ') +
+                        ')'
+                );
         }
         if (raw.panel_mode !== undefined && raw.panel_mode !== null) {
             const m = normalizePanelMode(raw.panel_mode);
             if (m === null) {
-                out.errors.push('controller.panel_mode ' + JSON.stringify(raw.panel_mode) + ' is not 0–3 or one of ' + PANEL_MODE_NAMES.join('/'));
+                out.errors.push(
+                    'controller.panel_mode ' +
+                        JSON.stringify(raw.panel_mode) +
+                        ' is not 0–3 or one of ' +
+                        PANEL_MODE_NAMES.join('/')
+                );
             } else {
                 out.panel_mode = m;
             }
@@ -97,7 +112,14 @@
         if (raw.refresh_hz !== undefined && raw.refresh_hz !== null) {
             const hz = Number(raw.refresh_hz);
             if (!Number.isInteger(hz) || hz < REFRESH_HZ_MIN || hz > REFRESH_HZ_MAX) {
-                out.errors.push('controller.refresh_hz ' + JSON.stringify(raw.refresh_hz) + ' must be an integer ' + REFRESH_HZ_MIN + '–' + REFRESH_HZ_MAX);
+                out.errors.push(
+                    'controller.refresh_hz ' +
+                        JSON.stringify(raw.refresh_hz) +
+                        ' must be an integer ' +
+                        REFRESH_HZ_MIN +
+                        '–' +
+                        REFRESH_HZ_MAX
+                );
             } else {
                 out.refresh_hz = hz;
             }
@@ -105,7 +127,12 @@
         if (raw.refresh_policy !== undefined && raw.refresh_policy !== null) {
             const p = String(raw.refresh_policy).trim();
             if (!REFRESH_POLICIES.includes(p)) {
-                out.errors.push('controller.refresh_policy ' + JSON.stringify(raw.refresh_policy) + ' must be one of ' + REFRESH_POLICIES.join('/'));
+                out.errors.push(
+                    'controller.refresh_policy ' +
+                        JSON.stringify(raw.refresh_policy) +
+                        ' must be one of ' +
+                        REFRESH_POLICIES.join('/')
+                );
             } else {
                 out.refresh_policy = p;
             }
@@ -115,7 +142,9 @@
         }
         if (raw.panel_firmware !== undefined && raw.panel_firmware !== null) {
             if (typeof raw.panel_firmware !== 'string' || !raw.panel_firmware.trim()) {
-                out.errors.push('controller.panel_firmware must be a non-empty string (a footer version or its prefix, e.g. "2p")');
+                out.errors.push(
+                    'controller.panel_firmware must be a non-empty string (a footer version or its prefix, e.g. "2p")'
+                );
             } else {
                 out.panel_firmware = raw.panel_firmware.trim();
             }
@@ -139,7 +168,10 @@
      */
     function planAssertions(a) {
         a = a || {};
-        const block = a.block && typeof a.block === 'object' && 'declared' in a.block ? a.block : normalizeControllerBlock(a.block);
+        const block =
+            a.block && typeof a.block === 'object' && 'declared' in a.block
+                ? a.block
+                : normalizeControllerBlock(a.block);
         const rig = a.rig || {};
         const rigDefaults = rig.defaults || {};
         const rigLimits = rig.limits || {};
@@ -159,19 +191,39 @@
 
         // 1. Rig identity — the protocol's rig and the bench's rig must agree.
         if (a.protocolRig && a.sessionRig && a.protocolRig !== a.sessionRig) {
-            problem('protocol is written for rig "' + a.protocolRig + '" but the session rig is "' + a.sessionRig + '"' +
-                (strict ? ' — pick the right rig in the top bar or fix the protocol\'s rig: path' : ''));
+            problem(
+                'protocol is written for rig "' +
+                    a.protocolRig +
+                    '" but the session rig is "' +
+                    a.sessionRig +
+                    '"' +
+                    (strict
+                        ? " — pick the right rig in the top bar or fix the protocol's rig: path"
+                        : '')
+            );
         }
 
         // 2. Panel display mode: protocol wins, else the rig default. Nothing declared → record only.
-        const wantMode = block.panel_mode !== null && block.panel_mode !== undefined ? block.panel_mode : normalizePanelMode(rigDefaults.panel_mode);
+        const wantMode =
+            block.panel_mode !== null && block.panel_mode !== undefined
+                ? block.panel_mode
+                : normalizePanelMode(rigDefaults.panel_mode);
         if (wantMode !== null) {
             intended.panel_mode = wantMode;
             const needCap = PANEL_MODE_CAPABILITY[wantMode];
             if (needCap && caps && !caps.includes(needCap)) {
-                blocking.push('panel mode ' + panelModeName(wantMode) + ' needs controller capability "' + needCap + '", which this controller does not report');
+                blocking.push(
+                    'panel mode ' +
+                        panelModeName(wantMode) +
+                        ' needs controller capability "' +
+                        needCap +
+                        '", which this controller does not report'
+                );
             } else if (snap.panel_mode === null || snap.panel_mode === undefined) {
-                problem('cannot read the panel display mode (GET_PANEL_DISPLAY_MODE 0x1C gave no reply) — wanted ' + panelModeName(wantMode));
+                problem(
+                    'cannot read the panel display mode (GET_PANEL_DISPLAY_MODE 0x1C gave no reply) — wanted ' +
+                        panelModeName(wantMode)
+                );
             } else if (snap.panel_mode !== wantMode) {
                 actions.push({ setting: 'panel_mode', from: snap.panel_mode, to: wantMode });
             }
@@ -179,29 +231,57 @@
 
         // 3. Refresh rate: explicit refresh_hz, else derived (rig cap + pattern grayscale).
         const cap = Number.isInteger(rigLimits.max_refresh_hz) ? rigLimits.max_refresh_hz : null;
-        const gsList = patterns.map((p) => (p && (p.gsVal === 1 || p.gsVal === 2) ? p.gsVal : null));
+        const gsList = patterns.map((p) =>
+            p && (p.gsVal === 1 || p.gsVal === 2) ? p.gsVal : null
+        );
         const gsKnown = gsList.filter((g) => g !== null);
-        intended.pattern_gs = gsKnown.length ? Array.from(new Set(gsKnown)).map((g) => (g === 1 ? 'GS2' : 'GS16')) : null;
+        intended.pattern_gs = gsKnown.length
+            ? Array.from(new Set(gsKnown)).map((g) => (g === 1 ? 'GS2' : 'GS16'))
+            : null;
         if (block.refresh_hz !== null) {
             intended.refresh_hz = block.refresh_hz;
             if (cap !== null && block.refresh_hz > cap) {
-                blocking.push('controller.refresh_hz ' + block.refresh_hz + ' exceeds the rig limit max_refresh_hz ' + cap);
+                blocking.push(
+                    'controller.refresh_hz ' +
+                        block.refresh_hz +
+                        ' exceeds the rig limit max_refresh_hz ' +
+                        cap
+                );
             } else if (snap.refresh_hz === null || snap.refresh_hz === undefined) {
-                problem('cannot read the refresh rate (GET_REFRESH_RATE 0x17 gave no reply) — wanted ' + block.refresh_hz + ' Hz');
+                problem(
+                    'cannot read the refresh rate (GET_REFRESH_RATE 0x17 gave no reply) — wanted ' +
+                        block.refresh_hz +
+                        ' Hz'
+                );
             } else if (snap.refresh_hz !== block.refresh_hz) {
-                actions.push({ setting: 'refresh_hz', from: snap.refresh_hz, to: block.refresh_hz });
+                actions.push({
+                    setting: 'refresh_hz',
+                    from: snap.refresh_hz,
+                    to: block.refresh_hz
+                });
             }
         } else if (block.refresh_policy === 'line_sync_safe' || cap !== null) {
             if (cap === null) {
-                problem('controller.refresh_policy line_sync_safe needs the rig to declare limits.max_refresh_hz — nothing to cap at');
+                problem(
+                    'controller.refresh_policy line_sync_safe needs the rig to declare limits.max_refresh_hz — nothing to cap at'
+                );
             } else {
                 intended.refresh_hz_max = cap;
                 // The firmware default for the referenced patterns' grayscale is what the controller
                 // would stream at if nobody had set the rate; if that (or the current rate) is above the
                 // cap, pin the rate to the cap.
-                const wouldDefault = gsKnown.length ? Math.max.apply(null, gsKnown.map((g) => DEFAULT_REFRESH_HZ[g])) : null;
+                const wouldDefault = gsKnown.length
+                    ? Math.max.apply(
+                          null,
+                          gsKnown.map((g) => DEFAULT_REFRESH_HZ[g])
+                      )
+                    : null;
                 if (snap.refresh_hz === null || snap.refresh_hz === undefined) {
-                    problem('cannot read the refresh rate (GET_REFRESH_RATE 0x17 gave no reply) — rig caps it at ' + cap + ' Hz');
+                    problem(
+                        'cannot read the refresh rate (GET_REFRESH_RATE 0x17 gave no reply) — rig caps it at ' +
+                            cap +
+                            ' Hz'
+                    );
                 } else if (snap.refresh_hz > cap) {
                     actions.push({ setting: 'refresh_hz', from: snap.refresh_hz, to: cap });
                 } else if (wouldDefault !== null && wouldDefault > cap && snap.refresh_hz !== cap) {
@@ -209,26 +289,60 @@
                     actions.push({ setting: 'refresh_hz', from: snap.refresh_hz, to: cap });
                 }
                 if (gsKnown.length !== patterns.length && patterns.length) {
-                    warnings.push('grayscale unknown for ' + (patterns.length - gsKnown.length) + ' referenced pattern(s) — refresh derived from the readable ones only');
+                    warnings.push(
+                        'grayscale unknown for ' +
+                            (patterns.length - gsKnown.length) +
+                            ' referenced pattern(s) — refresh derived from the readable ones only'
+                    );
                 }
             }
         }
 
         // 4. Panel firmware: protocol requirement wins, else the rig's. A declared requirement is hard.
-        const wantFw = block.panel_firmware || (typeof rigRequires.panel_firmware === 'string' ? rigRequires.panel_firmware : null);
+        const wantFw =
+            block.panel_firmware ||
+            (typeof rigRequires.panel_firmware === 'string' ? rigRequires.panel_firmware : null);
         if (wantFw) {
             intended.panel_firmware = wantFw;
-            const ver = snap.panel_firmware && snap.panel_firmware.version ? snap.panel_firmware.version : null;
+            const ver =
+                snap.panel_firmware && snap.panel_firmware.version
+                    ? snap.panel_firmware.version
+                    : null;
             if (!ver) {
-                problem('cannot read the panel firmware footer (GET_FIRMWARE_INFO 0xE3) — required "' + wantFw + '"');
+                problem(
+                    'cannot read the panel firmware footer (GET_FIRMWARE_INFO 0xE3) — required "' +
+                        wantFw +
+                        '"'
+                );
             } else if (!firmwareMatches(ver, wantFw)) {
-                blocking.push('panel firmware on the SD card is "' + ver + '", required "' + wantFw + '" — flash the fleet (Console → Panel firmware) or change the requirement');
+                blocking.push(
+                    'panel firmware on the SD card is "' +
+                        ver +
+                        '", required "' +
+                        wantFw +
+                        '" — flash the fleet (Console → Panel firmware) or change the requirement'
+                );
             }
             const v = snap.verified;
             if (!v) {
-                warnings.push('panels not verified this session — the footer says which image is on the SD card, not which firmware every panel runs; run Verify panels (' + (strict ? 'strongly recommended on this rig' : 'optional') + ')');
+                warnings.push(
+                    'panels not verified this session — the footer says which image is on the SD card, not which firmware every panel runs; run Verify panels (' +
+                        (strict ? 'strongly recommended on this rig' : 'optional') +
+                        ')'
+                );
             } else if (v.ok === false) {
-                blocking.push('panel verify failed: ' + (v.total - v.verified) + ' of ' + v.total + ' panels do not match the SD footer "' + (v.footer || ver || '?') + '"' + (v.mismatched && v.mismatched.length ? ' (panels ' + v.mismatched.join(', ') + ')' : ''));
+                blocking.push(
+                    'panel verify failed: ' +
+                        (v.total - v.verified) +
+                        ' of ' +
+                        v.total +
+                        ' panels do not match the SD footer "' +
+                        (v.footer || ver || '?') +
+                        '"' +
+                        (v.mismatched && v.mismatched.length
+                            ? ' (panels ' + v.mismatched.join(', ') + ')'
+                            : '')
+                );
             }
         }
 
@@ -239,13 +353,30 @@
     function formatSnapshot(s) {
         if (!s) return 'controller: (no snapshot)';
         const parts = [];
-        parts.push('panel mode ' + (s.panel_mode === null || s.panel_mode === undefined ? '?' : panelModeName(s.panel_mode) + ' (' + s.panel_mode + ')'));
-        parts.push('refresh ' + (s.refresh_hz === null || s.refresh_hz === undefined ? '?' : s.refresh_hz + ' Hz'));
+        parts.push(
+            'panel mode ' +
+                (s.panel_mode === null || s.panel_mode === undefined
+                    ? '?'
+                    : panelModeName(s.panel_mode) + ' (' + s.panel_mode + ')')
+        );
+        parts.push(
+            'refresh ' +
+                (s.refresh_hz === null || s.refresh_hz === undefined ? '?' : s.refresh_hz + ' Hz')
+        );
         if (s.spi_mhz !== null && s.spi_mhz !== undefined) parts.push('SPI ' + s.spi_mhz + ' MHz');
-        if (s.dio_roles) parts.push('DIO ' + s.dio_roles.map((d, i) => (i + 1) + '=' + d.role).join(' '));
+        if (s.dio_roles)
+            parts.push('DIO ' + s.dio_roles.map((d, i) => i + 1 + '=' + d.role).join(' '));
         if (s.ao_mv !== null && s.ao_mv !== undefined) parts.push('AO ' + s.ao_mv + ' mV');
-        if (s.panel_firmware && s.panel_firmware.version) parts.push('panel fw «' + s.panel_firmware.version + '»');
-        if (s.verified) parts.push('verified ' + s.verified.verified + '/' + s.verified.total + (s.verified.ok ? '' : ' MISMATCH'));
+        if (s.panel_firmware && s.panel_firmware.version)
+            parts.push('panel fw «' + s.panel_firmware.version + '»');
+        if (s.verified)
+            parts.push(
+                'verified ' +
+                    s.verified.verified +
+                    '/' +
+                    s.verified.total +
+                    (s.verified.ok ? '' : ' MISMATCH')
+            );
         if (s.controller_firmware) parts.push('controller ' + s.controller_firmware);
         return parts.join(' · ');
     }
