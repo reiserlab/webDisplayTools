@@ -307,6 +307,9 @@
                 this._emit('log', 'bridge: bad URL — ' + (e && (e.message || e)), 'err');
                 return;
             }
+            // Superseding a socket that is still closing: its waiters can never be answered
+            // by the new one, and its late onclose is ignored as stale (below).
+            if (this._ws) this._failPending('bridge reconnecting');
             this._ws = ws;
             this._recv = 0;
             this._applied = 0;
@@ -397,6 +400,10 @@
         disconnect() {
             const ws = this._ws;
             this._ws = null; // first: onclose may run synchronously, and must see a requested close
+            // A requested close kills every request still waiting on this socket (export,
+            // level ack): settle them NOW. Its onclose may arrive late or, after a reconnect,
+            // be ignored as stale — so it must not be the only place they settle.
+            if (ws) this._failPending('bridge disconnected');
             if (ws) {
                 try {
                     ws.close();

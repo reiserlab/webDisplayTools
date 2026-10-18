@@ -5879,7 +5879,7 @@ function studioMarkerCurrent(stored, current) {
             const info = (e && e.info) || {};
             const action = e && e.action;
             const why = info.apply ? 'the closed loop was running' : 'the bridge connection dropped';
-            const restart = ' Restart the bridge (`pixi run bridge`) before the next run.';
+            const restart = ' Restart the bridge program on the rig PC before the next run.';
             let msg = null;
             if (action === 'aborted') {
                 msg = '⚠ FicTrac bridge lost mid-run (' + why + ') — the run was STOPPED (outcome BRIDGE_LOST). ' +
@@ -10742,7 +10742,18 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         Studio._runLogFormat = bridge.connected ? logLevel : null;
         // The file the bridge opened for THIS run (log_control_ack). A later push checks
         // that log_export serves it — a bridge restarted after a loss serves another file.
-        if (Studio.activeRunLog) Studio.activeRunLog.bridgeFile = (bridge.connected && bridge.logFile) || null;
+        if (Studio.activeRunLog) {
+            const runLog = Studio.activeRunLog;
+            runLog.bridgeFile = (bridge.connected && bridge.logFile) || null;
+            // A slow ack (> 800 ms on a loaded rig PC) names the file after this point: take
+            // it then, for THIS run only, so the push check is not silently skipped.
+            if (!runLog.bridgeFile && bridge.connected && typeof bridge.on === 'function') {
+                const off = bridge.on('loglevel', (info) => {
+                    if (Studio.activeRunLog !== runLog) { off(); return; }
+                    if (info && info.enabled && info.file) { runLog.bridgeFile = info.file; off(); }
+                });
+            }
+        }
         const levelNote = !bridge.connected ? ''
             : ackLevel === wantLevel ? ' (' + ackLevel + ')'
             : ackLevel ? ' ⚠ bridge too old for ' + wantLevel + ' — logging ' + ackLevel + ' (restart `pixi run bridge` from the current checkout)'
@@ -10819,9 +10830,10 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
                 ? Studio.resolveRuntimeCondition
                 : undefined,
             fictracPluginNames: new Set(ftNames),
-            // A recorded run's record IS the bridge log (the run is gated on the bridge),
-            // so losing the bridge stops it — not only when a FicTrac step needs it.
-            bridgeRequired: !!isExperiment && !!(bridge && bridge.connected),
+            // A recorded run's record IS the bridge log (the run is gated on the bridge and
+            // the bridge is logging it), so losing the bridge stops it — not only when a
+            // FicTrac step needs it. With bridge logging off the record is in the browser.
+            bridgeRequired: !!isExperiment && !!(bridge && bridge.connected && bridge.logging),
             degPerFrame: Studio.rigDegPerFrame(),
             defaultCoupling: Studio._legacyDefaultCoupling == null ? 1 : Studio._legacyDefaultCoupling
         });
