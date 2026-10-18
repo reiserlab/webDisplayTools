@@ -821,6 +821,11 @@
   #ghQuickLinks .ql-link:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
   .banner{background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid var(--warn);color:var(--warn);border-radius:8px;padding:8px 12px;margin:10px 20px;font-size:12px;display:none}
   .banner.show{display:block}
+  /* Run alert: a safety event the operator must SEE (bridge lost mid-run) — stays until
+     dismissed or the next run starts, unlike #banner, which later messages replace. */
+  .run-alert{background:color-mix(in srgb,var(--danger) 12%,transparent);border-color:var(--danger);color:var(--danger);font-weight:600;align-items:center;gap:12px}
+  .run-alert.show{display:flex}
+  .run-alert button{margin-left:auto;flex:0 0 auto;background:transparent;border:1px solid currentColor;color:inherit;border-radius:5px;padding:1px 8px;cursor:pointer;font:inherit}
 
   /* ── Edit view: tab bar (Designer | YAML) + YAML pane ───────────── */
   .edit-view .edit-tabs{display:flex;border:1px solid var(--border);border-radius:5px;overflow:hidden;flex:0 0 auto}
@@ -2503,6 +2508,7 @@
 
 <input type="file" id="fileInput" accept=".yaml,.yml" style="display:none" />
 <div class="banner" id="banner"></div>
+<div class="banner run-alert" id="runAlert" role="alert"><span id="runAlertTxt"></span><button type="button" id="runAlertClose" title="Hide this alert (the run log keeps the event)">✕</button></div>
 
 <!-- picker modal (Open from library… / Open from course repo…) -->
 <div class="picker-overlay" id="pickerOverlay" style="display:none">
@@ -2675,7 +2681,7 @@
             <button class="pill log-only" id="btnLogClear">Clear</button>
             <button class="pill log-only" id="btnLogCopy" title="Copy log to clipboard">Copy</button>
             <button class="pill log-only" id="btnLogSave" title="Download the recorded run log (.json + .txt)" disabled>⬇ Save</button>
-            <button class="pill log-only" id="btnLogPush" title="Push this run's log to the course repo (runlogs/&lt;bench-id&gt;/, gzipped .jsonl.gz) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one." disabled>⇪ Push log</button>
+            <button class="pill log-only" id="btnLogPush" title="Push this run's log to the course repo (runlogs/&lt;bench-id&gt;/, gzipped .jsonl.gz) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one. A restarted bridge serves a different file, so the push refuses it." disabled>⇪ Push log</button>
           </span>
           <!-- Scope controls live ON the header row in scope mode (maximizes the
                canvas); hidden in log mode. The .acts group is hidden in scope mode. -->
@@ -3443,10 +3449,10 @@
 <script src="js/studio-stream-geometry.js"></script>
 <script src="js/panel-color.js"></script> <!-- color-bank test figure (PanelColor.bankAt) -->
 <script src="js/arena-link.js"></script>
-<script src="js/arena-runner-g6.js?v=20260926-cl-start"></script> <!-- ?v= forces a fresh load: a cached runner/client silently runs the old closed-loop start -->
-<script src="js/run-log.js"></script>
-<script src="js/fictrac-bridge-client.js?v=20260926-cl-start"></script>
-<script src="js/arena-session.js"></script>
+<script src="js/arena-runner-g6.js?v=20261015-bridge-lost"></script> <!-- ?v= forces a fresh load: a cached runner/client/session silently keeps the old behavior (closed-loop start, bridge-loss stop) -->
+<script src="js/run-log.js?v=20261015-bridge-lost"></script>
+<script src="js/fictrac-bridge-client.js?v=20261015-bridge-lost"></script>
+<script src="js/arena-session.js?v=20261015-bridge-lost"></script>
 <script src="js/pat-encoder.js"></script>
 <script src="js/pattern-set.js?v=1006-partial-cols"></script>
 <script src="js/pat-preview.js"></script>
@@ -3465,7 +3471,8 @@ function studioMarkerCurrent(stored, current) {
 </script>
 <script src="js/studio-meta.js"></script>
 <script src="js/studio-url-state.js?v=20260924-replay"></script>
-<script src="js/studio-runlog-adapter.js"></script>
+<script src="js/studio-runlog-adapter.js?v=20261015-bridge-lost"></script>
+<script src="js/studio-preview-sources.js?v=20261015-s2"></script> <!-- pattern-preview byte sources, layered (builtin < shared < colocated < uploaded) -->
 <script src="js/studio-postmortem.js"></script>
 <script src="js/arena-telemetry.js"></script>
 <script src="js/trial-quality.js"></script>
@@ -3693,7 +3700,7 @@ function studioMarkerCurrent(stored, current) {
     function renderRunEvent(ev) {
         if (!$('runlogBox') || !ev) return;
         const div = document.createElement('div');
-        if (ev.phase === 'error') div.className = 'l-err';
+        if (ev.phase === 'error' || ev.phase === 'bridge-lost') div.className = 'l-err';
         else if (ev.phase === 'skip' || ev.phase === 'warn') div.className = 'l-warn';
         // Reuse run-log.js's own transcript line if available, else a compact fallback.
         div.textContent =
@@ -3748,7 +3755,7 @@ function studioMarkerCurrent(stored, current) {
             // broker has already aborted the runner (bench 2026-09-13, forced watchdog reset: the
             // terminal event arrived with fault null). The link being down at the terminal event
             // of an abort nobody requested is the same evidence — use either.
-            if (sm && !sm.fault && sm.aborted && !Studio._userStopRequested && (Studio._linkDropped || !(Studio.session && Studio.session.connected))) {
+            if (sm && !sm.fault && !sm.bridgeLost && sm.aborted && !Studio._userStopRequested && (Studio._linkDropped || !(Studio.session && Studio.session.connected))) {
                 sm.fault = 'link_dropped';
                 sm.faultDetail = { kind: 'link_dropped', note: 'controller re-enumerated mid-run (watchdog self-reset?)' };
             }
@@ -3898,12 +3905,17 @@ function studioMarkerCurrent(stored, current) {
         // 2026-09-13: they used to land after the export and were lost from committed logs).
         const finalizeThenCommit = async () => {
             try { if (Studio.finalizeTrialQuality) await Studio.finalizeTrialQuality(log.meta && log.meta.run_id); } catch (_) { /* best effort */ }
-            await maybeCommitRunLog(log, summary);
             // The run is over: close the bridge's run file (and, on the ROS bridge node, the
-            // MCAP bag) now, not at the next run's start. A run that was not committed (no
-            // course token, Test run, aborted) used to leave the file open indefinitely.
-            // "⇪ Push log" still works: the bridge exports its most recent file.
-            try { if (bridge && bridge.connected && bridge.logging) bridge.setLogging(false); } catch (_) { /* best effort */ }
+            // MCAP bag) NOW — after the trial-quality finalizer and the post-mortem (this runs
+            // after both), before any upload, and whether or not the run is committed. A run
+            // with no course token, a Test run or an abort used to leave the file open until
+            // the next run. Only THIS run's file: a newer run may have opened its own since.
+            // "⇪ Push log" still works — the bridge exports its most recent file.
+            try {
+                const b = Studio.session && Studio.session.bridge;
+                if (b && b.connected && b.logging && Studio.activeRunLog === log) b.setLogging(false);
+            } catch (_) { /* best effort */ }
+            await maybeCommitRunLog(log, summary);
         };
         if (summary && summary.outcome === 'CONTROLLER_FAULT' && Studio.handleControllerFault) {
             Studio._pendingCommit = finalizeThenCommit;
@@ -3945,6 +3957,12 @@ function studioMarkerCurrent(stored, current) {
             // A partial run isn't auto-committed, but the bridge still holds the
             // file — the operator can push it deliberately with "⇪ Push log".
             rawLine('run log NOT auto-committed (' + outcome + ') — click "⇪ Push log" to commit it anyway', 'warn');
+            return;
+        }
+        if (outcome === 'BRIDGE_LOST') {
+            // The bridge that wrote this run's file is gone; it cannot be exported from here.
+            rawLine('run log NOT auto-committed (BRIDGE_LOST) — the bridge’s file ' +
+                (log.bridgeFile || 'arena-log-*.jsonl') + ' stays on the bridge PC; ⬇ Save keeps this browser’s record', 'warn');
             return;
         }
         await commitRunLog(log, {});
@@ -4020,9 +4038,12 @@ function studioMarkerCurrent(stored, current) {
             return;
         }
         const bridge = Studio.session && Studio.session.bridge;
+        const lostRun = !!(log.summary && log.summary.outcome === 'BRIDGE_LOST');
         if (!bridge || !bridge.connected) {
             showUploadModal('Run log not committed', { error: true,
-                msg: 'Bridge disconnected — the log file remains on the bridge machine. Reconnect the bridge (it re-serves the last run) and push again, or commit it from a local clone.' });
+                msg: lostRun
+                    ? 'This run lost its bridge. Its log file (' + (log.bridgeFile || 'arena-log-*.jsonl') + ') stays on the bridge PC — a restarted bridge cannot serve it. Commit it from there; ⬇ Save keeps this browser’s record.'
+                    : 'Bridge disconnected — the log file remains on the bridge machine. Reconnect the bridge (it re-serves the last run) and push again, or commit it from a local clone.' });
             return;
         }
         let exported;
@@ -4033,6 +4054,19 @@ function studioMarkerCurrent(stored, current) {
             const m = (e && e.message ? e.message : String(e));
             rawLine('run-log export FAILED: ' + m, 'err');
             showUploadModal('Run-log export failed', { error: true, msg: m + '\n\nThe log stays on the bridge machine — nothing lost.' });
+            return;
+        }
+        // log_export serves the bridge's current-or-most-recent file. After a bridge loss
+        // and restart that is a DIFFERENT file — never commit it under this run's name.
+        const runFile = log.bridgeFile || null;
+        if ((runFile && exported.name && exported.name !== runFile) || (lostRun && !runFile)) {
+            const m = runFile
+                ? 'The bridge served ' + exported.name + ', not this run’s log ' + runFile +
+                  ' (the bridge was restarted or logged something else since).'
+                : 'This run lost its bridge, and the bridge did not name the run’s log file, so the file it serves now cannot be matched to this run.';
+            rawLine('run log NOT committed — ' + m, 'err');
+            showUploadModal('Run log not committed', { error: true,
+                msg: m + '\n\nThis run’s file is on the bridge PC (' + (runFile || 'arena-log-*.jsonl') + ') — commit it from there. ⬇ Save keeps this browser’s record.' });
             return;
         }
         const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
@@ -4450,6 +4484,21 @@ function studioMarkerCurrent(stored, current) {
         setTimeout(() => b.classList.remove('show'), 8000);
     }
     Studio.showBanner = showBanner;
+    // Persistent alert for safety events (#runAlert): no auto-hide, not replaced by
+    // routine banners. Cleared by its ✕ or when the next run starts.
+    function showRunAlert(msg) {
+        const a = $('runAlert');
+        if (!a) { showBanner(msg); return; }
+        $('runAlertTxt').textContent = msg;
+        a.classList.add('show');
+    }
+    function hideRunAlert() {
+        const a = $('runAlert');
+        if (a) a.classList.remove('show');
+    }
+    Studio.showRunAlert = showRunAlert;
+    Studio.hideRunAlert = hideRunAlert;
+    if ($('runAlertClose')) $('runAlertClose').addEventListener('click', hideRunAlert);
 
     // ---- Safe mode (default student mode) -------------------------------------
     // Safe mode is the DEFAULT: a plain load locks Edit, Console, the session-rig
@@ -5836,20 +5885,33 @@ function studioMarkerCurrent(stored, current) {
         Studio.session.on('fault', (f) => {
             Studio._pendingFault = f || { kind: 'controller_unresponsive' };
             const d = f || {};
-            if (d.kind === 'bridge_lost') {
-                // LAB-303 S1: the bridge WebSocket closed under a run that depended on it
-                // (closed loop / connector plugins / recording). The runner has ended the run
-                // (outcome BRIDGE_LOST) and its STOP blanks the display; the controller is
-                // fine, so no post-mortem. The bridge's own record of the run is recovered
-                // at the next export once the bridge is back (bag auto-recovery).
-                rawLine('⚠ bridge connection lost mid-run (' + (d.url || 'ws') + ') — run ended (BRIDGE_LOST)', 'err');
-                showBanner('⚠ Bridge connection lost — run ended. Display stopped; camera/connector steps were not sent. Restart the bridge (pixi run rig), reconnect, then ⇪ Push log to recover its record.');
-                return;
-            }
             rawLine('⚠ controller fault: ' + (d.kind || 'controller_unresponsive') +
                 (d.failures != null ? ' — ' + d.failures + ' of the last ' + d.window + ' frame commands failed' : '') +
                 (d.lastError ? ' (' + d.lastError + ')' : ''), 'err');
             showBanner('⚠ Controller stopped answering — run aborted. Post-mortem probes follow (see the run log).');
+        });
+        // FicTrac bridge lost (LAB-303 S1): the socket dropped without a Disconnect.
+        // The broker has already stopped the run when it needed the bridge (closed loop,
+        // a FicTrac step, or a recorded run's log) — say so where nobody can miss it.
+        Studio.session.on('bridgelost', (e) => {
+            const info = (e && e.info) || {};
+            const action = e && e.action;
+            const why = info.apply ? 'the closed loop was running' : 'the bridge connection dropped';
+            const restart = ' Restart the bridge program on the rig PC before the next run.';
+            let msg = null;
+            if (action === 'aborted') {
+                msg = '⚠ FicTrac bridge lost mid-run (' + why + ') — the run was STOPPED (outcome BRIDGE_LOST). ' +
+                    'The display was stopped and the closed loop is off. Devices the bridge drives (camera, microscope) ' +
+                    'were NOT told to stop — check them. The bridge’s log of this run ends at the loss; ' +
+                    '⬇ Save keeps this browser’s record.' + restart;
+            } else if (action === 'continued') {
+                msg = '⚠ FicTrac bridge lost — this test run continues, but nothing after this point is in the bridge log.' + restart;
+            } else if (info.apply) {
+                msg = '⚠ FicTrac bridge lost — the closed loop stopped (the arena no longer follows the ball).' + restart;
+            }
+            rawLine('⚠ bridge lost' + (info.code != null ? ' (code ' + info.code + ')' : '') +
+                (action ? ' — run ' + (action === 'aborted' ? 'stopped' : action) : ''), 'err');
+            if (msg) showRunAlert(msg);
         });
         Studio.session.on('disconnect', (info) => {
             if (info && info.involuntary) Studio._linkDropped = true; // consumed by runSteps (fault lifecycle)
@@ -8690,8 +8752,11 @@ const PS = window.PatternSet;
 const PP = window.PatPreview;
 const BUILTIN_BASE = './patterns/g6_2x10/';
 Studio.patternSet = null;
-const webPreviewBySdName = new Map(); // filename → () => Promise<ArrayBuffer>
-const repoSharedPreviewKeys = new Set(); // sources currently wired from course-repo patterns/
+// filename → () => Promise<ArrayBuffer>, LAYERED so precedence never depends on which
+// listing arrives first: builtin < shared (repo patterns/) < colocated (<proto>_patterns/)
+// < uploaded (js/studio-preview-sources.js). Reads see the effective source per filename.
+const webPreviewBySdName = window.StudioPreviewSources.create();
+let sharedPreviewGen = 0; // the newest shared-library listing wins; an older reply is dropped
 // In-memory sources first (logical-name tolerant via webBytesForName). The
 // fallback for a pattern already on the card from a prior session is a live
 // 0x84 fetch of the WHOLE file (the controller has no ranged read), gated by
@@ -9045,7 +9110,7 @@ Studio.registerUploadedPreviews = function (files) {
         const buf = u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength
             ? u8.buffer
             : u8.slice().buffer;
-        webPreviewBySdName.set(f.name, () => Promise.resolve(buf));
+        webPreviewBySdName.set('uploaded', f.name, () => Promise.resolve(buf));
     });
     patPreviewCache = {}; // drop cached renders so the new sources take effect
     const sel = $('cPatName');
@@ -9060,7 +9125,7 @@ async function loadBuiltinPatternSet() {
         m.source = 'manifest';
         for (const n of Object.keys(m.patterns)) {
             const sd = m.patterns[n].sd_name;
-            webPreviewBySdName.set(sd, async () => {
+            webPreviewBySdName.set('builtin', sd, async () => {
                 const r = await fetch(BUILTIN_BASE + 'patterns/' + sd, { cache: 'no-store' });
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.arrayBuffer();
@@ -10285,7 +10350,7 @@ Studio.startSoak = async function (cfg) {
                 // Open loop: the controller steps the pattern itself (no 0x70s) — exposure is
                 // in the telemetry FRAME rows, judged by telemetry-report.py, not here.
                 const exercised = !closedLoop || applied >= Math.min(1000, 5 * durS); // ≥ 5 Hz average, or 1000 total
-                let outcome = !res ? 'not-started' : res.fault ? 'fault' : res.aborted ? 'aborted' : exercised ? 'completed' : 'unexercised';
+                let outcome = !res ? 'not-started' : res.fault ? 'fault' : res.bridgeLost ? 'bridge-lost' : res.aborted ? 'aborted' : exercised ? 'completed' : 'unexercised';
                 logSoak({
                     phase: 'iteration-end', iteration: s.iteration,
                     outcome,
@@ -10305,7 +10370,8 @@ Studio.startSoak = async function (cfg) {
                     if (!pmo || (pmo.outcome !== 'recovered' && pmo.outcome !== 'self-reset')) { reason = pmo ? 'fault-' + pmo.outcome : 'fault'; break; }
                     s.resets++;
                     Studio.rawLog('soak: controller recovered (reset ' + s.resets + '/' + s.maxResets + ') — continuing', 'warn');
-                } else if (res.aborted) { reason = 'operator-stop'; break; }
+                } else if (res.bridgeLost) { reason = 'bridge-lost'; break; }
+                else if (res.aborted) { reason = 'operator-stop'; break; }
                 if (s.stop) { reason = s.stopReason || 'operator'; break; }
                 // Gap + input freshness re-check (a dead simulator is a harness
                 // problem, not a controller fault — pause, don't count it).
@@ -10709,6 +10775,20 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
         const ackLevel = bridge.connected && bridge.waitForLogLevelAck ? await bridge.waitForLogLevelAck(800) : null;
         const logLevel = ackLevel || (wantLevel === 'behavior_v2' ? 'behavior_v1' : wantLevel);
         Studio._runLogFormat = bridge.connected ? logLevel : null;
+        // The file the bridge opened for THIS run (log_control_ack). A later push checks
+        // that log_export serves it — a bridge restarted after a loss serves another file.
+        if (Studio.activeRunLog) {
+            const runLog = Studio.activeRunLog;
+            runLog.bridgeFile = (bridge.connected && bridge.logFile) || null;
+            // A slow ack (> 800 ms on a loaded rig PC) names the file after this point: take
+            // it then, for THIS run only, so the push check is not silently skipped.
+            if (!runLog.bridgeFile && bridge.connected && typeof bridge.on === 'function') {
+                const off = bridge.on('loglevel', (info) => {
+                    if (Studio.activeRunLog !== runLog) { off(); return; }
+                    if (info && info.enabled && info.file) { runLog.bridgeFile = info.file; off(); }
+                });
+            }
+        }
         const levelNote = !bridge.connected ? ''
             : ackLevel === wantLevel ? ' (' + ackLevel + ')'
             : ackLevel ? ' ⚠ bridge too old for ' + wantLevel + ' — logging ' + ackLevel + ' (restart `pixi run bridge` from the current checkout)'
@@ -10765,6 +10845,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
     let summary = null;
     Studio._userStopRequested = false;
     Studio._linkDropped = false;
+    if (Studio.hideRunAlert) Studio.hideRunAlert(); // a new run starts with no stale bridge-lost alert
     if (Studio.trialQuality) Studio.trialQuality.reset(); // per-trial stimulus-quality verdicts start fresh
     Studio._tqFinal = null; // finalizeTrialQuality() runs once per run (first caller wins, others await it)
     // Bind the verdict to THIS run: a late terminal event from a previous (aborted) run must not finalize
@@ -10785,6 +10866,10 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
                 : undefined,
             fictracPluginNames: new Set(ftNames),
             connectorPluginNames: connectorPluginNames(exp),
+            // A recorded run's record IS the bridge log (the run is gated on the bridge and
+            // the bridge is logging it), so losing the bridge stops it — not only when a
+            // FicTrac step needs it. With bridge logging off the record is in the browser.
+            bridgeRequired: !!isExperiment && !!(bridge && bridge.connected && bridge.logging),
             degPerFrame: Studio.rigDegPerFrame(),
             defaultCoupling: Studio._legacyDefaultCoupling == null ? 1 : Studio._legacyDefaultCoupling
         });
@@ -10802,12 +10887,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
             summary.faultDetail = { kind: 'link_dropped', note: 'controller re-enumerated mid-run (watchdog self-reset?)' };
             Studio.rawLog('run ended by a link drop, not a STOP — treating as a controller event', 'warn');
         }
-        if (summary && summary.fault === 'bridge_lost') {
-            // LAB-303 S1: the controller is healthy — no post-mortem probes; the run is over
-            // and the run log carries the outcome. The bridge's own file/bag closes when the
-            // bridge restarts and recovers it on its first export.
-            Studio.rawLog('run ended: the FicTrac bridge went away mid-run (outcome BRIDGE_LOST)', 'warn');
-        } else if (summary && summary.fault) {
+        if (summary && summary.fault) {
             Studio._lastPostmortem = await Studio.handleControllerFault(summary);
         }
         // Stimulus quality: normally already finalized by onRunFinished (before the export);
@@ -11885,23 +11965,20 @@ async function repoFileBytes(repo, path) {
 // as soon as its filename matches the repo library. Bytes stay lazy: this
 // request lists names only; the selected .pat is downloaded on first preview.
 // Public repos work signed out, while a token transparently enables private
-// repos. Protocol-colocated sources are registered afterwards and may
-// intentionally override a shared file with the same name.
+// repos. Protocol-colocated sources override a shared file with the same name
+// whenever either listing arrives (the 'colocated' layer outranks 'shared').
 async function registerRepoSharedPatternPreviews(repo, token) {
     if (!repo) return;
+    const gen = ++sharedPreviewGen;
     try {
         const res = await GH.run(fetch, GH.reqGetContents(repo.owner, repo.name, 'patterns', null, token));
+        if (gen !== sharedPreviewGen) return; // a newer listing (repo change / sign-in) was requested
         if (!res.ok || !Array.isArray(res.data)) return;
-        for (const key of repoSharedPreviewKeys) webPreviewBySdName.delete(key);
-        repoSharedPreviewKeys.clear();
-        let n = 0;
-        res.data
+        const entries = res.data
             .filter((f) => f && f.type === 'file' && /\.pat$/i.test(f.name))
-            .forEach((f) => {
-                n++;
-                repoSharedPreviewKeys.add(f.name);
-                webPreviewBySdName.set(f.name, () => repoFileBytes(repo, f.path));
-            });
+            .map((f) => [f.name, () => repoFileBytes(repo, f.path)]);
+        webPreviewBySdName.replaceLayer('shared', entries);
+        const n = entries.length;
         if (n) {
             patPreviewCache = {};
             const sel = $('cPatName');
@@ -11935,7 +12012,7 @@ async function registerRepoPatternPreviews(repo, protoPath, token) {
             .forEach((f) => {
                 n++;
                 names.add(sdLogicalName(f.name));
-                webPreviewBySdName.set(f.name, () => repoFileBytes(repo, f.path));
+                webPreviewBySdName.set('colocated', f.name, () => repoFileBytes(repo, f.path));
             });
         if (n) {
             // The colocated _patterns/ set IS this protocol's web pattern set
@@ -12197,25 +12274,25 @@ async function initFromUrl() {
     Studio._urlSuppress = true;
     // S2 (ww18 2026-10-15, LAB-303): a tab opened at ?p=… showed no protocol until it was
     // refreshed. The ?p= load used to wait behind the course repo's shared-pattern listing
-    // (a GitHub API call with no timeout) — on a slow or walled network that await held the
-    // whole init, and a refresh merely got a warm connection. Rules now: (1) nothing that
-    // leaves this origin is awaited before the protocol load; the repo listing starts first
-    // and gets at most REPO_PREVIEW_GRACE_MS to finish before the load goes ahead (on a normal
-    // network it is back well within that, so colocated previews still register after the
-    // shared ones); (2) every pre-step is guarded — a failure in rig/vocab population logs a
-    // warning instead of silently skipping the protocol load.
-    const REPO_PREVIEW_GRACE_MS = 1500;
+    // (a GitHub API call with no timeout). Rules now: (1) nothing that leaves this origin is
+    // awaited before the protocol load — the GitHub listings below are fire-and-forget, which
+    // is safe because preview sources are LAYERED (js/studio-preview-sources.js); (2) every
+    // same-origin pre-step is guarded — a failure in rig/vocab population logs a warning
+    // instead of silently skipping the protocol load.
     const guarded = async (name, fn) => {
         try { await fn(); } catch (e) { Studio.rawLog('init: ' + name + ' failed — ' + (e && e.message ? e.message : e), 'warn'); }
     };
-    const sharedPreviews = guarded('course repo pattern previews', refreshRepoSharedPatternPreviews); // shared patterns/ previews do not depend on a protocol
     try {
         await guarded('metadata vocabularies', populateMetaDatalists);
         await guarded('session rig', populateSessionRig);
         wirePatPicker();
         loadBuiltinPatternSet();
-        await Promise.race([sharedPreviews, new Promise((r) => setTimeout(r, REPO_PREVIEW_GRACE_MS))]);
-        sharedPreviews.then(() => rewireRepoPatternPreviews()); // restore last-opened course protocol's colocated thumbs (after the shared set, whenever it lands)
+        // Best-effort GitHub listings — NEVER awaited here: a stalled api.github.com request
+        // used to hold the `?p=` load below until the page was refreshed (LAB-303 S2, ww18
+        // 2026-10-15). Order no longer matters: preview sources are layered, so a late shared
+        // listing cannot override the colocated sources rewired here.
+        refreshRepoSharedPatternPreviews().catch(() => {}); // shared patterns/ previews
+        rewireRepoPatternPreviews().catch(() => {}); // restore last-opened course protocol's colocated thumbs
         let allowedKeys = [];
         let protoIndex = [];
         try {
@@ -18119,6 +18196,7 @@ initFromUrl();
     '#btnAllOff': 'Turn every LED off.',
     '#btnLogSave': 'Download the run log as files (.json and .txt).',
     '#btnLogPush': 'Send the last run’s log to the course repo — use this if the automatic push was skipped or failed.',
+    '#runAlert': 'Something stopped your run or the closed loop (for example, the FicTrac bridge closed). The message says what happened and what to do; the run log keeps it too. ✕ hides it.',
     '#btnLogClear': 'Clear the log display (saved logs are not deleted).',
     '#btnLogCopy': 'Copy the log text to the clipboard.',
     '.seqlist': 'The experiment’s sequence. Each row is a condition — ▶ on a row tests just that one on the arena.',

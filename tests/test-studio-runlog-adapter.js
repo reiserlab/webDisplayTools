@@ -212,40 +212,6 @@ console.log('\n=== controller fault outcome ===');
         'CONTROLLER_FAULT'
     );
     checkBool('transcript names the fault', /FAULT controller_unresponsive/.test(log2.toText()));
-    // The bridge going away under a run that depended on it (LAB-303 S1) is its own outcome.
-    const logB = RunLog.createRunLog({
-        meta: { protocol: 'p', run_id: 'rB', bench_id: 'b' },
-        intent: 'experiment',
-        now: fixedClock()
-    });
-    A.feedRunStatus(logB, { phase: 'sequence-start', total: 1 });
-    A.feedRunStatus(logB, {
-        phase: 'fault',
-        reason: 'bridge_lost',
-        detail: { kind: 'bridge_lost', note: 'bridge WebSocket closed mid-run' }
-    });
-    const rB = A.feedRunStatus(logB, {
-        phase: 'aborted',
-        summary: {
-            completed: false,
-            aborted: true,
-            steps: 1,
-            errors: 0,
-            skipped: 0,
-            fault: 'bridge_lost',
-            stopAcked: true
-        }
-    });
-    check('aborted-with-bridge_lost is terminal', rB.terminal, true);
-    check(
-        'outcome BRIDGE_LOST (not CONTROLLER_FAULT / ABORTED_BY_USER)',
-        logB.summary.outcome,
-        'BRIDGE_LOST'
-    );
-    checkBool(
-        'transcript names the bridge loss',
-        /FAULT bridge_lost — bridge WebSocket closed mid-run/.test(logB.toText())
-    );
     // A plain user abort is unchanged.
     const log3 = RunLog.createRunLog({
         meta: { protocol: 'p', run_id: 'r3', bench_id: 'b' },
@@ -254,6 +220,45 @@ console.log('\n=== controller fault outcome ===');
     });
     A.feedRunStatus(log3, { phase: 'aborted', summary: { aborted: true, fault: null } });
     check('plain abort stays ABORTED_BY_USER', log3.summary.outcome, 'ABORTED_BY_USER');
+}
+
+console.log('\n=== bridge lost mid-run (LAB-303 S1) → BRIDGE_LOST, never ABORTED_BY_USER ===');
+{
+    const log = RunLog.createRunLog({
+        meta: { protocol: 'p', run_id: 'r4', bench_id: 'b' },
+        intent: 'experiment',
+        now: fixedClock()
+    });
+    const lost = {
+        phase: 'bridge-lost',
+        reason: 'bridge_lost',
+        action: 'stopped',
+        detail: { kind: 'bridge_lost', code: 1006, apply: true }
+    };
+    const f = A.feedRunStatus(log, lost);
+    checkBool('bridge-lost phase is recorded (not dropped as unknown)', !!f.event);
+    check('bridge-lost is not terminal', f.terminal, false);
+    const r = A.feedRunStatus(log, {
+        phase: 'aborted',
+        summary: { aborted: true, fault: null, bridgeLost: lost.detail, stopAcked: true }
+    });
+    check('aborted-with-bridgeLost is terminal', r.terminal, true);
+    check('outcome BRIDGE_LOST', log.summary.outcome, 'BRIDGE_LOST');
+    checkBool(
+        'transcript names the loss and the stop',
+        /BRIDGE LOST \(code 1006\) — closed loop was running — run stopped/.test(log.toText()),
+        log.toText()
+    );
+    // A continued test run records the event; its outcome is whatever the run became.
+    const log2 = RunLog.createRunLog({ meta: { run_id: 'r5' }, intent: 'test', now: fixedClock() });
+    A.feedRunStatus(log2, Object.assign({}, lost, { action: 'continued' }));
+    A.feedRunStatus(log2, { phase: 'sequence-complete', summary: { completed: true } });
+    check('continued test run → COMPLETED', log2.summary.outcome, 'COMPLETED');
+    checkBool(
+        'its transcript says logging stopped',
+        /no longer logged by the bridge/.test(log2.toText()),
+        log2.toText()
+    );
 }
 
 console.log('\n=== Summary ===');

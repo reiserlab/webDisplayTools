@@ -553,88 +553,6 @@ function newSession(m) {
         delete m.RunnerLib.ArenaRunner.prototype.fault;
     }
 
-    console.log(
-        '\n=== bridge LOST mid-run (LAB-303 S1): runner.fault(bridge_lost) only when the run depends on it ==='
-    );
-    {
-        const m = makeMocks();
-        class MockBridge {
-            constructor(o) {
-                this.o = o;
-                this._h = {};
-                this.logging = false;
-                this.apply = false;
-            }
-            on(ev, fn) {
-                (this._h[ev] = this._h[ev] || []).push(fn);
-                return () => {};
-            }
-            emit(ev, ...a) {
-                (this._h[ev] || []).forEach((fn) => fn(...a));
-            }
-            setApply() {}
-            log() {}
-        }
-        let inUse = false;
-        m.RunnerLib.ArenaRunner.prototype.fault = function (reason, detail) {
-            m.calls.push('runner.fault');
-            this.lastFault = { reason, detail };
-        };
-        Object.defineProperty(m.RunnerLib.ArenaRunner.prototype, 'bridgeInUse', {
-            get() {
-                return inUse;
-            },
-            configurable: true
-        });
-        const s = new ArenaSession({
-            wire: { mark: 1 },
-            LinkClass: m.MockLink,
-            RunnerLib: m.RunnerLib,
-            BridgeClientLib: MockBridge
-        });
-        const faults = [];
-        s.on('fault', (f) => faults.push(f));
-        s._runner._active = true;
-        inUse = true;
-        s.bridge.emit('disconnect', { involuntary: false, url: 'ws://x' });
-        checkBool(
-            'a user Disconnect of the bridge never faults the run',
-            !m.calls.includes('runner.fault')
-        );
-        inUse = false;
-        s.bridge.emit('disconnect', { involuntary: true, url: 'ws://x' });
-        checkBool(
-            'bridge lost under a run that never used it → no fault',
-            !m.calls.includes('runner.fault')
-        );
-        inUse = true;
-        s.bridge.emit('disconnect', { involuntary: true, url: 'ws://x' });
-        checkBool(
-            'bridge lost under a dependent run → runner.fault',
-            m.calls.includes('runner.fault')
-        );
-        check(
-            'reason bridge_lost + detail kind/url',
-            [
-                s._runner.lastFault.reason,
-                s._runner.lastFault.detail.kind,
-                s._runner.lastFault.detail.url
-            ],
-            ['bridge_lost', 'bridge_lost', 'ws://x']
-        );
-        check(
-            "session re-emits 'fault' with kind bridge_lost",
-            faults.map((f) => f.kind),
-            ['bridge_lost']
-        );
-        m.calls.length = 0;
-        s._runner._active = false;
-        s.bridge.emit('disconnect', { involuntary: true, url: 'ws://x' });
-        checkBool('no run active → nothing', !m.calls.includes('runner.fault'));
-        delete m.RunnerLib.ArenaRunner.prototype.fault;
-        delete m.RunnerLib.ArenaRunner.prototype.bridgeInUse;
-    }
-
     console.log('\n=== bridge applyFrame: a controller REJECT counts as an apply failure ===');
     {
         const m = makeMocks();
@@ -751,6 +669,235 @@ function newSession(m) {
             '01 c2'
         );
     }
+    // ── LAB-303 S1: bridge lost mid-run → the runner decides, the page is told ──
+    console.log("\n=== bridge 'lost' → runner.onBridgeLost + session 'bridgelost' ===");
+    {
+        class MockBridge {
+            constructor() {
+                this._h = {};
+                this.logging = false;
+            }
+            on(ev, fn) {
+                (this._h[ev] = this._h[ev] || []).push(fn);
+                return () => {};
+            }
+            emit(ev, ...a) {
+                (this._h[ev] || []).forEach((fn) => fn(...a));
+            }
+            setApply() {}
+            log() {}
+        }
+        const mk = (proto) => {
+            const m = makeMocks();
+            Object.assign(m.RunnerLib.ArenaRunner.prototype, proto || {});
+            const s = new ArenaSession({
+                wire: { mark: 1 },
+                LinkClass: m.MockLink,
+                RunnerLib: m.RunnerLib,
+                BridgeClientLib: MockBridge
+            });
+            const got = [];
+            let states = 0;
+            s.on('bridgelost', (e) => got.push(e));
+            s.on('state', () => states++);
+            return { m, s, got, states: () => states };
+        };
+        // (a) a runner that knows the policy
+        {
+            const t = mk({
+                onBridgeLost(info) {
+                    this.lostInfo = info;
+                    return 'aborted';
+                }
+            });
+            t.s._runner._active = true;
+            const info = { code: 1006, apply: true };
+            t.s.bridge.emit('lost', info);
+            check('runner.onBridgeLost got the info', t.s._runner.lostInfo, info);
+            check("session re-emits 'bridgelost' with the runner's action", t.got, [
+                { info, action: 'aborted', running: true }
+            ]);
+            checkBool("'state' emitted", t.states() >= 1);
+            delete t.m.RunnerLib.ArenaRunner.prototype.onBridgeLost;
+        }
+        // (b) a stale-cache runner without onBridgeLost: an ACTIVE run is stopped anyway
+        {
+            const t = mk();
+            t.s._runner._active = true;
+            t.s.bridge.emit('lost', { code: 1006 });
+            checkBool('stale runner: stop() used', t.m.calls.includes('runner.stop'));
+            check('stale runner: action aborted', t.got[0].action, 'aborted');
+        }
+        // (c) idle: nothing to stop, the page still hears it (Console closed loop)
+        {
+            const t = mk();
+            t.s.bridge.emit('lost', { code: 1006, apply: true });
+            checkBool('idle: no stop()', !t.m.calls.includes('runner.stop'));
+            check('idle: action idle', t.got[0].action, 'idle');
+            check('idle: info.apply passes through', t.got[0].info.apply, true);
+        }
+        // (d) runSequence forwards bridgeRequired; the sanitizer keeps the loss
+        {
+            const t = mk();
+            await t.s.connect();
+            await t.s.runSequence({ steps: [], conditionsByName: new Map(), bridgeRequired: true });
+            check('runSequence forwards bridgeRequired', t.s._runner.lastSeq.bridgeRequired, true);
+            const out = t.s._sanitizeRunStatus({
+                phase: 'aborted',
+                summary: {
+                    aborted: true,
+                    fault: null,
+                    bridgeLost: { kind: 'bridge_lost', code: 1006 }
+                }
+            });
+            check('sanitizer keeps summary.bridgeLost', out.summary.bridgeLost, {
+                kind: 'bridge_lost',
+                code: 1006
+            });
+            const ev = t.s._sanitizeRunStatus({ phase: 'bridge-lost', action: 'stopped' });
+            check('sanitizer keeps the bridge-lost action', ev.action, 'stopped');
+        }
+    }
+
+    console.log('\n=== end to end: bridge socket killed mid closed-loop epoch (ww18 step 5.7) ===');
+    {
+        const Runner = require('../js/arena-runner-g6.js');
+        const Wire = require('../js/arena-wire-g6.js');
+        const Client = require('../js/fictrac-bridge-client.js');
+        const RunLog = require('../js/run-log.js');
+        const Adapter = require('../js/studio-runlog-adapter.js');
+        class FakeWS {
+            constructor(url) {
+                FakeWS.last = this;
+                this.url = url;
+                this.readyState = 0;
+                this.sent = [];
+            }
+            send(s) {
+                this.sent.push(JSON.parse(s));
+            }
+            close() {
+                this.readyState = 3;
+                if (this.onclose) this.onclose({ code: 1000, wasClean: true });
+            }
+        }
+        class TestClient extends Client {
+            constructor(o) {
+                super(Object.assign({ WebSocketImpl: FakeWS }, o));
+            }
+        }
+        class Link {
+            constructor() {
+                this._open = false;
+                this.sent = [];
+            }
+            get connected() {
+                return this._open;
+            }
+            async connect() {
+                this._open = true;
+            }
+            async close() {
+                this._open = false;
+            }
+            async send(bytes) {
+                this.sent.push(Array.from(bytes));
+                return new Uint8Array([0x02, 0x00, bytes[1]]); // OK ack, echo = cmd
+            }
+        }
+        const s = new ArenaSession({
+            wire: Wire,
+            LinkClass: Link,
+            RunnerLib: Runner,
+            BridgeClientLib: TestClient
+        });
+        await s.connect();
+        const bridge = s.bridge;
+        bridge.connect('ws://localhost:8765');
+        const ws = FakeWS.last;
+        ws.readyState = 1;
+        ws.onopen();
+        bridge.setLogging(true);
+        ws.onmessage({
+            data: JSON.stringify({
+                type: 'log_control_ack',
+                enabled: true,
+                level: 'behavior_v2',
+                requested: 'behavior_v2',
+                file: 'arena-log-20261015-153548-287.jsonl'
+            })
+        });
+        const log = RunLog.createRunLog({ meta: { run_id: 'r1' }, intent: 'experiment' });
+        let outcome = null;
+        s.on('runstatus', (st) => {
+            const r = Adapter.feedRunStatus(log, st);
+            if (r.terminal) outcome = r.summary.outcome;
+        });
+        const lostEvents = [];
+        s.on('bridgelost', (e) => lostEvents.push(e));
+        const cl = {
+            name: 'cl',
+            commands: [
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    mode: 3,
+                    frame_rate: 0,
+                    gain: 0,
+                    frame_index: 0,
+                    duration: 30,
+                    pattern: 'p'
+                },
+                { type: 'plugin', plugin_name: 'fictrac', command_name: 'startClosedLoop' },
+                { type: 'wait', duration: 30 },
+                { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' }
+            ]
+        };
+        const t0 = Date.now();
+        const run = s.runSequence({
+            steps: [{ kind: 'ref', conditionName: 'cl', label: 'cl', seqIdx: 0 }],
+            conditionsByName: new Map([['cl', cl]]),
+            resolvePatternId: () => 1,
+            resolvePatternFrames: () => 20,
+            fictracPluginNames: new Set(['fictrac'])
+        });
+        await new Promise((r) => setTimeout(r, 30));
+        checkBool('closed loop live before the kill', bridge.apply === true && s.running);
+        // A request waiting on the bridge when it dies (15 s timeout) must fail at once.
+        let exportErr = null;
+        const exp = bridge.exportLog(15000).catch((e) => (exportErr = e.message));
+        // taskkill /F on the bridge: the socket closes; nobody called disconnect().
+        ws.readyState = 3;
+        ws.onclose({ code: 1006, reason: '', wasClean: false });
+        const summary = await run;
+        await exp;
+        checkBool('run ended promptly (not after the 30 s epoch)', Date.now() - t0 < 2000);
+        check('outcome recorded in the run log: BRIDGE_LOST', outcome, 'BRIDGE_LOST');
+        check('runner summary outcome', RunLog.deriveOutcome(summary), 'BRIDGE_LOST');
+        check(
+            'loss names the run’s bridge file',
+            summary.bridgeLost && summary.bridgeLost.logFile,
+            'arena-log-20261015-153548-287.jsonl'
+        );
+        check(
+            'page told: action aborted',
+            lostEvents.map((e) => e.action),
+            ['aborted']
+        );
+        checkBool(
+            'pending export failed fast with "bridge lost"',
+            /bridge lost/.test(exportErr),
+            exportErr
+        );
+        check('closed loop is off', bridge.apply, false);
+        check('run no longer active', s.running, false);
+        checkBool(
+            'the display got STOP over the (healthy) serial link',
+            s._link.sent.some((b) => b[1] === 0x30)
+        );
+        checkBool('transcript shows the loss', /BRIDGE LOST/.test(log.toText()), log.toText());
+    }
+
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);

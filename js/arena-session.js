@@ -30,11 +30,13 @@
  *   'disconnect' ({ involuntary:boolean })      — port closed (cable-pull = true, user Disconnect = false)
  *   'state'      ()                             — connection/run state changed; re-evaluate UI gating
  *   'runstatus'  (s:object)                     — runner status/progress phase (single-trial AND sequence)
- *   'fault'      (f:object)                     — the run was faulted from outside the runner: the
- *                                                 bridge client's latched controller_unresponsive
- *                                                 (fw #50; f.kind), or {kind:'bridge_lost', url} when the
- *                                                 bridge WebSocket closed under a run that depended on it
- *                                                 (LAB-303 S1) — the run ends with outcome BRIDGE_LOST
+ *   'fault'      (f:object)                     — closed-loop controller fault (fw #50); the run is aborting
+ *   'bridgelost' ({info, action, running})      — the FicTrac bridge socket dropped without being
+ *                                                 asked to. action: 'aborted' (the run is stopping,
+ *                                                 outcome BRIDGE_LOST) | 'continued' (a test run that
+ *                                                 needs nothing from the bridge) | 'idle' (no run).
+ *                                                 info = the client's 'lost' info (info.apply: a
+ *                                                 closed loop was running, e.g. the Console's)
  *
  * SEND / STOP SEMANTICS: ArenaLink.send is single-flight + echo-correlated +
  * FIFO-queued (arena-link.js). STOP therefore QUEUES behind any in-flight send
@@ -54,7 +56,7 @@
             ? () => performance.now()
             : () => Date.now();
 
-    const EVENTS = ['log', 'error', 'disconnect', 'state', 'runstatus', 'fault'];
+    const EVENTS = ['log', 'error', 'disconnect', 'state', 'runstatus', 'fault', 'bridgelost'];
 
     class ArenaSession {
         /**
@@ -165,29 +167,27 @@
                     this._emit('fault', f);
                     this._emit('state');
                 });
-                // Bridge LOST under a run that depends on it (closed loop armed, connector
-                // plugins declared, or the bridge recording the run): end the run with its
-                // own reason — 'bridge_lost' → BRIDGE_LOST — so the display is stopped by
-                // the runner's finally (the serial link is fine), nothing pretends the loop
-                // or the camera is still driven, and the Studio banners it. ww18 5.7
-                // (2026-10-15): the bridge was hard-killed mid closed loop, the Studio
-                // showed only "bridge disconnected", the run carried on and BIAS kept
-                // recording. A user Disconnect, or a bridge the run never used, is not a fault.
-                this._bridge.on('disconnect', (info) => {
-                    if (!info || !info.involuntary) return;
-                    if (!this._runner.active || !this._runner.bridgeInUse) return;
-                    const f = {
-                        kind: 'bridge_lost',
-                        url: info.url || null,
-                        note: 'bridge WebSocket closed mid-run'
-                    };
-                    if (typeof this._runner.fault === 'function')
-                        this._runner.fault('bridge_lost', f);
-                    else this._abortRunner();
-                    this._emit('fault', f);
-                    this._emit('state');
-                });
+                // Bridge lost mid-run (LAB-303 S1, ww18 2026-10-15): the socket dropped
+                // without disconnect() asking. The client has already forced apply off
+                // and failed every pending request; the RUNNER decides whether the run
+                // stops (it needs the bridge) or continues, and the page banners it.
+                this._bridge.on('lost', (info) => this._onBridgeLost(info));
             }
+        }
+
+        _onBridgeLost(info) {
+            const running = !!this._runner.active;
+            let action = running ? 'continued' : 'idle';
+            if (typeof this._runner.onBridgeLost === 'function') {
+                action = this._runner.onBridgeLost(info);
+            } else if (running && !this.outputInhibited) {
+                // Stale-cache runner without onBridgeLost: stop the run the ordinary way
+                // (the serial link is fine) rather than let it run on blind.
+                this._runner.stop().catch(() => {});
+                action = 'aborted';
+            }
+            this._emit('bridgelost', { info: info || null, action, running });
+            this._emit('state');
         }
 
         /** Web Serial available? (Chromium-desktop only.) Gate every connect UI on this. */
@@ -504,6 +504,8 @@
          * @param {Function} [a.resolveCondition] optional async trial-boundary resolver;
          *        forwarded verbatim to ArenaRunner.runSequence
          * @param {Function} [a.onProgress]       per-call progress sink (also broadcast as 'runstatus')
+         * @param {boolean}  [a.bridgeRequired]   the run's record lives on the bridge (recorded runs):
+         *        a bridge loss stops it even with no FicTrac step (see ArenaRunner.onBridgeLost)
          * @param {Function} [a.timing]           host-timing fn (default runner's hostSideTrialEnd — FW#4 swap point)
          * @param {Function} [a.sleep]            sleep(ms) (default runner's abort-aware sleep; tests inject instant)
          * @returns {Promise<{completed,aborted,steps,errors,skipped}>}
@@ -520,6 +522,7 @@
                 resolveCondition: args.resolveCondition,
                 fictracPluginNames: args.fictracPluginNames,
                 connectorPluginNames: args.connectorPluginNames, // LAB-303 device connectors (BiasPlugin → bridge)
+                bridgeRequired: args.bridgeRequired, // recorded runs: losing the bridge stops the run
                 timing: args.timing,
                 sleep: args.sleep,
                 onProgress: (s) => this._onRunStatus(s, args.onProgress)
@@ -570,7 +573,8 @@
                 'on',
                 'ledPercent',
                 'mv', // v0.86 graded zones: the commanded AO voltage per level step
-                'ledActivation'
+                'ledActivation',
+                'action' // bridge-lost: 'stopped' | 'continued'
             ];
             for (const k of keys) if (s[k] !== undefined) out[k] = s[k];
             if (s.params && typeof s.params === 'object') out.params = s.params;
@@ -603,6 +607,7 @@
                     'skipped',
                     'fault',
                     'faultDetail',
+                    'bridgeLost',
                     'stopAcked'
                 ]) {
                     if (s.summary[k] !== undefined) sm[k] = s.summary[k];

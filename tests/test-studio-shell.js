@@ -407,6 +407,23 @@ check(
         !/:root\[data-ui-theme="night"\] (img|canvas)\b/.test(studio) &&
         studio.includes('filter:url(#uiNightRed)')
 );
+console.log('=== bridge-loss policy wiring (LAB-303 S1 review) ===');
+check(
+    'bridgeRequired only for a recorded run the bridge is logging',
+    studio.includes(
+        'bridgeRequired: !!isExperiment && !!(bridge && bridge.connected && bridge.logging)'
+    )
+);
+check(
+    "a late log_control_ack still names the run's bridge file",
+    studio.includes("bridge.on('loglevel', (info) => {") &&
+        studio.includes('runLog.bridgeFile = info.file')
+);
+check(
+    'the bridge-lost alert does not hardcode a bridge command',
+    !/const restart = [^\n]*pixi run/.test(studio)
+);
+
 console.log('\n=== Summary ===');
 console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures ? 1 : 0);

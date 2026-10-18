@@ -722,6 +722,47 @@ var ArenaRunnerG6 = (function () {
         return out;
     }
 
+    // JSON-safe copy of a bridge 'lost' info for the run record (the summary and the
+    // bridge-lost event both serialize into the run log).
+    function lostDetail(info) {
+        const out = { kind: 'bridge_lost' };
+        if (!info || typeof info !== 'object') return out;
+        for (const k of ['code', 'reason', 'wasClean', 'apply', 'logFile', 'url', 't']) {
+            const v = info[k];
+            if (v !== undefined && v !== null && v !== '' && typeof v !== 'object') out[k] = v;
+        }
+        return out;
+    }
+
+    /**
+     * Does any condition this sequence runs carry a plugin command that acts through
+     * the bridge (FicTrac today)? Losing the bridge mid-run makes every later such
+     * step run blind, so ArenaRunner.onBridgeLost stops a run for which this is true.
+     * Scans the authored command lists (runtime controls change parameters, never
+     * plugin names), each condition once.
+     * @param {Array} steps
+     * @param {Map} conditionsByName
+     * @param {Set<string>|null} bridgePluginNames  plugin instance names routed via the bridge
+     * @returns {boolean}
+     */
+    function sequenceUsesBridge(steps, conditionsByName, bridgePluginNames) {
+        if (!bridgePluginNames || typeof bridgePluginNames.has !== 'function') return false;
+        if (!bridgePluginNames.size) return false;
+        const seen = new Set();
+        for (const step of Array.isArray(steps) ? steps : []) {
+            const name = step && step.conditionName;
+            if (seen.has(name)) continue;
+            seen.add(name);
+            const cond = conditionsByName && conditionsByName.get(name);
+            if (!cond || !Array.isArray(cond.commands)) continue;
+            for (const cmd of cond.commands) {
+                if (cmd && cmd.type === 'plugin' && bridgePluginNames.has(cmd.plugin_name))
+                    return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Translate ONE v3 command into a wire-neutral instruction descriptor (the
      * "command IR"). PURE and wire-free so it is trivially unit-testable; the
@@ -1133,27 +1174,15 @@ var ArenaRunnerG6 = (function () {
             this._emit = null; // current run's status emit (for async LED events)
             this._faultReason = null; // set by fault() / a timed-out wire command
             this._faultDetail = null;
-            this._closedLoopArmed = false; // this run turned the bridge's apply on (startClosedLoop)
-            this._connectorsInRun = false; // this run declares connector plugins (BIAS, ScanImage…)
+            this._bridgeLost = null; // set by bridgeLost(): the bridge's 'lost' info
+            this._bridgeRequired = false; // this run's record lives on the bridge (recorded runs)
+            this._bridgeDependent = false; // this run has steps that act through the bridge
         }
 
         get active() {
             return this._active;
         }
 
-        /**
-         * True while the ACTIVE run depends on the FicTrac bridge: a closed loop is armed,
-         * the protocol declares connector plugins the bridge drives, or the bridge is
-         * recording the run. ArenaSession consults this when the bridge WebSocket closes
-         * involuntarily — such a run is faulted ('bridge_lost' → BRIDGE_LOST) instead of
-         * carrying on with a dead loop and unreachable devices (LAB-303 S1, ww18 5.7). An
-         * open-loop run that merely has the bridge connected is left alone.
-         */
-        get bridgeInUse() {
-            if (!this._active) return false;
-            const b = this._bridge;
-            return !!(this._closedLoopArmed || this._connectorsInRun || (b && b.logging));
-        }
         get conditionName() {
             return this._conditionName;
         }
@@ -1185,6 +1214,9 @@ var ArenaRunnerG6 = (function () {
 
             this._active = true;
             this._conditionName = a.conditionName || null;
+            this._bridgeLost = null;
+            this._bridgeRequired = false; // a single trial depends on the bridge only via apply
+            this._bridgeDependent = false;
 
             let frame;
             try {
@@ -1260,9 +1292,7 @@ var ArenaRunnerG6 = (function () {
 
         /**
          * External FAULT (firmware #50): the closed-loop bridge client saw repeated
-         * 0x70 timeouts, or some other watcher decided the controller is gone — or
-         * ('bridge_lost', LAB-303 S1) the bridge WebSocket closed under a run that
-         * depended on it; the run-log then derives BRIDGE_LOST instead of CONTROLLER_FAULT.
+         * 0x70 timeouts, or some other watcher decided the controller is gone.
          * Records the reason, emits a `fault` status event into the current run,
          * then unwinds like abort() (wakes the host-side wait, disarms closed loop,
          * NO STOP send here — the sequence's finally still tries a best-effort
@@ -1294,6 +1324,72 @@ var ArenaRunnerG6 = (function () {
             return this._faultReason;
         }
 
+        /**
+         * The bridge WebSocket dropped (FicTracBridgeClient 'lost' — ArenaSession calls
+         * this). Decides what the active run does:
+         *   - 'aborted'   the run needs the bridge — a closed loop was applying, a later
+         *                 step acts through the bridge (a FicTrac plugin), or the run's
+         *                 record lives on it (`bridgeRequired`, recorded runs) → bridgeLost()
+         *   - 'continued' a test run that needs nothing from the bridge: it keeps going,
+         *                 with a 'bridge-lost' event so the transcript says logging stopped
+         *   - 'idle'      no run is active
+         * @param {object} [info] the client's 'lost' info ({code, apply, logFile, …})
+         * @returns {'aborted'|'continued'|'idle'}
+         */
+        onBridgeLost(info) {
+            if (!this._active) return 'idle';
+            const apply = !!(info && info.apply);
+            if (apply || this._bridgeDependent || this._bridgeRequired) {
+                this.bridgeLost(info);
+                return 'aborted';
+            }
+            if (this._emit) {
+                try {
+                    this._emit({
+                        phase: 'bridge-lost',
+                        reason: 'bridge_lost',
+                        action: 'continued',
+                        detail: lostDetail(info)
+                    });
+                } catch (_) {
+                    /* a status sink must not break the caller */
+                }
+            }
+            return 'continued';
+        }
+
+        /**
+         * End the active run because the bridge is gone. Records the loss (the terminal
+         * summary carries `bridgeLost`, which the run log turns into the BRIDGE_LOST
+         * outcome — never ABORTED_BY_USER, never a controller fault), emits a
+         * `bridge-lost` status event, then takes the ordinary stop() path: the serial
+         * link is healthy, so the display gets a real STOP, the LED goes off and the
+         * closed loop is disarmed, exactly as for an operator STOP.
+         * @param {object} [info] the client's 'lost' info
+         * @returns {Promise} the stop() result (never rejects)
+         */
+        bridgeLost(info) {
+            this._bridgeLost = lostDetail(info);
+            if (this._emit) {
+                try {
+                    this._emit({
+                        phase: 'bridge-lost',
+                        reason: 'bridge_lost',
+                        action: 'stopped',
+                        detail: this._bridgeLost
+                    });
+                } catch (_) {
+                    /* a status sink must not break the stop */
+                }
+            }
+            return this.stop().catch(() => null);
+        }
+
+        /** The bridge-loss record of the current/last run, or null. */
+        get bridgeLostInfo() {
+            return this._bridgeLost;
+        }
+
         /** Clear run-state without sending STOP (used on disconnect/error). Also
          *  aborts a running sequence and unblocks its current wait. */
         _clear() {
@@ -1307,7 +1403,6 @@ var ArenaRunnerG6 = (function () {
             this._conditionName = null;
             this._clearLedActivator(); // guarded: no-op send when the link is gone
             this._disarmClosedLoop(); // bridge-side, so it still works with no link
-            this._connectorsInRun = false;
             this._emit = null;
         }
 
@@ -1330,7 +1425,6 @@ var ArenaRunnerG6 = (function () {
          * silently stomped by it.
          */
         _disarmClosedLoop() {
-            this._closedLoopArmed = false;
             const b = this._bridge;
             if (!b) return;
             try {
@@ -1585,6 +1679,9 @@ var ArenaRunnerG6 = (function () {
          * @param {Map|object} [a.connectorPluginNames] plugin INSTANCE name → connector id the
          *                                        bridge drives for the runner ('bias' for
          *                                        BiasPlugin; LAB-303 connectors)
+         * @param {boolean}  [a.bridgeRequired]  the run's record lives on the bridge (a
+         *                                        recorded run): losing the bridge stops it even
+         *                                        when no step acts through the bridge
          * @param {function} [a.onProgress]      progress/event callback (see phases below)
          * @param {function} [a.timing]          async (durationSec, sleep) ⇒ trial end
          *                                        (defaults to host-side; firmware #4 swap)
@@ -1644,7 +1741,16 @@ var ArenaRunnerG6 = (function () {
             this._frameCountCache = new Map();
             this._faultReason = null;
             this._faultDetail = null;
-            this._connectorsInRun = !!(connectorPluginNames && connectorPluginNames.size);
+            this._bridgeLost = null;
+            this._bridgeRequired = !!a.bridgeRequired;
+            // Steps that act through the bridge: FicTrac plugin commands AND device
+            // connectors (BiasPlugin / ScanImagePlugin via connector_command, LAB-303) —
+            // after a bridge loss every later such step would run blind.
+            const bridgePlugins = new Set(fictracPluginNames || []);
+            if (connectorPluginNames)
+                for (const k of connectorPluginNames.keys()) bridgePlugins.add(k);
+            this._bridgeDependent =
+                !!this._bridge && sequenceUsesBridge(steps, conditionsByName, bridgePlugins);
             this._oldBridgeStartWarned = false; // one "bridge ignores the start frame" warning per run
             // A stale closed-loop apply (left on by Console use or an aborted run)
             // would push FicTrac frames into the opening Mode-2 step — the firmware
@@ -1876,6 +1982,9 @@ var ArenaRunnerG6 = (function () {
                 // the controller stopped answering (fault() / a timed-out command).
                 summary.fault = this._faultReason || null;
                 if (this._faultDetail) summary.faultDetail = this._faultDetail;
+                // The bridge dropped and the run stopped for it (BRIDGE_LOST outcome).
+                // A continued test run records only its bridge-lost event, not this.
+                if (this._bridgeLost) summary.bridgeLost = this._bridgeLost;
                 // The terminal event is emitted from `finally`, AFTER the best-effort
                 // STOP, so the serialized summary (run log, auto-commit trigger)
                 // carries `stopAcked` — review finding: it used to be present only
@@ -1886,7 +1995,6 @@ var ArenaRunnerG6 = (function () {
                 // Best-effort STOP at the end / on abort, then reset run-state.
                 this._active = false;
                 this._conditionName = null;
-                this._connectorsInRun = false;
                 this._resolveSleep();
                 this._clearLedActivator(); // LED off + stop gating on completion/abort
                 // Idempotent after a stopClosedLoop; THE fix when a mid-trial STOP
@@ -2149,7 +2257,6 @@ var ArenaRunnerG6 = (function () {
                         if (ir.bias) cfg.bias = ir.bias;
                         if (Object.keys(cfg).length) this._bridge.setConfig(cfg);
                         this._bridge.setApply(!!ir.on);
-                        this._closedLoopArmed = !!ir.on;
                     }
                     for (const w of warnings) {
                         // A warning is NOT a skip — the step ran. Its own phase keeps
@@ -2278,6 +2385,7 @@ var ArenaRunnerG6 = (function () {
         conditionCommandCount,
         flattenStructure,
         translateCommand,
+        sequenceUsesBridge, // does a run have steps that act through the bridge? (bridge-loss policy)
         hostSideTrialEnd,
         RUNNABLE_CONTROLLER_COMMANDS,
         LED_OFF_MV, // BuckPuck "LED dark" analog level (mV) — the scope's on/off threshold
