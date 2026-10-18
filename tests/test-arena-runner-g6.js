@@ -3142,6 +3142,79 @@ async function main() {
         }
     }
 
+    console.log('\n=== bridge-routed connector steps make a run bridge-dependent (LAB-303) ===');
+    {
+        const mkBridge = () => ({
+            logging: false,
+            apply: false,
+            connected: true,
+            connect() {},
+            disconnect() {},
+            setApply(on) {
+                this.apply = !!on;
+            },
+            setConfig() {},
+            log() {},
+            supportsConnector: () => true,
+            connectorCommand: async () => ({ ok: true, outcome: 'ok' })
+        });
+        const camCond = {
+            name: 'cam',
+            commands: [
+                { type: 'plugin', plugin_name: 'camera', command_name: 'startRecording' },
+                trialCmd,
+                { type: 'wait', duration: 30 }
+            ]
+        };
+        const itiCond = { name: 'iti', commands: [trialCmd, { type: 'wait', duration: 30 }] };
+        const conds = new Map([
+            ['iti', itiCond],
+            ['cam', camCond]
+        ]);
+        const step = (name, i) => ({ kind: 'ref', conditionName: name, label: name, seqIdx: i });
+        const run = (runner, extra) => {
+            let release;
+            const gate = new Promise((r) => (release = r));
+            const p = runner.runSequence(
+                Object.assign(
+                    {
+                        steps: [step('iti', 0), step('cam', 1)],
+                        conditionsByName: conds,
+                        resolvePatternId: () => 1,
+                        resolvePatternFrames: () => 20,
+                        sleep: () => gate
+                    },
+                    extra
+                )
+            );
+            return { p, release };
+        };
+        // A loss during the open-loop ITI, BEFORE the camera step: the run would drive the
+        // camera blind, so it stops — because the connector map names `camera`.
+        const r1 = new Runner.ArenaRunner(makeFakeLink(), Wire, mkBridge());
+        const a = run(r1, { connectorPluginNames: new Map([['camera', 'bias']]) });
+        await delay(10);
+        check(
+            'loss in the ITI before a camera step → aborted',
+            r1.onBridgeLost({ code: 1006 }),
+            'aborted'
+        );
+        a.release();
+        const s1 = await a.p;
+        check('outcome BRIDGE_LOST', RunLog.deriveOutcome(s1), 'BRIDGE_LOST');
+        // The same protocol with no connector map asks nothing of the bridge → continues.
+        const r2 = new Runner.ArenaRunner(makeFakeLink(), Wire, mkBridge());
+        const b = run(r2, {});
+        await delay(10);
+        check(
+            '…without connectorPluginNames the run continues',
+            r2.onBridgeLost({ code: 1006 }),
+            'continued'
+        );
+        b.release();
+        await b.p;
+    }
+
     console.log('\n=== connector plugins (LAB-303): BiasPlugin via the bridge ===');
     {
         const conn = new Map([['camera', 'bias']]);

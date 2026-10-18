@@ -713,11 +713,15 @@ var BUILTIN_PLUGINS = {
                         placeholder: 'hStackManager.framesPerSlice'
                     },
                     value: {
-                        type: 'number',
+                        // Allowlisted properties are numbers (framesPerSlice), booleans
+                        // (loggingEnable) and strings (logFilePath / logFileStem): keep the
+                        // text as typed; the ScanImage node turns "640" / "true" into the
+                        // JSON scalar the property wants.
+                        type: 'string',
                         required: true,
                         default: '',
                         label: 'Value',
-                        placeholder: '640'
+                        placeholder: '640, true/false, or text'
                     }
                 }
             },

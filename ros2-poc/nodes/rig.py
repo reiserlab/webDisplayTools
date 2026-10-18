@@ -140,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--scanimage", action="store_true", help="also run the ScanImage node (talks to ScanImage's JSON server, default 127.0.0.1:5555)")
     p.add_argument("--si-mock", action="store_true", help="also run tests/si_json_mock.py (a stand-in for ScanImage's JSON server, port 5555)")
     p.add_argument("--sim", action="store_true", help="also run the FicTrac simulator (random walk, 50 Hz)")
+    p.add_argument("--viz-args", default="", help="extra args for viz_node.py (--deg-per-frame, --frame-dir, --feature-az0, --frames)")
     p.add_argument("--foxglove", action="store_true",
                    help=f"also run foxglove_bridge on ws://127.0.0.1:{FOXGLOVE_PORT} (the `viz` environment; skipped with a note when it is not installed)")
     p.add_argument("--no-router", action="store_true", help="a Zenoh router is already running on this host")
@@ -208,6 +209,9 @@ def main(argv: list[str] | None = None) -> int:
     bridge = Child("bridge", [py, str(NODES / "bridge_node.py"), *split_args(args.bridge_args)])
     nodes.append(bridge)
     if foxglove:
+        # The typed republisher (ros-base messages Foxglove plots natively) runs in THIS
+        # environment; only foxglove_bridge itself needs the `viz` one.
+        nodes.append(Child("viz", [py, str(NODES / "viz_node.py"), *split_args(args.viz_args)]))
         # The pixi task from the `viz` environment (`ros2 run foxglove_bridge foxglove_bridge
         # --ros-args -p port:=8766 -p address:=127.0.0.1`): same solve group, so the same ROS
         # packages; RMW_IMPLEMENTATION + the Zenoh configs pass through the environment.
@@ -235,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
             c.start()
             children.append(c)
             time.sleep(0.3)
-        fox = f"   Foxglove → ws://localhost:{FOXGLOVE_PORT}" if foxglove else ""
+        fox = f"   Foxglove → ws://localhost:{FOXGLOVE_PORT} (layouts: ros2-poc/foxglove/)" if foxglove else ""
         print(f"[rig] up: {', '.join(c.name for c in children)}  —  Studio → ws://localhost:8765{fox}   (Ctrl-C to stop)", file=sys.stderr)
         while not stop.is_set():
             time.sleep(0.5)

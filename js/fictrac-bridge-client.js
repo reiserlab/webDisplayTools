@@ -687,7 +687,7 @@
          * connector_reply, LAB-303). Resolves with the reply object
          * {connector, plugin, command, ok, outcome:'ok'|'error'|'unknown', value, error,
          * steps, rtt_ms, artifact?}. It NEVER rejects: not connected → outcome 'error';
-         * no connector_reply within `timeoutMs` (default 10 s) → outcome 'unknown' (the
+         * no connector_reply within `timeoutMs` (default 15 s) → outcome 'unknown' (the
          * command may or may not have taken effect — the LAB-303 semantics); a disconnect
          * while in flight → 'unknown' as well. One id per call; late replies are dropped.
          * @param {object} req {connector:'bias', plugin:'camera', command:'startRecording',
@@ -730,7 +730,7 @@
                     })
                 );
             }
-            const timeoutMs = Number(req.timeoutMs) > 0 ? Number(req.timeoutMs) : 10000;
+            const timeoutMs = Number(req.timeoutMs) > 0 ? Number(req.timeoutMs) : 15000; // > the nodes' default slow-command deadline
             return new Promise((resolve) => {
                 const w = { resolve, timer: null, base };
                 w.timer = setTimeout(() => {

@@ -160,6 +160,10 @@ build-interfaces = "python nodes/build_interfaces.py"
 # The live graph as Mermaid (default), DOT (`-- --dot`) or a table with rates (`-- --text`);
 # works in every environment while `pixi run rig` is up.
 graph = "python nodes/graph_dump.py"
+# Foxglove dashboards: the typed republisher (plots/3D markers from the JSON streams; `pixi run rig -- --foxglove` starts it with foxglove_bridge), its unit test, and the offline String-bag → plottable-MCAP converter
+viz = "python nodes/viz_node.py"
+test-viz = "python tests/test_viz_node.py"
+fox-json = "python nodes/foxglove_json.py"
 # `viz` environment only (`pixi run -e viz …`): the interactive views.
 rqt-graph = "rqt_graph"
 rqt-topic = "rqt_topic"

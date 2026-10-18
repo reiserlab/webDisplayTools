@@ -9,6 +9,9 @@ history lives here. Newest first. (Per-session engineering detail stays in
 <!-- #254 -->
 - **Losing the FicTrac bridge mid-run now ends the run** instead of carrying on in silence. When the bridge's connection drops during a run that depends on it (a closed loop is armed, the protocol drives a camera or another connector, or the bridge is recording the run), the Studio shows a banner, stops the display, and records the run with the outcome **BRIDGE_LOST** (distinct from a controller fault, so no controller post-mortem runs). Restart the bridge, reconnect, and **⇪ Push log** to collect its record of the run. A user Disconnect, or a bridge the run never used, does not end the run.
 - **A `?p=` link loads its protocol first.** Opening a shared protocol link no longer waits for the course repo's pattern listing from GitHub; on a slow or walled network that wait could leave the Run view empty until a refresh. A protocol key that is not in this site's index now says so in a banner.
+- **Run-log pushes can no longer commit the wrong file after a bridge restart.** ⇪ Push log checks that the bridge serves this run's own log file and refuses otherwise, telling you where the file is on the bridge PC.
+- **Protocols that list their variables (`- &name value`) no longer trigger a false "Variable … is defined more than once" warning.** The check read the wrong field on list-style variables; the warning named a JavaScript function instead of a variable.
+- **Camera and microscope steps wait a little longer than their own `timeout_s`** before being called unknown, so a reply that lands right at the deadline counts as the outcome it was.
 
 ## v0.96 (2026-10-16) · ScanImage as a protocol plugin (two-photon rigs, ROS bridge node) · Run file and MCAP bag close when the run ends (LAB-303)
 

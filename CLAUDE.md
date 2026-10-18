@@ -362,6 +362,38 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   pattern-preview byte sources are LAYERED (`js/studio-preview-sources.js`: builtin < shared <
   colocated < uploaded — every write names its layer, arrival order never decides). The awaits
   before the load are allowlisted in `tests/test-studio-preview-sources.js`.
+- **ROS 2 bridge = the bridge going forward (LAB-303, decided 2026-10-16/17).** Rig PCs run
+  `cd ros2-poc && pixi run rig` (its own pixi workspace: Zenoh router + FicTrac adapter + bridge node
+  + optional `--bias` / `--scanimage` / `--foxglove`). Bridge 3.4 (`pixi run bridge` at the root) is
+  the legacy path for course rigs, BUT `fictrac-bridge/bridge.py` is STILL IMPORTED by
+  `ros2-poc/nodes/bridge_node.py` and `mcap_convert.py` (Hub, LogWriter, Pipeline, the pure
+  encoders): a change there changes ROS acquisition and the conversion of every historical bag.
+  **MCAP bag = the record**; the `behavior_v2` JSONL is DERIVED (converter), transitional and
+  FicTrac-only — new plugin streams go into the bag, never into a new `behavior_vN`. Bags are
+  archived on the group share (later a bucket), never pushed to GitHub, so `--max-bag-mb` (rosbag2
+  splitting) is an optional knob, off by default. `mcap_index.reindex` replaces the bag ATOMICALLY
+  (`os.replace`); never reintroduce an unlink-then-rename on the record of truth. Row encoders shared
+  by the live writer and the converter live in `ros2-poc/nodes/_rows.py` (NO ROS imports — the
+  converter must run without a ROS process; `converted == live` depends on ONE encoder).
+- **Connector plugins (LAB-303):** a protocol plugin whose class is `BiasPlugin` → connector `bias`,
+  `ScanImagePlugin` → `scanimage` (`connectorPluginNames(exp)` in the Studio). The runner turns their
+  commands into the `connectorCommand` op; `FicTracBridgeClient.connectorCommand()` NEVER rejects
+  (`outcome: ok | error | unknown`), its timeout is the step's `timeout_s` + `CONNECTOR_TIMEOUT_MARGIN_MS`
+  (the node's own deadline plus poll/reconcile/hops; a reply at the deadline is an outcome, not an
+  unknown); `_failPending` settles connector waiters; `sequenceUsesBridge` counts connector plugin
+  instances as bridge-routed steps (a loss before a camera step stops the run). Adding a connector =
+  `bridge_node.CONNECTOR_TOPICS` + `mcap_convert.CONNECTOR_TOPIC_SRC` + a `rig.py` flag + the Studio map.
+  A `≤ 3.4` bridge advertises no connectors → visible skip, never silent.
+- **The bridge log closes at run end** (`onRunFinished` → `Studio.session.bridge.setLogging(false)`,
+  after trial-quality / post-mortem, BEFORE the upload, and only while `Studio.activeRunLog === log`).
+  On the ROS node that closes the MCAP bag. The commit path's `log_export` works on a closed file.
+  The first version of this fix referenced an undeclared `bridge` inside a `catch` and was a silent
+  no-op — a `try { … } catch (_) {}` around a one-liner hides exactly this; test the wiring.
+- **v3 `variables:` has TWO shapes** — mapping pairs (`key: &anchor value`) and anchored scalar
+  ITEMS (`- &anchor value`, what the 2P protocols use). Every identity helper (`extractVariables`,
+  `_findVariablePair`, the unused-anchor check) must handle both; never read `.anchor` off a value
+  that may be a primitive (`'str'.anchor` is `String.prototype.anchor`, a function — the source of
+  the "Variable "function anchor() …" is defined more than once" warning on 2026-10-16).
 - **Wire module exports:** `js/arena-wire-g6.js` defines more than it exports —
   when adding encoders/decoders, add them to the export list AND a test; audit
   with `Object.keys(require('./js/arena-wire-g6.js'))` vs the page's `Wire.*`

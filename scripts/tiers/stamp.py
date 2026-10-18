@@ -106,9 +106,11 @@ def archive_to(sha: str, dest: Path, cwd=None) -> None:
 
 
 def html_files(root: Path, skip_top=None):
+    """`skip_top`: a top-level directory name, or a set of them, to leave out (the tiers)."""
+    skip = {skip_top} if isinstance(skip_top, str) else set(skip_top or ())
     for p in sorted(root.rglob('*.html')):
         rel = p.relative_to(root)
-        if skip_top and rel.parts and rel.parts[0] == skip_top:
+        if skip and rel.parts and rel.parts[0] in skip:
             continue
         yield p, rel
 
@@ -353,20 +355,7 @@ def build_site(out: Path, root_ref: str, next_spec: str, cwd=None, allow_any_nex
     ros = {'sha': None, 'pages': 0, 'note': 'not requested'}
     if ros_spec and ros_spec != 'none':
         ros = build_ros_tier(out, ros_spec, common, cwd=cwd)
-    skip = {RESERVED_TOP, ROS_TOP}
-    n_prod = 0
-    for p, rel in html_files(out):
-        if rel.parts and rel.parts[0] in skip:
-            continue
-        try:
-            text = p.read_bytes().decode('utf-8')
-        except UnicodeDecodeError:
-            continue
-        o = inject_meta(text, prod)
-        if o is None:
-            continue
-        p.write_bytes(o.encode('utf-8'))
-        n_prod += 1
+    n_prod = stamp_tree(out, prod, next_banner=False, skip_top={RESERVED_TOP, ROS_TOP})
     T.write_text_exact((out / 'build.json'), json.dumps(prod, indent=2) + '\n')
 
     problems = verify_root(out, root_sha, cwd=cwd)

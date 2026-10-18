@@ -92,6 +92,7 @@ from _common import mono_ns, probe_interfaces, raise_timer_resolution, wall_ms, 
 from mcap_convert import convert_bag  # noqa: E402
 from mcap_index import needs_recovery, recover_bag  # noqa: E402
 from recorder import PROFILES, STRING_TYPE, Recorder  # noqa: E402
+from _rows import KF_TAG, kf_row  # noqa: E402  (one encoder for the node and the converter)
 
 # Typed messages only when the package imports AND serializes (pixi's `typed` env, or a
 # colcon install whose libraries load); otherwise String JSON everywhere.
@@ -153,7 +154,6 @@ FRAME_QOS = QoSProfile(
     depth=1,
     durability=QoSDurabilityPolicy.VOLATILE,
 )
-KF_TAG = "kf"
 
 
 def percentile(values: list[float], q: float) -> float | None:
@@ -164,29 +164,6 @@ def percentile(values: list[float], q: float) -> float | None:
     return s[k]
 
 
-def kf_row(rel_ms: int, pkt: dict, seq: int) -> list:
-    """KF/1 record → compact tagged row. PURE. Angles are the FIRST (strongest-edge)
-    angle of each part when the part is valid, else null — Kinefly's bridge plan: the
-    edge identity policy is explicit, index 0 is only the initial single-edge choice."""
-
-    def first_angle(name: str):
-        part = pkt.get("parts", {}).get(name) or {}
-        if not part.get("valid"):
-            return None
-        angles = part.get("angles_rad") or []
-        return round(float(angles[0]), 5) if angles else None
-
-    t_src = pkt.get("timestamp_s")
-    return [
-        KF_TAG,
-        int(rel_ms),
-        int(seq),
-        round(float(t_src), 6) if isinstance(t_src, (int, float)) else None,
-        first_angle("left"),
-        first_angle("right"),
-        first_angle("head"),
-        first_angle("abdomen"),
-    ]
 
 
 class RosInput:
@@ -283,8 +260,10 @@ class RecordingLogWriter(B.LogWriter):
     on_open = None
     on_close = None
 
-    def __init__(self, path, level, log_dir, *, profile: str, typed: bool, export: str, connectors: list[str]) -> None:
+    def __init__(self, path, level, log_dir, *, profile: str, typed: bool, export: str, connectors: list[str],
+                 max_bag_bytes: int = 0) -> None:
         self.seq = 0
+        self._max_bag_bytes = int(max_bag_bytes or 0)
         self.rec: Recorder | None = None
         self.bag_name: str | None = None
         self.last_bag: dict = {}
@@ -323,7 +302,7 @@ class RecordingLogWriter(B.LogWriter):
     # ── the LogWriter surface ────────────────────────────────────────────────────────
     def _open(self, name: str, event: str) -> None:
         bag = (name[:-6] if name.endswith(".jsonl") else name) + ".bag"
-        rec = Recorder(bag, self.topics(), self._profile)
+        rec = Recorder(bag, self.topics(), self._profile, max_bag_bytes=self._max_bag_bytes)
         t_open = time.perf_counter()
         self.rec = rec  # visible to the ROS thread first: records during open() are buffered
         open_error = None
@@ -691,7 +670,8 @@ async def run(args: argparse.Namespace) -> None:
         raise SystemExit("--typed on, but arena_interfaces is not importable (pixi install builds it; or pixi run build-interfaces)")
     CONNECTORS = {c: t["cmd"] for c, t in CONNECTOR_TOPICS.items()}
     log = RecordingLogWriter(args.log, args.log_level, args.log_dir, profile=args.bag_profile, typed=typed,
-                             export=args.export, connectors=list(CONNECTORS))
+                             export=args.export, connectors=list(CONNECTORS),
+                             max_bag_bytes=int(round(args.max_bag_mb * 1024 * 1024)) if args.max_bag_mb > 0 else 0)
     queue: asyncio.Queue[tuple[str, str, bytes, int]] = asyncio.Queue()  # (line, topic, raw bytes, receive ns)
     pipeline = B.Pipeline(
         None,
@@ -984,6 +964,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="consume /fictrac/frame + publish /arena/frame as arena_interfaces types (auto: when the package imports; default)")
     p.add_argument("--bag-profile", choices=sorted(PROFILES), default="crashsafe",
                    help="MCAP writer profile: crashsafe (no chunking, no cache; default — rosbag2's defaults hold a whole short run in an unflushed 768 KiB chunk) or default (rosbag2 defaults)")
+    p.add_argument("--max-bag-mb", type=float, default=0.0,
+                   help="OPTIONAL: split the bag into <run>_0.mcap, _1.mcap, … at about this many MiB (rosbag2 max_bagfile_size; a threshold, not a hard cap). Default 0 = one file; bags are archived on a share, not pushed to GitHub, so only a size-limited store needs this")
     p.add_argument("--export", choices=("converted", "live"), default="converted",
                    help="what log_export returns: the NDJSON converted from the bag (default) or the live shadow file")
     args, ros_args = p.parse_known_args(argv)

@@ -21,6 +21,9 @@
 'use strict';
 
 var ArenaRunnerG6 = (function () {
+    // connectorCommand: added to a step's own timeout_s so the browser outlasts the device
+    // node's deadline (poll period 0.25 s + a status reconcile + two message hops).
+    const CONNECTOR_TIMEOUT_MARGIN_MS = 3000;
     // ---- pure helpers (hardware-free, unit-tested) -----------------------
 
     /**
@@ -2314,7 +2317,12 @@ var ArenaRunnerG6 = (function () {
                         command: ir.command_name,
                         params: ir.params,
                         timeoutS: ir.timeoutS,
-                        timeoutMs: ir.timeoutS ? ir.timeoutS * 1000 : undefined
+                        // The node's deadline + a margin for its poll period, the status
+                        // reconcile it runs on a timeout, and the two hops — so a reply that
+                        // lands right at the deadline is an outcome, not an 'unknown'.
+                        timeoutMs: ir.timeoutS
+                            ? ir.timeoutS * 1000 + CONNECTOR_TIMEOUT_MARGIN_MS
+                            : undefined
                     });
                     const value = {
                         connector: ir.connector,

@@ -12,3 +12,8 @@ interfaces/build/
 interfaces/install/
 interfaces/build.log
 interfaces/build-result.json
+# colcon build logs (never commit)
+interfaces/log/
+# the one-off win-64 channel payload lives at commit 3051258 (pixi.toml pins that URL); not in the tree
+channel/noarch/
+channel/win-64/

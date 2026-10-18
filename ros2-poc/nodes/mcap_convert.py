@@ -57,6 +57,9 @@ import struct
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _rows import KF_TAG, kf_row  # noqa: E402  (shared with bridge_node.py)
+
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 BRIDGE_PY = REPO / "fictrac-bridge" / "bridge.py"
@@ -79,7 +82,6 @@ CONNECTOR_TOPIC_SRC = {
     TOPIC_BIAS_REPLY: ("bias", "reply"), TOPIC_BIAS_STATUS: ("bias", "status"),
     TOPIC_SCANIMAGE_REPLY: ("scanimage", "reply"), TOPIC_SCANIMAGE_STATUS: ("scanimage", "status"),
 }
-KF_TAG = "kf"
 
 
 def load_bridge_module(path: Path = BRIDGE_PY):
@@ -292,21 +294,6 @@ def fictrac_fields(rec: dict) -> tuple[int, list[float]] | None:
     if len(fields) < 17:
         return None
     return int(fields[0]), fields
-
-
-def kf_row(rel_ms: int, pkt: dict, seq: int) -> list:
-    """Same as bridge_node.kf_row (kept in sync by tests/test_ros2_poc.py)."""
-
-    def first_angle(name: str):
-        part = pkt.get("parts", {}).get(name) or {}
-        if not part.get("valid"):
-            return None
-        angles = part.get("angles_rad") or []
-        return round(float(angles[0]), 5) if angles else None
-
-    t_src = pkt.get("timestamp_s")
-    return [KF_TAG, int(rel_ms), int(seq), round(float(t_src), 6) if isinstance(t_src, (int, float)) else None,
-            first_angle("left"), first_angle("right"), first_angle("head"), first_angle("abdomen")]
 
 
 def convert(records: list[dict], level: str | None = None, order: str = "seq", connectors=None) -> tuple[list, dict]:
