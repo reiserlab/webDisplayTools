@@ -8,6 +8,7 @@
     pixi run rig -- --scanimage        # + the ScanImage node (JSON server on this PC); --si-mock for a stand-in
     pixi run rig -- --foxglove         # + foxglove_bridge (:8766) from the `viz` environment
     pixi run rig -- --scanimage-frames # + the ScanImage ZMQ frame-stream node (SUB tcp://127.0.0.1:65179; Bergamo, Block R)
+    pixi run rig -- --sipm --sipm-args "--dll-dir C:\\…\\Release"  # + the read-only SiPM controller node (Bergamo, Block S)
 
 Order: the router first (nodes retry until it answers on 127.0.0.1:7447), then every
 adapter/node. Each child's stderr is prefixed with its name. Ctrl-C stops everything in
@@ -141,6 +142,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--scanimage", action="store_true", help="also run the ScanImage node (talks to ScanImage's JSON server, default 127.0.0.1:5555)")
     p.add_argument("--scanimage-frames", action="store_true", help="also run the ScanImage frame-stream node (ZMQ SUB on ScanImage's ZMQAddress → /scanimage/frame_meta, frame_stats, preview/ch<id>)")
     p.add_argument("--scanimage-frames-args", default="", help="extra args for scanimage_frames_node.py (e.g. --address tcp://127.0.0.1:65179 --preview-hz 5 --dump frames.jsonl)")
+    p.add_argument("--sipm", action="store_true", help="also run the read-only SiPM controller node (nodes/sipm_node.py; needs --sipm-args \"--dll-dir …\" or \"--fake\")")
+    p.add_argument("--sipm-args", default="", help="extra args for sipm_node.py (e.g. --dll-dir <ThorSiPM Release folder> --params-file sipm_params.json)")
     p.add_argument("--si-mock", action="store_true", help="also run tests/si_json_mock.py (a stand-in for ScanImage's JSON server, port 5555)")
     p.add_argument("--sim", action="store_true", help="also run the FicTrac simulator (random walk, 50 Hz)")
     p.add_argument("--viz-args", default="", help="extra args for viz_node.py (--deg-per-frame, --frame-dir, --feature-az0, --frames)")
@@ -212,6 +215,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.scanimage_frames:
         # Connects (never binds), so no port pre-flight: ScanImage binds at each acquisition start.
         nodes.append(Child("si-frame", [py, str(NODES / "scanimage_frames_node.py"), *split_args(args.scanimage_frames_args)]))
+    if args.sipm:
+        # Owns the COM port while it runs: ThorSiPM_Control.exe must be closed (one program per port).
+        nodes.append(Child("sipm", [py, str(NODES / "sipm_node.py"), *split_args(args.sipm_args)]))
     bridge = Child("bridge", [py, str(NODES / "bridge_node.py"), *split_args(args.bridge_args)])
     nodes.append(bridge)
     if foxglove:
