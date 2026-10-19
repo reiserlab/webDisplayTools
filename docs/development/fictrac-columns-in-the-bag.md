@@ -1,6 +1,8 @@
 # FicTrac columns in the MCAP bag — audit and recommended record (LAB-303)
 
-**Status:** decision doc for Michael, 2026-10-18. Nothing in the recorder changes with this PR.
+**Status:** DECIDED (Michael, 2026-10-18): 10 columns, one record per frame, `float64`, one MCAP
+message per frame (no batching; "simpler is better", 2× the JSONL accepted). Nothing in the recorder
+changes with this PR; the implementation is its own PR (§4).
 **Question:** the ROS 2 bridge (`ros2-poc/`, PR #254) records every FicTrac frame twice — the
 25-column record as the adapter received it (`/fictrac/frame`, with the verbatim line) and the
 closed-loop evaluation (`/arena/frame`). Since the bags will be pushed to the GitHub data repo like
@@ -9,10 +11,12 @@ have to keep so it stays near the size of today's `.jsonl.gz`?
 **Answer in one line:** keep 10 of the 25 columns (the 5 the behavior row has, plus the error score,
 the three lab-frame delta-rotation components and the sequence counter), store them in the ONE
 per-frame `/arena/frame` record and stop recording the raw FicTrac topics by default. Measured on the
-two bench bags with the tuning the plan already assumed (chunk-only index, zstd 19, 1 s batching):
-**1.94× and 2.14×** the `.jsonl.gz` (today's bags: 10.2× and 30.4×; all 25 columns at the same
-tuning: 4.5× and 5.5×). A fixed-point encoding at the JSONL's own 5-decimal precision would bring the
-same record to **1.49× and 1.54×**; that is an encoding choice, listed separately.
+two bench bags with a chunk-only index and zstd 19, one message per frame: **2.24× and 2.48×** the
+`.jsonl.gz` (today's bags: 10.2× and 30.4×; all 25 columns: 4.5× and 5.5×). For a 30 minute run at
+50 Hz that is ≈ 5 MB against ≈ 2.3 MB today. Two levers were measured and deliberately not pulled:
+batching the records 1 s per message (1.94× / 2.14×) and an `int32` fixed-point encoding at the
+JSONL's own 5-decimal precision (≈ 1.5×); both stay available if the data repo's growth ever needs
+them.
 
 Constraints honored: `BEHAVIOR_V1_COLS` is never widened; MCAP is the record and the `.jsonl.gz` a
 derived, transitional, FicTrac-only format (retired by 2026-12-31); the converter's derived file must
@@ -134,21 +138,24 @@ Michael's decision. The live topics are unchanged: the adapter keeps publishing 
 25 columns + raw) and `/fictrac/raw` for `ros2 topic echo`, Foxglove and the byte-for-byte bridge 3.4
 math; recording them stays available as an opt-in (`--record-fictrac-raw`) for debugging a tracker.
 
-**Encoding.** `float64` for the kept values is the ROS-idiomatic choice and lossless against FicTrac's
-14-digit text; it is the headline number. The `.jsonl.gz` is small partly because 5-decimal text has
-far less entropy than a `float64` mantissa; an `int32` fixed-point encoding at that same precision
-(`× 1e-5`, with `x`/`y` as `int64` or `float64` because they grow without bound over a long run) was
-measured as the third row of the table and buys another ≈ 25 %. Recommendation: ship `float64` first
-(the size is already within the plan's acceptance band) and keep fixed-point as the knob to pull if
-the data repo's growth becomes a problem; it changes nothing in the converter but a scale factor.
+**Encoding: `float64` (decided).** It is the ROS-idiomatic choice, lossless against FicTrac's
+14-digit text, and the live topic and the bag keep ONE message type, so Foxglove plots the bag as it
+plots the live topic. The alternative was measured and declined for now: the `.jsonl.gz` is small
+partly because 5-decimal text has far less entropy than a `float64` mantissa, and an `int32`
+fixed-point encoding at that precision buys ≈ 25 % (third-from-last row of the table). Its costs are
+what decided against it: `x`/`y` grow without bound (an `int32` at 1e-5 rad overflows after ≈ 97 m
+of walked path on a 9 mm ball, so they would need `int64`), every field needs a scale chosen for good
+(the deltas at 1e-6 or finer, the error score's real-rig range is unknown), Foxglove cannot rescale a
+message path so the recorded type would have to differ from the live one, and the node and the
+converter would have to round identically. All of that for ≈ 1.5 MB per half-hour run. It stays the
+knob to pull if the data repo's growth becomes a problem; it changes nothing in the readers but a
+scale factor in the converter.
 
-**Batching.** The plan's tuning batches the per-frame record 1 s per MCAP message. It is worth 13–16 %
-(per-record rows in §3) and costs: up to 1 s of frames in a crash (the `crashsafe` profile writes
-every record at once, so the batch must be flushed by time, not only by count), a nested-array
-message type (`ArenaFrameBatch`), unbatching in the converter, and Foxglove plotting the bag through
-message-path slices instead of a plain time series. Reasonable either way; the number quoted at the
-top is the batched one so it is comparable with the plan's. If the 13–16 % is not needed, per-record
-is simpler.
+**Batching: one message per frame (decided).** The plan's tuning batched the per-frame record 1 s per
+MCAP message, worth 13–16 % (rows in §3). Declined for simplicity: per record there is no
+nested-array message type, no unbatching in the converter, a crash loses one frame instead of up to a
+second, and the bag plots natively in Foxglove. The converter can learn a batched layout later and
+both layouts can coexist in old and new bags.
 
 **What a bad frame becomes.** FicTrac sends a tagged `FT_BADFR` line for a frame it could not track;
 `Pipeline.handle_line` counts it (`skipped`) and emits no row, so no `/arena/frame` record exists
@@ -178,23 +185,26 @@ events, session) is kept byte for byte. Script: `bag_matrix.py` in this session'
 | two topics per frame, behavior 5 cols only, batched | 658 474 B | 2.88 | 541 897 B | 3.34 |
 | two topics per frame, recommended 10 cols, batched | 737 263 B | 3.22 | 609 194 B | 3.75 |
 | two topics, recommended 10, `ArenaFrame` without `x/y/hd/ft` (join by `fc`), batched | 561 371 B | 2.45 | 456 183 B | 2.81 |
-| **one record per frame (ArenaFrame + cols 5, 6–8, 23), `float64`, batched 1 s — RECOMMENDED** | **443 004 B** | **1.94** | **347 430 B** | **2.14** |
-| one record per frame, `float64`, per record (no batching) | 511 489 B | 2.24 | 402 172 B | 2.48 |
+| **one record per frame (ArenaFrame + cols 5, 6–8, 23), `float64`, one message per frame — ADOPTED** | **511 489 B** | **2.24** | **402 172 B** | **2.48** |
+| one record per frame, `float64`, batched 1 s (declined, available later) | 443 004 B | 1.94 | 347 430 B | 2.14 |
 | one record per frame, `int32` fixed-point × 1e-5, batched | 340 319 B | 1.49 | 249 554 B | 1.54 |
 | floor: no FicTrac extras at all (today's `ArenaFrame` alone, batched) | 360 902 B | 1.58 | 262 895 B | 1.62 |
 
 Reading the table:
 
-- The recommended record is **1.94× / 2.14×** today's `.jsonl.gz`; the five extra columns cost
-  0.36× / 0.52× over the floor (the error score and sequence counter are nearly free, the three
-  deltas are the bulk). Against the plan's framing (≈ 125 MB/day on a busy ball rig at 3×, i.e.
-  ≈ 42 MB/day of `.jsonl.gz` today) this is ≈ 85 MB/day, ≈ 65 MB/day with fixed-point.
+- The adopted record is **2.24× / 2.48×** today's `.jsonl.gz` (56 and 49 B per frame after
+  compression against 25 and 20 B); the five extra columns cost ≈ 0.4–0.5× over the floor (the error
+  score and sequence counter are nearly free, the three deltas are the bulk). In practice: a 30 minute
+  run at 50 Hz (90 000 frames) is ≈ 5 MB instead of ≈ 2.3 MB; the BIAS video of the same run is
+  gigabytes. Against the plan's framing (≈ 125 MB/day on a busy ball rig at 3×, i.e. ≈ 42 MB/day of
+  `.jsonl.gz` today) this is ≈ 100 MB/day, so GitHub's comfortable ≈ 1 GB repository size is reached
+  in about 10 busy rig-days instead of 24 — the data repo needs the rotation plan either way.
 - Even with NO FicTrac extras the bag is ≈ 1.6× the JSONL: a per-frame `float64` record with its
   bookkeeping (`t_ms`, `ms`, `seq`, `epoch`, `bias_deg`, `has_ft`, the derived `turning_dps` /
   `forward_mms`) compresses to ≈ 32–40 B/frame against the JSONL's ≈ 20–25 B text row. Columns are
   one lever; encoding is the other (fixed-point: 1.5×). Dropping the two derived channels from the
   recorded record saves ≈ 1 % and is not worth a second message type.
-- In the merged layout `/arena/frame` is 65–74 % of the bag; the arena-command echoes
+- In the merged layout (measured on the batched variant) `/arena/frame` is 65–74 % of the bag; the arena-command echoes
   (`/arena/browser`) are most of the rest in bag 1 (14 %), nothing in bag 2 (that run sent one
   browser line). The JSONL spends 88–96 % of its bytes on the frame rows too, so the ratio is
   dominated by frame-row encoding, as it should be.
@@ -218,32 +228,26 @@ All under `ros2-poc/` on PR #254's branch, its own PR after the pilot starts (pl
 archive publisher is its own PR; this is the recorder half of the same decision).
 
 1. **`interfaces/arena_interfaces/msg/ArenaFrame.msg`** — add `err`, `dr_lab_x/y/z`, `ft_seq`,
-   `ft_ns`, `flags` (above). Optional **`ArenaFrameBatch.msg`** = `ArenaFrame[] frames` for the 1 s
-   batching; the live `/arena/frame` stays per frame, the batch is a recording-only topic
-   (`/arena/frames`). The String fallback encodes the same fields as JSON (one object per frame; a JSON
-   array per batch).
+   `ft_ns`, `flags` (above). One type for the live topic and the bag, one message per frame, as today.
+   The String fallback carries the same fields in its JSON object.
 2. **`nodes/bridge_node.py`** — `arena_frame_msg()` takes the parsed FicTrac fields (the typed path
    has `m.fields`; the String path parses the line once with `fictrac_udp_adapter.parse_fictrac_line`)
    and fills the new fields; the hub message to the Studio and the JSONL row are untouched.
    `RecordingLogWriter.topics()` drops `/fictrac/frame` and `/fictrac/raw` from the recorded set
    unless `--record-fictrac-raw`; `_fictrac` / `_fictrac_typed` stop calling `record_device` for them
-   (subscriptions unchanged). `record_frame` goes through a `FrameBatcher` (flush on the wall-clock
-   second boundary by timer, on log close BEFORE the `logging_stopped` record, and on export). An
-   `FT_BADFR` line records a flagged frame (`Pipeline.skipped` stays the counter) and
-   `connector_status` reports `bad_frames`.
+   (subscriptions unchanged). `record_frame` is unchanged (one record per frame). An `FT_BADFR` line
+   records a flagged frame (`Pipeline.skipped` stays the counter) and `connector_status` reports
+   `bad_frames`.
 3. **`nodes/_rows.py`** — one `arena_frame_to_row(fields_dict) -> [ms, fc, idx, ft, x, y, hd]`
    shared by the node's live writer and the converter (today the mapping lives twice: in
-   `arena_frame_msg` and in `mcap_convert.frame_line`'s typed branch), plus `unbatch_frames()` for
-   the batch message so the converter and any future reader split a batch the same way.
-4. **`nodes/mcap_convert.py`** — `decode_cdr` learns nested message sequences (`ArenaFrame[]`;
-   today it decodes primitives, strings and primitive sequences only); `/arena/frames` batches are
-   unbatched into per-frame lines carrying each frame's own `ms` and `seq` (order and `t0` rules
-   unchanged, so `converted == live` still holds); `--level full` is retired with a clear error for
+   `arena_frame_msg` and in `mcap_convert.frame_line`'s typed branch).
+4. **`nodes/mcap_convert.py`** — `frame_line` reads the new fields through `_rows.py` (the JSONL row
+   is unchanged, so `converted == live` still holds); `--level full` is retired with a clear error for
    bags that have no `/fictrac/*` topic (it needs the 25 columns, which no longer exist; the only
    `full` readers, `runlog-replay.js` and `closed-loop-report.py`, read cols 1, 15–17, 22 of it and keep
    working on old files), and keeps working for the 2026-10-14 bags that do carry them.
-5. **`nodes/recorder.py` / `nodes/mcap_index.py`** — a `tuned` reindex: `IndexType.ALL & ~MESSAGE`
-   and zstd 19 in `reindex()` (the pure-Python writer, same level swap as `sizing/compare.py`), applied
+5. **`nodes/recorder.py` / `nodes/mcap_index.py`** — the tuning: `IndexType.ALL & ~MESSAGE` and
+   zstd 19 in `reindex()` (the pure-Python writer, same level swap as `sizing/compare.py`), applied
    from `Recorder.close()` for the `crashsafe` profile as today. If the `default` rosbag2 profile is
    kept as an option, pass `compression: Zstd`, `compressionLevel: Slowest`, `noMessageIndex: true`
    through `storage_config_uri`. `max_bag_bytes` stays off by default (plan §3).
@@ -252,11 +256,11 @@ archive publisher is its own PR; this is the recorder half of the same decision)
    side.
 7. **Tests, `tests/test_ros2_poc.py`** — (a) the merged record's new fields equal the columns of the
    FicTrac line that produced it (fc join against the live `/fictrac/frame` topic during the
-   harness run); (b) batched bag → converter → lines byte-identical to the live shadow JSONL (the
-   existing `converted == live` gate, now exercising unbatching); (c) a bad-frame line yields a flagged
-   record and no JSONL row; (d) the 2026-10-14 bags (two-topic layout) still convert; (e) a size
-   regression: a synthetic 60 s × 50 Hz run's tuned bag ≤ 2.5× its `.jsonl.gz`; (f) replace the
-   "full level carries the 25 FicTrac columns" check by "full level refused without `/fictrac/*`".
+   harness run); (b) the existing `converted == live` gate on the new record; (c) a bad-frame line
+   yields a flagged record and no JSONL row; (d) the 2026-10-14 bags (two-topic layout) still convert;
+   (e) a size regression: a synthetic 60 s × 50 Hz run's reindexed bag ≤ 3× its `.jsonl.gz`; (f)
+   replace the "full level carries the 25 FicTrac columns" check by "full level refused without
+   `/fictrac/*`".
    `tests/check_runlog_readers.js` is unchanged — the JSONL shape never changes. Docs: this file's
    §2 becomes the `ArenaFrame` field reference; `telemetry-logging-reference.md` gets a one-paragraph
    pointer (the JSONL section is unchanged).
@@ -269,10 +273,11 @@ dashboard and every script read the JSONL, whose rows are the same five columns 
 > **FicTrac columns in the bag — decision doc** (`docs/development/fictrac-columns-in-the-bag.md`,
 > PR link). Audit of the 25 FicTrac columns against every reader (bridge, kinematics, replay,
 > dashboard, scripts, converter): the behavior row's 5 are the only ones anything reads. Recommended
-> record: ONE `/arena/frame` record per frame = today's ArenaFrame + error score, the 3 lab-frame
-> delta-rotation components and the sequence counter (10 of 25 columns); `/fictrac/*` no longer
-> recorded by default. Measured on the two 2026-10-14 bench bags with the plan's tuning (chunk-only
-> index, zstd 19, 1 s batching): **1.94× / 2.14× the jsonl.gz** (today 10×/30×; all 25 columns 4.5×/5.5×);
-> int32 fixed-point at the JSONL's 5-decimal precision would give 1.5×. Implementation = its own PR on
-> #254's branch after the pilot starts (change list in the doc §4). Decision needed from Michael:
-> (a) the 10-column set, (b) float64 vs fixed-point, (c) batching 1 s vs per record.
+> record (DECIDED 2026-10-18): ONE `/arena/frame` record per frame = today's ArenaFrame + error
+> score, the 3 lab-frame delta-rotation components and the sequence counter (10 of 25 columns),
+> `float64`, one message per frame; `/fictrac/*` no longer recorded by default. Measured on the two
+> 2026-10-14 bench bags (chunk-only index, zstd 19): **2.24× / 2.48× the jsonl.gz** — ≈ 5 MB per
+> 30 min run at 50 Hz against ≈ 2.3 MB today (as recorded now 10×/30×; all 25 columns 4.5×/5.5×).
+> Declined for simplicity, measured and available later: 1 s batching (1.9×/2.1×) and int32
+> fixed-point (≈ 1.5×). The 2× growth is accepted; the data repo needs the rotation plan either way.
+> Implementation = its own PR on #254's branch after the pilot starts (change list in the doc §4).
