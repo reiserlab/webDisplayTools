@@ -20,13 +20,17 @@ What the bag holds and how it becomes lines (nodes/bridge_node.py writes these):
                    `rows` messages expand to their rows; `connector_command` → its connector
                    event; `log_export` → nothing (as today).
   /arena/frame     the closed-loop evaluation (String JSON or arena_interfaces/ArenaFrame),
-                   with the node's OWN sample time `t`/`ms`         → [ms, fc, idx, ft, x, y, hd]
+                   with the node's OWN sample time `t`/`ms` AND, since 2026-10-18, the kept FicTrac
+                   columns beyond the behavior row (err, dr_lab_x/y/z, ft_seq, ft_ns — docs/development/
+                   fictrac-columns-in-the-bag.md); a flagged untracked frame (flags bit 0) → no line
+                                                                      → [ms, fc, idx, ft, x, y, hd]
   /arena/event     {"seq", …a bridge-authored event…}: bias_config, heading_tare,
                    connector_status, source_lost/resumed, warn       → verbatim
   /kinefly/raw     the adapter envelope (DERIVED stream)             → ["kf", ms, seq, t_src, L, R, head, abd]
   /bias/reply, /bias/status  the BIAS node's JSON (DERIVED)          → {"type":"connector","src":"bias",…}
   /scanimage/reply, /scanimage/status  the ScanImage node's JSON (DERIVED) → {"type":"connector","src":"scanimage",…}
-  /fictrac/raw | /fictrac/frame  the adapter's FicTrac records       → used only for level `full`
+  /fictrac/raw | /fictrac/frame  the adapter's FicTrac records (only when the bridge node ran with
+                   --record-fictrac-raw; bags before 2026-10-18 always have them) → used only for level `full`
 
 Clock and order rules (comparison.md §4, B1/B2):
   * ONE ms base: t0 = the session-open record's `ms`, set when the run's log opened. Frame
@@ -42,7 +46,8 @@ Clock and order rules (comparison.md §4, B1/B2):
     to do; the harness measures how far it lands from the live writer's order.
 Levels are a converter option (the bag holds everything): behavior_v2 compacts arena echoes
 to ["a",…] and carries t0 in the schema line; behavior_v1 keeps the echo objects; full keeps
-the 25-column FicTrac records (joined from /fictrac/* by frame counter) and writes no schema.
+the 25-column FicTrac records (joined from /fictrac/* by frame counter) and writes no schema — it
+is refused for a bag recorded without the raw FicTrac topics (the default since 2026-10-18).
 """
 
 from __future__ import annotations
@@ -58,7 +63,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _rows import KF_TAG, kf_row  # noqa: E402  (shared with bridge_node.py)
+from _rows import KF_TAG, arena_frame_to_row, kf_row  # noqa: E402  (shared with bridge_node.py)
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
@@ -256,19 +261,19 @@ RANK = {"session": 0, "event": 1, "frame": 2, "browser": 3, "derived": 4}
 
 
 def frame_line(fr: dict, level: str, fields_by_fc: dict | None):
-    """A /arena/frame record (hub message JSON or ArenaFrame fields) → the logged frame."""
-    if "idx" in fr and "has_ft" in fr:  # typed ArenaFrame
-        beh = {"ms": int(fr["ms"]), "fc": int(fr["fc"]), "idx": int(fr["idx"]),
-               "ft": float(fr["ft"]) if fr["has_ft"] else None,
-               "x": float(fr["x"]), "y": float(fr["y"]), "hd": float(fr["hd"])}
-    else:  # the hub message, as published
-        beh = {c: fr.get(c) for c in B.BEHAVIOR_V1_COLS}
+    """A /arena/frame record (hub message JSON or ArenaFrame fields) → the logged frame, or None
+    for a flagged untracked frame (the live writer wrote no row). The column mapping is
+    _rows.arena_frame_to_row, shared with the node."""
+    row = arena_frame_to_row(fr)
+    if row is None:
+        return None
     if level == "full":
-        fields = (fields_by_fc or {}).get(int(beh["fc"]))
-        rec = {"type": "fictrac_frame", "seq": beh["fc"], "index": beh["idx"], "t": beh["ms"]}
+        ms, fc, idx = row[0], row[1], row[2]
+        fields = (fields_by_fc or {}).get(int(fc))
+        rec = {"type": "fictrac_frame", "seq": fc, "index": idx, "t": ms}
         rec["fictrac"] = fields if fields is not None else []
         return rec
-    return [beh[c] for c in B.BEHAVIOR_V1_COLS]
+    return row
 
 
 def fictrac_fields(rec: dict) -> tuple[int, list[float]] | None:
@@ -329,6 +334,13 @@ def convert(records: list[dict], level: str | None = None, order: str = "seq", c
                 ff = fictrac_fields(r)
                 if ff:
                     fields_by_fc[ff[0]] = ff[1]
+        if not fields_by_fc:
+            # The 25 columns exist only in the adapter's topics, which the bridge node records only
+            # with --record-fictrac-raw (off since 2026-10-18); the merged /arena/frame record keeps
+            # 10 of them. The readers of `full` (runlog-replay.js, closed-loop-report.py) use cols
+            # 1/15-17/22, which behavior_v2 carries — derive that instead.
+            raise ValueError("level 'full' needs the raw FicTrac topics (/fictrac/frame or /fictrac/raw), which this bag "
+                             "does not hold: the bridge node records them only with --record-fictrac-raw. Use --level behavior_v2.")
 
     for r in records:
         t = r["topic"]
@@ -413,7 +425,11 @@ def convert(records: list[dict], level: str | None = None, order: str = "seq", c
             if seq is None:
                 stats["skipped"] += 1
                 continue
-            add(seq, int(fr["ms"]), "frame", frame_line(fr, level, fields_by_fc))
+            line = frame_line(fr, level, fields_by_fc)
+            if line is None:  # a flagged untracked frame: recorded, never a line
+                stats["bad_frames"] = stats.get("bad_frames", 0) + 1
+                continue
+            add(seq, int(fr["ms"]), "frame", line)
             stats["frames"] += 1
         elif t == TOPIC_EVENT:
             o = _json_of(r)
