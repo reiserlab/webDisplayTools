@@ -172,6 +172,9 @@ test-viz = "python tests/test_viz_node.py"
 fox-json = "python nodes/foxglove_json.py"
 # after-the-fact Foxglove MCAP of a 2P color-sweep run from its ScanImage TIFFs + the arena .pat files (tools/tiff_run_to_mcap.py)
 tiff2mcap = "python tools/tiff_run_to_mcap.py"
+# its run-log side on a synthetic log (no TIFFs), and a check of a --runlog MCAP against that run log
+test-tiff2mcap = "python tests/test_tiff2mcap_runlog.py"
+check-tiff2mcap = "python tools/check_tiff2mcap.py"
 # `viz` environment only (`pixi run -e viz …`): the interactive views.
 rqt-graph = "rqt_graph"
 rqt-topic = "rqt_topic"

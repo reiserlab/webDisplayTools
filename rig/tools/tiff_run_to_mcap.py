@@ -12,22 +12,33 @@ Pure Python (numpy + the `mcap` package; no ROS process). What goes in, and what
                                                                            frameTimestamps_sec, epoch, DO1 pulses in the frame
   /scanimage/qc               JSON                              DERIVED    whole-field mean per channel, minus the pre-stimulus
                                                                            baseline of that file
-  /arena/stimulus             JSON                              COMMANDED (run log) or RECONSTRUCTED (first DO1 pulse +
-                                                                           nominal step lengths): color, duty, pattern, fps, step
-  /arena/display              foxglove.CompressedImage (PNG)    RECONSTRUCTED  the 200×40 arena frame from the .pat × duty ×
-                                                                           LED color at the protocol's fps (restart at frame 0 per step)
-  /arena/scene                foxglove.SceneUpdate              RECONSTRUCTED  20 panel cubes on the arena cylinder, colored by
-                                                                           LED color × lit fraction × duty; a fly marker at the center
-  /run/events                 JSON                              OBSERVED/COMMANDED  acquisition start/end per color (TIFF), step
-                                                                           edges, and — with --runlog — the connector command/replies
+  /arena/stimulus             JSON                              COMMANDED (--runlog: each trialParams at its logged send
+                                                                           time) or RECONSTRUCTED (first DO1 pulse + nominal step
+                                                                           lengths): color, duty, pattern, fps, step
+  /arena/display              foxglove.CompressedImage (PNG)    OBSERVED (--runlog with controller telemetry: every frame
+                                                                           the controller reports displaying, at its own time) or
+                                                                           RECONSTRUCTED (.pat × duty × LED color at the protocol's
+                                                                           fps, frame 0 at each step)
+  /arena/scene                foxglove.SceneUpdate              DERIVED from /arena/display: 20 panel cubes on the arena
+                                                                           cylinder, colored by LED color × lit fraction × duty
+  /run/events                 JSON                              acquisition start/end per color (TIFF), step edges, allOff,
+                                                                           and with --runlog every ScanImage connector command + reply
   /run/provenance             JSON (one message)                           how every topic was made, the clock used, the gaps
 
-Clock: TIFF `epoch` (PC local time) + `frameTimestamps_sec`, converted with --utc-offset-h (EDT = -4). The
-stimulus timeline is placed on the same clock through the DO1 pulses ScanImage stamped into the frames
-(aux trigger 0): the first pulse is the first trialParams. Without a run log the step edges are the
-protocol's nominal lengths — the day's host-timed steps ran 4.00 s (Chrome throttling), see
-rig/scanimage-day-2026-10-16.md — so the stimulus track is labelled RECONSTRUCTED; the pixels are
-what ScanImage recorded. Nothing here proves the light that reached the detectors; the qc trace does.
+Clock without a run log: TIFF `epoch` (PC local time) + `frameTimestamps_sec`, converted with
+--utc-offset-h (EDT = -4). The stimulus timeline is placed on that clock through the DO1 pulses ScanImage
+stamped into the frames (aux trigger 0): the first pulse is the first trialParams, and the step edges are
+the protocol's nominal lengths (labelled RECONSTRUCTED).
+
+Clock with --runlog: the run log's PC clock (Unix epoch). The ScanImage `epoch` field is NOT used for
+placement: on 2026-10-16 it ran 0.53–0.67 s ahead of the first frame (different per grab; on the epoch
+clock the first DO1 pulse lands before the trialParams that caused it). Intervals inside a TIFF are exact
+(DO1 span = the logged trialParams→allOff time within 1–3 ms), so each TIFF is anchored by one point: its
+first DO1 pulse = the controller's first displayed frame after that color's first trialParams (controller
+time mapped to the PC clock by a linear fit of the trialParams it executed against their logged send
+times; without controller telemetry, the trialParams send time). The per-file correction to the epoch
+clock is in /run/provenance. The pixels are what ScanImage recorded; nothing here proves the light that
+reached the detectors — the qc trace does.
 """
 
 from __future__ import annotations
@@ -213,6 +224,98 @@ def step_edges(run: dict, durations: list[float]) -> list[dict]:
     return edges
 
 
+# ── run log (Studio → bridge .jsonl, behavior_v2) ────────────────────────────
+COND_RE = re.compile(r"^(" + "|".join(COLORS) + r")_d(\d+)$")
+
+
+def load_runlog(path: Path) -> dict:
+    """The parts of a run log this tool uses. Times are PC epoch ms.
+
+    trials:   one per trialParams, in order: condition, color, duty, pattern_id, fps, t_cmd_ms (the
+              arena_command send time; the runner's trial-running receive time if those don't pair up)
+    all_off:  allOff send times (compact `a` rows "01 00", t_off from logging start)
+    connector: ScanImage connector commands (logging start + ms) and replies (rx_epoch_ms)
+    cc8:      controller-clock t_us of each trialParams the controller executed (`cc` rows, cmd 8)
+    cf:       the controller's displayed-frame records (t_us, frame idx, pattern id)
+    """
+    rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+    objs = [o for o in rows if isinstance(o, dict)]
+    t0 = next((o["ms"] for o in objs if o.get("event") == "logging_started"), None)
+    running = [o for o in objs if o.get("event") == "runner" and o.get("phase") == "trial-running"]
+    sends = [o["t"] for o in objs if o.get("event") == "arena_command" and str(o.get("head", "")).startswith("0d 08")]
+    paired = len(sends) == len(running)
+    trials = []
+    for i, o in enumerate(running):
+        m = COND_RE.match(str(o.get("condition", "")))
+        p = o.get("params", {})
+        trials.append({"condition": o.get("condition"), "color": m.group(1) if m else None,
+                       "duty": int(p.get("duty", m.group(2) if m else 0)), "pattern_id": p.get("patternId"),
+                       "fps": p.get("frameRate"), "t_cmd_ms": float(sends[i] if paired else o["rx_ms"]),
+                       "duty_matches_condition": bool(m) and int(m.group(2)) == int(p.get("duty", -1))})
+    a_off = [float(t0 + a[1]) for a in rows if isinstance(a, list) and a[0] == "a" and a[3] == "0100"] if t0 is not None else []
+    runner_off = [float(o["rx_ms"]) for o in objs if o.get("event") == "runner" and o.get("op") == "allOff"]
+    all_off = a_off if len(a_off) == len(runner_off) else runner_off
+    connector = []
+    for o in objs:
+        if o.get("type") != "connector" or o.get("kind") not in ("command", "reply"):
+            continue
+        if o["kind"] == "command" and t0 is not None:
+            connector.append({"t_ms": float(t0 + o["ms"]), "kind": "command", "command": o.get("command"),
+                              "detail": json.dumps(o.get("params", {}), separators=(",", ":"))})
+        elif o["kind"] == "reply":
+            v = o.get("value")
+            connector.append({"t_ms": float(o.get("rx_epoch_ms") or o.get("t_ms")), "kind": "reply", "command": o.get("command"),
+                              "detail": f"{o.get('outcome')} rtt {o.get('rtt_ms', 0):.0f} ms "
+                                        + json.dumps(v, separators=(",", ":"))[:200]})
+    cc8 = [float(a[2]) for a in rows if isinstance(a, list) and a[0] == "cc" and a[4] == 8]
+    cf = [(float(a[2]), int(a[4]), int(a[5])) for a in rows if isinstance(a, list) and a[0] == "cf"]
+    return {"path": str(path), "t0_ms": t0, "trials": trials, "sends_paired": paired, "all_off": sorted(all_off),
+            "all_off_source": "a rows (send)" if all_off is a_off else "runner rx_ms", "connector": sorted(connector, key=lambda c: c["t_ms"]),
+            "cc8": cc8, "cf": cf}
+
+
+def controller_clock(log: dict):
+    """Linear map controller t_us → PC ms from the trialParams the controller executed vs their send times.
+    Returns (fn, info) or (None, reason) when the telemetry can't support it."""
+    cc8, sends = log["cc8"], [t["t_cmd_ms"] for t in log["trials"]]
+    if not log["sends_paired"] or len(cc8) != len(sends) or len(cc8) < 2:
+        return None, f"no controller clock map (cc trialParams {len(cc8)}, logged sends {len(sends)}, paired {log['sends_paired']})"
+    x = np.array(cc8) / 1e3
+    y = np.array(sends)
+    k, b = np.polyfit(x - x[0], y, 1)
+    res = y - (k * (x - x[0]) + b)
+    fn = lambda t_us: k * (t_us / 1e3 - x[0]) + b  # noqa: E731
+    return fn, {"rate": float(k), "ppm": float((k - 1) * 1e6), "residual_sd_ms": float(res.std()), "max_abs_residual_ms": float(abs(res).max()),
+                "note": "fit of send time (PC) vs controller execution time; residual includes USB/host latency jitter"}
+
+
+def runlog_timeline(log: dict, color: str, to_pc) -> dict | None:
+    """One color's logged steps. t_disp_ms = the controller's first displayed frame after the trialParams
+    (PC clock) when the telemetry allows, else the send time. t_off_ms = the first allOff after the last step."""
+    steps = [t for t in log["trials"] if t["color"] == color]
+    if not steps:
+        return None
+    cf = log["cf"]
+    cc_by_trial = dict(zip(range(len(log["trials"])), log["cc8"])) if to_pc else {}
+    out = []
+    for s in steps:
+        i = log["trials"].index(s)
+        t_disp, frames = None, []
+        if to_pc and i in cc_by_trial:
+            t_exec = cc_by_trial[i]
+            t_next = cc_by_trial.get(i + 1, float("inf"))
+            frames = [(to_pc(t_us), idx, pid) for t_us, idx, pid in cf if t_exec <= t_us < t_next and pid == s["pattern_id"]]
+            if frames:
+                t_disp = frames[0][0]
+        out.append({**s, "step": len(out), "t_disp_ms": t_disp if t_disp is not None else s["t_cmd_ms"],
+                    "t_disp_source": "controller first displayed frame" if t_disp is not None else "trialParams send time",
+                    "frames": frames})
+    last = out[-1]["t_cmd_ms"]
+    t_off = next((t for t in log["all_off"] if t > last), None)
+    lat = [s["t_disp_ms"] - s["t_cmd_ms"] for s in out]
+    return {"steps": out, "t_off_ms": t_off, "display_latency_ms": float(np.median(lat))}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tiff-dir", required=True)
@@ -220,7 +323,8 @@ def main(argv=None) -> int:
     ap.add_argument("--pat-dir", required=True, help="folder with G6_2x10_toprow_grat20_<color>_gs16.pat")
     ap.add_argument("--out", required=True)
     ap.add_argument("--layout-out", default=None)
-    ap.add_argument("--runlog", default=None, help="the run's .jsonl (optional): step edges become COMMANDED")
+    ap.add_argument("--runlog", default=None, help="the run's .jsonl (optional): logged step times, the PC clock "
+                    "(each TIFF anchored by its first DO1 pulse), displayed frames from controller telemetry, ScanImage commands")
     ap.add_argument("--utc-offset-h", type=float, default=-4.0, help="TIFF epoch is PC local time (EDT = -4)")
     ap.add_argument("--fps", type=float, default=20.0, help="pattern frame rate in the protocol")
     ap.add_argument("--step-s", type=float, default=4.0, help="nominal step length when no run log (the day's host-timed steps)")
@@ -238,6 +342,27 @@ def main(argv=None) -> int:
     tiff_dir, pat_dir, out = Path(a.tiff_dir), Path(a.pat_dir), Path(a.out)
     overrides = json.loads(a.step_durations)
     runs = [load_color(tiff_dir, c, a.counter, a.utc_offset_h, a.preview_size) for c in COLORS]
+
+    # with a run log: put every TIFF on the run log's PC clock, anchored by its first DO1 pulse
+    log, to_pc, clock_info, timelines = None, None, None, {}
+    if a.runlog:
+        log = load_runlog(Path(a.runlog))
+        to_pc, clock_info = controller_clock(log)
+        for run in runs:
+            tl = runlog_timeline(log, run["color"], to_pc)
+            if not tl or not run["aux0"]:
+                continue
+            anchor_ms = tl["steps"][0]["t_disp_ms"]
+            epoch_ns_first_do1 = run["t0_ns"] + int(round(run["aux0"][0] * 1e9))
+            shift_ns = int(round(anchor_ms * 1e6)) - epoch_ns_first_do1
+            run["t0_ns"] += shift_ns
+            for fr in run["frames"]:
+                fr["t_ns"] += shift_ns
+            # end check: last DO1 pulse (+ one 300 Hz period) vs the logged allOff + display latency
+            end_ms = anchor_ms + (run["aux0"][-1] - run["aux0"][0] + 1 / 300) * 1e3
+            tl.update(anchor_ms=anchor_ms, epoch_correction_ms=shift_ns / 1e6,
+                      end_check_ms=(end_ms - (tl["t_off_ms"] + tl["display_latency_ms"])) if tl["t_off_ms"] else None)
+            timelines[run["color"]] = tl
     runs.sort(key=lambda r: r["t0_ns"])
     pats = {c: read_pat(pat_dir / f"G6_2x10_toprow_grat20_{c}_gs16.pat") for c in COLORS}
 
@@ -258,8 +383,10 @@ def main(argv=None) -> int:
         f = max(1, h // a.preview_size)
         return img[: h - h % f, : w - w % f].reshape(h // f, f, w // f, f).mean(axis=(1, 3))
 
-    def stimulus_source():
-        return "commanded (run log trialParams)" if a.runlog else "reconstructed (first DO1 pulse + nominal step lengths)"
+    def stimulus_source(color):
+        if color in timelines:
+            return "commanded (run log trialParams, logged send time)"
+        return "reconstructed (first DO1 pulse + nominal step lengths)"
 
     gaps = []
     with open(out, "wb") as fh:
@@ -329,16 +456,47 @@ def main(argv=None) -> int:
             s = a.display_scale
             return png_bytes(np.repeat(np.repeat(img, s, axis=0), s, axis=1))
 
-        prov = {"source_files": {}, "clock": f"TIFF epoch (PC local, UTC{a.utc_offset_h:+.0f}) + frameTimestamps_sec",
-                "stimulus_source": stimulus_source(), "display_source": "reconstructed: .pat frame × duty/255 × LED color, "
-                f"fps {a.fps}, frame index restarts at 0 at each step", "scene_source": "reconstructed: panel cubes colored by LED color × lit fraction × duty",
+        recon_display = f"reconstructed: .pat frame × duty/255 × LED color, fps {a.fps}, frame index restarts at 0 at each step"
+        prov = {"source_files": {},
+                "clock": ("run log PC clock (Unix epoch); each TIFF anchored by its first DO1 pulse = the controller's first "
+                          "displayed frame after the color's first trialParams; the ScanImage epoch field is not used for placement")
+                         if timelines else f"TIFF epoch (PC local, UTC{a.utc_offset_h:+.0f}) + frameTimestamps_sec",
+                "stimulus_source": {c: stimulus_source(c) for c in COLORS},
+                "display_source": {c: ("observed: the controller's displayed-frame records (cf rows), controller clock → PC"
+                                       if c in timelines and timelines[c]["steps"][0]["frames"] else recon_display) for c in COLORS},
+                "scene_source": "derived from /arena/display: panel cubes colored by LED color × lit fraction × duty",
                 "preview_mapping": {f"ch{ch}": {"lo": window[ch][0], "hi": window[ch][1], "downsample": "2x2 mean"} for ch in window},
                 "step_lengths_s": {}, "gaps": []}
+        if log is not None:
+            prov["runlog"] = {"path": log["path"], "trials": len(log["trials"]), "trialParams_send_times_paired": log["sends_paired"],
+                              "all_off_source": log["all_off_source"], "connector_records": len(log["connector"]),
+                              "controller_frames": len(log["cf"]), "controller_clock": clock_info,
+                              "duty_mismatches": [t["condition"] for t in log["trials"] if not t["duty_matches_condition"]]}
+            prov["anchors"] = {c: {"first_do1_pc_ms": tl["anchor_ms"], "epoch_correction_ms": tl["epoch_correction_ms"],
+                                   "display_latency_ms": tl["display_latency_ms"], "end_check_ms": tl["end_check_ms"],
+                                   "t_disp_source": tl["steps"][0]["t_disp_source"]} for c, tl in timelines.items()}
+            for c in COLORS:
+                if c not in timelines:
+                    prov["gaps"].append({"color": c, "where": "run log given but no trialParams or DO1 for this color — reconstructed"})
         counts = {}
         for run in runs:
             color = run["color"]
-            dur = overrides.get(color) or [a.step_s] * len(DUTIES)
-            edges = step_edges(run, dur)
+            tl = timelines.get(color)
+            if tl:
+                # logged steps in TIFF-relative seconds: the light changes at the displayed time (qc windows);
+                # the stimulus marker sits at the commanded send time
+                f0, anchor = run["aux0"][0], tl["anchor_ms"]
+                rel = lambda t_ms: f0 + (t_ms - anchor) / 1e3  # noqa: E731
+                st = tl["steps"]
+                t_last = (tl["t_off_ms"] + tl["display_latency_ms"]) if tl["t_off_ms"] else st[-1]["t_disp_ms"] + a.step_s * 1e3
+                bounds = [s["t_disp_ms"] for s in st] + [t_last]
+                edges = [{"step": k, "duty": s["duty"], "pattern_id": s["pattern_id"], "fps": s["fps"] or a.fps,
+                          "t_start_s": rel(bounds[k]), "t_end_s": rel(bounds[k + 1]), "t_cmd_s": rel(s["t_cmd_ms"]), "frames": s["frames"]}
+                         for k, s in enumerate(st)]
+                dur = [round((bounds[k + 1] - bounds[k]) / 1e3, 4) for k in range(len(st))]
+            else:
+                dur = overrides.get(color) or [a.step_s] * len(DUTIES)
+                edges = step_edges(run, dur)
             prov["step_lengths_s"][color] = dur
             prov["source_files"][color] = {"tiff": str(run["path"]), "frames": len(run["frames"]), "channels": run["chans"],
                                            "channels_source": run["channels_source"], "scanFrameRate": run["frame_rate"],
@@ -346,7 +504,8 @@ def main(argv=None) -> int:
                                            "do1_pulses": len(run["aux0"]), "first_do1_s": run["aux0"][0] if run["aux0"] else None,
                                            "last_do1_s": run["aux0"][-1] if run["aux0"] else None}
             t0 = run["t0_ns"]
-            put(ch_ev, t0, {"event": "acquisition_start", "color": color, "detail": f"{run['path'].name}, {len(run['frames'])} frames @ {run['frame_rate']:.2f} Hz", "source": "observed (TIFF epoch)"})
+            put(ch_ev, t0, {"event": "acquisition_start", "color": color, "detail": f"{run['path'].name}, {len(run['frames'])} frames @ {run['frame_rate']:.2f} Hz",
+                            "source": "observed (TIFF, anchored to the run log by DO1)" if tl else "observed (TIFF epoch)"})
             # baseline = frames before the first DO1 pulse
             first_do1 = run["aux0"][0] if run["aux0"] else None
             base = {ch: float(np.mean([fr["imgs"][ch].mean() for fr in run["frames"] if first_do1 is None or fr["fields"]["frameTimestamps_sec"] < first_do1] or [0.0])) for ch in run["chans"]}
@@ -370,32 +529,58 @@ def main(argv=None) -> int:
                     qc[f"dmean_ch{ch}"] = m - base[ch]
                 put(ch_qc, t_ns, qc)
             counts[color] = len(run["frames"])
-            # reconstructed stimulus + display + scene
+            # stimulus (commanded or reconstructed) + display (observed or reconstructed) + scene
             pat = pats[color]
-            src = stimulus_source()
+            src = stimulus_source(color)
             if not edges:
                 prov["gaps"].append({"color": color, "where": "no DO1 pulses in the TIFF — no stimulus timeline"})
+            scene_every = max(1, int(round(a.fps / a.scene_hz))) if a.scene_hz > 0 else 0
             for e in edges:
                 ts_ns = t0 + int(e["t_start_s"] * 1e9)
-                put(ch_stim, ts_ns, {"color": color, "wavelength_nm": LED_NM[color], "duty": e["duty"], "step": e["step"], "on": True,
-                                     "pattern": f"G6_2x10_toprow_grat20_{color}_gs16", "fps": a.fps, "t_rel_s": e["t_start_s"], "source": src})
-                put(ch_ev, ts_ns, {"event": "step_start", "color": color, "detail": f"duty {e['duty']} (step {e['step']})", "source": src})
-                n_disp = int((e["t_end_s"] - e["t_start_s"]) * a.fps)
-                for k in range(n_disp):
-                    t_ns = ts_ns + int(k / a.fps * 1e9)
-                    frame = pat["frames"][k % pat["num_frames"]]
-                    put(ch_disp, t_ns, img_msg(t_ns, display_png(color, frame, e["duty"]), "arena_display"))
-                    if a.scene_hz > 0 and (k % max(1, int(round(a.fps / a.scene_hz)))) == 0:
-                        put(ch_scene, t_ns, scene(t_ns, color, frame, e["duty"], True))
+                tc_ns = t0 + int(e.get("t_cmd_s", e["t_start_s"]) * 1e9)
+                put(ch_stim, tc_ns, {"color": color, "wavelength_nm": LED_NM[color], "duty": e["duty"], "step": e["step"], "on": True,
+                                     "pattern": f"G6_2x10_toprow_grat20_{color}_gs16", "fps": e.get("fps", a.fps),
+                                     "t_rel_s": e.get("t_cmd_s", e["t_start_s"]), "source": src})
+                put(ch_ev, tc_ns, {"event": "step_start", "color": color, "detail": f"duty {e['duty']} (step {e['step']})", "source": src})
+                if e.get("frames"):
+                    # OBSERVED: each frame the controller reports displaying, at its own (PC-mapped) time
+                    put(ch_ev, ts_ns, {"event": "display_start", "color": color,
+                                       "detail": f"duty {e['duty']}: first displayed frame {(ts_ns - tc_ns) / 1e6:.1f} ms after the command",
+                                       "source": "observed (controller frame records)"})
+                    for k, (t_ms, idx, _pid) in enumerate(e["frames"]):
+                        t_ns = int(round(t_ms * 1e6))
+                        frame = pat["frames"][idx % pat["num_frames"]]
+                        put(ch_disp, t_ns, img_msg(t_ns, display_png(color, frame, e["duty"]), "arena_display"))
+                        if scene_every and k % scene_every == 0:
+                            put(ch_scene, t_ns, scene(t_ns, color, frame, e["duty"], True))
+                else:
+                    n_disp = int((e["t_end_s"] - e["t_start_s"]) * a.fps)
+                    for k in range(n_disp):
+                        t_ns = ts_ns + int(k / a.fps * 1e9)
+                        frame = pat["frames"][k % pat["num_frames"]]
+                        put(ch_disp, t_ns, img_msg(t_ns, display_png(color, frame, e["duty"]), "arena_display"))
+                        if scene_every and k % scene_every == 0:
+                            put(ch_scene, t_ns, scene(t_ns, color, frame, e["duty"], True))
             if edges:
-                t_off = t0 + int(edges[-1]["t_end_s"] * 1e9)
+                if tl and tl["t_off_ms"]:
+                    t_off = int(round(tl["t_off_ms"] * 1e6))
+                    off_src = "commanded (run log allOff send time)"
+                    off_detail = f"last DO1 pulse at {run['aux0'][-1]:.3f} s; DO1 end − (allOff + latency) = {tl['end_check_ms']:+.1f} ms"
+                else:
+                    t_off = t0 + int(edges[-1]["t_end_s"] * 1e9)
+                    off_src = "observed (DO1) / " + src
+                    off_detail = f"last DO1 pulse at {run['aux0'][-1]:.3f} s"
                 put(ch_stim, t_off, {"color": color, "wavelength_nm": LED_NM[color], "duty": 0, "step": -1, "on": False,
-                                     "pattern": "", "fps": a.fps, "t_rel_s": edges[-1]["t_end_s"], "source": src})
-                put(ch_ev, t_off, {"event": "allOff", "color": color, "detail": f"last DO1 pulse at {run['aux0'][-1]:.3f} s", "source": "observed (DO1) / " + src})
+                                     "pattern": "", "fps": a.fps, "t_rel_s": (t_off - t0) / 1e9, "source": off_src})
+                put(ch_ev, t_off, {"event": "allOff", "color": color, "detail": off_detail, "source": off_src})
                 put(ch_scene, t_off, scene(t_off, color, None, 0, False))
                 put(ch_disp, t_off, img_msg(t_off, display_png(color, np.zeros_like(pat["frames"][0]), 0), "arena_display"))
             t_end = run["frames"][-1]["t_ns"]
             put(ch_ev, t_end, {"event": "acquisition_end", "color": color, "detail": f"{len(run['frames'])} frames", "source": "observed (TIFF)"})
+        if log is not None and timelines:
+            for c in log["connector"]:
+                put(ch_ev, int(round(c["t_ms"] * 1e6)), {"event": f"scanimage_{c['kind']}", "color": "", "detail": f"{c['command']} {c['detail']}",
+                                                          "source": "commanded (run log)" if c["kind"] == "command" else "observed (run log reply)"})
         prov["frames_per_color"] = counts
         put(ch_prov, runs[0]["t0_ns"], prov)
         w.add_metadata("provenance", {k: json.dumps(v) for k, v in prov.items()})
@@ -404,14 +589,16 @@ def main(argv=None) -> int:
     print(f"wrote {out} ({out.stat().st_size / 1e6:.1f} MB)")
     print(json.dumps({"frames_per_color": counts, "preview_mapping": prov["preview_mapping"], "step_lengths_s": prov["step_lengths_s"],
                       "do1": {c: (prov["source_files"][c]["first_do1_s"], prov["source_files"][c]["last_do1_s"], prov["source_files"][c]["do1_pulses"]) for c in prov["source_files"]},
-                      "gaps": prov["gaps"]}, indent=1))
+                      "anchors": prov.get("anchors"), "controller_clock": clock_info, "gaps": prov["gaps"]}, indent=1))
 
     if a.layout_out:
         chans = runs[0]["chans"]
         cfg = {
             f"Image!ch{ch}": {"imageMode": {"imageTopic": f"/scanimage/preview/ch{ch}"}, "foxglovePanelTitle": f"ScanImage ch{ch} (observed, {a.preview_size}px preview)"} for ch in chans}
         cfg.update({
-            "Image!display": {"imageMode": {"imageTopic": "/arena/display"}, "foxglovePanelTitle": "Arena display (RECONSTRUCTED from .pat × duty)"},
+            "Image!display": {"imageMode": {"imageTopic": "/arena/display"},
+                              "foxglovePanelTitle": "Arena display (controller-reported frames × .pat × duty)" if any(
+                                  t["steps"][0]["frames"] for t in timelines.values()) else "Arena display (RECONSTRUCTED from .pat × duty)"},
             "3D!arena": {"cameraState": {"perspective": True, "distance": 4.2, "phi": 55, "thetaOffset": 40, "targetOffset": [0, 0, 0.6], "target": [0, 0, 0], "targetOrientation": [0, 0, 0, 1], "fovy": 45, "near": 0.01, "far": 100},
                          "followTf": "arena", "scene": {"enableStats": False, "backgroundColor": "#0f1419"}, "topics": {"/arena/scene": {"visible": True}},
                          "foxglovePanelTitle": "Arena (RECONSTRUCTED panel states)"},
