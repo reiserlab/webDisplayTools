@@ -123,6 +123,28 @@ the tooltip naming the end state. Optional columns: age, experimenter, file size
 - Static PNG stimulus panoramas are selected from the logged p3 pattern ID and
   shifted into the same cue-aligned `-180..180` coordinate as the histogram
 
+### SBD visual place learning
+
+- Family `sbd-place`: the rig03 port of the G4.1 p058 / p066 / p067 place-learning
+  protocols (`p3-sbd-placelearning-*`, `sbd-bias-*`). Classified before the p3
+  families, since the filenames carry the `p3` prefix. Variants (base, coupled,
+  uncoupled, bias) are read from the filename and shown in the page notes.
+- The unit of analysis is the closed-loop bout = one Mode-3 `trialParams`
+  interval, not the step: the uncoupled control runs two bouts per step
+  (`pair_m<k>_p<k>`). Each bout row carries its start frame and side, SD pattern
+  id and picture rotation k (46→0, 47→1, 48→2, 49→3), and its own logged heat
+  span.
+- The safe zone comes from the first training bout's normalized
+  `led_activation` zone (default frames 158–199 + 0–7, centre 183); scoring is
+  in frame space, so the fixed heat map of the uncoupled control is scored the
+  same way as the coupled protocol.
+- Pages: time in the safe zone per bout (chance line), time to the first zone
+  entry (escape latency), LED-on fraction per bout, heading occupancy around
+  the zone centre with the zone and ramps shaded, and a stage preference index
+  `(t safe − t opposite) / (t safe + t opposite)` with "opposite" the zone
+  rotated 180° (the Florence / Ofstad probe PI). Group mode draws per-fly lines
+  and mean ± SEM; every page exports its bout rows as CSV.
+
 Unknown protocols receive generic condition-aligned turning, forward, and
 relative-heading pages instead of failing import.
 

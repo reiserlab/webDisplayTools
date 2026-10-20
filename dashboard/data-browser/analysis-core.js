@@ -209,6 +209,30 @@
         if (filename.includes('p1') || names.some((name) => /^(om_|loom_)/.test(name))) {
             return { family: 'p1', label: 'p1 optomotor + looming' };
         }
+        // SBD visual place learning (rig03 port of the G4.1 p058/p066/p067
+        // protocols) — checked BEFORE the p3 families: the files are named
+        // p3-sbd-… and the bare "p3" substring would otherwise send them to the
+        // Heisenberg T-figure analysis. Condition names are the fallback for a
+        // renamed copy (sbd-bias-…): train_plus/train_minus or the uncoupled
+        // control's pair_m<k>_p<k> steps, always with a preprobe.
+        const sbdNames =
+            names.includes('preprobe') &&
+            names.some((name) => /^(train_(plus|minus)|pair_m\d_p\d)$/.test(name));
+        if (filename.includes('sbd') || sbdNames) {
+            const variant = filename.includes('uncoupled')
+                ? 'uncoupled'
+                : filename.includes('bias')
+                  ? 'bias'
+                  : filename.includes('coupled')
+                    ? 'coupled'
+                    : 'base';
+            return {
+                family: 'sbd-place',
+                label:
+                    variant === 'base' ? 'SBD place learning' : `SBD place learning (${variant})`,
+                sbdVariant: variant
+            };
+        }
         const p3Patterns = {
             heisenberg_ts: 'T figures',
             heisenberg_high_low: 'high/low bars',
@@ -1334,6 +1358,215 @@
         return bundles;
     }
 
+    // ------------------------------------------------------------------
+    // SBD visual place learning (family 'sbd-place'): pattern 46 (bars |
+    // stripes | diagonal), a 90° LED-off SAFE ZONE on the bars/stripes seam,
+    // graded 15° heat ramps outside it, bouts opening ±90° outside the zone.
+    // Stages: preprobe (uniform heat) → training bouts → probe (uniform heat).
+    // The uncoupled control (p067 port) runs TWO bouts per step (pair_m<k>_p<k>,
+    // each with its own picture rotation k), so the unit of analysis is the
+    // Mode-3 trialParams INTERVAL, not the step. Everything is scored in frame
+    // space: the heat map is fixed in frames for every variant, which is the
+    // point of the uncoupled control.
+    // ------------------------------------------------------------------
+    const SBD_FRAME_COUNT = 200;
+    const SBD_DEFAULT_HEAT = [8, 158]; // [a, d): LED on (ramps included) → safe = 158..199 + 0..7
+    const SBD_PATTERN_ROTATION = { 46: 0, 47: 1, 48: 2, 49: 3 }; // SD id → k (× 90°)
+
+    function sbdStage(condition) {
+        const name = safeText(condition);
+        if (name === 'preprobe') return 'preprobe';
+        if (name === 'probe') return 'probe';
+        if (/^(train_(plus|minus)|pair_m\d_p\d)$/.test(name)) return 'training';
+        return '';
+    }
+
+    function sbdIsClosedLoop(interval) {
+        return !!(interval && interval.params && finite(interval.params.mode) === 3);
+    }
+
+    /**
+     * Heat span [a, d) (0-based frames, d = first LED-off frame, may wrap) of
+     * one bout's normalized `led_activation` — the runner records zones with
+     * ramp_in [a, b] / ramp_out [c, d]. A zone covering the whole turn (the
+     * probes' uniform heat) returns null.
+     */
+    function sbdHeatSpan(activation) {
+        const zone = activation && Array.isArray(activation.zones) ? activation.zones[0] : null;
+        if (!zone) return null;
+        const a = finite(Array.isArray(zone.ramp_in) ? zone.ramp_in[0] : zone.ramp_in);
+        const d = finite(Array.isArray(zone.ramp_out) ? zone.ramp_out[1] : zone.ramp_out);
+        if (!Number.isFinite(a) || !Number.isFinite(d)) return null;
+        if (mod(d - a, SBD_FRAME_COUNT) === 0) return null;
+        return [mod(a, SBD_FRAME_COUNT), mod(d, SBD_FRAME_COUNT)];
+    }
+
+    function sbdInSpan(span, index) {
+        const i = mod(Math.round(finite(index)), SBD_FRAME_COUNT);
+        const [a, d] = span;
+        return a <= d ? i >= a && i < d : i >= a || i < d;
+    }
+
+    function sbdZoneFromHeat(heat) {
+        const n = SBD_FRAME_COUNT;
+        const [a, d] = heat;
+        const size = mod(a - d, n); // safe frames: d .. a-1 (wrapping)
+        const centerIndex = mod(d + Math.floor(size / 2), n);
+        return {
+            heat,
+            size,
+            chance: size / n,
+            centerIndex,
+            isSafe: (index) => !sbdInSpan(heat, index),
+            // the zone rotated by 180°: the classic PI's "opposite" sector
+            isOpposite: (index) => !sbdInSpan(heat, finite(index) + n / 2),
+            // degrees from the safe-zone centre (0 = centre; ± size/2 × 1.8 = edges)
+            angleDeg: (index) =>
+                wrapDeg(((mod(Math.round(finite(index)), n) - centerIndex) * 360) / n)
+        };
+    }
+
+    /** The run's safe zone: the heat span of its first training bout (default p058 geometry). */
+    function sbdZone(run) {
+        for (const step of (run && run.steps) || []) {
+            if (sbdStage(step.condition) !== 'training') continue;
+            for (const interval of step.intervals || []) {
+                if (!sbdIsClosedLoop(interval)) continue;
+                const span = sbdHeatSpan(interval.ledActivation);
+                if (span) return sbdZoneFromHeat(span);
+            }
+        }
+        return sbdZoneFromHeat(SBD_DEFAULT_HEAT);
+    }
+
+    /**
+     * One row per closed-loop bout (preprobe, train_01…train_N, probe), scored on
+     * the frame samples the bridge logged inside the bout's trialParams interval:
+     * safe-zone fraction, opposite-sector fraction, time-weighted preference
+     * (safe − opposite) / (safe + opposite), LED-on fraction from the bout's own
+     * heat span (1 for uniform heat), seconds to the first safe-zone sample,
+     * start frame / side, pattern id and its rotation k. `position` is the x
+     * for sequence plots: 0 = preprobe, 1..N bouts, N+1 = probe.
+     */
+    function sbdBouts(run) {
+        const zone = sbdZone(run);
+        const bouts = [];
+        let trainingNo = 0;
+        for (const step of (run && run.steps) || []) {
+            const stage = sbdStage(step.condition);
+            if (!stage) continue;
+            const frames = (run.framesByStep && run.framesByStep.get(step.index)) || [];
+            for (const interval of step.intervals || []) {
+                if (!sbdIsClosedLoop(interval)) continue;
+                const startMs = interval.startMs;
+                const endMs = Number.isFinite(interval.endMs) ? interval.endMs : step.endMs;
+                const heat = sbdHeatSpan(interval.ledActivation);
+                let samples = 0;
+                let safe = 0;
+                let opposite = 0;
+                let led = 0;
+                let firstEntrySec = NaN;
+                for (const frame of frames) {
+                    if (frame.ms < startMs || frame.ms > endMs || !Number.isFinite(frame.index))
+                        continue;
+                    samples += 1;
+                    if (zone.isSafe(frame.index)) {
+                        safe += 1;
+                        if (!Number.isFinite(firstEntrySec))
+                            firstEntrySec = (frame.ms - startMs) / 1000;
+                    }
+                    if (zone.isOpposite(frame.index)) opposite += 1;
+                    if (!heat || sbdInSpan(heat, frame.index)) led += 1;
+                }
+                const bout = stage === 'training' ? (trainingNo += 1) : null;
+                const startFrame = finite(interval.params.initPos);
+                const patternId = finite(interval.params.patternId);
+                const scored = safe + opposite;
+                bouts.push({
+                    stage,
+                    bout,
+                    label: stage === 'training' ? 'train_' + String(bout).padStart(2, '0') : stage,
+                    condition: step.condition,
+                    stepIndex: step.index,
+                    startMs,
+                    endMs,
+                    durationSec: finite(interval.durationSec),
+                    startFrame,
+                    side: Number.isFinite(startFrame)
+                        ? zone.angleDeg(startFrame) >= 0
+                            ? '+'
+                            : '-'
+                        : '',
+                    patternId,
+                    rotationK: Object.prototype.hasOwnProperty.call(SBD_PATTERN_ROTATION, patternId)
+                        ? SBD_PATTERN_ROTATION[patternId]
+                        : null,
+                    uniformHeat: !heat,
+                    samples,
+                    safeFraction: samples ? safe / samples : NaN,
+                    oppositeFraction: samples ? opposite / samples : NaN,
+                    ledOnFraction: samples ? led / samples : NaN,
+                    firstEntrySec,
+                    preference: scored ? (safe - opposite) / scored : NaN,
+                    position: stage === 'preprobe' ? 0 : stage === 'training' ? bout : NaN
+                });
+            }
+        }
+        for (const row of bouts) if (row.stage === 'probe') row.position = trainingNo + 1;
+        return { zone, bouts, trainingBouts: trainingNo };
+    }
+
+    /** Time-weighted stage totals (preprobe / training / probe) over a run's bouts. */
+    function sbdStageSummary(run) {
+        const { zone, bouts, trainingBouts } = sbdBouts(run);
+        const stage = (name) => {
+            const rows = bouts.filter((row) => row.stage === name);
+            let samples = 0;
+            let safe = 0;
+            let opposite = 0;
+            let led = 0;
+            for (const row of rows) {
+                const n = row.samples || 0;
+                samples += n;
+                safe += Math.round((finite(row.safeFraction) || 0) * n);
+                opposite += Math.round((finite(row.oppositeFraction) || 0) * n);
+                led += Math.round((finite(row.ledOnFraction) || 0) * n);
+            }
+            const scored = safe + opposite;
+            return {
+                stage: name,
+                bouts: rows.length,
+                samples,
+                safeFraction: samples ? safe / samples : NaN,
+                ledOnFraction: samples ? led / samples : NaN,
+                preference: scored ? (safe - opposite) / scored : NaN
+            };
+        };
+        return {
+            zone,
+            trainingBouts,
+            preprobe: stage('preprobe'),
+            training: stage('training'),
+            probe: stage('probe')
+        };
+    }
+
+    /** Occupancy histogram (percent per bin) of the bouts of one stage, in degrees from the zone centre. */
+    function sbdOccupancy(run, stageName, binCount) {
+        const { zone, bouts } = sbdBouts(run);
+        const angles = [];
+        for (const row of bouts) {
+            if (row.stage !== stageName) continue;
+            const frames = (run.framesByStep && run.framesByStep.get(row.stepIndex)) || [];
+            for (const frame of frames) {
+                if (frame.ms < row.startMs || frame.ms > row.endMs || !Number.isFinite(frame.index))
+                    continue;
+                angles.push(zone.angleDeg(frame.index));
+            }
+        }
+        return { ...occupancyHistogram(angles, binCount || 100), zone };
+    }
+
     const DashboardAnalysis = {
         DEFAULT_BALL_DIAMETER_MM,
         DEFAULT_SMOOTH_WINDOW_S,
@@ -1378,7 +1611,16 @@
         occupancyHistogram,
         circularBoxcar,
         preferenceMetrics,
-        metricLabel
+        metricLabel,
+        SBD_FRAME_COUNT,
+        SBD_DEFAULT_HEAT,
+        SBD_PATTERN_ROTATION,
+        sbdStage,
+        sbdHeatSpan,
+        sbdZone,
+        sbdBouts,
+        sbdStageSummary,
+        sbdOccupancy
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = DashboardAnalysis;
