@@ -10,17 +10,13 @@ BIAS connector) + the CW/CCW-pair protocols Grace asked for (`claude/okey-cokey-
 G6 Foxglove dashboard (`docs/okey-cokey-foxglove-dashboard-plan.md`). Neither is on a Pages tier, so
 serve the checkout locally (step 4).
 
-## 0. Machine (5 min, over Remote Desktop)
+## 0. Setup (bare PC → ready)
 
-- [ ] PC name, Windows version, free disk on the video drive.
-- [ ] `git --version`, `pixi --version` (≥ 0.69), Chrome version. Install pixi if missing:
-      `powershell -ExecutionPolicy ByPass -c "irm -useb https://pixi.sh/install.ps1 | iex"`.
-- [ ] Short checkout path (ww18 W2: long paths break the optional typed build; the default env does not
-      care, but keep it short anyway): `git clone https://github.com/reiserlab/webDisplayTools C:\w`,
-      then `cd C:\w` and `git switch claude/okey-cokey-dashboard`.
-- [ ] No bridge 3.4 running; `netstat -ano | findstr ":7447 :8765 :8092 :60000 :5010"` shows only BIAS
-      on 5010 (once BIAS is up).
-- [ ] `cd ros2-poc` then `pixi install --locked` (default env only; skip `-e typed`). ww18: 25 s cold.
+Do [`okey-cokey-pc-setup.md`](okey-cokey-pc-setup.md) first: PC access, git / pixi / Chrome /
+Foxglove, BIAS + camera SDK, the controller, the clone at `C:\w` on `claude/okey-cokey-dashboard`,
+the three `pixi install`s, both dashboard tests and a no-flies smoke of the whole stack. The steps
+below assume it is done.
+
 - [ ] IR backlight on by hand (Arduino). The web runner does not drive the backlight yet.
 
 ## 1. BIAS itself (10 min)
@@ -82,7 +78,7 @@ Before a run: BIAS indicator green, camera fps plotted, "Arena" grey/OK. (Withou
 
 ```powershell
 cd C:\w
-python .claude\nocache-server.py 8092
+pixi run python .claude\nocache-server.py 8092   # the root env's Python
 ```
 
 Chrome: `http://localhost:8092/arena_studio.html?p=g6_color_optomotor_smoke&rig=cshl_g6_2x10&mode=run`

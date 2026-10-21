@@ -2,10 +2,16 @@
 
 For a Claude Code session running **on the okey-cokey lab PC** (Windows; the room with the G6 2×10
 four-color arena, an overhead BIAS camera, freely walking flies, no FicTrac). Michael's Mac has no
-remote path into the rig PCs, so start the session there: open Claude Code in a checkout of
-`reiserlab/webDisplayTools` and paste the kickoff prompt below as the first message.
+remote path into the rig PCs, so start the session there: open Claude Code in any folder (the
+checkout does not exist yet) and paste the kickoff prompt below as the first message.
 
-There are two jobs, in this order, both on ONE run sheet:
+**This PC starts bare** (no Foxglove, no webDisplayTools checkout, maybe no git or pixi). Setup is
+its own checklist, [`okey-cokey-pc-setup.md`](okey-cokey-pc-setup.md), done first. Claude Code
+cannot install itself: a person installs the Claude desktop app (or Git for Windows, then the CLI)
+over Remote Desktop; from there a Claude session can do most of the checklist and asks for the rest.
+Without Claude on the PC, the checklist and the run sheet work by hand too.
+
+Then two jobs, in this order, both on ONE run sheet:
 [`okey-cokey-pc-2026-10-21.md`](okey-cokey-pc-2026-10-21.md).
 
 1. **Test** today's protocol and BIAS on this PC.
@@ -17,17 +23,17 @@ There are two jobs, in this order, both on ONE run sheet:
 ## Kickoff prompt (paste on the lab PC)
 
 ```
-Okey-cokey rig work, LAB-303. Read ros2-poc/HANDOVER-okey-cokey-2026-10-21.md first and follow it.
-Branch: git fetch && git switch claude/okey-cokey-dashboard (clone to a short path such as C:\w if
-this PC has no checkout yet; install pixi if missing, asking me before any admin/UAC step).
-Run ros2-poc/okey-cokey-pc-2026-10-21.md in order, keeping
-ros2-poc/okey-cokey-pc-results-2026-10-21.md as you go (one row per step: pass/fail, timings,
-sizes, every error verbatim). First, without hardware: in ros2-poc, `pixi install`,
-`pixi install -e viz`, `pixi run test-stimulus` and `pixi run test-stimulus-live` (both must pass
-on Windows; record the counts). Stop and ask me (Michael) before anything that needs a click: the
-BIAS GUI, the Chrome serial-port picker, the IR backlight, Foxglove, or putting flies in. Rules
-are in the handover's "Constraints" section. Commit fixes and the results file to
-claude/okey-cokey-dashboard and push; open no PR.
+Okey-cokey rig work, LAB-303. This PC may be bare (no webDisplayTools checkout, no Foxglove, maybe
+no git or pixi). Start with the setup checklist; read it on GitHub until the repo is cloned:
+https://github.com/reiserlab/webDisplayTools/blob/claude/okey-cokey-dashboard/ros2-poc/okey-cokey-pc-setup.md
+It clones the repo to C:\w on branch claude/okey-cokey-dashboard. Then read
+C:\w\ros2-poc\HANDOVER-okey-cokey-2026-10-21.md and run C:\w\ros2-poc\okey-cokey-pc-2026-10-21.md
+in order, keeping C:\w\ros2-poc\okey-cokey-pc-results-2026-10-21.md as you go (one row per step:
+pass/fail, timings, sizes, every error verbatim; the setup facts first).
+Ask me (Michael) before every download or install, any admin/UAC step, and anything that needs a
+click: the BIAS GUI, the Chrome serial-port picker, the IR backlight, Foxglove, putting flies in.
+If BIAS is not on this PC, stop and tell me. Rules are in the handover's "Constraints" section.
+Commit fixes and the results file to claude/okey-cokey-dashboard and push; open no PR.
 ```
 
 ## Where things stand
@@ -45,7 +51,7 @@ claude/okey-cokey-dashboard and push; open no PR.
     replay (`fox-json --stimulus`, `tools/ufmf.py`), `foxglove/arena-okey-cokey.json`. Mac: 54/54 +
     10/10 + harness 54/54.
 - **Not on any Pages tier**: Next serves the candidate *without* the new protocol shape. Serve this
-  checkout locally (`python .claude\nocache-server.py 8092`) or open the YAML via Protocol ▾ → Open….
+  checkout locally (`pixi run python .claude\nocache-server.py 8092` from `C:\w`) or open the YAML via Protocol ▾ → Open….
 - **Background reading**: the ww18 results, `windows-results-ww18-2026-10-15.md` (every Windows finding
   is in its table; most are fixed on this branch).
 - **Settled**: the okey-cokey controller runs telemetry firmware; BIAS is NOT changed now (no live
