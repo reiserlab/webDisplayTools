@@ -20,13 +20,20 @@ envelopes into typed messages from packages already in ros-base (no custom messa
     /viz/arena/bias_deg        live bias angle when a waveform runs (else 0)
     /viz/kinefly/left_deg, right_deg, lmr_deg, wbf_hz
     /viz/bias/frame_count, /viz/bias/fps
+    /viz/bias/fps_from_count   frameCount slope over the last 2 s of status polls — an estimate
+                               independent of BIAS's own framesPerSec
+    /viz/bias/drops            frames BIAS reports lost so far: frameIdGaps + cameraSkipped +
+                               incompleteFrames + loggerSkipped + writerSkipped (the atlas-bench
+                               Atlas10 build; absent keys = not reported, never 0)
+    /viz/bias/rtt_ms, /viz/bias/log_queue   status-poll round trip; frames queued for the writer
   std_msgs/Bool     /viz/bias/reachable, /viz/bias/capturing, /viz/bias/logging
   std_msgs/String   /viz/bias/state ("unreachable|idle|preview|recording") — StateTransitions panel
                     /viz/last_error ("<iso time> <src>: <text>")
   diagnostic_msgs/DiagnosticArray  /diagnostics (1 Hz): one status per source — fictrac, kinefly,
-                    bias, arena — OK (data flowing), STALE (seen, then silent > --stale-s),
-                    WARN (never seen), ERROR (BIAS unreachable / last reply failed); values carry
-                    rate_hz, messages, last_seq, adapter→viz latency, last_error.
+                    bias, arena (`--sources` picks which) — OK (data flowing), STALE (seen, then
+                    silent > --stale-s), WARN (never seen; for BIAS also: frames dropped while
+                    recording in the last 10 s), ERROR (BIAS unreachable / last reply failed);
+                    values carry rate_hz, messages, last_seq, adapter→viz latency, last_error.
   visualization_msgs/MarkerArray   /viz/markers (--markers-hz, default 20): the ball (sphere +
                     markings rotated by FicTrac's lab-frame orientation, cols 12–14), the fly
                     (arrow, fixed, facing +X), the arena (translucent cylinder) and the pattern
@@ -56,6 +63,7 @@ from std_msgs.msg import Bool, ColorRGBA, Float64, String
 from visualization_msgs.msg import Marker, MarkerArray
 
 from _common import RELIABLE_QOS, spin
+from bias_health import CountRate, bias_drops
 
 BALL_R = 1.0
 ARENA_R = 3.2
@@ -189,6 +197,7 @@ class VizNode(Node):
         super().__init__("arena_viz")
         self.a = a
         self.src = {k: Source(k) for k in ("fictrac", "kinefly", "bias", "arena")}
+        self.diag_sources = [k for k in (a.sources or "").split(",") if k in self.src] or list(self.src)
         f64 = lambda t: self.create_publisher(Float64, t, 10)
         self.p = {
             "heading": f64("/viz/fictrac/heading_deg"),
@@ -209,6 +218,10 @@ class VizNode(Node):
             "wbf": f64("/viz/kinefly/wbf_hz"),
             "frames": f64("/viz/bias/frame_count"),
             "fps": f64("/viz/bias/fps"),
+            "fps_count": f64("/viz/bias/fps_from_count"),
+            "drops": f64("/viz/bias/drops"),
+            "rtt": f64("/viz/bias/rtt_ms"),
+            "log_queue": f64("/viz/bias/log_queue"),
         }
         self.p_bool = {
             "reachable": self.create_publisher(Bool, "/viz/bias/reachable", 10),
@@ -241,6 +254,9 @@ class VizNode(Node):
         self.bias_deg = 0.0
         self.bias_active = False
         self.bias_state = "unreachable"
+        self.bias_rate = CountRate()
+        self.bias_drops = None
+        self.bias_drop_t = None  # time.time() of the last increase while recording
         self.create_timer(1.0, self._diagnostics)
         self.create_timer(1.0 / max(1.0, a.markers_hz), self._markers)
         self.get_logger().info("typed republisher up: /viz/*, /diagnostics, /viz/markers (Foxglove via foxglove_bridge :8766)")
@@ -355,6 +371,21 @@ class VizNode(Node):
             self._pub("frames", st["frameCount"])
         if isinstance(st.get("framesPerSec"), (int, float)):
             self._pub("fps", st["framesPerSec"])
+        if isinstance(st.get("frameCount"), (int, float)) and isinstance(st.get("t_ms"), (int, float)):
+            r = self.bias_rate.add(st["t_ms"] / 1000.0, st["frameCount"])
+            if r is not None:
+                self._pub("fps_count", r)
+        drops = bias_drops(st)
+        if drops is not None:
+            if self.bias_drops is not None and drops > self.bias_drops and logging_:
+                self.bias_drop_t = time.time()
+                self._note_error("bias", f"{drops - self.bias_drops:.0f} frame(s) dropped (total {drops:.0f})")
+            self.bias_drops = drops
+            self._pub("drops", drops)
+        if isinstance(st.get("rtt_ms"), (int, float)):
+            self._pub("rtt", st["rtt_ms"])
+        if isinstance(st.get("logQueueSize"), (int, float)):
+            self._pub("log_queue", st["logQueueSize"])
         state = "unreachable" if not reachable else ("recording" if capturing and logging_ else "preview" if capturing else "idle")
         self.bias_state = state
         # Published on EVERY status tick (1 Hz), not only on change, so a dashboard that
@@ -397,6 +428,8 @@ class VizNode(Node):
         for s in self.src.values():
             rate = s.tick_rate()
             self._pub("ft_rate", rate) if s.name == "fictrac" else None
+            if s.name not in self.diag_sources:
+                continue
             st = DiagnosticStatus()
             st.name = f"arena/{s.name}"
             st.hardware_id = s.name
@@ -406,6 +439,8 @@ class VizNode(Node):
                 st.level, st.message = DiagnosticStatus.STALE, f"silent {now - s.last_mono:.0f} s"
             elif s.name == "bias" and self.bias_state == "unreachable":
                 st.level, st.message = DiagnosticStatus.ERROR, "BIAS unreachable"
+            elif s.name == "bias" and self.bias_drop_t and time.time() - self.bias_drop_t < 10:
+                st.level, st.message = DiagnosticStatus.WARN, s.last_error or "frames dropped"
             elif s.name == "bias" and s.last_error_t and time.time() - s.last_error_t < 10:
                 st.level, st.message = DiagnosticStatus.ERROR, s.last_error or "error"
             else:
@@ -498,6 +533,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--markers-hz", type=float, default=20.0, help="3D marker update rate (default: 20)")
     p.add_argument("--stale-s", type=float, default=2.0, help="seconds of silence before a source reads STALE (default: 2)")
     p.add_argument("--frame-id", default="arena", help="fixed frame for the markers (default: arena)")
+    p.add_argument("--sources", default="fictrac,kinefly,bias,arena",
+                   help="sources that get a /diagnostics status (default: all four; the okey-cokey rig: bias)")
     args, ros_args = p.parse_known_args(argv)
     rclpy.init(args=ros_args)
     node = VizNode(args)

@@ -164,6 +164,12 @@ graph = "python nodes/graph_dump.py"
 viz = "python nodes/viz_node.py"
 test-viz = "python tests/test_viz_node.py"
 fox-json = "python nodes/foxglove_json.py"
+# The camera + G6 dashboard (foxglove/arena-okey-cokey.json): the live expected/observed display +
+# arena health node (`pixi run rig -- --stimulus`), and its unit test (pure; also runs the JS
+# panel-color module under the root env's Node to pin the Python port)
+stimulus = "python nodes/stimulus_node.py"
+test-stimulus = "python tests/test_stimulus.py"
+test-stimulus-live = "python tests/test_stimulus_live.py"
 # after-the-fact Foxglove MCAP of a 2P color-sweep run from its ScanImage TIFFs + the arena .pat files (tools/tiff_run_to_mcap.py)
 tiff2mcap = "python tools/tiff_run_to_mcap.py"
 # `viz` environment only (`pixi run -e viz …`): the interactive views.

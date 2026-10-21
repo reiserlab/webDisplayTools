@@ -22,6 +22,11 @@ What is NEW (small, and all of it is visible in the log):
     the envelope and is used only for the `lat_ms` latency statistics.
   * `/arena/frame` — every frame the hub publishes is also published as a ROS topic, so
     `ros2 topic echo/hz` introspect the closed loop and ROS-native nodes can subscribe.
+  * `/arena/browser` — every Studio message is also PUBLISHED live, as received
+    (`{"rx_ms", "raw"}`, reliable): trialParams echoes, runner status events, controller
+    telemetry rows. The run's bag records the same messages separately (with `seq`, only while
+    a log is open), so this is for live consumers such as stimulus_node.py (the expected
+    display + arena health); nothing that writes the log reads it.
   * other device topics are LOGGED, not applied: `/kinefly/raw` (KF/1) → compact tagged
     rows `["kf", ms, seq, src_t_s, left_rad, right_rad, head_rad, abdomen_rad]`;
     `/bias/reply`, `/bias/status`, `/scanimage/reply`, `/scanimage/status` → `{"type":"connector","src":<id>,…}` events.
@@ -586,6 +591,7 @@ class BridgeNode(Node):
         self.typed = typed
         self.stats = {"fictrac": SourceStats("fictrac"), "kinefly": SourceStats("kinefly"), **{c: SourceStats(c) for c in CONNECTOR_TOPICS}}
         self.frame_pub = self.create_publisher(ArenaFrame if typed else String, FRAME_TOPIC, FRAME_QOS)
+        self.browser_pub = self.create_publisher(String, BROWSER_TOPIC, RAW_QOS)
         # Studio → bridge connector_command relayed to the device node (LAB-303 connectors).
         self.cmd_pubs = {c: self.create_publisher(String, t["cmd"], RAW_QOS) for c, t in CONNECTOR_TOPICS.items()}
         if typed:
@@ -771,6 +777,9 @@ async def run(args: argparse.Namespace) -> None:
         (so the Studio's bridge client knows what it may drive; a ≤ 3.4 bridge never sends
         it) and `connector_command` is relayed to the device node. Everything else is 3.4."""
         text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+        live = String()
+        live.data = json.dumps({"rx_ms": B.now_ms(), "raw": text}, separators=(",", ":"))
+        node.browser_pub.publish(live)
         obj = None
         try:
             obj = json.loads(text)

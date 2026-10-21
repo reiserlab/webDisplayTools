@@ -7,6 +7,9 @@
     pixi run rig -- --bias --bias-sim  # + a simulated BIAS program (no camera software)
     pixi run rig -- --scanimage        # + the ScanImage node (JSON server on this PC); --si-mock for a stand-in
     pixi run rig -- --foxglove         # + foxglove_bridge (:8766) from the `viz` environment
+    pixi run rig -- --no-fictrac --bias --foxglove --viz-args "--sources bias" --stimulus-args "--panel-layout four-color"
+                                       # the okey-cokey camera rig: BIAS + G6, no FicTrac;
+                                       # layout foxglove/arena-okey-cokey.json (--foxglove includes --stimulus)
 
 Order: the router first (nodes retry until it answers on 127.0.0.1:7447), then every
 adapter/node. Each child's stderr is prefixed with its name. Ctrl-C stops everything in
@@ -140,6 +143,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--scanimage", action="store_true", help="also run the ScanImage node (talks to ScanImage's JSON server, default 127.0.0.1:5555)")
     p.add_argument("--si-mock", action="store_true", help="also run tests/si_json_mock.py (a stand-in for ScanImage's JSON server, port 5555)")
     p.add_argument("--sim", action="store_true", help="also run the FicTrac simulator (random walk, 50 Hz)")
+    p.add_argument("--no-fictrac", action="store_true",
+                   help="do not run the FicTrac UDP adapter (a rig without FicTrac, e.g. the okey-cokey camera rig)")
+    p.add_argument("--stimulus", action="store_true",
+                   help="also run stimulus_node.py: the expected/observed arena display + arena health (included by --foxglove)")
+    p.add_argument("--stimulus-args", default="", help="extra args for stimulus_node.py (e.g. --panel-layout four-color)")
     p.add_argument("--viz-args", default="", help="extra args for viz_node.py (--deg-per-frame, --frame-dir, --feature-az0, --frames)")
     p.add_argument("--foxglove", action="store_true",
                    help=f"also run foxglove_bridge on ws://127.0.0.1:{FOXGLOVE_PORT} (the `viz` environment; skipped with a note when it is not installed)")
@@ -171,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
     for proto, port, who in (
         ("tcp", 7447, "a Zenoh router (another `pixi run rig` / `pixi run router`)") if not args.no_router else (None, 0, ""),
         ("tcp", 8765, "a bridge on the Studio WebSocket port — bridge 3.4 (`pixi run bridge` at the repo root) or another rig"),
-        ("udp", 60000, "a FicTrac receiver — bridge 3.4 or another fictrac adapter"),
+        ("udp", 60000, "a FicTrac receiver — bridge 3.4 or another fictrac adapter") if not args.no_fictrac else (None, 0, ""),
         ("udp", 60001, "another Kinefly adapter") if args.kinefly else (None, 0, ""),
         ("tcp", 5010, "a BIAS program or bias_sim") if args.bias_sim else (None, 0, ""),
         ("tcp", 5555, "ScanImage's JSON server or si_json_mock") if args.si_mock else (None, 0, ""),
@@ -193,9 +201,9 @@ def main(argv: list[str] | None = None) -> int:
     children: list[Child] = []
     if not args.no_router:
         children.append(Child("router", ["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"]))
-    nodes: list[Child] = [
-        Child("fictrac", [py, str(NODES / "fictrac_udp_adapter.py"), *split_args(args.fictrac_args)]),
-    ]
+    nodes: list[Child] = []
+    if not args.no_fictrac:
+        nodes.append(Child("fictrac", [py, str(NODES / "fictrac_udp_adapter.py"), *split_args(args.fictrac_args)]))
     if args.kinefly:
         nodes.append(Child("kinefly", [py, str(NODES / "kinefly_udp_adapter.py"), *split_args(args.kinefly_args)]))
     if args.bias_sim:
@@ -208,6 +216,8 @@ def main(argv: list[str] | None = None) -> int:
         nodes.append(Child("scanimage", [py, str(NODES / "scanimage_node.py"), *split_args(args.scanimage_args)]))
     bridge = Child("bridge", [py, str(NODES / "bridge_node.py"), *split_args(args.bridge_args)])
     nodes.append(bridge)
+    if args.stimulus or foxglove:
+        nodes.append(Child("stimulus", [py, str(NODES / "stimulus_node.py"), *split_args(args.stimulus_args)]))
     if foxglove:
         # The typed republisher (ros-base messages Foxglove plots natively) runs in THIS
         # environment; only foxglove_bridge itself needs the `viz` one.
