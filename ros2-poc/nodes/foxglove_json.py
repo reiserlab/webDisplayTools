@@ -17,6 +17,14 @@ schema per topic, so `/arena/frame.idx`, `/bias/status.framesPerSec`, … plot d
 - /fictrac/raw: `cols`, FicTrac's 25 output columns by name, parsed from `raw`;
 - /arena/browser: `msg`, the browser message parsed from `raw` (when it is JSON).
 
+With `--stimulus` the live dashboard's derived topics are rebuilt too (nodes/dashboard_replay.py,
+the same code the live stimulus_node / viz_node run): the expected and observed arena display as
+images, the arena's rate / lag / health, BIAS's rate and losses, and — from the run's uFMF movie
+(`--ufmf <file>`, or found through the run's stopRecording reply) — `/camera/image`. Then
+`foxglove/arena-okey-cokey.json` shows the run as it looked live:
+
+    pixi run fox-json -- runlogs/<run>.bag <run>.foxglove.mcap --stimulus --panel-layout four-color
+
 Slim by default: where `raw` was parsed into `cols` / `msg`, the `raw` text is dropped (it is the
 same data twice); `--keep-raw` keeps it. The original bag stays the record of truth.
 
@@ -185,7 +193,14 @@ def read_messages(path: Path):
     return out, torn
 
 
-def convert(src: Path, dst: Path, ball_mm: float, keep_raw: bool = False) -> dict:
+IMAGE_JSON_SCHEMA = {
+    "title": "foxglove.CompressedImage", "type": "object", "properties": {
+        "timestamp": {"type": "object", "properties": {"sec": {"type": "integer"}, "nsec": {"type": "integer"}}},
+        "frame_id": {"type": "string"}, "data": {"type": "string", "contentEncoding": "base64"}, "format": {"type": "string"}}}
+
+
+def convert(src: Path, dst: Path, ball_mm: float, keep_raw: bool = False, stimulus: dict | None = None,
+            camera: dict | None = None) -> dict:
     from mcap.writer import CompressionType, Writer
 
     if src.is_dir():
@@ -193,6 +208,8 @@ def convert(src: Path, dst: Path, ball_mm: float, keep_raw: bool = False) -> dic
     msgs, torn = read_messages(src)
     deriver = FrameDeriver(ball_mm)
     rows, schemas, skipped = [], {}, 0
+    fixed: dict[str, str] = {}  # topic → well-known schema name (images)
+    records = []  # (topic, log_t, obj) for the dashboard replay
     for topic, sname, log_t, pub_t, seq, data in msgs:
         if sname != "std_msgs/msg/String":
             skipped += 1
@@ -227,6 +244,22 @@ def convert(src: Path, dst: Path, ball_mm: float, keep_raw: bool = False) -> dic
         obj = finite(obj)
         schemas[topic] = merge_schema(schemas.get(topic, {}), obj)
         rows.append((topic, log_t, pub_t, seq, json.dumps(obj, separators=(",", ":")).encode()))
+        if stimulus is not None or camera is not None:
+            records.append((topic, log_t, obj))
+
+    report = {}
+    if stimulus is not None or camera is not None:
+        from dashboard_replay import run_streams
+
+        records.sort(key=lambda r: r[1])
+        derived, report = run_streams(records, stimulus, camera)
+        for topic, t_ns, obj, schema_name in derived:
+            obj = finite(obj)
+            if schema_name:
+                fixed[topic] = schema_name
+            else:
+                schemas[topic] = merge_schema(schemas.get(topic, {}), obj)
+            rows.append((topic, t_ns, t_ns, 0, json.dumps(obj, separators=(",", ":")).encode()))
 
     sha = hashlib.sha256(src.read_bytes()).hexdigest()
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -234,6 +267,9 @@ def convert(src: Path, dst: Path, ball_mm: float, keep_raw: bool = False) -> dic
         w = Writer(f, compression=CompressionType.ZSTD)
         w.start(profile="", library="ros2-poc foxglove_json.py")
         chan = {}
+        for topic in sorted(fixed):
+            sid = w.register_schema(name=fixed[topic], encoding="jsonschema", data=json.dumps(IMAGE_JSON_SCHEMA).encode())
+            chan[topic] = w.register_channel(topic=topic, message_encoding="json", schema_id=sid)
         for topic in sorted(schemas):
             sc = finish_schema(schemas[topic]) or {"type": "object"}
             sc = {"$schema": "https://json-schema.org/draft/2020-12/schema", "title": topic, **sc}
@@ -248,8 +284,11 @@ def convert(src: Path, dst: Path, ball_mm: float, keep_raw: bool = False) -> dic
     counts = {}
     for r in rows:
         counts[r[0]] = counts.get(r[0], 0) + 1
-    return {"source": src.name, "messages": len(rows), "skipped": skipped, "torn": torn, "topics": counts,
-            "bytes": dst.stat().st_size}
+    out = {"source": src.name, "messages": len(rows), "skipped": skipped, "torn": torn, "topics": counts,
+           "bytes": dst.stat().st_size}
+    if report:
+        out["dashboard"] = report
+    return out
 
 
 def main(argv=None) -> int:
@@ -258,8 +297,26 @@ def main(argv=None) -> int:
     ap.add_argument("dst", type=Path)
     ap.add_argument("--ball-mm", type=float, default=9.0, help="ball diameter for forward_mms (default 9, as the bridge)")
     ap.add_argument("--keep-raw", action="store_true", help="keep the `raw` text beside the parsed `cols` / `msg`")
+    repo = Path(__file__).resolve().parents[2]
+    g = ap.add_argument_group("dashboard replay (foxglove/arena-okey-cokey.json)")
+    g.add_argument("--stimulus", action="store_true", help="rebuild the expected/observed display, arena + BIAS health, and the camera")
+    g.add_argument("--panel-layout", default="g6-green", help="panel LED colors (g6-green, four-color, red-ir-v0.4r2, red-ir-v0.4r1)")
+    g.add_argument("--pattern-dir", action="append", default=None, help="where <pattern>.pat files are (repeatable; default the repo's protocols/ + patterns/)")
+    g.add_argument("--protocol-dir", action="append", default=None, help="where the run's protocol YAML is (repeatable; default the repo's protocols/)")
+    g.add_argument("--display-hz", type=float, default=10.0, help="expected-display image rate while a pattern plays (default 10)")
+    g.add_argument("--scale", type=int, default=4, help="screen pixels per LED (default 4)")
+    g.add_argument("--ufmf", default="auto", help="the run's uFMF movie (default auto: the file its stopRecording reply names); 'none' to skip")
+    g.add_argument("--camera-hz", type=float, default=10.0, help="camera images per second (default 10)")
+    g.add_argument("--camera-factor", type=int, default=2, help="camera downsampling, N×N mean (default 2)")
     a = ap.parse_args(argv)
-    print(json.dumps(convert(a.src, a.dst, a.ball_mm, a.keep_raw)))
+    stim = cam = None
+    if a.stimulus:
+        stim = {"patterns": a.pattern_dir or [str(repo / "protocols"), str(repo / "patterns")],
+                "protocols": a.protocol_dir or [str(repo / "protocols")], "layout": a.panel_layout,
+                "display_hz": a.display_hz, "scale": a.scale}
+        if a.ufmf != "none":
+            cam = {"ufmf": a.ufmf, "hz": a.camera_hz, "factor": a.camera_factor}
+    print(json.dumps(convert(a.src, a.dst, a.ball_mm, a.keep_raw, stim, cam)))
     return 0
 
 

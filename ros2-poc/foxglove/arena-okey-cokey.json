@@ -1,0 +1,324 @@
+{
+  "configById": {
+    "Image!camera": {
+      "foxglovePanelTitle": "Camera (BIAS) \u2014 replay: from the run's uFMF",
+      "imageMode": {
+        "imageTopic": "/camera/image"
+      }
+    },
+    "Image!expected": {
+      "foxglovePanelTitle": "Arena \u2014 EXPECTED display (trial \u00d7 frame \u00d7 duty)",
+      "imageMode": {
+        "imageTopic": "/arena/display"
+      }
+    },
+    "Image!observed": {
+      "foxglovePanelTitle": "Arena \u2014 OBSERVED (controller telemetry, ~10 Hz)",
+      "imageMode": {
+        "imageTopic": "/arena/display_observed"
+      }
+    },
+    "Plot!index": {
+      "title": "Arena frame index: expected vs observed",
+      "paths": [
+        {
+          "value": "/viz/arena/expected_idx.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "expected"
+        },
+        {
+          "value": "/viz/arena/observed_idx.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "observed"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 30
+    },
+    "Plot!rate": {
+      "title": "Rates (Hz): arena frames shown vs commanded; camera fps",
+      "paths": [
+        {
+          "value": "/viz/arena/display_rate_hz.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "arena shown"
+        },
+        {
+          "value": "/viz/arena/cmd_fps.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "arena commanded (\u00b1)"
+        },
+        {
+          "value": "/viz/bias/fps.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "camera (BIAS)"
+        },
+        {
+          "value": "/viz/bias/fps_from_count.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "camera (from count)"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 30
+    },
+    "Plot!lag": {
+      "title": "Arena lag (frames, observed \u2212 expected; 0 = on schedule)",
+      "paths": [
+        {
+          "value": "/viz/arena/lag_frames.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "lag"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 30,
+      "minYValue": -5,
+      "maxYValue": 5
+    },
+    "Plot!drops": {
+      "title": "Camera: frames dropped (cumulative) \u00b7 writer queue",
+      "paths": [
+        {
+          "value": "/viz/bias/drops.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "dropped"
+        },
+        {
+          "value": "/viz/bias/log_queue.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "writer queue"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 30
+    },
+    "StateTransitions!states": {
+      "paths": [
+        {
+          "value": "/viz/arena/condition.data",
+          "timestampMethod": "receiveTime",
+          "label": "condition"
+        },
+        {
+          "value": "/viz/arena/state.data",
+          "timestampMethod": "receiveTime",
+          "label": "arena"
+        },
+        {
+          "value": "/viz/bias/state.data",
+          "timestampMethod": "receiveTime",
+          "label": "BIAS"
+        }
+      ],
+      "isSynced": true
+    },
+    "Indicator!arena": {
+      "foxglovePanelTitle": "Arena",
+      "path": "/viz/arena/ok.data",
+      "style": "bulb",
+      "fallbackColor": "#8b949e",
+      "fallbackLabel": "no data",
+      "rules": [
+        {
+          "operator": "=",
+          "rawValue": "true",
+          "color": "#00e676",
+          "label": "OK"
+        },
+        {
+          "operator": "=",
+          "rawValue": "false",
+          "color": "#ffd740",
+          "label": "check health"
+        }
+      ]
+    },
+    "Indicator!bias": {
+      "foxglovePanelTitle": "BIAS",
+      "path": "/viz/bias/reachable.data",
+      "style": "bulb",
+      "fallbackColor": "#8b949e",
+      "fallbackLabel": "no status",
+      "rules": [
+        {
+          "operator": "=",
+          "rawValue": "true",
+          "color": "#00e676",
+          "label": "online"
+        },
+        {
+          "operator": "=",
+          "rawValue": "false",
+          "color": "#ff5252",
+          "label": "offline"
+        }
+      ]
+    },
+    "Indicator!video": {
+      "foxglovePanelTitle": "Video",
+      "path": "/viz/bias/logging.data",
+      "style": "bulb",
+      "fallbackColor": "#8b949e",
+      "fallbackLabel": "no data",
+      "rules": [
+        {
+          "operator": "=",
+          "rawValue": "true",
+          "color": "#ffd740",
+          "label": "writing"
+        },
+        {
+          "operator": "=",
+          "rawValue": "false",
+          "color": "#8b949e",
+          "label": "off"
+        }
+      ]
+    },
+    "RawMessages!health": {
+      "foxglovePanelTitle": "Arena health",
+      "topicPath": "/viz/arena/health",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "expansion": "all"
+    },
+    "RawMessages!stimulus": {
+      "foxglovePanelTitle": "Stimulus now",
+      "topicPath": "/arena/stimulus",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "expansion": "all"
+    },
+    "DiagnosticSummary!diag": {
+      "foxglovePanelTitle": "Health (live)",
+      "minLevel": 0,
+      "pinnedIds": [],
+      "hardwareIdFilter": "",
+      "topicToRender": "/diagnostics",
+      "sortByLevel": true
+    },
+    "RawMessages!reply": {
+      "foxglovePanelTitle": "BIAS replies",
+      "topicPath": "/bias/reply",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "expansion": "all"
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "direction": "row",
+    "splitPercentage": 66,
+    "first": {
+      "direction": "column",
+      "splitPercentage": 52,
+      "first": {
+        "direction": "row",
+        "splitPercentage": 45,
+        "first": "Image!camera",
+        "second": {
+          "direction": "column",
+          "splitPercentage": 50,
+          "first": "Image!expected",
+          "second": "Image!observed"
+        }
+      },
+      "second": {
+        "direction": "column",
+        "splitPercentage": 22,
+        "first": "StateTransitions!states",
+        "second": {
+          "direction": "row",
+          "splitPercentage": 50,
+          "first": {
+            "direction": "column",
+            "splitPercentage": 55,
+            "first": "Plot!index",
+            "second": "Plot!lag"
+          },
+          "second": {
+            "direction": "column",
+            "splitPercentage": 55,
+            "first": "Plot!rate",
+            "second": "Plot!drops"
+          }
+        }
+      }
+    },
+    "second": {
+      "direction": "column",
+      "splitPercentage": 14,
+      "first": {
+        "direction": "row",
+        "splitPercentage": 33,
+        "first": "Indicator!arena",
+        "second": {
+          "direction": "row",
+          "splitPercentage": 50,
+          "first": "Indicator!bias",
+          "second": "Indicator!video"
+        }
+      },
+      "second": {
+        "direction": "column",
+        "splitPercentage": 18,
+        "first": "RawMessages!health",
+        "second": {
+          "direction": "column",
+          "splitPercentage": 40,
+          "first": "RawMessages!stimulus",
+          "second": {
+            "direction": "column",
+            "splitPercentage": 45,
+            "first": "DiagnosticSummary!diag",
+            "second": "RawMessages!reply"
+          }
+        }
+      }
+    }
+  }
+}

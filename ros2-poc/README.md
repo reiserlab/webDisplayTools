@@ -41,6 +41,8 @@ Pieces, individually (each is also a `pixi run` task; `--help` on every script):
 | `sim` | the root `fictrac-bridge/fictrac_sim.py`, unmodified (`-- --model fly --kp 2` for a fixating fly) |
 | `kinefly-sim` / `bias-sim` | synthetic KF/1 producer; a fake BIAS program (HTTP, state machine, writes the video file) |
 | `studio-emulator` | the Studio runner's exact bridge conversation, for machines without a browser |
+| `stimulus` | `nodes/stimulus_node.py`: the arena's EXPECTED display (the trial's `.pat` frame × duty in the panels' LED colors) and its OBSERVED display (controller telemetry) as PNG images, plus arena rate / lag / health, from the live `/arena/browser`; `pixi run rig -- --stimulus` (included by `--foxglove`). Layout `foxglove/arena-okey-cokey.json` (camera + G6, no FicTrac); the same layout on a finished run: `pixi run fox-json -- <bag> <out.mcap> --stimulus --panel-layout four-color` (adds `/camera/image` from the run's uFMF). Plan + status: `docs/okey-cokey-foxglove-dashboard-plan.md` |
+| `test-stimulus` / `test-stimulus-live` | the dashboard's pure parts (panel colors pinned to `js/panel-color.js`, renderer, tracker on synthetic + a real 80 fps trial, uFMF reader, replay converter); the live path through router + bridge + stimulus node (~25 s, needs ports 7447/8765 free) |
 
 Environment set by the workspace (`[activation.env]`): `RMW_IMPLEMENTATION=rmw_zenoh_cpp`,
 `ZENOH_ROUTER_CHECK_ATTEMPTS=0` (nodes wait for the router), `ZENOH_ROUTER_CONFIG_URI` /
