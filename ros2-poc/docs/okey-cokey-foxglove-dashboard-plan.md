@@ -1,6 +1,37 @@
 # Plan: a purpose-built Foxglove dashboard for the okey-cokey rig (camera + G6, no FicTrac)
 
-Status: PLAN, 2026-10-21. Nothing built. Part of LAB-303 (ROS 2 graph); ticket to be filed.
+> **Status 2026-10-21: phases 1, 1b and 2 BUILT** on branch `claude/okey-cokey-dashboard` (off
+> `claude/okey-cokey-pairs`, itself the 2026-10-20 candidate + Grace's protocol shape). Phase 3
+> (live camera) NOT built, by decision: BIAS stays unchanged for now. The okey-cokey controller
+> runs telemetry firmware (Michael), so the observed side is live. Part of LAB-303.
+>
+> | built | where |
+> |---|---|
+> | `/arena/browser` published live | `nodes/bridge_node.py` (one publisher; the bag record is unchanged) |
+> | tracker: expected/observed index, lag, display rate, health | `nodes/stimulus_core.py` (pure) |
+> | renderer + Python port of the panel colors | `nodes/arena_display.py` (pinned cell by cell to `js/panel-color.js` under Node) |
+> | live node | `nodes/stimulus_node.py`; `pixi run rig -- --stimulus` (`--foxglove` includes it), `--no-fictrac` for this rig |
+> | BIAS rate / drops / rtt / writer queue | `nodes/bias_health.py`, `viz_node.py` (`--sources bias` hides the unused FicTrac/Kinefly/arena-frame statuses) |
+> | replay: same topics from a finished bag + `/camera/image` from the uFMF | `nodes/dashboard_replay.py` via `pixi run fox-json -- <bag> <out> --stimulus`; `tools/ufmf.py` (BIAS v4 layout, index or scan) |
+> | layout | `foxglove/arena-okey-cokey.json` (15 panels) |
+>
+> Tested: `pixi run test-stimulus` 54/54 (incl. a REAL 80 fps trial from the 2026-10-14 smoke run:
+> 800+ frames, every lag 0, 80 Hz); `pixi run test-stimulus-live` 10/10 (router + bridge +
+> stimulus node, the real trial played into the Studio WebSocket); ROS harness `pixi run test`
+> 54/54 and `test-viz` unchanged; `rig.py --no-fictrac --bias-sim --bias --foxglove` brings every
+> dashboard topic up with foxglove_bridge on :8766; uFMF reader on three real BIAS movies
+> (1920×1080, up to 2.1 GB, indexed). On the real 2026-10-14 bag the replay MCAP is 612 kB for
+> 2.5 min. **Not verified:** the layout opened in the Foxglove app (written to Foxglove's layout
+> format by hand; its topics are checked by the test), a live run on the okey-cokey rig, a real
+> uFMF from that rig's camera through the replay.
+>
+> Deviations from the plan below: (1) the arena status is the stimulus node's own
+> `arena/display` diagnostic instead of re-feeding viz_node's FicTrac-frame `arena` entry, which
+> keeps meaning closed-loop frames; (2) an OBSERVED display image (`/arena/display_observed`)
+> was added beside the expected one; (3) `/viz/arena/observed_idx` and `lag_frames` are one sample
+> per displayed frame (live and replay alike); (4) the expected display's stall check is STALE only
+> while a pattern plays, since the telemetry ring has nothing to send in the dark; (5) the tiff
+> tool's PNG writer was not refactored into the shared module (left as it was).
 
 ## Goal
 
@@ -137,10 +168,9 @@ converter, the same split as `studio-replay.js`.
 
 ## Open questions
 
-1. **Is a live camera in Foxglove needed, or is replay enough?** This decides whether phase 3 exists.
-2. **Does the okey-cokey controller run telemetry-capable firmware?** (0xCB flag bit 2.) Without it,
-   the observed index and display rate are unavailable and arena health falls back to command status.
+1. ~~Is a live camera in Foxglove needed?~~ Not now (2026-10-21): BIAS stays unchanged; replay has the camera.
+2. ~~Telemetry firmware on the okey-cokey controller?~~ Yes (Michael, 2026-10-21).
 3. Which BIAS build is on the okey-cokey PC: the Atlas10 fork has the drop counters, the Spinnaker
-   build may not.
+   build may not (the panels then read "no data", never 0).
 4. Typed messages: `viz_node` subscribes to `/arena/frame` as String, which breaks in the `typed` env.
    That doesn't affect this rig (no `/arena/frame`), but fix it when touching viz_node.
