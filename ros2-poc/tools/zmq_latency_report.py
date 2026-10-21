@@ -9,10 +9,13 @@ the node's own `--dump` JSONL — and, per acquisition segment, reports:
                     acquisition clock (vDAQ, since acquisition start) and the host clock share no origin,
                     so without the TIFF this is the jitter/backlog part of the latency, not its constant.
                     p50 / p99 / max, plus the drift of the two clocks (ms per s, a linear fit).
-  absolute latency  with --tiff: the TIFF's `epoch` (acquisition start, PC wall clock) + its
-                    `frameTimestamps_sec` give each frame's acquisition wall time; rx_epoch_ms − that is
-                    the frame-to-topic latency on the same PC. Also the per-frame difference between the
-                    ZMQ header timestamp and the TIFF's (the "same origin?" question of the procedure).
+  TIFF match        with --tiff: which segment the TIFF is (choose_tiff_segment: frame count + epoch, an
+                    error when none or several fit; --segment overrides), every TIFF frame found in it,
+                    and the per-frame difference between the ZMQ header timestamp and the TIFF's (one
+                    constant: the same acquisition clock; 0 on the Bergamo, 2026-10-20).
+  epoch offset      with --tiff: rx_epoch_ms − (the TIFF's `epoch` + `frameTimestamps_sec`). NOT a latency:
+                    ScanImage's epoch is when it armed the acquisition, before the shutter's openTime_s and
+                    the first line (~0.56 s on 2026-10-20), so it has no pass bar.
   hops              receive → publish inside the node (`pub_mono_ns − rx_mono_ns`) and, from a bag, node →
                     bridge record (MCAP log_time − rx_epoch_ms), like FicTrac's connector_status.
   preview           encode+publish per image (preview meta) and, from a bag, frame receive → preview
@@ -238,9 +241,50 @@ def epoch_wall_ms(epoch: list, utc_offset_h: float | None) -> int:
 
 
 # ── analysis ──────────────────────────────────────────────────────────────────────────────
+EPOCH_WINDOW_S = 5.0  # the TIFF's segment starts this soon after its epoch (Bergamo 2026-10-20: 0.56 s)
+
+
+class SegmentChoiceError(ValueError):
+    """The TIFF matches no segment, or more than one; the message lists them all."""
+
+
+def choose_tiff_segment(by_seg: dict, tiff: dict, utc_offset_h: float | None = None,
+                        segment: int | None = None, window_s: float = EPOCH_WINDOW_S) -> tuple[int, list[dict]]:
+    """Which acquisition segment a TIFF belongs to → (segment id, one row per segment).
+    Every segment numbers its frames from 1, so frame numbers alone match the first segment, not the
+    right one (Bergamo 2026-10-20: a FOCUS instead of the GRAB). A candidate holds every TIFF frame
+    number, has exactly as many frames as the TIFF and, when the TIFF has an epoch, its first frame
+    reached the node 0..window_s after that epoch. Exactly one candidate is the answer; none or
+    several raise SegmentChoiceError. `segment` overrides the choice."""
+    n_tiff = len(tiff["frames"])
+    e_ms = epoch_wall_ms(tiff["epoch"], utc_offset_h) if tiff.get("epoch") else None
+    rows = []
+    for sid in sorted(by_seg):
+        recs = by_seg[sid]
+        nums = {int(r["obj"]["frameNumber"]) for r in recs}
+        found = sum(1 for k in tiff["frames"] if k in nums)
+        off_s = (min(r["obj"]["rx_epoch_ms"] for r in recs) - e_ms) / 1000.0 if e_ms is not None else None
+        rows.append({"segment": sid, "frames": len(recs), "tiff_frames_found": found,
+                     "first_rx_after_epoch_s": round(off_s, 3) if off_s is not None else None,
+                     "candidate": found == n_tiff and len(recs) == n_tiff and (off_s is None or 0.0 <= off_s <= window_s)})
+    listing = "; ".join(f"segment {r['segment']}: {r['frames']} frames, {r['tiff_frames_found']}/{n_tiff} TIFF frames found, "
+                        f"first frame {r['first_rx_after_epoch_s']} s after the epoch" for r in rows)
+    if segment is not None:
+        if segment not in by_seg:
+            raise SegmentChoiceError(f"--segment {segment} is not in the stream ({listing})")
+        return segment, rows
+    cands = [r["segment"] for r in rows if r["candidate"]]
+    if len(cands) == 1:
+        return cands[0], rows
+    raise SegmentChoiceError(f"{'no segment matches' if not cands else f'{len(cands)} segments match'} the TIFF "
+                             f"({n_tiff} frames{', epoch window 0..%g s' % window_s if e_ms is not None else ', no epoch'}); "
+                             f"pass --segment N. {listing}")
+
+
 def analyze(records: list[dict], tiff: dict | None = None, utc_offset_h: float | None = None,
             frame_period_ms: float | None = None, segment_filter: int | None = None,
-            meta_p99_ms: float | None = None, preview_p99_ms: float = 250.0) -> dict:
+            meta_p99_ms: float | None = None, preview_p99_ms: float = 250.0,
+            epoch_window_s: float = EPOCH_WINDOW_S) -> dict:
     metas = [r for r in records if r["topic"] == META_TOPIC and isinstance(r["obj"].get("seq"), int)]
     stats = [r["obj"] for r in records if r["topic"] == STATS_TOPIC]
     pmetas = [r for r in records if r["topic"] == PREVIEW_META_TOPIC]
@@ -251,15 +295,10 @@ def analyze(records: list[dict], tiff: dict | None = None, utc_offset_h: float |
     last_stats = stats[-1] if stats else {}
     stats_segments = {s["id"]: s for s in last_stats.get("segment_list", [])} if last_stats else {}
 
-    # which segment the TIFF belongs to: the one sharing the most frame numbers (or --segment)
-    tiff_seg = None
+    # which segment the TIFF belongs to: by frame count and epoch, never by frame numbers alone
+    tiff_seg, choice = None, None
     if tiff and tiff["frames"]:
-        cands = [segment_filter] if segment_filter else list(by_seg)
-        best = 0
-        for sid in cands:
-            n = sum(1 for r in by_seg.get(sid, []) if int(r["obj"]["frameNumber"]) in tiff["frames"])
-            if n > best:
-                best, tiff_seg = n, sid
+        tiff_seg, choice = choose_tiff_segment(by_seg, tiff, utc_offset_h, segment_filter, epoch_window_s)
 
     segments = []
     for sid in sorted(by_seg):
@@ -317,13 +356,18 @@ def analyze(records: list[dict], tiff: dict | None = None, utc_offset_h: float |
             delta_ms = [(float(o["frameTimestamp_s"]) - t["ts"]) * 1000.0 for o, t in pairs if t["ts"] is not None]
             t_align = {"tiff": tiff["path"], "tiff_frames": len(tiff["frames"]), "tiff_pages": tiff["pages"],
                        "matched_frames": len(pairs), "zmq_minus_tiff_ts_ms": summarize(delta_ms),
+                       # the same frames carry the same acquisition clock: one constant offset (0 on the rig)
+                       "timestamps_agree": bool(delta_ms) and len(delta_ms) == len(pairs) and max(delta_ms) - min(delta_ms) < 1.0,
                        "pages_per_frame": Counter(t["pages"] for t in tiff["frames"].values()).most_common(1)[0][0] if tiff["frames"] else None,
-                       "frame_meta_count_equals_tiff_frames": len(objs) == len(tiff["frames"])}
+                       "frame_meta_count_equals_tiff_frames": len(objs) == len(tiff["frames"]),
+                       "segment_choice": choice}
             if tiff["epoch"]:
                 e_ms = epoch_wall_ms(tiff["epoch"], utc_offset_h)
-                abs_ms = [o["rx_epoch_ms"] - (e_ms + t["ts"] * 1000.0) for o, t in pairs if t["ts"] is not None]
+                # NOT a latency: ScanImage's epoch is when it armed the acquisition, before the shutter's
+                # openTime_s and the first line, so this holds that start-up gap (~0.56 s on 2026-10-20)
+                off_ms = [o["rx_epoch_ms"] - (e_ms + t["ts"] * 1000.0) for o, t in pairs if t["ts"] is not None]
                 t_align.update({"epoch": tiff["epoch"], "epoch_wall_ms": e_ms, "utc_offset_h": utc_offset_h,
-                                "absolute_latency_ms": summarize(abs_ms)})
+                                "epoch_offset_ms": summarize(off_ms)})
             seg["tiff"] = t_align
         segments.append(seg)
 
@@ -331,10 +375,14 @@ def analyze(records: list[dict], tiff: dict | None = None, utc_offset_h: float |
     bars = []
     for seg in segments:
         period = meta_p99_ms or seg["frame_period_ms"] or 34.0
-        lat = seg.get("tiff", {}).get("absolute_latency_ms") or seg["stream_delay_rel_ms"]
-        kind = "absolute (TIFF clock)" if seg.get("tiff", {}).get("absolute_latency_ms") else "relative (fastest frame = 0)"
+        lat = seg["stream_delay_rel_ms"]  # the TIFF's epoch offset holds the start-up gap: no bar on it
         if lat.get("n"):
-            bars.append({"segment": seg["id"], "bar": f"meta latency p99 < {period:.1f} ms ({kind})", "value": lat["p99"], "pass": lat["p99"] < period})
+            bars.append({"segment": seg["id"], "bar": f"meta latency p99 < {period:.1f} ms (relative (fastest frame = 0))", "value": lat["p99"], "pass": lat["p99"] < period})
+        if seg.get("tiff"):
+            t = seg["tiff"]
+            bars.append({"segment": seg["id"], "bar": "TIFF frames all in the stream, timestamps agree (constant offset)",
+                         "value": f"{t['matched_frames']}/{t['tiff_frames']}, ZMQ − TIFF p50 {t['zmq_minus_tiff_ts_ms'].get('p50')} ms",
+                         "pass": t["matched_frames"] == t["tiff_frames"] and t["timestamps_agree"]})
         pv = seg["preview"]["frame_to_record_ms"] if seg["preview"]["frame_to_record_ms"].get("n") else seg["preview"]["encode_publish_ms"]
         if pv.get("n"):
             bars.append({"segment": seg["id"], "bar": f"preview p99 < {preview_p99_ms:g} ms", "value": pv["p99"], "pass": pv["p99"] < preview_p99_ms})
@@ -378,7 +426,8 @@ def markdown(rep: dict, source: str) -> str:
         if t:
             out.append(f"- segment {s['id']} vs TIFF {t['tiff']}: {t['matched_frames']} of {t['tiff_frames']} TIFF frames matched ({t['tiff_pages']} pages, {t['pages_per_frame']} per frame); "
                        f"frame_meta count == TIFF frames: {t['frame_meta_count_equals_tiff_frames']}; ZMQ − TIFF timestamp p50/p99/max ms {fmt(t['zmq_minus_tiff_ts_ms'])}"
-                       + (f"; ABSOLUTE latency (acquisition → topic) p50/p99/max ms {fmt(t['absolute_latency_ms'])}" if t.get("absolute_latency_ms") else "; no `epoch` in the TIFF → no absolute latency"))
+                       + (f"; epoch offset (topic − (epoch + frame time); includes ScanImage's arming → first-line gap, NOT a latency) p50/p99/max ms {fmt(t['epoch_offset_ms'])}"
+                          if t.get("epoch_offset_ms") else "; no `epoch` in the TIFF → no epoch offset"))
     out += ["", "| pass bar | segment | value | result |", "|---|---|---|---|"]
     for b in rep["bars"]:
         out.append(f"| {b['bar']} | {b['segment'] if b['segment'] is not None else 'all'} | {b['value']} | {'PASS' if b['pass'] else 'FAIL'} |")
@@ -392,7 +441,9 @@ def main(argv=None) -> int:
     src.add_argument("--jsonl", help="the node's --dump file")
     ap.add_argument("--tiff", help="the acquisition's ScanImage TIFF (frameNumbers / frameTimestamps_sec / epoch in its page descriptions)")
     ap.add_argument("--utc-offset-h", type=float, default=None, help="the ScanImage PC's UTC offset for the TIFF epoch (default: this machine's local zone)")
-    ap.add_argument("--segment", type=int, default=None, help="only this acquisition segment")
+    ap.add_argument("--segment", type=int, default=None, help="only this acquisition segment (with --tiff: the TIFF's segment, overriding the choice)")
+    ap.add_argument("--epoch-window-s", type=float, default=EPOCH_WINDOW_S,
+                    help=f"with --tiff: the TIFF's segment starts 0..this many s after its epoch (default {EPOCH_WINDOW_S:g})")
     ap.add_argument("--frame-period-ms", type=float, default=None, help="override the measured frame period for the pass bar")
     ap.add_argument("--meta-p99-ms", type=float, default=None, help="pass bar for meta latency p99 (default: one frame period)")
     ap.add_argument("--preview-p99-ms", type=float, default=250.0)
@@ -407,7 +458,11 @@ def main(argv=None) -> int:
         records = load_jsonl(Path(a.jsonl))
         source = a.jsonl
     tiff = tiff_frames(Path(a.tiff)) if a.tiff else None
-    rep = analyze(records, tiff, a.utc_offset_h, a.frame_period_ms, a.segment, a.meta_p99_ms, a.preview_p99_ms)
+    try:
+        rep = analyze(records, tiff, a.utc_offset_h, a.frame_period_ms, a.segment, a.meta_p99_ms, a.preview_p99_ms, a.epoch_window_s)
+    except SegmentChoiceError as exc:
+        print(f"which segment is the TIFF? {exc}", file=sys.stderr)
+        return 2
     rep["source"] = source
     if not rep["segments"]:
         print(f"no /scanimage/frame_meta records in {source}", file=sys.stderr)

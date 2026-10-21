@@ -449,10 +449,46 @@ def main(argv: list[str] | None = None) -> int:
             t = s1 and s1.get("tiff")
             check("F: TIFF alignment: 87/87 frames matched, 2 pages per frame, ZMQ − TIFF timestamp = +5 ms",
                   t and t["matched_frames"] == n_a and t["pages_per_frame"] == NCH and t["frame_meta_count_equals_tiff_frames"] and abs(t["zmq_minus_tiff_ts_ms"]["p50"] - 5.0) < 0.01, json.dumps(t))
-            check("F: absolute latency from the TIFF epoch is finite and plausible (20 ms + the stream delay)",
-                  t and t.get("absolute_latency_ms", {}).get("n") == n_a and 15.0 <= t["absolute_latency_ms"]["min"] <= 2000.0, json.dumps(t and t.get("absolute_latency_ms")))
+            check("F: epoch offset from the TIFF epoch is finite and plausible (20 ms + the stream delay)",
+                  t and t.get("epoch_offset_ms", {}).get("n") == n_a and 15.0 <= t["epoch_offset_ms"]["min"] <= 2000.0, json.dumps(t and t.get("epoch_offset_ms")))
             check("F: the report's pass bars include the meta-latency and gap bars per segment", any("meta latency" in b["bar"] for b in rep["bars"]) and any(b["bar"].startswith("0 gaps") and b["segment"] == 2 and not b["pass"] for b in rep["bars"]), json.dumps(rep["bars"]))
+            check("F: the TIFF's segment is chosen by frame count + epoch (segment 1 the only candidate; timestamps agree)",
+                  t and [c["segment"] for c in t["segment_choice"] if c["candidate"]] == [1] and t["timestamps_agree"], json.dumps(t and t["segment_choice"]))
             print(r.stdout[-1500:], file=sys.stderr)
+        # three acquisitions that each number frames from 1, with the TIFF = the LAST one (2026-10-20's wrong match)
+        syn = work / "three_segments.jsonl"
+        base = metas1[0]["rx_epoch_ms"]
+        with open(syn, "w", encoding="utf-8") as fh:
+            for sid in (1, 2, 3):
+                for k in range(1, 21):
+                    t_ms = sid * 10_000 + (k - 1) * 1000 // 29
+                    fh.write(json.dumps({"topic": "/scanimage/frame_meta", "seq": sid * 100 + k, "segment": sid, "frameNumber": k,
+                                         "frameTimestamp_s": (k - 1) / 29.0, "rx_epoch_ms": base + t_ms, "rx_mono_ns": t_ms * 1_000_000,
+                                         "pub_mono_ns": t_ms * 1_000_000 + 100_000, "queue_depth": 0, "dims": [8, 8, 1], "nchan": 1}) + "\n")
+
+        def syn_tiff(name: str, epoch_ms: int) -> Path:
+            p = work / name
+            e = dt.datetime.fromtimestamp(epoch_ms / 1000.0, dt.timezone.utc)
+            write_si_tiff(p, [(k, (k - 1) / 29.0) for k in range(1, 21)], 1, [e.year, e.month, e.day, e.hour, e.minute, e.second + e.microsecond / 1e6])
+            return p
+
+        def syn_report(tif: Path, *extra: str):
+            out = work / f"{tif.stem}{'-'.join(extra)}.json"
+            rr = subprocess.run([PY, str(tool), "--jsonl", str(syn), "--tiff", str(tif), "--utc-offset-h", "0", "--json", str(out), *extra],
+                                capture_output=True, text=True, timeout=60)
+            seg_t = {s["id"]: s.get("tiff") for s in json.loads(out.read_text())["segments"]} if rr.returncode == 0 and out.exists() else {}
+            return rr, seg_t
+
+        rr, seg_t = syn_report(syn_tiff("syn_last.tif", base + 30_000 - 560))  # armed 0.56 s before segment 3's first frame
+        check("F: three segments numbered from 1, TIFF = the last: the report picks segment 3, all 20 frames, timestamps agree",
+              rr.returncode == 0 and seg_t.get(3) and not seg_t.get(1) and seg_t[3]["matched_frames"] == 20 and seg_t[3]["timestamps_agree"],
+              (rr.stdout + rr.stderr)[-400:])
+        rr, _ = syn_report(syn_tiff("syn_none.tif", base - 60_000))
+        check("F: a TIFF no segment fits (epoch 60 s early) → exit 2, listing the segments, asking for --segment",
+              rr.returncode == 2 and "--segment" in rr.stderr and "segment 3:" in rr.stderr, (rr.stdout + rr.stderr)[-400:])
+        rr, seg_t = syn_report(work / "syn_none.tif", "--segment", "2")
+        check("F: --segment overrides the choice (segment 2)", rr.returncode == 0 and seg_t.get(2) and seg_t[2]["matched_frames"] == 20,
+              (rr.stdout + rr.stderr)[-400:])
         # a bag the way the bridge records it (raw CDR, arrival stamps), then the report's bag path
         from recorder import Recorder  # noqa: E402  (nodes/)
 
