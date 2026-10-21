@@ -479,6 +479,10 @@ def main(argv: list[str] | None = None) -> int:
         si_cmd = [e.get("command") for e in si_ev if e.get("kind") == "command"]
         check("ScanImage command/reply pairs in the run log (via=ws, plugin scanimage)", len(si_rep) >= 8 and all(e.get("via") == "ws" and e.get("plugin") == "scanimage" for e in si_rep), f"{len(si_rep)} replies: {[r.get('command') for r in si_rep]}")
         check("ScanImage status lines in the run log carry acqState", len(si_st) >= 2 and all("acqState" in e for e in si_st if e.get("reachable")), str(len(si_st)))
+        si_ok = [e for e in si_st if e.get("reachable")]
+        check("ScanImage status lines carry the getAcqStatus frame counter (acq.frameNumberAcq, no errors)",
+              bool(si_ok) and all(isinstance(e.get("acq"), dict) and "frameNumberAcq" in e["acq"] and not e.get("errors") for e in si_ok),
+              json.dumps(si_ok[-1] if si_ok else None)[:300])
         check("Studio-path ScanImage commands logged in order", si_cmd == ["ping", "setFileStem", "set", "set", "grab", "waitIdle", "abort", "get", "ping", "bogusCommand"], str(si_cmd))
         grab = [e for e in si_rep if e.get("command") == "grab"]
         check("grab reply in the run log carries the TIFF artifact (stem, counter, path)", bool(grab) and grab[0].get("ok") and isinstance(grab[0].get("artifact"), dict)
