@@ -131,6 +131,11 @@ scanimage-node = "python nodes/scanimage_node.py"
 scanimage-cmd = "python nodes/scanimage_cmd.py"
 # ScanImage's ZeroMQ frame stream (LAB-303 Block R): SUB → /scanimage/frame_meta, frame_stats, preview/ch<id>.
 scanimage-frames = "python nodes/scanimage_frames_node.py"
+# The Thorlabs SiPM controller, READ-ONLY (Bergamo Block S): node, one-shot command, and the
+# driver's own CLI (scan / snapshot / watch) for use without ROS.
+sipm-node = "python nodes/sipm_node.py"
+sipm-cmd = "python nodes/sipm_cmd.py"
+sipm = "python nodes/thorsipm.py"
 # ── the bridge node: bridge.py's hub + log writer + dispatcher on ROS input ──
 bridge-node = "python nodes/bridge_node.py"
 # ── simulators (the root workspace's fictrac_sim.py, unmodified) ────────────
@@ -145,6 +150,7 @@ rig = "python nodes/rig.py"
 # `test` = the frame-stream harness (mock ZMQ publisher, ≈ 40 s) THEN the acceptance run; `-- args` reach the latter.
 test = { cmd = "python tests/test_ros2_poc.py", depends-on = ["test-frames"] }
 test-frames = "python tests/test_scanimage_frames.py"
+test-sipm = "python tests/test_sipm.py"
 # latency / gaps / queue-depth report from a bag or the node's --dump JSONL (+ the matching TIFF)
 zmq-latency = "python tools/zmq_latency_report.py"
 studio-emulator = "python tests/studio_emulator.py"

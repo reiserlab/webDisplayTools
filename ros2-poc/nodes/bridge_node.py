@@ -136,6 +136,11 @@ BIAS_FRAMES_TOPIC = "/bias/frames"  # every frame's BIAS timestamp, published by
 SCANIMAGE_CMD_TOPIC = "/scanimage/cmd"
 SCANIMAGE_REPLY_TOPIC = "/scanimage/reply"
 SCANIMAGE_STATUS_TOPIC = "/scanimage/status"
+# The SiPM controller (nodes/sipm_node.py, read-only): its 1 Hz status carries bias/enable/offsets/
+# temperature, the detector settings ScanImage's TIFF header does not have.
+SIPM_CMD_TOPIC = "/sipm/cmd"
+SIPM_REPLY_TOPIC = "/sipm/reply"
+SIPM_STATUS_TOPIC = "/sipm/status"
 # ScanImage's ZeroMQ frame stream as topics (nodes/scanimage_frames_node.py, LAB-303 Block R). STREAMS:
 # recorded into the bag as received, like /bias/frames, and never derived into a run-log line (the
 # telemetry rule: a string-tagged stream is not a behavior sample). The preview images are bounded at
@@ -155,6 +160,7 @@ STREAM_TOPICS = {
 CONNECTOR_TOPICS = {
     "bias": {"cmd": BIAS_CMD_TOPIC, "reply": BIAS_REPLY_TOPIC, "status": BIAS_STATUS_TOPIC},
     "scanimage": {"cmd": SCANIMAGE_CMD_TOPIC, "reply": SCANIMAGE_REPLY_TOPIC, "status": SCANIMAGE_STATUS_TOPIC},
+    "sipm": {"cmd": SIPM_CMD_TOPIC, "reply": SIPM_REPLY_TOPIC, "status": SIPM_STATUS_TOPIC},
 }
 FRAME_TOPIC = "/arena/frame"
 RAW_QOS = QoSProfile(
@@ -305,6 +311,7 @@ class RecordingLogWriter(B.LogWriter):
             SESSION_TOPIC: STRING_TYPE, BROWSER_TOPIC: STRING_TYPE, EVENT_TOPIC: STRING_TYPE,
             KINEFLY_TOPIC: STRING_TYPE, BIAS_CMD_TOPIC: STRING_TYPE, BIAS_REPLY_TOPIC: STRING_TYPE, BIAS_STATUS_TOPIC: STRING_TYPE, BIAS_FRAMES_TOPIC: STRING_TYPE,
             SCANIMAGE_CMD_TOPIC: STRING_TYPE, SCANIMAGE_REPLY_TOPIC: STRING_TYPE, SCANIMAGE_STATUS_TOPIC: STRING_TYPE,
+            SIPM_CMD_TOPIC: STRING_TYPE, SIPM_REPLY_TOPIC: STRING_TYPE, SIPM_STATUS_TOPIC: STRING_TYPE,
             **STREAM_TOPICS,
         }
         if self._typed:
@@ -859,7 +866,8 @@ async def run(args: argparse.Namespace) -> None:
                 "record": {"bag": log.bag_name, "profile": log._profile, "typed": typed},
                 "topics": {"fictrac": FICTRAC_FRAME_TOPIC if typed else FICTRAC_TOPIC, "kinefly": KINEFLY_TOPIC,
                            "bias": [BIAS_CMD_TOPIC, BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC, BIAS_FRAMES_TOPIC],
-                           "scanimage": [SCANIMAGE_CMD_TOPIC, SCANIMAGE_REPLY_TOPIC, SCANIMAGE_STATUS_TOPIC], "frame": FRAME_TOPIC,
+                           "scanimage": [SCANIMAGE_CMD_TOPIC, SCANIMAGE_REPLY_TOPIC, SCANIMAGE_STATUS_TOPIC],
+                           "sipm": [SIPM_CMD_TOPIC, SIPM_REPLY_TOPIC, SIPM_STATUS_TOPIC], "frame": FRAME_TOPIC,
                            "browser": BROWSER_TOPIC, "event": EVENT_TOPIC, "session": SESSION_TOPIC},
             }
         )
