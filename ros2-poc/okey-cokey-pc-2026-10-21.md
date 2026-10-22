@@ -75,6 +75,12 @@ Once: `pixi install -e viz` (foxglove_bridge, ~0.3 GB) and the Foxglove desktop 
 pixi run rig -- --no-fictrac --bias --bias-args "--video-dir D:\rec\okey-cokey" --foxglove --viz-args "--sources bias" --stimulus-args "--panel-layout four-color"
 ```
 
+**For a real run, start the stack with `tools\okey-cokey-start.ps1`** (BIAS + ufmf + this rig +
+step 4's server + the Studio, in one go; ww14). It launches everything through WMI, so the rig and
+the server get windows of their own that outlive whatever started them. On ww14 (2026-10-22) a full run died at
+minute 9 because the Claude desktop app restarted itself and took BIAS, the rig and the server,
+all started from a Claude session, with it. Never run an experiment from a Claude terminal tab.
+
 Expected: `[rig] up: router, bias, bridge, stimulus, viz, foxglove — Studio → ws://localhost:8765
 Foxglove → ws://localhost:8766`. In Foxglove: Open connection → Foxglove WebSocket →
 `ws://localhost:8766`; Layout → Import from file → `ros2-poc\foxglove\arena-okey-cokey.json`.
@@ -95,7 +101,8 @@ server is a problem: the Next tier (`/next/arena_studio.html`, same Studio v0.97
 Protocol ▾ → Open… on `C:\w\protocols\g6_color_optomotor_smoke.yaml`.
 
 - [ ] Run view → **Bridge: Connect** → `connected`. Note any Chrome local-network prompt.
-- [ ] **Connect** → the controller. Firmware line in the log; note the build label. The 2×10 controller
+- [ ] **Connect** → the controller: pick **`G6_Arena`** in the port picker, not a COM number (ww14
+      has a second Teensy, and the controller moved from COM3 to COM5 within a day). Firmware line in the log; note the build label. The 2×10 controller
       must run the `arena-2x10-local` build (a `main` build rejects 2×10 patterns).
 - [ ] SD card mounted (Console shows a listing; ww18 H1 had an unmounted card). Upload
       `protocols\g6_color_optomotor_test_patterns\` (Patterns → Add ▾); the four
