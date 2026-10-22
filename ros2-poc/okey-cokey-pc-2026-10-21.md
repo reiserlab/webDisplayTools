@@ -77,7 +77,9 @@ pixi run rig -- --no-fictrac --bias --bias-args "--video-dir D:\rec\okey-cokey" 
 
 **For a real run, start the stack with `tools\okey-cokey-start.ps1`** (BIAS + ufmf + this rig +
 step 4's server + the Studio, in one go; ww14). It launches everything through WMI, so the rig and
-the server get windows of their own that outlive whatever started them. On ww14 (2026-10-22) a full run died at
+the server get consoles of their own that outlive whatever started them. On ww14 those are two
+**tabs of one Windows Terminal window** ("okey-cokey RIG", "okey-cokey STUDIO SERVER :8092"): stop
+the rig with Ctrl-C in its tab. On ww14 (2026-10-22) a full run died at
 minute 9 because the Claude desktop app restarted itself and took BIAS, the rig and the server,
 all started from a Claude session, with it. Never run an experiment from a Claude terminal tab.
 

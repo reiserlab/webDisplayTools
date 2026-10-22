@@ -4,9 +4,10 @@
 #   powershell -ExecutionPolicy Bypass -File tools\okey-cokey-start.ps1 -Protocol g6_color_optomotor_smoke
 #
 # Starts BIAS (unless it already answers on 5010), puts it on ufmf (tools\bias-ufmf.ps1), then opens
-# two PowerShell windows, the rig ("okey-cokey RIG") and the Studio page server ("okey-cokey STUDIO
-# SERVER :8092"), and the Studio in Chrome. Stop the rig with Ctrl-C in ITS window (the bag closes
-# cleanly); close the server window when done.
+# two PowerShell consoles, the rig ("okey-cokey RIG") and the Studio page server ("okey-cokey STUDIO
+# SERVER :8092"), and the Studio in Chrome. On ww14 (Windows 11, Windows Terminal as the default
+# terminal) the two consoles open as TABS of one Windows Terminal window, not as separate windows.
+# Stop the rig with Ctrl-C in ITS tab (the bag closes cleanly); close the server tab when done.
 #
 # Why WMI (Win32_Process.Create) and not Start-Process: on ww14 (2026-10-22) the Claude desktop app
 # restarted itself 9 min into a full run, and BIAS, the rig and the server, all started from a Claude
@@ -72,6 +73,8 @@ if (Listening $StudioPort) { Write-Host "server: $StudioPort already in use, not
 else { [void](Detached "powershell.exe -NoExit -ExecutionPolicy Bypass -EncodedCommand $(Encoded $srvCmd)" $repo) }
 WaitFor @(7447, 8765, 8766, $StudioPort) 90 'rig / Studio server'
 Write-Host "up: BIAS 5010, zenoh 7447, Studio bridge 8765, Foxglove 8766, Studio page $StudioPort"
+Write-Host 'The rig and the server run in two tabs of a Windows Terminal window (or two console windows).'
+Write-Host 'To stop: Ctrl-C in the "okey-cokey RIG" tab, then close the "okey-cokey STUDIO SERVER" tab.'
 
 # 3. Studio
 $url = "http://localhost:$StudioPort/arena_studio.html?p=$Protocol&rig=$Rig&mode=run"
