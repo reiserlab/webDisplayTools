@@ -110,6 +110,12 @@ ros-jazzy-rqt-topic = "*"
 ros-jazzy-rqt-console = "*"
 ros-jazzy-foxglove-bridge = "*"
 
+# Windows: the foxglove-bridge package puts foxglove.dll + foxglove_cpp_shared.dll in Library\lib,
+# which is not on the DLL search path, so `ros2 run foxglove_bridge` exits 0xC0000135 (DLL not
+# found; ww14 2026-10-22). Prepend that directory for the viz environment only.
+[feature.viz.target.win-64.activation.env]
+PATH = '%CONDA_PREFIX%\Library\lib;%PATH%'
+
 [environments]
 default = { solve-group = "poc" }
 typed = { features = ["typed"], solve-group = "poc" }

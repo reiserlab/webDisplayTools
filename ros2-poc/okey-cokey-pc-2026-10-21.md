@@ -26,7 +26,10 @@ below assume it is done.
 - [ ] External-control server on, port **5010** for camera 0:
       `curl.exe "http://127.0.0.1:5010/?get-status"` returns `"success" : true`. Note any extra keys.
 - [ ] Logging format = **ufmf** in BIAS's own settings (BIAS writes its configured format whatever
-      extension it is sent; ww18 B1).
+      extension it is sent; ww18 B1). BIAS v0.73.1 (Spinnaker) resets to jpg on **every** restart (ww14),
+      so after each BIAS start run
+      `powershell -ExecutionPolicy Bypass -File tools\bias-ufmf.ps1 -VideoDir <video dir>`.
+      It must print `BIAS logging: ufmf -> …` (details: setup checklist C.3).
 - [ ] Choose and create the **video directory**, e.g. `D:\rec\okey-cokey`. Use plain file names with
       no dots or spaces (BIAS cuts the name at the first dot; ww18 B1).
 - [ ] Camera preview live, frame rate as expected (note `framesPerSec`).
@@ -56,7 +59,11 @@ dir D:\rec\okey-cokey
 - [ ] `stopRecording` names the file BIAS really wrote (`…_cam_0_date_…_v001.ufmf`) and its frame count
       = the lines in `stamp_log_cam0.txt`.
 - [ ] Unknown path: start a recording, close BIAS, `getTimestamp` returns `unknown` / `error` within
-      seconds, no hang; reopen BIAS and the node's status flips back to reachable.
+      seconds, no hang; reopen BIAS and the node's status flips back to reachable. (ww14: `unknown` after
+      4.0 s.) **Then rerun `tools\bias-ufmf.ps1`**: the reopened BIAS is back on jpg.
+
+If the rig (step 3) is already running, its own BIAS node answers `bias-cmd` the same way. ww14 ran
+this step that way, with no separate router or node.
 
 Stop the node and the router (Ctrl-C).
 
@@ -71,7 +78,8 @@ pixi run rig -- --no-fictrac --bias --bias-args "--video-dir D:\rec\okey-cokey" 
 Expected: `[rig] up: router, bias, bridge, stimulus, viz, foxglove — Studio → ws://localhost:8765
 Foxglove → ws://localhost:8766`. In Foxglove: Open connection → Foxglove WebSocket →
 `ws://localhost:8766`; Layout → Import from file → `ros2-poc\foxglove\arena-okey-cokey.json`.
-Before a run: BIAS indicator green, camera fps plotted, "Arena" grey/OK. (Without the viz env, drop
+**8766, not 8765.** 8765 is the Studio bridge: Foxglove connects there, drops at once, and shows
+nothing. Before a run: BIAS indicator green, camera fps plotted, "Arena" grey/OK. (Without the viz env, drop
 `--foxglove` and add `--stimulus`: the graph runs, there is just nothing to look at.)
 
 ## 4. Studio, served from this checkout
@@ -95,6 +103,13 @@ Protocol ▾ → Open… on `C:\w\protocols\g6_color_optomotor_smoke.yaml`.
 - [ ] **Direction**, once: Console → Test `green_pair_d100`. The first 10 s must turn clockwise seen
       from above, then reverse with no gap. If reversed, swap `fps_cw` / `fps_ccw` in Edit view and
       record it.
+      **Okey-cokey rig: done, no test needed.** On 2026-10-22 (ww14) the arena turned out to be
+      **mounted upside down**. Confirmed by eye in the smoke run: every trial the protocol calls CW
+      (`fps_cw` = +80) turns **counter-clockwise seen from above**, and "CCW" turns clockwise. This
+      was accepted as is, so the protocols are **not** changed. When analysing okey-cokey data,
+      treat the protocol's CW/CCW labels as reversed relative to the fly's view from above.
+      (The Console "Test `green_pair_d100`" entry also wasn't found on ww14; the smoke run's first
+      pair shows the same thing.)
 
 ## 5. Smoke run (2 min), then the full run (16 min)
 
@@ -118,6 +133,12 @@ pixi run export                                       # unless the Studio auto-c
 pixi run python ..\scripts\runlog-check.py runlogs\exports\<file>.jsonl
 pixi run ros2 bag info runlogs\<run>.bag
 ```
+
+`runlog-check` can report a run "incomplete" with trials `unknown (coverage)`, `ring_overrun`, whose
+patterns and durations don't match the protocol. Those are controller activity from **before** the run,
+such as Console tests while nothing drained the telemetry ring (ww14 smoke #1: 4 such trials, while all
+8 run rotations passed). Judge the run by its own trials, or run it again straight after Connect
+(ww14 smoke #2: OK, 8 / 8 pass, 0 unknown).
 
 - [ ] `runlog-check` OK (smoke: 4 conditions × 2 trialParams; full: 24 × 2 = 48 trialParams).
 - [ ] `/bias/reply`: smoke 1 + 4 + 1 `getTimestamp` (start, each pair, stop); full 1 + 24 + 1.
