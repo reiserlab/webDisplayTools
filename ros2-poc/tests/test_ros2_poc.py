@@ -36,7 +36,12 @@ log, plus:
                                                         order; DERIVED lines (Kinefly rows, BIAS
                                                         events) same content, |Δms| within tolerance
   log levels as a converter option                     bag → behavior_v1 == bridge.py --convert of the
-                                                        v2; full level carries the 25 FicTrac columns
+                                                        v2; full level refused without the raw FicTrac
+                                                        topics (2026-10-18), still served by an old bag
+  the merged FicTrac record (2026-10-18)               /arena/frame carries err, dr_lab_x/y/z, ft_seq, ft_ns
+                                                        from the SAME line as x/y/hd; no /fictrac/* topic
+                                                        recorded by default; an FT_BADFR frame = a flagged
+                                                        record and no row; frame records ≤ 72 B/frame compressed
   ordering: `seq` (live order) vs `time`               same lines; count of same-ms swaps; identical
                                                         closed-loop report either way
   typed topics when arena_interfaces is built          ArenaFrame / FicTracFrame schemas in the bag
@@ -247,7 +252,8 @@ def typed_frame_values(bag: Path) -> dict:
     from mcap_convert import read_all  # noqa: E402
 
     recs, _ = read_all(bag)
-    frames = [r["msg"] for r in recs if r["topic"] == "/arena/frame" and r.get("msg") and "has_ft" in r["msg"]]
+    frames = [r["msg"] for r in recs if r["topic"] == "/arena/frame" and r.get("msg") and "has_ft" in r["msg"]
+              and not (int(r["msg"].get("flags") or 0) & 1)]  # flagged untracked frames carry NaN by design
     frames.sort(key=lambda m: m["seq"])
     out = {"n": len(frames), "decode_errors": sum(1 for r in recs if r["topic"] == "/arena/frame" and r.get("decode_error")),
            "has_derived": bool(frames) and all(k in frames[0] for k in ("turning_dps", "forward_mms"))}
@@ -256,15 +262,100 @@ def typed_frame_values(bag: Path) -> dict:
     fin = lambda v: isinstance(v, float) and math.isfinite(v)  # noqa: E731
     out["core_finite"] = all(fin(m["x"]) and fin(m["y"]) and fin(m["hd"]) and (fin(m["ft"]) or not m["has_ft"]) for m in frames)
     out["fc_monotonic"] = all(b["fc"] > a["fc"] for a, b in zip(frames, frames[1:]))
-    out["first_nan"] = math.isnan(frames[0]["turning_dps"]) and math.isnan(frames[0]["forward_mms"])
-    rest = frames[1:]
-    good = [m for m in rest if fin(m["turning_dps"]) and fin(m["forward_mms"])]
-    out["finite_frac"] = round(len(good) / len(rest), 3) if rest else None
-    out["turning_max"] = round(max((abs(m["turning_dps"]) for m in good), default=0.0), 1)
-    out["forward_max"] = round(max((abs(m["forward_mms"]) for m in good), default=0.0), 2)
-    out["in_range"] = out["turning_max"] < 5000 and out["forward_max"] < 200  # the model fly, not a real one
-    out["ok"] = out["core_finite"] and out["fc_monotonic"] and out["first_nan"] and (out["finite_frac"] or 0) >= 0.95 and out["in_range"]
+    # Live-only since 2026-10-18: the recorded copy carries NaN (16 B/frame of incompressible doubles,
+    # exactly recomputable); the derivation itself is checked on FrameDeriver directly (below).
+    out["derived_nan_in_bag"] = all(math.isnan(m["turning_dps"]) and math.isnan(m["forward_mms"]) for m in frames)
+    out["ok"] = out["core_finite"] and out["fc_monotonic"] and out["derived_nan_in_bag"]
     return out
+
+
+def frame_deriver_values() -> dict:
+    """The live derived channels' math, on the class itself (bridge_node.FrameDeriver): two frames
+    20 ms apart, 0.02 rad along the heading and 0.01 rad of turn → js/kinematics.js's numbers."""
+    sys.path.insert(0, str(NODES))
+    from bridge_node import FrameDeriver  # noqa: E402  (imports rclpy; no node is created)
+
+    d = FrameDeriver(9.0)
+    first = d.step({"fc": 1, "ft": 0.0, "t": 0, "x": 0.0, "y": 0.0, "hd": 0.0})
+    turning, forward = d.step({"fc": 2, "ft": 20.0, "t": 20, "x": 0.02, "y": 0.0, "hd": 0.01})
+    want_t = math.degrees(0.01) / 0.02
+    want_f = (0.02 * math.cos(0.005)) / 0.02 * 4.5
+    return {"first_nan": all(math.isnan(v) for v in first), "turning_dps": round(turning, 4), "forward_mms": round(forward, 4),
+            "ok": all(math.isnan(v) for v in first) and abs(turning - want_t) < 1e-6 and abs(forward - want_f) < 1e-6}
+
+
+def frame_extras_values(bag: Path) -> dict:
+    """The kept FicTrac columns on the /arena/frame records (typed or String path), judged by VALUE
+    against the behavior columns of the SAME record: fictrac_sim writes col 8 = its heading step
+    and col 17 = the accumulated heading, so wrap(Δhd) == dr_lab_z frame to frame proves the extras
+    come from the line that produced x/y/hd (an off-by-one join would fail it); col 23 = the frame
+    number (ft_seq == fc); col 5 finite (the sim writes 0). Flagged records are the untracked frames."""
+    sys.path.insert(0, str(NODES))
+    from mcap_convert import _json_of, read_all  # noqa: E402
+
+    recs, _ = read_all(bag)
+    frames, bad = [], []
+    for r in recs:
+        if r["topic"] != "/arena/frame" or not r.get("msg"):
+            continue
+        fr = r["msg"] if "has_ft" in r["msg"] else _json_of(r)
+        if not isinstance(fr, dict):
+            continue
+        (bad if int(fr.get("flags") or 0) & 1 else frames).append(fr)
+    frames.sort(key=lambda f: int(f.get("seq", f.get("wseq", 0))))
+    out = {"n": len(frames), "bad": len(bad), "bad_fc": [int(b.get("fc") or 0) for b in bad][:5]}
+    if not frames:
+        return out
+    fin = lambda v: isinstance(v, (int, float)) and math.isfinite(v)  # noqa: E731
+    out["extras_present"] = all(k in frames[0] for k in ("err", "dr_lab_x", "dr_lab_y", "dr_lab_z", "ft_seq", "ft_ns"))
+    if not out["extras_present"]:
+        return out
+    out["err_finite"] = all(fin(f["err"]) for f in frames)
+    out["dr_finite"] = all(fin(f["dr_lab_x"]) and fin(f["dr_lab_y"]) and fin(f["dr_lab_z"]) for f in frames)
+    out["ft_seq_eq_fc"] = all(int(f["ft_seq"]) == int(f["fc"]) for f in frames)
+    out["ft_ns_monotonic"] = all(int(b["ft_ns"]) > int(a["ft_ns"]) for a, b in zip(frames, frames[1:]) if int(b["fc"]) > int(a["fc"]))
+
+    def wrap(r: float) -> float:
+        return (r + math.pi) % (2 * math.pi) - math.pi
+
+    pairs = [(a, b) for a, b in zip(frames, frames[1:]) if int(b["fc"]) == int(a["fc"]) + 1]
+    aligned = sum(1 for a, b in pairs if abs(wrap(float(b["hd"]) - float(a["hd"])) - float(b["dr_lab_z"])) < 5e-5)  # hd is 5-dp rounded
+    out["pairs"] = len(pairs)
+    out["aligned_frac"] = round(aligned / len(pairs), 3) if pairs else None
+    out["ok"] = out["err_finite"] and out["dr_finite"] and out["ft_seq_eq_fc"] and out["ft_ns_monotonic"] and (out["aligned_frac"] or 0) >= 0.95
+    return out
+
+
+def frame_record_size(bag: Path, export: Path) -> dict:
+    """The /arena/frame records AS RECORDED, rewritten alone in the final layout (chunk-only index,
+    zstd 19 — mcap_index.reindex's settings), against the gzip of the export's frame rows: the ratio
+    the 2026-10-18 decision accepted (docs/development/fictrac-columns-in-the-bag.md §3)."""
+    import gzip
+    import io
+
+    from mcap.reader import make_reader
+    from mcap.writer import CompressionType, IndexType, Writer
+
+    sys.path.insert(0, str(NODES))
+    from mcap_index import ZSTD_LEVEL, _zstd_level  # noqa: E402
+
+    buf = io.BytesIO()
+    n = 0
+    with _zstd_level(ZSTD_LEVEL):
+        w = Writer(buf, compression=CompressionType.ZSTD, index_types=IndexType.ALL & ~IndexType.MESSAGE)
+        w.start(profile="ros2", library="test_ros2_poc")
+        ch = None
+        for f in sorted(bag.glob("*.mcap")):
+            with open(f, "rb") as fh:
+                for schema, _chan, m in make_reader(fh).iter_messages(topics=["/arena/frame"], log_time_order=False):
+                    if ch is None:
+                        ch = w.register_channel("/arena/frame", "cdr", w.register_schema(schema.name if schema else "frame", "ros2msg", schema.data if schema else b""))
+                    n += 1
+                    w.add_message(ch, log_time=m.log_time, publish_time=m.publish_time, data=m.data, sequence=n)
+        w.finish()
+    rows = b"\n".join(l for l in export.read_bytes().splitlines() if l.startswith(b"[") and not l.startswith(b'["')) + b"\n"
+    gz = len(gzip.compress(rows, 9))
+    return {"frames": n, "bag_frame_bytes": len(buf.getvalue()), "rows_gz": gz, "ratio": round(len(buf.getvalue()) / gz, 2) if gz else None}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -364,6 +455,15 @@ def main(argv: list[str] | None = None) -> int:
             fictrac.start()
             kill_report["restarted_at_ms"] = int((time.monotonic() - t_run0) * 1000)
             time.sleep(1.0)
+            # One untracked FicTrac frame, tagged as the real tracker tags it (bridge.py: "FT_BADFR").
+            # The adapter forwards any datagram, the pipeline skips it; the bag must still show it as
+            # a flagged /arena/frame record (2026-10-18), the run log must not.
+            try:
+                sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sk.sendto(b"FT_BADFR, 424242, 0\n", ("127.0.0.1", 60000))
+                sk.close()
+            except OSError as exc:
+                kill_report["bad_frame_send_error"] = repr(exc)
             bias_replies["getTimestamp"] = bias_cmd("getTimestamp")
             # stopRecording once the LAST epoch has opened (same anchor, so it lands inside the run).
             last = f"cl_constant_{a.epochs - 1}"
@@ -400,8 +500,11 @@ def main(argv: list[str] | None = None) -> int:
         want_topics = ["/arena/session", "/arena/browser", "/arena/event", "/arena/frame", "/kinefly/raw", "/bias/cmd", "/bias/reply", "/bias/status",
                        "/scanimage/cmd", "/scanimage/reply", "/scanimage/status"]
         missing = [t for t in want_topics if not bagsum.get("topics", {}).get(t)]
-        check("every stream recorded in the bag (session, browser, event, frame, kinefly, bias + scanimage cmd/reply/status, fictrac)",
-              not missing and (bagsum.get("topics", {}).get("/fictrac/frame") or bagsum.get("topics", {}).get("/fictrac/raw")), f"missing {missing}")
+        check("every stream recorded in the bag (session, browser, event, frame, kinefly, bias + scanimage cmd/reply/status)",
+              not missing, f"missing {missing}")
+        raw_ft = {t: n for t, n in bagsum.get("topics", {}).items() if t.startswith("/fictrac/")}
+        check("raw FicTrac topics NOT recorded by default (2026-10-18: the merged /arena/frame record is the FicTrac record; --record-fictrac-raw opts in)",
+              not any(raw_ft.values()), str(raw_ft))
         typed = any(s.startswith("arena_interfaces/") for s in bagsum.get("schemas", []))
         check("typed messages in the bag when arena_interfaces is built (else String fallback, reported)",
               True, "")
@@ -434,6 +537,17 @@ def main(argv: list[str] | None = None) -> int:
             by_type[e.get("type", "?")] = by_type.get(e.get("type", "?"), 0) + 1
         print(f"[test] log: {len(objs)} lines — fictrac rows {len(rows_ft)}, arena echoes {len(rows_a)}, kf rows {len(rows_kf)}, events {by_type}", file=sys.stderr)
         check("FicTrac rows logged (every frame, not only applied)", len(rows_ft) > 40 * a.epochs, str(len(rows_ft)))
+        # ── the merged FicTrac record (2026-10-18) ───────────────────────────────────
+        ev = frame_extras_values(main_bag) if main_bag else {}
+        check("merged record: err, dr_lab_x/y/z, ft_seq, ft_ns ride on every /arena/frame record and come from the SAME line as x/y/hd "
+              "(wrap(Δhd) == dr_lab_z on ≥ 95 % of consecutive frames; ft_seq == fc; ft_ns monotonic)",
+              ev.get("ok", False), json.dumps(ev))
+        bad_row = any(isinstance(o, list) and isinstance(o[0], (int, float)) and o[1] == 424242 for o in objs)
+        check("untracked frame (FT_BADFR) → one flagged /arena/frame record carrying its fc, and NO run-log row",
+              ev.get("bad", 0) >= 1 and 424242 in ev.get("bad_fc", []) and not bad_row,
+              json.dumps({"bad": ev.get("bad"), "bad_fc": ev.get("bad_fc"), "row_in_log": bad_row, "send_error": kill_report.get("bad_frame_send_error")}))
+        cs_ft = [e for e in objs if isinstance(e, dict) and e.get("type") == "connector_status" and e.get("src") == "fictrac"]
+        check("connector_status (fictrac) reports bad_frames ≥ 1", bool(cs_ft) and (cs_ft[-1].get("bad_frames") or 0) >= 1, str(cs_ft[-1] if cs_ft else None))
         check('["a",…] compact arena echoes logged', len(rows_a) > 40 * (a.epochs - 1), str(len(rows_a)))
         check('["kf",…] Kinefly rows logged (KF/1 → adapter → bridge)', len(rows_kf) > 100, str(len(rows_kf)))
         kf_ok = all(len(r) == 8 and isinstance(r[1], int) and isinstance(r[2], int) and r[4] is not None and r[5] is not None for r in rows_kf[:50])
@@ -533,11 +647,25 @@ def main(argv: list[str] | None = None) -> int:
         check("bag → behavior_v1 == bridge.py --convert of the behavior_v2 (byte-identical)",
               r1.returncode == 0 and c1.returncode == 0 and bv1.read_bytes() == v1.read_bytes(), r1.stderr[-200:])
         rf = run_capture(conv + ["--level", "full", "--out", str(bfull)])
-        full_objs = read_jsonl(bfull) if rf.returncode == 0 else []
-        ff = [o for o in full_objs if isinstance(o, dict) and o.get("type") == "fictrac_frame"]
-        check("bag → full level: one fictrac_frame per frame with the 25 FicTrac columns, no schema line",
-              rf.returncode == 0 and len(ff) == len(rows_ft) and all(len(o.get("fictrac") or []) == 25 for o in ff)
-              and not any(isinstance(o, dict) and o.get("type") == "frame_schema" for o in full_objs), f"{len(ff)} frames vs {len(rows_ft)}; cols {sorted({len(o.get('fictrac') or []) for o in ff})}")
+        check("bag → full level REFUSED without the raw FicTrac topics (the error names --record-fictrac-raw)",
+              rf.returncode != 0 and "--record-fictrac-raw" in rf.stderr, rf.stderr[-200:])
+        # A bag from before 2026-10-18 (two records per frame, raw FicTrac topic present) still
+        # converts, full level included. The bench bags are untracked: checked when present.
+        old_bags = [b for b in sorted((POC / "runlogs").glob("arena-log-20261014-*.bag")) if (b / "metadata.yaml").exists()]
+        if old_bags:
+            ob = old_bags[0]
+            ob_out, ob_full = work / "oldbag.v2.jsonl", work / "oldbag.full.jsonl"
+            r_ob = run_capture([PY, str(NODES / "mcap_convert.py"), str(ob), "--out", str(ob_out)], timeout=180)
+            r_of = run_capture([PY, str(NODES / "mcap_convert.py"), str(ob), "--level", "full", "--out", str(ob_full)], timeout=180)
+            ob_rows = sum(1 for o in read_jsonl(ob_out) if isinstance(o, list) and isinstance(o[0], (int, float))) if r_ob.returncode == 0 else 0
+            of_ff = [o for o in (read_jsonl(ob_full) if r_of.returncode == 0 else []) if isinstance(o, dict) and o.get("type") == "fictrac_frame"]
+            n25 = sum(1 for o in of_ff if len(o.get("fictrac") or []) == 25)
+            # ww18 2026-10-15: one frame per bag may lack its raw record (a line that arrived just before the open).
+            check(f"pre-2026-10-18 bag ({ob.name}) still converts; its full level carries the 25 FicTrac columns",
+                  r_ob.returncode == 0 and ob_rows > 0 and r_of.returncode == 0 and len(of_ff) == ob_rows and n25 >= len(of_ff) - 1,
+                  f"rc {r_ob.returncode}/{r_of.returncode}, rows {ob_rows}, full frames {len(of_ff)}, with 25 cols {n25}")
+        else:
+            print("  skip  pre-2026-10-18 bag check: no runlogs/arena-log-20261014-*.bag in this checkout (the bench bags are untracked)", file=sys.stderr)
         rt = run_capture(conv + ["--order", "time", "--out", str(btime)])
         time_lines = read_jsonl_lines(btime) if rt.returncode == 0 else []
         swaps = sum(1 for x, y in zip(conv_lines, time_lines) if x != y)
@@ -565,16 +693,29 @@ def main(argv: list[str] | None = None) -> int:
         ifc = run_capture([PY, str(NODES / "build_interfaces.py"), "--check"], timeout=60)
         have_ifaces = ifc.returncode == 0
         if have_ifaces:
-            check("typed: arena_interfaces importable → ArenaFrame + FicTracFrame recorded in the bag",
-                  typed and bagsum.get("topics", {}).get("/fictrac/frame", 0) > 0, str(bagsum.get("schemas")))
+            check("typed: arena_interfaces importable → ArenaFrame recorded in the bag (and no FicTracFrame by default)",
+                  typed and bagsum.get("topics", {}).get("/arena/frame", 0) > 0 and not bagsum.get("topics", {}).get("/fictrac/frame"), str(bagsum.get("schemas")))
             tv = typed_frame_values(main_bag) if main_bag else {}
             check("typed: ArenaFrame VALUES decode from the bag's own schema — core fields finite, fc monotonic, "
-                  "turning_dps/forward_mms NaN on the first frame and finite (model-fly range) on ≥ 95 % of the rest",
+                  "turning_dps/forward_mms NaN in the bag (live-only)",
                   tv.get("ok", False), json.dumps(tv))
-            print(f"  info  typed frames: {tv.get('n')}, derived finite on {tv.get('finite_frac')} of frames 2+, "
-                  f"|turning| ≤ {tv.get('turning_max')} deg/s, |forward| ≤ {tv.get('forward_max')} mm/s", file=sys.stderr)
         else:
             print("  info  arena_interfaces not importable here: String topics used (pixi install builds it on osx/linux; Windows needs MSVC)", file=sys.stderr)
+        fd = frame_deriver_values()
+        check("FrameDeriver (live turning_dps / forward_mms): NaN on the first frame, kinematics.js's numbers on the second", fd.get("ok", False), json.dumps(fd))
+        # Size: the FicTrac record alone in the final layout. The guard is an absolute per-frame budget
+        # (adding one incompressible double costs ≈ 8 B/frame): 72 B/frame compressed, against the
+        # 63.7 B/frame this 25 s run measured on 2026-10-18 (≈ 3 B of that is the file's fixed overhead
+        # spread over 1 084 frames) and the bench bags' ≈ 45-55 (docs/development/fictrac-columns-in-the-
+        # bag.md §3). The ratio to the gzip of the frame rows is reported only — it swings with the
+        # fly's dynamics and a short run's fixed overhead. The String path's JSON record is reported only.
+        sz = frame_record_size(main_bag, export) if main_bag and export.exists() else {}
+        if sz.get("frames"):
+            sz["bytes_per_frame"] = round(sz["bag_frame_bytes"] / sz["frames"], 1)
+        whole = {"bag_bytes": bagsum.get("bytes"), "export_gz": len(__import__("gzip").compress(export.read_bytes(), 9)) if export.exists() else None}
+        print(f"  info  size: frame records {json.dumps(sz)}; whole bag (incl. kinefly/bias/browser) {json.dumps(whole)}", file=sys.stderr)
+        if typed:
+            check("size: /arena/frame records in the final layout (chunk-only index, zstd 19) ≤ 72 B/frame compressed", bool(sz) and (sz.get("bytes_per_frame") or 999) <= 72.0, json.dumps(sz))
 
         check("bridge node still alive at the end of the main run", bridge.alive())
 

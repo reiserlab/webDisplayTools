@@ -92,7 +92,7 @@ from _common import mono_ns, probe_interfaces, raise_timer_resolution, wall_ms, 
 from mcap_convert import convert_bag  # noqa: E402
 from mcap_index import needs_recovery, recover_bag  # noqa: E402
 from recorder import PROFILES, STRING_TYPE, Recorder  # noqa: E402
-from _rows import KF_TAG, kf_row  # noqa: E402  (one encoder for the node and the converter)
+from _rows import FLAG_BAD_FRAME, KF_TAG, fictrac_extras, is_bad_frame_tag, kf_row, parse_fictrac_line  # noqa: E402  (one encoder for the node and the converter)
 
 # Typed messages only when the package imports AND serializes (pixi's `typed` env, or a
 # colcon install whose libraries load); otherwise String JSON everywhere.
@@ -118,7 +118,7 @@ if os.name == "nt":
     # it in THIS process to the precise wall clock; bridge.py itself (bridge 3.4) is unchanged.
     B.now_ms = wall_ms
 
-NODE_VERSION = f"{B.BRIDGE_VERSION} · ros2-poc plan-b (rmw_zenoh, mcap record, connectors)"
+NODE_VERSION = f"{B.BRIDGE_VERSION} · ros2-poc plan-b (rmw_zenoh, mcap record, connectors, merged frame record)"
 FICTRAC_TOPIC = "/fictrac/raw"
 FICTRAC_FRAME_TOPIC = "/fictrac/frame"  # typed arena_interfaces/FicTracFrame
 BROWSER_TOPIC = "/arena/browser"
@@ -203,6 +203,7 @@ class SourceStats:
         self.last_rx_mono = None  # bridge monotonic at last message
         self.lat_ms: list[float] = []
         self.lost = False
+        self.bad = 0  # untracked (FT_BADFR) frames in the current run; FicTrac only
 
     def seen(self, rx_epoch_ms: int | None, rx_mono_ns: int | None = None) -> None:
         self.count += 1
@@ -225,6 +226,7 @@ class SourceStats:
         return {
             "src": self.name,
             "frames": self.count,
+            "bad_frames": self.bad,
             "lat_ms": {
                 "p50": None if not self.lat_ms else round(percentile(self.lat_ms, 0.5), 2),
                 "p99": None if not self.lat_ms else round(percentile(self.lat_ms, 0.99), 2),
@@ -261,8 +263,12 @@ class RecordingLogWriter(B.LogWriter):
     on_close = None
 
     def __init__(self, path, level, log_dir, *, profile: str, typed: bool, export: str, connectors: list[str],
-                 max_bag_bytes: int = 0) -> None:
+                 max_bag_bytes: int = 0, record_fictrac_raw: bool = False) -> None:
         self.seq = 0
+        # 2026-10-18 (docs/development/fictrac-columns-in-the-bag.md): the FicTrac record in the bag
+        # is the merged /arena/frame message; the adapter's topics (25 columns + the verbatim line,
+        # 68-77 % of a bag) are recorded only on request (--record-fictrac-raw, debugging a tracker).
+        self.record_fictrac_raw = bool(record_fictrac_raw)
         self._max_bag_bytes = int(max_bag_bytes or 0)
         self.rec: Recorder | None = None
         self.bag_name: str | None = None
@@ -291,12 +297,12 @@ class RecordingLogWriter(B.LogWriter):
             KINEFLY_TOPIC: STRING_TYPE, BIAS_CMD_TOPIC: STRING_TYPE, BIAS_REPLY_TOPIC: STRING_TYPE, BIAS_STATUS_TOPIC: STRING_TYPE, BIAS_FRAMES_TOPIC: STRING_TYPE,
             SCANIMAGE_CMD_TOPIC: STRING_TYPE, SCANIMAGE_REPLY_TOPIC: STRING_TYPE, SCANIMAGE_STATUS_TOPIC: STRING_TYPE,
         }
-        if self._typed:
-            t[FRAME_TOPIC] = ARENA_FRAME_TYPE
-            t[FICTRAC_FRAME_TOPIC] = FICTRAC_FRAME_TYPE
-        else:
-            t[FRAME_TOPIC] = STRING_TYPE
-            t[FICTRAC_TOPIC] = STRING_TYPE
+        t[FRAME_TOPIC] = ARENA_FRAME_TYPE if self._typed else STRING_TYPE
+        if self.record_fictrac_raw:
+            if self._typed:
+                t[FICTRAC_FRAME_TOPIC] = FICTRAC_FRAME_TYPE
+            else:
+                t[FICTRAC_TOPIC] = STRING_TYPE
         return t
 
     # ── the LogWriter surface ────────────────────────────────────────────────────────
@@ -387,17 +393,38 @@ class RecordingLogWriter(B.LogWriter):
         if self._fh and self.rec is not None:
             self.rec.write_raw(topic, data, t_ns)
 
-    def record_frame(self, msg: dict, derived: tuple[float, float] = NO_DERIVED) -> None:
+    def record_frame(self, msg: dict, extras: dict | None = None, flags: int = 0) -> None:
         """Called by RosHub.publish — the frame's emission point (write_frame follows at once).
-        `derived` = (turning_dps, forward_mms) from the hub's FrameDeriver; typed record only."""
+        `extras` = the kept FicTrac columns beyond the behavior row (_rows.fictrac_extras), in
+        both record forms — the bag's ONLY copy of them since the raw topics stopped being recorded.
+        The derived turning_dps / forward_mms are NOT recorded (NaN in the typed record): they are
+        live-only, exactly recomputable from x/y/hd/ft, and measured at 16 B per frame of
+        incompressible doubles — a fifth of the record (harness bag, 2026-10-18)."""
         if not self._fh or self.rec is None:
             return
         seq = self.next_seq()
         pub_ns = int(msg["t"]) * 1_000_000
         if self._typed:
-            self.rec.write_msg(FRAME_TOPIC, arena_frame_msg(msg, seq, derived), pub_ns=pub_ns)
+            self.rec.write_msg(FRAME_TOPIC, arena_frame_msg(msg, seq, NO_DERIVED, extras, flags), pub_ns=pub_ns)
         else:
-            self.rec.write_json(FRAME_TOPIC, {"wseq": seq, **msg}, pub_ns=pub_ns)
+            rec = {"wseq": seq, **msg, **(extras or {})}
+            if flags:
+                rec["flags"] = int(flags)
+            self.rec.write_json(FRAME_TOPIC, rec, pub_ns=pub_ns)
+
+    def record_bad_frame(self, tag: str, fields: list[float], now: int, t0: int, epoch: int) -> None:
+        """An untracked FicTrac frame (tag FT_BADFR): the Pipeline emits no row and no hub frame,
+        so without this the bag would show a gap it cannot tell from a dropped datagram. One
+        flagged /arena/frame record (flags bit 0; fc/ft_seq when the line carried them, idx -1,
+        the floats NaN / null) — the converter writes no line for it (_rows.arena_frame_to_row)."""
+        if not self._fh or self.rec is None:
+            return
+        fc = int(fields[0]) if fields and math.isfinite(fields[0]) else 0
+        msg = {"t": now, "ms": now - t0, "fc": fc, "idx": -1, "ft": None, "x": None, "y": None, "hd": None, "epoch": int(epoch)}
+        extras = fictrac_extras(fields)
+        if not self._typed:  # JSON must stay strict (no NaN tokens): null for the absent floats
+            extras = {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in extras.items()}
+        self.record_frame(msg, extras, FLAG_BAD_FRAME)
 
     def close(self) -> None:
         if not self._fh:
@@ -536,14 +563,22 @@ class FrameDeriver:
         return (turning_dps, forward_mms)
 
 
-def arena_frame_msg(msg: dict, seq: int, derived: tuple[float, float] = NO_DERIVED):
+def arena_frame_msg(msg: dict, seq: int, derived: tuple[float, float] = NO_DERIVED, extras: dict | None = None, flags: int = 0):
     """The hub frame → arena_interfaces/ArenaFrame. ONE builder for the published message and
-    the recorded one, so the bag and the live topic can never disagree on a field."""
+    the recorded one, so the bag and the live topic can never disagree on a field. `extras` =
+    _rows.fictrac_extras(fields) of the line the frame came from (cols 5, 6-8, 22 native, 23)."""
+    e = extras or fictrac_extras(None)
+
+    def fl(v) -> float:
+        return float(v) if v is not None else NAN
+
     return ArenaFrame(t_ms=int(msg["t"]), ms=int(msg["ms"]), fc=int(msg["fc"]), idx=int(msg["idx"]),
-                      has_ft=msg.get("ft") is not None, ft=float(msg["ft"]) if msg.get("ft") is not None else NAN,
-                      x=float(msg["x"]), y=float(msg["y"]), hd=float(msg["hd"]), epoch=int(msg.get("epoch", 0)),
+                      has_ft=msg.get("ft") is not None, ft=fl(msg.get("ft")),
+                      x=fl(msg.get("x")), y=fl(msg.get("y")), hd=fl(msg.get("hd")), epoch=int(msg.get("epoch", 0)),
                       bias_deg=float(msg.get("bias", 0.0)), seq=seq,
-                      turning_dps=float(derived[0]), forward_mms=float(derived[1]))
+                      turning_dps=float(derived[0]), forward_mms=float(derived[1]),
+                      err=fl(e["err"]), dr_lab_x=fl(e["dr_lab_x"]), dr_lab_y=fl(e["dr_lab_y"]), dr_lab_z=fl(e["dr_lab_z"]),
+                      ft_seq=int(e["ft_seq"]), ft_ns=int(e["ft_ns"]), flags=int(flags) & 0xFF)
 
 
 class RosHub(B.Hub):
@@ -558,17 +593,22 @@ class RosHub(B.Hub):
         self._log = log
         self._typed = typed
         self.deriver = FrameDeriver(ball_mm)
+        # The parsed columns of the FicTrac line the consumer is feeding to Pipeline.handle_line
+        # right now (set just before the call; handle_line publishes synchronously inside it, and
+        # the consumer awaits one line at a time, so the slot is always this frame's).
+        self.fields: list[float] | None = None
 
     async def publish(self, msg: dict) -> None:
-        await super().publish(msg)
-        derived = self.deriver.step(msg) if self._typed else NO_DERIVED
-        self._log.record_frame(msg, derived)
+        await super().publish(msg)  # the WebSocket hub message to the Studio: unchanged
+        derived = self.deriver.step(msg) if self._typed else NO_DERIVED  # live topic only; the record carries NaN
+        extras = fictrac_extras(self.fields)
+        self._log.record_frame(msg, extras)
         if self._ros_pub is not None:
             if self._typed:
-                m = arena_frame_msg(msg, self._log.seq, derived)
+                m = arena_frame_msg(msg, self._log.seq, derived, extras)
             else:
-                m = String()
-                m.data = json.dumps(msg, separators=(",", ":"))
+                m = String()  # the hub message + the kept FicTrac columns (what the bag records)
+                m.data = json.dumps({**msg, **extras}, separators=(",", ":"))
             self._ros_pub.publish(m)
 
 
@@ -621,7 +661,8 @@ class BridgeNode(Node):
         t_ns = wall_ns()
         env = self._envelope(data)
         if env is None or not isinstance(env.get("raw"), str):
-            self._record(FICTRAC_TOPIC, data)
+            if self._log.record_fictrac_raw:
+                self._record(FICTRAC_TOPIC, data)
             return
         self.stats["fictrac"].seen(env.get("rx_epoch_ms"), env.get("rx_mono_ns"))
         # Same hand-off bridge.py's UDP protocol does (queue.put_nowait), from the ROS thread.
@@ -632,7 +673,8 @@ class BridgeNode(Node):
         try:
             m = deserialize_message(data, FicTracFrame)
         except Exception:
-            self._record(FICTRAC_FRAME_TOPIC, data)
+            if self._log.record_fictrac_raw:
+                self._record(FICTRAC_FRAME_TOPIC, data)
             return
         self.stats["fictrac"].seen(int(m.rx_epoch_ms) if m.rx_epoch_ms else None, int(m.rx_mono_ns) if m.rx_mono_ns else None)
         # The closed-loop math stays bridge 3.4's byte for byte: it parses the verbatim line
@@ -671,7 +713,8 @@ async def run(args: argparse.Namespace) -> None:
     CONNECTORS = {c: t["cmd"] for c, t in CONNECTOR_TOPICS.items()}
     log = RecordingLogWriter(args.log, args.log_level, args.log_dir, profile=args.bag_profile, typed=typed,
                              export=args.export, connectors=list(CONNECTORS),
-                             max_bag_bytes=int(round(args.max_bag_mb * 1024 * 1024)) if args.max_bag_mb > 0 else 0)
+                             max_bag_bytes=int(round(args.max_bag_mb * 1024 * 1024)) if args.max_bag_mb > 0 else 0,
+                             record_fictrac_raw=args.record_fictrac_raw)
     queue: asyncio.Queue[tuple[str, str, bytes, int]] = asyncio.Queue()  # (line, topic, raw bytes, receive ns)
     pipeline = B.Pipeline(
         None,
@@ -827,6 +870,7 @@ async def run(args: argparse.Namespace) -> None:
         for s in node.stats.values():
             s.lost = False
             s.last_rx_mono = None
+            s.bad = 0
         log.write_event(
             {
                 "type": "connector_status",
@@ -835,7 +879,7 @@ async def run(args: argparse.Namespace) -> None:
                 "src": "bridge",
                 "node": NODE_VERSION,
                 "rmw": os.environ.get("RMW_IMPLEMENTATION"),
-                "record": {"bag": log.bag_name, "profile": log._profile, "typed": typed},
+                "record": {"bag": log.bag_name, "profile": log._profile, "typed": typed, "fictrac_raw": log.record_fictrac_raw},
                 "topics": {"fictrac": FICTRAC_FRAME_TOPIC if typed else FICTRAC_TOPIC, "kinefly": KINEFLY_TOPIC,
                            "bias": [BIAS_CMD_TOPIC, BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC, BIAS_FRAMES_TOPIC],
                            "scanimage": [SCANIMAGE_CMD_TOPIC, SCANIMAGE_REPLY_TOPIC, SCANIMAGE_STATUS_TOPIC], "frame": FRAME_TOPIC,
@@ -901,14 +945,27 @@ async def run(args: argparse.Namespace) -> None:
     ros_thread.start()
 
     async def consume_recording() -> None:
-        """bridge.py's consume() (line → pipeline.handle_line), then the FicTrac message is
-        recorded under the run's open gate (RecordingLogWriter.record_device) — after the
-        frame went out, so the bag write is not on the closed-loop path; handle_line never
+        """bridge.py's consume() (line → pipeline.handle_line). The line is parsed ONCE more here
+        (the same split bridge.py does) so the frame's record can carry the kept FicTrac columns
+        beyond the behavior row (hub.fields → RosHub.publish → ArenaFrame err/dr_lab/ft_seq/ft_ns);
+        an untracked frame (FT_BADFR) gets a flagged record of its own. With --record-fictrac-raw
+        the adapter's message is also recorded under the run's open gate (record_device) — after
+        the frame went out, so the bag write is not on the closed-loop path; handle_line never
         opens or closes the log, so the gate is the frame's."""
+        fictrac_stats = node.stats["fictrac"]
         while True:
             line, topic, data, t_ns = await queue.get()
-            await pipeline.handle_line(line)
-            log.record_device(topic, data, t_ns)
+            tag, fields = parse_fictrac_line(line)
+            hub.fields = fields
+            try:
+                await pipeline.handle_line(line)
+            finally:
+                hub.fields = None
+            if is_bad_frame_tag(tag):
+                fictrac_stats.bad += 1
+                log.record_bad_frame(tag, fields, B.now_ms(), pipeline.t0_ms, pipeline.epoch_id)
+            if log.record_fictrac_raw:
+                log.record_device(topic, data, t_ns)
 
     consumer = asyncio.create_task(consume_recording())
     wd = asyncio.create_task(watchdog())
@@ -966,6 +1023,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="MCAP writer profile: crashsafe (no chunking, no cache; default — rosbag2's defaults hold a whole short run in an unflushed 768 KiB chunk) or default (rosbag2 defaults)")
     p.add_argument("--max-bag-mb", type=float, default=0.0,
                    help="OPTIONAL: split the bag into <run>_0.mcap, _1.mcap, … at about this many MiB (rosbag2 max_bagfile_size; a threshold, not a hard cap). Default 0 = one file; bags are archived on a share, not pushed to GitHub, so only a size-limited store needs this")
+    p.add_argument("--record-fictrac-raw", action="store_true",
+                   help="ALSO record the adapter's FicTrac topic (/fictrac/frame or /fictrac/raw: all 25 columns + the verbatim line) in the bag. "
+                        "Off by default since 2026-10-18 — the merged /arena/frame record carries the 10 kept columns (docs/development/fictrac-columns-in-the-bag.md); "
+                        "`--level full` needs this")
     p.add_argument("--export", choices=("converted", "live"), default="converted",
                    help="what log_export returns: the NDJSON converted from the bag (default) or the live shadow file")
     args, ros_args = p.parse_known_args(argv)
