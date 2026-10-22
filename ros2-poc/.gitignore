@@ -7,6 +7,8 @@ __pycache__/
 runlogs/
 *.jsonl
 *.jsonl.gz
+# ...except the recorded test fixtures (okey_smoke_violet_cw.jsonl.gz was silently ignored before 2026-10-22)
+!tests/fixtures/*.jsonl.gz
 # colcon alternative build of interfaces/arena_interfaces (pixi-build is the primary route)
 interfaces/build/
 interfaces/install/
