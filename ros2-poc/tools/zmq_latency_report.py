@@ -29,6 +29,11 @@ Pass bars (the procedure's): meta p99 < one frame period (--meta-p99-ms, default
 preview p99 < --preview-p99-ms (250), 0 gaps after the first frame, 0 dropped_by_queue. Printed as a
 markdown table; --json writes everything; --strict exits 1 when a bar fails.
 
+Warnings (printed and in the JSON, never a bar): frames that never reached the node before a segment's
+first frame (missed_before_first > 0: a late join, or a reconnect mid-acquisition), and a TIFF `epoch`
+that is not a wall time (ScanImage's simulated vDAQ writes [1601 1 1 0 0 0]), which is then ignored:
+no epoch offset, and the TIFF's segment is chosen by frame count alone.
+
     pixi run zmq-latency -- --bag runlogs/<run>.bag --json latency_focus60.json
     pixi run zmq-latency -- --bag runlogs/<run>.bag --tiff "F:\\data\\run_00003.tif" --segment 2
     pixi run zmq-latency -- --jsonl frames.jsonl
@@ -226,18 +231,29 @@ def tiff_frames(path: Path) -> dict:
     return {"frames": frames, "epoch": epoch, "pages": pages, "path": str(path)}
 
 
-def epoch_wall_ms(epoch: list, utc_offset_h: float | None) -> int:
+EPOCH_MIN_YEAR = 2000  # an earlier TIFF `epoch` is not a wall time (the simulated vDAQ writes 1601-01-01)
+
+
+def epoch_wall_ms(epoch: list, utc_offset_h: float | None) -> int | None:
     """ScanImage's `epoch = [y m d H M S.fff]` (PC local time) → wall ms. The offset defaults to this
-    machine's local zone (the tool normally runs on the ScanImage PC)."""
+    machine's local zone (the tool normally runs on the ScanImage PC). None when the epoch is not a
+    usable wall time: a year before EPOCH_MIN_YEAR (ScanImage 2026's simulated vDAQ writes
+    [1601 1 1 0 0 0], the Windows FILETIME zero; Bergamo PC 2026-10-22) or a date this platform cannot
+    convert (on Windows, `astimezone()` raises OSError for anything before 1970)."""
     y, mo, d, h, mi, s = epoch[:6]
+    if y < EPOCH_MIN_YEAR:
+        return None
     sec = int(s)
     frac = s - sec
-    naive = dt.datetime(int(y), int(mo), int(d), int(h), int(mi), sec)
-    if utc_offset_h is None:
-        t = naive.astimezone()  # interpret as local time
-    else:
-        t = naive.replace(tzinfo=dt.timezone(dt.timedelta(hours=utc_offset_h)))
-    return int(t.timestamp() * 1000) + int(round(frac * 1000))
+    try:
+        naive = dt.datetime(int(y), int(mo), int(d), int(h), int(mi), sec)
+        if utc_offset_h is None:
+            t = naive.astimezone()  # interpret as local time
+        else:
+            t = naive.replace(tzinfo=dt.timezone(dt.timedelta(hours=utc_offset_h)))
+        return int(t.timestamp() * 1000) + int(round(frac * 1000))
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 # ── analysis ──────────────────────────────────────────────────────────────────────────────
@@ -294,6 +310,12 @@ def analyze(records: list[dict], tiff: dict | None = None, utc_offset_h: float |
         by_seg.setdefault(int(r["obj"]["segment"]), []).append(r)
     last_stats = stats[-1] if stats else {}
     stats_segments = {s["id"]: s for s in last_stats.get("segment_list", [])} if last_stats else {}
+
+    warnings: list[str] = []
+    if tiff and tiff.get("epoch") and epoch_wall_ms(tiff["epoch"], utc_offset_h) is None:
+        warnings.append(f"TIFF epoch {[round(v, 3) for v in tiff['epoch'][:6]]} is not a usable wall time "
+                        "(ScanImage's simulated vDAQ writes 1601-01-01): ignored, so there is no epoch offset "
+                        "and the TIFF's segment is chosen by frame count alone")
 
     # which segment the TIFF belongs to: by frame count and epoch, never by frame numbers alone
     tiff_seg, choice = None, None
@@ -363,12 +385,17 @@ def analyze(records: list[dict], tiff: dict | None = None, utc_offset_h: float |
                        "segment_choice": choice}
             if tiff["epoch"]:
                 e_ms = epoch_wall_ms(tiff["epoch"], utc_offset_h)
-                # NOT a latency: ScanImage's epoch is when it armed the acquisition, before the shutter's
-                # openTime_s and the first line, so this holds that start-up gap (~0.56 s on 2026-10-20)
-                off_ms = [o["rx_epoch_ms"] - (e_ms + t["ts"] * 1000.0) for o, t in pairs if t["ts"] is not None]
-                t_align.update({"epoch": tiff["epoch"], "epoch_wall_ms": e_ms, "utc_offset_h": utc_offset_h,
-                                "epoch_offset_ms": summarize(off_ms)})
+                t_align.update({"epoch": tiff["epoch"], "epoch_usable": e_ms is not None})
+                if e_ms is not None:
+                    # NOT a latency: ScanImage's epoch is when it armed the acquisition, before the shutter's
+                    # openTime_s and the first line, so this holds that start-up gap (~0.56 s on 2026-10-20)
+                    off_ms = [o["rx_epoch_ms"] - (e_ms + t["ts"] * 1000.0) for o, t in pairs if t["ts"] is not None]
+                    t_align.update({"epoch_wall_ms": e_ms, "utc_offset_h": utc_offset_h, "epoch_offset_ms": summarize(off_ms)})
             seg["tiff"] = t_align
+        if seg["missed_before_first"]:
+            warnings.append(f"segment {sid}: the first {seg['missed_before_first']} frame(s) never reached the node "
+                            f"(its first frame is {seg['first_frame']}): a late join (start the node before Grab) "
+                            "or a reconnect mid-acquisition")
         segments.append(seg)
 
     # pass bars
@@ -395,6 +422,7 @@ def analyze(records: list[dict], tiff: dict | None = None, utc_offset_h: float |
         "last_stats": {k: last_stats.get(k) for k in ("frames", "published", "dropped_by_queue", "bad_frames", "gaps", "gap_frames",
                                                      "segments", "connects", "disconnects", "queue_limit", "uptime_s")} if last_stats else None,
         "segments": segments, "bars": bars, "all_pass": all(b["pass"] for b in bars) if bars else None,
+        "warnings": warnings,
     }
 
 
@@ -408,6 +436,8 @@ def markdown(rep: dict, source: str) -> str:
            f"frame_meta {rep['frame_meta']}, frame_stats {rep['frame_stats']}, preview meta {rep['preview_meta']}, preview images {rep['preview_images']}"]
     if rep["last_stats"]:
         out.append("node totals (last frame_stats): " + ", ".join(f"{k}={v}" for k, v in rep["last_stats"].items()))
+    for w in rep.get("warnings", []):
+        out.append(f"- WARNING: {w}")
     out += ["", "| segment | frames (first–last) | missed before first | gaps (frames) | rate Hz | stream delay rel p50/p99/max ms | node hop p50/p99/max ms | node→bridge p50/p99/max ms | queue p99/max | preview enc p50/p99/max ms | preview frame→record p50/p99/max ms |",
             "|---|---|---|---|---|---|---|---|---|---|---|"]
     for s in rep["segments"]:
@@ -427,7 +457,8 @@ def markdown(rep: dict, source: str) -> str:
             out.append(f"- segment {s['id']} vs TIFF {t['tiff']}: {t['matched_frames']} of {t['tiff_frames']} TIFF frames matched ({t['tiff_pages']} pages, {t['pages_per_frame']} per frame); "
                        f"frame_meta count == TIFF frames: {t['frame_meta_count_equals_tiff_frames']}; ZMQ − TIFF timestamp p50/p99/max ms {fmt(t['zmq_minus_tiff_ts_ms'])}"
                        + (f"; epoch offset (topic − (epoch + frame time); includes ScanImage's arming → first-line gap, NOT a latency) p50/p99/max ms {fmt(t['epoch_offset_ms'])}"
-                          if t.get("epoch_offset_ms") else "; no `epoch` in the TIFF → no epoch offset"))
+                          if t.get("epoch_offset_ms") else "; the TIFF's `epoch` is not a usable wall time → no epoch offset"
+                          if t.get("epoch") else "; no `epoch` in the TIFF → no epoch offset"))
     out += ["", "| pass bar | segment | value | result |", "|---|---|---|---|"]
     for b in rep["bars"]:
         out.append(f"| {b['bar']} | {b['segment'] if b['segment'] is not None else 'all'} | {b['value']} | {'PASS' if b['pass'] else 'FAIL'} |")
@@ -468,6 +499,8 @@ def main(argv=None) -> int:
         print(f"no /scanimage/frame_meta records in {source}", file=sys.stderr)
         return 2
     print(markdown(rep, source))
+    for w in rep["warnings"]:
+        print(f"warning: {w}", file=sys.stderr)
     if a.json:
         Path(a.json).write_text(json.dumps(rep, indent=1), encoding="utf-8")
         print(f"\nwritten {a.json}")

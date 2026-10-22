@@ -489,6 +489,37 @@ def main(argv: list[str] | None = None) -> int:
         rr, seg_t = syn_report(work / "syn_none.tif", "--segment", "2")
         check("F: --segment overrides the choice (segment 2)", rr.returncode == 0 and seg_t.get(2) and seg_t[2]["matched_frames"] == 20,
               (rr.stdout + rr.stderr)[-400:])
+        # the simulated vDAQ's TIFF epoch [1601 1 1 0 0 0] in the local-zone path (no --utc-offset-h): it crashed
+        # the report on Windows (astimezone() before 1970, Bergamo PC 2026-10-22); now ignored with a warning
+        sim_tif = work / "syn_sim1601.tif"
+        write_si_tiff(sim_tif, [(k, (k - 1) / 29.0) for k in range(1, 21)], 1, [1601, 1, 1, 0, 0, 0])
+        sim_out = work / "syn_sim1601.json"
+        rr = subprocess.run([PY, str(tool), "--jsonl", str(syn), "--tiff", str(sim_tif), "--segment", "2", "--json", str(sim_out)],
+                            capture_output=True, text=True, timeout=60)
+        rep_s = json.loads(sim_out.read_text()) if rr.returncode == 0 and sim_out.exists() else {}
+        t2 = next((s.get("tiff") for s in rep_s.get("segments", []) if s["id"] == 2), None)
+        check("F: a 1601 TIFF epoch (simulated vDAQ) is ignored with a warning: no crash, no epoch offset, 20/20 frames matched",
+              rr.returncode == 0 and t2 and t2["matched_frames"] == 20 and t2.get("epoch_usable") is False and "epoch_offset_ms" not in t2
+              and any("not a usable wall time" in w for w in rep_s.get("warnings", [])) and "warning: TIFF epoch" in rr.stderr,
+              (rr.stdout + rr.stderr)[-400:])
+        rr = subprocess.run([PY, str(tool), "--jsonl", str(syn), "--tiff", str(sim_tif)], capture_output=True, text=True, timeout=60)
+        check("F: with the epoch ignored, three equal segments are ambiguous → exit 2 asking for --segment (no traceback)",
+              rr.returncode == 2 and "3 segments match" in rr.stderr and "Traceback" not in rr.stderr, (rr.stdout + rr.stderr)[-400:])
+        # a late join: the node's first frame is 6 → missed_before_first 5, reported as a warning (never a bar)
+        late = work / "late_join.jsonl"
+        with open(late, "w", encoding="utf-8") as fh:
+            for k in range(6, 21):
+                t_ms = (k - 1) * 1000 // 29
+                fh.write(json.dumps({"topic": "/scanimage/frame_meta", "seq": k - 5, "segment": 1, "frameNumber": k,
+                                     "frameTimestamp_s": (k - 1) / 29.0, "rx_epoch_ms": base + t_ms, "rx_mono_ns": t_ms * 1_000_000,
+                                     "pub_mono_ns": t_ms * 1_000_000 + 100_000, "queue_depth": 0, "dims": [8, 8, 1], "nchan": 1}) + "\n")
+        late_out = work / "late_join.json"
+        rr = subprocess.run([PY, str(tool), "--jsonl", str(late), "--json", str(late_out)], capture_output=True, text=True, timeout=60)
+        rep_l = json.loads(late_out.read_text()) if rr.returncode == 0 and late_out.exists() else {}
+        check("F: a late join (first frame 6) → missed_before_first 5, a warning in the JSON, the markdown and on stderr",
+              bool(rep_l) and rep_l["segments"][0]["missed_before_first"] == 5
+              and any("first 5 frame(s) never reached the node" in w for w in rep_l["warnings"])
+              and "WARNING: segment 1" in rr.stdout and "warning: segment 1" in rr.stderr, (rr.stdout + rr.stderr)[-400:])
         # a bag the way the bridge records it (raw CDR, arrival stamps), then the report's bag path
         from recorder import Recorder  # noqa: E402  (nodes/)
 
