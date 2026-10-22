@@ -6,8 +6,10 @@
  * and writes build.json at each tier root. This module reads that stamp — the identity
  * of the HTML actually running, not whatever the server holds now — and provides:
  *
- *   detect(doc, loc)          → { channel: 'production'|'next'|'local', known, sha, candidate, … }
- *                               (no stamp under /next/ → 'next' with known:false, NEVER 'local')
+ *   detect(doc, loc)          → { channel: 'production'|'next'|'ros'|'local', known, sha, candidate, … }
+ *                               (no stamp under /next/ → 'next' with known:false, NEVER 'local';
+ *                                'ros' = the /ros/ side tier, "ROS Studio" — the LAB-303 ROS 2
+ *                                bridge spike served for lab validation, never Production)
  *   badgeModel(build)         → { text, title, cls } for the top-bar badge
  *   runMeta(build)            → { channel, build, candidate } for run_metadata
  *   windowName(base, build)   → tier-suffixed window name, so a Next link never
@@ -42,6 +44,10 @@
         return /(^|\/)next\//.test(String(pathname || ''));
     }
 
+    function inRosPath(pathname) {
+        return /(^|\/)ros\//.test(String(pathname || ''));
+    }
+
     /** Read the build stamp. doc/loc default to the page's document/location. */
     function detect(doc, loc) {
         const d = doc || (typeof document !== 'undefined' ? document : null);
@@ -53,12 +59,18 @@
         } catch (_) {
             meta = null;
         }
-        if (meta && (meta.channel === 'production' || meta.channel === 'next')) {
+        if (
+            meta &&
+            (meta.channel === 'production' || meta.channel === 'next' || meta.channel === 'ros')
+        ) {
             return Object.assign({ known: true }, meta);
         }
         if (l && inNextPath(l.pathname)) {
             // Served under /next/ but unstamped: it is still the testing tier.
             return { channel: 'next', known: false, sha: null, candidate: null };
+        }
+        if (l && inRosPath(l.pathname)) {
+            return { channel: 'ros', known: false, sha: null, candidate: null };
         }
         return { channel: 'local', known: false, sha: null, candidate: null };
     }
@@ -102,6 +114,17 @@
                     '. For validation between sessions — not for routine experiments.'
             };
         }
+        if (b.channel === 'ros') {
+            return {
+                cls: 'wdt-ch-ros',
+                text: 'ROS STUDIO' + (b.sha ? ' · ' + short(b.sha) : ''),
+                title:
+                    'ROS Studio — the ROS 2 bridge spike (LAB-303), served at /ros/ for lab validation' +
+                    (b.ref ? ' (' + b.ref + ')' : '') +
+                    (b.known ? '' : ' (build stamp missing)') +
+                    '. Not Production: do not run routine experiments here.'
+            };
+        }
         return {
             cls: 'wdt-ch-local',
             text: 'LOCAL',
@@ -116,13 +139,17 @@
 
     function windowName(base, build) {
         const b = build || detect();
-        return b.channel === 'next' ? base + '@next' : base;
+        if (b.channel === 'next') return base + '@next';
+        if (b.channel === 'ros') return base + '@ros';
+        return base;
     }
 
     /** True when another tab's pathname is on the same tier as this page. */
     function samePageTier(pathname, build) {
         const b = build || detect();
-        return inNextPath(pathname) === (b.channel === 'next');
+        const tierOf = (next, ros) => (next ? 'next' : ros ? 'ros' : 'production');
+        const mine = b.channel === 'next' || b.channel === 'ros' ? b.channel : 'production';
+        return tierOf(inNextPath(pathname), inRosPath(pathname)) === mine;
     }
 
     /**
@@ -174,7 +201,7 @@
         el.className = 'wdt-channel ' + m.cls;
         el.textContent = m.text;
         el.title = m.title;
-        if (b.channel === 'next') {
+        if (b.channel === 'next' || b.channel === 'ros') {
             // The page shows its own badge; the generic injected banner would overlap it.
             // The deploy injects that banner just before </body>, so a badge rendered from an
             // early script runs before it is parsed — remove it now AND once the DOM is done.
@@ -201,7 +228,8 @@
         checkFresh,
         markerCurrent,
         renderBadge,
-        inNextPath
+        inNextPath,
+        inRosPath
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = BuildChannel;

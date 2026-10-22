@@ -110,6 +110,24 @@ check('next badge names the candidate', BC.badgeModel(NEXT).text, 'NEXT · 2026-
 check('next title lists the PRs', /#219 #178/.test(BC.badgeModel(NEXT).title), true);
 check('next badge class', BC.badgeModel(NEXT).cls, 'wdt-ch-next');
 check('local badge', BC.badgeModel({ channel: 'local' }).text, 'LOCAL');
+// ── the /ros/ side tier (ROS Studio, LAB-303 Plan B spike) ──────────────────
+const ROS = { channel: 'ros', sha: 'fedcba9876', ref: 'claude/ros-studio-plan-b', built_at_et: '2026-10-14 20:00 ET' };
+check('ros stamp detected', BC.detect(fakeDoc(JSON.stringify(ROS)), { pathname: '/w/ros/arena_studio.html' }).channel, 'ros');
+check('ros path without a stamp is still ros, never local', BC.detect(fakeDoc(null), { pathname: '/w/ros/arena_studio.html' }), {
+    channel: 'ros',
+    known: false,
+    sha: null,
+    candidate: null
+});
+check('ros badge names the tier + build', BC.badgeModel(ROS).text, 'ROS STUDIO · fedcba9');
+check('ros badge class', BC.badgeModel(ROS).cls, 'wdt-ch-ros');
+check('ros title says not Production', /Not Production/.test(BC.badgeModel(ROS).title), true);
+check('ros window name suffixed', BC.windowName('arena-studio', ROS), 'arena-studio@ros');
+check('same tier: ros page in ros', BC.samePageTier('/w/ros/pattern_editor.html', ROS), true);
+check('other tier: prod page from ros', BC.samePageTier('/w/pattern_editor.html', ROS), false);
+check('other tier: ros page from prod', BC.samePageTier('/w/ros/pattern_editor.html', PROD), false);
+check('other tier: ros page from next', BC.samePageTier('/w/ros/pattern_editor.html', NEXT), false);
+check('runMeta ros', BC.runMeta(ROS), { channel: 'ros', build: 'fedcba9876', candidate: null });
 check('runMeta next', BC.runMeta(NEXT), {
     channel: 'next',
     build: 'fed9876abc',
