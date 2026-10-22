@@ -244,11 +244,12 @@ checkBool(
     'lazy repo pattern fetches resolve the current token instead of retaining one',
     rfbStart > 0 &&
         /^\s*const token = ghToken\(\);/m.test(rfbBody) &&
-        (
-            studioHtml.match(
-                /webPreviewBySdName\.set\(f\.name, \(\) => repoFileBytes\(repo, f\.path\)\);/g
-            ) || []
-        ).length >= 2
+        // colocated _patterns/ (one source per file) …
+        studioHtml.includes(
+            "webPreviewBySdName.set('colocated', f.name, () => repoFileBytes(repo, f.path));"
+        ) &&
+        // … and the shared patterns/ layer (replaced as a whole per listing)
+        studioHtml.includes('.map((f) => [f.name, () => repoFileBytes(repo, f.path)]);')
 );
 checkBool(
     'anonymous pattern reads prefer raw.githubusercontent.com',

@@ -29,6 +29,7 @@
         skip: 1,
         error: 1,
         fault: 1, // controller stopped answering (fw #50) — precedes a terminal `aborted`
+        'bridge-lost': 1, // the bridge dropped mid-run (stopped → a terminal `aborted` follows)
         'step-done': 1,
         'sequence-complete': 1,
         aborted: 1
@@ -60,12 +61,15 @@
         if (isTerminal(phase)) {
             // An `aborted` whose summary carries a fault reason is the CONTROLLER
             // giving up, not the operator — label it so (it also auto-commits).
-            const faulted = phase === 'aborted' && s.summary && s.summary.fault;
+            // One carrying `bridgeLost` stopped because the bridge went away.
+            const sm = s.summary || {};
             const override =
                 phase === 'aborted'
-                    ? faulted
+                    ? sm.fault
                         ? 'CONTROLLER_FAULT'
-                        : 'ABORTED_BY_USER'
+                        : sm.bridgeLost
+                          ? 'BRIDGE_LOST'
+                          : 'ABORTED_BY_USER'
                     : undefined;
             const summary = log.finish(s.summary || null, override);
             return { event: ev, terminal: true, summary: summary };
