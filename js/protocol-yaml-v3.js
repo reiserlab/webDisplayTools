@@ -304,21 +304,33 @@ function extractVariables(doc) {
     const varsNode = doc.get('variables', true);
     if (!varsNode || !varsNode.items) return out;
     for (const pair of varsNode.items) {
-        // Identity preference: the anchor name on pair.value (the v3-canonical
-        // form `name_key: &anchor_name value`). Falls back to the map key when
-        // there's no anchor — rare in real fixtures, but tolerated. Phase 5's
-        // Variables editor surfaces the anchor name as the rename target and
-        // expects this to be the identity used throughout the JS mirror.
-        const anchorName = pair.value && pair.value.anchor ? pair.value.anchor : null;
-        const mapKey = pair.key && pair.key.value !== undefined ? pair.key.value : String(pair.key);
+        // Two shapes. Mapping-style `name_key: &anchor_name value` (a Pair: identity =
+        // the anchor on pair.value, else the map key). Sequence-style `- &anchor value`
+        // (the documented v3 form: the item IS the anchored scalar node). Telling them
+        // apart matters: a sequence item's `.value` is a PRIMITIVE, and reading `.anchor`
+        // off a string yields the deprecated String.prototype.anchor method — which is
+        // how the Studio once warned 'Variable "function anchor() { [native code] }" is
+        // defined more than once' on a protocol whose variables were all `- &name v`.
+        const isPair = !!(pair && pair.key !== undefined);
+        const node = isPair ? pair.value : pair;
+        const anchorName =
+            node && typeof node === 'object' && typeof node.anchor === 'string' && node.anchor
+                ? node.anchor
+                : null;
+        const mapKey = isPair
+            ? pair.key && pair.key.value !== undefined
+                ? pair.key.value
+                : String(pair.key)
+            : null;
         const name = anchorName || mapKey;
+        if (name == null) continue; // an unanchored sequence item has no identity to offer
         let value;
-        if (pair.value && pair.value.value !== undefined) {
-            value = pair.value.value;
-        } else if (pair.value && typeof pair.value.toJSON === 'function') {
-            value = pair.value.toJSON();
+        if (node && typeof node === 'object' && node.value !== undefined) {
+            value = node.value;
+        } else if (node && typeof node === 'object' && typeof node.toJSON === 'function') {
+            value = node.toJSON();
         } else {
-            value = pair.value;
+            value = node;
         }
         out.push({ name: String(name), value: value });
     }
@@ -1719,10 +1731,20 @@ function _findVariablePair(experiment, name) {
     if (!varsNode || !Array.isArray(varsNode.items)) return null;
     for (let i = 0; i < varsNode.items.length; i++) {
         const pair = varsNode.items[i];
-        const anchorName = pair.value && pair.value.anchor ? pair.value.anchor : null;
-        const mapKey = pair.key && pair.key.value !== undefined ? pair.key.value : String(pair.key);
+        // Same two shapes as extractVariables (Pair vs anchored scalar item).
+        const isPair = !!(pair && pair.key !== undefined);
+        const node = isPair ? pair.value : pair;
+        const anchorName =
+            node && typeof node === 'object' && typeof node.anchor === 'string' && node.anchor
+                ? node.anchor
+                : null;
+        const mapKey = isPair
+            ? pair.key && pair.key.value !== undefined
+                ? pair.key.value
+                : String(pair.key)
+            : null;
         const identity = anchorName || mapKey;
-        if (identity === name) return { pair, index: i, varsNode };
+        if (identity != null && identity === name) return { pair, index: i, varsNode };
     }
     return null;
 }

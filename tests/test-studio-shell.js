@@ -262,7 +262,7 @@ const stray = [];
 css.split('\n').forEach((line, i, arr) => {
     const offset = arr.slice(0, i).join('\n').length;
     if (tokenBlockSpans.some(([a, b]) => offset >= a && offset <= b)) return;
-    if (/wdt-ch-next/.test(line)) return;
+    if (/wdt-ch-next|wdt-ch-ros/.test(line)) return; // tier badges: fixed signal colors in every theme
     const code = line.split('/*')[0].replace(/var\(--[\w-]+,\s*#[0-9a-fA-F]{3,6}\)/g, '');
     const m = code.match(/#[0-9a-fA-F]{6}\b|rgba?\(\s*\d/);
     if (m) stray.push(i + ': ' + line.trim().slice(0, 60));
@@ -407,6 +407,23 @@ check(
         !/:root\[data-ui-theme="night"\] (img|canvas)\b/.test(studio) &&
         studio.includes('filter:url(#uiNightRed)')
 );
+console.log('=== bridge-loss policy wiring (LAB-303 S1 review) ===');
+check(
+    'bridgeRequired only for a recorded run the bridge is logging',
+    studio.includes(
+        'bridgeRequired: !!isExperiment && !!(bridge && bridge.connected && bridge.logging)'
+    )
+);
+check(
+    "a late log_control_ack still names the run's bridge file",
+    studio.includes("bridge.on('loglevel', (info) => {") &&
+        studio.includes('runLog.bridgeFile = info.file')
+);
+check(
+    'the bridge-lost alert does not hardcode a bridge command',
+    !/const restart = [^\n]*pixi run/.test(studio)
+);
+
 console.log('\n=== Summary ===');
 console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures ? 1 : 0);

@@ -34,6 +34,8 @@ tiers = "python scripts/tiers/candidate.py"
 candidate = "python scripts/tiers/candidate.py build"
 release = "python scripts/tiers/candidate.py release"
 next-preview = "python scripts/tiers/stamp.py preview"
+# ROS Studio (LAB-303 Plan B spike): assemble /ros/ from the current branch beside the two tiers
+ros-preview = "python scripts/tiers/stamp.py preview --ros HEAD"
 # pixi run bench-check -- LOG [--hold COND=FRAME …] [--channel next] [--build SHA]   check a bench-validation run
 bench-check = "python scripts/bench-check.py"
 test-tiers = "python tests/test-tiers-candidate.py"

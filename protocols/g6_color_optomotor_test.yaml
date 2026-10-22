@@ -1,0 +1,531 @@
+version: 3
+
+# ============================================================================
+# Color optomotor test — G6 2×10 four-color arena, web runner, BIAS camera.
+#
+# Modeled on the G4.1 MATLAB protocols 11 and 13 (Reiser Lab, 2026-04-21): open-loop
+# rotating square-wave gratings, clockwise then counterclockwise, a camera timestamp at
+# the start of every trial, one video for the whole run. What changes here:
+#   * ONE LED color at a time. The four-color G6 panels put four colors in each 2×2 pixel
+#     cell; each pattern lights only one color's pixels, on the TOP panel row only
+#     (protocols/g6_color_optomotor_test_patterns/, built by
+#     scripts/make-color-optomotor-patterns.js). Bank 0 violet 405 nm, 1 blue 470 nm,
+#     2 green 525 nm, 3 yellow-orange 590 nm.
+#   * ONE spatial period (20 px = 36°), ONE speed (frame_rate 80 → 4 Hz temporal
+#     frequency, the originals' 4 Hz), both directions, 20 s trials.
+#   * Brightness by the per-trial `duty` override (fw #33, web-only): 25 %, 50 %, 100 %
+#     of 255 — one block per duty, the four colors × two directions inside, 2 repetitions.
+#   * No backlight, no thermometer (not driven by the web runner); the camera plugin
+#     (BiasPlugin) IS driven by the web runner through the bridge's BIAS connector
+#     (Studio v0.95, LAB-303), so startRecording / getTimestamp / stopRecording run.
+#
+# TIMING: 3 duties × 4 colors × 2 directions × 2 repetitions = 48 trials × 20 s = 16 min
+# of stimulus, plus 48 × iti_dur of dark between trials. To make it 8 min set
+# `repetitions: 1` on each block (24 trials) or trial_dur 10. All knobs are in `variables:`.
+#
+# DIRECTION: frame_rate +80 steps the pattern toward increasing column index (the
+# generator's convention); "cw" below assumes that is clockwise seen from above, as fresh
+# Designer patterns are. Confirm once on the arena (Console → Test) and swap the two
+# anchors if it is reversed.
+#
+# BEFORE RUNNING: upload the patterns folder from the Console (Patterns → Add ▾), check
+# the SD listing shows the four names with 20 frames; BIAS must be running with its
+# external-control server on (port 5010 for camera 0) and its logging format set to
+# ufmf (BIAS writes the format configured in its own settings; the filename below asks
+# for .ufmf). The bias node's --video-dir decides where a relative filename lands.
+# ============================================================================
+
+experiment_info:
+  name: "Color optomotor test — one LED color at a time, top row, duty sweep"
+  author: "Reiser Lab"
+
+rig: "./configs/rigs/cshl_g6_2x10.yaml"
+
+plugins:
+  - name: "camera"
+    type: "class"
+    matlab:
+      class: "BiasPlugin"
+
+variables:
+  trial_dur: &trial_dur 20        # s — trialParams duration AND its wait (one anchor, never drift)
+  iti_dur: &iti_dur 3             # s — dark between trials
+  pre_dark: &pre_dark 5           # s — dark before the first trial (originals: 300 s adaptation)
+  fps_cw: &fps_cw 80              # frames/s = 4 Hz temporal frequency at 20 px per period
+  fps_ccw: &fps_ccw -80
+  duty_25: &duty_25 64            # 25 % of 255
+  duty_50: &duty_50 128           # 50 %
+  duty_100: &duty_100 255         # 100 %
+
+experiment:
+  - "cam_start"
+  - name: "duty_25_block"
+    trials: ["violet_cw_d25", "violet_ccw_d25", "blue_cw_d25", "blue_ccw_d25",
+             "green_cw_d25", "green_ccw_d25", "yellow_cw_d25", "yellow_ccw_d25"]
+    repetitions: 2
+    intertrial: "dark_iti"
+  - name: "duty_50_block"
+    trials: ["violet_cw_d50", "violet_ccw_d50", "blue_cw_d50", "blue_ccw_d50",
+             "green_cw_d50", "green_ccw_d50", "yellow_cw_d50", "yellow_ccw_d50"]
+    repetitions: 2
+    intertrial: "dark_iti"
+  - name: "duty_100_block"
+    trials: ["violet_cw_d100", "violet_ccw_d100", "blue_cw_d100", "blue_ccw_d100",
+             "green_cw_d100", "green_ccw_d100", "yellow_cw_d100", "yellow_ccw_d100"]
+    repetitions: 2
+    intertrial: "dark_iti"
+  - "cam_stop"
+
+conditions:
+  # ── camera bracket (one ufmf for the whole run) ─────────────────────────────
+  - name: "cam_start"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "connect"
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "startRecording"
+        params:
+          filename: "color_optomotor.ufmf"
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *pre_dark
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+
+  - name: "cam_stop"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *iti_dur
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "stopRecording"
+
+  - name: "dark_iti"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *iti_dur
+
+  # ── duty 25 % ───────────────────────────────────────────────────────────────
+  - name: "violet_cw_d25"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_violet"
+        pattern_ID: 1
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_25
+      - type: "wait"
+        duration: *trial_dur
+  - name: "violet_ccw_d25"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_violet"
+        pattern_ID: 1
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_25
+      - type: "wait"
+        duration: *trial_dur
+  - name: "blue_cw_d25"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_blue"
+        pattern_ID: 2
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_25
+      - type: "wait"
+        duration: *trial_dur
+  - name: "blue_ccw_d25"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_blue"
+        pattern_ID: 2
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_25
+      - type: "wait"
+        duration: *trial_dur
+  - name: "green_cw_d25"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_green"
+        pattern_ID: 3
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_25
+      - type: "wait"
+        duration: *trial_dur
+  - name: "green_ccw_d25"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_green"
+        pattern_ID: 3
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_25
+      - type: "wait"
+        duration: *trial_dur
+  - name: "yellow_cw_d25"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_yellow"
+        pattern_ID: 4
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_25
+      - type: "wait"
+        duration: *trial_dur
+  - name: "yellow_ccw_d25"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_yellow"
+        pattern_ID: 4
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_25
+      - type: "wait"
+        duration: *trial_dur
+
+  # ── duty 50 % ───────────────────────────────────────────────────────────────
+  - name: "violet_cw_d50"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_violet"
+        pattern_ID: 1
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *trial_dur
+  - name: "violet_ccw_d50"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_violet"
+        pattern_ID: 1
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *trial_dur
+  - name: "blue_cw_d50"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_blue"
+        pattern_ID: 2
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *trial_dur
+  - name: "blue_ccw_d50"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_blue"
+        pattern_ID: 2
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *trial_dur
+  - name: "green_cw_d50"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_green"
+        pattern_ID: 3
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *trial_dur
+  - name: "green_ccw_d50"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_green"
+        pattern_ID: 3
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *trial_dur
+  - name: "yellow_cw_d50"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_yellow"
+        pattern_ID: 4
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *trial_dur
+  - name: "yellow_ccw_d50"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_yellow"
+        pattern_ID: 4
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_50
+      - type: "wait"
+        duration: *trial_dur
+
+  # ── duty 100 % ──────────────────────────────────────────────────────────────
+  - name: "violet_cw_d100"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_violet"
+        pattern_ID: 1
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_100
+      - type: "wait"
+        duration: *trial_dur
+  - name: "violet_ccw_d100"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_violet"
+        pattern_ID: 1
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_100
+      - type: "wait"
+        duration: *trial_dur
+  - name: "blue_cw_d100"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_blue"
+        pattern_ID: 2
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_100
+      - type: "wait"
+        duration: *trial_dur
+  - name: "blue_ccw_d100"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_blue"
+        pattern_ID: 2
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_100
+      - type: "wait"
+        duration: *trial_dur
+  - name: "green_cw_d100"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_green"
+        pattern_ID: 3
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_100
+      - type: "wait"
+        duration: *trial_dur
+  - name: "green_ccw_d100"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_green"
+        pattern_ID: 3
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_100
+      - type: "wait"
+        duration: *trial_dur
+  - name: "yellow_cw_d100"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_yellow"
+        pattern_ID: 4
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+        duty: *duty_100
+      - type: "wait"
+        duration: *trial_dur
+  - name: "yellow_ccw_d100"
+    commands:
+      - type: "plugin"
+        plugin_name: "camera"
+        command_name: "getTimestamp"
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_yellow"
+        pattern_ID: 4
+        duration: *trial_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+        duty: *duty_100
+      - type: "wait"
+        duration: *trial_dur

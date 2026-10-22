@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "name": "2026-10-20",
+  "kind": "candidate",
+  "rc": 1,
+  "created_at": "2026-10-18T17:57:22Z",
+  "created_at_et": "2026-10-18 13:57 ET",
+  "main_sha": "1d9b2b77507f980f008240dd72490b8f24948f28",
+  "headline": "",
+  "prs": [
+    {
+      "number": 256,
+      "title": "fix(bridge): precise run-log clock on Windows with Python \u2264 3.12",
+      "head_sha": "7327a0252445130df59c831834dde160777ebd1a",
+      "head_ref": "claude/zen-pasteur-00c5d2",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/256"
+    },
+    {
+      "number": 254,
+      "title": "LAB-303: ROS 2 bridge graph + MCAP record, ScanImage/BIAS connectors, Studio v0.97 (candidate 2026-10-20)",
+      "head_sha": "6903f8a9e011c89ae81cc21b9242f5aa6648fc22",
+      "head_ref": "claude/ros-studio-plan-b-c44942",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/254"
+    }
+  ],
+  "versions": {
+    "studio": {
+      "from": "v0.95",
+      "to": "v0.97",
+      "legacy_pr_bump": true
+    }
+  },
+  "hotfix_reason": null,
+  "bridge_changed": true
+}
