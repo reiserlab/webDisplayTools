@@ -30,7 +30,10 @@ Checklist: [`okey-cokey-pc-setup.md`](okey-cokey-pc-setup.md). Setup by a Claude
 - **Logging**: was `jpg` → `C:/Users/labadmin/Videos`; set to **ufmf** → `C:/rec/okey-cokey` over HTTP.
   This setting is lost when BIAS restarts. Saved config, now in the repo: `ros2-poc/config/bias/okey-cokey-bfs-u3-51s5m.json`.
   Note: BIAS listens on 0.0.0.0:5010, not just loopback.
-- **G6 controller**: Teensy serial on **COM3** (USB VID 16C0 / PID 0483). Firmware label `c15d840a 2x10 2026-09-29 restack/panel-boot freerun sdfast`.
+- **G6 controller**: Teensy serial, USB VID 16C0 / PID 0483, product name **`G6_Arena`**, serial 12169940.
+  It was COM3 during setup; by the full run (15:36) it was **COM5**. A second Teensy with the same VID/PID
+  (product "USB Serial", serial 17917130) was then on COM3. Pick the controller in Chrome's port picker
+  by the name `G6_Arena`, not by COM number. Firmware label `c15d840a 2x10 2026-09-29 restack/panel-boot freerun sdfast`.
 - SD card: 8 GB FAT32, mounted. Firewall prompts and IR backlight were not recorded in this session.
 
 ## D. Repo + environments
@@ -52,12 +55,13 @@ Checklist: [`okey-cokey-pc-setup.md`](okey-cokey-pc-setup.md). Setup by a Claude
 - Listening: 5010 BIAS, 7447 zenoh, 8765 Studio bridge, 8766 foxglove_bridge, 8092 Studio page (HTTP 200).
 - BIAS through the node (run sheet step 2, via the rig's node): `connect` / `startRecording nodecheck.ufmf` / `getTimestamp` / `stopRecording` all returned `ok`.
   BIAS wrote `C:\rec\okey-cokey\nodecheck_cam_0_date_2026_10_22_time_14_04_16_v001.ufmf` (5.0 MB, 684 frames over 9.32 s = 73.4 fps). Matching `stamp_log_cam0.txt`.
-  That rate is ~0.54 MB/s, so ~0.5 GB for a 16-min run.
+  That rate is ~0.54 MB/s, so ~0.5 GB for a 16-min run with an undisturbed view. A large occlusion
+  costs far more: the full run with a deliberate lean into view came to 11.8 GB (results file, R3).
 - Unknown path (run sheet step 2): started a recording, killed BIAS. `getTimestamp` → `outcome: unknown` ("timeout after 2.0s") in 4.0 s, no hang. After reopening BIAS the node reports `reachable: true` again.
 - **BIAS restarts in jpg**: settings don't persist. `set-configuration` / `load-configuration` fail with "Unable to revert to previous configuration" until the camera has captured once.
   `ros2-poc/tools/bias-ufmf.ps1 -VideoDir C:\rec\okey-cokey [-Config config\bias\okey-cokey-bfs-u3-51s5m.json]` does connect → 2 s capture → load. Run it after every BIAS start.
 - `ros2 topic echo /bias/status --once` hangs on this PC, but an rclpy subscriber receives it at 5 Hz: reachable, rtt ~12 ms.
-- Studio Bridge + controller (COM3) connected. Foxglove signed in; at first it was pointed at 8765 (connect/drop loop in the rig log), then fixed to `ws://localhost:8766` with the `arena-okey-cokey.json` layout.
+- Studio Bridge + controller (COM3 at the time; see C) connected. Foxglove signed in; at first it was pointed at 8765 (connect/drop loop in the rig log), then fixed to `ws://localhost:8766` with the `arena-okey-cokey.json` layout.
 
 ## Run sheet 5–6: smoke run (`g6_color_optomotor_smoke`, 14:20, no flies)
 
