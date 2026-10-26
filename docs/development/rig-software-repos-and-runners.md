@@ -327,11 +327,11 @@ These items are the body of the rig-nodes ticket and apply to pyDisplayTools as 
 ## 9. Sequencing
 
 ```
-docs-only PR (this record) ──▶ gate 1: Michael runs `pixi run release` for #262 (candidate 2026-10-20)
+docs-only PR (this record) ──▶ gate: Michael runs `pixi run release` for #262 (candidate 2026-10-20)
   ──▶ CLEANUP session: rebase #261 / #264 / #266 / #260 onto released main → second candidate;
       okey-cokey and tiff2mcap branches → PRs or close; stale worktrees and branches removed;
       `ros2-poc/` → `rig/`; `arena_interfaces` → `rig_interfaces`; package-set build; hardware validation
-  ──▶ gate 2: Frank's pilot sign-off (about 2026-10-30)
+  ──▶ gate: Michael releases the cleanup candidate (2026-10-26: #264 + #219 + #270), so `rig/` is on main
   ──▶ EXTRACTION session: create rig-nodes; move the obvious set (section 3.3) with history;
       package-set build and channel; webDisplayTools' `rig/` workspace pins it
   ──▶ RUNNER PLAN session (plan mode, own review; the second developer joins): revive pyDisplayTools,
@@ -341,6 +341,11 @@ docs-only PR (this record) ──▶ gate 1: Michael runs `pixi run release` for
 Extraction directly after cleanup is preferred now that the Python runner is a committed second
 consumer: the runner and its developer get a clean target, and the move is done once. The cost of
 choosing boundaries with one live consumer is bounded by moving only the obvious set.
+
+**No sign-off gate before extraction (Michael, 2026-10-26).** An earlier draft put Frank's pilot
+sign-off (about 2026-10-30) between cleanup and extraction. Frank is aware of and supportive of the
+direction, so that gate is removed: extraction starts as soon as the cleanup candidate is released.
+Frank's remaining input is the `version3` question (section 12), which does not block the move.
 
 ### Cleanup complete (2026-10-26) — what the extraction session inherits
 
@@ -376,7 +381,8 @@ changed the inventory's destinations.
   primary; the Python runner on the shared IR in pyDisplayTools; release before runner work; cleanup →
   extraction → runner plan; no Flutter; Python first with C++ as the compiled default; no submodules;
   pixi-built package sets through a channel; `rig_interfaces` rename in the cleanup session; MATLAB
-  YAML runner G4.1-only and frozen; protocol authority to spec plus fixtures.
+  YAML runner G4.1-only and frozen; protocol authority to spec plus fixtures; no sign-off gate between
+  cleanup and extraction (2026-10-26).
 - **Hypotheses awaiting evidence:** the exact rig-nodes package map beyond the obvious set (needs the
   runner and the robot station as consumers); robot-station toolchain compatibility (needs Isabel and a
   real install on the robot PC); whether `version3` merges or is archived (Frank).
@@ -420,8 +426,7 @@ items in section 4 before code.
 
 ## 12. Open questions
 
-- Frank: merge `version3` as the MATLAB runner's last feature release, or archive it? Pilot sign-off
-  date.
+- Frank: merge `version3` as the MATLAB runner's last feature release, or archive it?
 - Isabel: is "shared distribution and middleware, keep colcon inside the pixi environment" workable for
   `meca_ws`? Which `meca_*` pieces are shared from day one (`meca_cameras` vs `bias_node`)?
 - Who owns the channel on prefix.dev when it stops being in-repository at a tag?
