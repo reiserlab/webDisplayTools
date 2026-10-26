@@ -2,9 +2,14 @@
 
 This document describes the **Protocol v3** YAML format as implemented in
 maDisplayTools at the pinned commit below. It is the JS-side reference for
-the v3 Experiment Designer (`experiment_designer_v3.html`). It defers to the
-MATLAB `ProtocolParser.m` as the ultimate authority — if this doc disagrees
-with the canonical example files or the MATLAB parser, the latter wins.
+the v3 Experiment Designer (`experiment_designer_v3.html`).
+
+**Authority (decision 2026-10-26, `rig-software-repos-and-runners.md`):** the protocol language is
+defined by this spec plus the language-neutral conformance fixtures exported from the JS runner's
+tests; the two live runners (web, Python headless) must both pass them. Until the fixtures cover flow
+control, MATLAB `origin/version3` (`ProtocolParser.m`, `CriterionEvaluator.m`) remains the reference
+for `requires: [flow_control]` only. Historically this doc deferred to the MATLAB parser for
+everything; the MATLAB YAML runner is now G4.1-only and frozen (see "Runner compatibility" below).
 
 ---
 
@@ -26,9 +31,10 @@ The reference YAMLs from this commit are committed verbatim in this repo as:
   `start recording` condition, indent slip on a `wait`, missing close-quote on a
   `type: "controller` — pending a fix push upstream)
 
-**These files plus Lisa's documentation are the spec.** The v3 parser exists
-to round-trip them; the designer exists to view and edit data they could
-represent. Run `tests/refresh-v3-canonical.sh` to re-fetch them at a newer SHA;
+**These files plus Lisa's documentation were the spec until 2026-10-26** and remain the historical
+reference the fixtures were derived from; the normative statement is the "Authority" paragraph at the
+top of this file. The v3 parser exists to round-trip them; the designer exists to view and edit data
+they could represent. Run `tests/refresh-v3-canonical.sh` to re-fetch them at a newer SHA;
 any `git diff` output is a signal the spec drifted upstream.
 
 ### Authoritative spec docs (upstream)
@@ -36,8 +42,9 @@ any `git diff` output is a signal the spec drifted upstream.
 - **`docs/development/yaml_protocol_documentation_v3.md`** on `origin/version3`
   (added by Lisa in `3e1eb63`, 2026-05-26). This is the human-readable spec for
   the v3 YAML format — three-tier config (arena/rig/experiment), all command
-  types, plugin catalog, validation checklist. **Defer to this doc, not this
-  file, when in doubt about format details.** This file documents
+  types, plugin catalog, validation checklist. Historical reference: where it
+  and this file disagree on a format detail that no fixture covers, raise it
+  and add a fixture rather than defer silently. This file documents
   designer-specific concerns (round-trip strategy, designer constraints) and
   the JS-side parser contract.
 
@@ -220,6 +227,36 @@ the designer rejects, the designer is wrong. Known constraints:
   hand-edit those plugin entries in the Variables drawer.
 - Unknown keys at any level (top-level, plugin, condition, command, params)
   are preserved via `_unknownKeys` slots in the data model.
+
+---
+
+## Runner compatibility (which runner executes what)
+
+Four executors have read protocol YAML. Inventory 2026-10-26 (maDisplayTools `main` e3e36d0,
+`origin/version3` ff008aa; webDisplayTools `origin/next` 8cd0148). "planned" = the Python headless
+runner in `LED-Display_pyDisplayTools`, built on the same IR and fixtures as the web runner.
+
+| Feature | MATLAB `main` (v2) | MATLAB `version3` (v3) | Web runner (v3) | Python runner (planned) |
+|---|---|---|---|---|
+| Hardware | G4.1 over TCP 62222 only | G4.1 only | G6 over Web Serial only | G6 over pyserial |
+| `allOn` / `allOff` / `stopDisplay` / `setPositionX` | yes | yes | yes | yes |
+| `setColorDepth` (gs 2/16) | yes | yes | no G6 equivalent; skipped with an error | no |
+| `trialParams` modes 2 / 3 / 4 | yes | yes | yes | yes |
+| Trial timing | controller-timed (duration on the wire) | controller-timed | host-timed (wire duration 0, host sends STOP) | host-timed; controller-timed mode proposed for both |
+| Mode 4 analog closed loop | on the G4.1 controller | same | mode 4 + gain sent to G6 firmware | same as web |
+| Mode 3 FicTrac closed loop (`startClosedLoop`, bias, coupling, `start_frame`) | no | no | yes, through the bridge / graph | yes, through the graph |
+| `duty`, `led_activation` | no | no | yes | yes |
+| `setAnalogOut` / `setDigitalOut` / `ledDrive` (G6 BNC I/O) | no | no | yes | yes |
+| Blocks, repetitions, randomize, intertrial | v2 blocks, `rng`-seeded | `experiment:` blocks, `randperm` | `flattenStructure` | same IR as web |
+| Variables / anchors | n/a | resolved by the YAML library | preserved + resolved | resolved |
+| `requires:` / flow control (`trial_check`, `repeat_until`) | no | **yes** (`CriterionEvaluator`, `executed_trace`) | refused (`WEB_RUNNER_CAPABILITIES` empty); LAB-218 | with LAB-218, via fixtures |
+| `runtime_controls` | no | no | yes (Studio v0.84) | planned |
+| Plugins executed | any MATLAB class / script / YAML serial device; BIAS, LED controller | + NI DAQ thermometer, wingbeat monitor | `log`, FicTrac; BIAS + ScanImage connectors on the ROS 2 graph (#254) | same connector nodes as the web |
+| Hardware-failure handling | operator retry prompt (`maxAttempts`) | same | controller-fault post-mortem, `BRIDGE_LOST` | same policy as web |
+| Run log | `experiment.log`, `trial_order.mat` (no readers) | + `executed_trace.*` | behavior_v2 JSONL → MCAP record (LAB-303/309) | MCAP record |
+
+Divergences are documented here, not engineered around. A feature lands with a fixture, then in both
+live runners, or its row says which runner has it.
 
 ---
 
