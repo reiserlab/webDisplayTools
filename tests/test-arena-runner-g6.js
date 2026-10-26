@@ -3440,6 +3440,299 @@ async function main() {
         }
     }
 
+    console.log('\n=== _sleep: throttle-proof timer (Worker + backstop setTimeout) ===');
+    {
+        // Node has no Worker: the shared timer falls back to setTimeout, and a wait
+        // completes after (about) the requested time.
+        const t = Runner.sleepTimer();
+        check('Node: no Worker → kind timeout', t.kind, 'timeout');
+        check('Node: lastError names the missing API', t.lastError, 'Worker/Blob/URL unavailable');
+        const runner = new Runner.ArenaRunner(makeFakeLink(), Wire);
+        const t0 = Date.now();
+        await runner._sleep(60);
+        const dt = Date.now() - t0;
+        check('fallback sleep(60) completes (≥ 50 ms)', dt >= 50, true);
+        check('fallback sleep leaves no pending wait', t.pendingCount, 0);
+        check('fallback sleep clears the handle', runner._sleepTimer, null);
+        // Non-positive / already-aborted waits resolve at once.
+        const t1 = Date.now();
+        await runner._sleep(0);
+        await runner._sleep(-5);
+        check('sleep(0) / sleep(-5) resolve immediately', Date.now() - t1 < 40, true);
+    }
+
+    console.log('\n=== _sleep: resolves on abort (stop() / _clear() wake the wait) ===');
+    {
+        const race = (p, ms) =>
+            Promise.race([
+                p.then(() => 'woke'),
+                new Promise((r) => setTimeout(() => r('stuck'), ms))
+            ]);
+        const t = Runner.sleepTimer();
+        const runner = new Runner.ArenaRunner(makeFakeLink(), Wire);
+        const p1 = runner._sleep(5000);
+        check('long wait is pending', t.pendingCount, 1);
+        await runner.stop();
+        check('stop() wakes a 5 s wait', await race(p1, 300), 'woke');
+        check('stop() cleared the pending wait (no leak)', t.pendingCount, 0);
+        check('stop() cleared the handle', runner._sleepTimer, null);
+
+        const runner2 = new Runner.ArenaRunner(makeFakeLink(), Wire);
+        const p2 = runner2._sleep(5000);
+        runner2._clear();
+        check('_clear() wakes a 5 s wait', await race(p2, 300), 'woke');
+        check('_clear() cleared the pending wait', t.pendingCount, 0);
+
+        // A wait requested AFTER the abort flag is up resolves at once.
+        const p3 = runner2._sleep(5000);
+        check('sleep after abort resolves immediately', await race(p3, 300), 'woke');
+        check('…and arms nothing', t.pendingCount, 0);
+    }
+
+    console.log('\n=== createSleepTimer: Worker path (fake Worker) ===');
+    {
+        // A fake Worker records what the page posts; the test plays the Worker's
+        // reply by hand. The backstop setTimeout is captured, never auto-fired.
+        const posted = [];
+        const timeouts = new Map();
+        let nextT = 100;
+        const cleared = [];
+        let instances = 0;
+        let lastWorker = null;
+        class FakeWorker {
+            constructor(url) {
+                instances++;
+                this.url = url;
+                this.onmessage = null;
+                this.onerror = null;
+                this.terminated = false;
+                lastWorker = this;
+            }
+            postMessage(m) {
+                posted.push(m);
+            }
+            terminate() {
+                this.terminated = true;
+            }
+        }
+        class FakeBlob {
+            constructor(parts, opts) {
+                this.src = parts.join('');
+                this.type = opts && opts.type;
+            }
+        }
+        let lastBlob = null;
+        const FakeURL = {
+            createObjectURL: (b) => {
+                lastBlob = b;
+                return 'blob:fake/' + b.src.length;
+            }
+        };
+        const deps = {
+            Worker: FakeWorker,
+            Blob: FakeBlob,
+            URL: FakeURL,
+            setTimeout: (cb, ms) => {
+                const id = nextT++;
+                timeouts.set(id, { cb, ms });
+                return id;
+            },
+            clearTimeout: (id) => {
+                cleared.push(id);
+                timeouts.delete(id);
+            }
+        };
+        const t = Runner.createSleepTimer(deps);
+        check('Worker available → kind worker', t.kind, 'worker');
+        check('one Worker per timer', instances, 1);
+        check('Worker built from a blob URL', String(lastWorker.url).startsWith('blob:'), true);
+        // The inline Worker source is self-contained: run it against a fake `self`
+        // to pin the message protocol the page side speaks ({op:set,id,ms} →
+        // postMessage(id) after ms; {op:clear,id} cancels).
+        {
+            const wTimeouts = new Map();
+            let wNext = 1;
+            const wPosted = [];
+            const fakeSelf = { onmessage: null, postMessage: (m) => wPosted.push(m) };
+            new Function('self', 'setTimeout', 'clearTimeout', lastBlob.src)(
+                fakeSelf,
+                (cb, ms) => {
+                    const id = wNext++;
+                    wTimeouts.set(id, { cb, ms });
+                    return id;
+                },
+                (id) => wTimeouts.delete(id)
+            );
+            check('Worker source installs onmessage', typeof fakeSelf.onmessage, 'function');
+            fakeSelf.onmessage({ data: { op: 'set', id: 7, ms: 1234 } });
+            check('Worker: set arms one timeout with the ms', [...wTimeouts.values()][0].ms, 1234);
+            {
+                const [tid, entry] = [...wTimeouts.entries()][0];
+                wTimeouts.delete(tid); // a real timeout is gone once it fires
+                entry.cb();
+            }
+            check('Worker: timeout posts the id back', JSON.stringify(wPosted), '[7]');
+            fakeSelf.onmessage({ data: { op: 'set', id: 8, ms: 50 } });
+            fakeSelf.onmessage({ data: { op: 'clear', id: 8 } });
+            check('Worker: clear cancels the timeout', wTimeouts.size, 0);
+        }
+
+        let fired = 0;
+        const h = t.set(3000, () => fired++);
+        check(
+            'set() posts {op:set, id, ms} to the Worker',
+            JSON.stringify(posted[0]),
+            JSON.stringify({ op: 'set', id: h, ms: 3000 })
+        );
+        check('set() arms the backstop setTimeout too', timeouts.size, 1);
+        check('backstop uses the same ms', [...timeouts.values()][0].ms, 3000);
+        // The Worker answers first (the page timer is throttled): callback once,
+        // backstop cleared.
+        lastWorker.onmessage({ data: h });
+        check('Worker reply fires the callback', fired, 1);
+        check('…and clears the backstop', timeouts.size, 0);
+        check('…exactly one clearTimeout', cleared.length, 1);
+        check('…nothing left pending', t.pendingCount, 0);
+        // A late duplicate (backstop or Worker) is ignored.
+        lastWorker.onmessage({ data: h });
+        check('duplicate Worker reply is ignored', fired, 1);
+
+        // clear() before either arm fires: Worker told to clear, backstop dropped,
+        // callback never runs.
+        let fired2 = 0;
+        const h2 = t.set(1000, () => fired2++);
+        t.clear(h2);
+        check(
+            'clear() posts {op:clear} to the Worker',
+            JSON.stringify(posted[posted.length - 1]),
+            JSON.stringify({ op: 'clear', id: h2 })
+        );
+        check('clear() drops the backstop', timeouts.size, 0);
+        lastWorker.onmessage({ data: h2 });
+        check('cleared wait never fires', fired2, 0);
+
+        // The backstop wins when the Worker is silent (e.g. the browser killed it):
+        // the callback still runs once.
+        let fired3 = 0;
+        const h3 = t.set(500, () => fired3++);
+        const bs = [...timeouts.values()][0];
+        bs.cb();
+        check('backstop fires the callback when the Worker is silent', fired3, 1);
+        check(
+            '…and the Worker is told to clear its copy',
+            JSON.stringify(posted[posted.length - 1]),
+            JSON.stringify({ op: 'clear', id: h3 })
+        );
+        lastWorker.onmessage({ data: h3 });
+        check('late Worker reply after the backstop is ignored', fired3, 1);
+
+        // Worker error mid-wait: the timer drops to the setTimeout path; the pending
+        // wait keeps its backstop and still completes.
+        let fired4 = 0;
+        t.set(700, () => fired4++);
+        lastWorker.onerror(new Error('boom'));
+        check('onerror → kind timeout', t.kind, 'timeout');
+        check('onerror → lastError recorded', t.lastError, 'boom');
+        check('onerror → Worker terminated', lastWorker.terminated, true);
+        check('pending wait keeps its backstop', timeouts.size, 1);
+        [...timeouts.values()][0].cb();
+        check('…which still fires the callback', fired4, 1);
+        // Subsequent waits are setTimeout-only (no new Worker is built).
+        t.set(10, () => {});
+        check('after the error: no new Worker', instances, 1);
+        check('after the error: no Worker message', posted.filter((m) => m.op === 'set').length, 4);
+    }
+
+    console.log('\n=== createSleepTimer: a Worker constructor that throws → fallback ===');
+    {
+        const t = Runner.createSleepTimer({
+            Worker: function () {
+                throw new Error('CSP blocks blob workers');
+            },
+            Blob: function () {},
+            URL: { createObjectURL: () => 'blob:x' }
+        });
+        check('throwing Worker → kind timeout', t.kind, 'timeout');
+        check('throwing Worker → reason kept', t.lastError, 'CSP blocks blob workers');
+        let fired = 0;
+        const t0 = Date.now();
+        await new Promise((resolve) =>
+            t.set(30, () => {
+                fired++;
+                resolve();
+            })
+        );
+        check('fallback wait fires once', fired, 1);
+        check('fallback wait honors ms (≥ 25)', Date.now() - t0 >= 25, true);
+    }
+
+    console.log('\n=== _sleep: a late wait is reported as a warn event ===');
+    {
+        const runner = new Runner.ArenaRunner(makeFakeLink(), Wire);
+        const events = [];
+        runner._emit = (ev) => events.push(ev);
+        // A timer that overshoots every request by 400 ms (a throttled page).
+        runner._timerImpl = {
+            set: (ms, cb) => setTimeout(cb, ms + 400),
+            clear: (h) => clearTimeout(h)
+        };
+        await runner._sleep(20);
+        const warn = events.find((e) => e.phase === 'warn');
+        check('late wait → one warn event', events.length, 1);
+        check('warn names timer throttling', /throttling/.test((warn || {}).reason || ''), true);
+        check('warn carries requested_ms', (warn || {}).requested_ms, 20);
+        // The fake timer fires at 420 ms, but Node's timer clock can run a millisecond
+        // ahead of Date.now() (CI saw 419), so only require the overshoot itself (> 250).
+        check('warn actual_ms ≥ requested + 380', ((warn || {}).actual_ms || 0) >= 400, true);
+        // An on-time wait emits nothing.
+        runner._timerImpl = { set: (ms, cb) => setTimeout(cb, ms), clear: (h) => clearTimeout(h) };
+        events.length = 0;
+        await runner._sleep(20);
+        check('on-time wait → no event', events.length, 0);
+    }
+
+    console.log('\n=== runSequence: default (real) sleep completes and aborts mid-wait ===');
+    {
+        const mk = (waitSec) =>
+            new Map([
+                [
+                    'w',
+                    {
+                        name: 'w',
+                        commands: [
+                            { type: 'controller', command_name: 'allOn' },
+                            { type: 'wait', duration: waitSec }
+                        ]
+                    }
+                ]
+            ]);
+        const steps = [{ kind: 'ref', conditionName: 'w', label: 'w', seqIdx: 0, dur: 1 }];
+        const link = makeFakeLink();
+        const runner = new Runner.ArenaRunner(link, Wire);
+        const t0 = Date.now();
+        const summary = await runner.runSequence({
+            steps,
+            conditionsByName: mk(0.05),
+            resolvePatternId: () => 1
+        });
+        check('real sleep: sequence completes', summary.completed, true);
+        check('real sleep: waited ≥ 40 ms', Date.now() - t0 >= 40, true);
+
+        const link2 = makeFakeLink();
+        const runner2 = new Runner.ArenaRunner(link2, Wire);
+        const t1 = Date.now();
+        const pending = runner2.runSequence({
+            steps,
+            conditionsByName: mk(30),
+            resolvePatternId: () => 1
+        });
+        setTimeout(() => runner2.stop(), 50);
+        const s2 = await pending;
+        check('stop() mid-wait aborts the sequence', s2.aborted, true);
+        check('…promptly (< 2 s, not after the 30 s wait)', Date.now() - t1 < 2000, true);
+        check('…and nothing stays pending', Runner.sleepTimer().pendingCount, 0);
+    }
+
     console.log('\n=== Summary ===');
     console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
     process.exit(failures === 0 ? 0 : 1);
