@@ -4,6 +4,48 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.97 (2026-10-16) · A lost bridge ends the run (BRIDGE_LOST) · Shared `?p=` links load without waiting on GitHub (LAB-303 S1/S2)
+
+<!-- #254 -->
+- **Losing the FicTrac bridge mid-run now ends the run** instead of carrying on in silence. When the bridge's connection drops during a run that depends on it (a closed loop is armed, the protocol drives a camera or another connector, or the bridge is recording the run), the Studio shows a banner, stops the display, and records the run with the outcome **BRIDGE_LOST** (distinct from a controller fault, so no controller post-mortem runs). Restart the bridge, reconnect, and **⇪ Push log** to collect its record of the run. A user Disconnect, or a bridge the run never used, does not end the run.
+- **A `?p=` link loads its protocol first.** Opening a shared protocol link no longer waits for the course repo's pattern listing from GitHub; on a slow or walled network that wait could leave the Run view empty until a refresh. A protocol key that is not in this site's index now says so in a banner.
+- **Run-log pushes can no longer commit the wrong file after a bridge restart.** ⇪ Push log checks that the bridge serves this run's own log file and refuses otherwise, telling you where the file is on the bridge PC.
+- **Protocols that list their variables (`- &name value`) no longer trigger a false "Variable … is defined more than once" warning.** The check read the wrong field on list-style variables; the warning named a JavaScript function instead of a variable.
+- **Camera and microscope steps wait a little longer than their own `timeout_s`** before being called unknown, so a reply that lands right at the deadline counts as the outcome it was.
+
+## v0.96 (2026-10-16) · ScanImage as a protocol plugin (two-photon rigs, ROS bridge node) · Run file and MCAP bag close when the run ends (LAB-303)
+
+<!-- #254 -->
+- **A protocol can drive ScanImage.** Declare a `scanimage` plugin (class `ScanImagePlugin`) and use its commands in conditions: **Set file stem** (the TIFF name for the next grab), **Grab**, **Wait until idle**, **Abort**, and **Set property** for a few allowlisted settings (frames per grab, logging on/off, file path/stem/counter). The commands go through the bridge's ScanImage node to the microscope's own JSON server; every command and reply is in the run log, and the Grab reply names the TIFF stem and counter. Web runner only (MATLAB has no such plugin). First protocol: `g6_2p_color_led_sweep`.
+- **The bridge's run file closes when the run ends,** not when the next run starts. On the ROS bridge node this also closes the MCAP bag, so a run without a course commit (no token, a Test run, an aborted run) no longer leaves its bag open indefinitely. "⇪ Push log" still exports the most recent file. The FicTrac panel's Log checkbox now reads off between runs; turn it on by hand to log Console work outside a run.
+
+## v0.95 (2026-10-13) · ISP time estimate ~5 s/panel, not ~20 s (#244) · Pattern Designer + Studio: partial-arena °/px and 3D/2D mapping, unmirrored icons, short SD-safe filenames, upload name checks (LAB-295) · First command after Connect no longer waits ~60 s behind the thumbnail download (LAB-298) · Console → Qwiic peripherals, rig peripherals:, live Console sliders, firmware-sized test display + color banks (LAB-214)
+
+<!-- #245 -->
+- The panel firmware **Program set** dialog now estimates the time correctly (about 2 minutes for a full 20-panel arena, not 8).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+<!-- #246 -->
+- **A pattern name the arena can't store is refused before the upload starts,** with the reason, instead of failing after the file has been sent. Names with spaces or parentheses still upload.
+- **The upload warns when the arena would reject a pattern:** the session rig is a partial arena, or the pattern's panel grid doesn't match the rig.
+- **Re-uploading a pattern that's already on the card is flagged.** The arena keeps both copies (the new one as `X001_…`); the Studio now shows them as duplicates instead of quietly playing the old one.
+- **Pattern thumbnails are no longer mirrored.** The gap behind the fly is now at the bottom, as in the 3D view. This is the same fix as in the Pattern Designer and also covers the Console's thumbnails.
+- **The run-log replay's 3D view maps G6 2×8of10 patterns to the right columns.** This is the same fix as the Pattern Designer's 3D view.
+
+<!-- #248 -->
+- **Commands respond right after Connect.** The first command after connecting no longer waits up to a minute behind the pattern picker's thumbnail download; background reads at connect now step aside for anything you send.
+- **Pattern downloads from the SD card arrive complete.** Studio opens the arena's serial port with a larger read buffer, so downloads no longer come up short or drop the connection, and a download that stalls gives up after 5 s instead of 60 s.
+- **Thumbnails for patterns that are only on the SD card.** Studio downloads one for a thumbnail only if it is 1 MB or smaller; while a pattern is displaying, the tooltip explains that the controller can't send files until you stop it.
+
+<!-- #250 -->
+- **Console → Qwiic: find and try the sensors on the arena's Qwiic / STEMMA QT connector.** Scan lists every device on the bus with its category (Temp / humidity, Accel / tilt / bump, Light, Servo / PWM) and checks it against the rig file. Click one to see its readings in real units, once or live. The motion sensor has a bump check and the servo board a position slider. This panel is for testing; nothing in it is written to run logs.
+- **Rig files can list their Qwiic peripherals (`peripherals:`).** On connect the Studio scans once and shows a Qwiic chip in the top bar: green when every listed device is there, red when one is missing, amber when something is plugged in that the rig file doesn't list. **Copy as rig YAML** gives you the lines to add. Controllers without a Qwiic connector are unaffected.
+- **Console sliders act as you move them.** Test display level and duty re-send the last test figure, and LED power sets the LED, while you drag (never during a run).
+- **Test display works on more arenas.** Figures are sent at the controller's own frame size, so the 1×12 bench arena can show full-field, panel map, orientation and checker.
+- **Test display → color: light one LED bank at a time (A–D).** For color panels: each button lights only that bank, one LED in four per panel, at the chosen level.
+- **Two new rigs in ⚙ Settings:** the arena_12-18 bench (one panel high, its six Qwiic boards listed) and the 10-of-14 ring (three panels high).
+
 ## v0.94 (2026-09-30) · LAB-158 ports (Protocol ▾, ⚙ Settings, two-column Console) + visibility themes · Multi-color G6 panels V1 — Panel LEDs layout, ON color, per-bank preview (LAB-228) · Flasher + Studio picker: one production build from the published catalog; legacy images hashed, never default (panel-fw-v1.3.1)
 
 <!-- #238 -->

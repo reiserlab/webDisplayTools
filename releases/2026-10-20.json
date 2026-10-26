@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "name": "2026-10-20",
+  "kind": "candidate",
+  "rc": 3,
+  "created_at": "2026-10-26T18:49:31Z",
+  "created_at_et": "2026-10-26 14:49 ET",
+  "main_sha": "d10e46980db542e22983c309a2f870b7b30abb38",
+  "headline": "",
+  "prs": [
+    {
+      "number": 256,
+      "title": "fix(bridge): precise run-log clock on Windows with Python \u2264 3.12",
+      "head_sha": "7327a0252445130df59c831834dde160777ebd1a",
+      "head_ref": "claude/zen-pasteur-00c5d2",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/256"
+    },
+    {
+      "number": 254,
+      "title": "LAB-303: ROS 2 bridge graph + MCAP record, ScanImage/BIAS connectors, Studio v0.97 (candidate 2026-10-20)",
+      "head_sha": "4c425635a17b875ae43f15cbccc24bf7f69ef409",
+      "head_ref": "claude/ros-studio-plan-b-c44942",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/254"
+    },
+    {
+      "number": 260,
+      "title": "Runner: throttle-proof host-timed waits (Worker timer) \u2014 3 s steps no longer run 4 s in a hidden Studio window (LAB-303)",
+      "head_sha": "1811b8328743d3e15cb9719dd1e9d789e544962d",
+      "head_ref": "claude/runner-worker-timer",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/260"
+    }
+  ],
+  "versions": {
+    "studio": {
+      "from": "v0.95",
+      "to": "v0.97",
+      "legacy_pr_bump": true
+    }
+  },
+  "hotfix_reason": null,
+  "bridge_changed": true
+}

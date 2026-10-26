@@ -34,8 +34,13 @@ not know or care. Consequences that everything in the Designer relies on:
 - **A pure single color lights only 100 of the 400 LEDs per panel** (a 10×10 lattice at 2-px
   pitch). The renderers show exactly that; a 1-px bar in a pure color blinks as it moves, as it
   would on the hardware.
-- **The `.pat` carries no color tag** (header is full). The Designer appends `_4c` / `_rir` to
-  generated filenames; the proper tag (MANIFEST + repo metadata) is LAB-229.
+- **The `.pat` carries no color tag** (header is full). The Designer names it instead: the
+  layout tag (`_4c`, `_rir`, `_rir1`) plus, when the generation used a non-default ON/OFF choice,
+  a compact code from `PanelColor.filenameColorCode` — one letter per channel (V B G Y R I),
+  `A` = all, one hex digit per channel for custom levels: `_4c-B` (ON blue), `_4c-B-G` (ON blue,
+  OFF green), `_4c-F80A` (custom). The code is stamped at GENERATE time (the choice applies to
+  those frames); save only normalizes the layout tag (`stripColorTag`: replaced, never stacked).
+  The proper tag (MANIFEST + repo metadata) is still LAB-229.
 
 ## The one bench-decided constant: `ROW_PARITY_FLIP`
 

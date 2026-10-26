@@ -4771,6 +4771,66 @@ console.log('\n--- Suite 37: led_activation sub-fields by path (anchor binding) 
     check('37.19: no blocking errors', collectBlockingErrors(exp2).errors.length, 0);
 }
 
+// ─── Suite 39: sequence-style `variables:` (`- &name value`) keep their identity ──
+// The 2P protocols declare every variable as an anchored scalar ITEM, not a mapping
+// pair. extractVariables used to read `.anchor` off the item's primitive value — on a
+// string that is String.prototype.anchor — so the Studio warned about a variable named
+// "function anchor() { [native code] }" being defined 17 times (Bergamo, 2026-10-16).
+console.log('\n--- Suite 39: sequence-style variables identity ---');
+{
+    const yaml38 = [
+        'version: 3',
+        'experiment_info:',
+        '  name: seq_vars',
+        'rig: ./configs/rigs/cshl_g6_2x10.yaml',
+        'variables:',
+        '  - &pat_a "G6_2x10_toprow_grat20_violet_gs16"',
+        '  - &id_a 7',
+        '  - &dur 3.5',
+        '  - &flag true',
+        'experiment:',
+        '  - c1',
+        'conditions:',
+        '  - name: c1',
+        '    commands:',
+        '      - type: controller',
+        '        command_name: trialParams',
+        '        pattern: *pat_a',
+        '        pattern_ID: *id_a',
+        '        duration: *dur',
+        '        mode: 2',
+        '        frame_rate: 10',
+        '        gain: 0',
+        ''
+    ].join('\n');
+    const exp38 = parseV3Protocol(yaml38);
+    check(
+        '39.1: four variables, named by their anchors',
+        exp38.variables.map((v) => v.name).join(','),
+        'pat_a,id_a,dur,flag'
+    );
+    check('39.2: string value kept', exp38.variables[0].value, 'G6_2x10_toprow_grat20_violet_gs16');
+    check('39.3: integer value kept', exp38.variables[1].value, 7);
+    check('39.4: float value kept', exp38.variables[2].value, 3.5);
+    check('39.5: boolean value kept', exp38.variables[3].value, true);
+    checkTrue(
+        '39.6: no variable is named after String.prototype.anchor or "undefined"',
+        exp38.variables.every((v) => v.name !== 'undefined' && !/native code/.test(v.name))
+    );
+    const protocol2p = fs.readFileSync(
+        path.join(__dirname, '..', 'protocols', 'g6_2p_color_led_sweep.yaml'),
+        'utf8'
+    );
+    const exp2p = parseV3Protocol(protocol2p);
+    const names2p = exp2p.variables.map((v) => v.name);
+    checkTrue('39.7: the 2P sweep protocol parses', exp2p.variables.length > 10);
+    checkTrue(
+        '39.8: every 2P variable name is unique and a real anchor',
+        new Set(names2p).size === names2p.length &&
+            names2p.every((n) => /^[a-z][a-z0-9_]*$/.test(n))
+    );
+}
+
 // ─── Results ────────────────────────────────────────────────────────────────
 // ─── Test Suite 39: controller: block (sticky controller settings) ─────────
 console.log('\n--- Suite 39: controller: block ---');
