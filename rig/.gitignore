@@ -14,3 +14,8 @@ interfaces/build.log
 interfaces/build-result.json
 # colcon build logs (never commit)
 interfaces/log/
+# the channel payload (rig_interfaces 0.2.0, three platforms) lives at commit 39eeb1fa (pixi.toml pins that URL); not in the tree
+channel/noarch/
+channel/win-64/
+channel/osx-arm64/
+channel/linux-64/

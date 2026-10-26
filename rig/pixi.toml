@@ -87,22 +87,20 @@ cxx-compiler = "*"
 
 # ── typed messages WITHOUT a compiler = the OPT-IN `typed-prebuilt` environment ──────────
 # "Build once, publish to a channel" (docs/typed-distribution-decision.md): `pixi install -e
-# typed-prebuilt` downloads rig_interfaces like any RoboStack package: no MSVC, no build backend,
-# no MAX_PATH. The channel is built by .github/workflows/rig-interfaces.yml (three platforms) and
-# read over raw.githubusercontent.com pinned to the commit that holds the payload: a relative
-# `./channel` would be written into pixi.lock as this machine's absolute path. Its own solve
-# group, so the other environments' locks are untouched.
-#
-# TODO(rename): re-enabled below once the CI channel is committed. The previous pin
-# (commit 30512581, `ros2-poc/channel`, win-64 only) holds the OLD package name
-# `arena_interfaces 0.1.0`, which code importing `rig_interfaces` must never install, and the
-# `rig_interfaces 0.2.0` channel does not exist until CI has built it from this rename.
-# [feature.typed-prebuilt]
-# platforms = ["win-64", "osx-arm64", "linux-64"]
-# channels = ["https://raw.githubusercontent.com/reiserlab/webDisplayTools/<payload-commit>/rig/channel"]
-#
-# [feature.typed-prebuilt.dependencies]
-# rig_interfaces = { version = "==0.2.0", channel = "https://raw.githubusercontent.com/reiserlab/webDisplayTools/<payload-commit>/rig/channel" }
+# typed-prebuilt` downloads rig_interfaces 0.2.0 like any RoboStack package: no MSVC, no build
+# backend, no MAX_PATH. The channel is built by .github/workflows/rig-interfaces.yml (win-64,
+# osx-arm64, linux-64; channel/README.md lists the files and sha256s) and read over
+# raw.githubusercontent.com pinned to the payload commit — git history serves it, the tree holds
+# only channel/README.md (a relative `./channel` would be written into pixi.lock as this machine's
+# absolute path). Its own solve group, so the other environments' locks are untouched; the CI
+# packages pin the ros2-distro-mutex their runner resolved (channel/README.md), not the poc
+# group's, so this group resolves its own RoboStack set per platform.
+[feature.typed-prebuilt]
+platforms = ["win-64", "osx-arm64", "linux-64"]
+channels = ["https://raw.githubusercontent.com/reiserlab/webDisplayTools/39eeb1fa43874aae7d845dfec2a8f049c68f8954/rig/channel"]
+
+[feature.typed-prebuilt.dependencies]
+rig_interfaces = { version = "==0.2.0", channel = "https://raw.githubusercontent.com/reiserlab/webDisplayTools/39eeb1fa43874aae7d845dfec2a8f049c68f8954/rig/channel" }
 
 # ── seeing the graph = the OPT-IN `viz` environment ──────────────────────────
 # `pixi install -e viz`: rqt_graph (live node/topic graph, Qt), rqt_topic / rqt_console, and
@@ -119,8 +117,7 @@ ros-jazzy-foxglove-bridge = "*"
 default = { solve-group = "poc" }
 typed = { features = ["typed"], solve-group = "poc" }
 viz = { features = ["viz"], solve-group = "poc" }
-# TODO(rename): see the typed-prebuilt feature above.
-# typed-prebuilt = { features = ["typed-prebuilt"], solve-group = "prebuilt" }
+typed-prebuilt = { features = ["typed-prebuilt"], solve-group = "prebuilt" }
 
 [tasks]
 # ── hour one: middleware bring-up ───────────────────────────────────────────
