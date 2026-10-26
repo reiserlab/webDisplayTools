@@ -17,6 +17,7 @@
 
 const Runner = require('../js/arena-runner-g6.js');
 const Wire = require('../js/arena-wire-g6.js');
+const RunLog = require('../js/run-log.js');
 
 let totalChecks = 0;
 let failures = 0;
@@ -2936,6 +2937,507 @@ async function main() {
         });
         check('clean run → fault null', s4.fault, null);
         check('clean run → stopAcked true', s4.stopAcked, true);
+    }
+
+    // ── LAB-303 S1 (ww18, 2026-10-15): bridge hard-killed 10 s into a closed-loop
+    // epoch; the run carried on with no frames. Now the runner stops it (BRIDGE_LOST).
+    {
+        const lostBridge = () => ({
+            logging: true,
+            apply: false,
+            bias: null,
+            configs: [],
+            applyStates: [],
+            connect() {},
+            disconnect() {},
+            setApply(on) {
+                this.apply = !!on;
+                this.applyStates.push(!!on);
+            },
+            setConfig(cfg) {
+                this.configs.push(cfg);
+            },
+            log() {}
+        });
+        const clCond = {
+            name: 'cl',
+            commands: [
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    mode: 3,
+                    frame_rate: 0,
+                    gain: 0,
+                    frame_index: 0,
+                    duration: 30,
+                    pattern: 'p'
+                },
+                { type: 'plugin', plugin_name: 'fictrac', command_name: 'startClosedLoop' },
+                { type: 'wait', duration: 30 },
+                { type: 'plugin', plugin_name: 'fictrac', command_name: 'stopClosedLoop' }
+            ]
+        };
+        const openCond = { name: 'open', commands: [trialCmd, { type: 'wait', duration: 30 }] };
+        const step = (name, i) => ({ kind: 'ref', conditionName: name, label: name, seqIdx: i });
+        const conds = new Map([
+            ['cl', clCond],
+            ['open', openCond]
+        ]);
+
+        console.log('\n=== sequenceUsesBridge: which runs depend on the bridge ===');
+        const ft = new Set(['fictrac']);
+        check(
+            'closed-loop condition → true',
+            Runner.sequenceUsesBridge([step('cl', 0)], conds, ft),
+            true
+        );
+        check(
+            'open-loop only → false',
+            Runner.sequenceUsesBridge([step('open', 0)], conds, ft),
+            false
+        );
+        check(
+            'a LATER closed-loop condition counts (it would run blind)',
+            Runner.sequenceUsesBridge([step('open', 0), step('cl', 1)], conds, ft),
+            true
+        );
+        check(
+            'no fictrac plugin declared → false',
+            Runner.sequenceUsesBridge([step('cl', 0)], conds, null),
+            false
+        );
+
+        console.log(
+            '\n=== bridge lost mid closed-loop epoch → run STOPPED, outcome BRIDGE_LOST ==='
+        );
+        {
+            const link = makeFakeLink();
+            const bridge = lostBridge();
+            const runner = new Runner.ArenaRunner(link, Wire, bridge);
+            const phases = [];
+            const t0 = Date.now();
+            // Default abort-aware sleep: a 30 s epoch the loss must cut short.
+            const p = runner.runSequence({
+                steps: [step('cl', 0)],
+                conditionsByName: conds,
+                resolvePatternId: () => 1,
+                resolvePatternFrames: (cmd) => (cmd.command_name === 'trialParams' ? 20 : null),
+                fictracPluginNames: ft,
+                onProgress: (s) => phases.push(s)
+            });
+            await delay(30);
+            check('closed loop applying before the loss', bridge.apply, true);
+            const stopsBefore = link.sent.filter((b) => b[1] === 0x30).length;
+            // FicTracBridgeClient forces apply off before 'lost'; mirror that.
+            bridge.apply = false;
+            const action = runner.onBridgeLost({ code: 1006, apply: true, logFile: 'f.jsonl' });
+            check('onBridgeLost → aborted', action, 'aborted');
+            const summary = await p;
+            checkBool('the run ended promptly', Date.now() - t0 < 2000, Date.now() - t0 + ' ms');
+            check('summary.aborted', summary.aborted, true);
+            check('summary.fault stays null (not a controller fault)', summary.fault, null);
+            checkDeep(
+                'summary.bridgeLost carries the loss',
+                [summary.bridgeLost.kind, summary.bridgeLost.code, summary.bridgeLost.apply],
+                ['bridge_lost', 1006, true]
+            );
+            const stops = link.sent.filter((b) => b[1] === 0x30).length - stopsBefore;
+            checkBool('the display got a real STOP (the serial link is fine)', stops >= 1);
+            check('stopAcked', summary.stopAcked, true);
+            const iLost = phases.findIndex((s) => s.phase === 'bridge-lost');
+            const iEnd = phases.findIndex((s) => s.phase === 'aborted');
+            checkBool(
+                "a 'bridge-lost' event precedes the terminal 'aborted'",
+                iLost >= 0 && iLost < iEnd
+            );
+            check('bridge-lost event says stopped', phases[iLost].action, 'stopped');
+            check('the terminal event carries bridgeLost', !!phases[iEnd].summary.bridgeLost, true);
+            checkBool(
+                'no step after the loss ran (no stopClosedLoop → no step-done for later steps)',
+                !phases.some((s, i) => i > iLost && s.phase === 'trial-running')
+            );
+            check('apply is OFF after the run', bridge.apply, false);
+            check('run log outcome is BRIDGE_LOST', RunLog.deriveOutcome(summary), 'BRIDGE_LOST');
+            check('bridgeLostInfo getter', runner.bridgeLostInfo.code, 1006);
+            check('idle runner → onBridgeLost "idle"', runner.onBridgeLost({}), 'idle');
+
+            // The next run starts clean.
+            const s2 = await runner.runSequence({
+                steps: [step('open', 0)],
+                conditionsByName: conds,
+                resolvePatternId: () => 1,
+                sleep: () => Promise.resolve()
+            });
+            check('next run: no stale bridgeLost', s2.bridgeLost, undefined);
+            check('next run completes', RunLog.deriveOutcome(s2), 'COMPLETED');
+        }
+
+        console.log(
+            '\n=== bridge lost in an open-loop step BEFORE a closed-loop one → stopped ==='
+        );
+        {
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, lostBridge());
+            const phases = [];
+            const p = runner.runSequence({
+                steps: [step('open', 0), step('cl', 1)],
+                conditionsByName: conds,
+                resolvePatternId: () => 1,
+                resolvePatternFrames: () => 20,
+                fictracPluginNames: ft,
+                onProgress: (s) => phases.push(s)
+            });
+            await delay(30);
+            check('apply is off (open-loop step)', runner._bridge.apply, false);
+            check(
+                'onBridgeLost → aborted',
+                runner.onBridgeLost({ code: 1006, apply: false }),
+                'aborted'
+            );
+            const summary = await p;
+            check('outcome BRIDGE_LOST', RunLog.deriveOutcome(summary), 'BRIDGE_LOST');
+            checkBool(
+                'the closed-loop condition never started',
+                !phases.some((s) => s.phase === 'step-start' && s.index === 1)
+            );
+        }
+
+        console.log('\n=== recorded open-loop run (bridgeRequired) → stopped ===');
+        {
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, lostBridge());
+            const p = runner.runSequence({
+                steps: [step('open', 0)],
+                conditionsByName: conds,
+                resolvePatternId: () => 1,
+                bridgeRequired: true
+            });
+            await delay(30);
+            check('onBridgeLost → aborted', runner.onBridgeLost({ code: 1006 }), 'aborted');
+            check('outcome BRIDGE_LOST', RunLog.deriveOutcome(await p), 'BRIDGE_LOST');
+        }
+
+        console.log(
+            '\n=== test run that needs nothing from the bridge → continues, event recorded ==='
+        );
+        {
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, lostBridge());
+            const phases = [];
+            let release;
+            const gate = new Promise((r) => (release = r));
+            const p = runner.runSequence({
+                steps: [step('open', 0)],
+                conditionsByName: conds,
+                resolvePatternId: () => 1,
+                fictracPluginNames: ft,
+                onProgress: (s) => phases.push(s),
+                sleep: () => gate
+            });
+            await delay(10);
+            check('onBridgeLost → continued', runner.onBridgeLost({ code: 1006 }), 'continued');
+            release();
+            const summary = await p;
+            check('run completed', RunLog.deriveOutcome(summary), 'COMPLETED');
+            check('no bridgeLost on a continued run', summary.bridgeLost, undefined);
+            const ev = phases.find((s) => s.phase === 'bridge-lost');
+            check('a bridge-lost event says continued', ev && ev.action, 'continued');
+        }
+    }
+
+    console.log('\n=== bridge-routed connector steps make a run bridge-dependent (LAB-303) ===');
+    {
+        const mkBridge = () => ({
+            logging: false,
+            apply: false,
+            connected: true,
+            connect() {},
+            disconnect() {},
+            setApply(on) {
+                this.apply = !!on;
+            },
+            setConfig() {},
+            log() {},
+            supportsConnector: () => true,
+            connectorCommand: async () => ({ ok: true, outcome: 'ok' })
+        });
+        const camCond = {
+            name: 'cam',
+            commands: [
+                { type: 'plugin', plugin_name: 'camera', command_name: 'startRecording' },
+                trialCmd,
+                { type: 'wait', duration: 30 }
+            ]
+        };
+        const itiCond = { name: 'iti', commands: [trialCmd, { type: 'wait', duration: 30 }] };
+        const conds = new Map([
+            ['iti', itiCond],
+            ['cam', camCond]
+        ]);
+        const step = (name, i) => ({ kind: 'ref', conditionName: name, label: name, seqIdx: i });
+        const run = (runner, extra) => {
+            let release;
+            const gate = new Promise((r) => (release = r));
+            const p = runner.runSequence(
+                Object.assign(
+                    {
+                        steps: [step('iti', 0), step('cam', 1)],
+                        conditionsByName: conds,
+                        resolvePatternId: () => 1,
+                        resolvePatternFrames: () => 20,
+                        sleep: () => gate
+                    },
+                    extra
+                )
+            );
+            return { p, release };
+        };
+        // A loss during the open-loop ITI, BEFORE the camera step: the run would drive the
+        // camera blind, so it stops — because the connector map names `camera`.
+        const r1 = new Runner.ArenaRunner(makeFakeLink(), Wire, mkBridge());
+        const a = run(r1, { connectorPluginNames: new Map([['camera', 'bias']]) });
+        await delay(10);
+        check(
+            'loss in the ITI before a camera step → aborted',
+            r1.onBridgeLost({ code: 1006 }),
+            'aborted'
+        );
+        a.release();
+        const s1 = await a.p;
+        check('outcome BRIDGE_LOST', RunLog.deriveOutcome(s1), 'BRIDGE_LOST');
+        // The same protocol with no connector map asks nothing of the bridge → continues.
+        const r2 = new Runner.ArenaRunner(makeFakeLink(), Wire, mkBridge());
+        const b = run(r2, {});
+        await delay(10);
+        check(
+            '…without connectorPluginNames the run continues',
+            r2.onBridgeLost({ code: 1006 }),
+            'continued'
+        );
+        b.release();
+        await b.p;
+    }
+
+    console.log('\n=== connector plugins (LAB-303): BiasPlugin via the bridge ===');
+    {
+        const conn = new Map([['camera', 'bias']]);
+        // translateCommand: a plugin named in connectorPluginNames becomes connectorCommand,
+        // with params passed through and an optional timeout_s lifted out.
+        const ir = Runner.translateCommand(
+            {
+                type: 'plugin',
+                plugin_name: 'camera',
+                command_name: 'startRecording',
+                params: { filename: 't1.avi', timeout_s: 4 }
+            },
+            { connectorPluginNames: conn }
+        );
+        checkDeep(
+            'translate → connectorCommand',
+            [ir.op, ir.connector, ir.plugin_name, ir.command_name, ir.params.filename, ir.timeoutS],
+            ['connectorCommand', 'bias', 'camera', 'startRecording', 't1.avi', 4]
+        );
+        const irNo = Runner.translateCommand(
+            { type: 'plugin', plugin_name: 'camera', command_name: 'startRecording' },
+            { fictracPluginNames: new Set(['fictrac']) }
+        );
+        check('without connectorPluginNames the same command still skips', irNo.op, 'skip');
+        // listSkippedPlugins with the driveable set counts only what the runner will skip.
+        const cond = {
+            commands: [
+                { type: 'plugin', plugin_name: 'camera', command_name: 'startRecording' },
+                { type: 'plugin', plugin_name: 'log', command_name: 'message' },
+                { type: 'plugin', plugin_name: 'backlight', command_name: 'setRedLEDPower' },
+                {
+                    type: 'controller',
+                    command_name: 'trialParams',
+                    pattern: 'p',
+                    duration: 1,
+                    mode: 2,
+                    frame_rate: 10,
+                    gain: 0
+                }
+            ]
+        };
+        check(
+            'listSkippedPlugins legacy (no set) lists every plugin cmd',
+            Runner.listSkippedPlugins(cond).length,
+            3
+        );
+        checkDeep(
+            'listSkippedPlugins with driveable set → only backlight',
+            Runner.listSkippedPlugins(cond, new Set(['camera', 'log'])).map((x) => x.plugin_name),
+            ['backlight']
+        );
+
+        // runSequence: ok reply → command event with the reply; error reply → step error,
+        // run continues; no connectors advertised → visible skip naming the bridge.
+        const makeConnBridge = (connectors, replies) => ({
+            connected: true,
+            bridgeInfo: {
+                version: connectors ? '3.4 · ros2-poc' : '3.4',
+                levels: ['behavior_v2'],
+                connectors
+            },
+            configs: [],
+            logs: [],
+            calls: [],
+            connect() {},
+            disconnect() {},
+            setApply() {},
+            setConfig(c) {
+                this.configs.push(c);
+            },
+            log(o) {
+                this.logs.push(o);
+            },
+            supportsConnector(name) {
+                return Array.isArray(this.bridgeInfo.connectors)
+                    ? this.bridgeInfo.connectors.includes(name)
+                    : null;
+            },
+            connectorCommand(req) {
+                this.calls.push(req);
+                const r = replies[req.command] || { ok: true, outcome: 'ok' };
+                return Promise.resolve(
+                    Object.assign(
+                        { connector: req.connector, plugin: req.plugin, command: req.command },
+                        r
+                    )
+                );
+            }
+        });
+        const steps = [{ conditionName: 'c1', index: 0, total: 1 }];
+        const conditions = new Map([
+            [
+                'c1',
+                {
+                    name: 'c1',
+                    commands: [
+                        {
+                            type: 'plugin',
+                            plugin_name: 'camera',
+                            command_name: 'startRecording',
+                            params: { filename: 't1.avi' }
+                        },
+                        {
+                            type: 'controller',
+                            command_name: 'trialParams',
+                            pattern: 'p',
+                            pattern_ID: 1,
+                            duration: 0,
+                            mode: 2,
+                            frame_index: 0,
+                            frame_rate: 10,
+                            gain: 0
+                        },
+                        { type: 'plugin', plugin_name: 'camera', command_name: 'getTimestamp' },
+                        { type: 'plugin', plugin_name: 'camera', command_name: 'stopRecording' }
+                    ]
+                }
+            ]
+        ]);
+        const runOnce = async (bridge) => {
+            const events = [];
+            const runner = new Runner.ArenaRunner(makeFakeLink(), Wire, bridge);
+            const summary = await runner.runSequence({
+                steps,
+                conditionsByName: conditions,
+                resolvePatternId: () => 1,
+                connectorPluginNames: conn,
+                onProgress: (e) => events.push(e),
+                timing: async () => {},
+                sleep: () => Promise.resolve()
+            });
+            return { events, summary };
+        };
+        {
+            const bridge = makeConnBridge(['bias'], {
+                startRecording: {
+                    ok: true,
+                    outcome: 'ok',
+                    value: '/v/t1.avi',
+                    rtt_ms: 180,
+                    artifact: { kind: 'video', path: '/v/t1.avi' }
+                },
+                getTimestamp: { ok: true, outcome: 'ok', value: 12.5, rtt_ms: 1 },
+                stopRecording: {
+                    ok: false,
+                    outcome: 'unknown',
+                    error: 'no connector_reply within 10000 ms'
+                }
+            });
+            const { events, summary } = await runOnce(bridge);
+            checkDeep(
+                'bridge saw the three commands in order',
+                bridge.calls.map((c) => c.command),
+                ['startRecording', 'getTimestamp', 'stopRecording']
+            );
+            checkDeep('params pass through to the bridge', bridge.calls[0].params, {
+                filename: 't1.avi'
+            });
+            const cmds = events.filter((e) => e.phase === 'command' && e.op === 'connectorCommand');
+            checkDeep(
+                'one command event per connector command',
+                cmds.map((e) => e.command_name),
+                ['startRecording', 'getTimestamp', 'stopRecording']
+            );
+            checkDeep(
+                'command event carries the reply (outcome, value, artifact)',
+                [
+                    cmds[0].value.outcome,
+                    cmds[0].value.value,
+                    cmds[0].value.artifact.path,
+                    cmds[1].value.value
+                ],
+                ['ok', '/v/t1.avi', '/v/t1.avi', 12.5]
+            );
+            const errs = events.filter((e) => e.phase === 'error');
+            checkDeep(
+                'unknown outcome → one step error naming plugin.command → unknown',
+                [
+                    errs.length,
+                    errs[0] && errs[0].reason.startsWith('camera.stopRecording → unknown')
+                ],
+                [1, true]
+            );
+            checkDeep(
+                'run completes despite the failed step (proceed-and-skip)',
+                [summary.completed, summary.errors, summary.skipped],
+                [true, 1, 0]
+            );
+        }
+        {
+            // A 3.4 bridge (hello_ack without connectors): every connector command is a
+            // visible skip, nothing is sent to the bridge, the run is otherwise unchanged.
+            const bridge = makeConnBridge(null, {});
+            const { events, summary } = await runOnce(bridge);
+            check('3.4 bridge → nothing sent', bridge.calls.length, 0);
+            const skips = events.filter((e) => e.phase === 'skip');
+            checkDeep(
+                '3.4 bridge → three visible skips',
+                skips.map((e) => e.command_name),
+                ['startRecording', 'getTimestamp', 'stopRecording']
+            );
+            checkBool(
+                'skip reason names the bridge version and the fix',
+                /advertises no connectors/.test(skips[0].reason) && /3\.4/.test(skips[0].reason),
+                skips[0].reason
+            );
+            checkDeep(
+                'summary counts them as skipped, not errors',
+                [summary.skipped, summary.errors],
+                [3, 0]
+            );
+        }
+        {
+            // A bridge WITH connectors but not this one.
+            const bridge = makeConnBridge(['daq'], {});
+            const { events } = await runOnce(bridge);
+            const skips = events.filter((e) => e.phase === 'skip');
+            checkBool(
+                'missing connector → skip names it',
+                skips.length === 3 && /no "bias" connector/.test(skips[0].reason),
+                skips[0] && skips[0].reason
+            );
+        }
     }
 
     console.log('\n=== Summary ===');

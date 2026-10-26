@@ -62,6 +62,16 @@ check(
     RunLog.deriveOutcome({ aborted: true, fault: 'controller_unresponsive' }),
     'CONTROLLER_FAULT'
 );
+check(
+    'deriveOutcome bridge lost beats aborted (LAB-303 S1)',
+    RunLog.deriveOutcome({ aborted: true, bridgeLost: { kind: 'bridge_lost' } }),
+    'BRIDGE_LOST'
+);
+check(
+    'deriveOutcome controller fault beats bridge lost',
+    RunLog.deriveOutcome({ aborted: true, fault: 'link_dropped', bridgeLost: { code: 1006 } }),
+    'CONTROLLER_FAULT'
+);
 check('deriveOutcome errors', RunLog.deriveOutcome({ errors: 2 }), 'ERRORED');
 check('deriveOutcome completed', RunLog.deriveOutcome({ completed: true }), 'COMPLETED');
 check(
