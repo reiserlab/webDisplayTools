@@ -3,7 +3,7 @@
 **Status:** DECIDED (Michael, 2026-10-18): 10 columns, one record per frame, `float64`, one MCAP
 message per frame (no batching; "simpler is better", 2× the JSONL accepted). Nothing in the recorder
 changes with this PR; the implementation is its own PR (§4).
-**Question:** the ROS 2 bridge (`ros2-poc/`, PR #254) records every FicTrac frame twice — the
+**Question:** the ROS 2 bridge (`rig/`, PR #254) records every FicTrac frame twice — the
 25-column record as the adapter received it (`/fictrac/frame`, with the verbatim line) and the
 closed-loop evaluation (`/arena/frame`). Since the bags will be pushed to the GitHub data repo like
 the `.jsonl.gz` is today (Michael, 2026-10-18), bag size matters: which FicTrac columns does the bag
@@ -11,7 +11,7 @@ have to keep so it stays near the size of today's `.jsonl.gz`?
 **Answer in one line:** keep 10 of the 25 columns (the 5 the behavior row has, plus the error score,
 the three lab-frame delta-rotation components and the sequence counter), store them in the ONE
 per-frame `/arena/frame` record and stop recording the raw FicTrac topics by default. Measured on the
-two bench bags with a chunk-only index and zstd 19, one message per frame (`ros2-poc/sizing/columns.py`,
+two bench bags with a chunk-only index and zstd 19, one message per frame (`rig/sizing/columns.py`,
 the reproducible script of the implementation PR #264): **2.41× and 2.68×** the `.jsonl.gz` (today's
 bags: 10.2× and 30.4×; all 25 columns: 4.4× and 5.3×). For a 30 minute run at 50 Hz that is ≈ 5–5.5 MB
 against ≈ 2.3 MB today. Two levers were measured and deliberately not pulled: batching the records
@@ -59,7 +59,7 @@ dashboard derivations), `js/runlog-replay.js` (`COL_X/Y/HD/TS` for `full`-level 
 forward / speed / turning / heading, `fc` gaps), `scripts/closed-loop-report.py` (`ms, fc, idx, hd`;
 `f[0]`, `f[16]` on `full` logs), `scripts/runlog-check.py` (counts rows), `scripts/bench-check.py`
 (`ms, idx`), `scripts/telemetry-report.py` / `wedge-scan.py` (skip FicTrac rows),
-`fictrac-bridge/fictrac_sim.py` (writes all 25; col 22 in ns), and in `ros2-poc/`:
+`fictrac-bridge/fictrac_sim.py` (writes all 25; col 22 in ns), and in `rig/`:
 `nodes/bridge_node.py` (`arena_frame_msg`), `nodes/mcap_convert.py` (`frame_line`,
 `fictrac_fields`: the 25 columns are read ONLY for `--level full`), `interfaces/…/FicTracFrame.msg`,
 `interfaces/…/ArenaFrame.msg`. The MATLAB tools do not read these logs.
@@ -169,7 +169,7 @@ so the bag says "untracked" rather than "missing". The JSONL is unaffected (no r
 ## 3. Measured bag sizes
 
 Two real bench runs (Mac, 2026-10-14, simulator-driven FicTrac at 50 Hz, G6 controller, BIAS node;
-`ros2-poc/runlogs/arena-log-20261014-194449-517` = 181 s, typed topics; `…-204300-169` = 164 s,
+`rig/runlogs/arena-log-20261014-194449-517` = 181 s, typed topics; `…-204300-169` = 164 s,
 String fallback), each with its `.jsonl` as exported; `.jsonl.gz` = gzip −9 of that file, which is
 what the Studio commits. Every MCAP variant is written by the pure-Python `mcap` writer the way
 `mcap_index.reindex` writes the final layout: chunk index only (no per-message index), zstd level 19,
@@ -177,7 +177,7 @@ what the Studio commits. Every MCAP variant is written by the pure-Python `mcap`
 are packed as little-endian structs (≈ typed CDR: `int64` for cols 1/23, `int64` ns for col 22,
 `float64` otherwise); `/arena/frame` is re-packed from its decoded fields in BOTH bags so the typed
 and the String run compare like for like; every other topic (`/arena/browser` echoes, `/bias/*`,
-events, session) is kept byte for byte. Script: `ros2-poc/sizing/columns.py`
+events, session) is kept byte for byte. Script: `rig/sizing/columns.py`
 (`pixi run size-columns -- <bag> <jsonl> --all`), PR #264.
 
 | Variant (chunk-only index, zstd 19) | bag 1 (9 055 frames) | × jsonl.gz | bag 2 (8 199 frames) | × jsonl.gz |
@@ -236,10 +236,10 @@ the pinned `ros-jazzy-rosbag2-storage-mcap` when implementing, or apply the tuni
 
 ## 4. Code change list (not implemented here)
 
-All under `ros2-poc/` on PR #254's branch, its own PR after the pilot starts (plan §3 said the
+All under `rig/` on PR #254's branch, its own PR after the pilot starts (plan §3 said the
 archive publisher is its own PR; this is the recorder half of the same decision).
 
-1. **`interfaces/arena_interfaces/msg/ArenaFrame.msg`** — add `err`, `dr_lab_x/y/z`, `ft_seq`,
+1. **`interfaces/rig_interfaces/msg/ArenaFrame.msg`** — add `err`, `dr_lab_x/y/z`, `ft_seq`,
    `ft_ns`, `flags` (above). One type for the live topic and the bag, one message per frame, as today;
    the recorded copy carries NaN in `turning_dps` / `forward_mms` (live-only, §3 correction).
    The String fallback carries the same fields in its JSON object.
@@ -278,7 +278,7 @@ archive publisher is its own PR; this is the recorder half of the same decision)
    §2 becomes the `ArenaFrame` field reference; `telemetry-logging-reference.md` gets a one-paragraph
    pointer (the JSONL section is unchanged).
 
-Outside `ros2-poc/` nothing changes: `fictrac-bridge/bridge.py`, `js/kinematics.js`, the replay, the
+Outside `rig/` nothing changes: `fictrac-bridge/bridge.py`, `js/kinematics.js`, the replay, the
 dashboard and every script read the JSONL, whose rows are the same five columns as before.
 
 ## 5. Proposed Linear comment on LAB-303 (text only; not applied)

@@ -42,3 +42,8 @@ io:
   ao:
     role: programmable # off | programmable (0xA0) | frame_number (bench-pending)
     default: 5.0 # volts at connect — this hardware idles at 5 V
+
+# Sticky controller default, asserted at connect and before every run (docs/development/controller-settings-strategy.md).
+# A protocol may override it with its own controller: block; a 2P (line-sync) protocol refuses to run here.
+defaults:
+  panel_mode: persistent # 1 — free-running panels; this bench has no line clock

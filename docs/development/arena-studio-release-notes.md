@@ -4,6 +4,17 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.98 (2026-10-26) · Ros2-poc: the FicTrac record in the bag — one /arena/frame message per frame with 10 columns (LAB-303) · Assert sticky controller settings before every run: controller: block, rig defaults, run header (LAB-230) · Rename ros2-poc/ → rig/ and arena_interfaces → rig_interfaces (LAB-303 cleanup, no behavior change)
+
+<!-- #264 -->
+none (bridge-node / ROS 2 record format; no Studio change)
+
+<!-- #219 -->
+- **Panel display mode, refresh rate and panel firmware are now checked and recorded before every run.** A rig file can set the panel mode it expects (`defaults.panel_mode`), a refresh-rate limit and the panel firmware it needs. A protocol that depends on a mode declares it in a `controller:` block. Before each Run or Test the Studio reads the controller, sets whatever differs, reads it back, and refuses to run if it can't get the arena into the required state: wrong rig, unreadable setting, wrong panel firmware, or failed panel verification. The before/after settings go into the run log.
+- **Course rigs reset the panel mode to persistent at connect and before each run**, so a bench left in triggered mode by an earlier session is put right automatically. Course protocols need no changes.
+- **New rig `bergamo_g6_2x10_2p`** for the two-photon setup (triggered mode, 300 Hz limit, "2p" panel firmware, strict). Its three protocols (diagnostics, duty sweep, color LED-intensity sweep) use the new block, so the four manual Console steps before a Bergamo run are gone.
+- **Settings → Controller** shows the declaration, the live controller settings, the verdict, and a **Verify panels** button (checks every panel's firmware; about 1 s per panel).
+
 ## v0.97 (2026-10-16) · A lost bridge ends the run (BRIDGE_LOST) · Shared `?p=` links load without waiting on GitHub (LAB-303 S1/S2)
 
 <!-- #254 -->
