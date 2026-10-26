@@ -401,7 +401,15 @@ items in section 4 before code.
 
 ## Linear
 
-Tickets proposed from this record (ids filled in once created): the Python headless runner
-(pyDisplayTools), the rig-nodes repository and checklist, run ownership and recording ownership, the
-MATLAB runner disposition, and optional controller-timed trials in the web runner. Comments on LAB-303,
-LAB-245, LAB-309, LAB-218, LAB-155, LAB-314 and LAB-315.
+Tickets created 2026-10-26 from this record (Reiser Lab, project "Arena Software Control - towards
+Web-based V1.0"):
+
+- **LAB-337** Python headless runner in LED-Display_pyDisplayTools (Todo, unassigned until the second
+  developer is named).
+- **LAB-338** rig-nodes: shared ROS 2 infrastructure repository, decision record + checklist (Backlog).
+- **LAB-339** MATLAB YAML runner disposition (Backlog).
+- **LAB-340** Run-ownership rule + recording-ownership API (Backlog).
+- **LAB-341** Web runner: optional controller-timed trials (Backlog).
+
+LAB-303 carries the architecture comment. Comments proposed for LAB-245 (Isabel, toolchain framing),
+LAB-309 (producer vs converter), LAB-218, LAB-155 and LAB-314/315 are held as drafts.
