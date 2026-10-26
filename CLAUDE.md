@@ -107,6 +107,12 @@ When editing web tools, audit all buttons and controls in the modified code sect
 - Dependencies via CDN or vendored under `js/vendor/` (e.g. `yaml`); no runtime npm
 - Web outputs must match MATLAB outputs exactly
 
+**Repository boundaries (decision 2026-10-26):** `docs/development/rig-software-repos-and-runners.md`
+is the record. The browser tools and their rig-side gateway (`ros2-poc/nodes/bridge_node.py`) stay
+here; the Python arena library + headless runner go to `LED-Display_pyDisplayTools`; shared ROS 2
+infrastructure (interfaces, device nodes, recording, supervision) goes to `rig-nodes`, which does not
+exist yet. Until the extraction session, every file is where the record's inventory says it is today.
+
 ### Dev environment (pixi — the only tool you install)
 
 Dev tooling is managed by **pixi** (`pixi.toml` at the repo root). pixi provides
