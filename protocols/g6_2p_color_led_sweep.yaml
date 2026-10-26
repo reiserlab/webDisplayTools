@@ -1,0 +1,580 @@
+version: 3
+
+# ============================================================================
+# 2P color LED-intensity sweep — G6 2x10 four-color arena on the Bergamo
+# (2026-10-16), ScanImage driven from the protocol through the bridge's
+# `scanimage` connector (ScanImage's built-in JSON server, LAB-303 / LAB-306).
+#
+# What it does: for each LED color (violet 405, blue 470, green 525,
+# yellow-orange 590 nm) ONE ScanImage GRAB, inside which the top-row one-color
+# grating rotates at `fps` frames/s through six panel duty levels (7 … 255),
+# `step_dur` s each, then the arena goes dark and the protocol waits for the
+# grab to finish. Four TIFF series ("<color>_sweep_<NNN>"), each holding the
+# six intensity steps of one color. Total ≈ 2.5 min.
+#
+# CHANGE THE EXPERIMENT ONLY IN `variables:` below — colors (pattern + SD slot),
+# duty levels, step length, speed, frames per grab, timeouts.
+#
+# PATTERNS: protocols/g6_2p_color_led_sweep_patterns/ — the four one-color
+# top-row gratings of g6_color_optomotor_test re-encoded as GS16 (lit pixels 15,
+# 20 frames; `node scripts/make-color-optomotor-patterns.js --gs16`). GS16 so the
+# controller re-streams at its 300 Hz default, as in the 22 Sept 2026 duty-sweep
+# runs — the GS2 set on the card (slots 1–4) would default to 1000 Hz, a refresh
+# confound the imaging comparison does not need. UPLOAD THE FOLDER ONCE before
+# Run (Console → Patterns → Add ▾ → the folder). The Studio resolves patterns by
+# NAME from the SD listing; the pattern_IDs below are only the fallback — check
+# the slots in the Console's SD listing after the upload and fix them if needed.
+# To fall back to the GS2 set, change the four pattern names/IDs in `variables:`
+# and set the refresh rate to 300 Hz by hand (step 3 below).
+#
+# BEFORE PRESSING RUN (Arena Studio Console, once per connection — not YAML-able):
+#   1. Controller ▾ → panel display mode = 2 (Triggered).  Wire: 02 1B 02
+#      The 2P line-sync panel firmware free-runs one row per line-clock edge;
+#      NOT 3 (Gated).
+#   2. Digital IO 1 role = out_debug_framescan.            Wire: 03 AC 01 03
+#      DO1 (BNC J3) is HIGH for every SPI frame transfer — THE alignment signal
+#      today (no analog marker yet): record it in ScanImage as an aux/AI channel.
+#      Digital IO 2 (J4) stays in_trigger — the line-clock → EINT route.
+#   3. Refresh rate (Debug ▾, unlock): 300 Hz is the GS16 default — check it
+#      reads 300. Only the GS2 set needs it set by hand (GS2 defaults to 1000 Hz,
+#      where every re-streamed frame costs the panel line edges).
+#   4. Telemetry ring: on (default).
+#   NEW ARENA CHECK (this arena has not been on the microscope before; 20 panels,
+#   top row on the bank-window firmware, bottom row v1.3.1 — all with the 2P
+#   timing): Console → Panel firmware → Inventory must show 20 present (repeat
+#   after every power cycle; the top-row builds have hung at boot before). With
+#   the line clock running and display mode 2, Console → Test → full-field at
+#   level ≤ 128 (the 5 A supply resets at all-on 255) must light every panel at
+#   about ⅓ of mode-1 brightness; with the line clock stopped every panel must
+#   go dark; DO1 must show one pulse per controller refresh tick on the scope /
+#   ScanImage AI, and the line clock must be seen on the loop-back channel.
+#
+# SCANIMAGE SETUP (operator, in the GUI; the protocol does not touch these):
+#   unidirectional scanning, both channels saved (channelSave = [1 2]),
+#   lasers ON (this is a data run, not a dark test),
+#   logging ON, logFilePath on the F: data disk (F:\ImagingData\<date>\…),
+#   detectors on. The protocol sets framesPerSlice (frames per grab)
+#   to `frames_per_grab` in pre_blank and the file stem per color; nothing else.
+#   ScanImage must record: DO1 (frame-transfer envelope) and the line clock
+#   loop-back on aux inputs or spare AI channels — see
+#   docs/development/2p-scanimage-signal-logging.md §0.
+#
+# Notes
+#   1. duty: 0 in trialParams means "pattern's stored duty", NOT off. Off is allOff.
+#   2. Each duty step is its own condition (one trialParams each; the pattern
+#      restarts at frame 0 with the new duty). The first condition of a color
+#      sets the file stem and starts the grab; the last ends with allOff and
+#      waits for the grab to finish (waitIdle). frames_per_grab must cover
+#      grab_settle + 6 × step_dur plus margin at the scan frame rate (29 Hz:
+#      6 × 3 + 1 = 19 s → 640 frames ≈ 22 s).
+#   3. End with allOff, not stopDisplay: on the free-running Triggered firmware
+#      a stopped controller leaves the last frame lit, one row per line.
+#   4. A plugin command waits for its reply (grab ≈ 1–3 s on the Bergamo PC);
+#      the condition durations shown in the Studio exclude that wait.
+# ============================================================================
+
+experiment_info:
+  name: "2P color LED-intensity sweep (G6 2x10 four-color, ScanImage grabs)"
+  author: "mreiser"
+  date_created: "2026-10-16"
+
+rig: "./configs/rigs/cshl_g6_2x10.yaml"
+
+plugins:
+  - name: "scanimage"
+    type: "class"
+    matlab:
+      class: "ScanImagePlugin"   # web runner only — MATLAB has no ScanImagePlugin
+
+variables:
+  # ── patterns (GS16 set; IDs = expected slots after uploading the folder onto a
+  #    card that already holds the GS2 set in 1–4 — verify in the SD listing) ──
+  - &pat_violet "G6_2x10_toprow_grat20_violet_gs16"
+  - &id_violet 7            # Bergamo card 2026-10-16: slots as resolved by name in the dry run
+  - &pat_blue "G6_2x10_toprow_grat20_blue_gs16"
+  - &id_blue 3
+  - &pat_green "G6_2x10_toprow_grat20_green_gs16"
+  - &id_green 5
+  - &pat_yellow "G6_2x10_toprow_grat20_yellow_gs16"
+  - &id_yellow 9
+  # ── timing ────────────────────────────────────────────────────────────────
+  - &fps 20                 # frames/s; 20-frame grating → one period per second
+  - &step_dur 3             # s per duty level
+  - &grab_settle 1          # s between the grab reply and the first stimulus
+  - &blank_dur 3            # s dark before the first and after the last color
+  - &frames_per_grab 800    # ScanImage framesPerSlice: ≥ (grab_settle + 6·step_dur) × scan frame rate
+                            #   Bergamo 2026-10-16: 29.1 Hz at 256×256 unidirectional. Host-timed steps ran
+                            #   ~3.6 s (not 3) for colors 2–4, so the stimulus spans ~24.4 s from the grab
+                            #   reply; 640 frames (22 s) cut the end of duty 255 → 800 (27.5 s, ~3 s margin).
+                            #   (at 512×512 it is 15.0 Hz → ~410)
+  - &wait_idle_s 45         # waitIdle timeout: frames_per_grab / frame rate + margin
+  # ── intensity = panel duty (0–255) ────────────────────────────────────────
+  - &duty_a 7
+  - &duty_b 15
+  - &duty_c 31
+  - &duty_d 63
+  - &duty_e 127
+  - &duty_f 255
+
+experiment:
+  - "pre_blank"
+  - "violet_d7"
+  - "violet_d15"
+  - "violet_d31"
+  - "violet_d63"
+  - "violet_d127"
+  - "violet_d255"
+  - "blue_d7"
+  - "blue_d15"
+  - "blue_d31"
+  - "blue_d63"
+  - "blue_d127"
+  - "blue_d255"
+  - "green_d7"
+  - "green_d15"
+  - "green_d31"
+  - "green_d63"
+  - "green_d127"
+  - "green_d255"
+  - "yellow_d7"
+  - "yellow_d15"
+  - "yellow_d31"
+  - "yellow_d63"
+  - "yellow_d127"
+  - "yellow_d255"
+  - "post_blank"
+
+conditions:
+  # Display dark; frames per grab set once for the whole run.
+  - name: "pre_blank"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "set"
+        params:
+          property: "hStackManager.framesPerSlice"
+          value: *frames_per_grab
+      - type: "wait"
+        duration: *blank_dur
+
+  # ── violet 405 nm ─────────────────────────────────────────────────────────
+  - name: "violet_d7"
+    commands:
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "setFileStem"
+        params:
+          stem: "violet_sweep"
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "grab"
+      - type: "wait"
+        duration: *grab_settle
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_violet
+        pattern_ID: *id_violet
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_a
+      - type: "wait"
+        duration: *step_dur
+  - name: "violet_d15"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_violet
+        pattern_ID: *id_violet
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_b
+      - type: "wait"
+        duration: *step_dur
+  - name: "violet_d31"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_violet
+        pattern_ID: *id_violet
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_c
+      - type: "wait"
+        duration: *step_dur
+  - name: "violet_d63"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_violet
+        pattern_ID: *id_violet
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_d
+      - type: "wait"
+        duration: *step_dur
+  - name: "violet_d127"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_violet
+        pattern_ID: *id_violet
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_e
+      - type: "wait"
+        duration: *step_dur
+  - name: "violet_d255"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_violet
+        pattern_ID: *id_violet
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_f
+      - type: "wait"
+        duration: *step_dur
+      - type: "controller"
+        command_name: "allOff"
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "waitIdle"
+        params:
+          timeout_s: *wait_idle_s
+
+  # ── blue 470 nm ───────────────────────────────────────────────────────────
+  - name: "blue_d7"
+    commands:
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "setFileStem"
+        params:
+          stem: "blue_sweep"
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "grab"
+      - type: "wait"
+        duration: *grab_settle
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_blue
+        pattern_ID: *id_blue
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_a
+      - type: "wait"
+        duration: *step_dur
+  - name: "blue_d15"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_blue
+        pattern_ID: *id_blue
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_b
+      - type: "wait"
+        duration: *step_dur
+  - name: "blue_d31"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_blue
+        pattern_ID: *id_blue
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_c
+      - type: "wait"
+        duration: *step_dur
+  - name: "blue_d63"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_blue
+        pattern_ID: *id_blue
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_d
+      - type: "wait"
+        duration: *step_dur
+  - name: "blue_d127"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_blue
+        pattern_ID: *id_blue
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_e
+      - type: "wait"
+        duration: *step_dur
+  - name: "blue_d255"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_blue
+        pattern_ID: *id_blue
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_f
+      - type: "wait"
+        duration: *step_dur
+      - type: "controller"
+        command_name: "allOff"
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "waitIdle"
+        params:
+          timeout_s: *wait_idle_s
+
+  # ── green 525 nm ──────────────────────────────────────────────────────────
+  - name: "green_d7"
+    commands:
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "setFileStem"
+        params:
+          stem: "green_sweep"
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "grab"
+      - type: "wait"
+        duration: *grab_settle
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_green
+        pattern_ID: *id_green
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_a
+      - type: "wait"
+        duration: *step_dur
+  - name: "green_d15"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_green
+        pattern_ID: *id_green
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_b
+      - type: "wait"
+        duration: *step_dur
+  - name: "green_d31"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_green
+        pattern_ID: *id_green
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_c
+      - type: "wait"
+        duration: *step_dur
+  - name: "green_d63"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_green
+        pattern_ID: *id_green
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_d
+      - type: "wait"
+        duration: *step_dur
+  - name: "green_d127"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_green
+        pattern_ID: *id_green
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_e
+      - type: "wait"
+        duration: *step_dur
+  - name: "green_d255"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_green
+        pattern_ID: *id_green
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_f
+      - type: "wait"
+        duration: *step_dur
+      - type: "controller"
+        command_name: "allOff"
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "waitIdle"
+        params:
+          timeout_s: *wait_idle_s
+
+  # ── yellow-orange 590 nm ──────────────────────────────────────────────────
+  - name: "yellow_d7"
+    commands:
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "setFileStem"
+        params:
+          stem: "yellow_sweep"
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "grab"
+      - type: "wait"
+        duration: *grab_settle
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_yellow
+        pattern_ID: *id_yellow
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_a
+      - type: "wait"
+        duration: *step_dur
+  - name: "yellow_d15"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_yellow
+        pattern_ID: *id_yellow
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_b
+      - type: "wait"
+        duration: *step_dur
+  - name: "yellow_d31"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_yellow
+        pattern_ID: *id_yellow
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_c
+      - type: "wait"
+        duration: *step_dur
+  - name: "yellow_d63"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_yellow
+        pattern_ID: *id_yellow
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_d
+      - type: "wait"
+        duration: *step_dur
+  - name: "yellow_d127"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_yellow
+        pattern_ID: *id_yellow
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_e
+      - type: "wait"
+        duration: *step_dur
+  - name: "yellow_d255"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: *pat_yellow
+        pattern_ID: *id_yellow
+        duration: *step_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps
+        gain: 0
+        duty: *duty_f
+      - type: "wait"
+        duration: *step_dur
+      - type: "controller"
+        command_name: "allOff"
+      - type: "plugin"
+        plugin_name: "scanimage"
+        command_name: "waitIdle"
+        params:
+          timeout_s: *wait_idle_s
+
+  # Display dark after the last color.
+  - name: "post_blank"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *blank_dur

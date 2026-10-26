@@ -368,13 +368,171 @@ async function main() {
         await p4.catch((e) => (err4 = e.message));
         checkBool('timeout rejects', /timed out/.test(err4), err4);
 
-        // disconnect-while-pending path
+        // the socket drops while pending (the bridge went away) → "bridge lost"
         const p5 = client.exportLog(5000);
         ws.close();
         let err5 = null;
         await p5.catch((e) => (err5 = e.message));
-        checkBool('disconnect rejects pending export', /disconnected/.test(err5), err5);
+        checkBool('a dropped socket rejects pending export', /bridge lost/.test(err5), err5);
+        // the operator disconnects while pending → "disconnected"
+        client.connect('ws://localhost:8765');
+        FakeWS.last.open();
+        const p6 = client.exportLog(5000);
         client.disconnect();
+        let err6 = null;
+        await p6.catch((e) => (err6 = e.message));
+        checkBool('disconnect() rejects pending export', /disconnected/.test(err6), err6);
+    }
+
+    // ── LAB-303 S1 (ww18, 2026-10-15): the bridge was hard-killed mid closed loop and
+    // the Studio only showed "bridge disconnected" — no event the runner could act on.
+    console.log('\n=== bridge LOST: unexpected close → fail closed, fail pending, then "lost" ===');
+    {
+        const applied = [];
+        const client = new FicTracBridgeClient({
+            WebSocketImpl: FakeWS,
+            applyFrame: (i) => {
+                applied.push(i);
+                return Promise.resolve();
+            },
+            clampFrame: (i) => i
+        });
+        const lost = [];
+        const applyEvents = [];
+        const logs = [];
+        let applyAtLost = null;
+        let exportSettledAtLost = false;
+        client.on('apply', (on) => applyEvents.push(on));
+        client.on('log', (m, k) => logs.push([k, m]));
+        client.connect('ws://localhost:8765');
+        const ws = FakeWS.last;
+        ws.open();
+        client.setLogging(true);
+        ws.message({
+            type: 'log_control_ack',
+            enabled: true,
+            level: 'behavior_v2',
+            requested: 'behavior_v2',
+            file: 'arena-log-20261015-153548-287.jsonl'
+        });
+        check('logFile from the ack', client.logFile, 'arena-log-20261015-153548-287.jsonl');
+        client.setApply(true);
+        client.handleFrame(4, { type: 'frame', index: 4 });
+        await tick();
+        check('closed loop applying before the loss', applied, [4]);
+        // A pending export (15 s default timeout) and a pending level ack.
+        const t0 = Date.now();
+        let exportErr = null;
+        const exp = client.exportLog(15000).catch((e) => (exportErr = e.message));
+        client.setLogging(true); // re-request → the ack is pending again
+        const ack = client.waitForLogLevelAck(15000);
+        client.on('lost', (info) => {
+            lost.push(info);
+            applyAtLost = client.apply;
+            exportSettledAtLost = exportErr !== null || client._exportPending === null;
+        });
+        // The bridge process dies: the socket closes without disconnect() asking.
+        ws.readyState = 3;
+        ws.onclose({ code: 1006, reason: '', wasClean: false });
+        await exp;
+        check('one "lost" event', lost.length, 1);
+        check(
+            'lost info names the close + that a closed loop was running',
+            [lost[0].code, lost[0].wasClean, lost[0].apply, lost[0].url],
+            [1006, false, true, 'ws://localhost:8765']
+        );
+        check('apply was already OFF when "lost" fired (fail closed first)', applyAtLost, false);
+        check('…and an apply:false event went out', applyEvents[applyEvents.length - 1], false);
+        checkBool('pending export already settled when "lost" fired', exportSettledAtLost);
+        checkBool(
+            'pending export rejected at once with "bridge lost" (not after its 15 s timeout)',
+            /bridge lost/.test(exportErr) && Date.now() - t0 < 1000,
+            exportErr + ' after ' + (Date.now() - t0) + ' ms'
+        );
+        check('pending level-ack waiter resolved null at once', await ack, null);
+        check('connected false', client.connected, false);
+        check('logFile cleared', client.logFile, null);
+        check('lastLoss kept for the page', client.lastLoss && client.lastLoss.code, 1006);
+        checkBool(
+            'an err log line says the bridge was lost',
+            logs.some(([k, m]) => k === 'err' && /bridge lost/.test(m)),
+            JSON.stringify(logs)
+        );
+        // A frame arriving after the loss (it cannot, but a stray one must not drive).
+        client.handleFrame(9, { type: 'frame', index: 9 });
+        await tick();
+        check('nothing applied after the loss', applied, [4]);
+    }
+
+    console.log('\n=== bridge LOST is only an UNEXPECTED close of an OPEN socket ===');
+    {
+        const client = new FicTracBridgeClient({ WebSocketImpl: FakeWS });
+        let lost = 0;
+        client.on('lost', () => lost++);
+        // (a) the operator disconnects: FakeWS fires onclose synchronously inside close()
+        client.connect('ws://localhost:8765');
+        FakeWS.last.open();
+        client.disconnect();
+        check('disconnect() → no "lost"', lost, 0);
+        check('disconnect() → lastLoss stays null', client.lastLoss, null);
+        // (b) a connect attempt that never opened (bridge not running) is not a loss
+        client.connect('ws://localhost:8765');
+        const never = FakeWS.last;
+        never.readyState = 3;
+        never.onclose({ code: 1006 });
+        check('failed connect → no "lost"', lost, 0);
+        // (c) a superseded socket closing after a reconnect leaves the new one alone
+        client.connect('ws://localhost:8765');
+        const oldWs = FakeWS.last;
+        oldWs.open();
+        oldWs.close = function () {
+            this.readyState = 2; // a real browser fires onclose later, asynchronously
+        };
+        // A request still waiting on the old socket must fail fast at disconnect(): the
+        // old socket's late onclose is ignored as stale and the new one never answers it.
+        const staleExport = client.exportLog(5000).then(
+            () => 'resolved',
+            (e) => e.message
+        );
+        client.disconnect();
+        client.connect('ws://localhost:8765');
+        const newWs = FakeWS.last;
+        newWs.open();
+        check(
+            'export pending on the superseded socket fails fast',
+            await staleExport,
+            'bridge disconnected during log export'
+        );
+        oldWs.readyState = 3;
+        oldWs.onclose({ code: 1000 });
+        checkBool('stale close leaves the new socket connected', client.connected === true);
+        check('stale close → no "lost"', lost, 0);
+        newWs.readyState = 3;
+        newWs.onclose({ code: 1006 });
+        check('the live socket dropping IS a loss', lost, 1);
+        check('apply was off → info.apply false', client.lastLoss.apply, false);
+        // (d) reconnecting OVER a socket that is still closing (no disconnect() call)
+        // settles the requests waiting on it; its late onclose is then ignored as stale.
+        client.connect('ws://localhost:8765');
+        const closing = FakeWS.last;
+        closing.open();
+        const exp2 = client.exportLog(5000).then(
+            () => 'resolved',
+            (e) => e.message
+        );
+        closing.readyState = 2; // CLOSING: connected === false, so connect() proceeds
+        client.connect('ws://localhost:8765');
+        const fresh = FakeWS.last;
+        fresh.open();
+        check(
+            'export pending on a closing socket fails on reconnect',
+            await exp2,
+            'bridge disconnected during log export'
+        );
+        closing.readyState = 3;
+        closing.onclose({ code: 1000 });
+        checkBool('the stale close leaves the fresh socket connected', client.connected === true);
+        check('stale close after a reconnect → still one loss', lost, 1);
     }
 
     console.log('\n=== log level (behavior_v2 default / v1 + full selectable) ===');
@@ -615,11 +773,16 @@ async function main() {
             level: 'behavior_v2',
             logging: false
         });
-        check('hello_ack recorded', client.bridgeInfo, {
-            version: '3.0 · behavior_v2',
-            levels: ['behavior_v2', 'behavior_v1', 'full'],
-            level: 'behavior_v2'
-        });
+        check(
+            'hello_ack recorded (connectors null: a bridge without device connectors)',
+            client.bridgeInfo,
+            {
+                version: '3.0 · behavior_v2',
+                levels: ['behavior_v2', 'behavior_v1', 'full'],
+                level: 'behavior_v2',
+                connectors: null
+            }
+        );
         check('bridgeSupportsLevel(v2) true', client.bridgeSupportsLevel('behavior_v2'), true);
         check('bridgeSupportsLevel(bogus) false', client.bridgeSupportsLevel('behavior_v9'), false);
         check(
@@ -951,6 +1114,134 @@ async function main() {
             client.supportsStartFrame(),
             true
         );
+    }
+
+    console.log('\n=== connector_command / connector_reply (LAB-303 device connectors) ===');
+    {
+        const RealWS = global.WebSocket;
+        global.WebSocket = FakeWS;
+        try {
+            const client = new FicTracBridgeClient({ applyFrame: () => Promise.resolve() });
+            check(
+                'supportsConnector null before any hello_ack',
+                client.supportsConnector('bias'),
+                null
+            );
+            // Not connected → immediate error outcome, never a throw.
+            const offline = await client.connectorCommand({
+                connector: 'bias',
+                plugin: 'camera',
+                command: 'getTimestamp'
+            });
+            check('not connected → outcome error', [offline.ok, offline.outcome], [false, 'error']);
+            client.connect('ws://x');
+            const ws = FakeWS.last;
+            ws.open();
+            // A ≤ 3.4 bridge: hello_ack without `connectors` → null (unknown), not false.
+            ws.message({
+                type: 'hello_ack',
+                bridge: '3.4',
+                levels: ['behavior_v2'],
+                level: 'behavior_v2'
+            });
+            check('3.4 hello_ack → supportsConnector null', client.supportsConnector('bias'), null);
+            ws.message({
+                type: 'hello_ack',
+                bridge: '3.4 · ros2-poc',
+                levels: ['behavior_v2'],
+                level: 'behavior_v2',
+                connectors: ['bias']
+            });
+            check(
+                'connectors advertised → true/false',
+                [client.supportsConnector('bias'), client.supportsConnector('daq')],
+                [true, false]
+            );
+            // Round trip: the sent message carries id/connector/plugin/command/params; the
+            // matching reply resolves the promise with the bridge's fields merged in.
+            const p1 = client.connectorCommand({
+                connector: 'bias',
+                plugin: 'camera',
+                command: 'startRecording',
+                params: { filename: 'a.avi' },
+                timeoutS: 5
+            });
+            const sent = ws.sent.filter((m) => m.type === 'connector_command').pop();
+            check(
+                'connector_command sent with the request fields',
+                [sent.connector, sent.plugin, sent.command, sent.params, sent.timeout_s],
+                ['bias', 'camera', 'startRecording', { filename: 'a.avi' }, 5]
+            );
+            checkBool(
+                'connector_command carries an id',
+                typeof sent.id === 'string' && sent.id.length > 0,
+                sent.id
+            );
+            ws.message({ type: 'connector_reply', id: 'not-ours', ok: true, outcome: 'ok' }); // another client's → ignored
+            ws.message({
+                type: 'connector_reply',
+                id: sent.id,
+                ok: true,
+                outcome: 'ok',
+                value: '/v/a.avi',
+                rtt_ms: 180.1,
+                artifact: { kind: 'video', path: '/v/a.avi' }
+            });
+            const r1 = await p1;
+            check(
+                'reply resolves with ok/outcome/value/artifact',
+                [r1.ok, r1.outcome, r1.value, r1.artifact.path, r1.plugin, r1.command],
+                [true, 'ok', '/v/a.avi', '/v/a.avi', 'camera', 'startRecording']
+            );
+            check('reply has no wire `type` field', r1.type, undefined);
+            // Error reply from the device node → ok false, outcome error, error text kept.
+            const p2 = client.connectorCommand({
+                connector: 'bias',
+                plugin: 'camera',
+                command: 'bogus'
+            });
+            const s2 = ws.sent.filter((m) => m.type === 'connector_command').pop();
+            ws.message({
+                type: 'connector_reply',
+                id: s2.id,
+                ok: false,
+                outcome: 'error',
+                error: "unknown plugin command 'bogus'"
+            });
+            const r2 = await p2;
+            check(
+                'error reply → ok false + error text',
+                [r2.ok, r2.outcome, r2.error],
+                [false, 'error', "unknown plugin command 'bogus'"]
+            );
+            // No reply within timeoutMs → UNKNOWN (the command may have taken effect).
+            const p3 = client.connectorCommand({
+                connector: 'bias',
+                plugin: 'camera',
+                command: 'getTimestamp',
+                timeoutMs: 20
+            });
+            const r3 = await p3;
+            check('timeout → outcome unknown', [r3.ok, r3.outcome], [false, 'unknown']);
+            const s3 = ws.sent.filter((m) => m.type === 'connector_command').pop();
+            ws.message({ type: 'connector_reply', id: s3.id, ok: true, outcome: 'ok' }); // late reply: dropped, no throw
+            // Disconnect with a command in flight → unknown, and the waiter table is empty.
+            const p4 = client.connectorCommand({
+                connector: 'bias',
+                plugin: 'camera',
+                command: 'stopRecording'
+            });
+            ws.close();
+            const r4 = await p4;
+            check(
+                'bridge lost mid-flight → outcome unknown',
+                [r4.ok, r4.outcome, r4.error],
+                [false, 'unknown', 'bridge lost']
+            );
+            check('no waiters left after disconnect', client._cmdWaiters.size, 0);
+        } finally {
+            global.WebSocket = RealWS;
+        }
     }
 
     console.log('\n=== Summary ===');

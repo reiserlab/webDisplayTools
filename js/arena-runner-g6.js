@@ -21,6 +21,9 @@
 'use strict';
 
 var ArenaRunnerG6 = (function () {
+    // connectorCommand: added to a step's own timeout_s so the browser outlasts the device
+    // node's deadline (poll period 0.25 s + a status reconcile + two message hops).
+    const CONNECTOR_TIMEOUT_MARGIN_MS = 3000;
     // ---- pure helpers (hardware-free, unit-tested) -----------------------
 
     /**
@@ -46,10 +49,18 @@ var ArenaRunnerG6 = (function () {
      * warning").
      * @returns {Array<{plugin_name:string, command_name:string}>}
      */
-    function listSkippedPlugins(condition) {
+    function listSkippedPlugins(condition, driveablePlugins) {
         if (!condition || !Array.isArray(condition.commands)) return [];
+        // `driveablePlugins` (optional Set of plugin names): the ones the runner DOES
+        // execute — the built-in `log`, FicTracPlugin instances, and connector-driven
+        // devices (BiasPlugin via the bridge, LAB-303) — so the preflight note counts only
+        // what will really be skipped. Without it every plugin command is listed (legacy).
+        const drive =
+            driveablePlugins && typeof driveablePlugins.has === 'function'
+                ? driveablePlugins
+                : null;
         return condition.commands
-            .filter((c) => c && c.type === 'plugin')
+            .filter((c) => c && c.type === 'plugin' && !(drive && drive.has(c.plugin_name)))
             .map((c) => ({
                 plugin_name: c.plugin_name || '(unnamed)',
                 command_name: c.command_name || '(unnamed)'
@@ -714,6 +725,47 @@ var ArenaRunnerG6 = (function () {
         return out;
     }
 
+    // JSON-safe copy of a bridge 'lost' info for the run record (the summary and the
+    // bridge-lost event both serialize into the run log).
+    function lostDetail(info) {
+        const out = { kind: 'bridge_lost' };
+        if (!info || typeof info !== 'object') return out;
+        for (const k of ['code', 'reason', 'wasClean', 'apply', 'logFile', 'url', 't']) {
+            const v = info[k];
+            if (v !== undefined && v !== null && v !== '' && typeof v !== 'object') out[k] = v;
+        }
+        return out;
+    }
+
+    /**
+     * Does any condition this sequence runs carry a plugin command that acts through
+     * the bridge (FicTrac today)? Losing the bridge mid-run makes every later such
+     * step run blind, so ArenaRunner.onBridgeLost stops a run for which this is true.
+     * Scans the authored command lists (runtime controls change parameters, never
+     * plugin names), each condition once.
+     * @param {Array} steps
+     * @param {Map} conditionsByName
+     * @param {Set<string>|null} bridgePluginNames  plugin instance names routed via the bridge
+     * @returns {boolean}
+     */
+    function sequenceUsesBridge(steps, conditionsByName, bridgePluginNames) {
+        if (!bridgePluginNames || typeof bridgePluginNames.has !== 'function') return false;
+        if (!bridgePluginNames.size) return false;
+        const seen = new Set();
+        for (const step of Array.isArray(steps) ? steps : []) {
+            const name = step && step.conditionName;
+            if (seen.has(name)) continue;
+            seen.add(name);
+            const cond = conditionsByName && conditionsByName.get(name);
+            if (!cond || !Array.isArray(cond.commands)) continue;
+            for (const cmd of cond.commands) {
+                if (cmd && cmd.type === 'plugin' && bridgePluginNames.has(cmd.plugin_name))
+                    return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Translate ONE v3 command into a wire-neutral instruction descriptor (the
      * "command IR"). PURE and wire-free so it is trivially unit-testable; the
@@ -909,6 +961,27 @@ var ArenaRunnerG6 = (function () {
                         };
                 }
             }
+            // Device connectors (LAB-303): plugins the BRIDGE drives on the runner's behalf
+            // (connector_command → connector_reply). opts.connectorPluginNames maps a plugin
+            // INSTANCE name → connector id ('bias' for BiasPlugin). The command goes through
+            // as written — the bridge / device node validates it and answers ok | error |
+            // unknown; `timeout_s` in params (optional) bounds the wait (LAB-303 semantics).
+            const connectors = opts.connectorPluginNames;
+            const connector =
+                connectors && typeof connectors.get === 'function'
+                    ? connectors.get(cmd.plugin_name)
+                    : null;
+            if (connector) {
+                const tS = Number(params.timeout_s);
+                return {
+                    op: 'connectorCommand',
+                    connector,
+                    plugin_name: pname,
+                    command_name: cname,
+                    params: params && typeof params === 'object' ? params : {},
+                    timeoutS: Number.isFinite(tS) && tS > 0 ? tS : null
+                };
+            }
             // Any other plugin: skipped-with-warning (unchanged — the browser can't
             // drive arbitrary MATLAB-side plugins).
             return {
@@ -1065,6 +1138,154 @@ var ArenaRunnerG6 = (function () {
         await sleep((Number(remainderSec) || 0) * 1000);
     }
 
+    // ---- throttle-proof host-side wait timer ------------------------------
+    //
+    // A page setTimeout is throttled once the tab is hidden or the window is
+    // occluded: Chrome aligns it to 1 s ticks (1 min after 5 min hidden). On the
+    // Bergamo 2P rig (2026-10-16) every host-timed 3 s step ran 4.00 s while the
+    // operator worked in ScanImage over the Studio window. Dedicated Workers are
+    // not throttled, so the wait is armed in a Worker built from an inline blob
+    // URL (no extra file — this module must stay a classic <script src>). A page
+    // setTimeout is armed beside it as a backstop and whichever fires first wins,
+    // so the Worker path is never worse than the old behavior. Where Worker /
+    // Blob / URL are missing (Node tests, old engines) or the Worker fails, the
+    // setTimeout alone runs, exactly as before.
+    const SLEEP_WORKER_SRC =
+        'var t={};' +
+        'self.onmessage=function(e){var d=e.data;' +
+        "if(d.op==='set'){t[d.id]=setTimeout(function(){delete t[d.id];self.postMessage(d.id)},d.ms)}" +
+        "else if(d.op==='clear'){clearTimeout(t[d.id]);delete t[d.id]}};";
+
+    /** A wait that overshoots its request by more than this is reported as a 'warn' event. */
+    const SLEEP_LATE_WARN_MS = 250;
+
+    /**
+     * Build a wait timer: set(ms, cb) → handle, clear(handle). `kind` says which
+     * mechanism is live ('worker' | 'timeout'); `lastError` why the Worker was
+     * dropped, if it was. `deps` lets tests inject a fake Worker / Blob / URL /
+     * setTimeout; by default the globals are used.
+     * @param {{Worker?:function, Blob?:function, URL?:object, setTimeout?:function, clearTimeout?:function}} [deps]
+     */
+    function createSleepTimer(deps) {
+        deps = deps || {};
+        const g = typeof globalThis !== 'undefined' ? globalThis : {};
+        const WorkerCtor = deps.Worker !== undefined ? deps.Worker : g.Worker;
+        const BlobCtor = deps.Blob !== undefined ? deps.Blob : g.Blob;
+        const URLObj = deps.URL !== undefined ? deps.URL : g.URL;
+        const setT = deps.setTimeout || setTimeout;
+        const clearT = deps.clearTimeout || clearTimeout;
+        let worker = null;
+        let workerState = 'unset'; // 'unset' | 'ready' | 'unavailable'
+        let lastError = null;
+        let nextId = 1;
+        const pending = new Map(); // id → { cb, backstop, inWorker }
+
+        function dropWorker(reason) {
+            // The backstop timeouts already cover every pending wait — nothing is lost.
+            if (worker) {
+                try {
+                    worker.terminate();
+                } catch (_) {
+                    /* ignore */
+                }
+            }
+            worker = null;
+            workerState = 'unavailable';
+            lastError = reason ? String(reason.message || reason) : 'worker failed';
+        }
+        function fire(id) {
+            const p = pending.get(id);
+            if (!p) return; // the other arm fired first, or clear() won
+            pending.delete(id);
+            if (p.backstop !== null) clearT(p.backstop);
+            if (p.inWorker && worker) {
+                try {
+                    worker.postMessage({ op: 'clear', id });
+                } catch (_) {
+                    /* ignore */
+                }
+            }
+            p.cb();
+        }
+        function ensureWorker() {
+            if (workerState !== 'unset') return;
+            const ok =
+                typeof WorkerCtor === 'function' &&
+                typeof BlobCtor === 'function' &&
+                URLObj &&
+                typeof URLObj.createObjectURL === 'function';
+            if (!ok) {
+                workerState = 'unavailable';
+                lastError = 'Worker/Blob/URL unavailable';
+                return;
+            }
+            try {
+                const url = URLObj.createObjectURL(
+                    new BlobCtor([SLEEP_WORKER_SRC], { type: 'text/javascript' })
+                );
+                const w = new WorkerCtor(url);
+                w.onmessage = (e) => fire(e && e.data);
+                w.onerror = (e) => dropWorker(e || 'worker error');
+                worker = w;
+                workerState = 'ready';
+            } catch (e) {
+                dropWorker(e);
+            }
+        }
+        return {
+            set(ms, cb) {
+                ensureWorker();
+                const id = nextId++;
+                const p = { cb, backstop: null, inWorker: false };
+                pending.set(id, p);
+                p.backstop = setT(() => fire(id), ms);
+                if (worker) {
+                    try {
+                        worker.postMessage({ op: 'set', id, ms });
+                        p.inWorker = true;
+                    } catch (e) {
+                        dropWorker(e);
+                    }
+                }
+                return id;
+            },
+            clear(id) {
+                const p = pending.get(id);
+                if (!p) return;
+                pending.delete(id);
+                if (p.backstop !== null) clearT(p.backstop);
+                if (p.inWorker && worker) {
+                    try {
+                        worker.postMessage({ op: 'clear', id });
+                    } catch (_) {
+                        /* ignore */
+                    }
+                }
+            },
+            get kind() {
+                ensureWorker();
+                return worker ? 'worker' : 'timeout';
+            },
+            get lastError() {
+                return lastError;
+            },
+            get pendingCount() {
+                return pending.size;
+            },
+            /** Tests only: tear the Worker down (pending waits keep their backstop). */
+            dispose() {
+                if (worker) dropWorker('disposed');
+            }
+        };
+    }
+
+    let _sharedSleepTimer = null;
+    /** The page-wide wait timer (one Worker per page, created on first use). */
+    function sleepTimer() {
+        if (!_sharedSleepTimer) _sharedSleepTimer = createSleepTimer();
+        return _sharedSleepTimer;
+    }
+
     // ---- run-state machine ----------------------------------------------
 
     /**
@@ -1097,18 +1318,23 @@ var ArenaRunnerG6 = (function () {
             this._conditionName = null;
             this._lastResponse = null;
             this._abort = false; // sequence abort flag (set by stop()/_clear())
-            this._sleepTimer = null; // in-progress host-side wait timer
+            this._sleepTimer = null; // in-progress host-side wait (a sleepTimer() handle)
             this._sleepResolve = null; // resolver for the in-progress wait
+            this._timerImpl = null; // tests: a createSleepTimer() to use instead of the shared one
             this._ledActivator = null; // active conditional-LED evaluator (Mode 3)
             this._ledUnsub = null; // bridge 'applied' unsubscribe for the above
             this._emit = null; // current run's status emit (for async LED events)
             this._faultReason = null; // set by fault() / a timed-out wire command
             this._faultDetail = null;
+            this._bridgeLost = null; // set by bridgeLost(): the bridge's 'lost' info
+            this._bridgeRequired = false; // this run's record lives on the bridge (recorded runs)
+            this._bridgeDependent = false; // this run has steps that act through the bridge
         }
 
         get active() {
             return this._active;
         }
+
         get conditionName() {
             return this._conditionName;
         }
@@ -1140,6 +1366,9 @@ var ArenaRunnerG6 = (function () {
 
             this._active = true;
             this._conditionName = a.conditionName || null;
+            this._bridgeLost = null;
+            this._bridgeRequired = false; // a single trial depends on the bridge only via apply
+            this._bridgeDependent = false;
 
             let frame;
             try {
@@ -1245,6 +1474,72 @@ var ArenaRunnerG6 = (function () {
         /** The fault reason of the current/last run, or null. */
         get faultReason() {
             return this._faultReason;
+        }
+
+        /**
+         * The bridge WebSocket dropped (FicTracBridgeClient 'lost' — ArenaSession calls
+         * this). Decides what the active run does:
+         *   - 'aborted'   the run needs the bridge — a closed loop was applying, a later
+         *                 step acts through the bridge (a FicTrac plugin), or the run's
+         *                 record lives on it (`bridgeRequired`, recorded runs) → bridgeLost()
+         *   - 'continued' a test run that needs nothing from the bridge: it keeps going,
+         *                 with a 'bridge-lost' event so the transcript says logging stopped
+         *   - 'idle'      no run is active
+         * @param {object} [info] the client's 'lost' info ({code, apply, logFile, …})
+         * @returns {'aborted'|'continued'|'idle'}
+         */
+        onBridgeLost(info) {
+            if (!this._active) return 'idle';
+            const apply = !!(info && info.apply);
+            if (apply || this._bridgeDependent || this._bridgeRequired) {
+                this.bridgeLost(info);
+                return 'aborted';
+            }
+            if (this._emit) {
+                try {
+                    this._emit({
+                        phase: 'bridge-lost',
+                        reason: 'bridge_lost',
+                        action: 'continued',
+                        detail: lostDetail(info)
+                    });
+                } catch (_) {
+                    /* a status sink must not break the caller */
+                }
+            }
+            return 'continued';
+        }
+
+        /**
+         * End the active run because the bridge is gone. Records the loss (the terminal
+         * summary carries `bridgeLost`, which the run log turns into the BRIDGE_LOST
+         * outcome — never ABORTED_BY_USER, never a controller fault), emits a
+         * `bridge-lost` status event, then takes the ordinary stop() path: the serial
+         * link is healthy, so the display gets a real STOP, the LED goes off and the
+         * closed loop is disarmed, exactly as for an operator STOP.
+         * @param {object} [info] the client's 'lost' info
+         * @returns {Promise} the stop() result (never rejects)
+         */
+        bridgeLost(info) {
+            this._bridgeLost = lostDetail(info);
+            if (this._emit) {
+                try {
+                    this._emit({
+                        phase: 'bridge-lost',
+                        reason: 'bridge_lost',
+                        action: 'stopped',
+                        detail: this._bridgeLost
+                    });
+                } catch (_) {
+                    /* a status sink must not break the stop */
+                }
+            }
+            return this.stop().catch(() => null);
+        }
+
+        /** The bridge-loss record of the current/last run, or null. */
+        get bridgeLostInfo() {
+            return this._bridgeLost;
         }
 
         /** Clear run-state without sending STOP (used on disconnect/error). Also
@@ -1471,7 +1766,7 @@ var ArenaRunnerG6 = (function () {
         /** Resolve + clear any in-progress host-side wait (makes STOP prompt). */
         _resolveSleep() {
             if (this._sleepTimer) {
-                clearTimeout(this._sleepTimer);
+                (this._timerImpl || sleepTimer()).clear(this._sleepTimer);
                 this._sleepTimer = null;
             }
             if (this._sleepResolve) {
@@ -1484,7 +1779,11 @@ var ArenaRunnerG6 = (function () {
         /**
          * Abort-aware sleep: resolves after `ms`, OR immediately if already aborted
          * or stop() fires mid-wait. Only one wait is outstanding at a time (the
-         * sequence loop awaits each in turn).
+         * sequence loop awaits each in turn). The wait runs on the throttle-proof
+         * sleepTimer() (Worker + backstop setTimeout); a wait that still overshoots
+         * by more than SLEEP_LATE_WARN_MS is reported as a 'warn' event, so a
+         * throttled or starved page shows up in the run log instead of only in the
+         * data.
          */
         _sleep(ms) {
             return new Promise((resolve) => {
@@ -1492,12 +1791,31 @@ var ArenaRunnerG6 = (function () {
                     resolve();
                     return;
                 }
+                const t0 = Date.now();
                 this._sleepResolve = resolve;
-                this._sleepTimer = setTimeout(() => {
+                this._sleepTimer = (this._timerImpl || sleepTimer()).set(ms, () => {
                     this._sleepTimer = null;
                     this._sleepResolve = null;
+                    const late = Date.now() - t0 - ms;
+                    if (late > SLEEP_LATE_WARN_MS && typeof this._emit === 'function') {
+                        try {
+                            this._emit({
+                                phase: 'warn',
+                                reason:
+                                    'host-timed wait ran ' +
+                                    ((ms + late) / 1000).toFixed(2) +
+                                    ' s instead of ' +
+                                    (ms / 1000).toFixed(2) +
+                                    ' s (browser timer throttling? keep the Studio window visible)',
+                                requested_ms: ms,
+                                actual_ms: ms + late
+                            });
+                        } catch (_) {
+                            /* a logging failure must not break the run */
+                        }
+                    }
                     resolve();
-                }, ms);
+                });
             });
         }
 
@@ -1533,6 +1851,12 @@ var ArenaRunnerG6 = (function () {
          *        a non-mutating condition copy around those commands.  The hook
          *        runs after step-start and before any command translation/send.
          * @param {Set|Array} [a.fictracPluginNames]  plugin names whose class is FicTracPlugin
+         * @param {Map|object} [a.connectorPluginNames] plugin INSTANCE name → connector id the
+         *                                        bridge drives for the runner ('bias' for
+         *                                        BiasPlugin; LAB-303 connectors)
+         * @param {boolean}  [a.bridgeRequired]  the run's record lives on the bridge (a
+         *                                        recorded run): losing the bridge stops it even
+         *                                        when no step acts through the bridge
          * @param {function} [a.onProgress]      progress/event callback (see phases below)
          * @param {function} [a.timing]          async (durationSec, sleep) ⇒ trial end
          *                                        (defaults to host-side; firmware #4 swap)
@@ -1571,6 +1895,12 @@ var ArenaRunnerG6 = (function () {
                     : Array.isArray(a.fictracPluginNames)
                       ? new Set(a.fictracPluginNames)
                       : null;
+            const connectorPluginNames =
+                a.connectorPluginNames instanceof Map
+                    ? a.connectorPluginNames
+                    : a.connectorPluginNames && typeof a.connectorPluginNames === 'object'
+                      ? new Map(Object.entries(a.connectorPluginNames))
+                      : null;
             const timing = typeof a.timing === 'function' ? a.timing : hostSideTrialEnd;
             const sleep = typeof a.sleep === 'function' ? a.sleep : (ms) => this._sleep(ms);
             const emit = (s) => {
@@ -1586,6 +1916,16 @@ var ArenaRunnerG6 = (function () {
             this._frameCountCache = new Map();
             this._faultReason = null;
             this._faultDetail = null;
+            this._bridgeLost = null;
+            this._bridgeRequired = !!a.bridgeRequired;
+            // Steps that act through the bridge: FicTrac plugin commands AND device
+            // connectors (BiasPlugin / ScanImagePlugin via connector_command, LAB-303) —
+            // after a bridge loss every later such step would run blind.
+            const bridgePlugins = new Set(fictracPluginNames || []);
+            if (connectorPluginNames)
+                for (const k of connectorPluginNames.keys()) bridgePlugins.add(k);
+            this._bridgeDependent =
+                !!this._bridge && sequenceUsesBridge(steps, conditionsByName, bridgePlugins);
             this._oldBridgeStartWarned = false; // one "bridge ignores the start frame" warning per run
             // A stale closed-loop apply (left on by Console use or an aborted run)
             // would push FicTrac frames into the opening Mode-2 step — the firmware
@@ -1759,6 +2099,7 @@ var ArenaRunnerG6 = (function () {
                         const ir = translateCommand(cmd, {
                             patternId: resolvePatternId(cmd),
                             fictracPluginNames,
+                            connectorPluginNames,
                             defaultCoupling
                         });
                         if (cmd.type === 'controller' && cmd.command_name === 'trialParams') {
@@ -1816,6 +2157,9 @@ var ArenaRunnerG6 = (function () {
                 // the controller stopped answering (fault() / a timed-out command).
                 summary.fault = this._faultReason || null;
                 if (this._faultDetail) summary.faultDetail = this._faultDetail;
+                // The bridge dropped and the run stopped for it (BRIDGE_LOST outcome).
+                // A continued test run records only its bridge-lost event, not this.
+                if (this._bridgeLost) summary.bridgeLost = this._bridgeLost;
                 // The terminal event is emitted from `finally`, AFTER the best-effort
                 // STOP, so the serialized summary (run log, auto-commit trigger)
                 // carries `stopAcked` — review finding: it used to be present only
@@ -2104,6 +2448,93 @@ var ArenaRunnerG6 = (function () {
                         this._bridge.log({ event: 'log', message: ir.message, level: ir.level });
                     emit({ phase: 'log', index, step, message: ir.message, level: ir.level });
                     return;
+                // ---- device connectors (LAB-303): the bridge drives the device --------
+                // Sequential, like MATLAB's plugin calls: the step waits for the reply
+                // (BIAS start-capture ≈ 0.2–0.3 s). Timing accumulators are untouched —
+                // the surrounding wait/trialParams hold the trial's duration.
+                case 'connectorCommand': {
+                    const b = this._bridge;
+                    const sup =
+                        b && typeof b.supportsConnector === 'function'
+                            ? b.supportsConnector(ir.connector)
+                            : null;
+                    if (!b || !b.connected || typeof b.connectorCommand !== 'function' || !sup) {
+                        // The same visible skip a plugin command got before connectors
+                        // existed, with the reason spelled out: a ≤ 3.4 bridge never
+                        // advertises connectors, so a stale bridge is named, not silent.
+                        summary.skipped++;
+                        emit({
+                            phase: 'skip',
+                            index,
+                            step,
+                            reason:
+                                !b || !b.connected
+                                    ? 'bridge not connected — "' +
+                                      ir.connector +
+                                      '" connector unavailable'
+                                    : sup === null
+                                      ? 'bridge ' +
+                                        ((b.bridgeInfo && b.bridgeInfo.version) || '?') +
+                                        ' advertises no connectors (bridge ≥ 4 / ros2-poc bridge node needed)'
+                                      : 'bridge has no "' + ir.connector + '" connector',
+                            plugin_name: ir.plugin_name,
+                            command_name: ir.command_name
+                        });
+                        return;
+                    }
+                    const t0 = Date.now();
+                    const rep = await b.connectorCommand({
+                        connector: ir.connector,
+                        plugin: ir.plugin_name,
+                        command: ir.command_name,
+                        params: ir.params,
+                        timeoutS: ir.timeoutS,
+                        // The node's deadline + a margin for its poll period, the status
+                        // reconcile it runs on a timeout, and the two hops — so a reply that
+                        // lands right at the deadline is an outcome, not an 'unknown'.
+                        timeoutMs: ir.timeoutS
+                            ? ir.timeoutS * 1000 + CONNECTOR_TIMEOUT_MARGIN_MS
+                            : undefined
+                    });
+                    const value = {
+                        connector: ir.connector,
+                        outcome: (rep && rep.outcome) || 'error',
+                        ok: !!(rep && rep.ok),
+                        value: rep ? rep.value : undefined,
+                        artifact: rep && rep.artifact ? rep.artifact : undefined,
+                        rtt_ms: rep && rep.rtt_ms != null ? rep.rtt_ms : Date.now() - t0,
+                        error: rep && rep.error ? rep.error : undefined
+                    };
+                    emit({
+                        phase: 'command',
+                        index,
+                        step,
+                        op: ir.op,
+                        plugin_name: ir.plugin_name,
+                        command_name: ir.command_name,
+                        value
+                    });
+                    if (!rep || !rep.ok) {
+                        // Proceed-and-skip (the duty/bias precedent): the STEP failed, the run
+                        // goes on. 'unknown' (no reply in time) is named as such — the device
+                        // may have acted; the bridge reconciles with a status poll.
+                        summary.errors++;
+                        emit({
+                            phase: 'error',
+                            index,
+                            step,
+                            op: ir.op,
+                            reason:
+                                ir.plugin_name +
+                                '.' +
+                                ir.command_name +
+                                ' → ' +
+                                value.outcome +
+                                (value.error ? ': ' + value.error : '')
+                        });
+                    }
+                    return;
+                }
                 case 'skip':
                     summary.skipped++;
                     emit({
@@ -2134,6 +2565,7 @@ var ArenaRunnerG6 = (function () {
         conditionCommandCount,
         flattenStructure,
         translateCommand,
+        sequenceUsesBridge, // does a run have steps that act through the bridge? (bridge-loss policy)
         hostSideTrialEnd,
         RUNNABLE_CONTROLLER_COMMANDS,
         LED_OFF_MV, // BuckPuck "LED dark" analog level (mV) — the scope's on/off threshold
@@ -2145,6 +2577,9 @@ var ArenaRunnerG6 = (function () {
         LED_MIN_STEP_MV, // smallest AO change the activator bothers to send (mV)
         normalizeBias, // validate/normalize startClosedLoop bias params → {bias, warning} (throws on bad)
         makeLedActivator, // pure stateful index→{level, mv, changed} evaluator over the zone vector
+        createSleepTimer, // throttle-proof wait timer factory (Worker + backstop setTimeout)
+        sleepTimer, // the page-wide instance the runner's host-side waits use
+        SLEEP_LATE_WARN_MS, // overshoot (ms) above which a host-timed wait logs a 'warn'
         ArenaRunner
     };
 })();
