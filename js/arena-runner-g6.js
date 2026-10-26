@@ -2475,7 +2475,7 @@ var ArenaRunnerG6 = (function () {
                                     : sup === null
                                       ? 'bridge ' +
                                         ((b.bridgeInfo && b.bridgeInfo.version) || '?') +
-                                        ' advertises no connectors (bridge ≥ 4 / ros2-poc bridge node needed)'
+                                        ' advertises no connectors (bridge ≥ 4 / rig bridge node needed)'
                                       : 'bridge has no "' + ir.connector + '" connector',
                             plugin_name: ir.plugin_name,
                             command_name: ir.command_name

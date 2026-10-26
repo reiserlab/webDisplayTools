@@ -42,7 +42,7 @@ interface.
 |---|---|
 | **reiserlab/maDisplayTools** | **MATLAB** tools (G4+). Pattern math reference — **web output must match MATLAB exactly** (CI validates, tol 1e-4). Its protocol **runner is G4.1-only and frozen** (decision 2026-10-26); protocol authority = `webDisplayTools/docs/development/v3-spec.md` + conformance fixtures. (Its `docs/development/G4G6_ROADMAP.md` is largely historical now — use the umbrella docs for current G6.) |
 | **reiserlab/LED-Display_pyDisplayTools** (pyDisplayTools) | **Python** tools for the displays (G4 pattern + experiment-folder tools). **Accepted destination** for the Python arena library and the **headless runner** (`arena-run`), a peer of the web runner (decision 2026-10-26). |
-| **reiserlab/rig-nodes** | **Accepted destination, not yet created:** shared ROS 2 infrastructure for every lab rig (`rig_interfaces`, device nodes for FicTrac / Kinefly / BIAS / ScanImage / SiPM, MCAP recording and supervision primitives). Today that code lives in `webDisplayTools/ros2-poc/` on the 2026-10-20 release candidate. Record: `webDisplayTools/docs/development/rig-software-repos-and-runners.md`. |
+| **reiserlab/rig-nodes** | **Accepted destination, not yet created:** shared ROS 2 infrastructure for every lab rig (`rig_interfaces`, device nodes for FicTrac / Kinefly / BIAS / ScanImage / SiPM, MCAP recording and supervision primitives). Today that code lives in `webDisplayTools/rig/` on the 2026-10-20 release candidate. Record: `webDisplayTools/docs/development/rig-software-repos-and-runners.md`. |
 
 ### G6 firmware (what the web connects to over USB)
 | repo | role |
@@ -124,7 +124,7 @@ interface.
   (WebSocket `ws://localhost:8765` ← UDP `:60000`) → browser. `pixi run bridge` + `pixi run
   sim` (start the bridge first). The web runner executes only the `fictrac` and `log` plugins;
   `backlight`/`camera`/`temperature` are declared for MATLAB and **skipped on the web**.
-- **ROS 2 graph (LAB-303, candidate 2026-10-20)** — `ros2-poc/` replaces the bridge with a graph
+- **ROS 2 graph (LAB-303, candidate 2026-10-20)** — `rig/` replaces the bridge with a graph
   (rmw_zenoh, MCAP record, BIAS + ScanImage connectors) behind the SAME WebSocket; the Studio is
   unchanged. Where the pieces will live from here: `rig-software-repos-and-runners.md` (above).
 

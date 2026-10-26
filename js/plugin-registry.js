@@ -655,7 +655,7 @@ var BUILTIN_PLUGINS = {
     },
 
     // ScanImage (two-photon microscope; LAB-303 / LAB-306). WEB-ONLY: driven by the web
-    // runner through the bridge's `scanimage` connector (ros2-poc/nodes/scanimage_node.py →
+    // runner through the bridge's `scanimage` connector (rig/nodes/scanimage_node.py →
     // ScanImage's built-in JSON server on the microscope PC). matlab.class is
     // forward-looking — MATLAB has no ScanImagePlugin, so a protocol with this plugin runs
     // on the web runner only. The command set is deliberately small: scan geometry,
