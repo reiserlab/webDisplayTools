@@ -1,0 +1,55 @@
+# Bergamo two-photon rig — G6 2x10 arena, line-synchronised to the resonant scanner.
+#
+# This file describes the WIRING and the bench's safety limits; the experiment's own
+# needs (panel mode, refresh policy) live in the protocol's `controller:` block. Both are
+# asserted by Arena Studio before every run and written into the run header
+# (docs/development/controller-settings-strategy.md).
+#
+# Cabling (rig checklist docs/development/2p-line-sync-rig-checklist.md):
+#   Digital IO 1 (J3)  → vDAQ free digital input (D2.1), ScanImage "Aux trigger 1":
+#                        one 5 V pulse per 300 Hz frame transfer, stamped into every TIFF header.
+#   Digital IO 2 (J4)  ← ScanImage line clock (HIGH while pixels are recorded, LOW in the
+#                        turnaround) = the panels' EINT trigger route (J30 shunt installed).
+#   Analog out (J27)   → optional condition marker into a vDAQ AI; idles at 0 V here.
+
+format_version: "1.0"
+name: "Bergamo G6 2x10 (2P line-sync)"
+description: "Bergamo two-photon rig — G6 2x10 arena, panels flash only in the line-clock LOW gap"
+
+arena: "G6_2x10"
+
+controller:
+  host: "0.0.0.0" # USB/serial via the browser port picker; host/port unused
+  port: 62222
+
+plugins: {}
+
+io:
+  dio:
+    - port: 1
+      role: out_debug_framescan # J3: frame-transfer pulse → ScanImage aux trigger
+      default: 0
+    - port: 2
+      role: in_trigger # J4: line clock in. Declared explicitly — `off` would mean "don't touch"
+      default: 0
+  ai:
+    role: off
+  ao:
+    role: programmable
+    default: 0.0 # idle at 0 V so protocol markers (0.5–3 V) start from a clean baseline
+
+# Sticky controller settings this bench needs at connect and at every run start.
+defaults:
+  panel_mode: triggered # 2 — LEDs only inside the line-clock gap. Course rigs use persistent (1).
+
+# Safety limits the Studio enforces on every protocol run here.
+limits:
+  max_refresh_hz: 300 # a GS2 pattern would default to 1000 Hz; every re-streamed frame costs the panels a line edge
+
+# Installed state a run needs but cannot set. Checked against the SD footer (GET_FIRMWARE_INFO)
+# and the session's panel-verify result before the run; mismatch blocks.
+requires:
+  panel_firmware: "2p" # footer version "2p-<sha8>[-d]" = the eintlow_2p line-sync variant
+
+# strict: mismatches (rig identity, unreadable settings) BLOCK the run instead of warning.
+strict: true
