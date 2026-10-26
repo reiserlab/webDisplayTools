@@ -3272,7 +3272,7 @@ async function main() {
         const makeConnBridge = (connectors, replies) => ({
             connected: true,
             bridgeInfo: {
-                version: connectors ? '3.4 · ros2-poc' : '3.4',
+                version: connectors ? '3.4 · rig' : '3.4',
                 levels: ['behavior_v2'],
                 connectors
             },

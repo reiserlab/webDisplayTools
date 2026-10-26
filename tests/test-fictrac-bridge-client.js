@@ -1147,7 +1147,7 @@ async function main() {
             check('3.4 hello_ack → supportsConnector null', client.supportsConnector('bias'), null);
             ws.message({
                 type: 'hello_ack',
-                bridge: '3.4 · ros2-poc',
+                bridge: '3.4 · rig',
                 levels: ['behavior_v2'],
                 level: 'behavior_v2',
                 connectors: ['bias']
