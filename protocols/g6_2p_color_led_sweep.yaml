@@ -25,20 +25,35 @@ version: 3
 # NAME from the SD listing; the pattern_IDs below are only the fallback — check
 # the slots in the Console's SD listing after the upload and fix them if needed.
 # To fall back to the GS2 set, change the four pattern names/IDs in `variables:`
-# and set the refresh rate to 300 Hz by hand (step 3 below).
+# (the Studio caps the refresh at 300 Hz for it — see below).
 #
-# BEFORE PRESSING RUN (Arena Studio Console, once per connection — not YAML-able):
-#   1. Controller ▾ → panel display mode = 2 (Triggered).  Wire: 02 1B 02
-#      The 2P line-sync panel firmware free-runs one row per line-clock edge;
-#      NOT 3 (Gated).
-#   2. Digital IO 1 role = out_debug_framescan.            Wire: 03 AC 01 03
-#      DO1 (BNC J3) is HIGH for every SPI frame transfer — THE alignment signal
-#      today (no analog marker yet): record it in ScanImage as an aux/AI channel.
-#      Digital IO 2 (J4) stays in_trigger — the line-clock → EINT route.
-#   3. Refresh rate (Debug ▾, unlock): 300 Hz is the GS16 default — check it
-#      reads 300. Only the GS2 set needs it set by hand (GS2 defaults to 1000 Hz,
-#      where every re-streamed frame costs the panel line edges).
-#   4. Telemetry ring: on (default).
+# BEFORE PRESSING RUN (Arena Studio):
+#   The four manual Controller ▾ / Debug ▾ steps this header used to list (panel
+#   display mode 2, Digital IO 1 role, 300 Hz refresh, panel firmware) are now
+#   ASSERTED BY THE STUDIO before every Run or Test, from the rig file
+#   (configs/rigs/bergamo_g6_2x10_2p.yaml) and the `controller:` block below
+#   (docs/development/controller-settings.md): read → set if different → read
+#   back. The run is REFUSED if the arena cannot be put into the required state,
+#   and the before/after controller snapshot goes into the run header.
+#     · panel display mode 2 (Triggered)   rig defaults.panel_mode + controller.panel_mode.
+#       The 2P line-sync panel firmware free-runs one row per line-clock edge; NOT 3 (Gated).
+#       Wire, if ever needed by hand: 02 1B 02
+#     · Digital IO 1 (J3) = out_debug_framescan, Digital IO 2 (J4) = in_trigger
+#       rig io: at connect. DO1 is HIGH for every SPI frame transfer — THE alignment
+#       signal today (no analog marker yet): record it in ScanImage as an aux/AI
+#       channel. J4 is the line-clock → EINT route.
+#     · refresh rate ≤ 300 Hz              rig limits.max_refresh_hz + refresh_policy:
+#       line_sync_safe. 300 Hz is the GS16 default; the GS2 set (1000 Hz default,
+#       where every re-streamed frame costs the panel line edges) is capped to 300
+#       automatically — no Debug ▾ unlock.
+#     · panel firmware "2p-…"              rig requires.panel_firmware, checked against
+#       the SD footer and the session's panel verify; a mismatch blocks the run.
+#   Still yours, once per connection:
+#   1. ⚙ Settings → session rig = "Bergamo G6 — 2×10 two-photon line-sync (strict)".
+#      This protocol's rig: must be the session rig, or the run is refused.
+#   2. Settings → Controller → Verify panels (~1 s per panel) so the run header
+#      carries a fleet verify; the strict rig warns loudly without one.
+#   3. Telemetry ring: on (default).
 #   NEW ARENA CHECK (this arena has not been on the microscope before; 20 panels,
 #   top row on the bank-window firmware, bottom row v1.3.1 — all with the 2P
 #   timing): Console → Panel firmware → Inventory must show 20 present (repeat
@@ -78,7 +93,20 @@ experiment_info:
   author: "mreiser"
   date_created: "2026-10-16"
 
-rig: "./configs/rigs/cshl_g6_2x10.yaml"
+rig: "./configs/rigs/bergamo_g6_2x10_2p.yaml"
+
+# The runner must implement the controller: block below (a runner that does not — MATLAB
+# today — refuses to run this file instead of running it in the wrong panel mode).
+requires: [controller_block]
+
+# Sticky controller settings asserted by Arena Studio before EVERY run and recorded in the
+# run header (docs/development/controller-settings.md). Replaces the manual "set panel
+# mode 2 / refresh 300 Hz by hand" steps: the Studio reads each setting, sets it if needed,
+# reads it back, and refuses to run if it cannot.
+controller:
+  panel_mode: triggered            # 2 — LEDs only inside the line-clock LOW gap
+  refresh_policy: line_sync_safe   # cap the re-stream at the rig's limits.max_refresh_hz (300)
+  panel_firmware: "2p"             # SD footer "2p-<sha8>[-d]" = the eintlow_2p line-sync build
 
 plugins:
   - name: "scanimage"
