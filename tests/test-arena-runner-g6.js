@@ -3179,7 +3179,9 @@ async function main() {
         check('late wait → one warn event', events.length, 1);
         check('warn names timer throttling', /throttling/.test((warn || {}).reason || ''), true);
         check('warn carries requested_ms', (warn || {}).requested_ms, 20);
-        check('warn actual_ms ≥ requested + 400', ((warn || {}).actual_ms || 0) >= 420, true);
+        // The fake timer fires at 420 ms, but Node's timer clock can run a millisecond
+        // ahead of Date.now() (CI saw 419), so only require the overshoot itself (> 250).
+        check('warn actual_ms ≥ requested + 380', ((warn || {}).actual_ms || 0) >= 400, true);
         // An on-time wait emits nothing.
         runner._timerImpl = { set: (ms, cb) => setTimeout(cb, ms), clear: (h) => clearTimeout(h) };
         events.length = 0;
