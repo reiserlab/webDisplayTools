@@ -35,6 +35,12 @@
       "arena": "G6_2x8of10"
     },
     {
+      "name": "bergamo_g6_2x10_2p",
+      "label": "Bergamo G6 — 2×10 two-photon line-sync (strict)",
+      "path": "./configs/rigs/bergamo_g6_2x10_2p.yaml",
+      "arena": "G6_2x10"
+    },
+    {
       "name": "g6_1x12of18_bench",
       "label": "G6 — 1×12 of 18 bench (arena_12-18, Qwiic)",
       "path": "./configs/rigs/g6_1x12of18_bench.yaml",

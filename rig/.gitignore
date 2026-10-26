@@ -1,0 +1,23 @@
+# pixi environment for this workspace (pixi.toml + pixi.lock are tracked)
+.pixi/*
+!.pixi/config.toml
+__pycache__/
+*.pyc
+# bridge-node run logs land here by default
+runlogs/
+*.jsonl
+*.jsonl.gz
+# ...except the recorded test fixtures (okey_smoke_violet_cw.jsonl.gz was silently ignored before 2026-10-22)
+!tests/fixtures/*.jsonl.gz
+# colcon alternative build of interfaces/rig_interfaces (pixi-build is the primary route)
+interfaces/build/
+interfaces/install/
+interfaces/build.log
+interfaces/build-result.json
+# colcon build logs (never commit)
+interfaces/log/
+# the channel payload (rig_interfaces 0.2.0, three platforms) lives at commit 39eeb1fa (pixi.toml pins that URL); not in the tree
+channel/noarch/
+channel/win-64/
+channel/osx-arm64/
+channel/linux-64/

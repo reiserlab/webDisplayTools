@@ -3,7 +3,7 @@
 Draft 2026-10-21, to expand into a 4-slide deck with 3 live dashboard demos (LAB-303).
 Suggested timing: about 10 min of slides, 10 min of demos, then discussion.
 
-Numbers marked **measured** come from our own runs (`ros2-poc/README.md`, the ww18 and Oct 16
+Numbers marked **measured** come from our own runs (`rig/README.md`, the ww18 and Oct 16
 results). Numbers marked **verify** are general claims to check, or measure, before the talk.
 
 ---
@@ -34,7 +34,7 @@ results). Numbers marked **verify** are general claims to check, or measure, bef
 - Browsers: Studio talks to `bridge_node` over `ws://localhost:8765` and stays unmodified.
 - Small installs: 1.0–1.7 GB environment, but `pixi install` takes 25 s on the Mac (**measured**).
 
-**In our rigs (diagram, built from `ros2-poc/` and `docs/img/rqt_graph_live.png`)**
+**In our rigs (diagram, built from `rig/` and `docs/img/rqt_graph_live.png`)**
 ```
 FicTrac ──UDP──▶ fictrac_udp_adapter ─┐
 Kinefly ──UDP──▶ kinefly_udp_adapter ─┤
@@ -197,7 +197,7 @@ Foxglove.
 
 ## Slide 4: Hybrid architecture. What goes on the graph, into the MCAP, and onto the dashboard?
 
-**Proposal (current practice in `ros2-poc/`, open for discussion)**
+**Proposal (current practice in `rig/`, open for discussion)**
 
 | stream | rate × size | on the ROS graph | in the MCAP | on the dashboard |
 |---|---|---|---|---|
@@ -255,6 +255,6 @@ Layout → Import from file.
 3. D3 (optional): pull the Bergamo run log and rebuild with `--runlog`, so the stimulus track is
    commanded rather than reconstructed.
 4. Slide 2: the shared-memory benchmark has run on the Mac and on ww18 (results above; the ww18
-   JSON files are untracked in its `ros2-poc` folder). Optional: re-run the 135 Hz and stress
+   JSON files are untracked in its `rig` folder). Optional: re-run the 135 Hz and stress
    rows on ww18 with the fixed pacing.
 5. Live fallback: if the live rig misbehaves, every demo has a recorded version.

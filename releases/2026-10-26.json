@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "name": "2026-10-26",
+  "kind": "candidate",
+  "rc": 1,
+  "created_at": "2026-10-26T22:11:01Z",
+  "created_at_et": "2026-10-26 18:11 ET",
+  "main_sha": "5db78ab77127e1509d5014cf3d13823e86fc3cf5",
+  "headline": "",
+  "prs": [
+    {
+      "number": 264,
+      "title": "ros2-poc: the FicTrac record in the bag \u2014 one /arena/frame message per frame with 10 columns (LAB-303)",
+      "head_sha": "3d5cf043938d14fe2097ac8a7037128104322caa",
+      "head_ref": "claude/fictrac-columns-record",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/264"
+    },
+    {
+      "number": 219,
+      "title": "Assert sticky controller settings before every run: controller: block, rig defaults, run header (LAB-230)",
+      "head_sha": "146398722f116cb592d43196fea3deebb6795998",
+      "head_ref": "claude/controller-settings-block",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/219"
+    },
+    {
+      "number": 270,
+      "title": "Rename ros2-poc/ \u2192 rig/ and arena_interfaces \u2192 rig_interfaces (LAB-303 cleanup, no behavior change)",
+      "head_sha": "001c8db9e2042bfde472d56b4e332563c3ccdf0d",
+      "head_ref": "claude/rename-ros2-poc-rig",
+      "url": "https://github.com/reiserlab/webDisplayTools/pull/270"
+    }
+  ],
+  "versions": {
+    "studio": {
+      "from": "v0.97",
+      "to": "v0.98"
+    }
+  },
+  "hotfix_reason": null,
+  "bridge_changed": false
+}

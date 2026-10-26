@@ -108,7 +108,7 @@ When editing web tools, audit all buttons and controls in the modified code sect
 - Web outputs must match MATLAB outputs exactly
 
 **Repository boundaries (decision 2026-10-26):** `docs/development/rig-software-repos-and-runners.md`
-is the record. The browser tools and their rig-side gateway (`ros2-poc/nodes/bridge_node.py`) stay
+is the record. The browser tools and their rig-side gateway (`rig/nodes/bridge_node.py`) stay
 here; the Python arena library + headless runner go to `LED-Display_pyDisplayTools`; shared ROS 2
 infrastructure (interfaces, device nodes, recording, supervision) goes to `rig-nodes`, which does not
 exist yet. Until the extraction session, every file is where the record's inventory says it is today.
@@ -369,17 +369,17 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   colocated < uploaded — every write names its layer, arrival order never decides). The awaits
   before the load are allowlisted in `tests/test-studio-preview-sources.js`.
 - **ROS 2 bridge = the bridge going forward (LAB-303, decided 2026-10-16/17).** Rig PCs run
-  `cd ros2-poc && pixi run rig` (its own pixi workspace: Zenoh router + FicTrac adapter + bridge node
+  `cd rig && pixi run rig` (its own pixi workspace: Zenoh router + FicTrac adapter + bridge node
   + optional `--bias` / `--scanimage` / `--foxglove`). Bridge 3.4 (`pixi run bridge` at the root) is
   the legacy path for course rigs, BUT `fictrac-bridge/bridge.py` is STILL IMPORTED by
-  `ros2-poc/nodes/bridge_node.py` and `mcap_convert.py` (Hub, LogWriter, Pipeline, the pure
+  `rig/nodes/bridge_node.py` and `mcap_convert.py` (Hub, LogWriter, Pipeline, the pure
   encoders): a change there changes ROS acquisition and the conversion of every historical bag.
   **MCAP bag = the record**; the `behavior_v2` JSONL is DERIVED (converter), transitional and
   FicTrac-only — new plugin streams go into the bag, never into a new `behavior_vN`. Bags are
   archived on the group share (later a bucket), never pushed to GitHub, so `--max-bag-mb` (rosbag2
   splitting) is an optional knob, off by default. `mcap_index.reindex` replaces the bag ATOMICALLY
   (`os.replace`); never reintroduce an unlink-then-rename on the record of truth. Row encoders shared
-  by the live writer and the converter live in `ros2-poc/nodes/_rows.py` (NO ROS imports — the
+  by the live writer and the converter live in `rig/nodes/_rows.py` (NO ROS imports — the
   converter must run without a ROS process; `converted == live` depends on ONE encoder).
 - **Connector plugins (LAB-303):** a protocol plugin whose class is `BiasPlugin` → connector `bias`,
   `ScanImagePlugin` → `scanimage` (`connectorPluginNames(exp)` in the Studio). The runner turns their

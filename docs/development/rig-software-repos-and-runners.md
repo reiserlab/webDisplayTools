@@ -13,7 +13,7 @@ MATLAB. It records decisions and their reasons; it moves no code.
    Python.
 2. **Three repositories with downward dependencies:**
    - `reiserlab/webDisplayTools`: the browser tools and their rig-side gateway (today's
-     `ros2-poc/nodes/bridge_node.py`), the protocol v3 spec and its conformance fixtures, the arena
+     `rig/nodes/bridge_node.py`), the protocol v3 spec and its conformance fixtures, the arena
      rig's composition.
    - `reiserlab/LED-Display_pyDisplayTools` (revived): the Python arena library and the headless runner.
    - `reiserlab/rig-nodes` (new): shared ROS 2 infrastructure for every lab rig (interfaces, device
@@ -35,7 +35,7 @@ MATLAB. It records decisions and their reasons; it moves no code.
 
 ## 2. Context
 
-Since 2026-10-16 the lab's bridge is a ROS 2 graph (LAB-303). The graph lives in `ros2-poc/` on PR
+Since 2026-10-16 the lab's bridge is a ROS 2 graph (LAB-303). The graph lives in `rig/` (renamed from `ros2-poc/` on 2026-10-26), landed by PR
 #254, release candidate 2026-10-20 (`origin/next` 8cd0148), with satellites: ScanImage frames (#261,
 15db22c), SiPM (#266, 457b478, stacked on #261), the 10-column FicTrac record (#264, cbf604f, stacked on
 #254), the Worker timer (#260, 0930df6), and the okey-cokey dashboard branch (c2f8f36, no PR). It has
@@ -44,7 +44,7 @@ BIAS and ScanImage connectors and Foxglove dashboards.
 
 Three facts prompted this record:
 
-- **Most of `ros2-poc/` is not about the display.** Of its ~25 Python modules, the device adapters,
+- **Most of `rig/` is not about the display.** Of its ~25 Python modules, the device adapters,
   recorder, MCAP tools and launcher serve any rig. The display-bound parts are the Studio gateway
   (`bridge_node.py`, which imports `fictrac-bridge/bridge.py` by path and owns the recording lifecycle
   in `RecordingLogWriter`), the transitional behavior_v2 export (`mcap_convert.py`, LAB-309), the arena
@@ -71,7 +71,7 @@ representation (IR), only `arena-link.js` is Web Serial, and the golden wire vec
 |---|---|---|
 | **webDisplayTools** | The browser and its rig-side gateway. Arena Studio, designer, pattern tools, the JS runner, GitHub Pages and the release tiers. The protocol v3 spec and the conformance fixtures. The gateway (`bridge_node`: hello/hello_ack, config, log_control, connector_command), the behavior_v2 export while LAB-309 lives, the arena visualization nodes and Foxglove layouts, the arena rig profile and its deployable `pixi.toml`, the browser-contract conformance tools. | pyDisplayTools and rig-nodes packages, pinned |
 | **LED-Display_pyDisplayTools** | The Python arena library and the headless runner. Existing G4 pattern and experiment-folder tools; new: v3 parser to IR, G6 wire encoder/decoder (port of `arena-wire-g6.js`, golden-tested), pyserial link, closed-loop mapping (the pure parts of `bridge.py`'s `Pipeline`, imported by the gateway instead of carried as a copy), pattern-file and panel-color helpers already written in Python, the `arena-run` CLI and the `run_protocol` ROS action. The library core (parser, IR, wire, serial, closed-loop evaluator) must import without ROS; the graph integration is an optional extra, so pattern tools and simple serial runs do not inherit the rig middleware stack. | rig-nodes packages, pinned (optional extra) |
-| **rig-nodes** | Shared infrastructure for every lab rig. `rig_interfaces` (today `arena_interfaces`), device adapters and simulators, recording primitives, supervision primitives, Zenoh configuration, generic Foxglove layouts, benchmarks, and future shared processing nodes. | nothing of ours |
+| **rig-nodes** | Shared infrastructure for every lab rig. `rig_interfaces` (renamed from `arena_interfaces` on 2026-10-26), device adapters and simulators, recording primitives, supervision primitives, Zenoh configuration, generic Foxglove layouts, benchmarks, and future shared processing nodes. | nothing of ours |
 
 ### 3.2 Rules
 
@@ -101,13 +101,13 @@ representation (IR), only `arena-link.js` is Web Serial, and the golden wire vec
 
 ### 3.3 Inventory (pinned)
 
-Every file under `ros2-poc/` on `origin/next` 8cd0148 and on the satellite heads, with its destination.
+Every file under `rig/` (then `ros2-poc/`) on `origin/next` 8cd0148 and on the satellite heads, with its destination.
 "stays" = webDisplayTools. Records of past sessions (run sheets, Windows results, the Plan B explainer)
 stay as history.
 
 | Destination | Files |
 |---|---|
-| **rig-nodes** | `interfaces/arena_interfaces/**` (→ `rig_interfaces`), `channel/README.md`, `config/zenoh-router.json5`, `config/zenoh-session.json5`, `nodes/_common.py`, `nodes/fictrac_udp_adapter.py`, `nodes/kinefly_udp_adapter.py`, `nodes/kinefly_sim.py`, `nodes/bias_node.py`, `nodes/bias_sim.py`, `nodes/bias_cmd.py`, `nodes/scanimage_node.py`, `nodes/scanimage_cmd.py`, `tests/si_json_mock.py`, `nodes/recorder.py`, `nodes/mcap_index.py`, `nodes/graph_dump.py`, `nodes/build_interfaces.py`, `sizing/compare.py`, `sizing/frames300.py`, `sizing/columns.py` (#264), the generic String→JSON-schema rewriter in `nodes/foxglove_json.py`, `shm_bench.py`, `shm_bench_qpc.py`, `mcap_bench.py`, `docs/shm-bench.md`, `docs/typed-distribution-decision.md`, `docs/typed-windows.md`; from #261/#266: `nodes/scanimage_frames_node.py`, `tests/test_scanimage_frames.py`, `tests/zmq_frames_mock.py`, `tools/zmq_latency_report.py`, `nodes/sipm_node.py`, `nodes/sipm_cmd.py`, `nodes/thorsipm.py`, `tests/test_sipm.py`; from okey-cokey: `nodes/bias_health.py`, `tools/ufmf.py` |
+| **rig-nodes** | `interfaces/rig_interfaces/**` (renamed from `arena_interfaces` on 2026-10-26), `channel/README.md`, `config/zenoh-router.json5`, `config/zenoh-session.json5`, `nodes/_common.py`, `nodes/fictrac_udp_adapter.py`, `nodes/kinefly_udp_adapter.py`, `nodes/kinefly_sim.py`, `nodes/bias_node.py`, `nodes/bias_sim.py`, `nodes/bias_cmd.py`, `nodes/scanimage_node.py`, `nodes/scanimage_cmd.py`, `tests/si_json_mock.py`, `nodes/recorder.py`, `nodes/mcap_index.py`, `nodes/graph_dump.py`, `nodes/build_interfaces.py`, `sizing/compare.py`, `sizing/frames300.py`, `sizing/columns.py` (#264), the generic String→JSON-schema rewriter in `nodes/foxglove_json.py`, `shm_bench.py`, `shm_bench_qpc.py`, `mcap_bench.py`, `docs/shm-bench.md`, `docs/typed-distribution-decision.md`, `docs/typed-windows.md`; from #261/#266: `nodes/scanimage_frames_node.py`, `tests/test_scanimage_frames.py`, `tests/zmq_frames_mock.py`, `tools/zmq_latency_report.py`, `nodes/sipm_node.py`, `nodes/sipm_cmd.py`, `nodes/thorsipm.py`, `tests/test_sipm.py`; from okey-cokey: `nodes/bias_health.py`, `tools/ufmf.py` |
 | **pyDisplayTools** | `tools/patfile.py` (pattern-file reader; the repo already has `pyPatternTools`), `nodes/arena_display.py` (Python port of `js/panel-color.js`, okey-cokey branch), the pure functions of `fictrac-bridge/bridge.py` (`Pipeline` mapping, `frame_schema_line`, `compact_arena_command`), `fictrac-bridge/fictrac_sim.py` moves to rig-nodes as a device simulator |
 | **stays** (gateway, export, composition) | `nodes/bridge_node.py`, `nodes/mcap_convert.py`, `nodes/_rows.py` (behavior_v2 `kf` rows), `nodes/export_log.py`, `nodes/rig.py` (arena composition; its generic preflight/supervision helpers are extracted to rig-nodes first), `pixi.toml`, `pixi.lock`, `.gitignore`, `tests/studio_emulator.py`, `tests/check_runlog_readers.js`, the gateway half of `tests/test_ros2_poc.py` (node-level tests move with their nodes) |
 | **stays** (arena visualization) | `nodes/viz_node.py`, `tests/test_viz_node.py`, the arena derivation in `nodes/foxglove_json.py`, `foxglove/arena-fictrac.json`, `foxglove/arena-bias.json`, `docs/foxglove-arena-layout.json`, `tools/tiff_run_to_mcap.py`; from okey-cokey: `nodes/stimulus_node.py`, `nodes/stimulus_core.py`, `nodes/dashboard_replay.py`, `tests/test_stimulus.py`, `tests/test_stimulus_live.py`, `foxglove/arena-okey-cokey.json`, `tests/fixtures/protocols-2026-10-14/*` |
@@ -119,7 +119,7 @@ stay as history.
 `meca_interfaces` keeps the robot's actions and services. A message type moves to `rig_interfaces` only
 when a second consumer appears. The ask for the robot station is **shared distribution (RoboStack Jazzy
 via pixi), middleware (`rmw_zenoh`), one interfaces build and one deployment recipe**. It is not "drop
-colcon": `ros2-poc/pixi.toml` already installs colcon and `build_interfaces.py` runs it inside the pixi
+colcon": `rig/pixi.toml` already installs colcon and `build_interfaces.py` runs it inside the pixi
 environment. LAB-245 currently describes a colcon workspace sourced from PowerShell; the two can be the
 same environment.
 
@@ -327,11 +327,11 @@ These items are the body of the rig-nodes ticket and apply to pyDisplayTools as 
 ## 9. Sequencing
 
 ```
-docs-only PR (this record) ──▶ gate 1: Michael runs `pixi run release` for #262 (candidate 2026-10-20)
+docs-only PR (this record) ──▶ gate: Michael runs `pixi run release` for #262 (candidate 2026-10-20)
   ──▶ CLEANUP session: rebase #261 / #264 / #266 / #260 onto released main → second candidate;
       okey-cokey and tiff2mcap branches → PRs or close; stale worktrees and branches removed;
       `ros2-poc/` → `rig/`; `arena_interfaces` → `rig_interfaces`; package-set build; hardware validation
-  ──▶ gate 2: Frank's pilot sign-off (about 2026-10-30)
+  ──▶ gate: Michael releases the cleanup candidate (2026-10-26: #264 + #219 + #270), so `rig/` is on main
   ──▶ EXTRACTION session: create rig-nodes; move the obvious set (section 3.3) with history;
       package-set build and channel; webDisplayTools' `rig/` workspace pins it
   ──▶ RUNNER PLAN session (plan mode, own review; the second developer joins): revive pyDisplayTools,
@@ -342,13 +342,47 @@ Extraction directly after cleanup is preferred now that the Python runner is a c
 consumer: the runner and its developer get a clean target, and the move is done once. The cost of
 choosing boundaries with one live consumer is bounded by moving only the obvious set.
 
+**No sign-off gate before extraction (Michael, 2026-10-26).** An earlier draft put Frank's pilot
+sign-off (about 2026-10-30) between cleanup and extraction. Frank is aware of and supportive of the
+direction, so that gate is removed: extraction starts as soon as the cleanup candidate is released.
+Frank's remaining input is the `version3` question (section 12), which does not block the move.
+
+### Cleanup complete (2026-10-26) — what the extraction session inherits
+
+Done after release 2026-10-20 (`main` 55b4cec, tag `release-2026-10-20`):
+
+- **One tree.** `ros2-poc/` is `rig/` and the interfaces package is `rig_interfaces` 0.2.0
+  (rename PR [#270](https://github.com/reiserlab/webDisplayTools/pull/270), no behavior change; the `rig-interfaces` workflow builds the package on
+  win-64 / osx-arm64 / linux-64 and publishes the channel artifact; the `typed-prebuilt` environment
+  reads the CI-built channel). Every message type keeps its name (`ArenaFrame`, `FicTracFrame`,
+  `ConnectorReply`); only the package, and with it the Zenoh type key, changed — before any released
+  bag carried the typed names.
+- **Satellites rebased onto released main, all green:** #264 (10-column FicTrac record), #261
+  (ScanImage ZMQ frames; off every tier until the LAB-311 lab day), #266 (SiPM node, draft, LAB-319),
+  #219 (controller settings block, LAB-230; conflicts resolved, decision on its candidate pending).
+  #257 closed (shipped in #254). New PRs from branches that had none: #269 (okey-cokey rig: CW/CCW
+  pair protocols, camera + G6 Foxglove dashboard, uFMF tools, ww14 run records) and #268 (docs
+  follow-up of #264). Open PRs that touch the old path are rebased over the rename when they next
+  move (git's directory-rename detection carries their files; `arena_interfaces` imports are edited
+  by hand).
+- **Branches and worktrees:** disposition list in the session's proposals note; merged and
+  superseded branches deleted after Michael's OK; `rescue/2026-09-27-worktree-edits` kept as the tag
+  `archive/rescue-2026-09-27`; `claude/tiff2mcap-runlog-clock` (tiff2mcap `--runlog`) still to land
+  as a PR after the rename.
+- **Second candidate:** candidate 2026-10-26 = #270 + #264 + #219 (Michael's choice, 2026-10-26); the merge of #264 with the rename conflicts in six `rig/` files and is resolved by taking #264's hunks with the rename substitutions applied (`pixi run tiers -- status` names the live SHA).
+
+The extraction session (LAB-338) starts from `rig/` on `main` with the §3.3 inventory as its move
+list; the open satellites above are the only in-flight changes under `rig/`. Nothing in this cleanup
+changed the inventory's destinations.
+
 ## 10. Decided, hypotheses, commitments
 
 - **Decided:** the three repositories and their downward dependencies; two peer runners with the web
   primary; the Python runner on the shared IR in pyDisplayTools; release before runner work; cleanup →
   extraction → runner plan; no Flutter; Python first with C++ as the compiled default; no submodules;
   pixi-built package sets through a channel; `rig_interfaces` rename in the cleanup session; MATLAB
-  YAML runner G4.1-only and frozen; protocol authority to spec plus fixtures.
+  YAML runner G4.1-only and frozen; protocol authority to spec plus fixtures; no sign-off gate between
+  cleanup and extraction (2026-10-26).
 - **Hypotheses awaiting evidence:** the exact rig-nodes package map beyond the obvious set (needs the
   runner and the robot station as consumers); robot-station toolchain compatibility (needs Isabel and a
   real install on the robot PC); whether `version3` merges or is archived (Frank).
@@ -392,8 +426,7 @@ items in section 4 before code.
 
 ## 12. Open questions
 
-- Frank: merge `version3` as the MATLAB runner's last feature release, or archive it? Pilot sign-off
-  date.
+- Frank: merge `version3` as the MATLAB runner's last feature release, or archive it?
 - Isabel: is "shared distribution and middleware, keep colcon inside the pixi environment" workable for
   `meca_ws`? Which `meca_*` pieces are shared from day one (`meca_cameras` vs `bias_node`)?
 - Who owns the channel on prefix.dev when it stops being in-repository at a tag?
