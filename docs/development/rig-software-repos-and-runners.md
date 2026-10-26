@@ -342,6 +342,34 @@ Extraction directly after cleanup is preferred now that the Python runner is a c
 consumer: the runner and its developer get a clean target, and the move is done once. The cost of
 choosing boundaries with one live consumer is bounded by moving only the obvious set.
 
+### Cleanup complete (2026-10-26) — what the extraction session inherits
+
+Done after release 2026-10-20 (`main` 55b4cec, tag `release-2026-10-20`):
+
+- **One tree.** `ros2-poc/` is `rig/` and the interfaces package is `rig_interfaces` 0.2.0
+  (rename PR [#270](https://github.com/reiserlab/webDisplayTools/pull/270), no behavior change; the `rig-interfaces` workflow builds the package on
+  win-64 / osx-arm64 / linux-64 and publishes the channel artifact; the `typed-prebuilt` environment
+  reads the CI-built channel). Every message type keeps its name (`ArenaFrame`, `FicTracFrame`,
+  `ConnectorReply`); only the package, and with it the Zenoh type key, changed — before any released
+  bag carried the typed names.
+- **Satellites rebased onto released main, all green:** #264 (10-column FicTrac record), #261
+  (ScanImage ZMQ frames; off every tier until the LAB-311 lab day), #266 (SiPM node, draft, LAB-319),
+  #219 (controller settings block, LAB-230; conflicts resolved, decision on its candidate pending).
+  #257 closed (shipped in #254). New PRs from branches that had none: #269 (okey-cokey rig: CW/CCW
+  pair protocols, camera + G6 Foxglove dashboard, uFMF tools, ww14 run records) and #268 (docs
+  follow-up of #264). Open PRs that touch the old path are rebased over the rename when they next
+  move (git's directory-rename detection carries their files; `arena_interfaces` imports are edited
+  by hand).
+- **Branches and worktrees:** disposition list in the session's proposals note; merged and
+  superseded branches deleted after Michael's OK; `rescue/2026-09-27-worktree-edits` kept as the tag
+  `archive/rescue-2026-09-27`; `claude/tiff2mcap-runlog-clock` (tiff2mcap `--runlog`) still to land
+  as a PR after the rename.
+- **Second candidate:** candidate 2026-10-26 = #270 + #264 + #219 (Michael's choice, 2026-10-26); the merge of #264 with the rename conflicts in six `rig/` files and is resolved by taking #264's hunks with the rename substitutions applied (`pixi run tiers -- status` names the live SHA).
+
+The extraction session (LAB-338) starts from `rig/` on `main` with the §3.3 inventory as its move
+list; the open satellites above are the only in-flight changes under `rig/`. Nothing in this cleanup
+changed the inventory's destinations.
+
 ## 10. Decided, hypotheses, commitments
 
 - **Decided:** the three repositories and their downward dependencies; two peer runners with the web
