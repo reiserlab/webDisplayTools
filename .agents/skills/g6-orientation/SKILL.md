@@ -40,8 +40,9 @@ interface.
 ### Reference tool suites (other language bindings)
 | repo | role |
 |---|---|
-| **reiserlab/maDisplayTools** | **MATLAB** tools (G4+). The reference executor — **web output must match MATLAB exactly** (CI validates, tol 1e-4). (Its `docs/development/G4G6_ROADMAP.md` is largely historical now — use the umbrella docs for current G6.) |
-| **reiserlab/LED-Display_pyDisplayTools** (pyDisplayTools) | **Python** tools for the displays. |
+| **reiserlab/maDisplayTools** | **MATLAB** tools (G4+). Pattern math reference — **web output must match MATLAB exactly** (CI validates, tol 1e-4). Its protocol **runner is G4.1-only and frozen** (decision 2026-10-26); protocol authority = `webDisplayTools/docs/development/v3-spec.md` + conformance fixtures. (Its `docs/development/G4G6_ROADMAP.md` is largely historical now — use the umbrella docs for current G6.) |
+| **reiserlab/LED-Display_pyDisplayTools** (pyDisplayTools) | **Python** tools for the displays (G4 pattern + experiment-folder tools). **Accepted destination** for the Python arena library and the **headless runner** (`arena-run`), a peer of the web runner (decision 2026-10-26). |
+| **reiserlab/rig-nodes** | **Accepted destination, not yet created:** shared ROS 2 infrastructure for every lab rig (`rig_interfaces`, device nodes for FicTrac / Kinefly / BIAS / ScanImage / SiPM, MCAP recording and supervision primitives). Today that code lives in `webDisplayTools/ros2-poc/` on the 2026-10-20 release candidate. Record: `webDisplayTools/docs/development/rig-software-repos-and-runners.md`. |
 
 ### G6 firmware (what the web connects to over USB)
 | repo | role |
@@ -85,6 +86,9 @@ interface.
   feature PR — see *Release tiers* below.
 - **Design system** — dark theme (`--bg #0f1419`, surface `#1a1f26`, border `#2d3640`, accent
   `#00e676`); JetBrains Mono headings, IBM Plex Mono body.
+- **Spelling** — American English everywhere: code, docs, Linear tickets, commit/PR text, Slack
+  posts. **color** (never "colour"), center, -ize. Identifiers already use it (`panel-color.js`,
+  "Four-color" docs); keep prose consistent with them.
 - **Dev env = pixi only** — `pixi install` provisions Node + Prettier + Python + websockets
   (conda-forge). **No npm / package.json / node_modules.** `pixi run test | format | bridge | sim`.
 - **Two gotchas** — Prettier is scoped to `**/*.js`; **never run it on the HTML tools** (it
@@ -120,6 +124,9 @@ interface.
   (WebSocket `ws://localhost:8765` ← UDP `:60000`) → browser. `pixi run bridge` + `pixi run
   sim` (start the bridge first). The web runner executes only the `fictrac` and `log` plugins;
   `backlight`/`camera`/`temperature` are declared for MATLAB and **skipped on the web**.
+- **ROS 2 graph (LAB-303, candidate 2026-10-20)** — `ros2-poc/` replaces the bridge with a graph
+  (rmw_zenoh, MCAP record, BIAS + ScanImage connectors) behind the SAME WebSocket; the Studio is
+  unchanged. Where the pieces will live from here: `rig-software-repos-and-runners.md` (above).
 
 ## Pointers (go here for depth)
 

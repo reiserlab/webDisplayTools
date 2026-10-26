@@ -373,6 +373,11 @@ If step 5's hardware is attached, `pixi run -e typed-prebuilt rig …` runs the 
 Record: the PC's Windows version, "no Visual Studio" confirmed (`winget list Microsoft.VisualStudio`
 prints nothing), the install time, and the first error verbatim if anything fails.
 
+## 8. Optional: shared-memory and MCAP benchmarks (no hardware, ~7 minutes)
+
+Never during an experiment (it loads the CPU). Commands, what to check and the ww18 reference
+numbers: `docs/shm-bench.md`.
+
 ## What to send back
 
 The timings and sizes from step 1, the `$PIXI_PROJECT_ROOT` answer, the harness artifact folder,
