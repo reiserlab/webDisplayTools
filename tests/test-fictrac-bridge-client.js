@@ -773,11 +773,16 @@ async function main() {
             level: 'behavior_v2',
             logging: false
         });
-        check('hello_ack recorded', client.bridgeInfo, {
-            version: '3.0 · behavior_v2',
-            levels: ['behavior_v2', 'behavior_v1', 'full'],
-            level: 'behavior_v2'
-        });
+        check(
+            'hello_ack recorded (connectors null: a bridge without device connectors)',
+            client.bridgeInfo,
+            {
+                version: '3.0 · behavior_v2',
+                levels: ['behavior_v2', 'behavior_v1', 'full'],
+                level: 'behavior_v2',
+                connectors: null
+            }
+        );
         check('bridgeSupportsLevel(v2) true', client.bridgeSupportsLevel('behavior_v2'), true);
         check('bridgeSupportsLevel(bogus) false', client.bridgeSupportsLevel('behavior_v9'), false);
         check(
@@ -1109,6 +1114,134 @@ async function main() {
             client.supportsStartFrame(),
             true
         );
+    }
+
+    console.log('\n=== connector_command / connector_reply (LAB-303 device connectors) ===');
+    {
+        const RealWS = global.WebSocket;
+        global.WebSocket = FakeWS;
+        try {
+            const client = new FicTracBridgeClient({ applyFrame: () => Promise.resolve() });
+            check(
+                'supportsConnector null before any hello_ack',
+                client.supportsConnector('bias'),
+                null
+            );
+            // Not connected → immediate error outcome, never a throw.
+            const offline = await client.connectorCommand({
+                connector: 'bias',
+                plugin: 'camera',
+                command: 'getTimestamp'
+            });
+            check('not connected → outcome error', [offline.ok, offline.outcome], [false, 'error']);
+            client.connect('ws://x');
+            const ws = FakeWS.last;
+            ws.open();
+            // A ≤ 3.4 bridge: hello_ack without `connectors` → null (unknown), not false.
+            ws.message({
+                type: 'hello_ack',
+                bridge: '3.4',
+                levels: ['behavior_v2'],
+                level: 'behavior_v2'
+            });
+            check('3.4 hello_ack → supportsConnector null', client.supportsConnector('bias'), null);
+            ws.message({
+                type: 'hello_ack',
+                bridge: '3.4 · ros2-poc',
+                levels: ['behavior_v2'],
+                level: 'behavior_v2',
+                connectors: ['bias']
+            });
+            check(
+                'connectors advertised → true/false',
+                [client.supportsConnector('bias'), client.supportsConnector('daq')],
+                [true, false]
+            );
+            // Round trip: the sent message carries id/connector/plugin/command/params; the
+            // matching reply resolves the promise with the bridge's fields merged in.
+            const p1 = client.connectorCommand({
+                connector: 'bias',
+                plugin: 'camera',
+                command: 'startRecording',
+                params: { filename: 'a.avi' },
+                timeoutS: 5
+            });
+            const sent = ws.sent.filter((m) => m.type === 'connector_command').pop();
+            check(
+                'connector_command sent with the request fields',
+                [sent.connector, sent.plugin, sent.command, sent.params, sent.timeout_s],
+                ['bias', 'camera', 'startRecording', { filename: 'a.avi' }, 5]
+            );
+            checkBool(
+                'connector_command carries an id',
+                typeof sent.id === 'string' && sent.id.length > 0,
+                sent.id
+            );
+            ws.message({ type: 'connector_reply', id: 'not-ours', ok: true, outcome: 'ok' }); // another client's → ignored
+            ws.message({
+                type: 'connector_reply',
+                id: sent.id,
+                ok: true,
+                outcome: 'ok',
+                value: '/v/a.avi',
+                rtt_ms: 180.1,
+                artifact: { kind: 'video', path: '/v/a.avi' }
+            });
+            const r1 = await p1;
+            check(
+                'reply resolves with ok/outcome/value/artifact',
+                [r1.ok, r1.outcome, r1.value, r1.artifact.path, r1.plugin, r1.command],
+                [true, 'ok', '/v/a.avi', '/v/a.avi', 'camera', 'startRecording']
+            );
+            check('reply has no wire `type` field', r1.type, undefined);
+            // Error reply from the device node → ok false, outcome error, error text kept.
+            const p2 = client.connectorCommand({
+                connector: 'bias',
+                plugin: 'camera',
+                command: 'bogus'
+            });
+            const s2 = ws.sent.filter((m) => m.type === 'connector_command').pop();
+            ws.message({
+                type: 'connector_reply',
+                id: s2.id,
+                ok: false,
+                outcome: 'error',
+                error: "unknown plugin command 'bogus'"
+            });
+            const r2 = await p2;
+            check(
+                'error reply → ok false + error text',
+                [r2.ok, r2.outcome, r2.error],
+                [false, 'error', "unknown plugin command 'bogus'"]
+            );
+            // No reply within timeoutMs → UNKNOWN (the command may have taken effect).
+            const p3 = client.connectorCommand({
+                connector: 'bias',
+                plugin: 'camera',
+                command: 'getTimestamp',
+                timeoutMs: 20
+            });
+            const r3 = await p3;
+            check('timeout → outcome unknown', [r3.ok, r3.outcome], [false, 'unknown']);
+            const s3 = ws.sent.filter((m) => m.type === 'connector_command').pop();
+            ws.message({ type: 'connector_reply', id: s3.id, ok: true, outcome: 'ok' }); // late reply: dropped, no throw
+            // Disconnect with a command in flight → unknown, and the waiter table is empty.
+            const p4 = client.connectorCommand({
+                connector: 'bias',
+                plugin: 'camera',
+                command: 'stopRecording'
+            });
+            ws.close();
+            const r4 = await p4;
+            check(
+                'bridge lost mid-flight → outcome unknown',
+                [r4.ok, r4.outcome, r4.error],
+                [false, 'unknown', 'bridge lost']
+            );
+            check('no waiters left after disconnect', client._cmdWaiters.size, 0);
+        } finally {
+            global.WebSocket = RealWS;
+        }
     }
 
     console.log('\n=== Summary ===');

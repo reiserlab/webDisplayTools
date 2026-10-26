@@ -159,7 +159,9 @@ console.log('\n=== Studio contract (arena_studio.html source) ===');
         'populateSessionRig',
         'fetch',
         'res.json',
-        'openFromCourseRepo'
+        'openFromCourseRepo',
+        'guarded', // the same-origin pre-steps (rig / vocab population), each wrapped in a try/catch
+        'fn' // …and the awaited callee inside guarded()
     ];
     checkBool(
         'nothing else is awaited before the ?p= load',

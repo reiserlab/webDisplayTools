@@ -521,6 +521,7 @@
                 resolvePatternFrames: args.resolvePatternFrames,
                 resolveCondition: args.resolveCondition,
                 fictracPluginNames: args.fictracPluginNames,
+                connectorPluginNames: args.connectorPluginNames, // LAB-303 device connectors (BiasPlugin → bridge)
                 bridgeRequired: args.bridgeRequired, // recorded runs: losing the bridge stops the run
                 timing: args.timing,
                 sleep: args.sleep,

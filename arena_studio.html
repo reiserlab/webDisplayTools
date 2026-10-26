@@ -196,6 +196,7 @@
   .wdt-channel{font:600 10px/1.6 var(--head, 'JetBrains Mono', monospace);padding:0 6px;border-radius:9px;margin-left:6px;white-space:nowrap;cursor:help;vertical-align:middle}
   .wdt-ch-prod{color:var(--dim, #8b949e);border:1px solid var(--border, #2d3640)}
   .wdt-ch-next{color:#0f1419;background:#ff9100;font-weight:700}
+  .wdt-ch-ros{color:#0f1419;background:#d500f9;font-weight:700} /* ROS Studio side tier (LAB-303 spike) */
   .wdt-ch-local{color:var(--dim, #8b949e);border:1px dashed var(--border, #2d3640)}
   .brand{font-family:var(--head);font-weight:700;letter-spacing:.5px;color:var(--accent);font-size:14px;white-space:nowrap}
   .status{display:flex;align-items:center;gap:6px;font-size:12px}
@@ -3425,7 +3426,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.95 | 2026-10-13 11:51 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.97 | 2026-10-26 14:49 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -3448,7 +3449,7 @@
 <script src="js/studio-stream-geometry.js"></script>
 <script src="js/panel-color.js"></script> <!-- color-bank test figure (PanelColor.bankAt) -->
 <script src="js/arena-link.js"></script>
-<script src="js/arena-runner-g6.js?v=20261015-bridge-lost"></script> <!-- ?v= forces a fresh load: a cached runner/client/session silently keeps the old behavior (closed-loop start, bridge-loss stop) -->
+<script src="js/arena-runner-g6.js?v=20261018-worker-timer"></script> <!-- ?v= forces a fresh load: a cached runner/client/session silently keeps the old behavior (closed-loop start, bridge-loss stop, throttled setTimeout waits → hidden-window 4 s steps) -->
 <script src="js/run-log.js?v=20261015-bridge-lost"></script>
 <script src="js/fictrac-bridge-client.js?v=20261015-bridge-lost"></script>
 <script src="js/arena-session.js?v=20261015-bridge-lost"></script>
@@ -3708,6 +3709,13 @@ function studioMarkerCurrent(stored, current) {
             (ev.step && ev.step.conditionName ? ' · ' + ev.step.conditionName : '') +
             (ev.op ? ' ' + ev.op : '') +
             (ev.plugin_name ? ' ' + ev.plugin_name + (ev.command_name ? '.' + ev.command_name : '') : '') +
+            // Connector replies (BIAS etc.): outcome, round trip, and the artifact it produced.
+            (ev.op === 'connectorCommand' && ev.value
+                ? ' → ' + (ev.value.outcome || '?') +
+                  (ev.value.rtt_ms != null ? ' · ' + Math.round(ev.value.rtt_ms) + ' ms' : '') +
+                  (ev.value.value != null && typeof ev.value.value !== 'object' ? ' · ' + ev.value.value : '') +
+                  (ev.value.artifact && ev.value.artifact.path ? ' · ' + ev.value.artifact.kind + ' ' + ev.value.artifact.path : '')
+                : '') +
             (ev.reason ? ' (' + ev.reason + ')' : '');
         enqueueLogNode(div);
     }
@@ -3897,6 +3905,16 @@ function studioMarkerCurrent(stored, current) {
         // 2026-09-13: they used to land after the export and were lost from committed logs).
         const finalizeThenCommit = async () => {
             try { if (Studio.finalizeTrialQuality) await Studio.finalizeTrialQuality(log.meta && log.meta.run_id); } catch (_) { /* best effort */ }
+            // The run is over: close the bridge's run file (and, on the ROS bridge node, the
+            // MCAP bag) NOW — after the trial-quality finalizer and the post-mortem (this runs
+            // after both), before any upload, and whether or not the run is committed. A run
+            // with no course token, a Test run or an abort used to leave the file open until
+            // the next run. Only THIS run's file: a newer run may have opened its own since.
+            // "⇪ Push log" still works — the bridge exports its most recent file.
+            try {
+                const b = Studio.session && Studio.session.bridge;
+                if (b && b.connected && b.logging && Studio.activeRunLog === log) b.setLogging(false);
+            } catch (_) { /* best effort */ }
             await maybeCommitRunLog(log, summary);
         };
         if (summary && summary.outcome === 'CONTROLLER_FAULT' && Studio.handleControllerFault) {
@@ -5883,7 +5901,8 @@ function studioMarkerCurrent(stored, current) {
             let msg = null;
             if (action === 'aborted') {
                 msg = '⚠ FicTrac bridge lost mid-run (' + why + ') — the run was STOPPED (outcome BRIDGE_LOST). ' +
-                    'The display was stopped and the closed loop is off. The bridge’s log of this run ends at the loss; ' +
+                    'The display was stopped and the closed loop is off. Devices the bridge drives (camera, microscope) ' +
+                    'were NOT told to stop — check them. The bridge’s log of this run ends at the loss; ' +
                     '⬇ Save keeps this browser’s record.' + restart;
             } else if (action === 'continued') {
                 msg = '⚠ FicTrac bridge lost — this test run continues, but nothing after this point is in the bridge log.' + restart;
@@ -9835,6 +9854,22 @@ function fictracPluginNames(exp) {
         .filter((p) => p && ((p.matlab && p.matlab.class === 'FicTracPlugin') || p.name === 'fictrac'))
         .map((p) => p.name);
 }
+// Device plugins the BRIDGE drives for the runner (LAB-303 connectors): plugin instance
+// name → connector id. 'bias' (BiasPlugin → the bridge's BIAS node) and 'scanimage'
+// (ScanImagePlugin → the bridge's ScanImage node, the microscope's JSON server); the
+// runner sends each command as connector_command and waits for the reply, so a camera or
+// microscope plugin in a protocol acts for real instead of being skipped.
+function connectorPluginNames(exp) {
+    const m = new Map();
+    if (!exp || !Array.isArray(exp.plugins)) return m;
+    for (const p of exp.plugins) {
+        if (!p) continue;
+        const cls = p.matlab && p.matlab.class;
+        if (cls === 'BiasPlugin' || p.name === 'camera') m.set(p.name, 'bias');
+        else if (cls === 'ScanImagePlugin' || p.name === 'scanimage') m.set(p.name, 'scanimage');
+    }
+    return m;
+}
 
 // ---- load / render a protocol ----
 // The embedded designer (Studio.editor) is the single source of truth for the
@@ -10830,6 +10865,7 @@ async function runSteps(steps, conditionsByName, exp, isExperiment) {
                 ? Studio.resolveRuntimeCondition
                 : undefined,
             fictracPluginNames: new Set(ftNames),
+            connectorPluginNames: connectorPluginNames(exp),
             // A recorded run's record IS the bridge log (the run is gated on the bridge and
             // the bridge is logging it), so losing the bridge stops it — not only when a
             // FicTrac step needs it. With bridge logging off the record is in the browser.
@@ -12236,9 +12272,19 @@ async function initFromUrl() {
     // bogus/stale params, stamping the {studio, mode} own-refresh marker, and
     // never clobbering a mode the user clicked during the awaits below.
     Studio._urlSuppress = true;
+    // S2 (ww18 2026-10-15, LAB-303): a tab opened at ?p=… showed no protocol until it was
+    // refreshed. The ?p= load used to wait behind the course repo's shared-pattern listing
+    // (a GitHub API call with no timeout). Rules now: (1) nothing that leaves this origin is
+    // awaited before the protocol load — the GitHub listings below are fire-and-forget, which
+    // is safe because preview sources are LAYERED (js/studio-preview-sources.js); (2) every
+    // same-origin pre-step is guarded — a failure in rig/vocab population logs a warning
+    // instead of silently skipping the protocol load.
+    const guarded = async (name, fn) => {
+        try { await fn(); } catch (e) { Studio.rawLog('init: ' + name + ' failed — ' + (e && e.message ? e.message : e), 'warn'); }
+    };
     try {
-        await populateMetaDatalists();
-        await populateSessionRig();
+        await guarded('metadata vocabularies', populateMetaDatalists);
+        await guarded('session rig', populateSessionRig);
         wirePatPicker();
         loadBuiltinPatternSet();
         // Best-effort GitHub listings — NEVER awaited here: a stalled api.github.com request
@@ -12292,6 +12338,10 @@ async function initFromUrl() {
                 } catch (e) {
                     Studio.showBanner('Protocol fetch failed: ' + e.message);
                 }
+            } else {
+                // decode() dropped an unknown key with a rawLog warning only; say it where a
+                // student looks (S2 follow-up: a silent empty Run view is what "did not load" means).
+                Studio.showBanner('Protocol "' + state.p + '" is not in this site\'s protocol index (protocols/index.json).');
             }
         }
         // ?rig= (#135): the per-setup bookmark. Applied AFTER the ?p= load so
@@ -15008,7 +15058,14 @@ async function initFromUrl() {
                     title: 'Stop the running pattern (STOP_DISPLAY 0x30) — best-effort queued via the shared session',
                     onClick: () => { if (window.Studio.session) { window.Studio._userStopRequested = true; window.Studio.session.stop(); } }
                 }, '■ Stop'));
-                const plugins = RunnerLib.listSkippedPlugins(cond);
+                // Plugins the runner drives are not "skipped": the built-in log, FicTrac,
+                // and connector devices (BiasPlugin through the bridge, LAB-303).
+                const driveable = new Set(['log']);
+                for (const p of experiment.plugins || []) {
+                    if (p && p.matlab && (p.matlab.class === 'FicTracPlugin' || p.matlab.class === 'BiasPlugin')) driveable.add(p.name);
+                    if (p && (p.name === 'fictrac' || p.name === 'camera')) driveable.add(p.name);
+                }
+                const plugins = RunnerLib.listSkippedPlugins(cond, driveable);
                 wrap.appendChild(el('span', { class: 'arena-test-note' },
                     plugins.length
                         ? 'unrecorded test · ' + plugins.length + ' plugin cmd' +

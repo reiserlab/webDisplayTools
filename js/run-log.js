@@ -154,7 +154,8 @@
                     stamp +
                     '⚠ FAULT ' +
                     (ev.reason || 'controller_unresponsive') +
-                    (ev.detail && ev.detail.lastError ? ' — ' + ev.detail.lastError : '')
+                    (ev.detail && ev.detail.lastError ? ' — ' + ev.detail.lastError : '') +
+                    (ev.detail && ev.detail.note ? ' — ' + ev.detail.note : '')
                 );
             case 'bridge-lost': {
                 const d = ev.detail || {};
