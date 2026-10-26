@@ -57,6 +57,17 @@ must skip it (rule 2 in the hand-off §7.2). After #198 merges, all readers belo
   `readRunlogText`). **v0.78 guarantee:** the final ring drain and the `trial_quality` event are written **before** the
   export, on normal and on fault runs (v0.77 files can have controller rows after `trial_quality` — see §7).
 
+
+### 1.x The MCAP bag (ROS 2 bridge, LAB-303) and the FicTrac columns it keeps
+
+On the ROS 2 graph (`ros2-poc/`, PR #254) the record of truth is an MCAP bag per run and this
+NDJSON is DERIVED from it by `ros2-poc/nodes/mcap_convert.py`; every row and event above is
+unchanged. The bag's FicTrac record is the per-frame `/arena/frame` message: the behavior row's
+five columns plus FicTrac's error score (col 5), lab-frame delta rotation (cols 6–8) and sequence
+counter (col 23), `float64`, one message per frame — the other 15 columns and the verbatim line are
+not recorded by default (`--record-fictrac-raw` opts in; the `full` level needs it). Why those ten
+and what it costs (≈ 2.2–2.5× this file's `.gz`): `fictrac-columns-in-the-bag.md`.
+
 ## 2. Row catalogue (arrays)
 
 All examples are verbatim lines from `arena-log-20260913-120611-713.jsonl` unless noted. "Clock" names the owner of the

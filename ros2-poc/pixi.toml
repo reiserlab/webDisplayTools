@@ -153,6 +153,9 @@ export = "python nodes/export_log.py"
 # Rewrite a finished bag indexed + zstd-compressed (the bridge does this itself when a run
 # closes cleanly; use it on a bag recorded before that, or after `--recover`).
 reindex = "python nodes/mcap_index.py"
+# Bag-size study of the FicTrac record (docs/development/fictrac-columns-in-the-bag.md): a bag vs its
+# jsonl.gz under the final layout and the alternatives that were measured and declined.
+size-columns = "python sizing/columns.py"
 # Build interfaces/arena_interfaces with colcon inside the `typed` env (the alternative to
 # the pixi-build route); timed and recorded in README.md → "Plan B spike".
 build-interfaces = "python nodes/build_interfaces.py"
