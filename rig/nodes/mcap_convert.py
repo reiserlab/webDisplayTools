@@ -103,85 +103,9 @@ def load_bridge_module(path: Path = BRIDGE_PY):
 B = load_bridge_module()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CDR decoding (XCDR1, little-endian; alignment origin = right after the 4-byte header)
-# ─────────────────────────────────────────────────────────────────────────────
-_PRIM = {
-    "bool": ("?", 1), "byte": ("B", 1), "char": ("b", 1), "int8": ("b", 1), "uint8": ("B", 1),
-    "int16": ("<h", 2), "uint16": ("<H", 2), "int32": ("<i", 4), "uint32": ("<I", 4),
-    "int64": ("<q", 8), "uint64": ("<Q", 8), "float32": ("<f", 4), "float64": ("<d", 8),
-}
-
-
-class Cdr:
-    def __init__(self, data: bytes) -> None:
-        if len(data) < 4:
-            raise ValueError("CDR payload shorter than its header")
-        self.d = data
-        self.p = 4  # the encapsulation header is not part of the aligned stream
-        self.le = data[1] == 1
-
-    def _align(self, n: int) -> None:
-        rel = self.p - 4
-        pad = (-rel) % n
-        self.p += pad
-
-    def prim(self, t: str):
-        fmt, size = _PRIM[t]
-        self._align(size)
-        if not self.le and len(fmt) == 2:
-            fmt = ">" + fmt[1]
-        v = struct.unpack_from(fmt, self.d, self.p)[0]
-        self.p += size
-        return v
-
-    def string(self) -> str:
-        n = self.prim("uint32")
-        raw = self.d[self.p : self.p + n]
-        self.p += n
-        return raw.rstrip(b"\x00").decode("utf-8", errors="replace")
-
-    def seq_prim(self, t: str) -> list:
-        n = self.prim("uint32")
-        return [self.prim(t) for _ in range(n)]
-
-
-def parse_msgdef(text: str) -> list[tuple[str, str]]:
-    """ros2msg schema text → [(type, name)] for the TOP message (the first block; nested
-    definitions after a '====' separator are not needed by our types)."""
-    fields = []
-    for line in text.splitlines():
-        if line.startswith("===="):
-            break
-        s = line.split("#", 1)[0].strip()
-        if not s or "=" in s:
-            continue
-        typ, name = s.split()[:2]
-        fields.append((typ, name))
-    return fields
-
-
-def decode_cdr(schema_name: str | None, schema_text: str | None, data: bytes):
-    """→ dict of fields (or {'data': str} for std_msgs/String). Only the shapes our .msg files
-    use: primitives, string, primitive sequences."""
-    if schema_name in (None, "std_msgs/msg/String"):
-        c = Cdr(data)
-        return {"data": c.string()}
-    if not schema_text:
-        raise ValueError(f"no schema text for {schema_name}; cannot decode without ROS")
-    c = Cdr(data)
-    out = {}
-    for typ, name in parse_msgdef(schema_text):
-        if typ.endswith("[]"):
-            base = typ[:-2]
-            out[name] = c.seq_prim(base) if base in _PRIM else [c.string() for _ in range(c.prim("uint32"))]
-        elif typ == "string":
-            out[name] = c.string()
-        elif typ in _PRIM:
-            out[name] = c.prim(typ)
-        else:
-            raise ValueError(f"{schema_name}: field {name} of type {typ} is not supported by this decoder")
-    return out
+# CDR decoding (XCDR1): rig_nodes.cdr (reiserlab/rig-nodes) — ONE decoder for this converter, the
+# sizing study and the arena harness; the names stay importable from here.
+from rig_nodes.cdr import Cdr, decode_cdr, parse_msgdef  # noqa: E402,F401
 
 
 # ─────────────────────────────────────────────────────────────────────────────

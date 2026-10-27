@@ -10,8 +10,10 @@
     (CW → CCW pair, u32 clock wrap, a skipped frame, refusals, an error glyph, staleness) and on
     a REAL trial (tests/fixtures/okey_smoke_violet_cw.jsonl.gz: the 2026-10-14 smoke run's violet
     CW trial on the 2×10 four-color bench arena, 80 fps, ring telemetry);
-  * bias_health; tools/ufmf.py on a synthetic BIAS-layout movie (indexed, unindexed, torn);
-  * foxglove_json.py --stimulus end to end on a small MCAP bag built from the fixture.
+  * tools/ufmf.py on a synthetic BIAS-layout movie (indexed, unindexed, torn) — bias_health itself
+    moved to rig-nodes (rig_nodes.bias_health, tested in its tests/test_pure.py);
+  * foxglove_json.py --stimulus end to end on a small MCAP bag built from the fixture (the arena
+    wrapper's `derive` hook into rig_nodes.foxglove_json.convert).
 """
 
 from __future__ import annotations
@@ -37,7 +39,6 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import arena_display as AD  # noqa: E402
 import stimulus_core as SC  # noqa: E402
-from bias_health import CountRate, bias_drops  # noqa: E402
 from ufmf import UfmfReader  # noqa: E402
 
 failures = 0
@@ -272,15 +273,7 @@ else:
     check("real trial: health never ERROR/STALE during the trial", not ({"ERROR", "STALE"} & levels), str(levels))
     check("real trial: dark after the ITI's allOff", tr.state == "dark")
 
-# ── 5. bias_health ───────────────────────────────────────────────────────────
-cr = CountRate(2.0)
-vals = [cr.add(t / 5.0, 30 * t / 5.0) for t in range(20)]
-check("CountRate: 30 fps from a counter polled at 5 Hz", abs(vals[-1] - 30.0) < 1e-6, str(vals[-1]))
-check("CountRate: a new recording (counter back to 0) restarts the window",
-      cr.add(4.2, 0) is None and abs(cr.add(4.6, 12) - 30.0) < 1e-6)
-check("bias_drops: None when BIAS reports no counters", bias_drops({"frameCount": 5}) is None)
-check("bias_drops: the sum of the counters it reports", bias_drops({"frameIdGaps": 2, "writerSkipped": 1, "cameraSkipped": 0}) == 3.0)
-
+# ── 5. (bias_health moved to rig-nodes: rig_nodes.bias_health, tests/test_pure.py there) ──
 
 # ── 6. tools/ufmf.py on a synthetic BIAS-layout movie ────────────────────────
 def write_ufmf(path: Path, frames, bg, indexed=True, torn=False) -> None:

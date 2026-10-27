@@ -3,7 +3,7 @@
 
 Used by `foxglove_json.py --stimulus` so `foxglove/arena-okey-cokey.json` works on a replayed
 run exactly as it does live. It runs the SAME pure code the live nodes run — stimulus_core
-(the expected/observed display and arena health), arena_display (the pixels), bias_health
+(the expected/observed display and arena health), arena_display (the pixels), rig_nodes.bias_health
 (BIAS rate and losses) — over the bag's `/arena/browser` and `/bias/*` records, and emits:
 
   /arena/display, /arena/display_observed     foxglove.CompressedImage (PNG), as stimulus_node
@@ -35,7 +35,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "tools"))
 import arena_display as AD  # noqa: E402
 import stimulus_core as SC  # noqa: E402
-from bias_health import CountRate, bias_drops  # noqa: E402
+from rig_nodes.bias_health import CountRate, bias_drops  # noqa: E402  (rig-nodes ≥ 0.2.2)
 
 IMAGE_SCHEMA = "foxglove.CompressedImage"
 

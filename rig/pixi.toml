@@ -1,106 +1,114 @@
-# rig — the ROS 2 bridge graph (LAB-303). Renamed from `ros2-poc/` on 2026-10-26
-# (docs/development/rig-software-repos-and-runners.md §3.2 / §7.12).
+# rig — the ARENA rig's ROS 2 workspace (LAB-303): the Studio gateway, the arena composition and the
+# arena visualization, on top of the shared rig-nodes package set. Renamed from `ros2-poc/` on
+# 2026-10-26; the shared part (interfaces, device adapters + simulators, recorder, supervision,
+# benches) moved to reiserlab/rig-nodes the same day (docs/development/rig-software-repos-and-runners.md
+# §3.3, LAB-338) and is INSTALLED here as the `rig_nodes` (+ optional `rig_interfaces`) packages.
 #
 # A SEPARATE pixi workspace from the repo root one on purpose: the root `pixi.toml`
 # (bridge 3.4, tests, release tooling) stays untouched, and the two environments
-# live side by side on a rig PC — `pixi run bridge` at the root is the shipping
-# bridge, `pixi run rig` here is the PoC graph.
+# live side by side on a rig PC — `pixi run bridge` at the root is the legacy
+# bridge, `pixi run rig` here is the graph.
 #
-#   pixi install          # RoboStack Jazzy (ros-base) + rmw_zenoh + our Python deps
+#   pixi install          # RoboStack Jazzy (ros-base) + rmw_zenoh + rosbag2/MCAP + rig_nodes (from the rig-nodes channel)
 #   pixi run rig          # Zenoh router + fictrac adapter + bridge node (one command)
+#   pixi install -e typed # + rig_interfaces: typed /fictrac/frame + /arena/frame (same solve group, one RoboStack set)
+#   pixi install -e dev   # a sibling checkout of rig-nodes (../../rig-nodes) built from source instead of the channel
 #
-# Channels: RoboStack publishes ROS 2 as conda packages; conda-forge first so the
-# non-ROS stack (python, websockets, pyzmq) resolves from there. Bare channel names
-# resolve through pixi's default channel alias (conda.anaconda.org), which is what
-# a lab network with an allowlisting proxy is most likely to permit.
+# Channels: RoboStack publishes ROS 2 as conda packages; conda-forge first so the non-ROS stack
+# (python, websockets, pyzmq) resolves from there. Bare channel names resolve through pixi's
+# default channel alias (conda.anaconda.org), which is what a lab network with an allowlisting
+# proxy is most likely to permit. The rig-nodes channel is read over raw.githubusercontent.com
+# pinned to a RELEASE TAG of that repository (its channel/ directory holds the payload on the
+# tagged commit only; git history serves the URL).
 [workspace]
 name = "rig"
 version = "0.1.0"
-channels = ["conda-forge", "robostack-jazzy"]
+channels = ["conda-forge", "robostack-jazzy", "https://raw.githubusercontent.com/reiserlab/rig-nodes/v0.2.1/channel"]
 platforms = ["osx-arm64", "win-64", "linux-64"]
-# pixi-build (preview): `pixi install` builds interfaces/rig_interfaces (our .msg types) as a
-# conda package with the RoboStack pixi-build-ros backend. On Windows that build needs the MSVC
-# v143 toolset and a short build path (docs/typed-windows.md — the cost LAB-303 Plan B records);
-# everything else is downloaded as before.
 preview = ["pixi-build"]
+
+# rmw_zenoh ≥ 0.2.11 (the RoboStack 0.19 set) is built for macOS ≥ 14; without this floor the
+# osx-arm64 solve falls back to the 0.16 set and the platforms drift apart (rig-nodes pins 0.19).
+[system-requirements]
+macos = "14.0"
 
 [activation.env]
 # Every ROS 2 process in this workspace uses the Zenoh middleware. rmw_zenoh needs
 # ONE router per host (`pixi run router`); nodes keep retrying until it is up.
 RMW_IMPLEMENTATION = "rmw_zenoh_cpp"
 ZENOH_ROUTER_CHECK_ATTEMPTS = "0"
-# Loopback-only Zenoh: the stock rmw_zenoh configs listen on `tcp/[::]:7447` (fails on a
-# host without IPv6) and connect to `tcp/localhost:7447`. Ours bind/connect 127.0.0.1 —
-# a rig PC's graph is not reachable from the lab network. Stock files with ONLY the two
-# endpoint lines changed (diff them against share/rmw_zenoh_cpp/config/ in the env).
-ZENOH_ROUTER_CONFIG_URI = "$PIXI_PROJECT_ROOT/config/zenoh-router.json5"
-ZENOH_SESSION_CONFIG_URI = "$PIXI_PROJECT_ROOT/config/zenoh-session.json5"
+# Loopback-only Zenoh: the stock rmw_zenoh configs listen on `tcp/[::]:7447` (fails on a host
+# without IPv6) and connect to `tcp/localhost:7447`; the rig-nodes configs bind/connect 127.0.0.1 —
+# a rig PC's graph is not reachable from the lab network. The two json5 files ship INSIDE the
+# installed rig_nodes package (rig_nodes/zenoh.py applies them as defaults to every node that
+# imports rig_nodes._common, and rig.py sets them for its children); these lines only make
+# `ros2 topic echo` and friends in this workspace use them too. Python is pinned to 3.12, so the
+# site-packages path is stable.
+ZENOH_ROUTER_CONFIG_URI = "$CONDA_PREFIX/lib/python3.12/site-packages/rig_nodes/config/zenoh-router.json5"
+ZENOH_SESSION_CONFIG_URI = "$CONDA_PREFIX/lib/python3.12/site-packages/rig_nodes/config/zenoh-session.json5"
 # Same reason as the root workspace: the adapters print non-ASCII to stderr and
 # Python on Windows would pick cp1252 when stdio is a pipe.
 PYTHONUTF8 = "1"
 
-# Windows: pixi builds the activation as a cmd.exe script, so `$PIXI_PROJECT_ROOT` above stays
-# literal there (rmw_zenohd: `Failed to read config from $PIXI_PROJECT_ROOT/config/…`, ww18
-# 2026-10-15) while `%PIXI_PROJECT_ROOT%` expands under `pixi run`. These keys override the two
-# above on win-64 only.
+# Windows: pixi builds the activation as a cmd.exe script, so `$CONDA_PREFIX` above stays
+# literal there while `%CONDA_PREFIX%` expands under `pixi run` (ww18 2026-10-15, for
+# `$PIXI_PROJECT_ROOT`). These keys override the two above on win-64 only.
 [target.win-64.activation.env]
-ZENOH_ROUTER_CONFIG_URI = '%PIXI_PROJECT_ROOT%\config\zenoh-router.json5'
-ZENOH_SESSION_CONFIG_URI = '%PIXI_PROJECT_ROOT%\config\zenoh-session.json5'
+ZENOH_ROUTER_CONFIG_URI = '%CONDA_PREFIX%\Lib\site-packages\rig_nodes\config\zenoh-router.json5'
+ZENOH_SESSION_CONFIG_URI = '%CONDA_PREFIX%\Lib\site-packages\rig_nodes\config\zenoh-session.json5'
 
 [dependencies]
+# ── ONE RoboStack set, pinned (2026-10-26): the set the rig-nodes packages were built against ──
+# The mutex decides which RoboStack Jazzy rebuild every ros-jazzy-* package comes from. 0.19 +
+# Python 3.12 is what the rigs run; rig_nodes / rig_interfaces pin the same, so a rig gets one set.
+ros2-distro-mutex = "0.19.*"
+python = "3.12.*"
 ros-jazzy-ros-base = "*"
 ros-jazzy-rmw-zenoh-cpp = "*"
 # The canonical talker/listener smoke test (`ros2 run demo_nodes_py …`); not part of ros-base.
 ros-jazzy-demo-nodes-py = "*"
-python = "*"
 websockets = ">=12"
 pyzmq = "*"
-# ── Plan B spike (LAB-303): MCAP as the record of truth ─────────────────────
-# rosbag2's Python API + the MCAP storage plugin record every topic per run
-# (nodes/recorder.py); the pure-Python `mcap` reader converts a bag — or a
-# crash-truncated one — back to the behavior_v2 NDJSON (nodes/mcap_convert.py)
-# without needing a ROS process.
+# ── MCAP as the record of truth (LAB-303 Plan B) ─────────────────────────────
+# rosbag2's Python API + the MCAP storage plugin record every topic per run (rig_nodes.recorder,
+# driven by nodes/bridge_node.py); the pure-Python `mcap` reader converts a bag — or a
+# crash-truncated one — back to the behavior_v2 NDJSON (nodes/mcap_convert.py) without a ROS process.
 ros-jazzy-rosbag2-py = "*"
 ros-jazzy-rosbag2-storage-mcap = "*"
 mcap = ">=1.2"
+# ── the shared rig-nodes package set, pinned (one version for the set; README "Releasing") ──
+# Device adapters (FicTrac, Kinefly, BIAS, ScanImage) and their simulators, the MCAP recorder and
+# indexer, the CDR decoder, the Foxglove rewriter, the supervision primitives rig.py composes with.
+# Written into every run's record by the gateway (hello_ack + /arena/session `packages`).
+rig_nodes = "==0.2.1"
 
-# ── typed messages = the OPT-IN `typed` environment ───────────────────────────
-# `pixi install -e typed` builds interfaces/rig_interfaces (FicTracFrame, ArenaFrame,
-# ConnectorReply) from source with the RoboStack pixi-build-ros backend and brings the
-# ament/rosidl toolchain. rosidl generates C typesupport + a Python C extension, so this
-# needs a C/C++ compiler on the installing machine (Windows: the MSVC v143 toolset, which pixi
-# cannot install, plus `pixi config set --local detached-environments C:\px` for MAX_PATH;
-# docs/typed-windows.md also tests the no-compiler alternative, a CI-built channel) — kept OUT of
-# the default environment so a rig PC can always `pixi install` and
-# run the graph with String topics (the nodes fall back on their own, `--typed auto`).
-# The build cost is the LAB-303 data point: `pixi run -e typed test` and README.md.
+# ── typed messages = the OPT-IN `typed` environment ───────────────────────────────────────
+# `pixi install -e typed` adds rig_interfaces (FicTracFrame, ArenaFrame, ConnectorReply) from the
+# SAME channel, built in rig-nodes' CI for win-64 / osx-arm64 / linux-64 — no compiler, no build
+# backend, no MAX_PATH (docs in rig-nodes: docs/typed-distribution-decision.md). Same solve group
+# as the default environment: since the package pins the 0.19 set too, the two environments share
+# one RoboStack set (the 0.2.0 build did not — rig-nodes channel/README.md). Kept OUT of the default
+# environment so the rigs keep recording String topics until typed recording is decided for them;
+# the nodes fall back on their own (`--typed auto`).
 [feature.typed.dependencies]
-rig_interfaces = { path = "interfaces/rig_interfaces" }
+rig_interfaces = "==0.2.1"
+
+# ── developer path: a sibling checkout of rig-nodes, built from source ───────────────────────
+# `pixi install -e dev` swaps the two channel pins for path dependencies on ../../rig-nodes (a
+# checkout beside webDisplayTools), so a node fix is tested here without a rig-nodes release
+# (rig-software-repos-and-runners.md §7.6). Builds both packages in place (pixi-build), so it
+# needs the rosidl toolchain and a C/C++ compiler like the rig-nodes workspace itself. Own solve
+# group: the default/typed locks are untouched.
+[feature.dev.dependencies]
+rig_nodes = { path = "../../rig-nodes/src/rig_nodes" }
+rig_interfaces = { path = "../../rig-nodes/src/rig_interfaces" }
 ros-jazzy-ament-cmake = "*"
 ros-jazzy-rosidl-default-generators = "*"
 ros-jazzy-rosidl-default-runtime = "*"
 ros-jazzy-ros-environment = "*"
-colcon-common-extensions = "*"
 cmake = "*"
 ninja = "*"
 cxx-compiler = "*"
-
-# ── typed messages WITHOUT a compiler = the OPT-IN `typed-prebuilt` environment ──────────
-# "Build once, publish to a channel" (docs/typed-distribution-decision.md): `pixi install -e
-# typed-prebuilt` downloads rig_interfaces 0.2.0 like any RoboStack package: no MSVC, no build
-# backend, no MAX_PATH. The channel is built by .github/workflows/rig-interfaces.yml (win-64,
-# osx-arm64, linux-64; channel/README.md lists the files and sha256s) and read over
-# raw.githubusercontent.com pinned to the payload commit — git history serves it, the tree holds
-# only channel/README.md (a relative `./channel` would be written into pixi.lock as this machine's
-# absolute path). Its own solve group, so the other environments' locks are untouched; the CI
-# packages pin the ros2-distro-mutex their runner resolved (channel/README.md), not the poc
-# group's, so this group resolves its own RoboStack set per platform.
-[feature.typed-prebuilt]
-platforms = ["win-64", "osx-arm64", "linux-64"]
-channels = ["https://raw.githubusercontent.com/reiserlab/webDisplayTools/39eeb1fa43874aae7d845dfec2a8f049c68f8954/rig/channel"]
-
-[feature.typed-prebuilt.dependencies]
-rig_interfaces = { version = "==0.2.0", channel = "https://raw.githubusercontent.com/reiserlab/webDisplayTools/39eeb1fa43874aae7d845dfec2a8f049c68f8954/rig/channel" }
 
 # ── seeing the graph = the OPT-IN `viz` environment ──────────────────────────
 # `pixi install -e viz`: rqt_graph (live node/topic graph, Qt), rqt_topic / rqt_console, and
@@ -120,38 +128,39 @@ ros-jazzy-foxglove-bridge = "*"
 PATH = '%CONDA_PREFIX%\Library\lib;%PATH%'
 
 [environments]
-default = { solve-group = "poc" }
-typed = { features = ["typed"], solve-group = "poc" }
-viz = { features = ["viz"], solve-group = "poc" }
-typed-prebuilt = { features = ["typed-prebuilt"], solve-group = "prebuilt" }
+default = { solve-group = "rig" }
+typed = { features = ["typed"], solve-group = "rig" }
+viz = { features = ["viz"], solve-group = "rig" }
+dev = { features = ["dev", "typed"], solve-group = "dev" }
 
 [tasks]
 # ── hour one: middleware bring-up ───────────────────────────────────────────
-router = "ros2 run rmw_zenoh_cpp rmw_zenohd"
+router = "rig-router"
 talker = "ros2 run demo_nodes_py talker"
 listener = "ros2 run demo_nodes_py listener"
-# ── adapters (device programs → ROS topics; no custom message types) ────────
-fictrac-adapter = "python nodes/fictrac_udp_adapter.py"
-kinefly-adapter = "python nodes/kinefly_udp_adapter.py"
-bias-node = "python nodes/bias_node.py"
-bias-cmd = "python nodes/bias_cmd.py"
+# ── device adapters + command tools (rig_nodes console scripts) ─────────────
+fictrac-adapter = "rig-fictrac-adapter"
+kinefly-adapter = "rig-kinefly-adapter"
+bias-node = "rig-bias-node"
+bias-cmd = "rig-bias-cmd"
 # ScanImage (built-in JSON server on the ScanImage PC, LAB-303/LAB-306): node + one-shot command.
-scanimage-node = "python nodes/scanimage_node.py"
-scanimage-cmd = "python nodes/scanimage_cmd.py"
-# ── the bridge node: bridge.py's hub + log writer + dispatcher on ROS input ──
+scanimage-node = "rig-scanimage-node"
+scanimage-cmd = "rig-scanimage-cmd"
+# ── the bridge node (this rig's gateway): bridge.py's hub + log writer + dispatcher on ROS input ──
 bridge-node = "python nodes/bridge_node.py"
-# ── simulators (the root workspace's fictrac_sim.py, unmodified) ────────────
-sim = "python ../fictrac-bridge/fictrac_sim.py"
-kinefly-sim = "python nodes/kinefly_sim.py"
-bias-sim = "python nodes/bias_sim.py"
+# ── simulators (rig_nodes.sims) ────────────────────────────────────────────
+sim = "rig-fictrac-sim"
+kinefly-sim = "rig-kinefly-sim"
+bias-sim = "rig-bias-sim"
 # A stand-in for ScanImage's JSON server (stock behaviors incl. bug B2) for off-rig tests.
-si-mock = "python tests/si_json_mock.py"
+si-mock = "rig-si-mock"
 # ── the one command a rig runs ──────────────────────────────────────────────
 rig = "python nodes/rig.py"
 # ── acceptance test (LAB-303 PoC criteria): whole graph + Studio emulator + model fly ──
+# This is also the cross-repository smoke for the installed rig-nodes package set (record §7.8).
 test = "python tests/test_ros2_poc.py"
 studio-emulator = "python tests/studio_emulator.py"
-# ── Plan B spike: MCAP record + converter + typed interfaces ──────────────────
+# ── MCAP record + converter ──────────────────────────────────────────────────
 # bag → behavior_v2 NDJSON (also `-- --level behavior_v1|full`, `-- --order time`);
 # reads a crash-truncated bag too (`-- --recover`).
 convert = "python nodes/mcap_convert.py"
@@ -161,18 +170,14 @@ convert = "python nodes/mcap_convert.py"
 export = "python nodes/export_log.py"
 # Rewrite a finished bag indexed + zstd-compressed (the bridge does this itself when a run
 # closes cleanly; use it on a bag recorded before that, or after `--recover`).
-reindex = "python nodes/mcap_index.py"
-# Bag-size study of the FicTrac record (docs/development/fictrac-columns-in-the-bag.md): a bag vs its
-# jsonl.gz under the final layout and the alternatives that were measured and declined.
-size-columns = "python sizing/columns.py"
-# Build interfaces/rig_interfaces with colcon inside the `typed` env (the alternative to
-# the pixi-build route); timed and recorded in README.md → "Plan B spike".
-build-interfaces = "python nodes/build_interfaces.py"
+reindex = "rig-reindex"
+# Is the typed package usable in THIS environment (imports AND serializes)?
+check-typed = "python -m rig_nodes.build_interfaces --check"
 # ── seeing the graph ─────────────────────────────────────────────────────────
 # The live graph as Mermaid (default), DOT (`-- --dot`) or a table with rates (`-- --text`);
 # works in every environment while `pixi run rig` is up.
-graph = "python nodes/graph_dump.py"
-# Foxglove dashboards: the typed republisher (plots/3D markers from the JSON streams; `pixi run rig -- --foxglove` starts it with foxglove_bridge), its unit test, and the offline String-bag → plottable-MCAP converter
+graph = "rig-graph"
+# Foxglove dashboards: the typed republisher (plots/3D markers from the JSON streams; `pixi run rig -- --foxglove` starts it with foxglove_bridge), its unit test, and the offline String-bag → plottable-MCAP converter with the arena derivations
 viz = "python nodes/viz_node.py"
 test-viz = "python tests/test_viz_node.py"
 fox-json = "python nodes/foxglove_json.py"

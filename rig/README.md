@@ -9,6 +9,19 @@ comment holds the acceptance criteria), `docs/development/bridge-connectors-exec
 This directory is its own pixi workspace. The root `pixi.toml` and `fictrac-bridge/` are
 untouched, so bridge 3.4 (`pixi run bridge` at the repo root) stays installed side by side.
 
+> **Since 2026-10-26 (LAB-338):** the shared part of this graph — `rig_interfaces`, the device
+> adapters and simulators (FicTrac, Kinefly, BIAS, ScanImage), the MCAP recorder/indexer, the CDR
+> decoder, the generic Foxglove rewriter, the supervision primitives, the Zenoh configs and the
+> benches — lives in **[reiserlab/rig-nodes](https://github.com/reiserlab/rig-nodes)** and is
+> installed here as the pinned `rig_nodes` (+ opt-in `rig_interfaces`) packages from that repo's
+> channel (`pixi.toml`). What stays here is the arena's own: the Studio gateway `nodes/bridge_node.py`,
+> the behavior_v2 converter `nodes/mcap_convert.py` + `nodes/_rows.py`, the composition `nodes/rig.py`,
+> the arena visualization (`nodes/viz_node.py`, `nodes/foxglove_json.py`'s arena derivations,
+> `foxglove/`), the Studio emulator and this harness. Device nodes are started as
+> `python -m rig_nodes.<module>` / the `rig-*` console scripts; a node fix is tested here with
+> `pixi install -e dev` (a sibling `../../rig-nodes` checkout built from source). The graph contract
+> is rig-nodes' `CONTRACT.md`. The sections below are the build record and keep their original paths.
+
 ```
  fictrac_sim.py / FicTrac ──UDP :60000──▶ fictrac_udp_adapter ──/fictrac/raw──▶┐
  Kinefly (KF/1)           ──UDP :60001──▶ kinefly_udp_adapter ──/kinefly/raw──▶│  bridge_node ──ws://localhost:8765──▶ Arena Studio (unmodified)
@@ -21,7 +34,8 @@ untouched, so bridge 3.4 (`pixi run bridge` at the repo root) stays installed si
 
 ```bash
 cd rig
-pixi install              # RoboStack Jazzy ros-base + rmw_zenoh + demo nodes + websockets/pyzmq (≈1.3 GB)
+pixi install              # RoboStack Jazzy ros-base + rmw_zenoh + rosbag2/MCAP + rig_nodes from the rig-nodes channel (≈1.3 GB)
+pixi install -e typed     # + rig_interfaces (typed /fictrac/frame + /arena/frame), same RoboStack set, no compiler
 pixi run rig              # router + FicTrac adapter + bridge node        → Studio connects to ws://localhost:8765
 pixi run rig -- --kinefly --bias           # + Kinefly KF/1 adapter + BIAS node
 pixi run rig -- --sim --bias --bias-sim    # demo with no hardware: FicTrac sim + a fake BIAS program
@@ -32,13 +46,13 @@ Pieces, individually (each is also a `pixi run` task; `--help` on every script):
 
 | task | what |
 |---|---|
-| `router` | `ros2 run rmw_zenoh_cpp rmw_zenohd` with `config/zenoh-router.json5` (listens on `tcp/127.0.0.1:7447`) |
+| `router` | `rig-router` (rig_nodes): `rmw_zenohd` with the package's loopback `zenoh-router.json5` (listens on `tcp/127.0.0.1:7447`) |
 | `talker` / `listener` | the stock `demo_nodes_py` pair — the first thing to run on a new machine |
 | `fictrac-adapter` | UDP :60000 → `/fictrac/raw`; FicTrac's own `sock_port` stays what it is today |
 | `kinefly-adapter` | UDP :60001 → `/kinefly/raw`; accepts only `protocol: "Kinefly", version: 1` datagrams |
 | `bias-node` / `bias-cmd` | BIAS HTTP command port ⇄ `/bias/cmd`, `/bias/reply`, `/bias/status`; `bias-cmd` sends one plugin command |
 | `bridge-node` | bridge.py's `Hub` + `LogWriter` + `Pipeline` + `make_dispatcher` on ROS input; `/arena/frame` mirror |
-| `sim` | the root `fictrac-bridge/fictrac_sim.py`, unmodified (`-- --model fly --kp 2` for a fixating fly) |
+| `sim` | `rig-fictrac-sim` (rig_nodes.sims.fictrac_sim, moved from `fictrac-bridge/`; `-- --model fly --kp 2` for a fixating fly) |
 | `kinefly-sim` / `bias-sim` | synthetic KF/1 producer; a fake BIAS program (HTTP, state machine, writes the video file) |
 | `studio-emulator` | the Studio runner's exact bridge conversation, for machines without a browser |
 | `stimulus` | `nodes/stimulus_node.py`: the arena's EXPECTED display (the trial's `.pat` frame × duty in the panels' LED colors) and its OBSERVED display (controller telemetry) as PNG images, plus arena rate / lag / health, from the live `/arena/browser`; `pixi run rig -- --stimulus` (included by `--foxglove`). Layout `foxglove/arena-okey-cokey.json` (camera + G6, no FicTrac); the same layout on a finished run: `pixi run fox-json -- <bag> <out.mcap> --stimulus --panel-layout four-color` (adds `/camera/image` from the run's uFMF). Plan + status: `docs/okey-cokey-foxglove-dashboard-plan.md` |
@@ -46,7 +60,7 @@ Pieces, individually (each is also a `pixi run` task; `--help` on every script):
 
 Environment set by the workspace (`[activation.env]`): `RMW_IMPLEMENTATION=rmw_zenoh_cpp`,
 `ZENOH_ROUTER_CHECK_ATTEMPTS=0` (nodes wait for the router), `ZENOH_ROUTER_CONFIG_URI` /
-`ZENOH_SESSION_CONFIG_URI` → the two files under `config/` (stock rmw_zenoh configs with the
+`ZENOH_SESSION_CONFIG_URI` → the two json5 files shipped inside the installed `rig_nodes` package (since 2026-10-26; before: `config/`; stock rmw_zenoh configs with the
 endpoint changed from `tcp/[::]:7447` / `tcp/localhost:7447` to `tcp/127.0.0.1:7447`: the
 stock router fails on a host without IPv6, and a rig's graph should not be reachable from the
 lab network anyway). The two config paths use `$PIXI_PROJECT_ROOT`; `rig.py` sets them

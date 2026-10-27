@@ -16,9 +16,9 @@ node. Then the exported log is judged:
   ─────────────────────────────────────────────────────────────────────────────────────
   pixi install, no manual steps; one `pixi run rig`             this test runs in that env; rig.py is the launcher
   no custom message types                                       std_msgs/String everywhere (grep in CI below)
-  FicTrac via the sim through a UDP→ROS adapter, untouched      fictrac_sim.py unmodified, adapter in nodes/
+  FicTrac via the sim through a UDP→ROS adapter, untouched      rig_nodes.sims.fictrac_sim, adapter rig_nodes.fictrac_udp_adapter
   Kinefly fork via a KF/1 adapter                               kinefly_sim.py (KF/1 bytes) → adapter → ["kf",…] rows
-  BIAS via the Mac port                                         bias_sim.py here; real BIAS = same HTTP interface
+  BIAS via the Mac port                                         rig_nodes.sims.bias_sim; real BIAS = same HTTP interface
   unmodified Studio passes the closed-loop report               emulator speaks the client's protocol; report:
                                                                 rejection > 0.8 on uninterrupted epochs, idx mismatch 0
   … and the runlog format tests                                 js/runlog-format + runlog-replay readers accept every line;
@@ -74,11 +74,10 @@ HERE = Path(__file__).resolve().parent
 POC = HERE.parent
 REPO = POC.parent
 NODES = POC / "nodes"
-SIM = REPO / "fictrac-bridge" / "fictrac_sim.py"
 BRIDGE_PY = REPO / "fictrac-bridge" / "bridge.py"
 PY = sys.executable
 sys.path.insert(0, str(NODES))
-from _common import SIGKILL, popen_group, signal_group, wait_port  # noqa: E402
+from rig_nodes.supervise import SIGKILL, popen_group, signal_group, wait_port  # noqa: E402  (reiserlab/rig-nodes)
 
 results: list[tuple[str, bool, str]] = []
 
@@ -337,7 +336,7 @@ def frame_record_size(bag: Path, export: Path) -> dict:
     from mcap.writer import CompressionType, IndexType, Writer
 
     sys.path.insert(0, str(NODES))
-    from mcap_index import ZSTD_LEVEL, _zstd_level  # noqa: E402
+    from rig_nodes.mcap_index import ZSTD_LEVEL, _zstd_level  # noqa: E402
 
     buf = io.BytesIO()
     n = 0
@@ -393,28 +392,28 @@ def main(argv: list[str] | None = None) -> int:
         if not a.no_router:
             start("router", ["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"])
             check("zenoh router listening on 127.0.0.1:7447", wait_port("127.0.0.1", 7447, 20.0))
-        fictrac = start("fictrac-adapter", [PY, str(NODES / "fictrac_udp_adapter.py"), "--status-every", "0"])
-        start("kinefly-adapter", [PY, str(NODES / "kinefly_udp_adapter.py"), "--status-every", "0"])
+        fictrac = start("fictrac-adapter", [PY, "-m", "rig_nodes.fictrac_udp_adapter", "--status-every", "0"])
+        start("kinefly-adapter", [PY, "-m", "rig_nodes.kinefly_udp_adapter", "--status-every", "0"])
         # The sim on a free port, not BIAS's 5010: a rig PC often has the real BIAS open.
         bias_port = free_tcp_port()
-        start("bias-sim", [PY, str(NODES / "bias_sim.py"), "--port", str(bias_port), "--video-dir", str(videos)])
-        start("bias-node", [PY, str(NODES / "bias_node.py"), "--port", str(bias_port), "--status-every", "1", "--video-dir", str(videos)])
+        start("bias-sim", [PY, "-m", "rig_nodes.sims.bias_sim", "--port", str(bias_port), "--video-dir", str(videos)])
+        start("bias-node", [PY, "-m", "rig_nodes.bias_node", "--port", str(bias_port), "--status-every", "1", "--video-dir", str(videos)])
         # ScanImage stand-in on a free port (a rig PC may have the real JSON server on 5555): short
         # grabs, a short start delay, and one allowlisted property it never answers (the UNKNOWN path).
         si_port = free_tcp_port()
-        start("si-mock", [PY, str(HERE / "si_json_mock.py"), "--port", str(si_port), "--grab-s", "1.0", "--start-delay-s", "0.2", "--stall-on", "hSI.hRoiManager.scanZoomFactor"])
-        start("scanimage-node", [PY, str(NODES / "scanimage_node.py"), "--port", str(si_port), "--status-every", "1", "--timeout-s", "1.5"])
+        start("si-mock", [PY, "-m", "rig_nodes.sims.si_json_mock", "--port", str(si_port), "--grab-s", "1.0", "--start-delay-s", "0.2", "--stall-on", "hSI.hRoiManager.scanZoomFactor"])
+        start("scanimage-node", [PY, "-m", "rig_nodes.scanimage_node", "--port", str(si_port), "--status-every", "1", "--timeout-s", "1.5"])
         bridge_argv = [PY, str(NODES / "bridge_node.py"), "--log-dir", str(runlogs), "--source-timeout", "1.5", "--bag-profile", a.bag_profile]
         bridge = start("bridge-node", bridge_argv)
         check("bridge node serving ws://127.0.0.1:8765", wait_port("127.0.0.1", 8765, 20.0))
         time.sleep(1.5)  # discovery
-        start("kinefly-sim", [PY, str(NODES / "kinefly_sim.py"), "--rate", "100", "--seed", "1"])
-        start("model-fly", [PY, str(SIM), "--model", "fly", "--kp", "2", "--seed", "1", "--rate", "50"])
+        start("kinefly-sim", [PY, "-m", "rig_nodes.sims.kinefly_sim", "--rate", "100", "--seed", "1"])
+        start("model-fly", [PY, "-m", "rig_nodes.sims.fictrac_sim", "--model", "fly", "--kp", "2", "--seed", "1", "--rate", "50"])
         time.sleep(1.5)
 
         # ── side actors during the run: BIAS commands + the adapter kill ─────────────
         def bias_cmd(*args: str) -> dict:
-            r = run_capture([PY, str(NODES / "bias_cmd.py"), *args, "--json", "--timeout", "10"], timeout=30)
+            r = run_capture([PY, "-m", "rig_nodes.bias_cmd", *args, "--json", "--timeout", "10"], timeout=30)
             try:
                 return json.loads(r.stdout) if r.stdout.strip().startswith("{") else {"rc": r.returncode, "err": r.stderr[-300:]}
             except json.JSONDecodeError:
@@ -690,7 +689,7 @@ def main(argv: list[str] | None = None) -> int:
             print("  skip  JS reader check: no `node` and no root pixi env (run `pixi install` at the repo root)", file=sys.stderr)
 
         # Plan B item 3/4: typed topics when the interfaces package is built in this env.
-        ifc = run_capture([PY, str(NODES / "build_interfaces.py"), "--check"], timeout=60)
+        ifc = run_capture([PY, "-m", "rig_nodes.build_interfaces", "--check"], timeout=60)
         have_ifaces = ifc.returncode == 0
         if have_ifaces:
             check("typed: rig_interfaces importable → ArenaFrame recorded in the bag (and no FicTracFrame by default)",

@@ -62,8 +62,8 @@ from rclpy.node import Node
 from std_msgs.msg import Bool, ColorRGBA, Float64, String
 from visualization_msgs.msg import Marker, MarkerArray
 
-from _common import RELIABLE_QOS, spin
-from bias_health import CountRate, bias_drops
+from rig_nodes._common import RELIABLE_QOS, spin
+from rig_nodes.bias_health import CountRate, bias_drops  # rig-nodes ≥ 0.2.2 (moved from rig/nodes/bias_health.py)
 
 BALL_R = 1.0
 ARENA_R = 3.2

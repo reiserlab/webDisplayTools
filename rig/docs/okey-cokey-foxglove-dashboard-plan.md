@@ -11,7 +11,7 @@
 > | tracker: expected/observed index, lag, display rate, health | `nodes/stimulus_core.py` (pure) |
 > | renderer + Python port of the panel colors | `nodes/arena_display.py` (pinned cell by cell to `js/panel-color.js` under Node) |
 > | live node | `nodes/stimulus_node.py`; `pixi run rig -- --stimulus` (`--foxglove` includes it), `--no-fictrac` for this rig |
-> | BIAS rate / drops / rtt / writer queue | `nodes/bias_health.py`, `viz_node.py` (`--sources bias` hides the unused FicTrac/Kinefly/arena-frame statuses) |
+> | BIAS rate / drops / rtt / writer queue | `rig_nodes.bias_health` (reiserlab/rig-nodes), `viz_node.py` (`--sources bias` hides the unused FicTrac/Kinefly/arena-frame statuses) |
 > | replay: same topics from a finished bag + `/camera/image` from the uFMF | `nodes/dashboard_replay.py` via `pixi run fox-json -- <bag> <out> --stimulus`; `tools/ufmf.py` (BIAS v4 layout, index or scan) |
 > | layout | `foxglove/arena-okey-cokey.json` (15 panels) |
 >

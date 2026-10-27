@@ -42,7 +42,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Bool, Float64, String
 
-from _common import RELIABLE_QOS, spin, wall_ms
+from rig_nodes._common import RELIABLE_QOS, spin, wall_ms
 import arena_display as AD
 import stimulus_core as SC
 

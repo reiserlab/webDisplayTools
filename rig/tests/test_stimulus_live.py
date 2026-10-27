@@ -29,7 +29,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT / "nodes"))
-from _common import popen_group, signal_group, wait_port  # noqa: E402
+from rig_nodes.supervise import popen_group, signal_group, wait_port  # noqa: E402  (reiserlab/rig-nodes)
 
 FIXTURE = HERE / "fixtures" / "okey_smoke_violet_cw.jsonl.gz"
 failures = 0

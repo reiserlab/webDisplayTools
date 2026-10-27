@@ -42,7 +42,7 @@ the socket — the adapter owns it. The request is acknowledged with a warning.
 
 PLAN B SPIKE (LAB-303, 2026-10-14) — MCAP as the record of truth:
   * While a run's log is open, EVERYTHING is recorded into `<log-dir>/<run>.bag/` with
-    rosbag2_py + the MCAP storage plugin (nodes/recorder.py): the device topics as received
+    rosbag2_py + the MCAP storage plugin (rig_nodes.recorder, reiserlab/rig-nodes): the device topics as received
     (`/fictrac/raw` or the typed `/fictrac/frame`, `/kinefly/raw`, `/bias/cmd|reply|status`),
     `/arena/frame` (the closed-loop evaluation with ITS OWN sample time `t`/`ms`), and two
     bridge-side streams — `/arena/browser` (every browser message, verbatim, with the receive
@@ -54,7 +54,7 @@ PLAN B SPIKE (LAB-303, 2026-10-14) — MCAP as the record of truth:
     at every export and printed) and the crash-loss baseline. `--export live` returns it instead.
     A bag the writer never closed (this node was killed mid-run; no metadata.yaml / torn tail)
     is RECOVERED on export — salvaged, indexed, metadata.yaml written by rosbag2's Reindexer,
-    `{"event":"recovered"}` appended to its /arena/session (nodes/mcap_index.recover_bag) —
+    `{"event":"recovered"}` appended to its /arena/session (rig_nodes.mcap_index.recover_bag) —
     and the reply carries `recovered: true`; a freshly started node adopts the newest such bag
     in --log-dir for its first export, so the Studio's export after a bridge restart gets the
     salvaged run. A bag with nothing salvageable falls back to the run's shadow NDJSON.
@@ -76,6 +76,7 @@ import importlib.util
 import json
 import math
 import os
+import re
 import signal
 import sys
 import threading
@@ -93,10 +94,10 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 BRIDGE_PY = REPO / "fictrac-bridge" / "bridge.py"
 sys.path.insert(0, str(HERE))
-from _common import mono_ns, probe_interfaces, raise_timer_resolution, wall_ms, wall_ns  # noqa: E402
+from rig_nodes._common import mono_ns, probe_interfaces, raise_timer_resolution, wall_ms, wall_ns  # noqa: E402  (reiserlab/rig-nodes, installed package)
+from rig_nodes.mcap_index import needs_recovery, recover_bag  # noqa: E402
+from rig_nodes.recorder import PROFILES, STRING_TYPE, Recorder  # noqa: E402
 from mcap_convert import convert_bag  # noqa: E402
-from mcap_index import needs_recovery, recover_bag  # noqa: E402
-from recorder import PROFILES, STRING_TYPE, Recorder  # noqa: E402
 from _rows import FLAG_BAD_FRAME, KF_TAG, fictrac_extras, is_bad_frame_tag, kf_row, parse_fictrac_line  # noqa: E402  (one encoder for the node and the converter)
 
 # Typed messages only when the package imports AND serializes (pixi's `typed` env, or a
@@ -124,6 +125,31 @@ if os.name == "nt":
     B.now_ms = wall_ms
 
 NODE_VERSION = f"{B.BRIDGE_VERSION} · rig plan-b (rmw_zenoh, mcap record, connectors, merged frame record)"
+
+
+def package_versions() -> dict:
+    """The rig-nodes package set this gateway runs on (rig-software-repos-and-runners.md §7.7: every
+    package version into the run's record). `rig_nodes` from the Python package; `rig_interfaces`
+    from its ament index entry (a conda package without a Python distribution); None when absent."""
+    out: dict = {}
+    try:
+        import rig_nodes
+
+        out["rig_nodes"] = getattr(rig_nodes, "__version__", None)
+    except Exception:
+        out["rig_nodes"] = None
+    try:
+        from ament_index_python.packages import get_package_share_directory
+
+        xml = Path(get_package_share_directory("rig_interfaces")) / "package.xml"
+        m = re.search(r"<version>([^<]+)</version>", xml.read_text(encoding="utf-8"))
+        out["rig_interfaces"] = m.group(1) if m else None
+    except Exception:
+        out["rig_interfaces"] = None
+    return out
+
+
+PACKAGES = package_versions()
 FICTRAC_TOPIC = "/fictrac/raw"
 FICTRAC_FRAME_TOPIC = "/fictrac/frame"  # typed rig_interfaces/FicTracFrame
 BROWSER_TOPIC = "/arena/browser"
@@ -333,7 +359,7 @@ class RecordingLogWriter(B.LogWriter):
         else:
             self._record(SESSION_TOPIC, {"seq": self.next_seq(), "event": event, "file": name, "ms": self._t0, "level": self.level,
                                          "bag": bag, "connectors": sorted(self._connectors), "node": NODE_VERSION, "typed": self._typed,
-                                         "profile": self._profile})
+                                         "profile": self._profile, "packages": PACKAGES})
             print(f"[record] {bag} ({self._profile}, typed={self._typed}; opened in {1000 * (time.perf_counter() - t_open):.0f} ms)", file=sys.stderr)
         if self.on_open is not None:
             self.on_open()
@@ -833,7 +859,7 @@ async def run(args: argparse.Namespace) -> None:
             log.write_inbound(text)
             await ws_reply(websocket, {"type": "hello_ack", "bridge": B.BRIDGE_VERSION, "levels": list(B.LOG_LEVELS),
                                        "level": log.level, "logging": log.active, "connectors": sorted(CONNECTORS),
-                                       "record": "mcap", "typed": typed})
+                                       "record": "mcap", "typed": typed, "packages": PACKAGES})
             return
         if kind == "connector_command":
             await on_connector_command(obj, websocket, text)
