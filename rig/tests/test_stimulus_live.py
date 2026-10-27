@@ -58,8 +58,9 @@ async def play(records, url: str) -> None:
 
 
 def main() -> int:
-    cfg = ROOT / "config"
-    env = dict(os.environ, ZENOH_ROUTER_CONFIG_URI=str(cfg / "zenoh-router.json5"), ZENOH_SESSION_CONFIG_URI=str(cfg / "zenoh-session.json5"),
+    from rig_nodes import zenoh  # the loopback-only configs ship in the installed package (rig/config/ is gone)
+
+    env = dict(os.environ, ZENOH_ROUTER_CONFIG_URI=str(zenoh.ROUTER_CONFIG), ZENOH_SESSION_CONFIG_URI=str(zenoh.SESSION_CONFIG),
                RMW_IMPLEMENTATION=os.environ.get("RMW_IMPLEMENTATION", "rmw_zenoh_cpp"), ZENOH_ROUTER_CHECK_ATTEMPTS="0")
     os.environ.update(env)
     if wait_port("127.0.0.1", 8765, 0.2) or wait_port("127.0.0.1", 7447, 0.2):

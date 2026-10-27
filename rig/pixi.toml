@@ -110,6 +110,18 @@ cmake = "*"
 ninja = "*"
 cxx-compiler = "*"
 
+# The path dependency installs rig_nodes EDITABLE (a .pth into ../../rig-nodes/src/rig_nodes), so the
+# package's Zenoh configs are not under site-packages in this environment; point the two URIs at the
+# checkout instead (the workspace-level values above would name files that do not exist, and every
+# rclpy process — the router included — fails with "Error configuring Zenoh session").
+[feature.dev.activation.env]
+ZENOH_ROUTER_CONFIG_URI = "$PIXI_PROJECT_ROOT/../../rig-nodes/src/rig_nodes/rig_nodes/config/zenoh-router.json5"
+ZENOH_SESSION_CONFIG_URI = "$PIXI_PROJECT_ROOT/../../rig-nodes/src/rig_nodes/rig_nodes/config/zenoh-session.json5"
+
+[feature.dev.target.win-64.activation.env]
+ZENOH_ROUTER_CONFIG_URI = '%PIXI_PROJECT_ROOT%\..\..\rig-nodes\src\rig_nodes\rig_nodes\config\zenoh-router.json5'
+ZENOH_SESSION_CONFIG_URI = '%PIXI_PROJECT_ROOT%\..\..\rig-nodes\src\rig_nodes\rig_nodes\config\zenoh-session.json5'
+
 # ── seeing the graph = the OPT-IN `viz` environment ──────────────────────────
 # `pixi install -e viz`: rqt_graph (live node/topic graph, Qt), rqt_topic / rqt_console, and
 # foxglove_bridge (Foxglove Studio connects to ws://localhost:8766 for live plots; Foxglove
