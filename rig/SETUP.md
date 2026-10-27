@@ -10,7 +10,7 @@ or QC pass. This page holds only what exists because of the arena application.
 
 - `cd rig && pixi install --locked` installs the package set pinned in `rig/pixi.toml`
   (environments: `default` String topics, `typed` adds `rig_interfaces`, `viz` adds Foxglove,
-  `dev` swaps the pins for a sibling `../../rig-nodes` checkout). Run every `pixi run …` from
+  `dev` swaps the pins for git source dependencies on rig-nodes `main`, so no sibling checkout is needed). Run every `pixi run …` from
   `rig/`, not the repository root: the root has its own `pixi.toml` for the web tools and
   `pixi run` there provisions that workspace instead.
 - `pixi run rig` is the one command a rig PC runs (router + FicTrac adapter + the Studio
@@ -31,6 +31,11 @@ or QC pass. This page holds only what exists because of the arena application.
   connects and shows FicTrac frames but applies nothing; `rig/tests/studio_emulator.py` speaks
   the Studio's exact conversation (hello, config, log_control, epochs, log_export) and is the
   no-browser check.
+- **Controller telemetry is a per-browser setting.** With Debug ▾ → Telemetry ring off,
+  `run_metadata.telemetry` is `"off"`, no `cc`/`cf`/`cs` rows reach the gateway, and
+  `scripts/runlog-check.py` reports `no stream_schema` / `no trial_quality event`. Turn it on
+  before a QC run; the first run after enabling it drains the ring's backlog (the check then
+  counts controller 0x70s from before the run), so judge the second run (ww18, 2026-10-27).
 - **Web Serial** needs Chrome or Edge and a user click on the port picker; everything else
   (bridge connect, metadata, Run) is scriptable. On Windows the G6 controller enumerates as
   "USB Serial" (`COMn`).
