@@ -370,8 +370,16 @@ idx = round((coupling * rel + offset + b) / deg_per_frame) % n_frames
 # bridge <= 3.2 logs: rel = ((hd_deg - hd0_deg + 180) % 360) - 180;  idx = round((rel + offset + b) / gain) % n_frames
 ```
 
+`offset` is NOT simply the `config` echo's `offset` field on bridge 3.4: when the epoch's
+config carries `start_frame` (the trialParams `frame_index` the epoch opens on), the bridge
+sets `offset = (start_frame % n_frames) * deg_per_frame` for that message while the logged
+browser config still says `offset: 0`; the next config's `offset` replaces it
+(`docs/development/closed-loop-start-frame.md`). The bridge's `[cfg] applied` line goes to
+its stderr, not the run log, so readers replay the config echoes in order.
+
 `scripts/closed-loop-report.py` does exactly this (it picks the formula from whether the
-`config` echo carries `coupling`) and reports the mismatch fraction per epoch.
+`config` echo carries `coupling`, and replays `start_frame` the way the bridge applies it)
+and reports the mismatch fraction per epoch.
 
 Because the waveform is analytic and deterministic, this recovers the exact value the
 bridge used — no per-frame bias column is needed.
