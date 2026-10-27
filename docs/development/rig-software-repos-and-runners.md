@@ -410,10 +410,15 @@ changed the inventory's destinations.
   inventory marks "stays"; `scanimage_frames_node` / SiPM / `bias_health` follow when #261, #266
   and #269 land (each PR rebases onto this move: its new node goes to rig-nodes, its gateway edits
   stay). `.github/workflows/rig-interfaces.yml` left with the package.
-- **Open after this session:** place the `v0.2.1` tag on the rig-nodes release commit once CI is
-  green on the three platforms and the channel is committed; re-lock `rig/pixi.lock` against the
-  tagged channel (the PR is opened with that lock); the `okey-cokey` PR #269 rebases over the move
-  (it edits `rig.py`, `foxglove_json.py`, `viz_node.py`, adds `bias_health.py`).
+- **State at the end of the session:** rig-nodes CI green on the three platforms (run
+  [40427967719](https://github.com/reiserlab/rig-nodes/actions/runs/40427967719), builds + channel +
+  clean-directory acceptance), tag `v0.2.1` placed on the release commit `e69ac22` (payload removed
+  again in `75b9986`), `rig/pixi.lock` re-locked on the tagged channel, webDisplayTools PR
+  [#274](https://github.com/reiserlab/webDisplayTools/pull/274) open. Open: the `okey-cokey` PR
+  #269 rebases over the move (it edits `rig.py`, `foxglove_json.py`, `viz_node.py`, adds
+  `bias_health.py`, which goes to rig-nodes); a Windows rig verifies `pixi install --locked` + the
+  harness (the `%CONDA_PREFIX%` activation paths ran only in rig-nodes' CI acceptance, not in this
+  workspace); LAB-337's runner planning session starts from the installed package set.
 
 ## 10. Decided, hypotheses, commitments
 
