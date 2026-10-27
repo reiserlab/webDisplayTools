@@ -35,7 +35,7 @@ Steps, stop and tell me at any failure:
 6. I will drive the browser: Production Studio https://reiserlab.github.io/webDisplayTools/arena_studio.html, hard-refresh, footer v0.98, Commit directly OFF, connect the bridge (ws://localhost:8765), confirm the FicTrac frames/status show. If the arena is attached and free: connect it, load protocols/validation/bench_closed_loop_2x10.yaml (needs the CSHL pattern bundle on the SD card) and Run experiment. Tell me what to look for at each step.
 7. After the run (or after ~1 min of connected frames if no arena): `pixi run export` to get the derived behavior_v2 log, then from the repo root `pixi run python scripts/closed-loop-report.py <log>` (if there was a run) and `pixi run python scripts/runlog-check.py <log>`. Confirm the bag closed and reindexed at run end (rig/runlogs/<run>.bag/, metadata.yaml present).
 8. Stop the graph. Compare against the released main workspace only if time allows: `git checkout main && cd rig && pixi install && pixi run test` (second fresh env).
-9. Finish the C:\qc\ww18-2026-10-26.md with: install times/sizes, package versions, harness counts, graph+Studio observations, report numbers, and an explicit "arena run: done / not done".
+9. Finish the C:\qc\ww18-2026-10-26.md with: install times/sizes, package versions, harness counts, graph+Studio observations, report numbers, and an explicit "arena run: done / not done". Last: write a "SETUP.md row" section at the end of the results file with (a) one host-table row for this PC (hostname, role, OS/hardware, what is installed, today's date + the commit or release tested, result) and (b) every machine quirk you hit tonight, one bullet each with the error text verbatim and the fix. The living per-machine setup note is reiserlab/rig-nodes SETUP.md (https://github.com/reiserlab/rig-nodes/blob/main/SETUP.md); this PC cannot push there, so Michael transfers your section.
 Leave the checkout on main at the end.
 ```
 
@@ -53,7 +53,7 @@ Steps, stop and tell me at any failure:
 4. Real ScanImage: start MATLAB from a terminal, start ScanImage on the simulated vDAQ, enable the JSON server. Then `pixi run rig -- --scanimage` and repeat setFileStem (a path under Documents\ScanImage-sim\qc\), grab, waitIdle, abort via `pixi run scanimage-cmd`. Confirm the TIFF appears and the replies carry outcome ok, not unknown.
 5. If the G6 controller is attached and the rig is free: I drive the Studio (Production URL, hard-refresh, footer v0.98, Commit directly OFF). Load the 2P protocol that has the controller: block (protocols/bergamo* or the one Hannah uses), connect the arena, and watch the Run view: #219 should show the controller settings assertion (panel mode, refresh, SPI, AO) with no manual Console steps; a Test experiment is enough. Tell me what to look for.
 6. Stop the graph, abort any ScanImage grab, leave ScanImage idle.
-7. Finish C:\qc\bergamo-2026-10-26.md: install time, harness count, mock vs real connector replies, TIFF present, #219 observations or "controller not attached".
+7. Finish C:\qc\bergamo-2026-10-26.md: install time, harness count, mock vs real connector replies, TIFF present, #219 observations or "controller not attached". Last: write a "SETUP.md row" section at the end of the results file with (a) one host-table row for this PC (hostname, role, OS/hardware, what is installed, today's date + the commit or release tested, result) and (b) every machine quirk you hit tonight, one bullet each with the error text verbatim and the fix. The living per-machine setup note is reiserlab/rig-nodes SETUP.md (https://github.com/reiserlab/rig-nodes/blob/main/SETUP.md); this PC cannot push there, so Michael transfers your section.
 ```
 
 ## Prompt 3: ww14 (okey-cokey PC, BIAS camera)
@@ -70,12 +70,15 @@ Steps, stop and tell me at any failure:
 4. Real BIAS: start the BIAS app with the camera, HTTP command port on. `pixi run rig -- --bias` (no --bias-sim), then the same four commands with an absolute path under C:\qc\bias\. Wait at least 0.5 s between startRecording and getTimestamp (BIAS's clock starts at its first frame). Confirm the movie file exists and its size grows; note the BIAS status fields the node reports.
 5. Optional, if the arena is attached and free: I drive the Studio (Production URL, hard-refresh, footer v0.98, Commit directly OFF), connect the bridge and the arena, and run protocols/g6_color_optomotor_smoke.yaml if it exists on main; otherwise skip. Tell me what to look for.
 6. Stop the graph and BIAS recording.
-7. Finish C:\qc\ww14-2026-10-26.md: install time, harness count, sim vs real BIAS replies and round-trip times, movie file path and size, any status oddities.
+7. Finish C:\qc\ww14-2026-10-26.md: install time, harness count, sim vs real BIAS replies and round-trip times, movie file path and size, any status oddities. Last: write a "SETUP.md row" section at the end of the results file with (a) one host-table row for this PC (hostname, role, OS/hardware, what is installed, today's date + the commit or release tested, result) and (b) every machine quirk you hit tonight, one bullet each with the error text verbatim and the fix. The living per-machine setup note is reiserlab/rig-nodes SETUP.md (https://github.com/reiserlab/rig-nodes/blob/main/SETUP.md); this PC cannot push there, so Michael transfers your section.
 ```
 
 ---
 
 ## After the night
+
+Transfer each results file's "SETUP.md row" section into `reiserlab/rig-nodes` `SETUP.md` (host table row + per-host notes; PR reiserlab/rig-nodes#2 seeds the file) before posting the PR #274 comment.
+
 
 Paste or attach the three result files as one comment on PR #274. Things that would change plans:
 `pixi install` from the channel failing on Windows (blocks merging #274); a `ros2-distro-mutex` other
