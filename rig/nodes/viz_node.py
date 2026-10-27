@@ -55,7 +55,7 @@ from rclpy.node import Node
 from std_msgs.msg import Bool, ColorRGBA, Float64, String
 from visualization_msgs.msg import Marker, MarkerArray
 
-from _common import RELIABLE_QOS, spin
+from rig_nodes._common import RELIABLE_QOS, spin
 
 BALL_R = 1.0
 ARENA_R = 3.2
