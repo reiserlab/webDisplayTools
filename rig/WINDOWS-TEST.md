@@ -161,7 +161,7 @@ whether the router keeps running after Ctrl-C (`tasklist | findstr rmw_zenohd`).
 pixi run test -- --keep
 ```
 
-Expected: `46 / 46 checks passed` in about a minute and a line `artifacts kept in …`. Keep that
+Expected: `59 / 59 checks passed` (62 / 62 with `-e typed`) in about a minute and a line `artifacts kept in …`. Keep that
 directory (`summary.md`, `crash-results.json`, the converted export, `runlogs\*.bag`, `proc-logs\`).
 Windows-specific things it exercises for the first time: child processes in their own group,
 `CTRL_BREAK_EVENT` as the stop signal, `TerminateProcess` for the mid-run kills (the FicTrac adapter
