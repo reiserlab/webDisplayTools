@@ -5,7 +5,7 @@ writers encoding a record identically. No ROS imports here — mcap_convert.py m
 without a ROS process.
 
   * Kinefly KF/1 → the compact ["kf", …] row (kf_row)
-  * a FicTrac line → (tag, fields)                                   (parse_fictrac_line)
+  * a FicTrac line → (tag, fields)                                   (parse_fictrac_line, from rig_nodes.fictrac)
   * the FicTrac columns kept in the ArenaFrame record (docs/development/fictrac-columns-in-the-bag.md,
     decided 2026-10-18): cols 5, 6-8, 22 native, 23                  (fictrac_extras)
   * an ArenaFrame record (typed fields or the hub message) → the behavior_v1 row
@@ -28,25 +28,10 @@ FICTRAC_EXTRA_COLS = {"err": 5, "dr_lab_x": 6, "dr_lab_y": 7, "dr_lab_z": 8, "ft
 BEHAVIOR_ROW_COLS = ("ms", "fc", "idx", "ft", "x", "y", "hd")  # == bridge.py BEHAVIOR_V1_COLS (never widened)
 
 
-def parse_fictrac_line(raw: str) -> tuple[str, list[float]]:
-    """(tag, fields) the way bridge.py's Pipeline parses: a leading FT* token is the tag
-    ('' when absent, as in offline .dat lines and the simulator); fields = the floats after
-    it, or [] when the line is not numeric (a bad frame has no usable data)."""
-    parts = raw.strip().split(",")
-    tag = ""
-    if parts and parts[0].strip()[:2].upper() == "FT":
-        tag = parts[0].strip()
-        parts = parts[1:]
-    try:
-        return tag, [float(p) for p in parts]
-    except ValueError:
-        return tag, []
-
-
-def is_bad_frame_tag(tag: str) -> bool:
-    """FicTrac's socket output tags every record: "FT" = tracked, anything else starting with
-    FT (seen: "FT_BADFR") = a frame it could not track."""
-    return tag[:2].upper() == "FT" and tag != "FT"
+# The FicTrac line grammar (tag + 25 columns) is device knowledge and lives with the adapter in
+# rig_nodes.fictrac (reiserlab/rig-nodes; pure, no ROS). Re-exported so the gateway and the
+# converter keep ONE parser — the fidelity promise `converted == live` depends on it.
+from rig_nodes.fictrac import is_bad_frame_tag, parse_fictrac_line  # noqa: E402,F401
 
 
 def fictrac_extras(fields: list[float] | None) -> dict:

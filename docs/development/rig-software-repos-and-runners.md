@@ -375,6 +375,46 @@ The extraction session (LAB-338) starts from `rig/` on `main` with the §3.3 inv
 list; the open satellites above are the only in-flight changes under `rig/`. Nothing in this cleanup
 changed the inventory's destinations.
 
+### Extraction done (2026-10-26) — what the runner planning session inherits
+
+- **`reiserlab/rig-nodes` exists** with the §3.3 "rig-nodes" set moved from `rig/` **with history**
+  (`git filter-repo` on `main` a8ef775; the pre-rename `ros2-poc/` paths included) and restructured
+  as two pixi packages released together under one version (**0.2.1**): `src/rig_interfaces` (the
+  0.2.0 messages, host pinned to the RoboStack set the rigs run — `ros2-distro-mutex` 0.19 +
+  Python 3.12 on all three platforms; the 0.2.0 CI build had let two runners drift to 0.20 /
+  3.14) and `src/rig_nodes` (noarch Python: `_common`, the FicTrac / Kinefly / BIAS / ScanImage
+  adapters + command tools, the simulators incl. `fictrac_sim`, `recorder`, `mcap_index`, the CDR
+  decoder `cdr` (ex `mcap_convert`), the generic `foxglove_json` with an `enrich` hook, `graph_dump`,
+  `build_interfaces`, and three new modules: `supervise` (the process-group / port-preflight /
+  `Child` primitives extracted from `rig.py`), `fictrac` (THE FicTrac line grammar, ex
+  `_rows.parse_fictrac_line`) and `zenoh` (the loopback configs shipped inside the package +
+  `rig-router`)). `CONTRACT.md` there is checklist item 1(b); device-instance namespacing stayed
+  with LAB-340. CI (`package-set.yml`) builds both packages on win-64 / osx-arm64 / linux-64,
+  checks every package's pins, indexes the channel and installs it in a clean directory on each
+  platform to run the repository's tests (item 6's release gate). Tests: `tests/test_pure.py`
+  (29 checks) and `tests/test_device_nodes.py` (48 checks: sims → nodes → topics → loss
+  accounting + the recorder), the rig-nodes half of item 8.
+- **webDisplayTools `rig/`** keeps the §3.3 "stays" set and installs the package set from the
+  rig-nodes channel (`rig/pixi.toml`: `rig_nodes ==0.2.1`; the `typed` environment adds
+  `rig_interfaces ==0.2.1` in the SAME solve group, which the 0.2.0 pins had made impossible; the
+  `dev` environment swaps both for path dependencies on a sibling `../../rig-nodes` checkout —
+  item 6's developer path). `rig.py` composes with `rig_nodes.supervise`; `bridge_node` imports
+  `rig_nodes._common` / `recorder` / `mcap_index` and writes the package-set versions into
+  `hello_ack` and the `/arena/session` record (item 7); `mcap_convert` and `_rows` import the
+  decoder and the FicTrac grammar; `foxglove_json` is the arena `enrich` wrapper. The harness
+  (`rig/tests/test_ros2_poc.py`) runs against the INSTALLED packages and is the cross-repository
+  smoke (item 8). `fictrac-bridge/fictrac_sim.py` moved too; the root `pixi run sim` delegates to
+  the `rig/` workspace.
+- **Not moved, by the rule "anything doubtful stays":** `nodes/_rows.py` beyond the FicTrac parser
+  (behavior_v2 `kf` rows are arena format), the arena half of `foxglove_json.py`, every file the
+  inventory marks "stays"; `scanimage_frames_node` / SiPM / `bias_health` follow when #261, #266
+  and #269 land (each PR rebases onto this move: its new node goes to rig-nodes, its gateway edits
+  stay). `.github/workflows/rig-interfaces.yml` left with the package.
+- **Open after this session:** place the `v0.2.1` tag on the rig-nodes release commit once CI is
+  green on the three platforms and the channel is committed; re-lock `rig/pixi.lock` against the
+  tagged channel (the PR is opened with that lock); the `okey-cokey` PR #269 rebases over the move
+  (it edits `rig.py`, `foxglove_json.py`, `viz_node.py`, adds `bias_health.py`).
+
 ## 10. Decided, hypotheses, commitments
 
 - **Decided:** the three repositories and their downward dependencies; two peer runners with the web

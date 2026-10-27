@@ -129,12 +129,12 @@ Expected: a real path ending in `rig\config\zenoh-router.json5`. If it prints th
 config (or fail); `pixi run rig` is unaffected because `rig.py` sets both paths itself.
 **Write down which of the two you saw.**
 
-**1b. The `typed` environment** (builds our three `.msg` types from source through pixi-build-ros;
-needs MSVC — this is the LAB-303 cost measurement, and it is allowed to fail):
+**1b. The `typed` environment** (since 2026-10-26: downloads `rig_interfaces` from the rig-nodes
+channel — no MSVC, no build; the source build moved to the rig-nodes checkout, `pixi install -e dev`):
 
 ```powershell
 Measure-Command { pixi install --locked -e typed | Out-Default }
-pixi run -e typed python nodes\build_interfaces.py --check
+pixi run -e typed check-typed
 ```
 
 Record: wall time; success or the **first error verbatim** (the expected failure without Build
@@ -349,7 +349,9 @@ Repeat step 3 and step 5 with `-e typed` (`pixi run -e typed test -- --keep`, `p
 Expected differences: `typed=True` in the bridge banner, `/fictrac/frame` + `/arena/frame` as
 `rig_interfaces/msg/…` in `ros2 bag info`, the harness line `info  typed topics: True`.
 
-## 7b. Typed messages on a PC WITHOUT Visual Studio (`typed-prebuilt`, ~10 minutes)
+## 7b. Typed messages on a PC WITHOUT Visual Studio (~10 minutes)
+
+> 2026-10-26: `typed-prebuilt` IS `typed` now (the channel package from reiserlab/rig-nodes); read `typed` for every `typed-prebuilt` below, `pixi run -e typed check-typed` for the `--check` line. Kept as the ww18 record.
 
 The no-compiler route (`docs/typed-windows.md` §5): the `typed-prebuilt` environment downloads an
 `rig_interfaces` built once on ww18 (`channel/`, read from raw.githubusercontent.com) instead of

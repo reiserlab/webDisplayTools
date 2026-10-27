@@ -14,7 +14,9 @@ PYTHONUTF8 = "1"
 # ── FicTrac closed-loop bridge (see fictrac-bridge/README.md) ───────────────
 # Forward args after `--`, e.g.  pixi run bridge -- --proto tcp --frames 60 --log run.jsonl
 bridge = "python fictrac-bridge/bridge.py"
-sim = "python fictrac-bridge/fictrac_sim.py"
+# The FicTrac simulator moved to reiserlab/rig-nodes (rig_nodes.sims.fictrac_sim, 2026-10-26); it is
+# installed in the rig/ workspace, so this delegates there (`cd rig && pixi install` once).
+sim = "pixi run --manifest-path rig/pixi.toml sim"
 serve = "python -m http.server 8000 --bind 127.0.0.1"
 
 # ── JS dev tooling (Node + Prettier come from conda-forge — no npm) ─────────
