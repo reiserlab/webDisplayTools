@@ -130,7 +130,7 @@ config (or fail); `pixi run rig` is unaffected because `rig.py` sets both paths 
 **Write down which of the two you saw.**
 
 **1b. The `typed` environment** (since 2026-10-26: downloads `rig_interfaces` from the rig-nodes
-channel — no MSVC, no build; the source build moved to the rig-nodes checkout, `pixi install -e dev`):
+channel — no MSVC, no build; the source build is the rig-nodes workspace itself, or `pixi install -e dev` here):
 
 ```powershell
 Measure-Command { pixi install --locked -e typed | Out-Default }

@@ -12,7 +12,7 @@
 #   pixi install          # RoboStack Jazzy (ros-base) + rmw_zenoh + rosbag2/MCAP + rig_nodes (from the rig-nodes channel)
 #   pixi run rig          # Zenoh router + fictrac adapter + bridge node (one command)
 #   pixi install -e typed # + rig_interfaces: typed /fictrac/frame + /arena/frame (same solve group, one RoboStack set)
-#   pixi install -e dev   # a sibling checkout of rig-nodes (../../rig-nodes) built from source instead of the channel
+#   pixi install -e dev   # rig-nodes `main` (git source, pinned in pixi.lock) built from source instead of the channel
 #
 # Channels: RoboStack publishes ROS 2 as conda packages; conda-forge first so the non-ROS stack
 # (python, websockets, pyzmq) resolves from there. Bare channel names resolve through pixi's
@@ -93,15 +93,26 @@ rig_nodes = "==0.2.1"
 [feature.typed.dependencies]
 rig_interfaces = "==0.2.1"
 
-# ── developer path: a sibling checkout of rig-nodes, built from source ───────────────────────
-# `pixi install -e dev` swaps the two channel pins for path dependencies on ../../rig-nodes (a
-# checkout beside webDisplayTools), so a node fix is tested here without a rig-nodes release
-# (rig-software-repos-and-runners.md §7.6). Builds both packages in place (pixi-build), so it
-# needs the rosidl toolchain and a C/C++ compiler like the rig-nodes workspace itself. Own solve
-# group: the default/typed locks are untouched.
+# ── developer path: rig-nodes `main`, built from source (git source dependencies) ────────────
+# `pixi install -e dev` swaps the two channel pins for the HEAD of reiserlab/rig-nodes `main`,
+# built with pixi-build from a git checkout and pinned to ONE commit in pixi.lock
+# (`pixi update -e dev rig_nodes rig_interfaces` moves it), so a node fix merged in rig-nodes is
+# tested here before a package-set release (rig-software-repos-and-runners.md §7 item 6).
+# NOT path dependencies on a sibling checkout (as until 2026-10-27): pixi validates every
+# environment's source PATHS before installing ANY environment, so a missing `../../rig-nodes`
+# broke `pixi install` on every rig PC. Git sources are only fetched when `dev` itself is
+# installed — the default/typed environments install offline with no git cache (verified
+# 2026-10-27, pixi 0.69). To test an UNPUSHED rig-nodes change, point the two lines below at your
+# checkout — `{ path = "../../rig-nodes/src/rig_nodes" }` / `{ … /src/rig_interfaces" }` — and do
+# not commit that manifest/lock change. Cache gotcha: a source build of the SAME version as the
+# release lands in pixi's package cache under the release's filename (an editable path build is a
+# 25-file stub) and shadows a later channel install on that machine — remove the
+# `rig_nodes-<ver>-*` entry under `pixi info`'s cache dir, or build a version main has bumped past
+# the tag. Builds both packages in place, so it needs the rosidl toolchain and a C/C++ compiler
+# like the rig-nodes workspace itself. Own solve group: the default/typed locks are untouched.
 [feature.dev.dependencies]
-rig_nodes = { path = "../../rig-nodes/src/rig_nodes" }
-rig_interfaces = { path = "../../rig-nodes/src/rig_interfaces" }
+rig_nodes = { git = "https://github.com/reiserlab/rig-nodes", branch = "main", subdirectory = "src/rig_nodes" }
+rig_interfaces = { git = "https://github.com/reiserlab/rig-nodes", branch = "main", subdirectory = "src/rig_interfaces" }
 ros-jazzy-ament-cmake = "*"
 ros-jazzy-rosidl-default-generators = "*"
 ros-jazzy-rosidl-default-runtime = "*"

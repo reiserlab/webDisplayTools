@@ -19,8 +19,10 @@ untouched, so bridge 3.4 (`pixi run bridge` at the repo root) stays installed si
 > the arena visualization (`nodes/viz_node.py`, `nodes/foxglove_json.py`'s arena derivations,
 > `foxglove/`), the Studio emulator and this harness. Device nodes are started as
 > `python -m rig_nodes.<module>` / the `rig-*` console scripts; a node fix is tested here with
-> `pixi install -e dev` (a sibling `../../rig-nodes` checkout built from source). The graph contract
-> is rig-nodes' `CONTRACT.md`. The sections below are the build record and keep their original paths.
+> `pixi install -e dev` (rig-nodes `main` built from source through git source dependencies pinned in
+> `pixi.lock`; the manifest comment says how to point it at a local checkout without committing that —
+> never path dependencies on a sibling checkout, which broke `pixi install` on rig PCs without one).
+> The graph contract is rig-nodes' `CONTRACT.md`. The sections below are the build record and keep their original paths.
 
 ```
  fictrac_sim.py / FicTrac ──UDP :60000──▶ fictrac_udp_adapter ──/fictrac/raw──▶┐

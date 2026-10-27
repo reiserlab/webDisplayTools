@@ -282,8 +282,11 @@ These items are the body of the rig-nodes ticket and apply to pyDisplayTools as 
    `pixi install`. One tested package-set release per repository until independent cadence is
    demonstrated. Release gate: installed-package acceptance in a clean directory with the real JS
    client (today's harness runs source-tree files and a Python emulator). Retain an installable release
-   bundle so a channel outage never blocks a rig rebuild. Keep a sibling-checkout developer path (pixi
-   path dependencies) so a node fix never needs a release to test.
+   bundle so a channel outage never blocks a rig rebuild. Keep a developer path that builds rig-nodes from source so a
+   node fix never needs a release to test: pixi **git** source dependencies on rig-nodes `main`,
+   pinned in the lock (a local checkout by an uncommitted manifest edit) — not path dependencies on
+   a sibling checkout, because pixi validates every environment's source paths before installing any
+   environment and a rig PC has no such checkout (found 2026-10-27, ww18).
 7. **Lock files and skew.** A supported-combination table (Studio × gateway × package sets) rather than
    "minimum tested version"; every package version written into `run_metadata`; the shared graph is
    single-host initially (`bridge_node` compares adapter and gateway monotonic clocks; Zenoh is
@@ -397,8 +400,10 @@ changed the inventory's destinations.
 - **webDisplayTools `rig/`** keeps the §3.3 "stays" set and installs the package set from the
   rig-nodes channel (`rig/pixi.toml`: `rig_nodes ==0.2.1`; the `typed` environment adds
   `rig_interfaces ==0.2.1` in the SAME solve group, which the 0.2.0 pins had made impossible; the
-  `dev` environment swaps both for path dependencies on a sibling `../../rig-nodes` checkout —
-  item 6's developer path). `rig.py` composes with `rig_nodes.supervise`; `bridge_node` imports
+  `dev` environment swaps both for git source dependencies on rig-nodes `main`, pinned to one commit
+  in the lock — item 6's developer path; the first version used path dependencies on a sibling
+  checkout, which made `pixi install` fail on every machine without one and was replaced on
+  2026-10-27). `rig.py` composes with `rig_nodes.supervise`; `bridge_node` imports
   `rig_nodes._common` / `recorder` / `mcap_index` and writes the package-set versions into
   `hello_ack` and the `/arena/session` record (item 7); `mcap_convert` and `_rows` import the
   decoder and the FicTrac grammar; `foxglove_json` is the arena `enrich` wrapper. The harness
