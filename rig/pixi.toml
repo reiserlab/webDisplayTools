@@ -23,14 +23,18 @@
 [workspace]
 name = "rig"
 version = "0.1.0"
-channels = ["conda-forge", "robostack-jazzy", "https://raw.githubusercontent.com/reiserlab/rig-nodes/v0.2.1/channel"]
-platforms = ["osx-arm64", "win-64", "linux-64"]
-preview = ["pixi-build"]
-
+channels = ["conda-forge", "robostack-jazzy", "https://raw.githubusercontent.com/reiserlab/rig-nodes/v0.3.0/channel"]
 # rmw_zenoh ≥ 0.2.11 (the RoboStack 0.19 set) is built for macOS ≥ 14; without this floor the
 # osx-arm64 solve falls back to the 0.16 set and the platforms drift apart (rig-nodes pins 0.19).
-[system-requirements]
-macos = "14.0"
+# Declared on the platform (pixi ≥ 0.80 virtual packages), not as the deprecated [system-requirements]; pixi
+# requires an entry carrying virtual packages to have a `name` distinct from its subdir, and this is the name
+# pixi 0.80 itself wrote on ww18 when it rewrote the 0.69 lock (#280).
+platforms = [{ name = "osx-arm64-macos-14-0", platform = "osx-arm64", macos = "14.0" }, "win-64", "linux-64"]
+preview = ["pixi-build"]
+# An older pixi must refuse rather than rewrite pixi.lock in an older format: the lock is written by
+# pixi ≥ 0.80 (issue #280 — ww18 on 0.80 rewrote a 0.69 lock in place, 1095 lines, and left the checkout
+# dirty). Rigs install with `pixi install --locked`.
+requires-pixi = ">=0.80"
 
 [activation.env]
 # Every ROS 2 process in this workspace uses the Zenoh middleware. rmw_zenoh needs
@@ -77,13 +81,16 @@ ros-jazzy-rosbag2-py = "*"
 ros-jazzy-rosbag2-storage-mcap = "*"
 mcap = ">=1.2"
 # ── the shared rig-nodes package set, pinned (one version for the set; README "Releasing") ──
-# Device adapters (FicTrac, Kinefly, BIAS, ScanImage) and their simulators, the MCAP recorder and
-# indexer, the CDR decoder, the Foxglove rewriter, the supervision primitives rig.py composes with.
+# Device adapters (FicTrac, Kinefly, BIAS, ScanImage incl. its ZeroMQ frame stream, the experimental SiPM
+# controller) and their simulators, the MCAP recorder and indexer, the CDR decoder, the Foxglove rewriter
+# (+ bias_health), the supervision primitives rig.py composes with. 0.3.0 (2026-10-28) also ships the
+# HostStats message set for the host monitor (rig_interfaces, `typed` environment).
 # Written into every run's record by the gateway (hello_ack + /arena/session `packages`).
-rig_nodes = "==0.2.1"
+rig_nodes = "==0.3.0"
 
 # ── typed messages = the OPT-IN `typed` environment ───────────────────────────────────────
-# `pixi install -e typed` adds rig_interfaces (FicTracFrame, ArenaFrame, ConnectorReply) from the
+# `pixi install -e typed` adds rig_interfaces (FicTracFrame, ArenaFrame, ConnectorReply, HostStats + its
+# DiskStats/NetStats/GpuStats/ProcStats records) from the
 # SAME channel, built in rig-nodes' CI for win-64 / osx-arm64 / linux-64 — no compiler, no build
 # backend, no MAX_PATH (docs in rig-nodes: docs/typed-distribution-decision.md). Same solve group
 # as the default environment: since the package pins the 0.19 set too, the two environments share
@@ -91,7 +98,7 @@ rig_nodes = "==0.2.1"
 # environment so the rigs keep recording String topics until typed recording is decided for them;
 # the nodes fall back on their own (`--typed auto`).
 [feature.typed.dependencies]
-rig_interfaces = "==0.2.1"
+rig_interfaces = "==0.3.0"
 
 # ── developer path: rig-nodes `main`, built from source (git source dependencies) ────────────
 # `pixi install -e dev` swaps the two channel pins for the HEAD of reiserlab/rig-nodes `main`,
