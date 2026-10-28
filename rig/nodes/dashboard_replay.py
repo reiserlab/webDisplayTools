@@ -35,7 +35,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "tools"))
 import arena_display as AD  # noqa: E402
 import stimulus_core as SC  # noqa: E402
-from rig_nodes.bias_health import CountRate, bias_drops  # noqa: E402  (rig-nodes ≥ 0.2.2)
+from rig_nodes.bias_health import CountRate, bias_drops  # noqa: E402  (rig-nodes ≥ 0.3.0)
 
 IMAGE_SCHEMA = "foxglove.CompressedImage"
 
