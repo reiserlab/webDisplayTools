@@ -42,7 +42,7 @@ interface.
 |---|---|
 | **reiserlab/maDisplayTools** | **MATLAB** tools (G4+). Pattern math reference — **web output must match MATLAB exactly** (CI validates, tol 1e-4). Its protocol **runner is G4.1-only and frozen** (decision 2026-10-26); protocol authority = `webDisplayTools/docs/development/v3-spec.md` + conformance fixtures. (Its `docs/development/G4G6_ROADMAP.md` is largely historical now — use the umbrella docs for current G6.) |
 | **reiserlab/LED-Display_pyDisplayTools** (pyDisplayTools) | **Python** tools for the displays (G4 pattern + experiment-folder tools). **Accepted destination** for the Python arena library and the **headless runner** (`arena-run`), a peer of the web runner (decision 2026-10-26). |
-| **reiserlab/rig-nodes** | **Current location (since 2026-10-26)** of the shared ROS 2 infrastructure for every lab rig: `rig_interfaces` (FicTracFrame, ArenaFrame, ConnectorReply), the device adapters + simulators (FicTrac, Kinefly, BIAS, ScanImage; SiPM and the ScanImage frames node follow when their PRs land), the MCAP recorder/indexer/CDR decoder/Foxglove rewriter, the supervision primitives and the Zenoh configs, as the `rig_nodes` + `rig_interfaces` packages (one package-set version, conda channel at a release tag). `CONTRACT.md` there is the graph contract (topics, QoS, envelope, invariants). webDisplayTools' `rig/` installs the set and keeps only the arena gateway, composition and visualization. Record: `webDisplayTools/docs/development/rig-software-repos-and-runners.md`. |
+| **reiserlab/rig-nodes** | **Current location (since 2026-10-26)** of the shared ROS 2 infrastructure for every lab rig: `rig_interfaces` (FicTracFrame, ArenaFrame, ConnectorReply), the device adapters + simulators (FicTrac, Kinefly, BIAS; the 2P imaging code — ScanImage JSON connector, ZMQ frames node, SiPM node, tiff2mcap — is private since 2026-10-28, in reiserlab/scanimage-2026-bergamo `2p-rig-nodes/`), the MCAP recorder/indexer/CDR decoder/Foxglove rewriter, the supervision primitives and the Zenoh configs, as the `rig_nodes` + `rig_interfaces` packages (one package-set version, conda channel at a release tag). `CONTRACT.md` there is the graph contract (topics, QoS, envelope, invariants). webDisplayTools' `rig/` installs the set and keeps only the arena gateway, composition and visualization. Record: `webDisplayTools/docs/development/rig-software-repos-and-runners.md`. |
 
 ### G6 firmware (what the web connects to over USB)
 | repo | role |
@@ -125,7 +125,7 @@ interface.
   sim` (start the bridge first). The web runner executes only the `fictrac` and `log` plugins;
   `backlight`/`camera`/`temperature` are declared for MATLAB and **skipped on the web**.
 - **ROS 2 graph (LAB-303, released 2026-10-20/26)** — `rig/` replaces the bridge with a graph
-  (rmw_zenoh, MCAP record, BIAS + ScanImage connectors) behind the SAME WebSocket; the Studio is
+  (rmw_zenoh, MCAP record, the BIAS connector; the 2P rig adds its private ScanImage/SiPM nodes) behind the SAME WebSocket; the Studio is
   unchanged. Since 2026-10-26 the device nodes, simulators and recording primitives come from the
   installed `rig_nodes` package (reiserlab/rig-nodes); `rig/` keeps the gateway (`bridge_node.py`),
   the composition (`rig.py`) and the arena visualization. Record: `rig-software-repos-and-runners.md`.

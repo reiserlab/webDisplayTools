@@ -62,7 +62,7 @@ version: 3
 #   Not needed for this test:  line clock (same FPGA as the pixel clock → image
 #                      columns already ARE its phase; shape known from the scope),
 #                      frame clock, AO marker, Data Recorder .h5. Full version:
-#                      docs/development/2p-scanimage-signal-logging.md. The
+#                      reiserlab/scanimage-2026-bergamo procedures/webdisplaytools-2p/2p-scanimage-signal-logging.md. The
 #                      setAnalogOut steps below are harmless if unrecorded.
 #   Ch3 is NOT a display sync; it is the leak signal you are measuring.
 #

@@ -113,6 +113,43 @@ stay as history.
 | **stays** (arena visualization) | `nodes/viz_node.py`, `tests/test_viz_node.py`, the arena derivation in `nodes/foxglove_json.py`, `foxglove/arena-fictrac.json`, `foxglove/arena-bias.json`, `docs/foxglove-arena-layout.json`, `tools/tiff_run_to_mcap.py`; from okey-cokey: `nodes/stimulus_node.py`, `nodes/stimulus_core.py`, `nodes/dashboard_replay.py`, `tests/test_stimulus.py`, `tests/test_stimulus_live.py`, `foxglove/arena-okey-cokey.json`, `tests/fixtures/protocols-2026-10-14/*` |
 | **stays** (rig-specific config and records) | `README.md`, `WINDOWS-TEST.md`, `SCANIMAGE-DAY.md`, `scanimage-day-2026-10-16.md`, `windows-results-ww18-2026-10-15.md`, `docs/plan-b-explainer*.html`, `docs/build-standalone-explainer.py`, `docs/img/*`; from okey-cokey: `config/bias/okey-cokey-bfs-u3-51s5m.json`, `tools/okey-cokey-start.ps1`, `tools/bias-ufmf.ps1`, the `okey-cokey-*.md` run sheets, `HANDOVER-okey-cokey-2026-10-21.md`, `docs/okey-cokey-foxglove-dashboard-plan.md` |
 
+#### Amendment 2026-10-28: the imaging work is private
+
+Michael's decision, 2026-10-28: everything specific to the 2P imaging experiments leaves the public
+repositories and lives in the private rig repository `reiserlab/scanimage-2026-bergamo`, under
+`2p-rig-nodes/` (a pixi workspace in the rig-nodes layout; package `twop_rig_nodes`). It depends on
+the public `rig_nodes` package, so dependencies still point downward. This overrides the table above
+where they disagree:
+
+- **Moved to `2p-rig-nodes/`:**
+  - the ScanImage JSON connector (`scanimage_node`, `scanimage_cmd`, `si_json_mock`), which was in
+    rig-nodes 0.2.1 / 0.3.0 and is removed for 0.4.0 (rig-nodes #4);
+  - from #261 / #266: the ScanImage ZMQ frames node, its mock and latency report, the read-only SiPM
+    driver / node / command tool and their harnesses;
+  - `tiff_run_to_mcap.py` (#273) with `check_tiff2mcap.py` and its test. `patfile.py`, the G6
+    pattern reader it uses, is arena code and stays here (bound for pyDisplayTools, the row above);
+    the private repository carries a copy;
+  - `tools/led_sweep_si.py`, `tools/led_sweep_quicklook.py`.
+  A `PROVENANCE.md` there gives the source commit of every file. Copied, not rewritten in history:
+  earlier versions stay readable here and in rig-nodes.
+- **Records moved** to that repository's `procedures/webdisplaytools-2p/`: `rig/SCANIMAGE-DAY.md`,
+  `rig/scanimage-day-2026-10-16.md`, `2p-scanimage-signal-logging.md` and the superseded
+  `2p-line-sync-rig-checklist.md`. The Bergamo rows of rig-nodes `SETUP.md` went to
+  `2p-rig-nodes/SETUP.md`.
+- **Stays public, the boundary:**
+  - the generic connector mechanism: the gateway's connector dispatch and `CONNECTOR_TOPICS`
+    (including the `scanimage` entry and, once the gateway half of #261 / #266 lands, the
+    `/sipm/*` and `/scanimage/frame_*` registrations), `mcap_convert`'s connector derivation, the
+    `/<src>/cmd|reply|status` contract, `ConnectorReply`, the runner's `connector_command`;
+  - the Studio's `ScanImagePlugin`, which must skip cleanly when no node answers;
+  - the studio emulator's `--scanimage-cmds` path.
+- **Stays public for now:** the 2P protocols (`protocols/g6_2p_*`, `g6_2x10_2p_*`) with their
+  patterns, and `configs/rigs/bergamo_g6_2x10_2p.yaml`. Most protocols are expected to move to
+  private repositories later.
+- **The arena composition** drops `rig.py --scanimage` / `--si-mock`. On the 2P rig the private
+  workspace runs `pixi run rig -- --no-router …` next to this one. The PR that re-pins `rig/` to
+  rig-nodes 0.4.0 must be the same PR, or a later one, as the one that drops those flags.
+
 ### 3.4 The robot station
 
 `meca_driver`, `meca_description`, `meca_sequencer`, keypoints and routes stay in Isabel's repository;

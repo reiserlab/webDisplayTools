@@ -148,17 +148,12 @@ fictrac-adapter = "rig-fictrac-adapter"
 kinefly-adapter = "rig-kinefly-adapter"
 bias-node = "rig-bias-node"
 bias-cmd = "rig-bias-cmd"
-# ScanImage (built-in JSON server on the ScanImage PC, LAB-303/LAB-306): node + one-shot command.
-scanimage-node = "rig-scanimage-node"
-scanimage-cmd = "rig-scanimage-cmd"
 # ── the bridge node (this rig's gateway): bridge.py's hub + log writer + dispatcher on ROS input ──
 bridge-node = "python nodes/bridge_node.py"
 # ── simulators (rig_nodes.sims) ────────────────────────────────────────────
 sim = "rig-fictrac-sim"
 kinefly-sim = "rig-kinefly-sim"
 bias-sim = "rig-bias-sim"
-# A stand-in for ScanImage's JSON server (stock behaviors incl. bug B2) for off-rig tests.
-si-mock = "rig-si-mock"
 # ── the one command a rig runs ──────────────────────────────────────────────
 rig = "python nodes/rig.py"
 # ── acceptance test (LAB-303 PoC criteria): whole graph + Studio emulator + model fly ──
@@ -186,11 +181,6 @@ graph = "rig-graph"
 viz = "python nodes/viz_node.py"
 test-viz = "python tests/test_viz_node.py"
 fox-json = "python nodes/foxglove_json.py"
-# after-the-fact Foxglove MCAP of a 2P color-sweep run from its ScanImage TIFFs + the arena .pat files (tools/tiff_run_to_mcap.py)
-tiff2mcap = "python tools/tiff_run_to_mcap.py"
-# its run-log side on a synthetic log (no TIFFs), and a check of a --runlog MCAP against that run log
-test-tiff2mcap = "python tests/test_tiff2mcap_runlog.py"
-check-tiff2mcap = "python tools/check_tiff2mcap.py"
 # `viz` environment only (`pixi run -e viz …`): the interactive views.
 rqt-graph = "rqt_graph"
 rqt-topic = "rqt_topic"

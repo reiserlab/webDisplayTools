@@ -49,7 +49,7 @@ version: 3
 #      flash kinetics — it is the cleanest mark and needs no extra wiring.
 #   3. The setAnalogOut markers below (0.5–2.5 V per condition, arena J27). Only
 #      recorded if the vDAQ Data Recorder logs an AI (docs/development/
-#      2p-scanimage-signal-logging.md § 2c); host-timed like (1), so they add a
+#      2p-scanimage-signal-logging.md § 2c, in the private 2P rig repo); host-timed like (1), so they add a
 #      cross-check, not precision. A frame-locked AO ("frame_number" role) is not
 #      validated on this controller yet — do not rely on it.
 # ============================================================================

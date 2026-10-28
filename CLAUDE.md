@@ -377,7 +377,8 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   before the load are allowlisted in `tests/test-studio-preview-sources.js`.
 - **ROS 2 bridge = the bridge going forward (LAB-303, decided 2026-10-16/17).** Rig PCs run
   `cd rig && pixi run rig` (its own pixi workspace: Zenoh router + FicTrac adapter + bridge node
-  + optional `--bias` / `--scanimage` / `--foxglove`). Bridge 3.4 (`pixi run bridge` at the root) is
+  + optional `--bias` / `--foxglove`; the 2P rig's ScanImage and SiPM nodes are private, in
+  reiserlab/scanimage-2026-bergamo `2p-rig-nodes/`). Bridge 3.4 (`pixi run bridge` at the root) is
   the legacy path for course rigs, BUT `fictrac-bridge/bridge.py` is STILL IMPORTED by
   `rig/nodes/bridge_node.py` and `mcap_convert.py` (Hub, LogWriter, Pipeline, the pure
   encoders): a change there changes ROS acquisition and the conversion of every historical bag.
