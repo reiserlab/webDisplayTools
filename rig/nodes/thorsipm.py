@@ -123,9 +123,11 @@ class DllBackend:
         return self._d.GetParam(pid, ctypes.byref(v)), v.value
 
     def get_param_string(self, pid: int, size: int = 256) -> tuple[int, str]:
-        buf = ctypes.create_string_buffer(size)
+        # The DLL writes UTF-16LE (wchar_t), not ANSI: "000027" arrives as 30 00 30 00 … (Bergamo Block S,
+        # 2026-10-28). The buffer is 2 × size bytes in case `size` counts wide characters.
+        buf = ctypes.create_string_buffer(2 * size)
         rc = self._d.GetParamString(pid, buf, size)
-        return rc, buf.value.decode("ascii", errors="replace").rstrip("\x00")
+        return rc, buf.raw.decode("utf-16-le", errors="replace").split("\x00", 1)[0]
 
     def get_param_info(self, pid: int) -> tuple[int, dict]:
         t, a, ro = ctypes.c_int32(), ctypes.c_int32(), ctypes.c_int32()
