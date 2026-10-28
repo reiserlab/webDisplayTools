@@ -159,6 +159,8 @@ rig = "python nodes/rig.py"
 # ── acceptance test (LAB-303 PoC criteria): whole graph + Studio emulator + model fly ──
 # This is also the cross-repository smoke for the installed rig-nodes package set (record §7.8).
 test = "python tests/test_ros2_poc.py"
+# the gateway records + derives the 2P rig's topics (its SiPM / frame-stream nodes are private: scanimage-2026-bergamo 2p-rig-nodes/)
+test-gateway = "python tests/test_gateway_registration.py"
 studio-emulator = "python tests/studio_emulator.py"
 # ── MCAP record + converter ──────────────────────────────────────────────────
 # bag → behavior_v2 NDJSON (also `-- --level behavior_v1|full`, `-- --order time`);
