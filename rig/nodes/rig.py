@@ -7,6 +7,7 @@
     pixi run rig -- --bias --bias-sim  # + a simulated BIAS program (no camera software)
     pixi run rig -- --scanimage        # + the ScanImage node (JSON server on this PC); --si-mock for a stand-in
     pixi run rig -- --foxglove         # + foxglove_bridge (:8766) from the `viz` environment
+    pixi run rig -- --no-host-monitor  # without the host monitor (CPU/RAM/disk/net/GPU on /rig/host; on by default)
 
 Order: the router first (nodes retry until it answers on 127.0.0.1:7447), then every
 adapter/node. Each child's stderr is prefixed with its name. Ctrl-C stops everything in
@@ -143,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--viz-args", default="", help="extra args for viz_node.py (--deg-per-frame, --frame-dir, --feature-az0, --frames)")
     p.add_argument("--foxglove", action="store_true",
                    help=f"also run foxglove_bridge on ws://127.0.0.1:{FOXGLOVE_PORT} (the `viz` environment; skipped with a note when it is not installed)")
+    p.add_argument("--no-host-monitor", action="store_true", help="do not run host_monitor.py (the PC's CPU per core, memory, disk, network, GPU, top processes on /rig/host, recorded in every run's bag)")
+    p.add_argument("--host-monitor-args", default="", help="extra args for host_monitor.py (e.g. --period 0.5 --print-every 30 --pin bias=^BIAS)")
     p.add_argument("--no-router", action="store_true", help="a Zenoh router is already running on this host")
     p.add_argument("--bridge-args", default="", help="extra args for bridge_node.py")
     p.add_argument("--fictrac-args", default="", help="extra args for fictrac_udp_adapter.py")
@@ -206,6 +209,9 @@ def main(argv: list[str] | None = None) -> int:
         nodes.append(Child("si-mock", [py, str(HERE.parent / "tests" / "si_json_mock.py")]))
     if args.scanimage:
         nodes.append(Child("scanimage", [py, str(NODES / "scanimage_node.py"), *split_args(args.scanimage_args)]))
+    if not args.no_host_monitor:
+        # Before the bridge, so a run opened right away already has host samples in its bag.
+        nodes.append(Child("host", [py, str(NODES / "host_monitor.py"), *split_args(args.host_monitor_args)]))
     bridge = Child("bridge", [py, str(NODES / "bridge_node.py"), *split_args(args.bridge_args)])
     nodes.append(bridge)
     if foxglove:
