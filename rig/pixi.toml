@@ -147,6 +147,12 @@ ros-jazzy-rqt-topic = "*"
 ros-jazzy-rqt-console = "*"
 ros-jazzy-foxglove-bridge = "*"
 
+# Windows: the foxglove-bridge package puts foxglove.dll + foxglove_cpp_shared.dll in Library\lib,
+# which is not on the DLL search path, so `ros2 run foxglove_bridge` exits 0xC0000135 (DLL not
+# found; ww14 2026-10-22). Prepend that directory for the viz environment only.
+[feature.viz.target.win-64.activation.env]
+PATH = '%CONDA_PREFIX%\Library\lib;%PATH%'
+
 [environments]
 default = { features = ["channel"], solve-group = "rig" }
 typed = { features = ["channel", "typed"], solve-group = "rig" }
@@ -205,6 +211,12 @@ graph = "rig-graph"
 viz = "python nodes/viz_node.py"
 test-viz = "python tests/test_viz_node.py"
 fox-json = "python nodes/foxglove_json.py"
+# The camera + G6 dashboard (foxglove/arena-okey-cokey.json): the live expected/observed display +
+# arena health node (`pixi run rig -- --stimulus`), and its unit test (pure; also runs the JS
+# panel-color module under the root env's Node to pin the Python port)
+stimulus = "python nodes/stimulus_node.py"
+test-stimulus = "python tests/test_stimulus.py"
+test-stimulus-live = "python tests/test_stimulus_live.py"
 # after-the-fact Foxglove MCAP of a 2P color-sweep run from its ScanImage TIFFs + the arena .pat files (tools/tiff_run_to_mcap.py)
 tiff2mcap = "python tools/tiff_run_to_mcap.py"
 # its run-log side on a synthetic log (no TIFFs), and a check of a --runlog MCAP against that run log
