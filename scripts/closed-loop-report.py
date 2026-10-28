@@ -20,6 +20,9 @@ pushes when the runner events are absent, e.g. Console-only use) it reports:
   * a CONSISTENCY check: `round((coupling · Δheading + offset + b)/deg_per_frame) mod frames` (bridge 3.3,
     unwrapped) — or `round((wrap180(hd − hd0) + b)/gain)` for older logs — vs the logged idx
     (the LAB-185 bench check — mismatches beyond ±1 frame mean the log and the mapping disagree).
+    Bridge 3.4: when the epoch's config carries `start_frame` (the trialParams frame_index the epoch
+    opens on), offset = (start_frame mod frames) · deg_per_frame, as the bridge applies it — the
+    logged browser config still says `offset: 0`.
 
 Usage:
     python scripts/closed-loop-report.py run.jsonl.gz                 # markdown table
@@ -118,7 +121,7 @@ def parse_log(path: str) -> dict:
             elif typ == "config":
                 rel = _rel(o.get("rx_ms"), t0)
                 if rel is not None:
-                    configs.append((rel, {k: o[k] for k in ("gain", "deg_per_frame", "coupling", "offset", "frames") if _num(o.get(k)) is not None}))
+                    configs.append((rel, {k: o[k] for k in ("gain", "deg_per_frame", "coupling", "offset", "frames", "start_frame") if _num(o.get(k)) is not None}))
             elif typ == "log" and o.get("event") == "runner":
                 rel = _rel(o.get("rx_ms"), t0)
                 if rel is None:
@@ -195,6 +198,33 @@ def _last_within(items, start_ms, end_ms, default=None):
     return hit
 
 
+def apply_config(state: dict, c: dict) -> None:
+    """Replay one browser→bridge config echo onto `state` the way bridge.py's config handler does.
+
+    The log holds only the browser's message; the bridge's `[cfg] applied` line goes to stderr. Since
+    bridge 3.4 a `start_frame` key (one-shot, sent with each startClosedLoop) overrides the message's
+    `offset` with (start_frame mod frames) × deg_per_frame, using that message's pitch and frame count;
+    the browser's `offset` field still says 0. A later message's `offset` replaces it again.
+    """
+    if _num(c.get("gain")) is not None and _num(c.get("deg_per_frame")) is None:
+        state["deg_per_frame"] = float(c["gain"])
+        state["gain_alias"] = True
+    if _num(c.get("deg_per_frame")) is not None:
+        state["deg_per_frame"] = float(c["deg_per_frame"])
+    if _num(c.get("coupling")) is not None:
+        state["coupling"] = float(c["coupling"])
+    if _num(c.get("offset")) is not None:
+        state["offset"] = float(c["offset"])
+        state.pop("start_frame", None)
+    if _num(c.get("frames")):
+        state["frames"] = max(1, int(c["frames"]))
+    if _num(c.get("start_frame")) is not None:
+        n = state.get("frames", 200)
+        sf = int(c["start_frame"]) % n
+        state["start_frame"] = sf
+        state["offset"] = sf * state.get("deg_per_frame", 1.8)
+
+
 def unwrap_deg(seq):
     out = []
     prev = None
@@ -224,14 +254,16 @@ def analyze_epoch(log: dict, ep: dict, deg_per_frame: float, frame_dir: int, az0
     cfg = {}
     for t, c in log["configs"]:
         if t <= ep["start_ms"] + 500.0:
-            cfg.update(c)
+            apply_config(cfg, c)
     # bridge 3.3 logs carry `coupling` + `deg_per_frame` (unwrapped-heading mapping); older logs
-    # carry only `gain` (= the pitch, wrapped-heading mapping, coupling 1).
+    # carry only `gain` (= the pitch, wrapped-heading mapping, coupling 1). Bridge 3.4 logs may carry
+    # `start_frame`, which apply_config has already folded into `offset`.
     coupling = _num(cfg.get("coupling"))
-    pitch = _num(cfg.get("deg_per_frame")) or _num(cfg.get("gain"), 1.8)
+    pitch = _num(cfg.get("deg_per_frame"), 1.8) or 1.8
     gain = pitch
     offset = _num(cfg.get("offset"), 0.0) or 0.0
     frames = int(_num(cfg.get("frames"), 200) or 200)
+    start_frame = cfg.get("start_frame")
     dpf = deg_per_frame if deg_per_frame else abs(pitch)
     # The waveform + tare that govern this epoch = the LAST push in the window around its start
     # (see _last_within). Fall back to the latest push before the start (Console-only use).
@@ -246,6 +278,7 @@ def analyze_epoch(log: dict, ep: dict, deg_per_frame: float, frame_dir: int, az0
         "condition": ep.get("condition"), "start_s": round(ep["start_ms"] / 1000.0, 2),
         "duration_s": round((ep["end_ms"] - ep["start_ms"]) / 1000.0, 2), "rows": len(rows),
         "gain": gain, "deg_per_frame": pitch, "coupling": coupling, "frames": frames, "bias": bias,
+        "start_frame": start_frame, "offset_deg": round(offset, 4),
         "hd0_deg": None if hd0 is None else round(hd0, 2),
     }
     if len(rows) < 3:
@@ -328,6 +361,11 @@ def _kpitch(e):
     return f"gain {e['gain']:g}"
 
 
+def _frames_label(e):
+    """'200' — or '200 @25' when a bridge-3.4 start_frame opened the epoch off frame 0."""
+    return f"{e['frames']}" if e.get("start_frame") is None else f"{e['frames']} @{e['start_frame']}"
+
+
 def _bias_label(b):
     k = b.get("type", "none")
     if k == "none":
@@ -343,15 +381,15 @@ def to_markdown(rep: dict) -> str:
     if not rep["epochs"]:
         out.append("_no closed-loop epochs found_")
         return "\n".join(out)
-    out.append("| # | condition | dur s | bias | coupling · °/frame | frames | fly net turn ° | fly ω mean / rms °/s | feature mean\\|az\\| ° | frontal | rejection | idx mismatch |")
+    out.append("| # | condition | dur s | bias | coupling · °/frame | frames @start | fly net turn ° | fly ω mean / rms °/s | feature mean\\|az\\| ° | frontal | rejection | idx mismatch |")
     out.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for i, e in enumerate(rep["epochs"], 1):
         if "fly" not in e:
-            out.append(f"| {i} | {e.get('condition') or '—'} | {e['duration_s']} | {_bias_label(e['bias'])} | {_kpitch(e)} | {e['frames']} | — | — | — | — | — | {e.get('note', '')} |")
+            out.append(f"| {i} | {e.get('condition') or '—'} | {e['duration_s']} | {_bias_label(e['bias'])} | {_kpitch(e)} | {_frames_label(e)} | — | — | — | — | — | {e.get('note', '')} |")
             continue
         rej = e.get("rejection")
         out.append(
-            f"| {i} | {e.get('condition') or '—'} | {e['duration_s']} | {_bias_label(e['bias'])} | {_kpitch(e)} | {e['frames']} "
+            f"| {i} | {e.get('condition') or '—'} | {e['duration_s']} | {_bias_label(e['bias'])} | {_kpitch(e)} | {_frames_label(e)} "
             f"| {e['fly']['net_turn_deg']:+} | {e['fly']['mean_omega_dps']:+} / {e['fly']['rms_omega_dps']} "
             f"| {e['display']['mean_abs_az_deg']} | {e['display']['frontal_fraction']:.0%} "
             f"| {'—' if rej is None else f'{rej:+.2f}'} "
@@ -360,7 +398,8 @@ def to_markdown(rep: dict) -> str:
     out.append("")
     out.append("_rejection: −slope(unwrapped heading vs bias angle) · coupling — 1 = fully counter-turned (display held) on any coupling sign, 0 = ignored, "
                "negative = followed; — at coupling 0 (the fly cannot move the display). frontal: fraction of rows with the feature within ±30°. idx mismatch: logged frame vs "
-               "round((coupling · Δheading + offset + bias) / deg_per_frame) mod frames (bridge 3.3, unwrapped) or round((wrap180(hd − hd0) + bias)/gain) (older logs), beyond ±1 frame._")
+               "round((coupling · Δheading + offset + bias) / deg_per_frame) mod frames (bridge 3.3, unwrapped) or round((wrap180(hd − hd0) + bias)/gain) (older logs), beyond ±1 frame; "
+               "offset = start_frame × deg_per_frame when the epoch's config carries start_frame (bridge 3.4, shown as frames @start), else the config offset._")
     return "\n".join(out)
 
 

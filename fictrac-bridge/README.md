@@ -12,7 +12,7 @@ direction the browser sends JSON log events back, which the bridge appends to a 
                                           └──────────▶ --log file (JSONL)
 ```
 
-For development without a camera or a real FicTrac install, `fictrac_sim.py`
+For development without a camera or a real FicTrac install, the FicTrac simulator (`rig_nodes.sims.fictrac_sim` in reiserlab/rig-nodes since 2026-10-26, installed by the `rig/` workspace; `pixi run sim` here delegates to it)
 generates random-walk data in FicTrac's exact wire format.
 
 ## Why a bridge at all?
@@ -389,6 +389,8 @@ Afterwards: `pixi run python scripts/closed-loop-report.py run.jsonl.gz --svg ou
 bias, the rejection index and the idx-consistency check.
 
 ## fictrac_sim.py options
+
+> Since 2026-10-26 the simulator is `rig_nodes.sims.fictrac_sim` (reiserlab/rig-nodes); the options below are unchanged (`pixi run sim -- --help`).
 
 | Option | Default | Meaning |
 |---|---|---|
