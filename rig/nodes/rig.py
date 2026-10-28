@@ -4,6 +4,7 @@
     pixi run rig                       # router, fictrac adapter, bridge node
     pixi run rig -- --kinefly --bias   # + Kinefly adapter + BIAS node
     pixi run rig -- --sim              # + the FicTrac simulator (demo without a camera)
+    pixi run rig -- --no-host-monitor  # without the host monitor (CPU/RAM/disk/net/GPU on /rig/host; on by default)
     pixi run rig -- --bias --bias-sim  # + a simulated BIAS program (no camera software)
     pixi run rig -- --scanimage        # + the ScanImage node (JSON server on this PC); --si-mock for a stand-in
     pixi run rig -- --foxglove         # + foxglove_bridge (:8766) from the `viz` environment
@@ -29,6 +30,7 @@ passed through, e.g. `--bridge-args "--frames 60"`.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import shutil
 import signal
@@ -49,6 +51,15 @@ ROOT = HERE.parent  # rig/ (the pixi workspace)
 _ENVS = Path(os.environ["CONDA_PREFIX"]).parent if os.environ.get("CONDA_PREFIX") else ROOT / ".pixi" / "envs"
 VIZ_ENV = _ENVS / "viz"
 FOXGLOVE_PORT = 8766
+HOST_MONITOR_MODULE = "rig_nodes.host_monitor"
+
+
+def host_monitor_available() -> bool:
+    """True when the installed rig_nodes package ships the host monitor."""
+    try:
+        return importlib.util.find_spec(HOST_MONITOR_MODULE) is not None
+    except ImportError:  # no rig_nodes package at all
+        return False
 
 
 def node_argv(module: str, *args: str) -> list[str]:
@@ -79,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--bias-args", default="", help="extra args for the BIAS node")
     p.add_argument("--scanimage-args", default="", help="extra args for the ScanImage node (e.g. --port 5555 --status-every 1)")
     p.add_argument("--sim-args", default="--proto udp --rate 50", help="args for the FicTrac simulator")
+    p.add_argument("--no-host-monitor", action="store_true", help=f"do not run {HOST_MONITOR_MODULE} (the PC's CPU per core, memory, disk, network, GPU, top processes on /rig/host, recorded in every run's bag)")
+    p.add_argument("--host-monitor-args", default="", help=f"extra args for {HOST_MONITOR_MODULE} (e.g. --period 0.5 --print-every 30)")
     args = p.parse_args(argv)
 
     py = sys.executable
@@ -133,6 +146,15 @@ def main(argv: list[str] | None = None) -> int:
         nodes.append(Child("bias-sim", node_argv("rig_nodes.sims.bias_sim")))
     if args.bias:
         nodes.append(Child("bias", node_argv("rig_nodes.bias_node", *split_args(args.bias_args))))
+    if not args.no_host_monitor:
+        # The generic host monitor ships in the rig_nodes package (reiserlab/rig-nodes). It starts
+        # before the gateway (bridge_node.py, below), so a run opened right away already has host
+        # samples in its bag; `--py-root` lets it name this workspace's Python nodes `py:<script>`.
+        if host_monitor_available():
+            nodes.append(Child("host", node_argv(HOST_MONITOR_MODULE, "--log-dir", str(ROOT / "runlogs"),
+                                                  "--py-root", str(ROOT), *split_args(args.host_monitor_args))))
+        else:
+            print(f"[rig] host monitor: the installed rig_nodes has no {HOST_MONITOR_MODULE} (needs a rig-nodes release with it); starting without it", file=sys.stderr)
     if args.si_mock:
         nodes.append(Child("si-mock", node_argv("rig_nodes.sims.si_json_mock")))
     if args.scanimage:
