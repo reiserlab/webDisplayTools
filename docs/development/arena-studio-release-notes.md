@@ -4,6 +4,17 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.100 (2026-10-28) · rig/ installs rig-nodes 0.3.0 with the host monitor; okey-cokey rig; imaging code moves to the private 2P repo
+
+<!-- #281 -->
+none (nothing user-visible in the web tools; rig-side only).
+
+<!-- #282 -->
+none (rig-PC ROS graph only; no web tool changes)
+
+<!-- #284 -->
+none (rig-side only)
+
 ## v0.99 (2026-10-27) · rig/ installs the rig-nodes v0.2.1 package set; closed-loop-report applies start_frame; tiff2mcap --runlog
 
 <!-- #274 -->
