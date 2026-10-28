@@ -23,7 +23,10 @@
 [workspace]
 name = "rig"
 version = "0.1.0"
-channels = ["conda-forge", "robostack-jazzy", "https://raw.githubusercontent.com/reiserlab/rig-nodes/v0.3.0/channel"]
+# The 0.3.0 channel is read at the COMMIT that carries the payload (5e20dee, release/0.3.0 → rig-nodes#3):
+# the `v0.3.0` tag was placed one commit early (payload gitignored) and moves there when Michael runs
+# `git tag -f v0.3.0 5e20dee && git push --force origin refs/tags/v0.3.0`; a commit SHA is as immutable.
+channels = ["conda-forge", "robostack-jazzy", "https://raw.githubusercontent.com/reiserlab/rig-nodes/5e20dee381061832377d5a51c767aaf67a20c53c/channel"]
 # rmw_zenoh ≥ 0.2.11 (the RoboStack 0.19 set) is built for macOS ≥ 14; without this floor the
 # osx-arm64 solve falls back to the 0.16 set and the platforms drift apart (rig-nodes pins 0.19).
 # Declared on the platform (pixi ≥ 0.80 virtual packages), not as the deprecated [system-requirements]; pixi
@@ -85,7 +88,12 @@ mcap = ">=1.2"
 # controller) and their simulators, the MCAP recorder and indexer, the CDR decoder, the Foxglove rewriter
 # (+ bias_health), the supervision primitives rig.py composes with. 0.3.0 (2026-10-28) also ships the
 # HostStats message set for the host monitor (rig_interfaces, `typed` environment).
-# Written into every run's record by the gateway (hello_ack + /arena/session `packages`).
+# Written into every run's record by the gateway (hello_ack + /arena/session `packages`). The pin lives in the
+# `channel` feature (default / typed / viz), not in [dependencies]: the `dev` environment builds rig_nodes from
+# the git source instead, and one package name from two sources does not solve once the released version is
+# ahead of `main` (0.3.0 vs 0.2.1 on 2026-10-28: "excluded because of strict channel priority").
+
+[feature.channel.dependencies]
 rig_nodes = "==0.3.0"
 
 # ── typed messages = the OPT-IN `typed` environment ───────────────────────────────────────
@@ -140,10 +148,14 @@ ros-jazzy-rqt-console = "*"
 ros-jazzy-foxglove-bridge = "*"
 
 [environments]
-default = { solve-group = "rig" }
-typed = { features = ["typed"], solve-group = "rig" }
-viz = { features = ["viz"], solve-group = "rig" }
-dev = { features = ["dev", "typed"], solve-group = "dev" }
+default = { features = ["channel"], solve-group = "rig" }
+typed = { features = ["channel", "typed"], solve-group = "rig" }
+viz = { features = ["channel", "viz"], solve-group = "rig" }
+# `dev` without the `typed` feature: `typed` pins rig_interfaces to the released version from the channel, while
+# `dev` builds it from the git source — one name from two sources does not solve once the release is ahead of
+# `main` (0.3.0 vs 0.2.1 on 2026-10-28, "excluded because of strict channel priority"). The git source IS the
+# typed package here, so nothing is lost.
+dev = { features = ["dev"], solve-group = "dev" }
 
 [tasks]
 # ── hour one: middleware bring-up ───────────────────────────────────────────
