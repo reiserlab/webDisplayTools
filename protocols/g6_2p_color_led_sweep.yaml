@@ -72,7 +72,7 @@ version: 3
 #   to `frames_per_grab` in pre_blank and the file stem per color; nothing else.
 #   ScanImage must record: DO1 (frame-transfer envelope) and the line clock
 #   loop-back on aux inputs or spare AI channels — see
-#   docs/development/2p-scanimage-signal-logging.md §0.
+#   reiserlab/scanimage-2026-bergamo procedures/webdisplaytools-2p/2p-scanimage-signal-logging.md §0.
 #
 # Notes
 #   1. duty: 0 in trialParams means "pattern's stored duty", NOT off. Off is allOff.

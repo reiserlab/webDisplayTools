@@ -208,19 +208,11 @@ for (const f of textFiles) {
         if (!served.has(m[1])) referenced.set(m[1], (referenced.get(m[1]) || []).concat(f));
     }
 }
+// The superseded 2P line-sync checklist, the one document allowed to name removed images, moved to the
+// private 2P rig repository on 2026-10-28 (rig-software-repos-and-runners.md §3.3 amendment).
 for (const [file, where] of referenced) {
-    // The superseded 2P checklist keeps its history (banner at the top says the files are gone).
-    const only2p = where.every((w) => w.endsWith('2p-line-sync-rig-checklist.md'));
-    checkBool(
-        `no live reference to a removed image: ${file}`,
-        only2p,
-        'referenced from ' + [...new Set(where)].join(', ')
-    );
+    checkBool(`no live reference to a removed image: ${file}`, false, 'referenced from ' + [...new Set(where)].join(', '));
 }
-checkBool(
-    '2P rig checklist marked superseded',
-    /Superseded \(2026-09-29\)/.test(read('docs/development/2p-line-sync-rig-checklist.md'))
-);
 
 console.log('\n=== Summary ===');
 console.log(`${total - failures} / ${total} checks passed`);
