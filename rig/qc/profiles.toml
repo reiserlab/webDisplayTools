@@ -1,0 +1,127 @@
+# profiles.toml — the per-rig rows of the five-minute release validation (`pixi run qc`, rig/qc/qc.py).
+#
+# A new rig is a new `[rigs.<name>]` table; the checklist text Michael reads at each step is data
+# here, not code. Every key a rig leaves out comes from `[defaults]`. Paths with backslashes are
+# TOML literal strings ('…'). rig/QC.md is the procedure page.
+
+[defaults]
+repo = "reiserlab/webDisplayTools"
+min_pixi = "0.80"
+tier_url = { next = "https://reiserlab.github.io/webDisplayTools/next", prod = "https://reiserlab.github.io/webDisplayTools" }
+# Where a QC run keeps its worktree, Chrome profile and dated run folders (`--qc-root` overrides).
+qc_root = { nt = 'C:\qc', posix = "~/qc" }
+# pixi environments installed in the candidate's scratch worktree (`-e typed` where the rig uses it,
+# `viz` for Foxglove). `default` is always installed.
+envs = ["default"]
+# Ports the rig graph binds — refused when something already holds them (rig_nodes.supervise.preflight).
+ports = [
+  ["tcp", 7447, "a Zenoh router (another `pixi run rig`)"],
+  ["tcp", 8765, "a Studio gateway: bridge 3.4 (`pixi run bridge` at the repo root) or another rig"],
+  ["udp", 60000, "a FicTrac receiver: bridge 3.4 or another fictrac adapter"],
+]
+foxglove_port = 8766
+gateway_url = "ws://127.0.0.1:8765"
+# The no-browser pre-check (rig/tests/studio_emulator.py): epochs of the Studio's exact conversation.
+precheck = { epochs = 1, epoch_s = 4, min_frames = 40 }
+connect_timeout_s = 300     # how long to wait for the Web Serial click
+run_timeout_s = 600         # how long a Studio run may take before it counts as stuck
+frames_probe_s = 6          # how long to count gateway frames before deciding FicTrac is silent
+studio_rig = "cshl_g6_2x10_ball"
+controller = true
+# Checklist steps: one `look` line per phase, shown when that phase is reached. A rig overrides an
+# id by repeating it; ids: graph, fictrac, precheck, studio, bridge, controller, run, reports, done.
+checklist = [
+  { id = "graph", look = "Graph up: the rig window lists router + fictrac + bridge (+ the rig's extra nodes); no red tracebacks." },
+  { id = "fictrac", look = "FicTrac frames reach the gateway (rate printed below, ≈ camera fps; the simulator gives 50 Hz)." },
+  { id = "precheck", look = "Pre-check: every emulator assertion PASS (hello_ack ≥ 3.4, behavior_v2 ack, epoch frames, export)." },
+  { id = "studio", look = "Studio open on the right tier: footer version as expected, build SHA = the candidate (NEXT banner on /next/), protocol loaded in the Run view, no console errors." },
+  { id = "bridge", look = "Run view: bridge dot green, FicTrac rate ticking (frames/s), log level behavior_v2 acknowledged." },
+  { id = "controller", look = "After your click: firmware label and panel inventory shown, panels all green, SD listing populated." },
+  { id = "run", look = "Watch the arena while the protocol runs (steps printed as they start); the run ends with outcome completed, no fault, no bridge-lost alert." },
+  { id = "reports", look = "Bag closed (metadata.yaml present), export identical to the live file, runlog-check OK, closed-loop idx mismatch 0 %." },
+  { id = "done", look = "Ports 7447/8765/60000 free again; run logs and bags in the dated QC folder named below." },
+]
+
+# ── ww18: G6 2×10 fly-on-ball, real FicTrac (FLIR/Spinnaker), Windows 11, pixi 0.83 ──────────────
+[rigs.ww18]
+label = "ww18 — G6 2×10 fly-on-ball, real FicTrac"
+hosts = ["reiserlab-ww18"]
+envs = ["default", "typed", "viz"]
+rig_flags = ["--foxglove"]
+studio_rig = "cshl_g6_2x10_ball"
+# Not in protocols/index.json (so no `?p=` key): loaded from the tier's raw YAML through the page.
+protocol = { path = "protocols/validation/bench_closed_loop_2x10.yaml", duration_s = 25 }
+# FicTrac must start through fictrac.bat (puts its pixi env + Spinnaker on PATH); run from the
+# config's folder. When it is already running it is used as is. If the camera fails (no frames in
+# `frames_probe_s`), the FicTrac simulator takes over and the report says SIM.
+fictrac = { kind = "real", cmd = ['C:\Lab\GitHub\fictrac\build\Release\fictrac.bat', 'C:\Lab\GitHub\fictrac\cshl\rig05_vfov28_2026-09-22\config.txt'], cwd = 'C:\Lab\GitHub\fictrac\cshl\rig05_vfov28_2026-09-22', process = "fictrac.exe", fallback = "sim" }
+foxglove = { layout = "foxglove/arena-fictrac.json" }
+reports = { closed_loop = true, holds = ["epoch_a_frame25=25", "epoch_b_frame75=75"] }
+checklist = [
+  { id = "fictrac", look = "FicTrac window tracking the ball (≈ 96 fps on ww18); the gateway rate printed below matches." },
+  { id = "run", look = "Arena: 3 s background, then the grating HOLDS at frame 25 while the ball is still; turn the ball and the grating follows (coupling −1); ~11 s in it jumps to frame 75 and holds again; background to finish. About 25 s." },
+  { id = "reports", look = "runlog-check OK (4 pass / 0 fail), both epochs open on 25 / 75 with 0 % idx mismatch, bench-check PASS with channel + build = this candidate." },
+]
+
+# ── ww14: okey-cokey camera rig — BIAS (FLIR BFS-U3-51S5M) + G6 four-color, no FicTrac ──────────
+[rigs.ww14]
+label = "ww14 — okey-cokey camera rig (BIAS + G6 four-color, no FicTrac)"
+hosts = ["reiserlab-ww14"]
+envs = ["default", "viz"]
+# The flags of rig/tools/okey-cokey-start.ps1; flags the candidate's rig.py does not know are dropped
+# with a warning (e.g. --no-fictrac / --stimulus-args before PR #269). {qc_dir} = this run's folder.
+rig_flags = ["--no-fictrac", "--bias", "--bias-args", "--video-dir {qc_dir}\\bias", "--foxglove", "--viz-args", "--sources bias", "--stimulus-args", "--panel-layout four-color"]
+studio_rig = "cshl_g6_2x10"
+protocol = { key = "g6_color_optomotor_smoke", path = "protocols/g6_color_optomotor_smoke.yaml", duration_s = 110 }
+fictrac = { kind = "none" }
+# BIAS must already be running with its HTTP command port on (tools/okey-cokey-start.ps1 starts it).
+requires = [["tcp", 5010, "BIAS (test_gui.exe) with the external-control port on — start it first, then re-run"]]
+# The pre-check also drives the bias connector (connect / startRecording / getTimestamp / stopRecording).
+precheck = { epochs = 0, epoch_s = 0, min_frames = 0, connector = "bias" }
+foxglove = { layout = "foxglove/arena-okey-cokey.json" }
+reports = { closed_loop = false, holds = [] }
+checklist = [
+  { id = "fictrac", look = "No FicTrac on this rig: the gateway answers hello_ack and advertises the bias connector." },
+  { id = "precheck", look = "Pre-check: emulator PASS incl. the BIAS connector (startRecording → getTimestamp > 0 → stopRecording); a .ufmf appeared under the QC folder." },
+  { id = "run", look = "Arena: 2 s dark, then eight 10 s gratings — violet, blue, green, yellow, each clockwise then counter-clockwise (this arena is mounted upside down, so CW trials turn CCW seen from above) — 2 s dark between them; BIAS records one ufmf for the whole run. About 2 minutes." },
+  { id = "reports", look = "runlog-check OK (8 pass / 0 fail / 0 unknown), bag closed, BIAS ufmf present and > 1 MB." },
+]
+
+# ── Bergamo 2P PC: G6 2×10 line-sync, ScanImage JSON server; imaging nodes live in the private repo ─
+[rigs.bergamo]
+label = "Bergamo 2P PC — G6 2×10 two-photon (ScanImage connector)"
+hosts = ["reiserlab-bergamo1"]
+envs = ["default"]
+rig_flags = ["--no-fictrac", "--scanimage"]
+studio_rig = "bergamo_g6_2x10_2p"
+protocol = { key = "g6_2x10_2p_diagnostics", path = "protocols/g6_2x10_2p_diagnostics.yaml", duration_s = 60 }
+fictrac = { kind = "none" }
+requires = [["tcp", 5555, "ScanImage's JSON server (start ScanImage from a terminal MATLAB and enable the server)"]]
+precheck = { epochs = 0, epoch_s = 0, min_frames = 0 }
+reports = { closed_loop = false, holds = [] }
+checklist = [
+  { id = "fictrac", look = "No FicTrac on this rig: the gateway answers hello_ack and advertises the scanimage connector." },
+  { id = "run", look = "Arena: the 2P diagnostics sequence (brightness ramp and steps, 1 Hz flash, sparse, 6 s all-off); the Run view shows the controller-settings assertion (panel mode, refresh, SPI, AO) with no manual Console steps. About 1 minute." },
+  { id = "reports", look = "runlog-check OK, bag closed." },
+]
+
+# ── this Mac: FicTrac-MacOS on the sample video, no arena controller (development + dry runs) ────
+[rigs.mac]
+label = "Mac — FicTrac sample video, no controller"
+hosts = ["reiserm-lm6"]
+envs = ["default"]
+rig_flags = ["--foxglove"]
+studio_rig = "cshl_g6_2x10_ball"
+protocol = { path = "protocols/validation/bench_closed_loop_2x10.yaml", duration_s = 25 }
+controller = false
+# FicTrac on the 10 s sample video: the sample folder is copied under the QC root, sock_port set to
+# 60000, src_fps paces the playback (FicTrac plays a file flat out otherwise), and (when ffmpeg is
+# available) the video is looped to `loop_s` so frames outlast the run.
+fictrac = { kind = "sample", cmd = ["~/Documents/GitHub/Fictrac-MacOS/build/macos-opencv5/bin/fictrac"], sample_dir = "~/Documents/GitHub/Fictrac-MacOS/sample", process = "fictrac", fallback = "sim", loop_s = 180, fps = 50 }
+foxglove = { layout = "foxglove/arena-fictrac.json" }
+reports = { closed_loop = true, holds = [] }
+checklist = [
+  { id = "fictrac", look = "FicTrac tracking the sample ball video; gateway rate ≈ the video's fps." },
+  { id = "run", look = "No controller on this Mac: the Studio run is skipped; the pre-check's run is what the reports judge." },
+  { id = "reports", look = "runlog-check skips or passes (no controller rows), closed-loop report has one epoch with 0 % idx mismatch, bag closed." },
+]
