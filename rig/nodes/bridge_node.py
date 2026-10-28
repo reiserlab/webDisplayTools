@@ -31,7 +31,7 @@ What is NEW (small, and all of it is visible in the log):
     node killed mid-run therefore leaves the log intact AND documented.
   * `connector_status` lines (frames seen, adapter→bridge latency p50/p99 ms per source)
     at log close / export, so a run carries its own transport health.
-  * `/rig/host` (host_monitor.py: CPU per core, memory, disk, network, GPU, top processes) is
+  * `/rig/host` (rig_nodes.host_monitor: CPU per core, memory, disk, network, GPU, top processes) is
     recorded into the bag on arrival, so every run carries the PC's pressure alongside it.
 
 Not supported here (by design of the PoC): the `fictrac_port` config key cannot re-bind
@@ -144,7 +144,7 @@ CONNECTOR_TOPICS = {
     "scanimage": {"cmd": SCANIMAGE_CMD_TOPIC, "reply": SCANIMAGE_REPLY_TOPIC, "status": SCANIMAGE_STATUS_TOPIC},
 }
 FRAME_TOPIC = "/arena/frame"
-# Host pressure from host_monitor.py (generic, rig-nodes material): recorded on arrival, no run-log line.
+# Host pressure from rig_nodes.host_monitor (reiserlab/rig-nodes): recorded on arrival, no run-log line.
 HOST_TOPIC = "/rig/host"
 HOST_STATS_TYPE = "rig_interfaces/msg/HostStats"
 try:  # rig-nodes ≥ 0.3.0; the monitor publishes the same type when it imports (its --typed auto)
@@ -649,7 +649,7 @@ class BridgeNode(Node):
         # Recorded on arrival, like /fictrac/raw: it never becomes a run-log line (the stopRecording reply
         # carries its summary), so there is no shadow line to stay in step with.
         self.create_subscription(String, BIAS_FRAMES_TOPIC, lambda b: self._record(BIAS_FRAMES_TOPIC, b), RAW_QOS, raw=True)
-        # host_monitor.py's samples (1 Hz): same QoS depth class as the monitor's (RELIABLE, KEEP_LAST 10).
+        # rig_nodes.host_monitor samples (1 Hz; the monitor publishes RELIABLE, KEEP_LAST 10).
         self.create_subscription(HostStats if HostStats is not None else String, HOST_TOPIC,
                                  lambda b: self._record(HOST_TOPIC, b), RAW_QOS, raw=True)
 

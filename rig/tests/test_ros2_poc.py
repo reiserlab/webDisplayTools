@@ -50,9 +50,11 @@ log, plus:
                                                         NDJSON — reported, crashsafe profile gated;
                                                         then a RESTARTED node's log_export recovers the
                                                         bag on its own (recovered:true, whole bag left)
-  host monitor (2026-10-28)                            /rig/host in the bag ≥ 0.8 Hz, fields = the
-                                                        HostStats spec, the graph's nodes pinned; its own
-                                                        CPU ≤ 2 % of a core, ≤ 5 % of the compressed bag
+  host monitor (2026-10-28; rig_nodes.host_monitor)   /rig/host in the bag ≥ 0.8 Hz, fields = the installed
+                                                        HostStats (typed) / the read fields (JSON), the graph's
+                                                        nodes pinned; its own CPU ≤ 2 % of a core, ≤ 5 % of the
+                                                        compressed bag — skipped (info) when the installed
+                                                        rig_nodes has no host monitor
 
 Exit 0 when all checks pass. Prints a markdown summary. Artifacts are kept with --keep.
 """
@@ -248,7 +250,6 @@ def bag_summary(bag: Path) -> dict:
 def host_monitor_values(bag: Path) -> dict:
     """/rig/host in the bag: sample count over the run, field names vs the request's HostStats.msg,
     per-core sanity, pinned groups, the monitor's own CPU, and its share of the compressed payload."""
-    import re
     import statistics
 
     import zstandard
@@ -256,9 +257,13 @@ def host_monitor_values(bag: Path) -> dict:
     sys.path.insert(0, str(NODES))
     from mcap_convert import _json_of, decode_cdr, read_records  # noqa: E402
 
-    spec = (POC / "docs" / "host-stats-request.md").read_text(encoding="utf-8")
-    body = re.search(r"### HostStats\.msg\s*```\n(.*?)```", spec, re.S).group(1)
-    want = sorted(ln.split("#", 1)[0].split()[1] for ln in body.splitlines() if ln.split("#", 1)[0].strip())
+    try:  # the field contract is rig-nodes' (rig_interfaces/HostStats); without the typed build the
+        # JSON samples are checked for the fields this harness reads
+        from rig_interfaces.msg import HostStats
+
+        want = sorted(HostStats.get_fields_and_field_types())
+    except (ImportError, AttributeError):
+        want = None
     host, other, t_ns, objs = [], [], [], []
     gen = read_records(bag)
     try:
@@ -276,7 +281,8 @@ def host_monitor_values(bag: Path) -> dict:
     except StopIteration:
         pass
     good = [o for o in objs if isinstance(o, dict)]
-    bad = sorted({k for o in good for k in set(o) ^ set(want)})
+    need = {"core_busy_mean", "core_busy_peak", "monitor_cpu_cores", "procs"}
+    bad = sorted({k for o in good for k in (set(o) ^ set(want) if want else need - set(o))})
     cores_ok = bool(good) and all(len(o["core_busy_mean"]) == len(o["core_busy_peak"]) == (os.cpu_count() or 0)
                                   and all(p + 1e-6 >= m for m, p in zip(o["core_busy_mean"], o["core_busy_peak"])) for o in good)
     self_cpu = [o["monitor_cpu_cores"] for o in good[2:] if isinstance(o.get("monitor_cpu_cores"), (int, float))]
@@ -456,7 +462,13 @@ def main(argv: list[str] | None = None) -> int:
         si_port = free_tcp_port()
         start("si-mock", [PY, str(HERE / "si_json_mock.py"), "--port", str(si_port), "--grab-s", "1.0", "--start-delay-s", "0.2", "--stall-on", "hSI.hRoiManager.scanZoomFactor"])
         start("scanimage-node", [PY, str(NODES / "scanimage_node.py"), "--port", str(si_port), "--status-every", "1", "--timeout-s", "1.5"])
-        start("host-monitor", [PY, str(NODES / "host_monitor.py"), "--log-dir", str(runlogs)])
+        from rig import HOST_MONITOR_MODULE, host_monitor_available  # noqa: E402
+
+        host_mon = host_monitor_available()
+        if host_mon:  # the command line rig.py uses
+            start("host-monitor", [PY, "-m", HOST_MONITOR_MODULE, "--log-dir", str(runlogs), "--py-root", str(POC)])
+        else:
+            print(f"  info  host monitor: the installed rig_nodes has no {HOST_MONITOR_MODULE} — its checks are skipped", file=sys.stderr)
         bridge_argv = [PY, str(NODES / "bridge_node.py"), "--log-dir", str(runlogs), "--source-timeout", "1.5", "--bag-profile", a.bag_profile]
         bridge = start("bridge-node", bridge_argv)
         check("bridge node serving ws://127.0.0.1:8765", wait_port("127.0.0.1", 8765, 20.0))
@@ -770,21 +782,22 @@ def main(argv: list[str] | None = None) -> int:
         if typed:
             check("size: /arena/frame records in the final layout (chunk-only index, zstd 19) ≤ 72 B/frame compressed", bool(sz) and (sz.get("bytes_per_frame") or 999) <= 72.0, json.dumps(sz))
 
-        # ── host monitor (/rig/host; docs/development/rig-host-monitor.md) ───────────────
-        hm = host_monitor_values(main_bag) if main_bag else {}
-        print(f"  info  host monitor: {json.dumps({k: v for k, v in hm.items() if k not in ('fields_ok', 'groups')})}", file=sys.stderr)
-        check("host monitor: /rig/host recorded in the bag, ≥ 0.8 samples per second of the run",
-              (hm.get("samples") or 0) >= 0.8 * (hm.get("run_s") or 99), f"{hm.get('samples')} samples over {hm.get('run_s')} s")
-        check("host monitor: every sample has exactly the HostStats fields of rig/docs/host-stats-request.md (String JSON: same names)",
-              hm.get("fields_ok", False), str(hm.get("bad_fields")))
-        check("host monitor: one entry per logical CPU, busiest sub-window ≥ the window mean on every core",
-              hm.get("cores_ok", False), f"{hm.get('ncpu')} CPUs")
-        check("host monitor: the graph's processes pinned by script (py:bridge_node, py:fictrac_udp_adapter, py:host_monitor)",
-              {"py:bridge_node", "py:fictrac_udp_adapter", "py:host_monitor"} <= set(hm.get("groups") or []), str(hm.get("groups")))
-        check("host monitor cost: its own CPU ≤ 2 % of one core (median after the first 2 samples)",
-              hm.get("self_cpu_median") is not None and hm["self_cpu_median"] <= 0.02, f"median {hm.get('self_cpu_median')} max {hm.get('self_cpu_max')} cores")
-        check("host monitor storage: /rig/host ≤ 5 % of the run's compressed payload (zstd, as the bag)",
-              hm.get("share_compressed") is not None and hm["share_compressed"] <= 0.05, f"{hm.get('share_compressed')} ({hm.get('host_kb_per_h_zstd')} KB/h)")
+        # ── host monitor (/rig/host, rig_nodes.host_monitor) ─────────────────────────────
+        hm = host_monitor_values(main_bag) if main_bag and host_mon else {}
+        if host_mon:
+            print(f"  info  host monitor: {json.dumps({k: v for k, v in hm.items() if k not in ('fields_ok', 'groups')})}", file=sys.stderr)
+            check("host monitor: /rig/host recorded in the bag, ≥ 0.8 samples per second of the run",
+                  (hm.get("samples") or 0) >= 0.8 * (hm.get("run_s") or 99), f"{hm.get('samples')} samples over {hm.get('run_s')} s")
+            check("host monitor: every sample has the HostStats fields (the installed rig_interfaces' when typed)",
+                  hm.get("fields_ok", False), str(hm.get("bad_fields")))
+            check("host monitor: one entry per logical CPU, busiest sub-window ≥ the window mean on every core",
+                  hm.get("cores_ok", False), f"{hm.get('ncpu')} CPUs")
+            check("host monitor: the graph's processes pinned by script (py:bridge_node, py:fictrac_udp_adapter, py:host_monitor)",
+                  {"py:bridge_node", "py:fictrac_udp_adapter", "py:host_monitor"} <= set(hm.get("groups") or []), str(hm.get("groups")))
+            check("host monitor cost: its own CPU ≤ 2 % of one core (median after the first 2 samples)",
+                  hm.get("self_cpu_median") is not None and hm["self_cpu_median"] <= 0.02, f"median {hm.get('self_cpu_median')} max {hm.get('self_cpu_max')} cores")
+            check("host monitor storage: /rig/host ≤ 5 % of the run's compressed payload (zstd, as the bag)",
+                  hm.get("share_compressed") is not None and hm["share_compressed"] <= 0.05, f"{hm.get('share_compressed')} ({hm.get('host_kb_per_h_zstd')} KB/h)")
         check("bridge node still alive at the end of the main run", bridge.alive())
 
         # ── crash phase: SIGKILL the bridge node mid-run, both writer profiles ────────

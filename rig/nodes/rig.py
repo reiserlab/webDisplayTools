@@ -19,6 +19,7 @@ child's name are passed through, e.g. `--bridge-args "--frames 60"`.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import shlex
 import shutil
@@ -40,6 +41,15 @@ SIM = HERE.parents[1] / "fictrac-bridge" / "fictrac_sim.py"
 _ENVS = Path(os.environ["CONDA_PREFIX"]).parent if os.environ.get("CONDA_PREFIX") else ROOT / ".pixi" / "envs"
 VIZ_ENV = _ENVS / "viz"
 FOXGLOVE_PORT = 8766
+HOST_MONITOR_MODULE = "rig_nodes.host_monitor"
+
+
+def host_monitor_available() -> bool:
+    """True when the installed rig_nodes package ships the host monitor."""
+    try:
+        return importlib.util.find_spec(HOST_MONITOR_MODULE) is not None
+    except ImportError:  # no rig_nodes package at all
+        return False
 
 
 sys.path.insert(0, str(HERE))
@@ -144,8 +154,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--viz-args", default="", help="extra args for viz_node.py (--deg-per-frame, --frame-dir, --feature-az0, --frames)")
     p.add_argument("--foxglove", action="store_true",
                    help=f"also run foxglove_bridge on ws://127.0.0.1:{FOXGLOVE_PORT} (the `viz` environment; skipped with a note when it is not installed)")
-    p.add_argument("--no-host-monitor", action="store_true", help="do not run host_monitor.py (the PC's CPU per core, memory, disk, network, GPU, top processes on /rig/host, recorded in every run's bag)")
-    p.add_argument("--host-monitor-args", default="", help="extra args for host_monitor.py (e.g. --period 0.5 --print-every 30 --pin bias=^BIAS)")
+    p.add_argument("--no-host-monitor", action="store_true", help=f"do not run {HOST_MONITOR_MODULE} (the PC's CPU per core, memory, disk, network, GPU, top processes on /rig/host, recorded in every run's bag)")
+    p.add_argument("--host-monitor-args", default="", help=f"extra args for {HOST_MONITOR_MODULE} (e.g. --period 0.5 --print-every 30)")
     p.add_argument("--no-router", action="store_true", help="a Zenoh router is already running on this host")
     p.add_argument("--bridge-args", default="", help="extra args for bridge_node.py")
     p.add_argument("--fictrac-args", default="", help="extra args for fictrac_udp_adapter.py")
@@ -210,8 +220,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.scanimage:
         nodes.append(Child("scanimage", [py, str(NODES / "scanimage_node.py"), *split_args(args.scanimage_args)]))
     if not args.no_host_monitor:
-        # Before the bridge, so a run opened right away already has host samples in its bag.
-        nodes.append(Child("host", [py, str(NODES / "host_monitor.py"), *split_args(args.host_monitor_args)]))
+        # The generic host monitor ships in the rig_nodes package (reiserlab/rig-nodes); started
+        # before the bridge, so a run opened right away already has host samples in its bag.
+        # `--py-root` lets it name this workspace's Python nodes `py:<script>`.
+        if host_monitor_available():
+            nodes.append(Child("host", [py, "-m", HOST_MONITOR_MODULE, "--log-dir", str(ROOT / "runlogs"),
+                                        "--py-root", str(ROOT), *split_args(args.host_monitor_args)]))
+        else:
+            print(f"[rig] host monitor: the installed rig_nodes has no {HOST_MONITOR_MODULE} (needs a rig-nodes release with it); starting without it", file=sys.stderr)
     bridge = Child("bridge", [py, str(NODES / "bridge_node.py"), *split_args(args.bridge_args)])
     nodes.append(bridge)
     if foxglove:
