@@ -4,6 +4,14 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.99 (2026-10-27) · rig/ installs the rig-nodes v0.2.1 package set; closed-loop-report applies start_frame; tiff2mcap --runlog
+
+<!-- #274 -->
+none (no user-visible change; rig PCs: `cd rig && pixi install` re-locks onto the rig-nodes channel — the Studio's `hello_ack` now carries `packages`).
+
+<!-- #273 -->
+none (offline analysis tool)
+
 ## v0.98 (2026-10-26) · Ros2-poc: the FicTrac record in the bag — one /arena/frame message per frame with 10 columns (LAB-303) · Assert sticky controller settings before every run: controller: block, rig defaults, run header (LAB-230) · Rename ros2-poc/ → rig/ and arena_interfaces → rig_interfaces (LAB-303 cleanup, no behavior change)
 
 <!-- #264 -->

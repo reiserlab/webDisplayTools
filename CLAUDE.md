@@ -115,8 +115,10 @@ arena visualization stay here; the Python arena library + headless runner go to
 (`rig_interfaces`, the device adapters + simulators, `rig_nodes.recorder` / `mcap_index` / `cdr` /
 `foxglove_json`, `rig_nodes.supervise`, the Zenoh configs; contract: its `CONTRACT.md`) and is INSTALLED
 into `rig/` as the pinned `rig_nodes` + `rig_interfaces` packages from that repo's channel. A node fix
-is tested here with `pixi install -e dev` (a sibling `../rig-nodes` checkout built from source); a
-release of the set re-pins `rig/pixi.toml`. Never re-add a device node or recorder copy under `rig/`.
+is tested here with `pixi install -e dev` (rig-nodes `main` built from source — git source dependencies,
+NEVER path dependencies on a sibling checkout: pixi validates every environment's source paths before
+installing any environment, which broke `pixi install` on rig PCs on 2026-10-27); a release of the set
+re-pins `rig/pixi.toml`. Never re-add a device node or recorder copy under `rig/`.
 
 ### Dev environment (pixi — the only tool you install)
 

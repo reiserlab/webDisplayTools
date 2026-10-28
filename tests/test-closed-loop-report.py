@@ -92,6 +92,73 @@ def synth_log(path, rejecting: bool, gain=1.8, frames=200, amp=90.0, dur_s=4.0, 
             fh.write(json.dumps(l) + "\n")
 
 
+def synth_start_frame_log(path, epochs, ignore_start_frame=False, coupling=-1.0, pitch=1.8, frames=200, rate=50, dur_s=2.0):
+    """A bridge-3.4 run shaped like the 2026-10-27 ww18 bench logs: each epoch's startClosedLoop config
+    carries `start_frame` (+ `epoch`, `offset: 0` from the plugin config), each stopClosedLoop config
+    carries `offset: 0` and no start_frame. `epochs` = [(condition, start_frame or None, spin_dps)].
+    The logged idx follows the bridge: offset = (start_frame mod frames) × pitch, one-shot per epoch.
+    ignore_start_frame=True writes idx as a ≤3.3 bridge would (opens on frame 0)."""
+    t0 = 1_700_000_000_000
+    L = [{"type": "session", "event": "logging_started", "ms": t0},
+         {"type": "frame_schema", "level": "behavior_v2", "cols": ["ms", "fc", "idx", "ft", "x", "y", "hd"], "t0": t0}]
+    base = {"type": "config", "fictrac_port": 60000, "coupling": coupling, "deg_per_frame": pitch, "gain": pitch,
+            "offset": 0, "frames": frames, "bias": {"type": "none", "amplitude": 0, "frequency": 0}, "dir": "browser→bridge"}
+    fc = 0
+    start = 1000
+    for k, (cond, sf, spin) in enumerate(epochs):
+        cfg = dict(base, epoch=True, rx_ms=t0 + start - 4)
+        if sf is not None:
+            cfg["start_frame"] = sf
+        L.append(cfg)
+        hd0 = 40.0 + 97.0 * k
+        L.append({"type": "heading_tare", "dir": "bridge", "ms": start - 3, "hd0_deg": hd0, "reason": "epoch", "epoch": k + 1})
+        L.append({"type": "log", "event": "runner", "phase": "command", "op": "fictracApply", "value": True, "condition": cond, "rx_ms": t0 + start})
+        offset = 0.0 if sf is None or ignore_start_frame else (sf % frames) * pitch
+        n = int(dur_s * rate)
+        for i in range(n + 1):
+            t_s = i / rate
+            rel = spin * t_s
+            idx = round((coupling * rel + offset) / pitch) % frames
+            fc += 1
+            L.append([start + int(round(t_s * 1000)), fc, idx, t_s * 1000.0, 0.0, 0.0, math.radians((hd0 + rel) % 360.0)])
+        end = start + int(dur_s * 1000) + 20
+        L.append({"type": "log", "event": "runner", "phase": "command", "op": "fictracApply", "value": False, "condition": cond, "rx_ms": t0 + end})
+        L.append(dict(base, rx_ms=t0 + end + 1))   # stopClosedLoop: offset 0, bias none, no start_frame
+        start = end + 1000
+    with open(path, "w") as fh:
+        for l in L:
+            fh.write(json.dumps(l) + "\n")
+
+
+print("=== closed-loop-report: start_frame (bridge 3.4) ===")
+st = {}
+rep.apply_config(st, {"deg_per_frame": 1.8, "frames": 200, "offset": 0, "start_frame": 275})
+ps = bridge.Pipeline(None, None, 200, 1.8, 0.0)
+check("start_frame → offset mirrors the bridge (mod frames, × pitch; overrides offset)", (st["start_frame"], st["offset"]), (75, ps.start_frame_to_offset(275)))
+rep.apply_config(st, {"offset": 0})
+check("a later config's offset ends the start_frame (one-shot)", (st.get("start_frame"), st["offset"]), (None, 0.0))
+rep.apply_config(st, {"start_frame": 25, "frames": 100, "deg_per_frame": 3.6})
+check("start_frame uses the same message's pitch + frame count", st["offset"], 25 * 3.6)
+with tempfile.TemporaryDirectory() as d:
+    eps = [("epoch_a_frame25", 25, 30.0), ("epoch_b_frame75", 275, -45.0), ("epoch_c_no_start", None, 20.0)]
+    p_sf = os.path.join(d, "start_frame.jsonl")
+    synth_start_frame_log(p_sf, eps)
+    S = rep.analyze(p_sf, 0.0, 1, 0.0)["epochs"]
+    check("three epochs", len(S), 3)
+    check("start_frame per epoch (mod frames; none on a plain epoch)", [e["start_frame"] for e in S], [25, 75, None])
+    check("offset per epoch = start_frame × pitch", [e["offset_deg"] for e in S], [45.0, 135.0, 0.0])
+    check("idx reconstruction exact on start_frame epochs (was 100 % before bridge-3.4 support)",
+          [e["idx_mismatch_fraction"] for e in S], [0.0, 0.0, 0.0])
+    md = rep.to_markdown(rep.analyze(p_sf, 0.0, 1, 0.0))
+    check("markdown shows frames @start and names start_frame in the legend", ("200 @25" in md, "200 @75" in md, "start_frame" in md), (True, True, True))
+    # A log whose idx ignored start_frame (a ≤3.3 bridge that dropped the key) must still be FLAGGED:
+    # the report models the 3.4 bridge from the config the browser sent.
+    p_old = os.path.join(d, "start_frame_ignored.jsonl")
+    synth_start_frame_log(p_old, eps, ignore_start_frame=True)
+    O = rep.analyze(p_old, 0.0, 1, 0.0)["epochs"]
+    check("idx that ignored start_frame → mismatch on those epochs only", [e["idx_mismatch_fraction"] for e in O], [1.0, 1.0, 0.0])
+
+
 print("=== closed-loop-report on synthetic runs ===")
 with tempfile.TemporaryDirectory() as d:
     p_rej = os.path.join(d, "rej.jsonl")
