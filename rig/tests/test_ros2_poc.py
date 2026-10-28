@@ -263,7 +263,7 @@ def host_monitor_values(bag: Path) -> dict:
         want = sorted(HostStats.get_fields_and_field_types())
     except (ImportError, AttributeError):
         want = None
-    host, other, t_ns, objs = [], [], [], []
+    host, other, t_ns, objs, schemas = [], [], [], [], set()
     gen = read_records(bag)
     try:
         while True:
@@ -273,8 +273,17 @@ def host_monitor_values(bag: Path) -> dict:
                 other.append(r["data"])
                 continue
             host.append(r["data"])
-            try:  # String JSON → its object; a typed HostStats → its fields (the converter's decoder)
-                objs.append(_json_of({"msg": decode_cdr(r["schema"], r.get("schema_text"), r["data"])}))
+            schemas.add(r["schema"])
+            try:
+                if want is not None and r["schema"] == "rig_interfaces/msg/HostStats":
+                    # typed: ROS's own deserializer (the converter's pure decoder reads no nested
+                    # message arrays — DiskStats[] disks … — and the converter never needs /rig/host)
+                    from rclpy.serialization import deserialize_message
+                    from rosidl_runtime_py.convert import message_to_ordereddict
+
+                    objs.append(json.loads(json.dumps(message_to_ordereddict(deserialize_message(r["data"], HostStats)))))
+                else:  # String JSON → its object
+                    objs.append(_json_of({"msg": decode_cdr(r["schema"], r.get("schema_text"), r["data"])}))
             except Exception:
                 objs.append(None)
     except StopIteration:
@@ -289,7 +298,7 @@ def host_monitor_values(bag: Path) -> dict:
     zh = len(zstandard.ZstdCompressor(level=level).compress(b"".join(host))) if host else 0
     za = len(zstandard.ZstdCompressor(level=level).compress(b"".join(host + other))) if host or other else 0
     run_s = (max(t_ns) - min(t_ns)) / 1e9 if t_ns else None
-    return {"samples": len(host), "run_s": round(run_s, 1) if run_s else None, "fields_ok": bool(good) and len(good) == len(objs) and not bad,
+    return {"samples": len(host), "schema": sorted(s or "std_msgs/msg/String" for s in schemas), "run_s": round(run_s, 1) if run_s else None, "fields_ok": bool(good) and len(good) == len(objs) and not bad,
             "bad_fields": bad, "cores_ok": cores_ok, "ncpu": len(good[0]["core_busy_mean"]) if good else None,
             "groups": sorted({p["group"] for o in good for p in o.get("procs", []) if p.get("group")}),
             "self_cpu_median": round(statistics.median(self_cpu), 4) if self_cpu else None,
