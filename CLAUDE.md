@@ -107,11 +107,18 @@ When editing web tools, audit all buttons and controls in the modified code sect
 - Dependencies via CDN or vendored under `js/vendor/` (e.g. `yaml`); no runtime npm
 - Web outputs must match MATLAB outputs exactly
 
-**Repository boundaries (decision 2026-10-26):** `docs/development/rig-software-repos-and-runners.md`
-is the record. The browser tools and their rig-side gateway (`rig/nodes/bridge_node.py`) stay
-here; the Python arena library + headless runner go to `LED-Display_pyDisplayTools`; shared ROS 2
-infrastructure (interfaces, device nodes, recording, supervision) goes to `rig-nodes`, which does not
-exist yet. Until the extraction session, every file is where the record's inventory says it is today.
+**Repository boundaries (decision 2026-10-26; extraction done the same day):**
+`docs/development/rig-software-repos-and-runners.md` is the record. The browser tools, their rig-side
+gateway (`rig/nodes/bridge_node.py`), the arena composition (`rig/nodes/rig.py`, `rig/pixi.toml`) and the
+arena visualization stay here; the Python arena library + headless runner go to
+`LED-Display_pyDisplayTools` (LAB-337); shared ROS 2 infrastructure lives in **`reiserlab/rig-nodes`**
+(`rig_interfaces`, the device adapters + simulators, `rig_nodes.recorder` / `mcap_index` / `cdr` /
+`foxglove_json`, `rig_nodes.supervise`, the Zenoh configs; contract: its `CONTRACT.md`) and is INSTALLED
+into `rig/` as the pinned `rig_nodes` + `rig_interfaces` packages from that repo's channel. A node fix
+is tested here with `pixi install -e dev` (rig-nodes `main` built from source — git source dependencies,
+NEVER path dependencies on a sibling checkout: pixi validates every environment's source paths before
+installing any environment, which broke `pixi install` on rig PCs on 2026-10-27); a release of the set
+re-pins `rig/pixi.toml`. Never re-add a device node or recorder copy under `rig/`.
 
 ### Dev environment (pixi — the only tool you install)
 
