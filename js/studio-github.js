@@ -361,10 +361,22 @@
     // Thin executor: run one descriptor with an injected fetch. Returns
     // {ok, status, data}. Never logs the token. Kept tiny so the builders stay
     // the tested surface.
+    //
+    // `cache: 'no-store'` (2026-10-29, found on ww18 under LAB-227): the JSON and
+    // the raw form of ONE contents URL differ only in the Accept header and
+    // GitHub gives both the same ETag. After a raw read (runBytes: ?p= open,
+    // promote, previews) Chrome revalidated the stored raw entry for the later
+    // JSON request, got a 304 and handed back the raw YAML; res.json() then
+    // threw, `data` was null and every "does this file exist?" check
+    // (resolveRepoSaveTarget, the silent-fork guard) answered "no" — a changed
+    // protocol silently overwrote the repo copy with no "Overwrite?" prompt.
+    // Bypassing the HTTP cache for the JSON executor closes it in both orders:
+    // nothing JSON is ever stored, so runBytes can keep caching the bytes.
     async function run(fetchImpl, req) {
         const res = await fetchImpl(req.url, {
             method: req.method,
             headers: req.headers,
+            cache: 'no-store',
             body: req.body != null ? JSON.stringify(req.body) : undefined
         });
         let data = null;
