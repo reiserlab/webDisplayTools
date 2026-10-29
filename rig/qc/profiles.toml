@@ -56,11 +56,13 @@ protocol = { path = "protocols/validation/bench_closed_loop_2x10.yaml", duration
 # `frames_probe_s`), the FicTrac simulator takes over and the report says SIM.
 fictrac = { kind = "real", cmd = ['C:\Lab\GitHub\fictrac\build\Release\fictrac.bat', 'C:\Lab\GitHub\fictrac\cshl\rig05_vfov28_2026-09-22\config.txt'], cwd = 'C:\Lab\GitHub\fictrac\cshl\rig05_vfov28_2026-09-22', process = "fictrac.exe", fallback = "sim" }
 foxglove = { layout = "foxglove/arena-fictrac.json" }
-reports = { closed_loop = true, holds = ["epoch_a_frame25=25", "epoch_b_frame75=75"] }
+# No whole-epoch holds: with FicTrac live the ball may always move. The epochs must OPEN on 25 / 75
+# (closed-loop-report `opens_on_start_frame`) and track with ≤ 1 % idx mismatch; `holds` is for a bare ball.
+reports = { closed_loop = true, holds = [] }
 checklist = [
   { id = "fictrac", look = "FicTrac window tracking the ball (≈ 96 fps on ww18); the gateway rate printed below matches." },
-  { id = "run", look = "Arena: 3 s background, then the grating HOLDS at frame 25 while the ball is still (bare or blocked ball); turn the ball and the grating follows (coupling −1); ~11 s in it jumps to frame 75 and holds again; background to finish. About 25 s. With a fly on the ball the grating follows the fly instead and the hold checks are skipped — the closed-loop idx mismatch is the evidence then." },
-  { id = "reports", look = "runlog-check OK (4 pass / 0 fail), both epochs open on 25 / 75 with 0 % idx mismatch, bench-check PASS (SKIP on the holds when a fly turned the ball) with channel + build = this candidate." },
+  { id = "run", look = "Arena: 3 s background, then the grating OPENS at frame 25 and follows the ball (coupling −1; a still ball keeps it there); ~11 s in it opens at frame 75 and follows again; background to finish. About 25 s." },
+  { id = "reports", look = "runlog-check OK (4 pass / 0 fail), both epochs open on 25 / 75 (first post-tare index) with 0 % idx mismatch, bench-check PASS with channel + build = this candidate." },
 ]
 
 # ── ww14: okey-cokey camera rig — BIAS (FLIR BFS-U3-51S5M) + G6 four-color, no FicTrac ──────────

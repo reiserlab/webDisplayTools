@@ -147,6 +147,8 @@ with tempfile.TemporaryDirectory() as d:
     check("three epochs", len(S), 3)
     check("start_frame per epoch (mod frames; none on a plain epoch)", [e["start_frame"] for e in S], [25, 75, None])
     check("offset per epoch = start_frame × pitch", [e["offset_deg"] for e in S], [45.0, 135.0, 0.0])
+    check("epochs open on their start frame (first post-tare idx; none on a plain epoch)",
+          [(e.get("first_idx_after_tare"), e.get("opens_on_start_frame")) for e in S], [(25, True), (75, True), (None, None)])
     check("idx reconstruction exact on start_frame epochs (was 100 % before bridge-3.4 support)",
           [e["idx_mismatch_fraction"] for e in S], [0.0, 0.0, 0.0])
     md = rep.to_markdown(rep.analyze(p_sf, 0.0, 1, 0.0))
@@ -157,6 +159,8 @@ with tempfile.TemporaryDirectory() as d:
     synth_start_frame_log(p_old, eps, ignore_start_frame=True)
     O = rep.analyze(p_old, 0.0, 1, 0.0)["epochs"]
     check("idx that ignored start_frame → mismatch on those epochs only", [e["idx_mismatch_fraction"] for e in O], [1.0, 1.0, 0.0])
+    check("a ≤ 3.3 bridge opens on frame 0 → opens_on_start_frame False, with the frame it opened on",
+          [(e.get("first_idx_after_tare"), e.get("opens_on_start_frame")) for e in O], [(0, False), (0, False), (None, None)])
 
 
 print("=== closed-loop-report on synthetic runs ===")

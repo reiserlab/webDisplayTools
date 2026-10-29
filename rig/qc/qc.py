@@ -825,10 +825,20 @@ class QC:
                 ok = bool(epochs) and all(m is not None and m <= 0.01 for m in mism)
                 epochs_json = epochs
                 self.record("closed-loop-report: idx mismatch ≤ 1 %", ok, f"{len(epochs)} epoch(s), mismatch {mism}")
+                # THE start-frame check that works with a live fly on the ball: each epoch's first
+                # post-tare index is its trialParams frame_index (25 / 75 in bench_closed_loop_2x10).
+                # A whole-epoch "hold" cannot pass while FicTrac is live (the ball may always move).
+                sf = [e for e in epochs if isinstance(e, dict) and e.get("start_frame") is not None]
+                if sf:
+                    opened = [e.get("opens_on_start_frame") for e in sf]
+                    det = ", ".join(f"{e.get('condition')} {e.get('first_idx_after_tare')}→{e.get('start_frame')}" for e in sf)
+                    self.record("epochs open on their start frame", all(o is True for o in opened), det)
             except ValueError:
                 self.record("closed-loop-report", False, (r.stderr or r.stdout)[-300:])
         holds = self.rig["reports"].get("holds") or []
-        if holds and self.studio_ran:
+        if self.studio_ran:
+            # holds (whole-epoch "display stays on frame N") only for a bare / blocked ball; the live-rig
+            # profiles leave it empty and bench-check still judges completion, arena acks, channel, build.
             argv = [self.py, scripts / "bench-check.py", log, "--channel", self.channel, "--build", self.sha[:7]]
             for h in holds:
                 argv += ["--hold", h]
@@ -837,8 +847,9 @@ class QC:
             # A fly on the ball turns the hold checks into SKIP (qclib.hold_verdict), never into a FAIL
             # of the candidate: the closed-loop report above is the tracking evidence then.
             verdict, detail = qclib.hold_verdict(r.returncode, r.stdout, epochs_json)
-            self.results.add("bench-check (holds, channel, build)", verdict, detail)
-            self.log.result(verdict, "bench-check (holds, channel, build)", detail)
+            label = "bench-check (holds, channel, build)" if holds else "bench-check (completion, arena acks, channel, build)"
+            self.results.add(label, verdict, detail)
+            self.log.result(verdict, label, detail)
         self.look("reports")
 
     # ── 9 teardown ──
