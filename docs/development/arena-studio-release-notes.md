@@ -4,6 +4,15 @@ The Studio's footer used to carry the full changelog inline; it now shows one li
 history lives here. Newest first. (Per-session engineering detail stays in
 `arena-studio-handover.md` and the design docs — this file is the user-facing what-changed list.)
 
+## v0.101 (2026-10-29) · Experiments move to the private repo; pixi run qc on rig PCs; rig-nodes 0.4.0; Studio overwrite-guard fix
+
+<!-- #288 -->
+- Rig-specific protocols and the per-rig records moved to the lab's private repos (`reiserlab/arena-experiments`, `reiserlab/scanimage-2026-bergamo`); `protocols/MOVED.md` says where each one went. The site library keeps the validation and demo protocols.
+
+<!-- #289 -->
+- **Saving over an existing repo protocol always asks first.** A browser-cache collision could skip the "Overwrite?" prompt after opening or promoting a protocol; it no longer can.
+- **The telemetry stats line now separates in-session evictions from the controller's lifetime counter**, so a large number after connecting to a long-running controller no longer looks like data loss.
+
 ## v0.100 (2026-10-28) · rig/ installs rig-nodes 0.3.0 with the host monitor; okey-cokey rig; imaging code moves to the private 2P repo
 
 <!-- #281 -->
