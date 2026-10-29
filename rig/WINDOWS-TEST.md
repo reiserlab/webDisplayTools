@@ -161,7 +161,7 @@ whether the router keeps running after Ctrl-C (`tasklist | findstr rmw_zenohd`).
 pixi run test -- --keep
 ```
 
-Expected: `54 / 54 checks passed` (57 / 57 with `-e typed`; 59 / 62 before the ScanImage connector left on 2026-10-28) in about a minute and a line `artifacts kept in …`. Keep that
+Expected: `60 / 60 checks passed` (63 / 63 with `-e typed`; measured on the Mac 2026-10-28 with rig-nodes 0.4.0 — the six host-monitor checks of #282 raised the count, the five ScanImage-connector checks left with the connector the same day) in about a minute and a line `artifacts kept in …`. Keep that
 directory (`summary.md`, `crash-results.json`, the converted export, `runlogs\*.bag`, `proc-logs\`).
 Windows-specific things it exercises for the first time: child processes in their own group,
 `CTRL_BREAK_EVENT` as the stop signal, `TerminateProcess` for the mid-run kills (the FicTrac adapter
