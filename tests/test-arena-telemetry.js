@@ -341,6 +341,7 @@ function block(h, records) {
         const per = 3;
         const asked = [];
         let failNext = false;
+        let hdrDropped = 0; // the controller's lifetime eviction counter in the header
         const session = {
             async send(bytes) {
                 const ack =
@@ -365,7 +366,16 @@ function block(h, records) {
                 const firstSeq = out.length
                     ? (out[0][2] | (out[0][3] << 8) | (out[0][4] << 16) | (out[0][5] << 24)) >>> 0
                     : 0;
-                return block({ tNowUs: 999, firstSeq, more: ring.length > per, flags: 1 }, out);
+                return block(
+                    {
+                        tNowUs: 999,
+                        firstSeq,
+                        dropped: hdrDropped,
+                        more: ring.length > per,
+                        flags: 1
+                    },
+                    out
+                );
             }
         };
         const got = [];
@@ -444,6 +454,27 @@ function block(h, records) {
         check('only the 2 new records counted', d.stats.records - recBefore, 2);
         d.reset();
         check('reset forgets the cursor', [d.stats.ackSeq, d.stats.lastSeq], [0xffffffff, null]);
+
+        // The header `dropped` is the controller's LIFETIME eviction count. A drainer that
+        // starts hours after boot sees thousands with no gaps: that is not in-session loss
+        // (ww18, 2026-10-29: "dropped 1929" read as a problem). Only growth since our first
+        // block counts as droppedSession.
+        const d3 = T.createDrainer({ session, wire: Wire, now: () => 42, onRecords: () => true });
+        hdrDropped = 1929;
+        push(1);
+        await d3.drainOnce();
+        check('lifetime counter kept verbatim', d3.stats.dropped, 1929);
+        check('nothing evicted since our first block', d3.stats.droppedSession, 0);
+        hdrDropped = 1931;
+        push(1);
+        await d3.drainOnce();
+        check('growth since the first block is the session loss', d3.stats.droppedSession, 2);
+        d3.reset();
+        check(
+            'reset forgets the eviction baseline',
+            [d3.stats.droppedBase, d3.stats.droppedSession],
+            [null, 0]
+        );
     }
 
     console.log('\n=== poller: single-flight, gated ===');

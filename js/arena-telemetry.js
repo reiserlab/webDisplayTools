@@ -294,7 +294,9 @@
             blocks: 0,
             bytes: 0,
             gaps: 0, // seq discontinuities seen (should equal controller-reported drops)
-            dropped: 0, // controller's cumulative drop counter (last value)
+            dropped: 0, // controller's LIFETIME eviction counter (header value, since its boot)
+            droppedBase: null, // that counter at our first block of this ring incarnation
+            droppedSession: 0, // evictions since then = loss this drainer could have prevented
             errors: 0,
             notStored: 0, // rows the sink refused (ack withheld, will be re-read)
             duplicates: 0, // records re-delivered after a rearm (already stored, dropped)
@@ -339,6 +341,7 @@
                         break;
                     }
                     const rx = now();
+                    let freshRing = false;
                     // Ring incarnation check (review finding: an old ack after a power
                     // cycle would free unseen records). A different boot_count with the
                     // ring NOT marked survived ⇒ fresh ring: forget the cursor. Same
@@ -346,7 +349,10 @@
                     if (peekNext) {
                         peekNext = false;
                         if (st.bootCount != null && block.bootCount !== st.bootCount) {
-                            if (!block.survivedReboot) st.lastSeq = null;
+                            if (!block.survivedReboot) {
+                                st.lastSeq = null;
+                                freshRing = true;
+                            }
                             st.incarnations++;
                         }
                         if (st.lastSeq != null) {
@@ -361,6 +367,15 @@
                     st.bytes += block.bytes;
                     st.lastTNowUs = block.tNowUs;
                     st.dropped = block.dropped;
+                    // The header counter is the controller's lifetime eviction count: it
+                    // includes everything the ring evicted before this drainer ever asked
+                    // (a Studio connected hours after boot sees thousands with gaps 0).
+                    // Only the growth since our first block of this incarnation is loss
+                    // the host could have prevented, so that is what the UI reports.
+                    if (st.droppedBase == null || freshRing || block.dropped < st.droppedBase) {
+                        st.droppedBase = block.dropped;
+                    }
+                    st.droppedSession = (block.dropped - st.droppedBase) >>> 0;
                     st.bootCount = block.bootCount;
                     st.survivedReboot = block.survivedReboot;
                     st.heapCollision = block.disabledHeapCollision;
@@ -417,6 +432,8 @@
         function reset() {
             st.ackSeq = NO_ACK;
             st.lastSeq = null;
+            st.droppedBase = null;
+            st.droppedSession = 0;
             peekNext = false;
         }
 
