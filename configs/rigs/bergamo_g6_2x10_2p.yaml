@@ -5,7 +5,7 @@
 # asserted by Arena Studio before every run and written into the run header
 # (docs/development/controller-settings-strategy.md).
 #
-# Cabling (rig checklist docs/development/2p-line-sync-rig-checklist.md):
+# Cabling (rig checklist, now in reiserlab/scanimage-2026-bergamo procedures/webdisplaytools-2p/2p-line-sync-rig-checklist.md):
 #   Digital IO 1 (J3)  → vDAQ free digital input (D2.1), ScanImage "Aux trigger 1":
 #                        one 5 V pulse per 300 Hz frame transfer, stamped into every TIFF header.
 #   Digital IO 2 (J4)  ← ScanImage line clock (HIGH while pixels are recorded, LOW in the

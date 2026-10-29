@@ -23,14 +23,21 @@
 [workspace]
 name = "rig"
 version = "0.1.0"
-channels = ["conda-forge", "robostack-jazzy", "https://raw.githubusercontent.com/reiserlab/rig-nodes/v0.2.1/channel"]
-platforms = ["osx-arm64", "win-64", "linux-64"]
-preview = ["pixi-build"]
-
+# The 0.3.0 channel is read at the COMMIT that carries the payload (5e20dee, release/0.3.0 → rig-nodes#3):
+# the `v0.3.0` tag was placed one commit early (payload gitignored) and moves there when Michael runs
+# `git tag -f v0.3.0 5e20dee && git push --force origin refs/tags/v0.3.0`; a commit SHA is as immutable.
+channels = ["conda-forge", "robostack-jazzy", "https://raw.githubusercontent.com/reiserlab/rig-nodes/5e20dee381061832377d5a51c767aaf67a20c53c/channel"]
 # rmw_zenoh ≥ 0.2.11 (the RoboStack 0.19 set) is built for macOS ≥ 14; without this floor the
 # osx-arm64 solve falls back to the 0.16 set and the platforms drift apart (rig-nodes pins 0.19).
-[system-requirements]
-macos = "14.0"
+# Declared on the platform (pixi ≥ 0.80 virtual packages), not as the deprecated [system-requirements]; pixi
+# requires an entry carrying virtual packages to have a `name` distinct from its subdir, and this is the name
+# pixi 0.80 itself wrote on ww18 when it rewrote the 0.69 lock (#280).
+platforms = [{ name = "osx-arm64-macos-14-0", platform = "osx-arm64", macos = "14.0" }, "win-64", "linux-64"]
+preview = ["pixi-build"]
+# An older pixi must refuse rather than rewrite pixi.lock in an older format: the lock is written by
+# pixi ≥ 0.80 (issue #280 — ww18 on 0.80 rewrote a 0.69 lock in place, 1095 lines, and left the checkout
+# dirty). Rigs install with `pixi install --locked`.
+requires-pixi = ">=0.80"
 
 [activation.env]
 # Every ROS 2 process in this workspace uses the Zenoh middleware. rmw_zenoh needs
@@ -77,13 +84,21 @@ ros-jazzy-rosbag2-py = "*"
 ros-jazzy-rosbag2-storage-mcap = "*"
 mcap = ">=1.2"
 # ── the shared rig-nodes package set, pinned (one version for the set; README "Releasing") ──
-# Device adapters (FicTrac, Kinefly, BIAS, ScanImage) and their simulators, the MCAP recorder and
-# indexer, the CDR decoder, the Foxglove rewriter, the supervision primitives rig.py composes with.
-# Written into every run's record by the gateway (hello_ack + /arena/session `packages`).
-rig_nodes = "==0.2.1"
+# Device adapters (FicTrac, Kinefly, BIAS, ScanImage incl. its ZeroMQ frame stream, the experimental SiPM
+# controller) and their simulators, the MCAP recorder and indexer, the CDR decoder, the Foxglove rewriter
+# (+ bias_health), the supervision primitives rig.py composes with. 0.3.0 (2026-10-28) also ships the
+# HostStats message set for the host monitor (rig_interfaces, `typed` environment).
+# Written into every run's record by the gateway (hello_ack + /arena/session `packages`). The pin lives in the
+# `channel` feature (default / typed / viz), not in [dependencies]: the `dev` environment builds rig_nodes from
+# the git source instead, and one package name from two sources does not solve once the released version is
+# ahead of `main` (0.3.0 vs 0.2.1 on 2026-10-28: "excluded because of strict channel priority").
+
+[feature.channel.dependencies]
+rig_nodes = "==0.3.0"
 
 # ── typed messages = the OPT-IN `typed` environment ───────────────────────────────────────
-# `pixi install -e typed` adds rig_interfaces (FicTracFrame, ArenaFrame, ConnectorReply) from the
+# `pixi install -e typed` adds rig_interfaces (FicTracFrame, ArenaFrame, ConnectorReply, HostStats + its
+# DiskStats/NetStats/GpuStats/ProcStats records) from the
 # SAME channel, built in rig-nodes' CI for win-64 / osx-arm64 / linux-64 — no compiler, no build
 # backend, no MAX_PATH (docs in rig-nodes: docs/typed-distribution-decision.md). Same solve group
 # as the default environment: since the package pins the 0.19 set too, the two environments share
@@ -91,7 +106,7 @@ rig_nodes = "==0.2.1"
 # environment so the rigs keep recording String topics until typed recording is decided for them;
 # the nodes fall back on their own (`--typed auto`).
 [feature.typed.dependencies]
-rig_interfaces = "==0.2.1"
+rig_interfaces = "==0.3.0"
 
 # ── developer path: rig-nodes `main`, built from source (git source dependencies) ────────────
 # `pixi install -e dev` swaps the two channel pins for the HEAD of reiserlab/rig-nodes `main`,
@@ -132,11 +147,21 @@ ros-jazzy-rqt-topic = "*"
 ros-jazzy-rqt-console = "*"
 ros-jazzy-foxglove-bridge = "*"
 
+# Windows: the foxglove-bridge package puts foxglove.dll + foxglove_cpp_shared.dll in Library\lib,
+# which is not on the DLL search path, so `ros2 run foxglove_bridge` exits 0xC0000135 (DLL not
+# found; ww14 2026-10-22). Prepend that directory for the viz environment only.
+[feature.viz.target.win-64.activation.env]
+PATH = '%CONDA_PREFIX%\Library\lib;%PATH%'
+
 [environments]
-default = { solve-group = "rig" }
-typed = { features = ["typed"], solve-group = "rig" }
-viz = { features = ["viz"], solve-group = "rig" }
-dev = { features = ["dev", "typed"], solve-group = "dev" }
+default = { features = ["channel"], solve-group = "rig" }
+typed = { features = ["channel", "typed"], solve-group = "rig" }
+viz = { features = ["channel", "viz"], solve-group = "rig" }
+# `dev` without the `typed` feature: `typed` pins rig_interfaces to the released version from the channel, while
+# `dev` builds it from the git source — one name from two sources does not solve once the release is ahead of
+# `main` (0.3.0 vs 0.2.1 on 2026-10-28, "excluded because of strict channel priority"). The git source IS the
+# typed package here, so nothing is lost.
+dev = { features = ["dev"], solve-group = "dev" }
 
 [tasks]
 # ── hour one: middleware bring-up ───────────────────────────────────────────
@@ -148,22 +173,19 @@ fictrac-adapter = "rig-fictrac-adapter"
 kinefly-adapter = "rig-kinefly-adapter"
 bias-node = "rig-bias-node"
 bias-cmd = "rig-bias-cmd"
-# ScanImage (built-in JSON server on the ScanImage PC, LAB-303/LAB-306): node + one-shot command.
-scanimage-node = "rig-scanimage-node"
-scanimage-cmd = "rig-scanimage-cmd"
 # ── the bridge node (this rig's gateway): bridge.py's hub + log writer + dispatcher on ROS input ──
 bridge-node = "python nodes/bridge_node.py"
 # ── simulators (rig_nodes.sims) ────────────────────────────────────────────
 sim = "rig-fictrac-sim"
 kinefly-sim = "rig-kinefly-sim"
 bias-sim = "rig-bias-sim"
-# A stand-in for ScanImage's JSON server (stock behaviors incl. bug B2) for off-rig tests.
-si-mock = "rig-si-mock"
 # ── the one command a rig runs ──────────────────────────────────────────────
 rig = "python nodes/rig.py"
 # ── acceptance test (LAB-303 PoC criteria): whole graph + Studio emulator + model fly ──
 # This is also the cross-repository smoke for the installed rig-nodes package set (record §7.8).
 test = "python tests/test_ros2_poc.py"
+# the gateway records + derives the 2P rig's topics (its SiPM / frame-stream nodes are private: scanimage-2026-bergamo 2p-rig-nodes/)
+test-gateway = "python tests/test_gateway_registration.py"
 studio-emulator = "python tests/studio_emulator.py"
 # ── MCAP record + converter ──────────────────────────────────────────────────
 # bag → behavior_v2 NDJSON (also `-- --level behavior_v1|full`, `-- --order time`);
@@ -186,11 +208,12 @@ graph = "rig-graph"
 viz = "python nodes/viz_node.py"
 test-viz = "python tests/test_viz_node.py"
 fox-json = "python nodes/foxglove_json.py"
-# after-the-fact Foxglove MCAP of a 2P color-sweep run from its ScanImage TIFFs + the arena .pat files (tools/tiff_run_to_mcap.py)
-tiff2mcap = "python tools/tiff_run_to_mcap.py"
-# its run-log side on a synthetic log (no TIFFs), and a check of a --runlog MCAP against that run log
-test-tiff2mcap = "python tests/test_tiff2mcap_runlog.py"
-check-tiff2mcap = "python tools/check_tiff2mcap.py"
+# The camera + G6 dashboard (foxglove/arena-okey-cokey.json): the live expected/observed display +
+# arena health node (`pixi run rig -- --stimulus`), and its unit test (pure; also runs the JS
+# panel-color module under the root env's Node to pin the Python port)
+stimulus = "python nodes/stimulus_node.py"
+test-stimulus = "python tests/test_stimulus.py"
+test-stimulus-live = "python tests/test_stimulus_live.py"
 # `viz` environment only (`pixi run -e viz …`): the interactive views.
 rqt-graph = "rqt_graph"
 rqt-topic = "rqt_topic"

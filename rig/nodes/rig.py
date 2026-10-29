@@ -4,17 +4,20 @@
     pixi run rig                       # router, fictrac adapter, bridge node
     pixi run rig -- --kinefly --bias   # + Kinefly adapter + BIAS node
     pixi run rig -- --sim              # + the FicTrac simulator (demo without a camera)
+    pixi run rig -- --no-host-monitor  # without the host monitor (CPU/RAM/disk/net/GPU on /rig/host; on by default)
     pixi run rig -- --bias --bias-sim  # + a simulated BIAS program (no camera software)
-    pixi run rig -- --scanimage        # + the ScanImage node (JSON server on this PC); --si-mock for a stand-in
     pixi run rig -- --foxglove         # + foxglove_bridge (:8766) from the `viz` environment
+    pixi run rig -- --no-fictrac --bias --foxglove --viz-args "--sources bias" --stimulus-args "--panel-layout four-color"
+                                       # the okey-cokey camera rig: BIAS + G6, no FicTrac;
+                                       # layout foxglove/arena-okey-cokey.json (--foxglove includes --stimulus)
 
 This file is the arena rig's COMPOSITION (rig-software-repos-and-runners.md §3.2): which nodes an
 arena rig runs, in which order, and what happens when one dies. The device nodes and simulators
 come from the installed `rig_nodes` package (reiserlab/rig-nodes) and are started as
 `python -m rig_nodes.<module>`; the mechanics — process groups, portable signals, the port
 preflight, the supervised Child — are `rig_nodes.supervise`. What stays here is policy: the
-gateway (bridge_node.py, this directory) and the arena visualization (viz_node.py) are this rig's
-own nodes, and the rig exits when the gateway or the router dies (the Studio's WebSocket is gone,
+gateway (bridge_node.py, this directory), the arena visualization (viz_node.py) and the arena's
+expected/observed display + health (stimulus_node.py) are this rig's own nodes, and the rig exits when the gateway or the router dies (the Studio's WebSocket is gone,
 nothing else matters).
 
 Order: the router first (nodes retry until it answers on 127.0.0.1:7447), then every
@@ -26,6 +29,7 @@ passed through, e.g. `--bridge-args "--frames 60"`.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import shutil
 import signal
@@ -46,6 +50,15 @@ ROOT = HERE.parent  # rig/ (the pixi workspace)
 _ENVS = Path(os.environ["CONDA_PREFIX"]).parent if os.environ.get("CONDA_PREFIX") else ROOT / ".pixi" / "envs"
 VIZ_ENV = _ENVS / "viz"
 FOXGLOVE_PORT = 8766
+HOST_MONITOR_MODULE = "rig_nodes.host_monitor"
+
+
+def host_monitor_available() -> bool:
+    """True when the installed rig_nodes package ships the host monitor."""
+    try:
+        return importlib.util.find_spec(HOST_MONITOR_MODULE) is not None
+    except ImportError:  # no rig_nodes package at all
+        return False
 
 
 def node_argv(module: str, *args: str) -> list[str]:
@@ -58,9 +71,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--kinefly", action="store_true", help="also run the Kinefly KF/1 adapter")
     p.add_argument("--bias", action="store_true", help="also run the BIAS camera node")
     p.add_argument("--bias-sim", action="store_true", help="also run the BIAS simulator (a fake BIAS program)")
-    p.add_argument("--scanimage", action="store_true", help="also run the ScanImage node (talks to ScanImage's JSON server, default 127.0.0.1:5555)")
-    p.add_argument("--si-mock", action="store_true", help="also run the ScanImage JSON-server stand-in (port 5555)")
     p.add_argument("--sim", action="store_true", help="also run the FicTrac simulator (random walk, 50 Hz)")
+    p.add_argument("--no-fictrac", action="store_true",
+                   help="do not run the FicTrac UDP adapter (a rig without FicTrac, e.g. the okey-cokey camera rig)")
+    p.add_argument("--stimulus", action="store_true",
+                   help="also run stimulus_node.py: the expected/observed arena display + arena health (included by --foxglove)")
+    p.add_argument("--stimulus-args", default="", help="extra args for stimulus_node.py (e.g. --panel-layout four-color)")
     p.add_argument("--viz-args", default="", help="extra args for viz_node.py (--deg-per-frame, --frame-dir, --feature-az0, --frames)")
     p.add_argument("--foxglove", action="store_true",
                    help=f"also run foxglove_bridge on ws://127.0.0.1:{FOXGLOVE_PORT} (the `viz` environment; skipped with a note when it is not installed)")
@@ -69,8 +85,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--fictrac-args", default="", help="extra args for the FicTrac adapter")
     p.add_argument("--kinefly-args", default="", help="extra args for the Kinefly adapter")
     p.add_argument("--bias-args", default="", help="extra args for the BIAS node")
-    p.add_argument("--scanimage-args", default="", help="extra args for the ScanImage node (e.g. --port 5555 --status-every 1)")
     p.add_argument("--sim-args", default="--proto udp --rate 50", help="args for the FicTrac simulator")
+    p.add_argument("--no-host-monitor", action="store_true", help=f"do not run {HOST_MONITOR_MODULE} (the PC's CPU per core, memory, disk, network, GPU, top processes on /rig/host, recorded in every run's bag)")
+    p.add_argument("--host-monitor-args", default="", help=f"extra args for {HOST_MONITOR_MODULE} (e.g. --period 0.5 --print-every 30)")
     args = p.parse_args(argv)
 
     py = sys.executable
@@ -90,16 +107,15 @@ def main(argv: list[str] | None = None) -> int:
     # router, or the shipping bridge 3.4 (also ws :8765 + udp :60000) is still running.
     ports = [
         ("tcp", 8765, "a bridge on the Studio WebSocket port — bridge 3.4 (`pixi run bridge` at the repo root) or another rig"),
-        ("udp", 60000, "a FicTrac receiver — bridge 3.4 or another fictrac adapter"),
     ]
+    if not args.no_fictrac:
+        ports.append(("udp", 60000, "a FicTrac receiver — bridge 3.4 or another fictrac adapter"))
     if not args.no_router:
         ports.insert(0, ("tcp", zenoh.ROUTER_PORT, "a Zenoh router (another `pixi run rig` / `pixi run router`)"))
     if args.kinefly:
         ports.append(("udp", 60001, "another Kinefly adapter"))
     if args.bias_sim:
         ports.append(("tcp", 5010, "a BIAS program or the BIAS simulator"))
-    if args.si_mock:
-        ports.append(("tcp", 5555, "ScanImage's JSON server or its stand-in"))
     if foxglove:
         ports.append(("tcp", FOXGLOVE_PORT, "another foxglove_bridge (`pixi run -e viz foxglove-bridge` or another rig --foxglove)"))
     taken = preflight(ports)
@@ -115,21 +131,28 @@ def main(argv: list[str] | None = None) -> int:
     children: list[Child] = []
     if not args.no_router:
         children.append(Child("router", zenoh.router_argv()))
-    nodes: list[Child] = [
-        Child("fictrac", node_argv("rig_nodes.fictrac_udp_adapter", *split_args(args.fictrac_args))),
-    ]
+    nodes: list[Child] = []
+    if not args.no_fictrac:
+        nodes.append(Child("fictrac", node_argv("rig_nodes.fictrac_udp_adapter", *split_args(args.fictrac_args))))
     if args.kinefly:
         nodes.append(Child("kinefly", node_argv("rig_nodes.kinefly_udp_adapter", *split_args(args.kinefly_args))))
     if args.bias_sim:
         nodes.append(Child("bias-sim", node_argv("rig_nodes.sims.bias_sim")))
     if args.bias:
         nodes.append(Child("bias", node_argv("rig_nodes.bias_node", *split_args(args.bias_args))))
-    if args.si_mock:
-        nodes.append(Child("si-mock", node_argv("rig_nodes.sims.si_json_mock")))
-    if args.scanimage:
-        nodes.append(Child("scanimage", node_argv("rig_nodes.scanimage_node", *split_args(args.scanimage_args))))
+    if not args.no_host_monitor:
+        # The generic host monitor ships in the rig_nodes package (reiserlab/rig-nodes). It starts
+        # before the gateway (bridge_node.py, below), so a run opened right away already has host
+        # samples in its bag; `--py-root` lets it name this workspace's Python nodes `py:<script>`.
+        if host_monitor_available():
+            nodes.append(Child("host", node_argv(HOST_MONITOR_MODULE, "--log-dir", str(ROOT / "runlogs"),
+                                                  "--py-root", str(ROOT), *split_args(args.host_monitor_args))))
+        else:
+            print(f"[rig] host monitor: the installed rig_nodes has no {HOST_MONITOR_MODULE} (needs a rig-nodes release with it); starting without it", file=sys.stderr)
     bridge = Child("bridge", [py, str(NODES / "bridge_node.py"), *split_args(args.bridge_args)])
     nodes.append(bridge)
+    if args.stimulus or foxglove:
+        nodes.append(Child("stimulus", [py, str(NODES / "stimulus_node.py"), *split_args(args.stimulus_args)]))
     if foxglove:
         # The typed republisher (ros-base messages Foxglove plots natively) runs in THIS
         # environment; only foxglove_bridge itself needs the `viz` one.

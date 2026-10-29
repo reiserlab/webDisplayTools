@@ -50,6 +50,11 @@ log, plus:
                                                         NDJSON — reported, crashsafe profile gated;
                                                         then a RESTARTED node's log_export recovers the
                                                         bag on its own (recovered:true, whole bag left)
+  host monitor (2026-10-28; rig_nodes.host_monitor)   /rig/host in the bag ≥ 0.8 Hz, fields = the installed
+                                                        HostStats (typed) / the read fields (JSON), the graph's
+                                                        nodes pinned; its own CPU ≤ 2 % of a core, ≤ 5 % of the
+                                                        compressed bag — skipped (info) when the installed
+                                                        rig_nodes has no host monitor
 
 Exit 0 when all checks pass. Prints a markdown summary. Artifacts are kept with --keep.
 """
@@ -241,6 +246,68 @@ def bag_summary(bag: Path) -> dict:
             "frame_lag_ms": {"p50": round(lag[len(lag) // 2], 3), "p99": round(lag[int(len(lag) * 0.99)], 3), "max": round(lag[-1], 3)} if lag else None}
 
 
+def host_monitor_values(bag: Path) -> dict:
+    """/rig/host in the bag: sample count over the run, field names vs the request's HostStats.msg,
+    per-core sanity, pinned groups, the monitor's own CPU, and its share of the compressed payload."""
+    import statistics
+
+    import zstandard
+
+    sys.path.insert(0, str(NODES))
+    from mcap_convert import _json_of, decode_cdr, read_records  # noqa: E402
+
+    try:  # the field contract is rig-nodes' (rig_interfaces/HostStats); without the typed build the
+        # JSON samples are checked for the fields this harness reads
+        from rig_interfaces.msg import HostStats
+
+        want = sorted(HostStats.get_fields_and_field_types())
+    except (ImportError, AttributeError):
+        want = None
+    host, other, t_ns, objs, schemas = [], [], [], [], set()
+    gen = read_records(bag)
+    try:
+        while True:
+            r = next(gen)
+            t_ns.append(r["log_ns"])
+            if r["topic"] != "/rig/host":
+                other.append(r["data"])
+                continue
+            host.append(r["data"])
+            schemas.add(r["schema"])
+            try:
+                if want is not None and r["schema"] == "rig_interfaces/msg/HostStats":
+                    # typed: ROS's own deserializer (the converter's pure decoder reads no nested
+                    # message arrays — DiskStats[] disks … — and the converter never needs /rig/host)
+                    from rclpy.serialization import deserialize_message
+                    from rosidl_runtime_py.convert import message_to_ordereddict
+
+                    objs.append(json.loads(json.dumps(message_to_ordereddict(deserialize_message(r["data"], HostStats)))))
+                else:  # String JSON → its object
+                    objs.append(_json_of({"msg": decode_cdr(r["schema"], r.get("schema_text"), r["data"])}))
+            except Exception:
+                objs.append(None)
+    except StopIteration:
+        pass
+    good = [o for o in objs if isinstance(o, dict)]
+    need = {"core_busy_mean", "core_busy_peak", "monitor_cpu_cores", "procs"}
+    bad = sorted({k for o in good for k in (set(o) ^ set(want) if want else need - set(o))})
+    cores_ok = bool(good) and all(len(o["core_busy_mean"]) == len(o["core_busy_peak"]) == (os.cpu_count() or 0)
+                                  and all(p + 1e-6 >= m for m, p in zip(o["core_busy_mean"], o["core_busy_peak"])) for o in good)
+    self_cpu = [o["monitor_cpu_cores"] for o in good[2:] if isinstance(o.get("monitor_cpu_cores"), (int, float))]
+    level = 19  # the bag's zstd "Slowest" (recorder.py `default` profile; crashsafe is reindexed to it)
+    zh = len(zstandard.ZstdCompressor(level=level).compress(b"".join(host))) if host else 0
+    za = len(zstandard.ZstdCompressor(level=level).compress(b"".join(host + other))) if host or other else 0
+    run_s = (max(t_ns) - min(t_ns)) / 1e9 if t_ns else None
+    return {"samples": len(host), "schema": sorted(s or "std_msgs/msg/String" for s in schemas), "run_s": round(run_s, 1) if run_s else None, "fields_ok": bool(good) and len(good) == len(objs) and not bad,
+            "bad_fields": bad, "cores_ok": cores_ok, "ncpu": len(good[0]["core_busy_mean"]) if good else None,
+            "groups": sorted({p["group"] for o in good for p in o.get("procs", []) if p.get("group")}),
+            "self_cpu_median": round(statistics.median(self_cpu), 4) if self_cpu else None,
+            "self_cpu_max": round(max(self_cpu), 4) if self_cpu else None,
+            "bytes_per_sample": round(sum(map(len, host)) / len(host)) if host else None,
+            "share_compressed": round(zh / za, 4) if za else None,
+            "host_kb_per_h_zstd": round(zh / run_s * 3600 / 1024) if run_s else None}
+
+
 def typed_frame_values(bag: Path) -> dict:
     """The recorded /arena/frame ArenaFrame messages, decoded with the converter's pure-Python
     CDR decoder from the schema text IN THE BAG, judged by VALUE — a schema name alone said
@@ -398,11 +465,13 @@ def main(argv: list[str] | None = None) -> int:
         bias_port = free_tcp_port()
         start("bias-sim", [PY, "-m", "rig_nodes.sims.bias_sim", "--port", str(bias_port), "--video-dir", str(videos)])
         start("bias-node", [PY, "-m", "rig_nodes.bias_node", "--port", str(bias_port), "--status-every", "1", "--video-dir", str(videos)])
-        # ScanImage stand-in on a free port (a rig PC may have the real JSON server on 5555): short
-        # grabs, a short start delay, and one allowlisted property it never answers (the UNKNOWN path).
-        si_port = free_tcp_port()
-        start("si-mock", [PY, "-m", "rig_nodes.sims.si_json_mock", "--port", str(si_port), "--grab-s", "1.0", "--start-delay-s", "0.2", "--stall-on", "hSI.hRoiManager.scanZoomFactor"])
-        start("scanimage-node", [PY, "-m", "rig_nodes.scanimage_node", "--port", str(si_port), "--status-every", "1", "--timeout-s", "1.5"])
+        from rig import HOST_MONITOR_MODULE, host_monitor_available  # noqa: E402
+
+        host_mon = host_monitor_available()
+        if host_mon:  # the command line rig.py uses
+            start("host-monitor", [PY, "-m", HOST_MONITOR_MODULE, "--log-dir", str(runlogs), "--py-root", str(POC)])
+        else:
+            print(f"  info  host monitor: the installed rig_nodes has no {HOST_MONITOR_MODULE} — its checks are skipped", file=sys.stderr)
         bridge_argv = [PY, str(NODES / "bridge_node.py"), "--log-dir", str(runlogs), "--source-timeout", "1.5", "--bag-profile", a.bag_profile]
         bridge = start("bridge-node", bridge_argv)
         check("bridge node serving ws://127.0.0.1:8765", wait_port("127.0.0.1", 8765, 20.0))
@@ -480,7 +549,7 @@ def main(argv: list[str] | None = None) -> int:
         em = run_capture(
             [PY, str(HERE / "studio_emulator.py"), "--epochs", str(a.epochs), "--epoch-s", str(a.epoch_s), "--iti-s", "1",
              "--bias-amplitude", "90", "--min-frames", "40", "--out", str(export), "--report", str(report),
-             "--connector-cmds", "--connector-video", "poc_studio.avi", "--scanimage-cmds"],
+             "--connector-cmds", "--connector-video", "poc_studio.avi"],
             timeout=75 + a.epochs * (a.epoch_s + 2),
         )
         (logdir / "emulator.log").write_text(em.stderr, encoding="utf-8")
@@ -496,10 +565,9 @@ def main(argv: list[str] | None = None) -> int:
         check("MCAP bag recorded for the run (metadata.yaml + .mcap)", main_bag is not None and (main_bag / "metadata.yaml").exists() and any(main_bag.glob("*.mcap")), str([b.name for b in bags]))
         bagsum = bag_summary(main_bag) if main_bag else {}
         print(f"[test] bag: {bagsum.get('records')} records, {bagsum.get('bytes')} B, topics {bagsum.get('topics')}, schemas {bagsum.get('schemas')}, frame lag {bagsum.get('frame_lag_ms')}", file=sys.stderr)
-        want_topics = ["/arena/session", "/arena/browser", "/arena/event", "/arena/frame", "/kinefly/raw", "/bias/cmd", "/bias/reply", "/bias/status",
-                       "/scanimage/cmd", "/scanimage/reply", "/scanimage/status"]
+        want_topics = ["/arena/session", "/arena/browser", "/arena/event", "/arena/frame", "/kinefly/raw", "/bias/cmd", "/bias/reply", "/bias/status"]
         missing = [t for t in want_topics if not bagsum.get("topics", {}).get(t)]
-        check("every stream recorded in the bag (session, browser, event, frame, kinefly, bias + scanimage cmd/reply/status)",
+        check("every stream recorded in the bag (session, browser, event, frame, kinefly, bias cmd/reply/status)",
               not missing, f"missing {missing}")
         raw_ft = {t: n for t, n in bagsum.get("topics", {}).items() if t.startswith("/fictrac/")}
         check("raw FicTrac topics NOT recorded by default (2026-10-18: the merged /arena/frame record is the FicTrac record; --record-fictrac-raw opts in)",
@@ -585,19 +653,6 @@ def main(argv: list[str] | None = None) -> int:
               bool(logs) and bagsum.get("bias_frames_t") == sum(s.get("frames") or 0 for s in logs),
               f"bag {bagsum.get('bias_frames_t')} vs stamp logs {[s.get('frames') for s in logs]}")
 
-        # The ScanImage connector (JSON server stand-in): the Studio-path sequence the 2P protocol uses.
-        si_ev = [e for e in events if e.get("type") == "connector" and e.get("src") == "scanimage"]
-        si_rep = [e for e in si_ev if e.get("kind") == "reply"]
-        si_st = [e for e in si_ev if e.get("kind") == "status"]
-        si_cmd = [e.get("command") for e in si_ev if e.get("kind") == "command"]
-        check("ScanImage command/reply pairs in the run log (via=ws, plugin scanimage)", len(si_rep) >= 8 and all(e.get("via") == "ws" and e.get("plugin") == "scanimage" for e in si_rep), f"{len(si_rep)} replies: {[r.get('command') for r in si_rep]}")
-        check("ScanImage status lines in the run log carry acqState", len(si_st) >= 2 and all("acqState" in e for e in si_st if e.get("reachable")), str(len(si_st)))
-        check("Studio-path ScanImage commands logged in order", si_cmd == ["ping", "setFileStem", "set", "set", "grab", "waitIdle", "abort", "get", "ping", "bogusCommand"], str(si_cmd))
-        grab = [e for e in si_rep if e.get("command") == "grab"]
-        check("grab reply in the run log carries the TIFF artifact (stem, counter, path)", bool(grab) and grab[0].get("ok") and isinstance(grab[0].get("artifact"), dict)
-              and grab[0]["artifact"].get("kind") == "tiff" and grab[0]["artifact"].get("stem") == "emu_violet_d7" and grab[0]["artifact"].get("counter") is not None, json.dumps([g.get("artifact") for g in grab]))
-        unk = [e for e in si_rep if e.get("command") == "get"]
-        check("ScanImage UNKNOWN outcome logged with the reconciled status", bool(unk) and unk[0].get("outcome") == "unknown" and isinstance(unk[0].get("reconciled"), dict), json.dumps(unk)[:300])
         cs = [e for e in events if e.get("type") == "connector_status" and e.get("src") == "fictrac"]
         p99 = cs[-1]["lat_ms"]["p99"] if cs else None
         check("connector_status: adapter→bridge latency p99 < 50 ms", p99 is not None and p99 < 50.0, str(cs[-1] if cs else None))
@@ -716,6 +771,22 @@ def main(argv: list[str] | None = None) -> int:
         if typed:
             check("size: /arena/frame records in the final layout (chunk-only index, zstd 19) ≤ 72 B/frame compressed", bool(sz) and (sz.get("bytes_per_frame") or 999) <= 72.0, json.dumps(sz))
 
+        # ── host monitor (/rig/host, rig_nodes.host_monitor) ─────────────────────────────
+        hm = host_monitor_values(main_bag) if main_bag and host_mon else {}
+        if host_mon:
+            print(f"  info  host monitor: {json.dumps({k: v for k, v in hm.items() if k not in ('fields_ok', 'groups')})}", file=sys.stderr)
+            check("host monitor: /rig/host recorded in the bag, ≥ 0.8 samples per second of the run",
+                  (hm.get("samples") or 0) >= 0.8 * (hm.get("run_s") or 99), f"{hm.get('samples')} samples over {hm.get('run_s')} s")
+            check("host monitor: every sample has the HostStats fields (the installed rig_interfaces' when typed)",
+                  hm.get("fields_ok", False), str(hm.get("bad_fields")))
+            check("host monitor: one entry per logical CPU, busiest sub-window ≥ the window mean on every core",
+                  hm.get("cores_ok", False), f"{hm.get('ncpu')} CPUs")
+            check("host monitor: the graph's processes pinned by script (py:bridge_node, py:fictrac_udp_adapter, py:host_monitor)",
+                  {"py:bridge_node", "py:fictrac_udp_adapter", "py:host_monitor"} <= set(hm.get("groups") or []), str(hm.get("groups")))
+            check("host monitor cost: its own CPU ≤ 2 % of one core (median after the first 2 samples)",
+                  hm.get("self_cpu_median") is not None and hm["self_cpu_median"] <= 0.02, f"median {hm.get('self_cpu_median')} max {hm.get('self_cpu_max')} cores")
+            check("host monitor storage: /rig/host ≤ 5 % of the run's compressed payload (zstd, as the bag)",
+                  hm.get("share_compressed") is not None and hm["share_compressed"] <= 0.05, f"{hm.get('share_compressed')} ({hm.get('host_kb_per_h_zstd')} KB/h)")
         check("bridge node still alive at the end of the main run", bridge.alive())
 
         # ── crash phase: SIGKILL the bridge node mid-run, both writer profiles ────────

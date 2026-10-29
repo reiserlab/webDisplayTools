@@ -1,0 +1,25 @@
+version: 3
+# The two conditions of the 2026-10-14 smoke run that tests/fixtures/okey_smoke_violet_cw.jsonl.gz
+# covers (the protocol had one direction per condition then), cut to what the pattern-name lookup
+# in nodes/stimulus_core.py reads.
+conditions:
+  - name: "violet_cw_d100"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_toprow_grat20_violet"
+        pattern_ID: 1
+        duration: 10
+        mode: 2
+        frame_index: 0
+        frame_rate: 80
+        gain: 0
+        duty: 255
+      - type: "wait"
+        duration: 10
+  - name: "dark_iti"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: 2

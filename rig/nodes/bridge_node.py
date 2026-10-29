@@ -22,6 +22,11 @@ What is NEW (small, and all of it is visible in the log):
     the envelope and is used only for the `lat_ms` latency statistics.
   * `/arena/frame` — every frame the hub publishes is also published as a ROS topic, so
     `ros2 topic echo/hz` introspect the closed loop and ROS-native nodes can subscribe.
+  * `/arena/browser` — every Studio message is also PUBLISHED live, as received
+    (`{"rx_ms", "raw"}`, reliable): trialParams echoes, runner status events, controller
+    telemetry rows. The run's bag records the same messages separately (with `seq`, only while
+    a log is open), so this is for live consumers such as stimulus_node.py (the expected
+    display + arena health); nothing that writes the log reads it.
   * other device topics are LOGGED, not applied: `/kinefly/raw` (KF/1) → compact tagged
     rows `["kf", ms, seq, src_t_s, left_rad, right_rad, head_rad, abdomen_rad]`;
     `/bias/reply`, `/bias/status`, `/scanimage/reply`, `/scanimage/status` → `{"type":"connector","src":<id>,…}` events.
@@ -31,6 +36,8 @@ What is NEW (small, and all of it is visible in the log):
     node killed mid-run therefore leaves the log intact AND documented.
   * `connector_status` lines (frames seen, adapter→bridge latency p50/p99 ms per source)
     at log close / export, so a run carries its own transport health.
+  * `/rig/host` (rig_nodes.host_monitor: CPU per core, memory, disk, network, GPU, top processes) is
+    recorded into the bag on arrival, so every run carries the PC's pressure alongside it.
 
 Not supported here (by design of the PoC): the `fictrac_port` config key cannot re-bind
 the socket — the adapter owns it. The request is acknowledged with a warning.
@@ -38,7 +45,9 @@ the socket — the adapter owns it. The request is acknowledged with a warning.
 PLAN B SPIKE (LAB-303, 2026-10-14) — MCAP as the record of truth:
   * While a run's log is open, EVERYTHING is recorded into `<log-dir>/<run>.bag/` with
     rosbag2_py + the MCAP storage plugin (rig_nodes.recorder, reiserlab/rig-nodes): the device topics as received
-    (`/fictrac/raw` or the typed `/fictrac/frame`, `/kinefly/raw`, `/bias/cmd|reply|status`),
+    (`/fictrac/raw` or the typed `/fictrac/frame`, `/kinefly/raw`, `/bias/cmd|reply|status`, `/sipm/cmd|reply|status`,
+    the ScanImage frame-stream topics `/scanimage/frame_meta|frame_stats|preview/*` — streams, bag only; their
+    nodes are the 2P rig's, private in reiserlab/scanimage-2026-bergamo `2p-rig-nodes/`),
     `/arena/frame` (the closed-loop evaluation with ITS OWN sample time `t`/`ms`), and two
     bridge-side streams — `/arena/browser` (every browser message, verbatim, with the receive
     stamp) and `/arena/event` (bias_config, heading_tare, connector_status, source_lost, warn)
@@ -83,6 +92,7 @@ from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from rclpy.serialization import deserialize_message, serialize_message
+from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
 
 HERE = Path(__file__).resolve().parent
@@ -160,14 +170,40 @@ BIAS_FRAMES_TOPIC = "/bias/frames"  # every frame's BIAS timestamp, published by
 SCANIMAGE_CMD_TOPIC = "/scanimage/cmd"
 SCANIMAGE_REPLY_TOPIC = "/scanimage/reply"
 SCANIMAGE_STATUS_TOPIC = "/scanimage/status"
+# The SiPM controller (the 2P rig's read-only node, private: reiserlab/scanimage-2026-bergamo 2p-rig-nodes/): its 1 Hz status carries bias/enable/offsets/
+# temperature, the detector settings ScanImage's TIFF header does not have.
+SIPM_CMD_TOPIC = "/sipm/cmd"
+SIPM_REPLY_TOPIC = "/sipm/reply"
+SIPM_STATUS_TOPIC = "/sipm/status"
+# ScanImage's ZeroMQ frame stream as topics (the 2P rig's frames node, private, 2p-rig-nodes/; LAB-303 Block R). STREAMS:
+# recorded into the bag as received, like /bias/frames, and never derived into a run-log line (the
+# telemetry rule: a string-tagged stream is not a behavior sample). The preview images are bounded at
+# the source (--preview-hz, 0 = off); ch1..ch4 cover ScanImage's four channels.
+SCANIMAGE_FRAME_META_TOPIC = "/scanimage/frame_meta"
+SCANIMAGE_FRAME_STATS_TOPIC = "/scanimage/frame_stats"
+SCANIMAGE_PREVIEW_META_TOPIC = "/scanimage/preview/meta"
+SCANIMAGE_PREVIEW_TOPICS = tuple(f"/scanimage/preview/ch{i}" for i in (1, 2, 3, 4))
+COMPRESSED_IMAGE_TYPE = "sensor_msgs/msg/CompressedImage"
+STREAM_TOPICS = {
+    SCANIMAGE_FRAME_META_TOPIC: STRING_TYPE, SCANIMAGE_FRAME_STATS_TOPIC: STRING_TYPE, SCANIMAGE_PREVIEW_META_TOPIC: STRING_TYPE,
+    **{t: COMPRESSED_IMAGE_TYPE for t in SCANIMAGE_PREVIEW_TOPICS},
+}
 # Device connectors the Studio may drive (LAB-303): connector_command → the node's cmd topic; its
 # reply/status topics become {"type":"connector","src":<id>,…} run-log events (derived by the
 # converter). Adding a connector = one entry here, a flag in rig.py, a topic pair in mcap_convert.py.
 CONNECTOR_TOPICS = {
     "bias": {"cmd": BIAS_CMD_TOPIC, "reply": BIAS_REPLY_TOPIC, "status": BIAS_STATUS_TOPIC},
     "scanimage": {"cmd": SCANIMAGE_CMD_TOPIC, "reply": SCANIMAGE_REPLY_TOPIC, "status": SCANIMAGE_STATUS_TOPIC},
+    "sipm": {"cmd": SIPM_CMD_TOPIC, "reply": SIPM_REPLY_TOPIC, "status": SIPM_STATUS_TOPIC},
 }
 FRAME_TOPIC = "/arena/frame"
+# Host pressure from rig_nodes.host_monitor (reiserlab/rig-nodes): recorded on arrival, no run-log line.
+HOST_TOPIC = "/rig/host"
+HOST_STATS_TYPE = "rig_interfaces/msg/HostStats"
+try:  # rig-nodes ≥ 0.3.0; the monitor publishes the same type when it imports (its --typed auto)
+    from rig_interfaces.msg import HostStats
+except (ImportError, AttributeError):
+    HostStats = None
 RAW_QOS = QoSProfile(
     reliability=QoSReliabilityPolicy.RELIABLE,
     history=QoSHistoryPolicy.KEEP_LAST,
@@ -322,8 +358,11 @@ class RecordingLogWriter(B.LogWriter):
             SESSION_TOPIC: STRING_TYPE, BROWSER_TOPIC: STRING_TYPE, EVENT_TOPIC: STRING_TYPE,
             KINEFLY_TOPIC: STRING_TYPE, BIAS_CMD_TOPIC: STRING_TYPE, BIAS_REPLY_TOPIC: STRING_TYPE, BIAS_STATUS_TOPIC: STRING_TYPE, BIAS_FRAMES_TOPIC: STRING_TYPE,
             SCANIMAGE_CMD_TOPIC: STRING_TYPE, SCANIMAGE_REPLY_TOPIC: STRING_TYPE, SCANIMAGE_STATUS_TOPIC: STRING_TYPE,
+            SIPM_CMD_TOPIC: STRING_TYPE, SIPM_REPLY_TOPIC: STRING_TYPE, SIPM_STATUS_TOPIC: STRING_TYPE,
+            **STREAM_TOPICS,
         }
         t[FRAME_TOPIC] = ARENA_FRAME_TYPE if self._typed else STRING_TYPE
+        t[HOST_TOPIC] = HOST_STATS_TYPE if HostStats is not None else STRING_TYPE
         if self.record_fictrac_raw:
             if self._typed:
                 t[FICTRAC_FRAME_TOPIC] = FICTRAC_FRAME_TYPE
@@ -652,6 +691,7 @@ class BridgeNode(Node):
         self.typed = typed
         self.stats = {"fictrac": SourceStats("fictrac"), "kinefly": SourceStats("kinefly"), **{c: SourceStats(c) for c in CONNECTOR_TOPICS}}
         self.frame_pub = self.create_publisher(ArenaFrame if typed else String, FRAME_TOPIC, FRAME_QOS)
+        self.browser_pub = self.create_publisher(String, BROWSER_TOPIC, RAW_QOS)
         # Studio → bridge connector_command relayed to the device node (LAB-303 connectors).
         self.cmd_pubs = {c: self.create_publisher(String, t["cmd"], RAW_QOS) for c, t in CONNECTOR_TOPICS.items()}
         if typed:
@@ -665,6 +705,14 @@ class BridgeNode(Node):
         # Recorded on arrival, like /fictrac/raw: it never becomes a run-log line (the stopRecording reply
         # carries its summary), so there is no shadow line to stay in step with.
         self.create_subscription(String, BIAS_FRAMES_TOPIC, lambda b: self._record(BIAS_FRAMES_TOPIC, b), RAW_QOS, raw=True)
+        # rig_nodes.host_monitor samples (1 Hz; the monitor publishes RELIABLE, KEEP_LAST 10).
+        self.create_subscription(HostStats if HostStats is not None else String, HOST_TOPIC,
+                                 lambda b: self._record(HOST_TOPIC, b), RAW_QOS, raw=True)
+        # The ScanImage frame stream (meta, stats, preview meta, preview images): the same arrival-time
+        # record, raw bytes, no run-log line — the bag is the only place they go.
+        for topic, typ in STREAM_TOPICS.items():
+            self.create_subscription(CompressedImage if typ == COMPRESSED_IMAGE_TYPE else String, topic,
+                                     lambda b, topic=topic: self._record(topic, b), RAW_QOS, raw=True)
 
     def _record(self, topic: str, data: bytes) -> None:
         rec = self._log.rec
@@ -840,6 +888,9 @@ async def run(args: argparse.Namespace) -> None:
         (so the Studio's bridge client knows what it may drive; a ≤ 3.4 bridge never sends
         it) and `connector_command` is relayed to the device node. Everything else is 3.4."""
         text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+        live = String()
+        live.data = json.dumps({"rx_ms": B.now_ms(), "raw": text}, separators=(",", ":"))
+        node.browser_pub.publish(live)
         obj = None
         try:
             obj = json.loads(text)
@@ -908,7 +959,8 @@ async def run(args: argparse.Namespace) -> None:
                 "record": {"bag": log.bag_name, "profile": log._profile, "typed": typed, "fictrac_raw": log.record_fictrac_raw},
                 "topics": {"fictrac": FICTRAC_FRAME_TOPIC if typed else FICTRAC_TOPIC, "kinefly": KINEFLY_TOPIC,
                            "bias": [BIAS_CMD_TOPIC, BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC, BIAS_FRAMES_TOPIC],
-                           "scanimage": [SCANIMAGE_CMD_TOPIC, SCANIMAGE_REPLY_TOPIC, SCANIMAGE_STATUS_TOPIC], "frame": FRAME_TOPIC,
+                           "scanimage": [SCANIMAGE_CMD_TOPIC, SCANIMAGE_REPLY_TOPIC, SCANIMAGE_STATUS_TOPIC],
+                           "sipm": [SIPM_CMD_TOPIC, SIPM_REPLY_TOPIC, SIPM_STATUS_TOPIC], "frame": FRAME_TOPIC,
                            "browser": BROWSER_TOPIC, "event": EVENT_TOPIC, "session": SESSION_TOPIC},
             }
         )
