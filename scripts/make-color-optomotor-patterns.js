@@ -18,7 +18,7 @@
  * the trial's `duty` override, which is what the protocol sweeps.
  *
  *   node scripts/make-color-optomotor-patterns.js          # GS2 set for g6_color_optomotor_test
- *   node scripts/make-color-optomotor-patterns.js --gs16   # GS16 set for g6_2p_color_led_sweep
+ *   node scripts/make-color-optomotor-patterns.js --gs16 --out <dir>   # GS16 set for g6_2p_color_led_sweep (private 2P repo)
  *
  * --gs16 writes the SAME four gratings as Gray_16 files (lit pixels = 15) into
  * protocols/g6_2p_color_led_sweep_patterns/, names suffixed `_gs16`. The 2P imaging runs
@@ -44,12 +44,23 @@ const TOP_ROW_START = 20; // pixel rows 20..39 = the top panel row (row 0 = bott
 const ARENA_ID = 1;
 const GS16 = process.argv.includes('--gs16');
 const ON_VALUE = GS16 ? 15 : 1;
-const OUT = path.join(
-    __dirname,
-    '..',
-    'protocols',
-    GS16 ? 'g6_2p_color_led_sweep_patterns' : 'g6_color_optomotor_test_patterns'
-);
+// --out <dir> overrides the destination. The GS2 set is the public
+// protocols/g6_color_optomotor_test_patterns/. The GS16 set belongs to the 2P
+// protocol, which moved to the private rig repo on 2026-10-29 (LAB-227:
+// reiserlab/scanimage-2026-bergamo, protocols/g6_2p_color_led_sweep_patterns/),
+// so --gs16 needs an explicit --out pointing into a checkout of that repo.
+const outIdx = process.argv.indexOf('--out');
+const OUT_ARG = outIdx >= 0 ? process.argv[outIdx + 1] : null;
+if (GS16 && !OUT_ARG) {
+    console.error(
+        '--gs16 needs --out <dir>: the 2P sweep patterns live in the private ' +
+            'reiserlab/scanimage-2026-bergamo (protocols/g6_2p_color_led_sweep_patterns/), not here.'
+    );
+    process.exit(2);
+}
+const OUT = OUT_ARG
+    ? path.resolve(OUT_ARG)
+    : path.join(__dirname, '..', 'protocols', 'g6_color_optomotor_test_patterns');
 const layout = PanelColor.getLayout('four-color');
 const BANKS = layout.banks; // ['violet', 'blue', 'green', 'yellow']
 

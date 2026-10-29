@@ -53,7 +53,8 @@ Animated pattern previews are embedded on all four protocol pages.
   FicTrac): full-field brightness, panel map, a moving bar, and LED levels
   2/5/10/20/40%. Use it to confirm a rig works after setup.
 - **`fictrac_direction_test`** — open-loop motion then a closed-loop block, to
-  confirm the [FicTrac](../fictrac.md) bridge is working.
+  confirm the [FicTrac](../fictrac.md) bridge is working. Since 2026-10-29 it lives in
+  the lab's private `reiserlab/arena-experiments` (`protocols/shared/`), not in the site library.
 - **`optomotor_led_test`** — a slow grating with the LED switched on for the
   last few seconds; the reference example of "fire a command partway through a
   trial."
