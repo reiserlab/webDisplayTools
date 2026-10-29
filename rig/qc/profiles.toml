@@ -94,14 +94,17 @@ hosts = ["reiserlab-bergamo1"]
 envs = ["default"]
 rig_flags = ["--no-fictrac", "--scanimage"]
 studio_rig = "bergamo_g6_2x10_2p"
-protocol = { key = "g6_2x10_2p_diagnostics", path = "protocols/g6_2x10_2p_diagnostics.yaml", duration_s = 60 }
+# The 2P diagnostics protocol moved to the private rig repo (scanimage-2026-bergamo/protocols/,
+# LAB-227, 2026-10-29); the tier's own validation protocol stands in until the QC runner can load
+# a protocol from a private repo. Not in protocols/index.json: loaded from the tier's raw YAML.
+protocol = { path = "protocols/validation/bench_closed_loop_2x10.yaml", duration_s = 25 }
 fictrac = { kind = "none" }
 requires = [["tcp", 5555, "ScanImage's JSON server (start ScanImage from a terminal MATLAB and enable the server)"]]
 precheck = { epochs = 0, epoch_s = 0, min_frames = 0 }
 reports = { closed_loop = false, holds = [] }
 checklist = [
   { id = "fictrac", look = "No FicTrac on this rig: the gateway answers hello_ack and advertises the scanimage connector." },
-  { id = "run", look = "Arena: the 2P diagnostics sequence (brightness ramp and steps, 1 Hz flash, sparse, 6 s all-off); the Run view shows the controller-settings assertion (panel mode, refresh, SPI, AO) with no manual Console steps. About 1 minute." },
+  { id = "run", look = "Arena: the 2×10 validation protocol (two gratings, no closed loop on this rig); the Run view shows the controller-settings assertion (panel mode, refresh, SPI, AO) with no manual Console steps. About half a minute." },
   { id = "reports", look = "runlog-check OK, bag closed." },
 ]
 
