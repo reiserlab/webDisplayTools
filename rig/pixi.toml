@@ -23,10 +23,9 @@
 [workspace]
 name = "rig"
 version = "0.1.0"
-# The 0.3.0 channel is read at the COMMIT that carries the payload (5e20dee, release/0.3.0 → rig-nodes#3):
-# the `v0.3.0` tag was placed one commit early (payload gitignored) and moves there when Michael runs
-# `git tag -f v0.3.0 5e20dee && git push --force origin refs/tags/v0.3.0`; a commit SHA is as immutable.
-channels = ["conda-forge", "robostack-jazzy", "https://raw.githubusercontent.com/reiserlab/rig-nodes/5e20dee381061832377d5a51c767aaf67a20c53c/channel"]
+# The channel is read at the RELEASE TAG (`v0.4.0`, rig-nodes#7), the preferred form; 0.3.0 was pinned by the
+# payload commit's SHA only because its tag had first landed one commit before the payload.
+channels = ["conda-forge", "robostack-jazzy", "https://raw.githubusercontent.com/reiserlab/rig-nodes/v0.4.0/channel"]
 # rmw_zenoh ≥ 0.2.11 (the RoboStack 0.19 set) is built for macOS ≥ 14; without this floor the
 # osx-arm64 solve falls back to the 0.16 set and the platforms drift apart (rig-nodes pins 0.19).
 # Declared on the platform (pixi ≥ 0.80 virtual packages), not as the deprecated [system-requirements]; pixi
@@ -84,17 +83,18 @@ ros-jazzy-rosbag2-py = "*"
 ros-jazzy-rosbag2-storage-mcap = "*"
 mcap = ">=1.2"
 # ── the shared rig-nodes package set, pinned (one version for the set; README "Releasing") ──
-# Device adapters (FicTrac, Kinefly, BIAS, ScanImage incl. its ZeroMQ frame stream, the experimental SiPM
-# controller) and their simulators, the MCAP recorder and indexer, the CDR decoder, the Foxglove rewriter
-# (+ bias_health), the supervision primitives rig.py composes with. 0.3.0 (2026-10-28) also ships the
-# HostStats message set for the host monitor (rig_interfaces, `typed` environment).
+# Device adapters (FicTrac, Kinefly, BIAS) and their simulators, the MCAP recorder and indexer, the CDR
+# decoder, the Foxglove rewriter (+ bias_health), the host monitor, the supervision primitives rig.py composes
+# with. 0.3.0 (2026-10-28) added the HostStats message set for the host monitor (rig_interfaces, `typed`
+# environment); 0.4.0 (same day) moved the ScanImage JSON connector to the private 2P rig repo and made the
+# host monitor's typed floats compressible + its process sampling cheaper (rig-nodes#4, #6).
 # Written into every run's record by the gateway (hello_ack + /arena/session `packages`). The pin lives in the
 # `channel` feature (default / typed / viz), not in [dependencies]: the `dev` environment builds rig_nodes from
 # the git source instead, and one package name from two sources does not solve once the released version is
 # ahead of `main` (0.3.0 vs 0.2.1 on 2026-10-28: "excluded because of strict channel priority").
 
 [feature.channel.dependencies]
-rig_nodes = "==0.3.0"
+rig_nodes = "==0.4.0"
 
 # ── typed messages = the OPT-IN `typed` environment ───────────────────────────────────────
 # `pixi install -e typed` adds rig_interfaces (FicTracFrame, ArenaFrame, ConnectorReply, HostStats + its
@@ -106,7 +106,7 @@ rig_nodes = "==0.3.0"
 # environment so the rigs keep recording String topics until typed recording is decided for them;
 # the nodes fall back on their own (`--typed auto`).
 [feature.typed.dependencies]
-rig_interfaces = "==0.3.0"
+rig_interfaces = "==0.4.0"
 
 # ── developer path: rig-nodes `main`, built from source (git source dependencies) ────────────
 # `pixi install -e dev` swaps the two channel pins for the HEAD of reiserlab/rig-nodes `main`,
@@ -218,3 +218,7 @@ test-stimulus-live = "python tests/test_stimulus_live.py"
 rqt-graph = "rqt_graph"
 rqt-topic = "rqt_topic"
 foxglove-bridge = "ros2 run foxglove_bridge foxglove_bridge --ros-args -p port:=8766 -p address:=127.0.0.1"
+# ── the five-minute release validation (rig/QC.md): `pixi run qc -- --tier next [--rig ww18] [--auto]` ──
+# Checks out the tier's build in a scratch worktree with its own environment, runs the graph, the Studio
+# emulator pre-check, the tier's Studio in Chrome, the reports, and prints a validation note.
+qc = "python qc/qc.py"

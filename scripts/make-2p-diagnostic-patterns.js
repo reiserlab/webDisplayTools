@@ -2,7 +2,8 @@
 /**
  * Build the full-field brightness patterns for the 2P line-sync diagnostics
  * (protocols/g6_2x10_2p_diagnostics.yaml) into the colocated folder
- * protocols/g6_2x10_2p_diagnostics_patterns/. G6 2x10, GS16, duty byte 0x80.
+ * <--out dir> (reiserlab/scanimage-2026-bergamo protocols/g6_2x10_2p_diagnostics_patterns/ since
+ * 2026-10-29, LAB-227). G6 2x10, GS16, duty byte 0x80.
  *
  * Why these patterns: on the Bergamo the display leaves a uniform offset in the
  * SiPM channels that is expected to follow the TOTAL light the display emits.
@@ -22,9 +23,24 @@ const PatEncoder = require('../js/pat-encoder.js');
 const arenaCfg = require('../js/arena-configs.js');
 
 const ARENA = 'G6_2x10';
-const ROWS = 2, COLS = 10, PIXEL_ROWS = 40, PIXEL_COLS = 200, N = PIXEL_ROWS * PIXEL_COLS;
+const ROWS = 2,
+    COLS = 10,
+    PIXEL_ROWS = 40,
+    PIXEL_COLS = 200,
+    N = PIXEL_ROWS * PIXEL_COLS;
 const ARENA_ID = 1;
-const OUT = path.join(__dirname, '..', 'protocols', 'g6_2x10_2p_diagnostics_patterns');
+// --out <dir> is required: the protocol and its patterns moved to the private 2P rig
+// repo on 2026-10-29 (LAB-227: reiserlab/scanimage-2026-bergamo,
+// protocols/g6_2x10_2p_diagnostics_patterns/). Point --out into a checkout of it.
+const outIdx = process.argv.indexOf('--out');
+if (outIdx < 0 || !process.argv[outIdx + 1]) {
+    console.error(
+        'usage: node scripts/make-2p-diagnostic-patterns.js --out <dir>  (the patterns live in the ' +
+            'private reiserlab/scanimage-2026-bergamo, protocols/g6_2x10_2p_diagnostics_patterns/)'
+    );
+    process.exit(2);
+}
+const OUT = path.resolve(process.argv[outIdx + 1]);
 
 const uniform = (v) => new Uint8Array(N).fill(v);
 
@@ -37,9 +53,13 @@ const PR16 = [8, 12, 14, 15, 7, 3, 1, 0, 9, 4, 2, 10, 5, 11, 13, 6];
 function sparse(frac, seed) {
     const f = new Uint8Array(N);
     let s = seed >>> 0;
-    const rnd = () => ((s = (1664525 * s + 1013904223) >>> 0) / 4294967296);
+    const rnd = () => (s = (1664525 * s + 1013904223) >>> 0) / 4294967296;
     let lit = 0;
-    for (let i = 0; i < N; i++) if (rnd() < frac) { f[i] = 15; lit++; }
+    for (let i = 0; i < N; i++)
+        if (rnd() < frac) {
+            f[i] = 15;
+            lit++;
+        }
     return { frame: f, lit };
 }
 
@@ -52,7 +72,10 @@ const SEEDS = [
     {
         name: 'G6_2x10_ff_steps_pr16',
         frames: PR16.map((v) => uniform(v)),
-        note: 'full field, the 16 grey levels in pseudo-random order ' + PR16.join(',') + '. mode 2, frame_rate 2 → 8 s per pass'
+        note:
+            'full field, the 16 grey levels in pseudo-random order ' +
+            PR16.join(',') +
+            '. mode 2, frame_rate 2 → 8 s per pass'
     },
     {
         name: 'G6_2x10_ff_flash_0_15',
@@ -61,30 +84,47 @@ const SEEDS = [
     },
     {
         name: 'G6_2x10_sparse10',
-        frames: [sparse(0.10, 20260923).frame],
+        frames: [sparse(0.1, 20260923).frame],
         note: '10 % of pixels at level 15, rest dark, static (frame_rate 0). Compare with ff_ramp16 held at level 1–2'
     }
 ];
 
 fs.mkdirSync(OUT, { recursive: true });
-const readme = ['Patterns for protocols/g6_2x10_2p_diagnostics.yaml (G6 2x10, GS16, built by scripts/make-2p-diagnostic-patterns.js).',
-    'Upload the whole folder from Arena Studio (Console → Patterns → Add ▾ → this protocol\'s folder); the Studio resolves patterns by NAME.', ''];
+const readme = [
+    'Patterns for protocols/g6_2x10_2p_diagnostics.yaml (G6 2x10, GS16, built by scripts/make-2p-diagnostic-patterns.js).',
+    "Upload the whole folder from Arena Studio (Console → Patterns → Add ▾ → this protocol's folder); the Studio resolves patterns by NAME.",
+    ''
+];
 let ok = true;
 for (const s of SEEDS) {
     const bytes = PatEncoder.encode({
-        generation: 'G6', gs_val: 16, numFrames: s.frames.length,
-        rowCount: ROWS, colCount: COLS, pixelRows: PIXEL_ROWS, pixelCols: PIXEL_COLS,
-        frames: s.frames, stretchValues: [], arena_id: ARENA_ID, observer_id: 0
+        generation: 'G6',
+        gs_val: 16,
+        numFrames: s.frames.length,
+        rowCount: ROWS,
+        colCount: COLS,
+        pixelRows: PIXEL_ROWS,
+        pixelCols: PIXEL_COLS,
+        frames: s.frames,
+        stretchValues: [],
+        arena_id: ARENA_ID,
+        observer_id: 0
     });
     const file = path.join(OUT, s.name + '.pat');
     fs.writeFileSync(file, Buffer.from(bytes));
     // self-verify: parse back, check geometry, duty byte, and mean level per frame
     const buf = fs.readFileSync(file);
-    const p = PatParser.parsePatFile(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+    const p = PatParser.parsePatFile(
+        buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+    );
     const cfg = arenaCfg.getConfig(ARENA);
-    const geomOk = p.pixelRows === PIXEL_ROWS && p.pixelCols === PIXEL_COLS && p.gs_val === 16 && p.frames.length === s.frames.length;
+    const geomOk =
+        p.pixelRows === PIXEL_ROWS &&
+        p.pixelCols === PIXEL_COLS &&
+        p.gs_val === 16 &&
+        p.frames.length === s.frames.length;
     const dutyOk = p.stretchValues.every((d) => d === 0x80);
-    const means = p.frames.map((fr) => (fr.reduce((a, b) => a + b, 0) / fr.length / 15));
+    const means = p.frames.map((fr) => fr.reduce((a, b) => a + b, 0) / fr.length / 15);
     const lit = p.frames.map((fr) => fr.filter((v) => v > 0).length / fr.length);
     const line = `${s.name}.pat  frames ${p.frames.length}  mean/full per frame [${means.map((m) => m.toFixed(2)).join(' ')}]  lit fraction [${[...new Set(lit.map((l) => l.toFixed(2)))].join(' ')}]  ${geomOk && dutyOk ? 'OK' : 'FAIL'}`;
     console.log(line);
@@ -93,5 +133,7 @@ for (const s of SEEDS) {
     if (!geomOk || !dutyOk) ok = false;
 }
 fs.writeFileSync(path.join(OUT, 'README.txt'), readme.join('\n') + '\n');
-console.log(ok ? '\nSelf-verify OK → ' + path.relative(process.cwd(), OUT) : '\nSelf-verify FAILED');
+console.log(
+    ok ? '\nSelf-verify OK → ' + path.relative(process.cwd(), OUT) : '\nSelf-verify FAILED'
+);
 process.exit(ok ? 0 : 1);

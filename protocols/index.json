@@ -14,26 +14,6 @@
       "path": "./protocols/fictrac_closed_loop.yaml"
     },
     {
-      "key": "fictrac_direction_test",
-      "label": "FicTrac closed-loop + open-loop direction/speed test (~5.5 min)",
-      "path": "./protocols/fictrac_direction_test.yaml"
-    },
-    {
-      "key": "fictrac_bias_test",
-      "label": "FicTrac closed-loop bias/disturbance test (~4 min)",
-      "path": "./protocols/fictrac_bias_test.yaml"
-    },
-    {
-      "key": "led_activation_quadrant_test",
-      "label": "Conditional LED activation — graded zones test (Mode-3 closed loop, ~2 min)",
-      "path": "./protocols/led_activation_quadrant_test.yaml"
-    },
-    {
-      "key": "fictrac_coupling_bias_fly_test",
-      "label": "Closed-loop coupling × bias — fly test (Mode 3, natural coupling −1, ~13 min)",
-      "path": "./protocols/fictrac_coupling_bias_fly_test.yaml"
-    },
-    {
       "key": "opto_intensity_runtime_test",
       "label": "Opto intensity as a runtime variable (Mode 2, ledDrive; ~2 min)",
       "path": "./protocols/opto_intensity_runtime_test.yaml"
@@ -44,31 +24,6 @@
       "path": "./protocols/full_experiment.yaml"
     },
     {
-      "key": "g6_2x10_2p_duty_sweep",
-      "label": "2P line-sync duty sweep — G6 2×10 on the Bergamo (~62 s, 2 s allOff between steps)",
-      "path": "./protocols/g6_2x10_2p_duty_sweep.yaml"
-    },
-    {
-      "key": "g6_2x10_2p_diagnostics",
-      "label": "2P line-sync diagnostics — full-field brightness ramp/steps, 1 Hz flash, 10 % sparse, 6 s all-off (~52 s; upload its _patterns folder first)",
-      "path": "./protocols/g6_2x10_2p_diagnostics.yaml"
-    },
-    {
-      "key": "bias_camera_closed_loop_poc",
-      "label": "BIAS camera + FicTrac closed loop through the ROS 2 bridge (LAB-303 spike, ~40 s)",
-      "path": "./protocols/bias_camera_closed_loop_poc.yaml"
-    },
-    {
-      "key": "bias_camera_closed_loop_poc_ww18",
-      "label": "BIAS camera + FicTrac closed loop, ROS 2 bridge — ww18 variant (site 2x10 grating_sq, slot 2)",
-      "path": "./protocols/bias_camera_closed_loop_poc_ww18.yaml"
-    },
-    {
-      "key": "bias_camera_closed_loop_poc_ww18_soak10",
-      "label": "BIAS + FicTrac closed loop, ROS 2 bridge - ww18 10-min soak (2 x 300 s, grating_sq slot 2)",
-      "path": "./protocols/bias_camera_closed_loop_poc_ww18_soak10.yaml"
-    },
-    {
       "key": "g6_color_optomotor_test",
       "label": "Color optomotor test — one LED color at a time, top row, 25/50/100 % duty (G6 four-color, BIAS, ~18 min)",
       "path": "./protocols/g6_color_optomotor_test.yaml"
@@ -77,11 +32,6 @@
       "key": "g6_color_optomotor_smoke",
       "label": "Color optomotor SMOKE — 10 s per pattern, duty 100 %, BIAS check (~2 min)",
       "path": "./protocols/g6_color_optomotor_smoke.yaml"
-    },
-    {
-      "key": "g6_2p_color_led_sweep",
-      "label": "2P color LED-intensity sweep — one ScanImage grab per color, 6 duty levels × 3 s at 20 fps (G6 four-color, ScanImage JSON connector, ~2.5 min)",
-      "path": "./protocols/g6_2p_color_led_sweep.yaml"
     }
   ]
 }

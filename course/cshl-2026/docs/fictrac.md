@@ -119,7 +119,7 @@ Closed-loop and the live scope need the **bridge** running on the rig computer:
   bridge"* to a live trace once data flows. Closed-loop trials show a green
   **CLOSED LOOP** tag.
 
-**Quick check:** load [`fictrac_direction_test`](protocols/README.md) — it runs
+**Quick check:** load [`fictrac_direction_test`](protocols/README.md) (since 2026-10-29 in the lab's private `reiserlab/arena-experiments`, `protocols/shared/`) — it runs
 open-loop motion first, then a closed-loop block that the fly steers. If the
 closed-loop block responds to nudging the ball, the bridge is working.
 

@@ -52,7 +52,7 @@ pass/fail, timings, sizes and every error verbatim.
 3. Follow rig/WINDOWS-TEST.md in order. Steps 1–3 need no hardware and can run
    unattended; stop and ask me to be at the keyboard before step 4 (BIAS) and step 5 (Studio +
    controller over Web Serial). Stop bridge 3.4 first if it is running.
-4. Results: rig/windows-results-ww18-<date>.md committed to the branch and pushed; add a
+4. Results: a `windows-results-ww18-<date>.md` committed to the private `reiserlab/arena-experiments` under `rigs/ww18/` (rig records left this repo on 2026-10-29, LAB-227); add a
    "Windows results" row to the test-plan table in PR #254's description. Small fixes may go on
    the branch (message names the step); never touch Production or Next.
 ```
@@ -70,7 +70,7 @@ Windows build with its FLIR camera, the G6 controller on USB, optionally FicTrac
 Visual Studio 2022 Build Tools (Desktop C++) is installed — step 1b measures the typed-message
 build with and without it.
 
-**Windows notes from the first run (ww18, 2026-10-15 — `windows-results-ww18-2026-10-15.md`):**
+**Windows notes from the first run (ww18, 2026-10-15 — `rigs/ww18/windows-results-ww18-2026-10-15.md` in `reiserlab/arena-experiments`):**
 
 - **Short build path for the typed build**: under `C:\Users\<name>\Documents\GitHub\…` it hits Windows'
   260-character path limit (`C1083`). Either clone to under ~45 characters before `\rig`, or, from any
@@ -83,7 +83,7 @@ build with and without it.
   since 538cc85: 1b / 7 install on ww18 (35 s, harness 48 / 48).
 - **Check the controller's SD card first**: an empty SD listing / "pattern missing" can mean no card is mounted
   at all (ww18's old card). The site library's 2×10 set (`patterns/g6_2x10/patterns/`) plus
-  `protocols/bias_camera_closed_loop_poc_ww18*.yaml` (slot 2 `grating_sq`) work on any 2×10 card loaded that way.
+  `protocols/ww18/bias_camera_closed_loop_poc_ww18*.yaml` (`reiserlab/arena-experiments`; slot 2 `grating_sq`) work on any 2×10 card loaded that way.
 - **FicTrac** (pixi-built): start it with `build\Release\fictrac.bat <config>` from the config folder —
   `fictrac.exe` alone exits silently with `0xC0000135` (DLL not found).
 - **BIAS Atlas10 build** (atlas-bench): HTTP server on by default at 5010; uFMF by default, so `.avi` names
@@ -161,7 +161,7 @@ whether the router keeps running after Ctrl-C (`tasklist | findstr rmw_zenohd`).
 pixi run test -- --keep
 ```
 
-Expected: `54 / 54 checks passed` (57 / 57 with `-e typed`; 59 / 62 before the ScanImage connector left on 2026-10-28) in about a minute and a line `artifacts kept in …`. Keep that
+Expected: `60 / 60 checks passed` (63 / 63 with `-e typed`; measured on the Mac 2026-10-28 with rig-nodes 0.4.0 — the six host-monitor checks of #282 raised the count, the five ScanImage-connector checks left with the connector the same day) in about a minute and a line `artifacts kept in …`. Keep that
 directory (`summary.md`, `crash-results.json`, the converted export, `runlogs\*.bag`, `proc-logs\`).
 Windows-specific things it exercises for the first time: child processes in their own group,
 `CTRL_BREAK_EVENT` as the stop signal, `TerminateProcess` for the mid-run kills (the FicTrac adapter
@@ -224,7 +224,7 @@ cd ..                                   # repo root
 python .claude\nocache-server.py 8092
 ```
 
-Chrome: `http://localhost:8092/arena_studio.html?p=bias_camera_closed_loop_poc&rig=<rig key>&mode=run`
+Chrome: `http://localhost:8092/arena_studio.html?repo=reiserlab/arena-experiments&p=protocols/ww18/bias_camera_closed_loop_poc.yaml&rig=<rig key>&mode=run` (signed in; the protocol moved to the private repo on 2026-10-29)
 with the rig key from `configs\rigs\index.json` that matches this arena (`cshl_g6_2x10_ball` for a
 2×10 ball rig). Then:
 

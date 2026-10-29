@@ -4817,10 +4817,9 @@ console.log('\n--- Suite 39: sequence-style variables identity ---');
         '39.6: no variable is named after String.prototype.anchor or "undefined"',
         exp38.variables.every((v) => v.name !== 'undefined' && !/native code/.test(v.name))
     );
-    const protocol2p = fs.readFileSync(
-        path.join(__dirname, '..', 'protocols', 'g6_2p_color_led_sweep.yaml'),
-        'utf8'
-    );
+    // The protocol itself lives in the private 2P rig repo since 2026-10-29 (LAB-227);
+    // this fixture is the copy the test parses.
+    const protocol2p = readFixture('v3_g6_2p_color_led_sweep.yaml');
     const exp2p = parseV3Protocol(protocol2p);
     const names2p = exp2p.variables.map((v) => v.name);
     checkTrue('39.7: the 2P sweep protocol parses', exp2p.variables.length > 10);

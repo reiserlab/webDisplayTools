@@ -3426,7 +3426,7 @@
 </div>
 
 <footer id="footer">
-  <span class="foot-left">Arena Studio v0.100 | 2026-10-28 18:40 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
+  <span class="foot-left">Arena Studio v0.101 | 2026-10-29 16:45 ET · <a href="https://github.com/reiserlab/webDisplayTools" target="_blank" rel="noopener" title="webDisplayTools on GitHub: source, issues, and release notes (docs/development/arena-studio-release-notes.md)">GitHub</a></span>
   <!-- Course-repo quick-links: open protocols / logs / patterns in a new tab.
        Hrefs built from the configured repo + bench id (updateGhQuickLinks). -->
   <span id="ghQuickLinks" title="Open the course repo on GitHub (new tab)">
@@ -10764,7 +10764,10 @@ Studio.initTelemetry = async function () {
             const key = [st.records, st.dropped, st.gaps, st.errors, st.notStored].join('/');
             if (key === Studio.telemetry.lastReport) return;
             Studio.telemetry.lastReport = key;
-            Studio.rawLog('telemetry ring: ' + st.records + ' records · ' + st.blocks + ' blocks · ' + (st.bytes / 1024).toFixed(1) + ' KiB · dropped ' + st.dropped + ' · gaps ' + st.gaps + ' · errors ' + st.errors + (st.notStored ? ' · refused by bridge ' + st.notStored : '') + (st.heapCollision ? ' · RING DISABLED (heap collision)' : '') + (st.survivedReboot ? ' · ring survived a reboot (boot #' + st.bootCount + ')' : ''), 'dim');
+            // `dropped` in the block header is the controller's LIFETIME eviction count (since
+            // its boot, mostly from before this page connected); only the growth since our
+            // first block is in-session loss. Say both, lead with the one that matters.
+            Studio.rawLog('telemetry ring: ' + st.records + ' records · ' + st.blocks + ' blocks · ' + (st.bytes / 1024).toFixed(1) + ' KiB · evicted this session ' + st.droppedSession + ' (controller lifetime ' + st.dropped + ') · gaps ' + st.gaps + ' · errors ' + st.errors + (st.notStored ? ' · refused by bridge ' + st.notStored : '') + (st.heapCollision ? ' · RING DISABLED (heap collision)' : '') + (st.survivedReboot ? ' · ring survived a reboot (boot #' + st.bootCount + ')' : ''), 'dim');
         }, 60000);
     } else {
         Studio.telemetry.drainer.rearm(); // NO_ACK first: learn the ring incarnation before freeing anything
@@ -10826,7 +10829,7 @@ Studio.drainTelemetry = async function (tag) {
         r.kind === 'cmd' ? 'CMD 0x' + r.cmd.toString(16) + ' st' + r.status + ' @' + r.tUs :
         r.kind === 'frame' ? 'FRAME idx' + r.idx + ' sd' + r.sdLoadUs + 'us spi' + r.spiUs + 'us' + (r.reqAgeUs != null ? ' age' + r.reqAgeUs + 'us sup' + r.superseded + (r.contiguous ? ' contig' : '') : '') + ' @' + r.tUs :
         r.kind === 'state' ? 'STATE ' + r.stateName + ' ' + (r.codeName || r.code) + ' ' + r.arg + ' @' + r.tUs : '?');
-    const summary = { tag: tag || 'drain', records: recs.length, blocks: blocks.length, survivedReboot: d.stats.survivedReboot, bootCount: d.stats.bootCount, dropped: d.stats.dropped, gaps: d.stats.gaps, heapCollision: !!d.stats.heapCollision, tail };
+    const summary = { tag: tag || 'drain', records: recs.length, blocks: blocks.length, survivedReboot: d.stats.survivedReboot, bootCount: d.stats.bootCount, dropped: d.stats.dropped, droppedSession: d.stats.droppedSession, gaps: d.stats.gaps, heapCollision: !!d.stats.heapCollision, tail };
     Studio.rawLog('telemetry dump (' + summary.tag + '): ' + recs.length + ' records' + (d.stats.survivedReboot ? ' — ring survived the reboot' : '') + (tail.length ? '\n  ' + tail.join('\n  ') : ''), recs.length ? 'warn' : 'dim');
     const b = Studio.session.bridge;
     if (b && b.logging) b.log({ event: 'telemetry_dump', summary, raw_blocks: rawBlocks });

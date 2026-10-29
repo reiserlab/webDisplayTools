@@ -271,9 +271,9 @@ def analyze_epoch(log: dict, ep: dict, deg_per_frame: float, frame_dir: int, az0
     if bias is None:
         bias_t0 = _latest_before([(t, t) for t, _ in log["bias"]], ep["start_ms"], ep["start_ms"])
         bias = _latest_before(log["bias"], ep["start_ms"], {"type": "none", "amplitude": 0.0, "frequency": 0.0})
-    _, hd0 = _last_within(log["tares"], ep["start_ms"], ep["start_ms"] + 1500.0)
+    tare_t, hd0 = _last_within(log["tares"], ep["start_ms"], ep["start_ms"] + 1500.0)
     if hd0 is None:
-        _, hd0 = _last_within(log["tares"], ep["start_ms"], ep["end_ms"])
+        tare_t, hd0 = _last_within(log["tares"], ep["start_ms"], ep["end_ms"])
     out = {
         "condition": ep.get("condition"), "start_s": round(ep["start_ms"] / 1000.0, 2),
         "duration_s": round((ep["end_ms"] - ep["start_ms"]) / 1000.0, 2), "rows": len(rows),
@@ -287,6 +287,17 @@ def analyze_epoch(log: dict, ep: dict, deg_per_frame: float, frame_dir: int, az0
     ms = [r[0] for r in rows]
     hd = [r[3] for r in rows]
     idx = [r[2] for r in rows]
+    if start_frame is not None:
+        # Does the epoch OPEN on its start frame? The first row at/after the tare has zero turn since
+        # the tare, so the bridge's index there is round(offset / pitch) = start_frame by construction
+        # (closed-loop-start-frame.md); a ≤ 3.3 bridge opens on frame 0 instead. This is the QC check
+        # that works with a live fly on the ball — the rest of the epoch is the idx mismatch below.
+        i0 = next((i for i, m in enumerate(ms) if tare_t is not None and m >= tare_t), 0)
+        first = idx[i0] if i0 < len(idx) and _num(idx[i0]) is not None else None
+        if first is not None:
+            d = (int(first) - int(start_frame)) % frames
+            out["first_idx_after_tare"] = int(first)
+            out["opens_on_start_frame"] = min(d, frames - d) <= 1
     rel_hd = unwrap_deg(hd)
     dur_s = max((ms[-1] - ms[0]) / 1000.0, 1e-6)
     omegas = [(rel_hd[i] - rel_hd[i - 1]) / max((ms[i] - ms[i - 1]) / 1000.0, 1e-3) for i in range(1, len(rows))]
@@ -363,7 +374,11 @@ def _kpitch(e):
 
 def _frames_label(e):
     """'200' — or '200 @25' when a bridge-3.4 start_frame opened the epoch off frame 0."""
-    return f"{e['frames']}" if e.get("start_frame") is None else f"{e['frames']} @{e['start_frame']}"
+    if e.get("start_frame") is None:
+        return f"{e['frames']}"
+    opened = e.get("opens_on_start_frame")
+    mark = "" if opened is None else (" ✓" if opened else f" ✗ opened on {e.get('first_idx_after_tare')}")
+    return f"{e['frames']} @{e['start_frame']}{mark}"
 
 
 def _bias_label(b):
