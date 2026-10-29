@@ -474,9 +474,11 @@ console.log('=== run (injected fetch) ===');
 (async () => {
     let seenUrl = null;
     let seenAuth = null;
+    let seenCache = null;
     const fakeFetch = async (url, init) => {
         seenUrl = url;
         seenAuth = init.headers.Authorization;
+        seenCache = init.cache;
         return { ok: true, status: 200, json: async () => ({ default_branch: 'main' }) };
     };
     const res = await G.run(fakeFetch, G.reqGetRepo(O, R, TOKEN));
@@ -484,6 +486,22 @@ console.log('=== run (injected fetch) ===');
     check('run ok+status', [res.ok, res.status], [true, 200]);
     checkBool('run passed auth header', seenAuth === 'Bearer ' + TOKEN, seenAuth);
     checkBool('run hit repo url', seenUrl.endsWith('/repos/reiserlab/webDisplayTools'), seenUrl);
+    // The JSON executor bypasses the HTTP cache: the raw and JSON forms of a
+    // contents URL share an ETag, and a cached raw body served for a JSON
+    // request made the overwrite guard miss an existing file (ww18, 2026-10-29).
+    check('run bypasses the HTTP cache (no-store)', seenCache, 'no-store');
+
+    // A JSON reply that is not JSON (the cached-raw symptom) must not throw:
+    // callers see data null and decide; the status still comes through.
+    const notJson = async () => ({
+        ok: true,
+        status: 200,
+        json: async () => {
+            throw new SyntaxError('raw');
+        }
+    });
+    const nj = await G.run(notJson, G.reqGetRepo(O, R, TOKEN));
+    check('run tolerates a non-JSON body', [nj.ok, nj.status, nj.data], [true, 200, null]);
 
     console.log('=== runBytes (raw executor) ===');
     const rawFetch = async () => ({
