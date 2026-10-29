@@ -10,7 +10,7 @@ This directory is its own pixi workspace. The root `pixi.toml` and `fictrac-brid
 untouched, so bridge 3.4 (`pixi run bridge` at the repo root) stays installed side by side.
 
 > **Since 2026-10-26 (LAB-338):** the shared part of this graph — `rig_interfaces`, the device
-> adapters and simulators (FicTrac, Kinefly, BIAS, ScanImage), the MCAP recorder/indexer, the CDR
+> adapters and simulators (FicTrac, Kinefly, BIAS), the MCAP recorder/indexer, the CDR
 > decoder, the generic Foxglove rewriter, the supervision primitives, the Zenoh configs and the
 > benches — lives in **[reiserlab/rig-nodes](https://github.com/reiserlab/rig-nodes)** and is
 > installed here as the pinned `rig_nodes` (+ opt-in `rig_interfaces`) packages from that repo's
