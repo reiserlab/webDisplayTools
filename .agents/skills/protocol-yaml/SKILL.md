@@ -55,7 +55,8 @@ it does NOT advance the protocol clock. Only `wait` commands do. Therefore:
   Editing only ONE of the pair is **masked** by the other — "the timeline won't update"
   is almost always a half-edited pair, not a render bug.
 - **Bind both fields to one anchor** (`duration: *show_dur` on both) so they can never
-  drift — the `open_dur`/`cl_dur` pattern from `protocols/fictrac_direction_test`.
+  drift — the `open_dur`/`cl_dur` pattern from `fictrac_direction_test` (private
+  `reiserlab/arena-experiments`, `protocols/shared/`).
 - Waits between two `trialParams` in one condition define how long the FIRST one
   actually shows (the second overrides it). Waits longer than the duration = intentional
   hold/blank; fine, but mean it.
@@ -163,7 +164,7 @@ rejection). Authored as an added rotational **velocity**:
   A negative frequency is a harmless no-op (warned): negate `bias_amplitude` instead.
 - `stopClosedLoop` clears the bias automatically. Reference:
   `docs/development/closed-loop-bias.md`; worked example:
-  `protocols/fictrac_bias_test.yaml`.
+  `protocols/shared/fictrac_bias_test.yaml` in the private `reiserlab/arena-experiments`.
 
 **Per-trial start position = the trialParams `frame_index` (Studio v0.91 / bridge 3.4).** A
 closed-loop trial opens on the Mode-3 `trialParams` `frame_index` (0-based, wraps mod the pattern's

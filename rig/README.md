@@ -57,7 +57,7 @@ Pieces, individually (each is also a `pixi run` task; `--help` on every script):
 | `sim` | `rig-fictrac-sim` (rig_nodes.sims.fictrac_sim, moved from `fictrac-bridge/`; `-- --model fly --kp 2` for a fixating fly) |
 | `kinefly-sim` / `bias-sim` | synthetic KF/1 producer; a fake BIAS program (HTTP, state machine, writes the video file) |
 | `studio-emulator` | the Studio runner's exact bridge conversation, for machines without a browser |
-| `stimulus` | `nodes/stimulus_node.py`: the arena's EXPECTED display (the trial's `.pat` frame × duty in the panels' LED colors) and its OBSERVED display (controller telemetry) as PNG images, plus arena rate / lag / health, from the live `/arena/browser`; `pixi run rig -- --stimulus` (included by `--foxglove`). Layout `foxglove/arena-okey-cokey.json` (camera + G6, no FicTrac); the same layout on a finished run: `pixi run fox-json -- <bag> <out.mcap> --stimulus --panel-layout four-color` (adds `/camera/image` from the run's uFMF). Plan + status: `docs/okey-cokey-foxglove-dashboard-plan.md` |
+| `stimulus` | `nodes/stimulus_node.py`: the arena's EXPECTED display (the trial's `.pat` frame × duty in the panels' LED colors) and its OBSERVED display (controller telemetry) as PNG images, plus arena rate / lag / health, from the live `/arena/browser`; `pixi run rig -- --stimulus` (included by `--foxglove`). Layout `foxglove/arena-okey-cokey.json` (camera + G6, no FicTrac); the same layout on a finished run: `pixi run fox-json -- <bag> <out.mcap> --stimulus --panel-layout four-color` (adds `/camera/image` from the run's uFMF). Plan + status: `rigs/ww14/okey-cokey-foxglove-dashboard-plan.md` in the private `reiserlab/arena-experiments` (rig records left this repo on 2026-10-29, LAB-227) |
 | `test-stimulus` / `test-stimulus-live` | the dashboard's pure parts (panel colors pinned to `js/panel-color.js`, renderer, tracker on synthetic + a real 80 fps trial, uFMF reader, replay converter); the live path through router + bridge + stimulus node (~25 s, needs ports 7447/8765 free) |
 
 Environment set by the workspace (`[activation.env]`): `RMW_IMPLEMENTATION=rmw_zenoh_cpp`,
@@ -168,7 +168,7 @@ starts at its first frame, ≈ 300 ms later — take the alignment stamp ≥ 0.5
 startRecording, or anchor on the first frame. The harness (`pixi run test`) exercises the same
 path through the emulator: 32 / 32.
 
-One detour worth knowing: the stock `fictrac_bias_test.yaml` names `frame2_h_ccw_200f` at `pattern_ID 4`; this card's slot 4 is a 1-frame color test pattern, the runner read `frames: 1` from the card (correctly) and the display sat on frame 0. The protocol was re-pointed at the card's 20-frame grating — a card-content mismatch the Studio already warns about, not a bridge issue.
+One detour worth knowing: the stock `fictrac_bias_test.yaml` (now `protocols/shared/` in the private `reiserlab/arena-experiments`) names `frame2_h_ccw_200f` at `pattern_ID 4`; this card's slot 4 is a 1-frame color test pattern, the runner read `frames: 1` from the card (correctly) and the display sat on frame 0. The protocol was re-pointed at the card's 20-frame grating — a card-content mismatch the Studio already warns about, not a bridge issue.
 
 **Still not verified:** Windows execution (`win-64` only resolves and locks; the rig-PC session is
 scripted step by step in `WINDOWS-TEST.md`), and the macOS router with the stock IPv6 config (the
@@ -282,7 +282,7 @@ without further changes; **"ROS Studio" = that Studio served from the `/ros/` Pa
 Studio v0.95 served from `localhost:8092` (this branch), `pixi run rig -- --sim --bias` (model
 fly at 50 Hz, typed FicTrac topic, real BIAS Mac port on :5010, bridge node recording with the
 `crashsafe` profile), the G6 2×10 bench controller over Web Serial (Michael clicked the port
-picker), protocol `protocols/bias_camera_closed_loop_poc.yaml` (6 steps: camera start → 15 s
+picker), protocol `protocols/ww18/bias_camera_closed_loop_poc.yaml` from the private `reiserlab/arena-experiments` (in this repo's `protocols/` until 2026-10-29; 6 steps: camera start → 15 s
 closed loop → camera sync → 15 s closed loop + 90 °/s bias → camera stop → shutdown).
 
 | | result |
