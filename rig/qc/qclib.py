@@ -241,6 +241,36 @@ def fictrac_config_for_qc(text: str, sock_port: int = 60000, sock_host: str = "1
 # ── results ──────────────────────────────────────────────────────────────────
 
 
+def hold_verdict(bench_rc: int, bench_stdout: str, epochs: list | None, turn_threshold_deg: float = 45.0) -> tuple[str, str]:
+    """Verdict + detail for the bench-check step from bench-check's exit code and output.
+
+    The hold checks ("<condition> holds frame N") assume a STILL ball: with a fly on it the display
+    follows FicTrac away from the start frame by design, and only the closed-loop report's idx mismatch
+    says whether the candidate tracked (ww18, 2026-10-29: 0.00 % mismatch, holds "failed" with a fly
+    turning −1108° in 8 s). When bench-check failed ONLY on hold lines and some epoch's |net turn|
+    is at least `turn_threshold_deg`, the step is SKIP with the turns in the detail. Anything else
+    (a hold miss on a still ball, channel/build/completion failures) keeps bench-check's verdict.
+    """
+    lines = [ln.strip() for ln in bench_stdout.splitlines() if ln.strip()]
+    last = " | ".join(lines[-2:])[-300:]
+    if bench_rc == 0:
+        return "PASS", last
+    fails = [ln for ln in lines if ln.startswith("FAIL")]
+    hold_fails = [ln for ln in fails if " holds frame " in ln]
+    turns: list[float] = []
+    for e in epochs or []:
+        if isinstance(e, dict):
+            try:
+                turns.append(abs(float((e.get("fly") or {}).get("net_turn_deg") or 0.0)))
+            except (TypeError, ValueError):
+                pass
+    if fails and len(hold_fails) == len(fails) and any(t >= turn_threshold_deg for t in turns):
+        return "SKIP", (f"ball turned {', '.join(f'{t:.0f}°' for t in turns)} per epoch (a fly on the ball?): the hold checks "
+                        f"assume a still ball, so they are skipped; the closed-loop idx mismatch is the tracking evidence | "
+                        + hold_fails[0][:140])
+    return "FAIL", last
+
+
 class Results:
     """Ordered pass/fail rows; `verdict` is PASS / FAIL / SKIP / LOOK (Michael's eyes)."""
 

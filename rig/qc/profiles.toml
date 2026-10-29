@@ -59,8 +59,8 @@ foxglove = { layout = "foxglove/arena-fictrac.json" }
 reports = { closed_loop = true, holds = ["epoch_a_frame25=25", "epoch_b_frame75=75"] }
 checklist = [
   { id = "fictrac", look = "FicTrac window tracking the ball (≈ 96 fps on ww18); the gateway rate printed below matches." },
-  { id = "run", look = "Arena: 3 s background, then the grating HOLDS at frame 25 while the ball is still; turn the ball and the grating follows (coupling −1); ~11 s in it jumps to frame 75 and holds again; background to finish. About 25 s." },
-  { id = "reports", look = "runlog-check OK (4 pass / 0 fail), both epochs open on 25 / 75 with 0 % idx mismatch, bench-check PASS with channel + build = this candidate." },
+  { id = "run", look = "Arena: 3 s background, then the grating HOLDS at frame 25 while the ball is still (bare or blocked ball); turn the ball and the grating follows (coupling −1); ~11 s in it jumps to frame 75 and holds again; background to finish. About 25 s. With a fly on the ball the grating follows the fly instead and the hold checks are skipped — the closed-loop idx mismatch is the evidence then." },
+  { id = "reports", look = "runlog-check OK (4 pass / 0 fail), both epochs open on 25 / 75 with 0 % idx mismatch, bench-check PASS (SKIP on the holds when a fly turned the ball) with channel + build = this candidate." },
 ]
 
 # ── ww14: okey-cokey camera rig — BIAS (FLIR BFS-U3-51S5M) + G6 four-color, no FicTrac ──────────

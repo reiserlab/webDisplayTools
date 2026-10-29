@@ -62,7 +62,7 @@ steps (bridge Connect → Connect → Run experiment → confirm the NEXT dialog
 | 5 fictrac | FicTrac started (or found running); frames counted at the gateway; the simulator takes over when the camera gives none | FicTrac tracking; the printed frames/s |
 | 6 pre-check | `tests/studio_emulator.py`: the Studio's exact bridge conversation (hello_ack ≥ 3.4, behavior_v2 ack, an epoch of frames, export; on ww14 also the BIAS connector) — **a broken candidate fails here**, before any browser | all PASS |
 | 7 browser | Chrome (QC profile) on the tier's `arena_studio.html?mode=run&rig=…`; build SHA in the page = the candidate; footer; protocol loaded; no console errors; bridge connected with frames; **your click**; firmware + panels; **Run experiment** | the Studio; the arena during the run (the rig's `look` line says what the display should do) |
-| 8 reports | `pixi run export` (closes the bag), `metadata.yaml`, `runlog-check.py`, `closed-loop-report.py` (idx mismatch ≤ 1 %), `bench-check.py` with the rig's holds + channel + build | the numbers |
+| 8 reports | `pixi run export` (closes the bag), `metadata.yaml`, `runlog-check.py`, `closed-loop-report.py` (idx mismatch ≤ 1 %), `bench-check.py` with the rig's holds + channel + build. The hold checks assume a **still ball**: when only they fail and the closed-loop report shows the ball turned (a fly on it), the row is SKIP, not FAIL — the idx mismatch is the tracking evidence then | the numbers |
 | 9 teardown | FicTrac / simulator / graph stopped, Chrome closed, ports free again | the pass/fail table |
 
 At the end the script prints the table, writes `summary.md` and `validation-note.md` into the dated folder and
@@ -96,7 +96,9 @@ after deleting by hand). The rig's own `rig\.pixi` is never re-synced by QC.
 - The QC Chrome profile holds no course token, so a run is **not** committed to the course repo; the log comes
   out through `pixi run export` into the QC folder instead.
 - Everything the script started is stopped in teardown (SIGINT → TERM → KILL, in reverse order) and the ports
-  are checked free; Ctrl-C does the same.
+  are checked free; Ctrl-C does the same. On Windows the "SIGINT" is CTRL_BREAK_EVENT on the child's process
+  group, which Python delivers as SIGBREAK — `rig.py` handles it (2026-10-29; before that the graph's nodes
+  and the router were left running as orphans and "ports free again" failed).
 
 ## Adding a rig
 

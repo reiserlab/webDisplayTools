@@ -134,6 +134,29 @@ def main() -> int:
     check("validate command", cmd == 'cd /repo && pixi run tiers -- validate --rig ww18 --by "Michael" --notes-file "/qc/note.md"', cmd)
     check("validate command quotes a root with spaces", qclib.validate_command("/a b", "x", "y", "/n").startswith('cd "/a b" &&'))
 
+    print("== hold_verdict (bench-check with a fly on the ball)")
+    bench_ok = "  PASS  run completed\n  PASS  epoch_a_frame25 holds frame 25\n\n9/9 checks passed\n"
+    bench_holds = ("  PASS  run completed\n  PASS  channel is next\n  PASS  build is f49f34f\n"
+                   "  FAIL  epoch_a_frame25 holds frame 25 — 13/772 frames at 25 (1.7%); most common [(30, 16), (32, 15)]\n"
+                   "  FAIL  epoch_b_frame75 holds frame 75 — 7/772 frames at 75 (0.9%); most common [(78, 10), (110, 9)]\n"
+                   "\n7/9 checks passed\n")
+    bench_build = "  PASS  run completed\n  FAIL  build is f49f34f — build=06bad57\n  FAIL  epoch_a_frame25 holds frame 25 — 1/700 frames at 25 (0.1%)\n\n7/9 checks passed\n"
+    fly = [{"condition": "epoch_a_frame25", "fly": {"net_turn_deg": -1107.9}, "idx_mismatch_fraction": 0.0},
+           {"condition": "epoch_b_frame75", "fly": {"net_turn_deg": 140.6}, "idx_mismatch_fraction": 0.0}]
+    still = [{"condition": "epoch_a_frame25", "fly": {"net_turn_deg": 3.2}}, {"condition": "epoch_b_frame75", "fly": {"net_turn_deg": -1.0}}]
+    v, d = qclib.hold_verdict(0, bench_ok, fly)
+    check("hold_verdict: bench-check rc 0 is PASS whatever the ball did", v == "PASS" and "9/9" in d, f"{v} {d}")
+    v, d = qclib.hold_verdict(1, bench_holds, fly)
+    check("hold_verdict: only hold lines failed + the ball turned → SKIP naming the turns", v == "SKIP" and "1108°" in d and "141°" in d and "holds frame 25" in d, f"{v} {d}")
+    v, d = qclib.hold_verdict(1, bench_holds, still)
+    check("hold_verdict: hold miss on a still ball stays FAIL", v == "FAIL" and "7/9" in d, f"{v} {d}")
+    v, d = qclib.hold_verdict(1, bench_build, fly)
+    check("hold_verdict: a non-hold failure (build) stays FAIL even with a fly", v == "FAIL", f"{v} {d}")
+    v, d = qclib.hold_verdict(1, bench_holds, None)
+    check("hold_verdict: no closed-loop epochs → FAIL (no evidence of turning)", v == "FAIL", f"{v} {d}")
+    v, d = qclib.hold_verdict(1, bench_holds, [{"fly": {"net_turn_deg": "n/a"}}, {"fly": None}, "junk"])
+    check("hold_verdict: tolerates malformed epochs", v == "FAIL", f"{v} {d}")
+
     print("== qc.py")
     p = subprocess.run([sys.executable, str(QC / "qc.py"), "--help"], capture_output=True, text=True, timeout=60, cwd=str(ROOT / "rig"))
     check("qc.py --help under the root interpreter (stdlib-only module scope)", p.returncode == 0 and "--tier" in p.stdout and "--auto" in p.stdout, (p.stderr or p.stdout)[-300:])

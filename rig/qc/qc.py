@@ -812,6 +812,7 @@ class QC:
         else:
             self.results.add("runlog-check", "PASS" if r.returncode == 0 else "SKIP", ("no controller on this rig; " + " | ".join(tail))[-300:])
             self.log.result(self.results.rows[-1]["verdict"], "runlog-check", self.results.rows[-1]["detail"])
+        epochs_json: list = []  # closed-loop-report epochs, for the hold verdict below
         if self.rig["reports"].get("closed_loop"):
             r = run([self.py, scripts / "closed-loop-report.py", "--json", log], env=self.env, timeout=300)
             (rep_dir / "closed-loop-report.json").write_text(r.stdout, encoding="utf-8")
@@ -822,6 +823,7 @@ class QC:
                 epochs = rep.get("epochs", []) if isinstance(rep, dict) else []
                 mism = [e.get("idx_mismatch_fraction") for e in epochs if "idx_mismatch_fraction" in e]
                 ok = bool(epochs) and all(m is not None and m <= 0.01 for m in mism)
+                epochs_json = epochs
                 self.record("closed-loop-report: idx mismatch ≤ 1 %", ok, f"{len(epochs)} epoch(s), mismatch {mism}")
             except ValueError:
                 self.record("closed-loop-report", False, (r.stderr or r.stdout)[-300:])
@@ -832,8 +834,11 @@ class QC:
                 argv += ["--hold", h]
             r = run(argv, env=self.env, timeout=300)
             (rep_dir / "bench-check.txt").write_text(r.stdout + r.stderr, encoding="utf-8")
-            last = [line for line in r.stdout.splitlines() if line.strip()][-2:]
-            self.record("bench-check (holds, channel, build)", r.returncode == 0, " | ".join(last)[-300:])
+            # A fly on the ball turns the hold checks into SKIP (qclib.hold_verdict), never into a FAIL
+            # of the candidate: the closed-loop report above is the tracking evidence then.
+            verdict, detail = qclib.hold_verdict(r.returncode, r.stdout, epochs_json)
+            self.results.add("bench-check (holds, channel, build)", verdict, detail)
+            self.log.result(verdict, "bench-check (holds, channel, build)", detail)
         self.look("reports")
 
     # ── 9 teardown ──
