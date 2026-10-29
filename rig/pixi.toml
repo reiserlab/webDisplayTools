@@ -218,3 +218,7 @@ test-stimulus-live = "python tests/test_stimulus_live.py"
 rqt-graph = "rqt_graph"
 rqt-topic = "rqt_topic"
 foxglove-bridge = "ros2 run foxglove_bridge foxglove_bridge --ros-args -p port:=8766 -p address:=127.0.0.1"
+# ── the five-minute release validation (rig/QC.md): `pixi run qc -- --tier next [--rig ww18] [--auto]` ──
+# Checks out the tier's build in a scratch worktree with its own environment, runs the graph, the Studio
+# emulator pre-check, the tier's Studio in Chrome, the reports, and prints a validation note.
+qc = "python qc/qc.py"

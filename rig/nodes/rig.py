@@ -165,8 +165,15 @@ def main(argv: list[str] | None = None) -> int:
         nodes.append(Child("sim", node_argv("rig_nodes.sims.fictrac_sim", *split_args(args.sim_args))))
 
     stop = threading.Event()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, lambda *_: stop.set())
+    # SIGBREAK too: on Windows a parent (rig/qc/qc.py, the test harness, anything using
+    # rig_nodes.supervise.signal_group) stops this process with CTRL_BREAK_EVENT on its process
+    # group, which Python delivers as SIGBREAK, not SIGINT. Unhandled, it ends rig.py before the
+    # `finally` below runs, and every node + the router live on as orphans (ww18 QC, 2026-10-29:
+    # "graph stopped" with 7447/8765/60000 still bound). bridge_node and host_monitor handle it too.
+    for name in ("SIGINT", "SIGTERM", "SIGBREAK"):
+        sig = getattr(signal, name, None)
+        if sig is not None:
+            signal.signal(sig, lambda *_: stop.set())
 
     print(f"[rig] RMW_IMPLEMENTATION={os.environ.get('RMW_IMPLEMENTATION')}  router config {os.environ.get('ZENOH_ROUTER_CONFIG_URI')}", file=sys.stderr)
     rc = 0
