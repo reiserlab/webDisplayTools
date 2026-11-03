@@ -17,6 +17,9 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const studio = fs.readFileSync(path.join(root, 'arena_studio.html'), 'utf8');
 const replay = fs.readFileSync(path.join(root, 'js/studio-replay.js'), 'utf8');
+const designer = fs.readFileSync(path.join(root, 'pattern_editor.html'), 'utf8');
+const dashRepo = fs.readFileSync(path.join(root, 'dashboard/data-browser/github-repo.js'), 'utf8');
+const dashIndex = fs.readFileSync(path.join(root, 'dashboard/data-browser/index.html'), 'utf8');
 
 let totalChecks = 0;
 let failures = 0;
@@ -407,6 +410,76 @@ check(
         !/:root\[data-ui-theme="night"\] (img|canvas)\b/.test(studio) &&
         studio.includes('filter:url(#uiNightRed)')
 );
+console.log('=== data repo defaults + rig id (LAB-227 Phase 4) ===');
+// ONE default string across the three tools: the lab's private data repo. The course
+// repo stays reachable by typing it (course benches + rig03-sr still write there).
+const DATA_REPO = 'reiserlab/arena-experiments';
+check(
+    'Studio, Pattern Designer and dashboard default to the lab data repo',
+    studio.includes("Studio.DEFAULT_COURSE_REPO = '" + DATA_REPO + "';") &&
+        designer.includes("const DEFAULT_DATA_REPO = '" + DATA_REPO + "';") &&
+        dashRepo.includes("const DEFAULT_REPO = '" + DATA_REPO + "';")
+);
+check(
+    'Studio Repo field + dashboard repo field show the data repo, not the course repo',
+    /id="ghRepoInput" placeholder="reiserlab\/arena-experiments"/.test(studio) &&
+        /id="githubRepoInput" type="text" value="reiserlab\/arena-experiments"/.test(dashIndex) &&
+        dashIndex.includes('href="https://github.com/reiserlab/arena-experiments"')
+);
+check(
+    'the Pattern Designer falls back to the same default when no repo is stored',
+    designer.includes(
+        "(sessionRepo || localStorage.getItem('studio_gh_repo') || DEFAULT_DATA_REPO).trim()"
+    )
+);
+check(
+    '?repo= is a tab-scoped override applied in courseSettings (wins signed in or out)',
+    studio.includes('Studio.sessionRepo = (function () {') &&
+        studio.includes(
+            "Studio.sessionRepo ||\n            localStorage.getItem('studio_gh_repo') ||\n            Studio.DEFAULT_COURSE_REPO"
+        ) &&
+        studio.includes('sessionRepo: Studio.sessionRepo || null,') &&
+        !studio.includes("localStorage.setItem('studio_gh_repo', Studio.sessionRepo")
+);
+check(
+    'typing a repo in ⚙ Settings ends the ?repo= override',
+    studio.includes('Studio.sessionRepo = null;')
+);
+check(
+    'the shared-pattern listing names the repo it came from',
+    studio.includes(
+        "'shared pattern library: ' + n + ' preview(s) wired from ' + repo.full + '/patterns/'"
+    ) && !studio.includes("'course repo: ' + n + ' shared pattern preview(s)")
+);
+check(
+    'Patterns ↗ passes the effective repo (default, stored, or ?repo=)',
+    studio.includes(
+        'var cs=window.Studio && Studio.courseSettings ? Studio.courseSettings() : null;'
+    ) && studio.includes("var repo=cs && cs.repo ? cs.repo.full : '';")
+);
+check(
+    'UI says "Rig id" (the storage key studio_bench_id keeps its name)',
+    /<label for="ghBenchId">Rig id<\/label>/.test(studio) &&
+        !/Settings → Bench id/.test(studio) &&
+        !/[Bb]ench id not set/.test(studio) &&
+        !/set bench id/.test(studio) &&
+        studio.includes("localStorage.getItem('studio_bench_id')") &&
+        !/needs a bench id|bench id \(set in/.test(designer)
+);
+check(
+    'per-rig vocabularies: protocols/<rig-id>/<file> is tried before the repo root',
+    studio.includes('async function readCourseVocabFile(cs, token, file) {') &&
+        studio.includes("paths.push('protocols/' + cs.benchId + '/' + file);") &&
+        studio.includes("await readCourseVocabFile(cs, token, 'genotypes.yaml')") &&
+        studio.includes('await readCourseVocabFile(cs, token, file);')
+);
+check(
+    'replay: a signed-out 404 says "sign in if this repository is private"',
+    /ghToken\(\)\s*\?\s*'\.'\s*:\s*' \(HTTP 404\) — sign in if this repository is private\.'/.test(
+        replay
+    ) && /ghToken\(\)\s*\?\s*'\.'\s*:\s*' — sign in if this repository is private\.'/.test(replay)
+);
+
 console.log('=== bridge-loss policy wiring (LAB-303 S1 review) ===');
 check(
     'bridgeRequired only for a recorded run the bridge is logging',
