@@ -451,6 +451,55 @@ check(
 );
 check('encode drops a replay without a valid repo', U.encode({ replay: RL, repo: 'bad repo' }), '');
 
+console.log('\n=== sessionRepo: a bare ?repo= is a tab-scoped repo override (LAB-227) ===');
+check(
+    'encodeApp keeps a bare ?repo= for a local doc',
+    U.encodeApp({ mode: 'edit', sessionRepo: 'reiserlab/cshl-2026-course' }),
+    '?mode=edit&repo=reiserlab/cshl-2026-course'
+);
+check(
+    'encodeApp keeps it beside a registry p',
+    U.encodeApp({
+        mode: 'run',
+        protocolKey: 'g6_2x10_smoke',
+        sessionRepo: 'reiserlab/cshl-2026-course'
+    }),
+    '?p=g6_2x10_smoke&repo=reiserlab/cshl-2026-course'
+);
+check(
+    'a repo-bound doc owns repo (sessionRepo ignored)',
+    U.encodeApp({
+        mode: 'run',
+        repo: 'reiserlab/arena-experiments',
+        repoPath: 'protocols/rig03-sr/a.yaml',
+        sessionRepo: 'reiserlab/cshl-2026-course'
+    }),
+    '?repo=reiserlab/arena-experiments&p=protocols/rig03-sr/a.yaml'
+);
+check(
+    'an active replay owns repo (sessionRepo ignored)',
+    U.encodeApp({
+        replayRepo: 'reiserlab/arena-experiments',
+        replayPath: RL,
+        sessionRepo: 'reiserlab/cshl-2026-course'
+    }),
+    '?repo=reiserlab/arena-experiments&replay=' + RL
+);
+check(
+    'an invalid sessionRepo is dropped',
+    U.encodeApp({ sessionRepo: 'https://github.com/x/y' }),
+    ''
+);
+check('no sessionRepo → unchanged clean URL', U.encodeApp({ mode: 'run' }), '');
+const rtSession = U.decode(
+    U.encodeApp({ mode: 'edit', sessionRepo: 'reiserlab/cshl-2026-course' })
+);
+check(
+    'a bare ?repo= round-trips as state.repo with no p',
+    [rtSession.state.repo, rtSession.state.p, rtSession.state.mode],
+    ['reiserlab/cshl-2026-course', undefined, 'edit']
+);
+
 console.log('\n=== Summary ===');
 console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures ? 1 : 0);
