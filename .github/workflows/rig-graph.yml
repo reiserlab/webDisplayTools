@@ -62,7 +62,8 @@ jobs:
               run: |
                   pixi install --locked -e default
                   pixi list | grep -E "^(rig_|ros2-distro-mutex|python |ros2-rclpy|ros2-rmw-zenoh-cpp)"
-                  pixi run python -m rig_nodes.runtime
+                  # the released rig_nodes (channel 0.4.0) predates rig_nodes.runtime; the lyrical job prints that
+                  pixi run python -c "import rig_nodes, sys; print('rig_nodes', rig_nodes.__version__, 'python', sys.version.split()[0])"
             - name: gateway registration + stimulus + viz (no graph)
               run: |
                   pixi run test-gateway
