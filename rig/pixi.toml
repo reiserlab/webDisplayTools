@@ -70,12 +70,13 @@ ZENOH_ROUTER_CHECK_ATTEMPTS = "0"
 # Python on Windows would pick cp1252 when stdio is a pipe.
 PYTHONUTF8 = "1"
 
-# Windows: pixi builds the activation as a cmd.exe script, so `$CONDA_PREFIX` above stays
-# literal there while `%CONDA_PREFIX%` expands under `pixi run` (ww18 2026-10-15, for
-# `$PIXI_PROJECT_ROOT`). These keys override the two above on win-64 only.
-[target.win-64.activation.env]
-ZENOH_ROUTER_CONFIG_URI = '%CONDA_PREFIX%\Lib\site-packages\rig_nodes\config\zenoh-router.json5'
-ZENOH_SESSION_CONFIG_URI = '%CONDA_PREFIX%\Lib\site-packages\rig_nodes\config\zenoh-session.json5'
+# Windows: pixi builds the activation as a cmd.exe script, so a `$CONDA_PREFIX` value stays literal
+# there while `%CONDA_PREFIX%` expands under `pixi run` (ww18 2026-10-15, for `$PIXI_PROJECT_ROOT`).
+# The win-64 spelling of the two Zenoh URIs therefore lives NEXT TO each distro feature's POSIX
+# spelling, as `[feature.<distro>.target.win-64.activation.env]`: a feature's activation env beats a
+# WORKSPACE-level `[target.win-64.activation.env]` (ww18 2026-11-05: with the override here at the
+# workspace level, every environment on Windows got the literal `$CONDA_PREFIX/lib/python3.x/…` and
+# no router could start). The Windows path carries no Python version, so both features spell it alike.
 
 # ── distro-neutral: in every environment ────────────────────────────────────
 [dependencies]
@@ -108,6 +109,10 @@ ros-jazzy-rosbag2-storage-mcap = "*"
 ZENOH_ROUTER_CONFIG_URI = "$CONDA_PREFIX/lib/python3.12/site-packages/rig_nodes/config/zenoh-router.json5"
 ZENOH_SESSION_CONFIG_URI = "$CONDA_PREFIX/lib/python3.12/site-packages/rig_nodes/config/zenoh-session.json5"
 
+[feature.jazzy.target.win-64.activation.env]
+ZENOH_ROUTER_CONFIG_URI = '%CONDA_PREFIX%\Lib\site-packages\rig_nodes\config\zenoh-router.json5'
+ZENOH_SESSION_CONFIG_URI = '%CONDA_PREFIX%\Lib\site-packages\rig_nodes\config\zenoh-session.json5'
+
 # lyrical — ROS 2 Lyrical Luth from RoboStack (mutex 0.22, Python 3.14, rmw_zenoh ≥ 0.10.6), the
 # rehearsal of the next distribution; no rig installs it. The published rig-nodes channel is
 # Jazzy-only (its packages pin mutex 0.19), so this environment builds rig_nodes + rig_interfaces
@@ -131,6 +136,10 @@ rig_interfaces = { git = "https://github.com/reiserlab/rig-nodes", branch = "mai
 [feature.lyrical.activation.env]
 ZENOH_ROUTER_CONFIG_URI = "$CONDA_PREFIX/lib/python3.14/site-packages/rig_nodes/config/zenoh-router.json5"
 ZENOH_SESSION_CONFIG_URI = "$CONDA_PREFIX/lib/python3.14/site-packages/rig_nodes/config/zenoh-session.json5"
+
+[feature.lyrical.target.win-64.activation.env]
+ZENOH_ROUTER_CONFIG_URI = '%CONDA_PREFIX%\Lib\site-packages\rig_nodes\config\zenoh-router.json5'
+ZENOH_SESSION_CONFIG_URI = '%CONDA_PREFIX%\Lib\site-packages\rig_nodes\config\zenoh-session.json5'
 # ── the shared rig-nodes package set, pinned (one version for the set; README "Releasing") ──
 # Device adapters (FicTrac, Kinefly, BIAS) and their simulators, the MCAP recorder and indexer, the CDR
 # decoder, the Foxglove rewriter (+ bias_health), the host monitor, the supervision primitives rig.py composes
