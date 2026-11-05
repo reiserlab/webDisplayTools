@@ -112,6 +112,11 @@ class Proc:
     def _signal(self, sig: int) -> None:
         signal_group(self.p, sig)
 
+    def text(self) -> str:
+        """What the process has written so far (its log file), for a failed check's detail."""
+        self.log.flush()
+        return Path(self.log.name).read_text(encoding="utf-8", errors="replace")
+
     def kill9(self) -> None:
         if self.alive():
             self._signal(SIGKILL)
@@ -457,8 +462,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # ── bring the graph up ───────────────────────────────────────────────────────
         if not a.no_router:
-            start("router", ["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"])
-            check("zenoh router listening on 127.0.0.1:7447", wait_port("127.0.0.1", 7447, 20.0))
+            router = start("router", ["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"])
+            # 60 s, not 20: a cold Windows CI runner takes most of a minute for its first `ros2 run`
+            # (ros2cli entry-point discovery + pyc compilation); rig PCs answer in 2–3 s.
+            check("zenoh router listening on 127.0.0.1:7447", wait_port("127.0.0.1", 7447, 60.0), router.text()[-400:])
         fictrac = start("fictrac-adapter", [PY, "-m", "rig_nodes.fictrac_udp_adapter", "--status-every", "0"])
         start("kinefly-adapter", [PY, "-m", "rig_nodes.kinefly_udp_adapter", "--status-every", "0"])
         # The sim on a free port, not BIAS's 5010: a rig PC often has the real BIAS open.

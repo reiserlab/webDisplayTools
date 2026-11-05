@@ -111,9 +111,9 @@ ZENOH_SESSION_CONFIG_URI = "$CONDA_PREFIX/lib/python3.12/site-packages/rig_nodes
 # lyrical — ROS 2 Lyrical Luth from RoboStack (mutex 0.22, Python 3.14, rmw_zenoh ≥ 0.10.6), the
 # rehearsal of the next distribution; no rig installs it. The published rig-nodes channel is
 # Jazzy-only (its packages pin mutex 0.19), so this environment builds rig_nodes + rig_interfaces
-# from the rig-nodes git source instead — the branch that made the distro a switch there; move
-# it to `main` (and drop this note) once reiserlab/rig-nodes has merged it. What the rehearsal
-# found and what still blocks a migration: rig-nodes docs/ros-distro-switch.md.
+# from the rig-nodes git source (`main`, pinned to one commit in pixi.lock like `dev`; rig-nodes#8
+# merged 2026-11-05). What the rehearsal found and what still blocks a migration: rig-nodes
+# docs/ros-distro-switch.md.
 [feature.lyrical]
 channels = [{ channel = "robostack-lyrical", priority = -1 }]
 
@@ -125,8 +125,8 @@ ros-lyrical-rmw-zenoh-cpp = ">=0.10.6"
 ros-lyrical-demo-nodes-py = "*"
 ros-lyrical-rosbag2-py = "*"
 ros-lyrical-rosbag2-storage-mcap = "*"
-rig_nodes = { git = "https://github.com/reiserlab/rig-nodes", branch = "feat/ros-distro-switch", subdirectory = "src/rig_nodes" }
-rig_interfaces = { git = "https://github.com/reiserlab/rig-nodes", branch = "feat/ros-distro-switch", subdirectory = "src/rig_interfaces" }
+rig_nodes = { git = "https://github.com/reiserlab/rig-nodes", branch = "main", subdirectory = "src/rig_nodes" }
+rig_interfaces = { git = "https://github.com/reiserlab/rig-nodes", branch = "main", subdirectory = "src/rig_interfaces" }
 
 [feature.lyrical.activation.env]
 ZENOH_ROUTER_CONFIG_URI = "$CONDA_PREFIX/lib/python3.14/site-packages/rig_nodes/config/zenoh-router.json5"
