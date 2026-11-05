@@ -347,6 +347,22 @@ These items are the body of the rig-nodes ticket and apply to pyDisplayTools as 
 13. **Maintainer cost, named.** Three repositories, two CI pipelines with three-platform builds, a
     channel, a compatibility table, and one maintainer today.
 
+### The ROS distribution is one switch (2026-11-05)
+
+Asked how hard a move from Jazzy to a newer ROS 2 would be, the answer was: the code's ROS surface is
+tiny and the record is self-describing MCAP, so the cost is the distro string spread across pixi
+manifests and CI, Python 3.14, and the Zenoh configs. Done before any migration: in rig-nodes the
+distro is a pixi feature (`jazzy` default, `lyrical` opt-in: channel, mutex pin, Python pin), the two
+package manifests name no distro (pixi-build-ros reads the `robostack-<distro>` channel; `rig_nodes`
+depends on RoboStack's distro-neutral `ros2-*` names), every bag records what it ran on (rosbag2
+`custom_data` from `rig_nodes.runtime`), and an allowed-to-fail CI job builds and tests the package
+set on RoboStack Lyrical for the three platforms. `rig/pixi.toml` mirrors the features (the rigs'
+environments unchanged; `lyrical` builds rig-nodes from git since the channel is Jazzy-only). The
+record — what differs between sets, Lyrical availability, rehearsal results, what blocks a real move
+(Python 3.14 for the lab's own scripts, channel maturity, rmw_zenoh 0.10.8's config schema, one distro
+per host, nothing run on hardware, the Jazzy-only channel, binding drift such as `rosbag2_py`'s new
+`sequence_number` argument) — is rig-nodes `docs/ros-distro-switch.md`.
+
 ## 8. Known debts that hold regardless of layout
 
 - Closed-loop math runs inside the gateway's `Pipeline`, and it is stateful: heading unwrapping,
