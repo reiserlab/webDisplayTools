@@ -212,6 +212,16 @@ ros-jazzy-foxglove-bridge = "*"
 [feature.viz.target.win-64.activation.env]
 PATH = '%CONDA_PREFIX%\Library\lib;%PATH%'
 
+# The Lyrical graph's foxglove_bridge: a Jazzy bridge cannot join a Lyrical router (different
+# rmw_zenoh), so `rig.py --foxglove` on the lyrical environment needs a bridge from the same set
+# (ww18 2026-11-05, finding L2 of the Lyrical bench). Same solve group as `lyrical`, so the two
+# environments share one package set; rqt stays Jazzy-only (`viz`).
+[feature.lyrical-viz.dependencies]
+ros-lyrical-foxglove-bridge = "*"
+
+[feature.lyrical-viz.target.win-64.activation.env]
+PATH = '%CONDA_PREFIX%\Library\lib;%PATH%'
+
 [environments]
 default = { features = ["jazzy", "channel"], solve-group = "rig" }
 typed = { features = ["jazzy", "channel", "typed"], solve-group = "rig" }
@@ -223,6 +233,7 @@ viz = { features = ["jazzy", "channel", "viz"], solve-group = "rig" }
 dev = { features = ["jazzy", "dev"], solve-group = "dev" }
 # the next distribution, built from the rig-nodes git source (see `[feature.lyrical]`); own solve group
 lyrical = { features = ["lyrical"], solve-group = "lyrical" }
+lyrical-viz = { features = ["lyrical", "lyrical-viz"], solve-group = "lyrical" }
 
 [tasks]
 # ── hour one: middleware bring-up ───────────────────────────────────────────

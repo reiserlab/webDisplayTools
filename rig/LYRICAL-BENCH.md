@@ -51,6 +51,8 @@ timing-sensitive phases); two failures are a finding.
 pixi run -e lyrical rig                # router + FicTrac adapter (UDP 60000) + gateway; add -- --bias for the camera node
 ```
 
+Foxglove during the run: `pixi install --locked -e lyrical-viz` once, then `pixi run -e lyrical rig -- --foxglove`
+(the bridge must come from the Lyrical set; `rig.py` picks `lyrical-viz` when it runs in `lyrical`).
 Start FicTrac as usual (the sample video is fine), open **Production** Studio
 (`https://reiserlab.github.io/webDisplayTools/arena_studio.html?mode=run`), Connect, run any short
 closed-loop protocol, export. Record: frames seen vs applied in the gateway's shutdown line, the

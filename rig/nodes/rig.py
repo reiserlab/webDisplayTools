@@ -48,7 +48,10 @@ ROOT = HERE.parent  # rig/ (the pixi workspace)
 # .pixi/envs, or under the `detached-environments` directory when one is configured (the
 # Windows short-path setup, WINDOWS-TEST.md).
 _ENVS = Path(os.environ["CONDA_PREFIX"]).parent if os.environ.get("CONDA_PREFIX") else ROOT / ".pixi" / "envs"
-VIZ_ENV = _ENVS / "viz"
+# foxglove_bridge must come from the SAME RoboStack set as the graph (a Jazzy bridge cannot join a
+# Lyrical router): `viz` beside the Jazzy environments, `lyrical-viz` beside `lyrical` (ww18 2026-11-05).
+VIZ_ENV_NAME = "lyrical-viz" if os.environ.get("PIXI_ENVIRONMENT_NAME", "").startswith("lyrical") else "viz"
+VIZ_ENV = _ENVS / VIZ_ENV_NAME
 FOXGLOVE_PORT = 8766
 HOST_MONITOR_MODULE = "rig_nodes.host_monitor"
 
@@ -97,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.foxglove:
         pixi = shutil.which("pixi") or os.environ.get("PIXI_EXE")
         if not VIZ_ENV.is_dir():
-            print(f"[rig] --foxglove: the viz environment is not installed ({VIZ_ENV}) — run `pixi install -e viz`; starting without foxglove_bridge", file=sys.stderr)
+            print(f"[rig] --foxglove: the {VIZ_ENV_NAME} environment is not installed ({VIZ_ENV}) — run `pixi install -e {VIZ_ENV_NAME}`; starting without foxglove_bridge", file=sys.stderr)
         elif not pixi:
             print("[rig] --foxglove: no `pixi` executable on PATH to start the viz environment with; starting without foxglove_bridge", file=sys.stderr)
         else:
@@ -160,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
         # The pixi task from the `viz` environment (`ros2 run foxglove_bridge foxglove_bridge
         # --ros-args -p port:=8766 -p address:=127.0.0.1`): same solve group, so the same ROS
         # packages; RMW_IMPLEMENTATION + the Zenoh configs pass through the environment.
-        nodes.append(Child("foxglove", [pixi, "run", "--manifest-path", str(ROOT / "pixi.toml"), "-e", "viz", "foxglove-bridge"]))
+        nodes.append(Child("foxglove", [pixi, "run", "--manifest-path", str(ROOT / "pixi.toml"), "-e", VIZ_ENV_NAME, "foxglove-bridge"]))
     if args.sim:
         nodes.append(Child("sim", node_argv("rig_nodes.sims.fictrac_sim", *split_args(args.sim_args))))
 
