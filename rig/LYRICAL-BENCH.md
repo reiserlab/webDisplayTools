@@ -16,8 +16,9 @@ another graph or bridge 3.4 on the same PC (one Zenoh router per host).
       ww18 has it (`rig/WINDOWS-TEST.md`, 2026-10-15). Check: `vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`.
 - [ ] Short build root, once per checkout (MAX_PATH): in `rig\`, `pixi config set --local detached-environments C:\px`.
 - [ ] The branch: `git fetch origin && git checkout rig/ros-distro-switch` in the webDisplayTools checkout
-      (PR [#294](https://github.com/reiserlab/webDisplayTools/pull/294); its `lyrical` environment builds the
-      rig-nodes branch of [rig-nodes#8](https://github.com/reiserlab/rig-nodes/pull/8) from git — network needed).
+      (PR [#294](https://github.com/reiserlab/webDisplayTools/pull/294); its `lyrical` environment builds
+      rig-nodes `main` from git, pinned in the lock to the merge commit of
+      [rig-nodes#8](https://github.com/reiserlab/rig-nodes/pull/8) — network needed; no rig-nodes checkout needed).
 - [ ] Nothing on ports 7447 / 8765 / 60000: `netstat -ano | findstr ":7447 :8765 :60000"` prints nothing.
 
 ## 1. Install (expect 2–5 min; write the time down)
@@ -58,6 +59,15 @@ controller, skip the Studio and run `pixi run -e lyrical rig -- --sim` + `pixi r
 instead (what the harness does, by hand).
 
 ## 4. The soak (overnight)
+
+First a six-minute smoke so the Windows stop path (CTRL_BREAK through the process group) is seen
+working before anyone leaves it overnight:
+
+```bash
+pixi run -e lyrical soak -- --hours 0.1 --every 1
+```
+
+Expect `N/N emulator runs ok` and `graph clean exit` on the last line. Then the real thing:
 
 ```bash
 pixi run -e lyrical soak -- --hours 8 --every 10          # simulated FicTrac at 100 Hz + BIAS simulator
