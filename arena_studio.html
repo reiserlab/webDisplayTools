@@ -10093,10 +10093,12 @@ function fictracPluginNames(exp) {
         .map((p) => p.name);
 }
 // Device plugins the BRIDGE drives for the runner (LAB-303 connectors): plugin instance
-// name → connector id. 'bias' (BiasPlugin → the bridge's BIAS node) and 'scanimage'
-// (ScanImagePlugin → the bridge's ScanImage node, the microscope's JSON server); the
-// runner sends each command as connector_command and waits for the reply, so a camera or
-// microscope plugin in a protocol acts for real instead of being skipped.
+// name → connector id. 'bias' (BiasPlugin → the bridge's BIAS node), 'scanimage'
+// (ScanImagePlugin → the bridge's ScanImage node, the microscope's JSON server) and
+// 'backlight' (LEDControllerPlugin → the bridge's backlight node, the LED controller's
+// serial port); the runner sends each command as connector_command and waits for the
+// reply, so a camera, microscope or backlight plugin in a protocol acts for real instead
+// of being skipped.
 function connectorPluginNames(exp) {
     const m = new Map();
     if (!exp || !Array.isArray(exp.plugins)) return m;
@@ -10105,6 +10107,7 @@ function connectorPluginNames(exp) {
         const cls = p.matlab && p.matlab.class;
         if (cls === 'BiasPlugin' || p.name === 'camera') m.set(p.name, 'bias');
         else if (cls === 'ScanImagePlugin' || p.name === 'scanimage') m.set(p.name, 'scanimage');
+        else if (cls === 'LEDControllerPlugin' || p.name === 'backlight') m.set(p.name, 'backlight');
     }
     return m;
 }
@@ -15371,11 +15374,14 @@ async function initFromUrl() {
                     onClick: () => { if (window.Studio.session) { window.Studio._userStopRequested = true; window.Studio.session.stop(); } }
                 }, '■ Stop'));
                 // Plugins the runner drives are not "skipped": the built-in log, FicTrac,
-                // and connector devices (BiasPlugin through the bridge, LAB-303).
+                // and connector devices (BiasPlugin, LEDControllerPlugin through the bridge, LAB-303).
                 const driveable = new Set(['log']);
+                const driveableClasses = new Set(['FicTracPlugin', 'BiasPlugin', 'LEDControllerPlugin']);
+                const driveableNames = new Set(['fictrac', 'camera', 'backlight']);
                 for (const p of experiment.plugins || []) {
-                    if (p && p.matlab && (p.matlab.class === 'FicTracPlugin' || p.matlab.class === 'BiasPlugin')) driveable.add(p.name);
-                    if (p && (p.name === 'fictrac' || p.name === 'camera')) driveable.add(p.name);
+                    if (!p) continue;
+                    const cls = p.matlab && p.matlab.class;
+                    if (driveableClasses.has(cls) || driveableNames.has(p.name)) driveable.add(p.name);
                 }
                 const plugins = RunnerLib.listSkippedPlugins(cond, driveable);
                 wrap.appendChild(el('span', { class: 'arena-test-note' },

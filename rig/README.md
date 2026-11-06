@@ -41,6 +41,8 @@ pixi install -e typed     # + rig_interfaces (typed /fictrac/frame + /arena/fram
 pixi run rig              # router + FicTrac adapter + bridge node        → Studio connects to ws://localhost:8765
 pixi run rig -- --kinefly --bias           # + Kinefly KF/1 adapter + BIAS node
 pixi run rig -- --sim --bias --bias-sim    # demo with no hardware: FicTrac sim + a fake BIAS program
+pixi run rig -- --backlight --backlight-args "--port COM6"   # + the LED backlight node on the controller's serial port
+pixi run rig -- --backlight --backlight-sim                  # + a simulated backlight controller (no hardware)
 pixi run test             # the acceptance run (≈ 60 s, no hardware, see below)
 ```
 
@@ -53,6 +55,7 @@ Pieces, individually (each is also a `pixi run` task; `--help` on every script):
 | `fictrac-adapter` | UDP :60000 → `/fictrac/raw`; FicTrac's own `sock_port` stays what it is today |
 | `kinefly-adapter` | UDP :60001 → `/kinefly/raw`; accepts only `protocol: "Kinefly", version: 1` datagrams |
 | `bias-node` / `bias-cmd` | BIAS HTTP command port ⇄ `/bias/cmd`, `/bias/reply`, `/bias/status`; `bias-cmd` sends one plugin command |
+| `backlight-node` / `backlight-cmd` / `backlight-sim` | the LED backlight controller's serial port ⇄ `/backlight/cmd`, `/backlight/reply`, `/backlight/status`; `backlight-cmd` sends one plugin command; `backlight-sim` stands in for the controller on TCP :5020 (`--port socket://127.0.0.1:5020`) |
 | `bridge-node` | bridge.py's `Hub` + `LogWriter` + `Pipeline` + `make_dispatcher` on ROS input; `/arena/frame` mirror |
 | `sim` | `rig-fictrac-sim` (rig_nodes.sims.fictrac_sim, moved from `fictrac-bridge/`; `-- --model fly --kp 2` for a fixating fly) |
 | `kinefly-sim` / `bias-sim` | synthetic KF/1 producer; a fake BIAS program (HTTP, state machine, writes the video file) |
@@ -99,6 +102,15 @@ mapped to BIAS's HTTP command sequences; a timeout is an **unknown** outcome (`o
 "unknown"`, then a `get-status` reconcile); `startRecording` reports the video file as an
 `artifact`. Since the Studio does not send plugin commands to the bridge yet, commands come from
 `pixi run bias-cmd` (or any node publishing `/bias/cmd`).
+
+**Backlight** (`rig_nodes.backlight_node`, reiserlab/rig-nodes): the protocol's `backlight` plugin
+(`LEDControllerPlugin`: `setIRLEDPower`, `setRedLEDPower` / `setGreenLEDPower` / `setBlueLEDPower`,
+`turnOnLED`, `turnOffLED`, `setVisibleBacklightsOff`) as the exact serial lines MATLAB's
+`LEDController.m` sends. The Studio drives it through the bridge (`connector_command` →
+`/backlight/cmd`). The controller never acknowledges, so `ok` means every line was written
+(each step `"confirmed": false`); a write timeout is **unknown**, and a write error reopens the
+port and sends the line once more. The node has no default port: give it the controller's with
+`--backlight-args "--port COM6"`, or run `--backlight-sim`, which `rig.py` points it at.
 
 ## Acceptance run (`pixi run test`, `tests/test_ros2_poc.py`)
 

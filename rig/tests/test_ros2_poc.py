@@ -55,6 +55,12 @@ log, plus:
                                                         nodes pinned; its own CPU ≤ 2 % of a core, ≤ 5 % of the
                                                         compressed bag — skipped (info) when the installed
                                                         rig_nodes has no host monitor
+  the LED backlight (2026-11; rig_nodes.backlight_node) backlight_sim on a free port + the node over socket://;
+                                                        the emulator's --backlight-cmds through the bridge: commands
+                                                        and via=ws replies logged one to one with the plugin name,
+                                                        status lines logged, /backlight/* in the bag, and the
+                                                        simulator received exactly the Studio's lines in order —
+                                                        skipped (info) when the installed rig_nodes has no backlight
 
 Exit 0 when all checks pass. Prints a markdown summary. Artifacts are kept with --keep.
 """
@@ -65,6 +71,7 @@ import argparse
 import json
 import math
 import os
+import re
 import shutil
 import signal
 import socket
@@ -465,7 +472,16 @@ def main(argv: list[str] | None = None) -> int:
         bias_port = free_tcp_port()
         start("bias-sim", [PY, "-m", "rig_nodes.sims.bias_sim", "--port", str(bias_port), "--video-dir", str(videos)])
         start("bias-node", [PY, "-m", "rig_nodes.bias_node", "--port", str(bias_port), "--status-every", "1", "--video-dir", str(videos)])
-        from rig import HOST_MONITOR_MODULE, host_monitor_available  # noqa: E402
+        from rig import BACKLIGHT_MODULE, HOST_MONITOR_MODULE, backlight_available, host_monitor_available  # noqa: E402
+
+        backlight = backlight_available()
+        if backlight:  # the simulator on a free port (a rig PC may have the real controller's sim on 5020)
+            bl_port = free_tcp_port()
+            start("backlight-sim", [PY, "-m", "rig_nodes.sims.backlight_sim", "--port", str(bl_port)])
+            wait_port("127.0.0.1", bl_port, 10.0)
+            start("backlight-node", [PY, "-m", BACKLIGHT_MODULE, "--port", f"socket://127.0.0.1:{bl_port}", "--status-every", "1"])
+        else:
+            print(f"  info  backlight: the installed rig_nodes has no {BACKLIGHT_MODULE} — its checks are skipped", file=sys.stderr)
 
         host_mon = host_monitor_available()
         if host_mon:  # the command line rig.py uses
@@ -549,7 +565,7 @@ def main(argv: list[str] | None = None) -> int:
         em = run_capture(
             [PY, str(HERE / "studio_emulator.py"), "--epochs", str(a.epochs), "--epoch-s", str(a.epoch_s), "--iti-s", "1",
              "--bias-amplitude", "90", "--min-frames", "40", "--out", str(export), "--report", str(report),
-             "--connector-cmds", "--connector-video", "poc_studio.avi"],
+             "--connector-cmds", "--connector-video", "poc_studio.avi", *(["--backlight-cmds"] if backlight else [])],
             timeout=75 + a.epochs * (a.epoch_s + 2),
         )
         (logdir / "emulator.log").write_text(em.stderr, encoding="utf-8")
@@ -652,6 +668,27 @@ def main(argv: list[str] | None = None) -> int:
         check("every frame timestamp of those stamp logs is in the bag (/bias/frames)",
               bool(logs) and bagsum.get("bias_frames_t") == sum(s.get("frames") or 0 for s in logs),
               f"bag {bagsum.get('bias_frames_t')} vs stamp logs {[s.get('frames') for s in logs]}")
+
+        # The LED backlight through the Studio's path (the emulator's --backlight-cmds, before the epochs).
+        if backlight:
+            bl_ev = [e for e in events if e.get("type") == "connector" and e.get("src") == "backlight"]
+            bl_cmd = [e.get("command") for e in bl_ev if e.get("kind") == "command"]
+            bl_rep = [e for e in bl_ev if e.get("kind") == "reply" and e.get("via") == "ws"]
+            bl_st = [e for e in bl_ev if e.get("kind") == "status"]
+            want_cmds = ["setIRLEDPower", "setRedLEDPower", "turnOnLED", "setVisibleBacklightsOff", "setIRLEDPower", "bogusCommand"]
+            check("backlight: Studio-path commands logged (browser→bridge)", bl_cmd == want_cmds, str(bl_cmd))
+            check("backlight: one via=ws reply per command, with the plugin name; only bogusCommand failed",
+                  [e.get("command") for e in bl_rep] == want_cmds and all(e.get("plugin") == "backlight" for e in bl_rep)
+                  and [e.get("ok") for e in bl_rep] == [True] * 5 + [False], str([(e.get("command"), e.get("outcome")) for e in bl_rep]))
+            check("backlight: status lines in the run log, controller reachable", len(bl_st) >= 3 and all(e.get("reachable") is True for e in bl_st[-3:]),
+                  f"{len(bl_st)} status lines, last {bl_st[-1] if bl_st else None}")
+            check("backlight: /backlight/cmd|reply|status recorded in the bag",
+                  all(bagsum.get("topics", {}).get(t) for t in ("/backlight/cmd", "/backlight/reply", "/backlight/status")),
+                  str({t: n for t, n in bagsum.get("topics", {}).items() if t.startswith("/backlight/")}))
+            sim_log = logdir / "backlight-sim.log"
+            rx = re.findall(r"\] rx '([^']*)'", sim_log.read_text(encoding="utf-8")) if sim_log.exists() else []
+            check("backlight: the controller (simulator) received exactly the Studio's lines, in order",
+                  rx == ["IR 50", "RED 5 0", "ON 0,0", "RED 0", "GRN 0", "BLU 0", "IR 0"], str(rx))
 
         cs = [e for e in events if e.get("type") == "connector_status" and e.get("src") == "fictrac"]
         p99 = cs[-1]["lat_ms"]["p99"] if cs else None

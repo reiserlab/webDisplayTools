@@ -30,6 +30,7 @@ What the bag holds and how it becomes lines (nodes/bridge_node.py writes these):
   /bias/reply, /bias/status  the BIAS node's JSON (DERIVED)          → {"type":"connector","src":"bias",…}
   /scanimage/reply, /scanimage/status  the ScanImage node's JSON (DERIVED) → {"type":"connector","src":"scanimage",…}
   /sipm/reply, /sipm/status  the SiPM node's JSON (DERIVED)          → {"type":"connector","src":"sipm",…}
+  /backlight/reply, /backlight/status  the backlight node's JSON (DERIVED) → {"type":"connector","src":"backlight",…}
   /fictrac/raw | /fictrac/frame  the adapter's FicTrac records (only when the bridge node ran with
                    --record-fictrac-raw; bags before 2026-10-18 always have them) → used only for level `full`
 
@@ -84,12 +85,15 @@ TOPIC_SCANIMAGE_REPLY = "/scanimage/reply"
 TOPIC_SCANIMAGE_STATUS = "/scanimage/status"
 TOPIC_SIPM_REPLY = "/sipm/reply"
 TOPIC_SIPM_STATUS = "/sipm/status"
+TOPIC_BACKLIGHT_REPLY = "/backlight/reply"
+TOPIC_BACKLIGHT_STATUS = "/backlight/status"
 # Connector device topics → (connector id, event kind): their JSON becomes a DERIVED
 # {"type":"connector","src":<id>,"kind":…} line (mirror of bridge_node.CONNECTOR_TOPICS).
 CONNECTOR_TOPIC_SRC = {
     TOPIC_BIAS_REPLY: ("bias", "reply"), TOPIC_BIAS_STATUS: ("bias", "status"),
     TOPIC_SCANIMAGE_REPLY: ("scanimage", "reply"), TOPIC_SCANIMAGE_STATUS: ("scanimage", "status"),
     TOPIC_SIPM_REPLY: ("sipm", "reply"), TOPIC_SIPM_STATUS: ("sipm", "status"),
+    TOPIC_BACKLIGHT_REPLY: ("backlight", "reply"), TOPIC_BACKLIGHT_STATUS: ("backlight", "status"),
 }
 
 
@@ -231,7 +235,7 @@ def fictrac_fields(rec: dict) -> tuple[int, list[float]] | None:
 
 def convert(records: list[dict], level: str | None = None, order: str = "seq", connectors=None) -> tuple[list, dict]:
     """→ (lines as JSON values, report). `level` None = the level the run was opened with."""
-    stats = {"frames": 0, "browser_lines": 0, "rows": 0, "events": 0, "kf": 0, "bias": 0, "scanimage": 0, "sipm": 0,
+    stats = {"frames": 0, "browser_lines": 0, "rows": 0, "events": 0, "kf": 0, "bias": 0, "scanimage": 0, "sipm": 0, "backlight": 0,
              "connector_cmds": 0, "skipped": 0, "unordered_inserts": 0}
     opens = [r for r in records if r["topic"] == TOPIC_SESSION]
     session_open = None
@@ -399,7 +403,7 @@ def convert(records: list[dict], level: str | None = None, order: str = "seq", c
                     ev["plugin"] = p["plugin"]
             derived.append((rel, RANK["derived"], r["log_ns"], ev))
             stats[src] = stats.get(src, 0) + 1
-        # /bias/cmd, /scanimage/cmd, /fictrac/*: recorded for the record; no line of their own.
+        # /bias/cmd, /scanimage/cmd, /backlight/cmd, /fictrac/*: recorded for the record; no line of their own.
 
     if order == "time":
         allrows = [(ms, rk, sq, obj) for (sq, ms, rk, obj) in seq_lines] + [(ms, rk, 10**18 + ns, obj) for (ms, rk, ns, obj) in derived]

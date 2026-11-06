@@ -6,6 +6,8 @@
     pixi run rig -- --sim              # + the FicTrac simulator (demo without a camera)
     pixi run rig -- --no-host-monitor  # without the host monitor (CPU/RAM/disk/net/GPU on /rig/host; on by default)
     pixi run rig -- --bias --bias-sim  # + a simulated BIAS program (no camera software)
+    pixi run rig -- --backlight --backlight-args "--port COM6"   # + the LED backlight node on its serial port
+    pixi run rig -- --backlight --backlight-sim                  # + a simulated backlight controller (no hardware)
     pixi run rig -- --foxglove         # + foxglove_bridge (:8766) from the `viz` environment
     pixi run rig -- --no-fictrac --bias --foxglove --viz-args "--sources bias" --stimulus-args "--panel-layout four-color"
                                        # the okey-cokey camera rig: BIAS + G6, no FicTrac;
@@ -51,14 +53,37 @@ _ENVS = Path(os.environ["CONDA_PREFIX"]).parent if os.environ.get("CONDA_PREFIX"
 VIZ_ENV = _ENVS / "viz"
 FOXGLOVE_PORT = 8766
 HOST_MONITOR_MODULE = "rig_nodes.host_monitor"
+BACKLIGHT_MODULE = "rig_nodes.backlight_node"
+BACKLIGHT_SIM_PORT = 5020  # rig_nodes.sims.backlight_sim's default
+
+
+def module_available(module: str) -> bool:
+    """True when the installed rig_nodes package ships `module`."""
+    try:
+        return importlib.util.find_spec(module) is not None
+    except ImportError:  # no rig_nodes package at all
+        return False
 
 
 def host_monitor_available() -> bool:
     """True when the installed rig_nodes package ships the host monitor."""
-    try:
-        return importlib.util.find_spec(HOST_MONITOR_MODULE) is not None
-    except ImportError:  # no rig_nodes package at all
-        return False
+    return module_available(HOST_MONITOR_MODULE)
+
+
+def backlight_available() -> bool:
+    """True when the installed rig_nodes package ships the backlight node (and its simulator)."""
+    return module_available(BACKLIGHT_MODULE)
+
+
+def backlight_node_args(extra: list[str], with_sim: bool) -> list[str] | None:
+    """The backlight node's arguments: `extra` as given when it names the serial port (`--port X`
+    or `--port=X`); with the simulator and no port, the simulator's socket first; None when no
+    port is known (the node has no default: the controller's serial port is the rig's)."""
+    if any(a == "--port" or a.startswith("--port=") for a in extra):
+        return extra
+    if with_sim:
+        return ["--port", f"socket://127.0.0.1:{BACKLIGHT_SIM_PORT}", *extra]
+    return None
 
 
 def node_argv(module: str, *args: str) -> list[str]:
@@ -71,6 +96,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--kinefly", action="store_true", help="also run the Kinefly KF/1 adapter")
     p.add_argument("--bias", action="store_true", help="also run the BIAS camera node")
     p.add_argument("--bias-sim", action="store_true", help="also run the BIAS simulator (a fake BIAS program)")
+    p.add_argument("--backlight", action="store_true",
+                   help='also run the LED backlight node; its serial port comes from --backlight-args "--port COM6" (or --backlight-sim)')
+    p.add_argument("--backlight-sim", action="store_true",
+                   help=f"also run the backlight simulator on TCP {BACKLIGHT_SIM_PORT}; with --backlight and no --port, the node connects to it")
     p.add_argument("--sim", action="store_true", help="also run the FicTrac simulator (random walk, 50 Hz)")
     p.add_argument("--no-fictrac", action="store_true",
                    help="do not run the FicTrac UDP adapter (a rig without FicTrac, e.g. the okey-cokey camera rig)")
@@ -85,12 +114,22 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--fictrac-args", default="", help="extra args for the FicTrac adapter")
     p.add_argument("--kinefly-args", default="", help="extra args for the Kinefly adapter")
     p.add_argument("--bias-args", default="", help="extra args for the BIAS node")
+    p.add_argument("--backlight-args", default="", help='extra args for the backlight node (needs "--port <serial port>" unless --backlight-sim)')
     p.add_argument("--sim-args", default="--proto udp --rate 50", help="args for the FicTrac simulator")
     p.add_argument("--no-host-monitor", action="store_true", help=f"do not run {HOST_MONITOR_MODULE} (the PC's CPU per core, memory, disk, network, GPU, top processes on /rig/host, recorded in every run's bag)")
     p.add_argument("--host-monitor-args", default="", help=f"extra args for {HOST_MONITOR_MODULE} (e.g. --period 0.5 --print-every 30)")
     args = p.parse_args(argv)
 
     py = sys.executable
+    # The backlight node has no default port (BIAS's is 127.0.0.1:5010). Checked before anything
+    # starts, so a missing port is one line, not a node that exits on its own.
+    backlight_args = backlight_node_args(split_args(args.backlight_args), args.backlight_sim)
+    if args.backlight and backlight_args is None:
+        print('[rig] --backlight needs the controller\'s serial port: --backlight-args "--port COM6" (or add --backlight-sim)', file=sys.stderr)
+        return 2
+    if (args.backlight or args.backlight_sim) and not backlight_available():
+        print(f"[rig] backlight: the installed rig_nodes has no {BACKLIGHT_MODULE} (needs a rig-nodes release with it); starting without it", file=sys.stderr)
+        args.backlight = args.backlight_sim = False
     # Foxglove is optional twice over: the flag, and the `viz` environment being installed
     # (Qt + foxglove_bridge, ~0.3 GB a rig does not need). Missing env → one line, no crash.
     foxglove = False
@@ -116,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         ports.append(("udp", 60001, "another Kinefly adapter"))
     if args.bias_sim:
         ports.append(("tcp", 5010, "a BIAS program or the BIAS simulator"))
+    if args.backlight_sim:
+        ports.append(("tcp", BACKLIGHT_SIM_PORT, "another backlight simulator"))
     if foxglove:
         ports.append(("tcp", FOXGLOVE_PORT, "another foxglove_bridge (`pixi run -e viz foxglove-bridge` or another rig --foxglove)"))
     taken = preflight(ports)
@@ -140,6 +181,10 @@ def main(argv: list[str] | None = None) -> int:
         nodes.append(Child("bias-sim", node_argv("rig_nodes.sims.bias_sim")))
     if args.bias:
         nodes.append(Child("bias", node_argv("rig_nodes.bias_node", *split_args(args.bias_args))))
+    if args.backlight_sim:
+        nodes.append(Child("backlight-sim", node_argv("rig_nodes.sims.backlight_sim", "--port", str(BACKLIGHT_SIM_PORT))))
+    if args.backlight:
+        nodes.append(Child("backlight", node_argv(BACKLIGHT_MODULE, *backlight_args)))
     if not args.no_host_monitor:
         # The generic host monitor ships in the rig_nodes package (reiserlab/rig-nodes). It starts
         # before the gateway (bridge_node.py, below), so a run opened right away already has host
