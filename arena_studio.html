@@ -827,8 +827,9 @@
   .run-alert.show{display:flex}
   .run-alert button{margin-left:auto;flex:0 0 auto;background:transparent;border:1px solid currentColor;color:inherit;border-radius:5px;padding:1px 8px;cursor:pointer;font:inherit}
   /* ── REMOTE-CONTROL mode (LAB-357 · js/studio-remote-control.js) ─────────────────
-     An external program starts the runs; the page is display only. The banner is the first
-     thing on the page and sits ABOVE the (inert) page and every overlay, so its STOP is
+     An external program starts the runs; the page is display only (the display itself, the
+     bottom dock, stays usable). The banner is the first thing on the page and sits ABOVE
+     the locked page and every overlay, so its STOP is
      always reachable; the confirm dialog is in-page (window.confirm would block the event
      loop and stall a host-timed run). */
   .remote-banner{flex:0 0 auto;position:relative;z-index:1100;display:flex;align-items:center;gap:14px;padding:9px 16px;background:color-mix(in srgb,var(--warn) 16%,var(--bg));border-bottom:2px solid var(--warn);color:var(--text)}
@@ -2689,7 +2690,7 @@
           <span class="dim rb-count" id="rbCount"></span>
           <span class="rb-cl" id="rbClosedLoop" title="Closed-loop (FicTrac Mode 3/4) — lights green while a trial or experiment is driving the arena from FicTrac">closed-loop</span>
           <span class="dim rb-bias" id="rbBias" title="Closed-loop bias — the disturbance waveform the running protocol pushed to the bridge, and the angle it is currently adding. Set per condition in the protocol (fictrac → Start closed-loop)."></span>
-          <button type="button" class="pill remote-enter" id="remoteEnterBtn" title="Remote control — let an external program (Python or MATLAB, through the rig gateway) start the runs. This page then only displays them: every control is locked except STOP and Exit. Needs the controller and the bridge connected, and no run active.">Remote control</button>
+          <button type="button" class="pill remote-enter" id="remoteEnterBtn" title="Remote control — let an external program (Python or MATLAB, through the rig gateway) start the runs. This page then only displays them: everything that can change a run is locked; STOP, Exit and the display (Log / Scope) stay usable. Needs the controller and the bridge connected, and no run active.">Remote control</button>
           <button class="pill led-off" id="btnLedOff" title="Turn the stimulus LED off now — sets Analog Out to 5000 mV (BuckPuck dark). Works during a run.">TURN OFF LED</button>
         </div>
       </div>
@@ -8167,14 +8168,30 @@ if (window.StudioReplay && window.Studio && window.Scope) {
     $('remoteStopNo').textContent = RC.STOP_CONFIRM_NO;
 
     const R = (Studio.remote = {
-        on: false, // remote-control mode is active (the page is inert)
+        on: false, // remote-control mode is active (the page is locked, the display stays live)
         requested: false, // ?remote=1 (or a click) is waiting for the controller + bridge
         machine: machine,
         note: null // attach / bridge trouble shown on the state line
     });
-    // Body children that stay live: the banner, its dialog, and the run-log upload dialog
-    // (its Close only dismisses a message; the banner is stacked above it).
-    const LIVE_IDS = ['remoteBanner', 'remoteStopModal', 'rlUploadOverlay'];
+    // What stays live. The rule is "lock everything that can change a run, the arena or the
+    // protocol; leave the display usable" — and the default is LOCKED: a control is inert
+    // unless it is listed here.
+    //  - the banner, its dialog, and the run-log upload dialog (its Close only dismisses a
+    //    message; the banner is stacked above it);
+    //  - the bottom dock AS A DISPLAY: resize, Log / Scope / collapse, the scope's own
+    //    settings (window, span, limits, labels, sound) and its menu, the canvas, the log
+    //    text (scroll, select) with Copy and Save. NOT the dock's STOP (the banner's STOP,
+    //    with its confirmation, is the only stop), All on / All off, Clear, or Push log.
+    const LIVE = [
+        '#remoteBanner', '#remoteStopModal', '#rlUploadOverlay',
+        '#rlogResizer', '#dockSeg', '#scopeCtrls', '#scopePane', '.scope-sound-menu',
+        '.run-dock .dock-pane', '#btnLogCopy', '#btnLogSave'
+    ].join(',');
+    // Scroll containers: they stay live so the wheel scrolls them, and each of their children
+    // is locked on its own (an inert child is transparent to the wheel, so it scrolls its
+    // container): the Run column, the sequence list, the Run-details panel.
+    const SHELLS = ['.run-main', '#seqBody', '#metaPanel'].join(',');
+    const KEEP = LIVE + ',' + SHELLS;
     const SKIP_TAGS = ['SCRIPT', 'STYLE', 'LINK', 'TEMPLATE'];
     let frozen = null; // Map(element → it was inert before we entered)
     let observer = null;
@@ -8207,25 +8224,35 @@ if (window.StudioReplay && window.Studio && window.Scope) {
         };
     }
 
-    // ---- the inert page -------------------------------------------------------
+    // ---- the locked page ------------------------------------------------------
+    // Walk down from <body>: a LIVE element is left alone; an element that holds one (or is
+    // a scroll shell) stays live only as a container, and its children are locked one by
+    // one; everything else goes `inert` as a whole. `inert` cannot be undone further down
+    // the tree, hence the walk.
     function freezeNode(el) {
         if (!el || el.nodeType !== 1 || !frozen || frozen.has(el)) return;
-        if (LIVE_IDS.indexOf(el.id) !== -1 || SKIP_TAGS.indexOf(el.tagName) !== -1) return;
+        if (SKIP_TAGS.indexOf(el.tagName) !== -1 || el.matches(LIVE)) return;
+        if (el.matches(SHELLS) || el.querySelector(KEEP)) {
+            // Anything added to a container later (a re-rendered sequence row, a popup) is
+            // locked by the same rule.
+            if (observer) observer.observe(el, { childList: true });
+            Array.from(el.children).forEach(freezeNode);
+            return;
+        }
         frozen.set(el, el.hasAttribute('inert'));
         el.setAttribute('inert', '');
     }
     function freezePage() {
         frozen = new Map();
-        Array.from(document.body.children).forEach(freezeNode);
-        // Anything the page appends to <body> later (a popup, a tooltip) is locked too.
         if (window.MutationObserver) {
             observer = new MutationObserver((muts) => {
                 muts.forEach((m) => m.addedNodes && m.addedNodes.forEach(freezeNode));
             });
             observer.observe(document.body, { childList: true });
         }
+        Array.from(document.body.children).forEach(freezeNode);
         const a = document.activeElement;
-        if (a && a !== document.body && typeof a.blur === 'function') a.blur();
+        if (a && a !== document.body && a.closest('[inert]') && typeof a.blur === 'function') a.blur();
     }
     function thawPage() {
         if (observer) { observer.disconnect(); observer = null; }
@@ -8233,9 +8260,16 @@ if (window.StudioReplay && window.Studio && window.Scope) {
         frozen = null;
     }
     // Keys never reach the page's own shortcuts (Space, Ctrl+S, Esc-closes-menu, the editor's
-    // undo, …). Tab / Enter / Space still work on the banner's buttons: only propagation is cut.
+    // undo, …). Only propagation is cut, never the default action: Tab / Enter / Space work
+    // on the live buttons, typing works in the scope's fields. The browser's own keys (zoom,
+    // reload, full screen, DevTools) are not touched at all.
+    function browserKey(e) {
+        const k = e.key;
+        if (/^F\d{1,2}$/.test(k)) return true;
+        return (e.ctrlKey || e.metaKey) && !e.altKey && ['-', '_', '=', '+', '0', 'r', 'R'].indexOf(k) !== -1;
+    }
     function onKey(e) {
-        if (!R.on) return;
+        if (!R.on || browserKey(e)) return;
         e.stopImmediatePropagation();
         if (e.type === 'keydown' && e.key === 'Escape' && !$('remoteStopModal').hidden) {
             e.preventDefault();
@@ -8278,7 +8312,7 @@ if (window.StudioReplay && window.Studio && window.Scope) {
             ? 'Remote control was requested and starts when the controller and the bridge are connected' +
               (lastReason ? ' (now: ' + lastReason + ')' : '') + '. Click to cancel the request.'
             : 'Remote control — let an external program (Python or MATLAB, through the rig gateway) start the runs. ' +
-              'This page then only displays them: every control is locked except STOP and Exit. ' +
+              'This page then only displays them: everything that can change a run is locked; STOP, Exit and the display (Log / Scope) stay usable. ' +
               'Needs the controller and the bridge connected, and no run active.';
     }
     function explain(reason, quiet) {

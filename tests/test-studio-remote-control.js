@@ -617,16 +617,76 @@ console.log('\n=== the page carries the same copy and wiring (static) ===');
             glue.indexOf('bridge.setLogging(false)') <
                 glue.indexOf('send(machine.finish(summary, { started: true, error: error }))')
     );
+    const liveList = (glue.match(/const LIVE = \[([\s\S]*?)\]\.join\(','\);/) || [])[1] || '';
+    const shellList = (glue.match(/const SHELLS = \[([\s\S]*?)\]\.join\(','\);/) || [])[1] || '';
     checkBool(
-        'the banner and its dialog stay live; the rest of the page goes inert',
-        glue.includes("const LIVE_IDS = ['remoteBanner', 'remoteStopModal', 'rlUploadOverlay'];") &&
-            glue.includes("el.setAttribute('inert', '')")
+        'the banner and its dialog stay live; everything not listed goes inert',
+        ['#remoteBanner', '#remoteStopModal', '#rlUploadOverlay'].every((s) =>
+            liveList.includes("'" + s + "'")
+        ) && glue.includes("el.setAttribute('inert', '')")
+    );
+    checkBool(
+        'the display stays usable: dock switch, resize, scope settings and canvas, log text',
+        ['#dockSeg', '#rlogResizer', '#scopeCtrls', '#scopePane', '.run-dock .dock-pane'].every(
+            (s) => liveList.includes("'" + s + "'")
+        )
+    );
+    // Default-deny: nothing that starts, stops or changes a run, the arena or the protocol may
+    // ever be listed as live (the banner's STOP, with its confirmation, is the only stop).
+    const kept = ((liveList + ',' + shellList).match(/'[^']+'/g) || []).map((s) => s.slice(1, -1));
+    const NEVER_LIVE = [
+        '#btnRunExp',
+        '#btnTestExp',
+        '#btnStopRun',
+        '#btnStopDock',
+        '#btnAllOn',
+        '#btnAllOff',
+        '#btnLedOff',
+        '#btnLogPush',
+        '#btnLogClear',
+        '#rbConnBtn',
+        '#connectBtn',
+        '#replayOpenBtn',
+        '#runVarsCard',
+        '.seqlist',
+        '.launch-card',
+        '.topbar',
+        '#modeSeg',
+        '#fileMenu',
+        '#settingsMenu',
+        '#editView',
+        '#consoleView',
+        '.mp-card',
+        '#footer',
+        '#runView',
+        '.run-view',
+        '.run-dock',
+        '.run-log-strip',
+        '.dock-h',
+        '.body-wrap',
+        '.acts',
+        'body'
+    ];
+    checkBool(
+        'no run, arena or protocol control (and no container of one) is listed as live',
+        kept.length >= 11 && NEVER_LIVE.every((sel) => kept.indexOf(sel) === -1),
+        NEVER_LIVE.filter((sel) => kept.indexOf(sel) !== -1).join(', ')
+    );
+    checkBool(
+        'scroll shells are containers only: their children are locked one by one',
+        ["'.run-main'", "'#seqBody'", "'#metaPanel'"].every((s) => shellList.includes(s)) &&
+            glue.includes('Array.from(el.children).forEach(freezeNode);')
     );
     checkBool(
         "every key is cut off from the page's shortcuts while the mode is on",
         glue.includes(
             "['keydown', 'keypress', 'keyup'].forEach((t) => window.addEventListener(t, onKey, true));"
         ) && glue.includes('e.stopImmediatePropagation();')
+    );
+    checkBool(
+        "the browser's own keys (zoom, reload, function keys) are not touched",
+        glue.includes('if (!R.on || browserKey(e)) return;') &&
+            glue.includes("['-', '_', '=', '+', '0', 'r', 'R'].indexOf(k) !== -1")
     );
     checkBool(
         'every new control has a tooltip',

@@ -68,10 +68,16 @@ Controller transport, the same JSON object on either:
 - The gateway adds `t_ms` to every status. A terminal status also gets `bag` (the run's bag
   directory on the gateway PC) and `bag_files` when the run recorded one.
 - Every inbound WebSocket message is published on `/arena/browser` as before. Every `run_status`
-  is published on `/arena/run_status` and recorded in the run's bag; the bag also holds the
-  request with its YAML text (`/arena/run_request` for a ROS request, `/arena/browser` for a
-  WebSocket one), and any stop or status request made during the run. None of these become lines
-  of the derived `behavior_v2` run log.
+  is published on `/arena/run_status`. The run's bag records `accepted` and every `running`
+  status; it does **not** hold the terminal status, because the bag is closed first so that the
+  terminal status can carry its path (ww18 bench, 2026-11-10: five bags, the last recorded status
+  is `running` in each). So the terminal state and its reason text ("stopped by the operator at
+  the Studio") reach the controller only. Open point: have the Studio send a recorded `ending`
+  status before it closes the log. The bag also holds the request with its YAML text (`/arena/run_request` for a ROS
+  request, `/arena/browser` for a WebSocket one), and any stop or status request made during the
+  run. None of these become lines of the derived `behavior_v2` run log.
+- A `test` run records a bag but carries no run metadata, so `runlog-check` on its derived log
+  reports `no run_metadata`. That is expected; only `experiment` runs are checked that way.
 - The JSON-over-String topics follow the rest of this graph (no custom message types). A typed
   ROS action (goal = the request, feedback = `running`, result = the terminal status) can replace
   them later without changing the Studio side.
@@ -113,8 +119,15 @@ terminal status arrives (`"bag_closed_by":"gateway"`), also when the Studio's so
   Preconditions: controller connected, bridge connected with `remote: true`, no run active, no
   soak, no replay, no unsaved edits. The page shows the exact reason when it cannot enter.
 - A full-width banner states the mode and one state line (waiting / running step i of n / last
-  result). Everything below it is `inert`: the visualization keeps updating, no control accepts
-  clicks, and no key reaches the page's shortcuts.
+  result). Below it the rule is: **everything that can change a run, the arena or the protocol is
+  locked (`inert`); the display stays usable.** Live: the bottom dock as a display (resize, Log /
+  Scope / collapse, the scope's settings and sound, the log text with Copy and Save) and the wheel
+  on the Run column, the sequence list and the Run-details panel. Locked: everything else,
+  including the dock's own STOP, All on / All off, Clear and Push log. The default is locked: a
+  control is live only when the glue's `LIVE` list names it (since 2026-11-10, after the first
+  bench run; before that the whole page was inert).
+- No key reaches the page's shortcuts. Typing and Enter / Space still work in the live controls,
+  and the browser's own keys (zoom, reload, full screen, DevTools) are left alone.
 - **STOP rule.** The banner's red STOP is the only action during a run. It opens an in-page
   dialog ("Are you sure you want to stop? We're in remote control mode." — Stop the run / Keep
   running), never `window.confirm`, which would block the event loop of a host-timed run.
@@ -174,7 +187,8 @@ with `rig/nodes` on the Python path, or a `system()` call to the command line wi
 client against a real bridge node (also `pixi run -e lyrical test-remote`).
 
 Bench check on a rig PC (needs the controller): `cd rig && pixi run rig`; open the Studio with
-`?remote=1`, click Connect; confirm the banner and that the page ignores clicks and keys; run
+`?remote=1`, click Connect; confirm the banner, that the run controls ignore clicks and keys, and that
+the dock (Log / Scope, the scope's settings) and Ctrl+minus / Ctrl+plus still work; run
 `pixi run remote -- run ../protocols/g6_2x10_smoke.yaml`; press STOP → "Keep running", then STOP →
 "Stop the run" (the command prints `aborted`); run again to the end (`done`, and the printed `bag`
 opens); `pixi run remote -- status`; Exit remote control.
